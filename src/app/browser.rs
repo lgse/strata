@@ -70,6 +70,12 @@ pub struct BrowserColumnSnapshot {
     pub truncated: bool,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum SelectionUpdate {
+    All,
+    Positions(Vec<usize>),
+}
+
 #[derive(Clone, Debug)]
 pub enum BrowserEvent {
     /// The outgoing directory is still available for presentation-state capture.
@@ -119,6 +125,9 @@ pub enum BrowserEvent {
     ColumnReloaded {
         depth: usize,
     },
+    ColumnRefreshing {
+        depth: usize,
+    },
     HiddenToggled {
         show_hidden: bool,
     },
@@ -147,7 +156,7 @@ pub enum BrowserEvent {
     },
     SelectionSetChanged {
         depth: usize,
-        positions: Vec<usize>,
+        selection: SelectionUpdate,
         focused: usize,
         take_focus: bool,
     },
@@ -213,7 +222,9 @@ pub enum BrowserEvent {
         completed: usize,
         total: usize,
     },
-    RestorationFinished,
+    RestorationFinished {
+        succeeded: bool,
+    },
     OperationFailed {
         message: String,
     },
@@ -230,6 +241,9 @@ pub enum BrowserEvent {
         failed: usize,
         not_attempted: usize,
         affected_locations: HashSet<Location>,
+    },
+    OperationRefreshRequired {
+        depths: Vec<usize>,
     },
     NavigationRejected {
         parent_depth: usize,
@@ -267,6 +281,7 @@ type PreferencesObserver = Rc<dyn Fn(ViewPreferences)>;
 type DeferredDirectoryChanges = HashMap<usize, Vec<(Location, DirectoryChange)>>;
 
 const MAX_INCREMENTAL_OPERATION_UPDATES: usize = 64;
+const OPERATION_PUBLICATION_BATCH: usize = 512;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum UndoEntry {
@@ -711,6 +726,7 @@ pub struct Browser {
     staging: RefCell<HashMap<usize, StagingLoad>>,
     sorting: RefCell<HashMap<usize, SortingLoad>>,
     staged_publishes: RefCell<HashMap<usize, StagedPublish>>,
+    preserving_refreshes: RefCell<HashSet<usize>>,
     publish_timer: RefCell<Option<gio::glib::SourceId>>,
     remote: RefCell<RemoteState>,
     metadata_loads: RefCell<HashMap<usize, LoadHandle>>,
@@ -734,6 +750,7 @@ pub struct Browser {
     deletion_operation: Cell<bool>,
     deletion_permanent: Cell<bool>,
     deferred_file_operation_changes: RefCell<DeferredDirectoryChanges>,
+    operation_rescan_depths: RefCell<HashSet<usize>>,
     restoration_operation: Cell<bool>,
     archive_operation: Cell<bool>,
     transfer_destination: RefCell<Option<Location>>,
@@ -771,6 +788,7 @@ impl Browser {
             staging: RefCell::new(HashMap::new()),
             sorting: RefCell::new(HashMap::new()),
             staged_publishes: RefCell::new(HashMap::new()),
+            preserving_refreshes: RefCell::new(HashSet::new()),
             publish_timer: RefCell::new(None),
             remote: RefCell::new(RemoteState::new()),
             metadata_loads: RefCell::new(HashMap::new()),
@@ -792,6 +810,7 @@ impl Browser {
             deletion_operation: Cell::new(false),
             deletion_permanent: Cell::new(false),
             deferred_file_operation_changes: RefCell::new(HashMap::new()),
+            operation_rescan_depths: RefCell::new(HashSet::new()),
             restoration_operation: Cell::new(false),
             archive_operation: Cell::new(false),
             transfer_destination: RefCell::new(None),
@@ -1287,7 +1306,7 @@ impl Browser {
         if let Some((depth, focused)) = cleared {
             self.emit(BrowserEvent::SelectionSetChanged {
                 depth,
-                positions: Vec::new(),
+                selection: SelectionUpdate::Positions(Vec::new()),
                 focused,
                 take_focus: false,
             });
@@ -1728,7 +1747,7 @@ impl Browser {
         let positions = self.selected_positions(depth);
         self.emit(BrowserEvent::SelectionSetChanged {
             depth,
-            positions,
+            selection: SelectionUpdate::Positions(positions),
             focused,
             take_focus: true,
         });
@@ -1826,6 +1845,10 @@ impl Browser {
         self.state.borrow().command_entries(depth)
     }
 
+    pub fn selected_count(&self) -> usize {
+        self.state.borrow().selected_count()
+    }
+
     pub fn selection_is_load_cursor(&self) -> bool {
         self.state.borrow().selection_is_load_cursor()
     }
@@ -1885,41 +1908,15 @@ impl Browser {
     }
 
     pub fn select_all(&self, depth: usize) {
-        let show_hidden = self
-            .column_preferences(depth)
-            .unwrap_or_else(|| self.preferences())
-            .show_hidden;
-        let positions: Vec<usize> = self
-            .state
-            .borrow()
-            .columns
-            .get(depth)
-            .map(|column| {
-                column
-                    .entries
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, entry)| show_hidden || !entry.is_hidden)
-                    .map(|(position, _)| position)
-                    .collect()
-            })
-            .unwrap_or_default();
-        let Some(&focused) = positions.last() else {
+        let Some(focused) = self.state.borrow_mut().select_all(depth) else {
             return;
         };
-        self.commit_selection();
-        if self
-            .state
-            .borrow_mut()
-            .set_selection(depth, &positions, Some(focused))
-        {
-            self.emit(BrowserEvent::SelectionSetChanged {
-                depth,
-                positions,
-                focused,
-                take_focus: true,
-            });
-        }
+        self.emit(BrowserEvent::SelectionSetChanged {
+            depth,
+            selection: SelectionUpdate::All,
+            focused,
+            take_focus: true,
+        });
     }
 
     pub fn active_child_position(&self, depth: usize) -> Option<usize> {
@@ -2750,6 +2747,7 @@ impl Browser {
         self.deletion_operation.set(false);
         self.deletion_permanent.set(false);
         self.deferred_file_operation_changes.borrow_mut().clear();
+        self.operation_rescan_depths.borrow_mut().clear();
         self.restoration_operation.set(false);
         self.archive_operation.set(false);
         self.current_operation.set(Some(request_id));
@@ -2890,7 +2888,7 @@ impl Browser {
         if let Some((depth, focused, positions)) = extended {
             self.emit(BrowserEvent::SelectionSetChanged {
                 depth,
-                positions,
+                selection: SelectionUpdate::Positions(positions),
                 focused,
                 take_focus: true,
             });
@@ -2902,7 +2900,7 @@ impl Browser {
         if let Some((depth, focused, positions)) = extended {
             self.emit(BrowserEvent::SelectionSetChanged {
                 depth,
-                positions,
+                selection: SelectionUpdate::Positions(positions),
                 focused,
                 take_focus: true,
             });
@@ -2917,7 +2915,7 @@ impl Browser {
         if let Some(positions) = positions {
             self.emit(BrowserEvent::SelectionSetChanged {
                 depth,
-                positions,
+                selection: SelectionUpdate::Positions(positions),
                 focused,
                 take_focus: true,
             });
@@ -3127,7 +3125,7 @@ impl Browser {
                 drop(last);
                 self.emit(BrowserEvent::SelectionSetChanged {
                     depth,
-                    positions,
+                    selection: SelectionUpdate::Positions(positions),
                     focused,
                     take_focus: false,
                 });
@@ -3582,6 +3580,13 @@ impl Browser {
         self.refresh_columns_at_or_below(roots);
     }
 
+    pub(crate) fn column_has_monitor(&self, depth: usize) -> bool {
+        self.monitors
+            .borrow()
+            .get(depth)
+            .is_some_and(Option::is_some)
+    }
+
     fn refresh_columns_at_or_below(self: &Rc<Self>, roots: &HashSet<Location>) {
         let open_locations = {
             let state = self.state.borrow();
@@ -3594,53 +3599,56 @@ impl Browser {
             locations
         };
         for (depth, location) in open_locations {
-            if location_or_ancestor_is_affected(&location, roots)
+            let affected = location_or_ancestor_is_affected(&location, roots)
                 || roots
                     .iter()
-                    .any(|root| location.contains_camera_photo_location(root))
-            {
+                    .any(|root| location.contains_camera_photo_location(root));
+            if affected && !self.column_has_monitor(depth) {
                 self.refresh_column(depth);
             }
         }
     }
 
     fn remove_deleted_locations(self: &Rc<Self>, locations: &[Location]) {
-        if locations.len() > MAX_INCREMENTAL_OPERATION_UPDATES {
-            // Bulk deletes skip splices; Recent must reload even for targets outside open parents.
-            let parents: HashSet<_> = locations
-                .iter()
-                .filter_map(deletion_parent_location)
-                .chain(std::iter::once(Location::uri("recent:///")))
-                .collect();
-            self.refresh_columns_at_many(&parents);
-            return;
-        }
-        for location in locations {
-            let Some(parent) = deletion_parent_location(location) else {
-                continue;
-            };
-            let depths = {
-                let state = self.state.borrow();
-                let mut depths = Vec::new();
-                let mut depth = 0;
-                while let Some(open_location) = state.location_at(depth) {
-                    if open_location == parent
-                        || open_location.is_recent_root()
-                        || open_location.contains_camera_photo_location(location)
-                    {
-                        depths.push((depth, open_location));
-                    }
-                    depth += 1;
-                }
-                depths
-            };
-            for (depth, watched) in depths {
-                self.handle_directory_change(
-                    depth,
-                    &watched,
-                    DirectoryChange::Remove(location.clone()),
-                );
+        let open_locations = {
+            let state = self.state.borrow();
+            let mut open = Vec::new();
+            let mut depth = 0;
+            while let Some(location) = state.location_at(depth) {
+                open.push((depth, location));
+                depth += 1;
             }
+            open
+        };
+        for (depth, watched) in open_locations {
+            if locations.len() > MAX_INCREMENTAL_OPERATION_UPDATES
+                && (watched.is_recent_root() || watched.is_camera_photo_root())
+            {
+                self.refresh_column(depth);
+                continue;
+            }
+            let removed = locations
+                .iter()
+                .filter(|location| {
+                    deletion_parent_location(location).is_some_and(|parent| parent == watched)
+                        || watched.is_recent_root()
+                        || watched.contains_camera_photo_location(location)
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            if removed.is_empty() {
+                continue;
+            }
+            let focused_was_removed =
+                self.focused_item()
+                    .is_some_and(|(focused_depth, _, entry)| {
+                        focused_depth == depth && removed.contains(&entry.location)
+                    });
+            let application = self
+                .state
+                .borrow_mut()
+                .apply_removals_batch(depth, &watched, removed);
+            self.publish_live_change(depth, application, focused_was_removed);
         }
     }
 
@@ -3650,6 +3658,27 @@ impl Browser {
 
     fn refresh_column(self: &Rc<Self>, depth: usize) {
         self.refresh_column_with_reveal(depth, None);
+    }
+
+    pub(crate) fn refresh_operation_columns(self: &Rc<Self>, depths: &[usize]) {
+        for &depth in depths {
+            self.refresh_column_preserving_entries(depth);
+        }
+    }
+
+    fn refresh_column_preserving_entries(self: &Rc<Self>, depth: usize) {
+        let request_id = self.new_request_id();
+        let location = self.state.borrow_mut().refresh_column(depth, request_id);
+        let Some(location) = location else {
+            return;
+        };
+        self.preserving_refreshes.borrow_mut().insert(depth);
+        self.emit(BrowserEvent::ColumnRefreshing { depth });
+        let handle = self.request_directory(depth, location, request_id);
+        if let Some(load) = self.loads.borrow_mut().get_mut(depth) {
+            *load = handle;
+        }
+        self.metadata_loads.borrow_mut().remove(&depth);
     }
 
     fn refresh_column_revealing(self: &Rc<Self>, depth: usize, target: Location) {
@@ -3770,7 +3799,7 @@ impl Browser {
         self.set_selection(depth, &positions, Some(focused));
         self.emit(BrowserEvent::SelectionSetChanged {
             depth,
-            positions,
+            selection: SelectionUpdate::Positions(positions),
             focused,
             take_focus: true,
         });
@@ -3793,11 +3822,20 @@ impl Browser {
 
 fn location_or_ancestor_is_affected(location: &Location, roots: &HashSet<Location>) -> bool {
     let mut current = Some(location.clone());
-    while let Some(location) = current {
-        if roots.contains(&location) {
+    while let Some(loc) = current {
+        if roots.contains(&loc) {
             return true;
         }
-        current = location.parent();
+        current = loc.parent();
+    }
+    for root in roots {
+        let mut curr = root.parent();
+        while let Some(p) = curr {
+            if &p == location {
+                return true;
+            }
+            curr = p.parent();
+        }
     }
     false
 }

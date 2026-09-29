@@ -32,6 +32,7 @@ Strata accepts a startup directory on the command line. Structured logs report:
 - First provider batch latency
 - Time until the first directory batch is rendered
 - Complete enumeration time and entry count
+- Complete UI publication
 - Per-batch UI append duration
 - Cancelled directory request IDs
 
@@ -42,7 +43,7 @@ STRATA_BINARY=target/release/strata \
   ./scripts/profile-fixture.sh target/fixtures/100000
 ```
 
-Close other Strata instances before profiling so GApplication does not forward the request to an existing process. PSS is included because RSS charges each process for shared GTK, graphics, and font pages in full.
+Close other Strata instances before profiling so GApplication does not forward the request to an existing process. The script samples until the complete model has been published, not merely until enumeration finishes. PSS is included because RSS charges each process for shared GTK, graphics, and font pages in full.
 
 ## Initial baseline — 2026-08-29
 

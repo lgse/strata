@@ -284,7 +284,7 @@ pub enum OperationEvent {
         request_id: OperationRequestId,
         completed: usize,
         total: usize,
-        deleted_location: Option<Location>,
+        deleted_locations: Vec<Location>,
     },
     RestoreProgress {
         request_id: OperationRequestId,

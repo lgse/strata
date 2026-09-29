@@ -217,6 +217,8 @@ pub(super) struct ViewState {
     click_rename_generation: Cell<u64>,
     pending_new_entry: RefCell<Option<Rc<PendingEntryRename>>>,
     file_progress_view: RefCell<Option<FileProgressView>>,
+    file_progress_dismissing: Cell<bool>,
+    file_progress_dismiss_waiters: RefCell<Vec<Box<dyn FnOnce()>>>,
     pending_file_progress: RefCell<Option<glib::SourceId>>,
     pending_send_to_completion: RefCell<Option<PendingSendToCompletion>>,
     finished_send_to_completion: RefCell<Option<FinishedSendToCompletion>>,
@@ -249,6 +251,7 @@ pub(super) struct ViewState {
     /// failed only because the location doesn't support Trash can offer a
     /// permanent-delete retry for exactly those entries.
     pending_delete_entries: RefCell<Vec<FileEntry>>,
+    pending_file_operation_animation: RefCell<Option<fly_to_trash::PreparedFlight>>,
     /// Visible permanent-delete rows captured before the operation mutates the model.
     pending_delete_dissolve: RefCell<Option<(usize, dissolve_delete::PreparedDissolve)>>,
     deferred_delete_empty_depth: Cell<Option<usize>>,
@@ -603,6 +606,8 @@ impl BrowserView {
             click_rename_generation: Cell::new(0),
             pending_new_entry: RefCell::new(None),
             file_progress_view: RefCell::new(None),
+            file_progress_dismissing: Cell::new(false),
+            file_progress_dismiss_waiters: RefCell::new(Vec::new()),
             pending_file_progress: RefCell::new(None),
             pending_send_to_completion: RefCell::new(None),
             finished_send_to_completion: RefCell::new(None),
@@ -629,6 +634,7 @@ impl BrowserView {
             pending_extract_retry: RefCell::new(None),
             pending_archive_destination: RefCell::new(None),
             pending_delete_entries: RefCell::new(Vec::new()),
+            pending_file_operation_animation: RefCell::new(None),
             pending_delete_dissolve: RefCell::new(None),
             deferred_delete_empty_depth: Cell::new(None),
             pending_navigate: RefCell::new(None),
@@ -1507,7 +1513,11 @@ impl BrowserView {
 
     fn paste_location(&self) -> Option<Location> {
         self.state.sync_mode_selection();
-        let selected = self.state.browser.selected_entries();
+        let selected = if self.state.browser.selected_count() == 1 {
+            self.state.browser.selected_entries()
+        } else {
+            Vec::new()
+        };
         let column = self
             .state
             .destination_depth()
@@ -1839,17 +1849,17 @@ impl BrowserView {
                 })
                 .collect()
         };
+        let source = self.state.delete_animation_source();
         let trash_button = self.state.trash_button.borrow().clone();
+        let animation = source.zip(trash_button).and_then(|(source, trash_button)| {
+            fly_to_trash::prepare_fly_from_trash(&source, entries.iter(), &trash_button)
+        });
+        self.state
+            .pending_file_operation_animation
+            .replace(animation);
         let undone = self.state.browser.undo_last_trash();
-        if undone
-            && let Some(trash_button) = trash_button
-            && !entries.is_empty()
-        {
-            let source = self
-                .state
-                .delete_animation_source()
-                .unwrap_or_else(|| self.state.overlay.clone().upcast());
-            fly_to_trash::fly_from_trash(&source, &entries, &trash_button, || {});
+        if !undone {
+            self.state.pending_file_operation_animation.take();
         }
         undone
     }

@@ -312,7 +312,9 @@ fn visual_key_repeats_leave_the_range_and_publish_the_walked_fill() {
     let observed = fills.clone();
     browser.observe(move |event| {
         if let BrowserEvent::SelectionSetChanged {
-            positions, focused, ..
+            selection: SelectionUpdate::Positions(positions),
+            focused,
+            ..
         } = event
         {
             observed.borrow_mut().push((positions.clone(), *focused));
@@ -373,7 +375,18 @@ fn select_all_excludes_hidden_entries_unless_shown() {
     let browser = Browser::new(Rc::new(source));
     browser.navigate(Location::local("/fixture"));
 
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+
     browser.select_all(0);
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::SelectionSetChanged {
+            selection: SelectionUpdate::All,
+            ..
+        }
+    )));
     let selected = browser.selected_positions(0);
     assert_eq!(selected.len(), 1, "{selected:?}");
     let entry = browser.entry_at(0, selected[0]).expect("selected entry");
@@ -417,7 +430,9 @@ fn repeated_identical_batches_emit_selection_only_once() {
         .iter()
         .filter_map(|event| match event {
             BrowserEvent::SelectionSetChanged {
-                positions, focused, ..
+                selection: SelectionUpdate::Positions(positions),
+                focused,
+                ..
             } => Some((positions.clone(), *focused)),
             _ => None,
         })

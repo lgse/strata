@@ -238,11 +238,52 @@ fn deletion_error_summaries_are_bounded_and_report_the_failure_count() {
 }
 
 #[test]
-fn rotational_deletes_cap_parallelism_without_disabling_it() {
-    assert_eq!(super::bounded_local_delete_worker_count(0, false), 1);
-    assert_eq!(super::bounded_local_delete_worker_count(1, true), 1);
-    assert_eq!(super::bounded_local_delete_worker_count(8, true), 1);
-    assert_eq!(super::bounded_local_delete_worker_count(8, false), 2);
+fn large_deletion_progress_reports_every_completed_location() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let mut entries = Vec::new();
+    let mut expected = HashSet::new();
+    for index in 0..40 {
+        let path = root.path().join(format!("file-{index:02}.txt"));
+        fs::write(&path, index.to_string())?;
+        expected.insert(Location::local(&path));
+        entries.push(file_entry(&path));
+    }
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.delete(
+        DeleteRequest {
+            id: OperationRequestId(24),
+            entries,
+            permanent: true,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    while !events
+        .borrow()
+        .iter()
+        .any(|event| matches!(event, OperationEvent::Deleted { .. }))
+    {
+        glib::MainContext::default().iteration(true);
+    }
+
+    let reported = events
+        .borrow()
+        .iter()
+        .filter_map(|event| match event {
+            OperationEvent::DeleteProgress {
+                deleted_locations, ..
+            } => Some(deleted_locations),
+            _ => None,
+        })
+        .flatten()
+        .cloned()
+        .collect::<HashSet<_>>();
+    assert_eq!(reported, expected);
+    Ok(())
 }
 
 #[test]

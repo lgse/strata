@@ -4,6 +4,7 @@ use std::{
     cmp::Ordering,
     ffi::OsString,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use gio::prelude::*;
@@ -20,8 +21,8 @@ pub use action::{
 /// A browsable destination. Native paths remain byte-safe and URI locations remain explicit.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 enum LocationKind {
-    Native(PathBuf),
-    Uri(String),
+    Native(Arc<Path>),
+    Uri(Arc<str>),
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -41,12 +42,14 @@ fn uri_scheme_eq(uri: &str, scheme: &str) -> bool {
 
 impl Location {
     pub fn local(path: impl Into<PathBuf>) -> Self {
+        let path: PathBuf = path.into();
         Self {
             kind: LocationKind::Native(path.into()),
         }
     }
 
     pub fn uri(uri: impl Into<String>) -> Self {
+        let uri: String = uri.into();
         Self {
             kind: LocationKind::Uri(uri.into()),
         }
@@ -90,9 +93,13 @@ impl Location {
         match &self.kind {
             LocationKind::Native(path) => {
                 let parent = path.parent()?;
-                (parent != path).then(|| Self::local(parent))
+                (parent != path.as_ref()).then(|| Self::local(parent))
             }
-            LocationKind::Uri(uri) if uri == "trash:///" || uri == "network:///" => None,
+            LocationKind::Uri(uri)
+                if uri.as_ref() == "trash:///" || uri.as_ref() == "network:///" =>
+            {
+                None
+            }
             LocationKind::Uri(uri) => {
                 // Walk the URI path. GVfs File::parent() can SIGSEGV on gphoto2
                 // and similar backends when many tests call it concurrently.
@@ -180,7 +187,7 @@ impl Location {
             (LocationKind::Native(path), LocationKind::Native(from), LocationKind::Native(to)) => {
                 let suffix = path.strip_prefix(from).ok()?;
                 Some(Self::local(if suffix.as_os_str().is_empty() {
-                    to.clone()
+                    to.to_path_buf()
                 } else {
                     to.join(suffix)
                 }))
@@ -299,7 +306,7 @@ impl Location {
                 .map(|name| name.to_string_lossy().into_owned())
                 .filter(|name| !name.is_empty())
                 .unwrap_or_else(|| path.to_string_lossy().into_owned()),
-            LocationKind::Uri(uri) if uri == "trash:///" => "Trash".into(),
+            LocationKind::Uri(uri) if uri.as_ref() == "trash:///" => "Trash".into(),
             LocationKind::Uri(uri) => self
                 .file_name()
                 .map(|name| name.to_string_lossy().into_owned())

@@ -26,6 +26,8 @@ use crate::ui::modal::{
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::cell::{Cell, RefCell};
+use std::collections::HashSet;
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::Duration;
@@ -129,6 +131,32 @@ fn transfer_is_noop(source: &Location, destination: &Location, move_sources: boo
             && source
                 .parent()
                 .is_some_and(|parent| parent.equal(&destination)))
+}
+
+#[derive(Eq, Hash, PartialEq)]
+enum DestinationNameKey {
+    Folded(String),
+    Native(OsString),
+}
+
+fn destination_name_key(name: &OsStr) -> DestinationNameKey {
+    name.to_str().map_or_else(
+        || DestinationNameKey::Native(name.to_owned()),
+        |name| DestinationNameKey::Folded(glib::casefold(name).into()),
+    )
+}
+
+fn destination_name_candidates(path: &Path) -> Option<HashSet<DestinationNameKey>> {
+    Some(
+        std::fs::read_dir(path)
+            .ok()?
+            .filter_map(|entry| {
+                entry
+                    .ok()
+                    .map(|entry| destination_name_key(&entry.file_name()))
+            })
+            .collect(),
+    )
 }
 
 fn transfer_collision(source: &Location, destination: &Location) -> Option<TransferCollision> {
@@ -539,13 +567,21 @@ impl ViewState {
         }
         let mut accepted = Vec::new();
         let mut collisions = Vec::new();
+        let destination_names = destination
+            .native_path()
+            .and_then(destination_name_candidates);
         for source in sources {
-            match transfer_collision(&source, &destination) {
-                Some(collision) => collisions.push(collision),
-                None => accepted.push(PasteItem {
+            let may_collide = match (&destination_names, source.file_name()) {
+                (Some(existing), Some(name)) => existing.contains(&destination_name_key(&name)),
+                _ => true,
+            };
+            if may_collide && let Some(collision) = transfer_collision(&source, &destination) {
+                collisions.push(collision);
+            } else {
+                accepted.push(PasteItem {
                     source,
                     conflict: TransferConflict::FailIfExists,
-                }),
+                });
             }
         }
         self.resolve_transfer_collisions(

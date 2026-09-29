@@ -168,9 +168,9 @@ fn directory_summary_treats_a_directory_removed_before_measurement_as_truncated_
 fn aborting_a_directory_measurement_stops_it_mid_flight() {
     let root = unique_fixture_root("abort-mid-flight");
     std::fs::create_dir_all(&root).expect("the directory fixture should be created");
-    // `next_files_future` batches 64 entries at a time, so 200 files force several suspension
-    // points, giving a real window to observe partial progress before the walk would finish.
-    let total_files = 200;
+    // More than one enumeration batch gives a real window to observe partial progress before the
+    // walk would finish.
+    let total_files = 600;
     for index in 0..total_files {
         std::fs::write(root.join(format!("file-{index}.txt")), b"content")
             .expect("the directory fixture file should be written");
@@ -206,8 +206,8 @@ fn aborting_a_directory_measurement_stops_it_mid_flight() {
 
             // Drive the loop only until the walk has made some real progress (at least one batch
             // beyond the root directory itself), then abort immediately -- this is genuinely
-            // mid-flight since one batch (64) is far short of the full tree (1 + 200), regardless
-            // of exactly how many main-loop iterations it took to get there.
+            // mid-flight since one batch is short of the full tree, regardless of exactly how many
+            // main-loop iterations it took to get there.
             for _ in 0..1_000 {
                 if budget.total.get().item_count > 1 {
                     break;
@@ -240,9 +240,9 @@ fn aborting_a_directory_measurement_stops_it_mid_flight() {
 fn directory_summary_stops_enumerating_the_root_once_the_measurement_budget_is_reached() {
     let root = unique_fixture_root("root-budget-stop");
     std::fs::create_dir_all(&root).expect("the directory fixture should be created");
-    // More than one `next_files_future` batch (64 entries), so a walk that kept fetching
-    // further batches after the budget was spent would still show up as a much larger count.
-    let total_files = 150;
+    // More than one enumeration batch means continuing after the budget is spent would still show
+    // up as a much larger count.
+    let total_files = 600;
     for index in 0..total_files {
         std::fs::write(root.join(format!("file-{index}.txt")), b"content")
             .expect("the directory fixture file should be written");
@@ -271,7 +271,7 @@ fn directory_summary_stops_enumerating_the_root_once_the_measurement_budget_is_r
 #[test]
 fn directory_summary_does_not_stop_enumerating_siblings_after_one_branch_is_depth_truncated() {
     let root = unique_fixture_root("sibling-depth-truncation");
-    let sibling_count = 80;
+    let sibling_count = ENUMERATION_BATCH_SIZE as usize + 16;
     // Nested one level under "parent" so these are children of a directory that
     // `measure_children` recurses into, not top-level entries of `root` itself (which
     // are always fully enumerated regardless of budget after the earlier deletion-worklist fix).
@@ -287,8 +287,8 @@ fn directory_summary_does_not_stop_enumerating_siblings_after_one_branch_is_dept
     // With max_depth 1, every "sub-N" directory individually hits the depth cap when deciding
     // whether to recurse into its own "inner" child -- that is a branch-local condition, unrelated
     // to its siblings. It used to be conflated with the shared budget being spent, which stopped
-    // scanning further `next_files_future` batches entirely: with 80 siblings and a 64-entry batch
-    // size, that undercounted "parent" to 1 (itself) + 64 (first batch only) = 65.
+    // scanning further `next_files_future` batches entirely. Keep the fixture larger than the
+    // production batch so stopping after one request necessarily undercounts the siblings.
     let summary = glib::MainContext::new().block_on(summarize_directory_with_budget(
         &gio::File::for_path(&root),
         1,

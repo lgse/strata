@@ -4,10 +4,11 @@ use gtk::{gio, prelude::*};
 
 use super::{
     BrowserMode, ModeViews, Pane, pane_holds_keyboard_focus, reconnect_pane_model, replace_entries,
-    set_selections, show_count, update_bound_icons_metadata, update_bound_list_metadata,
+    select_all, set_selections, show_count, update_bound_icons_metadata,
+    update_bound_list_metadata,
 };
 use crate::{
-    app::{Browser, BrowserEvent, EntryInsertion, EntrySplice},
+    app::{Browser, BrowserEvent, EntryInsertion, EntrySplice, SelectionUpdate},
     ui::browser::entry_model_value,
 };
 
@@ -285,11 +286,11 @@ impl ModeViews {
         match event {
             BrowserEvent::SelectionSetChanged {
                 depth,
-                positions,
+                selection,
                 take_focus,
                 ..
             } => {
-                self.update_selection(*depth, positions, *take_focus);
+                self.update_selection(*depth, selection, *take_focus);
             }
             BrowserEvent::FocusChanged { depth, .. } => {
                 let positions = self.browser.selected_positions(*depth);
@@ -312,19 +313,28 @@ impl ModeViews {
         });
     }
 
-    fn update_selection(&self, depth: usize, positions: &[usize], take_focus: bool) {
+    fn update_selection(&self, depth: usize, selection: &SelectionUpdate, take_focus: bool) {
         let view_has_focus = self
             .panes_at(depth)
             .iter()
             .any(|pane| pane_holds_keyboard_focus(pane));
-        self.update_panes(depth, |pane| set_selections(pane, positions));
+        let has_selection = match selection {
+            SelectionUpdate::All => {
+                self.update_panes(depth, select_all);
+                true
+            }
+            SelectionUpdate::Positions(positions) => {
+                self.update_panes(depth, |pane| set_selections(pane, positions));
+                !positions.is_empty()
+            }
+        };
         let camera_loading = self
             .browser
             .column_snapshot(depth)
             .is_some_and(|snapshot| snapshot.loading && snapshot.location.is_camera_photo_root());
         // Incoming photos shift source positions without a user selection change.
         // Re-focusing on every such update pulls scrolling back to the selected row.
-        if take_focus || (view_has_focus && !positions.is_empty() && !camera_loading) {
+        if take_focus || (view_has_focus && has_selection && !camera_loading) {
             self.focus_visible_pane(depth);
         }
     }

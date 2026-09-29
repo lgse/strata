@@ -50,6 +50,8 @@ impl DirectorySummary {
 
 const DIRECTORY_ATTRIBUTES: &str =
     "standard::name,standard::type,standard::is-symlink,standard::size,standard::is-hidden";
+const ENUMERATION_BATCH_SIZE: i32 = 512;
+const PROGRESS_BATCH_SIZE: usize = 64;
 const MAX_DEPTH: usize = 64;
 const TIME_BUDGET: Duration = Duration::from_secs(300);
 
@@ -122,7 +124,7 @@ async fn measure_children(
     let mut summary = DirectorySummary::default();
     'directory: loop {
         let children = match enumerator
-            .next_files_future(64, glib::Priority::DEFAULT)
+            .next_files_future(ENUMERATION_BATCH_SIZE, glib::Priority::DEFAULT)
             .await
         {
             Ok(children) => children,
@@ -136,8 +138,7 @@ async fn measure_children(
         if children.is_empty() {
             break;
         }
-        glib::timeout_future(Duration::from_millis(1)).await;
-        for info in children {
+        for (index, info) in children.into_iter().enumerate() {
             if budget.exhausted() {
                 summary.issues.timed_out = true;
                 break 'directory;
@@ -152,6 +153,16 @@ async fn measure_children(
                 )
                 .await?,
             );
+            if (index + 1) % PROGRESS_BATCH_SIZE == 0 {
+                budget.report_progress();
+                if enumerator.is_closed() {
+                    summary.issues.unreadable = true;
+                    break 'directory;
+                }
+            }
+            if (index + 1) % ENUMERATION_BATCH_SIZE as usize == 0 {
+                glib::timeout_future(Duration::ZERO).await;
+            }
         }
         budget.report_progress();
         // Branch-local truncation (depth or an unreadable child) must not skip siblings.

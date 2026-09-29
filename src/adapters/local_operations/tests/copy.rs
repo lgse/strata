@@ -382,12 +382,17 @@ fn copying_a_tree_with_a_named_pipe_fails_instead_of_blocking() -> Result<(), Bo
     let source = root.path().join("source");
     let target = root.path().join("target");
     fs::create_dir_all(&source)?;
-    fs::write(source.join("before.txt"), b"before")?;
     rustix::fs::mkfifoat(
         rustix::fs::CWD,
-        source.join("pipe"),
+        source.join("00-pipe"),
         rustix::fs::Mode::from_bits_truncate(0o600),
     )?;
+    for index in 1..16 {
+        fs::write(
+            source.join(format!("{index:02}-file.txt")),
+            index.to_string(),
+        )?;
+    }
 
     let result = glib::MainContext::default().block_on(copy_recursively(
         gio::File::for_path(&source),
@@ -402,7 +407,15 @@ fn copying_a_tree_with_a_named_pipe_fails_instead_of_blocking() -> Result<(), Bo
         error.to_string().contains("pipe"),
         "the error should name the entry: {error}"
     );
-    assert!(!target.join("pipe").exists());
+    assert!(!target.join("00-pipe").exists());
+    let entries_after_error = fs::read_dir(&target)?
+        .map(|entry| entry.map(|entry| entry.file_name()))
+        .collect::<Result<HashSet<_>, _>>()?;
+    glib::MainContext::default().block_on(glib::timeout_future(Duration::from_millis(20)));
+    let entries_after_settling = fs::read_dir(&target)?
+        .map(|entry| entry.map(|entry| entry.file_name()))
+        .collect::<Result<HashSet<_>, _>>()?;
+    assert_eq!(entries_after_settling, entries_after_error);
     fs::remove_dir_all(&target)?;
     let staged = glib::MainContext::default().block_on(copy_new_recursively(
         gio::File::for_path(&source),

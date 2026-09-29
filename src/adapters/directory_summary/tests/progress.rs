@@ -173,7 +173,9 @@ fn an_enumeration_failure_preserves_bytes_already_reported() {
 #[test]
 fn aborting_measurement_stops_progress_callbacks() {
     let root = tempfile::tempdir().expect("fixture");
-    for index in 0..200 {
+    let total_files = 600;
+    let total_bytes = total_files * 3;
+    for index in 0..total_files {
         std::fs::write(root.path().join(index.to_string()), b"abc").expect("file");
     }
     let context = glib::MainContext::new();
@@ -198,7 +200,7 @@ fn aborting_measurement_stops_progress_callbacks() {
                 context.iteration(false);
             }
             let before = updates.borrow().clone();
-            assert!(before.last().expect("progress").total_size < 600);
+            assert!(before.last().expect("progress").total_size < total_bytes);
             task.abort();
             context.block_on(glib::timeout_future(Duration::from_millis(20)));
             assert_eq!(*updates.borrow(), before);

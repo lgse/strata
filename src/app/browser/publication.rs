@@ -7,12 +7,15 @@ use std::{
 
 use gio::glib;
 
-use super::{Browser, BrowserEvent, RequestId};
+use super::{Browser, BrowserEvent, RequestId, SelectionUpdate};
 
 /// Rows exposed immediately; larger publications continue within idle budgets.
 const FIRST_PUBLISH_COUNT: usize = 128;
 const STAGE_INLINE_LIMIT: usize = 512;
-const PUBLISH_TAIL_CHUNK: usize = 2048;
+const INITIAL_PUBLISH_CHUNK: usize = 512;
+const MIN_PUBLISH_CHUNK: usize = 128;
+const MAX_PUBLISH_CHUNK: usize = 2048;
+const PUBLISH_CHUNK_BUDGET: Duration = Duration::from_millis(12);
 const PUBLISH_SLICE_BUDGET: Duration = Duration::from_millis(8);
 
 pub(super) enum PublishTerminal {
@@ -35,20 +38,43 @@ pub(super) struct PublicationPlan {
 pub(super) struct StagedPublish {
     plan: PublicationPlan,
     published: usize,
+    chunk_size: usize,
+    measured_chunks: usize,
 }
 
 impl StagedPublish {
     fn next_chunk(&self, available: usize) -> (usize, usize) {
-        let end = (self.published + PUBLISH_TAIL_CHUNK)
+        let end = (self.published + self.chunk_size)
             .min(available)
             .min(self.plan.total);
         (self.published, end.saturating_sub(self.published))
     }
 }
 
+fn adjusted_chunk_size(current: usize, elapsed: Duration) -> usize {
+    if elapsed > PUBLISH_CHUNK_BUDGET {
+        (current / 2).max(MIN_PUBLISH_CHUNK)
+    } else if elapsed < PUBLISH_CHUNK_BUDGET / 2 {
+        current.saturating_mul(2).min(MAX_PUBLISH_CHUNK)
+    } else {
+        current
+    }
+}
+
 impl Browser {
     pub(super) fn publish_staged(self: &Rc<Self>, depth: usize, plan: PublicationPlan) {
         self.drain_publish(depth);
+        if self.preserving_refreshes.borrow_mut().remove(&depth) {
+            if self.state.borrow().columns.get(depth).is_none() {
+                return;
+            }
+            self.emit(BrowserEvent::EntriesReplaced {
+                depth,
+                count: plan.total,
+            });
+            self.complete_publication(depth, plan);
+            return;
+        }
         if plan.total <= STAGE_INLINE_LIMIT {
             if self.state.borrow().columns.get(depth).is_none() {
                 return;
@@ -70,17 +96,28 @@ impl Browser {
             depth,
             count: published,
         });
-        self.staged_publishes
-            .borrow_mut()
-            .insert(depth, StagedPublish { plan, published });
+        self.staged_publishes.borrow_mut().insert(
+            depth,
+            StagedPublish {
+                plan,
+                published,
+                chunk_size: INITIAL_PUBLISH_CHUNK,
+                measured_chunks: 0,
+            },
+        );
         self.arm_publish_timer();
     }
 
     fn complete_publication(self: &Rc<Self>, depth: usize, plan: PublicationPlan) {
+        tracing::debug!(
+            depth,
+            entries = plan.total,
+            "directory publication finished"
+        );
         if let Some(focused) = plan.focused {
             self.emit(BrowserEvent::SelectionSetChanged {
                 depth,
-                positions: plan.positions,
+                selection: SelectionUpdate::Positions(plan.positions),
                 focused,
                 take_focus: false,
             });
@@ -122,6 +159,7 @@ impl Browser {
 
     pub(super) fn cancel_publish(&self, depth: usize) {
         self.staged_publishes.borrow_mut().remove(&depth);
+        self.preserving_refreshes.borrow_mut().remove(&depth);
         if self.staged_publishes.borrow().is_empty()
             && let Some(source) = self.publish_timer.borrow_mut().take()
         {
@@ -203,13 +241,19 @@ impl Browser {
                 }
             }
             Some((position, count)) => {
+                let started = Instant::now();
                 self.emit(BrowserEvent::EntriesPublished {
                     depth,
                     position,
                     count,
                 });
+                let elapsed = started.elapsed();
                 if let Some(staged) = self.staged_publishes.borrow_mut().get_mut(&depth) {
                     staged.published += count;
+                    if staged.measured_chunks > 0 {
+                        staged.chunk_size = adjusted_chunk_size(staged.chunk_size, elapsed);
+                    }
+                    staged.measured_chunks += 1;
                 }
             }
         }

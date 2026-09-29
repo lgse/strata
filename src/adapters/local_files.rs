@@ -36,7 +36,7 @@ const LIST_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::t
 const FULL_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,standard::size,standard::target-uri,time::modified,unix::mode,access::can-trash,access::can-delete";
 const RECENT_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::target-uri,recent::modified";
 const METADATA_ATTRIBUTES: &str = "standard::type,standard::size,time::modified,unix::mode";
-const MAX_PENDING_MONITOR_CHANGES: usize = 256;
+const MAX_PENDING_MONITOR_CHANGES: usize = 4_096;
 const MAX_ICON_DETAILS_CACHE_ENTRIES: usize = 10_000;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -169,7 +169,12 @@ fn cached_icon_details(path: &Path, fingerprint: IconDetailsFingerprint) -> Opti
     icon_details_cache().lock().ok()?.get(path, fingerprint)
 }
 
+static CACHE_HAS_ENTRIES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 fn cached_icon_details_for_revisit(path: &Path) -> Option<IconDetails> {
+    if !CACHE_HAS_ENTRIES.load(std::sync::atomic::Ordering::Acquire) {
+        return None;
+    }
     let was_cached = icon_details_cache().lock().ok()?.entries.contains_key(path);
     if !was_cached {
         return None;
@@ -191,6 +196,7 @@ fn cache_icon_details(
             fingerprint,
             IconDetails::from_update(update),
         );
+        CACHE_HAS_ENTRIES.store(true, std::sync::atomic::Ordering::Release);
     }
 }
 
@@ -517,7 +523,7 @@ fn scan_native_directory(
         Err(error) => return NativeEnumeration::Failed(error.to_string()),
     };
     let hidden_names = native_hidden_names(path);
-    let mut entries = Vec::new();
+    let mut entries = Vec::with_capacity(1024);
     let mut truncated = false;
     for child in children {
         if cancellable.is_cancelled() {
@@ -1254,7 +1260,6 @@ impl FileSource for LocalFileSource {
         include_hidden: bool,
         notify: Rc<dyn Fn(DirectoryChange)>,
     ) -> Option<LoadHandle> {
-        let _ = include_hidden;
         let file = gio_file_for_location(&location);
         let monitor = match file.monitor_directory(
             gio::FileMonitorFlags::WATCH_MOVES,
@@ -1296,9 +1301,14 @@ impl FileSource for LocalFileSource {
                 other_file.and_then(location_for_file),
                 event,
             );
-            let Some(change) = change else {
+            let Some(change) =
+                change.and_then(|change| visible_monitor_change(change, include_hidden))
+            else {
                 return;
             };
+            if matches!(change, PendingMonitorChange::Rescan) {
+                tracing::debug!(?event, "directory monitor requested reconciliation");
+            }
             let key = match &change {
                 PendingMonitorChange::Upsert(location) | PendingMonitorChange::Remove(location) => {
                     Some(location.clone())
@@ -1310,18 +1320,17 @@ impl FileSource for LocalFileSource {
                 return;
             }
 
-            if let Some(source) = timeout_for_change.take() {
-                source.remove();
+            if timeout_for_change.borrow().is_none() {
+                let pending = pending_for_change.clone();
+                let timeout = timeout_for_change.clone();
+                let notify = notify.clone();
+                let cancelled = cancelled_for_change.clone();
+                let source = glib::timeout_add_local_once(Duration::from_millis(100), move || {
+                    timeout.take();
+                    flush_monitor_changes(&pending, &notify, &cancelled);
+                });
+                timeout_for_change.replace(Some(source));
             }
-            let pending = pending_for_change.clone();
-            let timeout = timeout_for_change.clone();
-            let notify = notify.clone();
-            let cancelled = cancelled_for_change.clone();
-            let source = glib::timeout_add_local_once(Duration::from_millis(100), move || {
-                timeout.take();
-                flush_monitor_changes(&pending, &notify, &cancelled);
-            });
-            timeout_for_change.replace(Some(source));
         });
 
         Some(LoadHandle::new(move || {
@@ -1771,6 +1780,37 @@ fn log_directory_load_started(request_id: RequestId, location: &Location) {
     );
 }
 
+fn monitor_location_is_hidden(location: &Location) -> bool {
+    location
+        .file_name()
+        .is_some_and(|name| name.as_encoded_bytes().first() == Some(&b'.'))
+}
+
+fn visible_monitor_change(
+    change: PendingMonitorChange,
+    include_hidden: bool,
+) -> Option<PendingMonitorChange> {
+    if include_hidden {
+        return Some(change);
+    }
+    match change {
+        PendingMonitorChange::Upsert(location) if monitor_location_is_hidden(&location) => None,
+        PendingMonitorChange::Remove(location) if monitor_location_is_hidden(&location) => None,
+        PendingMonitorChange::Move { from, to } => {
+            match (
+                monitor_location_is_hidden(&from),
+                monitor_location_is_hidden(&to),
+            ) {
+                (true, true) => None,
+                (true, false) => Some(PendingMonitorChange::Upsert(to)),
+                (false, true) => Some(PendingMonitorChange::Remove(from)),
+                (false, false) => Some(PendingMonitorChange::Move { from, to }),
+            }
+        }
+        change => Some(change),
+    }
+}
+
 fn pending_monitor_change(
     watched: &Location,
     changed: Option<Location>,
@@ -1844,6 +1884,10 @@ fn queue_monitor_change(
         })
         .or_insert(change);
     if pending.len() > MAX_PENDING_MONITOR_CHANGES {
+        tracing::debug!(
+            pending = pending.len(),
+            "directory monitor burst requested reconciliation"
+        );
         pending.clear();
         pending.insert(None, PendingMonitorChange::Rescan);
     }

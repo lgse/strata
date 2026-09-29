@@ -106,8 +106,12 @@ fn pump_until(done: impl Fn() -> bool) {
 
 fn assert_selection_then_sorting(events: &[BrowserEvent], focused: usize) {
     assert!(matches!(&events[events.len() - 2],
-        BrowserEvent::SelectionSetChanged { depth: 0, positions, focused: actual, take_focus: false }
-        if *actual == focused && positions == &[focused]));
+        BrowserEvent::SelectionSetChanged {
+            depth: 0,
+            selection: SelectionUpdate::Positions(positions),
+            focused: actual,
+            take_focus: false,
+        } if *actual == focused && positions == &[focused]));
     assert!(matches!(
         events.last(),
         Some(BrowserEvent::SortingFinished { depth: 0 })
@@ -117,15 +121,17 @@ fn assert_selection_then_sorting(events: &[BrowserEvent], focused: usize) {
 #[test]
 fn chunks_are_bounded_by_budget_snapshot_and_current_model() {
     for (published, total, available, expected) in [
-        (128, 5000, 5000, 2048),
-        (128, 700, 900, 572),
-        (128, 900, 700, 572),
+        (128, 5000, 5000, INITIAL_PUBLISH_CHUNK),
+        (128, 700, 900, INITIAL_PUBLISH_CHUNK),
+        (128, 900, 700, INITIAL_PUBLISH_CHUNK),
         (700, 700, 900, 0),
         (700, 900, 700, 0),
         (700, 900, 600, 0),
     ] {
         let staged = StagedPublish {
             published,
+            chunk_size: INITIAL_PUBLISH_CHUNK,
+            measured_chunks: 0,
             plan: PublicationPlan {
                 request_id: RequestId(1),
                 total,
@@ -136,6 +142,26 @@ fn chunks_are_bounded_by_budget_snapshot_and_current_model() {
         };
         assert_eq!(staged.next_chunk(available), (published, expected));
     }
+}
+
+#[test]
+fn publication_chunks_adapt_within_bounds() {
+    assert_eq!(
+        adjusted_chunk_size(INITIAL_PUBLISH_CHUNK, Duration::from_millis(13)),
+        INITIAL_PUBLISH_CHUNK / 2
+    );
+    assert_eq!(
+        adjusted_chunk_size(MIN_PUBLISH_CHUNK, Duration::from_millis(13)),
+        MIN_PUBLISH_CHUNK
+    );
+    assert_eq!(
+        adjusted_chunk_size(INITIAL_PUBLISH_CHUNK, Duration::from_millis(5)),
+        INITIAL_PUBLISH_CHUNK * 2
+    );
+    assert_eq!(
+        adjusted_chunk_size(MAX_PUBLISH_CHUNK, Duration::from_millis(5)),
+        MAX_PUBLISH_CHUNK
+    );
 }
 
 #[test]
@@ -176,10 +202,14 @@ fn staged_boundary_defers_selection_and_completion_until_tails() {
     assert!(fixture.browser.publish_timer.borrow().is_some());
     fixture.wait_for_completion();
     let events = fixture.events.borrow();
-    assert_eq!(events.len(), 4);
-    assert!(
-        matches!(events[1], BrowserEvent::EntriesPublished { depth: 0, position: FIRST_PUBLISH_COUNT, count } if count == STAGE_INLINE_LIMIT + 1 - FIRST_PUBLISH_COUNT)
-    );
+    let published = events
+        .iter()
+        .filter_map(|event| match event {
+            BrowserEvent::EntriesPublished { count, .. } => Some(*count),
+            _ => None,
+        })
+        .sum::<usize>();
+    assert_eq!(published, STAGE_INLINE_LIMIT + 1 - FIRST_PUBLISH_COUNT);
     assert_selection_then_sorting(&events, STAGE_INLINE_LIMIT);
     assert!(fixture.browser.publish_timer.borrow().is_none());
 }
@@ -187,7 +217,7 @@ fn staged_boundary_defers_selection_and_completion_until_tails() {
 #[test]
 fn slow_observers_yield_between_chunks_without_early_completion() {
     let _guard = ASYNC_MAIN_CONTEXT_DEFAULT.lock().expect("async test lock");
-    let total = FIRST_PUBLISH_COUNT + PUBLISH_TAIL_CHUNK * 2 + 9;
+    let total = FIRST_PUBLISH_COUNT + INITIAL_PUBLISH_CHUNK * 2 + 9;
     let fixture = Fixture::new(total);
     let delayed = Rc::new(Cell::new(false));
     let observed = delayed.clone();
@@ -202,7 +232,7 @@ fn slow_observers_yield_between_chunks_without_early_completion() {
     assert_eq!(fixture.events.borrow().len(), 2);
     assert_eq!(
         fixture.browser.staged_publishes.borrow()[&0].published,
-        FIRST_PUBLISH_COUNT + PUBLISH_TAIL_CHUNK
+        FIRST_PUBLISH_COUNT + INITIAL_PUBLISH_CHUNK
     );
     assert!(fixture.browser.publish_timer.borrow().is_some());
     fixture.wait_for_completion();
@@ -216,7 +246,15 @@ fn slow_observers_yield_between_chunks_without_early_completion() {
             _ => None,
         })
         .collect();
-    assert_eq!(chunks, vec![(128, 2048), (2176, 2048), (4224, 9)]);
+    assert_eq!(
+        chunks.first(),
+        Some(&(FIRST_PUBLISH_COUNT, INITIAL_PUBLISH_CHUNK))
+    );
+    assert!(chunks.len() >= 2, "slow publication must yield: {chunks:?}");
+    assert_eq!(
+        chunks.iter().map(|(_, count)| count).sum::<usize>(),
+        total - FIRST_PUBLISH_COUNT
+    );
     assert_selection_then_sorting(&events, total - 1);
 }
 
@@ -247,9 +285,12 @@ fn draining_uses_current_rows_and_completes_only_once() {
                 count: 575
             }
         ));
-        assert!(
-            matches!(&events[1], BrowserEvent::SelectionSetChanged { focused: 699, positions, take_focus: false, .. } if positions == &[699])
-        );
+        assert!(matches!(&events[1], BrowserEvent::SelectionSetChanged {
+            focused: 699,
+            selection: SelectionUpdate::Positions(positions),
+            take_focus: false,
+            ..
+        } if positions == &[699]));
         assert!(matches!(
             events[2],
             BrowserEvent::LoadFinished {

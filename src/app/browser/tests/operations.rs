@@ -56,7 +56,7 @@ fn deletion_monitor_changes_publish_once_after_the_terminal_event() {
         request_id,
         completed: 1,
         total: 2,
-        deleted_location: Some(first.location.clone()),
+        deleted_locations: vec![first.location.clone()],
     });
 
     assert_eq!(
@@ -96,7 +96,7 @@ fn deletion_monitor_changes_publish_once_after_the_terminal_event() {
 }
 
 #[test]
-fn large_deletion_refreshes_sources_missing_from_the_monitor_batch() {
+fn large_deletion_updates_sources_missing_from_the_monitor_batch_without_reloading() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     let watched = Location::local("/fixture");
     let entries: Vec<_> = (0..65)
@@ -125,8 +125,18 @@ fn large_deletion_refreshes_sources_missing_from_the_monitor_batch() {
         locations: entries.into_iter().map(|entry| entry.location).collect(),
     });
 
+    assert_eq!(
+        browser.column_snapshot(0).map(|column| column.count),
+        Some(0)
+    );
     assert!(
         events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::EntriesSpliced { depth: 0, .. }))
+    );
+    assert!(
+        !events
             .borrow()
             .iter()
             .any(|event| matches!(event, BrowserEvent::ColumnReloaded { depth: 0 }))

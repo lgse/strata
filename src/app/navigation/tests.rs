@@ -2081,6 +2081,24 @@ fn space_adds_a_load_cursor_then_moves_without_rewriting_the_fill() {
 }
 
 #[test]
+fn compact_select_all_excludes_entries_that_arrive_later() {
+    let mut state = NavigationState::default();
+    listing_without_a_load_cursor(&mut state);
+
+    assert_eq!(state.select_all(0), Some(2));
+    assert_eq!(state.selected_count(), 3);
+    state.apply_batch(
+        RequestId(1),
+        vec![named_entry("/fixture/aardvark", "aardvark")],
+    );
+
+    assert_eq!(state.selected_count(), 3);
+    assert_eq!(state.selected_positions(0), [1, 2, 3]);
+    assert_eq!(state.toggle_cursor_fill(), CursorToggle::Removed);
+    assert_eq!(state.selected_positions(0), [1, 2]);
+}
+
+#[test]
 fn select_all_and_invert_keep_the_cursor_and_other_columns() {
     let mut state = NavigationState::default();
     listing_with_the_first_entry_selected(&mut state);

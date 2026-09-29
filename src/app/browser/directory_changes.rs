@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use crate::{app::navigation::EntrySplice, model::Location, services::DirectoryChange};
+use crate::{app::navigation::EntrySpliceApplication, model::Location, services::DirectoryChange};
 
 use super::{Browser, BrowserEvent, StagingLoad};
 
@@ -47,7 +47,10 @@ impl Browser {
         let removed = (!watched.is_recent_root())
             .then(|| removed_location(&change).cloned())
             .flatten();
-        if self.deletion_operation.get() || self.restoration_operation.get() {
+        if self.deletion_operation.get()
+            || self.restoration_operation.get()
+            || self.transfer_operation.get().is_some()
+        {
             self.deferred_file_operation_changes
                 .borrow_mut()
                 .entry(depth)
@@ -137,10 +140,10 @@ impl Browser {
         }
     }
 
-    fn publish_live_change(
+    pub(super) fn publish_live_change(
         &self,
         depth: usize,
-        application: Option<(Vec<EntrySplice>, Option<usize>)>,
+        application: EntrySpliceApplication,
         focused_was_removed: bool,
     ) {
         let Some((splices, selected)) = application else {

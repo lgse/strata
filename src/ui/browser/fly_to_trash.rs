@@ -11,6 +11,9 @@ use gtk::glib;
 use gtk::prelude::*;
 use std::time::Duration;
 
+#[cfg(test)]
+mod tests;
+
 const TRAVEL: Duration = Duration::from_millis(360);
 const RESTORE_TRAVEL: Duration = Duration::from_millis(240);
 const RELEASE_TRAVEL: Duration = Duration::from_millis(220);
@@ -31,6 +34,7 @@ struct Flyer {
     bank_class: &'static str,
     delay: Duration,
     target_name: Option<String>,
+    burst_center: Option<(f64, f64)>,
     index: usize,
 }
 
@@ -41,81 +45,124 @@ enum Flight {
     Release,
 }
 
-pub(in crate::ui) fn fly_to_trash(
-    source: &gtk::Widget,
-    entries: &[FileEntry],
-    trash_button: &gtk::Button,
-    on_done: impl FnOnce() + 'static,
-) {
-    if !crate::ui::motion::animations_enabled() {
-        on_done();
-        return;
-    }
-    let Some(overlay) = window_overlay(source) else {
-        on_done();
-        return;
-    };
-    let Some(trash_center) = widget_center_in_overlay(trash_button.upcast_ref(), &overlay) else {
-        on_done();
-        return;
-    };
-    let targets = collect_entry_targets(source, entries);
-    let flyers = create_flyers(&overlay, &targets, trash_center, Flight::Inbound);
-    if flyers.is_empty() {
-        on_done();
-        return;
-    }
-
-    trash_button.add_css_class("trash-receiving");
-    let button = trash_button.clone();
-    animate_flyers(&overlay, source, flyers, Flight::Inbound, move || {
-        button.remove_css_class("trash-receiving");
-        impact_trash(&button);
-        on_done();
-    });
+pub(super) struct PreparedFlight {
+    overlay: gtk::Overlay,
+    source: gtk::Widget,
+    trash_button: gtk::Button,
+    flyers: Option<Vec<Flyer>>,
+    frozen_root: Option<crate::ui::blur::BlurBin>,
+    mode: Flight,
 }
 
-pub(in crate::ui) fn fly_from_trash(
-    source: &gtk::Widget,
-    entries: &[FileEntry],
-    trash_button: &gtk::Button,
-    on_done: impl FnOnce() + 'static,
-) {
-    if !crate::ui::motion::animations_enabled() {
-        on_done();
-        return;
+impl Drop for PreparedFlight {
+    fn drop(&mut self) {
+        if let Some(flyers) = self.flyers.take() {
+            for flyer in flyers {
+                self.overlay.remove_overlay(&flyer.widget);
+            }
+        }
+        if let Some(root) = self.frozen_root.take() {
+            root.thaw();
+        }
     }
-    let Some(overlay) = window_overlay(source) else {
-        on_done();
-        return;
-    };
-    let Some(trash_center) = widget_center_in_overlay(trash_button.upcast_ref(), &overlay) else {
-        on_done();
-        return;
-    };
-    let mode = restore_flight(entries);
+}
+
+impl PreparedFlight {
+    pub(super) fn play(mut self, on_done: impl FnOnce() + 'static) {
+        if !crate::ui::motion::animations_enabled() {
+            drop(self);
+            on_done();
+            return;
+        }
+        let Some(flyers) = self.flyers.take() else {
+            on_done();
+            return;
+        };
+        for flyer in &flyers {
+            flyer.widget.set_visible(true);
+            if let Some(center) = flyer.burst_center {
+                resurrect_burst(&self.overlay, center, flyer.delay);
+            }
+        }
+        match self.mode {
+            Flight::Inbound => self.trash_button.add_css_class("trash-receiving"),
+            Flight::Release => animate_trash_class(&self.trash_button, "trash-rebel-shudder"),
+            Flight::Outbound => release_trash(&self.trash_button),
+        }
+        let overlay = self.overlay.clone();
+        let source = self.source.clone();
+        let button = self.trash_button.clone();
+        let frozen_root = self.frozen_root.take();
+        let mode = self.mode;
+        drop(self);
+        animate_flyers(&overlay, &source, flyers, mode, move || {
+            if mode == Flight::Inbound {
+                button.remove_css_class("trash-receiving");
+                impact_trash(&button);
+            }
+            if let Some(root) = frozen_root {
+                root.thaw();
+            }
+            on_done();
+        });
+    }
+}
+
+fn prepare_flight(
+    source: &gtk::Widget,
+    entries: &[&FileEntry],
+    trash_button: &gtk::Button,
+    mode: Flight,
+) -> Option<PreparedFlight> {
+    if !crate::ui::motion::animations_enabled() {
+        return None;
+    }
+    let overlay = window_overlay(source)?;
+    let trash_center = widget_center_in_overlay(trash_button.upcast_ref(), &overlay)?;
     let flyers = match mode {
-        Flight::Release => {
-            let targets = collect_entry_targets(source, entries);
-            create_flyers(&overlay, &targets, trash_center, Flight::Release)
+        Flight::Inbound | Flight::Release => {
+            let targets = collect_entry_targets(source, entries.iter().copied());
+            create_flyers(&overlay, &targets, trash_center, mode)
         }
         Flight::Outbound => create_outbound_flyers(&overlay, source, entries, trash_center),
-        Flight::Inbound => unreachable!(),
     };
     if flyers.is_empty() {
-        on_done();
-        return;
+        return None;
     }
-
-    if mode == Flight::Release {
-        animate_trash_class(trash_button, "trash-rebel-shudder");
-    } else {
-        release_trash(trash_button);
-    }
-    animate_flyers(&overlay, source, flyers, mode, on_done);
+    let frozen_root = (mode == Flight::Outbound)
+        .then(|| overlay.child().and_downcast::<crate::ui::blur::BlurBin>())
+        .flatten()
+        .filter(|root| root.freeze());
+    Some(PreparedFlight {
+        overlay,
+        source: source.clone(),
+        trash_button: trash_button.clone(),
+        flyers: Some(flyers),
+        frozen_root,
+        mode,
+    })
 }
 
-fn restore_flight(entries: &[FileEntry]) -> Flight {
+pub(super) fn prepare_fly_to_trash<'a>(
+    source: &gtk::Widget,
+    entries: impl IntoIterator<Item = &'a FileEntry>,
+    trash_button: &gtk::Button,
+) -> Option<PreparedFlight> {
+    let entries = entries.into_iter().collect::<Vec<_>>();
+    prepare_flight(source, &entries, trash_button, Flight::Inbound)
+}
+
+pub(super) fn prepare_fly_from_trash<'a>(
+    source: &gtk::Widget,
+    entries: impl IntoIterator<Item = &'a FileEntry>,
+    trash_button: &gtk::Button,
+) -> Option<PreparedFlight> {
+    let entries = entries.into_iter().collect::<Vec<_>>();
+    let mode = restore_flight(&entries);
+    prepare_flight(source, &entries, trash_button, mode)
+}
+
+fn restore_flight(entries: &[&FileEntry]) -> Flight {
     if entries
         .iter()
         .all(|entry| super::paths::is_trash_location(&entry.location))
@@ -178,6 +225,7 @@ fn create_flyers(
             widget.set_halign(gtk::Align::Start);
             widget.set_valign(gtk::Align::Start);
             widget.set_can_target(false);
+            widget.set_visible(false);
             widget.set_margin_start(start.0.round() as i32);
             widget.set_margin_top(start.1.round() as i32);
             let icon = crate::assets::primary_icon(entry_icon(&target.entry), 18);
@@ -186,9 +234,6 @@ fn create_flyers(
             widget.set_child(Some(&icon));
             overlay.add_overlay(&widget);
             let delay = Duration::from_millis((index as u64 * STAGGER_MS).min(MAX_STAGGER_MS));
-            if mode == Flight::Release {
-                resurrect_burst(overlay, row_center, delay);
-            }
             let drift = end.0 - start.0;
             let bank_class = if drift < -10.0 {
                 "fly-launch-left"
@@ -206,6 +251,7 @@ fn create_flyers(
                 bank_class,
                 delay,
                 target_name: None,
+                burst_center: (mode == Flight::Release).then_some(row_center),
                 index,
             })
         })
@@ -215,7 +261,7 @@ fn create_flyers(
 fn create_outbound_flyers(
     overlay: &gtk::Overlay,
     source: &gtk::Widget,
-    entries: &[FileEntry],
+    entries: &[&FileEntry],
     trash_center: (f64, f64),
 ) -> Vec<Flyer> {
     let indices = sampled_indices(entries.len(), MAX_FLYERS);
@@ -233,7 +279,7 @@ fn create_outbound_flyers(
         .into_iter()
         .enumerate()
         .map(|(index, entry_index)| {
-            let entry = &entries[entry_index];
+            let entry = entries[entry_index];
             let existing_row = find_row_by_name(source, &entry.display_name);
             let existing_pos = existing_row
                 .as_ref()
@@ -249,6 +295,7 @@ fn create_outbound_flyers(
             widget.set_halign(gtk::Align::Start);
             widget.set_valign(gtk::Align::Start);
             widget.set_can_target(false);
+            widget.set_visible(false);
             widget.set_margin_start(trash_position.0.round() as i32);
             widget.set_margin_top(trash_position.1.round() as i32);
 
@@ -268,6 +315,7 @@ fn create_outbound_flyers(
                 bank_class: "fly-launch-straight",
                 delay,
                 target_name: Some(entry.display_name.clone()),
+                burst_center: None,
                 index,
             }
         })

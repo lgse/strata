@@ -18,6 +18,7 @@ use crate::ui::modal::{
 };
 use gtk::prelude::*;
 use gtk::{gio, glib};
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -176,6 +177,14 @@ impl ViewState {
 
     pub(super) fn clear_delete_animation(&self) {
         self.pending_delete_dissolve.take();
+        self.pending_file_operation_animation.take();
+    }
+
+    pub(super) fn play_pending_file_operation_animation(&self) {
+        let Some(animation) = self.pending_file_operation_animation.take() else {
+            return;
+        };
+        animation.play(|| {});
     }
 
     pub(super) fn delete_animation_defers_empty_state(&self, depth: usize) -> bool {
@@ -188,7 +197,7 @@ impl ViewState {
 
     /// Safe to call more than once: whichever of cancel or completion runs first leaves the
     /// other a no-op.
-    fn clear_empty_trash(&self) {
+    fn clear_empty_trash(self: &Rc<Self>) {
         self.pending_empty_trash.borrow_mut().take();
         self.dismiss_file_operation_progress();
     }
@@ -655,17 +664,17 @@ impl ViewState {
                 &confirmed_overlay,
                 confirmed_root.as_ref(),
             );
-            if let Some(state) = confirmed_state.upgrade()
-                && let Some(trash_button) = state.trash_button.borrow().as_ref()
-            {
-                let entries = items
-                    .iter()
-                    .map(|item| item.entry.clone())
-                    .collect::<Vec<_>>();
-                let source = state
-                    .delete_animation_source()
-                    .unwrap_or_else(|| state.overlay.clone().upcast());
-                super::fly_to_trash::fly_from_trash(&source, &entries, trash_button, || {});
+            if let Some(state) = confirmed_state.upgrade() {
+                let source = state.delete_animation_source();
+                let trash_button = state.trash_button.borrow().as_ref().cloned();
+                let animation = source.zip(trash_button).and_then(|(source, trash_button)| {
+                    super::fly_to_trash::prepare_fly_from_trash(
+                        &source,
+                        items.iter().map(|item| &item.entry),
+                        &trash_button,
+                    )
+                });
+                state.pending_file_operation_animation.replace(animation);
             }
             browser.restore(items.clone());
             browser.focus_active();
@@ -731,12 +740,12 @@ impl ViewState {
 
     fn move_to_trash(self: &Rc<Self>, entries: Vec<FileEntry>) {
         self.pending_delete_entries.replace(entries.clone());
-        if let Some(trash_button) = self.trash_button.borrow().as_ref() {
-            let source = self
-                .delete_animation_source()
-                .unwrap_or_else(|| self.overlay.clone().upcast());
-            super::fly_to_trash::fly_to_trash(&source, &entries, trash_button, || {});
-        }
+        let source = self.delete_animation_source();
+        let trash_button = self.trash_button.borrow().as_ref().cloned();
+        let animation = source.zip(trash_button).and_then(|(source, trash_button)| {
+            super::fly_to_trash::prepare_fly_to_trash(&source, entries.iter(), &trash_button)
+        });
+        self.pending_file_operation_animation.replace(animation);
         self.browser.delete(entries, false);
         self.browser.focus_active();
     }
@@ -756,6 +765,7 @@ impl ViewState {
             return;
         };
 
+        let entries = Rc::new(entries);
         let count = entries.len();
         let (title, confirm_label) = if trash {
             (
@@ -840,7 +850,6 @@ impl ViewState {
         let confirm = layout.confirm;
         let subtitle = layout.subtitle;
         let spinner = layout.loading;
-        confirm.set_sensitive(trash);
 
         let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
         window_overlay.add_overlay(&layer);
@@ -868,11 +877,13 @@ impl ViewState {
         let confirmed_overlay = window_overlay.clone();
         let confirmed_root = blurred_root.clone();
         let browser = self.browser.clone();
-        let entries_for_dissolve = entries.clone();
+        let pending_entries = Rc::new(RefCell::new(Some(entries.clone())));
         let weak_ui = Rc::downgrade(self);
         confirm.connect_clicked(move |_| {
+            let Some(entries_for_dissolve) = pending_entries.borrow_mut().take() else {
+                return;
+            };
             let browser = browser.clone();
-            let entries_for_dissolve = entries_for_dissolve.clone();
             let weak_ui = weak_ui.clone();
             dismiss_modal_layer_then(
                 &confirmed_layer,
@@ -881,7 +892,9 @@ impl ViewState {
                 move || {
                     if trash {
                         if let Some(ui) = weak_ui.upgrade() {
-                            ui.move_to_trash(entries_for_dissolve);
+                            let entries = Rc::try_unwrap(entries_for_dissolve)
+                                .unwrap_or_else(|shared| shared.as_ref().clone());
+                            ui.move_to_trash(entries);
                         }
                         return;
                     }
@@ -895,7 +908,9 @@ impl ViewState {
                             ui.pending_delete_dissolve.replace(Some((depth, dissolve)));
                         }
                     }
-                    browser.delete(entries_for_dissolve, true);
+                    let entries = Rc::try_unwrap(entries_for_dissolve)
+                        .unwrap_or_else(|shared| shared.as_ref().clone());
+                    browser.delete(entries, true);
                     browser.focus_active();
                 },
             );
@@ -949,15 +964,11 @@ impl ViewState {
         }
 
         let weak_subtitle = subtitle.downgrade();
-        let weak_confirm = confirm.downgrade();
         let weak_spinner = spinner.downgrade();
         let task = glib::MainContext::default().spawn_local(async move {
             let summary = aggregate_directory_summary(&entries).await;
-            let (Some(subtitle), Some(confirm), Some(spinner)) = (
-                weak_subtitle.upgrade(),
-                weak_confirm.upgrade(),
-                weak_spinner.upgrade(),
-            ) else {
+            let (Some(subtitle), Some(spinner)) = (weak_subtitle.upgrade(), weak_spinner.upgrade())
+            else {
                 return;
             };
             subtitle.set_label(&format!(
@@ -967,12 +978,8 @@ impl ViewState {
                 if summary.truncated() { "at least " } else { "" },
                 format_file_size(summary.total_size)
             ));
-            confirm.set_sensitive(true);
             spinner.stop();
             spinner.set_visible(false);
-            if !cancel_first {
-                confirm.grab_focus();
-            }
         });
         let task = Rc::new(task);
         let closing_task = task.clone();

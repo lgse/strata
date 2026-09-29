@@ -95,6 +95,58 @@ fn live_transfer_updates_the_visible_dialog_and_device_flush() {
 }
 
 #[test]
+fn completion_callbacks_wait_for_the_progress_modal_to_leave() {
+    crate::test_support::gtk_test(
+        "ui::browser::progress::tests::completion_callbacks_wait_for_the_progress_modal_to_leave",
+        || {
+            use gtk::prelude::*;
+            use std::{cell::RefCell, rc::Rc, time::Duration};
+
+            crate::ui::prepare_portal_ui();
+            let view = crate::ui::browser::BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            let window = gtk::Window::builder().child(&view.overlay()).build();
+            window.present();
+            view.state.show_file_operation_progress(
+                16,
+                crate::assets::icons::COPY,
+                "Copying items",
+                "Cancelling will not undo completed changes",
+                Rc::new(|| {}),
+            );
+            let layer = view
+                .state
+                .file_progress_view
+                .borrow()
+                .as_ref()
+                .expect("visible progress dialog")
+                .layer
+                .clone();
+            let completions = Rc::new(RefCell::new(Vec::new()));
+            for index in 0..2 {
+                let completions = completions.clone();
+                let layer = layer.clone();
+                view.state.dismiss_file_operation_progress_then(move || {
+                    completions
+                        .borrow_mut()
+                        .push((index, layer.parent().is_none()));
+                });
+            }
+            let context = glib::MainContext::default();
+            let deadline = std::time::Instant::now() + Duration::from_secs(2);
+            while completions.borrow().len() < 2 && std::time::Instant::now() < deadline {
+                while context.iteration(false) {}
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            assert_eq!(completions.borrow().as_slice(), [(0, true), (1, true)]);
+            window.close();
+        },
+    );
+}
+
+#[test]
 fn stalled_cancellation_can_return_to_browser_without_claiming_the_drive_is_safe() {
     crate::test_support::gtk_test(
         "ui::browser::progress::tests::stalled_cancellation_can_return_to_browser_without_claiming_the_drive_is_safe",

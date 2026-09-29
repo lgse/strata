@@ -45,8 +45,7 @@ started=$SECONDS
 while kill -0 "$pid" 2>/dev/null; do
   sample_memory
 
-  if grep -q "directory load finished" "$log"; then
-    sleep 0.25
+  if grep -q "directory publication finished" "$log"; then
     sample_memory
     break
   fi
@@ -62,5 +61,5 @@ pid=""
 
 printf 'Sampled peak RSS: %s KB\n' "$peak_rss_kb"
 printf 'Sampled peak PSS: %s KB\n' "$peak_pss_kb"
-grep -E "window presented|first directory batch ready|first directory batch rendered|directory load finished" "$log" || true
+grep -E "window presented|first directory batch ready|first directory batch rendered|directory load finished|directory publication finished" "$log" || true
 printf 'Full log: %s\n' "$log"

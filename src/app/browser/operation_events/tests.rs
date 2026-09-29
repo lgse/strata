@@ -143,7 +143,7 @@ fn progress_observer_can_supersede_an_operation_before_its_terminal() {
         request_id,
         completed: 1,
         total: 2,
-        deleted_location: None,
+        deleted_locations: Vec::new(),
     });
     callback(OperationEvent::Failed {
         request_id,

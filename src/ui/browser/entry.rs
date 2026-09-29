@@ -7,8 +7,8 @@ use crate::services::{
     PreviewContent, content_family, filter_name_matches, fold_for_search, has_plain_text_extension,
     is_extensionless_dotfile,
 };
-use gtk::gio;
 use gtk::prelude::*;
+use gtk::{gio, glib};
 use std::cell::{Cell, RefCell};
 use std::path::Path;
 use std::rc::Rc;
@@ -204,7 +204,10 @@ pub(super) fn entry_kind_summary(entries: &[FileEntry]) -> String {
 
 pub(super) async fn aggregate_directory_summary(entries: &[FileEntry]) -> DirectorySummary {
     let mut total = DirectorySummary::default();
-    for entry in entries {
+    for (index, entry) in entries.iter().enumerate() {
+        if index > 0 && index % 256 == 0 {
+            glib::timeout_future(std::time::Duration::ZERO).await;
+        }
         if entry.is_directory() {
             let directory = gio_file_for_location(&entry.location);
             match summarize_directory(&directory).await {

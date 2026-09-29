@@ -252,6 +252,31 @@ fn coalescing_preserves_a_move_when_metadata_follows_it() {
 }
 
 #[test]
+fn hidden_monitor_changes_are_skipped_but_atomic_publication_stays_visible() {
+    let hidden = Location::local("/fixture/.strata-replacement-123");
+    let visible = Location::local("/fixture/report.pdf");
+
+    assert!(visible_monitor_change(PendingMonitorChange::Upsert(hidden.clone()), false,).is_none());
+    assert!(matches!(
+        visible_monitor_change(
+            PendingMonitorChange::Move {
+                from: hidden,
+                to: visible.clone(),
+            },
+            false,
+        ),
+        Some(PendingMonitorChange::Upsert(location)) if location == visible
+    ));
+    assert!(
+        visible_monitor_change(
+            PendingMonitorChange::Upsert(Location::local("/fixture/.env")),
+            true,
+        )
+        .is_some()
+    );
+}
+
+#[test]
 fn recent_monitor_events_rescan_without_querying_virtual_children() {
     let watched = Location::uri("recent:///");
     let child = Location::uri("recent:///virtual-child");
@@ -441,6 +466,61 @@ fn a_directory_reporting_changes_against_itself_is_not_its_own_child() {
         ),
         Some(child)
     );
+}
+
+#[test]
+fn sustained_native_monitor_bursts_flush_without_rescanning() {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let directory = unique_fixture_root("monitor-burst");
+    fs::create_dir_all(&directory).expect("the fixture directory should be created");
+    let changes: Rc<RefCell<Vec<DirectoryChange>>> = Rc::new(RefCell::new(Vec::new()));
+    let collected = changes.clone();
+    let handle = LocalFileSource
+        .watch(
+            Location::local(&directory),
+            false,
+            Rc::new(move |change| collected.borrow_mut().push(change)),
+        )
+        .expect("the native location should be monitored");
+
+    for index in 0..1_000 {
+        fs::write(
+            directory.join(format!("file-{index:04}.txt")),
+            b"real contents",
+        )
+        .expect("the fixture file should be written");
+    }
+
+    let context = glib::MainContext::default();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        while context.iteration(false) {}
+        let observed = changes.borrow();
+        assert!(
+            observed
+                .iter()
+                .all(|change| !matches!(change, DirectoryChange::Rescan)),
+            "a bounded native burst should stay incremental"
+        );
+        if observed
+            .iter()
+            .filter(|change| matches!(change, DirectoryChange::Upsert(_)))
+            .count()
+            == 1_000
+        {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "all monitored entries should arrive"
+        );
+        drop(observed);
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    drop(handle);
+    fs::remove_dir_all(&directory).expect("the fixture directory should be removed");
 }
 
 #[test]

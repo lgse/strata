@@ -453,7 +453,11 @@ fn escape_closes_a_peek_before_clearing_selection_and_closing_the_deepest_column
     assert_eq!(browser.active_location(), location);
     assert!(events.borrow().iter().any(|event| matches!(
         event,
-        BrowserEvent::SelectionSetChanged { depth: 1, positions, .. } if positions.is_empty()
+        BrowserEvent::SelectionSetChanged {
+            depth: 1,
+            selection: SelectionUpdate::Positions(positions),
+            ..
+        } if positions.is_empty()
     )));
 
     events.borrow_mut().clear();
