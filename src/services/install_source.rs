@@ -165,15 +165,11 @@ impl ManagedInstall {
     }
 }
 
-/// Returns the path Strata is installed at, even after that file was replaced
-/// while this process was running.
 pub(crate) fn installed_executable() -> io::Result<PathBuf> {
     std::env::current_exe().map(|path| replaced_executable_path(&path))
 }
 
-// Replacing the running executable makes /proc/self/exe resolve to the old
-// path with " (deleted)" appended. Recording or comparing that string would
-// point integrations and updates at a file that does not exist.
+// Linux appends " (deleted)" to /proc/self/exe after the installed binary is replaced.
 fn replaced_executable_path(executable: &Path) -> PathBuf {
     if !executable.exists()
         && let Some(original) = executable

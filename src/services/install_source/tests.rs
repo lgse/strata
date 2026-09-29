@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-use std::path::{Path, PathBuf};
+use std::{
+    ffi::OsStr,
+    os::unix::ffi::OsStrExt,
+    path::{Path, PathBuf},
+};
 
 use super::{
     InstallSource, ManagedInstall, ensure_self_managed, marker_path_for_executable,
@@ -273,6 +277,13 @@ fn replaced_executable_resolves_to_its_install_path() {
 
     assert_eq!(replaced_executable_path(&deleted), installed);
     assert_eq!(replaced_executable_path(&installed), installed);
+
+    let installed = directory.path().join(OsStr::from_bytes(b"strata-\xff"));
+    std::fs::write(&installed, b"").expect("a non-UTF-8 executable to be written");
+    let deleted = directory
+        .path()
+        .join(OsStr::from_bytes(b"strata-\xff (deleted)"));
+    assert_eq!(replaced_executable_path(&deleted), installed);
 }
 
 #[test]
@@ -284,5 +295,10 @@ fn deleted_suffix_is_kept_when_it_is_not_a_replaced_executable() {
 
     std::fs::write(&deleted, b"").expect("the suffixed executable to be written");
     std::fs::write(directory.path().join("strata"), b"").expect("a sibling to be written");
+    assert_eq!(replaced_executable_path(&deleted), deleted);
+
+    std::fs::remove_file(&deleted).expect("the suffixed executable to be removed");
+    std::fs::remove_file(directory.path().join("strata")).expect("the sibling to be removed");
+    std::fs::create_dir(directory.path().join("strata")).expect("a directory to be created");
     assert_eq!(replaced_executable_path(&deleted), deleted);
 }
