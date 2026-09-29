@@ -21,6 +21,7 @@ use crate::{
 };
 
 mod appimage;
+pub(crate) mod archive_cover;
 mod archive_rar;
 mod document_media;
 mod media;
@@ -142,6 +143,21 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
                 256,
                 256,
                 &|_| {},
+            )?,
+            None,
+        ),
+        "thumbnail-cover" => (
+            archive_cover::thumbnail(
+                input,
+                crate::sandbox::CoverFormat::from_argument(value).ok_or("Invalid cover format")?,
+            )?,
+            None,
+        ),
+        "preview-cover" => (
+            archive_cover::render(
+                input,
+                crate::sandbox::CoverFormat::from_argument(value).ok_or("Invalid cover format")?,
+                800,
             )?,
             None,
         ),

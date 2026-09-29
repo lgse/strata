@@ -172,6 +172,7 @@ peek.
 | **Ctrl+A** | Select all in the focused pane |
 | **Ctrl+R** | Invert the selection |
 | **Shift+↑** / **Shift+↓** | Extend the selection |
+| **Shift+PgUp** / **Shift+PgDn** | Extend the selection by one page |
 | **Esc** | Dismiss the current interaction, one step per press; see the precedence below |
 
 On a cursor-only row, **Space** adds that item and moves down; it does not
@@ -196,6 +197,9 @@ the span back. In Icons they move up or down the grid. The run shows no footer
 tag and ends at the next key that is not **Shift+↑** / **Shift+↓**, keeping the
 fill; a later run starts at the new cursor. During a visual range they extend
 that range like **j** / **k**.
+
+**Shift+PgUp** / **Shift+PgDn** move the cursor one page and belong to the same
+run.
 
 ### Escape precedence
 

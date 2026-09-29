@@ -2,6 +2,7 @@
 
 use std::{fs, time::Duration};
 
+mod cover_preview;
 mod model_preview;
 mod remote_preview;
 

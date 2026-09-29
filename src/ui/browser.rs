@@ -666,9 +666,8 @@ impl BrowserView {
         state.install_input_ownership();
         state.install_column_peek_targets();
         state.install_drag_autoscroll();
-        if interactive {
-            columns::install_resize_edges(&state);
-        }
+        // Resize edges are mode-agnostic; only transfers stay interactive-only.
+        columns::install_resize_edges(&state);
 
         let weak_state = Rc::downgrade(&state);
         columns::install_horizontal_scroll(&state);
@@ -2012,7 +2011,7 @@ impl BrowserView {
             })
     }
 
-    pub fn page_selection(&self, direction: i32) -> bool {
+    pub fn page_selection(&self, direction: i32, extend: bool) -> bool {
         let focused = self.state.overlay.root().and_then(|root| root.focus());
         let Some((view, scroll)) = focused
             .as_ref()
@@ -2022,6 +2021,25 @@ impl BrowserView {
         };
         let page = super::scrolling::page(&view, &scroll);
         self.state.mode_views.borrow().suppress_focus_scroll();
+        if extend {
+            let order = self
+                .state
+                .browser
+                .active_depth()
+                .and_then(|depth| self.displayed_order(depth));
+            self.state
+                .browser
+                .extend_page_selection(direction, page.items, order.as_deref());
+            let position = self.cursor_view_position(&view);
+            super::scrolling::reveal_cursor(
+                &view,
+                &scroll,
+                direction,
+                super::scrolling::CursorMotion::Page,
+                position,
+            );
+            return true;
+        }
         let target = self.state.browser.active_depth().and_then(|depth| {
             self.state
                 .mode_views

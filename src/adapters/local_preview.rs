@@ -518,6 +518,8 @@ impl LocalPreviewProvider {
             });
             let operation = if let Some(render) = model {
                 Some(ParseOperation::PreviewModel(render))
+            } else if let Some(format) = crate::sandbox::CoverFormat::for_name(&entry.native_name) {
+                Some(ParseOperation::PreviewCover(format))
             } else { match content {
                 PreviewContent::Pdf { .. } => Some(ParseOperation::PreviewPdf(pdf_render_size(
                     request.media_size,
@@ -541,6 +543,8 @@ impl LocalPreviewProvider {
                             entry,
                             message: if matches!(operation, ParseOperation::PreviewModel(_)) {
                                 "Remote model previews are not supported; copy the file locally first"
+                            } else if matches!(operation, ParseOperation::PreviewCover(_)) {
+                                "Remote cover previews are not supported; copy the file locally first"
                             } else {
                                 "Remote PDF previews are not supported; copy the file locally first"
                             }.into(),
@@ -603,7 +607,7 @@ impl LocalPreviewProvider {
                     return;
                 }
 
-                let heavy_permit = if matches!(operation, ParseOperation::PreviewPdf(_) | ParseOperation::PreviewModel(_)) {
+                let heavy_permit = if matches!(operation, ParseOperation::PreviewPdf(_) | ParseOperation::PreviewModel(_) | ParseOperation::PreviewCover(_)) {
                     let Some(permit) = request_heavy_preview_permit().acquire().await else {
                         return;
                     };
@@ -654,7 +658,7 @@ impl LocalPreviewProvider {
                         }
                     }
                     Ok(Ok(output)) => {
-                        if let Some(mtime) = modified {
+                        if let Some(mtime) = modified.filter(|_| !matches!(operation, ParseOperation::PreviewCover(_))) {
                             thumbnail_to_store = Some((path.clone(), mtime, output.data.clone()));
                         }
                         PreviewContent::Rasterized { png: output.data }

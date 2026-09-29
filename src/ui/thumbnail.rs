@@ -346,6 +346,7 @@ enum ThumbnailKind {
     Video,
     AppImage,
     EmbeddedModel(crate::services::ModelFormat),
+    Cover(crate::sandbox::CoverFormat),
 }
 
 pub(super) fn set_thumbnail_or_icon(
@@ -869,6 +870,7 @@ fn heavy(kind: ThumbnailKind) -> bool {
             | ThumbnailKind::Pdf
             | ThumbnailKind::Video
             | ThumbnailKind::EmbeddedModel(_)
+            | ThumbnailKind::Cover(_)
     )
 }
 
@@ -1419,7 +1421,7 @@ fn thumbnail_kind(path: &Path) -> Option<ThumbnailKind> {
         "mp3" | "flac" | "m4a" | "m4b" | "mka" | "aiff" | "aif" | "wma" => {
             Some(ThumbnailKind::Video)
         }
-        _ => None,
+        _ => crate::sandbox::CoverFormat::from_argument(&extension).map(ThumbnailKind::Cover),
     }
 }
 
@@ -1436,6 +1438,7 @@ fn render_thumbnail(
         ThumbnailKind::Video => ParseOperation::ThumbnailVideo,
         ThumbnailKind::AppImage => ParseOperation::ThumbnailAppImage,
         ThumbnailKind::EmbeddedModel(format) => ParseOperation::ThumbnailModel(format),
+        ThumbnailKind::Cover(format) => ParseOperation::ThumbnailCover(format),
     };
     crate::sandbox::browser::thumbnail(path, operation, cancellation)
 }

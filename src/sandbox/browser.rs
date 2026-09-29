@@ -142,6 +142,21 @@ pub(crate) fn thumbnail(
     operation: ParseOperation,
     cancellation: &Cancellation,
 ) -> Result<Thumbnail, String> {
+    if matches!(operation, ParseOperation::ThumbnailCover(_)) {
+        // Image loaders launch glycin, which cannot nest inside the persistent worker's sandbox.
+        let png = super::parse(
+            path,
+            operation,
+            256,
+            super::MediaPreviewBackend::Software,
+            cancellation,
+        )?
+        .data;
+        return Ok(Thumbnail {
+            png,
+            metadata: None,
+        });
+    }
     let operation = match operation {
         ParseOperation::ThumbnailImage => Operation::Image,
         ParseOperation::ThumbnailRaw => Operation::Raw,

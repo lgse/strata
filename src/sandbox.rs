@@ -98,6 +98,37 @@ impl PdfRenderSize {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum CoverFormat {
+    Cbz,
+    Cbr,
+    Epub,
+}
+
+impl CoverFormat {
+    pub(crate) fn for_name(name: &std::ffi::OsStr) -> Option<Self> {
+        let extension = Path::new(name).extension()?.to_str()?;
+        Self::from_argument(&extension.to_ascii_lowercase())
+    }
+
+    pub(crate) fn argument(self) -> &'static str {
+        match self {
+            Self::Cbz => "cbz",
+            Self::Cbr => "cbr",
+            Self::Epub => "epub",
+        }
+    }
+
+    pub(crate) fn from_argument(value: &str) -> Option<Self> {
+        match value {
+            "cbz" => Some(Self::Cbz),
+            "cbr" => Some(Self::Cbr),
+            "epub" => Some(Self::Epub),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ParseOperation {
     ThumbnailImage,
@@ -106,6 +137,8 @@ pub(crate) enum ParseOperation {
     ThumbnailVideo,
     ThumbnailAppImage,
     ThumbnailModel(ModelFormat),
+    ThumbnailCover(CoverFormat),
+    PreviewCover(CoverFormat),
     PreviewImage,
     DocumentImage,
     DocumentMermaid,
@@ -134,6 +167,8 @@ impl ParseOperation {
             Self::ThumbnailVideo => "thumbnail-video",
             Self::ThumbnailAppImage => "thumbnail-appimage",
             Self::ThumbnailModel(_) => "thumbnail-model",
+            Self::ThumbnailCover(_) => "thumbnail-cover",
+            Self::PreviewCover(_) => "preview-cover",
             Self::PreviewImage => "preview-image",
             Self::DocumentImage => "document-image",
             Self::DocumentMermaid => "document-mermaid",
@@ -183,7 +218,9 @@ impl ParseOperation {
             | Self::ThumbnailPdf
             | Self::ThumbnailVideo
             | Self::ThumbnailAppImage
-            | Self::ThumbnailModel(_) => Some((256, 256, 256 * 256)),
+            | Self::ThumbnailModel(_)
+            | Self::ThumbnailCover(_) => Some((256, 256, 256 * 256)),
+            Self::PreviewCover(_) => Some((800, 800, 800 * 800)),
             Self::PreviewImage
             | Self::DocumentImage
             | Self::DocumentMermaid
@@ -211,6 +248,9 @@ impl ParseOperation {
             | Self::RawMetadata
             | Self::PreviewPdf(_) => Some(MAX_RASTER_INPUT_BYTES),
             Self::PreviewModel(_) | Self::ThumbnailModel(_) => Some(MAX_MODEL_INPUT_BYTES),
+            Self::ThumbnailCover(_) | Self::PreviewCover(_) => {
+                Some(crate::sandbox_helper::archive_cover::MAX_INPUT_BYTES)
+            }
             Self::PreviewWorkbook => Some(crate::services::table::WORKBOOK_BYTE_LIMIT),
             Self::PreviewDocument => Some(crate::services::docx::DOCX_BYTE_LIMIT),
             Self::DocumentImage => Some(crate::services::document_media::IMAGE_INPUT_LIMIT),
@@ -699,6 +739,8 @@ fn sandbox_command(
                 render.palette.surface,
             ),
             ParseOperation::ThumbnailModel(format) => format.argument().to_owned(),
+            ParseOperation::ThumbnailCover(format) => format.argument().to_owned(),
+            ParseOperation::PreviewCover(format) => format.argument().to_owned(),
             ParseOperation::ArchiveList { format, .. } => format.extension().to_owned(),
             _ => value.to_string(),
         };

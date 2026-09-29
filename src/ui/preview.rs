@@ -60,6 +60,9 @@ pub(crate) fn entry_supports_quick_preview(entry: &FileEntry) -> bool {
     if crate::services::is_model(&entry.native_name) {
         return entry.location.native_path().is_some();
     }
+    if crate::sandbox::CoverFormat::for_name(&entry.native_name).is_some() {
+        return entry.location.native_path().is_some();
+    }
 
     let (content_type, uncertain) =
         gio::content_type_guess(Some(Path::new(&entry.native_name)), None::<&[u8]>);
@@ -1338,14 +1341,18 @@ impl PreviewState {
                 self.content.append(&view);
             }
             PreviewContent::Rasterized { png } | PreviewContent::Model { png, .. } => {
-                self.print
-                    .set_visible(!crate::services::is_model(&preview.entry.native_name));
+                let model = crate::services::is_model(&preview.entry.native_name);
+                let cover =
+                    crate::sandbox::CoverFormat::for_name(&preview.entry.native_name).is_some();
+                self.print.set_visible(!model && !cover);
                 let bytes = glib::Bytes::from_owned(png);
                 match gtk::gdk::Texture::from_bytes(&bytes) {
                     Ok(texture) => {
                         let picture = gtk::Picture::for_paintable(&texture);
-                        if crate::services::is_model(&preview.entry.native_name) {
+                        if model {
                             super::accessibility::set_label(&picture, "Model preview");
+                        } else if cover {
+                            super::accessibility::set_label(&picture, "Cover preview");
                         }
                         picture.add_css_class("preview-image");
                         picture.set_can_shrink(true);
