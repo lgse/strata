@@ -7,69 +7,27 @@ use std::{
     error::Error,
     ffi::OsString,
     fs,
-    io::{ErrorKind, Write},
+    io::ErrorKind,
     os::unix::{
         ffi::{OsStrExt, OsStringExt},
         fs::PermissionsExt,
     },
     process::Command,
-    sync::{Arc, Mutex, MutexGuard},
     time::{Instant, SystemTime},
 };
-
-use tracing_subscriber::fmt::MakeWriter;
 
 use super::*;
 use crate::{
     model::{Location, MetadataValue},
-    test_support::ASYNC_MAIN_CONTEXT_DEFAULT,
+    test_support::{ASYNC_MAIN_CONTEXT_DEFAULT, capture_logs},
 };
 
-#[derive(Clone, Default)]
-struct LogWriter(Arc<Mutex<Vec<u8>>>);
-
-struct LogWriterGuard<'a>(MutexGuard<'a, Vec<u8>>);
-
-impl Write for LogWriterGuard<'_> {
-    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
-        self.0.write(buffer)
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        self.0.flush()
-    }
-}
-
-impl<'a> MakeWriter<'a> for LogWriter {
-    type Writer = LogWriterGuard<'a>;
-
-    fn make_writer(&'a self) -> Self::Writer {
-        LogWriterGuard(self.0.lock().unwrap_or_else(|error| error.into_inner()))
-    }
-}
-
-impl LogWriter {
-    fn output(&self) -> String {
-        let output = self.0.lock().unwrap_or_else(|error| error.into_inner());
-        String::from_utf8_lossy(&output).into_owned()
-    }
-}
-
 fn capture_directory_start_logs(locations: &[(RequestId, &Location)]) -> String {
-    let writer = LogWriter::default();
-    let subscriber = tracing_subscriber::fmt()
-        .with_ansi(false)
-        .without_time()
-        .with_max_level(tracing::Level::DEBUG)
-        .with_writer(writer.clone())
-        .finish();
-
-    tracing::subscriber::set_global_default(subscriber)
-        .expect("the logging subscriber should only be installed once");
-    for (request_id, location) in locations {
-        log_directory_load_started(*request_id, location);
-    }
-    writer.output()
+    capture_logs(|| {
+        for (request_id, location) in locations {
+            log_directory_load_started(*request_id, location);
+        }
+    })
 }
 
 fn captured_event<'a>(output: &'a str, request_id: RequestId, message: &str) -> &'a str {
@@ -115,6 +73,31 @@ fn directory_logging_respects_default_and_diagnostic_privacy() {
         "private-fragment",
     ] {
         assert!(!remote_diagnostic.contains(secret));
+    }
+}
+
+#[test]
+fn remote_backend_failures_hide_uri_user_info_in_views_and_diagnostic_logs() {
+    let location = Location::uri("sftp://alice@host.example/private");
+    let error = glib::Error::new(
+        gio::IOErrorEnum::Failed,
+        "Unable to read sftp://alice:secret@host.example/private?token=hidden#fragment",
+    );
+    let validation = uri_validation_result(&location, Err(error.clone()));
+    let Err(LocationValidationError::Unavailable(validation_message)) = validation else {
+        panic!("remote validation should report a sanitized failure");
+    };
+    let DirectoryEvent::Failed { message, .. } = remote_directory_failure(RequestId(42), &error)
+    else {
+        panic!("remote enumeration should report a sanitized failure");
+    };
+    let diagnostic = capture_logs(|| log_monitor_metadata_error(&location, &error));
+
+    for text in [&validation_message, &message, &diagnostic] {
+        assert!(text.contains("sftp://host.example/private"), "{text}");
+        for secret in ["alice", "secret", "token", "hidden", "fragment"] {
+            assert!(!text.contains(secret), "{text}");
+        }
     }
 }
 
