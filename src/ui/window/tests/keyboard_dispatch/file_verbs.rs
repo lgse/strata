@@ -406,7 +406,6 @@ fn tenxer_sort_chord_sorts_the_focused_pane_and_saves_the_default() {
             ] {
                 sort(&fixture, key, shift);
                 wait_until(|| sorting_of(&browser, 1) == sorting && names_at(&browser, 1) == order);
-                // Republishing the sorted rows moves focus within the pane.
                 wait_until(|| fixture.view.item_view_has_focus());
                 assert_eq!(saved(), sorting, "{key:?} saves the default");
                 assert_eq!(
@@ -458,9 +457,23 @@ fn tenxer_list_headings_follow_keyboard_sorting() {
             pump(100);
             focus_files(&fixture);
 
+            fixture
+                .view
+                .sort_focused_pane(SortKey::Modified, SortDirection::Ascending);
+            fixture
+                .view
+                .sort_focused_pane(SortKey::Name, SortDirection::Ascending);
+            wait_until(|| sorting_of(&browser, 0) == (SortKey::Name, SortDirection::Ascending));
+            wait_until(|| names_at(&browser, 0) == ["alpha.zip", "beta.txt", "gamma.md"]);
+            pump(150);
+            wait_until(|| {
+                gtk::prelude::RootExt::focus(&fixture.window).is_some_and(|focused| {
+                    !focused.is::<gtk::Stack>() && !focused.is::<gtk::ListView>()
+                })
+            });
+            focus_files(&fixture);
             sort(&fixture, Key::s, false);
             wait_until(|| sorting_of(&browser, 0) == (SortKey::Size, SortDirection::Ascending));
-            pump(100);
             let heading = widget_with_class(&fixture.view.widget(), "list-headings")
                 .and_then(|headings| button_labeled(&headings, "Size"))
                 .expect("Size heading");
@@ -471,7 +484,6 @@ fn tenxer_list_headings_follow_keyboard_sorting() {
     );
 }
 
-/// The names **j** visits from the first item.
 fn reachable_names(fixture: &KeyboardFixture) -> Vec<String> {
     pump(200);
     focus_files(fixture);
@@ -579,7 +591,6 @@ fn recorder_app(id: &str, name: &str, mime_types: &str, output: &Path) {
     .expect("desktop file");
 }
 
-/// Application rows by section, in the order Open With lists them.
 fn chooser_sections(overlay: &gtk::Overlay) -> Vec<(String, Vec<String>)> {
     let Some(list) = widget_with_class(overlay.upcast_ref(), "open-with-list") else {
         return Vec::new();
@@ -771,7 +782,6 @@ fn write_action(id: &str, name: &str, menu: &str, extensions: &str, extra: &str,
     .expect("action manifest");
 }
 
-/// Window composition runs the job queue; this fixture has none.
 fn run_jobs(duration: Duration) {
     let deadline = std::time::Instant::now() + duration;
     while std::time::Instant::now() < deadline {
@@ -804,7 +814,6 @@ fn tenxer_numbered_actions_run_the_listed_match_on_the_current_targets() {
             let fixture = KeyboardFixture::new();
             let directory = fixture._directory.path().to_path_buf();
             let output = fixture._history_directory.path().join("invocations");
-            // Eleven txt matches: two top-level, nine in the submenu.
             write_action("top-b", "Top B", "top", "\"txt\"", "", &output);
             write_action("top-a", "Top A", "top", "\"txt\"", "", &output);
             for index in 1..=9 {

@@ -1804,7 +1804,6 @@ impl Browser {
         self.focused_item().map(|(_, _, entry)| entry)
     }
 
-    /// The cursor item of the column at `depth`, unless hidden files hide it.
     pub fn cursor_entry(&self, depth: usize) -> Option<FileEntry> {
         self.state.borrow().cursor_entry(depth)
     }

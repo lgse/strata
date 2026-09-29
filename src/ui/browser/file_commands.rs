@@ -24,8 +24,6 @@ pub(crate) enum Yank {
     Refused,
 }
 
-/// What **; 1**–**; 0** address: the targets and their runnable matching
-/// actions in context-menu order.
 pub(crate) struct NumberedActions {
     pub(crate) targets: Vec<Location>,
     pub(crate) actions: Vec<Rc<ActionHandle>>,
@@ -33,8 +31,6 @@ pub(crate) struct NumberedActions {
     parent: Option<PathBuf>,
 }
 
-/// Waits for the rows a keyboard command republishes. Replacing the focused
-/// row drops focus onto its pane, so the cursor row takes it back afterwards.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum KeyboardRefocus {
     Sort(usize),
@@ -62,8 +58,6 @@ impl BrowserView {
             .unwrap_or_default()
     }
 
-    /// The focused pane's cursor item, or the focused search or filter hit,
-    /// whatever the fill.
     pub fn focused_target(&self) -> Option<FileEntry> {
         if self.selected_search_results().is_some() {
             return self.selected_search_result();
@@ -156,7 +150,6 @@ impl BrowserView {
     }
 }
 
-/// Trash items keep their names.
 pub(crate) fn can_rename(entry: &FileEntry) -> bool {
     !is_trash_location(&entry.location)
 }
@@ -192,7 +185,6 @@ impl BrowserView {
 }
 
 impl super::ViewState {
-    /// Ends a matching [`KeyboardRefocus`] wait; a completed one refocuses.
     pub(super) fn finish_keyboard_refocus(
         self: &Rc<Self>,
         finished: KeyboardRefocus,
@@ -207,9 +199,6 @@ impl super::ViewState {
         }
     }
 
-    /// While the republished rows are rebound over the next frames, returns
-    /// focus to the cursor row whenever it falls onto the pane itself. Focus
-    /// that leaves the file panes is left alone.
     fn refocus_cursor(self: &Rc<Self>) {
         const FRAMES: u8 = 12;
         let state = Rc::downgrade(self);
@@ -247,18 +236,15 @@ impl super::ViewState {
 }
 
 impl BrowserView {
-    /// Sorts the focused pane as its sort menu would, updating the saved
-    /// default. Other open columns keep their own order.
     pub fn sort_focused_pane(&self, key: SortKey, direction: SortDirection) {
         if let Some(depth) = self.focused_listing_depth() {
+            self.state.browser.set_sort(depth, key, direction);
             self.state
                 .keyboard_refocus
                 .set(Some(KeyboardRefocus::Sort(depth)));
-            self.state.browser.set_sort(depth, key, direction);
         }
     }
 
-    /// **.** and its aliases, which also refilter the rows.
     pub fn toggle_hidden_from_keys(&self) {
         self.state.browser.toggle_hidden();
         self.state.refocus_cursor();
@@ -291,9 +277,6 @@ impl BrowserView {
         }
     }
 
-    /// Runs `action` on `numbered`'s targets with the context menu's
-    /// confirmation and Jobs presentation. The listing gets the keys back
-    /// once a confirmation closes.
     pub(crate) fn run_numbered_action(&self, numbered: NumberedActions, action: Rc<ActionHandle>) {
         let Some(parent) = numbered.parent else {
             return;

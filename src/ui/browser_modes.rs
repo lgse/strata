@@ -249,7 +249,6 @@ impl PaneSection {
 
 type ListSorting = Rc<HeadingSort>;
 
-/// The sort List headings show and a heading click reverses.
 struct HeadingSort {
     current: Cell<(SortKey, SortDirection)>,
     arrows: RefCell<Vec<(SortKey, gtk::Image)>>,
@@ -260,8 +259,6 @@ impl HeadingSort {
         self.current.get()
     }
 
-    /// Shows `key` and `direction` however they were chosen, so the next
-    /// heading click reverses what is actually applied.
     fn show(&self, key: SortKey, direction: SortDirection) {
         self.current.set((key, direction));
         for (arrow_key, arrow) in self.arrows.borrow().iter() {

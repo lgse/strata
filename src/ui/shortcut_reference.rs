@@ -460,7 +460,7 @@ const TENXER_SETTINGS: &[Binding] = &[
         category: "Files",
         action: "Open With",
         note: "The selection, or the focused item",
-        keys: "Shift + O",
+        keys: "O",
     },
     Binding {
         category: "Files",
@@ -1188,7 +1188,7 @@ const TENXER_TOOLS: &[(&str, &str)] = &[
     ("F5", "Refresh"),
     (". / Ctrl+H / Ctrl+.", "Show or hide hidden files"),
     (
-        ", a / m / s / e",
+        ", a / , m / , s / , e",
         "Sort by name / modified / size / type; Shift reverses",
     ),
     ("Ctrl+1 / 2 / 3", "Switch to Columns, Icons, or List"),

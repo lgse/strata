@@ -138,7 +138,6 @@ impl Dispatcher {
                 self.shortcuts.step_candidate(delta);
                 show_candidate_hint(&self.shortcuts);
             }
-            // The cursor stays on the item being renamed.
             Key::Up | Key::KP_Up | Key::Down | Key::KP_Down if kind == Some(Prompt::Rename) => {}
             Key::Up | Key::KP_Up => self.view.step_cursor_unfocused(-1),
             Key::Down | Key::KP_Down => self.view.step_cursor_unfocused(1),
@@ -247,7 +246,6 @@ impl Dispatcher {
             .show(None, Some(&hint));
     }
 
-    /// Like **create ›**, a refused name keeps the prompt open to be fixed.
     fn submit_rename(&self, browser: &Browser, text: &str) {
         let Some(entry) = self.rename_target.borrow().clone() else {
             return self.return_to_listing(browser);

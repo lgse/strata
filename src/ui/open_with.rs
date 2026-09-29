@@ -80,7 +80,6 @@ pub(super) fn filter_other_apps(
     unique
 }
 
-/// Handlers every looked-up type shares.
 pub(super) struct Applications {
     pub(super) recommended: Vec<gio::AppInfo>,
     pub(super) other: Vec<gio::AppInfo>,
@@ -89,7 +88,6 @@ pub(super) struct Applications {
 }
 
 impl Applications {
-    /// Why nothing can be chosen, when nothing can.
     pub(super) fn unavailable_reason(&self) -> Option<&'static str> {
         if !self.recommended.is_empty() || !self.other.is_empty() {
             None

@@ -129,7 +129,6 @@ impl Dispatcher {
             return Some(Propagation::Stop);
         }
         let completed = match chord {
-            // Shift reverses the sort.
             Chord::Sort => (mods - Modifiers::SHIFT_MASK).is_empty() && self.complete_sort(key),
             _ if !mods.is_empty() => false,
             Chord::Go => self.complete_go(browser, key),

@@ -91,7 +91,6 @@ pub(super) fn install(window: &gtk::ApplicationWindow, sidebar: &SidebarView, bi
         go_on_destroy.invalidate();
         open_with_on_destroy.invalidate();
     });
-    // The rename target lives exactly as long as its prompt.
     let rename_target = dispatcher.rename_target.clone();
     dispatcher
         .shortcuts
@@ -463,7 +462,6 @@ struct Dispatcher {
     shortcuts: ShortcutFooter,
     go: GoCompletion,
     history: Rc<NavigationHistory>,
-    /// The item the open **rename ›** prompt renames.
     rename_target: Rc<RefCell<Option<crate::model::FileEntry>>>,
     armed_actions: RefCell<Option<files::ArmedActions>>,
     open_with: files::OpenWithLookup,

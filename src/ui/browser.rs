@@ -215,7 +215,6 @@ pub(super) struct ViewState {
     pending_rename: RefCell<Option<PendingRename>>,
     rename_generation: Cell<u64>,
     rename_reveal_generation: Cell<u64>,
-    /// A keyboard command whose republished rows should get the cursor's focus back.
     keyboard_refocus: Cell<Option<file_commands::KeyboardRefocus>>,
     pending_click_rename: RefCell<Option<glib::SourceId>>,
     click_rename_generation: Cell<u64>,

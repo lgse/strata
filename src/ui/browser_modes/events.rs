@@ -187,7 +187,6 @@ impl ModeViews {
                         button,
                     );
                 }
-                // A keyboard sort bypasses the headings.
                 if let (Some(sorting), Some(preferences)) = (&pane.sorting, preferences) {
                     sorting.show(preferences.sort_key, preferences.sort_direction);
                 }

@@ -126,7 +126,6 @@ pub(crate) fn native_paths(entries: &[FileEntry]) -> Option<Vec<PathBuf>> {
         .collect()
 }
 
-/// `closed` runs once a confirmation this asks for goes away, however it closed.
 pub(crate) fn run_action(
     anchor: &impl IsA<gtk::Widget>,
     action: Rc<ActionHandle>,

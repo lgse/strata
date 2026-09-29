@@ -128,8 +128,6 @@ impl ActionCatalog {
         matched
     }
 
-    /// The actions **; 1**–**; 0** address: runnable matches in context-menu
-    /// order (top-level items, then the Actions submenu), at most ten.
     pub fn numbered(&self, inputs: &[ActionInput]) -> Vec<Rc<ActionHandle>> {
         let (top, submenu): (Vec<_>, Vec<_>) = self
             .matches(inputs)

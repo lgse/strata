@@ -1103,7 +1103,6 @@ impl ShortcutFooter {
         self.prompt.open(&self.root, kind, text)
     }
 
-    /// Selects characters `start..end` of the open prompt's text; `-1` ends at its end.
     pub(in crate::ui) fn select_prompt_region(&self, start: i32, end: i32) {
         self.prompt.entry.select_region(start, end);
     }
@@ -1242,7 +1241,6 @@ impl ShortcutFooter {
         self.chords.set(Some(chord));
     }
 
-    /// Arms `chord` with `rows` listed in its panel instead of its fixed options.
     pub(in crate::ui) fn arm_chord_with(&self, chord: Chord, rows: Vec<(String, String)>) {
         self.chords.set_with(Some(chord), rows);
     }
