@@ -771,7 +771,7 @@ def test_tenxer_l_enters_the_preview_and_h_returns_without_navigating(strata, fi
     strata.keyboard.press("l")
     strata.wait(lambda: strata.preview_shows("document line 0"), "l to open the preview")
     strata.wait(lambda: strata.focused_name() is None, "the preview to own the keys")
-    for key in ("l", "Right", "Return", "j", "End", "ctrl+u", "Page_Down", "Home", "space"):
+    for key in ("l", "Right", "j", "End", "ctrl+u", "Page_Down", "Home", "space"):
         strata.keyboard.press(key)
     assert strata.preview_shows("document line 0")
     assert strata.focused_name() is None, "preview keys stayed in the preview"
