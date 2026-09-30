@@ -138,6 +138,8 @@ pub(in crate::ui) struct Preferences {
     thumbnail_workers: usize,
     #[serde(default = "default_icons_thumbnail_size")]
     icons_thumbnail_size: i32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    chooser_column_width: Option<i32>,
     #[serde(default = "default_cross_volume_drop_strategy")]
     cross_volume_drop_strategy: String,
     #[serde(default)]
@@ -154,6 +156,30 @@ pub(in crate::ui) struct Preferences {
     custom_icons: HashMap<String, String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     send_to_recent_destinations: HashMap<String, Vec<PathBuf>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    chooser_list_columns: Option<ChooserListColumns>,
+}
+
+/// List column widths the portal file chooser restores, in unscaled pixels.
+/// `name` is unset while the Name column still expands into the remaining space.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct ChooserListColumns {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<i32>,
+    pub mode: i32,
+    pub size: i32,
+    #[serde(rename = "type")]
+    pub kind: i32,
+    pub modified: i32,
+}
+
+impl ChooserListColumns {
+    fn is_valid(&self) -> bool {
+        self.name.is_none_or(|width| width > 0)
+            && [self.mode, self.size, self.kind, self.modified]
+                .iter()
+                .all(|width| *width > 0)
+    }
 }
 
 impl Default for Preferences {
@@ -208,6 +234,7 @@ impl Default for Preferences {
             auto_refresh_interval: 0,
             thumbnail_workers: crate::sandbox::browser::default_worker_limit(),
             icons_thumbnail_size: default_icons_thumbnail_size(),
+            chooser_column_width: None,
             cross_volume_drop_strategy: default_cross_volume_drop_strategy(),
             open_folder_after_drop: false,
             date_format: default_date_format(),
@@ -216,6 +243,7 @@ impl Default for Preferences {
             folder_colors: HashMap::new(),
             custom_icons: HashMap::new(),
             send_to_recent_destinations: HashMap::new(),
+            chooser_list_columns: None,
         }
     }
 }
@@ -355,6 +383,11 @@ impl PreferenceManager {
         preferences.icons_thumbnail_size = preferences
             .icons_thumbnail_size
             .clamp(MIN_ICONS_THUMBNAIL_SIZE, MAX_ICONS_THUMBNAIL_SIZE);
+        preferences.chooser_column_width =
+            preferences.chooser_column_width.filter(|width| *width > 0);
+        preferences.chooser_list_columns = preferences
+            .chooser_list_columns
+            .filter(ChooserListColumns::is_valid);
         super::motion::set_reduce_motion(preferences.reduce_motion);
         crate::util::set_date_format(crate::util::DateFormat::parse(&preferences.date_format));
 
@@ -741,6 +774,25 @@ impl PreferenceManager {
     pub fn set_icons_thumbnail_size(&self, size: i32) {
         self.preferences.borrow_mut().icons_thumbnail_size =
             size.clamp(MIN_ICONS_THUMBNAIL_SIZE, MAX_ICONS_THUMBNAIL_SIZE);
+        self.save_preferences();
+    }
+
+    pub fn chooser_column_width(&self) -> Option<i32> {
+        self.preferences.borrow().chooser_column_width
+    }
+
+    pub fn set_chooser_column_width(&self, width: Option<i32>) {
+        self.preferences.borrow_mut().chooser_column_width = width.filter(|width| *width > 0);
+        self.save_preferences();
+    }
+
+    pub fn chooser_list_columns(&self) -> Option<ChooserListColumns> {
+        self.preferences.borrow().chooser_list_columns
+    }
+
+    pub fn set_chooser_list_columns(&self, columns: Option<ChooserListColumns>) {
+        self.preferences.borrow_mut().chooser_list_columns =
+            columns.filter(ChooserListColumns::is_valid);
         self.save_preferences();
     }
 

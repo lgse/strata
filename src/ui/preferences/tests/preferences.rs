@@ -610,6 +610,8 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_auto_refresh_interval(60),
                 |m| m.set_thumbnail_workers(3),
                 |m| m.set_icons_thumbnail_size(96),
+                |m| m.set_chooser_column_width(Some(360)),
+                |m| m.set_chooser_list_columns(None),
                 |m| m.set_cross_volume_drop_strategy(CrossVolumeDropStrategy::Copy),
                 |m| m.set_date_format(crate::util::DateFormat::Long),
                 |m| m.set_default_directory(None),

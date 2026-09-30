@@ -113,6 +113,7 @@ pub(super) fn install_resize_edges(state: &Rc<ViewState>) {
     state.scroller.add_controller(motion);
 
     let resize = gtk::GestureDrag::new();
+    resize.set_name(Some("column-resize"));
     resize.set_button(1);
     resize.set_propagation_phase(gtk::PropagationPhase::Capture);
     let active = Rc::new(RefCell::new(None::<(gtk::Box, i32, f64)>));
@@ -146,6 +147,7 @@ pub(super) fn install_resize_edges(state: &Rc<ViewState>) {
                 .map(|column| max_child_natural_width(&column))
                 .unwrap_or(COLUMN_WIDTH);
             shell.set_size_request(max_natural.max(COLUMN_WIDTH), -1);
+            remember_chooser_column_width(&state, &shell);
             gesture.set_state(gtk::EventSequenceState::Claimed);
             return;
         }
@@ -173,9 +175,12 @@ pub(super) fn install_resize_edges(state: &Rc<ViewState>) {
         shell.set_size_request(resized_column_width(*initial, offset_x), -1);
     });
     resize.connect_drag_end(move |_, _, _| {
-        active_for_end.borrow_mut().take();
+        let resized = active_for_end.borrow_mut().take();
         if let Some(state) = weak_for_end.upgrade() {
             state.column_resizing.set(false);
+            if let Some((shell, _, _)) = resized {
+                remember_chooser_column_width(&state, &shell);
+            }
         }
     });
     let weak_for_cancel = Rc::downgrade(state);
@@ -595,6 +600,25 @@ fn animate_column_entry(column: &gtk::Box, generation: &Rc<Cell<u64>>) {
             column.remove_css_class("column-entering");
         }
     });
+}
+
+// Choosers are rebuilt per request, so a chooser resize becomes the default for later chooser columns.
+fn remember_chooser_column_width(state: &ViewState, shell: &gtk::Box) {
+    if !state.browser.is_chooser_mode() {
+        return;
+    }
+    let preferences = crate::ui::preferences::PreferenceManager::shared();
+    let width = (f64::from(shell.width_request()) / preferences.interface_scale()).round() as i32;
+    preferences.set_chooser_column_width(Some(width.max(COLUMN_WIDTH)));
+}
+
+fn initial_column_width(state: &ViewState) -> i32 {
+    if !state.browser.is_chooser_mode() {
+        return COLUMN_WIDTH;
+    }
+    crate::ui::preferences::PreferenceManager::shared()
+        .chooser_column_width()
+        .map_or(COLUMN_WIDTH, |width| width.max(COLUMN_WIDTH))
 }
 
 fn resized_column_width(initial_width: i32, horizontal_offset: f64) -> i32 {
@@ -1521,7 +1545,7 @@ impl ViewState {
         });
         shell.add_controller(filter_focus);
 
-        shell.set_size_request(COLUMN_WIDTH, -1);
+        shell.set_size_request(initial_column_width(self), -1);
         let previous_scale = Cell::new(1.0);
         crate::ui::preferences::PreferenceManager::shared().bind_interface_scale(
             &shell,
