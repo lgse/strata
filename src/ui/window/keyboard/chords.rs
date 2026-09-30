@@ -170,8 +170,7 @@ impl Dispatcher {
                 self.shortcuts.open_prompt(Prompt::Go);
             }
             GoTarget::Pin(_) if self.chooser.is_some() => {
-                self.shortcuts
-                    .show_feedback(super::chooser::UNAVAILABLE);
+                self.shortcuts.show_feedback(super::chooser::UNAVAILABLE);
             }
             GoTarget::Pin(pin) => self.change_pin(pin),
             GoTarget::Place { location, .. } if self.refuse_remote_place(&location) => {}

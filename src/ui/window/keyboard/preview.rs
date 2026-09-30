@@ -356,7 +356,14 @@ fn reaches_listing(key: Key, mods: Modifiers) -> bool {
     let alt = mods == Modifiers::ALT_MASK;
     match key {
         // Folders, history, and footer prompts.
-        Key::g | Key::z | Key::f | Key::s | Key::n | Key::slash | Key::KP_Divide | Key::BackSpace
+        Key::g
+        | Key::z
+        | Key::f
+        | Key::s
+        | Key::n
+        | Key::slash
+        | Key::KP_Divide
+        | Key::BackSpace
             if plain =>
         {
             true
@@ -364,7 +371,16 @@ fn reaches_listing(key: Key, mods: Modifiers) -> bool {
         Key::H | Key::L | Key::Z | Key::N | Key::question if shift => true,
         Key::Left | Key::KP_Left | Key::Right | Key::KP_Right | Key::Up | Key::KP_Up if alt => true,
         // Commands on the previewed item or its folder.
-        Key::o | Key::y | Key::x | Key::p | Key::d | Key::a | Key::c | Key::r | Key::F2 | Key::Menu
+        Key::o
+        | Key::y
+        | Key::x
+        | Key::p
+        | Key::d
+        | Key::a
+        | Key::c
+        | Key::r
+        | Key::F2
+        | Key::Menu
             if plain =>
         {
             true

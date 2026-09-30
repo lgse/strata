@@ -1229,7 +1229,10 @@ fn tenxer_file_list_skips_conflicting_defaults_and_keeps_bound_shortcuts() {
             );
             assert!(fixture.press(Key::q, ModifierType::empty()));
             assert!(preferences.tenxer_mode(), "q does not leave the mode");
-            assert!(!fixture.view.filter_has_focus(), "q does not type-to-search");
+            assert!(
+                !fixture.view.filter_has_focus(),
+                "q does not type-to-search"
+            );
             assert!(fixture.press(
                 Key::m,
                 ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK

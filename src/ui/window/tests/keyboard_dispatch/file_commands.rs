@@ -83,8 +83,8 @@ fn close_modal(fixture: &KeyboardFixture) {
 /// Sends `key` to the open dialog's own key handler, which the window
 /// dispatcher behind `fixture.press` never reaches.
 fn modal_key(fixture: &KeyboardFixture, key: Key) -> bool {
-    let layer = widget_with_class(fixture.overlay.upcast_ref(), "app-modal-layer")
-        .expect("open dialog");
+    let layer =
+        widget_with_class(fixture.overlay.upcast_ref(), "app-modal-layer").expect("open dialog");
     let controllers = layer.observe_controllers();
     let keys = (0..controllers.n_items())
         .filter_map(|index| controllers.item(index))
@@ -713,7 +713,10 @@ fn tenxer_action_chord_compresses_and_extracts_archives() {
             browser.clear_active_selection();
             move_to_named(&fixture, &browser, "bundle.tar");
             action(Key::E, ModifierType::SHIFT_MASK);
-            assert_eq!(fixture.shortcuts.open_prompt_kind(), Some(Prompt::ExtractTo));
+            assert_eq!(
+                fixture.shortcuts.open_prompt_kind(),
+                Some(Prompt::ExtractTo)
+            );
             assert_eq!(
                 fixture.shortcuts.prompt_label().as_deref(),
                 Some("extract to \u{203a}")

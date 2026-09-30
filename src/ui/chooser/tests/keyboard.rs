@@ -430,7 +430,10 @@ fn escape_dismisses_one_interaction_before_cancelling_and_the_toggle_keeps_the_r
                 ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK
             ));
             assert!(!PreferenceManager::shared().tenxer_mode());
-            assert!(chooser.open_request(), "leaving the mode cancelled the request");
+            assert!(
+                chooser.open_request(),
+                "leaving the mode cancelled the request"
+            );
             wait_until(|| !chooser.footer_visible());
             chooser.press(Key::Escape);
             assert!(chooser.cancelled());

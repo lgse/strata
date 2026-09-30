@@ -345,12 +345,12 @@ fn tenxer_pin_chords_pin_the_cursor_folder_or_the_current_folder() {
                 pin_chord(Key::plus, ModifierType::SHIFT_MASK),
                 "Pinned \u{201c}folder\u{201d}"
             );
-            assert_eq!(*pinned.borrow(), [folder_pin.clone()]);
+            assert_eq!(*pinned.borrow(), std::slice::from_ref(&folder_pin));
             assert_eq!(
                 pin_chord(Key::KP_Add, ModifierType::empty()),
                 "\u{201c}folder\u{201d} is already pinned"
             );
-            assert_eq!(*pinned.borrow(), [folder_pin.clone()]);
+            assert_eq!(*pinned.borrow(), std::slice::from_ref(&folder_pin));
             assert_eq!(
                 pin_chord(Key::minus, ModifierType::empty()),
                 "Unpinned \u{201c}folder\u{201d}"
@@ -381,7 +381,11 @@ fn tenxer_pin_chords_pin_the_cursor_folder_or_the_current_folder() {
                 format!("Can\u{2019}t pin \u{201c}{current_name}\u{201d}")
             );
             assert!(pinned.borrow().is_empty(), "standard places stay unpinned");
-            assert_eq!(browser.active_location(), Some(current), "pinning stays put");
+            assert_eq!(
+                browser.active_location(),
+                Some(current),
+                "pinning stays put"
+            );
         },
     );
 }
