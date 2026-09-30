@@ -176,6 +176,8 @@ fn tenxer_preview_owns_document_keys_until_returned() {
     crate::test_support::gtk_test(
         "ui::window::tests::keyboard_dispatch::preview_ownership::tenxer_preview_owns_document_keys_until_returned",
         || {
+            let launched = glib::user_data_dir().join("launched");
+            default_recorder_app("text/plain", &launched);
             let fixture = ownership_fixture();
             let browser = fixture.view.browser();
             let origin = browser.active_location();
@@ -424,6 +426,13 @@ fn tenxer_preview_owns_document_keys_until_returned() {
                 opened.borrow().as_slice(),
                 [Location::local(fixture._directory.path().join("long.txt"))],
                 "o opens the previewed file"
+            );
+            wait_until(|| {
+                std::fs::read_to_string(&launched).is_ok_and(|args| args.contains("long.txt"))
+            });
+            assert!(
+                !modal_visible(&fixture.overlay),
+                "the default app opened it"
             );
             assert!(fixture.view.item_view_has_focus());
             assert!(fixture.preview.is_open(), "o keeps the drawer");

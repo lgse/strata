@@ -555,42 +555,6 @@ fn tenxer_dot_toggles_hidden_files_in_every_window_and_filter() {
 
 /// Writes a recorder application for `mime_types` into the test's private
 /// data directory and associates it with each of them.
-fn recorder_app(id: &str, name: &str, mime_types: &str, output: &Path) {
-    let associations = glib::user_config_dir().join("mimeapps.list");
-    let mut lines: Vec<String> = std::fs::read_to_string(&associations)
-        .map(|list| list.lines().map(str::to_owned).collect())
-        .unwrap_or_else(|_| vec!["[Added Associations]".to_owned()]);
-    for mime_type in mime_types.split(';').filter(|value| !value.is_empty()) {
-        let key = format!("{mime_type}=");
-        match lines.iter_mut().find(|line| line.starts_with(&key)) {
-            Some(line) => line.push_str(&format!("{id}.desktop;")),
-            None => lines.push(format!("{key}{id}.desktop;")),
-        }
-    }
-    std::fs::create_dir_all(glib::user_config_dir()).expect("config");
-    std::fs::write(&associations, lines.join("\n") + "\n").expect("associations");
-    let applications = glib::user_data_dir().join("applications");
-    std::fs::create_dir_all(&applications).expect("applications");
-    let script = applications.join(format!("{id}.sh"));
-    std::fs::write(
-        &script,
-        format!(
-            "#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}'\n",
-            output.display()
-        ),
-    )
-    .expect("recorder");
-    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).expect("executable");
-    std::fs::write(
-        applications.join(format!("{id}.desktop")),
-        format!(
-            "[Desktop Entry]\nType=Application\nName={name}\nExec={} %F\nMimeType={mime_types}\n",
-            script.display()
-        ),
-    )
-    .expect("desktop file");
-}
-
 fn chooser_sections(overlay: &gtk::Overlay) -> Vec<(String, Vec<String>)> {
     let Some(list) = widget_with_class(overlay.upcast_ref(), "open-with-list") else {
         return Vec::new();

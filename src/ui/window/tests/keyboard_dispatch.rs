@@ -1664,6 +1664,7 @@ fn tenxer_list_and_columns_move_enter_and_traverse_history() {
     crate::test_support::gtk_test(
         "ui::window::tests::keyboard_dispatch::tenxer_list_and_columns_move_enter_and_traverse_history",
         || {
+            default_recorder_app("text/plain", &glib::user_data_dir().join("launched"));
             let fixture = KeyboardFixture::new();
             let preferences = PreferenceManager::shared();
             preferences.set_tenxer_mode(true);
@@ -2458,6 +2459,60 @@ fn sidebar_has_focus(fixture: &KeyboardFixture) -> bool {
     gtk::prelude::RootExt::focus(&fixture.window).is_some_and(|focused| {
         focused == fixture.sidebar.widget || focused.is_ancestor(&fixture.sidebar.widget)
     })
+}
+
+fn recorder_app(id: &str, name: &str, mime_types: &str, output: &std::path::Path) {
+    let associations = glib::user_config_dir().join("mimeapps.list");
+    let mut lines: Vec<String> = std::fs::read_to_string(&associations)
+        .map(|list| list.lines().map(str::to_owned).collect())
+        .unwrap_or_else(|_| vec!["[Added Associations]".to_owned()]);
+    for mime_type in mime_types.split(';').filter(|value| !value.is_empty()) {
+        let key = format!("{mime_type}=");
+        match lines.iter_mut().find(|line| line.starts_with(&key)) {
+            Some(line) => line.push_str(&format!("{id}.desktop;")),
+            None => lines.push(format!("{key}{id}.desktop;")),
+        }
+    }
+    std::fs::create_dir_all(glib::user_config_dir()).expect("config");
+    std::fs::write(&associations, lines.join("\n") + "\n").expect("associations");
+    let applications = glib::user_data_dir().join("applications");
+    std::fs::create_dir_all(&applications).expect("applications");
+    let script = applications.join(format!("{id}.sh"));
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}'\n",
+            output.display()
+        ),
+    )
+    .expect("recorder");
+    std::fs::set_permissions(
+        &script,
+        <std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o755),
+    )
+    .expect("executable");
+    std::fs::write(
+        applications.join(format!("{id}.desktop")),
+        format!(
+            "[Desktop Entry]\nType=Application\nName={name}\nExec={} %F\nMimeType={mime_types}\n",
+            script.display()
+        ),
+    )
+    .expect("desktop file");
+}
+
+/// Makes a recorder the default for `mime_type`, so opening such a file runs it
+/// instead of a host application or, where none is installed, the Open With
+/// fallback dialog.
+fn default_recorder_app(mime_type: &str, output: &std::path::Path) {
+    let id = "strata-default-recorder";
+    recorder_app(id, "Default Recorder", &format!("{mime_type};"), output);
+    let associations = glib::user_config_dir().join("mimeapps.list");
+    let mut list = std::fs::read_to_string(&associations).expect("associations");
+    list.push_str(&format!(
+        "[Default Applications]\n{mime_type}={id}.desktop\n"
+    ));
+    std::fs::write(&associations, list).expect("default application");
 }
 
 fn focus_files(fixture: &KeyboardFixture) {
