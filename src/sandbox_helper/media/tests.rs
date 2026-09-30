@@ -30,6 +30,45 @@ fn fixture(path: &Path, size: &str, rate: u32, duration: u32, audio: bool) {
     success(&mut command);
 }
 
+fn require_encoder(name: &str) {
+    let output = success(Command::new("ffmpeg").args(["-hide_banner", "-encoders"]));
+    let listing = String::from_utf8(output).expect("encoder list is utf-8");
+    assert!(
+        listing.split_whitespace().any(|field| field == name),
+        "{name} is an environment prerequisite for raw elementary video fixtures"
+    );
+}
+
+fn encoded_video(path: &Path, format: &str, encoder: &str) {
+    require_encoder(encoder);
+    let mut command = Command::new("ffmpeg");
+    command.args([
+        "-nostdin",
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        "testsrc2=size=64x48:rate=30:duration=2",
+        "-an",
+        "-c:v",
+        encoder,
+        "-pix_fmt",
+        "yuv420p",
+        "-preset",
+        "ultrafast",
+        "-threads",
+        "1",
+    ]);
+    if encoder == "libx264" {
+        command.args(["-x264-params", "threads=1:lookahead-threads=1"]);
+    } else if encoder == "libx265" {
+        command.args(["-x265-params", "pools=none:frame-threads=1"]);
+    }
+    command.args(["-f", format]).arg(path);
+    success(&mut command);
+}
+
 fn decoded(input: &Path, size: &str, start: u32) -> (Header, Vec<Frame>, u64) {
     let mut bytes = Vec::new();
     stream(
@@ -294,45 +333,277 @@ fn hardware_order_and_commands_decode_only_and_bound_all_outputs() {
         assert_eq!(choices.len(), 2);
         assert_eq!(choices[1], Backend::Software);
     }
-    let input = Input {
+    let ordinary = sample_input(107850, false);
+    let raw = sample_input(107850, true);
+    let zero = sample_input(0, false);
+    let zero_raw = sample_input(0, true);
+    for backend in backends(&devices, MediaPreviewBackend::Automatic) {
+        let positive = command_args(Path::new("/input"), &ordinary, &backend, Track::Video);
+        let args = positive.join(" ");
+        assert_input_seek(&positive, "3595.000000");
+        let seek = positive.iter().position(|arg| arg == "-ss").expect("seek");
+        let accurate = positive
+            .iter()
+            .position(|arg| arg == "-noaccurate_seek")
+            .expect("preroll seek");
+        let input = positive.iter().position(|arg| arg == "-i").expect("input");
+        assert!(seek < accurate && accurate < input);
+        assert!(args.contains("-t 5.000000"));
+        assert!(args.contains("-frames:v 150"));
+        assert!(args.contains("-c:v rawvideo"));
+        assert!(args.contains("--core=0"));
+        assert!(args.contains("--fsize=536870912"));
+        assert!(args.contains("-max_alloc 536870912"));
+        assert!(args.contains("-max_pixels 50000000"));
+        if backend == Backend::Software {
+            assert!(args.contains("--as=2147483648"));
+        } else {
+            assert!(!args.contains("--as="));
+        }
+        let audio = command_for_audio(&ordinary);
+        assert!(audio.contains("-c:a pcm_s16le"));
+        assert!(!audio.contains("-hwaccel"));
+        assert!(!audio.contains("-noaccurate_seek"));
+        assert!(audio.contains("--as=2147483648"));
+        assert_input_seek(
+            &command_args(
+                Path::new("/input"),
+                &ordinary,
+                &Backend::Software,
+                Track::Audio,
+            ),
+            "3595.000000",
+        );
+        assert!(!args.contains("h264"));
+        assert!(!args.contains("libvpx"));
+        assert!(!args.contains(" copy"));
+
+        let raw_video = command_args(Path::new("/input"), &raw, &backend, Track::Video);
+        let raw_args = raw_video.join(" ");
+        assert_output_seek(&raw_video, "3595.000000");
+        assert!(raw_args.contains("-t 5.000000"));
+        assert!(raw_args.contains("-frames:v 150"));
+        assert!(raw_args.contains("--core=0"));
+        assert!(raw_args.contains("--fsize=536870912"));
+        assert!(raw_args.contains("-max_alloc 536870912"));
+        assert!(raw_args.contains("-max_pixels 50000000"));
+        let raw_audio = command_args(Path::new("/input"), &raw, &Backend::Software, Track::Audio);
+        let raw_audio_text = raw_audio.join(" ");
+        assert_output_seek(&raw_audio, "3595.000000");
+        assert!(!raw_audio_text.contains("-hwaccel"));
+        assert!(raw_audio_text.contains("-c:a pcm_s16le"));
+        assert!(raw_audio_text.contains("--as=2147483648"));
+        if backend == Backend::Software {
+            assert!(raw_args.contains("--as=2147483648"));
+        } else {
+            assert!(!raw_args.contains("--as="));
+        }
+
+        for input in [&zero, &zero_raw] {
+            assert_omits_seek(&command_args(
+                Path::new("/input"),
+                input,
+                &backend,
+                Track::Video,
+            ));
+            assert_omits_seek(&command_args(
+                Path::new("/input"),
+                input,
+                &Backend::Software,
+                Track::Audio,
+            ));
+        }
+    }
+    let mut covered = sample_input(30, false);
+    covered.cover = true;
+    assert_omits_seek(&command_args(
+        Path::new("/input"),
+        &covered,
+        &Backend::Software,
+        Track::Video,
+    ));
+    assert_input_seek(
+        &command_args(
+            Path::new("/input"),
+            &covered,
+            &Backend::Software,
+            Track::Audio,
+        ),
+        "1.000000",
+    );
+}
+
+fn assert_elementary_playback(path: &Path) {
+    let size = MediaPreviewSize::new(520, 800);
+    let at_zero = probe(path, size, 0).expect("raw probe");
+    assert!(at_zero.raw_video);
+    assert_eq!(at_zero.header.duration_us, media::MAX_DURATION_US);
+    assert_omits_seek(&command_args(
+        path,
+        &at_zero,
+        &Backend::Software,
+        Track::Video,
+    ));
+    let at_second = probe(path, size, 30).expect("raw probe at one second");
+    assert!(at_second.raw_video);
+    assert_output_seek(
+        &command_args(path, &at_second, &Backend::Software, Track::Video),
+        "1.000000",
+    );
+
+    let (header, frames, end) = decoded(path, "520x800", 0);
+    assert_eq!(header.duration_us, media::MAX_DURATION_US);
+    assert_eq!(frames.len(), 60);
+    assert_eq!(end, 2_000_000);
+    assert_ne!(frames[0].pixels, frames[30].pixels);
+    assert!(
+        frames
+            .iter()
+            .enumerate()
+            .all(|(index, frame)| frame.tick == index as u32)
+    );
+    // Integer-second, fractional, and near-the-end offsets must match the
+    // zero-start pixels. A relabeled first frame would fail the inequality.
+    for start in [30_u32, 20, 58] {
+        let (sought_header, sought, sought_end) = decoded(path, "520x800", start);
+        assert_eq!(sought_header.duration_us, header.duration_us);
+        assert_eq!(sought_end, end);
+        assert_eq!(sought.len(), frames.len() - start as usize);
+        assert_ne!(sought[0].pixels, frames[0].pixels);
+        for (offset, frame) in sought.iter().enumerate() {
+            assert_eq!(frame.tick, start + offset as u32);
+            assert_eq!(frame.pixels, frames[start as usize + offset].pixels);
+        }
+    }
+    let mut past = Vec::new();
+    let started = Instant::now();
+    assert!(
+        stream(
+            path,
+            "520x800",
+            MediaPreviewBackend::Software,
+            90,
+            &mut past
+        )
+        .is_err(),
+        "a raw seek past the real end must fail"
+    );
+    assert!(
+        past.is_empty(),
+        "past-the-end seek must not fabricate frames"
+    );
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "past-the-end raw seek hung"
+    );
+}
+
+#[test]
+fn raw_h264_and_hevc_preview_seek_and_report_the_real_end() {
+    let directory = tempfile::tempdir().expect("raw video fixtures");
+    let h264 = directory.path().join("clip.h264");
+    encoded_video(&h264, "h264", "libx264");
+    assert_elementary_playback(&h264);
+
+    let renamed = directory.path().join("renamed-stream");
+    std::fs::copy(&h264, &renamed).expect("rename raw stream");
+    let renamed_info = probe(&renamed, MediaPreviewSize::new(520, 800), 20).expect("renamed probe");
+    assert!(renamed_info.raw_video);
+    assert_output_seek(
+        &command_args(&renamed, &renamed_info, &Backend::Software, Track::Video),
+        "0.666666",
+    );
+    assert_elementary_playback(&renamed);
+
+    let mp4 = directory.path().join("clip.mp4");
+    encoded_video(&mp4, "mp4", "libx264");
+    let mp4_info = probe(&mp4, MediaPreviewSize::new(520, 800), 30).expect("mp4 probe");
+    assert!(!mp4_info.raw_video);
+    assert_eq!(mp4_info.header.duration_us, 2_000_000);
+    assert_input_seek(
+        &command_args(&mp4, &mp4_info, &Backend::Software, Track::Video),
+        "1.000000",
+    );
+    let (mp4_header, mp4_frames, mp4_end) = decoded(&mp4, "520x800", 0);
+    assert_eq!(mp4_end, mp4_header.duration_us);
+    for start in [30_u32, 20] {
+        let (_, sought, sought_end) = decoded(&mp4, "520x800", start);
+        assert_eq!(sought_end, mp4_end);
+        assert_eq!(sought.len(), mp4_frames.len() - start as usize);
+        assert_eq!(sought[0].tick, start);
+        assert_eq!(sought[0].pixels, mp4_frames[start as usize].pixels);
+        assert_ne!(sought[0].pixels, mp4_frames[0].pixels);
+    }
+
+    let hevc = directory.path().join("clip.hevc");
+    encoded_video(&hevc, "hevc", "libx265");
+    assert_elementary_playback(&hevc);
+}
+
+fn command_args(path: &Path, input: &Input, backend: &Backend, track: Track) -> Vec<String> {
+    command(path, input, backend, track)
+        .get_args()
+        .map(|arg| arg.to_string_lossy().into_owned())
+        .collect()
+}
+
+fn command_for_audio(input: &Input) -> String {
+    command_args(Path::new("/input"), input, &Backend::Software, Track::Audio).join(" ")
+}
+
+fn assert_input_seek(args: &[String], timestamp: &str) {
+    let ss = args
+        .iter()
+        .position(|arg| arg == "-ss")
+        .expect("input seek");
+    let input = args
+        .iter()
+        .position(|arg| arg == "-i")
+        .expect("decoder input");
+    assert!(ss + 1 < input, "seek belongs before -i: {args:?}");
+    assert_eq!(args[ss + 1], timestamp);
+    assert_eq!(args.iter().filter(|arg| *arg == "-ss").count(), 1);
+}
+
+fn assert_output_seek(args: &[String], timestamp: &str) {
+    let input = args
+        .iter()
+        .position(|arg| arg == "-i")
+        .expect("decoder input");
+    let ss = args
+        .iter()
+        .position(|arg| arg == "-ss")
+        .expect("output seek");
+    assert!(input < ss, "raw video seeks after -i: {args:?}");
+    assert_eq!(args[ss + 1], timestamp);
+    assert!(!args.iter().any(|arg| arg == "-noaccurate_seek"));
+    assert_eq!(args.iter().filter(|arg| *arg == "-ss").count(), 1);
+}
+
+fn assert_omits_seek(args: &[String]) {
+    assert!(
+        !args
+            .iter()
+            .any(|arg| arg == "-ss" || arg == "-noaccurate_seek"),
+        "{args:?}"
+    );
+}
+
+fn sample_input(start_tick: u32, raw_video: bool) -> Input {
+    Input {
         header: Header {
             width: 320,
             height: 180,
             audio: true,
             duration_us: 3_600_000_000,
-            start_tick: 107850,
+            start_tick,
         },
         video: Some(0),
         audio: Some(1),
         cover: false,
         gif_period_us: None,
-    };
-    for backend in backends(&devices, MediaPreviewBackend::Automatic) {
-        let command = command(Path::new("/input"), &input, &backend, Track::Video);
-        let args = command
-            .get_args()
-            .map(|arg| arg.to_string_lossy())
-            .collect::<Vec<_>>()
-            .join(" ");
-        assert!(args.contains("-ss 3595.000000"));
-        assert!(args.contains("-t 5.000000"));
-        assert!(args.contains("-frames:v 150"));
-        assert!(args.contains("-c:v rawvideo"));
-        let audio = command_for_audio(&input);
-        assert!(audio.contains("-c:a pcm_s16le"));
-        assert!(!audio.contains("-hwaccel"));
-        assert!(!args.contains("h264"));
-        assert!(!args.contains("libvpx"));
-        assert!(!args.contains(" copy"));
+        raw_video,
     }
-}
-
-fn command_for_audio(input: &Input) -> String {
-    command(Path::new("/input"), input, &Backend::Software, Track::Audio)
-        .get_args()
-        .map(|arg| arg.to_string_lossy())
-        .collect::<Vec<_>>()
-        .join(" ")
 }
 
 #[test]
@@ -473,5 +744,49 @@ fn metadata_and_size_parsing_fail_closed_on_bad_sources_and_protocol_values() {
     .expect("unknown duration can resume beyond thirty seconds");
     assert_eq!(unknown.header.start_tick, 960);
     assert_eq!(unknown.header.duration_us, media::MAX_DURATION_US);
+    assert!(!unknown.raw_video);
+    let unknown_container = metadata(
+        br#"{"streams":[{"index":0,"codec_type":"video","width":64,"height":48}],"format":{"format_name":"mov,mp4,m4a,3gp,3g2,mj2"}}"#,
+        size,
+        30,
+    )
+    .expect("missing duration does not make a container raw");
+    assert!(!unknown_container.raw_video);
+    assert_eq!(unknown_container.header.duration_us, media::MAX_DURATION_US);
+    assert_input_seek(
+        &command_args(
+            Path::new("/input"),
+            &unknown_container,
+            &Backend::Software,
+            Track::Video,
+        ),
+        "1.000000",
+    );
+    let raw = metadata(
+        br#"{"streams":[{"index":0,"codec_type":"video","width":64,"height":48}],"format":{"duration":"2.0","format_name":"h264"}}"#,
+        size,
+        30,
+    )
+    .expect("raw h264 metadata");
+    assert!(raw.raw_video);
+    assert_eq!(raw.header.duration_us, 2_000_000);
+    assert_output_seek(
+        &command_args(Path::new("/input"), &raw, &Backend::Software, Track::Video),
+        "1.000000",
+    );
+    let hevc = metadata(
+        br#"{"streams":[{"index":0,"codec_type":"video","width":64,"height":48}],"format":{"format_name":"hevc"}}"#,
+        size,
+        0,
+    )
+    .expect("raw hevc metadata");
+    assert!(hevc.raw_video);
+    assert_eq!(hevc.header.duration_us, media::MAX_DURATION_US);
+    assert_omits_seek(&command_args(
+        Path::new("/input"),
+        &hevc,
+        &Backend::Software,
+        Track::Video,
+    ));
     assert!(probe(Path::new("/nonexistent-strata-media"), size, 0).is_err());
 }

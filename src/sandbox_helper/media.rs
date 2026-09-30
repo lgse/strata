@@ -34,6 +34,8 @@ struct Input {
     audio: Option<u32>,
     cover: bool,
     gif_period_us: Option<u64>,
+    // Annex B H.264/HEVC, from the probed demuxer name only.
+    raw_video: bool,
 }
 
 pub(super) fn run(
@@ -144,8 +146,14 @@ fn metadata(bytes: &[u8], size: MediaPreviewSize, start_tick: u32) -> io::Result
         .and_then(|duration| duration.parse::<f64>().ok())
         .filter(|duration| duration.is_finite() && *duration > 0.0)
         .unwrap_or(media::MAX_DURATION_US as f64 / 1_000_000.0);
-    let gif_period_us = (value["format"]["format_name"] == "gif" && duration < 30.0)
-        .then_some((duration * 1_000_000.0).ceil() as u64);
+    let format_name = value["format"]["format_name"].as_str().unwrap_or("");
+    let gif_period_us =
+        (format_name == "gif" && duration < 30.0).then_some((duration * 1_000_000.0).ceil() as u64);
+    // Missing duration and the filename are not enough: only these demuxers seek by
+    // decoding. Containers keep input-side seeking even when duration is unknown.
+    let raw_video = format_name
+        .split(',')
+        .any(|name| matches!(name.trim(), "h264" | "hevc"));
     let duration = if gif_period_us.is_some() {
         30.0
     } else {
@@ -202,6 +210,7 @@ fn metadata(bytes: &[u8], size: MediaPreviewSize, start_tick: u32) -> io::Result
         audio: audio.map(index).transpose()?,
         cover: video.is_some_and(is_cover),
         gif_period_us,
+        raw_video,
     })
 }
 
@@ -299,15 +308,22 @@ fn command(path: &Path, input: &Input, backend: &Backend, track: Track) -> Comma
     let remaining =
         (input.header.duration_us - media::timestamp(input.header.start_tick)) as f64 / 1_000_000.0;
     let cover = input.cover && matches!(track, Track::Video);
-    // Seeking an attached picture drops it: MP3 hands back no frame at all for `-ss 0`.
-    if !cover {
-        command.arg("-ss").arg(format!("{start:.6}"));
+    // Attached pictures and raw H.264/HEVC yield no frames for an input seek, even
+    // `-ss 0`. Omit a zero seek. Positive raw offsets seek after `-i` so FFmpeg
+    // decodes and discards the prefix instead of asking the demuxer to seek.
+    let position = format!("{start:.6}");
+    let seek = !cover && position != "0.000000";
+    if seek && !input.raw_video {
+        command.arg("-ss").arg(&position);
     }
     // Keep the frame covering the seek point; fps trims negative preroll timestamps.
-    if matches!(track, Track::Video) && !cover {
+    if seek && !input.raw_video && matches!(track, Track::Video) {
         command.arg("-noaccurate_seek");
     }
     command.arg("-i").arg(path);
+    if seek && input.raw_video {
+        command.arg("-ss").arg(position);
+    }
     match track {
         Track::Video => {
             let filter = format!(
