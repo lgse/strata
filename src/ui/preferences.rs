@@ -140,6 +140,8 @@ pub(in crate::ui) struct Preferences {
     icons_thumbnail_size: i32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     chooser_column_width: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    browser_column_width: Option<i32>,
     #[serde(default = "default_cross_volume_drop_strategy")]
     cross_volume_drop_strategy: String,
     #[serde(default)]
@@ -157,13 +159,14 @@ pub(in crate::ui) struct Preferences {
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     send_to_recent_destinations: HashMap<String, Vec<PathBuf>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    chooser_list_columns: Option<ChooserListColumns>,
+    chooser_list_columns: Option<ListColumns>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    browser_list_columns: Option<ListColumns>,
 }
 
-/// List column widths the portal file chooser restores, in unscaled pixels.
-/// `name` is unset while the Name column still expands into the remaining space.
+/// Unscaled pixels; an unset `name` lets Name absorb the remaining space.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub struct ChooserListColumns {
+pub struct ListColumns {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<i32>,
     pub mode: i32,
@@ -173,7 +176,7 @@ pub struct ChooserListColumns {
     pub modified: i32,
 }
 
-impl ChooserListColumns {
+impl ListColumns {
     fn is_valid(&self) -> bool {
         self.name.is_none_or(|width| width > 0)
             && [self.mode, self.size, self.kind, self.modified]
@@ -235,6 +238,7 @@ impl Default for Preferences {
             thumbnail_workers: crate::sandbox::browser::default_worker_limit(),
             icons_thumbnail_size: default_icons_thumbnail_size(),
             chooser_column_width: None,
+            browser_column_width: None,
             cross_volume_drop_strategy: default_cross_volume_drop_strategy(),
             open_folder_after_drop: false,
             date_format: default_date_format(),
@@ -244,6 +248,7 @@ impl Default for Preferences {
             custom_icons: HashMap::new(),
             send_to_recent_destinations: HashMap::new(),
             chooser_list_columns: None,
+            browser_list_columns: None,
         }
     }
 }
@@ -385,9 +390,14 @@ impl PreferenceManager {
             .clamp(MIN_ICONS_THUMBNAIL_SIZE, MAX_ICONS_THUMBNAIL_SIZE);
         preferences.chooser_column_width =
             preferences.chooser_column_width.filter(|width| *width > 0);
+        preferences.browser_column_width =
+            preferences.browser_column_width.filter(|width| *width > 0);
         preferences.chooser_list_columns = preferences
             .chooser_list_columns
-            .filter(ChooserListColumns::is_valid);
+            .filter(ListColumns::is_valid);
+        preferences.browser_list_columns = preferences
+            .browser_list_columns
+            .filter(ListColumns::is_valid);
         super::motion::set_reduce_motion(preferences.reduce_motion);
         crate::util::set_date_format(crate::util::DateFormat::parse(&preferences.date_format));
 
@@ -786,13 +796,30 @@ impl PreferenceManager {
         self.save_preferences();
     }
 
-    pub fn chooser_list_columns(&self) -> Option<ChooserListColumns> {
+    pub fn browser_column_width(&self) -> Option<i32> {
+        self.preferences.borrow().browser_column_width
+    }
+
+    pub fn set_browser_column_width(&self, width: Option<i32>) {
+        self.preferences.borrow_mut().browser_column_width = width.filter(|width| *width > 0);
+        self.save_preferences();
+    }
+
+    pub fn browser_list_columns(&self) -> Option<ListColumns> {
+        self.preferences.borrow().browser_list_columns
+    }
+
+    pub fn set_browser_list_columns(&self, columns: Option<ListColumns>) {
+        self.preferences.borrow_mut().browser_list_columns = columns.filter(ListColumns::is_valid);
+        self.save_preferences();
+    }
+
+    pub fn chooser_list_columns(&self) -> Option<ListColumns> {
         self.preferences.borrow().chooser_list_columns
     }
 
-    pub fn set_chooser_list_columns(&self, columns: Option<ChooserListColumns>) {
-        self.preferences.borrow_mut().chooser_list_columns =
-            columns.filter(ChooserListColumns::is_valid);
+    pub fn set_chooser_list_columns(&self, columns: Option<ListColumns>) {
+        self.preferences.borrow_mut().chooser_list_columns = columns.filter(ListColumns::is_valid);
         self.save_preferences();
     }
 

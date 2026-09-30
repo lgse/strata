@@ -1,29 +1,38 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
-use crate::ui::{
-    browser::PeekBehavior, browser_modes::BrowserMode, preferences::ChooserListColumns,
-};
+use crate::ui::{browser::PeekBehavior, browser_modes::BrowserMode, preferences::ListColumns};
 use acceptance::{request, wait_until};
 use std::{
     rc::Rc,
     sync::{Arc, atomic::AtomicBool},
 };
 
-fn open_chooser(root: &Path) -> Rc<ChooserState> {
-    let state = build_chooser(
-        request(root.to_path_buf()),
-        Arc::new(AtomicBool::new(false)),
-        |_| {},
-    )
-    .expect("chooser");
-    let browser = state.view.browser();
+fn open_browser(root: &Path, chooser: bool) -> gtk::Window {
+    let (window, browser) = if chooser {
+        let state = build_chooser(
+            request(root.to_path_buf()),
+            Arc::new(AtomicBool::new(false)),
+            |_| {},
+        )
+        .expect("chooser");
+        (state.window.clone(), state.view.browser())
+    } else {
+        let view = crate::ui::browser::BrowserView::new(
+            Rc::new(crate::adapters::LocalFileSource),
+            PeekBehavior::default(),
+        );
+        let window = gtk::Window::builder().child(&view.widget()).build();
+        window.present();
+        view.navigate_location(Location::local(root));
+        (window, view.browser())
+    };
     wait_until(|| {
         browser
             .column_snapshot(0)
             .is_some_and(|column| !column.loading)
     });
-    state
+    window
 }
 
 fn descendants_with_class(widget: &gtk::Widget, class: &str, found: &mut Vec<gtk::Widget>) {
@@ -43,14 +52,18 @@ fn resize_handle(cell: &gtk::Widget) -> gtk::Widget {
     handles.pop().expect("heading resize handle")
 }
 
-/// The loading skeleton renders headings too. Only real ones carry resize handles.
-fn list_heading_cells(window: &gtk::Window) -> Vec<gtk::Widget> {
+fn resizable_list_headings(window: &gtk::Window) -> Vec<gtk::Widget> {
     let mut cells = Vec::new();
     descendants_with_class(window.upcast_ref(), "list-heading-cell", &mut cells);
     cells.retain(|cell| {
         let mut handles = Vec::new();
         descendants_with_class(cell, "list-column-resize-handle", &mut handles);
         !handles.is_empty()
+    });
+    wait_until(|| {
+        cells
+            .iter()
+            .all(|cell| cell.is_mapped() && cell.width() > 0)
     });
     cells
 }
@@ -66,8 +79,7 @@ fn column_shell(window: &gtk::Window) -> gtk::Box {
         .expect("column shell")
 }
 
-/// The columns scroller also carries GTK's own drag gestures and the marquee.
-fn drag_gesture(widget: &gtk::Widget) -> gtk::GestureDrag {
+fn resize_drag(widget: &gtk::Widget) -> gtk::GestureDrag {
     let controllers = widget.observe_controllers();
     let gestures: Vec<gtk::GestureDrag> = (0..controllers.n_items())
         .filter_map(|index| {
@@ -81,7 +93,7 @@ fn drag_gesture(widget: &gtk::Widget) -> gtk::GestureDrag {
         .find(|gesture| gesture.name().as_deref() == Some("column-resize"))
         .or_else(|| (gestures.len() == 1).then(|| &gestures[0]))
         .cloned()
-        .expect("one resize drag gesture")
+        .expect("resize drag gesture")
 }
 
 fn drag(gesture: &gtk::GestureDrag, start: (f64, f64), offset: f64) {
@@ -90,149 +102,164 @@ fn drag(gesture: &gtk::GestureDrag, start: (f64, f64), offset: f64) {
     gesture.emit_by_name::<()>("drag-end", &[&offset, &0.0f64]);
 }
 
+fn resize_column(window: &gtk::Window, offset: f64) {
+    let shell = column_shell(window);
+    let scroller = shell
+        .ancestor(gtk::ScrolledWindow::static_type())
+        .expect("columns scroller");
+    wait_until(|| {
+        shell
+            .compute_bounds(&scroller)
+            .is_some_and(|bounds| bounds.width() > 0.0)
+    });
+    let bounds = shell.compute_bounds(&scroller).expect("column bounds");
+    let edge = (
+        f64::from(bounds.x() + bounds.width()) - 0.5,
+        f64::from(bounds.y()) + 4.0,
+    );
+    drag(&resize_drag(&scroller), edge, offset);
+}
+
 fn fixture_root() -> tempfile::TempDir {
     let root = tempfile::tempdir().expect("fixture");
     std::fs::write(root.path().join("report.pdf"), "report").expect("fixture file");
     root
 }
 
+fn saved_list(chooser: bool) -> ListColumns {
+    let preferences = PreferenceManager::shared();
+    if chooser {
+        preferences.chooser_list_columns()
+    } else {
+        preferences.browser_list_columns()
+    }
+    .expect("saved list columns")
+}
+
+fn saved_column(chooser: bool) -> i32 {
+    let preferences = PreferenceManager::shared();
+    if chooser {
+        preferences.chooser_column_width()
+    } else {
+        preferences.browser_column_width()
+    }
+    .expect("saved column width")
+}
+
+fn seed_settings(mode: &str) {
+    let path = crate::ui::preferences::config_directory().join("settings.toml");
+    std::fs::create_dir_all(path.parent().expect("settings directory"))
+        .expect("create settings directory");
+    std::fs::write(path, format!(
+        "browser_mode = '{mode}'\ntext_size = 26\nchooser_column_width = 420\nbrowser_column_width = 420\n\
+         [chooser_list_columns]\nmode = 100\nsize = 72\ntype = 90\nmodified = 130\n\
+         [browser_list_columns]\nmode = 100\nsize = 72\ntype = 90\nmodified = 130\n"
+    )).expect("seed saved widths before startup");
+}
+
+fn persisted_settings() -> toml::Table {
+    let path = crate::ui::preferences::config_directory().join("settings.toml");
+    toml::from_str(&std::fs::read_to_string(path).expect("persisted settings"))
+        .expect("settings table")
+}
+
 #[test]
-fn chooser_list_columns_reopen_at_the_remembered_widths() {
+fn list_resizes_persist_across_windows_without_changing_the_other_scope() {
     crate::test_support::gtk_test(
-        "ui::chooser::tests::column_widths::chooser_list_columns_reopen_at_the_remembered_widths",
+        "ui::chooser::tests::column_widths::list_resizes_persist_across_windows_without_changing_the_other_scope",
         || {
+            seed_settings("list");
             crate::ui::prepare_portal_ui();
             let preferences = PreferenceManager::shared();
-            preferences.set_browser_mode(BrowserMode::List);
-            preferences.set_chooser_list_columns(Some(ChooserListColumns {
-                name: None,
-                mode: 100,
-                size: 72,
-                kind: 90,
-                modified: 130,
-            }));
-            let scale = preferences.interface_scale();
-            let scaled = |width: i32| (f64::from(width) * scale).round() as i32;
-            let unscaled = |width: i32| (f64::from(width) / scale).round() as i32;
             let root = fixture_root();
+            for chooser in [true, false] {
+                let other = saved_list(!chooser);
+                let first = open_browser(root.path(), chooser);
+                let cells = resizable_list_headings(&first);
+                drag(&resize_drag(&resize_handle(&cells[1])), (0.0, 0.0), 80.0);
+                let after_mode = saved_list(chooser);
+                assert_eq!(after_mode.name, None);
+                assert_eq!(
+                    after_mode.mode,
+                    100 + (80.0 / preferences.interface_scale()).round() as i32
+                );
+                assert_eq!(
+                    (after_mode.size, after_mode.kind, after_mode.modified),
+                    (72, 90, 130)
+                );
+                drag(&resize_drag(&resize_handle(&cells[0])), (0.0, 0.0), 120.0);
+                let saved = saved_list(chooser);
+                assert!(saved.name.is_some_and(|width| width > 0));
+                assert_eq!(saved_list(!chooser), other);
+                let key = if chooser {
+                    "chooser_list_columns"
+                } else {
+                    "browser_list_columns"
+                };
+                assert_eq!(
+                    persisted_settings()[key]["mode"].as_integer(),
+                    Some(i64::from(saved.mode))
+                );
+                first.close();
 
-            let first = open_chooser(root.path());
-            let cells = list_heading_cells(&first.window);
-            assert_eq!(cells.len(), 5);
-            assert!(cells[0].hexpands(), "Name expands until it is resized");
-            assert_eq!(cells[1].width_request(), scaled(100));
-            assert_eq!(cells[2].width_request(), scaled(72));
-            assert_eq!(cells[4].width_request(), scaled(130));
-
-            let mode_before = cells[1].width_request();
-            drag(&drag_gesture(&resize_handle(&cells[1])), (0.0, 0.0), 40.0);
-            let mode_after = cells[1].width_request();
-            assert!(mode_after > mode_before, "Mode grows with the drag");
-            drag(&drag_gesture(&resize_handle(&cells[0])), (0.0, 0.0), 120.0);
-            assert!(
-                !cells[0].hexpands(),
-                "a resized Name column stops expanding"
-            );
-            let name_after = cells[0].width_request();
-
-            let saved = preferences
-                .chooser_list_columns()
-                .expect("resizing saves the list columns");
-            assert_eq!(saved.name, Some(unscaled(name_after)));
-            assert_eq!(saved.mode, unscaled(mode_after));
-            assert_eq!(
-                (saved.size, saved.kind, saved.modified),
-                (72, 90, 130),
-                "untouched columns keep their saved widths"
-            );
-            first.window.close();
-
-            let second = open_chooser(root.path());
-            let reopened = list_heading_cells(&second.window);
-            assert_eq!(reopened.len(), 5);
-            assert!(!reopened[0].hexpands());
-            assert_eq!(
-                reopened[0].width_request(),
-                scaled(saved.name.expect("name"))
-            );
-            assert_eq!(reopened[1].width_request(), scaled(saved.mode));
-            assert_eq!(reopened[2].width_request(), scaled(72));
-            second.window.close();
-
-            let interactive = crate::ui::browser::BrowserView::new(
-                Rc::new(crate::adapters::LocalFileSource),
-                PeekBehavior::default(),
-            );
-            interactive.set_view_mode(BrowserMode::List);
-            let window = gtk::Window::builder().child(&interactive.widget()).build();
-            window.present();
-            interactive.navigate_location(Location::local(root.path()));
-            let browser = interactive.browser();
-            wait_until(|| {
-                browser
-                    .column_snapshot(0)
-                    .is_some_and(|column| !column.loading)
-            });
-            let cells = list_heading_cells(&window);
-            assert_eq!(cells.len(), 5);
-            assert_eq!(
-                cells[1].width_request(),
-                scaled(160),
-                "interactive panes start from the built-in widths"
-            );
-            drag(&drag_gesture(&resize_handle(&cells[1])), (0.0, 0.0), 40.0);
-            assert_eq!(
-                preferences.chooser_list_columns(),
-                Some(saved),
-                "interactive resizes do not change the chooser widths"
-            );
-            window.close();
+                preferences.set_text_size(crate::ui::preferences::TextSize::new(13));
+                let second = open_browser(root.path(), chooser);
+                preferences.set_browser_mode(BrowserMode::Icons);
+                preferences.set_browser_mode(BrowserMode::List);
+                let cells = resizable_list_headings(&second);
+                drag(&resize_drag(&resize_handle(&cells[1])), (0.0, 0.0), 40.0);
+                let reopened = saved_list(chooser);
+                assert_eq!(
+                    reopened.mode,
+                    saved.mode + (40.0 / preferences.interface_scale()).round() as i32
+                );
+                assert_eq!(reopened.name, saved.name);
+                assert_eq!(saved_list(!chooser), other);
+                second.close();
+                preferences.set_text_size(crate::ui::preferences::TextSize::new(26));
+            }
         },
     );
 }
 
 #[test]
-fn chooser_columns_reopen_at_the_remembered_width() {
+fn miller_resizes_persist_across_windows_without_changing_the_other_scope() {
     crate::test_support::gtk_test(
-        "ui::chooser::tests::column_widths::chooser_columns_reopen_at_the_remembered_width",
+        "ui::chooser::tests::column_widths::miller_resizes_persist_across_windows_without_changing_the_other_scope",
         || {
+            seed_settings("columns");
             crate::ui::prepare_portal_ui();
             let preferences = PreferenceManager::shared();
-            preferences.set_browser_mode(BrowserMode::Columns);
-            preferences.set_chooser_column_width(Some(420));
-            let scale = preferences.interface_scale();
-            let scaled = |width: i32| (f64::from(width) * scale).round() as i32;
-            let unscaled = |width: i32| (f64::from(width) / scale).round() as i32;
             let root = fixture_root();
+            for chooser in [true, false] {
+                let other = saved_column(!chooser);
+                let first = open_browser(root.path(), chooser);
+                resize_column(&first, 200.0);
+                let saved = saved_column(chooser);
+                assert!(saved > 420, "resize saves an unscaled width");
+                assert_eq!(saved_column(!chooser), other);
+                let key = if chooser {
+                    "chooser_column_width"
+                } else {
+                    "browser_column_width"
+                };
+                assert_eq!(
+                    persisted_settings()[key].as_integer(),
+                    Some(i64::from(saved))
+                );
+                first.close();
 
-            let first = open_chooser(root.path());
-            let shell = column_shell(&first.window);
-            assert_eq!(shell.width_request(), scaled(420));
-            let scroller = shell
-                .ancestor(gtk::ScrolledWindow::static_type())
-                .expect("columns scroller");
-            wait_until(|| {
-                shell
-                    .compute_bounds(&scroller)
-                    .is_some_and(|bounds| bounds.width() > 0.0)
-            });
-            let bounds = shell.compute_bounds(&scroller).expect("column bounds");
-            let edge = (
-                f64::from(bounds.x() + bounds.width()) - 0.5,
-                f64::from(bounds.y()) + 4.0,
-            );
-            let start = shell.width().max(crate::ui::browser::COLUMN_WIDTH);
-            drag(&drag_gesture(&scroller), edge, 100.0);
-            assert_eq!(shell.width_request(), start + 100);
-            let saved = preferences
-                .chooser_column_width()
-                .expect("resizing saves the column width");
-            assert_eq!(saved, unscaled(start + 100));
-            first.window.close();
-
-            let second = open_chooser(root.path());
-            assert_eq!(column_shell(&second.window).width_request(), scaled(saved));
-            second.window.close();
+                preferences.set_text_size(crate::ui::preferences::TextSize::new(13));
+                let second = open_browser(root.path(), chooser);
+                resize_column(&second, 100.0);
+                assert!(
+                    saved_column(chooser) > saved,
+                    "the next resize starts from the restored default"
+                );
+                assert_eq!(saved_column(!chooser), other);
+                second.close();
+                preferences.set_text_size(crate::ui::preferences::TextSize::new(26));
+            }
         },
     );
 }

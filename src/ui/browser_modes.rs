@@ -43,16 +43,18 @@ struct ListColumnLayout {
     cells: Rc<Vec<RefCell<Vec<glib::WeakRef<gtk::Widget>>>>>,
     name_manually_resized: Rc<Cell<bool>>,
     scale: Rc<Cell<f64>>,
-    remembered: bool,
+    chooser: bool,
 }
 
 impl ListColumnLayout {
-    /// Chooser panes start from the widths saved by the last chooser resize.
     fn new(browser: &Browser) -> Self {
-        let remembered = browser.is_chooser_mode();
-        let saved = remembered
-            .then(|| super::preferences::PreferenceManager::shared().chooser_list_columns())
-            .flatten();
+        let chooser = browser.is_chooser_mode();
+        let preferences = super::preferences::PreferenceManager::shared();
+        let saved = if chooser {
+            preferences.chooser_list_columns()
+        } else {
+            preferences.browser_list_columns()
+        };
         let widths = saved.map_or(LIST_COLUMN_WIDTHS, |saved| {
             let mut widths = [
                 saved.name.unwrap_or(LIST_COLUMN_WIDTHS[0]),
@@ -73,25 +75,26 @@ impl ListColumnLayout {
                 saved.is_some_and(|saved| saved.name.is_some()),
             )),
             scale: Rc::new(Cell::new(1.0)),
-            remembered,
+            chooser,
         }
     }
 
     fn remember(&self) {
-        if !self.remembered {
-            return;
-        }
         let scale = self.scale.get();
         let unscaled = |index: usize| (f64::from(self.widths[index].get()) / scale).round() as i32;
-        super::preferences::PreferenceManager::shared().set_chooser_list_columns(Some(
-            super::preferences::ChooserListColumns {
-                name: self.name_manually_resized.get().then(|| unscaled(0)),
-                mode: unscaled(1),
-                size: unscaled(2),
-                kind: unscaled(3),
-                modified: unscaled(4),
-            },
-        ));
+        let saved = Some(super::preferences::ListColumns {
+            name: self.name_manually_resized.get().then(|| unscaled(0)),
+            mode: unscaled(1),
+            size: unscaled(2),
+            kind: unscaled(3),
+            modified: unscaled(4),
+        });
+        let preferences = super::preferences::PreferenceManager::shared();
+        if self.chooser {
+            preferences.set_chooser_list_columns(saved);
+        } else {
+            preferences.set_browser_list_columns(saved);
+        }
     }
 }
 

@@ -147,7 +147,7 @@ pub(super) fn install_resize_edges(state: &Rc<ViewState>) {
                 .map(|column| max_child_natural_width(&column))
                 .unwrap_or(COLUMN_WIDTH);
             shell.set_size_request(max_natural.max(COLUMN_WIDTH), -1);
-            remember_chooser_column_width(&state, &shell);
+            remember_column_width(&state, &shell);
             gesture.set_state(gtk::EventSequenceState::Claimed);
             return;
         }
@@ -179,7 +179,7 @@ pub(super) fn install_resize_edges(state: &Rc<ViewState>) {
         if let Some(state) = weak_for_end.upgrade() {
             state.column_resizing.set(false);
             if let Some((shell, _, _)) = resized {
-                remember_chooser_column_width(&state, &shell);
+                remember_column_width(&state, &shell);
             }
         }
     });
@@ -602,23 +602,25 @@ fn animate_column_entry(column: &gtk::Box, generation: &Rc<Cell<u64>>) {
     });
 }
 
-// Choosers are rebuilt per request, so a chooser resize becomes the default for later chooser columns.
-fn remember_chooser_column_width(state: &ViewState, shell: &gtk::Box) {
-    if !state.browser.is_chooser_mode() {
-        return;
-    }
+fn remember_column_width(state: &ViewState, shell: &gtk::Box) {
     let preferences = crate::ui::preferences::PreferenceManager::shared();
     let width = (f64::from(shell.width_request()) / preferences.interface_scale()).round() as i32;
-    preferences.set_chooser_column_width(Some(width.max(COLUMN_WIDTH)));
+    let width = Some(width.max(COLUMN_WIDTH));
+    if state.browser.is_chooser_mode() {
+        preferences.set_chooser_column_width(width);
+    } else {
+        preferences.set_browser_column_width(width);
+    }
 }
 
 fn initial_column_width(state: &ViewState) -> i32 {
-    if !state.browser.is_chooser_mode() {
-        return COLUMN_WIDTH;
-    }
-    crate::ui::preferences::PreferenceManager::shared()
-        .chooser_column_width()
-        .map_or(COLUMN_WIDTH, |width| width.max(COLUMN_WIDTH))
+    let preferences = crate::ui::preferences::PreferenceManager::shared();
+    let saved = if state.browser.is_chooser_mode() {
+        preferences.chooser_column_width()
+    } else {
+        preferences.browser_column_width()
+    };
+    saved.map_or(COLUMN_WIDTH, |width| width.max(COLUMN_WIDTH))
 }
 
 fn resized_column_width(initial_width: i32, horizontal_offset: f64) -> i32 {
