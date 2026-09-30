@@ -1160,6 +1160,7 @@ impl ViewState {
             return;
         };
         if self.browser.child_mirror_suppressed()
+            || self.browser.visual_kind().is_some()
             || !self.columns_mirror_selection.get()
             || self.active_rename.borrow().is_some()
             || self.pending_new_entry.borrow().is_some()
@@ -1186,8 +1187,10 @@ impl ViewState {
             .borrow()
             .get(depth)
             .is_some_and(|column| column.map.has_query());
+        // Opening or closing the child column would end a 10xer range.
         if filtered
             || self.browser.child_mirror_suppressed()
+            || self.browser.visual_kind().is_some()
             || !self.columns_mirror_selection.get()
             || self.active_rename.borrow().is_some()
             || self.pending_new_entry.borrow().is_some()

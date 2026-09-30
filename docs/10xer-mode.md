@@ -75,7 +75,8 @@ applies to the cursor: shortly after **j** / **k** / arrows land on a directory,
 its contents open in the next Miller column without moving focus. On a file the
 child column closes, and a previewable file opens the preview drawer when
 **Single-click previews** is also on; focus stays in the listing. With mirroring
-off, cursor keys only move the cursor. In List and Icons, cursor keys never open
+off, cursor keys only move the cursor. While a **v** / **V** range is active,
+mirroring waits, so walking the range never opens or closes a column. In List and Icons, cursor keys never open
 a child column or a preview. **l** / **→** enters a directory or a file preview.
 In Columns, **i** on a directory opens the next column and leaves focus where it
 is, even with mirroring off. A second press does not move focus. In List and Icons, **i** toggles
