@@ -1,19 +1,23 @@
 // SPDX-License-Identifier: MIT
 
-use std::{path::PathBuf, rc::Rc};
+use std::{
+    path::{Path, PathBuf},
+    rc::Rc,
+};
 
 use gtk::{glib, prelude::*};
 
 use super::{
-    BrowserView,
+    BrowserView, PinStatus,
     clipboard::{self, copy_locations, copy_names},
     desktop::{can_open_terminal, launch_terminal},
-    paths::is_trash_location,
+    destination::resolve_destination_path,
+    paths::{can_remove_location, is_trash_item, is_trash_location},
 };
 use crate::{
     adapters::gio_file_for_location,
     model::{FileEntry, Location, SortDirection, SortKey},
-    services::{ActionHandle, InvocationSource},
+    services::{ActionHandle, ArchiveFormat, InvocationSource},
 };
 
 pub(crate) use super::transfer::ConflictFocus;
@@ -36,6 +40,25 @@ pub(crate) struct NumberedActions {
 pub(super) enum KeyboardRefocus {
     Sort(usize),
     Rename(crate::services::OperationRequestId),
+}
+
+/// What **g +** / **g -** did to the folder they chose, named by its display name.
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) enum PinChange {
+    Pinned(Location, String),
+    Unpinned(String),
+    AlreadyPinned(String),
+    NotPinned(String),
+    /// Standard places and Trash already have their own sidebar rows.
+    Refused(String),
+    Nothing,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum TargetCommand {
+    Nothing,
+    Refused,
+    Started,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -370,5 +393,191 @@ impl BrowserView {
                 }),
             );
         }))
+    }
+}
+
+impl BrowserView {
+    /// The folder under the cursor, or the focused pane's own folder when the
+    /// cursor is on a file or the pane is empty.
+    fn keyboard_pin_folder(&self) -> Option<(Location, String)> {
+        if let Some(entry) = self.focused_target().filter(FileEntry::is_directory) {
+            return Some((entry.location, entry.display_name));
+        }
+        let location = self
+            .focused_listing_depth()
+            .and_then(|depth| self.state.browser.location_at(depth))?;
+        let name = location.display_name();
+        Some((location, name))
+    }
+
+    pub fn change_keyboard_pin(&self, pin: bool) -> PinChange {
+        let Some((location, name)) = self.keyboard_pin_folder() else {
+            return PinChange::Nothing;
+        };
+        let status = if is_trash_location(&location) {
+            PinStatus::Unavailable
+        } else {
+            self.state
+                .pin_status_handler
+                .borrow()
+                .as_ref()
+                .map_or(PinStatus::Unavailable, |handler| handler(&location))
+        };
+        match (pin, status) {
+            (true, PinStatus::Available) => {
+                let handler = self.state.pin_handler.borrow().clone();
+                let Some(handler) = handler else {
+                    return PinChange::Refused(name);
+                };
+                handler(location.clone(), name.clone());
+                PinChange::Pinned(location, name)
+            }
+            (true, PinStatus::Pinned) => PinChange::AlreadyPinned(name),
+            (true, PinStatus::Unavailable) => PinChange::Refused(name),
+            (false, PinStatus::Pinned) => {
+                let handler = self.state.unpin_handler.borrow().clone();
+                let Some(handler) = handler else {
+                    return PinChange::NotPinned(name);
+                };
+                handler(&location);
+                PinChange::Unpinned(name)
+            }
+            (false, _) => PinChange::NotPinned(name),
+        }
+    }
+
+    /// Resolves a typed destination like the move/copy dialog does: absolute,
+    /// `~`-relative, or relative to the open local folder. `Err` is the reason
+    /// to show beside the prompt.
+    pub fn typed_destination_folder(&self, text: &str) -> Result<PathBuf, &'static str> {
+        let text = text.trim();
+        if crate::ui::go_completion::looks_like_uri(text) {
+            return Err("Only local folders can be chosen");
+        }
+        if text.starts_with('~') && text != "~" && !text.starts_with("~/") {
+            return Err("Only ~ and ~/ are supported");
+        }
+        let home = glib::home_dir();
+        let base = self
+            .state
+            .browser
+            .active_location()
+            .and_then(|location| location.native_path().map(Path::to_path_buf));
+        let relative = !text.starts_with('~') && Path::new(text).is_relative();
+        let base = match base {
+            Some(base) => base,
+            None if relative => return Err("Type a full path here"),
+            None => home.clone(),
+        };
+        let path = resolve_destination_path(text, &base, &home);
+        match std::fs::metadata(&path) {
+            Ok(metadata) if metadata.is_dir() => Ok(path),
+            Ok(_) => Err("Not a folder"),
+            Err(_) => Err("No such folder"),
+        }
+    }
+
+    /// The fill, or the focused item, for **M** / **C**, fixed when the prompt opens.
+    pub fn transfer_targets(&self, moving: bool) -> Result<Vec<FileEntry>, &'static str> {
+        let entries = self.command_targets();
+        if entries.is_empty() {
+            return Err(if moving {
+                "Nothing to move"
+            } else {
+                "Nothing to copy"
+            });
+        }
+        if moving
+            && !entries
+                .iter()
+                .all(|entry| can_remove_location(&entry.location))
+        {
+            return Err("Can\u{2019}t move these items");
+        }
+        Ok(entries)
+    }
+
+    /// Moves or copies `entries` into the typed folder and stays in the current
+    /// one. Conflicts ask as a paste does, with Keep Both focused when offered.
+    pub fn transfer_to_typed(
+        &self,
+        entries: Vec<FileEntry>,
+        text: &str,
+        moving: bool,
+    ) -> Result<(), &'static str> {
+        let destination = self.typed_destination_folder(text)?;
+        if entries.iter().any(|entry| {
+            entry.is_directory()
+                && entry
+                    .location
+                    .native_path()
+                    .is_some_and(|source| destination.starts_with(source))
+        }) {
+            return Err("Can\u{2019}t put a folder inside itself");
+        }
+        self.state.start_transfer_in_place(
+            Location::local(destination),
+            entries.into_iter().map(|entry| entry.location).collect(),
+            moving,
+        );
+        Ok(())
+    }
+
+    /// Restores the fill, or the focused item, after the usual confirmation.
+    pub fn restore_targets(&self) -> TargetCommand {
+        let entries = self.command_targets();
+        if entries.is_empty() {
+            return TargetCommand::Nothing;
+        }
+        if !entries.iter().all(|entry| is_trash_item(&entry.location)) {
+            return TargetCommand::Refused;
+        }
+        self.state.request_restore(entries);
+        TargetCommand::Started
+    }
+
+    pub fn compress_targets(&self) -> TargetCommand {
+        let entries = self.command_targets();
+        if entries.is_empty() {
+            return TargetCommand::Nothing;
+        }
+        if entries
+            .iter()
+            .any(|entry| entry.location.native_path().is_none())
+        {
+            return TargetCommand::Refused;
+        }
+        self.state.show_compress_dialog(entries);
+        TargetCommand::Started
+    }
+
+    /// The one archive the fill, or the focused item, names. `Err` explains why
+    /// there is none.
+    pub fn extract_target(&self) -> Result<FileEntry, &'static str> {
+        let mut entries = self.command_targets();
+        let entry = match entries.len() {
+            0 => return Err("Nothing to extract"),
+            1 => entries.remove(0),
+            _ => return Err("Extract one archive at a time"),
+        };
+        if entry.is_directory()
+            || entry.location.native_path().is_none()
+            || ArchiveFormat::from_extension(&entry.display_name).is_none()
+        {
+            return Err("Not an archive");
+        }
+        Ok(entry)
+    }
+
+    pub fn extract_here(&self, entry: FileEntry) {
+        self.state.extract_entry(entry);
+    }
+
+    /// Extracts into the typed folder and stays in the current one.
+    pub fn extract_to_typed(&self, entry: FileEntry, text: &str) -> Result<(), &'static str> {
+        let destination = self.typed_destination_folder(text)?;
+        self.state
+            .extract_entry_to(entry, Location::local(destination));
+        Ok(())
     }
 }

@@ -111,13 +111,14 @@ behind the drawer.
 Listing commands no surface uses hand the keys back to the listing, with the
 drawer still open, and run there on the previewed item:
 
-- Folders: **Backspace**, **H** / **L**, **Alt+←** / **→** / **↑**, **g** places,
-  **z** / **Z**. In a document or archive **g g** still goes to the top; every
+- Folders: **Backspace**, **H** / **L**, **Alt+←** / **→** / **↑**, **g** places
+  and **g +** / **g -**, **z** / **Z**. In a document or archive **g g** still goes to the top; every
   other **g** chord runs from the listing.
 - Prompts: **/**, **?**, **n** / **N**, **f**, **s**.
 - Files: **o** / **Enter** (except where the surface uses **Enter**), **y**,
   **x**, **p** / **P**, **Y** / **X**, **d** / **D** / **Delete**, **a**,
-  **r** / **F2**, **c**, **,**, **.**, **;**, **O**, **Ctrl+C** / **X** / **V**
+  **r** / **F2**, **c**, **,**, **.**, **;**, **O**, **M** / **C**, **R**,
+  **Ctrl+C** / **X** / **V**
   (a document keeps **Ctrl+C**), **Ctrl+Shift+N**, **Alt+Enter**, and
   **Menu** / **Shift+F10**.
 
@@ -253,14 +254,18 @@ cursor or **v** then motion → **y** / **x** → **h** / **l** / **g h** / **g 
 | **p** | Paste. Keep Both is focused on conflicts when that button is offered; otherwise Replace is. |
 | **P** | Paste. Replace is focused on conflicts. **Ctrl+V** does the same. |
 | **Y** / **X** | Clear copy/cut marks and this process's clipboard payload. Does not wipe another application's clipboard. |
-| **d** / **Delete** | Move to Trash with confirmation |
+| **d** / **Delete** | Move to Trash with confirmation; **d d** confirms |
 | **D** / **Shift+Delete** | Delete permanently with confirmation. Cancel is focused. |
 | **r** / **F2** | Rename the focused item in the footer prompt |
 | **a** | Create a file. A trailing `/` makes a folder (stripped before validation). Conflicts error instead of uniquifying. |
 | **o** / **O** | Open / Open With |
+| **M** / **C** | Move / copy the selection (or the focused item) to a folder typed in the footer |
+| **R** | Restore the selection (or the focused item) from Trash, with confirmation |
 | **c c** / **c n** | Copy path / name |
 | **; 1**–**; 9** / **; 0** | Run the first 10 matching custom actions |
 | **; t** | Open a terminal in the keyboard-focused folder |
+| **; c** | Compress the selection (or the focused item) |
+| **; e** / **; E** | Extract the archive here / to a folder typed in the footer |
 | **.** / **Ctrl+H** / **Ctrl+.** | Show or hide hidden files |
 | **, a** / **, m** / **, s** / **, e** | Sort by name / modified / size / type. Shift reverses. |
 | **Ctrl+Z** | Undo the last file operation |
@@ -278,10 +283,41 @@ neither runs anything. A confirming action asks first, and a run shows in Jobs
 like one started from the context menu. See [custom actions](custom-actions.md).
 
 **; t** opens a terminal in the keyboard-focused folder, the pane holding the
-cursor, whatever the cursor or selection is on; the panel lists it after the
-actions. In Trash and other non-local places it flashes
+cursor, whatever the cursor or selection is on. The panel lists it, then
+**; c**, **; e**, and **; E**, after the actions. In Trash and other non-local places it flashes
 `Can’t open a terminal here`. **Ctrl+T** keeps its own rule and prefers a
 single selected folder.
+
+**; c** opens the Compress dialog for the fill, or the cursor item when nothing
+is filled; items without a local path flash `Can’t compress these items`.
+**; e** extracts one archive into its own folder, as the context menu's
+**Extract here** does, and selects the result. **; E** opens `extract to ›` for
+that archive. Both take the one-item fill or the cursor item: a larger fill
+flashes `Extract one archive at a time`, and anything that is not a local
+archive flashes `Not an archive`. Empty folders flash `Nothing to compress` /
+`Nothing to extract`.
+
+**M** (`move to ›`) and **C** (`copy to ›`) fix the fill, or the cursor item
+when nothing is filled, when the prompt opens; **Up** / **Down** do not move the
+cursor away from them. Type a path as in **g Space**: absolute, starting with
+`~` or `~/`, or relative to the open local folder. **Tab** / **Shift+Tab** cycle
+matching folders the same way. **Enter** moves or copies into that folder and
+keeps you in the current one; a moved cursor item hands the cursor to its
+neighbor, as **d** does. Conflicts ask as **p** does, with Keep Both focused
+when it is offered. The destination must be an existing local folder: a missing
+path (`No such folder`), a file (`Not a folder`), a URI (`Only local folders can
+be chosen`), `~name` (`Only ~ and ~/ are supported`), or a folder inside one of
+the moved or copied folders (`Can’t put a folder inside itself`) keeps the prompt
+open with the reason. Empty **Enter** closes the prompt. **Esc**, focus leaving
+the prompt, another prompt, leaving the mode, or closing the window discard it.
+Items that cannot be moved flash `Can’t move these items`; an empty folder
+flashes `Nothing to move` / `Nothing to copy`. **; E**'s `extract to ›` follows
+the same rules and also stays in the current folder.
+
+**R** restores the fill, or the cursor item, from Trash through the same
+confirmation as the context menu's **Restore**. Outside Trash it flashes
+`Only items in Trash can be restored`; an empty Trash flashes
+`Nothing to restore`.
 
 **, a** / **, m** / **, s** / **, e** sort the focused pane by name, modified
 time, size, or type, ascending; with Shift (**, A** / **M** / **S** / **E**)
@@ -308,8 +344,9 @@ button does not choose it: nothing changes until you accept, and Cancel or
 **Esc** leaves both items untouched. Keep Both is offered only for copies.
 
 **d** / **Delete** show a **Move to Trash?** confirmation with its confirm button
-focused. **D** / **Shift+Delete**, and **d** inside Trash, show the permanent
-deletion confirmation with Cancel focused, so **Enter** cancels. Errors appear in
+focused; pressing **d** again confirms it, so **d d** trashes. **D** / **Shift+Delete**, and **d** inside Trash, show the permanent
+deletion confirmation with Cancel focused, so **Enter** cancels, and **d**
+there does nothing. Errors appear in
 the usual operation dialogs, and **Ctrl+Z** undoes what the default map can undo.
 
 **a** opens `create ›` in the footer. **Enter** creates an empty file with exactly
@@ -381,10 +418,18 @@ actions) while armed. The second key completes only that chord: **, a** /
 | **p** | Pictures. Missing: `No Pictures folder`. |
 | **v** | Videos. Missing: `No Videos folder`. |
 | **1**–**9** | Visible PINNED rows in sidebar order. Missing: `No pin N`. |
+| **+** / **-** | Pin / unpin the folder under the cursor, or the focused pane's folder when the cursor is on a file or the pane is empty |
 | **Space** | Footer `go ›` — type a path or URI. **Tab** / **Shift+Tab** cycle matching folders. |
 | **Esc** | Cancel |
 
 An unknown second key cancels with `Unknown chord`.
+
+**g +** (also keypad **+**) adds the folder to PINNED and reports its **g**
+digit when it is among the first nine visible pins, for example
+`Pinned “Projects” as g 3`. **g -** (also keypad **-**) removes it. A folder
+already pinned flashes `“Projects” is already pinned`; unpinning one that is not
+pinned flashes `“Projects” isn’t pinned`. Home, the standard folders, Trash, and
+other places with their own sidebar rows flash `Can’t pin “…”`.
 
 **g Space** opens **go ›** in the footer instead of toggling the selection.
 Typing never navigates; **Enter** submits through the same navigation as the
@@ -438,7 +483,9 @@ listing row closes the prompt and keeps that selection.
 | **Z** | Jump to a recently visited folder (last visit first) |
 | **a** | Create |
 | **r** | Rename |
-| **Tab** / **Shift+Tab** | Cycle matching folders in the go prompt |
+| **M** / **C** | Move / copy to a typed folder (`move to ›` / `copy to ›`) |
+| **; E** | Extract the archive to a typed folder (`extract to ›`) |
+| **Tab** / **Shift+Tab** | Cycle matching folders in the go, move, copy, and extract prompts |
 
 **/** is a cursor jump; **f** hides non-matches. The prompt covers the footer and
 stays focused while you type. Matching is a case-insensitive substring of the
@@ -569,7 +616,7 @@ allow is refused when it is pressed, not only hidden:
 | **Space**, **v** / **V**, **Ctrl+A**, **Ctrl+R** | Multiple-file requests only. Otherwise `Only one item can be chosen`. |
 | **a**, **r** / **F2**, **d** / **D** / **Delete**, **,** sorts, **.**, **c c** / **c n** | As in a window, except **r** / **F2** in a Save request. |
 | **g** places, **g Space**, **z** / **Z** | Local folders and Recent only. Trash, Network, and remote pins flash `Only local folders can be opened here`; a typed remote location shows the unsupported-location error. |
-| **y**, **x**, **p** / **P**, **Y** / **X**, **Ctrl+C** / **Ctrl+X** / **Ctrl+V**, **O**, **;**, **i**, **Q** | `Not available in the file chooser`. The chooser does not copy or move files, open them with an application, run custom actions, peek folders, or open an extra Miller column, and only **Esc** or Cancel ends the request. |
+| **y**, **x**, **p** / **P**, **Y** / **X**, **M** / **C**, **R**, **g +** / **g -**, **Ctrl+C** / **Ctrl+X** / **Ctrl+V**, **O**, **;**, **i**, **Q** | `Not available in the file chooser`. The chooser does not copy, move, or restore files, change pins, open them with an application, run custom actions, peek folders, or open an extra Miller column, and only **Esc** or Cancel ends the request. |
 | **Ctrl+K**, **Ctrl+Shift+K**, **Ctrl+,**, **Ctrl+Z** | Unbound. |
 
 The request takes the fill, or the cursor item when nothing is filled; the
@@ -602,8 +649,8 @@ These GUI conventions stay available alongside the Yazi verbs:
 | **Ctrl++** / **Ctrl+−** / **Ctrl+0** | Text size |
 
 Context-menu shortcut hints follow this map (**x** cut, **y** yank, **p** paste,
-**d** / **D** trash / delete, **r** rename, **i** quick preview, next column, or
-folder peek). The file chooser has no **i** preview, so its Quick preview item
+**d** / **D** trash / delete, **r** rename, **M** / **C** move / copy to, **R**
+restore, **i** quick preview, next column, or folder peek). The file chooser has no **i** preview, so its Quick preview item
 shows no hint. Default-map hints that are unbound or remapped (**Y** for copy path, **Space** for preview,
 **Ctrl+R** for rename) are hidden. Copy path is **c c**; Properties is
 **Alt+Enter**.
@@ -621,5 +668,5 @@ These default-map shortcuts are unbound or remapped while the mode is on:
 | **Ctrl+F** | Full page down. Filter is **f**. |
 | **Ctrl+B** | Full page up. Sidebar toggle is **Ctrl+N**. |
 | **Ctrl+R** | Invert selection. Rename is **r** / **F2**. |
-| **y** / **p** (default map) | Yank / paste. Path copy is **c c**; jump to an existing pin with **g** then a digit. |
+| **y** / **p** (default map) | Yank / paste. Path copy is **c c**; pin with **g +** and jump to a pin with **g** then a digit. |
 | **Space** | Toggle selection. In List and Columns, preview is **l** / **→**. |

@@ -29,6 +29,9 @@ pub(in crate::ui::window) enum GoTarget {
     /// The folder holding the search hit under the cursor.
     HitFolder,
     Prompt,
+    /// **g +** pins and **g -** unpins the folder under the cursor, or the
+    /// focused pane's folder.
+    Pin(bool),
     /// `validate` routes URI places through mount-aware validation.
     Place {
         location: Location,
@@ -45,6 +48,8 @@ pub(in crate::ui::window) fn go_target(key: Key, pins: &[Location]) -> Option<Go
         Key::g => Some(GoTarget::FirstItem),
         Key::f => Some(GoTarget::HitFolder),
         Key::space | Key::KP_Space => Some(GoTarget::Prompt),
+        Key::plus | Key::KP_Add => Some(GoTarget::Pin(true)),
+        Key::minus | Key::KP_Subtract => Some(GoTarget::Pin(false)),
         Key::h => place(Location::local(home_directory()), false),
         Key::c => config_folder(),
         Key::t => place(Location::uri("trash:///"), false),
@@ -129,9 +134,10 @@ impl Dispatcher {
         if key == Key::Escape && mods.is_empty() {
             return Some(Propagation::Stop);
         }
+        // Shift types **+** on many layouts and picks **; E** and reversed sorts.
         let completed = match chord {
-            Chord::Sort => (mods - Modifiers::SHIFT_MASK).is_empty() && self.complete_sort(key),
-            _ if !mods.is_empty() => false,
+            _ if !(mods - Modifiers::SHIFT_MASK).is_empty() => false,
+            Chord::Sort => self.complete_sort(key),
             Chord::Go => self.complete_go(browser, key),
             Chord::PreviewTop if key == Key::g => self.preview_to_top(),
             Chord::PreviewTop => {
@@ -163,6 +169,11 @@ impl Dispatcher {
             GoTarget::Prompt => {
                 self.shortcuts.open_prompt(Prompt::Go);
             }
+            GoTarget::Pin(_) if self.chooser.is_some() => {
+                self.shortcuts
+                    .show_feedback(super::chooser::UNAVAILABLE);
+            }
+            GoTarget::Pin(pin) => self.change_pin(pin),
             GoTarget::Place { location, .. } if self.refuse_remote_place(&location) => {}
             GoTarget::Place { location, validate } => {
                 self.view.keyboard_navigation();
@@ -175,5 +186,35 @@ impl Dispatcher {
             GoTarget::Missing(message) => self.shortcuts.show_feedback(&message),
         }
         true
+    }
+}
+
+impl Dispatcher {
+    fn change_pin(&self, pin: bool) {
+        use crate::ui::browser::PinChange;
+        let feedback = match self.view.change_keyboard_pin(pin) {
+            PinChange::Pinned(location, name) => {
+                match self
+                    .sidebar
+                    .state
+                    .visible_pins()
+                    .iter()
+                    .position(|pinned| *pinned == location)
+                    .filter(|index| *index < 9)
+                {
+                    Some(index) => format!("Pinned \u{201c}{name}\u{201d} as g {}", index + 1),
+                    None => format!("Pinned \u{201c}{name}\u{201d}"),
+                }
+            }
+            PinChange::Unpinned(name) => format!("Unpinned \u{201c}{name}\u{201d}"),
+            PinChange::AlreadyPinned(name) => {
+                format!("\u{201c}{name}\u{201d} is already pinned")
+            }
+            PinChange::NotPinned(name) => format!("\u{201c}{name}\u{201d} isn\u{2019}t pinned"),
+            PinChange::Refused(name) => format!("Can\u{2019}t pin \u{201c}{name}\u{201d}"),
+            PinChange::Nothing if pin => "Nothing to pin".to_owned(),
+            PinChange::Nothing => "Nothing to unpin".to_owned(),
+        };
+        self.shortcuts.show_feedback(&feedback);
     }
 }

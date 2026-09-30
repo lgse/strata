@@ -138,8 +138,8 @@ separate order described in [Escape precedence](10xer-mode.md#escape-precedence)
 The F1 / `~` popover and **Settings → Keybindings** share the active map's
 presentation data and live-update when the mode changes. Default F1 navigation
 is specific to the current view; Settings includes the all-view overview.
-Context-menu hints use `x`, `y`, `p`, `d` / `D`, `r`, and `i` only when those
-commands perform the action. `i` toggles a file's preview without taking focus, or is the next column or folder peek for a directory.
+Context-menu hints use `x`, `y`, `p`, `d` / `D`, `r`, `i`, and `M` / `C` / `R`
+(Move to, Copy to, Restore) only when those commands perform the action. `i` toggles a file's preview without taking focus, or is the next column or folder peek for a directory.
 Until those verbs run, the menu keeps the shortcuts that still work and hides
 the unbound defaults (`Y` for copy path, `Space` for preview, and `Ctrl+R` for
 rename). Planned commands are not shown as working.

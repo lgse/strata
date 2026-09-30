@@ -828,7 +828,11 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         ContextHint::Preview,
     );
     let print = item_context_option(crate::assets::icons::PRINTER, "Print", ContextHint::None);
-    let restore = item_context_option(crate::assets::icons::UNDO_2, "Restore", ContextHint::None);
+    let restore = item_context_option(
+        crate::assets::icons::UNDO_2,
+        "Restore",
+        ContextHint::Restore,
+    );
     restore.set_visible(in_trash);
     let pin = item_context_option(
         crate::assets::icons::PIN,
@@ -854,12 +858,12 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     let move_to = item_context_option(
         crate::assets::icons::FOLDER_INPUT,
         "Move to…",
-        ContextHint::None,
+        ContextHint::MoveTo,
     );
     let copy_to = item_context_option(
         crate::assets::icons::FOLDER_OUTPUT,
         "Copy to…",
-        ContextHint::None,
+        ContextHint::CopyTo,
     );
     let rename = item_context_option(crate::assets::icons::PENCIL, "Rename", ContextHint::Rename);
     let cut = item_context_option(crate::assets::icons::SCISSORS, "Cut", ContextHint::Cut);
@@ -964,7 +968,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     let restore_multiple = item_context_option(
         crate::assets::icons::UNDO_2,
         "Restore items",
-        ContextHint::None,
+        ContextHint::Restore,
     );
     restore_multiple.set_visible(in_trash);
     let copy_multiple = item_context_option(crate::assets::icons::COPY, "Copy", ContextHint::Copy);
@@ -986,12 +990,12 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     let move_multiple = item_context_option(
         crate::assets::icons::FOLDER_INPUT,
         "Move to…",
-        ContextHint::None,
+        ContextHint::MoveTo,
     );
     let copy_to_multiple = item_context_option(
         crate::assets::icons::FOLDER_OUTPUT,
         "Copy to…",
-        ContextHint::None,
+        ContextHint::CopyTo,
     );
     let cut_multiple = item_context_option(crate::assets::icons::SCISSORS, "Cut", ContextHint::Cut);
     let trash_multiple = if in_trash {

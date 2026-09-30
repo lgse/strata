@@ -2077,6 +2077,29 @@ impl Browser {
         move_sources: bool,
         reveal: bool,
     ) {
+        self.start_transfer(destination, items, move_sources, reveal, false);
+    }
+
+    /// Like [`Self::transfer`], but a moved-away cursor item hands the cursor
+    /// to its neighbor, as a delete does, for moves made while staying put.
+    pub fn transfer_replacing_cursor(
+        self: &Rc<Self>,
+        destination: Location,
+        items: Vec<PasteItem>,
+        move_sources: bool,
+        reveal: bool,
+    ) {
+        self.start_transfer(destination, items, move_sources, reveal, true);
+    }
+
+    fn start_transfer(
+        self: &Rc<Self>,
+        destination: Location,
+        items: Vec<PasteItem>,
+        move_sources: bool,
+        reveal: bool,
+        replace_cursor: bool,
+    ) {
         if items.is_empty() || destination.is_recent_location() {
             return;
         }
@@ -2093,7 +2116,7 @@ impl Browser {
         self.state.borrow_mut().set_selectionless_removals(
             items
                 .iter()
-                .filter(|_| move_sources)
+                .filter(|_| move_sources && !replace_cursor)
                 .map(|item| item.source.clone()),
         );
         self.transfer_destination.replace(Some(destination.clone()));

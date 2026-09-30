@@ -320,6 +320,21 @@ fn chooser_refuses_commands_its_request_does_not_allow() {
                     "Not available in the file chooser",
                 ),
                 (
+                    Key::M,
+                    ModifierType::SHIFT_MASK,
+                    "Not available in the file chooser",
+                ),
+                (
+                    Key::C,
+                    ModifierType::SHIFT_MASK,
+                    "Not available in the file chooser",
+                ),
+                (
+                    Key::R,
+                    ModifierType::SHIFT_MASK,
+                    "Not available in the file chooser",
+                ),
+                (
                     Key::semicolon,
                     ModifierType::empty(),
                     "Not available in the file chooser",
@@ -364,6 +379,18 @@ fn chooser_refuses_commands_its_request_does_not_allow() {
             chooser.press(Key::g);
             chooser.press(Key::n);
             assert_eq!(browser.active_location(), origin);
+            for (key, modifiers) in [
+                (Key::plus, ModifierType::SHIFT_MASK),
+                (Key::minus, ModifierType::empty()),
+            ] {
+                chooser.press(Key::g);
+                assert!(chooser.press_with(key, modifiers), "g {key:?}");
+                assert_eq!(
+                    chooser.feedback(),
+                    "Not available in the file chooser",
+                    "g {key:?}"
+                );
+            }
             assert!(chooser.open_request());
         },
     );

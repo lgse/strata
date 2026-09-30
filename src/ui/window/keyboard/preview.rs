@@ -369,7 +369,11 @@ fn reaches_listing(key: Key, mods: Modifiers) -> bool {
         {
             true
         }
-        Key::Y | Key::X | Key::P | Key::D | Key::O | Key::F10 if shift => true,
+        Key::Y | Key::X | Key::P | Key::D | Key::O | Key::M | Key::C | Key::R | Key::F10
+            if shift =>
+        {
+            true
+        }
         Key::comma | Key::semicolon | Key::period | Key::Delete | Key::KP_Delete => plain || shift,
         Key::Return | Key::KP_Enter => plain || alt,
         Key::c | Key::x | Key::v if control => true,

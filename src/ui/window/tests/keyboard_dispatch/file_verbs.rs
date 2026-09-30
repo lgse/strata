@@ -867,7 +867,7 @@ fn tenxer_numbered_actions_run_the_listed_match_on_the_current_targets() {
             let subs: Vec<String> = (1..=8).map(|index| format!("Sub {index}")).collect();
             let keys = ["3", "4", "5", "6", "7", "8", "9", "0"];
             listed.extend(keys.iter().copied().zip(subs.iter().map(String::as_str)));
-            listed.push(("t", "Open terminal here"));
+            listed.extend(LETTERED_ACTIONS);
             assert_eq!(
                 fixture.shortcuts.chord_options().expect("options"),
                 listed
@@ -907,10 +907,7 @@ fn tenxer_numbered_actions_run_the_listed_match_on_the_current_targets() {
             wait_until(|| fixture.shortcuts.chord_options().is_some());
             assert_eq!(
                 fixture.shortcuts.chord_options().expect("options"),
-                [
-                    ("1".to_owned(), "Aaa confirm".to_owned()),
-                    ("t".to_owned(), "Open terminal here".to_owned()),
-                ]
+                owned_rows(&[&[("1", "Aaa confirm")], LETTERED_ACTIONS].concat())
             );
             plain(&fixture, Key::_2);
             assert_eq!(feedback(&fixture), "No action 2");
@@ -959,15 +956,25 @@ fn tenxer_numbered_actions_run_the_listed_match_on_the_current_targets() {
             wait_until(|| fixture.shortcuts.chord_options().is_some());
             assert_eq!(
                 fixture.shortcuts.chord_options().expect("options"),
-                [
-                    ("1\u{2013}0".to_owned(), "No matching actions".to_owned()),
-                    ("t".to_owned(), "Open terminal here".to_owned()),
-                ]
+                owned_rows(&[&[("1\u{2013}0", "No matching actions")], LETTERED_ACTIONS].concat())
             );
             plain(&fixture, Key::_1);
             assert_eq!(feedback(&fixture), "No action 1");
         },
     );
+}
+
+const LETTERED_ACTIONS: &[(&str, &str)] = &[
+    ("t", "Open terminal here"),
+    ("c", "Compress\u{2026}"),
+    ("e", "Extract here"),
+    ("E", "Extract to\u{2026}"),
+];
+
+fn owned_rows(rows: &[(&str, &str)]) -> Vec<(String, String)> {
+    rows.iter()
+        .map(|(key, name)| ((*key).to_owned(), (*name).to_owned()))
+        .collect()
 }
 
 #[test]

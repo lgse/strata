@@ -121,6 +121,14 @@ fn go_chord_resolves_uris_and_visible_pin_order() {
         Some(GoTarget::Missing("No pin 9".into()))
     );
     assert_eq!(go_target(Key::space, &pins), Some(GoTarget::Prompt));
+    for (key, pin) in [
+        (Key::plus, true),
+        (Key::KP_Add, true),
+        (Key::minus, false),
+        (Key::KP_Subtract, false),
+    ] {
+        assert_eq!(go_target(key, &pins), Some(GoTarget::Pin(pin)), "{key:?}");
+    }
     for key in [Key::z, Key::G, Key::q, Key::_0] {
         assert_eq!(go_target(key, &pins), None, "{key:?} is not a place");
     }
@@ -284,6 +292,96 @@ fn tenxer_go_chord_reaches_places_and_cancels_cleanly() {
                 None,
                 "window destruction cancels"
             );
+        },
+    );
+}
+
+#[test]
+fn tenxer_pin_chords_pin_the_cursor_folder_or_the_current_folder() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::place_chords::tenxer_pin_chords_pin_the_cursor_folder_or_the_current_folder",
+        || {
+            use std::{cell::RefCell, rc::Rc};
+
+            let fixture = KeyboardFixture::new();
+            let preferences = PreferenceManager::shared();
+            preferences.set_tenxer_mode(true);
+            fixture.shortcuts.bind_preferences(&preferences);
+            let directory = fixture._directory.path().to_path_buf();
+            let folder = directory.join("folder");
+            std::fs::create_dir(&folder).expect("folder");
+            let pinned: Rc<RefCell<Vec<(Location, String)>>> = Rc::default();
+            let unavailable: Rc<RefCell<Option<Location>>> = Rc::default();
+            let (pins, unpins, status) = (pinned.clone(), pinned.clone(), pinned.clone());
+            let refused = unavailable.clone();
+            fixture.view.set_pin_handlers(
+                Rc::new(move |location, name| pins.borrow_mut().push((location, name))),
+                Rc::new(move |location| unpins.borrow_mut().retain(|(pin, _)| pin != location)),
+                Rc::new(move |location| {
+                    if refused.borrow().as_ref() == Some(location) {
+                        PinStatus::Unavailable
+                    } else if status.borrow().iter().any(|(pin, _)| pin == location) {
+                        PinStatus::Pinned
+                    } else {
+                        PinStatus::Available
+                    }
+                }),
+            );
+            fixture.view.refresh();
+            let browser = fixture.view.browser();
+            wait_until(|| rendered_name(&fixture.view.widget(), "folder"));
+            let pin_chord = |key: Key, modifiers: ModifierType| {
+                focus_files(&fixture);
+                fixture.shortcuts.dismiss_feedback();
+                fixture.press(Key::g, ModifierType::empty());
+                assert!(fixture.press(key, modifiers), "g {key:?}");
+                assert_eq!(fixture.shortcuts.armed_chord(), None);
+                fixture.shortcuts.feedback_text()
+            };
+            let folder_pin = (Location::local(&folder), "folder".to_owned());
+
+            move_to_named(&fixture, &browser, "folder");
+            assert_eq!(
+                pin_chord(Key::plus, ModifierType::SHIFT_MASK),
+                "Pinned \u{201c}folder\u{201d}"
+            );
+            assert_eq!(*pinned.borrow(), [folder_pin.clone()]);
+            assert_eq!(
+                pin_chord(Key::KP_Add, ModifierType::empty()),
+                "\u{201c}folder\u{201d} is already pinned"
+            );
+            assert_eq!(*pinned.borrow(), [folder_pin.clone()]);
+            assert_eq!(
+                pin_chord(Key::minus, ModifierType::empty()),
+                "Unpinned \u{201c}folder\u{201d}"
+            );
+            assert!(pinned.borrow().is_empty());
+            assert_eq!(
+                pin_chord(Key::KP_Subtract, ModifierType::empty()),
+                "\u{201c}folder\u{201d} isn\u{2019}t pinned"
+            );
+
+            let current = Location::local(&directory);
+            let current_name = current.display_name();
+            move_to_named(&fixture, &browser, "a.txt");
+            assert_eq!(
+                pin_chord(Key::plus, ModifierType::SHIFT_MASK),
+                format!("Pinned \u{201c}{current_name}\u{201d}")
+            );
+            assert_eq!(
+                *pinned.borrow(),
+                [(current.clone(), current_name.clone())],
+                "a file pins the folder it is in"
+            );
+            pinned.borrow_mut().clear();
+
+            unavailable.replace(Some(current.clone()));
+            assert_eq!(
+                pin_chord(Key::plus, ModifierType::SHIFT_MASK),
+                format!("Can\u{2019}t pin \u{201c}{current_name}\u{201d}")
+            );
+            assert!(pinned.borrow().is_empty(), "standard places stay unpinned");
+            assert_eq!(browser.active_location(), Some(current), "pinning stays put");
         },
     );
 }

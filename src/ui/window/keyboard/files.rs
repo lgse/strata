@@ -110,6 +110,9 @@ impl Dispatcher {
             Key::D => self.delete_targets(true),
             Key::a if !shift => self.open_create_prompt(),
             Key::c if !shift => self.shortcuts.arm_chord(Chord::Copy),
+            Key::M => self.open_transfer_prompt(Prompt::MoveTo),
+            Key::C => self.open_transfer_prompt(Prompt::CopyTo),
+            Key::R => self.restore_targets(),
             _ => return None,
         }
         Some(Propagation::Stop)
@@ -169,6 +172,30 @@ impl Dispatcher {
         self.rename_target.replace(Some(entry));
     }
 
+    fn open_transfer_prompt(&self, kind: Prompt) {
+        match self.view.transfer_targets(kind == Prompt::MoveTo) {
+            Ok(targets) => self.open_destination_prompt(kind, targets),
+            Err(reason) => self.shortcuts.show_feedback(reason),
+        }
+    }
+
+    fn open_destination_prompt(&self, kind: Prompt, targets: Vec<crate::model::FileEntry>) {
+        if self.shortcuts.open_prompt(kind) {
+            self.destination_targets.replace(targets);
+        }
+    }
+
+    fn restore_targets(&self) {
+        use crate::ui::browser::TargetCommand;
+        match self.view.restore_targets() {
+            TargetCommand::Nothing => self.shortcuts.show_feedback("Nothing to restore"),
+            TargetCommand::Refused => self
+                .shortcuts
+                .show_feedback("Only items in Trash can be restored"),
+            TargetCommand::Started => {}
+        }
+    }
+
     fn open_create_prompt(&self) {
         if self.view.can_create_entry() {
             self.shortcuts.open_prompt(Prompt::Create);
@@ -212,7 +239,15 @@ impl Dispatcher {
                 .map(|(index, action)| (slot_key(index), action.name().to_owned()))
                 .collect()
         };
-        rows.push(("t".to_owned(), "Open terminal here".to_owned()));
+        rows.extend(
+            [
+                ("t", "Open terminal here"),
+                ("c", "Compress\u{2026}"),
+                ("e", "Extract here"),
+                ("E", "Extract to\u{2026}"),
+            ]
+            .map(|(key, action)| (key.to_owned(), action.to_owned())),
+        );
         self.armed_actions.replace(Some(ArmedActions {
             ids: numbered
                 .actions
@@ -225,12 +260,8 @@ impl Dispatcher {
     }
 
     pub(super) fn complete_action(&self, key: Key) -> bool {
-        if key == Key::t {
+        if self.complete_folder_action(key) {
             self.armed_actions.take();
-            if !self.view.open_focused_folder_terminal() {
-                self.shortcuts
-                    .show_feedback("Can\u{2019}t open a terminal here");
-            }
             return true;
         }
         let Some((digit, slot)) = action_slot(key) else {
@@ -253,6 +284,37 @@ impl Dispatcher {
             return true;
         }
         self.view.run_numbered_action(numbered, action);
+        true
+    }
+
+    /// The lettered **;** keys, which act on the focused folder or the
+    /// fill rather than on a numbered custom action.
+    fn complete_folder_action(&self, key: Key) -> bool {
+        use crate::ui::browser::TargetCommand;
+        match key {
+            Key::t => {
+                if !self.view.open_focused_folder_terminal() {
+                    self.shortcuts
+                        .show_feedback("Can\u{2019}t open a terminal here");
+                }
+            }
+            Key::c => match self.view.compress_targets() {
+                TargetCommand::Nothing => self.shortcuts.show_feedback("Nothing to compress"),
+                TargetCommand::Refused => self
+                    .shortcuts
+                    .show_feedback("Can\u{2019}t compress these items"),
+                TargetCommand::Started => {}
+            },
+            Key::e => match self.view.extract_target() {
+                Ok(entry) => self.view.extract_here(entry),
+                Err(reason) => self.shortcuts.show_feedback(reason),
+            },
+            Key::E => match self.view.extract_target() {
+                Ok(entry) => self.open_destination_prompt(Prompt::ExtractTo, vec![entry]),
+                Err(reason) => self.shortcuts.show_feedback(reason),
+            },
+            _ => return false,
+        }
         true
     }
 

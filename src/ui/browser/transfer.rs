@@ -513,9 +513,42 @@ impl ViewState {
         );
     }
 
+    /// Moves or copies without revealing the destination; a moved-away cursor
+    /// item hands the cursor to its neighbor. Keep Both is focused on
+    /// conflicts when offered.
+    pub(super) fn start_transfer_in_place(
+        self: &Rc<Self>,
+        destination: Location,
+        sources: Vec<Location>,
+        move_sources: bool,
+    ) {
+        self.transfer_replaces_cursor.set(true);
+        self.begin_transfer(
+            destination,
+            sources,
+            move_sources,
+            false,
+            None,
+            ConflictFocus::KeepBoth,
+        );
+    }
+
     /// Paste and explicit "move/copy to" reveal their result independently of
     /// the drop preference, which is captured when the transfer starts.
     pub(super) fn start_transfer_with_reveal(
+        self: &Rc<Self>,
+        destination: Location,
+        sources: Vec<Location>,
+        move_sources: bool,
+        reveal: bool,
+        send_to: Option<SendToTransferContext>,
+        focus: ConflictFocus,
+    ) {
+        self.transfer_replaces_cursor.set(false);
+        self.begin_transfer(destination, sources, move_sources, reveal, send_to, focus);
+    }
+
+    fn begin_transfer(
         self: &Rc<Self>,
         destination: Location,
         sources: Vec<Location>,
@@ -600,8 +633,13 @@ impl ViewState {
                         }));
                 }
             }
-            self.browser
-                .transfer(destination, accepted, move_sources, reveal);
+            if self.transfer_replaces_cursor.get() {
+                self.browser
+                    .transfer_replacing_cursor(destination, accepted, move_sources, reveal);
+            } else {
+                self.browser
+                    .transfer(destination, accepted, move_sources, reveal);
+            }
             return;
         }
         let collision = collisions.remove(0);

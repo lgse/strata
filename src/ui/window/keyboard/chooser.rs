@@ -8,7 +8,7 @@ use gtk::{
 use super::{Dispatcher, KeyResult, command_modifiers};
 use crate::{app::Browser, model::Location};
 
-const UNAVAILABLE: &str = "Not available in the file chooser";
+pub(super) const UNAVAILABLE: &str = "Not available in the file chooser";
 const SINGLE: &str = "Only one item can be chosen";
 const LOCAL_ONLY: &str = "Only local folders can be opened here";
 
@@ -33,7 +33,7 @@ pub(in crate::ui::window) fn refusal(
         Key::x => plain || control,
         Key::c | Key::v => control,
         Key::semicolon => plain || shift,
-        Key::Y | Key::X | Key::P | Key::O => shift,
+        Key::Y | Key::X | Key::P | Key::O | Key::M | Key::C | Key::R => shift,
         _ => false,
     };
     if unavailable {

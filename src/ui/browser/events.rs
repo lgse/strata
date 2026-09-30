@@ -882,6 +882,10 @@ impl ViewState {
             }
             BrowserEvent::ArchiveCompleted { select_name, .. } => {
                 self.pending_extract_retry.replace(None);
+                let extracted_elsewhere = self
+                    .extract_destination
+                    .take()
+                    .is_some_and(|destination| self.browser.active_location() != Some(destination));
                 if select_name.is_empty() {
                     self.pending_archive_destination.take();
                 }
@@ -940,7 +944,7 @@ impl ViewState {
                         if let Some(state) = weak.upgrade()
                             && state.browser.navigation_generation() == navigation_generation
                         {
-                            if !select_name.is_empty() {
+                            if !select_name.is_empty() && !extracted_elsewhere {
                                 state.pending_select.borrow_mut().push(select_name);
                             }
                             state.browser.reload_active();

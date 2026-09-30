@@ -96,14 +96,18 @@ impl Dispatcher {
         }
         let kind = self.shortcuts.open_prompt_kind();
         match key {
-            Key::Tab | Key::KP_Tab | Key::ISO_Left_Tab if kind == Some(Prompt::Go) => {
+            Key::Tab | Key::KP_Tab | Key::ISO_Left_Tab
+                if let Some(kind) = kind.filter(|kind| kind.completes_folders()) =>
+            {
                 let backward =
                     key == Key::ISO_Left_Tab || modifiers.contains(Modifiers::SHIFT_MASK);
-                self.complete_folder(browser, backward);
+                self.complete_folder(browser, kind, backward);
             }
             Key::Escape
                 if kind.is_some_and(|kind| {
-                    matches!(kind, Prompt::Go | Prompt::Create | Prompt::Rename)
+                    matches!(kind, Prompt::Create)
+                        || kind.completes_folders()
+                        || kind.holds_targets()
                         || kind.picks_history()
                 }) =>
             {
@@ -138,7 +142,8 @@ impl Dispatcher {
                 self.shortcuts.step_candidate(delta);
                 show_candidate_hint(&self.shortcuts);
             }
-            Key::Up | Key::KP_Up | Key::Down | Key::KP_Down if kind == Some(Prompt::Rename) => {}
+            Key::Up | Key::KP_Up | Key::Down | Key::KP_Down
+                if kind.is_some_and(Prompt::holds_targets) => {}
             Key::Up | Key::KP_Up => self.view.step_cursor_unfocused(-1),
             Key::Down | Key::KP_Down => self.view.step_cursor_unfocused(1),
             _ => return Propagation::Proceed,
@@ -188,6 +193,10 @@ impl Dispatcher {
                 self.submit_rename(browser, &text);
                 return;
             }
+            Some(kind @ (Prompt::MoveTo | Prompt::CopyTo | Prompt::ExtractTo)) => {
+                self.submit_destination(browser, kind, &text);
+                return;
+            }
             _ if text.is_empty() => true,
             Some(kind @ (Prompt::Find | Prompt::FindBackward)) => {
                 self.view.find(&text, kind == Prompt::FindBackward, false)
@@ -201,7 +210,7 @@ impl Dispatcher {
         }
     }
 
-    fn complete_folder(&self, browser: &Browser, backward: bool) {
+    fn complete_folder(&self, browser: &Browser, kind: Prompt, backward: bool) {
         let text = self.shortcuts.prompt_text();
         let current = browser
             .active_location()
@@ -219,8 +228,8 @@ impl Dispatcher {
             show_hidden: browser.preferences().show_hidden,
             listing: &listing,
         };
-        let sink = self.shortcuts.prompt_sink(Prompt::Go);
-        let later = self.shortcuts.prompt_sink(Prompt::Go);
+        let sink = self.shortcuts.prompt_sink(kind);
+        let later = self.shortcuts.prompt_sink(kind);
         let step = self.go.step(&text, backward, &context, move |step| {
             show_step(&later, step)
         });
@@ -266,6 +275,25 @@ impl Dispatcher {
         self.shortcuts
             .prompt_sink(Prompt::Rename)
             .show(None, Some(&hint));
+    }
+
+    /// Empty **Enter** closes the prompt; a destination that is not an
+    /// existing local folder keeps it open with the reason.
+    fn submit_destination(&self, browser: &Browser, kind: Prompt, text: &str) {
+        let mut targets = self.destination_targets.borrow().clone();
+        if text.trim().is_empty() || targets.is_empty() {
+            return self.return_to_listing(browser);
+        }
+        let result = match kind {
+            Prompt::ExtractTo => self.view.extract_to_typed(targets.remove(0), text),
+            _ => self
+                .view
+                .transfer_to_typed(targets, text, kind == Prompt::MoveTo),
+        };
+        match result {
+            Ok(()) => self.return_to_listing(browser),
+            Err(reason) => self.shortcuts.prompt_sink(kind).show(None, Some(reason)),
+        }
     }
 
     fn return_to_listing(&self, browser: &Browser) {

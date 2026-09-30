@@ -195,33 +195,34 @@ fn bind_footer_filter(dispatcher: &Dispatcher) {
 }
 
 /// Opening, closing, or editing a prompt discards go completion that belongs to
-/// earlier text. Completion's own replacements are not edits.
+/// earlier text. Completion's own replacements are not edits. Editing a prompt
+/// that reports refusals clears its stale reason.
 fn bind_go_completion(dispatcher: &Dispatcher) {
+    use crate::ui::tenxer_mode::Prompt;
     let go = dispatcher.go.clone();
     dispatcher
         .shortcuts
         .connect_prompt_reset(move || go.invalidate());
     let go = dispatcher.go.clone();
-    let hint = dispatcher
-        .shortcuts
-        .prompt_sink(crate::ui::tenxer_mode::Prompt::Go);
-    let create_hint = dispatcher
-        .shortcuts
-        .prompt_sink(crate::ui::tenxer_mode::Prompt::Create);
-    let rename_hint = dispatcher
-        .shortcuts
-        .prompt_sink(crate::ui::tenxer_mode::Prompt::Rename);
-    dispatcher
-        .shortcuts
-        .connect_prompt_changed(move |kind, _| match kind {
-            crate::ui::tenxer_mode::Prompt::Go => {
-                go.invalidate();
-                hint.show(None, None);
-            }
-            crate::ui::tenxer_mode::Prompt::Create => create_hint.show(None, None),
-            crate::ui::tenxer_mode::Prompt::Rename => rename_hint.show(None, None),
-            _ => {}
-        });
+    let hints: Vec<_> = [
+        Prompt::Go,
+        Prompt::Create,
+        Prompt::Rename,
+        Prompt::MoveTo,
+        Prompt::CopyTo,
+        Prompt::ExtractTo,
+    ]
+    .into_iter()
+    .map(|kind| (kind, dispatcher.shortcuts.prompt_sink(kind)))
+    .collect();
+    dispatcher.shortcuts.connect_prompt_changed(move |kind, _| {
+        if kind.completes_folders() {
+            go.invalidate();
+        }
+        if let Some((_, hint)) = hints.iter().find(|(hinted, _)| *hinted == kind) {
+            hint.show(None, None);
+        }
+    });
 }
 
 fn bind_history_prompts(dispatcher: &Dispatcher) {
@@ -459,6 +460,8 @@ struct Dispatcher {
     go: GoCompletion,
     history: Rc<NavigationHistory>,
     rename_target: Rc<RefCell<Option<crate::model::FileEntry>>>,
+    /// The items **M**, **C**, or **; E** act on, fixed when their prompt opens.
+    destination_targets: Rc<RefCell<Vec<crate::model::FileEntry>>>,
     armed_actions: Rc<RefCell<Option<files::ArmedActions>>>,
     open_with: files::OpenWithLookup,
     chooser: Option<ChooserPolicy>,
@@ -514,6 +517,7 @@ impl Dispatcher {
             go: GoCompletion::new(bindings.folders),
             history: bindings.history,
             rename_target: Rc::default(),
+            destination_targets: Rc::default(),
             armed_actions: Rc::default(),
             open_with: files::OpenWithLookup::default(),
             sidebar: SidebarFocus {
@@ -539,9 +543,11 @@ impl Dispatcher {
             open_with_on_destroy.invalidate();
         });
         let rename_target = dispatcher.rename_target.clone();
-        dispatcher
-            .shortcuts
-            .connect_prompt_reset(move || drop(rename_target.take()));
+        let destination_targets = dispatcher.destination_targets.clone();
+        dispatcher.shortcuts.connect_prompt_reset(move || {
+            drop(rename_target.take());
+            drop(destination_targets.take());
+        });
         bind_go_completion(&dispatcher);
         bind_history_prompts(&dispatcher);
         release_preview_keys_on_mode_exit(window, &dispatcher.preview, &weak_browser);

@@ -117,6 +117,7 @@ impl Chord {
                 ("p", "Pictures"),
                 ("v", "Videos"),
                 ("1–9", "Pins"),
+                ("+ / -", "Pin / unpin folder"),
                 ("Space", "Type a path"),
             ],
             Self::PreviewTop => &[
@@ -132,6 +133,7 @@ impl Chord {
                 ("p", "Pictures"),
                 ("v", "Videos"),
                 ("1–9", "Pins"),
+                ("+ / -", "Pin / unpin folder"),
                 ("Space", "Type a path"),
             ],
             Self::Copy => &[("c", "Copy path"), ("n", "Copy name")],
@@ -158,6 +160,9 @@ pub(crate) enum Prompt {
     Recent,
     Create,
     Rename,
+    MoveTo,
+    CopyTo,
+    ExtractTo,
 }
 
 impl Prompt {
@@ -172,11 +177,31 @@ impl Prompt {
             Self::Recent => "recent \u{203a}",
             Self::Create => "create \u{203a}",
             Self::Rename => "rename \u{203a}",
+            Self::MoveTo => "move to \u{203a}",
+            Self::CopyTo => "copy to \u{203a}",
+            Self::ExtractTo => "extract to \u{203a}",
         }
     }
 
     pub(crate) fn picks_history(self) -> bool {
         matches!(self, Self::Jump | Self::Recent)
+    }
+
+    /// **Tab** / **Shift+Tab** cycle matching folders for the typed prefix.
+    pub(crate) fn completes_folders(self) -> bool {
+        matches!(
+            self,
+            Self::Go | Self::MoveTo | Self::CopyTo | Self::ExtractTo
+        )
+    }
+
+    /// The items were fixed when the prompt opened; **Up** / **Down** must not
+    /// move the cursor away from them.
+    pub(crate) fn holds_targets(self) -> bool {
+        matches!(
+            self,
+            Self::Rename | Self::MoveTo | Self::CopyTo | Self::ExtractTo
+        )
     }
 
     pub(crate) fn name(self) -> &'static str {
@@ -190,6 +215,9 @@ impl Prompt {
             Self::Recent => "Jump to a recently visited folder",
             Self::Create => "Create a file, or a folder ending in /",
             Self::Rename => "Rename the focused item",
+            Self::MoveTo => "Move the selection to a folder",
+            Self::CopyTo => "Copy the selection to a folder",
+            Self::ExtractTo => "Extract the archive to a folder",
         }
     }
 }

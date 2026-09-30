@@ -922,6 +922,18 @@ impl ViewState {
                 } else {
                     glib::Propagation::Proceed
                 }
+            } else if trash
+                && key == gtk::gdk::Key::d
+                && !modifiers.intersects(
+                    gtk::gdk::ModifierType::CONTROL_MASK
+                        | gtk::gdk::ModifierType::ALT_MASK
+                        | gtk::gdk::ModifierType::SUPER_MASK,
+                )
+                && crate::ui::preferences::PreferenceManager::shared().tenxer_mode()
+            {
+                // 10xer **d d**: the second **d** confirms. Permanent deletion never does.
+                focused_confirm.emit_clicked();
+                glib::Propagation::Stop
             } else if !modifiers
                 .intersects(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::ALT_MASK)
             {
