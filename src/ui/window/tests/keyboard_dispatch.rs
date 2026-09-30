@@ -908,68 +908,15 @@ fn tenxer_visual_ranges_select_unset_and_keep_the_fill() {
                 if mode == BrowserMode::Icons {
                     wait_until(|| focused_widget_shows(&fixture.window, "b.txt"));
                 }
-                fixture.press(next, none);
-                assert_eq!(focused_name(&browser), "c.txt", "{mode:?}");
-                if mode == BrowserMode::Icons {
-                    wait_until(|| focused_widget_shows(&fixture.window, "c.txt"));
-                    assert!(fixture.press(Key::Down, shift));
-                    let fill = fill_names(&browser);
-                    let focused = focused_name(&browser);
-                    for name in ["a.txt", "c.txt", focused.as_str()] {
-                        assert!(fill.iter().any(|filled| filled == name), "{fill:?}");
-                    }
-                    assert!(fixture.press(Key::Page_Down, shift));
-                    let fill = fill_names(&browser);
-                    let focused = focused_name(&browser);
-                    for name in ["a.txt", "c.txt", focused.as_str()] {
-                        assert!(fill.iter().any(|filled| filled == name), "{fill:?}");
-                    }
-                } else {
-                    assert!(fixture.press(Key::Down, shift));
-                    fixture.press(Key::Down, shift);
-                    assert_eq!(focused_name(&browser), "e.txt", "{mode:?}");
+                for arrow in [Key::Down, Key::Up, Key::Right, Key::Left] {
+                    assert!(fixture.press(arrow, shift), "{mode:?} Shift+{arrow:?}");
+                    assert_eq!(focused_name(&browser), "b.txt", "{mode:?} Shift+{arrow:?}");
                     assert_eq!(
                         fill_names(&browser),
-                        ["a.txt", "c.txt", "d.txt", "e.txt"],
-                        "{mode:?} Shift+Down extends from the cursor over the fill"
-                    );
-                    fixture.press(Key::Up, shift);
-                    assert_eq!(
-                        fill_names(&browser),
-                        ["a.txt", "c.txt", "d.txt"],
-                        "{mode:?} reversing shrinks the run"
-                    );
-                    fixture.press(previous, none);
-                    assert_eq!(focused_name(&browser), "c.txt", "{mode:?}");
-                    assert_eq!(
-                        fill_names(&browser),
-                        ["a.txt", "c.txt", "d.txt"],
-                        "{mode:?} other motion ends the run and keeps the fill"
-                    );
-                    fixture.press(Key::Up, shift);
-                    assert_eq!(
-                        fill_names(&browser),
-                        ["a.txt", "b.txt", "c.txt", "d.txt"],
-                        "{mode:?} the next run anchors at the cursor"
-                    );
-                    assert!(fixture.press(Key::Page_Down, shift));
-                    let fill = fill_names(&browser);
-                    let focused = focused_name(&browser);
-                    for name in ["a.txt", "c.txt", "d.txt", focused.as_str()] {
-                        assert!(fill.iter().any(|filled| filled == name), "{fill:?}");
-                    }
-                    assert!(
-                        !fill.iter().any(|filled| filled == "b.txt"),
-                        "{mode:?} Shift+Page Down continues the run: {fill:?}"
-                    );
-                    fixture.press(Key::Page_Up, shift);
-                    assert_eq!(
-                        fill_names(&browser),
-                        ["a.txt", "b.txt", "c.txt", "d.txt"],
-                        "{mode:?} Shift+Page Up reverses it"
+                        ["a.txt"],
+                        "{mode:?} Shift+{arrow:?} does not select"
                     );
                 }
-                assert_eq!(fixture.shortcuts.visual_text(), None, "{mode:?}");
                 fixture.press(Key::Escape, none);
 
                 fixture.press(Key::Home, none);
@@ -981,25 +928,18 @@ fn tenxer_visual_ranges_select_unset_and_keep_the_fill() {
                 if mode == BrowserMode::Icons {
                     wait_until(|| focused_widget_shows(&fixture.window, "b.txt"));
                 }
-                fixture.press(Key::Down, shift);
+                assert!(fixture.press(Key::Down, shift));
                 assert_eq!(
                     fixture.shortcuts.visual_text().as_deref(),
                     Some("VISUAL"),
-                    "{mode:?} Shift+Down keeps the visual range"
+                    "{mode:?}"
                 );
-                if mode == BrowserMode::Icons {
-                    let fill = fill_names(&browser);
-                    assert!(
-                        fill.starts_with(&["a.txt".into(), "b.txt".into()]),
-                        "{fill:?}"
-                    );
-                } else {
-                    assert_eq!(
-                        fill_names(&browser),
-                        ["a.txt", "b.txt", "c.txt"],
-                        "{mode:?} Shift+Down walks the visual range"
-                    );
-                }
+                assert_eq!(focused_name(&browser), "b.txt", "{mode:?}");
+                assert_eq!(
+                    fill_names(&browser),
+                    ["a.txt", "b.txt"],
+                    "{mode:?} Shift+Down does not walk the visual range"
+                );
                 fixture.press(Key::Escape, none);
                 fixture.press(Key::Escape, none);
             }
@@ -1022,12 +962,6 @@ fn tenxer_visual_ranges_select_unset_and_keep_the_fill() {
             fixture.press(Key::v, none);
             assert_eq!(fixture.shortcuts.feedback_text(), "Nothing to select");
             assert_eq!(fixture.shortcuts.visual_text(), None);
-            wait_until(|| fixture.shortcuts.feedback_text().is_empty());
-            fixture.press(Key::Down, ModifierType::SHIFT_MASK);
-            assert_eq!(fixture.shortcuts.feedback_text(), "Nothing to select");
-            wait_until(|| fixture.shortcuts.feedback_text().is_empty());
-            fixture.press(Key::Page_Down, ModifierType::SHIFT_MASK);
-            assert_eq!(fixture.shortcuts.feedback_text(), "Nothing to select");
         },
     );
 }
@@ -1282,12 +1216,6 @@ fn tenxer_file_list_skips_conflicting_defaults_and_keeps_bound_shortcuts() {
                 ModifierType::ALT_MASK,
                 ModifierType::SUPER_MASK,
             ] {
-                fixture.press(Key::q, modifier);
-                assert!(
-                    preferences.tenxer_mode(),
-                    "{modifier:?}+q must not leave the mode"
-                );
-                assert!(fixture.window.is_visible());
                 fixture.press(Key::Q, modifier | ModifierType::SHIFT_MASK);
                 assert!(
                     fixture.window.is_visible(),
@@ -1300,6 +1228,12 @@ fn tenxer_file_list_skips_conflicting_defaults_and_keeps_bound_shortcuts() {
                 names_before_quit
             );
             assert!(fixture.press(Key::q, ModifierType::empty()));
+            assert!(preferences.tenxer_mode(), "q does not leave the mode");
+            assert!(!fixture.view.filter_has_focus(), "q does not type-to-search");
+            assert!(fixture.press(
+                Key::m,
+                ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK
+            ));
             assert!(!preferences.tenxer_mode());
             assert!(fixture.window.is_visible());
             focus_files(&fixture);
@@ -1638,9 +1572,9 @@ fn tenxer_entries_menus_and_reference_keep_their_keys() {
 }
 
 #[test]
-fn shift_page_keys_extend_the_selection_in_every_view() {
+fn page_keys_extend_shift_selection_or_a_tenxer_range() {
     crate::test_support::gtk_test(
-        "ui::window::tests::keyboard_dispatch::shift_page_keys_extend_the_selection_in_every_view",
+        "ui::window::tests::keyboard_dispatch::page_keys_extend_shift_selection_or_a_tenxer_range",
         || {
             let fixture = KeyboardFixture::new();
             PreferenceManager::shared().set_group_by_type(false);
@@ -1679,6 +1613,44 @@ fn shift_page_keys_extend_the_selection_in_every_view() {
                     [focused_index(&browser)],
                     "{mode:?} a plain Page Down still replaces the selection"
                 );
+            }
+
+            PreferenceManager::shared().set_tenxer_mode(true);
+            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
+                fixture.view.set_view_mode(mode);
+                browser.select(0, 0);
+                focus_files(&fixture);
+                pump(200);
+
+                for key in [Key::Page_Down, Key::Page_Up] {
+                    assert!(fixture.press(key, shift), "{mode:?} Shift+{key:?}");
+                    assert_eq!(focused_index(&browser), 0, "{mode:?} Shift+{key:?}");
+                    assert_eq!(
+                        fixture.selected(),
+                        [0],
+                        "{mode:?} Shift+{key:?} does not select"
+                    );
+                }
+
+                fixture.press(Key::v, none);
+                assert!(fixture.press(Key::Page_Down, none), "{mode:?}");
+                let paged = focused_index(&browser);
+                assert!(paged > 0, "{mode:?} Page Down moves the cursor");
+                assert_eq!(
+                    fixture.selected(),
+                    (0..=paged).collect::<Vec<_>>(),
+                    "{mode:?} Page Down extends the visual range"
+                );
+                assert!(fixture.press(Key::Page_Up, none), "{mode:?}");
+                let back = focused_index(&browser);
+                assert!(back < paged, "{mode:?}");
+                assert_eq!(
+                    fixture.selected(),
+                    (0..=back).collect::<Vec<_>>(),
+                    "{mode:?} Page Up shrinks the visual range"
+                );
+                fixture.press(Key::Escape, none);
+                fixture.press(Key::Escape, none);
             }
         },
     );
@@ -1896,21 +1868,30 @@ fn tenxer_list_and_columns_move_enter_and_traverse_history() {
             assert_eq!(browser.active_location(), origin);
             assert!(!sidebar_has_focus(&fixture));
 
+            fixture.preview.observe_browser(&browser);
             fixture.view.set_view_mode(BrowserMode::Columns);
             wait_loaded(&browser, 0);
-            assert!(!fixture.view.columns_mirror_selection_enabled());
-            select_named(&fixture, "nest");
-            pump(200);
+            assert!(fixture.view.columns_mirror_selection_enabled());
+            select_named(&fixture, "n39.txt");
+            fixture.press(Key::j, ModifierType::empty());
+            assert_eq!(focused_name(&browser), "nest");
+            wait_loaded(&browser, 1);
+            assert!(
+                location_ends_with(browser.location_at(1), "nest"),
+                "the cursor's folder opens in the next column"
+            );
+            assert_eq!(browser.focused_item().map(|(depth, _, _)| depth), Some(0));
+            assert!(fixture.view.item_view_has_focus());
+            fixture.press(Key::k, ModifierType::empty());
+            wait_until(|| fixture.preview.is_open());
             assert!(
                 browser.column_snapshot(1).is_none(),
-                "moving onto a directory must not open a child column"
+                "a file under the cursor closes the child column"
             );
-            focus_files(&fixture);
-            fixture.press(Key::j, ModifierType::empty());
-            pump(200);
-            assert!(browser.column_snapshot(1).is_none());
-            assert!(!fixture.preview.is_open());
-            select_named(&fixture, "a.txt");
+            assert!(fixture.view.item_view_has_focus());
+            assert!(!preview_has_focus(&fixture));
+            fixture.press(Key::i, ModifierType::empty());
+            assert!(!fixture.preview.is_enabled(), "i closes the preview");
             fixture.press(Key::i, ModifierType::empty());
             wait_until(|| fixture.preview.is_open());
             assert!(

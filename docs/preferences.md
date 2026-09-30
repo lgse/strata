@@ -60,7 +60,7 @@ control that might be midway through synchronization.
 | Cross-device drag and drop | Drop dispatch reads the current Copy, Move, or Ask strategy; unresolved volume lookups follow the same cross-device policy. |
 | Sort key/direction, folders-first | Shared defaults for new columns; an existing column keeps its own sort, selection and navigation. Explicit field sorting updates the persisted defaults. Camera Photos libraries instead open in column-local Device order (see below). |
 | Type-to-search, opening search results directly | Keyboard/search actions read the current manager value at dispatch. |
-| 10xer mode | Interactive browsers and the portal file chooser bind pane Close/filter/refresh/sort chrome and the Yazi-style keymap at construction, including lazily rebuilt views. Window Search hides in interactive browsers. Window Close, chooser Accept/Cancel, and List column headings stay. Off by default; toggle with `Ctrl+Shift+M`, `q`, or Settings → General → Browsing. |
+| 10xer mode | Interactive browsers and the portal file chooser bind pane Close/filter/refresh/sort chrome and the Yazi-style keymap at construction, including lazily rebuilt views. Window Search hides in interactive browsers. Window Close, chooser Accept/Cancel, and List column headings stay. Off by default; toggle with `Ctrl+Shift+M` or Settings → General → Browsing. |
 | Include subfolders | Every pane filter binds at construction, including lazy view rebuilds. Enabled by default; disabling indexes only immediate files and folders, without traversing descendants. Live changes cancel pending queries and invalidate old result streams before refreshing the active filter. Global search remains recursive. |
 | Element glow | Shared semantic glow color is applied by `ThemeManager` when the appearance preferences change, before Settings opens and live across windows, dialogs, menus, and rebuilt views. Focus outlines and ordinary depth shadows are preserved. |
 | Reduced motion | Set before any window is constructed; animation helpers read the current process-wide value. |
@@ -231,7 +231,7 @@ the Yazi-style map with footer prompts (`/` `?` `f` `s` `a` `r` `g Space`
 `F2`, `F5`, `Delete`, …). Keyboard navigation stays in the Columns, List, and
 Icons panes. The sidebar, window header, footer, and other controls outside
 those panes stay pointer-operated. **`s`** is current-folder recursive name search;
-**`S`** is unbound. Toggle with **Ctrl+Shift+M**, leave with **q**, close the window with **Q**. The
+**`S`** is unbound. Toggle with **Ctrl+Shift+M**, close the window with **Q**. The
 preference is defined in `src/ui/preferences.rs`, saved as `tenxer_mode` in
 `settings.toml`, and live-updates every window. Real mode transitions clear
 prompts and credentials, chords, find highlights, hidden filters/search
@@ -241,12 +241,13 @@ closing the drawer. Default **Ctrl+F** then follows the saved **Include subfolde
 choice again. Initial preference binding applies chrome and accelerators without
 transition teardown or a file-list focus grab at disabled startup.
 Context-menu shortcut hints and **Settings → Keybindings** list the currently
-active map (including the kept Ctrl/F-key conventions). **Type to search**,
-**Keep arrows in file list**, and **Mirror columns selection** stay saved and
-editable; while the mode is on they are unused and those rows show the subtitle
-**Not used in 10xer mode.** Cursor movement does not open a child column or
-a preview. **i** opens the next Miller column without focusing it, or toggles
-the folder-peek popover in List and Icons. See
+active map (including the kept Ctrl/F-key conventions). **Type to search** and
+**Keep arrows in file list** stay saved and editable; while the mode is on they
+are unused and those rows show the subtitle **Not used in 10xer mode.**
+**Mirror columns selection** and **Single-click previews** keep applying, so in
+Columns the cursor opens the folder or preview under it. **i** opens the next
+Miller column without focusing it, or toggles the folder-peek popover in List
+and Icons. See
 [10xer mode](10xer-mode.md) for the keymap.
 
 ## Adding a preference

@@ -30,7 +30,7 @@ fn keybindings_follow_the_active_map_across_windows() {
             let shows_default = |page: &gtk::Widget| {
                 let shown = visible_actions(page);
                 shown.contains(&"Quick preview".to_owned())
-                    && !shown.contains(&"Leave 10xer mode".to_owned())
+                    && !shown.contains(&"Toggle 10xer mode".to_owned())
                     && !page_text(page).contains(phrase)
             };
             assert!(shows_default(&first));
@@ -41,7 +41,7 @@ fn keybindings_follow_the_active_map_across_windows() {
             for page in [&first, &second] {
                 let shown = visible_actions(page);
                 assert!(!shown.contains(&"Quick preview".to_owned()));
-                assert!(shown.contains(&"Leave 10xer mode".to_owned()));
+                assert!(shown.contains(&"Toggle 10xer mode".to_owned()));
                 assert!(page_text(page).contains(phrase));
                 let rows = visible_bindings(page);
                 assert!(

@@ -296,10 +296,7 @@ fn append_preference_switch(
 ) {
     let (row, toggle) = settings_option(switch.title, switch.description, (switch.read)(manager));
     bind_switch(manager, &toggle, switch.read, switch.write);
-    if matches!(
-        switch.title,
-        "Type to search" | "Keep arrows in file list" | "Mirror columns selection"
-    ) {
+    if matches!(switch.title, "Type to search" | "Keep arrows in file list") {
         bind_tenxer_unused_subtitle(&row, manager, switch.description);
     }
     if switch.title == "Include subfolders" {

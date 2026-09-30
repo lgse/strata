@@ -69,9 +69,7 @@ impl BrowserView {
         let interactive = self.state.interactive;
         self.bind_view_preference(
             manager,
-            move |manager| {
-                interactive && manager.columns_mirror_selection() && !manager.tenxer_mode()
-            },
+            move |manager| interactive && manager.columns_mirror_selection(),
             Self::set_columns_mirror_selection,
         );
         self.bind_view_preference(

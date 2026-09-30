@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-//! 10xer preview keyboard ownership. Keys a surface does not use are swallowed
-//! so they can never act on the listing hidden behind the drawer.
+//! 10xer preview keyboard ownership. A surface keeps its own keys and the
+//! listing's motion and selection keys. Folder navigation, prompts, and file
+//! commands hand the keys back to the listing and run there; anything else is
+//! swallowed.
 
 use std::rc::Rc;
 
@@ -95,7 +97,11 @@ impl Dispatcher {
             PreviewSurface::Archive => self.preview_archive_key(browser, key, mods),
             PreviewSurface::Media => self.preview_media_key(browser, key, mods),
             PreviewSurface::Control | PreviewSurface::Text => {
-                if !mods.intersects(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK) {
+                // A focused button or slider keeps GTK's Enter.
+                let listing = surface == PreviewSurface::Control
+                    && !matches!(key, Key::Return | Key::KP_Enter)
+                    && reaches_listing(key, mods);
+                if !listing && !mods.intersects(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK) {
                     return Some(Propagation::Proceed);
                 }
                 false
@@ -113,6 +119,10 @@ impl Dispatcher {
         {
             // The focused document widget selects all or copies its own text.
             return Some(Propagation::Proceed);
+        }
+        if reaches_listing(key, mods) {
+            self.return_from_preview(browser);
+            return None;
         }
         Some(Propagation::Stop)
     }
@@ -143,7 +153,7 @@ impl Dispatcher {
     }
 
     /// Results replacing the listing take the keys back on their own cursor.
-    fn return_from_preview(&self, browser: &Browser) {
+    pub(super) fn return_from_preview(&self, browser: &Browser) {
         if self.view.focus_results_cursor() {
             return;
         }
@@ -331,6 +341,39 @@ fn passes_through_preview(key: Key, mods: Modifiers) -> bool {
             true
         }
         Key::b | Key::B | Key::m | Key::M if control_shift => true,
+        Key::z | Key::Z => control || control_shift,
+        Key::y | Key::Y if control => true,
+        _ => false,
+    }
+}
+
+/// Listing commands no preview surface uses. Motion and selection keys are
+/// left out: they would move or fill the listing from behind the drawer.
+fn reaches_listing(key: Key, mods: Modifiers) -> bool {
+    let plain = mods.is_empty();
+    let shift = mods == Modifiers::SHIFT_MASK;
+    let control = mods == Modifiers::CONTROL_MASK;
+    let alt = mods == Modifiers::ALT_MASK;
+    match key {
+        // Folders, history, and footer prompts.
+        Key::g | Key::z | Key::f | Key::s | Key::n | Key::slash | Key::KP_Divide | Key::BackSpace
+            if plain =>
+        {
+            true
+        }
+        Key::H | Key::L | Key::Z | Key::N | Key::question if shift => true,
+        Key::Left | Key::KP_Left | Key::Right | Key::KP_Right | Key::Up | Key::KP_Up if alt => true,
+        // Commands on the previewed item or its folder.
+        Key::o | Key::y | Key::x | Key::p | Key::d | Key::a | Key::c | Key::r | Key::F2 | Key::Menu
+            if plain =>
+        {
+            true
+        }
+        Key::Y | Key::X | Key::P | Key::D | Key::O | Key::F10 if shift => true,
+        Key::comma | Key::semicolon | Key::period | Key::Delete | Key::KP_Delete => plain || shift,
+        Key::Return | Key::KP_Enter => plain || alt,
+        Key::c | Key::x | Key::v if control => true,
+        Key::n | Key::N => mods == Modifiers::CONTROL_MASK | Modifiers::SHIFT_MASK,
         _ => false,
     }
 }

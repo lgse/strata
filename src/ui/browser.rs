@@ -1657,16 +1657,6 @@ impl BrowserView {
         self.state.browser.toggle_visual(kind, order.as_deref())
     }
 
-    pub fn begin_extend(&self) -> bool {
-        self.keyboard_navigation();
-        let Some(depth) = self.focused_listing_depth() else {
-            return false;
-        };
-        self.state.browser.set_active_column(depth);
-        let order = self.displayed_order(depth);
-        self.state.browser.begin_extend(order.as_deref())
-    }
-
     pub fn refresh_visual(&self) {
         if let Some(depth) = self.state.browser.active_depth() {
             let order = self.displayed_order(depth);

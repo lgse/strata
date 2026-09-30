@@ -43,7 +43,6 @@ pub(in crate::ui::window) fn refusal(
         Key::space | Key::v => plain,
         Key::V => shift,
         Key::a | Key::A | Key::r | Key::R => control,
-        Key::Up | Key::KP_Up | Key::Down | Key::KP_Down => shift,
         _ => false,
     };
     (fills && !multiple).then_some(SINGLE)

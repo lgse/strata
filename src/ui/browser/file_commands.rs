@@ -7,6 +7,7 @@ use gtk::{glib, prelude::*};
 use super::{
     BrowserView,
     clipboard::{self, copy_locations, copy_names},
+    desktop::{can_open_terminal, launch_terminal},
     paths::is_trash_location,
 };
 use crate::{
@@ -243,6 +244,20 @@ impl BrowserView {
                 .keyboard_refocus
                 .set(Some(KeyboardRefocus::Sort(depth)));
         }
+    }
+
+    /// Opens a terminal in the keyboard-focused pane's folder, ignoring the
+    /// cursor and selection. Returns false where no terminal can open.
+    pub fn open_focused_folder_terminal(&self) -> bool {
+        let Some(location) = self
+            .focused_listing_depth()
+            .and_then(|depth| self.state.browser.location_at(depth))
+            .filter(can_open_terminal)
+        else {
+            return false;
+        };
+        launch_terminal(&location, &self.state.overlay);
+        true
     }
 
     pub fn toggle_hidden_from_keys(&self) {

@@ -867,6 +867,7 @@ fn tenxer_numbered_actions_run_the_listed_match_on_the_current_targets() {
             let subs: Vec<String> = (1..=8).map(|index| format!("Sub {index}")).collect();
             let keys = ["3", "4", "5", "6", "7", "8", "9", "0"];
             listed.extend(keys.iter().copied().zip(subs.iter().map(String::as_str)));
+            listed.push(("t", "Open terminal here"));
             assert_eq!(
                 fixture.shortcuts.chord_options().expect("options"),
                 listed
@@ -906,7 +907,10 @@ fn tenxer_numbered_actions_run_the_listed_match_on_the_current_targets() {
             wait_until(|| fixture.shortcuts.chord_options().is_some());
             assert_eq!(
                 fixture.shortcuts.chord_options().expect("options"),
-                [("1".to_owned(), "Aaa confirm".to_owned())]
+                [
+                    ("1".to_owned(), "Aaa confirm".to_owned()),
+                    ("t".to_owned(), "Open terminal here".to_owned()),
+                ]
             );
             plain(&fixture, Key::_2);
             assert_eq!(feedback(&fixture), "No action 2");
@@ -955,10 +959,35 @@ fn tenxer_numbered_actions_run_the_listed_match_on_the_current_targets() {
             wait_until(|| fixture.shortcuts.chord_options().is_some());
             assert_eq!(
                 fixture.shortcuts.chord_options().expect("options"),
-                [("1\u{2013}0".to_owned(), "No matching actions".to_owned())]
+                [
+                    ("1\u{2013}0".to_owned(), "No matching actions".to_owned()),
+                    ("t".to_owned(), "Open terminal here".to_owned()),
+                ]
             );
             plain(&fixture, Key::_1);
             assert_eq!(feedback(&fixture), "No action 1");
+        },
+    );
+}
+
+#[test]
+fn tenxer_action_chord_terminal_refuses_a_non_local_folder() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::file_verbs::tenxer_action_chord_terminal_refuses_a_non_local_folder",
+        || {
+            let fixture = KeyboardFixture::new();
+            enable_tenxer(&fixture);
+            let browser = fixture.view.browser();
+            browser.navigate(Location::uri("trash:///"));
+            wait_until(|| browser.active_location() == Some(Location::uri("trash:///")));
+            wait_loaded(&browser, 0);
+            focus_files(&fixture);
+
+            plain(&fixture, Key::semicolon);
+            plain(&fixture, Key::t);
+            assert_eq!(feedback(&fixture), "Can\u{2019}t open a terminal here");
+            assert!(!modal_visible(&fixture.overlay), "no error dialog");
+            assert_eq!(fixture.shortcuts.armed_chord(), None);
         },
     );
 }

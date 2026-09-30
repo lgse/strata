@@ -119,9 +119,6 @@ pub struct VisualRange {
     base: HashSet<Location>,
     // Space inside the range flips an item on top of the walked result.
     toggled: HashSet<Location>,
-    // A Shift+arrow run: walked like `Select`, but not a visual mode, so it has no
-    // footer tag and ends at the next key that is not part of the run.
-    extend: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1027,29 +1024,6 @@ impl NavigationState {
         kind: VisualKind,
         order: Option<&[usize]>,
     ) -> Option<(usize, usize, Vec<usize>)> {
-        self.start_range(kind, false, order)
-    }
-
-    pub fn begin_extend(&mut self, order: Option<&[usize]>) -> Option<(usize, usize)> {
-        if let Some(depth) = self.live_range().map(|range| range.depth) {
-            return self.columns[depth].selected.map(|cursor| (depth, cursor));
-        }
-        self.start_range(VisualKind::Select, true, order)
-            .map(|(depth, focused, _)| (depth, focused))
-    }
-
-    pub fn end_extend(&mut self) {
-        if self.visual.as_ref().is_some_and(|range| range.extend) {
-            self.visual = None;
-        }
-    }
-
-    fn start_range(
-        &mut self,
-        kind: VisualKind,
-        extend: bool,
-        order: Option<&[usize]>,
-    ) -> Option<(usize, usize, Vec<usize>)> {
         self.visual = None;
         let depth = self
             .active_column
@@ -1071,7 +1045,6 @@ impl NavigationState {
             kind,
             base: column.selected_locations.clone(),
             toggled: HashSet::new(),
-            extend,
         });
         self.refresh_visual(Some(&order))
     }
@@ -1160,11 +1133,8 @@ impl NavigationState {
         self.visual.take().is_some()
     }
 
-    /// A Shift+arrow run is not a visual mode.
     pub fn visual_kind(&self) -> Option<VisualKind> {
-        self.live_range()
-            .filter(|range| !range.extend)
-            .map(|range| range.kind)
+        self.live_range().map(|range| range.kind)
     }
 
     fn live_range(&self) -> Option<&VisualRange> {

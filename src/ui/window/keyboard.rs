@@ -420,9 +420,6 @@ fn claims_file_list_typing(key: Key, modifiers: Modifiers) -> bool {
     if key == Key::space {
         return true;
     }
-    if matches!(key, Key::q | Key::Q) {
-        return false;
-    }
     super::type_to_search_query(key, modifiers).is_some()
 }
 
@@ -741,15 +738,8 @@ impl Dispatcher {
         if let Some(result) = self.tenxer_chord(browser, key, modifiers) {
             return Some(result);
         }
-        if !items::continues_extend(key, modifiers) {
-            browser.end_extend();
-        }
         let command = modifiers
             .intersects(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK);
-        if key == Key::q && !modifiers.contains(Modifiers::SHIFT_MASK) && !command {
-            preferences.set_tenxer_mode(false);
-            return Some(Propagation::Stop);
-        }
         if let Some(result) = self
             .chooser_refusal(key, modifiers)
             .or_else(|| self.chooser_save(key, modifiers))

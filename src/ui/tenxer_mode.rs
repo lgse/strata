@@ -83,7 +83,8 @@ pub(crate) fn is_toggle_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::Modifi
 pub(crate) enum Chord {
     /// **g** from the listing: first item or a place.
     Go,
-    /// **g** while a document or archive preview owns the keys: only **g g**.
+    /// **g** while a document or archive preview owns the keys: **g g** is its
+    /// top; the other **g** keys return to the listing first.
     PreviewTop,
     Copy,
     Sort,
@@ -118,7 +119,21 @@ impl Chord {
                 ("1–9", "Pins"),
                 ("Space", "Type a path"),
             ],
-            Self::PreviewTop => &[("g", "Top")],
+            Self::PreviewTop => &[
+                ("g", "Top"),
+                ("f", "Follow search result"),
+                ("h", "Home"),
+                ("d", "Downloads"),
+                ("c", "Config"),
+                ("t", "Trash"),
+                ("n", "Network"),
+                ("r", "Recent"),
+                ("k", "Documents"),
+                ("p", "Pictures"),
+                ("v", "Videos"),
+                ("1–9", "Pins"),
+                ("Space", "Type a path"),
+            ],
             Self::Copy => &[("c", "Copy path"), ("n", "Copy name")],
             Self::Sort => &[
                 ("a", "Name"),

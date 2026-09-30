@@ -195,7 +195,7 @@ fn tenxer_preview_owns_document_keys_until_returned() {
                         "the column yields its destination to the preview"
                     );
                 }
-                for key in [Key::l, Key::Right, Key::Return, Key::o, Key::space] {
+                for key in [Key::l, Key::Right, Key::space, Key::v, Key::q] {
                     assert!(
                         fixture.press(key, ModifierType::empty()),
                         "{mode:?} {key:?}"
@@ -205,16 +205,7 @@ fn tenxer_preview_owns_document_keys_until_returned() {
                         "{mode:?} {key:?} kept the keys"
                     );
                 }
-                fixture.press(Key::Delete, ModifierType::empty());
-                pump(50);
-                assert!(
-                    !modal_visible(&fixture.overlay),
-                    "{mode:?} Delete stays with the preview"
-                );
-                assert!(
-                    opened.borrow().is_empty(),
-                    "{mode:?} preview keys never launch"
-                );
+                assert_eq!(fixture.selected(), selection, "{mode:?}");
                 assert_eq!(browser.active_location(), origin, "{mode:?}");
 
                 let top = document_scroll(&fixture);
@@ -257,15 +248,18 @@ fn tenxer_preview_owns_document_keys_until_returned() {
                 fixture.press(Key::G, ModifierType::SHIFT_MASK);
                 fixture.press(Key::g, ModifierType::empty());
                 wait_until(|| {
-                    fixture.shortcuts.chord_options() == Some(vec![("g".into(), "Top".into())])
+                    fixture.shortcuts.chord_options().is_some_and(|options| {
+                        options.first() == Some(&("g".into(), "Top".into()))
+                            && options.contains(&("h".into(), "Home".into()))
+                    })
                 });
                 fixture.press(Key::g, ModifierType::empty());
                 assert_eq!(document_scroll(&fixture), top, "{mode:?} g g");
                 fixture.press(Key::g, ModifierType::empty());
-                fixture.press(Key::h, ModifierType::empty());
+                fixture.press(Key::z, ModifierType::empty());
                 assert_eq!(fixture.shortcuts.feedback_text(), "Unknown chord");
-                assert!(preview_has_focus(&fixture), "{mode:?} g h stays");
-                assert_eq!(browser.active_location(), origin, "{mode:?} g h");
+                assert!(preview_has_focus(&fixture), "{mode:?} g z stays");
+                assert_eq!(browser.active_location(), origin, "{mode:?} g z");
                 fixture.shortcuts.dismiss_feedback();
                 assert_eq!(focused_name(&browser), "long.txt", "{mode:?}");
                 assert_eq!(fixture.selected(), selection, "{mode:?}");
@@ -383,6 +377,58 @@ fn tenxer_preview_owns_document_keys_until_returned() {
             wait_loaded(&browser, 0);
             assert_eq!(browser.active_location(), origin);
 
+            let enter_document = || {
+                move_to_named(&fixture, &browser, "long.txt");
+                fixture.press(Key::l, ModifierType::empty());
+                wait_until(|| preview_has_focus(&fixture));
+            };
+            for (key, modifiers) in [
+                (Key::BackSpace, ModifierType::empty()),
+                (Key::Up, ModifierType::ALT_MASK),
+            ] {
+                enter_document();
+                assert!(fixture.press(key, modifiers), "{key:?}");
+                wait_loaded(&browser, 0);
+                assert_ne!(browser.active_location(), origin, "{key:?} goes up");
+                assert!(fixture.view.item_view_has_focus(), "{key:?}");
+                fixture.press(Key::H, ModifierType::SHIFT_MASK);
+                wait_loaded(&browser, 0);
+                assert_eq!(browser.active_location(), origin);
+            }
+
+            enter_document();
+            fixture.shortcuts.dismiss_feedback();
+            fixture.press(Key::g, ModifierType::empty());
+            fixture.press(Key::_3, ModifierType::empty());
+            assert_eq!(fixture.shortcuts.feedback_text(), "No pin 3");
+            assert!(fixture.view.item_view_has_focus(), "g 3 is a place chord");
+
+            enter_document();
+            assert!(fixture.press(Key::slash, ModifierType::empty()));
+            assert!(fixture.shortcuts.prompt_has_focus(), "/ opens find");
+            fixture.press(Key::Escape, ModifierType::empty());
+            wait_until(|| fixture.view.item_view_has_focus());
+
+            enter_document();
+            let names = directory_names(fixture._directory.path());
+            assert!(fixture.press(Key::Delete, ModifierType::empty()));
+            wait_until(|| modal_visible(&fixture.overlay));
+            assert!(click_class(&fixture.overlay, "action-dialog-close"));
+            wait_until(|| !modal_visible(&fixture.overlay));
+            assert_eq!(directory_names(fixture._directory.path()), names);
+
+            enter_document();
+            assert!(fixture.press(Key::o, ModifierType::empty()));
+            wait_until(|| !opened.borrow().is_empty());
+            assert_eq!(
+                opened.borrow().as_slice(),
+                [Location::local(fixture._directory.path().join("long.txt"))],
+                "o opens the previewed file"
+            );
+            assert!(fixture.view.item_view_has_focus());
+            assert!(fixture.preview.is_open(), "o keeps the drawer");
+            opened.borrow_mut().clear();
+
             fixture.preview.close();
             move_to_named(&fixture, &browser, "empty");
             fixture.press(Key::l, ModifierType::empty());
@@ -460,7 +506,7 @@ fn tenxer_interactive_previews_keep_a_defined_key_owner() {
                 owner_bar(&fixture),
                 "rebuilt archive rows keep the owner bar"
             );
-            for key in [Key::l, Key::Return, Key::o, Key::space, Key::j, Key::G] {
+            for key in [Key::l, Key::Return, Key::space, Key::v, Key::j, Key::G] {
                 let modifiers = if key == Key::G {
                     ModifierType::SHIFT_MASK
                 } else {
@@ -553,7 +599,7 @@ fn tenxer_interactive_previews_keep_a_defined_key_owner() {
                 );
                 assert!(password_has_focus(&fixture), "{key:?}");
             }
-            assert!(preferences.tenxer_mode(), "q is typed, not a mode exit");
+            assert!(preferences.tenxer_mode());
             assert!(!modal_visible(&fixture.overlay));
             fixture.press(Key::Tab, ModifierType::SHIFT_MASK);
             wait_until(|| fixture.view.item_view_has_focus());

@@ -1666,19 +1666,6 @@ impl Browser {
         true
     }
 
-    pub fn begin_extend(&self, order: Option<&[usize]>) -> bool {
-        let begun = self.state.borrow_mut().begin_extend(order);
-        let Some((depth, focused)) = begun else {
-            return false;
-        };
-        self.emit_fill(depth, focused);
-        true
-    }
-
-    pub fn end_extend(&self) {
-        self.state.borrow_mut().end_extend();
-    }
-
     pub fn toggle_visual_cursor(&self, order: Option<&[usize]>) -> bool {
         let toggled = self.state.borrow_mut().toggle_visual_cursor(order);
         let Some((depth, focused, _)) = toggled else {

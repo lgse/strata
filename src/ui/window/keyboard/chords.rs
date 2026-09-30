@@ -133,7 +133,13 @@ impl Dispatcher {
             Chord::Sort => (mods - Modifiers::SHIFT_MASK).is_empty() && self.complete_sort(key),
             _ if !mods.is_empty() => false,
             Chord::Go => self.complete_go(browser, key),
-            Chord::PreviewTop => key == Key::g && self.preview_to_top(),
+            Chord::PreviewTop if key == Key::g => self.preview_to_top(),
+            Chord::PreviewTop => {
+                go_target(key, &[]).is_some() && {
+                    self.return_from_preview(browser);
+                    self.complete_go(browser, key)
+                }
+            }
             Chord::Copy => self.complete_copy(key),
             Chord::Action => self.complete_action(key),
         };

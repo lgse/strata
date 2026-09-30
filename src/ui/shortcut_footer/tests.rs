@@ -323,7 +323,7 @@ fn tenxer_reference_follows_the_active_map() {
                     .is_some_and(|text| text.contains(phrase))
             );
             let columns = reference_labels(&footer);
-            assert!(columns.iter().any(|label| label == "Leave 10xer mode"));
+            assert!(columns.iter().any(|label| label == "Toggle 10xer mode"));
             assert!(
                 columns
                     .iter()
@@ -402,7 +402,7 @@ fn tenxer_reference_follows_the_active_map() {
             settle();
             let matches = reference_labels(&footer);
             assert!(matches.iter().any(|label| label == "Move half a page"));
-            assert!(!matches.iter().any(|label| label == "Leave 10xer mode"));
+            assert!(!matches.iter().any(|label| label == "Toggle 10xer mode"));
             footer.search.set_text("");
             settle();
             let places = footer.category_buttons()[2].clone();
@@ -440,7 +440,7 @@ fn tenxer_reference_follows_the_active_map() {
             assert!(
                 !reference_labels(&footer)
                     .iter()
-                    .any(|label| label == "Leave 10xer mode")
+                    .any(|label| label == "Toggle 10xer mode")
             );
             assert_eq!(
                 footer.handle_key(gdk::Key::k, none),
@@ -449,7 +449,7 @@ fn tenxer_reference_follows_the_active_map() {
             assert!(
                 reference_labels(&footer)
                     .iter()
-                    .any(|label| label == "Leave 10xer mode")
+                    .any(|label| label == "Toggle 10xer mode")
             );
             assert_eq!(
                 footer.handle_key(gdk::Key::Right, none),
@@ -535,7 +535,7 @@ fn tenxer_reference_follows_the_active_map() {
             let other = ShortcutFooter::new(BrowserMode::List);
             other.bind_preferences(&manager);
             let list = reference_labels(&other);
-            assert!(list.iter().any(|label| label == "Leave 10xer mode"));
+            assert!(list.iter().any(|label| label == "Toggle 10xer mode"));
             assert!(
                 list.iter()
                     .any(|label| label == "Open the focused directory")
@@ -574,7 +574,7 @@ fn tenxer_reference_follows_the_active_map() {
                         .iter()
                         .any(|label| label == "Toggle the focused item and move down")
                 );
-                assert!(!labels.iter().any(|label| label == "Leave 10xer mode"));
+                assert!(!labels.iter().any(|label| label == "Toggle 10xer mode"));
             }
             window.destroy();
         },

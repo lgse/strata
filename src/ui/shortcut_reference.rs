@@ -404,12 +404,6 @@ const TENXER_SETTINGS: &[Binding] = &[
     },
     Binding {
         category: "Selection",
-        action: "Extend selection",
-        note: "",
-        keys: "Shift + ↑ / Shift + ↓",
-    },
-    Binding {
-        category: "Selection",
         action: "Open the context menu",
         note: "",
         keys: "Menu / Shift + F10",
@@ -467,6 +461,12 @@ const TENXER_SETTINGS: &[Binding] = &[
         action: "Run a matching custom action",
         note: "; 0 is the tenth",
         keys: "; 1–9 / ; 0",
+    },
+    Binding {
+        category: "Files",
+        action: "Open terminal in the focused folder",
+        note: "",
+        keys: "; t",
     },
     Binding {
         category: "Files",
@@ -659,12 +659,6 @@ const TENXER_SETTINGS: &[Binding] = &[
         action: "Toggle 10xer mode",
         note: "",
         keys: "Ctrl + Shift + M",
-    },
-    Binding {
-        category: "Application",
-        action: "Leave 10xer mode",
-        note: "",
-        keys: "q",
     },
     Binding {
         category: "Application",
@@ -1120,19 +1114,17 @@ const TENXER_FILES: &[(&str, &str)] = &[
         "; 1–9 / ; 0",
         "Run one of the first ten matching custom actions",
     ),
+    ("; t", "Open a terminal in the focused folder"),
     ("Ctrl+Shift+N", "Create a folder"),
     ("Space", "Toggle the focused item and move down"),
     ("v / V", "Visual select / visual unset"),
     ("Ctrl+A", "Select all items in the focused pane"),
     ("Ctrl+R", "Invert the selection"),
-    ("Shift+↑ / ↓", "Extend selection"),
-    ("Shift+PgUp / PgDn", "Extend selection by one page"),
     ("Alt+Enter", "Show item properties"),
     ("Menu / Shift+F10", "Open the context menu"),
 ];
 
 const TENXER_MODE: &[(&str, &str)] = &[
-    ("q", "Leave 10xer mode"),
     ("Q", "Close the current window"),
     ("Ctrl+Shift+M", "Toggle 10xer mode"),
     ("F1 / ~", "Show or hide this reference"),

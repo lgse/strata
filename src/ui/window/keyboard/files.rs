@@ -202,7 +202,7 @@ impl Dispatcher {
 
     fn arm_actions(&self) {
         let numbered = self.view.numbered_actions();
-        let rows = if numbered.actions.is_empty() {
+        let mut rows = if numbered.actions.is_empty() {
             vec![("1\u{2013}0".to_owned(), "No matching actions".to_owned())]
         } else {
             numbered
@@ -212,6 +212,7 @@ impl Dispatcher {
                 .map(|(index, action)| (slot_key(index), action.name().to_owned()))
                 .collect()
         };
+        rows.push(("t".to_owned(), "Open terminal here".to_owned()));
         self.armed_actions.replace(Some(ArmedActions {
             ids: numbered
                 .actions
@@ -224,6 +225,14 @@ impl Dispatcher {
     }
 
     pub(super) fn complete_action(&self, key: Key) -> bool {
+        if key == Key::t {
+            self.armed_actions.take();
+            if !self.view.open_focused_folder_terminal() {
+                self.shortcuts
+                    .show_feedback("Can\u{2019}t open a terminal here");
+            }
+            return true;
+        }
         let Some((digit, slot)) = action_slot(key) else {
             return false;
         };
