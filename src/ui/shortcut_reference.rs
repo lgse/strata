@@ -4,12 +4,36 @@ use super::browser_modes::BrowserMode;
 
 pub(crate) const EXPERIMENTAL_LABEL: &str = "(experimental feature, under active development)";
 
+/// What the open reference describes: the view's navigation and, in a portal
+/// file chooser, only the keys that request allows.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct Binding {
-    pub category: &'static str,
-    pub action: &'static str,
-    pub note: &'static str,
-    pub keys: &'static str,
+pub(crate) struct ReferenceScope {
+    pub mode: BrowserMode,
+    pub chooser: Option<ChooserScope>,
+}
+
+impl ReferenceScope {
+    pub(crate) fn window(mode: BrowserMode) -> Self {
+        Self {
+            mode,
+            chooser: None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct ChooserScope {
+    pub request: ChooserRequest,
+    pub multiple: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ChooserRequest {
+    Files,
+    Folders,
+    /// Saves one file under the name in the chooser's name field.
+    SaveFile,
+    SaveFiles,
 }
 
 pub(crate) struct ReferenceSection {
@@ -47,874 +71,29 @@ pub(crate) enum ContextHint {
     HiddenFiles,
 }
 
-const DEFAULT_SETTINGS: &[Binding] = &[
-    Binding {
-        category: "Navigation",
-        action: "Move through items",
-        note: "← / → in Icons view",
-        keys: "↑ / ↓",
-    },
-    Binding {
-        category: "Navigation",
-        action: "Jump to top / bottom",
-        note: "",
-        keys: "Ctrl + ↑ / Ctrl + ↓",
-    },
-    Binding {
-        category: "Navigation",
-        action: "Open item",
-        note: "",
-        keys: "Enter",
-    },
-    Binding {
-        category: "Navigation",
-        action: "Go to parent folder",
-        note: "",
-        keys: "Alt + ↑",
-    },
-    Binding {
-        category: "Navigation",
-        action: "Back / forward",
-        note: "",
-        keys: "Alt + ← / Alt + →",
-    },
-    Binding {
-        category: "Navigation",
-        action: "Move between column panes",
-        note: "Columns view",
-        keys: "← / →",
-    },
-    Binding {
-        category: "Navigation",
-        action: "Focus pane header",
-        note: "when at top",
-        keys: "↑",
-    },
-    Binding {
-        category: "Navigation",
-        action: "Focus sidebar",
-        note: "when at left edge",
-        keys: "←",
-    },
-    Binding {
-        category: "Selection",
-        action: "Select all",
-        note: "",
-        keys: "Ctrl + A",
-    },
-    Binding {
-        category: "Selection",
-        action: "Extend selection",
-        note: "",
-        keys: "Shift + ↑ / Shift + ↓",
-    },
-    Binding {
-        category: "Selection",
-        action: "Toggle item in selection",
-        note: "",
-        keys: "Ctrl + Space",
-    },
-    Binding {
-        category: "Selection",
-        action: "Clear selection",
-        note: "",
-        keys: "Esc",
-    },
-    Binding {
-        category: "Files",
-        action: "Quick preview",
-        note: "",
-        keys: "Space",
-    },
-    Binding {
-        category: "Files",
-        action: "Cut / copy / paste",
-        note: "",
-        keys: "Ctrl + X / C / V",
-    },
-    Binding {
-        category: "Files",
-        action: "Duplicate",
-        note: "",
-        keys: "Ctrl + D",
-    },
-    Binding {
-        category: "Files",
-        action: "Rename",
-        note: "",
-        keys: "F2 / Ctrl + R",
-    },
-    Binding {
-        category: "Files",
-        action: "Create new folder",
-        note: "",
-        keys: "Ctrl + Shift + N",
-    },
-    Binding {
-        category: "Files",
-        action: "Move to Trash",
-        note: "",
-        keys: "Delete",
-    },
-    Binding {
-        category: "Files",
-        action: "Delete permanently",
-        note: "",
-        keys: "Shift + Delete",
-    },
-    Binding {
-        category: "Files",
-        action: "Undo file operation",
-        note: "",
-        keys: "Ctrl + Z",
-    },
-    Binding {
-        category: "Files",
-        action: "Item properties",
-        note: "",
-        keys: "Alt + Enter",
-    },
-    Binding {
-        category: "View",
-        action: "Toggle hidden files",
-        note: "",
-        keys: "Ctrl + H / Ctrl + .",
-    },
-    Binding {
-        category: "View",
-        action: "Switch view",
-        note: "Columns / Icons / List",
-        keys: "Ctrl + 1 / 2 / 3",
-    },
-    Binding {
-        category: "View",
-        action: "Increase text size",
-        note: "",
-        keys: "Ctrl + +",
-    },
-    Binding {
-        category: "View",
-        action: "Decrease text size",
-        note: "",
-        keys: "Ctrl + −",
-    },
-    Binding {
-        category: "View",
-        action: "Reset text size",
-        note: "",
-        keys: "Ctrl + 0",
-    },
-    Binding {
-        category: "View",
-        action: "Toggle sidebar",
-        note: "",
-        keys: "Ctrl + B",
-    },
-    Binding {
-        category: "Application",
-        action: "Edit location",
-        note: "",
-        keys: "Ctrl + L",
-    },
-    Binding {
-        category: "Application",
-        action: "Filter items",
-        note: "",
-        keys: "Ctrl + F",
-    },
-    Binding {
-        category: "Application",
-        action: "Search",
-        note: "",
-        keys: "Ctrl + K",
-    },
-    Binding {
-        category: "Application",
-        action: "Open terminal",
-        note: "",
-        keys: "Ctrl + T",
-    },
-    Binding {
-        category: "Application",
-        action: "Refresh",
-        note: "",
-        keys: "F5",
-    },
-    Binding {
-        category: "Application",
-        action: "Open settings",
-        note: "",
-        keys: "Ctrl + ,",
-    },
-    Binding {
-        category: "Application",
-        action: "Shortcut reference",
-        note: "",
-        keys: "F1",
-    },
-    Binding {
-        category: "Application",
-        action: "Toggle arrow-key scope",
-        note: "",
-        keys: "Ctrl + \\",
-    },
-];
-
-const TENXER_SETTINGS: &[Binding] = &[
-    Binding {
-        category: "Navigation",
-        action: "Move through items",
-        note: "List and Columns",
-        keys: "j / k / ↑ / ↓",
-    },
-    Binding {
-        category: "Navigation",
-        action: "Move between icons",
-        note: "Icons",
-        keys: "↑ ↓ ← →",
-    },
-    Binding {
-        category: "Navigation",
-        action: "Go to parent folder",
-        note: "h / ← in List and Columns",
-        keys: "h / ← / Backspace / Alt + ↑",
-    },
-    Binding {
-        category: "Navigation",
-        action: "Open directory or enter file preview",
-        note: "List and Columns",
-        keys: "l / →",
-    },
-    Binding {
-        category: "Navigation",
-        action: "Open next column",
-        note: "Columns directory; focus stays in place",
-        keys: "i",
-    },
-    Binding {
-        category: "Navigation",
-        action: "Open item",
-        note: "",
-        keys: "Enter / o",
-    },
-    Binding {
-        category: "Navigation",
-        action: "Toggle folder peek",
-        note: "List and Icons directory",
-        keys: "i",
-    },
-    Binding {
-        category: "Navigation",
-        action: "Back / forward",
-        note: "",
-        keys: "H / L / Alt + ← / Alt + →",
-    },
-    Binding {
-        category: "Navigation",
-        action: "First / last item",
-        note: "",
-        keys: "Home / G / End / Ctrl + ↑ / Ctrl + ↓",
-    },
-    Binding {
-        category: "Navigation",
-        action: "Go to Home",
-        note: "",
-        keys: "Alt + Home",
-    },
-    Binding {
-        category: "Find",
-        action: "Find the next / previous name in this listing",
-        note: "Highlights matches without hiding rows",
-        keys: "/ / ?",
-    },
-    Binding {
-        category: "Find",
-        action: "Repeat the last find / in reverse",
-        note: "",
-        keys: "n / N",
-    },
-    Binding {
-        category: "Find",
-        action: "Move through the listing from the prompt",
-        note: "",
-        keys: "↑ / ↓",
-    },
-    Binding {
-        category: "Find",
-        action: "Dismiss find highlights",
-        note: "In the listing",
-        keys: "Esc",
-    },
-    Binding {
-        category: "Find",
-        action: "Filter this listing",
-        note: "Hides non-matches; follows Include subfolders",
-        keys: "f",
-    },
-    Binding {
-        category: "Find",
-        action: "Clear the filter",
-        note: "In the listing or the filter prompt",
-        keys: "Esc",
-    },
-    Binding {
-        category: "Find",
-        action: "Search this folder and its subfolders",
-        note: "Names only; up to 100 hits",
-        keys: "s",
-    },
-    Binding {
-        category: "Find",
-        action: "Dismiss the search",
-        note: "In the hits; restores an earlier filter",
-        keys: "Esc / h",
-    },
-    Binding {
-        category: "Navigation",
-        action: "Move half a page",
-        note: "",
-        keys: "Ctrl + U / Ctrl + D",
-    },
-    Binding {
-        category: "Navigation",
-        action: "Move one page",
-        note: "",
-        keys: "Ctrl + B / Ctrl + F / PgUp / PgDn",
-    },
-    Binding {
-        category: "Selection",
-        action: "Select all",
-        note: "",
-        keys: "Ctrl + A",
-    },
-    Binding {
-        category: "Selection",
-        action: "Toggle the focused item and move down",
-        note: "",
-        keys: "Space",
-    },
-    Binding {
-        category: "Selection",
-        action: "Visual select / visual unset",
-        note: "Space toggles in place; Esc leaves",
-        keys: "v / Shift + V",
-    },
-    Binding {
-        category: "Selection",
-        action: "Invert the selection",
-        note: "",
-        keys: "Ctrl + R",
-    },
-    Binding {
-        category: "Selection",
-        action: "Open the context menu",
-        note: "",
-        keys: "Menu / Shift + F10",
-    },
-    Binding {
-        category: "Files",
-        action: "Yank / cut",
-        note: "The selection, or the focused item",
-        keys: "y / x",
-    },
-    Binding {
-        category: "Files",
-        action: "Copy / cut",
-        note: "Default-map selection behavior",
-        keys: "Ctrl + C / Ctrl + X",
-    },
-    Binding {
-        category: "Files",
-        action: "Clear copy and cut marks",
-        note: "",
-        keys: "Y / X",
-    },
-    Binding {
-        category: "Files",
-        action: "Paste, focusing Keep Both on conflicts",
-        note: "",
-        keys: "p",
-    },
-    Binding {
-        category: "Files",
-        action: "Paste, focusing Replace on conflicts",
-        note: "",
-        keys: "P / Ctrl + V",
-    },
-    Binding {
-        category: "Files",
-        action: "Copy path / name",
-        note: "",
-        keys: "c c / c n",
-    },
-    Binding {
-        category: "Files",
-        action: "Rename the focused item",
-        note: "In the footer",
-        keys: "r / F2",
-    },
-    Binding {
-        category: "Files",
-        action: "Open With",
-        note: "The selection, or the focused item",
-        keys: "O",
-    },
-    Binding {
-        category: "Files",
-        action: "Run a matching custom action",
-        note: "; 0 is the tenth",
-        keys: "; 1–9 / ; 0",
-    },
-    Binding {
-        category: "Files",
-        action: "Open terminal in the focused folder",
-        note: "",
-        keys: "; t",
-    },
-    Binding {
-        category: "Files",
-        action: "Compress",
-        note: "The selection, or the focused item",
-        keys: "; c",
-    },
-    Binding {
-        category: "Files",
-        action: "Extract the archive here / to a folder",
-        note: "; E types the folder in the footer",
-        keys: "; e / ; E",
-    },
-    Binding {
-        category: "Files",
-        action: "Move / copy to a folder",
-        note: "Type the folder in the footer; Tab completes",
-        keys: "M / C",
-    },
-    Binding {
-        category: "Files",
-        action: "Restore from Trash",
-        note: "The selection, or the focused item",
-        keys: "R",
-    },
-    Binding {
-        category: "Files",
-        action: "Create a file or folder",
-        note: "End the name with / for a folder",
-        keys: "a",
-    },
-    Binding {
-        category: "Files",
-        action: "Create new folder",
-        note: "",
-        keys: "Ctrl + Shift + N",
-    },
-    Binding {
-        category: "Files",
-        action: "Move to Trash",
-        note: "After confirming; d d confirms",
-        keys: "d / Delete",
-    },
-    Binding {
-        category: "Files",
-        action: "Delete permanently",
-        note: "After confirming",
-        keys: "D / Shift + Delete",
-    },
-    Binding {
-        category: "Files",
-        action: "Undo file operation",
-        note: "",
-        keys: "Ctrl + Z",
-    },
-    Binding {
-        category: "Files",
-        action: "Redo file operation",
-        note: "",
-        keys: "Ctrl + Shift + Z",
-    },
-    Binding {
-        category: "Files",
-        action: "Item properties",
-        note: "",
-        keys: "Alt + Enter",
-    },
-    Binding {
-        category: "View",
-        action: "Toggle hidden files",
-        note: "",
-        keys: ". / Ctrl + H / Ctrl + .",
-    },
-    Binding {
-        category: "View",
-        action: "Sort by name / modified / size / type",
-        note: "Shift reverses",
-        keys: ", a / , m / , s / , e",
-    },
-    Binding {
-        category: "View",
-        action: "Switch view",
-        note: "Columns / Icons / List",
-        keys: "Ctrl + 1 / 2 / 3",
-    },
-    Binding {
-        category: "View",
-        action: "Increase text size",
-        note: "",
-        keys: "Ctrl + +",
-    },
-    Binding {
-        category: "View",
-        action: "Decrease text size",
-        note: "",
-        keys: "Ctrl + −",
-    },
-    Binding {
-        category: "View",
-        action: "Reset text size",
-        note: "",
-        keys: "Ctrl + 0",
-    },
-    Binding {
-        category: "View",
-        action: "Toggle sidebar",
-        note: "Ctrl + B pages up in 10xer mode",
-        keys: "Ctrl + N",
-    },
-    Binding {
-        category: "Preview",
-        action: "Toggle the preview",
-        note: "On a file; focus stays in the listing",
-        keys: "i",
-    },
-    Binding {
-        category: "Preview",
-        action: "Scroll the open preview",
-        note: "Focus stays in the listing",
-        keys: "J / K",
-    },
-    Binding {
-        category: "Preview",
-        action: "Scroll the document",
-        note: "While the preview has the keys",
-        keys: "j / k / ↑ / ↓ / Ctrl + U / Ctrl + D / PgUp / PgDn",
-    },
-    Binding {
-        category: "Preview",
-        action: "Top / bottom of the document",
-        note: "While the preview has the keys",
-        keys: "Home / G / End",
-    },
-    Binding {
-        category: "Preview",
-        action: "Move through an archive",
-        note: "h at the archive root returns to the listing",
-        keys: "j / k / h / l / Enter",
-    },
-    Binding {
-        category: "Preview",
-        action: "Play, seek, volume, mute",
-        note: "Media preview with the keys",
-        keys: "Space / ← → / ↑ ↓ / m",
-    },
-    Binding {
-        category: "Preview",
-        action: "Return to the listing",
-        note: "h / ← in documents; h in media (← seeks); the preview stays open",
-        keys: "h / ← / Shift + Tab",
-    },
-    Binding {
-        category: "Preview",
-        action: "Close the preview",
-        note: "Keys return to the listing; i is typed in a text field",
-        keys: "Esc / i",
-    },
-    Binding {
-        category: "Preview media",
-        action: "Play / pause",
-        note: "",
-        keys: "Ctrl + Alt + Space",
-    },
-    Binding {
-        category: "Preview media",
-        action: "Seek",
-        note: "",
-        keys: "Ctrl + Alt + ← / →",
-    },
-    Binding {
-        category: "Preview media",
-        action: "Volume",
-        note: "",
-        keys: "Ctrl + Alt + ↑ / ↓",
-    },
-    Binding {
-        category: "Preview media",
-        action: "Mute / unmute",
-        note: "",
-        keys: "Ctrl + Alt + M",
-    },
-    Binding {
-        category: "Application",
-        action: "Edit location",
-        note: "",
-        keys: "Ctrl + L",
-    },
-    Binding {
-        category: "Application",
-        action: "Search",
-        note: "",
-        keys: "Ctrl + K",
-    },
-    Binding {
-        category: "Application",
-        action: "Refresh",
-        note: "",
-        keys: "F5",
-    },
-    Binding {
-        category: "Application",
-        action: "Open settings",
-        note: "",
-        keys: "Ctrl + ,",
-    },
-    Binding {
-        category: "Application",
-        action: "Shortcut reference",
-        note: "",
-        keys: "F1 / ~",
-    },
-    Binding {
-        category: "Application",
-        action: "Toggle 10xer mode",
-        note: "",
-        keys: "Ctrl + Shift + M",
-    },
-    Binding {
-        category: "Application",
-        action: "Close window",
-        note: "",
-        keys: "Q",
-    },
-];
-
-/// One catalog for Settings → Keybindings and the footer shortcut reference.
-/// `reference_keys` / `reference_label` are the footer row; an empty key uses
-/// `binding.keys`. The label is the binding action, or its note when that note
-/// is the footer wording (pinned places).
-struct PlaceChord {
-    binding: Binding,
-    reference_keys: &'static str,
-    reference_label: &'static str,
-}
-
-const TENXER_PLACE_CHORDS: &[PlaceChord] = &[
-    PlaceChord {
-        binding: Binding {
-            category: "Places",
-            action: "First item",
-            note: "",
-            keys: "g g",
-        },
-        reference_keys: "",
-        reference_label: "First item",
-    },
-    PlaceChord {
-        binding: Binding {
-            category: "Places",
-            action: "Follow search result",
-            note: "Selects the hit and ends the search",
-            keys: "g f",
-        },
-        reference_keys: "",
-        reference_label: "Follow search result",
-    },
-    PlaceChord {
-        binding: Binding {
-            category: "Places",
-            action: "Home / ~/.config",
-            note: "",
-            keys: "g h / g c",
-        },
-        reference_keys: "",
-        reference_label: "Home / ~/.config",
-    },
-    PlaceChord {
-        binding: Binding {
-            category: "Places",
-            action: "Downloads / Documents / Music / Pictures / Videos",
-            note: "",
-            keys: "g d / g k / g m / g p / g v",
-        },
-        reference_keys: "",
-        reference_label: "Downloads / Documents / Music / Pictures / Videos",
-    },
-    PlaceChord {
-        binding: Binding {
-            category: "Places",
-            action: "Trash / Network / Recent",
-            note: "",
-            keys: "g t / g n / g r",
-        },
-        reference_keys: "",
-        reference_label: "Trash / Network / Recent",
-    },
-    PlaceChord {
-        binding: Binding {
-            category: "Places",
-            action: "Pinned place",
-            note: "Visible PINNED rows in sidebar order",
-            keys: "g 1–9",
-        },
-        reference_keys: "",
-        reference_label: "Visible PINNED rows in sidebar order",
-    },
-    PlaceChord {
-        binding: Binding {
-            category: "Places",
-            action: "Pin / unpin a folder",
-            note: "The folder under the cursor, or the current folder",
-            keys: "g + / g -",
-        },
-        reference_keys: "",
-        reference_label: "Pin / unpin a folder",
-    },
-    PlaceChord {
-        binding: Binding {
-            category: "Places",
-            action: "Go to a typed path or URI",
-            note: "Opens the footer go prompt",
-            keys: "g Space",
-        },
-        reference_keys: "",
-        reference_label: "Go to a typed path or URI",
-    },
-    PlaceChord {
-        binding: Binding {
-            category: "Places",
-            action: "Cycle matching folders",
-            note: "In the go prompt",
-            keys: "Tab / Shift + Tab",
-        },
-        reference_keys: "Tab / Shift + Tab in go ›",
-        reference_label: "Cycle matching folders",
-    },
-    PlaceChord {
-        binding: Binding {
-            category: "Places",
-            action: "Jump to a visited folder",
-            note: "Ranked by match, visit count, and recency",
-            keys: "z",
-        },
-        reference_keys: "",
-        reference_label: "Jump to a visited folder",
-    },
-    PlaceChord {
-        binding: Binding {
-            category: "Places",
-            action: "Jump to a recent folder",
-            note: "Most recent visit first",
-            keys: "Z",
-        },
-        reference_keys: "",
-        reference_label: "Jump to a recent folder",
-    },
-    PlaceChord {
-        binding: Binding {
-            category: "Places",
-            action: "Choose a visited folder",
-            note: "In the jump or recent prompt",
-            keys: "↑ / ↓",
-        },
-        reference_keys: "↑ / ↓ in jump › / recent ›",
-        reference_label: "Choose a visited folder",
-    },
-    PlaceChord {
-        binding: Binding {
-            category: "Places",
-            action: "Top of the document or first archive member",
-            note: "Preview",
-            keys: "g g",
-        },
-        reference_keys: "g g in the preview",
-        reference_label: "Top of the document or first archive member",
-    },
-    PlaceChord {
-        binding: Binding {
-            category: "Places",
-            action: "Cancel a pending chord",
-            note: "",
-            keys: "Esc",
-        },
-        reference_keys: "Esc after g",
-        reference_label: "Cancel a pending chord",
-    },
-];
-
-fn tenxer_settings() -> &'static [Binding] {
-    use std::sync::OnceLock;
-    static ALL: OnceLock<Vec<Binding>> = OnceLock::new();
-    ALL.get_or_init(|| {
-        let mut bindings = TENXER_SETTINGS.to_vec();
-        let insert_at = bindings
-            .iter()
-            .position(|binding| binding.action == "Move half a page")
-            .expect("10xer place chords sit before half-page movement");
-        for (offset, place) in TENXER_PLACE_CHORDS.iter().enumerate() {
-            bindings.insert(insert_at + offset, place.binding);
-        }
-        bindings
-    })
-    .as_slice()
-}
-
-fn tenxer_place_rows() -> Vec<(&'static str, &'static str)> {
-    TENXER_PLACE_CHORDS
-        .iter()
-        .map(|place| {
-            let keys = if place.reference_keys.is_empty() {
-                place.binding.keys
-            } else {
-                place.reference_keys
-            };
-            (keys, place.reference_label)
-        })
-        .collect()
-}
-
-pub(crate) fn settings_bindings(tenxer: bool) -> &'static [Binding] {
-    if tenxer {
-        tenxer_settings()
-    } else {
-        DEFAULT_SETTINGS
-    }
-}
-
-pub(crate) fn active_settings_bindings() -> &'static [Binding] {
-    settings_bindings(super::tenxer_mode::chrome_suppressed())
-}
-
-pub(crate) fn reference_sections(mode: BrowserMode) -> Vec<ReferenceSection> {
+pub(crate) fn reference_sections(scope: ReferenceScope) -> Vec<ReferenceSection> {
     if super::tenxer_mode::chrome_suppressed() {
-        tenxer_sections(mode)
+        tenxer_sections(scope.mode, scope.chooser)
     } else {
-        default_sections(mode)
+        default_sections(scope.mode)
     }
 }
 
-pub(crate) fn context_hint_for(hint: ContextHint, tenxer: bool) -> &'static str {
-    if tenxer {
+pub(crate) fn context_hint_for(
+    hint: ContextHint,
+    preferences: &super::preferences::PreferenceManager,
+) -> &'static str {
+    if preferences.tenxer_mode() {
         tenxer_hint(hint)
     } else {
-        default_hint(hint)
+        default_hint(hint, preferences.type_to_search_active())
     }
 }
 
 fn default_sections(mode: BrowserMode) -> Vec<ReferenceSection> {
     vec![
         ReferenceSection {
-            title: match mode {
-                BrowserMode::Columns => "Columns navigation",
-                BrowserMode::Icons => "Icons navigation",
-                BrowserMode::List => "List navigation",
-            },
+            title: navigation_title(mode),
             rows: default_navigation(mode),
         },
         ReferenceSection {
@@ -932,75 +111,78 @@ fn default_sections(mode: BrowserMode) -> Vec<ReferenceSection> {
     ]
 }
 
-fn tenxer_sections(mode: BrowserMode) -> Vec<ReferenceSection> {
-    vec![
-        ReferenceSection {
-            title: match mode {
-                BrowserMode::Columns => "Columns navigation",
-                BrowserMode::Icons => "Icons navigation",
-                BrowserMode::List => "List navigation",
-            },
-            rows: tenxer_navigation(mode),
-        },
+fn tenxer_sections(mode: BrowserMode, chooser: Option<ChooserScope>) -> Vec<ReferenceSection> {
+    let mut sections = vec![ReferenceSection {
+        title: navigation_title(mode),
+        rows: tenxer_navigation(mode, chooser.is_some()),
+    }];
+    if let Some(chooser) = chooser {
+        sections.push(ReferenceSection {
+            title: "File chooser",
+            rows: chooser_requests(chooser),
+        });
+    }
+    sections.extend([
         ReferenceSection {
             title: "Places",
-            rows: tenxer_place_rows(),
+            rows: tenxer_places(chooser.is_some()),
         },
         ReferenceSection {
             title: "Files and selection",
-            rows: TENXER_FILES.to_vec(),
+            rows: chooser.map_or_else(|| TENXER_FILES.to_vec(), chooser_files),
         },
         ReferenceSection {
             title: "Preview",
-            rows: tenxer_preview(mode),
+            rows: tenxer_preview(mode, chooser.is_some()),
         },
         ReferenceSection {
             title: "10xer mode",
-            rows: TENXER_MODE.to_vec(),
+            rows: tenxer_mode_rows(chooser.is_some()),
         },
         ReferenceSection {
             title: "Search and tools",
-            rows: TENXER_TOOLS.to_vec(),
+            rows: tenxer_tools(mode, chooser.is_some()),
         },
         ReferenceSection {
             title: "Preview media",
             rows: MEDIA.to_vec(),
         },
-    ]
+    ]);
+    sections
 }
 
-pub(crate) fn default_navigation(mode: BrowserMode) -> Vec<(&'static str, &'static str)> {
+fn navigation_title(mode: BrowserMode) -> &'static str {
+    match mode {
+        BrowserMode::Columns => "Columns navigation",
+        BrowserMode::Icons => "Icons navigation",
+        BrowserMode::List => "List navigation",
+    }
+}
+
+fn default_navigation(mode: BrowserMode) -> Vec<(&'static str, &'static str)> {
     let mut shortcuts = match mode {
         BrowserMode::Columns => vec![
             ("↑ / ↓", "Move between items"),
             ("← / →", "Parent pane / enter folder"),
-            ("Space", "Open folder column"),
             ("← at first pane", "Focus the visible sidebar"),
             (
                 "Backspace",
                 "Close the current pane or go to the parent folder",
-            ),
-            (
-                "h / j / k / l",
-                "Move between items; l opens the item (type-to-search off)",
             ),
         ],
         BrowserMode::Icons => vec![
             ("↑ ↓ ← →", "Move spatially between tiles"),
             ("← at left edge", "Focus the visible sidebar"),
             ("Backspace", "Go to the parent folder"),
-            ("h / l", "Parent folder / open item (type-to-search off)"),
-            ("j / k", "Next / previous item (type-to-search off)"),
         ],
         BrowserMode::List => vec![
             ("↑ / ↓", "Move between file rows"),
             ("←", "Focus the visible sidebar"),
             ("Backspace", "Go to the parent folder"),
-            ("h / l", "Parent folder / open item (type-to-search off)"),
-            ("j / k", "Next / previous item (type-to-search off)"),
         ],
     };
     shortcuts.extend_from_slice(&[
+        ("h / j / k / l", "Same as ← ↓ ↑ → (type-to-search off)"),
         ("↑ at top", "Focus the navigation header"),
         ("← / → in header", "Move between header controls"),
         ("↓ in header", "Return to the files"),
@@ -1022,40 +204,37 @@ pub(crate) fn default_navigation(mode: BrowserMode) -> Vec<(&'static str, &'stat
     shortcuts
 }
 
-fn tenxer_navigation(mode: BrowserMode) -> Vec<(&'static str, &'static str)> {
-    match mode {
-        BrowserMode::Columns | BrowserMode::List => tenxer_listing_navigation(mode),
+fn tenxer_navigation(mode: BrowserMode, chooser: bool) -> Vec<(&'static str, &'static str)> {
+    let mut shortcuts = match mode {
+        BrowserMode::Columns | BrowserMode::List => vec![
+            ("j / k / ↑ / ↓", "Next / previous item"),
+            ("h / ← / Backspace / Alt+↑", "Go to the parent folder"),
+            ("l / →", "Open the focused directory"),
+            (
+                "l / → on a file",
+                "Enter its preview; keys move into the drawer",
+            ),
+        ],
         BrowserMode::Icons => vec![
             ("h / j / k / l / ↑ ↓ ← →", "Move spatially between tiles"),
-            ("Enter / o", "Open the focused item"),
-            ("i", "Toggle folder peek for the focused directory"),
             ("Backspace / Alt+↑", "Go to the parent folder"),
-            ("H / L / Alt+← / Alt+→", "Back / forward in history"),
-            ("Alt+Home", "Go to Home"),
-            ("Home", "First item"),
-            ("G / End", "Last item"),
-            ("Ctrl+↑ / Ctrl+↓", "First / last item"),
-            ("Ctrl+U / Ctrl+D", "Move half a page"),
-            ("Ctrl+B / Ctrl+F / PgUp / PgDn", "Move one page"),
         ],
-    }
-}
-
-fn tenxer_listing_navigation(mode: BrowserMode) -> Vec<(&'static str, &'static str)> {
-    let mut shortcuts = vec![
-        ("j / k / ↑ / ↓", "Next / previous item"),
-        ("h / ← / Backspace / Alt+↑", "Go to the parent folder"),
-        ("l / →", "Open the focused directory"),
-        (
-            "l / → on a file",
-            "Enter its preview; keys move into the drawer",
-        ),
-    ];
-    if mode == BrowserMode::Columns {
-        shortcuts.push(("i", "Open the next column for the focused directory"));
+    };
+    // The chooser refuses i, and its own section describes Enter and o.
+    if !chooser {
+        shortcuts.extend_from_slice(&[
+            (
+                "i",
+                if mode == BrowserMode::Columns {
+                    "Open the next column for the focused directory"
+                } else {
+                    "Toggle folder peek for the focused directory"
+                },
+            ),
+            ("Enter / o", "Open the focused item"),
+        ]);
     }
     shortcuts.extend_from_slice(&[
-        ("Enter / o", "Open the focused item"),
         ("H / L / Alt+← / Alt+→", "Back / forward in history"),
         ("Alt+Home", "Go to Home"),
         ("Home", "First item"),
@@ -1067,11 +246,46 @@ fn tenxer_listing_navigation(mode: BrowserMode) -> Vec<(&'static str, &'static s
     shortcuts
 }
 
-fn tenxer_preview(mode: BrowserMode) -> Vec<(&'static str, &'static str)> {
+fn tenxer_places(chooser: bool) -> Vec<(&'static str, &'static str)> {
     let mut shortcuts = vec![
-        ("i on a file", "Toggle the preview without taking focus"),
-        ("J / K", "Scroll the open preview without taking focus"),
+        ("g g", "First item"),
+        ("g f", "Follow search result"),
+        ("g h / g c", "Home / ~/.config"),
+        (
+            "g d / g k / g m / g p / g v",
+            "Downloads / Documents / Music / Pictures / Videos",
+        ),
     ];
+    if chooser {
+        shortcuts.extend_from_slice(&[
+            ("g r", "Recent"),
+            ("g 1–9", "Visible PINNED rows that are local folders"),
+        ]);
+    } else {
+        shortcuts.extend_from_slice(&[
+            ("g t / g n / g r", "Trash / Network / Recent"),
+            ("g 1–9", "Visible PINNED rows in sidebar order"),
+            ("g + / g -", "Pin / unpin a folder"),
+        ]);
+    }
+    shortcuts.extend_from_slice(&[
+        ("g Space", "Go to a typed path or URI"),
+        ("Tab / Shift+Tab in go ›", "Cycle matching folders"),
+        ("z", "Jump to a visited folder"),
+        ("Z", "Jump to a recent folder"),
+        ("↑ / ↓ in jump › / recent ›", "Choose a visited folder"),
+        ("Esc after g", "Cancel a pending chord"),
+    ]);
+    shortcuts
+}
+
+fn tenxer_preview(mode: BrowserMode, chooser: bool) -> Vec<(&'static str, &'static str)> {
+    let mut shortcuts = Vec::new();
+    if !chooser {
+        shortcuts.push(("i on a file", "Toggle the preview without taking focus"));
+    }
+    shortcuts.push(("J / K", "Scroll the open preview without taking focus"));
+    // Icons have no key that moves into the preview.
     if mode != BrowserMode::Icons {
         shortcuts.extend_from_slice(TENXER_PREVIEW_OWNED);
     }
@@ -1086,12 +300,16 @@ const TENXER_PREVIEW_OWNED: &[(&str, &str)] = &[
         "Scroll one page",
     ),
     (
-        "Home / G / End in the preview",
+        "g g / Home / G / End in the preview",
         "Top / bottom of the document",
     ),
     (
         "j / k / l / Enter in an archive",
         "Move / open an archive folder",
+    ),
+    (
+        "g g / Home / G / End in an archive",
+        "First / last archive member",
     ),
     (
         "h in an archive",
@@ -1111,21 +329,20 @@ const TENXER_PREVIEW_OWNED: &[(&str, &str)] = &[
 
 const DEFAULT_FILES: &[(&str, &str)] = &[
     ("Enter", "Open the current item"),
-    ("Space", "Toggle file preview"),
+    ("Space", "Preview a file, or open a folder"),
     ("Ctrl+C / Ctrl+X", "Copy / cut selected items"),
     ("Ctrl+V", "Paste into the indicated directory"),
     ("Ctrl+D", "Duplicate selected items"),
     ("Delete", "Move selected items to Trash, when supported"),
     ("Shift+Delete", "Permanently delete selected items"),
-    (
-        "Ctrl+Z / Ctrl+Shift+Z",
-        "Undo / redo the last file operation",
-    ),
+    ("Ctrl+Z", "Undo the last file operation"),
+    ("Ctrl+Shift+Z / Ctrl+Y", "Redo the last file operation"),
     ("F2 / Ctrl+R", "Rename"),
     ("Ctrl+Shift+N", "Create a folder"),
     ("Ctrl+A", "Select all items in the focused pane"),
     ("Shift+↑ / ↓", "Extend selection"),
     ("Shift+PgUp / PgDn", "Extend selection by one page"),
+    ("Ctrl+Space", "Toggle the focused item in the selection"),
     ("Alt+Enter", "Show item properties"),
     ("Menu / Shift+F10", "Open the context menu"),
     ("y / p", "Copy path / pin a folder (type-to-search off)"),
@@ -1141,10 +358,8 @@ const TENXER_FILES: &[(&str, &str)] = &[
     ("a", "Create a file; end with / for a folder"),
     ("c c / c n", "Copy path / name"),
     ("Ctrl+C / Ctrl+X", "Copy / cut selected items"),
-    (
-        "Ctrl+Z / Ctrl+Shift+Z",
-        "Undo / redo the last file operation",
-    ),
+    ("Ctrl+Z", "Undo the last file operation"),
+    ("Ctrl+Shift+Z / Ctrl+Y", "Redo the last file operation"),
     ("r / F2", "Rename the focused item in the footer"),
     ("O", "Open With for the selection, or the focused item"),
     (
@@ -1165,11 +380,75 @@ const TENXER_FILES: &[(&str, &str)] = &[
     ("Menu / Shift+F10", "Open the context menu"),
 ];
 
-const TENXER_MODE: &[(&str, &str)] = &[
-    ("Q", "Close the current window"),
-    ("Ctrl+Shift+M", "Toggle 10xer mode"),
-    ("F1 / ~", "Show or hide this reference"),
-];
+fn chooser_requests(chooser: ChooserScope) -> Vec<(&'static str, &'static str)> {
+    let mut shortcuts = match chooser.request {
+        ChooserRequest::Files => vec![
+            (
+                "Enter / o on a file",
+                if chooser.multiple {
+                    "Choose the filled items, or the file"
+                } else {
+                    "Choose the file"
+                },
+            ),
+            ("Enter / o on a folder", "Open the folder"),
+        ],
+        ChooserRequest::Folders => vec![
+            ("Enter / o on a folder", "Open the folder"),
+            ("Ctrl+Enter", "Choose a folder, as Accept does"),
+        ],
+        ChooserRequest::SaveFile => vec![
+            ("Enter", "Save the name in the current folder"),
+            ("o on a file", "Save over that file after confirming"),
+            ("o on a folder", "Open the folder"),
+            ("r / F2", "Edit the name; Esc returns to the files"),
+        ],
+        ChooserRequest::SaveFiles => vec![
+            ("Enter", "Save the files in the current folder"),
+            ("o on a folder", "Open the folder"),
+        ],
+    };
+    shortcuts.push(("Esc", "Dismiss one interaction, then cancel the request"));
+    shortcuts
+}
+
+fn chooser_files(chooser: ChooserScope) -> Vec<(&'static str, &'static str)> {
+    let mut shortcuts = vec![
+        ("d / Delete", "Move to Trash after confirming; d d confirms"),
+        ("D / Shift+Delete", "Delete permanently after confirming"),
+        ("a", "Create a file; end with / for a folder"),
+        ("c c / c n", "Copy path / name"),
+    ];
+    if chooser.request != ChooserRequest::SaveFile {
+        shortcuts.push(("r / F2", "Rename the focused item in the footer"));
+    }
+    shortcuts.push(("Ctrl+Shift+N", "Create a folder"));
+    if chooser.multiple {
+        shortcuts.extend_from_slice(&[
+            ("Space", "Toggle the focused item and move down"),
+            ("v / V", "Visual select / visual unset"),
+            ("Ctrl+A", "Select all items in the focused pane"),
+            ("Ctrl+R", "Invert the selection"),
+        ]);
+    }
+    shortcuts.extend_from_slice(&[
+        ("Alt+Enter", "Show item properties"),
+        ("Menu / Shift+F10", "Open the context menu"),
+    ]);
+    shortcuts
+}
+
+fn tenxer_mode_rows(chooser: bool) -> Vec<(&'static str, &'static str)> {
+    let mut shortcuts = Vec::new();
+    if !chooser {
+        shortcuts.push(("Q", "Close the current window"));
+    }
+    shortcuts.extend_from_slice(&[
+        ("Ctrl+Shift+M", "Toggle 10xer mode"),
+        ("F1 / ~", "Show or hide this reference"),
+    ]);
+    shortcuts
+}
 
 const DEFAULT_TOOLS: &[(&str, &str)] = &[
     ("Ctrl+F", "Filter the current pane"),
@@ -1181,57 +460,91 @@ const DEFAULT_TOOLS: &[(&str, &str)] = &[
     ("F5", "Refresh"),
     ("Ctrl+H / Ctrl+.", "Show or hide hidden files"),
     ("Ctrl+1 / 2 / 3", "Switch to Columns, Icons, or List"),
+    (
+        "Ctrl++ / Ctrl+− / Ctrl+0",
+        "Increase / decrease / reset text size",
+    ),
     ("Ctrl+B", "Show or hide the sidebar"),
     ("Ctrl+Shift+B", "Switch focus between sidebar and browser"),
+    ("Ctrl+\\", "Keep arrows in the file list on or off"),
     ("Ctrl+,", "Open Settings"),
+    ("Ctrl+Shift+M", "Turn on 10xer mode"),
     ("Escape", "Close preview or cancel the current interaction"),
     ("F1", "Show or hide this reference"),
 ];
 
-const TENXER_TOOLS: &[(&str, &str)] = &[
-    ("/ / ?", "Find the next / previous name in this listing"),
-    ("n / N", "Repeat the last find / in reverse"),
-    ("↑ / ↓ in a prompt", "Move through the listing"),
-    ("Enter / Esc in a prompt", "Apply / cancel it"),
-    ("Esc after a find", "Dismiss the find highlights"),
-    ("f", "Filter this listing"),
-    ("Esc after a filter", "Clear the filter"),
-    ("s", "Search this folder and its subfolders"),
-    ("Esc / h after a search", "Dismiss the hits"),
-    ("Tab", "Focus the window header"),
-    (
-        "Enter / Space in the header",
-        "Activate the focused control",
-    ),
-    ("h / j in the header", "Return to the files"),
-    ("Ctrl+N", "Show or hide the sidebar"),
-    ("Ctrl+Shift+B", "Focus the sidebar when it is visible"),
-    (
-        "j / k / ↑ / ↓ in the sidebar",
-        "Move between places and device controls",
-    ),
-    (
-        "l / Enter / Space in the sidebar",
-        "Activate the focused place or device control",
-    ),
-    ("h / ← / Backspace in the sidebar", "Return to the files"),
-    ("Ctrl+K", "Open global search"),
-    ("Alt+Enter", "Open containing folder (global search)"),
-    ("Ctrl+L", "Edit the location"),
-    ("F5", "Refresh"),
-    (". / Ctrl+H / Ctrl+.", "Show or hide hidden files"),
-    (
-        ", a / , m / , s / , e",
-        "Sort by name / modified / size / type; Shift reverses",
-    ),
-    ("Ctrl+1 / 2 / 3", "Switch to Columns, Icons, or List"),
-    ("Ctrl+,", "Open Settings"),
-    (
-        "Escape",
-        "Close this reference or cancel the current interaction",
-    ),
-    ("F1 / ~", "Show or hide this reference"),
-];
+fn tenxer_tools(mode: BrowserMode, chooser: bool) -> Vec<(&'static str, &'static str)> {
+    let mut shortcuts = vec![
+        ("/ / ?", "Find the next / previous name in this listing"),
+        ("n / N", "Repeat the last find / in reverse"),
+        ("↑ / ↓ in a prompt", "Move through the listing"),
+        ("Enter / Esc in a prompt", "Apply / cancel it"),
+        ("Esc after a find", "Dismiss the find highlights"),
+        ("f", "Filter this listing"),
+        ("Esc after a filter", "Clear the filter"),
+        ("s", "Search this folder and its subfolders"),
+        (
+            // Icons h and ← move between result icons instead.
+            if mode == BrowserMode::Icons {
+                "Esc after a search"
+            } else {
+                "Esc / h / ← after a search"
+            },
+            "Dismiss the hits",
+        ),
+        ("Tab", "Focus the window header"),
+        (
+            "Enter / Space in the header",
+            "Activate the focused control",
+        ),
+        ("h / j in the header", "Return to the files"),
+        ("Ctrl+N", "Show or hide the sidebar"),
+        (
+            "Ctrl+Shift+B",
+            "Focus the visible sidebar, or return to the files",
+        ),
+        (
+            "j / k / ↑ / ↓ in the sidebar",
+            "Move between places and device controls",
+        ),
+        (
+            "l / Enter / Space in the sidebar",
+            "Activate the focused place or device control",
+        ),
+        ("h / ← / Backspace in the sidebar", "Return to the files"),
+    ];
+    if !chooser {
+        shortcuts.extend_from_slice(&[
+            ("Ctrl+K", "Open global search"),
+            ("Alt+Enter", "Open containing folder (global search)"),
+        ]);
+    }
+    shortcuts.extend_from_slice(&[
+        ("Ctrl+L", "Edit the location"),
+        ("F5", "Refresh"),
+        (". / Ctrl+H / Ctrl+.", "Show or hide hidden files"),
+        (
+            ", a / , m / , s / , e",
+            "Sort by name / modified / size / type; Shift reverses",
+        ),
+        ("Ctrl+1 / 2 / 3", "Switch to Columns, Icons, or List"),
+        (
+            "Ctrl++ / Ctrl+− / Ctrl+0",
+            "Increase / decrease / reset text size",
+        ),
+    ]);
+    if !chooser {
+        shortcuts.push(("Ctrl+,", "Open Settings"));
+    }
+    shortcuts.extend_from_slice(&[
+        (
+            "Escape",
+            "Close this reference or cancel the current interaction",
+        ),
+        ("F1 / ~", "Show or hide this reference"),
+    ]);
+    shortcuts
+}
 
 const MEDIA: &[(&str, &str)] = &[
     ("Ctrl+Alt+Space", "Play / pause"),
@@ -1240,23 +553,24 @@ const MEDIA: &[(&str, &str)] = &[
     ("Ctrl+Alt+M", "Mute / unmute"),
 ];
 
-fn default_hint(hint: ContextHint) -> &'static str {
+fn default_hint(hint: ContextHint, type_to_search: bool) -> &'static str {
     match hint {
         ContextHint::None => "",
         ContextHint::Preview | ContextHint::ChooserPreview => "Space",
+        // Type-to-search claims plain letters.
+        ContextHint::CopyPath | ContextHint::CopyPaths | ContextHint::Pin if type_to_search => "",
         ContextHint::CopyPath | ContextHint::CopyPaths => "Y",
+        ContextHint::Pin => "P",
         ContextHint::Rename => "F2 / Ctrl+R",
         ContextHint::Cut => "Ctrl+X",
         ContextHint::Copy => "Ctrl+C",
         ContextHint::Duplicate => "Ctrl+D",
         ContextHint::Paste => "Ctrl+V",
-        ContextHint::Pin => "P",
         ContextHint::MoveTo | ContextHint::CopyTo | ContextHint::Restore => "",
         ContextHint::Terminal => "Ctrl+T",
         ContextHint::Trash => "Del",
         ContextHint::PermanentDelete => "Shift+Del",
-        ContextHint::Open => "↵",
-        ContextHint::OpenMultiple => "Enter",
+        ContextHint::Open | ContextHint::OpenMultiple => "Enter",
         ContextHint::Properties | ContextHint::ContainingFolder => "Alt+Enter",
         ContextHint::NewFolder => "Ctrl+Shift+N",
         ContextHint::SelectAll => "Ctrl+A",
@@ -1285,6 +599,6 @@ fn tenxer_hint(hint: ContextHint) -> &'static str {
         | ContextHint::Pin
         | ContextHint::Terminal => "",
         ContextHint::Rename => "r",
-        other => default_hint(other),
+        other => default_hint(other, false),
     }
 }

@@ -15,6 +15,7 @@ use chord_panel::ChordPanel;
 use super::{
     browser::FilterStatus,
     browser_modes::BrowserMode,
+    shortcut_reference::{ChooserScope, ReferenceScope},
     tenxer_mode::{Chord, Prompt},
 };
 
@@ -31,9 +32,9 @@ pub(super) struct ShortcutFooter {
     paste: gtk::Label,
     count: gtk::Label,
     show_hints: Rc<Cell<bool>>,
-    pending_popup: Rc<Cell<bool>>,
-    more: gtk::MenuButton,
-    popover: gtk::Popover,
+    more: gtk::ToggleButton,
+    panel: gtk::Box,
+    session: ReferenceSession,
     reference: gtk::Box,
     categories: gtk::Box,
     sidebar: gtk::ScrolledWindow,
@@ -41,7 +42,6 @@ pub(super) struct ShortcutFooter {
     selected_category: Rc<RefCell<String>>,
     active_area: Rc<Cell<ReferenceArea>>,
     scroll: gtk::ScrolledWindow,
-    focus_before: Rc<RefCell<Option<glib::WeakRef<gtk::Widget>>>>,
     status_widgets: Rc<RefCell<Vec<gtk::Widget>>>,
     tag: gtk::Label,
     feedback: gtk::Label,
@@ -54,7 +54,7 @@ pub(super) struct ShortcutFooter {
     filter_source: FilterSource,
     filter_retry: Rc<Cell<bool>>,
     observed: Rc<RefCell<std::rc::Weak<crate::app::Browser>>>,
-    view_mode: Rc<Cell<BrowserMode>>,
+    reference_scope: Rc<Cell<ReferenceScope>>,
 }
 
 /// The search hit under the cursor, as its path below the searched folder.
@@ -170,13 +170,12 @@ struct ReferenceLayout {
     reference: glib::WeakRef<gtk::Box>,
     search: glib::WeakRef<gtk::Entry>,
     footer: glib::WeakRef<gtk::Label>,
-    more: glib::WeakRef<gtk::MenuButton>,
-    mode: Rc<Cell<BrowserMode>>,
+    scope: Rc<Cell<ReferenceScope>>,
     selected: Rc<RefCell<String>>,
 }
 
 impl ReferenceLayout {
-    fn update(&self, window: &gtk::Window, popover: &gtk::Popover) {
+    fn update(&self, window: &gtk::Window) {
         let (
             Some(header),
             Some(body),
@@ -185,7 +184,6 @@ impl ReferenceLayout {
             Some(scroll),
             Some(reference),
             Some(search),
-            Some(more),
         ) = (
             self.header.upgrade(),
             self.body.upgrade(),
@@ -194,7 +192,6 @@ impl ReferenceLayout {
             self.scroll.upgrade(),
             self.reference.upgrade(),
             self.search.upgrade(),
-            self.more.upgrade(),
         )
         else {
             return;
@@ -264,29 +261,174 @@ impl ReferenceLayout {
         if changed {
             render_reference(
                 &reference,
-                self.mode.get(),
+                self.scope.get(),
                 &self.selected.borrow(),
                 &search.text(),
                 compact,
             );
         }
-        let panel_height = popover
-            .child()
-            .map(|child| child.measure(gtk::Orientation::Vertical, -1).1)
-            .unwrap_or(0)
-            .min(window.height().saturating_sub(40));
-        let anchor = gtk::graphene::Point::new(
-            window.width() as f32 / 2.0,
-            (window.height() + panel_height) as f32 / 2.0,
-        );
-        if let Some(point) = window.compute_point(&more, &anchor) {
-            popover.set_pointing_to(Some(&gdk::Rectangle::new(
-                point.x().round() as i32,
-                point.y().round() as i32,
-                1,
-                1,
-            )));
+    }
+}
+
+/// The open reference is drawn in the window's overlay rather than as a
+/// popover: compositors dismiss popup surfaces when the window loses focus.
+#[derive(Clone)]
+struct ReferenceSession {
+    panel: glib::WeakRef<gtk::Box>,
+    more: glib::WeakRef<gtk::ToggleButton>,
+    search: glib::WeakRef<gtk::Entry>,
+    sidebar: glib::WeakRef<gtk::ScrolledWindow>,
+    scroll: glib::WeakRef<gtk::ScrolledWindow>,
+    active_area: Rc<Cell<ReferenceArea>>,
+    layout: ReferenceLayout,
+    show_hints: Rc<Cell<bool>>,
+    focus_before: Rc<RefCell<Option<glib::WeakRef<gtk::Widget>>>>,
+    attached: Rc<RefCell<Option<AttachedReference>>>,
+}
+
+struct AttachedReference {
+    window: glib::WeakRef<gtk::Window>,
+    overlay: glib::WeakRef<gtk::Overlay>,
+    backdrop: gtk::Box,
+    focus_trap: glib::SignalHandlerId,
+    resize: gtk::TickCallbackId,
+}
+
+impl ReferenceSession {
+    fn is_open(&self) -> bool {
+        self.attached.borrow().is_some()
+    }
+
+    /// Opens over the window holding `anchor`, which must have an overlay child.
+    fn open(&self, anchor: &impl IsA<gtk::Widget>) -> bool {
+        if self.is_open() {
+            return true;
         }
+        let (Some(panel), Some(search)) = (self.panel.upgrade(), self.search.upgrade()) else {
+            return false;
+        };
+        let Some(window) = anchor.as_ref().root().and_downcast::<gtk::Window>() else {
+            return false;
+        };
+        let Some(overlay) = window.child().and_downcast::<gtk::Overlay>() else {
+            return false;
+        };
+        if self.focus_before.borrow().is_none() {
+            self.focus_before
+                .replace(gtk::prelude::RootExt::focus(&window).map(|widget| widget.downgrade()));
+        }
+        if let Some(root) = overlay.child().and_downcast::<super::blur::BlurBin>() {
+            root.set_blurred(true);
+        }
+        let backdrop = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        backdrop.add_css_class("search-backdrop");
+        backdrop.set_halign(gtk::Align::Fill);
+        backdrop.set_valign(gtk::Align::Fill);
+        backdrop.set_hexpand(true);
+        backdrop.set_vexpand(true);
+        let click = gtk::GestureClick::new();
+        let session = self.clone();
+        click.connect_released(move |_, _, _, _| {
+            session.close();
+        });
+        backdrop.add_controller(click);
+        overlay.add_overlay(&backdrop);
+        overlay.add_overlay(&panel);
+        let focus_trap = self.trap_focus(&window);
+        self.active_area.set(ReferenceArea::Search);
+        if let Some(scroll) = self.scroll.upgrade() {
+            scroll.vadjustment().set_value(scroll.vadjustment().lower());
+        }
+        self.layout.update(&window);
+        let last_size = Cell::new((window.width(), window.height()));
+        let resized_window = window.downgrade();
+        let layout = self.layout.clone();
+        let resize = panel.add_tick_callback(move |_, _| {
+            if let Some(window) = resized_window.upgrade() {
+                let size = (window.width(), window.height());
+                if last_size.replace(size) != size {
+                    layout.update(&window);
+                }
+            }
+            glib::ControlFlow::Continue
+        });
+        self.attached.replace(Some(AttachedReference {
+            window: window.downgrade(),
+            overlay: overlay.downgrade(),
+            backdrop,
+            focus_trap,
+            resize,
+        }));
+        if let Some(more) = self.more.upgrade() {
+            more.set_active(true);
+        }
+        search.grab_focus();
+        true
+    }
+
+    /// Focus stays inside the open reference and tracks its active area.
+    fn trap_focus(&self, window: &gtk::Window) -> glib::SignalHandlerId {
+        let panel = self.panel.clone();
+        let search = self.search.clone();
+        let sidebar = self.sidebar.clone();
+        let scroll = self.scroll.clone();
+        let area = self.active_area.clone();
+        window.connect_focus_widget_notify(move |window| {
+            let (Some(panel), Some(search)) = (panel.upgrade(), search.upgrade()) else {
+                return;
+            };
+            let Some(focus) = gtk::prelude::RootExt::focus(window) else {
+                return;
+            };
+            if focus != *panel.upcast_ref::<gtk::Widget>() && !focus.is_ancestor(&panel) {
+                search.grab_focus();
+                return;
+            }
+            if focus == *search.upcast_ref::<gtk::Widget>() || focus.is_ancestor(&search) {
+                area.set(ReferenceArea::Search);
+            } else if sidebar.upgrade().is_some_and(|sidebar| {
+                focus == *sidebar.upcast_ref::<gtk::Widget>() || focus.is_ancestor(&sidebar)
+            }) {
+                area.set(ReferenceArea::Categories);
+            } else if scroll.upgrade().is_some_and(|scroll| {
+                focus == *scroll.upcast_ref::<gtk::Widget>() || focus.is_ancestor(&scroll)
+            }) {
+                area.set(ReferenceArea::Results);
+            }
+        })
+    }
+
+    fn close(&self) -> bool {
+        let Some(attached) = self.attached.borrow_mut().take() else {
+            return false;
+        };
+        attached.resize.remove();
+        if let Some(window) = attached.window.upgrade() {
+            window.disconnect(attached.focus_trap);
+        }
+        if let Some(overlay) = attached.overlay.upgrade() {
+            if let Some(panel) = self.panel.upgrade() {
+                overlay.remove_overlay(&panel);
+            }
+            overlay.remove_overlay(&attached.backdrop);
+            if let Some(root) = overlay.child().and_downcast::<super::blur::BlurBin>() {
+                root.set_blurred(false);
+            }
+        }
+        if let Some(more) = self.more.upgrade() {
+            more.set_active(false);
+            more.set_visible(self.show_hints.get());
+        }
+        if let Some(previous) = self
+            .focus_before
+            .borrow_mut()
+            .take()
+            .and_then(|previous| previous.upgrade())
+            .filter(gtk::Widget::is_mapped)
+        {
+            previous.grab_focus();
+        }
+        true
     }
 }
 
@@ -513,24 +655,22 @@ impl ShortcutFooter {
         root.add_child(&status);
         root.add_child(&prompt.bar);
         let show_hints = Rc::new(Cell::new(true));
-        let pending_popup = Rc::new(Cell::new(false));
 
-        let more = gtk::MenuButton::new();
+        let more = gtk::ToggleButton::new();
         more.set_child(Some(&gtk::Label::new(Some("F1  Shortcuts"))));
         more.add_css_class("shortcut-footer-button");
+        super::accessibility::set_label(&more, "F1  Shortcuts");
         crate::ui::accessibility::set_description(&more, Some("Show all file-view shortcuts (F1)"));
         status.prepend(&more);
         let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         spacer.set_hexpand(true);
         status.insert_child_after(&current.root, Some(&more));
         status.insert_child_after(&spacer, Some(&current.root));
-        let popover = gtk::Popover::builder()
-            .position(gtk::PositionType::Top)
-            .halign(gtk::Align::Center)
-            .has_arrow(false)
-            .build();
-        popover.add_css_class("shortcut-popover");
-        let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let content = super::accessibility::dialog_box("Keyboard shortcuts");
+        content.add_css_class("shortcut-reference-panel");
+        content.set_halign(gtk::Align::Center);
+        content.set_valign(gtk::Align::Center);
+        content.set_overflow(gtk::Overflow::Hidden);
         let header = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         header.add_css_class("shortcut-reference-header");
         let title = gtk::Label::new(Some("Keyboard shortcuts"));
@@ -583,16 +723,15 @@ impl ShortcutFooter {
         note.set_xalign(0.0);
         footer_note.append(&note);
         content.append(&footer_note);
-        popover.set_child(Some(&content));
         let search_reference = reference.downgrade();
-        let view_mode = Rc::new(Cell::new(mode));
-        let search_mode = view_mode.clone();
+        let reference_scope = Rc::new(Cell::new(ReferenceScope::window(mode)));
+        let search_scope = reference_scope.clone();
         let search_category = selected_category.clone();
         search.connect_changed(move |entry| {
             if let Some(reference) = search_reference.upgrade() {
                 render_reference(
                     &reference,
-                    search_mode.get(),
+                    search_scope.get(),
                     &search_category.borrow(),
                     &entry.text(),
                     reference.has_css_class("compact"),
@@ -608,174 +747,28 @@ impl ShortcutFooter {
             reference: reference.downgrade(),
             search: search.downgrade(),
             footer: note.downgrade(),
-            more: more.downgrade(),
-            mode: view_mode.clone(),
+            scope: reference_scope.clone(),
             selected: selected_category.clone(),
         };
-        let weak_popover = popover.downgrade();
-        let weak_search = search.downgrade();
-        let weak_more_for_position = more.downgrade();
-        let backdrop = Rc::new(RefCell::new(None::<(gtk::Overlay, gtk::Box)>));
-        let open_backdrop = backdrop.clone();
-        let focus_trap = Rc::new(RefCell::new(None::<(gtk::Window, glib::SignalHandlerId)>));
-        let open_focus_trap = focus_trap.clone();
-        let trap_search = search.downgrade();
-        let trap_sidebar = sidebar.downgrade();
-        let trap_scroll = scroll.downgrade();
-        let trap_area = active_area.clone();
-        let trap_popover = popover.downgrade();
-        popover.connect_show(move |popover| {
-            trap_area.set(ReferenceArea::Search);
-            if let Some(window) = popover.root().and_downcast::<gtk::Window>() {
-                if let Some(overlay) = window.child().and_downcast::<gtk::Overlay>() {
-                    if let Some(root) = overlay.child().and_downcast::<super::blur::BlurBin>() {
-                        root.set_blurred(true);
-                    }
-                    let layer = gtk::Box::new(gtk::Orientation::Vertical, 0);
-                    layer.add_css_class("search-backdrop");
-                    layer.set_halign(gtk::Align::Fill);
-                    layer.set_valign(gtk::Align::Fill);
-                    layer.set_hexpand(true);
-                    layer.set_vexpand(true);
-                    let click = gtk::GestureClick::new();
-                    let dismiss = weak_more_for_position.clone();
-                    click.connect_released(move |_, _, _, _| {
-                        if let Some(more) = dismiss.upgrade() {
-                            more.popdown();
-                        }
-                    });
-                    layer.add_controller(click);
-                    overlay.add_overlay(&layer);
-                    *open_backdrop.borrow_mut() = Some((overlay, layer));
-                }
-                let search = trap_search.clone();
-                let sidebar = trap_sidebar.clone();
-                let scroll = trap_scroll.clone();
-                let area = trap_area.clone();
-                let trapped_popover = trap_popover.clone();
-                let id = window.connect_focus_widget_notify(move |window| {
-                    let Some(popover) = trapped_popover
-                        .upgrade()
-                        .filter(|popover| popover.is_visible())
-                    else {
-                        return;
-                    };
-                    let Some(focus) = gtk::prelude::RootExt::focus(window) else {
-                        return;
-                    };
-                    if focus != *popover.upcast_ref::<gtk::Widget>() && !focus.is_ancestor(&popover)
-                    {
-                        if let Some(search) = search.upgrade() {
-                            search.grab_focus();
-                        }
-                        return;
-                    }
-                    if let (Some(search), Some(sidebar), Some(scroll)) =
-                        (search.upgrade(), sidebar.upgrade(), scroll.upgrade())
-                    {
-                        if focus == *search.upcast_ref::<gtk::Widget>()
-                            || focus.is_ancestor(&search)
-                        {
-                            area.set(ReferenceArea::Search);
-                        } else if focus == *sidebar.upcast_ref::<gtk::Widget>()
-                            || focus.is_ancestor(&sidebar)
-                        {
-                            area.set(ReferenceArea::Categories);
-                        } else if focus == *scroll.upcast_ref::<gtk::Widget>()
-                            || focus.is_ancestor(&scroll)
-                        {
-                            area.set(ReferenceArea::Results);
-                        }
-                    }
-                });
-                *open_focus_trap.borrow_mut() = Some((window.clone(), id));
-                if let Some(scroll) = layout.scroll.upgrade() {
-                    scroll.vadjustment().set_value(scroll.vadjustment().lower());
-                }
-                layout.update(&window, popover);
-                let last_size = Cell::new((window.width(), window.height()));
-                let window = window.downgrade();
-                let layout = layout.clone();
-                popover.add_tick_callback(move |popover, _| {
-                    let Some(window) = window.upgrade() else {
-                        return glib::ControlFlow::Break;
-                    };
-                    if !popover.is_visible() {
-                        return glib::ControlFlow::Break;
-                    }
-                    let size = (window.width(), window.height());
-                    if last_size.replace(size) != size {
-                        layout.update(&window, popover);
-                    }
-                    glib::ControlFlow::Continue
-                });
+        let session = ReferenceSession {
+            panel: content.downgrade(),
+            more: more.downgrade(),
+            search: search.downgrade(),
+            sidebar: sidebar.downgrade(),
+            scroll: scroll.downgrade(),
+            active_area: active_area.clone(),
+            layout,
+            show_hints: show_hints.clone(),
+            focus_before: Rc::default(),
+            attached: Rc::default(),
+        };
+        let toggled = session.clone();
+        more.connect_clicked(move |more| {
+            if toggled.is_open() {
+                toggled.close();
+            } else if !toggled.open(more) {
+                more.set_active(false);
             }
-            let search = weak_search.clone();
-            let popover = weak_popover.clone();
-            // Show runs before the popover can take focus; grab it once mapped.
-            glib::idle_add_local_once(move || {
-                if popover
-                    .upgrade()
-                    .is_some_and(|popover| popover.is_visible())
-                    && let Some(search) = search.upgrade()
-                {
-                    search.grab_focus();
-                }
-            });
-        });
-        more.set_popover(Some(&popover));
-        let focus_before: Rc<RefCell<Option<glib::WeakRef<gtk::Widget>>>> =
-            Rc::new(RefCell::new(None));
-        let restored_focus = focus_before.clone();
-        let close_backdrop = backdrop;
-        let close_focus_trap = focus_trap;
-        let weak_more = more.downgrade();
-        let closed_hints = show_hints.clone();
-        let closed_pending = pending_popup.clone();
-        let weak_popover = popover.downgrade();
-        popover.connect_closed(move |_| {
-            if let Some((window, id)) = close_focus_trap.borrow_mut().take() {
-                window.disconnect(id);
-            }
-            if let Some((overlay, layer)) = close_backdrop.borrow_mut().take() {
-                overlay.remove_overlay(&layer);
-                if let Some(root) = overlay.child().and_downcast::<super::blur::BlurBin>() {
-                    root.set_blurred(false);
-                }
-            }
-            let restored_focus = restored_focus.clone();
-            let closed_pending = closed_pending.clone();
-            let weak_more = weak_more.clone();
-            let closed_hints = closed_hints.clone();
-            let weak_popover = weak_popover.clone();
-            // MenuButton restores its own focus after ::closed; wait without overriding a newer focus move.
-            glib::idle_add_local_once(move || {
-                if closed_pending.get()
-                    || weak_popover
-                        .upgrade()
-                        .is_some_and(|popover| popover.is_visible())
-                {
-                    return;
-                }
-                let previous = restored_focus.borrow_mut().take();
-                let Some(more) = weak_more.upgrade() else {
-                    return;
-                };
-                let still_on_button =
-                    more.root()
-                        .and_then(|root| root.focus())
-                        .is_some_and(|focused| {
-                            focused == *more.upcast_ref::<gtk::Widget>()
-                                || focused.is_ancestor(&more)
-                        });
-                if still_on_button
-                    && let Some(previous) = previous.and_then(|previous| previous.upgrade())
-                    && previous.is_mapped()
-                {
-                    previous.grab_focus();
-                }
-                more.set_visible(closed_hints.get());
-            });
         });
         let status_widgets: Rc<RefCell<Vec<gtk::Widget>>> = Rc::new(RefCell::new(vec![
             paste.clone().upcast::<gtk::Widget>(),
@@ -798,9 +791,9 @@ impl ShortcutFooter {
             paste,
             count,
             show_hints,
-            pending_popup,
             more,
-            popover,
+            panel: content,
+            session,
             reference,
             categories,
             sidebar,
@@ -808,7 +801,6 @@ impl ShortcutFooter {
             selected_category,
             active_area,
             scroll,
-            focus_before,
             status_widgets,
             tag,
             feedback,
@@ -821,7 +813,7 @@ impl ShortcutFooter {
             filter_source: Rc::new(RefCell::new(None)),
             filter_retry: Rc::new(Cell::new(false)),
             observed: Rc::new(RefCell::new(std::rc::Weak::new())),
-            view_mode,
+            reference_scope,
         };
         let keys = gtk::EventControllerKey::new();
         keys.set_propagation_phase(gtk::PropagationPhase::Capture);
@@ -831,7 +823,7 @@ impl ShortcutFooter {
                 .handle_key(key, modifiers)
                 .unwrap_or(glib::Propagation::Proceed)
         });
-        footer.popover.add_controller(keys);
+        footer.panel.add_controller(keys);
         footer.close_prompt_on_focus_loss();
         footer.set_mode(mode);
         footer
@@ -842,22 +834,16 @@ impl ShortcutFooter {
     fn close_prompt_on_focus_loss(&self) {
         let focus = gtk::EventControllerFocus::new();
         let prompt = self.prompt.downgrade();
-        let popover = self.popover.downgrade();
-        let pending_popup = self.pending_popup.clone();
+        let session = self.session.clone();
         focus.connect_leave(move |_| {
             let prompt = prompt.clone();
-            let popover = popover.clone();
-            let pending_popup = pending_popup.clone();
+            let session = session.clone();
             // Focus has not settled on its new owner while ::leave runs.
             glib::idle_add_local_once(move || {
-                let reference_open = pending_popup.get()
-                    || popover
-                        .upgrade()
-                        .is_some_and(|popover| popover.is_visible());
                 if let Some(prompt) = prompt.upgrade()
                     && prompt.bar.is_visible()
                     && !prompt.has_focus()
-                    && !reference_open
+                    && !session.is_open()
                 {
                     prompt.close();
                 }
@@ -884,8 +870,8 @@ impl ShortcutFooter {
         let search = self.search.downgrade();
         let selected = self.selected_category.clone();
         let scroll = self.scroll.downgrade();
-        let popover = self.popover.downgrade();
-        let view_mode = self.view_mode.clone();
+        let panel = self.panel.downgrade();
+        let reference_scope = self.reference_scope.clone();
         let feedback = self.feedback.downgrade();
         let prompt = self.prompt.downgrade();
         let chords = self.chords.clone();
@@ -902,11 +888,11 @@ impl ShortcutFooter {
                 };
                 let starting = !primed.replace(true);
                 apply_experimental_label(&tag, enabled);
-                if let Some(popover) = popover.upgrade() {
+                if let Some(panel) = panel.upgrade() {
                     if enabled {
-                        popover.add_css_class("tenxer-active");
+                        panel.add_css_class("tenxer-active");
                     } else {
-                        popover.remove_css_class("tenxer-active");
+                        panel.remove_css_class("tenxer-active");
                     }
                 }
                 if !starting
@@ -929,27 +915,17 @@ impl ShortcutFooter {
                         &search,
                         &scroll,
                         &selected,
-                        &view_mode,
+                        &reference_scope,
                     );
                 }
             },
         );
         let show_hints = self.show_hints.clone();
-        let pending = self.pending_popup.clone();
-        let weak_popover = self.popover.downgrade();
         let more = self.more.downgrade();
         manager.on_keybinding_hints_changed(&self.root, move |_, enabled| {
             show_hints.set(enabled);
-            if !enabled {
-                pending.set(false);
-            }
             if let Some(more) = more.upgrade() {
-                more.set_visible(
-                    enabled
-                        || weak_popover
-                            .upgrade()
-                            .is_some_and(|popover| popover.is_visible()),
-                );
+                more.set_visible(enabled);
             }
         });
     }
@@ -1045,14 +1021,28 @@ impl ShortcutFooter {
     }
 
     pub fn set_mode(&self, mode: BrowserMode) {
-        self.view_mode.set(mode);
+        let scope = self.reference_scope.get();
+        self.set_reference_scope(ReferenceScope { mode, ..scope });
+    }
+
+    /// Limits the reference to the keys a portal chooser request allows.
+    pub(in crate::ui) fn set_chooser(&self, chooser: ChooserScope) {
+        let scope = self.reference_scope.get();
+        self.set_reference_scope(ReferenceScope {
+            chooser: Some(chooser),
+            ..scope
+        });
+    }
+
+    fn set_reference_scope(&self, scope: ReferenceScope) {
+        self.reference_scope.set(scope);
         rebuild_reference(
             &self.reference,
             &self.categories,
             &self.search,
             &self.scroll,
             &self.selected_category,
-            &self.view_mode,
+            &self.reference_scope,
         );
     }
 
@@ -1287,7 +1277,7 @@ impl ShortcutFooter {
                 | gdk::ModifierType::ALT_MASK
                 | gdk::ModifierType::SUPER_MASK,
         );
-        let reference_open = self.popover.is_visible() || self.pending_popup.get();
+        let reference_open = self.session.is_open();
         let f1 = key == gdk::Key::F1
             && !command_modifiers
             && !modifiers.contains(gdk::ModifierType::SHIFT_MASK);
@@ -1296,61 +1286,18 @@ impl ShortcutFooter {
             return None;
         }
         if f1 || tilde {
-            if self.popover.is_visible() || self.pending_popup.replace(false) {
-                if self.popover.is_visible() {
-                    self.more.popdown();
-                } else {
-                    self.focus_before.take();
-                    self.more.set_visible(self.show_hints.get());
-                }
+            if reference_open {
+                self.session.close();
             } else {
-                if self.focus_before.borrow().is_none() {
-                    self.focus_before.replace(
-                        self.root
-                            .root()
-                            .and_then(|root| root.focus())
-                            .map(|widget| widget.downgrade()),
-                    );
-                }
-                if self.more.is_mapped() && self.more.width() > 0 {
-                    self.more.popup();
-                } else {
-                    self.pending_popup.set(true);
-                    self.more.set_visible(true);
-                    let pending = self.pending_popup.clone();
-                    let weak_more = self.more.downgrade();
-                    // A hidden shortcut button needs an allocation before positioning the popover.
-                    self.root.add_tick_callback(move |_, _| {
-                        let Some(more) = weak_more.upgrade() else {
-                            return glib::ControlFlow::Break;
-                        };
-                        if !pending.get() {
-                            return glib::ControlFlow::Break;
-                        }
-                        if !more.is_mapped() || more.width() == 0 {
-                            return glib::ControlFlow::Continue;
-                        }
-                        pending.set(false);
-                        more.popup();
-                        glib::ControlFlow::Break
-                    });
-                }
+                self.session.open(&self.root);
             }
             return Some(glib::Propagation::Stop);
         }
-        if self.pending_popup.get() {
-            if key == gdk::Key::Escape {
-                self.pending_popup.set(false);
-                self.focus_before.take();
-                self.more.set_visible(self.show_hints.get());
-            }
-            return Some(glib::Propagation::Stop);
-        }
-        if !self.popover.is_visible() {
+        if !reference_open {
             return None;
         }
         if key == gdk::Key::Escape {
-            self.more.popdown();
+            self.session.close();
             return Some(glib::Propagation::Stop);
         }
         let keys = modifiers
@@ -1625,12 +1572,12 @@ fn rebuild_reference(
     search: &gtk::Entry,
     scroll: &gtk::ScrolledWindow,
     selected: &Rc<RefCell<String>>,
-    mode: &Rc<Cell<BrowserMode>>,
+    scope: &Rc<Cell<ReferenceScope>>,
 ) {
     while let Some(child) = categories.first_child() {
         categories.remove(&child);
     }
-    let sections = super::shortcut_reference::reference_sections(mode.get());
+    let sections = super::shortcut_reference::reference_sections(scope.get());
     if !sections
         .iter()
         .any(|section| section.title == selected.borrow().as_str())
@@ -1675,7 +1622,7 @@ fn rebuild_reference(
         let search = search.downgrade();
         let scroll = scroll.downgrade();
         let selected = selected.clone();
-        let mode = mode.clone();
+        let scope = scope.clone();
         button.connect_clicked(move |button| {
             *selected.borrow_mut() = name.to_owned();
             if let (Some(reference), Some(categories), Some(search), Some(scroll)) = (
@@ -1692,7 +1639,7 @@ fn rebuild_reference(
                 button.update_state(&[gtk::accessible::State::Selected(Some(true))]);
                 render_reference(
                     &reference,
-                    mode.get(),
+                    scope.get(),
                     name,
                     &search.text(),
                     reference.has_css_class("compact"),
@@ -1714,7 +1661,7 @@ fn rebuild_reference(
     }
     render_reference(
         reference,
-        mode.get(),
+        scope.get(),
         &selected.borrow(),
         &search.text(),
         reference.has_css_class("compact"),
@@ -1723,7 +1670,7 @@ fn rebuild_reference(
 
 fn render_reference(
     reference: &gtk::Box,
-    mode: BrowserMode,
+    scope: ReferenceScope,
     selected: &str,
     query: &str,
     compact: bool,
@@ -1733,7 +1680,7 @@ fn render_reference(
     }
     let query = query.trim().to_lowercase();
     let mut found = false;
-    for section in super::shortcut_reference::reference_sections(mode) {
+    for section in super::shortcut_reference::reference_sections(scope) {
         if selected != "All" && selected != section.title {
             continue;
         }

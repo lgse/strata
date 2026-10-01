@@ -340,6 +340,10 @@ fn passes_through_preview(key: Key, mods: Modifiers) -> bool {
         Key::b | Key::B | Key::m | Key::M if control_shift => true,
         Key::z | Key::Z => control || control_shift,
         Key::y | Key::Y if control => true,
+        // Media controls reach the drawer's player from the window handler.
+        Key::space | Key::Left | Key::Right | Key::Up | Key::Down | Key::m | Key::M => {
+            mods == Modifiers::CONTROL_MASK | Modifiers::ALT_MASK
+        }
         _ => false,
     }
 }

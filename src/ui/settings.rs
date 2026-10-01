@@ -25,14 +25,12 @@ mod about;
 mod actions;
 mod bindings;
 mod general;
-mod keybindings;
 mod search;
 mod theme;
 mod wrap;
 use about::about_page;
 use bindings::bind_switch;
 use general::general_page;
-use keybindings::keybindings_page;
 use theme::theme_page;
 
 use super::{
@@ -504,7 +502,6 @@ fn reflow_settings(
             "settings-option",
             "settings-library-toolbar",
             "about-identity",
-            "keybinding-row",
             "theme-library-footer",
             "settings-inline-description",
             "settings-update-summary",
@@ -536,11 +533,6 @@ fn reflow_settings(
             row.set_orientation(orientation);
         }
     }
-    if let Some(row) = widget.downcast_ref::<wrap::WrapRow>()
-        && row.has_css_class("settings-keycaps")
-    {
-        row.set_end_align(!compact);
-    }
     if widget.has_css_class("settings-integration-actions")
         && let Some(actions) = widget.downcast_ref::<gtk::Box>()
     {
@@ -564,16 +556,6 @@ fn reflow_settings(
             child = button.next_sibling();
             button.set_hexpand(compact);
         }
-    }
-    if ["settings-keycaps", "settings-inline-keys"]
-        .iter()
-        .any(|class| widget.has_css_class(class))
-    {
-        widget.set_halign(if compact {
-            gtk::Align::Start
-        } else {
-            gtk::Align::End
-        });
     }
     if let Some(label) = widget.downcast_ref::<gtk::Label>()
         && (label.has_css_class("settings-nowrap") || label.has_css_class("menu-heading"))
@@ -673,7 +655,6 @@ pub fn build_layer(
     let (general, responsive_setting_rows, responsive_activation_rows) =
         general_page(preferences.clone());
     stack.add_named(&general, Some("general"));
-    stack.add_named(&keybindings_page(preferences.clone()), Some("keybindings"));
     stack.add_named(&about_page(), Some("about"));
     // Heavy pages build on first selection, never during startup: the
     // Updates page spawns package-manager detection plus release-note
@@ -708,15 +689,13 @@ pub fn build_layer(
     // Navigation entries register as their buttons are created, so the
     // responsive panel compacts correctly even with lazy pages.
     let responsive_for_nav = responsive_panel.clone();
-    let built: Rc<RefCell<std::collections::HashSet<&'static str>>> = Rc::new(RefCell::new(
-        ["general", "keybindings", "about"].into_iter().collect(),
-    ));
+    let built: Rc<RefCell<std::collections::HashSet<&'static str>>> =
+        Rc::new(RefCell::new(["general", "about"].into_iter().collect()));
     let nav_buttons: Rc<RefCell<Vec<gtk::Button>>> = Rc::new(RefCell::new(Vec::new()));
     for (label, icon, name) in [
         ("General", icons::SLIDERS, "general"),
         ("Appearance", icons::PALETTE, "theme"),
         ("Actions", icons::PLAY, "actions"),
-        ("Keybindings", icons::KEYBOARD, "keybindings"),
         ("Updates", icons::DOWNLOADS, "updates"),
         ("About", icons::INFO, "about"),
     ] {
@@ -2524,7 +2503,6 @@ fn navigation_button(icon: &str, label: &str) -> (gtk::Button, gtk::Label, gtk::
     let subtitle = match label {
         "General" => "Browsing, search, files",
         "Appearance" => "Theme, text, motion",
-        "Keybindings" => "Hints and reference",
         "Updates" => "Channel, release notes",
         _ => "Version and links",
     };

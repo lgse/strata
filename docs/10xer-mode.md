@@ -16,10 +16,9 @@ open a peek or an extra Miller column there.
 
 Turn it on in **Settings → General → Browsing → 10xer mode**, or with
 **Ctrl+Shift+M**. The choice is saved and live-updates every window. **F1** or
-**~** opens the in-app table of commands that currently run; **Settings →
-Keybindings** lists that same active map as an all-view overview. While the mode
-is on, Settings and the reference show **(experimental feature, under active
-development)**. The footer shows only the **10X** pill; the experimental note is
+**~** opens the in-app table of commands that currently run; it is the only
+in-app keybinding reference. While the mode is on, the Settings row and the
+reference show **(experimental feature, under active development)**. The footer shows only the **10X** pill; the experimental note is
 in its accessible description.
 
 Paste destinations, cursor versus filled selection, and pointer ownership stay
@@ -664,7 +663,7 @@ These default-map shortcuts are unbound or remapped while the mode is on:
 | Default-map key | In 10xer mode |
 | --- | --- |
 | **Ctrl+Shift+K** | Unbound. Use **z** / **Z**. |
-| **Ctrl+T** | Unbound. Use the context menu. |
+| **Ctrl+T** | Unbound. Use **;** **t** or the context menu. |
 | **Ctrl+\\** | Unbound. Arrows never leave the file list. |
 | **Ctrl+D** | Half page down. Duplicate is dropped. |
 | **Ctrl+F** | Full page down. Filter is **f**. |

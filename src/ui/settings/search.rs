@@ -72,6 +72,12 @@ const TARGETS: &[Target] = &[
         aliases: "browsing columns keyboard selection next pane folders",
     },
     Target {
+        id: "hints",
+        page: "general",
+        title: "Show F1 Shortcuts button",
+        aliases: "browsing keyboard keybindings hints shortcuts reference help footer",
+    },
+    Target {
         id: "type-search",
         page: "general",
         title: "Type to search",
@@ -186,18 +192,6 @@ const TARGETS: &[Target] = &[
         aliases: "appearance graphics cairo gtk gpu text artifacts performance restart",
     },
     Target {
-        id: "hints",
-        page: "keybindings",
-        title: "Show F1 Shortcuts button",
-        aliases: "keyboard keybinding hints shortcuts footer navigation paste",
-    },
-    Target {
-        id: "shortcuts",
-        page: "keybindings",
-        title: "Shortcut reference",
-        aliases: "keyboard keys navigation selection files view application copy paste cut rename delete trash undo redo terminal refresh",
-    },
-    Target {
         id: "check",
         page: "updates",
         title: "Check for updates",
@@ -304,15 +298,7 @@ fn word_score(query: &str, word: &str) -> Option<i32> {
 
 fn score(query: &str, target: &Target) -> Option<i32> {
     let title = normalized(target.title);
-    let shortcuts = if target.id == "shortcuts" {
-        super::keybindings::search_text()
-    } else {
-        String::new()
-    };
-    let aliases = normalized(&format!(
-        "{} {} settings {shortcuts}",
-        target.aliases, target.page
-    ));
+    let aliases = normalized(&format!("{} {} settings", target.aliases, target.page));
     let mut total = 0;
     for query_word in query.split_whitespace() {
         let title_score = title
@@ -342,17 +328,13 @@ pub(super) struct Matches {
     ids: HashSet<&'static str>,
     pages: HashSet<&'static str>,
     best_page: Option<&'static str>,
-    query: String,
 }
 
 fn find_matches(query: &str) -> Matches {
     if query.chars().take(129).count() > 128 {
         return Matches::default();
     }
-    let mut result = Matches {
-        query: query.to_owned(),
-        ..Matches::default()
-    };
+    let mut result = Matches::default();
     let mut best = -1;
     for target in TARGETS {
         if let Some(score) = score(query, target) {
@@ -390,15 +372,6 @@ fn filter_tree(widget: &gtk::Widget, matches: Option<&Matches>) -> Option<bool> 
         let visible = !widget.has_css_class("settings-search-unavailable")
             && matches.is_none_or(|matches| matches.ids.contains(id));
         widget.set_visible(visible);
-        if id == "shortcuts" {
-            let query = matches.map(|matches| matches.query.as_str()).unwrap_or("");
-            let query = if normalized(&super::keybindings::search_text()).contains(query) {
-                query
-            } else {
-                ""
-            };
-            filter_shortcuts(widget, query);
-        }
         return Some(visible);
     }
     let children = children(widget);
@@ -437,20 +410,6 @@ fn filter_tree(widget: &gtk::Widget, matches: Option<&Matches>) -> Option<bool> 
         }
     }
     Some(visible)
-}
-
-fn filter_shortcuts(widget: &gtk::Widget, query: &str) {
-    if widget.has_css_class("shortcut-search")
-        && let Some(entry) = widget.downcast_ref::<gtk::Entry>()
-    {
-        if entry.text().as_str() != query {
-            entry.set_text(query);
-        }
-        return;
-    }
-    for child in children(widget) {
-        filter_shortcuts(&child, query);
-    }
 }
 
 pub(super) struct Search {
@@ -577,7 +536,6 @@ impl Search {
                     match button.widget_name().as_str() {
                         "General" => "general",
                         "Appearance" => "theme",
-                        "Keybindings" => "keybindings",
                         "Updates" => "updates",
                         _ => "about",
                     },

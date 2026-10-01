@@ -1053,6 +1053,7 @@ fn build_chooser_with_source(
     view.add_marquee_origin(&sidebar.widget, gtk::PackType::Start);
     view.add_marquee_origin(&preview.widget(), gtk::PackType::End);
     let (footer, footer_holder) = chooser_footer(&view, &theme);
+    footer.set_chooser(chooser_reference(&request.kind));
 
     let details = gtk::Box::new(gtk::Orientation::Vertical, 8);
     details.add_css_class("chooser-details");
@@ -1514,6 +1515,23 @@ fn save_hints(kind: &ChooserKind, preferences: &Rc<PreferenceManager>) -> Option
         row.set_visible(enabled)
     });
     Some(row)
+}
+
+fn chooser_reference(kind: &ChooserKind) -> crate::ui::shortcut_reference::ChooserScope {
+    use crate::ui::shortcut_reference::{ChooserRequest, ChooserScope};
+    let (request, multiple) = match kind {
+        ChooserKind::Open {
+            directory: false,
+            multiple,
+        } => (ChooserRequest::Files, *multiple),
+        ChooserKind::Open {
+            directory: true,
+            multiple,
+        } => (ChooserRequest::Folders, *multiple),
+        ChooserKind::SaveFile { .. } => (ChooserRequest::SaveFile, false),
+        ChooserKind::SaveFiles { .. } => (ChooserRequest::SaveFiles, false),
+    };
+    ChooserScope { request, multiple }
 }
 
 fn chooser_footer(

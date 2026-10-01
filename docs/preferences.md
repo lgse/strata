@@ -221,7 +221,7 @@ Changing it refreshes active filters across windows and is saved for next launch
 In **Settings → General → Browsing**, **10xer mode** is off by default.
 Its subtitle is **Opinionated keyboard-centric mode with Yazi-style navigation. Disables some features. Toggle with Ctrl-Shift-M.**
 The footer shows a compact **10X** pill at the right, immediately before the item count, while the mode is on.
-While the mode is on, the 10xer mode row, **Settings → Keybindings**, and the F1 / `~` reference are labeled **(experimental feature, under active development)**. The footer pill shows only **10X**; the note is in its accessible description. Those surfaces list only the commands that currently run.
+While the mode is on, the 10xer mode row and the F1 / `~` reference are labeled **(experimental feature, under active development)**. The footer pill shows only **10X**; the note is in its accessible description. Those surfaces list only the commands that currently run.
 It hides window Search and pane Close/filter/refresh/sort chrome in
 interactive browsers and the portal file chooser (window Close and chooser
 Accept/Cancel stay; List column headings stay),
@@ -240,7 +240,7 @@ leaving preview keyboard ownership restores its previous focusability without
 closing the drawer. Default **Ctrl+F** then follows the saved **Include subfolders**
 choice again. Initial preference binding applies chrome and accelerators without
 transition teardown or a file-list focus grab at disabled startup.
-Context-menu shortcut hints and **Settings → Keybindings** list the currently
+Context-menu shortcut hints and the F1 / `~` reference list the currently
 active map (including the kept Ctrl/F-key conventions). **Type to search** and
 **Keep arrows in file list** stay saved and editable; while the mode is on they
 are unused and those rows show the subtitle **Not used in 10xer mode.**

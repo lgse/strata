@@ -261,6 +261,12 @@ fn append_browsing_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) 
             read: PreferenceManager::tenxer_mode,
             write: PreferenceManager::set_tenxer_mode,
         },
+        PreferenceSwitch {
+            title: "Show F1 Shortcuts button",
+            description: "Show the shortcuts button in the bottom bar. Item counts and clipboard status remain visible when the button is hidden. F1 always opens the full reference.",
+            read: PreferenceManager::show_keybinding_hints,
+            write: PreferenceManager::set_show_keybinding_hints,
+        },
     ] {
         append_preference_switch(&browsing, manager, switch);
     }

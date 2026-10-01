@@ -383,7 +383,7 @@ fn tenxer_pin_chords_pin_the_cursor_folder_or_the_current_folder() {
 }
 
 fn shortcut_reference_visible(fixture: &KeyboardFixture) -> bool {
-    widget_with_class(fixture.window.upcast_ref(), "shortcut-popover")
+    widget_with_class(fixture.window.upcast_ref(), "shortcut-reference-panel")
         .is_some_and(|popover| popover.is_visible())
 }
 
@@ -498,8 +498,8 @@ fn armed_chord_yields_to_earlier_capture_handlers() {
             assert!(fixture.press(Key::F1, ModifierType::empty()));
             assert_eq!(fixture.shortcuts.armed_chord(), None);
             assert!(
-                !shortcut_reference_visible(&fixture),
-                "a hidden shortcuts button defers the popover"
+                shortcut_reference_visible(&fixture),
+                "a hidden shortcuts button does not delay the reference"
             );
             fixture
                 .shortcuts
@@ -509,7 +509,7 @@ fn armed_chord_yields_to_earlier_capture_handlers() {
             assert_eq!(
                 fixture.shortcuts.armed_chord(),
                 None,
-                "a key swallowed by the pending reference clears g-"
+                "a key swallowed by the open reference clears g-"
             );
             assert_ne!(fixture.shortcuts.feedback_text(), "Unknown chord");
             assert!(fixture.press(Key::Escape, ModifierType::empty()));
@@ -535,53 +535,6 @@ fn armed_chord_yields_to_earlier_capture_handlers() {
             assert_place_key_does_not_jump(&fixture, &origin);
 
             let _places = places;
-        },
-    );
-}
-
-#[test]
-fn settings_and_footer_list_the_same_place_chords() {
-    crate::test_support::gtk_test(
-        "ui::window::tests::keyboard_dispatch::place_chords::settings_and_footer_list_the_same_place_chords",
-        || {
-            PreferenceManager::shared().set_tenxer_mode(true);
-            let settings: Vec<_> = crate::ui::shortcut_reference::settings_bindings(true)
-                .iter()
-                .filter(|binding| binding.category == "Places")
-                .copied()
-                .collect();
-            let sections = crate::ui::shortcut_reference::reference_sections(BrowserMode::Columns);
-            let footer = &sections
-                .iter()
-                .find(|section| section.title == "Places")
-                .expect("footer place rows")
-                .rows;
-            assert_eq!(settings.len(), footer.len());
-            for (binding, row) in settings.iter().zip(footer) {
-                let (chord, meaning) = *row;
-                assert!(
-                    meaning == binding.action || meaning == binding.note,
-                    "{chord} names {meaning:?}; settings action {:?} note {:?}",
-                    binding.action,
-                    binding.note
-                );
-                assert!(
-                    chord == binding.keys || chord.strip_prefix(binding.keys).is_some(),
-                    "{chord} vs {}",
-                    binding.keys
-                );
-            }
-            let preview = "Top of the document or first archive member";
-            assert!(
-                settings
-                    .iter()
-                    .any(|binding| binding.action == preview && binding.note == "Preview")
-            );
-            assert!(
-                footer.iter().any(|(chord, meaning)| {
-                    *chord == "g g in the preview" && *meaning == preview
-                })
-            );
         },
     );
 }

@@ -1350,13 +1350,13 @@ fn hidden_shortcut_button_keeps_prompt_chord_and_feedback_usable() {
             assert_eq!(directory_names(fixture._directory.path()), names);
             assert!(fixture.press(Key::F1, ModifierType::empty()));
             wait_until(|| {
-                widget_with_class(fixture.window.upcast_ref(), "shortcut-popover")
+                widget_with_class(fixture.window.upcast_ref(), "shortcut-reference-panel")
                     .is_some_and(|popover| popover.is_visible())
             });
             assert_eq!(fixture.shortcuts.prompt().text(), "keep");
             fixture.press(Key::Escape, ModifierType::empty());
             wait_until(|| {
-                widget_with_class(fixture.window.upcast_ref(), "shortcut-popover")
+                widget_with_class(fixture.window.upcast_ref(), "shortcut-reference-panel")
                     .is_none_or(|popover| !popover.is_visible())
             });
             assert_eq!(fixture.shortcuts.prompt().text(), "keep");
@@ -1464,7 +1464,7 @@ fn tenxer_entries_menus_and_reference_keep_their_keys() {
             focus_files(&fixture);
             assert!(fixture.press(Key::F1, ModifierType::empty()));
             wait_until(|| {
-                widget_with_class(fixture.window.upcast_ref(), "shortcut-popover")
+                widget_with_class(fixture.window.upcast_ref(), "shortcut-reference-panel")
                     .is_some_and(|popover| popover.is_visible())
             });
             fixture.press(Key::q, ModifierType::empty());
@@ -1479,7 +1479,7 @@ fn tenxer_entries_menus_and_reference_keep_their_keys() {
             );
             assert!(fixture.press(Key::asciitilde, ModifierType::empty()));
             wait_until(|| {
-                widget_with_class(fixture.window.upcast_ref(), "shortcut-popover")
+                widget_with_class(fixture.window.upcast_ref(), "shortcut-reference-panel")
                     .is_none_or(|popover| !popover.is_visible())
             });
 

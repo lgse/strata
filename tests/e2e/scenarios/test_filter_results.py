@@ -189,7 +189,7 @@ def test_filtered_keyboard_clipboard_keeps_status_visible(strata, mode, shortcut
         lambda: strata.window.find(role="label", name="Files on clipboard"),
         "the file clipboard status badge",
     )
-    assert bool(strata.window.find(role="button", name="F1  Shortcuts")) == hints
+    assert bool(strata.window.find(role="toggle button", name="F1  Shortcuts")) == hints
     assert strata.fixture.path("beta/only-match.txt").exists()
     assert strata.fixture.path("match-note-other.md").exists()
     strata.keyboard.press("ctrl+l")

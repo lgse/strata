@@ -115,7 +115,7 @@ close the preview. In [10xer mode](10xer-mode.md#preview-keyboard-ownership),
 
 ## Shortcut footer
 
-Every mode has a compact footer with **F1 · Shortcuts** on the left and clipboard status and the item count on the right. **Settings → Keybindings → Show F1 Shortcuts button** controls the button's visibility (on by default). The preference is saved and updates all open windows immediately. Item counts and clipboard status remain visible when the button is hidden. F1 always opens the complete, mode-specific reference; closing it restores the button's configured visibility. F1 or Escape closes the reference, which blocks file-operation shortcuts while open. **Settings → Keybindings** lists only the currently active map and live-updates when 10xer mode changes.
+Every mode has a compact footer with **F1 · Shortcuts** on the left and clipboard status and the item count on the right. **Settings → General → Browsing → Show F1 Shortcuts button** controls the button's visibility (on by default). The preference is saved and updates all open windows immediately. Item counts and clipboard status remain visible when the button is hidden. F1 always opens the complete, mode-specific reference; closing it restores the button's configured visibility. F1, Escape, or a click outside it closes the reference, which blocks file-operation shortcuts while open. It stays open when the window loses focus. The reference is the only in-app keybinding list; it shows only the currently active map and live-updates when 10xer mode changes.
 
 ## 10xer mode
 
@@ -135,14 +135,16 @@ clearing the ordinary listing's fill or closing the preview. **Esc** dismisses
 one interaction at a time, including an open preview; recursive results have a
 separate order described in [Escape precedence](10xer-mode.md#escape-precedence).
 
-The F1 / `~` popover and **Settings → Keybindings** share the active map's
-presentation data and live-update when the mode changes. Default F1 navigation
-is specific to the current view; Settings includes the all-view overview.
+The F1 / `~` popover lists the active map and live-updates when the mode
+changes. Its navigation section is specific to the current view, and in the
+portal file chooser it lists only the keys that request allows.
 Context-menu hints use `x`, `y`, `p`, `d` / `D`, `r`, `i`, and `M` / `C` / `R`
 (Move to, Copy to, Restore) only when those commands perform the action. `i` toggles a file's preview without taking focus, or is the next column or folder peek for a directory.
 Until those verbs run, the menu keeps the shortcuts that still work and hides
 the unbound defaults (`Y` for copy path, `Space` for preview, and `Ctrl+R` for
-rename). Planned commands are not shown as working.
+rename). Planned commands are not shown as working. In the default map, the
+`Y` (copy path) and `P` (pin) hints show only while **Type to search** is off,
+because type-to-search claims those letters otherwise.
 
 While a pane shows its search-results page (including filtered results), the footer
 shows the displayed result total in both default and 10xer mode, including
@@ -174,7 +176,7 @@ From the sidebar, Right returns to the item you left (or the current file view i
 
 **Settings → General → Browsing → Keep arrows in file list** (off by default) stops arrow keys from leaving the file list. Use **Ctrl+Shift+B** to focus the sidebar, or use the mouse. **Ctrl+\\** toggles it live. The file chooser respects the same preference.
 
-**Alt+Left / Alt+Right / Alt+Up** remain Back / Forward / Parent in every mode. In the default map, List/Columns retain Miller-column navigation: **Right enters folders or moves into an existing pane to the right**. On a focused file with no pane to the right, Right does nothing; it never opens or previews the file. **Enter** opens files; with **Type to search** off, `l` still activates. Backspace and the existing `h` / `l` directory shortcuts remain available. In [10xer mode](10xer-mode.md), arrows stay in the Columns, List, and Icons panes. **Tab** moves from the file list to the window header, where **Enter** / **Space** activate the focused control and **h** / **j** return to the files. **Ctrl+Shift+B** focuses a visible sidebar; a hidden sidebar stays hidden until the header toggle shows it. In the sidebar, **j** / **k** and **Up** / **Down** move between places and device controls, **l** / **Enter** / **Space** activate the focused one, and **h** / **Left** / **Backspace** return to the files without changing the selection. A **Tab** or arrow key from the footer still returns to the file list. List and Columns **l** / **→** open a directory or enter a file's preview when possible. Icons **h** / **j** / **k** / **l** and arrows always move to the next icon in that direction, including across search-result icons; they never preview or change location. On a file, **i** toggles the preview without moving focus. On a directory it opens the next Miller column without focusing it, or toggles the folder-peek popover in List and Icons.
+**Alt+Left / Alt+Right / Alt+Up** remain Back / Forward / Parent in every mode. In the default map, List/Columns retain Miller-column navigation: **Right enters folders or moves into an existing pane to the right**. On a focused file with no pane to the right, Right does nothing; it never opens or previews the file. **Enter** opens files. With **Type to search** off, `h` / `j` / `k` / `l` act as the arrow keys in every view, and Backspace still goes up a level. In [10xer mode](10xer-mode.md), arrows stay in the Columns, List, and Icons panes. **Tab** moves from the file list to the window header, where **Enter** / **Space** activate the focused control and **h** / **j** return to the files. **Ctrl+Shift+B** focuses a visible sidebar; a hidden sidebar stays hidden until the header toggle shows it. In the sidebar, **j** / **k** and **Up** / **Down** move between places and device controls, **l** / **Enter** / **Space** activate the focused one, and **h** / **Left** / **Backspace** return to the files without changing the selection. A **Tab** or arrow key from the footer still returns to the file list. List and Columns **l** / **→** open a directory or enter a file's preview when possible. Icons **h** / **j** / **k** / **l** and arrows always move to the next icon in that direction, including across search-result icons; they never preview or change location. On a file, **i** toggles the preview without moving focus. On a directory it opens the next Miller column without focusing it, or toggles the folder-peek popover in List and Icons.
 
 In Columns, the pane to the right mirrors keyboard selection like Finder: **Up/Down** onto a folder shows its contents without moving focus, onto a previewable file opens Quick Preview, and onto any other file closes the child pane. Pointer selection keeps the configured click behavior. **Settings → General → Browsing → Mirror columns selection** (on by default) toggles the mirroring. 10xer mode follows the same preference for its cursor in Columns; see [10xer mode](10xer-mode.md). **l** / **→** enters a directory or a file preview, and **i** toggles a file's preview or opens the next column / toggles folder peek for a directory.
 

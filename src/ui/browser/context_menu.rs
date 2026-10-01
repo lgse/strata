@@ -1936,9 +1936,8 @@ fn bind_context_hint(button: &gtk::Button, shortcut: &gtk::Label, label: &str, h
     let label = label.to_owned();
     PreferenceManager::shared().bind_preference(
         shortcut,
-        PreferenceManager::tenxer_mode,
-        move |_, enabled| {
-            let text = shortcut_reference::context_hint_for(hint, enabled);
+        move |preferences| shortcut_reference::context_hint_for(hint, preferences),
+        move |_, text| {
             shown.set_text(text);
             shown.set_visible(!text.is_empty());
             crate::ui::accessibility::describe_menu_item(&button, &label, text);

@@ -845,12 +845,13 @@ pub(super) fn build_appearance_menu(
     let description_toggle = preview_toggle.clone();
     preferences.bind_preference(
         &preview_shortcut,
-        PreferenceManager::tenxer_mode,
-        move |_, enabled| {
-            let text = crate::ui::shortcut_reference::context_hint_for(
+        |preferences| {
+            crate::ui::shortcut_reference::context_hint_for(
                 crate::ui::shortcut_reference::ContextHint::Preview,
-                enabled,
-            );
+                preferences,
+            )
+        },
+        move |_, text| {
             shortcut_label.set_text(text);
             shortcut_label.set_visible(!text.is_empty());
             crate::ui::accessibility::set_description(
