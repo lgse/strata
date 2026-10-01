@@ -71,6 +71,8 @@ pub(crate) enum ContextHint {
     HiddenFiles,
 }
 
+/// Only the 10xer map honors `scope.chooser`: portal choosers show the footer
+/// and dispatch F1 only in 10xer mode, so the default map has no chooser view.
 pub(crate) fn reference_sections(scope: ReferenceScope) -> Vec<ReferenceSection> {
     if super::tenxer_mode::chrome_suppressed() {
         tenxer_sections(scope.mode, scope.chooser)
@@ -572,7 +574,8 @@ fn default_hint(hint: ContextHint, type_to_search: bool) -> &'static str {
         ContextHint::Terminal => "Ctrl+T",
         ContextHint::Trash => "Del",
         ContextHint::PermanentDelete => "Shift+Del",
-        ContextHint::Open | ContextHint::OpenMultiple => "Enter",
+        ContextHint::Open => "↵",
+        ContextHint::OpenMultiple => "Enter",
         ContextHint::Properties | ContextHint::ContainingFolder => "Alt+Enter",
         ContextHint::NewFolder => "Ctrl+Shift+N",
         ContextHint::SelectAll => "Ctrl+A",

@@ -146,7 +146,7 @@ clearing the ordinary listing's fill or closing the preview. **Esc** dismisses
 one interaction at a time, including an open preview; recursive results have a
 separate order described in [Escape precedence](10xer-mode.md#escape-precedence).
 
-The F1 / `~` popover lists the active map and live-updates when the mode
+The F1 / `~` reference panel lists the active map and live-updates when the mode
 changes. Its navigation section is specific to the current view, and in the
 portal file chooser it lists only the keys that request allows.
 Context-menu hints use `x`, `y`, `p`, `d` / `D`, `r`, `i`, and `M` / `C` / `R`

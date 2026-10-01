@@ -1267,6 +1267,10 @@ impl ShortcutFooter {
         self.prompt.has_focus()
     }
 
+    pub(in crate::ui) fn reference_is_open(&self) -> bool {
+        self.session.is_open()
+    }
+
     pub fn handle_key(
         &self,
         key: gdk::Key,

@@ -576,7 +576,9 @@ impl Dispatcher {
             && !self.shortcuts.prompt_has_focus()
             && !self.preview_document_focused()
         {
-            if key == Key::F1 {
+            // The open reference's search entry counts as focused text; its
+            // keys, Escape included, must reach the reference, not the request.
+            if key == Key::F1 || self.shortcuts.reference_is_open() {
                 return self.shortcuts.handle_key(key, modifiers);
             }
             return self.tenxer_keys(browser, key, modifiers);

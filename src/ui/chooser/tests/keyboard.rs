@@ -131,6 +131,20 @@ impl Chooser {
             .is_some_and(|footer| footer.is_visible())
     }
 
+    fn reference_search_focused(&self) -> bool {
+        widget_with_class(self.state.window.upcast_ref(), "shortcut-reference-search").is_some_and(
+            |search| {
+                gtk::prelude::RootExt::focus(&self.state.window)
+                    .is_some_and(|focus| focus == search || focus.is_ancestor(&search))
+            },
+        )
+    }
+
+    fn reference_visible(&self) -> bool {
+        widget_with_class(self.state.window.upcast_ref(), "shortcut-reference-panel")
+            .is_some_and(|panel| panel.is_visible())
+    }
+
     fn prompt_focused(&self) -> bool {
         let prompt = self.prompt();
         gtk::prelude::RootExt::focus(&self.state.window)
@@ -409,6 +423,12 @@ fn escape_dismisses_one_interaction_before_cancelling_and_the_toggle_keeps_the_r
             assert!(chooser.press(Key::Escape));
             assert!(chooser.open_request(), "Esc in the prompt cancelled");
             assert!(chooser.state.view.item_view_has_focus());
+
+            assert!(chooser.press(Key::F1));
+            wait_until(|| chooser.reference_search_focused());
+            assert!(chooser.press(Key::Escape));
+            assert!(chooser.open_request(), "Esc in the F1 reference cancelled");
+            assert!(!chooser.reference_visible());
 
             chooser.press(Key::l);
             wait_until(|| {
