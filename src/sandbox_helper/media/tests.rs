@@ -181,6 +181,19 @@ fn audio_only_and_attached_cover_art_do_not_require_a_hardware_video_decoder() {
         assert!(h.audio);
         assert_eq!(h.width, 0);
     }
+    let aac = directory.path().join("tone.m4a");
+    success(
+        Command::new("ffmpeg")
+            .args(["-nostdin", "-v", "error", "-i"])
+            .arg(&audio)
+            .args(["-c:a", "aac"])
+            .arg(&aac),
+    );
+    let (_, frames, _) = decoded(&aac, "520x800", 0);
+    assert!(
+        frames[0].samples[..1024].iter().any(|sample| *sample != 0),
+        "zero-position playback must preserve the opening AAC samples"
+    );
     let cover = directory.path().join("cover.jpg");
     success(
         Command::new("ffmpeg")
@@ -252,6 +265,16 @@ fn audio_only_and_attached_cover_art_do_not_require_a_hardware_video_decoder() {
         assert!(
             pixel[2] > pixel[0] && pixel[2] > pixel[1],
             "cover frame: {pixel:?}"
+        );
+        let (_, sought, end) = decoded(attached, "520x800", 15);
+        assert_eq!(sought.len(), 15);
+        assert_eq!(end, 1_000_000);
+        assert_eq!(sought[0].pixels, frames[0].pixels);
+        assert!(
+            sought
+                .iter()
+                .any(|frame| frame.samples.iter().any(|sample| *sample != 0)),
+            "cover-art seeking must retain audio: {attached:?}"
         );
     }
 }
@@ -417,8 +440,6 @@ fn assert_elementary_playback(path: &Path) {
     assert_eq!(frames.len(), 60);
     assert_eq!(end, 2_000_000);
     assert_ne!(frames[0].pixels, frames[30].pixels);
-    // Integer-second, fractional, and near-the-end offsets must match the
-    // zero-start pixels. A relabeled first frame would fail the inequality.
     for start in [30_u32, 20, 58] {
         let (sought_header, sought, sought_end) = decoded(path, "520x800", start);
         assert_eq!(sought_header.duration_us, header.duration_us);
@@ -631,6 +652,12 @@ fn short_gifs_loop_inside_the_bounded_decode_generation_and_seek_by_phase() {
         frames[15].pixels == sought[0].pixels,
         "seek keeps the GIF phase"
     );
+    let (_, loop_boundary, end) = decoded(&input, "160x90", 750);
+    assert_eq!(loop_boundary.len(), 150);
+    assert_eq!(end, 30_000_000);
+    for (actual, expected) in loop_boundary.iter().zip(&frames[750..]) {
+        assert_eq!(actual.pixels, expected.pixels);
+    }
     let long = directory.path().join("long.gif");
     success(
         Command::new("ffmpeg")

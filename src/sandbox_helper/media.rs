@@ -34,7 +34,6 @@ struct Input {
     audio: Option<u32>,
     cover: bool,
     gif_period_us: Option<u64>,
-    // Annex B H.264/HEVC, from the probed demuxer name only.
     raw_video: bool,
 }
 
@@ -149,8 +148,6 @@ fn metadata(bytes: &[u8], size: MediaPreviewSize, start_tick: u32) -> io::Result
     let format_name = value["format"]["format_name"].as_str().unwrap_or("");
     let gif_period_us =
         (format_name == "gif" && duration < 30.0).then_some((duration * 1_000_000.0).ceil() as u64);
-    // Missing duration and the filename are not enough: only these demuxers seek by
-    // decoding. Containers keep input-side seeking even when duration is unknown.
     let raw_video = format_name
         .split(',')
         .any(|name| matches!(name.trim(), "h264" | "hevc"));
@@ -308,9 +305,7 @@ fn command(path: &Path, input: &Input, backend: &Backend, track: Track) -> Comma
     let remaining =
         (input.header.duration_us - media::timestamp(input.header.start_tick)) as f64 / 1_000_000.0;
     let cover = input.cover && matches!(track, Track::Video);
-    // Attached pictures and raw H.264/HEVC yield no frames for an input seek, even
-    // `-ss 0`. Omit a zero seek. Positive raw offsets seek after `-i` so FFmpeg
-    // decodes and discards the prefix instead of asking the demuxer to seek.
+    // Input seeking can discard attached pictures and timestamp-less raw video.
     let seek = !cover && offset_us != 0;
     let position = format!("{start:.6}");
     if seek && !input.raw_video {
