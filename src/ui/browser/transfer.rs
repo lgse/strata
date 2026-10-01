@@ -9,16 +9,16 @@ use crate::services::{
 };
 use crate::ui::browser::ViewState;
 use crate::ui::browser::destination::{
-    DestinationLocationBar, TransferSearchScope, folder_input_path, hand_off_destination_focus,
-    resolve_destination_path, setup_transfer_search,
+    DestinationBrowser, DestinationBrowserOptions, folder_input_path, hand_off_destination_focus,
+    resolve_destination_path,
 };
 use crate::ui::browser::entry::item_count_label;
 use crate::ui::browser::paths::{
     can_remove_location, compact_display_path, compact_native_path, is_trash_location,
 };
 use crate::ui::controls::{
-    ModalTone, focus_button, form_check_button, form_entry, form_label, message_dialog_description,
-    message_dialog_layout, modal_layout,
+    ModalTone, focus_button, form_check_button, message_dialog_description, message_dialog_layout,
+    modal_layout,
 };
 use crate::ui::modal::{
     ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog, submit_on_enter,
@@ -1179,71 +1179,34 @@ impl ViewState {
             ),
             confirm_label,
         );
-        layout.content.add_css_class("wide");
-        let field_label = form_label("Destination folder");
-        let field = form_entry();
-        field.set_hexpand(true);
-        field.set_placeholder_text(Some("Search for a folder…"));
-        field.set_text(&folder_input_path(&base));
-        field.set_position(-1);
-        layout.body.append(&field_label);
-        let location_bar = DestinationLocationBar::wrap(
-            field.clone(),
-            base.clone(),
-            search_root.clone(),
-            root_limit.clone(),
-            root_label.clone(),
-        );
-        layout.body.append(&location_bar.widget());
-
-        let suggestions = gtk::Box::new(gtk::Orientation::Vertical, 2);
-        suggestions.add_css_class("transfer-suggestions");
-        let suggestion_scroll = gtk::ScrolledWindow::builder()
-            .child(&suggestions)
-            .hscrollbar_policy(gtk::PolicyType::Never)
-            .vscrollbar_policy(gtk::PolicyType::Automatic)
-            .min_content_height(150)
-            .max_content_height(220)
-            .propagate_natural_height(true)
-            .build();
-        suggestion_scroll.add_css_class("transfer-suggestion-scroll");
-        layout.body.append(&suggestion_scroll);
-        let error = gtk::Label::new(None);
-        error.add_css_class("form-message");
-        error.add_css_class("error");
-        error.set_wrap(true);
-        error.set_xalign(0.0);
-        error.set_visible(false);
-        layout.body.append(&error);
+        layout.content.add_css_class("browse");
         let content = layout.content;
         let close = layout.close;
         let cancel = layout.cancel;
         let confirm = layout.confirm;
 
-        let generation = Rc::new(Cell::new(0_u64));
         let pending_creation = Rc::new(RefCell::new(None::<std::path::PathBuf>));
         let creating_destination = Rc::new(Cell::new(false));
-        let suggestions_box = suggestions.clone();
-        let suggestions_error = error.clone();
         let changed_confirm = confirm.clone();
         let changed_creation = pending_creation.clone();
-        let select_bar = location_bar.clone();
-        setup_transfer_search(
-            &field,
-            &suggestions_box,
-            &generation,
-            TransferSearchScope {
+        let picker = DestinationBrowser::new(
+            DestinationBrowserOptions {
                 base: base.clone(),
-                search_root: search_root.clone(),
-                root_limit: root_limit.clone(),
+                search_root,
+                // A confined picker offers no places, so it cannot leave its root.
+                places: if root_limit.is_some() {
+                    Vec::new()
+                } else {
+                    crate::ui::destination_places(
+                        &crate::ui::preferences::PreferenceManager::shared(),
+                        &glib::home_dir(),
+                    )
+                },
+                root_limit,
+                root_label,
                 show_hidden: self.browser.preferences().show_hidden,
             },
-            Rc::new(move |path: &Path| select_bar.select_directory(path)),
-            move |field| {
-                field.remove_css_class("error");
-                suggestions_error.set_visible(false);
-                suggestions_error.remove_css_class("warning");
-                suggestions_error.add_css_class("error");
+            move |_| {
                 changed_creation.borrow_mut().take();
                 changed_confirm.set_label(if move_sources {
                     "Move here"
@@ -1252,6 +1215,9 @@ impl ViewState {
                 });
             },
         );
+        layout.body.append(&picker.widget());
+        let field = picker.field.clone();
+        let error = picker.error.clone();
 
         let initial_text = folder_input_path(&base);
         let dirty_field = field.clone();
@@ -1498,7 +1464,6 @@ impl ViewState {
         });
         layer.add_controller(escape);
 
-        field.emit_by_name::<()>("changed", &[]);
-        location_bar.focus_browse();
+        picker.activate();
     }
 }

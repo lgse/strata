@@ -162,6 +162,30 @@ fn visible_error_message(overlay: &gtk::Overlay) -> Option<String> {
     None
 }
 
+fn destination_nav_button(overlay: &gtk::Overlay, class: &str) -> gtk::Button {
+    find_widget_with_class(overlay, class)
+        .and_downcast::<gtk::Button>()
+        .unwrap_or_else(|| panic!("{class} button not found"))
+}
+
+fn destination_place_row(overlay: &gtk::Overlay, name: &str) -> gtk::Button {
+    let places = find_widget_with_class(overlay, "destination-places").expect("places column");
+    let mut child = places.first_child();
+    while let Some(widget) = child {
+        child = widget.next_sibling();
+        let label = widget
+            .first_child()
+            .and_then(|content| content.last_child())
+            .and_downcast::<gtk::Label>();
+        if label.is_some_and(|label| label.text() == name)
+            && let Ok(row) = widget.downcast::<gtk::Button>()
+        {
+            return row;
+        }
+    }
+    panic!("{name:?} place not found");
+}
+
 fn find_widget_with_class(overlay: &gtk::Overlay, class: &str) -> Option<gtk::Widget> {
     let mut stack = Vec::new();
     let mut child = overlay.first_child();
@@ -994,6 +1018,32 @@ fn choose_folder_breadcrumbs_navigate_to_ancestor() {
                 || field.text() == folder_input_path(&device),
                 "the ancestor breadcrumb returns the entry to the device root",
             );
+            assert!(
+                find_widget_with_class(&overlay, "destination-places").is_none(),
+                "a confined picker offers no places outside its device"
+            );
+            let up = destination_nav_button(&overlay, "destination-up");
+            assert!(!up.is_sensitive(), "Up stops at the device root");
+            destination_nav_button(&overlay, "destination-back").emit_clicked();
+            wait_until(
+                || field.text() == folder_input_path(&teaching),
+                "Back returns to the folder shown before the breadcrumb",
+            );
+            up.emit_clicked();
+            wait_until(
+                || field.text() == folder_input_path(&device),
+                "Up returns to the device root",
+            );
+            destination_nav_button(&overlay, "destination-back").emit_clicked();
+            wait_until(
+                || field.text() == folder_input_path(&teaching),
+                "Back undoes Up",
+            );
+            up.emit_clicked();
+            wait_until(
+                || field.text() == folder_input_path(&device),
+                "Up returns to the device root again",
+            );
             click_button(&overlay, "Copy here");
             wait_until(
                 || {
@@ -1300,6 +1350,14 @@ fn extract_to_focused_enter_extracts_destination() {
             view.state.show_extract_to_dialog(transfer_entry(&archive));
             assert!(wait_for_modal_layer(&overlay), "Extract dialog opens");
             let field = destination_field(&overlay);
+            wait_until(
+                || {
+                    visible_texts(&overlay)
+                        .iter()
+                        .any(|text| text == "No subfolders")
+                },
+                "the starting folder to be listed when the dialog opens",
+            );
             click_button(&overlay, "work");
             wait_until(
                 || destination_entry_owns_focus(&field, &window),
@@ -1775,6 +1833,19 @@ fn normal_copy_and_move_to_keep_home_search_creation_and_reveal() {
                     "normal transfer dialog opens"
                 );
                 let field = destination_field(&overlay);
+                wait_until(
+                    || {
+                        visible_texts(&overlay)
+                            .iter()
+                            .any(|text| text == "No subfolders")
+                    },
+                    "a folder without subfolders to say so",
+                );
+                destination_place_row(&overlay, "Home").emit_clicked();
+                wait_until(
+                    || field.text() == folder_input_path(&glib::home_dir()),
+                    "the Home place to leave the folder without subfolders",
+                );
                 field.set_text("normal-home-search-target");
                 wait_until(
                     || {

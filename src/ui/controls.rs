@@ -41,6 +41,14 @@ pub(super) fn pane_header_action(widget: &impl IsA<gtk::Widget>) {
     widget.set_cursor_from_name(Some("pointer"));
 }
 
+pub(super) fn navigation_button(icon: &str, tooltip: &str) -> gtk::Button {
+    let button = gtk::Button::builder().tooltip_text(tooltip).build();
+    button.set_child(Some(&crate::assets::chrome_icon(icon)));
+    button.add_css_class("list-navigation-button");
+    button.set_cursor_from_name(Some("pointer"));
+    button
+}
+
 pub(super) fn form_entry() -> gtk::Entry {
     let entry = gtk::Entry::new();
     entry.add_css_class("form-control");

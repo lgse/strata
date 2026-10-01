@@ -3006,13 +3006,8 @@ fn list_navigation(browser: &Rc<Browser>) -> gtk::Box {
             browser.can_go_parent(),
         ),
     ] {
-        let button = gtk::Button::builder()
-            .tooltip_text(tooltip)
-            .sensitive(available)
-            .build();
-        button.set_child(Some(&crate::assets::chrome_icon(icon)));
-        button.add_css_class("list-navigation-button");
-        button.set_cursor_from_name(Some("pointer"));
+        let button = super::controls::navigation_button(icon, tooltip);
+        button.set_sensitive(available);
         let weak_browser = Rc::downgrade(browser);
         button.connect_clicked(move |_| {
             if let Some(browser) = weak_browser.upgrade() {

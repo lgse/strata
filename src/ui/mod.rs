@@ -52,7 +52,8 @@ mod window;
 pub(crate) use chooser::{cancel_chooser, present_chooser};
 pub(crate) use window::default_save_folder;
 pub(in crate::ui) use window::{
-    RemovableDestination, removable_destinations, resolve_removable_destination,
+    PlaceGroup, PlaceShortcut, RemovableDestination, destination_places, removable_destinations,
+    resolve_removable_destination, sidebar_button,
 };
 pub use window::{UnlockTarget, present, present_open, present_reveal, present_unlock};
 

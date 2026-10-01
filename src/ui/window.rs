@@ -42,6 +42,7 @@ mod drive_dialogs;
 mod drive_ops;
 mod keyboard;
 mod open_argument;
+mod places;
 mod sidebar;
 mod unlock_argument;
 mod volume_password;
@@ -50,6 +51,7 @@ pub(super) use devices::{
     RemovableDestination, removable_destinations, resolve_removable_destination,
 };
 pub(in crate::ui) use keyboard::{ChooserKeys, ChooserPolicy};
+pub(in crate::ui) use places::{PlaceGroup, PlaceShortcut, destination_places};
 
 pub use open_argument::present_open;
 pub use unlock_argument::{UnlockTarget, present_unlock};
@@ -3601,7 +3603,7 @@ fn sidebar_context_option(icon: &str, label: &str, danger: bool) -> gtk::Button 
     button
 }
 
-fn sidebar_button(icon: &str, name: &str) -> gtk::Button {
+pub(in crate::ui) fn sidebar_button(icon: &str, name: &str) -> gtk::Button {
     let content = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     let image = crate::assets::primary_icon(icon, 17);
     let label = gtk::Label::new(Some(name));

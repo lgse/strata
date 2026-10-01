@@ -524,3 +524,29 @@ def test_enter_submits_the_copy_to_dialog(strata):
         lambda: (destination / "todo.txt").exists(),
         "Enter to copy into the destination",
     )
+
+
+def test_down_arrow_reaches_the_copy_to_folder_list(strata):
+    first_folder = strata.fixture.path("archive")
+
+    strata.open_context_menu("todo.txt")
+    strata.choose_menu_item("Copy to…")
+    _enter_destination_edit_mode(strata)
+    dialog = strata.wait_for_dialog()
+    strata.wait(
+        lambda: dialog.find(role="button", description=str(first_folder)),
+        "the starting folder's subfolders to be listed",
+    )
+
+    strata.keyboard.press("Down")
+    strata.keyboard.press("Return")
+    strata.wait(
+        lambda: dialog.find(name="No subfolders"),
+        "Down then Enter to open the first listed folder",
+    )
+    strata.pointer.click(strata.dialog_button("Copy here"))
+
+    strata.wait(
+        lambda: (first_folder / "todo.txt").exists(),
+        "the copy to land in the folder chosen from the list",
+    )

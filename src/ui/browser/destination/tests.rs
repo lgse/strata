@@ -283,12 +283,202 @@ fn location_bar_selection_returns_to_browse() {
                 None,
                 None,
             );
+            std::fs::create_dir_all(&teaching).expect("destination folders");
             bar.begin_edit();
             field.set_text("Photos");
             assert!(bar.is_editing());
             bar.select_directory(&teaching);
             assert!(!bar.is_editing());
             assert_eq!(field.text(), folder_input_path(&teaching));
+
+            bar.go_back();
+            assert_eq!(
+                field.text(),
+                folder_input_path(&base),
+                "Back skips typed text and returns to the previous folder"
+            );
+            bar.go_forward();
+            assert_eq!(field.text(), folder_input_path(&teaching));
+            bar.go_up();
+            assert_eq!(field.text(), folder_input_path(&base));
+            bar.go_forward();
+            assert_eq!(
+                field.text(),
+                folder_input_path(&base),
+                "Up is a new visit and drops the forward trail"
+            );
+            bar.go_back();
+            assert_eq!(field.text(), folder_input_path(&teaching));
         },
     );
+}
+
+#[test]
+fn history_back_forward_round_trip() {
+    let (a, b, c) = (Path::new("/a"), Path::new("/b"), Path::new("/c"));
+    let mut history = DestinationHistory::default();
+    history.visit(a, a);
+    assert_eq!(
+        history.go_back(a),
+        None,
+        "revisiting the current folder records nothing"
+    );
+    history.visit(a, b);
+    history.visit(b, c);
+    assert_eq!(history.go_back(c).as_deref(), Some(b));
+    assert_eq!(history.go_back(b).as_deref(), Some(a));
+    assert_eq!(history.go_back(a), None);
+    assert_eq!(history.go_forward(a).as_deref(), Some(b));
+    history.visit(b, a);
+    assert_eq!(
+        history.go_forward(a),
+        None,
+        "a new visit drops the forward trail"
+    );
+    assert_eq!(history.go_back(a).as_deref(), Some(b));
+}
+
+#[cfg(unix)]
+#[test]
+fn up_stops_at_search_filesystem_and_device_roots() -> Result<(), Box<dyn std::error::Error>> {
+    let home = Path::new("/home/example");
+    let unconfined = |input: &str| parent_destination(input, home, None, None, home);
+    assert_eq!(
+        unconfined("~/Projects/strata/"),
+        Some(home.join("Projects"))
+    );
+    assert_eq!(unconfined("~/"), Some(PathBuf::from("/home")));
+    assert_eq!(unconfined("/"), None);
+    assert_eq!(unconfined("Photos"), None, "name search has no parent");
+
+    let fixture = tempfile::tempdir().expect("device fixture");
+    let root = fixture.path().join("VANIA");
+    std::fs::create_dir_all(root.join("Teaching/2026"))?;
+    let outside = fixture.path().join("outside");
+    std::fs::create_dir_all(&outside)?;
+    std::os::unix::fs::symlink(&outside, root.join("link"))?;
+    let canonical_root = std::fs::canonicalize(&root)?;
+    let confined = |path: PathBuf| {
+        parent_destination(
+            &format!("{}/", path.display()),
+            &root,
+            Some(&root),
+            Some(&canonical_root),
+            home,
+        )
+    };
+    assert_eq!(
+        confined(root.join("Teaching/2026")),
+        Some(canonical_root.join("Teaching"))
+    );
+    assert_eq!(confined(root.clone()), None, "Up stops at the device root");
+    assert_eq!(confined(root.join("link")), None);
+    assert_eq!(confined(root.join("NoSuch")), None);
+    Ok(())
+}
+
+#[test]
+fn path_suggestions_tell_an_empty_folder_from_a_failed_match()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = tempfile::tempdir().expect("suggestion fixture");
+    let base = fixture.path().join("base");
+    std::fs::create_dir_all(base.join("Alpha"))?;
+    std::fs::create_dir_all(base.join("leaf"))?;
+    std::fs::write(base.join("leaf/notes.txt"), b"notes")?;
+    let home = Path::new("/home/example");
+    let suggest = |relative: &str| {
+        path_suggestions(&format!("{}/{relative}", base.display()), &base, home, None)
+    };
+
+    let listed = suggest("");
+    assert_eq!(listed.paths, [base.join("Alpha"), base.join("leaf")]);
+
+    let leaf = suggest("leaf/");
+    assert!(leaf.paths.is_empty());
+    assert_eq!(leaf.empty, EmptySuggestions::NoSubfolders);
+
+    for failed in ["zz", "missing/"] {
+        let result = suggest(failed);
+        assert!(result.paths.is_empty(), "input {failed:?}");
+        assert_eq!(
+            result.empty,
+            EmptySuggestions::NoMatches,
+            "input {failed:?}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn down_from_the_entry_focuses_the_first_folder() {
+    crate::test_support::gtk_test(
+        "ui::browser::destination::tests::down_from_the_entry_focuses_the_first_folder",
+        || {
+            use gtk::prelude::*;
+            let fixture = tempfile::tempdir().expect("picker fixture");
+            let base = fixture.path().join("base");
+            std::fs::create_dir_all(base.join("Alpha")).expect("first folder");
+            std::fs::create_dir_all(base.join("Beta")).expect("second folder");
+            let picker = DestinationBrowser::new(
+                DestinationBrowserOptions {
+                    base: base.clone(),
+                    search_root: fixture.path().to_path_buf(),
+                    root_limit: None,
+                    root_label: None,
+                    show_hidden: false,
+                    places: Vec::new(),
+                },
+                |_| {},
+            );
+            let window = gtk::Window::builder().child(&picker.widget()).build();
+            window.present();
+            picker.activate();
+            assert!(matches!(
+                picker
+                    .bar
+                    .handle_key(gtk::gdk::Key::Down, gtk::gdk::ModifierType::empty()),
+                glib::Propagation::Proceed
+            ));
+            picker.bar.begin_edit();
+            let first = base.join("Alpha");
+            let listed = || find_named(&picker.root, &first.to_string_lossy()).is_some();
+            let deadline = std::time::Instant::now() + Duration::from_secs(10);
+            while !listed() {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "timed out listing the starting folder"
+                );
+                glib::MainContext::default().iteration(false);
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            assert!(matches!(
+                picker
+                    .bar
+                    .handle_key(gtk::gdk::Key::Down, gtk::gdk::ModifierType::empty()),
+                glib::Propagation::Stop
+            ));
+            assert_eq!(
+                gtk::prelude::GtkWindowExt::focus(&window)
+                    .map(|focus| focus.widget_name().to_string()),
+                Some(first.to_string_lossy().into_owned()),
+                "Down moves from the entry to the first listed folder"
+            );
+            window.destroy();
+        },
+    );
+}
+
+fn find_named(root: &impl IsA<gtk::Widget>, name: &str) -> Option<gtk::Widget> {
+    let mut pending = vec![root.clone().upcast::<gtk::Widget>()];
+    while let Some(widget) = pending.pop() {
+        if widget.widget_name() == name {
+            return Some(widget);
+        }
+        let mut child = widget.first_child();
+        while let Some(next) = child {
+            child = next.next_sibling();
+            pending.push(next);
+        }
+    }
+    None
 }

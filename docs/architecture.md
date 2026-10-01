@@ -211,7 +211,7 @@ module explicitly. Re-exports retain the shared entry points used by alternate m
 | Location editing, breadcrumbs and mount authentication | `location.rs` |
 | Selection-aware menus and restricted chooser menus | `context_menu.rs`, `chooser_context.rs` |
 | Clipboard/cut intent and drag data | `clipboard.rs` |
-| Transfers, destination search and archive dialogs | `transfer.rs`, `destination.rs`, `archive.rs` |
+| Transfers, the shared destination picker (search, places, history, confinement) and archive dialogs | `transfer.rs`, `destination.rs`, `archive.rs` |
 | Progress and Trash confirmation/cancellation | `progress.rs`, `trash.rs` |
 | Properties, permissions and item customization | `properties.rs`, `customization.rs` |
 | Display paths and desktop launching | `paths.rs`, `desktop.rs` |
@@ -339,7 +339,8 @@ signals share a weak rebuild callback and retain their disconnect handles. Stand
 pinned, and device rows are separate rendering stages, with the chooser's local-only
 filter preserved. Initial construction builds static places; device rows retain their
 existing deferred rebuild timing. Bookmark storage, Trash, and media-release policies
-remain in `window.rs` rather than changing alongside assembly. Bookmark mutations
+remain in `window.rs` rather than changing alongside assembly. `ui/window/places.rs`
+gives dialogs a view-free snapshot of the local standard, pinned, and removable places. Bookmark mutations
 read the shared GTK file before applying changes and adopt them only after a
 successful save. This preserves sequential external edits, not simultaneous writes;
 other windows are refreshed on their next bookmark action, not by a live monitor.

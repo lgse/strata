@@ -19,8 +19,8 @@ use crate::model::{FileEntry, Location};
 use crate::services::{ArchiveFormat, TransferConflict, validate_basename};
 use crate::ui::browser::ViewState;
 use crate::ui::browser::destination::{
-    DestinationLocationBar, TransferSearchScope, folder_input_path, hand_off_destination_focus,
-    resolve_destination_path, setup_transfer_search,
+    DestinationBrowser, DestinationBrowserOptions, folder_input_path, hand_off_destination_focus,
+    resolve_destination_path,
 };
 use crate::ui::browser::entry::{entry_kind_summary, item_count_label};
 use crate::ui::browser::paths::compact_display_path;
@@ -487,11 +487,22 @@ impl ViewState {
             .parent()
             .and_then(|p| p.native_path().map(Path::to_path_buf))
             .unwrap_or_else(glib::home_dir);
-        let field = form_entry();
-        field.set_hexpand(true);
-        field.set_placeholder_text(Some("Search for a folder…"));
-        field.set_text(&folder_input_path(&base));
-        field.set_position(-1);
+        let picker = DestinationBrowser::new(
+            DestinationBrowserOptions {
+                base: base.clone(),
+                search_root: glib::home_dir(),
+                root_limit: None,
+                root_label: None,
+                show_hidden: self.browser.preferences().show_hidden,
+                places: crate::ui::destination_places(
+                    &crate::ui::preferences::PreferenceManager::shared(),
+                    &glib::home_dir(),
+                ),
+            },
+            |_| {},
+        );
+        let field = picker.field.clone();
+        let error = picker.error.clone();
         let extract_initial_text = folder_input_path(&base);
         let dirty_field = field.clone();
         let (body, confirm, dismiss) = self.build_archive_modal(
@@ -501,52 +512,10 @@ impl ViewState {
             "Extract here",
             Some(Rc::new(move || dirty_field.text() != extract_initial_text)),
         );
-        let field_label = form_label("Destination folder");
-        body.append(&field_label);
-        let location_bar =
-            DestinationLocationBar::wrap(field.clone(), base.clone(), glib::home_dir(), None, None);
-        body.append(&location_bar.widget());
-
-        let suggestions = gtk::Box::new(gtk::Orientation::Vertical, 2);
-        suggestions.add_css_class("transfer-suggestions");
-        let suggestion_scroll = gtk::ScrolledWindow::builder()
-            .child(&suggestions)
-            .hscrollbar_policy(gtk::PolicyType::Never)
-            .vscrollbar_policy(gtk::PolicyType::Automatic)
-            .min_content_height(150)
-            .max_content_height(220)
-            .propagate_natural_height(true)
-            .build();
-        suggestion_scroll.add_css_class("transfer-suggestion-scroll");
-        body.append(&suggestion_scroll);
-        let error = gtk::Label::new(None);
-        error.add_css_class("form-message");
-        error.add_css_class("error");
-        error.set_wrap(true);
-        error.set_xalign(0.0);
-        error.set_visible(false);
-        body.append(&error);
-
-        let generation = Rc::new(Cell::new(0_u64));
-        let suggestions_box = suggestions.clone();
-        let extract_error = error.clone();
-        let select_bar = location_bar.clone();
-        setup_transfer_search(
-            &field,
-            &suggestions_box,
-            &generation,
-            TransferSearchScope {
-                base: base.clone(),
-                search_root: glib::home_dir(),
-                root_limit: None,
-                show_hidden: self.browser.preferences().show_hidden,
-            },
-            Rc::new(move |path: &Path| select_bar.select_directory(path)),
-            move |field| {
-                field.remove_css_class("error");
-                extract_error.set_visible(false);
-            },
-        );
+        if let Some(dialog) = body.parent() {
+            dialog.add_css_class("browse");
+        }
+        body.append(&picker.widget());
 
         let extract_state = self.clone();
         let confirm_field = field.clone();
@@ -572,7 +541,7 @@ impl ViewState {
         });
 
         submit_on_enter(&body, &confirm);
-        location_bar.focus_browse();
+        picker.activate();
     }
 
     /// Prompts for a password after a password-capable extract failed.

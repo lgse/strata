@@ -189,6 +189,17 @@ From the sidebar, Right returns to the item you left (or the current file view i
 
 In Columns, the pane to the right mirrors keyboard selection like Finder: **Up/Down** onto a folder shows its contents without moving focus, onto a previewable file opens Quick Preview, and onto any other file closes the child pane. Pointer selection keeps the configured click behavior. **Settings → General → Browsing → Mirror columns selection** (on by default) toggles the mirroring. 10xer mode follows the same preference for its cursor in Columns; see [10xer mode](10xer-mode.md). **l** / **→** enters a directory or a file preview, and **i** toggles a file's preview or opens the next column / toggles folder peek for a directory.
 
+## Choosing a destination folder
+
+The Copy to, Move to, Send to, and Extract to dialogs share one folder picker.
+**Alt+Left / Alt+Right / Alt+Up** are Back, Forward, and Parent, matching the
+buttons beside the breadcrumbs; **Alt+Home** opens Home. Back and Forward follow the folders
+opened from breadcrumbs, the folder list, places, Parent, and Home; typing in the
+path field is not recorded. While editing the path, **Down** moves into the folder
+list, where arrows move between folders and places and **Enter** opens the focused
+one. A folder with nothing to open shows **No subfolders**. Send to stays inside
+its device: it has no places, **Alt+Home** leads to the device root, and Parent stops there.
+
 ## Opening and navigating the context menu
 
 **Menu** (the hardware context-menu key) and **Shift+F10** open the selection-aware

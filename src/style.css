@@ -760,6 +760,10 @@ headerbar menubutton.header-action > button:focus-visible {
   min-width: 520px;
 }
 
+.action-dialog.browse {
+  min-width: 660px;
+}
+
 .action-dialog.compact {
   min-width: 440px;
 }
@@ -3479,15 +3483,26 @@ menubutton.column-header-action > button:active {
 
 
 .transfer-suggestion-scroll,
-.transfer-suggestion-scroll viewport {
+.transfer-suggestion-scroll viewport,
+.destination-place-scroll,
+.destination-place-scroll viewport {
   background: transparent;
 }
 
-.transfer-suggestions {
+.transfer-suggestions,
+.destination-places {
   background: alpha(@theme_bg, 0.38);
   border: 1px solid alpha(@theme_border, 0.28);
   border-radius: 5px;
   padding: 4px;
+}
+
+.destination-places {
+  min-width: 150px;
+}
+
+.destination-places .sidebar-heading {
+  margin-top: 8px;
 }
 
 .transfer-suggestions-empty {
