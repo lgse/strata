@@ -304,10 +304,11 @@ cursor away from them. Type a path as in **g Space**: absolute, starting with
 `~` or `~/`, or relative to the open local folder. **Tab** / **Shift+Tab** cycle
 matching folders the same way. **Enter** moves or copies into that folder and
 keeps you in the current one; a moved cursor item hands the cursor to its
-neighbor, as **d** does. Conflicts ask as **p** does, with Keep Both focused
+neighbor, as **d** does, without adding the neighbor to the fill. Conflicts ask as **p** does, with Keep Both focused
 when it is offered. The destination must be an existing local folder: a missing
 path (`No such folder`), a file (`Not a folder`), a URI (`Only local folders can
-be chosen`), `~name` (`Only ~ and ~/ are supported`), or a folder inside one of
+be chosen`), `~name` (`Only ~ and ~/ are supported`), a move back into the source
+folder (`Already in this folder`), or a folder inside one of
 the moved or copied folders (`Can’t put a folder inside itself`) keeps the prompt
 open with the reason. Empty **Enter** closes the prompt. **Esc**, focus leaving
 the prompt, another prompt, leaving the mode, or closing the window discard it.

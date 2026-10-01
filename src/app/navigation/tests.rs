@@ -504,29 +504,38 @@ fn monitor_removals_preserve_selection_by_native_location() {
 
 #[test]
 fn removing_the_selected_entry_focuses_its_nearest_neighbor() {
-    let mut state = NavigationState::default();
-    let watched = location("/home");
-    state.navigate(watched.clone(), RequestId(1));
-    state.apply_batch(
-        RequestId(1),
-        vec![
-            named_entry("/home/alpha", "alpha"),
-            named_entry("/home/bravo", "bravo"),
-            named_entry("/home/charlie", "charlie"),
-        ],
-    );
-    assert!(state.select(0, 1));
+    for preserve_fill in [false, true] {
+        let mut state = NavigationState::default();
+        state.set_preserve_fill_on_removal(preserve_fill);
+        let watched = location("/home");
+        state.navigate(watched.clone(), RequestId(1));
+        state.apply_batch(
+            RequestId(1),
+            vec![
+                named_entry("/home/alpha", "alpha"),
+                named_entry("/home/bravo", "bravo"),
+                named_entry("/home/charlie", "charlie"),
+            ],
+        );
+        assert!(state.select(0, 1));
 
-    let (_, selected) = state
-        .apply_directory_change(
-            0,
-            &watched,
-            DirectoryChange::Remove(location("/home/bravo")),
-        )
-        .expect("removing the selected entry should change the column");
+        let (_, selected) = state
+            .apply_directory_change(
+                0,
+                &watched,
+                DirectoryChange::Remove(location("/home/bravo")),
+            )
+            .expect("removing the selected entry should change the column");
 
-    assert_eq!(selected, Some(1));
-    assert_eq!(state.columns[0].entries[1].display_name, "charlie");
+        assert_eq!(selected, Some(1));
+        assert_eq!(state.columns[0].entries[1].display_name, "charlie");
+        assert_eq!(
+            state.columns[0]
+                .selected_locations
+                .contains(&location("/home/charlie")),
+            !preserve_fill
+        );
+    }
 }
 
 #[test]

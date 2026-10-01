@@ -194,15 +194,15 @@ fn bind_footer_filter(dispatcher: &Dispatcher) {
         .connect_search_selection_changed(Rc::new(move || shortcuts.schedule_filter_refresh()));
 }
 
-/// Opening, closing, or editing a prompt discards go completion that belongs to
-/// earlier text. Completion's own replacements are not edits. Editing a prompt
-/// that reports refusals clears its stale reason.
+/// Completion replacements are not edits; user edits invalidate pending lookups.
 fn bind_go_completion(dispatcher: &Dispatcher) {
     use crate::ui::tenxer_mode::Prompt;
     let go = dispatcher.go.clone();
-    dispatcher
-        .shortcuts
-        .connect_prompt_reset(move || go.invalidate());
+    let revision = dispatcher.destination_revision.clone();
+    dispatcher.shortcuts.connect_prompt_reset(move || {
+        go.invalidate();
+        revision.set(revision.get().wrapping_add(1));
+    });
     let go = dispatcher.go.clone();
     let hints: Vec<_> = [
         Prompt::Go,
@@ -215,7 +215,9 @@ fn bind_go_completion(dispatcher: &Dispatcher) {
     .into_iter()
     .map(|kind| (kind, dispatcher.shortcuts.prompt_sink(kind)))
     .collect();
+    let revision = dispatcher.destination_revision.clone();
     dispatcher.shortcuts.connect_prompt_changed(move |kind, _| {
+        revision.set(revision.get().wrapping_add(1));
         if kind.completes_folders() {
             go.invalidate();
         }
@@ -462,6 +464,7 @@ struct Dispatcher {
     rename_target: Rc<RefCell<Option<crate::model::FileEntry>>>,
     /// The items **M**, **C**, or **; E** act on, fixed when their prompt opens.
     destination_targets: Rc<RefCell<Vec<crate::model::FileEntry>>>,
+    destination_revision: Rc<Cell<u64>>,
     armed_actions: Rc<RefCell<Option<files::ArmedActions>>>,
     open_with: files::OpenWithLookup,
     chooser: Option<ChooserPolicy>,
@@ -518,6 +521,7 @@ impl Dispatcher {
             history: bindings.history,
             rename_target: Rc::default(),
             destination_targets: Rc::default(),
+            destination_revision: Rc::default(),
             armed_actions: Rc::default(),
             open_with: files::OpenWithLookup::default(),
             sidebar: SidebarFocus {

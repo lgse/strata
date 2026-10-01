@@ -29,8 +29,6 @@ pub(in crate::ui::window) enum GoTarget {
     /// The folder holding the search hit under the cursor.
     HitFolder,
     Prompt,
-    /// **g +** pins and **g -** unpins the folder under the cursor, or the
-    /// focused pane's folder.
     Pin(bool),
     /// `validate` routes URI places through mount-aware validation.
     Place {

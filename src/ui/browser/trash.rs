@@ -931,7 +931,6 @@ impl ViewState {
                 )
                 && crate::ui::preferences::PreferenceManager::shared().tenxer_mode()
             {
-                // 10xer **d d**: the second **d** confirms. Permanent deletion never does.
                 focused_confirm.emit_clicked();
                 glib::Propagation::Stop
             } else if !modifiers

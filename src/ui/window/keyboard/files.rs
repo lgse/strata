@@ -287,8 +287,6 @@ impl Dispatcher {
         true
     }
 
-    /// The lettered **;** keys, which act on the focused folder or the
-    /// fill rather than on a numbered custom action.
     fn complete_folder_action(&self, key: Key) -> bool {
         use crate::ui::browser::TargetCommand;
         match key {

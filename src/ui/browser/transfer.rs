@@ -513,9 +513,6 @@ impl ViewState {
         );
     }
 
-    /// Moves or copies without revealing the destination; a moved-away cursor
-    /// item hands the cursor to its neighbor. Keep Both is focused on
-    /// conflicts when offered.
     pub(super) fn start_transfer_in_place(
         self: &Rc<Self>,
         destination: Location,

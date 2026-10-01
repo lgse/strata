@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-//! 10xer preview keyboard ownership. A surface keeps its own keys and the
-//! listing's motion and selection keys. Folder navigation, prompts, and file
-//! commands hand the keys back to the listing and run there; anything else is
-//! swallowed.
+//! Preview motion must not move or fill the listing behind the drawer.
 
 use std::rc::Rc;
 
@@ -347,15 +344,12 @@ fn passes_through_preview(key: Key, mods: Modifiers) -> bool {
     }
 }
 
-/// Listing commands no preview surface uses. Motion and selection keys are
-/// left out: they would move or fill the listing from behind the drawer.
 fn reaches_listing(key: Key, mods: Modifiers) -> bool {
     let plain = mods.is_empty();
     let shift = mods == Modifiers::SHIFT_MASK;
     let control = mods == Modifiers::CONTROL_MASK;
     let alt = mods == Modifiers::ALT_MASK;
     match key {
-        // Folders, history, and footer prompts.
         Key::g
         | Key::z
         | Key::f
@@ -370,7 +364,6 @@ fn reaches_listing(key: Key, mods: Modifiers) -> bool {
         }
         Key::H | Key::L | Key::Z | Key::N | Key::question if shift => true,
         Key::Left | Key::KP_Left | Key::Right | Key::KP_Right | Key::Up | Key::KP_Up if alt => true,
-        // Commands on the previewed item or its folder.
         Key::o
         | Key::y
         | Key::x

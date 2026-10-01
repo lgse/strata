@@ -462,8 +462,6 @@ impl ViewState {
         self.extract_entry_to(entry, parent);
     }
 
-    /// Extracts `entry` into the existing folder `destination`, recording a
-    /// password retry the same way as [`Self::extract_entry`].
     pub(super) fn extract_entry_to(self: &Rc<Self>, entry: FileEntry, destination: Location) {
         self.extract_destination.replace(Some(destination.clone()));
         let format = ArchiveFormat::from_extension(&entry.display_name);

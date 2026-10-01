@@ -80,8 +80,7 @@ fn close_modal(fixture: &KeyboardFixture) {
     wait_until(|| !modal_visible(&fixture.overlay));
 }
 
-/// Sends `key` to the open dialog's own key handler, which the window
-/// dispatcher behind `fixture.press` never reaches.
+/// Window dispatch cannot reach the modal's own key controller.
 fn modal_key(fixture: &KeyboardFixture, key: Key) -> bool {
     let layer =
         widget_with_class(fixture.overlay.upcast_ref(), "app-modal-layer").expect("open dialog");
@@ -555,6 +554,7 @@ fn tenxer_move_and_copy_prompts_send_targets_to_a_typed_folder() {
             let directory = fixture._directory.path().to_path_buf();
             let destination = directory.join("dest");
             std::fs::create_dir_all(destination.join("inner")).expect("destination");
+            std::fs::create_dir(directory.join("other")).expect("sibling destination");
             fixture.view.refresh();
             wait_until(|| rendered_name(&fixture.view.widget(), "dest"));
             enable_tenxer(&fixture);
@@ -569,6 +569,10 @@ fn tenxer_move_and_copy_prompts_send_targets_to_a_typed_folder() {
             let submit = |text: &str| {
                 fixture.shortcuts.prompt().set_text(text);
                 plain(&fixture, Key::Return);
+                wait_until(|| {
+                    fixture.shortcuts.open_prompt_kind().is_none()
+                        || fixture.shortcuts.prompt_hint().is_some()
+                });
             };
 
             fill_b_and_c(&fixture);
@@ -591,6 +595,13 @@ fn tenxer_move_and_copy_prompts_send_targets_to_a_typed_folder() {
             });
             assert_eq!(browser.active_location(), origin, "moving stays put");
             wait_until(|| focused_name(&browser) == "b.txt");
+            assert!(
+                fill_names(&browser).is_empty(),
+                "the neighbor is cursor-only"
+            );
+            plain(&fixture, Key::j);
+            assert_eq!(focused_name(&browser), "c.txt");
+            assert!(fill_names(&browser).is_empty());
             browser.clear_active_selection();
             move_to_named(&fixture, &browser, "b.txt");
             for (text, hint) in [
@@ -598,6 +609,7 @@ fn tenxer_move_and_copy_prompts_send_targets_to_a_typed_folder() {
                 ("c.txt", "Not a folder"),
                 ("smb://host/share", "Only local folders can be chosen"),
                 ("~someone/x", "Only ~ and ~/ are supported"),
+                (".", "Already in this folder"),
             ] {
                 open(Key::M, Prompt::MoveTo, "move to \u{203a}");
                 plain(&fixture, Key::Down);
@@ -618,6 +630,13 @@ fn tenxer_move_and_copy_prompts_send_targets_to_a_typed_folder() {
                 Some("Can\u{2019}t put a folder inside itself")
             );
             plain(&fixture, Key::Escape);
+            open(Key::C, Prompt::CopyTo, "copy to \u{203a}");
+            submit("dest/../other");
+            wait_until(|| directory.join("other/dest/inner/a.txt").exists());
+            assert!(
+                destination.join("inner/a.txt").exists(),
+                "copy preserves the source"
+            );
 
             move_to_named(&fixture, &browser, "b.txt");
             open(Key::C, Prompt::CopyTo, "copy to \u{203a}");
@@ -626,6 +645,24 @@ fn tenxer_move_and_copy_prompts_send_targets_to_a_typed_folder() {
             wait_focused_button(&fixture, "Keep Both");
             close_modal(&fixture);
             assert_eq!(directory_names(&destination), ["b.txt", "c.txt", "inner"]);
+
+            move_to_named(&fixture, &browser, "c.txt");
+            open(Key::M, Prompt::MoveTo, "move to \u{203a}");
+            fixture.shortcuts.prompt().set_text("dest/inner");
+            plain(&fixture, Key::Return);
+            plain(&fixture, Key::Escape);
+            open(Key::M, Prompt::MoveTo, "move to \u{203a}");
+            submit("nowhere");
+            assert_eq!(
+                fixture.shortcuts.prompt_hint().as_deref(),
+                Some("No such folder")
+            );
+            assert!(
+                directory.join("c.txt").exists(),
+                "cancelled validation must not move"
+            );
+            assert!(!destination.join("inner/c.txt").exists());
+            plain(&fixture, Key::Escape);
 
             open_empty_folder(&fixture);
             for (key, message) in [(Key::M, "Nothing to move"), (Key::C, "Nothing to copy")] {
@@ -637,8 +674,7 @@ fn tenxer_move_and_copy_prompts_send_targets_to_a_typed_folder() {
     );
 }
 
-/// Headless GVfs lists no Trash contents, so restoring itself is covered by the
-/// trash module's own tests; this covers the key's routing and refusals.
+/// Headless GVfs cannot list Trash; restore behavior is covered by the trash tests.
 #[test]
 fn tenxer_restore_key_refuses_items_outside_trash() {
     crate::test_support::gtk_test(
@@ -723,10 +759,7 @@ fn tenxer_action_chord_compresses_and_extracts_archives() {
             );
             fixture.shortcuts.prompt().set_text("missing");
             plain(&fixture, Key::Return);
-            assert_eq!(
-                fixture.shortcuts.prompt_hint().as_deref(),
-                Some("No such folder")
-            );
+            wait_until(|| fixture.shortcuts.prompt_hint().as_deref() == Some("No such folder"));
             fixture.shortcuts.prompt().set_text("dest");
             plain(&fixture, Key::Return);
             wait_until(|| std::fs::read_to_string(destination.join("notes.txt")).is_ok());

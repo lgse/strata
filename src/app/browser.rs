@@ -1614,6 +1614,12 @@ impl Browser {
     }
 
     /// `order` is the pane's displayed order, which an active visual range walks.
+    pub fn set_preserve_fill_on_removal(&self, preserve: bool) {
+        self.state
+            .borrow_mut()
+            .set_preserve_fill_on_removal(preserve);
+    }
+
     pub fn place_cursor(&self, depth: usize, position: usize, order: Option<&[usize]>) {
         let Some(cleared) = self.state.borrow_mut().place_cursor(depth, position) else {
             return;
@@ -2080,8 +2086,6 @@ impl Browser {
         self.start_transfer(destination, items, move_sources, reveal, false);
     }
 
-    /// Like [`Self::transfer`], but a moved-away cursor item hands the cursor
-    /// to its neighbor, as a delete does, for moves made while staying put.
     pub fn transfer_replacing_cursor(
         self: &Rc<Self>,
         destination: Location,

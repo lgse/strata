@@ -553,8 +553,6 @@ fn tenxer_dot_toggles_hidden_files_in_every_window_and_filter() {
     );
 }
 
-/// Writes a recorder application for `mime_types` into the test's private
-/// data directory and associates it with each of them.
 fn chooser_sections(overlay: &gtk::Overlay) -> Vec<(String, Vec<String>)> {
     let Some(list) = widget_with_class(overlay.upcast_ref(), "open-with-list") else {
         return Vec::new();

@@ -106,6 +106,7 @@ pub struct NavigationState {
     // GTK focus/rebuild selection echoes must not arm paste-into.
     selection_commit: bool,
     selectionless_removals: HashSet<Location>,
+    preserve_fill_on_removal: bool,
     visual: Option<VisualRange>,
 }
 
@@ -528,6 +529,10 @@ impl NavigationState {
         Some((depth, positions, stale))
     }
 
+    pub fn set_preserve_fill_on_removal(&mut self, preserve: bool) {
+        self.preserve_fill_on_removal = preserve;
+    }
+
     pub fn set_selectionless_removals(&mut self, locations: impl IntoIterator<Item = Location>) {
         self.selectionless_removals = locations.into_iter().collect();
     }
@@ -590,7 +595,9 @@ impl NavigationState {
                             .get(position.min(column.entries.len().saturating_sub(1)))
                             .map(|entry| entry.location.clone())
                     });
-                    if let Some(ref replacement) = selected_location {
+                    if !self.preserve_fill_on_removal
+                        && let Some(ref replacement) = selected_location
+                    {
                         column.selected_locations.insert(replacement.clone());
                     }
                 }

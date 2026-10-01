@@ -2501,9 +2501,7 @@ fn recorder_app(id: &str, name: &str, mime_types: &str, output: &std::path::Path
     .expect("desktop file");
 }
 
-/// Makes a recorder the default for `mime_type`, so opening such a file runs it
-/// instead of a host application or, where none is installed, the Open With
-/// fallback dialog.
+/// Avoid host launches and asynchronous Open With fallback dialogs in key-routing tests.
 fn default_recorder_app(mime_type: &str, output: &std::path::Path) {
     let id = "strata-default-recorder";
     recorder_app(id, "Default Recorder", &format!("{mime_type};"), output);

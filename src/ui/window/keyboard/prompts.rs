@@ -277,23 +277,58 @@ impl Dispatcher {
             .show(None, Some(&hint));
     }
 
-    /// Empty **Enter** closes the prompt; a destination that is not an
-    /// existing local folder keeps it open with the reason.
     fn submit_destination(&self, browser: &Browser, kind: Prompt, text: &str) {
         let mut targets = self.destination_targets.borrow().clone();
         if text.trim().is_empty() || targets.is_empty() {
             return self.return_to_listing(browser);
         }
-        let result = match kind {
-            Prompt::ExtractTo => self.view.extract_to_typed(targets.remove(0), text),
-            _ => self
-                .view
-                .transfer_to_typed(targets, text, kind == Prompt::MoveTo),
+        let destination = match self.view.typed_destination_folder(text) {
+            Ok(destination) => destination,
+            Err(reason) => {
+                self.shortcuts.prompt_sink(kind).show(None, Some(reason));
+                return;
+            }
         };
-        match result {
-            Ok(()) => self.return_to_listing(browser),
-            Err(reason) => self.shortcuts.prompt_sink(kind).show(None, Some(reason)),
-        }
+        let revision = self.destination_revision.clone();
+        let submitted = revision.get().wrapping_add(1);
+        revision.set(submitted);
+        let view = self.view.clone();
+        let shortcuts = self.shortcuts.clone();
+        let navigation = browser.navigation_generation();
+        gtk::glib::MainContext::default().spawn_local(async move {
+            let result = gtk::gio::spawn_blocking(move || match std::fs::metadata(&destination) {
+                Ok(metadata) if metadata.is_dir() => Ok(destination),
+                Ok(_) => Err("Not a folder"),
+                Err(_) => Err("No such folder"),
+            })
+            .await;
+            if revision.get() != submitted
+                || view.browser().navigation_generation() != navigation
+                || shortcuts.open_prompt_kind() != Some(kind)
+            {
+                return;
+            }
+            let result = match result {
+                Ok(Ok(destination)) if kind == Prompt::ExtractTo => {
+                    view.extract_to_folder(targets.remove(0), destination);
+                    Ok(())
+                }
+                Ok(Ok(destination)) => {
+                    view.transfer_to_folder(targets, destination, kind == Prompt::MoveTo)
+                }
+                Ok(Err(reason)) => Err(reason),
+                Err(_) => Err("Unable to check folder"),
+            };
+            match result {
+                Ok(()) => {
+                    shortcuts.dismiss_prompt();
+                    if !view.focus_visible_results() {
+                        view.browser().focus_active();
+                    }
+                }
+                Err(reason) => shortcuts.prompt_sink(kind).show(None, Some(reason)),
+            }
+        });
     }
 
     fn return_to_listing(&self, browser: &Browser) {

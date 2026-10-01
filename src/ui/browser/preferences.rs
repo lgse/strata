@@ -61,6 +61,7 @@ impl BrowserView {
             manager,
             PreferenceManager::tenxer_mode,
             move |view, enabled| {
+                view.browser().set_preserve_fill_on_removal(enabled);
                 if primed.replace(true) && !enabled {
                     view.end_tenxer_session();
                 }

@@ -42,7 +42,6 @@ pub(super) enum KeyboardRefocus {
     Rename(crate::services::OperationRequestId),
 }
 
-/// What **g +** / **g -** did to the folder they chose, named by its display name.
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) enum PinChange {
     Pinned(Location, String),
@@ -269,8 +268,6 @@ impl BrowserView {
         }
     }
 
-    /// Opens a terminal in the keyboard-focused pane's folder, ignoring the
-    /// cursor and selection. Returns false where no terminal can open.
     pub fn open_focused_folder_terminal(&self) -> bool {
         let Some(location) = self
             .focused_listing_depth()
@@ -397,8 +394,6 @@ impl BrowserView {
 }
 
 impl BrowserView {
-    /// The folder under the cursor, or the focused pane's own folder when the
-    /// cursor is on a file or the pane is empty.
     fn keyboard_pin_folder(&self) -> Option<(Location, String)> {
         if let Some(entry) = self.focused_target().filter(FileEntry::is_directory) {
             return Some((entry.location, entry.display_name));
@@ -446,9 +441,6 @@ impl BrowserView {
         }
     }
 
-    /// Resolves a typed destination like the move/copy dialog does: absolute,
-    /// `~`-relative, or relative to the open local folder. `Err` is the reason
-    /// to show beside the prompt.
     pub fn typed_destination_folder(&self, text: &str) -> Result<PathBuf, &'static str> {
         let text = text.trim();
         if crate::ui::go_completion::looks_like_uri(text) {
@@ -470,14 +462,9 @@ impl BrowserView {
             None => home.clone(),
         };
         let path = resolve_destination_path(text, &base, &home);
-        match std::fs::metadata(&path) {
-            Ok(metadata) if metadata.is_dir() => Ok(path),
-            Ok(_) => Err("Not a folder"),
-            Err(_) => Err("No such folder"),
-        }
+        Ok(gtk::gio::File::for_path(&path).path().unwrap_or(path))
     }
 
-    /// The fill, or the focused item, for **M** / **C**, fixed when the prompt opens.
     pub fn transfer_targets(&self, moving: bool) -> Result<Vec<FileEntry>, &'static str> {
         let entries = self.command_targets();
         if entries.is_empty() {
@@ -497,23 +484,28 @@ impl BrowserView {
         Ok(entries)
     }
 
-    /// Moves or copies `entries` into the typed folder and stays in the current
-    /// one. Conflicts ask as a paste does, with Keep Both focused when offered.
-    pub fn transfer_to_typed(
+    pub fn transfer_to_folder(
         &self,
         entries: Vec<FileEntry>,
-        text: &str,
+        destination: PathBuf,
         moving: bool,
     ) -> Result<(), &'static str> {
-        let destination = self.typed_destination_folder(text)?;
+        let destination_file = gio_file_for_location(&Location::local(&destination));
         if entries.iter().any(|entry| {
+            let source = gio_file_for_location(&entry.location);
             entry.is_directory()
-                && entry
-                    .location
-                    .native_path()
-                    .is_some_and(|source| destination.starts_with(source))
+                && (destination_file.equal(&source) || destination_file.has_prefix(&source))
         }) {
             return Err("Can\u{2019}t put a folder inside itself");
+        }
+        if moving
+            && entries.iter().all(|entry| {
+                gio_file_for_location(&entry.location)
+                    .parent()
+                    .is_some_and(|parent| parent.equal(&destination_file))
+            })
+        {
+            return Err("Already in this folder");
         }
         self.state.start_transfer_in_place(
             Location::local(destination),
@@ -523,7 +515,6 @@ impl BrowserView {
         Ok(())
     }
 
-    /// Restores the fill, or the focused item, after the usual confirmation.
     pub fn restore_targets(&self) -> TargetCommand {
         let entries = self.command_targets();
         if entries.is_empty() {
@@ -551,8 +542,6 @@ impl BrowserView {
         TargetCommand::Started
     }
 
-    /// The one archive the fill, or the focused item, names. `Err` explains why
-    /// there is none.
     pub fn extract_target(&self) -> Result<FileEntry, &'static str> {
         let mut entries = self.command_targets();
         let entry = match entries.len() {
@@ -573,11 +562,8 @@ impl BrowserView {
         self.state.extract_entry(entry);
     }
 
-    /// Extracts into the typed folder and stays in the current one.
-    pub fn extract_to_typed(&self, entry: FileEntry, text: &str) -> Result<(), &'static str> {
-        let destination = self.typed_destination_folder(text)?;
+    pub fn extract_to_folder(&self, entry: FileEntry, destination: PathBuf) {
         self.state
             .extract_entry_to(entry, Location::local(destination));
-        Ok(())
     }
 }

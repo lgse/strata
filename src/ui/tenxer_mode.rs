@@ -83,8 +83,6 @@ pub(crate) fn is_toggle_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::Modifi
 pub(crate) enum Chord {
     /// **g** from the listing: first item or a place.
     Go,
-    /// **g** while a document or archive preview owns the keys: **g g** is its
-    /// top; the other **g** keys return to the listing first.
     PreviewTop,
     Copy,
     Sort,
@@ -187,7 +185,6 @@ impl Prompt {
         matches!(self, Self::Jump | Self::Recent)
     }
 
-    /// **Tab** / **Shift+Tab** cycle matching folders for the typed prefix.
     pub(crate) fn completes_folders(self) -> bool {
         matches!(
             self,
@@ -195,8 +192,6 @@ impl Prompt {
         )
     }
 
-    /// The items were fixed when the prompt opened; **Up** / **Down** must not
-    /// move the cursor away from them.
     pub(crate) fn holds_targets(self) -> bool {
         matches!(
             self,

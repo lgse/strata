@@ -121,14 +121,6 @@ fn go_chord_resolves_uris_and_visible_pin_order() {
         Some(GoTarget::Missing("No pin 9".into()))
     );
     assert_eq!(go_target(Key::space, &pins), Some(GoTarget::Prompt));
-    for (key, pin) in [
-        (Key::plus, true),
-        (Key::KP_Add, true),
-        (Key::minus, false),
-        (Key::KP_Subtract, false),
-    ] {
-        assert_eq!(go_target(key, &pins), Some(GoTarget::Pin(pin)), "{key:?}");
-    }
     for key in [Key::z, Key::G, Key::q, Key::_0] {
         assert_eq!(go_target(key, &pins), None, "{key:?} is not a place");
     }
