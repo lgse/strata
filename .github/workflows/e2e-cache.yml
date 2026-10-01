@@ -76,7 +76,7 @@ jobs:
         run: python3 scripts/e2e_images.py cache "$E2E_CACHE_REF" --environment "$E2E_ENVIRONMENT_REF" >> "$GITHUB_OUTPUT"
 
       - name: Publish authenticated snapshot indexes before package or compiler bootstrap
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: tests/e2e/Dockerfile
@@ -89,7 +89,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=strata-e2e-indexes-v1
 
       - name: Cache pinned packages, Python, Rust, and locked Rust dependencies
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: tests/e2e/Dockerfile
