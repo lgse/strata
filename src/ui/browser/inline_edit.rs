@@ -128,6 +128,8 @@ pub(super) struct PendingEntryRename {
     depth: usize,
     parent: Location,
     reveal_generation: u64,
+    move_sources: std::cell::RefCell<Vec<Location>>,
+    created: std::cell::RefCell<Option<Location>>,
 }
 
 pub(in crate::ui) fn set_rename_label(label: &gtk::Widget, name: &str) {
@@ -155,7 +157,7 @@ impl super::BrowserView {
         let weak = Rc::downgrade(&self.state);
         click.connect_pressed(move |gesture, _, x, y| {
             let Some(state) = weak.upgrade() else { return };
-            state.pending_new_entry.take();
+            state.cancel_new_entry();
             let target = gesture
                 .widget()
                 .and_then(|root| root.pick(x, y, gtk::PickFlags::DEFAULT));
@@ -180,6 +182,7 @@ impl super::BrowserView {
         let weak = Rc::downgrade(&self.state);
         scroll.connect_scroll(move |_, _, _| {
             if let Some(state) = weak.upgrade() {
+                state.cancel_new_entry();
                 state.yield_rename_reveal();
             }
             gtk::glib::Propagation::Proceed
@@ -194,6 +197,7 @@ pub(in crate::ui) fn queue_rename(
     name: String,
 ) {
     if name == entry.display_name || validate_basename(&name).is_err() {
+        browser.clear_group_folder();
         return;
     }
     // A rename can synchronously refresh models; dispatch after GTK's focus walk.
@@ -738,6 +742,7 @@ impl ViewState {
         let Some(pending) = self.pending_rename.take() else {
             return;
         };
+        self.browser.clear_group_folder_for(&pending.old_location);
         self.update_rename_labels(&pending.old_location, None, &pending.old_name);
     }
 
@@ -821,10 +826,14 @@ impl ViewState {
         else {
             return;
         };
+        pending.created.replace(Some(location.clone()));
         let location = location.clone();
         let weak = Rc::downgrade(self);
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         let selected = std::cell::Cell::new(false);
+        // Opening rename before the source rows disappear lets their removal
+        // rebind the edited row and tear down the field.
+        let group_sources = std::cell::RefCell::new(Vec::new());
         // Wait for the refreshed listing and the virtualized row to be allocated.
         self.overlay.add_tick_callback(move |_, _| {
             let Some(state) = weak.upgrade() else {
@@ -842,7 +851,7 @@ impl ViewState {
                 || state.rename_reveal_generation.get() != pending.reveal_generation
                 || state.browser.location_at(pending.depth).as_ref() != Some(&pending.parent)
             {
-                state.pending_new_entry.take();
+                state.cancel_new_entry();
                 return gtk::glib::ControlFlow::Break;
             }
             let Some(snapshot) = state
@@ -859,8 +868,36 @@ impl ViewState {
                 })
                 .flatten();
             if let Some(position) = position {
+                let move_sources = if state
+                    .browser
+                    .entry_at(pending.depth, position)
+                    .is_some_and(|entry| entry.is_directory())
+                {
+                    pending.move_sources.take()
+                } else {
+                    Vec::new()
+                };
+                if !move_sources.is_empty() {
+                    group_sources.replace(move_sources.clone());
+                    state.browser.expect_group_folder(location.clone());
+                    let weak = Rc::downgrade(&state);
+                    let destination = location.clone();
+                    gtk::glib::idle_add_local_once(move || {
+                        if let Some(state) = weak.upgrade() {
+                            state.start_transfer_with_reveal(
+                                destination,
+                                move_sources,
+                                true,
+                                false,
+                                None,
+                                super::transfer::ConflictFocus::Replace,
+                            );
+                        }
+                    });
+                }
                 if !selected.replace(true) {
                     if state.mode_views.borrow().mode() == BrowserMode::Columns {
+                        state.pending_new_entry.take();
                         state.browser.reveal_created_entry(pending.depth, position);
                         // Revealing the child synchronously truncates columns and cancels
                         // pending editors. Retain this creation's authority for the next frame.
@@ -868,7 +905,14 @@ impl ViewState {
                     } else {
                         state.browser.select(pending.depth, position);
                     }
-                } else if let Some(entry) = state.browser.entry_at(pending.depth, position)
+                } else if group_sources.borrow().iter().all(|source| {
+                    state
+                        .browser
+                        .with_entries(pending.depth, 0..snapshot.count, |entries| {
+                            !entries.iter().any(|entry| entry.location == *source)
+                        })
+                        .unwrap_or(true)
+                }) && let Some(entry) = state.browser.entry_at(pending.depth, position)
                     && state.begin_rename_item(pending.depth, position, entry)
                 {
                     state.pending_new_entry.take();
@@ -887,11 +931,43 @@ impl ViewState {
         });
     }
 
+    pub(super) fn new_folder_with_selection(
+        self: &Rc<Self>,
+        depth: usize,
+        entries: &[FileEntry],
+    ) -> bool {
+        let Some(location) = self
+            .browser
+            .location_at(depth)
+            .filter(|location| !is_trash_location(location) && !location.is_recent_location())
+        else {
+            return false;
+        };
+        // A recursive search shows its own result model; the created row never
+        // materializes there, so the move and rename would never dispatch.
+        if super::context_menu::context_search_active(self, depth) || entries.is_empty() {
+            return false;
+        }
+        let move_sources = entries.iter().map(|entry| entry.location.clone()).collect();
+        self.begin_new_entry_inner(depth, location, true, move_sources);
+        true
+    }
+
     pub(super) fn begin_new_entry(
         self: &Rc<Self>,
         depth: usize,
         location: Location,
         is_directory: bool,
+    ) {
+        self.begin_new_entry_inner(depth, location, is_directory, Vec::new());
+    }
+
+    fn begin_new_entry_inner(
+        self: &Rc<Self>,
+        depth: usize,
+        location: Location,
+        is_directory: bool,
+        move_sources: Vec<Location>,
     ) {
         if is_trash_location(&location) || location.is_recent_location() {
             return;
@@ -907,6 +983,8 @@ impl ViewState {
                 depth,
                 parent: location.clone(),
                 reveal_generation: self.rename_reveal_generation.get(),
+                move_sources: std::cell::RefCell::new(move_sources),
+                created: std::cell::RefCell::new(None),
             })));
         if is_directory {
             self.browser.create_new_folder(location);
@@ -916,7 +994,13 @@ impl ViewState {
     }
 
     pub(super) fn cancel_new_entry(&self) -> bool {
-        self.pending_new_entry.take().is_some()
+        let pending = self.pending_new_entry.take();
+        if let Some(pending) = &pending
+            && let Some(created) = pending.created.borrow().as_ref()
+        {
+            self.browser.clear_group_folder_for(created);
+        }
+        pending.is_some()
     }
 
     pub(in crate::ui) fn schedule_click_rename(
@@ -1041,12 +1125,24 @@ impl ViewState {
         if self.rename_operation_pending() {
             return false;
         }
-        self.cancel_new_entry();
         self.sync_mode_selection();
         let Some((depth, source_position, entry)) = self.browser.rename_item() else {
+            self.cancel_new_entry();
             return false;
         };
-        self.begin_rename_item(depth, source_position, entry)
+        let taking_over = self
+            .pending_new_entry
+            .borrow()
+            .as_ref()
+            .is_some_and(|pending| pending.created.borrow().as_ref() == Some(&entry.location));
+        if !taking_over {
+            self.cancel_new_entry();
+        }
+        let started = self.begin_rename_item(depth, source_position, entry);
+        if started && taking_over {
+            self.pending_new_entry.take();
+        }
+        started
     }
 
     fn begin_rename_item(
@@ -1137,6 +1233,13 @@ impl ViewState {
         let weak = Rc::downgrade(self);
         let reveal_generation = self.rename_reveal_generation.get();
         let mut target = crate::ui::collection_edit::EditTarget::from(edit.clone());
+        let browser = Rc::downgrade(&self.browser);
+        let location = entry.location.clone();
+        target.cancelled = Some(Rc::new(move || {
+            if let Some(browser) = browser.upgrade() {
+                browser.clear_group_folder_for(&location);
+            }
+        }));
         target.reveal = Some(Rc::new(move |field| {
             if let Some(viewport) = viewport.upgrade() {
                 constrain_rename_to_viewport(field, &viewport);
@@ -1173,17 +1276,26 @@ impl ViewState {
         );
     }
 
+    pub(in crate::ui) fn cancel_group_naming(&self, location: &Location) {
+        self.browser.clear_group_folder_for(location);
+    }
+
     pub(super) fn cancel_rename(&self) -> bool {
         self.cancel_click_rename();
         let mode_rename = self.mode_views.borrow().take_rename();
         let cancelled = mode_rename.is_some();
         drop(mode_rename);
-        crate::ui::collection_edit::cancel(&self.active_rename) || cancelled
+        let cancelled = crate::ui::collection_edit::cancel(&self.active_rename) || cancelled;
+        if cancelled {
+            self.browser.clear_group_folder();
+        }
+        cancelled
     }
 
     fn submit_rename_entry(self: &Rc<Self>, entry: FileEntry, name: String) {
         let valid_change = name != entry.display_name && validate_basename(&name).is_ok();
         if !valid_change {
+            self.browser.clear_group_folder();
             return;
         }
         let generation = self.start_pending_rename(&entry, name.clone());

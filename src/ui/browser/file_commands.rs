@@ -81,6 +81,17 @@ impl BrowserView {
             .unwrap_or_default()
     }
 
+    pub fn create_new_folder_for_selection(&self) -> bool {
+        let entries = self.command_targets();
+        if entries.is_empty() {
+            return false;
+        }
+        let Some((depth, _)) = self.new_entry_parent() else {
+            return false;
+        };
+        self.state.new_folder_with_selection(depth, &entries)
+    }
+
     pub fn focused_target(&self) -> Option<FileEntry> {
         if self.selected_search_results().is_some() {
             return self.selected_search_result();

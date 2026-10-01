@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-//! Keyboard ownership for 10xer mode: the listing hands keys to the drawer and
-//! each preview surface decides what those keys do. In 10xer mode any focus
-//! inside the drawer owns the keys, including a password prompt that takes
-//! focus by itself. The content box is focusable only while it holds the keys
-//! for a surface that has no focusable widget yet, so default Tab order is
+//! The focused pane owns the keys, including password prompts that take focus
+//! by themselves. Each preview surface decides what its keys do. The content box
+//! is focusable only while it holds the keys for a surface that has no focusable
+//! widget yet, so default Tab order is
 //! unchanged.
 
 use super::*;
@@ -99,9 +98,7 @@ impl PreviewState {
         let weak = Rc::downgrade(self);
         // Rebuilt archive rows and self-focusing password prompts re-enter here.
         focus.connect_enter(move |_| {
-            if let Some(state) = weak.upgrade()
-                && super::super::preferences::PreferenceManager::shared().tenxer_mode()
-            {
+            if let Some(state) = weak.upgrade() {
                 state.set_keyboard_owner(true);
             }
         });
@@ -246,8 +243,7 @@ impl PreviewState {
         }
     }
 
-    /// Focus that moved inside the drawer by itself (a password prompt, rebuilt
-    /// archive rows) still owns the keys in 10xer mode.
+    /// Self-focusing password prompts and rebuilt archive rows own the keys too.
     pub(super) fn reassert_keyboard_owner(&self) {
         let inside = self
             .pane
@@ -256,7 +252,7 @@ impl PreviewState {
             .is_some_and(|focused| {
                 focused == *self.pane.upcast_ref::<gtk::Widget>() || focused.is_ancestor(&self.pane)
             });
-        if inside && super::super::preferences::PreferenceManager::shared().tenxer_mode() {
+        if inside {
             self.set_keyboard_owner(true);
         }
     }

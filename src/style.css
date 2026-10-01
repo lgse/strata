@@ -2209,7 +2209,7 @@ paned > separator {
   padding: 0 6px 0 12px;
 }
 
-/* 10xer: the drawer, not the listing, receives keys. Matches the Miller
+/* The drawer, not the listing, receives keys. Matches the Miller
    column's three-pixel destination bar without shifting the header. */
 .preview-pane.preview-keyboard-owner .preview-header {
   box-shadow: inset 0 3px 0 @theme_accent;
@@ -4681,15 +4681,9 @@ textview > popover.menu button.model:focus-visible,
 
 .keyboard-navigation .file-list:focus-within .file-row.keyboard-cursor:not(.filter-result),
 .file-list row:focus-within .file-row.filter-result,
-.preview-archive-list row:selected .preview-archive-row {
+.preview-pane.preview-keyboard-owner .preview-archive-list row:selected .preview-archive-row {
   outline: 1px solid @theme_accent;
   outline-offset: -1px;
-}
-
-/* The archive preview shows its own cursor; the listing keeps only the selection fill. */
-.keyboard-navigation.archive-preview .file-list:focus-within .file-row.keyboard-cursor:not(.filter-result),
-.keyboard-navigation.archive-preview .file-list row:focus-within .file-row.filter-result {
-  outline: none;
 }
 
 .directory-column:not(:focus-within) .file-list:not(.context-selection) row:selected,

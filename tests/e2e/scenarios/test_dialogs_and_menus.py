@@ -126,7 +126,7 @@ def test_keyboard_context_menu_targets_selection_and_owns_keys(strata, mode, sho
     assert ENTRY_MENU_ITEMS <= set(strata.menu_items())
     assert "New Folder" not in strata.menu_items()
     strata.wait(
-        lambda: "focused" in strata.menu_item("Open").states,
+        lambda: "focused" in strata.menu_item("New Folder with Selection").states,
         "the first item to receive focus",
     )
 
@@ -148,8 +148,8 @@ def test_keyboard_context_menu_targets_selection_and_owns_keys(strata, mode, sho
         "Permanently delete",
     ])
     strata.wait(
-        lambda: strata.menu_item("Open").has_state("focused"),
-        "Open to receive initial focus with multiple files and custom actions",
+        lambda: strata.menu_item("New Folder with Selection").has_state("focused"),
+        "New Folder with Selection to receive initial focus with multiple files and custom actions",
     )
     strata.keyboard.press("ctrl+a")
     assert strata.context_menu() is not None

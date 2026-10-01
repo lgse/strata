@@ -299,6 +299,7 @@ def test_filtered_item_menu_actions_use_the_real_location(strata, mode, trigger,
     assert "Quick preview" in strata.menu_items()
     assert "Open file location" in strata.menu_items()
     assert "New Folder" not in strata.menu_items()
+    assert "New Folder with Selection" not in strata.menu_items()
     if trigger == "keyboard":
         strata.keyboard.press("Home")
         strata.keyboard.press("Up")

@@ -1450,14 +1450,6 @@ impl BrowserView {
         }
     }
 
-    pub(in crate::ui) fn set_archive_preview_active(&self, active: bool) {
-        if active {
-            self.state.overlay.add_css_class("archive-preview");
-        } else {
-            self.state.overlay.remove_css_class("archive-preview");
-        }
-    }
-
     pub(in crate::ui) fn record_pointer_hover(&self, surface: (f64, f64), column: Option<usize>) {
         if self
             .state
@@ -1797,6 +1789,9 @@ impl BrowserView {
         }
         if let Some((generation, records)) = self.state.browser.pending_undo_move() {
             return self.state.undo_move(generation, records);
+        }
+        if let Some((generation, records)) = self.state.browser.pending_undo_group() {
+            return self.state.undo_group(generation, records);
         }
         if let Some((generation, locations)) = self.state.browser.pending_undo_copy() {
             return self.state.undo_copy(generation, locations);

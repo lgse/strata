@@ -1439,7 +1439,6 @@ impl PreviewState {
     }
 
     fn render_archive(self: &Rc<Self>, tree: ArchivePreviewTree, focus_tree: bool) {
-        self.set_archive_preview_active(true);
         let weak = Rc::downgrade(self);
         let navigate = Rc::new(move |depth: usize| {
             if let Some(state) = weak.upgrade() {
@@ -1483,7 +1482,9 @@ impl PreviewState {
                 browser.move_cursor(1);
             }
             gtk::gdk::Key::Left => {
-                browser.go_up();
+                if !browser.go_up() {
+                    return false;
+                }
             }
             gtk::gdk::Key::Right | gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter => {
                 browser.open_cursor();
@@ -1493,12 +1494,6 @@ impl PreviewState {
         drop(browsers);
         self.reassert_keyboard_owner();
         true
-    }
-
-    fn set_archive_preview_active(&self, active: bool) {
-        if let Some(browser) = self.sizing.browser() {
-            browser.set_archive_preview_active(active);
-        }
     }
 
     fn archive_list_has_focus(&self, focused: Option<&gtk::Widget>) -> bool {
@@ -2473,7 +2468,6 @@ impl PreviewState {
         self.text_view.take();
         self.text_scroll.take();
         self.archive_browser.take();
-        self.set_archive_preview_active(false);
         self.clear_password_entry();
         clear_box(&self.content);
         self.keep_keys_in_content(owned);

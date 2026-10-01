@@ -95,6 +95,12 @@ struct ConflictActions {
     focus: ConflictFocus,
 }
 
+#[derive(Clone, Copy)]
+struct GroupReplay {
+    had_missing: bool,
+    skipped: bool,
+}
+
 struct TransferDialogOptions {
     base: PathBuf,
     search_root: PathBuf,
@@ -735,7 +741,11 @@ impl ViewState {
     /// Moves the latest completed transfer back, confirming any item that would
     /// overwrite something created since the move.
     pub(super) fn undo_move(self: &Rc<Self>, generation: u64, records: Vec<MoveRecord>) -> bool {
-        self.replay_move(false, generation, records)
+        self.replay_move(false, generation, records, false)
+    }
+
+    pub(super) fn undo_group(self: &Rc<Self>, generation: u64, records: Vec<MoveRecord>) -> bool {
+        self.replay_move(false, generation, records, true)
     }
 
     pub(super) fn redo_trash(self: &Rc<Self>, generation: u64, locations: Vec<Location>) -> bool {
@@ -743,7 +753,7 @@ impl ViewState {
     }
 
     pub(super) fn redo_move(self: &Rc<Self>, generation: u64, records: Vec<MoveRecord>) -> bool {
-        self.replay_move(true, generation, records)
+        self.replay_move(true, generation, records, false)
     }
 
     fn replay_existing_locations(
@@ -764,9 +774,16 @@ impl ViewState {
         dispatch(&self.browser, generation, existing)
     }
 
-    fn replay_move(self: &Rc<Self>, redo: bool, generation: u64, records: Vec<MoveRecord>) -> bool {
+    fn replay_move(
+        self: &Rc<Self>,
+        redo: bool,
+        generation: u64,
+        records: Vec<MoveRecord>,
+        grouped: bool,
+    ) -> bool {
         let mut accepted = Vec::new();
         let mut collisions = Vec::new();
+        let mut missing = 0;
         for record in records {
             let (item_at, destination) = if redo {
                 (&record.original, &record.current)
@@ -774,6 +791,7 @@ impl ViewState {
                 (&record.current, &record.original)
             };
             if !location_exists(item_at) {
+                missing += 1;
                 continue;
             }
             if location_exists(destination) {
@@ -786,10 +804,23 @@ impl ViewState {
             }
         }
         if accepted.is_empty() && collisions.is_empty() {
-            self.browser.discard_pending_replay(redo, generation);
+            if grouped && !redo && missing > 0 {
+                self.browser.discard_group_keep_folder(redo, generation);
+            } else {
+                self.browser.discard_pending_replay(redo, generation);
+            }
             return false;
         }
-        self.resolve_replay_collisions(redo, generation, collisions, accepted);
+        self.resolve_replay_collisions(
+            redo,
+            generation,
+            collisions,
+            accepted,
+            grouped.then_some(GroupReplay {
+                had_missing: missing > 0,
+                skipped: false,
+            }),
+        );
         true
     }
 
@@ -822,10 +853,20 @@ impl ViewState {
         generation: u64,
         mut collisions: Vec<MoveRecord>,
         accepted: Vec<UndoMoveItem>,
+        group: Option<GroupReplay>,
     ) {
         if collisions.is_empty() {
             if accepted.is_empty() {
                 self.browser.discard_pending_replay(redo, generation);
+            } else if let Some(state) = group {
+                if state.skipped {
+                    self.browser.undo_group(generation, accepted);
+                } else if state.had_missing {
+                    self.browser
+                        .undo_group_retaining_folder(generation, accepted);
+                } else {
+                    self.browser.undo_group(generation, accepted);
+                }
             } else if redo {
                 self.browser.redo_move(generation, accepted);
             } else {
@@ -858,6 +899,7 @@ impl ViewState {
             Rc::new(move |choice, apply_to_all| {
                 let mut accepted = accepted.clone();
                 let mut remaining = collisions.clone();
+                let mut group = group;
                 match choice {
                     ConflictChoice::Replace => {
                         accepted.push(UndoMoveItem {
@@ -874,10 +916,16 @@ impl ViewState {
                     ConflictChoice::Merge | ConflictChoice::KeepBoth => {
                         unreachable!("merge and keep-both are not offered for replay conflicts")
                     }
-                    ConflictChoice::Skip if apply_to_all => remaining.clear(),
-                    ConflictChoice::Skip => {}
+                    ConflictChoice::Skip => {
+                        if apply_to_all {
+                            remaining.clear();
+                        }
+                        if let Some(group) = group.as_mut() {
+                            group.skipped = true;
+                        }
+                    }
                 }
-                state.resolve_replay_collisions(redo, generation, remaining, accepted);
+                state.resolve_replay_collisions(redo, generation, remaining, accepted, group);
             }),
         );
     }

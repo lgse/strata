@@ -59,6 +59,7 @@ pub(super) struct EditTarget {
     pub(super) widgets: EditWidgets,
     pub(super) reveal: Option<Reveal>,
     pub(super) finish: Option<Rc<dyn Fn()>>,
+    pub(super) cancelled: Option<Rc<dyn Fn()>>,
 }
 
 impl From<EditWidgets> for EditTarget {
@@ -67,6 +68,7 @@ impl From<EditWidgets> for EditTarget {
             widgets,
             reveal: None,
             finish: None,
+            cancelled: None,
         }
     }
 }
@@ -79,10 +81,16 @@ pub(super) struct ActiveEdit {
     focus: gtk::EventControllerFocus,
     focus_handler: Option<glib::SignalHandlerId>,
     tick: Option<gtk::TickCallbackId>,
+    submitted: bool,
 }
 
 impl Drop for ActiveEdit {
     fn drop(&mut self) {
+        if !self.submitted
+            && let Some(on_cancel) = &self.target.cancelled
+        {
+            on_cancel();
+        }
         self.target.widgets.cancel.take();
         for handler in self.handlers.drain(..) {
             self.field.disconnect(handler);
@@ -132,7 +140,8 @@ pub(super) fn take_submission(
     {
         return None;
     }
-    let edit = active.take()?;
+    let mut edit = active.take()?;
+    edit.submitted = true;
     let result = (edit.entry.clone(), field.text().to_string());
     drop(edit);
     Some(result)
@@ -202,6 +211,7 @@ pub(super) fn begin(
         focus,
         focus_handler: Some(focus_handler),
         tick,
+        submitted: false,
     }));
     field.grab_focus();
     field.select_region(0, end);

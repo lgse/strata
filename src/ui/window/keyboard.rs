@@ -659,7 +659,7 @@ impl Dispatcher {
             })
             .or_else(|| self.text_input(&event))
             .or_else(|| self.file_commands(browser, &event))
-            .or_else(|| self.archive_navigation(&event))
+            .or_else(|| self.preview_navigation(&event))
             .or_else(|| self.focus_navigation(browser, &mut event))
             .or_else(|| self.dismissal(browser, &event))
             .or_else(|| self.item_navigation(browser, &event))

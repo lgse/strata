@@ -83,7 +83,7 @@ def test_action_editor_tabs_validate_save_and_reopen(strata):
     action_dir = strata.environment.config_home / "strata/actions/batch-rename"
     assert not action_dir.exists(), "invalid drafts must not write an action"
     fill("Arguments", "%s\\n\n{path}")
-    strata.pointer.click(control("Create action", "button"))
+    strata.pointer.click(strata.settle(control("Create action", "button")))
     manifest = action_dir / "action.toml"
     strata.wait(manifest.exists, "the action manifest")
     strata.wait(

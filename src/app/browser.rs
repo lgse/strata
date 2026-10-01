@@ -281,6 +281,10 @@ pub enum UndoEntry {
         originals: HashMap<Location, TrashedOriginal>,
     },
     Rename(RenameRecord),
+    Group {
+        folder: Location,
+        records: Vec<MoveRecord>,
+    },
 }
 
 impl UndoEntry {
@@ -292,7 +296,7 @@ impl UndoEntry {
                 overwritten,
                 ..
             } => created.is_empty() && overwritten.is_empty(),
-            Self::Move(records) => records.is_empty(),
+            Self::Move(records) | Self::Group { records, .. } => records.is_empty(),
             Self::Rename(_) => false,
         }
     }
@@ -308,6 +312,10 @@ impl UndoEntry {
                 originals: HashMap::new(),
             },
             Self::Rename(record) => Self::Rename(record.clone()),
+            Self::Group { folder, .. } => Self::Group {
+                folder: folder.clone(),
+                records: Vec::new(),
+            },
         }
     }
 
@@ -326,7 +334,8 @@ fn complete_undo_item(
     move_source: bool,
 ) {
     match (entry, completed) {
-        (UndoEntry::Move(records), UndoEntry::Move(done)) => {
+        (UndoEntry::Move(records), UndoEntry::Move(done))
+        | (UndoEntry::Group { records, .. }, UndoEntry::Group { records: done, .. }) => {
             if let Some(index) = records.iter().position(|record| {
                 let endpoint = if move_source {
                     &record.original
@@ -402,6 +411,8 @@ struct UndoState {
     next_generation: u64,
     history: Vec<PendingUndo>,
     redo: Vec<PendingUndo>,
+    group_folder: Option<Location>,
+    group_rename_finished: bool,
 }
 
 impl UndoState {
@@ -437,6 +448,83 @@ impl UndoState {
             stack.remove(0);
         }
     }
+
+    fn fold_group_tail(&mut self) {
+        let Some(created) = self.group_folder.clone() else {
+            return;
+        };
+        let tail = |offset: usize| {
+            self.history
+                .iter()
+                .rev()
+                .nth(offset)
+                .filter(|top| !top.claimed)
+        };
+        enum Fold {
+            Fuse {
+                folder: Location,
+                records: Vec<MoveRecord>,
+                done: bool,
+            },
+            Clear,
+        }
+        let fold = match tail(0).map(|top| top.entry.clone()) {
+            Some(UndoEntry::Move(records))
+                if !records.is_empty()
+                    && records
+                        .iter()
+                        .all(|record| record.current.parent().as_ref() == Some(&created))
+                    && matches!(
+                        tail(1).map(|top| &top.entry),
+                        Some(UndoEntry::Copy(locations))
+                            if locations.as_slice() == std::slice::from_ref(&created)
+                    ) =>
+            {
+                Fold::Fuse {
+                    folder: created,
+                    records,
+                    done: self.group_rename_finished,
+                }
+            }
+            Some(UndoEntry::Rename(record)) => match tail(1).map(|top| &top.entry) {
+                Some(UndoEntry::Group { folder, records }) if *folder == record.original => {
+                    let folder = record.current.clone();
+                    Fold::Fuse {
+                        records: records
+                            .iter()
+                            .map(|moved| MoveRecord {
+                                original: moved.original.clone(),
+                                current: moved
+                                    .original
+                                    .file_name()
+                                    .and_then(|name| folder.child(&name))
+                                    .unwrap_or_else(|| moved.current.clone()),
+                            })
+                            .collect(),
+                        folder,
+                        done: true,
+                    }
+                }
+                _ => Fold::Clear,
+            },
+            _ => Fold::Clear,
+        };
+        match fold {
+            Fold::Fuse {
+                folder,
+                records,
+                done,
+            } => {
+                let len = self.history.len();
+                self.history.truncate(len - 2);
+                self.push_entry(false, UndoEntry::Group { folder, records });
+                if done {
+                    self.group_folder = None;
+                }
+            }
+            Fold::Clear => self.group_folder = None,
+        }
+    }
 }
 
 // Undo follows the latest operation across every Strata window on the GTK main thread.
@@ -452,6 +540,7 @@ fn push_pending_undo(entry: UndoEntry) {
         let mut pending = pending.borrow_mut();
         pending.redo.clear();
         pending.push_entry(false, entry);
+        pending.fold_group_tail();
     });
 }
 
@@ -488,6 +577,12 @@ fn finish_stack(stack: &mut Vec<PendingUndo>, generation: u64, completed: bool) 
         return;
     };
     entry.claimed = false;
+    if !completed
+        && let UndoEntry::Group { folder, records } = &entry.entry
+        && records.is_empty()
+    {
+        entry.entry = UndoEntry::Copy(vec![folder.clone()]);
+    }
     if completed || entry.entry.is_empty() {
         stack.retain(|pending| pending.generation != generation);
     }
@@ -549,7 +644,10 @@ fn retain_replay_move_items(redo: bool, generation: u64, items: &[UndoMoveItem])
     PENDING_UNDO.with(|pending| {
         let mut pending = pending.borrow_mut();
         if let Some(pending) = UndoState::find_in(pending.stack_mut(redo), generation)
-            && let UndoEntry::Move(records) = &mut pending.entry
+            && let Some(records) = match &mut pending.entry {
+                UndoEntry::Move(records) | UndoEntry::Group { records, .. } => Some(records),
+                _ => None,
+            }
         {
             records.retain(|record| items.iter().any(|item| &item.record == record));
         }
@@ -2255,6 +2353,37 @@ impl Browser {
         }
     }
 
+    pub fn pending_undo_group(&self) -> Option<(u64, Vec<MoveRecord>)> {
+        match self.pending_replay_entry(false)? {
+            (generation, UndoEntry::Group { records, .. }) => Some((generation, records)),
+            _ => None,
+        }
+    }
+
+    pub fn expect_group_folder(&self, created: Location) {
+        PENDING_UNDO.with(|pending| {
+            let mut pending = pending.borrow_mut();
+            pending.group_folder = Some(created);
+            pending.group_rename_finished = false;
+        });
+    }
+
+    pub fn clear_group_folder(&self) {
+        PENDING_UNDO.with(|pending| {
+            let mut pending = pending.borrow_mut();
+            pending.group_rename_finished = true;
+            if matches!(pending.history.last().map(|entry| &entry.entry), Some(UndoEntry::Group { folder, .. }) if Some(folder) == pending.group_folder.as_ref()) {
+                pending.group_folder = None;
+            }
+        });
+    }
+
+    pub fn clear_group_folder_for(&self, location: &Location) {
+        if PENDING_UNDO.with(|pending| pending.borrow().group_folder.as_ref() == Some(location)) {
+            self.clear_group_folder();
+        }
+    }
+
     pub fn discard_pending_replay(&self, redo: bool, generation: u64) {
         if claim_replay(redo, Some(generation)).is_some() {
             finish_replay(redo, generation, true);
@@ -2302,6 +2431,115 @@ impl Browser {
         self.replay_rename(false, generation)
     }
 
+    pub fn undo_group(self: &Rc<Self>, generation: u64, items: Vec<UndoMoveItem>) -> bool {
+        if items.is_empty() || self.current_operation.get().is_some() {
+            return false;
+        }
+        let Some((generation, entry)) = claim_replay(false, Some(generation)) else {
+            return false;
+        };
+        let UndoEntry::Group { folder, records } = entry else {
+            finish_replay(false, generation, false);
+            return false;
+        };
+        let Some(provider) = self.operation_provider.borrow().clone() else {
+            finish_replay(false, generation, false);
+            return false;
+        };
+        if items.len() != records.len() {
+            PENDING_UNDO.with(|pending| {
+                if let Some(pending) =
+                    UndoState::find_in(&mut pending.borrow_mut().history, generation)
+                {
+                    pending.entry = UndoEntry::Move(records);
+                    pending.claimed = false;
+                }
+            });
+            return self.undo_move(generation, items);
+        }
+        drop(provider);
+        self.dispatch_group_undo(generation, folder, items)
+    }
+
+    pub fn undo_group_retaining_folder(
+        self: &Rc<Self>,
+        generation: u64,
+        items: Vec<UndoMoveItem>,
+    ) -> bool {
+        if items.is_empty() || self.current_operation.get().is_some() {
+            return false;
+        }
+        let Some((generation, entry)) = claim_replay(false, Some(generation)) else {
+            return false;
+        };
+        let UndoEntry::Group { folder, .. } = entry else {
+            finish_replay(false, generation, false);
+            return false;
+        };
+        if self.operation_provider.borrow().is_none() {
+            finish_replay(false, generation, false);
+            return false;
+        }
+        self.dispatch_group_undo(generation, folder, items)
+    }
+
+    pub fn discard_group_keep_folder(&self, redo: bool, generation: u64) {
+        let Some((generation, entry)) = claim_replay(redo, Some(generation)) else {
+            return;
+        };
+        if let UndoEntry::Group { folder, .. } = entry {
+            PENDING_UNDO.with(|pending| {
+                if let Some(pending) =
+                    UndoState::find_in(pending.borrow_mut().stack_mut(redo), generation)
+                {
+                    pending.entry = UndoEntry::Copy(vec![folder]);
+                    pending.claimed = false;
+                }
+            });
+        } else {
+            finish_replay(redo, generation, true);
+        }
+    }
+
+    fn dispatch_group_undo(
+        self: &Rc<Self>,
+        generation: u64,
+        folder: Location,
+        items: Vec<UndoMoveItem>,
+    ) -> bool {
+        let Some(provider) = self.operation_provider.borrow().clone() else {
+            finish_replay(false, generation, false);
+            return false;
+        };
+        retain_replay_move_items(false, generation, &items);
+        let total = items.len();
+        let mut refresh_locations = undo_move_parents(&items);
+        refresh_locations.extend(folder.parent());
+        let request_id = self.begin_operation();
+        self.transfer_operation.set(Some(true));
+        self.replay_claim(false).replace(Some((
+            generation,
+            UndoEntry::Group {
+                folder: folder.clone(),
+                records: items.iter().map(|item| item.record.clone()).collect(),
+            },
+        )));
+        self.emit(BrowserEvent::TransferStarted {
+            total,
+            moving: true,
+        });
+        let load = provider.undo_move(
+            UndoMoveRequest {
+                id: request_id,
+                items,
+                cleanup_locations: vec![folder],
+            },
+            self.operation_callback(request_id, false, refresh_locations),
+        );
+        self.install_operation_load(request_id, load);
+        true
+    }
+
     fn replay_move(self: &Rc<Self>, redo: bool, generation: u64, items: Vec<UndoMoveItem>) -> bool {
         if items.is_empty() || self.current_operation.get().is_some() {
             return false;
@@ -2333,6 +2571,7 @@ impl Browser {
         let load = provider.undo_move(
             UndoMoveRequest {
                 id: request_id,
+                cleanup_locations: Vec::new(),
                 items: items
                     .into_iter()
                     .map(|item| {

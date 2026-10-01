@@ -91,6 +91,7 @@ pub struct UndoMoveItem {
 pub struct UndoMoveRequest {
     pub id: OperationRequestId,
     pub items: Vec<UndoMoveItem>,
+    pub cleanup_locations: Vec<Location>,
 }
 
 #[derive(Clone, Debug)]

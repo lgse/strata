@@ -645,6 +645,7 @@ These GUI conventions stay available alongside the Yazi verbs:
 | **Ctrl+K** | Global search |
 | **Ctrl+1** / **2** / **3** | Columns / Icons / List |
 | **Ctrl+Shift+N** | New folder |
+| **Ctrl+Alt+N** | New folder containing the selection |
 | **Alt+Enter** | Properties |
 | **Menu** / **Shift+F10** | Context menu |
 | **Ctrl++** / **Ctrl+−** / **Ctrl+0** | Text size |

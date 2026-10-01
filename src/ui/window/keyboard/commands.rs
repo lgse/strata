@@ -176,7 +176,11 @@ impl Dispatcher {
         } else {
             matches!(event.key, Key::b | Key::B)
         };
-        if event.control() && !event.shift() && toggles_sidebar {
+        if event.control()
+            && !event.shift()
+            && event.without(Modifiers::ALT_MASK)
+            && toggles_sidebar
+        {
             toggle.set_active(!toggle.is_active());
             return Some(Propagation::Stop);
         }
@@ -239,6 +243,16 @@ impl Dispatcher {
     pub(super) fn file_commands(&self, browser: &Rc<Browser>, event: &KeyEvent) -> KeyResult {
         if event.control() && event.shift() && matches!(event.key, Key::n | Key::N) {
             self.view.create_new_folder();
+            return Some(Propagation::Stop);
+        }
+        if event.control()
+            && event.alt()
+            && event.without(Modifiers::SHIFT_MASK | Modifiers::SUPER_MASK)
+            && matches!(event.key, Key::n | Key::N)
+        {
+            if !self.view.create_new_folder_for_selection() {
+                self.view.create_new_folder();
+            }
             return Some(Propagation::Stop);
         }
         self.clipboard_command(event)

@@ -821,9 +821,10 @@ impl ModeViews {
             return false;
         };
         self.cancel_rename();
-        let Some(target) = pane.search.edit_target(entry) else {
+        let Some(mut target) = pane.search.edit_target(entry) else {
             return false;
         };
+        self.bind_rename_cancellation(&mut target, &entry.location);
         super::collection_edit::begin(
             &self.active_rename,
             entry.clone(),
@@ -865,6 +866,7 @@ impl ModeViews {
             return false;
         };
         let mut target = super::collection_edit::EditTarget::from(widgets);
+        self.bind_rename_cancellation(&mut target, &entry.location);
         if self.mode == BrowserMode::List {
             let state = self.context_state.borrow().clone().unwrap_or_default();
             let generation = state
@@ -897,6 +899,20 @@ impl ModeViews {
             target,
             self.rename_submit(),
         )
+    }
+
+    fn bind_rename_cancellation(
+        &self,
+        target: &mut super::collection_edit::EditTarget,
+        location: &Location,
+    ) {
+        let state = self.context_state.borrow().clone().unwrap_or_default();
+        let location = location.clone();
+        target.cancelled = Some(Rc::new(move || {
+            if let Some(state) = state.upgrade() {
+                state.cancel_group_naming(&location);
+            }
+        }));
     }
 
     pub fn filter_has_focus(&self) -> bool {

@@ -343,3 +343,39 @@ def test_tenxer_footer_rename_keeps_contents_and_refuses_conflicts(strata, mode)
     strata.wait_for_selection(["readme.md"], root)
     assert fixture.path("done list.txt").is_file()
     assert not any("clicked" in name for name in fixture.names())
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_new_folder_with_selection_groups_items_and_names_it(strata, mode):
+    fixture = strata.fixture
+    root = fixture.root.name
+
+    strata.select_entry("readme.md", root)
+    strata.click_entry_with("todo.txt", ["ctrl"], directory=root)
+    strata.wait_for_selection(["readme.md", "todo.txt"], root)
+    strata.pointer.right_click(strata.entry("readme.md", root))
+    strata.wait(strata.context_menu, "the selection context menu")
+    strata.choose_menu_item("New Folder with Selection")
+
+    field = strata.editable_field()
+    strata.wait(lambda: field.text.startswith("new folder"), "the new folder's editor")
+    strata.keyboard.type_text("grouped")
+    strata.keyboard.press("Return")
+    strata.wait(
+        lambda: fixture.path("grouped/readme.md").is_file(),
+        "the selection moved into the named folder",
+    )
+    assert fixture.path("grouped/todo.txt").is_file()
+    assert not fixture.path("readme.md").exists()
+    assert not fixture.path("todo.txt").exists()
+    strata.entry("grouped", root)
+
+    strata.keyboard.press("ctrl+z")
+    strata.wait(
+        lambda: fixture.path("readme.md").is_file()
+        and fixture.path("todo.txt").is_file()
+        and not fixture.path("grouped").exists()
+        and not fixture.path("new folder").exists(),
+        "the gesture undone",
+    )
+    strata.entry("readme.md", root)

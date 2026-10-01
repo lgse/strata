@@ -14,7 +14,7 @@ use crate::{
     model::Location,
     ui::{
         browser_modes::BrowserMode,
-        preview::preview_target,
+        preview::{PreviewSurface, preview_target},
         tenxer_mode::Chord,
         window::{
             SinglePaneArrow, home_directory, jump_direction, page_direction,
@@ -57,16 +57,54 @@ impl Dispatcher {
         (browser.close_peek() || browser.clear_active_selection()).then_some(Propagation::Stop)
     }
 
-    pub(super) fn archive_navigation(&self, event: &KeyEvent) -> KeyResult {
+    pub(super) fn preview_navigation(&self, event: &KeyEvent) -> KeyResult {
         if !event.without(
             Modifiers::CONTROL_MASK
                 | Modifiers::ALT_MASK
                 | Modifiers::SUPER_MASK
                 | Modifiers::SHIFT_MASK,
-        ) || event.text_has_focus()
-            || (!self.view.item_view_has_focus()
-                && !self.preview.archive_list_has_focus(event.focused.as_ref()))
+        ) || (event.text_has_focus()
+            && !event.focused.as_ref().is_some_and(|focused| {
+                self.preview.owns_focus(Some(focused))
+                    && self.preview.surface(focused) == PreviewSurface::Document
+            }))
         {
+            return None;
+        }
+        if self.view.item_view_has_focus() {
+            if event.key == Key::Right
+                && matches!(
+                    self.view.view_mode(),
+                    BrowserMode::List | BrowserMode::Columns
+                )
+                && self.preview.is_open()
+                && self
+                    .view
+                    .browser()
+                    .focused_entry()
+                    .is_some_and(|entry| !entry.is_directory())
+                && self.preview.take_keyboard()
+            {
+                return Some(Propagation::Stop);
+            }
+            return None;
+        }
+        if !self.preview.owns_focus(event.focused.as_ref()) {
+            return None;
+        }
+        if event.key == Key::Left
+            && self.preview.archive_at_root()
+            && event.focused.as_ref().is_some_and(|focused| {
+                matches!(
+                    self.preview.surface(focused),
+                    PreviewSurface::Archive | PreviewSurface::Document
+                )
+            })
+        {
+            self.return_from_preview(&self.view.browser());
+            return Some(Propagation::Stop);
+        }
+        if !self.preview.archive_list_has_focus(event.focused.as_ref()) {
             return None;
         }
         match event.key {

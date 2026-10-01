@@ -523,6 +523,7 @@ type UndoMergeRecord = (
 
 thread_local! {
     static UNDO_MOVE_REQUESTS: RefCell<Vec<Vec<MoveRecord>>> = const { RefCell::new(Vec::new()) };
+    static UNDO_MOVE_CLEANUPS: RefCell<Vec<Vec<Location>>> = const { RefCell::new(Vec::new()) };
     static UNDO_COPY_REQUESTS: RefCell<Vec<Vec<Location>>> = const { RefCell::new(Vec::new()) };
     static UNDO_MERGE_REQUESTS: RefCell<Vec<UndoMergeRecord>> =
         const { RefCell::new(Vec::new()) };
@@ -619,6 +620,11 @@ impl OperationProvider for ImmediateOperationProvider {
     }
 
     fn undo_move(&self, request: UndoMoveRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        UNDO_MOVE_CLEANUPS.with(|requests| {
+            requests
+                .borrow_mut()
+                .push(request.cleanup_locations.clone())
+        });
         UNDO_MOVE_REQUESTS.with(|requests| {
             requests.borrow_mut().push(
                 request

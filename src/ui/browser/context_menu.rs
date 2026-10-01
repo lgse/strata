@@ -172,7 +172,7 @@ fn restore_context_focus(state: &ViewState, depth: usize) {
     }
 }
 
-fn context_search_active(state: &ViewState, depth: usize) -> bool {
+pub(super) fn context_search_active(state: &ViewState, depth: usize) -> bool {
     if state.mode_views.borrow().mode() != BrowserMode::Columns {
         return state
             .mode_views
@@ -866,6 +866,11 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         "Copy to…",
         ContextHint::CopyTo,
     );
+    let group = item_context_option(
+        crate::assets::icons::FOLDER_PLUS,
+        "New Folder with Selection",
+        ContextHint::None,
+    );
     let rename = item_context_option(crate::assets::icons::PENCIL, "Rename", ContextHint::Rename);
     let cut = item_context_option(crate::assets::icons::SCISSORS, "Cut", ContextHint::Cut);
     let delete_label = if in_trash {
@@ -919,6 +924,9 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         "Extract to…",
         ContextHint::None,
     );
+    let group_separator = gtk::Separator::new(gtk::Orientation::Horizontal);
+    single_open.append(&group);
+    single_open.append(&group_separator);
     single_open.append(&open);
     single_open.append(&open_with);
     single_open.append(&preview);
@@ -998,6 +1006,11 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         "Copy to…",
         ContextHint::CopyTo,
     );
+    let group_multiple = item_context_option(
+        crate::assets::icons::FOLDER_PLUS,
+        "New Folder with Selection",
+        ContextHint::None,
+    );
     let cut_multiple = item_context_option(crate::assets::icons::SCISSORS, "Cut", ContextHint::Cut);
     let trash_multiple = if in_trash {
         let option = item_context_danger_option(
@@ -1030,6 +1043,9 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         "Properties",
         ContextHint::Properties,
     );
+    let group_multiple_separator = gtk::Separator::new(gtk::Orientation::Horizontal);
+    multiple_open.append(&group_multiple);
+    multiple_open.append(&group_multiple_separator);
     multiple_open.append(&open_multiple);
     multiple_open.append(&open_with_multiple);
     multiple_open.append(&restore_multiple);
@@ -1386,6 +1402,11 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
             state.duplicate_entries(&entries);
         });
     }
+    for button in [&group, &group_multiple] {
+        connect_selection_action(button, &popover, state, &target, move |state, entries| {
+            state.new_folder_with_selection(depth, &entries);
+        });
+    }
     for (button, permanent) in [
         (&move_to_trash, in_trash),
         (&trash_multiple, in_trash),
@@ -1547,6 +1568,15 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
             for button in [&cut, &cut_multiple, &move_to, &move_multiple] {
                 button.set_visible(removable);
             }
+            let groupable = removable
+                && !context_search_active(&state, depth)
+                && state.browser.location_at(depth).is_some_and(|location| {
+                    !is_trash_location(&location) && !location.is_recent_location()
+                });
+            group.set_visible(groupable);
+            group_multiple.set_visible(groupable);
+            group_separator.set_visible(groupable);
+            group_multiple_separator.set_visible(groupable);
             let rename_visible = !is_trash_location(&entry.location);
             rename.set_visible(rename_visible);
             let can_compress = entries

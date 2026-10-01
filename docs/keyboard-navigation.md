@@ -50,6 +50,11 @@ tries `new folder (1)` / `new file (1)`, then `(2)`, and so on without overwriti
 anything. The pane filter is cleared and the entire allocated default name is
 selected: one Backspace clears it, and typing replaces it.
 
+Item menu → **New Folder with Selection** (or **Ctrl+Alt+N**) creates `new folder`
+in the same directory, moves the selected items into it, and names it in place.
+With nothing selected **Ctrl+Alt+N** falls back to a plain `new folder`. The item
+is hidden in Trash, Recent, and while a recursive search is open.
+
 For **any file or folder rename**, Enter, clicking outside the field (even empty
 pane space), or moving keyboard focus away commits a valid name. Escape keeps
 the original name. Finishing with an empty or invalid name also keeps the
@@ -102,13 +107,19 @@ While the input is focused, Space types into the query if no result is selected.
 
 Quick Look on a local ZIP, 7z, TAR, or TAR.GZ opens the archive's member tree
 instead of extracting it. The preview starts at the archive root with its first
-member highlighted. The listing keeps its selection, but drops the
-keyboard-cursor outline so only one cursor is visible.
+member highlighted. In List and Columns modes, arrow keys act on the focused
+pane, not merely on an open preview. From the listing, **Right** enters the open
+preview; Quick Look hands focus to the archive directly. While the preview owns
+focus, its header shows the accent top border instead of the Miller column.
+Returning to the listing restores its cursor and column header indicator.
 
 Inside the preview, **Up/Down** (or **k/j**) move the highlight, **Right/l/Enter**
-opens the highlighted folder, and **Left/h** returns to the parent. Left at the
-archive root and Right/Enter on a member file do nothing. Navigating never
-extracts anything or touches the filesystem; **Space** and **Escape** still
+opens the highlighted folder, and **Left/h** returns to the parent. **Left** at the
+archive root returns focus to the listing without closing the preview. Up/Down
+then move through listing items; Right enters the preview again. In Columns
+mode, another Left from the listing moves to the parent column. Right/Enter on a
+member file does nothing. Navigating never extracts anything or touches the
+filesystem; **Space** and **Escape** still
 close the preview. In [10xer mode](10xer-mode.md#preview-keyboard-ownership),
 **h** at the archive root returns to the listing, **Space** is swallowed, and
 **Shift+Tab** / **Esc** return or close.

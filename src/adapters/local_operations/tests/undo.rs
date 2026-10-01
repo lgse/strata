@@ -30,6 +30,7 @@ fn undoing_a_move_returns_each_item_to_its_original_directory() -> Result<(), Bo
     let emitted = events.clone();
     let _operation = LocalOperationProvider.undo_move(
         UndoMoveRequest {
+            cleanup_locations: Vec::new(),
             id: OperationRequestId(40),
             items: vec![UndoMoveItem {
                 record: MoveRecord {
@@ -74,6 +75,7 @@ fn undoing_a_move_stops_at_an_unconfirmed_conflict() -> Result<(), Box<dyn Error
     let emitted = events.clone();
     let _operation = LocalOperationProvider.undo_move(
         UndoMoveRequest {
+            cleanup_locations: Vec::new(),
             id: OperationRequestId(41),
             items: vec![
                 UndoMoveItem {
@@ -130,6 +132,7 @@ fn a_confirmed_undo_conflict_replaces_the_newer_item() -> Result<(), Box<dyn Err
     let emitted = events.clone();
     let _operation = LocalOperationProvider.undo_move(
         UndoMoveRequest {
+            cleanup_locations: Vec::new(),
             id: OperationRequestId(42),
             items: vec![UndoMoveItem {
                 record: MoveRecord {
@@ -259,6 +262,7 @@ fn undo_one(
     let emitted = events.clone();
     let operation = LocalOperationProvider.undo_move(
         UndoMoveRequest {
+            cleanup_locations: Vec::new(),
             id: OperationRequestId(id),
             items: vec![UndoMoveItem {
                 record: MoveRecord {
