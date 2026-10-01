@@ -696,6 +696,7 @@ def test_column_preview_fills_free_space_and_remembers_a_dragged_session_width(s
 @pytest.mark.preferences(browser_mode="columns", single_click_previews=False)
 def test_columns_preview_can_reopen_after_closing(strata):
     strata.open_directory("folder")
+    strata.wait_for_entries(sorted(PREVIEW_FIXTURE["folder"]), "folder")
     strata.select_entry_with_keyboard("inner.txt")
     strata.keyboard.press("space")
     strata.wait(lambda: strata.preview_shows("inner"), "the nested preview")
