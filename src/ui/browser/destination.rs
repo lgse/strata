@@ -979,6 +979,8 @@ impl DestinationLocationBar {
     }
 }
 
+const DESTINATION_LIST_MAX_HEIGHT: i32 = 340;
+
 pub(super) struct DestinationBrowserOptions {
     pub(super) base: PathBuf,
     pub(super) search_root: PathBuf,
@@ -1110,6 +1112,8 @@ impl DestinationBrowser {
                 .child(&column)
                 .hscrollbar_policy(gtk::PolicyType::Never)
                 .vscrollbar_policy(gtk::PolicyType::Automatic)
+                .max_content_height(DESTINATION_LIST_MAX_HEIGHT)
+                .propagate_natural_height(true)
                 // Row labels expand; keep that from widening the column.
                 .hexpand(false)
                 .build();
@@ -1124,7 +1128,7 @@ impl DestinationBrowser {
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vscrollbar_policy(gtk::PolicyType::Automatic)
             .min_content_height(150)
-            .max_content_height(220)
+            .max_content_height(DESTINATION_LIST_MAX_HEIGHT)
             .propagate_natural_height(true)
             .hexpand(true)
             .build();
