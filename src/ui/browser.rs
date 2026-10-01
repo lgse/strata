@@ -2431,6 +2431,14 @@ impl ViewState {
             let Some(position) = event.position() else {
                 return;
             };
+            // Only GTK's synthesized motion lacks an event time.
+            if event.time() == gtk::gdk::CURRENT_TIME {
+                state
+                    .input_ownership
+                    .borrow_mut()
+                    .pointer_resynced(position);
+                return;
+            }
             let hovered = state.column_depth_at(x, y);
             BrowserView { state }.record_pointer_hover(position, hovered);
         });
