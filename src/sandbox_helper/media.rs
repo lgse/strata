@@ -298,10 +298,10 @@ fn command(path: &Path, input: &Input, backend: &Backend, track: Track) -> Comma
         Backend::Software => {}
     }
     let start_us = media::timestamp(input.header.start_tick);
-    let start = input
+    let offset_us = input
         .gif_period_us
-        .map_or(start_us, |period| start_us % period.max(1)) as f64
-        / 1_000_000.0;
+        .map_or(start_us, |period| start_us % period.max(1));
+    let start = offset_us as f64 / 1_000_000.0;
     if input.gif_period_us.is_some() {
         command.args(["-stream_loop", "-1"]);
     }
@@ -311,8 +311,8 @@ fn command(path: &Path, input: &Input, backend: &Backend, track: Track) -> Comma
     // Attached pictures and raw H.264/HEVC yield no frames for an input seek, even
     // `-ss 0`. Omit a zero seek. Positive raw offsets seek after `-i` so FFmpeg
     // decodes and discards the prefix instead of asking the demuxer to seek.
+    let seek = !cover && offset_us != 0;
     let position = format!("{start:.6}");
-    let seek = !cover && position != "0.000000";
     if seek && !input.raw_video {
         command.arg("-ss").arg(&position);
     }
