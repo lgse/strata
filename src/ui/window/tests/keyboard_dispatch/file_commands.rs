@@ -648,6 +648,20 @@ fn tenxer_move_and_copy_prompts_send_targets_to_a_typed_folder() {
 
             move_to_named(&fixture, &browser, "c.txt");
             open(Key::M, Prompt::MoveTo, "move to \u{203a}");
+            fixture.shortcuts.prompt().set_text("other");
+            plain(&fixture, Key::Return);
+            plain(&fixture, Key::Tab);
+            wait_until(|| fixture.shortcuts.prompt_text() == "other/");
+            pump(200);
+            assert_eq!(fixture.shortcuts.open_prompt_kind(), Some(Prompt::MoveTo));
+            assert!(
+                directory.join("c.txt").exists(),
+                "completion requires a fresh submission"
+            );
+            assert!(!directory.join("other/c.txt").exists());
+            plain(&fixture, Key::Escape);
+
+            open(Key::M, Prompt::MoveTo, "move to \u{203a}");
             fixture.shortcuts.prompt().set_text("dest/inner");
             plain(&fixture, Key::Return);
             plain(&fixture, Key::Escape);

@@ -132,7 +132,7 @@ impl Dispatcher {
         if key == Key::Escape && mods.is_empty() {
             return Some(Propagation::Stop);
         }
-        // Shift types **+** on many layouts and picks **; E** and reversed sorts.
+        // '+' requires Shift on many keyboard layouts.
         let completed = match chord {
             _ if !(mods - Modifiers::SHIFT_MASK).is_empty() => false,
             Chord::Sort => self.complete_sort(key),

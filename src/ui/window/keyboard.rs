@@ -462,7 +462,7 @@ struct Dispatcher {
     go: GoCompletion,
     history: Rc<NavigationHistory>,
     rename_target: Rc<RefCell<Option<crate::model::FileEntry>>>,
-    /// The items **M**, **C**, or **; E** act on, fixed when their prompt opens.
+    /// Cursor and fill changes must not retarget an open prompt.
     destination_targets: Rc<RefCell<Vec<crate::model::FileEntry>>>,
     destination_revision: Rc<Cell<u64>>,
     armed_actions: Rc<RefCell<Option<files::ArmedActions>>>,

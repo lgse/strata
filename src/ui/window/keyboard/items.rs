@@ -460,8 +460,7 @@ impl Dispatcher {
 
     fn tenxer_shifted(&self, browser: &Rc<Browser>, key: Key) -> bool {
         match key {
-            // Ranges come from v / V; the default map's Shift+arrow and
-            // Shift+Page selection (and GTK's native one) would overlap them.
+            // Native Shift selection must not interfere with v/V ranges.
             key if is_arrow(key) || page_direction(key).is_some() => {}
             Key::V if !self.selection_keys_blocked() => {
                 self.toggle_visual(VisualKind::Unset);

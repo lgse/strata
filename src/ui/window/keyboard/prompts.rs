@@ -295,6 +295,7 @@ impl Dispatcher {
         let view = self.view.clone();
         let shortcuts = self.shortcuts.clone();
         let navigation = browser.navigation_generation();
+        let submitted_text = text.to_owned();
         gtk::glib::MainContext::default().spawn_local(async move {
             let result = gtk::gio::spawn_blocking(move || match std::fs::metadata(&destination) {
                 Ok(metadata) if metadata.is_dir() => Ok(destination),
@@ -305,6 +306,7 @@ impl Dispatcher {
             if revision.get() != submitted
                 || view.browser().navigation_generation() != navigation
                 || shortcuts.open_prompt_kind() != Some(kind)
+                || shortcuts.prompt_text() != submitted_text
             {
                 return;
             }
