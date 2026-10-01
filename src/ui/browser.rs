@@ -2112,6 +2112,13 @@ impl BrowserView {
                 .map(|position| (depth, position))
         });
         let order = depth.and_then(|depth| self.displayed_order(depth));
+        let cursor = || {
+            self.state
+                .browser
+                .focused_item()
+                .map(|(depth, position, _)| (depth, position))
+        };
+        let before = cursor();
         if let Some((depth, position)) = target {
             self.state
                 .browser
@@ -2120,6 +2127,12 @@ impl BrowserView {
             self.state
                 .browser
                 .page_cursor(direction, steps, order.as_deref());
+        }
+        // A move that clears the selection reports a fill, not a focus change.
+        if let Some((depth, position)) = cursor()
+            && Some((depth, position)) != before
+        {
+            self.state.mirror_focused_folder(depth, Some(position));
         }
         if let Some((view, scroll)) = collection {
             let position = self.cursor_view_position(&view);

@@ -1660,6 +1660,32 @@ fn page_keys_extend_shift_selection_or_a_tenxer_range() {
 }
 
 #[test]
+fn tenxer_columns_mirror_the_first_move_after_a_load() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::tenxer_columns_mirror_the_first_move_after_a_load",
+        || {
+            let fixture = KeyboardFixture::new();
+            let preferences = PreferenceManager::shared();
+            preferences.set_tenxer_mode(true);
+            preferences.set_columns_mirror_selection(true);
+            let browser = fixture.view.browser();
+            let folder = fixture._directory.path().join("folders");
+            std::fs::create_dir_all(folder.join("a-dir")).expect("first folder");
+            std::fs::create_dir(folder.join("b-dir")).expect("second folder");
+            browser.navigate(Location::local(&folder));
+            wait_loaded(&browser, 0);
+            wait_until(|| focused_name(&browser) == "a-dir");
+            focus_files(&fixture);
+            fixture.press(Key::j, ModifierType::empty());
+            assert_eq!(focused_name(&browser), "b-dir");
+            wait_loaded(&browser, 1);
+            assert!(location_ends_with(browser.location_at(1), "b-dir"));
+            assert_eq!(browser.focused_item().map(|(depth, _, _)| depth), Some(0));
+        },
+    );
+}
+
+#[test]
 fn tenxer_list_and_columns_move_enter_and_traverse_history() {
     crate::test_support::gtk_test(
         "ui::window::tests::keyboard_dispatch::tenxer_list_and_columns_move_enter_and_traverse_history",

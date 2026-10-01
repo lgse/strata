@@ -1152,7 +1152,7 @@ impl ViewState {
         self.mode_views.borrow().prune_stale_search_results();
     }
 
-    fn mirror_focused_folder(self: &Rc<Self>, depth: usize, position: Option<usize>) {
+    pub(super) fn mirror_focused_folder(self: &Rc<Self>, depth: usize, position: Option<usize>) {
         if let Some(source) = self.pending_mirror.borrow_mut().take() {
             source.remove();
         }
