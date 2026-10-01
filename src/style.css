@@ -3287,6 +3287,19 @@ button.shortcut-footer-button:disabled {
   opacity: 1;
 }
 
+.chooser-download {
+  color: @theme_text;
+}
+
+.chooser-download-status {
+  color: @theme_dim_text;
+  font-size: 0.85em;
+}
+
+.chooser-download-progress {
+  color: @theme_accent;
+}
+
 .column-header {
   background: transparent;
   border-top: 3px solid transparent;

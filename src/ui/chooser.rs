@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+mod download;
+
 #[cfg(test)]
 mod tests;
 
@@ -12,7 +14,9 @@ use std::{
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
+        mpsc::TryRecvError,
     },
+    time::Duration,
 };
 
 use ashpd::{
@@ -24,14 +28,14 @@ use gtk::{gio, glib, prelude::*};
 use crate::{
     adapters::{LocalFileSource, LocalOperationProvider, LocalPreviewProvider},
     app::BrowserEvent,
-    model::{FileEntry, Location},
+    model::{EntryKind, FileEntry, Location, MetadataValue},
     portal::{
         ChooserKind, ChooserRequest, check_destinations, local_uri, open_selection, safe_filename,
         writable_from_read_only,
     },
     services::{
         DirectoryChange, DirectoryEvent, DirectoryRequest, FileSource, LoadHandle,
-        LocationValidationError, MetadataRequest,
+        LocationValidationError, MetadataRequest, RemoteDownload, download_remote, remote_file_url,
     },
 };
 
@@ -416,15 +420,21 @@ struct ChooserState {
     window: gtk::Window,
     view: BrowserView,
     filename: Option<gtk::Entry>,
-    filename_selection: RefCell<Option<Location>>,
+    filename_selection: RefCell<Vec<Location>>,
+    filename_edited: Cell<bool>,
     filter_dropdown: Option<ChooserDropdown>,
     filters: Vec<PortalFilter>,
     choices: Vec<ChoiceControl>,
     read_only: Option<gtk::CheckButton>,
     error: gtk::Label,
+    action_status: gtk::Stack,
     destination_check: Cell<bool>,
+    accept_generation: Cell<u64>,
     accept_button: gtk::Button,
     completion: RefCell<Option<Completion>>,
+    download_cancel: RefCell<Option<Arc<AtomicBool>>>,
+    download_holder: gtk::Box,
+    download_progress: RefCell<Option<download::DownloadProgress>>,
 }
 
 impl ChooserState {
@@ -432,7 +442,164 @@ impl ChooserState {
         self.finish(Err(PortalError::Cancelled("file chooser dismissed".into())));
     }
 
+    fn download_in_progress(&self) -> bool {
+        self.download_cancel.borrow().is_some()
+    }
+
+    fn cancel_download(&self) -> bool {
+        let Some(cancelled) = self.download_cancel.borrow_mut().take() else {
+            return false;
+        };
+        cancelled.store(true, Ordering::SeqCst);
+        self.dismiss_download_progress();
+        self.accept_button.set_sensitive(true);
+        true
+    }
+
+    fn open_remote(self: &Rc<Self>, url: &str) {
+        if !matches!(
+            self.request.kind,
+            ChooserKind::Open {
+                directory: false,
+                ..
+            }
+        ) {
+            self.show_error("Remote links are only supported when opening files");
+            return;
+        }
+        if self.completion.borrow().is_none() || visible_modal_layer(&self.window).is_some() {
+            return;
+        }
+        // Supersede pending local accepts even if this download later fails or is cancelled.
+        self.accept_generation
+            .set(self.accept_generation.get().wrapping_add(1));
+        self.cancel_download();
+        self.clear_error();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        *self.download_cancel.borrow_mut() = Some(cancelled.clone());
+        let state = Rc::downgrade(self);
+        self.show_download_progress(
+            url,
+            Rc::new(move || {
+                if let Some(state) = state.upgrade() {
+                    state.cancel_download();
+                }
+            }),
+        );
+        self.accept_button.set_sensitive(false);
+        let receiver = download_remote(url.to_owned(), cancelled.clone());
+        let state = Rc::downgrade(self);
+        glib::timeout_add_local(Duration::from_millis(120), move || {
+            let Some(state) = state.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+            // A retired attempt must not complete or clear a replacement download.
+            let current = || {
+                state
+                    .download_cancel
+                    .borrow()
+                    .as_ref()
+                    .is_some_and(|flag| Arc::ptr_eq(flag, &cancelled))
+            };
+            if !current() {
+                return glib::ControlFlow::Break;
+            }
+            // Coalesce progress so terminal events cannot wait behind a backlog.
+            let mut latest_progress = None;
+            let flow = loop {
+                match receiver.try_recv() {
+                    Ok(RemoteDownload::Named(name)) => {
+                        if let Some(progress) = state.download_progress.borrow().as_ref() {
+                            progress.set_name(&name);
+                        }
+                    }
+                    Ok(RemoteDownload::Progress { downloaded, total }) => {
+                        latest_progress = Some((downloaded, total));
+                    }
+                    Ok(RemoteDownload::Finished(path)) => {
+                        state.dismiss_download_progress();
+                        if state.download_cancel.borrow_mut().take().is_some() {
+                            state.complete_remote(path);
+                        }
+                        break glib::ControlFlow::Break;
+                    }
+                    Ok(RemoteDownload::Failed(message)) => {
+                        state.dismiss_download_progress();
+                        state.accept_button.set_sensitive(true);
+                        if state.download_cancel.borrow_mut().take().is_some() {
+                            state.show_error(&message);
+                        }
+                        break glib::ControlFlow::Break;
+                    }
+                    Err(TryRecvError::Empty) => break glib::ControlFlow::Continue,
+                    Err(TryRecvError::Disconnected) => {
+                        state.dismiss_download_progress();
+                        state.accept_button.set_sensitive(true);
+                        state.download_cancel.borrow_mut().take();
+                        state.show_error("The download stopped unexpectedly. Try again.");
+                        break glib::ControlFlow::Break;
+                    }
+                }
+            };
+            if let Some((downloaded, total)) = latest_progress
+                && let Some(progress) = state.download_progress.borrow().as_ref()
+            {
+                progress.update(downloaded, total);
+            }
+            flow
+        });
+    }
+
+    fn show_download_progress(&self, url: &str, on_cancel: Rc<dyn Fn()>) {
+        self.dismiss_download_progress();
+        let progress = download::DownloadProgress::new(url, on_cancel);
+        self.download_holder.append(&progress.root);
+        self.download_holder.set_visible(true);
+        self.download_progress.replace(Some(progress));
+    }
+
+    fn dismiss_download_progress(&self) {
+        if let Some(progress) = self.download_progress.take() {
+            self.download_holder.remove(&progress.root);
+        }
+        self.download_holder.set_visible(false);
+    }
+
+    fn complete_remote(&self, path: PathBuf) {
+        let name = path
+            .file_name()
+            .map(|name| name.to_os_string())
+            .unwrap_or_default();
+        let entry = FileEntry {
+            location: Location::local(&path),
+            thumbnail_path: None,
+            native_name: name.clone(),
+            display_name: name.to_string_lossy().into_owned(),
+            kind: EntryKind::File,
+            size: MetadataValue::Unknown,
+            modified_unix_seconds: MetadataValue::Unknown,
+            recent_unix_seconds: MetadataValue::Unknown,
+            mode: MetadataValue::Unknown,
+            image_dimensions: MetadataValue::Unknown,
+            child_count: MetadataValue::Unknown,
+            duration_seconds: MetadataValue::Unknown,
+            is_hidden: false,
+        };
+        if !self.view.browser().allows_entry(&entry) {
+            self.accept_button.set_sensitive(true);
+            self.show_error("The file does not match the selected filter");
+            return;
+        }
+        self.complete_paths(
+            vec![path],
+            self.read_only
+                .as_ref()
+                .map(|read_only| writable_from_read_only(read_only.is_active())),
+        );
+    }
+
     fn finish(&self, result: ashpd::backend::Result<SelectedFiles>) {
+        self.cancel_download();
         let Some(completion) = self.completion.take() else {
             return;
         };
@@ -454,9 +621,12 @@ impl ChooserState {
     fn show_error(&self, message: &str) {
         self.error.set_label(message);
         self.error.set_visible(true);
-        if let Some(details) = self.error.ancestor(gtk::ScrolledWindow::static_type()) {
-            details.set_visible(true);
-        }
+        self.action_status.set_visible_child_name("error");
+    }
+
+    fn clear_error(&self) {
+        self.error.set_visible(false);
+        self.action_status.set_visible_child_name("normal");
     }
 
     /// The selected results or the fill; in 10xer mode an unfilled cursor
@@ -501,18 +671,30 @@ impl ChooserState {
         }
     }
 
+    fn name_selection_entries(&self) -> Vec<FileEntry> {
+        if self.view.selected_search_results().is_some() {
+            return self.chosen_entries(true);
+        }
+        let browser = self.view.browser();
+        if browser.selection_is_load_cursor() && browser.selected_entries().len() <= 1 {
+            return Vec::new();
+        }
+        self.chosen_entries(true)
+    }
+
     fn update_selected_filename(&self) {
         let Some(filename) = self.filename.as_ref() else {
             return;
         };
+
         if PreferenceManager::shared().tenxer_mode() {
             return;
         }
-        let entries = self.chosen_entries(false);
-        let selected = match entries.as_slice() {
-            [entry] if !entry.is_directory() => Some(entry.location.clone()),
-            _ => None,
-        };
+        let entries = self.name_selection_entries();
+        let selected = entries
+            .iter()
+            .map(|entry| entry.location.clone())
+            .collect::<Vec<_>>();
         if self.filename_selection.replace(selected.clone()) == selected {
             return;
         }
@@ -522,8 +704,18 @@ impl ChooserState {
             && safe_filename(name)
         {
             filename.set_text(&name.to_string_lossy());
+            self.filename_edited.set(false);
             filename.remove_css_class("error");
             crate::ui::accessibility::set_description(filename, None);
+        } else if matches!(
+            self.request.kind,
+            ChooserKind::Open {
+                directory: false,
+                ..
+            }
+        ) {
+            filename.set_text("");
+            self.filename_edited.set(false);
         }
     }
 
@@ -589,16 +781,26 @@ impl ChooserState {
     fn accept(self: &Rc<Self>) {
         if self.completion.borrow().is_none()
             || self.destination_check.get()
+            || self.download_in_progress()
             || visible_modal_layer(&self.window).is_some()
         {
             return;
         }
-        self.error.set_visible(false);
+        self.clear_error();
         match &self.request.kind {
             ChooserKind::Open {
                 directory,
                 multiple,
             } => {
+                self.update_selected_filename();
+                if !directory
+                    && self.filename_edited.get()
+                    && let Some(filename) = self.filename.as_ref()
+                    && !filename.text().is_empty()
+                {
+                    self.accept_open_name(&filename.text());
+                    return;
+                }
                 let browser = self.view.browser();
                 let Some(current) = browser.active_location() else {
                     self.show_error("Choose an accessible local folder");
@@ -631,6 +833,60 @@ impl ChooserState {
                 self.accept_destinations(folder, names.clone());
             }
         }
+    }
+
+    fn accept_open_name(self: &Rc<Self>, name: &str) {
+        if let Some(url) = remote_file_url(name) {
+            self.open_remote(&url);
+            return;
+        }
+        if let Err(message) = crate::services::validate_basename(name) {
+            self.show_error(message);
+            return;
+        }
+        let folder = self
+            .view
+            .browser()
+            .active_location()
+            .and_then(|location| location.native_path().map(Path::to_path_buf))
+            .or_else(|| self.active_folder().ok());
+        let Some(folder) = folder else {
+            self.show_error("Choose an accessible local folder");
+            return;
+        };
+        let location = Location::local(folder.join(name));
+        self.destination_check.set(true);
+        self.accept_button.set_sensitive(false);
+        let weak = Rc::downgrade(self);
+        let generation = self.accept_generation.get();
+        let _task = glib::MainContext::default().spawn_local(async move {
+            let result = crate::adapters::query_file_entry(location).await;
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            state.destination_check.set(false);
+            if state.completion.borrow().is_none() || state.accept_generation.get() != generation {
+                return;
+            }
+            state.accept_button.set_sensitive(true);
+            match result {
+                Ok(entry) if entry.is_directory() => {
+                    state.view.browser().navigate(entry.location);
+                    if let Some(filename) = state.filename.as_ref() {
+                        filename.set_text("");
+                        state.filename_edited.set(false);
+                    }
+                }
+                Ok(entry) if state.view.browser().allows_entry(&entry) => {
+                    match entry.location.native_path() {
+                        Some(path) => state.complete_remote(path.to_path_buf()),
+                        None => state.show_error("Choose an existing, accessible file"),
+                    }
+                }
+                Ok(_) => state.show_error("The file does not match the selected filter"),
+                Err(_) => state.show_error("Choose an existing, accessible file"),
+            }
+        });
     }
 
     fn accept_save_file(self: &Rc<Self>) {
@@ -668,6 +924,7 @@ impl ChooserState {
             return;
         }
         self.accept_button.set_sensitive(false);
+        let generation = self.accept_generation.get();
         let weak = Rc::downgrade(self);
         let _task = glib::MainContext::default().spawn_local(async move {
             let result = check_destinations(&folder, &names).await;
@@ -675,6 +932,9 @@ impl ChooserState {
                 return;
             };
             state.destination_check.set(false);
+            if state.accept_generation.get() != generation {
+                return;
+            }
             state.accept_button.set_sensitive(true);
             if state.completion.borrow().is_none() {
                 return;
@@ -803,6 +1063,9 @@ impl ChooserState {
     }
 
     fn activate_file(self: &Rc<Self>, location: &Location) {
+        if self.download_in_progress() {
+            return;
+        }
         match &self.request.kind {
             ChooserKind::Open {
                 directory: false, ..
@@ -1086,7 +1349,20 @@ fn build_chooser_with_source(
             details.append(&row);
             None
         }
-        ChooserKind::Open { .. } => None,
+        ChooserKind::Open {
+            directory: false, ..
+        } => {
+            let row = labeled_row("Name", None::<&gtk::Widget>);
+            let entry = form_entry();
+            entry.set_hexpand(true);
+            entry.set_placeholder_text(Some("Enter a filename or https:// URL"));
+            row.append(&entry);
+            details.append(&row);
+            Some(entry)
+        }
+        ChooserKind::Open {
+            directory: true, ..
+        } => None,
     };
 
     let options = chooser_options();
@@ -1130,13 +1406,13 @@ fn build_chooser_with_source(
     });
     options.set_visible(options.first_child().is_some());
 
-    let error = gtk::Label::new(None);
-    error.add_css_class("form-message");
-    error.add_css_class("error");
-    error.set_xalign(0.0);
-    error.set_wrap(true);
+    let error = gtk::Label::builder()
+        .accessible_role(gtk::AccessibleRole::Alert)
+        .xalign(0.0)
+        .ellipsize(gtk::pango::EllipsizeMode::End)
+        .build();
+    error.add_css_class("form-field-error");
     error.set_visible(false);
-    details.append(&error);
 
     let cancel = gtk::Button::with_label("Cancel");
     cancel.add_css_class("action-dialog-cancel");
@@ -1153,12 +1429,22 @@ fn build_chooser_with_source(
     }
     let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     actions.add_css_class("chooser-actions");
+    let download_holder = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    download_holder.set_visible(false);
+    let normal_status = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    normal_status.append(&download_holder);
     if let Some(hints) = save_hints(&request.kind, &theme) {
-        actions.append(&hints);
+        normal_status.append(&hints);
     }
-    let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    spacer.set_hexpand(true);
-    actions.append(&spacer);
+    let action_status = gtk::Stack::builder()
+        .hexpand(true)
+        .hhomogeneous(false)
+        .vhomogeneous(true)
+        .build();
+    action_status.add_named(&normal_status, Some("normal"));
+    action_status.add_named(&error, Some("error"));
+    action_status.set_visible_child_name("normal");
+    actions.append(&action_status);
     actions.append(&cancel);
     actions.append(&accept);
     let details_scroll = gtk::ScrolledWindow::builder()
@@ -1195,15 +1481,21 @@ fn build_chooser_with_source(
         window: window.clone(),
         view: view.clone(),
         filename: filename.clone(),
-        filename_selection: RefCell::new(None),
+        filename_selection: RefCell::new(Vec::new()),
+        filename_edited: Cell::new(false),
         filter_dropdown,
         filters,
         choices,
         read_only,
         error,
+        action_status,
         destination_check: Cell::new(false),
+        accept_generation: Cell::new(0),
         accept_button: accept.clone(),
         completion: RefCell::new(Some(Box::new(completion))),
+        download_cancel: RefCell::new(None),
+        download_holder,
+        download_progress: RefCell::new(None),
     });
 
     let weak = Rc::downgrade(&state);
@@ -1219,6 +1511,19 @@ fn build_chooser_with_source(
         }
     });
     if let Some(filename) = filename {
+        let weak = Rc::downgrade(&state);
+        filename.connect_changed(move |_| {
+            if let Some(state) = weak.upgrade() {
+                state.filename_selection.replace(
+                    state
+                        .name_selection_entries()
+                        .iter()
+                        .map(|entry| entry.location.clone())
+                        .collect(),
+                );
+                state.filename_edited.set(true);
+            }
+        });
         let weak = Rc::downgrade(&state);
         filename.connect_activate(move |_| {
             if let Some(state) = weak.upgrade() {
@@ -1599,7 +1904,7 @@ fn tenxer_keys(
                     }
                 }) as Rc<dyn Fn()>
             }),
-            edit_name: state.filename.is_some().then(|| {
+            edit_name: (save_request && state.filename.is_some()).then(|| {
                 Rc::new(move || {
                     if let Some(state) = naming.upgrade() {
                         state.edit_name();
@@ -1770,6 +2075,9 @@ fn install_shortcuts(
             }
             if preview.is_enabled() {
                 preview.close();
+                return glib::Propagation::Stop;
+            }
+            if state.cancel_download() {
                 return glib::Propagation::Stop;
             }
             state.cancel();

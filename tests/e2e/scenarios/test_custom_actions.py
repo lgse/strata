@@ -75,7 +75,7 @@ def test_action_editor_tabs_validate_save_and_reopen(strata):
     strata.pointer.click(control("Stop", "toggle button"))
     strata.pointer.click(control("Menu item", "toggle button"))
     fill("Extensions", "txt")
-    strata.pointer.click(control("Create action", "button"))
+    strata.pointer.click(strata.settle(control("Create action", "button")))
     strata.wait(
         lambda: control("Script", "page tab").has_state("selected"),
         "invalid argument token to return to Script",
