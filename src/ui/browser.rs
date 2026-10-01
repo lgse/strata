@@ -89,7 +89,7 @@ pub(super) use crate::ui::browser::entry::{
     format_file_size, icon_for_name, metadata_needs_fill, model_type_group, rounded_size_and_unit,
 };
 pub(crate) use crate::ui::browser::file_commands::{
-    ConflictFocus, CreateRefusal, Yank, can_rename,
+    ConflictFocus, CreateRefusal, PinChange, TargetCommand, Yank, can_rename,
 };
 pub(super) use crate::ui::browser::inline_edit::{queue_rename, reveal_rename_row};
 pub(in crate::ui) use crate::ui::browser::listing_filter::{
@@ -246,6 +246,7 @@ pub(super) struct ViewState {
     /// dialog opens once the entry it describes is actually loaded.
     pending_select_properties: Cell<bool>,
     pending_extract_retry: RefCell<Option<(FileEntry, Location)>>,
+    extract_destination: RefCell<Option<Location>>,
     pending_archive_destination: RefCell<Option<Location>>,
     /// The entries a just-dispatched, non-permanent delete requested,
     /// snapshotted so a `CompletedWithErrors` response naming entries that
@@ -266,6 +267,7 @@ pub(super) struct ViewState {
     drag_autoscroll: RefCell<Option<Rc<columns::drag_scroll::DragAutoscroll>>>,
     drag_source_depth: Cell<Option<usize>>,
     suppress_scroll_after_drop: Cell<bool>,
+    transfer_replaces_cursor: Cell<bool>,
     drop_active_depths: Cell<Option<(usize, usize)>>,
     find: RefCell<find::FindState>,
     listing_filter: listing_filter::FilterState,
@@ -354,7 +356,6 @@ impl BrowserView {
             .hexpand(true)
             .width_chars(36)
             .placeholder_text("Enter a path or URI…")
-            .tooltip_text(super::accessibility::LOCATION_LABEL)
             .build();
         location_entry.add_css_class("location-entry");
         let confirm_location = gtk::Button::builder()
@@ -521,7 +522,7 @@ impl BrowserView {
 
         let global_activity_spinner = gtk::Spinner::new();
         global_activity_spinner.add_css_class("global-activity-spinner");
-        global_activity_spinner.set_tooltip_text(Some("Working…"));
+        crate::ui::accessibility::set_description(&global_activity_spinner, Some("Working…"));
         global_activity_spinner.set_visible(false);
         let location_control = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         location_control.add_css_class("location-control");
@@ -631,6 +632,7 @@ impl BrowserView {
             pending_location_selection: RefCell::new(None),
             pending_select_properties: Cell::new(false),
             pending_extract_retry: RefCell::new(None),
+            extract_destination: RefCell::new(None),
             pending_archive_destination: RefCell::new(None),
             pending_delete_entries: RefCell::new(Vec::new()),
             pending_delete_dissolve: RefCell::new(None),
@@ -646,6 +648,7 @@ impl BrowserView {
             drag_autoscroll: RefCell::new(None),
             drag_source_depth: Cell::new(None),
             suppress_scroll_after_drop: Cell::new(false),
+            transfer_replaces_cursor: Cell::new(false),
             drop_active_depths: Cell::new(None),
             find: RefCell::new(find::FindState::default()),
             listing_filter: listing_filter::FilterState::default(),
@@ -1657,16 +1660,6 @@ impl BrowserView {
         self.state.browser.toggle_visual(kind, order.as_deref())
     }
 
-    pub fn begin_extend(&self) -> bool {
-        self.keyboard_navigation();
-        let Some(depth) = self.focused_listing_depth() else {
-            return false;
-        };
-        self.state.browser.set_active_column(depth);
-        let order = self.displayed_order(depth);
-        self.state.browser.begin_extend(order.as_deref())
-    }
-
     pub fn refresh_visual(&self) {
         if let Some(depth) = self.state.browser.active_depth() {
             let order = self.displayed_order(depth);
@@ -2115,6 +2108,13 @@ impl BrowserView {
                 .map(|position| (depth, position))
         });
         let order = depth.and_then(|depth| self.displayed_order(depth));
+        let cursor = || {
+            self.state
+                .browser
+                .focused_item()
+                .map(|(depth, position, _)| (depth, position))
+        };
+        let before = cursor();
         if let Some((depth, position)) = target {
             self.state
                 .browser
@@ -2123,6 +2123,12 @@ impl BrowserView {
             self.state
                 .browser
                 .page_cursor(direction, steps, order.as_deref());
+        }
+        // A move that clears the selection reports a fill, not a focus change.
+        if let Some((depth, position)) = cursor()
+            && Some((depth, position)) != before
+        {
+            self.state.mirror_focused_folder(depth, Some(position));
         }
         if let Some((view, scroll)) = collection {
             let position = self.cursor_view_position(&view);
@@ -2340,7 +2346,7 @@ impl ViewState {
     fn begin_global_activity(self: &Rc<Self>, label: impl Into<String>) -> GlobalActivity {
         let label = label.into();
         let id = self.global_activity.borrow_mut().begin(label.clone());
-        self.global_activity_spinner.set_tooltip_text(Some(&label));
+        crate::ui::accessibility::set_description(&self.global_activity_spinner, Some(&label));
         self.global_activity_spinner.set_visible(true);
         self.global_activity_spinner.start();
         GlobalActivity {
@@ -2356,12 +2362,14 @@ impl ViewState {
             activity.current_label().map(str::to_owned)
         };
         if let Some(label) = current {
-            self.global_activity_spinner.set_tooltip_text(Some(&label));
+            crate::ui::accessibility::set_description(&self.global_activity_spinner, Some(&label));
         } else {
             self.global_activity_spinner.stop();
             self.global_activity_spinner.set_visible(false);
-            self.global_activity_spinner
-                .set_tooltip_text(Some("Working…"));
+            crate::ui::accessibility::set_description(
+                &self.global_activity_spinner,
+                Some("Working…"),
+            );
         }
     }
 
@@ -2434,6 +2442,14 @@ impl ViewState {
             let Some(position) = event.position() else {
                 return;
             };
+            // Only GTK's synthesized motion lacks an event time.
+            if event.time() == gtk::gdk::CURRENT_TIME {
+                state
+                    .input_ownership
+                    .borrow_mut()
+                    .pointer_resynced(position);
+                return;
+            }
             let hovered = state.column_depth_at(x, y);
             BrowserView { state }.record_pointer_hover(position, hovered);
         });

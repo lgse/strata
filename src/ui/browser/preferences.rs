@@ -61,6 +61,7 @@ impl BrowserView {
             manager,
             PreferenceManager::tenxer_mode,
             move |view, enabled| {
+                view.browser().set_preserve_fill_on_removal(enabled);
                 if primed.replace(true) && !enabled {
                     view.end_tenxer_session();
                 }
@@ -69,9 +70,7 @@ impl BrowserView {
         let interactive = self.state.interactive;
         self.bind_view_preference(
             manager,
-            move |manager| {
-                interactive && manager.columns_mirror_selection() && !manager.tenxer_mode()
-            },
+            move |manager| interactive && manager.columns_mirror_selection(),
             Self::set_columns_mirror_selection,
         );
         self.bind_view_preference(

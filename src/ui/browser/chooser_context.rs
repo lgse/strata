@@ -26,6 +26,7 @@ enum Action {
     Rename,
     Preview,
     Properties,
+    Compress,
     Trash,
     PermanentDelete,
     NewFolder,
@@ -194,6 +195,16 @@ pub(super) fn install_item(
             true,
             false,
         ));
+        if entry.location.native_path().is_some() {
+            options.push((
+                Action::Compress,
+                crate::assets::icons::PACKAGE_PLUS,
+                "Compress…",
+                ContextHint::None,
+                true,
+                false,
+            ));
+        }
         if trash_visible {
             options.push((
                 if in_trash {
@@ -230,6 +241,10 @@ pub(super) fn install_item(
                 }
                 Action::Preview => preview_context_entry(&state, depth, source, entry.clone()),
                 Action::Properties => state.show_entry_properties_at(entry.clone(), depth),
+                Action::Compress => {
+                    let entries = super::context_menu::context_entries(&state, &target);
+                    state.show_compress_dialog(entries);
+                }
                 Action::Trash | Action::PermanentDelete => {
                     let entries = super::context_menu::context_entries(&state, &target);
                     let permanent = matches!(action, Action::PermanentDelete);

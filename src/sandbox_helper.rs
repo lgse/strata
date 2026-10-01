@@ -22,6 +22,7 @@ use crate::{
 
 mod appimage;
 pub(crate) mod archive_cover;
+#[cfg(feature = "rar")]
 mod archive_rar;
 mod document_media;
 mod media;
@@ -31,9 +32,17 @@ mod raw_metadata;
 const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(20);
 
 pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
+    #[cfg(not(feature = "rar"))]
+    if arguments
+        .first()
+        .is_some_and(|operation| operation == "extract-rar")
+    {
+        return Err("RAR support is disabled in this build.".to_owned());
+    }
     // Streams to its own stdout pipe instead of a bound `/output` file, so it
     // does not fit the fixed [operation, input, output, value, media_backend]
     // shape every other operation below shares.
+    #[cfg(feature = "rar")]
     if let [operation, input, rest @ ..] = arguments
         && operation == "extract-rar"
     {

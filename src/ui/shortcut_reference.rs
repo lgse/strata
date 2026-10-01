@@ -31,6 +31,9 @@ pub(crate) enum ContextHint {
     Duplicate,
     Paste,
     Pin,
+    MoveTo,
+    CopyTo,
+    Restore,
     Terminal,
     Trash,
     PermanentDelete,
@@ -404,12 +407,6 @@ const TENXER_SETTINGS: &[Binding] = &[
     },
     Binding {
         category: "Selection",
-        action: "Extend selection",
-        note: "",
-        keys: "Shift + ↑ / Shift + ↓",
-    },
-    Binding {
-        category: "Selection",
         action: "Open the context menu",
         note: "",
         keys: "Menu / Shift + F10",
@@ -470,6 +467,36 @@ const TENXER_SETTINGS: &[Binding] = &[
     },
     Binding {
         category: "Files",
+        action: "Open terminal in the focused folder",
+        note: "",
+        keys: "; t",
+    },
+    Binding {
+        category: "Files",
+        action: "Compress",
+        note: "The selection, or the focused item",
+        keys: "; c",
+    },
+    Binding {
+        category: "Files",
+        action: "Extract the archive here / to a folder",
+        note: "; E types the folder in the footer",
+        keys: "; e / ; E",
+    },
+    Binding {
+        category: "Files",
+        action: "Move / copy to a folder",
+        note: "Type the folder in the footer; Tab completes",
+        keys: "M / C",
+    },
+    Binding {
+        category: "Files",
+        action: "Restore from Trash",
+        note: "The selection, or the focused item",
+        keys: "R",
+    },
+    Binding {
+        category: "Files",
         action: "Create a file or folder",
         note: "End the name with / for a folder",
         keys: "a",
@@ -483,7 +510,7 @@ const TENXER_SETTINGS: &[Binding] = &[
     Binding {
         category: "Files",
         action: "Move to Trash",
-        note: "After confirming",
+        note: "After confirming; d d confirms",
         keys: "d / Delete",
     },
     Binding {
@@ -662,12 +689,6 @@ const TENXER_SETTINGS: &[Binding] = &[
     },
     Binding {
         category: "Application",
-        action: "Leave 10xer mode",
-        note: "",
-        keys: "q",
-    },
-    Binding {
-        category: "Application",
         action: "Close window",
         note: "",
         keys: "Q",
@@ -744,6 +765,16 @@ const TENXER_PLACE_CHORDS: &[PlaceChord] = &[
         },
         reference_keys: "",
         reference_label: "Visible PINNED rows in sidebar order",
+    },
+    PlaceChord {
+        binding: Binding {
+            category: "Places",
+            action: "Pin / unpin a folder",
+            note: "The folder under the cursor, or the current folder",
+            keys: "g + / g -",
+        },
+        reference_keys: "",
+        reference_label: "Pin / unpin a folder",
     },
     PlaceChord {
         binding: Binding {
@@ -1105,7 +1136,7 @@ const TENXER_FILES: &[(&str, &str)] = &[
     ("Y / X", "Clear copy and cut marks"),
     ("p", "Paste; Keep Both is focused on conflicts"),
     ("P / Ctrl+V", "Paste; Replace is focused on conflicts"),
-    ("d / Delete", "Move to Trash after confirming"),
+    ("d / Delete", "Move to Trash after confirming; d d confirms"),
     ("D / Shift+Delete", "Delete permanently after confirming"),
     ("a", "Create a file; end with / for a folder"),
     ("c c / c n", "Copy path / name"),
@@ -1120,19 +1151,21 @@ const TENXER_FILES: &[(&str, &str)] = &[
         "; 1–9 / ; 0",
         "Run one of the first ten matching custom actions",
     ),
+    ("; t", "Open a terminal in the focused folder"),
+    ("; c", "Compress the selection, or the focused item"),
+    ("; e / ; E", "Extract the archive here / to a typed folder"),
+    ("M / C", "Move / copy to a typed folder"),
+    ("R", "Restore from Trash"),
     ("Ctrl+Shift+N", "Create a folder"),
     ("Space", "Toggle the focused item and move down"),
     ("v / V", "Visual select / visual unset"),
     ("Ctrl+A", "Select all items in the focused pane"),
     ("Ctrl+R", "Invert the selection"),
-    ("Shift+↑ / ↓", "Extend selection"),
-    ("Shift+PgUp / PgDn", "Extend selection by one page"),
     ("Alt+Enter", "Show item properties"),
     ("Menu / Shift+F10", "Open the context menu"),
 ];
 
 const TENXER_MODE: &[(&str, &str)] = &[
-    ("q", "Leave 10xer mode"),
     ("Q", "Close the current window"),
     ("Ctrl+Shift+M", "Toggle 10xer mode"),
     ("F1 / ~", "Show or hide this reference"),
@@ -1218,6 +1251,7 @@ fn default_hint(hint: ContextHint) -> &'static str {
         ContextHint::Duplicate => "Ctrl+D",
         ContextHint::Paste => "Ctrl+V",
         ContextHint::Pin => "P",
+        ContextHint::MoveTo | ContextHint::CopyTo | ContextHint::Restore => "",
         ContextHint::Terminal => "Ctrl+T",
         ContextHint::Trash => "Del",
         ContextHint::PermanentDelete => "Shift+Del",
@@ -1240,6 +1274,9 @@ fn tenxer_hint(hint: ContextHint) -> &'static str {
         ContextHint::Trash => "d",
         // GTK capitalizes menu accelerators; spell out Shift to distinguish D from d.
         ContextHint::PermanentDelete => "Shift+D",
+        ContextHint::MoveTo => "Shift+M",
+        ContextHint::CopyTo => "Shift+C",
+        ContextHint::Restore => "Shift+R",
         ContextHint::None
         | ContextHint::ChooserPreview
         | ContextHint::CopyPath

@@ -223,7 +223,7 @@ impl ViewState {
             BrowserEvent::SortingStarted { depth } => {
                 self.overlay.set_cursor_from_name(Some("wait"));
                 if let Some(column) = self.columns.borrow().get(*depth) {
-                    column.spinner.set_tooltip_text(Some("Sorting…"));
+                    crate::ui::accessibility::set_description(&column.spinner, Some("Sorting…"));
                     column.spinner.set_visible(true);
                     column.spinner.start();
                     set_column_busy(column, true);
@@ -242,7 +242,7 @@ impl ViewState {
                         &column.sort_direction_button,
                     );
                     stop_column_spinner(column);
-                    column.spinner.set_tooltip_text(None);
+                    crate::ui::accessibility::set_description(&column.spinner, None);
                     set_column_busy(column, false);
                 }
             }
@@ -882,6 +882,10 @@ impl ViewState {
             }
             BrowserEvent::ArchiveCompleted { select_name, .. } => {
                 self.pending_extract_retry.replace(None);
+                let extracted_elsewhere = self
+                    .extract_destination
+                    .take()
+                    .is_some_and(|destination| self.browser.active_location() != Some(destination));
                 if select_name.is_empty() {
                     self.pending_archive_destination.take();
                 }
@@ -940,7 +944,7 @@ impl ViewState {
                         if let Some(state) = weak.upgrade()
                             && state.browser.navigation_generation() == navigation_generation
                         {
-                            if !select_name.is_empty() {
+                            if !select_name.is_empty() && !extracted_elsewhere {
                                 state.pending_select.borrow_mut().push(select_name);
                             }
                             state.browser.reload_active();
@@ -1148,7 +1152,7 @@ impl ViewState {
         self.mode_views.borrow().prune_stale_search_results();
     }
 
-    fn mirror_focused_folder(self: &Rc<Self>, depth: usize, position: Option<usize>) {
+    pub(super) fn mirror_focused_folder(self: &Rc<Self>, depth: usize, position: Option<usize>) {
         if let Some(source) = self.pending_mirror.borrow_mut().take() {
             source.remove();
         }
@@ -1156,6 +1160,7 @@ impl ViewState {
             return;
         };
         if self.browser.child_mirror_suppressed()
+            || self.browser.visual_kind().is_some()
             || !self.columns_mirror_selection.get()
             || self.active_rename.borrow().is_some()
             || self.pending_new_entry.borrow().is_some()
@@ -1182,8 +1187,10 @@ impl ViewState {
             .borrow()
             .get(depth)
             .is_some_and(|column| column.map.has_query());
+        // Opening or closing the child column would end a 10xer range.
         if filtered
             || self.browser.child_mirror_suppressed()
+            || self.browser.visual_kind().is_some()
             || !self.columns_mirror_selection.get()
             || self.active_rename.borrow().is_some()
             || self.pending_new_entry.borrow().is_some()

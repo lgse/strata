@@ -381,7 +381,6 @@ impl ViewState {
         view.transfer_footer.set_visible(true);
         view.transfer_percent.set_text(&status);
         view.transfer_bytes.set_text(&bytes);
-        view.transfer_items.set_tooltip_text(Some(&items));
         view.transfer_items.set_text(&items);
         view.transfer_rate.set_text(&transfer_rate_status(
             self.transfer_rate_bytes_per_second.get(),

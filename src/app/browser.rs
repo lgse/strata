@@ -1614,6 +1614,12 @@ impl Browser {
     }
 
     /// `order` is the pane's displayed order, which an active visual range walks.
+    pub fn set_preserve_fill_on_removal(&self, preserve: bool) {
+        self.state
+            .borrow_mut()
+            .set_preserve_fill_on_removal(preserve);
+    }
+
     pub fn place_cursor(&self, depth: usize, position: usize, order: Option<&[usize]>) {
         let Some(cleared) = self.state.borrow_mut().place_cursor(depth, position) else {
             return;
@@ -1664,19 +1670,6 @@ impl Browser {
         };
         self.emit_fill(depth, focused);
         true
-    }
-
-    pub fn begin_extend(&self, order: Option<&[usize]>) -> bool {
-        let begun = self.state.borrow_mut().begin_extend(order);
-        let Some((depth, focused)) = begun else {
-            return false;
-        };
-        self.emit_fill(depth, focused);
-        true
-    }
-
-    pub fn end_extend(&self) {
-        self.state.borrow_mut().end_extend();
     }
 
     pub fn toggle_visual_cursor(&self, order: Option<&[usize]>) -> bool {
@@ -2090,6 +2083,27 @@ impl Browser {
         move_sources: bool,
         reveal: bool,
     ) {
+        self.start_transfer(destination, items, move_sources, reveal, false);
+    }
+
+    pub fn transfer_replacing_cursor(
+        self: &Rc<Self>,
+        destination: Location,
+        items: Vec<PasteItem>,
+        move_sources: bool,
+        reveal: bool,
+    ) {
+        self.start_transfer(destination, items, move_sources, reveal, true);
+    }
+
+    fn start_transfer(
+        self: &Rc<Self>,
+        destination: Location,
+        items: Vec<PasteItem>,
+        move_sources: bool,
+        reveal: bool,
+        replace_cursor: bool,
+    ) {
         if items.is_empty() || destination.is_recent_location() {
             return;
         }
@@ -2106,7 +2120,7 @@ impl Browser {
         self.state.borrow_mut().set_selectionless_removals(
             items
                 .iter()
-                .filter(|_| move_sources)
+                .filter(|_| move_sources && !replace_cursor)
                 .map(|item| item.source.clone()),
         );
         self.transfer_destination.replace(Some(destination.clone()));

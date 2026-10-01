@@ -258,7 +258,7 @@ def test_list_return_restores_nested_scroll_selection_and_keyboard_cursor(
             (parent / f"folder-{index:03}").mkdir()
 
     def scroll_and_enter(parent, clicks):
-        container = strata.entry_container()
+        container = strata.wait(strata.entry_container, "the loaded directory listing")
         viewport = next(
             node.screen_bounds()
             for node in container.ancestors()

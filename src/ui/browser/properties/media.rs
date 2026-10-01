@@ -20,7 +20,6 @@ fn append_row(parent: &gtk::Box, name: &str, value: &str) -> gtk::Label {
     label.set_selectable(true);
     label.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
     label.set_max_width_chars(48);
-    label.set_tooltip_text(Some(value));
     row.add_css_class("properties-row");
     heading.add_css_class("properties-row-label");
     label.add_css_class("properties-row-value");

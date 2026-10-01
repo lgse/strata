@@ -9,6 +9,10 @@ repository = "https://github.com/LGSE/strata"
 keywords = ["file-manager", "gtk4", "linux", "wayland"]
 categories = ["filesystem", "gui"]
 
+[features]
+default = ["rar"]
+rar = ["dep:unrar", "dep:unrar_sys"]
+
 [dependencies]
 ashpd = { version = "=0.13.13", default-features = false, features = ["backend", "file_chooser", "async-io", "tracing"] }
 async-io = "2.6.0"
@@ -59,8 +63,8 @@ ureq = { version = "3.4", features = ["json"] }
 zbus = { version = "5.19.0", default-features = false, features = ["async-io"] }
 zstd = "0.13.3"
 zip = "8.6.0"
-unrar = "0.5.8"
-unrar_sys = "0.5.8"
+unrar = { version = "0.5.8", optional = true }
+unrar_sys = { version = "0.5.8", optional = true }
 
 [build-dependencies]
 glib-build-tools = "0.22.8"

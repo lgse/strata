@@ -1783,12 +1783,7 @@ fn normal_copy_and_move_to_keep_home_search_creation_and_reveal() {
                             .first_child();
                         while let Some(widget) = child {
                             child = widget.next_sibling();
-                            if widget
-                                .downcast_ref::<gtk::Button>()
-                                .and_then(|button| button.tooltip_text())
-                                .as_deref()
-                                == Some(home_destination.to_string_lossy().as_ref())
-                            {
+                            if widget.widget_name() == home_destination.to_string_lossy().as_ref() {
                                 return true;
                             }
                         }

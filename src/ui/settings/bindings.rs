@@ -24,7 +24,7 @@ pub(super) fn choice_menu<T: Copy + PartialEq + 'static>(
         .build();
     button.add_css_class("form-control");
     button.add_css_class("settings-choice");
-    button.set_tooltip_text(Some(title));
+    crate::ui::accessibility::set_description(&button, Some(title));
     super::super::accessibility::set_label(&button, title);
     let labels = choices.to_vec();
     manager.bind_preference(&button, read, move |widget, value| {

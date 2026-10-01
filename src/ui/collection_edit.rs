@@ -105,7 +105,7 @@ impl Drop for ActiveEdit {
         self.field.set_visible(false);
         self.field.set_sensitive(true);
         self.field.remove_css_class("error");
-        self.field.set_tooltip_text(None);
+        crate::ui::accessibility::set_description(&self.field, None);
         self.target.widgets.display.set_visible(true);
         if let Some(finish) = &self.target.finish {
             finish();
@@ -152,7 +152,7 @@ pub(super) fn begin(
     field.set_text(&entry.display_name);
     field.set_sensitive(true);
     field.remove_css_class("error");
-    field.set_tooltip_text(None);
+    crate::ui::accessibility::set_description(&field, None);
     let changed = field.connect_changed(|field| {
         update_basename_validation(field);
     });
@@ -243,12 +243,12 @@ pub(in crate::ui) fn update_basename_validation(field: &gtk::Entry) -> bool {
     match basename_field_error(text.as_str()) {
         None => {
             field.remove_css_class("error");
-            field.set_tooltip_text(None);
+            crate::ui::accessibility::set_description(field, None);
             !text.is_empty()
         }
         Some(message) => {
             field.add_css_class("error");
-            field.set_tooltip_text(Some(message));
+            crate::ui::accessibility::set_description(field, Some(message));
             false
         }
     }

@@ -62,7 +62,7 @@ artifacts. See its [build and redistribution requirements](packaging/media-runti
 ## UnRAR
 
 - Project: <https://www.rarlab.com/rar_add.htm>
-- Bundled source: UnRAR 7.01 (2024-05-12), statically linked by `unrar_sys` 0.5.8
+- Bundled source: UnRAR 7.01 (2024-05-12), statically linked by `unrar_sys` 0.5.8 only with the default-enabled `rar` Cargo feature
 - Copyright: Alexander Roshal
 - License: custom UnRAR license; **not** MIT or Apache-2.0
 - Full license: [`data/licenses/UnRAR.txt`](data/licenses/UnRAR.txt), also shipped as `UnRAR.txt` in release archives
@@ -72,7 +72,9 @@ RAR-compatible archiver or recreate the proprietary RAR compression algorithm.
 The wrapper crates' permissive metadata does not cover this native implementation.
 The pinned crate archive has SHA-256
 `8b77675b883cfbe6bf41e6b7a5cd6008e0a83ba497de3d96e41a064bbeead765`.
-Strata does not modify its vendored source.
+Strata does not modify its vendored source. Builds using `--no-default-features`
+without `--features rar` exclude both wrapper crates and this native implementation.
+The source distribution retains this notice for builds that enable RAR support.
 
 ## Rust dependencies
 

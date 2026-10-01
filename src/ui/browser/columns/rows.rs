@@ -833,7 +833,8 @@ pub(super) fn column_rows(
             origin.is_some()
                 && crate::ui::preferences::PreferenceManager::shared().filter_include_subfolders(),
         );
-        row.set_tooltip_text(origin.as_deref());
+        row.set_widget_name(origin.as_deref().unwrap_or("file-row"));
+        crate::ui::accessibility::set_description(&row, origin.as_deref());
         let active = entry.as_ref().is_some_and(|entry| {
             browser
                 .as_ref()

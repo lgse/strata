@@ -60,11 +60,6 @@ def test_properties_explains_unreadable_folder_contents(sized_folder, strata):
         message = "Totals are incomplete.\nSome folders or entries couldn't be read."
         warning = strata.wait(lambda: dialog.find(name=message), "the incomplete measurement warning")
         assert warning.is_rendered()
-        strata.pointer.move_to(*warning.screen_bounds().center)
-        strata.wait(
-            lambda: strata.application.application_node.find(role="label", name=message),
-            "the warning tooltip",
-        )
     finally:
         blocked.chmod(0o755)
 

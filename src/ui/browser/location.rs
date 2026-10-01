@@ -2252,7 +2252,10 @@ impl ViewState {
                 current_label.add_css_class("breadcrumb");
                 current_label.add_css_class("current");
                 ellipsize_crumb_label(&current_label);
-                current_label.set_tooltip_text(Some(&crumb.display_path()));
+                crate::ui::accessibility::set_description(
+                    &current_label,
+                    Some(&crumb.display_path()),
+                );
                 let copy = gtk::Button::builder().tooltip_text("Copy path").build();
                 let copy_icon = crate::assets::primary_icon(crate::assets::icons::COPY, 16);
                 copy.set_child(Some(&copy_icon));
@@ -2295,7 +2298,7 @@ impl ViewState {
                     button.add_css_class("breadcrumb-root");
                 }
                 button.set_has_frame(false);
-                button.set_tooltip_text(Some(&crumb.display_path()));
+                crate::ui::accessibility::set_description(&button, Some(&crumb.display_path()));
                 button.set_cursor_from_name(Some("pointer"));
                 let weak = Rc::downgrade(self);
                 button.connect_clicked(move |_| {
@@ -2395,7 +2398,6 @@ impl ViewState {
             let button = gtk::Button::builder()
                 .child(&item_row)
                 .has_frame(false)
-                .tooltip_text(crumb.display_path())
                 .build();
             button.set_cursor_from_name(Some("pointer"));
             button.add_css_class("breadcrumb-hierarchy-item");

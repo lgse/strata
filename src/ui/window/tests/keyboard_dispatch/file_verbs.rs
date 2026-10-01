@@ -553,44 +553,6 @@ fn tenxer_dot_toggles_hidden_files_in_every_window_and_filter() {
     );
 }
 
-/// Writes a recorder application for `mime_types` into the test's private
-/// data directory and associates it with each of them.
-fn recorder_app(id: &str, name: &str, mime_types: &str, output: &Path) {
-    let associations = glib::user_config_dir().join("mimeapps.list");
-    let mut lines: Vec<String> = std::fs::read_to_string(&associations)
-        .map(|list| list.lines().map(str::to_owned).collect())
-        .unwrap_or_else(|_| vec!["[Added Associations]".to_owned()]);
-    for mime_type in mime_types.split(';').filter(|value| !value.is_empty()) {
-        let key = format!("{mime_type}=");
-        match lines.iter_mut().find(|line| line.starts_with(&key)) {
-            Some(line) => line.push_str(&format!("{id}.desktop;")),
-            None => lines.push(format!("{key}{id}.desktop;")),
-        }
-    }
-    std::fs::create_dir_all(glib::user_config_dir()).expect("config");
-    std::fs::write(&associations, lines.join("\n") + "\n").expect("associations");
-    let applications = glib::user_data_dir().join("applications");
-    std::fs::create_dir_all(&applications).expect("applications");
-    let script = applications.join(format!("{id}.sh"));
-    std::fs::write(
-        &script,
-        format!(
-            "#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}'\n",
-            output.display()
-        ),
-    )
-    .expect("recorder");
-    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).expect("executable");
-    std::fs::write(
-        applications.join(format!("{id}.desktop")),
-        format!(
-            "[Desktop Entry]\nType=Application\nName={name}\nExec={} %F\nMimeType={mime_types}\n",
-            script.display()
-        ),
-    )
-    .expect("desktop file");
-}
-
 fn chooser_sections(overlay: &gtk::Overlay) -> Vec<(String, Vec<String>)> {
     let Some(list) = widget_with_class(overlay.upcast_ref(), "open-with-list") else {
         return Vec::new();
@@ -867,6 +829,7 @@ fn tenxer_numbered_actions_run_the_listed_match_on_the_current_targets() {
             let subs: Vec<String> = (1..=8).map(|index| format!("Sub {index}")).collect();
             let keys = ["3", "4", "5", "6", "7", "8", "9", "0"];
             listed.extend(keys.iter().copied().zip(subs.iter().map(String::as_str)));
+            listed.extend(LETTERED_ACTIONS);
             assert_eq!(
                 fixture.shortcuts.chord_options().expect("options"),
                 listed
@@ -906,7 +869,7 @@ fn tenxer_numbered_actions_run_the_listed_match_on_the_current_targets() {
             wait_until(|| fixture.shortcuts.chord_options().is_some());
             assert_eq!(
                 fixture.shortcuts.chord_options().expect("options"),
-                [("1".to_owned(), "Aaa confirm".to_owned())]
+                owned_rows(&[&[("1", "Aaa confirm")], LETTERED_ACTIONS].concat())
             );
             plain(&fixture, Key::_2);
             assert_eq!(feedback(&fixture), "No action 2");
@@ -955,10 +918,45 @@ fn tenxer_numbered_actions_run_the_listed_match_on_the_current_targets() {
             wait_until(|| fixture.shortcuts.chord_options().is_some());
             assert_eq!(
                 fixture.shortcuts.chord_options().expect("options"),
-                [("1\u{2013}0".to_owned(), "No matching actions".to_owned())]
+                owned_rows(&[&[("1\u{2013}0", "No matching actions")], LETTERED_ACTIONS].concat())
             );
             plain(&fixture, Key::_1);
             assert_eq!(feedback(&fixture), "No action 1");
+        },
+    );
+}
+
+const LETTERED_ACTIONS: &[(&str, &str)] = &[
+    ("t", "Open terminal here"),
+    ("c", "Compress\u{2026}"),
+    ("e", "Extract here"),
+    ("E", "Extract to\u{2026}"),
+];
+
+fn owned_rows(rows: &[(&str, &str)]) -> Vec<(String, String)> {
+    rows.iter()
+        .map(|(key, name)| ((*key).to_owned(), (*name).to_owned()))
+        .collect()
+}
+
+#[test]
+fn tenxer_action_chord_terminal_refuses_a_non_local_folder() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::file_verbs::tenxer_action_chord_terminal_refuses_a_non_local_folder",
+        || {
+            let fixture = KeyboardFixture::new();
+            enable_tenxer(&fixture);
+            let browser = fixture.view.browser();
+            browser.navigate(Location::uri("trash:///"));
+            wait_until(|| browser.active_location() == Some(Location::uri("trash:///")));
+            wait_loaded(&browser, 0);
+            focus_files(&fixture);
+
+            plain(&fixture, Key::semicolon);
+            plain(&fixture, Key::t);
+            assert_eq!(feedback(&fixture), "Can\u{2019}t open a terminal here");
+            assert!(!modal_visible(&fixture.overlay), "no error dialog");
+            assert_eq!(fixture.shortcuts.armed_chord(), None);
         },
     );
 }

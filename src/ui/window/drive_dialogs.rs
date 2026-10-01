@@ -589,7 +589,7 @@ where
     let activity = gtk::Spinner::new();
     activity.add_css_class("action-dialog-loading");
     activity.set_valign(gtk::Align::Center);
-    activity.set_tooltip_text(Some("Formatting drive"));
+    crate::ui::accessibility::set_description(&activity, Some("Formatting drive"));
     activity.start();
     let message = gtk::Label::new(Some(
         "Formatting the drive. Do not unplug it until formatting finishes.",

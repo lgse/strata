@@ -7,6 +7,41 @@ directories (FHS, NixOS/Guix system profiles, and NixOS wrappers), not inherited
 `PATH`. The executed path is the search hit; its canonical target must sit under
 FHS, `/run/wrappers/bin`, `/nix/store`, or `/gnu/store`.
 
+## Packaging non-FHS runtimes
+
+Packagers can set these optional environment variables **when compiling Strata**.
+They are embedded in the executable; setting them when launching Strata has no
+effect and does not override the sandbox's cleared environment.
+
+| Build-time variable | Default | Purpose |
+| --- | --- | --- |
+| `STRATA_SANDBOX_PATH` | `/usr/bin` | Colon-separated helper binary directories inside the sandbox |
+| `STRATA_SANDBOX_ROOT` | `/usr` | System runtime tree, bound read-only at the same absolute path |
+| `STRATA_SANDBOX_PRLIMIT` | `/usr/bin/prlimit` | Absolute resource-limit launcher path inside the sandbox |
+| `STRATA_SANDBOX_GDK_PIXBUF_MODULE_FILE` | Unset | Optional absolute gdk-pixbuf `loaders.cache` path passed to helpers |
+
+For example, a Nix package can compile with:
+
+```sh
+STRATA_SANDBOX_PATH='/nix/store/<ffmpeg>/bin:/nix/store/<imagemagick>/bin' \
+STRATA_SANDBOX_ROOT='/nix/store' \
+STRATA_SANDBOX_PRLIMIT='/nix/store/<util-linux>/bin/prlimit' \
+STRATA_SANDBOX_GDK_PIXBUF_MODULE_FILE='/nix/store/<pixbuf-loaders>/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache' \
+cargo build --release --locked
+```
+
+Replace the illustrative store paths with package dependency paths and include
+all required helper binary directories. The root replaces `/usr`, rather than
+adding another mount. The launcher, helpers, loaders cache, and its referenced
+modules and runtime dependencies must be reachable within the sandbox mounts.
+Use only trusted, admin-managed runtime trees: binding `/` or a user-data tree
+would expose private files to untrusted decoders. Values are taken literally;
+leave variables unset to use defaults, rather than setting empty values.
+
+These settings apply to one-shot, pooled browser, media, and RAR extraction
+sandboxes. They do not change host-side trusted bubblewrap lookup, namespace
+isolation, resource limits, or the other narrow optional runtime mounts.
+
 ## Providers
 
 - GDK Pixbuf/camera RAW, Poppler PDF, ImageMagick, and dcraw fallbacks normalize
@@ -469,8 +504,9 @@ plateau for every toolkit/driver.
 Bubblewrap retains the existing namespace/mount policy:
 
 - new user, mount, PID, IPC, UTS, cgroup, and network namespaces;
-- read-only `/usr`, required runtime libraries and font/ImageMagick configuration,
-  the Strata executable, and exactly one canonicalized regular input file;
+- read-only `/usr` (or the build-configured runtime tree), required runtime
+  libraries and font/ImageMagick configuration, the Strata executable, and
+  exactly one canonicalized regular input file;
 - writable private mode-0700 output directories for image providers and a
   size-limited (512 MiB) private `/tmp`; media uses pipes, not output mounts;
 - an empty environment, nonexistent home, and no desktop, session-bus, or

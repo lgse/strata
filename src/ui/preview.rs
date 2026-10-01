@@ -1122,13 +1122,13 @@ impl PreviewState {
         self.current.replace(Some(entry.clone()));
         crate::assets::set_primary_icon(&self.icon, super::browser::entry_icon(&entry));
         self.title.set_text(&entry.display_name);
-        self.title
-            .set_tooltip_text(Some(&entry.location.display_path()));
+        crate::ui::accessibility::set_description(
+            &self.title,
+            Some(&entry.location.display_path()),
+        );
         self.size.set_text(&metadata_size(&entry));
         crate::util::set_modified_date(&self.modified, Some(&entry), "—");
         self.content_type.set_text(file_extension(&entry));
-        self.content_type
-            .set_tooltip_text(Some(file_extension(&entry)));
         self.load.borrow_mut().take();
         self.pdf_loads.borrow_mut().clear();
 
@@ -1284,8 +1284,6 @@ impl PreviewState {
 
     fn render(self: &Rc<Self>, preview: Preview) {
         self.content_type.set_text(&preview.content_type);
-        self.content_type
-            .set_tooltip_text(Some(&preview.content_type));
         self.clear_content();
         match preview.content {
             PreviewContent::Text { content, truncated } => {
@@ -1790,7 +1788,7 @@ impl PreviewState {
             };
             let binding_name = format!("pdf-page-{page_index}");
             overlay.set_widget_name(&binding_name);
-            overlay.set_tooltip_text(None);
+            crate::ui::accessibility::set_description(&overlay, None);
             let target_width = page_width_for_bind.get();
             overlay.set_size_request(if target_width > 0 { target_width } else { -1 }, 560);
             picture.set_paintable(gtk::gdk::Paintable::NONE);
@@ -1903,7 +1901,10 @@ impl PreviewState {
                         request_id: response_id,
                         ..
                     } if response_id == request_id => {
-                        overlay.set_tooltip_text(Some("Unable to render this PDF page"));
+                        crate::ui::accessibility::set_description(
+                            &overlay,
+                            Some("Unable to render this PDF page"),
+                        );
                     }
                     PreviewEvent::Progress { .. }
                     | PreviewEvent::Ready(_)

@@ -140,7 +140,7 @@ fn rar_extraction_command(
     command.args(["--setenv", "MALLOC_ARENA_MAX", "1"]);
     command.arg("--");
     command
-        .arg("/usr/bin/prlimit")
+        .arg(option_env!("STRATA_SANDBOX_PRLIMIT").unwrap_or("/usr/bin/prlimit"))
         .arg(format!("--as={ADDRESS_SPACE_LIMIT_BYTES}"))
         .arg(format!("--cpu={RAR_CPU_TIME_LIMIT_SECS}"))
         .arg("--fsize=0")

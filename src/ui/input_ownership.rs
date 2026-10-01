@@ -28,6 +28,12 @@ impl InputOwnership {
         true
     }
 
+    /// GTK re-reports a parked pointer after a popup grab ends or the layout
+    /// changes, possibly after newer keys; that report is not movement.
+    pub fn pointer_resynced(&mut self, position: (f64, f64)) {
+        self.pointer_position = Some(position);
+    }
+
     pub fn pointer_action(&mut self) {
         self.last_navigation = NavigationInput::Pointer;
     }

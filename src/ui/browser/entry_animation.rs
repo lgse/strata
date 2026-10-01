@@ -79,12 +79,9 @@ pub(super) fn collect_entry_targets(
             break;
         }
         let display_path = entry.location.display_path();
-        let matching_path = candidates.iter().position(|row| {
-            !used.contains(row)
-                && row
-                    .tooltip_text()
-                    .is_some_and(|tooltip| tooltip == display_path)
-        });
+        let matching_path = candidates
+            .iter()
+            .position(|row| !used.contains(row) && row.widget_name() == display_path);
         let index = matching_path.or_else(|| {
             candidates
                 .iter()

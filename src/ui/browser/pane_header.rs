@@ -95,7 +95,12 @@ pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gt
         }
         let (option, check) = menu_option(label, preferences.sort_key == key);
         if key == SortKey::DeviceOrder {
-            option.set_tooltip_text(Some("Append photos as the device lists them; not necessarily chronological. Selecting this reloads the library."));
+            crate::ui::accessibility::set_description(
+                &option,
+                Some(
+                    "Append photos as the device lists them; not necessarily chronological. Selecting this reloads the library.",
+                ),
+            );
         }
         selected_checks.borrow_mut().push((key, check));
         let checks = selected_checks.clone();

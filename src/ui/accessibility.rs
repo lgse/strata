@@ -12,7 +12,13 @@ pub(super) fn set_label(widget: &impl IsA<gtk::Accessible>, label: &str) {
     widget.update_property(&[gtk::accessible::Property::Label(label)]);
 }
 
-// GTK does not derive accessible names from these tooltips.
+pub(super) fn set_description(widget: &impl IsA<gtk::Accessible>, description: Option<&str>) {
+    widget.update_property(&[gtk::accessible::Property::Description(
+        description.unwrap_or(""),
+    )]);
+}
+
+// Location controls require explicit accessible names.
 pub(super) const LOCATION_LABEL: &str = "Location (Ctrl+L)";
 pub(super) const LOCATION_CONFIRM_LABEL: &str = "Navigate (Enter)";
 pub(super) const LOCATION_CANCEL_LABEL: &str = "Cancel (Escape)";

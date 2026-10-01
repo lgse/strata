@@ -242,11 +242,9 @@ pub(super) fn unmatched_pending(live: &[DeviceIds]) -> Vec<ReleaseKey> {
 
 pub(super) fn pending_device_shell(row: &gtk::Button) -> gtk::Box {
     row.set_sensitive(false);
-    row.set_tooltip_text(Some(RELEASE_ROW_TOOLTIP));
     row.update_property(&[gtk::accessible::Property::Label(RELEASE_ROW_TOOLTIP)]);
     let spinner = gtk::Spinner::new();
     spinner.add_css_class("sidebar-device-spinner");
-    spinner.set_tooltip_text(Some(RELEASE_ROW_TOOLTIP));
     spinner.update_property(&[gtk::accessible::Property::Label(RELEASE_ROW_TOOLTIP)]);
     spinner.set_hexpand(false);
     spinner.set_halign(gtk::Align::Center);
@@ -818,7 +816,7 @@ fn show_safe_to_remove(overlay: &ReleaseOverlay, display_name: &str) {
     overlay.title.set_text("Safe to remove");
     overlay.loading.stop();
     overlay.loading.set_visible(false);
-    overlay.loading.set_tooltip_text(None);
+    crate::ui::accessibility::set_description(&overlay.loading, None);
     overlay
         .body
         .set_text(&format!("{display_name} can be unplugged."));

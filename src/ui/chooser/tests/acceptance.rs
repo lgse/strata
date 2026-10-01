@@ -1673,11 +1673,9 @@ fn save_file_with_selected_file_saves_to_active_folder() {
                 state.accept_button.emit_clicked();
                 assert!(result.borrow().is_none());
                 assert!(filename.has_css_class("error"));
-                assert_eq!(filename.tooltip_text().as_deref(), Some(message));
-                assert!(
-                    !state.error.is_visible(),
-                    "filename errors belong to the field, not a second banner"
-                );
+                assert!(filename.tooltip_text().is_none());
+                assert!(state.error.is_visible());
+                assert_eq!(state.error.text(), message);
                 assert!(!root.path().join("bad").exists());
             }
             filename.set_text("new_file.txt");
@@ -1763,4 +1761,82 @@ fn arrow_scope_keeps_left_in_the_chooser_file_view() {
             }
         },
     );
+}
+
+#[test]
+fn item_menu_offers_compress_for_native_folder() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::acceptance::item_menu_offers_compress_for_native_folder",
+        || {
+            use gtk::prelude::*;
+            crate::ui::prepare_portal_ui();
+            let root = tempfile::tempdir().expect("fixture");
+            std::fs::create_dir(root.path().join("folder")).expect("folder");
+            std::fs::write(root.path().join("notes.txt"), "notes").expect("file");
+            let state = build_chooser(
+                request(root.path().to_path_buf()),
+                Arc::new(AtomicBool::new(false)),
+                |_| {},
+            )
+            .expect("chooser");
+            let browser = state.view.browser();
+            wait_until(|| {
+                browser
+                    .column_snapshot(0)
+                    .is_some_and(|column| !column.loading && column.count == 2)
+            });
+            browser.select(0, 0);
+            browser.focus_active();
+            let visible_popovers = || {
+                descendants(state.window.upcast_ref())
+                    .into_iter()
+                    .filter_map(|widget| widget.downcast::<gtk::Popover>().ok())
+                    .filter(|popover| popover.is_visible())
+                    .collect::<Vec<_>>()
+            };
+            let before = visible_popovers()
+                .iter()
+                .map(|popover| popover.as_ptr())
+                .collect::<Vec<_>>();
+            wait_until(|| {
+                if visible_popovers()
+                    .iter()
+                    .any(|candidate| !before.contains(&candidate.as_ptr()))
+                {
+                    return true;
+                }
+                state.view.open_focused_context_menu()
+                    && visible_popovers()
+                        .iter()
+                        .any(|candidate| !before.contains(&candidate.as_ptr()))
+            });
+            let popover = visible_popovers()
+                .into_iter()
+                .find(|candidate| !before.contains(&candidate.as_ptr()))
+                .expect("chooser item menu");
+            wait_until(|| popover.is_mapped());
+            let labels = descendants(popover.upcast_ref())
+                .into_iter()
+                .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
+                .filter(|label| label.is_visible() && !label.text().is_empty())
+                .map(|label| label.text().to_string())
+                .collect::<Vec<_>>();
+            assert!(
+                labels.iter().any(|label| label == "Compress…"),
+                "{labels:?}"
+            );
+            popover.popdown();
+            state.window.close();
+        },
+    );
+}
+
+fn descendants(widget: &gtk::Widget) -> Vec<gtk::Widget> {
+    let mut result = vec![widget.clone()];
+    let mut child = widget.first_child();
+    while let Some(current) = child {
+        child = current.next_sibling();
+        result.extend(descendants(&current));
+    }
+    result
 }

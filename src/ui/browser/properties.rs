@@ -348,7 +348,6 @@ fn measurement_warning_text(summary: &DirectorySummary) -> Option<String> {
 }
 
 fn set_measurement_warning(warning: &gtk::Image, message: Option<&str>) {
-    warning.set_tooltip_text(message);
     warning.update_property(&[gtk::accessible::Property::Label(message.unwrap_or(""))]);
     warning.set_visible(message.is_some());
 }
@@ -423,7 +422,7 @@ impl ViewState {
         let details = gtk::Box::new(gtk::Orientation::Vertical, 0);
         details.add_css_class("properties-details");
         let location_value = properties_row(&details, "LOCATION", &compact_display_path(&location));
-        location_value.set_tooltip_text(Some(&location.display_path()));
+        crate::ui::accessibility::set_description(&location_value, Some(&location.display_path()));
         let trash_root = is_trash_root(&location);
         let measuring_directory = is_directory || trash_root;
         let initial_size = if measuring_directory {
@@ -441,7 +440,6 @@ impl ViewState {
         let size_spinner = gtk::Spinner::new();
         size_spinner.add_css_class("properties-size-spinner");
         size_spinner.set_valign(gtk::Align::Center);
-        size_spinner.set_tooltip_text(Some("Calculating folder size…"));
         crate::ui::accessibility::set_label(&size_spinner, "Calculating folder size");
         size_spinner.set_spinning(measuring_directory);
         size_spinner.set_visible(measuring_directory);
@@ -541,7 +539,6 @@ impl ViewState {
         let executable_label = "Allow executing file as a program (+x)";
         let executable = form_check_button(executable_label);
         executable.add_css_class("properties-executable");
-        executable.set_tooltip_text(Some(executable_label));
         let responsive_actions = layout.actions.clone();
         let responsive_executable = executable.clone();
         layout.content.add_tick_callback(move |content, _| {
@@ -643,7 +640,10 @@ impl ViewState {
             for ((button, mask), permission) in
                 row.bits.iter().zip(masks).zip(["read", "write", "execute"])
             {
-                button.set_tooltip_text(Some(&format!("Toggle {subject} {permission} permission")));
+                crate::ui::accessibility::set_description(
+                    button,
+                    Some(&format!("Toggle {subject} {permission} permission")),
+                );
                 let edited_file = gio_file_for_location(&location);
                 let editor = permission_editor.clone();
                 let parent = layer.clone();
@@ -841,7 +841,6 @@ impl ViewState {
         let size_spinner = gtk::Spinner::new();
         size_spinner.add_css_class("properties-size-spinner");
         size_spinner.set_valign(gtk::Align::Center);
-        size_spinner.set_tooltip_text(Some("Calculating selection size…"));
         crate::ui::accessibility::set_label(&size_spinner, "Calculating selection size");
         size_spinner.set_spinning(true);
         let size = properties_size_row(&details, &format_file_size(0), &size_spinner);

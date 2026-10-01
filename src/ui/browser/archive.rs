@@ -145,6 +145,7 @@ impl ViewState {
         format: ArchiveFormat,
         password: Option<String>,
     ) {
+        self.extract_destination.take();
         let final_name = format!("{archive_name}.{}", format.extension());
         if !archive_has_collision(&destination, &final_name) {
             self.pending_archive_destination
@@ -395,7 +396,7 @@ impl ViewState {
             let archive_name = normalized_archive_name(&name, format);
             if let Err(message) = validate_basename(&archive_name) {
                 name_for_confirm.add_css_class("error");
-                name_for_confirm.set_tooltip_text(Some(message));
+                crate::ui::accessibility::set_description(&name_for_confirm, Some(message));
                 name_for_confirm.grab_focus();
                 return;
             }
@@ -458,12 +459,17 @@ impl ViewState {
             );
             return;
         };
+        self.extract_entry_to(entry, parent);
+    }
+
+    pub(super) fn extract_entry_to(self: &Rc<Self>, entry: FileEntry, destination: Location) {
+        self.extract_destination.replace(Some(destination.clone()));
         let format = ArchiveFormat::from_extension(&entry.display_name);
         if format.map(|f| f.supports_password()).unwrap_or(false) {
             self.pending_extract_retry
-                .replace(Some((entry.clone(), parent.clone())));
+                .replace(Some((entry.clone(), destination.clone())));
         }
-        self.browser.extract(entry, parent, false, None);
+        self.browser.extract(entry, destination, false, None);
     }
 
     /// Opens the "Extract to" folder picker for `entry`.
@@ -559,16 +565,8 @@ impl ViewState {
                 return;
             }
             let dest = Location::local(path);
-            let format = ArchiveFormat::from_extension(&extract_entry.display_name);
-            if format.map(|f| f.supports_password()).unwrap_or(false) {
-                extract_state
-                    .pending_extract_retry
-                    .replace(Some((extract_entry.clone(), dest.clone())));
-            }
             extract_state.pending_navigate.replace(Some(dest.clone()));
-            extract_state
-                .browser
-                .extract(extract_entry.clone(), dest, false, None);
+            extract_state.extract_entry_to(extract_entry.clone(), dest);
             hand_off_destination_focus(&confirm_field, button);
             dismiss_for_confirm();
         });

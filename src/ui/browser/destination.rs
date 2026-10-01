@@ -103,7 +103,8 @@ fn append_suggestion(suggestions: &gtk::Box, path: &Path, on_select: &Rc<dyn Fn(
         row.append(&parent_label);
     }
     option.set_child(Some(&row));
-    option.set_tooltip_text(Some(&path.to_string_lossy()));
+    option.set_widget_name(&path.to_string_lossy());
+    crate::ui::accessibility::set_description(&option, Some(&path.to_string_lossy()));
     let select = on_select.clone();
     let path = path.to_path_buf();
     option.connect_clicked(move |_| select(&path));
@@ -668,7 +669,10 @@ impl DestinationLocationBar {
                     }
                     view.add_css_class("breadcrumb");
                     view.add_css_class("current");
-                    view.set_tooltip_text(Some(&crumb.target.to_string_lossy()));
+                    crate::ui::accessibility::set_description(
+                        &view,
+                        Some(&crumb.target.to_string_lossy()),
+                    );
                     view.set_has_frame(false);
                     view.set_cursor_from_name(Some("pointer"));
                     let editor = self.clone();
@@ -686,12 +690,15 @@ impl DestinationLocationBar {
                         button.add_css_class("breadcrumb-root");
                     }
                     if crumb.kind == DestinationCrumbKind::Scope {
-                        button.set_tooltip_text(Some(&format!(
-                            "Search scope: {} — click to browse",
-                            crumb.label
-                        )));
+                        crate::ui::accessibility::set_description(
+                            &button,
+                            Some(&format!("Search scope: {} — click to browse", crumb.label)),
+                        );
                     } else {
-                        button.set_tooltip_text(Some(&crumb.target.to_string_lossy()));
+                        crate::ui::accessibility::set_description(
+                            &button,
+                            Some(&crumb.target.to_string_lossy()),
+                        );
                     }
                     button.set_has_frame(false);
                     button.set_cursor_from_name(Some("pointer"));

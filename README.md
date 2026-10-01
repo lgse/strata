@@ -707,6 +707,23 @@ mise run chooser-dev      # build and open an isolated Save chooser with choices
 mise run check            # format, compile, Clippy, tests, and policy checks
 ```
 
+### Builds without RAR support
+
+The default `rar` Cargo feature embeds RARLAB's non-free UnRAR implementation.
+Official releases and AUR builds retain RAR extraction and CBR cover previews.
+Packagers who cannot distribute UnRAR can exclude it with:
+
+```bash
+cargo build --locked --release --no-default-features
+```
+
+This build does not compile or link `unrar` or `unrar_sys`. RAR files are not
+offered for extraction, and CBR cover previews report that RAR support is disabled.
+ZIP, 7z, TAR, CBZ, and EPUB support is unchanged. Use `--features rar` to opt back
+in; `--all-features` also enables UnRAR. The source lockfile and license notices
+still describe the optional dependency; they do not mean it is linked into the
+feature-disabled binary. See [third-party notices](THIRD_PARTY_LICENSES.md#unrar).
+
 Start with [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Deeper references:
 
 - [Keyboard navigation](docs/keyboard-navigation.md)

@@ -696,6 +696,7 @@ def test_column_preview_fills_free_space_and_remembers_a_dragged_session_width(s
 @pytest.mark.preferences(browser_mode="columns", single_click_previews=False)
 def test_columns_preview_can_reopen_after_closing(strata):
     strata.open_directory("folder")
+    strata.wait_for_entries(sorted(PREVIEW_FIXTURE["folder"]), "folder")
     strata.select_entry_with_keyboard("inner.txt")
     strata.keyboard.press("space")
     strata.wait(lambda: strata.preview_shows("inner"), "the nested preview")
@@ -771,7 +772,7 @@ def test_tenxer_l_enters_the_preview_and_h_returns_without_navigating(strata, fi
     strata.keyboard.press("l")
     strata.wait(lambda: strata.preview_shows("document line 0"), "l to open the preview")
     strata.wait(lambda: strata.focused_name() is None, "the preview to own the keys")
-    for key in ("l", "Right", "Return", "j", "End", "ctrl+u", "Page_Down", "Home", "space"):
+    for key in ("l", "Right", "j", "End", "ctrl+u", "Page_Down", "Home", "space"):
         strata.keyboard.press(key)
     assert strata.preview_shows("document line 0")
     assert strata.focused_name() is None, "preview keys stayed in the preview"

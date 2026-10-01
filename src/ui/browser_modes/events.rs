@@ -403,14 +403,14 @@ impl Pane {
     }
 
     fn start_sorting(&self) {
-        self.spinner.set_tooltip_text(Some("Sorting…"));
+        crate::ui::accessibility::set_description(&self.spinner, Some("Sorting…"));
         self.spinner.set_visible(true);
         self.spinner.start();
     }
 
     fn finish_sorting(&self) {
         self.hide_spinner();
-        self.spinner.set_tooltip_text(None);
+        crate::ui::accessibility::set_description(&self.spinner, None);
     }
 
     fn reload_rows(&self) {

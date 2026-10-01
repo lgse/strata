@@ -106,7 +106,6 @@ impl CurrentHit {
         self.name
             .set_width_chars(chars.min(Self::NAME_MIN_CHARS) as i32);
         let full = path.to_string_lossy();
-        self.root.set_tooltip_text(Some(&full));
         super::accessibility::set_label(&self.root, &full);
         self.root.set_visible(true);
     }
@@ -472,11 +471,14 @@ impl ShortcutFooter {
         count.set_visible(false);
         let paste = gtk::Label::new(Some("Files on clipboard"));
         paste.add_css_class("shortcut-footer-paste");
-        paste.set_tooltip_text(Some("Press Ctrl+V to paste into a supported directory."));
+        crate::ui::accessibility::set_description(
+            &paste,
+            Some("Press Ctrl+V to paste into a supported directory."),
+        );
         paste.set_visible(false);
         let tag = gtk::Label::new(Some(crate::ui::tenxer_mode::TAG_TEXT));
         tag.add_css_class("tenxer-tag");
-        tag.set_tooltip_text(Some(crate::ui::tenxer_mode::TAG_NAME));
+        crate::ui::accessibility::set_description(&tag, Some(crate::ui::tenxer_mode::TAG_NAME));
         super::accessibility::set_label(&tag, crate::ui::tenxer_mode::TAG_NAME);
         tag.set_visible(false);
         let chord = gtk::Label::new(None);
@@ -516,7 +518,7 @@ impl ShortcutFooter {
         let more = gtk::MenuButton::new();
         more.set_child(Some(&gtk::Label::new(Some("F1  Shortcuts"))));
         more.add_css_class("shortcut-footer-button");
-        more.set_tooltip_text(Some("Show all file-view shortcuts (F1)"));
+        crate::ui::accessibility::set_description(&more, Some("Show all file-view shortcuts (F1)"));
         status.prepend(&more);
         let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         spacer.set_hexpand(true);
@@ -1018,7 +1020,7 @@ impl ShortcutFooter {
             Some(status) => {
                 let label = if status.search { "search" } else { "filter" };
                 self.filter.set_text(&format!("{label}: {}", status.query));
-                self.filter.set_tooltip_text(Some(&status.query));
+                crate::ui::accessibility::set_description(&self.filter, Some(&status.query));
                 self.filter.set_visible(true);
             }
             None => self.filter.set_visible(false),
@@ -1164,7 +1166,7 @@ impl ShortcutFooter {
             };
             (
                 format!("{folder}{}", current.name.text()),
-                current.root.tooltip_text().unwrap_or_default().to_string(),
+                format!("{folder}{}", current.name.text()),
             )
         })
     }
@@ -1756,7 +1758,7 @@ fn render_reference(
     }
 }
 
-/// Keep the experimental caveat in the pill's tooltip and accessible description.
+/// Keep the experimental caveat available to assistive technology.
 fn apply_experimental_label(tag: &gtk::Label, enabled: bool) {
     tag.set_text(crate::ui::tenxer_mode::TAG_TEXT);
     tag.set_visible(enabled);
@@ -1766,7 +1768,6 @@ fn apply_experimental_label(tag: &gtk::Label, enabled: bool) {
     } else {
         crate::ui::tenxer_mode::TAG_NAME.to_owned()
     };
-    tag.set_tooltip_text(Some(&announced));
     tag.update_property(&[
         gtk::accessible::Property::Label(&announced),
         gtk::accessible::Property::Description(if enabled { phrase } else { "" }),
@@ -1805,7 +1806,10 @@ fn update_item_count(
     if let Some(filter) = filter {
         let noun = if filter.total() == 1 { "item" } else { "items" };
         label.set_label(&format!("{} {noun}", filter.total()));
-        label.set_tooltip_text(Some(&file_folder_breakdown(filter.files, filter.folders)));
+        crate::ui::accessibility::set_description(
+            label,
+            Some(&file_folder_breakdown(filter.files, filter.folders)),
+        );
         label.set_visible(true);
         return;
     }
@@ -1826,13 +1830,20 @@ fn update_item_count(
     let noun = if counts.total == 1 { "item" } else { "items" };
     if !selected.is_empty() {
         label.set_label(&selection_details(&selected));
-        label.set_tooltip_text(Some(&format!(
-            "{} of {} {noun} selected. Size includes selected files only; folder contents are not counted.",
-            selected.len(), counts.total
-        )));
+        crate::ui::accessibility::set_description(
+            label,
+            Some(&format!(
+                "{} of {} {noun} selected. Size includes selected files only; folder contents are not counted.",
+                selected.len(),
+                counts.total
+            )),
+        );
     } else {
         label.set_label(&format!("{} {noun}", counts.total));
-        label.set_tooltip_text(Some(&file_folder_breakdown(counts.files, counts.folders)));
+        crate::ui::accessibility::set_description(
+            label,
+            Some(&file_folder_breakdown(counts.files, counts.folders)),
+        );
     }
     label.set_visible(true);
 }

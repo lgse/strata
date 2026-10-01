@@ -18,6 +18,15 @@ fn default_chrome_stays_operable_without_a_saved_tenxer_mode() {
             let _directory = load_folder(&open);
             assert!(!open.content.footer().tag_visible());
             assert_controls(&open, true);
+            for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
+                open.content.browser.set_view_mode(mode);
+                wait_until(|| !column_loading(&open, 0));
+                assert_icon_only_tooltips(open.window.upcast_ref());
+            }
+            open.content.sidebar.state.set_rail(true);
+            assert_icon_only_tooltips(open.window.upcast_ref());
+            open.content.sidebar.state.set_rail(false);
+            assert_icon_only_tooltips(open.window.upcast_ref());
             press(
                 &open.window,
                 gtk::gdk::Key::q,
@@ -147,9 +156,9 @@ fn browsing_control_and_shortcut_update_both_windows() {
 }
 
 #[test]
-fn q_leaves_tenxer_and_shift_q_closes_only_the_current_window() {
+fn toggle_leaves_tenxer_everywhere_and_shift_q_closes_only_the_current_window() {
     gtk_test(
-        "ui::window::tests::preferences::q_leaves_tenxer_and_shift_q_closes_only_the_current_window",
+        "ui::window::tests::preferences::toggle_leaves_tenxer_everywhere_and_shift_q_closes_only_the_current_window",
         || {
             let manager = PreferenceManager::shared();
             let first = OpenWindow::open();
@@ -158,8 +167,8 @@ fn q_leaves_tenxer_and_shift_q_closes_only_the_current_window() {
             settle();
             press(
                 &first.window,
-                gtk::gdk::Key::q,
-                gtk::gdk::ModifierType::empty(),
+                gtk::gdk::Key::m,
+                gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK,
             );
             settle();
             assert!(!manager.tenxer_mode());
@@ -288,13 +297,15 @@ fn browsing_preferences_stay_saved_but_unused_until_exit() {
             settle();
             assert!(manager.type_to_search());
             assert!(manager.arrow_navigation_scoped());
-            assert!(manager.columns_mirror_selection());
-            assert!(!open.content.browser.columns_mirror_selection_enabled());
-            for title in [
-                "Type to search",
-                "Keep arrows in file list",
-                "Mirror columns selection",
-            ] {
+            assert!(
+                open.content.browser.columns_mirror_selection_enabled(),
+                "10xer Columns keep saved mirroring"
+            );
+            assert_ne!(
+                description_named(open.content.overlay(), "Mirror columns selection"),
+                UNUSED_SUBTITLE
+            );
+            for title in ["Type to search", "Keep arrows in file list"] {
                 let switch = switch_named(open.content.overlay(), title);
                 assert!(switch.is_active() && switch.is_sensitive());
                 assert_eq!(
@@ -309,7 +320,6 @@ fn browsing_preferences_stay_saved_but_unused_until_exit() {
             type_to_search.set_active(true);
             settle();
             assert!(manager.type_to_search());
-            assert!(!open.content.browser.columns_mirror_selection_enabled());
             close_settings(&open);
             open.content.browser.browser().focus_active();
             wait_until(|| open.content.browser.item_view_has_focus());
@@ -649,9 +659,35 @@ fn filter_buttons(open: &OpenWindow) -> Vec<gtk::ToggleButton> {
         .collect()
 }
 
+fn assert_icon_only_tooltips(root: &gtk::Widget) {
+    walk(root, &mut |widget| {
+        if !widget.is_visible() || widget.tooltip_text().is_none() {
+            return;
+        }
+        assert!(
+            widget.is::<gtk::Button>() || widget.is::<gtk::MenuButton>(),
+            "non-button tooltip: {}",
+            widget.type_().name()
+        );
+        walk(widget, &mut |child| {
+            if let Some(label) = child.downcast_ref::<gtk::Label>() {
+                assert!(
+                    !label.is_visible() || label.text().is_empty(),
+                    "labelled control has a tooltip: {}",
+                    label.text()
+                );
+            }
+        });
+    });
+}
+
 fn controls_in_shown_pane(root: &gtk::Widget, tooltip: &str) -> Vec<gtk::Widget> {
     widgets_in_shown_pane(root, |widget| {
         widget.tooltip_text().as_deref() == Some(tooltip)
+            || widget.downcast_ref::<gtk::Entry>().is_some_and(|entry| {
+                tooltip == "Filter by name. Use * for any characters: *.png, IMG*, or IMG*.png."
+                    && entry.has_css_class("column-filter-entry")
+            })
     })
 }
 

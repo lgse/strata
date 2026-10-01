@@ -142,7 +142,10 @@ fn notice_handler(sidebar: &SidebarView, available: AvailableUpdate) -> UpdateNo
     let area = sidebar.update_area.clone();
     Rc::new(move |release| {
         if let Some((release, download_url, update_method)) = release {
-            button.set_tooltip_text(Some(&update_tooltip(&release, update_method)));
+            crate::ui::accessibility::set_description(
+                &button,
+                Some(&update_tooltip(&release, update_method)),
+            );
             label.set_text(&sidebar_update_label(&release));
             if release.kind == BuildKind::Stable {
                 button.remove_css_class("preview");

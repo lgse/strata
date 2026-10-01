@@ -95,7 +95,7 @@ fn append_date_format_option(content: &gtk::Box, manager: &Rc<PreferenceManager>
         .build();
     button.add_css_class("form-control");
     button.add_css_class("settings-choice");
-    button.set_tooltip_text(Some("Modified date format"));
+    crate::ui::accessibility::set_description(&button, Some("Modified date format"));
     crate::ui::accessibility::set_label(&button, "Modified date format");
     manager.bind_preference(&button, PreferenceManager::date_format, |widget, format| {
         if let Some(button) = widget.downcast_ref::<gtk::MenuButton>() {
@@ -296,10 +296,7 @@ fn append_preference_switch(
 ) {
     let (row, toggle) = settings_option(switch.title, switch.description, (switch.read)(manager));
     bind_switch(manager, &toggle, switch.read, switch.write);
-    if matches!(
-        switch.title,
-        "Type to search" | "Keep arrows in file list" | "Mirror columns selection"
-    ) {
+    if matches!(switch.title, "Type to search" | "Keep arrows in file list") {
         bind_tenxer_unused_subtitle(&row, manager, switch.description);
     }
     if switch.title == "Include subfolders" {
@@ -367,14 +364,17 @@ fn append_default_directory_option(content: &gtk::Box, manager: &Rc<PreferenceMa
     choose.set_valign(gtk::Align::Center);
     choose.add_css_class("form-control");
     choose.add_css_class("settings-choice");
-    choose.set_tooltip_text(Some("Select default directory"));
+    crate::ui::accessibility::set_description(&choose, Some("Select default directory"));
     super::super::accessibility::set_label(&choose, "Default directory");
 
     let reset = gtk::Button::with_label("Reset");
     reset.add_css_class("form-control");
     reset.set_valign(gtk::Align::Center);
     reset.set_sensitive(manager.default_directory().is_some());
-    reset.set_tooltip_text(Some("Restore the home directory as default"));
+    crate::ui::accessibility::set_description(
+        &reset,
+        Some("Restore the home directory as default"),
+    );
 
     let controls = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     controls.append(&choose);

@@ -160,8 +160,10 @@ fn sections(
                 }
             }
         });
-        let tooltip_refresh = refresh.clone();
-        button.connect_tooltip_text_notify(move |_| tooltip_refresh(false));
+        if let Some(option) = button.downcast_ref::<super::presentation::MenuOption>() {
+            let description_refresh = refresh.clone();
+            option.connect_menu_description_notify(move |_| description_refresh(false));
+        }
         if let Some(row) = button.child() {
             let mut child = row.first_child();
             while let Some(widget) = child {
@@ -266,13 +268,12 @@ fn update_item(item: &gio::MenuItem, button: &gtk::Button) {
         item.set_label(Some(&label.replace('_', "__")));
     }
     let shortcut = labels.get(1).map(String::as_str).unwrap_or("");
-    let tooltip = button.tooltip_text();
-    let description = tooltip.as_deref().unwrap_or(shortcut);
+    let description = button
+        .downcast_ref::<super::presentation::MenuOption>()
+        .map(|option| option.menu_description())
+        .filter(|description| !description.is_empty())
+        .unwrap_or_else(|| shortcut.to_owned());
     item.set_attribute_value("x-strata-description", Some(&description.to_variant()));
-    item.set_attribute_value(
-        "x-strata-tooltip",
-        tooltip.as_ref().map(|text| text.to_variant()).as_ref(),
-    );
     item.set_attribute_value(
         "x-strata-danger",
         Some(&button.has_css_class("danger").to_variant()),

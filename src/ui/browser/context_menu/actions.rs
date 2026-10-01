@@ -350,7 +350,6 @@ impl ActionMenuSection {
                 .as_deref())
             {
                 item.set_attribute_value("x-strata-description", Some(&hint.to_variant()));
-                item.set_attribute_value("x-strata-tooltip", Some(&hint.to_variant()));
             }
             let model = if matched.placement == MenuPlacement::Top {
                 &self.model
@@ -450,7 +449,7 @@ pub(super) fn append_send_to_menu(
         let item = gio::MenuItem::new_submenu(Some(&destination.name.replace('_', "__")), &device);
         item.set_icon(&gio::ThemedIcon::new(icons::HARD_DRIVE));
         item.set_attribute_value("x-strata-send-to-device", Some(&true.to_variant()));
-        item.set_attribute_value("x-strata-tooltip", Some(&destination.name.to_variant()));
+        item.set_attribute_value("x-strata-description", Some(&destination.name.to_variant()));
         devices.append_item(&item);
     }
     model.append_submenu(Some("Send to…"), &devices);
@@ -502,7 +501,6 @@ pub(super) fn refresh_presentation(
 struct ItemPresentation {
     label: String,
     description: String,
-    tooltip: Option<String>,
     submenu: Option<gio::MenuModel>,
     icon_size: i32,
     send_to_device: bool,
@@ -521,7 +519,6 @@ fn collect_presentations(model: &gio::MenuModel, items: &mut Vec<ItemPresentatio
             items.push(ItemPresentation {
                 label: label.replace("__", "_"),
                 description: string("x-strata-description").unwrap_or_default(),
-                tooltip: string("x-strata-tooltip"),
                 submenu: model.item_link(index, "submenu"),
                 icon_size: model
                     .item_attribute_value(index, "x-strata-icon-size", None)
@@ -668,7 +665,6 @@ fn present_native_items(
         if item.danger {
             widget.add_css_class("danger");
         }
-        widget.set_tooltip_text(item.tooltip.as_deref());
         label_menu_item(widget, &item);
         if !initialized {
             let mapped_item = item.clone();

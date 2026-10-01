@@ -574,11 +574,11 @@ impl Search {
             .map(|button| {
                 (
                     button.downgrade(),
-                    match button.tooltip_text().as_deref() {
-                        Some("General") => "general",
-                        Some("Appearance") => "theme",
-                        Some("Keybindings") => "keybindings",
-                        Some("Updates") => "updates",
+                    match button.widget_name().as_str() {
+                        "General" => "general",
+                        "Appearance" => "theme",
+                        "Keybindings" => "keybindings",
+                        "Updates" => "updates",
                         _ => "about",
                     },
                 )

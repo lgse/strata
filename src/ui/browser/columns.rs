@@ -856,12 +856,15 @@ impl ViewState {
         heading.set_hexpand(true);
         heading.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
         heading.set_max_width_chars(1);
-        heading.set_tooltip_text(Some(&location.display_path()));
+        crate::ui::accessibility::set_description(&heading, Some(&location.display_path()));
         let truncated_hint = crate::assets::primary_icon(crate::assets::icons::TRIANGLE_ALERT, 16);
         truncated_hint.add_css_class("column-truncated-hint");
-        truncated_hint.set_tooltip_text(Some(
-            "This directory has more entries than could be loaded; showing a partial listing.",
-        ));
+        crate::ui::accessibility::set_description(
+            &truncated_hint,
+            Some(
+                "This directory has more entries than could be loaded; showing a partial listing.",
+            ),
+        );
         truncated_hint.set_visible(false);
         heading_box.append(&heading);
         heading_box.append(&truncated_hint);

@@ -194,34 +194,37 @@ fn bind_footer_filter(dispatcher: &Dispatcher) {
         .connect_search_selection_changed(Rc::new(move || shortcuts.schedule_filter_refresh()));
 }
 
-/// Opening, closing, or editing a prompt discards go completion that belongs to
-/// earlier text. Completion's own replacements are not edits.
+/// Completion replacements are not edits; user edits invalidate pending lookups.
 fn bind_go_completion(dispatcher: &Dispatcher) {
+    use crate::ui::tenxer_mode::Prompt;
     let go = dispatcher.go.clone();
-    dispatcher
-        .shortcuts
-        .connect_prompt_reset(move || go.invalidate());
+    let revision = dispatcher.destination_revision.clone();
+    dispatcher.shortcuts.connect_prompt_reset(move || {
+        go.invalidate();
+        revision.set(revision.get().wrapping_add(1));
+    });
     let go = dispatcher.go.clone();
-    let hint = dispatcher
-        .shortcuts
-        .prompt_sink(crate::ui::tenxer_mode::Prompt::Go);
-    let create_hint = dispatcher
-        .shortcuts
-        .prompt_sink(crate::ui::tenxer_mode::Prompt::Create);
-    let rename_hint = dispatcher
-        .shortcuts
-        .prompt_sink(crate::ui::tenxer_mode::Prompt::Rename);
-    dispatcher
-        .shortcuts
-        .connect_prompt_changed(move |kind, _| match kind {
-            crate::ui::tenxer_mode::Prompt::Go => {
-                go.invalidate();
-                hint.show(None, None);
-            }
-            crate::ui::tenxer_mode::Prompt::Create => create_hint.show(None, None),
-            crate::ui::tenxer_mode::Prompt::Rename => rename_hint.show(None, None),
-            _ => {}
-        });
+    let hints: Vec<_> = [
+        Prompt::Go,
+        Prompt::Create,
+        Prompt::Rename,
+        Prompt::MoveTo,
+        Prompt::CopyTo,
+        Prompt::ExtractTo,
+    ]
+    .into_iter()
+    .map(|kind| (kind, dispatcher.shortcuts.prompt_sink(kind)))
+    .collect();
+    let revision = dispatcher.destination_revision.clone();
+    dispatcher.shortcuts.connect_prompt_changed(move |kind, _| {
+        revision.set(revision.get().wrapping_add(1));
+        if kind.completes_folders() {
+            go.invalidate();
+        }
+        if let Some((_, hint)) = hints.iter().find(|(hinted, _)| *hinted == kind) {
+            hint.show(None, None);
+        }
+    });
 }
 
 fn bind_history_prompts(dispatcher: &Dispatcher) {
@@ -420,9 +423,6 @@ fn claims_file_list_typing(key: Key, modifiers: Modifiers) -> bool {
     if key == Key::space {
         return true;
     }
-    if matches!(key, Key::q | Key::Q) {
-        return false;
-    }
     super::type_to_search_query(key, modifiers).is_some()
 }
 
@@ -462,6 +462,9 @@ struct Dispatcher {
     go: GoCompletion,
     history: Rc<NavigationHistory>,
     rename_target: Rc<RefCell<Option<crate::model::FileEntry>>>,
+    /// Cursor and fill changes must not retarget an open prompt.
+    destination_targets: Rc<RefCell<Vec<crate::model::FileEntry>>>,
+    destination_revision: Rc<Cell<u64>>,
     armed_actions: Rc<RefCell<Option<files::ArmedActions>>>,
     open_with: files::OpenWithLookup,
     chooser: Option<ChooserPolicy>,
@@ -517,6 +520,8 @@ impl Dispatcher {
             go: GoCompletion::new(bindings.folders),
             history: bindings.history,
             rename_target: Rc::default(),
+            destination_targets: Rc::default(),
+            destination_revision: Rc::default(),
             armed_actions: Rc::default(),
             open_with: files::OpenWithLookup::default(),
             sidebar: SidebarFocus {
@@ -542,9 +547,11 @@ impl Dispatcher {
             open_with_on_destroy.invalidate();
         });
         let rename_target = dispatcher.rename_target.clone();
-        dispatcher
-            .shortcuts
-            .connect_prompt_reset(move || drop(rename_target.take()));
+        let destination_targets = dispatcher.destination_targets.clone();
+        dispatcher.shortcuts.connect_prompt_reset(move || {
+            drop(rename_target.take());
+            drop(destination_targets.take());
+        });
         bind_go_completion(&dispatcher);
         bind_history_prompts(&dispatcher);
         release_preview_keys_on_mode_exit(window, &dispatcher.preview, &weak_browser);
@@ -741,15 +748,8 @@ impl Dispatcher {
         if let Some(result) = self.tenxer_chord(browser, key, modifiers) {
             return Some(result);
         }
-        if !items::continues_extend(key, modifiers) {
-            browser.end_extend();
-        }
         let command = modifiers
             .intersects(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK);
-        if key == Key::q && !modifiers.contains(Modifiers::SHIFT_MASK) && !command {
-            preferences.set_tenxer_mode(false);
-            return Some(Propagation::Stop);
-        }
         if let Some(result) = self
             .chooser_refusal(key, modifiers)
             .or_else(|| self.chooser_save(key, modifiers))

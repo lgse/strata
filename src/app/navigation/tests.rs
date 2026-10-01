@@ -504,29 +504,38 @@ fn monitor_removals_preserve_selection_by_native_location() {
 
 #[test]
 fn removing_the_selected_entry_focuses_its_nearest_neighbor() {
-    let mut state = NavigationState::default();
-    let watched = location("/home");
-    state.navigate(watched.clone(), RequestId(1));
-    state.apply_batch(
-        RequestId(1),
-        vec![
-            named_entry("/home/alpha", "alpha"),
-            named_entry("/home/bravo", "bravo"),
-            named_entry("/home/charlie", "charlie"),
-        ],
-    );
-    assert!(state.select(0, 1));
+    for preserve_fill in [false, true] {
+        let mut state = NavigationState::default();
+        state.set_preserve_fill_on_removal(preserve_fill);
+        let watched = location("/home");
+        state.navigate(watched.clone(), RequestId(1));
+        state.apply_batch(
+            RequestId(1),
+            vec![
+                named_entry("/home/alpha", "alpha"),
+                named_entry("/home/bravo", "bravo"),
+                named_entry("/home/charlie", "charlie"),
+            ],
+        );
+        assert!(state.select(0, 1));
 
-    let (_, selected) = state
-        .apply_directory_change(
-            0,
-            &watched,
-            DirectoryChange::Remove(location("/home/bravo")),
-        )
-        .expect("removing the selected entry should change the column");
+        let (_, selected) = state
+            .apply_directory_change(
+                0,
+                &watched,
+                DirectoryChange::Remove(location("/home/bravo")),
+            )
+            .expect("removing the selected entry should change the column");
 
-    assert_eq!(selected, Some(1));
-    assert_eq!(state.columns[0].entries[1].display_name, "charlie");
+        assert_eq!(selected, Some(1));
+        assert_eq!(state.columns[0].entries[1].display_name, "charlie");
+        assert_eq!(
+            state.columns[0]
+                .selected_locations
+                .contains(&location("/home/charlie")),
+            !preserve_fill
+        );
+    }
 }
 
 #[test]
@@ -2287,59 +2296,6 @@ fn visual_ranges_add_and_subtract_the_walked_span_in_displayed_order() {
         ["alpha", "charlie", "delta", "echo"],
         "another v anchors at the new cursor, not the old range"
     );
-}
-
-#[test]
-fn shift_runs_extend_from_their_own_anchor_over_the_kept_fill() {
-    let mut state = NavigationState::default();
-    five_entry_listing(&mut state);
-    let order = [3, 4, 0, 1, 2];
-    assert!(state.install_pane_fill(0, &[4], 3));
-    state.place_cursor(0, 1).expect("bravo");
-
-    assert!(state.begin_extend(Some(&order)).is_some());
-    assert_eq!(state.visual_kind(), None, "a run is not a visual mode");
-    walk_to(&mut state, 2, &order);
-    assert_eq!(
-        fill(&state, 0),
-        ["bravo", "charlie", "echo"],
-        "the run anchors at the moved cursor and keeps the fill"
-    );
-    assert!(state.begin_extend(Some(&order)).is_some());
-    walk_to(&mut state, 0, &order);
-    assert_eq!(
-        fill(&state, 0),
-        ["alpha", "bravo", "echo"],
-        "reversing past the anchor drops what the run covered"
-    );
-
-    state.end_extend();
-    walk_to(&mut state, 3, &order);
-    assert_eq!(fill(&state, 0), ["alpha", "bravo", "echo"]);
-    assert!(state.begin_extend(Some(&order)).is_some());
-    walk_to(&mut state, 4, &order);
-    assert_eq!(
-        fill(&state, 0),
-        ["alpha", "bravo", "delta", "echo"],
-        "the next run starts at the new cursor"
-    );
-    state.end_extend();
-
-    walk_to(&mut state, 2, &order);
-    state
-        .start_visual(VisualKind::Unset, Some(&order))
-        .expect("unset range at charlie");
-    assert!(state.begin_extend(Some(&order)).is_some());
-    walk_to(&mut state, 0, &order);
-    assert_eq!(
-        fill(&state, 0),
-        ["delta", "echo"],
-        "a run key extends the visual range instead of replacing it"
-    );
-    state.end_extend();
-    assert_eq!(state.visual_kind(), Some(VisualKind::Unset));
-    walk_to(&mut state, 1, &order);
-    assert_eq!(fill(&state, 0), ["alpha", "delta", "echo"]);
 }
 
 #[test]

@@ -22,7 +22,9 @@ use super::{
     extraction::{ArchiveOutcome, ExtractedRoots, ExtractionSession, MemberContent},
 };
 
+#[cfg(feature = "rar")]
 mod rar;
+#[cfg(feature = "rar")]
 pub(super) use rar::extract_rar;
 
 #[cfg(test)]

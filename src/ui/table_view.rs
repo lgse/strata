@@ -171,7 +171,7 @@ impl TableState {
                 };
                 let row = *object.borrow::<usize>();
                 label.select_region(0, 0);
-                label.set_tooltip_text(None);
+                crate::ui::accessibility::set_description(&label, None);
                 if let Some(cell) = rows[row].get(index) {
                     super::virtual_preview::set_table_cell(&label, cell);
                 } else {

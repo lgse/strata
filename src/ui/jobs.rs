@@ -99,7 +99,8 @@ impl RowWidgets {
             } else {
                 &log
             });
-            label.set_tooltip_text(
+            crate::ui::accessibility::set_description(
+                &label,
                 snapshot
                     .log_truncated
                     .then_some("Older output was discarded to bound memory"),
@@ -145,7 +146,7 @@ impl JobsIndicator {
         root.set_direction(gtk::ArrowType::Up);
         root.add_css_class("shortcut-footer-button");
         root.add_css_class("jobs-indicator");
-        root.set_tooltip_text(Some("Show background jobs"));
+        crate::ui::accessibility::set_description(&root, Some("Show background jobs"));
         let label = gtk::Label::new(None);
         label.add_css_class("jobs-indicator-label");
         root.set_child(Some(&label));
@@ -296,20 +297,12 @@ impl JobsIndicator {
             status_labels: state.status_labels.clone(),
             rows: state.rows.clone(),
         };
-        let tooltip_root = root.downgrade();
         popover.connect_show(move |_| {
-            if let Some(root) = tooltip_root.upgrade() {
-                root.set_tooltip_text(None);
-            }
             show_state.dirty.replace(true);
             show_refresh();
         });
         let hide_dirty = state.dirty.clone();
-        let tooltip_root = root.downgrade();
         popover.connect_closed(move |_| {
-            if let Some(root) = tooltip_root.upgrade() {
-                root.set_tooltip_text(Some("Show background jobs"));
-            }
             hide_dirty.replace(true);
         });
 
@@ -624,7 +617,10 @@ fn job_row(
         .build();
     log_label.add_css_class("job-log");
     if snapshot.log_truncated {
-        log_label.set_tooltip_text(Some("Older output was discarded to bound memory"));
+        crate::ui::accessibility::set_description(
+            &log_label,
+            Some("Older output was discarded to bound memory"),
+        );
     }
     let scroll = gtk::ScrolledWindow::builder()
         .child(&log_label)

@@ -437,8 +437,7 @@ fn tenxer_filter_commits_results_without_touching_the_hidden_directory() {
                         && fixture.shortcuts.filter_mark().as_deref() == Some("filter: report")
                 });
                 wait_until(|| {
-                    fixture.shortcuts.count_text()
-                        == ("3 items".to_owned(), "2 files, 1 folder".to_owned())
+                    fixture.shortcuts.count_text() == ("3 items".to_owned(), String::new())
                 });
                 assert_eq!(revealed_filter_funnels(&fixture.view.widget()), 0);
                 assert_eq!(fill_names(&browser), ["beta.txt"], "{mode:?}");

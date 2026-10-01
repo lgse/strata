@@ -97,7 +97,7 @@ impl PreviewState {
         }
         self.clear_content();
         self.title.set_text(PREVIEW_LABEL);
-        self.title.set_tooltip_text(None);
+        crate::ui::accessibility::set_description(&self.title, None);
         self.icon.set_visible(false);
         self.metadata.set_visible(false);
         self.open.set_sensitive(false);

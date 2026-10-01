@@ -20,6 +20,7 @@ use crate::services::{
     model_preview::MAX_MODEL_INPUT_BYTES,
 };
 
+#[cfg(feature = "rar")]
 pub(crate) mod archive;
 pub(crate) mod browser;
 pub(crate) mod media;
@@ -608,7 +609,7 @@ fn runtime_command(bwrap: &Path, needs_media_libraries: bool) -> Command {
         "--clearenv",
         "--setenv",
         "PATH",
-        "/usr/bin",
+        option_env!("STRATA_SANDBOX_PATH").unwrap_or("/usr/bin"),
         "--setenv",
         "HOME",
         "/nonexistent",
@@ -628,8 +629,8 @@ fn runtime_command(bwrap: &Path, needs_media_libraries: bool) -> Command {
         "--dir",
         "/etc",
         "--ro-bind",
-        "/usr",
-        "/usr",
+        option_env!("STRATA_SANDBOX_ROOT").unwrap_or("/usr"),
+        option_env!("STRATA_SANDBOX_ROOT").unwrap_or("/usr"),
         "--ro-bind-try",
         "/lib",
         "/lib",
@@ -652,6 +653,9 @@ fn runtime_command(bwrap: &Path, needs_media_libraries: bool) -> Command {
         "/etc/ImageMagick-6",
         "/etc/ImageMagick-6",
     ]);
+    if let Some(loaders) = option_env!("STRATA_SANDBOX_GDK_PIXBUF_MODULE_FILE") {
+        command.args(["--setenv", "GDK_PIXBUF_MODULE_FILE", loaders]);
+    }
     if needs_media_libraries {
         // Debian-family FFmpeg libraries resolve BLAS/LAPACK through these links.
         // Expose only the runtime files, not the system alternatives directory.
@@ -700,7 +704,7 @@ fn sandbox_command(
     command.arg("--");
     if !operation.is_media() {
         command
-            .arg("/usr/bin/prlimit")
+            .arg(option_env!("STRATA_SANDBOX_PRLIMIT").unwrap_or("/usr/bin/prlimit"))
             .arg(format!("--as={ADDRESS_SPACE_LIMIT_BYTES}"))
             .arg("--cpu=10")
             .arg(format!(

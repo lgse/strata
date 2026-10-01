@@ -226,6 +226,44 @@ fn context_hints_follow_the_active_map() {
     );
 }
 
+#[test]
+fn archive_extraction_actions_follow_build_support() {
+    crate::test_support::gtk_test(
+        "ui::browser::context_menu::tests::menus::archive_extraction_actions_follow_build_support",
+        || {
+            let fixture = tempfile::tempdir().expect("menu fixture");
+            let view = BrowserView::new(Rc::new(MenuSource), PeekBehavior::default());
+            view.set_operation_provider(Rc::new(crate::adapters::LocalOperationProvider));
+            let window = gtk::Window::builder()
+                .child(&view.widget())
+                .default_width(1000)
+                .default_height(850)
+                .build();
+            window.present();
+            view.browser().navigate(Location::local(fixture.path()));
+            wait_until(|| label(&view.widget(), "archive.rar").is_some());
+            for (name, supported) in [
+                ("archive.zip", true),
+                ("archive.rar", cfg!(feature = "rar")),
+            ] {
+                let menu = open_menu(&view, Some(name));
+                let labels = label_texts(&menu);
+                for action in ["Extract here", "Extract to…"] {
+                    assert_eq!(
+                        labels.iter().any(|label| label == action),
+                        supported,
+                        "{name}: {labels:?}"
+                    );
+                }
+                menu.popdown();
+                wait_until(|| !menu.is_mapped());
+            }
+            view.browser().clear_observer();
+            window.destroy();
+        },
+    );
+}
+
 fn label_texts(menu: &gtk::Popover) -> Vec<String> {
     descendants(menu.upcast_ref())
         .into_iter()

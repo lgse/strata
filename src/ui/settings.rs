@@ -1258,6 +1258,7 @@ fn release_notes_card(title: &str, initial: &str) -> ReleaseNotesCard {
     set_release_notes_message(&notes, initial);
     let fallback =
         gtk::LinkButton::with_label("https://github.com/lgse/strata/releases", "View on GitHub");
+    fallback.set_has_tooltip(false);
     fallback.add_css_class("release-notes-fallback");
     fallback.set_halign(gtk::Align::Start);
     fallback.set_visible(false);
@@ -2095,6 +2096,7 @@ pub(super) fn show_update_dialog(
         .build();
     notes_scroll.add_css_class("update-dialog-notes");
     let fallback = gtk::LinkButton::with_label(&release.url, "View release on GitHub");
+    fallback.set_has_tooltip(false);
     fallback.add_css_class("release-notes-fallback");
     fallback.set_halign(gtk::Align::Start);
     let status_message = match update_method {
@@ -2535,10 +2537,8 @@ fn navigation_button(icon: &str, label: &str) -> (gtk::Button, gtk::Label, gtk::
     text.add_css_class("settings-nav-copy");
     content.append(&icon_image);
     content.append(&text);
-    let button = gtk::Button::builder()
-        .child(&content)
-        .tooltip_text(label)
-        .build();
+    let button = gtk::Button::builder().child(&content).build();
+    button.set_widget_name(label);
     button.set_has_frame(false);
     button.set_cursor_from_name(Some("pointer"));
     super::accessibility::set_label(

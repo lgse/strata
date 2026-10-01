@@ -195,7 +195,6 @@ fn candidate_row(path: &Path, home: &Path) -> gtk::ListBoxRow {
         .focusable(false)
         .selectable(true)
         .activatable(true)
-        .tooltip_text(path.to_string_lossy())
         .build();
     row.add_css_class("path-completion-row");
     let content = gtk::Box::new(gtk::Orientation::Horizontal, 10);

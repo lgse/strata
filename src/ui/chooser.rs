@@ -298,7 +298,7 @@ impl ChooserDropdown {
             .always_show_arrow(true)
             .popover(&popover)
             .build();
-        button.set_tooltip_text(Some(current));
+        crate::ui::accessibility::set_description(&button, Some(current));
         button.add_css_class("form-control");
         button.add_css_class("chooser-dropdown");
         button.set_halign(gtk::Align::Start);
@@ -348,7 +348,7 @@ impl ChooserDropdown {
                     current_label.set_label(&label);
                 }
                 if let Some(button) = button.upgrade() {
-                    button.set_tooltip_text(Some(&label));
+                    crate::ui::accessibility::set_description(&button, Some(&label));
                 }
                 for (check_index, check) in checks.borrow().iter().enumerate() {
                     check.set_visible(check_index == index);
@@ -523,7 +523,7 @@ impl ChooserState {
         {
             filename.set_text(&name.to_string_lossy());
             filename.remove_css_class("error");
-            filename.set_tooltip_text(None);
+            crate::ui::accessibility::set_description(filename, None);
         }
     }
 
@@ -640,12 +640,13 @@ impl ChooserState {
         let name = filename.text().to_string();
         if let Err(message) = crate::services::validate_basename(&name) {
             filename.add_css_class("error");
-            filename.set_tooltip_text(Some(message));
+            crate::ui::accessibility::set_description(filename, Some(message));
+            self.show_error(message);
             filename.grab_focus();
             return;
         }
         filename.remove_css_class("error");
-        filename.set_tooltip_text(None);
+        crate::ui::accessibility::set_description(filename, None);
         let folder = match self.active_folder() {
             Ok(folder) => folder,
             Err(message) => {
@@ -1079,7 +1080,7 @@ fn build_chooser_with_source(
             label.add_css_class("action-dialog-description");
             label.set_xalign(0.0);
             label.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
-            label.set_tooltip_text(Some(&names));
+            crate::ui::accessibility::set_description(&label, Some(&names));
             let row = labeled_row("Files", Some(label.upcast_ref()));
             details.append(&row);
             None
@@ -1147,7 +1148,7 @@ fn build_chooser_with_source(
             ..
         }
     ) {
-        accept.set_tooltip_text(Some("Select folder (Ctrl+Enter)"));
+        crate::ui::accessibility::set_description(&accept, Some("Select folder (Ctrl+Enter)"));
     }
     let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     actions.add_css_class("chooser-actions");
@@ -1461,7 +1462,7 @@ fn labeled_row(label: &str, child: Option<&gtk::Widget>) -> gtk::Box {
     let label = form_label(label);
     label.set_max_width_chars(16);
     label.set_ellipsize(gtk::pango::EllipsizeMode::End);
-    label.set_tooltip_text(Some(&label.text()));
+    crate::ui::accessibility::set_description(&label, Some(&label.text()));
     row.append(&label);
     if let Some(child) = child {
         row.append(child);

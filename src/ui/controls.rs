@@ -14,6 +14,7 @@ pub(super) fn stepper(labels: [&str; 3]) -> (gtk::Box, [gtk::Button; 3]) {
         if index == 1 {
             button.add_css_class("appearance-text-value");
             button.set_hexpand(true);
+            super::accessibility::set_description(&button, Some(labels[index]));
         } else {
             let icon = if index == 0 {
                 crate::assets::icons::MINUS
@@ -26,8 +27,8 @@ pub(super) fn stepper(labels: [&str; 3]) -> (gtk::Box, [gtk::Button; 3]) {
             button.set_child(Some(&image));
             button.add_css_class("appearance-text-step");
             super::accessibility::set_label(&button, labels[index]);
+            button.set_tooltip_text(Some(labels[index]));
         }
-        button.set_tooltip_text(Some(labels[index]));
         control.append(&button);
         button
     });
@@ -59,7 +60,6 @@ impl FormTextField {
         let remaining = form_label("");
         remaining.set_halign(gtk::Align::End);
         remaining.set_xalign(1.0);
-        remaining.set_tooltip_text(Some("Characters remaining"));
         super::accessibility::set_label(&remaining, "Characters remaining");
 
         let widget = gtk::Box::new(gtk::Orientation::Vertical, 4);
@@ -336,15 +336,18 @@ pub(super) fn focus_button(button: &gtk::Button) {
 }
 
 impl ModalLayout {
-    pub fn set_loading(&self, loading: bool, tooltip: Option<&str>) {
+    pub fn set_loading(&self, loading: bool, description: Option<&str>) {
         if loading {
-            self.loading.set_tooltip_text(tooltip.or(Some("Working…")));
+            crate::ui::accessibility::set_description(
+                &self.loading,
+                description.or(Some("Working…")),
+            );
             self.loading.set_visible(true);
             self.loading.start();
         } else {
             self.loading.stop();
             self.loading.set_visible(false);
-            self.loading.set_tooltip_text(None);
+            crate::ui::accessibility::set_description(&self.loading, None);
         }
     }
 }

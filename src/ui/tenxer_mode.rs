@@ -83,7 +83,6 @@ pub(crate) fn is_toggle_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::Modifi
 pub(crate) enum Chord {
     /// **g** from the listing: first item or a place.
     Go,
-    /// **g** while a document or archive preview owns the keys: only **g g**.
     PreviewTop,
     Copy,
     Sort,
@@ -116,9 +115,25 @@ impl Chord {
                 ("p", "Pictures"),
                 ("v", "Videos"),
                 ("1–9", "Pins"),
+                ("+ / -", "Pin / unpin folder"),
                 ("Space", "Type a path"),
             ],
-            Self::PreviewTop => &[("g", "Top")],
+            Self::PreviewTop => &[
+                ("g", "Top"),
+                ("f", "Follow search result"),
+                ("h", "Home"),
+                ("d", "Downloads"),
+                ("c", "Config"),
+                ("t", "Trash"),
+                ("n", "Network"),
+                ("r", "Recent"),
+                ("k", "Documents"),
+                ("p", "Pictures"),
+                ("v", "Videos"),
+                ("1–9", "Pins"),
+                ("+ / -", "Pin / unpin folder"),
+                ("Space", "Type a path"),
+            ],
             Self::Copy => &[("c", "Copy path"), ("n", "Copy name")],
             Self::Sort => &[
                 ("a", "Name"),
@@ -143,6 +158,9 @@ pub(crate) enum Prompt {
     Recent,
     Create,
     Rename,
+    MoveTo,
+    CopyTo,
+    ExtractTo,
 }
 
 impl Prompt {
@@ -157,11 +175,28 @@ impl Prompt {
             Self::Recent => "recent \u{203a}",
             Self::Create => "create \u{203a}",
             Self::Rename => "rename \u{203a}",
+            Self::MoveTo => "move to \u{203a}",
+            Self::CopyTo => "copy to \u{203a}",
+            Self::ExtractTo => "extract to \u{203a}",
         }
     }
 
     pub(crate) fn picks_history(self) -> bool {
         matches!(self, Self::Jump | Self::Recent)
+    }
+
+    pub(crate) fn completes_folders(self) -> bool {
+        matches!(
+            self,
+            Self::Go | Self::MoveTo | Self::CopyTo | Self::ExtractTo
+        )
+    }
+
+    pub(crate) fn holds_targets(self) -> bool {
+        matches!(
+            self,
+            Self::Rename | Self::MoveTo | Self::CopyTo | Self::ExtractTo
+        )
     }
 
     pub(crate) fn name(self) -> &'static str {
@@ -175,6 +210,9 @@ impl Prompt {
             Self::Recent => "Jump to a recently visited folder",
             Self::Create => "Create a file, or a folder ending in /",
             Self::Rename => "Rename the focused item",
+            Self::MoveTo => "Move the selection to a folder",
+            Self::CopyTo => "Copy the selection to a folder",
+            Self::ExtractTo => "Extract the archive to a folder",
         }
     }
 }

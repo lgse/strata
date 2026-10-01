@@ -70,6 +70,9 @@ def test_archive_activation_extracts_to_subfolder(strata, activation, format):
     assert fixture.path(archive_name).exists()
     assert strata.pane().name == fixture.root.name
     strata.entry("activation")
+    if activation != "Extract to…":
+        strata.wait_for_selection(["activation"], fixture.root.name)
+        strata.wait_for_focused_entry("activation")
     extracted.write_text("keep existing edits\n")
     for suffix in [1, 2]:
         extract_archive(strata, archive_name, activation)
@@ -79,6 +82,9 @@ def test_archive_activation_extracts_to_subfolder(strata, activation, format):
         assert fresh.read_text() == contents
         assert extracted.read_text() == "keep existing edits\n"
         strata.entry(f"activation ({suffix})")
+        if activation != "Extract to…":
+            strata.wait_for_selection([f"activation ({suffix})"], fixture.root.name)
+            strata.wait_for_focused_entry(f"activation ({suffix})")
 
 
 @pytest.mark.preferences(

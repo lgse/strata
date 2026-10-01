@@ -589,7 +589,10 @@ impl ViewState {
             destination_label.set_hexpand(true);
             destination_label.set_xalign(1.0);
             destination_label.set_selectable(true);
-            destination_label.set_tooltip_text(Some(&destination.to_string_lossy()));
+            crate::ui::accessibility::set_description(
+                &destination_label,
+                Some(&destination.to_string_lossy()),
+            );
             row.append(&icon);
             row.append(&name);
             row.append(&destination_label);
@@ -793,7 +796,7 @@ impl ViewState {
             name.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
             name.set_hexpand(true);
             name.set_xalign(0.0);
-            name.set_tooltip_text(Some(&entry.location.display_path()));
+            crate::ui::accessibility::set_description(&name, Some(&entry.location.display_path()));
             let metadata = gtk::Label::new(Some(&if entry.is_directory() {
                 "Folder".to_owned()
             } else {
@@ -922,6 +925,17 @@ impl ViewState {
                 } else {
                     glib::Propagation::Proceed
                 }
+            } else if trash
+                && key == gtk::gdk::Key::d
+                && !modifiers.intersects(
+                    gtk::gdk::ModifierType::CONTROL_MASK
+                        | gtk::gdk::ModifierType::ALT_MASK
+                        | gtk::gdk::ModifierType::SUPER_MASK,
+                )
+                && crate::ui::preferences::PreferenceManager::shared().tenxer_mode()
+            {
+                focused_confirm.emit_clicked();
+                glib::Propagation::Stop
             } else if !modifiers
                 .intersects(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::ALT_MASK)
             {
