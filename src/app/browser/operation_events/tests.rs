@@ -97,6 +97,7 @@ fn cancelling_transfer_blocks_new_mutations_until_its_terminal_event() {
         vec![PasteItem {
             source: Location::local("/fixture/source"),
             conflict: TransferConflict::FailIfExists,
+            target_name: None,
         }],
         false,
         false,

@@ -80,6 +80,7 @@ fn bytes_already_written_are_flushed_before_cancellation_and_cancel_is_not_paste
             items: vec![PasteItem {
                 source: Location::local(&source),
                 conflict: TransferConflict::FailIfExists,
+                target_name: None,
             }],
             move_sources: false,
         },
@@ -139,6 +140,7 @@ fn a_cancel_after_the_flush_starts_does_not_report_success() -> Result<(), Box<d
             items: vec![PasteItem {
                 source: Location::local(&source),
                 conflict: TransferConflict::FailIfExists,
+                target_name: None,
             }],
             move_sources: false,
         },
@@ -188,6 +190,7 @@ fn failed_final_flush_reports_that_writes_may_still_be_pending() -> Result<(), B
             items: vec![PasteItem {
                 source: Location::local(&source),
                 conflict: TransferConflict::FailIfExists,
+                target_name: None,
             }],
             move_sources: false,
         },
@@ -295,10 +298,12 @@ fn bytes_already_written_are_flushed_before_transfer_failure() -> Result<(), Box
                 PasteItem {
                     source: Location::local(&source),
                     conflict: TransferConflict::FailIfExists,
+                    target_name: None,
                 },
                 PasteItem {
                     source: Location::local(root.path().join("missing.bin")),
                     conflict: TransferConflict::FailIfExists,
+                    target_name: None,
                 },
             ],
             move_sources: false,

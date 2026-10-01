@@ -63,6 +63,7 @@ pub enum TransferConflict {
 pub struct PasteItem {
     pub source: Location,
     pub conflict: TransferConflict,
+    pub target_name: Option<OsString>,
 }
 
 /// A completed move: where an item started and where it ended up.

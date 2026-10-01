@@ -19,6 +19,7 @@ fn a_copy_reports_the_destination_it_created() -> Result<(), Box<dyn Error>> {
         items: vec![PasteItem {
             source: Location::local(&source),
             conflict: TransferConflict::FailIfExists,
+            target_name: None,
         }],
         move_sources: false,
     })?;
@@ -47,6 +48,7 @@ fn duplicating_a_file_preserves_contents_and_reports_the_generated_name()
         items: vec![PasteItem {
             source: Location::local(&source),
             conflict: TransferConflict::FailIfExists,
+            target_name: None,
         }],
         move_sources: false,
     })?;
@@ -81,6 +83,7 @@ fn a_copy_that_replaces_an_existing_item_reports_its_destination() -> Result<(),
         items: vec![PasteItem {
             source: Location::local(&source),
             conflict: TransferConflict::ReplaceExisting,
+            target_name: None,
         }],
         move_sources: false,
     })?;
@@ -109,6 +112,7 @@ fn a_move_reports_no_created_destination() -> Result<(), Box<dyn Error>> {
         items: vec![PasteItem {
             source: Location::local(&source),
             conflict: TransferConflict::FailIfExists,
+            target_name: None,
         }],
         move_sources: true,
     })?;

@@ -100,6 +100,7 @@ fn a_completed_move_records_where_each_item_landed() {
         vec![PasteItem {
             source: Location::local("/fixture/report.txt"),
             conflict: TransferConflict::FailIfExists,
+            target_name: None,
         }],
         true,
         true,
@@ -124,6 +125,7 @@ fn a_completed_copy_records_the_destinations_it_created() {
         vec![PasteItem {
             source: Location::local("/fixture/report.txt"),
             conflict: TransferConflict::FailIfExists,
+            target_name: None,
         }],
         false,
         true,
@@ -172,6 +174,7 @@ fn undoing_a_copy_removes_only_the_destinations_it_created() {
         vec![PasteItem {
             source: Location::local("/fixture/report.txt"),
             conflict: TransferConflict::FailIfExists,
+            target_name: None,
         }],
         false,
         true,
@@ -239,6 +242,7 @@ fn undoing_a_copy_leaves_the_previous_trash_undo_available() {
         vec![PasteItem {
             source: Location::local("/fixture/note.txt"),
             conflict: TransferConflict::FailIfExists,
+            target_name: None,
         }],
         false,
         true,
@@ -265,6 +269,7 @@ fn undoing_a_copy_records_no_trash_undo_of_its_own() {
         vec![PasteItem {
             source: Location::local("/fixture/report.txt"),
             conflict: TransferConflict::FailIfExists,
+            target_name: None,
         }],
         false,
         true,
@@ -354,6 +359,7 @@ fn a_completed_copy_displaces_an_older_trash_undo() {
         vec![PasteItem {
             source: Location::local("/fixture/note.txt"),
             conflict: TransferConflict::FailIfExists,
+            target_name: None,
         }],
         false,
         true,
@@ -372,6 +378,7 @@ fn a_move_into_the_items_own_directory_records_no_undo() {
         vec![PasteItem {
             source: Location::local("/fixture/report.txt"),
             conflict: TransferConflict::FailIfExists,
+            target_name: None,
         }],
         true,
         true,
@@ -390,6 +397,7 @@ fn undoing_a_move_transfers_items_back_once() {
         vec![PasteItem {
             source: Location::local("/fixture/report.txt"),
             conflict: TransferConflict::FailIfExists,
+            target_name: None,
         }],
         true,
         true,
@@ -667,6 +675,7 @@ fn rename_undo_preserves_mixed_latest_operation_order() {
         vec![PasteItem {
             source: Location::local("/fixture/moved.txt"),
             conflict: TransferConflict::FailIfExists,
+            target_name: None,
         }],
         true,
         true,
@@ -676,6 +685,7 @@ fn rename_undo_preserves_mixed_latest_operation_order() {
         vec![PasteItem {
             source: Location::local("/fixture/copied.txt"),
             conflict: TransferConflict::FailIfExists,
+            target_name: None,
         }],
         false,
         true,
@@ -1180,6 +1190,7 @@ fn an_undone_move_can_be_redone() {
         vec![PasteItem {
             source: Location::local("/fixture/report.txt"),
             conflict: TransferConflict::FailIfExists,
+            target_name: None,
         }],
         true,
         true,
@@ -1248,6 +1259,7 @@ fn an_undone_copy_can_be_redone() {
         vec![PasteItem {
             source: Location::local("/fixture/report.txt"),
             conflict: TransferConflict::FailIfExists,
+            target_name: None,
         }],
         false,
         true,

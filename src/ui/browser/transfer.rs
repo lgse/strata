@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 
 use crate::adapters::gio_file_for_location;
+use crate::adapters::{duplicate_candidate_name, parse_copy_suffix};
 use crate::app::Browser;
 use crate::model::{FileEntry, Location};
 use crate::services::{
     DropCommit, MoveRecord, PasteItem, TransferConflict, UndoMoveItem, VolumeRelation,
-    transferable_drop_sources,
+    transferable_drop_sources, validate_basename,
 };
 use crate::ui::browser::ViewState;
 use crate::ui::browser::destination::{
@@ -16,9 +17,10 @@ use crate::ui::browser::entry::item_count_label;
 use crate::ui::browser::paths::{
     can_remove_location, compact_display_path, compact_native_path, is_trash_location,
 };
+use crate::ui::collection_edit::rename_stem_end;
 use crate::ui::controls::{
-    ModalTone, focus_button, form_check_button, form_entry, form_label, message_dialog_description,
-    message_dialog_layout, modal_layout,
+    ModalTone, focus_button, form_check_button, form_entry, form_error_label, form_label,
+    message_dialog_description, message_dialog_layout, modal_layout, set_form_field_error,
 };
 use crate::ui::modal::{
     ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog, submit_on_enter,
@@ -26,23 +28,27 @@ use crate::ui::modal::{
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::cell::{Cell, RefCell};
+use std::collections::HashSet;
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::Duration;
 
 type RemovableRootResolver = Rc<dyn Fn(&str) -> Option<PathBuf>>;
+type RenameValidator = Rc<dyn Fn(&str) -> Result<OsString, String>>;
 
 const SEND_TO_SUCCESS_DURATION: Duration = Duration::from_secs(2);
 
 #[cfg(test)]
 mod tests;
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum ConflictChoice {
     Replace,
     Merge,
     Skip,
     KeepBoth,
+    Rename(OsString),
 }
 
 #[derive(Clone)]
@@ -50,6 +56,7 @@ struct TransferCollision {
     source: Location,
     /// Both colliding items are directories, so their contents can be merged.
     mergeable: bool,
+    self_copy: bool,
 }
 
 #[derive(Clone)]
@@ -92,6 +99,9 @@ pub(crate) enum ConflictFocus {
 struct ConflictActions {
     keep_both: bool,
     merge: bool,
+    skip: bool,
+    apply_to_all: bool,
+    self_copy: bool,
     focus: ConflictFocus,
 }
 
@@ -142,13 +152,13 @@ fn transfer_collision(source: &Location, destination: &Location) -> Option<Trans
     let destination_file = gio_file_for_location(destination);
     let name = source_file.basename()?;
     let target = destination_file.child(name);
-    if source_file.equal(&target)
-        || source_file.equal(&destination_file)
+    if source_file.equal(&destination_file)
         || destination_file.has_prefix(&source_file)
         || !target.query_exists(None::<&gio::Cancellable>)
     {
         return None;
     }
+    let self_copy = source_file.equal(&target);
     let is_directory = |file: &gio::File| {
         file.query_file_type(
             gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
@@ -157,8 +167,39 @@ fn transfer_collision(source: &Location, destination: &Location) -> Option<Trans
     };
     Some(TransferCollision {
         source: source.clone(),
-        mergeable: is_directory(&source_file) && is_directory(&target),
+        mergeable: !self_copy && is_directory(&source_file) && is_directory(&target),
+        self_copy,
     })
+}
+
+fn first_duplicate_candidate(
+    destination: &gio::File,
+    source: &Location,
+    name: &OsStr,
+) -> Option<OsString> {
+    let is_directory = gio_file_for_location(source).query_file_type(
+        gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+        None::<&gio::Cancellable>,
+    ) == gio::FileType::Directory;
+    let (stem, extension) = if is_directory {
+        (name, None)
+    } else {
+        let path = Path::new(name);
+        let extension = path.extension().filter(|extension| !extension.is_empty());
+        (path.file_stem().unwrap_or(name), extension)
+    };
+    let (base_stem, copy_num) = parse_copy_suffix(stem);
+    let start_index = copy_num.map_or(1, |number| number + 1);
+    for index in start_index..=u64::MAX {
+        let candidate = duplicate_candidate_name(base_stem, extension, index);
+        if !destination
+            .child(&candidate)
+            .query_exists(None::<&gio::Cancellable>)
+        {
+            return Some(candidate);
+        }
+    }
+    None
 }
 
 fn cross_volume_drop_description(volume: VolumeRelation) -> &'static str {
@@ -330,6 +371,30 @@ impl ViewState {
         focus: ConflictFocus,
     ) {
         self.start_transfer_with_reveal(destination, sources, move_sources, true, None, focus);
+    }
+
+    pub(super) fn start_duplicate_transfer(
+        self: &Rc<Self>,
+        destination: Location,
+        sources: Vec<Location>,
+    ) {
+        let accepted = sources
+            .into_iter()
+            .map(|source| PasteItem {
+                source,
+                conflict: TransferConflict::FailIfExists,
+                target_name: None,
+            })
+            .collect();
+        self.resolve_transfer_collisions(
+            destination,
+            Vec::new(),
+            accepted,
+            false,
+            true,
+            None,
+            ConflictFocus::Replace,
+        );
     }
 
     pub(super) fn send_to_removable_device(self: &Rc<Self>, id: String, sources: Vec<Location>) {
@@ -581,6 +646,7 @@ impl ViewState {
                 None => accepted.push(PasteItem {
                     source,
                     conflict: TransferConflict::FailIfExists,
+                    target_name: None,
                 }),
             }
         }
@@ -651,7 +717,11 @@ impl ViewState {
         // Merge stays copy-only: undoing a merged move cannot tell which
         // destination contents the source actually owned.
         let allow_merge = collision.mergeable && !move_sources;
-        let explanation = if allow_merge {
+        let explanation = if collision.self_copy {
+            format!(
+                "Pasting \u{201c}{name}\u{201d} into the folder it already lives in creates a duplicate."
+            )
+        } else if allow_merge {
             format!(
                 "A folder named \u{201c}{name}\u{201d} already exists in {}. Merging combines the contents of both folders; incoming items overwrite items with the same name.",
                 compact_display_path(&destination)
@@ -665,18 +735,66 @@ impl ViewState {
         let state = self.clone();
         let send_to_conflict = send_to.clone();
         // Move undo/reveal assumes an unrenamed `transfer_target`.
-        let apply_to_all_visible = !collisions.is_empty();
-        let skip_visible = !accepted.is_empty() || !collisions.is_empty();
+        let apply_to_all = !collisions.is_empty();
+        let skip = !accepted.is_empty() || !collisions.is_empty();
+        let validate_rename = (!move_sources).then(|| {
+            let destination_file = gio_file_for_location(&destination);
+            let source_display = source.display_name();
+            let source_raw = gio_file_for_location(&source)
+                .basename()
+                .map(|base| base.into_os_string());
+            let mut batch_targets = HashSet::new();
+            for item in &accepted {
+                if let Some(target) = &item.target_name {
+                    batch_targets.insert(target.clone());
+                } else if let Some(base) = gio_file_for_location(&item.source).basename() {
+                    batch_targets.insert(base.into_os_string());
+                }
+            }
+            for remaining in &collisions {
+                if let Some(base) = gio_file_for_location(&remaining.source).basename() {
+                    if let Some(candidate) = first_duplicate_candidate(
+                        &destination_file,
+                        &remaining.source,
+                        base.as_os_str(),
+                    ) {
+                        batch_targets.insert(candidate);
+                    }
+                    batch_targets.insert(base.into_os_string());
+                }
+            }
+            Rc::new(move |name: &str| -> Result<OsString, String> {
+                validate_basename(name).map_err(|err| err.to_string())?;
+                let resolved: OsString = match &source_raw {
+                    Some(raw) if name == source_display && raw.as_os_str() != OsStr::new(name) => {
+                        raw.clone()
+                    }
+                    _ => OsString::from(name),
+                };
+                if batch_targets.contains(&resolved) {
+                    return Err("That name is already used in this transfer".to_string());
+                }
+                let target = destination_file.child(&resolved);
+                if target.query_exists(None::<&gio::Cancellable>) {
+                    return Err(format!(
+                        "An item named \u{201c}{name}\u{201d} already exists in this folder"
+                    ));
+                }
+                Ok(resolved)
+            }) as RenameValidator
+        });
         self.confirm_replace_conflict(
             &name,
             &explanation,
-            apply_to_all_visible,
-            skip_visible,
             ConflictActions {
                 keep_both: !move_sources,
                 merge: allow_merge,
+                skip,
+                apply_to_all,
+                self_copy: collision.self_copy,
                 focus,
             },
+            validate_rename,
             Rc::new(move |choice, apply_to_all| {
                 let mut accepted = accepted.clone();
                 let mut remaining = collisions.clone();
@@ -685,18 +803,27 @@ impl ViewState {
                         accepted.push(PasteItem {
                             source: source.clone(),
                             conflict: TransferConflict::ReplaceExisting,
+                            target_name: None,
                         });
                         if apply_to_all {
-                            accepted.extend(remaining.drain(..).map(|collision| PasteItem {
+                            // Self-copies still need their own prompt: replacing
+                            // an item with itself is a silent no-op.
+                            let (replaceable, rest): (Vec<_>, Vec<_>) = remaining
+                                .into_iter()
+                                .partition(|collision| !collision.self_copy);
+                            accepted.extend(replaceable.into_iter().map(|collision| PasteItem {
                                 source: collision.source,
                                 conflict: TransferConflict::ReplaceExisting,
+                                target_name: None,
                             }));
+                            remaining = rest;
                         }
                     }
                     ConflictChoice::Merge => {
                         accepted.push(PasteItem {
                             source: source.clone(),
                             conflict: TransferConflict::Merge,
+                            target_name: None,
                         });
                         if apply_to_all {
                             // File collisions still need their own prompt.
@@ -706,6 +833,7 @@ impl ViewState {
                             accepted.extend(mergeable.into_iter().map(|collision| PasteItem {
                                 source: collision.source,
                                 conflict: TransferConflict::Merge,
+                                target_name: None,
                             }));
                             remaining = rest;
                         }
@@ -714,13 +842,22 @@ impl ViewState {
                         accepted.push(PasteItem {
                             source: source.clone(),
                             conflict: TransferConflict::KeepBoth,
+                            target_name: None,
                         });
                         if apply_to_all {
                             accepted.extend(remaining.drain(..).map(|collision| PasteItem {
                                 source: collision.source,
                                 conflict: TransferConflict::KeepBoth,
+                                target_name: None,
                             }));
                         }
+                    }
+                    ConflictChoice::Rename(target_name) => {
+                        accepted.push(PasteItem {
+                            source: source.clone(),
+                            conflict: TransferConflict::FailIfExists,
+                            target_name: Some(target_name),
+                        });
                     }
                     ConflictChoice::Skip if apply_to_all => remaining.clear(),
                     ConflictChoice::Skip => {}
@@ -888,14 +1025,15 @@ impl ViewState {
             compact_display_path(&parent)
         );
         let state = self.clone();
-        let apply_to_all_visible = !collisions.is_empty();
-        let skip_visible = !accepted.is_empty() || !collisions.is_empty();
         self.confirm_replace_conflict(
             &name,
             &explanation,
-            apply_to_all_visible,
-            skip_visible,
-            ConflictActions::default(),
+            ConflictActions {
+                skip: !accepted.is_empty() || !collisions.is_empty(),
+                apply_to_all: !collisions.is_empty(),
+                ..ConflictActions::default()
+            },
+            None,
             Rc::new(move |choice, apply_to_all| {
                 let mut accepted = accepted.clone();
                 let mut remaining = collisions.clone();
@@ -913,8 +1051,12 @@ impl ViewState {
                             }));
                         }
                     }
-                    ConflictChoice::Merge | ConflictChoice::KeepBoth => {
-                        unreachable!("merge and keep-both are not offered for replay conflicts")
+                    ConflictChoice::Merge
+                    | ConflictChoice::KeepBoth
+                    | ConflictChoice::Rename(_) => {
+                        unreachable!(
+                            "merge, keep-both, and rename are not offered for replay conflicts"
+                        )
                     }
                     ConflictChoice::Skip => {
                         if apply_to_all {
@@ -935,9 +1077,8 @@ impl ViewState {
         self: &Rc<Self>,
         name: &str,
         explanation: &str,
-        apply_to_all_visible: bool,
-        skip_visible: bool,
         actions: ConflictActions,
+        validate_rename: Option<RenameValidator>,
         on_choice: Rc<dyn Fn(ConflictChoice, bool)>,
     ) {
         let Some(ModalHost {
@@ -957,11 +1098,19 @@ impl ViewState {
         );
         layout.body.append(&message_dialog_description(explanation));
         let apply_all = form_check_button("Apply to All");
-        apply_all.set_visible(apply_to_all_visible);
+        apply_all.set_visible(actions.apply_to_all);
         layout.actions.prepend(&apply_all);
+        let inner_choice = on_choice.clone();
+        let apply_all_for_rename = apply_all.clone();
+        let on_choice = Rc::new(move |choice, apply_to_all| {
+            if matches!(choice, ConflictChoice::Rename(_)) {
+                apply_all_for_rename.set_active(false);
+            }
+            inner_choice(choice, apply_to_all);
+        });
         let skip = gtk::Button::with_label("Skip");
         skip.add_css_class("action-dialog-cancel");
-        skip.set_visible(skip_visible);
+        skip.set_visible(actions.skip);
         layout
             .actions
             .insert_child_after(&skip, Some(&layout.cancel));
@@ -976,6 +1125,7 @@ impl ViewState {
         let content = layout.content;
         let cancel = layout.cancel;
         let replace = layout.confirm;
+        replace.set_visible(!actions.self_copy);
 
         let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
         window_overlay.add_overlay(&layer);
@@ -1013,17 +1163,12 @@ impl ViewState {
             let chosen = on_choice.clone();
             button.connect_clicked(move |_| {
                 dismiss_modal_layer(&chosen_layer, &chosen_overlay, chosen_root.as_ref());
-                chosen(choice, chosen_apply_all.is_active());
+                chosen(choice.clone(), chosen_apply_all.is_active());
             });
         }
 
-        let escape = gtk::EventControllerKey::new();
-        escape.set_propagation_phase(gtk::PropagationPhase::Capture);
-        let escaped_layer = layer.clone();
-        let escaped_overlay = window_overlay;
-        let escaped_root = blurred_root;
         let keep_both_focus = keep_both.clone();
-        let enter_buttons = [
+        let mut enter_buttons = vec![
             skip,
             keep_both,
             merge,
@@ -1031,6 +1176,94 @@ impl ViewState {
             cancel,
             layout.close,
         ];
+        let mut rename_focus = None;
+
+        if let Some(validate) = validate_rename {
+            let rename_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+            let rename_entry = form_entry();
+            rename_entry.set_hexpand(true);
+            rename_entry.set_text(name);
+            crate::ui::accessibility::set_label(&rename_entry, "New name");
+            let stem_end = rename_stem_end(name);
+            rename_entry.select_region(0, stem_end);
+            // GTK's select-on-focus runs after the focus-enter signal.
+            {
+                let restored = Cell::new(false);
+                let focus = gtk::EventControllerFocus::new();
+                let weak = rename_entry.downgrade();
+                focus.connect_enter(move |_| {
+                    if restored.replace(true) {
+                        return;
+                    }
+                    let weak = weak.clone();
+                    glib::idle_add_local_once(move || {
+                        if let Some(entry) = weak.upgrade()
+                            && entry.is_mapped()
+                        {
+                            entry.select_region(0, stem_end);
+                        }
+                    });
+                });
+                rename_entry.add_controller(focus);
+            }
+
+            let rename_button = gtk::Button::with_label("Rename");
+            rename_button.add_css_class("action-dialog-cancel");
+
+            rename_row.append(&rename_entry);
+            rename_row.append(&rename_button);
+            layout.body.append(&rename_row);
+
+            let error_label = form_error_label();
+            layout.body.append(&error_label);
+
+            let entry_for_change = rename_entry.clone();
+            let error_for_change = error_label.clone();
+            rename_entry.connect_changed(move |_| {
+                set_form_field_error(&entry_for_change, &error_for_change, None);
+            });
+
+            let chosen_layer = layer.clone();
+            let chosen_overlay = window_overlay.clone();
+            let chosen_root = blurred_root.clone();
+            let chosen_apply_all = apply_all.clone();
+            let chosen = on_choice.clone();
+            let entry_for_submit = rename_entry.clone();
+            let error_for_submit = error_label.clone();
+            let submit_rename = move || {
+                let typed = entry_for_submit.text().to_string();
+                match validate(&typed) {
+                    Ok(target_name) => {
+                        dismiss_modal_layer(&chosen_layer, &chosen_overlay, chosen_root.as_ref());
+                        chosen(
+                            ConflictChoice::Rename(target_name),
+                            chosen_apply_all.is_active(),
+                        );
+                    }
+                    Err(message) => {
+                        set_form_field_error(&entry_for_submit, &error_for_submit, Some(&message));
+                        entry_for_submit.grab_focus();
+                    }
+                }
+            };
+
+            let submit_for_button = Rc::new(submit_rename);
+            let submit_for_entry = submit_for_button.clone();
+            rename_button.connect_clicked(move |_| submit_for_button());
+            rename_entry.connect_activate(move |_| submit_for_entry());
+            enter_buttons.push(rename_button);
+            if actions.self_copy {
+                rename_entry.grab_focus();
+                rename_entry.select_region(0, stem_end);
+                rename_focus = Some((rename_entry, stem_end));
+            }
+        }
+
+        let escape = gtk::EventControllerKey::new();
+        escape.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let escaped_layer = layer.clone();
+        let escaped_overlay = window_overlay;
+        let escaped_root = blurred_root;
         escape.connect_key_pressed(move |_, key, _, _| {
             if key == gtk::gdk::Key::Escape {
                 dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
@@ -1047,7 +1280,16 @@ impl ViewState {
             }
         });
         layer.add_controller(escape);
-        if actions.focus == ConflictFocus::KeepBoth && actions.keep_both {
+        if let Some((entry, _)) = rename_focus {
+            let weak = entry.downgrade();
+            glib::idle_add_local_once(move || {
+                if let Some(entry) = weak.upgrade()
+                    && entry.is_mapped()
+                {
+                    entry.grab_focus_without_selecting();
+                }
+            });
+        } else if actions.focus == ConflictFocus::KeepBoth && actions.keep_both {
             focus_button(&keep_both_focus);
         } else {
             focus_button(&replace);

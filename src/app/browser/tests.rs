@@ -608,7 +608,16 @@ impl OperationProvider for ImmediateOperationProvider {
                 transferred_bytes: 0,
                 total_bytes: None,
                 created_location: (!request.move_sources)
-                    .then(|| item.source.transfer_target(&request.destination))
+                    .then(|| {
+                        if let Some(target_name) = &item.target_name {
+                            crate::adapters::location_for_file(
+                                &crate::adapters::gio_file_for_location(&request.destination)
+                                    .child(target_name),
+                            )
+                        } else {
+                            item.source.transfer_target(&request.destination)
+                        }
+                    })
                     .flatten(),
             });
         }

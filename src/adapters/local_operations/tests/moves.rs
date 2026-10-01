@@ -219,6 +219,7 @@ fn paste_move(
             items: vec![PasteItem {
                 source: Location::local(source),
                 conflict,
+                target_name: None,
             }],
             move_sources: true,
         },

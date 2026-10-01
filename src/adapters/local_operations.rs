@@ -780,11 +780,20 @@ fn validated_child(parent: &gio::File, name: &str) -> Result<gio::File, &'static
     Ok(parent.child(name))
 }
 
+fn is_single_path_component(name: &OsStr) -> bool {
+    let bytes = name.as_bytes();
+    !bytes.is_empty()
+        && !bytes.contains(&b'/')
+        && !bytes.contains(&0)
+        && name != OsStr::new(".")
+        && name != OsStr::new("..")
+}
+
 fn transfer_is_noop(source: &gio::File, destination: &gio::File, target: &gio::File) -> bool {
     source.equal(target) || source.equal(destination) || destination.has_prefix(source)
 }
 
-fn parse_copy_suffix(stem: &OsStr) -> (&OsStr, Option<u64>) {
+pub(crate) fn parse_copy_suffix(stem: &OsStr) -> (&OsStr, Option<u64>) {
     let bytes = stem.as_bytes();
     if let Some(without_closing_parenthesis) = bytes.strip_suffix(b")")
         && let Some(separator) = without_closing_parenthesis
@@ -805,7 +814,7 @@ fn parse_copy_suffix(stem: &OsStr) -> (&OsStr, Option<u64>) {
     (stem, None)
 }
 
-fn duplicate_candidate_name(
+pub(crate) fn duplicate_candidate_name(
     base_stem: &OsStr,
     extension: Option<&OsStr>,
     copy_number: u64,
@@ -4296,8 +4305,22 @@ impl OperationProvider for LocalOperationProvider {
                     });
                     return;
                 };
+                let base_name = item.target_name.as_deref().unwrap_or(name.as_os_str());
+                if !is_single_path_component(base_name) {
+                    let flush_error = flush_written_roots(&written_paths, &emit, request.id)
+                        .await
+                        .err();
+                    emit(OperationEvent::Failed {
+                        request_id: request.id,
+                        message: match flush_error {
+                            Some(error) => format!("A clipboard item has an invalid name. {error}"),
+                            None => "A clipboard item has an invalid name".to_owned(),
+                        },
+                    });
+                    return;
+                }
                 let name = PathBuf::from(fat_family_child_name(
-                    name.as_os_str(),
+                    base_name,
                     fat_family,
                     &mut used_names,
                 ));

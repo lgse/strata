@@ -255,6 +255,7 @@ fn every_recent_spelling_is_rejected_by_creation_and_transfer_commands() {
             vec![PasteItem {
                 source: Location::local("/fixture/source.txt"),
                 conflict: TransferConflict::FailIfExists,
+                target_name: None,
             }],
             false,
             true,

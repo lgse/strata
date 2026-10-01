@@ -117,6 +117,9 @@ def test_paste_into_explicit_selection_after_returning_to_parent(strata, mode, s
         else "archive/notes.txt"
     )
     strata.keyboard.press("ctrl+v")
+    if mode == "List" and selection == "click":
+        strata.wait(lambda: strata.dialog() is not None, "the conflict dialog")
+        strata.pointer.click(strata.dialog_button("Keep Both"))
     strata.wait(
         lambda: fixture.path(destination).exists(),
         "the copy to land in the explicitly selected folder",

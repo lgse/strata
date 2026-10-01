@@ -455,6 +455,7 @@ fn a_merged_paste_reports_no_created_location() -> Result<(), Box<dyn Error>> {
         items: vec![PasteItem {
             source: Location::local(sources.join("folder")),
             conflict: TransferConflict::Merge,
+            target_name: None,
         }],
         move_sources: false,
     })?;

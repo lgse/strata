@@ -140,6 +140,7 @@ fn copying_a_file_emits_bytes_before_item_completion() -> Result<(), Box<dyn Err
             items: vec![PasteItem {
                 source: Location::local(&source),
                 conflict: TransferConflict::FailIfExists,
+                target_name: None,
             }],
             move_sources: false,
         },
@@ -197,6 +198,7 @@ fn nested_copy_reports_files_before_the_selected_folder_finishes() -> Result<(),
             items: vec![PasteItem {
                 source: Location::local(&source),
                 conflict: TransferConflict::FailIfExists,
+                target_name: None,
             }],
             move_sources: false,
         },
@@ -259,10 +261,12 @@ fn cancelling_between_moves_reports_completed_and_unattempted_sources() -> Resul
                 PasteItem {
                     source: Location::local(&first),
                     conflict: TransferConflict::FailIfExists,
+                    target_name: None,
                 },
                 PasteItem {
                     source: Location::local(&second),
                     conflict: TransferConflict::FailIfExists,
+                    target_name: None,
                 },
             ],
             move_sources: true,

@@ -942,7 +942,7 @@ impl ViewState {
         let Some((destination, sources)) = super::transfer::duplicate_transfer(entries) else {
             return;
         };
-        self.start_transfer(destination, sources, false);
+        self.start_duplicate_transfer(destination, sources);
     }
 
     pub(super) fn complete_cut_transfer(&self, transferred: &[Location]) {

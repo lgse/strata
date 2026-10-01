@@ -66,6 +66,7 @@ fn duplicating_a_file_preserves_non_utf8_name_bytes() -> Result<(), Box<dyn Erro
             items: vec![PasteItem {
                 source: Location::local(&source),
                 conflict: TransferConflict::FailIfExists,
+                target_name: None,
             }],
             move_sources: false,
         },
@@ -110,6 +111,7 @@ fn duplicating_an_existing_numbered_name_advances_its_index() -> Result<(), Box<
             items: vec![PasteItem {
                 source: Location::local(&source),
                 conflict: TransferConflict::FailIfExists,
+                target_name: None,
             }],
             move_sources: false,
         },
@@ -158,6 +160,7 @@ fn duplicating_file_with_existing_numbered_name_advances_to_next_index()
             items: vec![PasteItem {
                 source: Location::local(&source),
                 conflict: TransferConflict::FailIfExists,
+                target_name: None,
             }],
             move_sources: false,
         },
@@ -202,6 +205,7 @@ fn duplicating_a_directory_generates_numbered_name() -> Result<(), Box<dyn Error
             items: vec![PasteItem {
                 source: Location::local(&source),
                 conflict: TransferConflict::FailIfExists,
+                target_name: None,
             }],
             move_sources: false,
         },
@@ -247,6 +251,7 @@ fn duplicating_hidden_file_generates_correct_numbered_name() -> Result<(), Box<d
             items: vec![PasteItem {
                 source: Location::local(&source),
                 conflict: TransferConflict::FailIfExists,
+                target_name: None,
             }],
             move_sources: false,
         },
@@ -291,6 +296,7 @@ fn duplicating_multi_extension_file_uses_last_extension_for_candidate_name()
             items: vec![PasteItem {
                 source: Location::local(&source),
                 conflict: TransferConflict::FailIfExists,
+                target_name: None,
             }],
             move_sources: false,
         },

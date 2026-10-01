@@ -46,10 +46,12 @@ fn each_transfer_item_keeps_its_own_conflict_decision() -> Result<(), Box<dyn Er
                 PasteItem {
                     source: Location::local(sources.join("replace.txt")),
                     conflict: TransferConflict::ReplaceExisting,
+                    target_name: None,
                 },
                 PasteItem {
                     source: Location::local(sources.join("late.txt")),
                     conflict: TransferConflict::FailIfExists,
+                    target_name: None,
                 },
             ],
             move_sources: true,
@@ -108,10 +110,12 @@ fn cutting_in_the_same_folder_remains_a_noop() -> Result<(), Box<dyn Error>> {
                 PasteItem {
                     source: Location::local(&file),
                     conflict: TransferConflict::FailIfExists,
+                    target_name: None,
                 },
                 PasteItem {
                     source: Location::local(&directory),
                     conflict: TransferConflict::FailIfExists,
+                    target_name: None,
                 },
             ],
             move_sources: true,
@@ -158,6 +162,7 @@ fn keeping_both_preserves_transfer_noops() -> Result<(), Box<dyn Error>> {
                 items: vec![PasteItem {
                     source: Location::local(&source),
                     conflict: TransferConflict::KeepBoth,
+                    target_name: None,
                 }],
                 move_sources: moving,
             })?;
@@ -190,6 +195,7 @@ fn keeping_both_in_a_cross_folder_paste_generates_a_unique_name() -> Result<(), 
         items: vec![PasteItem {
             source: Location::local(&source),
             conflict: TransferConflict::KeepBoth,
+            target_name: None,
         }],
         move_sources: false,
     })?;
@@ -225,6 +231,7 @@ fn keeping_both_while_moving_renames_the_destination_instead_of_replacing_it()
         items: vec![PasteItem {
             source: Location::local(&source),
             conflict: TransferConflict::KeepBoth,
+            target_name: None,
         }],
         move_sources: true,
     })?;
@@ -263,14 +270,17 @@ fn mixed_conflict_choices_apply_independently_across_a_multi_item_paste()
                 PasteItem {
                     source: Location::local(sources.join("new.txt")),
                     conflict: TransferConflict::FailIfExists,
+                    target_name: None,
                 },
                 PasteItem {
                     source: Location::local(sources.join("replace.txt")),
                     conflict: TransferConflict::ReplaceExisting,
+                    target_name: None,
                 },
                 PasteItem {
                     source: Location::local(sources.join("keep.txt")),
                     conflict: TransferConflict::KeepBoth,
+                    target_name: None,
                 },
             ],
             move_sources: false,
@@ -322,6 +332,7 @@ fn pasting_onto_itself_with_replace_is_a_noop() -> Result<(), Box<dyn Error>> {
             items: vec![PasteItem {
                 source: Location::local(&source),
                 conflict: TransferConflict::ReplaceExisting,
+                target_name: None,
             }],
             move_sources: false,
         },
@@ -366,6 +377,7 @@ fn pasting_onto_itself_with_keep_both_creates_numbered_copy() -> Result<(), Box<
             items: vec![PasteItem {
                 source: Location::local(&source),
                 conflict: TransferConflict::KeepBoth,
+                target_name: None,
             }],
             move_sources: false,
         },
@@ -388,5 +400,82 @@ fn pasting_onto_itself_with_keep_both_creates_numbered_copy() -> Result<(), Box<
     assert!(source.exists());
     assert_eq!(fs::read(&source)?, b"existing\n");
     assert_eq!(fs::read(destination.join("todo (1).txt"))?, b"existing\n");
+    Ok(())
+}
+
+#[test]
+fn pasting_with_a_target_name_lands_under_the_custom_name() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source_dir = root.path().join("source");
+    let source = source_dir.join("report.txt");
+    let destination = root.path().join("dest");
+    fs::create_dir_all(&source_dir)?;
+    fs::create_dir_all(&destination)?;
+    fs::write(&source, b"incoming")?;
+    fs::write(destination.join("report.txt"), b"existing")?;
+
+    let created = run_paste_collecting_created(PasteRequest {
+        id: OperationRequestId(79),
+        destination: Location::local(&destination),
+        items: vec![PasteItem {
+            source: Location::local(&source),
+            conflict: TransferConflict::FailIfExists,
+            target_name: Some(OsString::from("renamed.txt")),
+        }],
+        move_sources: false,
+    })?;
+
+    assert_eq!(
+        created.into_iter().flatten().collect::<Vec<_>>(),
+        vec![Location::local(destination.join("renamed.txt"))]
+    );
+    assert_eq!(fs::read(destination.join("report.txt"))?, b"existing");
+    assert_eq!(fs::read(destination.join("renamed.txt"))?, b"incoming");
+    assert!(source.exists());
+    Ok(())
+}
+
+#[test]
+fn a_target_name_that_escapes_the_destination_fails_safely() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source_dir = root.path().join("source");
+    let source = source_dir.join("report.txt");
+    let destination = root.path().join("dest");
+    fs::create_dir_all(&source_dir)?;
+    fs::create_dir_all(&destination)?;
+    fs::write(&source, b"incoming")?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.paste(
+        PasteRequest {
+            id: OperationRequestId(83),
+            destination: Location::local(&destination),
+            items: vec![PasteItem {
+                source: Location::local(&source),
+                conflict: TransferConflict::FailIfExists,
+                target_name: Some(OsString::from("../escape.txt")),
+            }],
+            move_sources: false,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+
+    wait_for_operation(&events, |event| {
+        matches!(event, OperationEvent::Failed { .. })
+    });
+
+    assert!(
+        !root.path().join("escape.txt").exists(),
+        "an escaping target name must not write outside the destination"
+    );
+    assert!(!destination.join("escape.txt").exists());
+    assert!(source.exists());
     Ok(())
 }
