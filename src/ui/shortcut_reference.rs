@@ -4,8 +4,6 @@ use super::browser_modes::BrowserMode;
 
 pub(crate) const EXPERIMENTAL_LABEL: &str = "(experimental feature, under active development)";
 
-/// What the open reference describes: the view's navigation and, in a portal
-/// file chooser, only the keys that request allows.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct ReferenceScope {
     pub mode: BrowserMode,
@@ -31,7 +29,6 @@ pub(crate) struct ChooserScope {
 pub(crate) enum ChooserRequest {
     Files,
     Folders,
-    /// Saves one file under the name in the chooser's name field.
     SaveFile,
     SaveFiles,
 }
@@ -561,7 +558,6 @@ fn default_hint(hint: ContextHint, type_to_search: bool) -> &'static str {
     match hint {
         ContextHint::None => "",
         ContextHint::Preview | ContextHint::ChooserPreview => "Space",
-        // Type-to-search claims plain letters.
         ContextHint::CopyPath | ContextHint::CopyPaths | ContextHint::Pin if type_to_search => "",
         ContextHint::CopyPath | ContextHint::CopyPaths => "Y",
         ContextHint::Pin => "P",

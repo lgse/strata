@@ -366,7 +366,6 @@ impl ReferenceSession {
         true
     }
 
-    /// Focus stays inside the open reference and tracks its active area.
     fn trap_focus(&self, window: &gtk::Window) -> glib::SignalHandlerId {
         let panel = self.panel.clone();
         let search = self.search.clone();
@@ -1025,7 +1024,6 @@ impl ShortcutFooter {
         self.set_reference_scope(ReferenceScope { mode, ..scope });
     }
 
-    /// Limits the reference to the keys a portal chooser request allows.
     pub(in crate::ui) fn set_chooser(&self, chooser: ChooserScope) {
         let scope = self.reference_scope.get();
         self.set_reference_scope(ReferenceScope {
