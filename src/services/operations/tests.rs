@@ -63,14 +63,9 @@ fn archive_formats_are_detected_by_extension() {
         ArchiveFormat::from_extension("files.7z"),
         Some(ArchiveFormat::SevenZ)
     );
-    assert_eq!(
-        ArchiveFormat::from_extension("archive.rar"),
-        Some(ArchiveFormat::Rar)
-    );
-    assert_eq!(
-        ArchiveFormat::from_extension("ARCHIVE.RAR"),
-        Some(ArchiveFormat::Rar)
-    );
+    let rar = cfg!(feature = "rar").then_some(ArchiveFormat::Rar);
+    assert_eq!(ArchiveFormat::from_extension("archive.rar"), rar);
+    assert_eq!(ArchiveFormat::from_extension("ARCHIVE.RAR"), rar);
     assert_eq!(ArchiveFormat::from_extension("document.pdf"), None);
     assert_eq!(ArchiveFormat::from_extension("no_extension"), None);
 }

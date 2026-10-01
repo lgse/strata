@@ -36,7 +36,9 @@ use crate::{
 use compression::{
     compress_7z, compress_tar, compress_zip, inspect_archive_sources, write_staged_archive,
 };
-use decoders::{extract_7z_from_reader, extract_rar, extract_tar, extract_zip_from_archive};
+#[cfg(feature = "rar")]
+use decoders::extract_rar;
+use decoders::{extract_7z_from_reader, extract_tar, extract_zip_from_archive};
 use extraction::ArchiveOutcome;
 use gtk::{gio, glib};
 use std::{
@@ -291,6 +293,11 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
                     &work_progress,
                     &work_cancelled,
                 ),
+                #[cfg(not(feature = "rar"))]
+                Some(ArchiveFormat::Rar) => Err(archive_failed(
+                    "RAR support is disabled in this build.".to_owned(),
+                )),
+                #[cfg(feature = "rar")]
                 Some(ArchiveFormat::Rar) => extract_rar(
                     &archive_path,
                     &dest_dir,

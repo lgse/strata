@@ -19,6 +19,18 @@ fn package(path: &Path, members: &[(&str, &[u8])]) {
     zip.finish().expect("finished archive");
 }
 
+#[cfg(not(feature = "rar"))]
+#[test]
+fn rar_disabled_comic_cover_reports_unsupported_build() {
+    let dir = tempfile::tempdir().expect("directory");
+    let path = dir.path().join("comic.cbr");
+    fs::write(&path, b"not a RAR archive").expect("fixture");
+    assert_eq!(
+        thumbnail(&path, CoverFormat::Cbr).expect_err("RAR is not compiled in"),
+        "RAR support is disabled in this build."
+    );
+}
+
 #[test]
 fn comic_uses_natural_order_not_archive_order() {
     let dir = tempfile::tempdir().expect("directory");

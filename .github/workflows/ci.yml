@@ -85,6 +85,34 @@ jobs:
           STRATA_QUALITY_IMAGE: ${{ steps.environment.outputs.environment_image }}
         run: ./scripts/quality.sh clippy
 
+      - name: Check and exercise the build without UnRAR
+        env:
+          IMAGE: ${{ steps.environment.outputs.environment_image }}
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" \
+            --mount "type=bind,source=$PWD,target=/workspace" \
+            --mount "type=bind,source=$PWD/target/quality-container/accounts-$(id -u)-$(id -g)/passwd,target=/etc/passwd,readonly" \
+            --mount "type=bind,source=$PWD/target/quality-container/accounts-$(id -u)-$(id -g)/group,target=/etc/group,readonly" \
+            --workdir /workspace \
+            --env HOME=/tmp/strata-quality-home \
+            --env CARGO_HOME=/workspace/target/quality-container/cargo \
+            --env CARGO_TARGET_DIR=/workspace/target/quality-container/build \
+            --env CARGO_PROFILE_DEV_DEBUG=0 --env CARGO_INCREMENTAL=0 \
+            "$IMAGE" bash -euc '
+              mkdir -p "$HOME"
+              cargo tree --locked --no-default-features -e normal,build --prefix none > /tmp/dependencies.txt
+              if grep -E "^unrar(_sys)? v" /tmp/dependencies.txt; then
+                echo "UnRAR must not be in the feature-disabled dependency graph" >&2
+                exit 1
+              fi
+              cargo check --locked --all-targets --no-default-features
+              cargo test --locked --all-targets --no-default-features services::operations::tests
+              cargo test --locked --all-targets --no-default-features rar_disabled
+              xvfb-run -a -s "-screen 0 1280x1024x24 -nolisten tcp -noreset" dbus-run-session -- \
+                env -u WAYLAND_DISPLAY GDK_BACKEND=x11 GTK_A11Y=none NO_AT_BRIDGE=1 STRATA_REQUIRE_GTK_TESTS=1 \
+                cargo test --locked --all-targets --no-default-features archive_extraction_actions_follow_build_support
+            '
+
       - name: Compile all test targets once and plan two shards
         env:
           STRATA_CONTAINER_ENGINE: docker

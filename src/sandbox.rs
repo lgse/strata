@@ -20,6 +20,7 @@ use crate::services::{
     model_preview::MAX_MODEL_INPUT_BYTES,
 };
 
+#[cfg(feature = "rar")]
 pub(crate) mod archive;
 pub(crate) mod browser;
 pub(crate) mod media;

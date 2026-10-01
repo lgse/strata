@@ -1,5 +1,15 @@
 // SPDX-License-Identifier: MIT
 
+#[cfg(not(feature = "rar"))]
+#[test]
+fn rar_disabled_helper_rejects_extraction_without_reading_input() {
+    let arguments = ["extract-rar".to_owned(), "/missing/archive.rar".to_owned()];
+    assert_eq!(
+        super::run(&arguments).expect_err("RAR is not compiled in"),
+        "RAR support is disabled in this build."
+    );
+}
+
 use std::{
     process::Command,
     time::{Duration, Instant},
