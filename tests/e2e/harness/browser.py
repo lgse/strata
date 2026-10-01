@@ -7,6 +7,7 @@ in widget nesting is absorbed here instead of in twelve test files.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from .interaction import Keyboard, Pointer
 from .tree import Bounds, Node, wait_until
 
 ENTRY_ROLES = ("list item", "table cell")
+MENU_RETRY_INTERVAL = 1.0
 
 
 def _row_label_matches(node: Node) -> bool:
@@ -472,10 +474,22 @@ class Strata:
         if button is None:
             raise AssertionError("the Appearance button is missing")
         self.pointer.click(button)
-        return self.wait(
-            lambda: self.window.find(role="button", name="Columns"),
-            "the appearance menu to open",
-        )
+        clicked = time.monotonic()
+
+        def opened() -> Node | None:
+            nonlocal clicked
+            menu = self.window.find(role="button", name="Columns")
+            if (
+                menu is None
+                and time.monotonic() - clicked > MENU_RETRY_INTERVAL
+                and not button.has_state("checked")
+            ):
+                # A late startup focus change can close the menu as it opens.
+                self.pointer.click(button)
+                clicked = time.monotonic()
+            return menu
+
+        return self.wait(opened, "the appearance menu to open")
 
     def switch_view(self, mode: str) -> None:
         """Switch presentation through the appearance menu."""

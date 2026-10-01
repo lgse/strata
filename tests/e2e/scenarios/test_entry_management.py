@@ -368,7 +368,8 @@ def test_new_folder_with_selection_groups_items_and_names_it(strata, mode):
     assert fixture.path("grouped/todo.txt").is_file()
     assert not fixture.path("readme.md").exists()
     assert not fixture.path("todo.txt").exists()
-    strata.entry("grouped", root)
+    # Undo is refused until the rename operation finishes, which also moves the cursor.
+    strata.wait_for_focused_entry("grouped")
 
     strata.keyboard.press("ctrl+z")
     strata.wait(
