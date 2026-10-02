@@ -60,6 +60,7 @@ def test_clicking_inside_keeps_the_new_entry_and_preserves_its_name(strata, kind
 
 
 @pytest.mark.parametrize("kind,name", [("file", "todo.txt"), ("folder", "archive")])
+@pytest.mark.usefixtures("unreserved_columns")
 def test_creating_an_existing_name_does_not_overwrite(strata, kind, name):
     strata.select_entry("readme.md")
     if kind == "folder":
@@ -346,6 +347,7 @@ def test_tenxer_footer_rename_keeps_contents_and_refuses_conflicts(strata, mode)
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.usefixtures("unreserved_columns")
 def test_new_folder_with_selection_groups_items_and_names_it(strata, mode):
     fixture = strata.fixture
     root = fixture.root.name

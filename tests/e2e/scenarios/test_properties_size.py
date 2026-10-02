@@ -66,6 +66,7 @@ def test_properties_explains_unreadable_folder_contents(sized_folder, strata):
 
 @pytest.mark.parametrize("route", ["keyboard", "context-menu"])
 @pytest.mark.parametrize("unreadable", [False, True])
+@pytest.mark.usefixtures("unreserved_columns")
 def test_selection_properties_routes_preserve_aggregate_warnings(
     sized_folder, strata, route, unreadable
 ):

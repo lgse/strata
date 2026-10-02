@@ -50,6 +50,7 @@ def test_created_folder_editor_stays_visible_in_a_narrow_window(strata):
 @pytest.mark.parametrize("kind", ["file", "folder"])
 @pytest.mark.parametrize("stale_child", [False, True], ids=["no-child", "stale-child"])
 @pytest.mark.parametrize("completion", ["enter", "sibling", "navigate"])
+@pytest.mark.usefixtures("unreserved_columns")
 def test_created_entry_completion_preserves_the_users_focus(strata, kind, stale_child, completion):
     root = strata.fixture.root.name
     field, original = create_in_parent(strata, kind, stale_child)

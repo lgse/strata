@@ -196,6 +196,9 @@ impl PreviewDrawer {
         }));
         split.set_end_child(Some(&self.state.slot));
         self.state.revealer.set_visible(self.state.is_enabled());
+        self.state
+            .slot
+            .set_visible(self.state.is_enabled() || self.state.reserves_column_space());
         let weak = Rc::downgrade(&self.state);
         split.add_tick_callback(move |split, _| {
             let Some(state) = weak.upgrade() else {

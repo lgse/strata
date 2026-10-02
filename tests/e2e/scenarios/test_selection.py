@@ -93,6 +93,7 @@ def test_keyboard_selection_after_sidebar_navigation_initializes_the_range_ancho
     sort_key="modified", sort_direction="descending",
 )
 @pytest.mark.parametrize("target", ["name", "row-space"])
+@pytest.mark.usefixtures("unreserved_columns")
 def test_shift_click_revisits_a_file_after_opening_a_folder(strata, root, target):
     def click(name, modifiers=()):
         entry = strata.entry(name, root)
@@ -128,6 +129,7 @@ def test_modifier_click_on_a_filename_focuses_the_target(strata, mode, root):
 
 
 @pytest.mark.preferences(browser_mode="columns")
+@pytest.mark.usefixtures("unreserved_columns")
 def test_returning_to_a_parent_pane_anchors_its_first_entry(strata, root):
     strata.open_directory("documents", directory=root)
     strata.pointer.click(strata.pane(root), at=strata.background_point(root))
@@ -138,6 +140,7 @@ def test_returning_to_a_parent_pane_anchors_its_first_entry(strata, root):
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.usefixtures("unreserved_columns")
 def test_control_click_toggles_individual_entries(strata, mode, root):
     strata.select_entry("archive", directory=root)
 
@@ -278,6 +281,7 @@ NEXT_ENTRY = {"Columns": "Down", "Icons": "Right", "List": "Down"}
 
 @pytest.mark.preferences(tenxer_mode=True, type_to_search=False, single_click_previews=False)
 @pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.usefixtures("unreserved_columns")
 def test_tenxer_space_toggles_the_cursor_and_keeps_the_fill(strata, mode, root):
     if mode == "Columns":
         strata.keyboard.press("Home")
