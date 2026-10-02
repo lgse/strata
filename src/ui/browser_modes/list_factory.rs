@@ -231,6 +231,7 @@ impl ListRow {
     }
 
     fn clear(&self) {
+        crate::ui::file_providers::bind(&self.icon, None);
         set_mode_mark_style(&self.widget, ClipboardMark::None);
         thumbnail::show_fallback_icon(&self.icon, crate::assets::icons::DOCUMENTS, 18);
         self.icon.set_hidden(false);

@@ -849,6 +849,10 @@ pub(super) fn column_rows(
                 .as_ref()
                 .map_or(ClipboardMark::None, |entry| clipboard_mark(&entry.location)),
         );
+        crate::ui::file_providers::bind(
+            &icon,
+            entry.as_ref().and_then(|e| e.location.native_path()),
+        );
         if let Some(entry) = entry.as_ref() {
             let mode_active = state
                 .as_ref()

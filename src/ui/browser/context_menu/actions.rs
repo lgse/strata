@@ -23,6 +23,9 @@ const SEND_TO_DEVICE_NAME_MAX_CHARS: i32 = 15;
 pub(super) struct ActionMenuSection {
     popover: gtk::PopoverMenu,
     model: gio::Menu,
+    provider_model: gio::Menu,
+    provider_group: gio::SimpleActionGroup,
+    provider_epoch: Rc<std::cell::Cell<u64>>,
     pub(super) transfer_sections: Option<[gio::Menu; 2]>,
     send_to_row_indices: RefCell<[Option<i32>; 2]>,
     root_model: gio::Menu,
@@ -84,6 +87,13 @@ impl ActionMenuSection {
             root.append_section(None, section);
         }
         root.append_section(None, &model);
+        let provider_model = gio::Menu::new();
+        let provider_group = gio::SimpleActionGroup::new();
+        let provider_epoch = Rc::new(std::cell::Cell::new(0));
+        root.append_section(None, &provider_model);
+        popover.insert_action_group("provider", Some(&provider_group));
+        let closed_epoch = provider_epoch.clone();
+        popover.connect_closed(move |_| closed_epoch.set(closed_epoch.get() + 1));
         for section in &commands.after {
             root.append_section(None, section);
         }
@@ -118,6 +128,9 @@ impl ActionMenuSection {
         Self {
             popover,
             model,
+            provider_model,
+            provider_group,
+            provider_epoch,
             transfer_sections,
             send_to_row_indices: RefCell::new([None, None]),
             root_model: root,
@@ -267,6 +280,7 @@ impl ActionMenuSection {
             refresh_presentation(&self.popover, &self.navigation);
             return;
         };
+        self.watch_providers(paths.clone(), false);
         let catalog = crate::ui::actions::shared().catalog();
         self.rebuild_custom_actions(
             state,
@@ -283,6 +297,7 @@ impl ActionMenuSection {
             refresh_presentation(&self.popover, &self.navigation);
             return;
         };
+        self.watch_providers(vec![path.to_path_buf()], true);
         let catalog = crate::ui::actions::shared().catalog();
         self.rebuild_custom_actions(
             state,
@@ -293,7 +308,34 @@ impl ActionMenuSection {
         );
     }
 
+    fn watch_providers(&self, paths: Vec<PathBuf>, background: bool) {
+        let popover = self.popover.downgrade();
+        let navigation = self.navigation.clone();
+        crate::ui::file_providers::watch_menu(
+            self.provider_model.clone(),
+            self.provider_group.clone(),
+            self.owner
+                .upgrade()
+                .as_ref()
+                .unwrap_or(self.popover.upcast_ref()),
+            paths,
+            background,
+            (self.provider_epoch.clone(), self.provider_epoch.get()),
+            move || {
+                if let Some(popover) = popover.upgrade() {
+                    refresh_presentation(&popover, &navigation);
+                    navigation.model_changed();
+                }
+            },
+        );
+    }
+
     fn clear(&self) {
+        self.provider_epoch.set(self.provider_epoch.get() + 1);
+        self.provider_model.remove_all();
+        for name in self.provider_group.list_actions() {
+            self.provider_group.remove_action(&name);
+        }
         if let Some(transfer_sections) = &self.transfer_sections {
             for (index, row_index) in self.send_to_row_indices.borrow_mut().iter_mut().enumerate() {
                 if let Some(row_index) = row_index.take() {

@@ -13,6 +13,7 @@ mod desktop_integration;
 mod document_media;
 mod document_view;
 mod entry_list_model;
+mod file_providers;
 mod focus_navigation;
 mod frame;
 mod go_completion;

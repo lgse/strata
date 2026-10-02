@@ -312,10 +312,24 @@ pub(super) fn show_error_dialog(parent: &impl IsA<gtk::Widget>, message: &str, d
     show_error_dialog_after_close(parent, message, detail, Rc::new(|| {}));
 }
 
+pub(super) fn show_information_dialog(parent: &impl IsA<gtk::Widget>, message: &str, detail: &str) {
+    show_message_dialog(parent, message, detail, false, Rc::new(|| {}));
+}
+
 pub(super) fn show_error_dialog_after_close(
     parent: &impl IsA<gtk::Widget>,
     message: &str,
     detail: &str,
+    on_close: Rc<dyn Fn()>,
+) {
+    show_message_dialog(parent, message, detail, true, on_close);
+}
+
+fn show_message_dialog(
+    parent: &impl IsA<gtk::Widget>,
+    message: &str,
+    detail: &str,
+    error: bool,
     on_close: Rc<dyn Fn()>,
 ) {
     let Some(ModalHost {
@@ -341,15 +355,25 @@ pub(super) fn show_error_dialog_after_close(
     };
 
     let layout = message_dialog_layout(
-        crate::assets::icons::X,
+        if error {
+            crate::assets::icons::X
+        } else {
+            crate::assets::icons::INFO
+        },
         message,
-        if message == "Completed with errors" {
+        if !error {
+            "Reported by the file provider"
+        } else if message == "Completed with errors" {
             "Some items could not be processed"
         } else {
             "The operation could not be completed"
         },
         "Close",
-        ModalTone::Danger,
+        if error {
+            ModalTone::Danger
+        } else {
+            ModalTone::Accent
+        },
     );
     layout.cancel.set_visible(false);
     let explanation = message_dialog_description(detail);

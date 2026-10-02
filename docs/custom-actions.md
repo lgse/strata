@@ -377,3 +377,10 @@ Enable it, then right-click a file that matches `[when]` and choose it. The Jobs
 dashboard shows the invocation, its output, and its exit status. A definition that
 cannot load appears under **Settings → Actions → Problems** with the reason, and
 never silently disappears from the menus.
+
+## Service-dependent actions and badges
+
+For asynchronous eligibility based on external state and live file decorations,
+see [External file providers](file-providers.md). Static action matching remains
+limited to the file/selection filters described above; a provider can keep its
+menu entirely absent outside the locations it supports.

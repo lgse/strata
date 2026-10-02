@@ -14,6 +14,8 @@ mod imp {
         pub limit_fallback_height: Cell<bool>,
         pub fallback_scale: Cell<f64>,
         pub texture: RefCell<Option<gdk::Texture>>,
+        pub decoration: RefCell<Option<gdk::Texture>>,
+        pub decoration_description: RefCell<Option<String>>,
         pub fallback: RefCell<Option<gdk::Texture>>,
         pub fallback_icon: RefCell<Option<String>>,
         pub(crate) mark: Cell<crate::ui::browser::ClipboardMark>,
@@ -35,6 +37,7 @@ mod imp {
     impl ObjectImpl for ThumbnailSlot {
         fn dispose(&self) {
             super::super::forget_slot(self.obj().as_ptr() as usize);
+            crate::ui::file_providers::forget(self.obj().as_ptr() as usize);
         }
     }
 
@@ -90,6 +93,13 @@ mod imp {
             ));
             snapshot_texture(snapshot, &texture, draw_width, draw_height);
             snapshot.restore();
+            if let Some(badge) = self.decoration.borrow().as_ref() {
+                let size = (width.min(height) * 0.55).clamp(10.0, 24.0) as f32;
+                snapshot.append_texture(
+                    badge,
+                    &graphene::Rect::new(width as f32 - size, height as f32 - size, size, size),
+                );
+            }
         }
     }
 }
@@ -155,6 +165,22 @@ impl ThumbnailSlot {
         widget.imp().base_opacity.set(1.0);
         widget.set_slot(slot);
         widget
+    }
+
+    pub(crate) fn set_decoration(&self, texture: Option<&gdk::Texture>, description: Option<&str>) {
+        if self.imp().decoration_description.borrow().as_deref() != description {
+            self.imp()
+                .decoration_description
+                .replace(description.map(str::to_owned));
+            self.update_property(&[gtk::accessible::Property::Description(
+                description.unwrap_or(""),
+            )]);
+        }
+        if same_texture(self.imp().decoration.borrow().as_ref(), texture) {
+            return;
+        }
+        self.imp().decoration.replace(texture.cloned());
+        self.queue_draw();
     }
 
     pub(crate) fn set_slot(&self, size: i32) {
