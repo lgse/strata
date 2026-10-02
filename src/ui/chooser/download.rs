@@ -18,6 +18,7 @@ pub(super) struct DownloadProgress {
     ring: gtk::DrawingArea,
     spinner: gtk::Spinner,
     fraction: Rc<Cell<f64>>,
+    cancel: gtk::Button,
 }
 
 impl DownloadProgress {
@@ -107,7 +108,18 @@ impl DownloadProgress {
             ring,
             spinner,
             fraction,
+            cancel,
         }
+    }
+
+    pub(super) fn set_activity(&self, text: &str) {
+        self.spinner.start();
+        self.indicator.set_visible_child_name("unknown");
+        self.status.set_text(text);
+        self.status.set_visible(true);
+        self.cancel
+            .set_tooltip_text(Some("Cancel image processing"));
+        crate::ui::accessibility::set_label(&self.cancel, "Cancel image processing");
     }
 
     pub(super) fn set_name(&self, name: &str) {

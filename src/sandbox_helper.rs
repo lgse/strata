@@ -25,6 +25,7 @@ pub(crate) mod archive_cover;
 #[cfg(feature = "rar")]
 mod archive_rar;
 mod document_media;
+mod image_conversion;
 mod media;
 mod model;
 mod raw_metadata;
@@ -96,6 +97,9 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
     let output = Path::new(output);
     let media_backend = MediaPreviewBackend::from_argument(media_backend)
         .ok_or_else(|| "Invalid media preview backend".to_owned())?;
+    if matches!(operation.as_str(), "inspect-image" | "convert-image") {
+        return image_conversion::run(input, output, operation == "convert-image");
+    }
     if operation == "preview-media" {
         return media::run(input, output, value, media_backend, start_tick);
     }

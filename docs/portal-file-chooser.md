@@ -8,6 +8,10 @@ File-open requests include a **Name** field. Type an existing filename in the cu
 
 Downloads are named from `Content-Disposition` or the URL path and persist under a `strata-download-*` folder in the temp directory after the chooser closes, so the requesting app can still open them. Folders older than a day are swept when the portal starts or a new download begins. URLs with credentials and automatic redirects are rejected; use the direct file URL.
 
+If a downloaded JPEG, BMP, single-frame GIF or static WebP does not match the **selected filter**, but PNG would, Strata validates the image in its sandbox and offers **Convert to PNG** / **Cancel**. Detection uses file contents, not the URL extension or HTTP content type. Conversion preserves full resolution, transparency, JPEG orientation and embedded colour profiles; animated images and other conversion inputs (including TIFF, SVG, AVIF and HEIC) are unsupported. An already accepted image opens without conversion; a misnamed supported image gets an extension matching its contents, including PNG without re-encoding.
+
+Image processing is cancellable and limited to 32 MiB input/output, 16 megapixels, 16,384 pixels per edge and the sandbox's memory/CPU/time limits. Cancel or failure leaves the chooser open without returning the incompatible original. Clicking Open again on the same URL reuses the downloaded file. Changing the name or selected filter invalidates pending image processing or confirmation. Converted PNGs use the same temporary-file lifetime as downloads.
+
 Folder-only requests hide regular files in both directory listings and recursive results. File requests keep folders available for navigation. Changing a file-type filter refreshes the current results without clearing the search query; selection and acceptance follow the new filter.
 
 In Save dialogs, selecting a file copies its name into the name input without accepting the dialog. The automatic initial selection does not change the suggested name or destination. Selecting a folder changes the destination without changing the name. In Recent, select a file to save in its containing folder, or navigate to a local folder first.

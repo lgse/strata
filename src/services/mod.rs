@@ -6,6 +6,7 @@ mod document;
 pub(crate) mod document_media;
 pub(crate) mod docx;
 mod file_source;
+pub(crate) mod image_conversion;
 mod install_source;
 pub(crate) mod jobs;
 mod listeners;
