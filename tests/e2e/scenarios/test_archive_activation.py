@@ -18,25 +18,19 @@ def extract_archive(strata, archive_name, activation):
         strata.open_context_menu(archive_name)
         strata.choose_menu_item(activation)
         if activation == "Extract to…":
-            dialog = strata.wait_for_dialog()
-            crumb = strata.wait(
-                lambda: dialog.find(role="button", name=strata.fixture.root.name),
-                "the current destination breadcrumb",
-            )
-            strata.pointer.click(crumb)
-            field = strata.editable_field()
-            strata.keyboard.press("ctrl+a")
-            strata.keyboard.type_text(str(strata.fixture.root))
-            strata.wait(lambda: field.text == str(strata.fixture.root), "extraction destination")
-            strata.keyboard.press("Return")
+            chooser = strata.destination_chooser("Extract to")
+            strata.confirm_destination(chooser, "Extract here")
 
 
 @pytest.mark.preferences(
     list_file_clicks=2, grid_file_clicks=2, explorer_file_clicks=2,
 )
 @pytest.mark.parametrize("format,activation", [
-    ("zip", "keyboard"), ("zip", "double-click"),
-    ("tar.gz", "keyboard"), ("tar.gz", "double-click"),
+    pytest.param("zip", "keyboard", marks=pytest.mark.preferences(browser_mode="list")),
+    pytest.param("zip", "keyboard", marks=pytest.mark.preferences(browser_mode="icons")),
+    ("zip", "double-click"),
+    pytest.param("tar.gz", "keyboard", marks=pytest.mark.preferences(browser_mode="list")),
+    ("tar.gz", "double-click"),
     ("zip", "Extract here"), ("zip", "Extract to…"),
 ])
 def test_archive_activation_extracts_to_subfolder(strata, activation, format):

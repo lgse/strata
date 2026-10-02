@@ -1463,6 +1463,17 @@ impl PreviewState {
             }
         });
         let browser = archive::ArchiveBrowser::new(tree, navigate);
+        if !focus_tree
+            && !self.content.has_focus()
+            && self
+                .keyboard_view
+                .borrow()
+                .as_ref()
+                .and_then(|view| view.upgrade())
+                .is_some_and(|view| view.view_mode() == super::browser_modes::BrowserMode::Columns)
+        {
+            browser.clear_selection();
+        }
         let list = browser.list().clone();
         self.content.append(browser.root());
         let weak = Rc::downgrade(self);

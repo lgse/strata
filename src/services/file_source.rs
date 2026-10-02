@@ -297,6 +297,12 @@ impl Drop for LoadHandle {
 }
 
 pub trait FileSource {
+    /// Enforces a source's navigation boundary even on trusted internal/history routes.
+    /// This does not replace normal asynchronous location validation.
+    fn allows_navigation(&self, _location: &Location) -> bool {
+        true
+    }
+
     /// Applies source-specific visibility to entries found outside directory enumeration.
     /// This runs on the caller's thread, including for indexed search results.
     fn allows_entry(&self, _entry: &FileEntry) -> bool {

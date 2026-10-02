@@ -72,6 +72,20 @@ impl Dispatcher {
             return None;
         }
         if self.view.item_view_has_focus() {
+            if self.view.view_mode() == BrowserMode::Columns
+                && matches!(
+                    event.key,
+                    Key::Right | Key::Return | Key::KP_Enter | Key::space
+                )
+                && self.view.browser().focused_entry().is_some_and(|entry| {
+                    !entry.is_directory()
+                        && entry.location.native_path().is_some()
+                        && crate::services::archive_preview_format(&entry.native_name).is_some()
+                })
+            {
+                self.enter_preview(&self.view.browser());
+                return Some(Propagation::Stop);
+            }
             if event.key == Key::Right
                 && matches!(
                     self.view.view_mode(),

@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import screenshots, tree
-from .application import Application
+from .application import APPLICATION_NAME, Application
 from .environment import TestEnvironment
 from .fixtures import FixtureTree
 from .display import HeadlessDisplay
@@ -569,6 +569,33 @@ class Strata:
             lambda: self.window.find(role="text", states={"editable", "focused"}),
             "an editable field to take focus",
         )
+
+    def destination_chooser(self, title: str) -> Node:
+        def chooser():
+            application = tree.find_application(APPLICATION_NAME)
+            return application.find(name=title) if application is not None else None
+
+        return self.wait(chooser, f"the floating {title} chooser")
+
+    def navigate_destination(self, chooser: Node, destination: Path) -> None:
+        self.keyboard.press("ctrl+l")
+        field = self.wait(
+            lambda: chooser.find(role="text", states={"editable", "focused"}),
+            "the chooser path entry",
+        )
+        self.keyboard.press("ctrl+a")
+        self.keyboard.type_text(str(destination))
+        self.wait(lambda: field.text == str(destination), "the destination path")
+        self.keyboard.press("Return")
+        self.wait(
+            lambda: chooser.find(role="label", name=destination.name, description=str(destination)),
+            "the destination breadcrumb",
+        )
+
+    def confirm_destination(self, chooser: Node, label: str) -> None:
+        button = self.wait(lambda: chooser.find(role="button", name=label), "the destination action")
+        self.pointer.click(button)
+        self.wait(lambda: not chooser.is_rendered(), "the destination chooser to close")
 
     def preview(self) -> Node | None:
         """The quick preview drawer, when it is on screen."""

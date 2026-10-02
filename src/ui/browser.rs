@@ -37,6 +37,7 @@ mod collection;
 mod columns;
 pub(super) mod context_menu;
 mod customization;
+pub(super) use customization::show_customize_modal;
 mod desktop;
 mod destination;
 mod dissolve_delete;
@@ -210,6 +211,7 @@ pub(super) struct ViewState {
     columns_mirror_selection: Cell<bool>,
     multiple_selection: Rc<Cell<bool>>,
     interactive: bool,
+    chooser_allows_create: Cell<bool>,
     columns_click_activation: Cell<ClickActivation>,
     active_rename: crate::ui::collection_edit::ActiveEdits,
     pending_rename: RefCell<Option<PendingRename>>,
@@ -598,6 +600,7 @@ impl BrowserView {
             columns_mirror_selection: Cell::new(true),
             multiple_selection,
             interactive,
+            chooser_allows_create: Cell::new(true),
             columns_click_activation: Cell::new(ClickActivation::default()),
             active_rename: Rc::new(RefCell::new(None)),
             pending_rename: RefCell::new(None),
@@ -1420,6 +1423,10 @@ impl BrowserView {
                 .borrow()
                 .set_click_activation(mode, activation);
         }
+    }
+
+    pub(super) fn set_chooser_allows_create(&self, allow: bool) {
+        self.state.chooser_allows_create.set(allow);
     }
 
     pub fn create_new_folder(&self) {

@@ -34,6 +34,14 @@ pub(super) struct ActionMenuSection {
     navigation: Rc<super::keyboard::NativeMenuNavigation>,
 }
 
+impl Drop for ActionMenuSection {
+    fn drop(&mut self) {
+        if self.popover.parent().is_some() {
+            self.popover.unparent();
+        }
+    }
+}
+
 impl ActionMenuSection {
     pub(super) fn new(
         before: &impl IsA<gtk::Widget>,
@@ -104,15 +112,6 @@ impl ActionMenuSection {
             });
             handler.replace(Some(id));
             clock.request_phase(gtk::gdk::FrameClockPhase::AFTER_PAINT);
-        });
-        // The anchor owns the root menu; GTK owns every generated submenu.
-        let weak = popover.downgrade();
-        anchor.connect_destroy(move |_| {
-            if let Some(popover) = weak.upgrade()
-                && popover.parent().is_some()
-            {
-                popover.unparent();
-            }
         });
         refresh_presentation(&popover, &navigation);
         let transfer_sections = commands.transfer_sections.clone();

@@ -120,9 +120,8 @@ impl PreferenceChanges {
             for observer in observers {
                 observer();
             }
-            let listeners = self.listeners.borrow().clone();
             notify_live(
-                listeners,
+                &self.listeners,
                 |listener| listener.active.get() && listener.anchor.upgrade().is_some(),
                 |listener| {
                     if listener.active.get()
@@ -140,19 +139,18 @@ impl PreferenceChanges {
     }
 }
 
-pub(in crate::ui) fn notify_live<T>(
-    listeners: Vec<T>,
+pub(in crate::ui) fn notify_live<T: Clone>(
+    listeners: &RefCell<Vec<T>>,
     is_live: impl Fn(&T) -> bool,
     run: impl Fn(&T),
-) -> Vec<T> {
-    let live: Vec<T> = listeners
-        .into_iter()
-        .filter(|entry| is_live(entry))
-        .collect();
+) {
+    listeners.borrow_mut().retain(|entry| is_live(entry));
+    let live = listeners.borrow().clone();
     for entry in &live {
-        run(entry);
+        if is_live(entry) {
+            run(entry);
+        }
     }
-    live
 }
 
 #[cfg(test)]

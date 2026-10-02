@@ -21,12 +21,15 @@ pub(in crate::ui) fn pane_new_folder_button(
     )));
     crate::ui::controls::pane_header_action(&button);
     button.add_css_class("chooser-new-folder");
-    if state
-        .upgrade()
-        .and_then(|state| state.browser.location_at(depth))
-        .is_some_and(|location| location.is_recent_location())
-    {
-        button.set_visible(false);
+    if let Some(state) = state.upgrade() {
+        button.set_sensitive(state.interactive || state.chooser_allows_create.get());
+        if state
+            .browser
+            .location_at(depth)
+            .is_some_and(|location| location.is_recent_location())
+        {
+            button.set_visible(false);
+        }
     }
     button.update_property(&[gtk::accessible::Property::Label("New Folder")]);
     button.connect_clicked(move |_| {

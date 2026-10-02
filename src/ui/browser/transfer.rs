@@ -8,24 +8,14 @@ use crate::services::{
     transferable_drop_sources,
 };
 use crate::ui::browser::ViewState;
-use crate::ui::browser::destination::{
-    DestinationLocationBar, TransferSearchScope, folder_input_path, hand_off_destination_focus,
-    resolve_destination_path, setup_transfer_search,
-};
 use crate::ui::browser::entry::item_count_label;
-use crate::ui::browser::paths::{
-    can_remove_location, compact_display_path, compact_native_path, is_trash_location,
-};
+use crate::ui::browser::paths::{can_remove_location, compact_display_path, is_trash_location};
 use crate::ui::controls::{
-    ModalTone, focus_button, form_check_button, form_entry, form_label, message_dialog_description,
-    message_dialog_layout, modal_layout,
+    ModalTone, focus_button, form_check_button, message_dialog_description, message_dialog_layout,
 };
-use crate::ui::modal::{
-    ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog, submit_on_enter,
-};
+use crate::ui::modal::{ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog};
 use gtk::prelude::*;
 use gtk::{gio, glib};
-use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::Duration;
@@ -103,9 +93,7 @@ struct GroupReplay {
 
 struct TransferDialogOptions {
     base: PathBuf,
-    search_root: PathBuf,
     root_limit: Option<PathBuf>,
-    root_label: Option<String>,
     allow_create: bool,
     completion: TransferDialogCompletion,
 }
@@ -1076,9 +1064,7 @@ impl ViewState {
             entries.into_iter().map(|entry| entry.location).collect(),
             TransferDialogOptions {
                 base,
-                search_root: glib::home_dir(),
                 root_limit: None,
-                root_label: None,
                 allow_create: true,
                 completion: TransferDialogCompletion::CopyMove { move_sources },
             },
@@ -1116,12 +1102,7 @@ impl ViewState {
             sources,
             TransferDialogOptions {
                 base: root.clone(),
-                search_root: root.clone(),
                 root_limit: Some(root.clone()),
-                root_label: crate::ui::removable_destinations()
-                    .into_iter()
-                    .find(|destination| destination.id == id)
-                    .map(|destination| destination.name),
                 allow_create: false,
                 completion: TransferDialogCompletion::SendTo {
                     device_id: id,
@@ -1137,368 +1118,123 @@ impl ViewState {
         sources: Vec<Location>,
         options: TransferDialogOptions,
     ) {
-        let Some(ModalHost {
-            overlay: window_overlay,
-            blurred_root,
-        }) = ModalHost::blurred_for(&self.overlay)
-        else {
+        let Some(parent) = self.overlay.root().and_downcast::<gtk::Window>() else {
             return;
         };
-
         let TransferDialogOptions {
             base,
-            search_root,
             root_limit,
-            root_label,
             allow_create,
             completion,
+            ..
         } = options;
-        let move_sources = match &completion {
-            TransferDialogCompletion::CopyMove { move_sources } => *move_sources,
-            TransferDialogCompletion::SendTo { .. } => false,
+        let move_sources = matches!(
+            completion,
+            TransferDialogCompletion::CopyMove { move_sources: true }
+        );
+        let title = match &completion {
+            TransferDialogCompletion::SendTo { .. } => "Send to folder",
+            _ if move_sources => "Move to",
+            _ => "Copy to",
         };
-        let (icon, title, confirm_label) = match &completion {
-            TransferDialogCompletion::CopyMove { move_sources: true } => {
-                (crate::assets::icons::FOLDER_INPUT, "Move to", "Move here")
-            }
-            TransferDialogCompletion::CopyMove {
-                move_sources: false,
-            } => (crate::assets::icons::FOLDER_OUTPUT, "Copy to", "Copy here"),
-            TransferDialogCompletion::SendTo { .. } => (
-                crate::assets::icons::SEND_HORIZONTAL,
-                "Send to",
-                "Copy here",
-            ),
-        };
-        let layout = modal_layout(
-            icon,
-            title,
-            &format!(
-                "Choose a destination for {}",
-                item_count_label(sources.len())
-            ),
-            confirm_label,
-        );
-        layout.content.add_css_class("wide");
-        let field_label = form_label("Destination folder");
-        let field = form_entry();
-        field.set_hexpand(true);
-        field.set_placeholder_text(Some("Search for a folder…"));
-        field.set_text(&folder_input_path(&base));
-        field.set_position(-1);
-        layout.body.append(&field_label);
-        let location_bar = DestinationLocationBar::wrap(
-            field.clone(),
-            base.clone(),
-            search_root.clone(),
-            root_limit.clone(),
-            root_label.clone(),
-        );
-        layout.body.append(&location_bar.widget());
-
-        let suggestions = gtk::Box::new(gtk::Orientation::Vertical, 2);
-        suggestions.add_css_class("transfer-suggestions");
-        let suggestion_scroll = gtk::ScrolledWindow::builder()
-            .child(&suggestions)
-            .hscrollbar_policy(gtk::PolicyType::Never)
-            .vscrollbar_policy(gtk::PolicyType::Automatic)
-            .min_content_height(150)
-            .max_content_height(220)
-            .propagate_natural_height(true)
-            .build();
-        suggestion_scroll.add_css_class("transfer-suggestion-scroll");
-        layout.body.append(&suggestion_scroll);
-        let error = gtk::Label::new(None);
-        error.add_css_class("form-message");
-        error.add_css_class("error");
-        error.set_wrap(true);
-        error.set_xalign(0.0);
-        error.set_visible(false);
-        layout.body.append(&error);
-        let content = layout.content;
-        let close = layout.close;
-        let cancel = layout.cancel;
-        let confirm = layout.confirm;
-
-        let generation = Rc::new(Cell::new(0_u64));
-        let pending_creation = Rc::new(RefCell::new(None::<std::path::PathBuf>));
-        let creating_destination = Rc::new(Cell::new(false));
-        let suggestions_box = suggestions.clone();
-        let suggestions_error = error.clone();
-        let changed_confirm = confirm.clone();
-        let changed_creation = pending_creation.clone();
-        let select_bar = location_bar.clone();
-        setup_transfer_search(
-            &field,
-            &suggestions_box,
-            &generation,
-            TransferSearchScope {
-                base: base.clone(),
-                search_root: search_root.clone(),
-                root_limit: root_limit.clone(),
-                show_hidden: self.browser.preferences().show_hidden,
-            },
-            Rc::new(move |path: &Path| select_bar.select_directory(path)),
-            move |field| {
-                field.remove_css_class("error");
-                suggestions_error.set_visible(false);
-                suggestions_error.remove_css_class("warning");
-                suggestions_error.add_css_class("error");
-                changed_creation.borrow_mut().take();
-                changed_confirm.set_label(if move_sources {
-                    "Move here"
-                } else {
-                    "Copy here"
-                });
-            },
-        );
-
-        let initial_text = folder_input_path(&base);
-        let dirty_field = field.clone();
-        let dirty_creating = creating_destination.clone();
-        let layer = modal_layer(
-            &content,
-            &window_overlay,
-            blurred_root.clone(),
-            Some(Rc::new(move || {
-                dirty_creating.get() || dirty_field.text() != initial_text
-            })),
-        );
-        window_overlay.add_overlay(&layer);
-        let cancel_layer = layer.clone();
-        let cancel_overlay = window_overlay.clone();
-        let cancel_root = blurred_root.clone();
-        let cancel_creating = creating_destination.clone();
-        cancel.connect_clicked(move |_| {
-            if !cancel_creating.get() {
-                dismiss_modal_layer(&cancel_layer, &cancel_overlay, cancel_root.as_ref());
-            }
-        });
-        let close_layer = layer.clone();
-        let close_overlay = window_overlay.clone();
-        let close_root = blurred_root.clone();
-        let close_creating = creating_destination.clone();
-        close.connect_clicked(move |_| {
-            if !close_creating.get() {
-                dismiss_modal_layer(&close_layer, &close_overlay, close_root.as_ref());
-            }
-        });
-        let confirm_layer = layer.clone();
-        let confirm_overlay = window_overlay.clone();
-        let confirm_root = blurred_root.clone();
-        let transfer_state = self.clone();
-        let confirm_field = field.clone();
-        let confirm_error = error.clone();
-        let confirm_base = base.clone();
-        let confirm_creation = pending_creation;
-        let confirm_creating = creating_destination.clone();
-        let confirm_cancel = cancel.clone();
-        let confirm_close = close.clone();
-        let completion = completion.clone();
-        confirm.connect_clicked(move |button| {
-            let path =
-                resolve_destination_path(&confirm_field.text(), &confirm_base, &glib::home_dir());
+        let validation_completion = completion.clone();
+        let validate = Rc::new(move |path: &Path| {
             if let TransferDialogCompletion::SendTo {
                 device_id,
                 opened_root,
                 resolve,
-            } = &completion
+            } = &validation_completion
             {
-                let Some(current_root) = resolve(device_id).and_then(|root| {
-                    crate::ui::browser::destination::canonical_existing_directory(&root)
-                }) else {
-                    confirm_error.remove_css_class("warning");
-                    confirm_error.add_css_class("error");
-                    confirm_error.set_text("The removable device is no longer available.");
-                    confirm_error.set_visible(true);
-                    confirm_field.add_css_class("error");
-                    confirm_field.grab_focus();
-                    return;
-                };
-                let Some(destination) =
-                    crate::ui::browser::destination::rebind_directory_within_root(
-                        opened_root,
-                        &path,
-                        &current_root,
-                    )
-                else {
-                    confirm_error.remove_css_class("warning");
-                    confirm_error.add_css_class("error");
-                    confirm_error
-                        .set_text("Choose an existing folder inside this removable device.");
-                    confirm_error.set_visible(true);
-                    confirm_field.add_css_class("error");
-                    confirm_field.grab_focus();
-                    return;
-                };
-                if let Ok(relative_destination) = destination.strip_prefix(&current_root) {
-                    crate::ui::preferences::PreferenceManager::shared()
-                        .remember_send_to_destination(device_id, relative_destination, None);
-                }
-                let device_name = send_to_display_name(device_id, opened_root);
-                transfer_state.send_to(
-                    Location::local(destination),
-                    sources.clone(),
-                    SendToTransferContext { device_name },
-                );
-                hand_off_destination_focus(&confirm_field, button);
-                dismiss_modal_layer(&confirm_layer, &confirm_overlay, confirm_root.as_ref());
-                return;
-            }
-            if path.exists() && !path.is_dir() {
-                confirm_error.remove_css_class("warning");
-                confirm_error.add_css_class("error");
-                confirm_error.set_text("The destination exists, but it is not a folder.");
-                confirm_error.set_visible(true);
-                confirm_field.add_css_class("error");
-                confirm_field.grab_focus();
-                return;
-            }
-            if !path.exists() && !allow_create {
-                confirm_error.remove_css_class("warning");
-                confirm_error.add_css_class("error");
-                confirm_error.set_text("Choose an existing folder.");
-                confirm_error.set_visible(true);
-                confirm_field.add_css_class("error");
-                confirm_field.grab_focus();
-                return;
-            }
-            if !path.exists() && confirm_creation.borrow().as_ref() != Some(&path) {
-                confirm_creation.replace(Some(path.clone()));
-                confirm_error.remove_css_class("error");
-                confirm_error.add_css_class("warning");
-                confirm_error.set_text(&format!(
-                    "{} does not exist. It will be created before the items are transferred.",
-                    compact_native_path(&path)
-                ));
-                confirm_error.set_visible(true);
-                button.set_label(if move_sources {
-                    "Create and move"
-                } else {
-                    "Create and copy"
-                });
-                button.grab_focus();
-                return;
-            }
-            if path.is_dir() {
-                transfer_state
-                    .pending_navigate
-                    .replace(Some(Location::local(path.clone())));
-                let names: Vec<String> = sources
-                    .iter()
-                    .filter_map(|s| s.native_path()?.file_name()?.to_str().map(String::from))
-                    .collect();
-                transfer_state.pending_select.borrow_mut().extend(names);
-                transfer_state.start_transfer(Location::local(path), sources.clone(), move_sources);
-                hand_off_destination_focus(&confirm_field, button);
-                dismiss_modal_layer(&confirm_layer, &confirm_overlay, confirm_root.as_ref());
-                return;
-            }
-
-            confirm_creating.set(true);
-            button.set_sensitive(false);
-            button.set_label("Creating folder…");
-            confirm_field.set_sensitive(false);
-            confirm_cancel.set_sensitive(false);
-            confirm_close.set_sensitive(false);
-            let created_state = transfer_state.clone();
-            let created_sources = sources.clone();
-            let created_layer = confirm_layer.clone();
-            let created_overlay = confirm_overlay.clone();
-            let created_root = confirm_root.clone();
-            let created_button = button.clone();
-            let created_field = confirm_field.clone();
-            let created_error = confirm_error.clone();
-            let created_creating = confirm_creating.clone();
-            let created_cancel = confirm_cancel.clone();
-            let created_close = confirm_close.clone();
-            glib::MainContext::default().spawn_local(async move {
-                let created_path = path.clone();
-                let result =
-                    gio::spawn_blocking(move || std::fs::create_dir_all(&created_path)).await;
-                match result {
-                    Ok(Ok(())) => {
-                        created_state
-                            .pending_navigate
-                            .replace(Some(Location::local(path.clone())));
-                        let names: Vec<String> = created_sources
-                            .iter()
-                            .filter_map(|s| {
-                                s.native_path()?.file_name()?.to_str().map(String::from)
-                            })
-                            .collect();
-                        created_state.pending_select.borrow_mut().extend(names);
-                        created_state.start_transfer(
-                            Location::local(path),
-                            created_sources,
-                            move_sources,
-                        );
-                        hand_off_destination_focus(&created_field, &created_button);
-                        dismiss_modal_layer(
-                            &created_layer,
-                            &created_overlay,
-                            created_root.as_ref(),
-                        );
-                    }
-                    Ok(Err(error)) => {
-                        created_creating.set(false);
-                        created_cancel.set_sensitive(true);
-                        created_close.set_sensitive(true);
-                        created_error.remove_css_class("warning");
-                        created_error.add_css_class("error");
-                        created_error.set_text(&format!("Unable to create that folder: {error}"));
-                        created_error.set_visible(true);
-                        created_field.add_css_class("error");
-                        created_field.set_sensitive(true);
-                        created_field.grab_focus();
-                        created_button.set_sensitive(true);
-                        created_button.set_label(if move_sources {
-                            "Move here"
-                        } else {
-                            "Copy here"
-                        });
-                    }
-                    Err(_) => {
-                        created_creating.set(false);
-                        created_cancel.set_sensitive(true);
-                        created_close.set_sensitive(true);
-                        created_error.remove_css_class("warning");
-                        created_error.add_css_class("error");
-                        created_error.set_text("Unable to create that folder.");
-                        created_error.set_visible(true);
-                        created_field.add_css_class("error");
-                        created_field.set_sensitive(true);
-                        created_field.grab_focus();
-                        created_button.set_sensitive(true);
-                        created_button.set_label(if move_sources {
-                            "Move here"
-                        } else {
-                            "Copy here"
-                        });
-                    }
-                }
-            });
-        });
-        submit_on_enter(&layout.body, &confirm);
-        let escape = gtk::EventControllerKey::new();
-        let escape_layer = layer.clone();
-        let escape_overlay = window_overlay;
-        let escape_root = blurred_root;
-        let escape_creating = creating_destination;
-        escape.connect_key_pressed(move |_, key, _, _| {
-            if key == gtk::gdk::Key::Escape {
-                if escape_creating.get() {
-                    return glib::Propagation::Stop;
-                }
-                dismiss_modal_layer(&escape_layer, &escape_overlay, escape_root.as_ref());
-                glib::Propagation::Stop
+                let current_root = resolve(device_id)
+                    .and_then(|root| {
+                        crate::ui::browser::destination::canonical_existing_directory(&root)
+                    })
+                    .ok_or_else(|| "The removable device is no longer available.".to_string())?;
+                crate::ui::browser::destination::rebind_directory_within_root(
+                    opened_root,
+                    path,
+                    &current_root,
+                )
+                .ok_or_else(|| {
+                    "Choose an existing folder inside this removable device.".to_string()
+                })
+            } else if path.is_dir() {
+                Ok(path.to_path_buf())
             } else {
-                glib::Propagation::Proceed
+                Err("Choose an existing folder.".to_string())
             }
         });
-        layer.add_controller(escape);
-
-        field.emit_by_name::<()>("changed", &[]);
-        location_bar.focus_browse();
+        let state = self.clone();
+        crate::ui::chooser::present_destination_chooser(
+            crate::ui::chooser::DestinationRequest {
+                parent,
+                title: title.into(),
+                accept_label: if move_sources {
+                    "Move here"
+                } else {
+                    "Copy here"
+                }
+                .into(),
+                initial_directory: base,
+                root_limit,
+                allow_create,
+                validate,
+            },
+            move |path| {
+                if let TransferDialogCompletion::SendTo {
+                    device_id,
+                    opened_root,
+                    resolve,
+                } = &completion
+                {
+                    // Revalidate at dispatch as well: the chooser may outlive a remount.
+                    let Some(current_root) = resolve(device_id).and_then(|root| {
+                        crate::ui::browser::destination::canonical_existing_directory(&root)
+                    }) else {
+                        show_error_dialog(
+                            &state.overlay,
+                            "Destination unavailable",
+                            "The removable device is no longer available.",
+                        );
+                        return;
+                    };
+                    let Some(destination) =
+                        crate::ui::browser::destination::canonical_directory_within(
+                            &current_root,
+                            &path,
+                        )
+                    else {
+                        show_error_dialog(
+                            &state.overlay,
+                            "Destination unavailable",
+                            "Choose an existing folder inside this removable device.",
+                        );
+                        return;
+                    };
+                    if let Ok(relative) = destination.strip_prefix(&current_root) {
+                        crate::ui::preferences::PreferenceManager::shared()
+                            .remember_send_to_destination(device_id, relative, None);
+                    }
+                    state.send_to(
+                        Location::local(destination),
+                        sources,
+                        SendToTransferContext {
+                            device_name: send_to_display_name(device_id, opened_root),
+                        },
+                    );
+                } else {
+                    state.pending_navigate.replace(Some(Location::local(&path)));
+                    let names = sources.iter().filter_map(|source| {
+                        source
+                            .native_path()?
+                            .file_name()?
+                            .to_str()
+                            .map(String::from)
+                    });
+                    state.pending_select.borrow_mut().extend(names);
+                    state.start_transfer(Location::local(path), sources, move_sources);
+                }
+            },
+        );
     }
 }

@@ -146,9 +146,8 @@ impl ThemeListeners {
         if self.notifying.replace(true) {
             return;
         }
-        let listeners = self.listeners.borrow().clone();
         notify_live(
-            listeners,
+            &self.listeners,
             |listener| listener.active.get() && listener.anchor.upgrade().is_some(),
             |listener| {
                 if listener.active.get()

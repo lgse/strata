@@ -3,7 +3,10 @@
 use super::*;
 use crate::model::{FileEntry, Location};
 use crate::services::{DropCommit, TransferKind};
-use std::path::Path;
+use std::{
+    cell::{Cell, RefCell},
+    path::Path,
+};
 
 fn visible_texts(overlay: &gtk::Overlay) -> Vec<String> {
     let mut texts = Vec::new();
@@ -117,26 +120,39 @@ fn transfer_entry(path: &Path) -> FileEntry {
     }
 }
 
-fn destination_field(overlay: &gtk::Overlay) -> gtk::Entry {
-    let mut stack = Vec::new();
-    let mut child = overlay.first_child();
-    while let Some(widget) = child {
-        stack.push(widget.clone());
-        child = widget.next_sibling();
+fn drain_context() {
+    let context = glib::MainContext::default();
+    while context.pending() {
+        context.iteration(false);
     }
-    while let Some(widget) = stack.pop() {
-        if let Some(field) = widget.downcast_ref::<gtk::Entry>()
-            && field.placeholder_text().as_deref() == Some("Search for a folder…")
-        {
-            return field.clone();
-        }
-        let mut descendant = widget.first_child();
-        while let Some(child) = descendant {
-            stack.push(child.clone());
-            descendant = child.next_sibling();
-        }
-    }
-    panic!("destination field was not found");
+}
+
+fn destination_chooser(parent: &gtk::Window) -> (gtk::Window, crate::ui::browser::BrowserView) {
+    wait_until(
+        || crate::ui::chooser::destination_chooser_for(parent).is_some(),
+        "floating destination chooser",
+    );
+    crate::ui::chooser::destination_chooser_for(parent).expect("floating destination chooser")
+}
+
+fn navigate_destination(view: &crate::ui::browser::BrowserView, path: &Path) {
+    view.navigate_location(Location::local(path));
+    wait_until(
+        || view.browser().active_location() == Some(Location::local(path)),
+        "chooser destination navigation",
+    );
+}
+
+fn destination_accept(window: &gtk::Window) -> gtk::Button {
+    window
+        .default_widget()
+        .expect("chooser default action")
+        .downcast::<gtk::Button>()
+        .expect("chooser action button")
+}
+
+fn confirm_destination(window: &gtk::Window) {
+    destination_accept(window).emit_clicked();
 }
 
 fn visible_error_message(overlay: &gtk::Overlay) -> Option<String> {
@@ -149,7 +165,7 @@ fn visible_error_message(overlay: &gtk::Overlay) -> Option<String> {
     while let Some(widget) = stack.pop() {
         if let Some(label) = widget.downcast_ref::<gtk::Label>()
             && label.is_visible()
-            && label.has_css_class("error")
+            && (label.has_css_class("error") || label.has_css_class("form-field-error"))
         {
             return Some(label.text().to_string());
         }
@@ -657,71 +673,72 @@ fn choose_folder_rejects_invalid_destinations_and_copies_into_a_confined_directo
                 vec![Location::local(&first), Location::local(&second)],
                 Rc::new(move |id| (id == device_id).then(|| root.clone())),
             );
-            assert!(wait_for_modal_layer(&overlay), "Choose folder dialog opens");
-            let field = destination_field(&overlay);
+            let (chooser_window, chooser) = destination_chooser(&window);
             assert_eq!(
-                field.text(),
-                folder_input_path(&device),
-                "the field starts at the current device root"
+                chooser.browser().active_location(),
+                Some(Location::local(&device))
             );
-            let invalid = [
+            wait_until(
+                || {
+                    chooser
+                        .browser()
+                        .column_snapshot(0)
+                        .is_some_and(|snapshot| !snapshot.loading)
+                },
+                "confined directory listing",
+            );
+            let mut position = 0;
+            while let Some(entry) = chooser.browser().entry_at(0, position) {
+                assert!(entry.is_directory());
+                assert!(
+                    entry
+                        .location
+                        .native_path()
+                        .expect("local folder")
+                        .canonicalize()
+                        .expect("existing folder")
+                        .starts_with(&device),
+                    "escaping symlinks are not offered"
+                );
+                position += 1;
+            }
+            let mut invalid = vec![
                 device.join("missing"),
                 device.join("regular-file.txt"),
                 outside.clone(),
                 device.join("../outside"),
             ];
-            for path in invalid {
-                field.set_text(&path.to_string_lossy());
-                click_button(&overlay, "Copy here");
-                wait_until(
-                    || visible_error_message(&overlay).is_some(),
-                    "the invalid destination error",
-                );
-                assert!(wait_for_modal_layer(&overlay), "the dialog stays open");
-                assert!(button_with_label(&overlay, "Create and copy").is_none());
-                assert!(
-                    events.borrow().iter().all(|event| !matches!(
-                        event,
-                        crate::app::BrowserEvent::TransferStarted { .. }
-                    )),
-                    "an invalid destination is rejected before dispatch"
-                );
-                assert_eq!(
-                    preferences.send_to_recent_destinations(device_id),
-                    original_recents,
-                    "failed path validation does not change recent destinations"
-                );
-            }
-            assert!(!device.join("missing").exists());
             #[cfg(unix)]
-            {
-                field.set_text(&device.join("external-link").to_string_lossy());
-                click_button(&overlay, "Copy here");
-                wait_until(
-                    || visible_error_message(&overlay).is_some(),
-                    "the symlink escape error",
+            invalid.push(device.join("external-link"));
+            for path in invalid {
+                chooser.navigate_location(Location::local(&path));
+                drain_context();
+                assert_eq!(
+                    chooser.browser().active_location(),
+                    Some(Location::local(&device)),
+                    "invalid navigation stays confined"
                 );
-                assert!(wait_for_modal_layer(&overlay), "the dialog stays open");
-                assert!(
-                    events.borrow().iter().all(|event| !matches!(
-                        event,
-                        crate::app::BrowserEvent::TransferStarted { .. }
-                    )),
-                    "a symlink escape is rejected before dispatch"
-                );
+                assert!(events.borrow().iter().all(|event| !matches!(
+                    event,
+                    crate::app::BrowserEvent::TransferStarted { .. }
+                )));
                 assert_eq!(
                     preferences.send_to_recent_destinations(device_id),
-                    original_recents,
-                    "a rejected symlink escape does not change recent destinations"
+                    original_recents
                 );
             }
-
+            chooser.create_new_folder();
+            assert!(
+                !chooser.new_entry_is_active(),
+                "Send to cannot create folders"
+            );
+            assert!(!device.join("missing").exists());
             #[cfg(unix)]
             let selected = device.join("internal-link");
             #[cfg(not(unix))]
             let selected = device.join("subdir");
-            field.set_text(&selected.to_string_lossy());
-            click_button(&overlay, "Copy here");
+            navigate_destination(&chooser, &selected);
+            confirm_destination(&chooser_window);
             wait_until(
                 || {
                     ["first.txt", "second.txt"]
@@ -794,19 +811,23 @@ fn choose_folder_revalidates_device_while_the_dialog_is_open() {
                         .flatten()
                 }),
             );
-            assert!(wait_for_modal_layer(&overlay), "Choose folder dialog opens");
-            let field = destination_field(&overlay);
-            field.set_text(&device.join("folder").to_string_lossy());
+            let (chooser_window, chooser) = destination_chooser(&window);
+            navigate_destination(&chooser, &device.join("folder"));
+            let chooser_overlay = chooser_window
+                .child()
+                .expect("chooser content")
+                .downcast::<gtk::Overlay>()
+                .expect("chooser overlay");
             current.replace(None);
-            click_button(&overlay, "Copy here");
+            confirm_destination(&chooser_window);
             wait_until(
                 || {
-                    visible_error_message(&overlay).as_deref()
+                    visible_error_message(&chooser_overlay).as_deref()
                         == Some("The removable device is no longer available.")
                 },
                 "the unavailable device error",
             );
-            assert!(wait_for_modal_layer(&overlay), "the dialog stays open");
+            assert!(chooser_window.is_visible(), "the chooser stays open");
             assert!(
                 events.borrow().iter().all(|event| !matches!(
                     event,
@@ -857,14 +878,18 @@ fn choose_folder_uses_the_current_root_after_a_remount() {
                 vec![Location::local(&source)],
                 Rc::new(move |_| resolved.borrow().clone()),
             );
-            assert!(wait_for_modal_layer(&overlay), "Choose folder dialog opens");
-            let field = destination_field(&overlay);
-            field.set_text(&opened_root.join("nested").to_string_lossy());
+            let (chooser_window, chooser) = destination_chooser(&window);
+            navigate_destination(&chooser, &opened_root.join("nested"));
+            let chooser_overlay = chooser_window
+                .child()
+                .expect("chooser content")
+                .downcast::<gtk::Overlay>()
+                .expect("chooser overlay");
             current.replace(Some(current_root.clone()));
             std::fs::remove_dir_all(&opened_root).expect("old mount removed");
-            click_button(&overlay, "Copy here");
+            confirm_destination(&chooser_window);
             wait_until(
-                || visible_error_message(&overlay).is_some(),
+                || visible_error_message(&chooser_overlay).is_some(),
                 "the missing corresponding folder error",
             );
             assert!(!current_root.join("nested").exists());
@@ -878,7 +903,7 @@ fn choose_folder_uses_the_current_root_after_a_remount() {
 
             std::fs::create_dir(current_root.join("nested"))
                 .expect("corresponding folder on current mount");
-            click_button(&overlay, "Copy here");
+            confirm_destination(&chooser_window);
             wait_until(
                 || {
                     current_root.join("nested/source.txt").exists()
@@ -934,176 +959,111 @@ fn choose_folder_does_not_open_when_device_resolution_fails() {
 }
 
 #[test]
-fn choose_folder_breadcrumbs_navigate_to_ancestor() {
+fn choose_folder_navigation_and_cancellation_leave_parent_unchanged() {
     crate::test_support::gtk_test(
-        "ui::browser::transfer::tests::choose_folder_breadcrumbs_navigate_to_ancestor",
+        "ui::browser::transfer::tests::choose_folder_navigation_and_cancellation_leave_parent_unchanged",
         || {
-            let fixture = tempfile::tempdir().expect("breadcrumb fixture");
-            let source_dir = fixture.path().join("source");
-            let device = fixture.path().join("device");
-            std::fs::create_dir_all(&source_dir).expect("source directory");
-            std::fs::create_dir_all(device.join("Teaching")).expect("device subdirectory");
-            let source = source_dir.join("source.txt");
-            std::fs::write(&source, b"source").expect("source file");
-
-            let device_id = "volume:breadcrumb-device";
-            let view = crate::ui::browser::BrowserView::new(
-                Rc::new(crate::adapters::LocalFileSource),
-                crate::ui::browser::PeekBehavior::default(),
-            );
-            view.set_operation_provider(Rc::new(crate::adapters::LocalOperationProvider));
-            view.navigate_location(Location::local(&source_dir));
-            let overlay = view.overlay();
-            let window = gtk::Window::builder().child(&overlay).build();
-            window.present();
-            let events = Rc::new(RefCell::new(Vec::new()));
-            let observed = events.clone();
-            view.browser()
-                .observe(move |event| observed.borrow_mut().push(event.clone()));
-
+            let (_fixture, source_dir, device) =
+                focused_enter_destination_fixture("chooser navigation fixture");
+            let nested = device.join("nested");
+            std::fs::create_dir(&nested).expect("nested destination");
+            let (view, _overlay, window, events) = open_transfer_browser(&source_dir);
             let root = device.clone();
             view.state.show_send_to_folder_dialog_with_resolver(
-                device_id.to_owned(),
-                vec![Location::local(&source)],
-                Rc::new(move |id| (id == device_id).then(|| root.clone())),
+                "volume:navigation".into(),
+                vec![Location::local(source_dir.join("photo.txt"))],
+                Rc::new(move |_| Some(root.clone())),
             );
-            assert!(wait_for_modal_layer(&overlay), "Choose folder dialog opens");
-            let field = destination_field(&overlay);
+            let (chooser_window, chooser) = destination_chooser(&window);
+            navigate_destination(&chooser, &nested);
+            chooser.browser().parent();
+            wait_until(
+                || chooser.browser().active_location() == Some(Location::local(&device)),
+                "parent returns to device root",
+            );
+            chooser.browser().parent();
+            drain_context();
             assert_eq!(
-                field.text(),
-                folder_input_path(&device),
-                "the field starts at the current device root"
+                chooser.browser().active_location(),
+                Some(Location::local(&device)),
+                "Parent cannot escape device root"
             );
+            chooser.browser().back();
             wait_until(
-                || find_widget_with_class(&overlay, "transfer-suggestion").is_some(),
-                "the device-root suggestions",
+                || chooser.browser().active_location() == Some(Location::local(&nested)),
+                "Back returns to child",
             );
-            find_widget_with_class(&overlay, "transfer-suggestion")
-                .expect("device-root suggestion")
-                .downcast::<gtk::Button>()
-                .expect("suggestion row")
-                .emit_clicked();
-            let teaching = device.join("Teaching");
+            chooser.browser().forward();
             wait_until(
-                || field.text() == folder_input_path(&teaching),
-                "the suggestion fills the entry with the child folder",
+                || chooser.browser().active_location() == Some(Location::local(&device)),
+                "Forward returns to root",
             );
-            let crumb = button_with_label(&overlay, "device").expect("device-root breadcrumb");
-            crumb.emit_clicked();
-            wait_until(
-                || field.text() == folder_input_path(&device),
-                "the ancestor breadcrumb returns the entry to the device root",
-            );
-            click_button(&overlay, "Copy here");
-            wait_until(
-                || {
-                    device.join("source.txt").exists()
-                        && events.borrow().iter().any(|event| {
-                            matches!(event, crate::app::BrowserEvent::TransferFinished { .. })
-                        })
-                },
-                "the copy into the breadcrumb-selected destination",
-            );
-            assert!(source.exists(), "sources remain in place");
+            chooser_window.close();
+            drain_context();
+            assert!(!chooser_window.is_visible());
             assert_eq!(
                 view.browser().active_location(),
-                Some(Location::local(&source_dir)),
-                "Send to does not navigate to its destination"
+                Some(Location::local(&source_dir))
             );
-            view.browser().clear_observer();
+            assert!(
+                events.borrow().iter().all(|event| !matches!(
+                    event,
+                    crate::app::BrowserEvent::TransferStarted { .. }
+                ))
+            );
             window.destroy();
         },
     );
 }
 
 #[test]
-fn choose_folder_location_bar_switches_presentations() {
+fn floating_destination_is_single_flight_and_dies_with_parent() {
     crate::test_support::gtk_test(
-        "ui::browser::transfer::tests::choose_folder_location_bar_switches_presentations",
+        "ui::browser::transfer::tests::floating_destination_is_single_flight_and_dies_with_parent",
         || {
-            let fixture = tempfile::tempdir().expect("location bar fixture");
-            let source_dir = fixture.path().join("source");
-            let device = fixture.path().join("device");
-            std::fs::create_dir_all(&source_dir).expect("source directory");
-            std::fs::create_dir_all(device.join("Teaching")).expect("device subdirectory");
-            let source = source_dir.join("source.txt");
-            std::fs::write(&source, b"source").expect("source file");
-
-            let device_id = "volume:location-bar-device";
-            let view = crate::ui::browser::BrowserView::new(
-                Rc::new(crate::adapters::LocalFileSource),
-                crate::ui::browser::PeekBehavior::default(),
-            );
-            view.set_operation_provider(Rc::new(crate::adapters::LocalOperationProvider));
-            view.navigate_location(Location::local(&source_dir));
-            let overlay = view.overlay();
-            let window = gtk::Window::builder().child(&overlay).build();
-            window.present();
-            let events = Rc::new(RefCell::new(Vec::new()));
-            let observed = events.clone();
-            view.browser()
-                .observe(move |event| observed.borrow_mut().push(event.clone()));
-
-            let root = device.clone();
-            view.state.show_send_to_folder_dialog_with_resolver(
-                device_id.to_owned(),
-                vec![Location::local(&source)],
-                Rc::new(move |id| (id == device_id).then(|| root.clone())),
-            );
-            assert!(wait_for_modal_layer(&overlay), "Choose folder dialog opens");
-            let field = destination_field(&overlay);
-            let stack = find_widget_with_class(&overlay, "destination-location-stack")
-                .expect("location stack")
-                .downcast::<gtk::Stack>()
-                .expect("stack widget");
-            let visible_child = || {
-                stack
-                    .visible_child_name()
-                    .as_deref()
-                    .unwrap_or_default()
-                    .to_owned()
+            let (_fixture, source_dir, destination) =
+                focused_enter_destination_fixture("chooser lifecycle fixture");
+            let source = source_dir.join("photo.txt");
+            let (view, _overlay, window, events) = open_transfer_browser(&source_dir);
+            let open = || {
+                view.state
+                    .show_transfer_dialog(vec![transfer_entry(&source)], false)
             };
-            assert_eq!(visible_child(), "browse");
-            click_button(&overlay, "device");
-            assert_eq!(visible_child(), "edit");
-            assert_eq!(
-                field.text(),
-                folder_input_path(&device),
-                "entering edit preserves the path"
+            open();
+            open();
+            let (chooser_window, chooser) = destination_chooser(&window);
+            open();
+            drain_context();
+            let windows = gtk::Window::list_toplevels()
+                .into_iter()
+                .filter_map(|widget| widget.downcast::<gtk::Window>().ok())
+                .filter(|candidate| {
+                    candidate.is_visible() && candidate.transient_for().as_ref() == Some(&window)
+                })
+                .count();
+            assert_eq!(windows, 1, "pending and active requests share one chooser");
+            navigate_destination(&chooser, &destination);
+            chooser_window.close();
+            drain_context();
+            open();
+            let (reopened, _) = destination_chooser(&window);
+            assert_ne!(
+                reopened, chooser_window,
+                "cancellation releases the per-parent lease"
             );
-            wait_until(
-                || find_widget_with_class(&overlay, "transfer-suggestion").is_some(),
-                "the device-root suggestions",
-            );
-            find_widget_with_class(&overlay, "transfer-suggestion")
-                .expect("device-root suggestion")
-                .downcast::<gtk::Button>()
-                .expect("suggestion row")
-                .emit_clicked();
-            let teaching = device.join("Teaching");
-            wait_until(
-                || field.text() == folder_input_path(&teaching),
-                "the suggestion fills the entry with the child folder",
-            );
-            assert_eq!(visible_child(), "browse");
-            click_button(&overlay, "device");
-            wait_until(
-                || field.text() == folder_input_path(&device),
-                "the ancestor breadcrumb returns the entry to the device root",
-            );
-            field.emit_by_name::<()>("activate", &[]);
-            wait_until(
-                || {
-                    device.join("source.txt").exists()
-                        && events.borrow().iter().any(|event| {
-                            matches!(event, crate::app::BrowserEvent::TransferFinished { .. })
-                        })
-                },
-                "Enter confirms the breadcrumb-selected destination",
-            );
-            assert!(source.exists(), "sources remain in place");
-            view.browser().clear_observer();
             window.destroy();
+            drain_context();
+            assert!(
+                !reopened.is_visible(),
+                "parent destruction destroys the chooser"
+            );
+            assert!(!destination.join("photo.txt").exists());
+            assert!(
+                events.borrow().iter().all(|event| !matches!(
+                    event,
+                    crate::app::BrowserEvent::TransferStarted { .. }
+                ))
+            );
         },
     );
 }
@@ -1118,12 +1078,6 @@ fn focused_enter_destination_fixture(
     std::fs::create_dir_all(&destination).expect("destination directory");
     std::fs::write(source_dir.join("photo.txt"), b"photo").expect("source file");
     (fixture, source_dir, destination)
-}
-
-fn destination_entry_owns_focus(field: &gtk::Entry, window: &gtk::Window) -> bool {
-    // GtkEntry delegates keyboard focus to its internal GtkText, so the
-    // entry itself never reports focused; match toplevel focus instead.
-    gtk::prelude::GtkWindowExt::focus(window).is_some_and(|focus| focus.is_ancestor(field))
 }
 
 fn open_transfer_browser(
@@ -1158,18 +1112,14 @@ fn copy_to_focused_enter_confirms_destination() {
             let (_fixture, source_dir, destination) =
                 focused_enter_destination_fixture("copy focused-enter fixture");
             let source = source_dir.join("photo.txt");
-            let (view, overlay, window, events) = open_transfer_browser(&source_dir);
+            let (view, _overlay, window, events) = open_transfer_browser(&source_dir);
             view.state
                 .show_transfer_dialog(vec![transfer_entry(&source)], false);
-            assert!(wait_for_modal_layer(&overlay), "Copy dialog opens");
-            let field = destination_field(&overlay);
-            click_button(&overlay, "source");
-            wait_until(
-                || destination_entry_owns_focus(&field, &window),
-                "the entry owns focus on the Enter path",
-            );
-            field.set_text(&destination.to_string_lossy());
-            field.emit_by_name::<()>("activate", &[]);
+            let (chooser_window, chooser) = destination_chooser(&window);
+            navigate_destination(&chooser, &destination);
+            let accept = destination_accept(&chooser_window);
+            accept.grab_focus();
+            accept.emit_by_name::<()>("activate", &[]);
             wait_until(
                 || {
                     destination.join("photo.txt").exists()
@@ -1199,18 +1149,14 @@ fn move_to_focused_enter_confirms_destination() {
             let (_fixture, source_dir, destination) =
                 focused_enter_destination_fixture("move focused-enter fixture");
             let source = source_dir.join("photo.txt");
-            let (view, overlay, window, events) = open_transfer_browser(&source_dir);
+            let (view, _overlay, window, events) = open_transfer_browser(&source_dir);
             view.state
                 .show_transfer_dialog(vec![transfer_entry(&source)], true);
-            assert!(wait_for_modal_layer(&overlay), "Move dialog opens");
-            let field = destination_field(&overlay);
-            click_button(&overlay, "source");
-            wait_until(
-                || destination_entry_owns_focus(&field, &window),
-                "the entry owns focus on the Enter path",
-            );
-            field.set_text(&destination.to_string_lossy());
-            field.emit_by_name::<()>("activate", &[]);
+            let (chooser_window, chooser) = destination_chooser(&window);
+            navigate_destination(&chooser, &destination);
+            let accept = destination_accept(&chooser_window);
+            accept.grab_focus();
+            accept.emit_by_name::<()>("activate", &[]);
             wait_until(
                 || {
                     destination.join("photo.txt").exists()
@@ -1235,7 +1181,7 @@ fn send_to_focused_enter_copies_to_device_root() {
             let (_fixture, source_dir, device) =
                 focused_enter_destination_fixture("send-to focused-enter fixture");
             let source = source_dir.join("photo.txt");
-            let (view, overlay, window, events) = open_transfer_browser(&source_dir);
+            let (view, _overlay, window, events) = open_transfer_browser(&source_dir);
             let device_id = "volume:focused-enter-device";
             let root = device.clone();
             view.state.show_send_to_folder_dialog_with_resolver(
@@ -1243,19 +1189,10 @@ fn send_to_focused_enter_copies_to_device_root() {
                 vec![Location::local(&source)],
                 Rc::new(move |id| (id == device_id).then(|| root.clone())),
             );
-            assert!(wait_for_modal_layer(&overlay), "Choose folder dialog opens");
-            let field = destination_field(&overlay);
-            click_button(&overlay, "destination");
-            wait_until(
-                || destination_entry_owns_focus(&field, &window),
-                "the entry owns focus on the Enter path",
-            );
-            field.set_text("");
-            assert!(
-                destination_entry_owns_focus(&field, &window),
-                "clearing the entry keeps focus for the Enter path"
-            );
-            field.emit_by_name::<()>("activate", &[]);
+            let (chooser_window, _chooser) = destination_chooser(&window);
+            let accept = destination_accept(&chooser_window);
+            accept.grab_focus();
+            accept.emit_by_name::<()>("activate", &[]);
             wait_until(
                 || {
                     device.join("photo.txt").exists()
@@ -1298,15 +1235,11 @@ fn extract_to_focused_enter_extracts_destination() {
             .expect("fixture archive");
             let (view, overlay, window, _events) = open_transfer_browser(&work);
             view.state.show_extract_to_dialog(transfer_entry(&archive));
-            assert!(wait_for_modal_layer(&overlay), "Extract dialog opens");
-            let field = destination_field(&overlay);
-            click_button(&overlay, "work");
-            wait_until(
-                || destination_entry_owns_focus(&field, &window),
-                "the entry owns focus on the Enter path",
-            );
-            field.set_text(&destination.to_string_lossy());
-            field.emit_by_name::<()>("activate", &[]);
+            let (chooser_window, chooser) = destination_chooser(&window);
+            navigate_destination(&chooser, &destination);
+            let accept = destination_accept(&chooser_window);
+            accept.grab_focus();
+            accept.emit_by_name::<()>("activate", &[]);
             wait_until(
                 || {
                     std::fs::read_to_string(destination.join("notes.txt")).is_ok_and(|contents| {
@@ -1563,10 +1496,9 @@ fn normal_copy_fast_shows_no_send_to_toast() {
             let (view, overlay, window, events) = open_transfer_browser(&source_dir);
             view.state
                 .show_transfer_dialog(vec![transfer_entry(&source)], false);
-            assert!(wait_for_modal_layer(&overlay), "Copy dialog opens");
-            let field = destination_field(&overlay);
-            field.set_text(&destination.to_string_lossy());
-            click_button(&overlay, "Copy here");
+            let (chooser_window, chooser) = destination_chooser(&window);
+            navigate_destination(&chooser, &destination);
+            confirm_destination(&chooser_window);
             wait_until(
                 || {
                     destination.join("photo.txt").exists()
@@ -1741,9 +1673,9 @@ fn superseded_send_to_shows_no_success_feedback() {
 }
 
 #[test]
-fn normal_copy_and_move_to_keep_home_search_creation_and_reveal() {
+fn normal_copy_and_move_to_keep_home_navigation_creation_and_reveal() {
     crate::test_support::gtk_test(
-        "ui::browser::transfer::tests::normal_copy_and_move_to_keep_home_search_creation_and_reveal",
+        "ui::browser::transfer::tests::normal_copy_and_move_to_keep_home_navigation_creation_and_reveal",
         || {
             let home_destination = glib::home_dir().join("normal-home-search-target");
             std::fs::create_dir_all(&home_destination).expect("home search directory");
@@ -1753,7 +1685,7 @@ fn normal_copy_and_move_to_keep_home_search_creation_and_reveal() {
                 std::fs::create_dir(&source_dir).expect("source directory");
                 let source = source_dir.join("source.txt");
                 std::fs::write(&source, b"source").expect("source file");
-                let created_destination = fixture.path().join("created-destination");
+                let created_destination = source_dir.join("new folder");
                 let view = crate::ui::browser::BrowserView::new(
                     Rc::new(crate::adapters::LocalFileSource),
                     crate::ui::browser::PeekBehavior::default(),
@@ -1770,45 +1702,17 @@ fn normal_copy_and_move_to_keep_home_search_creation_and_reveal() {
 
                 view.state
                     .show_transfer_dialog(vec![transfer_entry(&source)], move_sources);
-                assert!(
-                    wait_for_modal_layer(&overlay),
-                    "normal transfer dialog opens"
-                );
-                let field = destination_field(&overlay);
-                field.set_text("normal-home-search-target");
+                let (chooser_window, chooser) = destination_chooser(&window);
+                navigate_destination(&chooser, &home_destination);
+                navigate_destination(&chooser, &source_dir);
+                chooser.create_new_folder();
                 wait_until(
-                    || {
-                        let mut child = find_widget_with_class(&overlay, "transfer-suggestions")
-                            .expect("destination suggestions")
-                            .first_child();
-                        while let Some(widget) = child {
-                            child = widget.next_sibling();
-                            if widget.widget_name() == home_destination.to_string_lossy().as_ref() {
-                                return true;
-                            }
-                        }
-                        false
-                    },
-                    "normal text search to find the home destination",
+                    || created_destination.is_dir(),
+                    "chooser creates a destination folder",
                 );
-                field.set_text(&created_destination.to_string_lossy());
-                let primary_label = if move_sources {
-                    "Move here"
-                } else {
-                    "Copy here"
-                };
-                let create_label = if move_sources {
-                    "Create and move"
-                } else {
-                    "Create and copy"
-                };
-                click_button(&overlay, primary_label);
-                wait_until(
-                    || button_with_label(&overlay, create_label).is_some(),
-                    "the existing directory creation confirmation",
-                );
-                assert!(!created_destination.exists());
-                click_button(&overlay, create_label);
+                chooser.cancel_rename();
+                navigate_destination(&chooser, &created_destination);
+                confirm_destination(&chooser_window);
                 wait_until(
                     || {
                         created_destination.join("source.txt").exists()

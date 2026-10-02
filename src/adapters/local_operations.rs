@@ -3803,6 +3803,9 @@ async fn run_merge_undo(
         };
         let deleted_location = match result {
             Ok(()) => {
+                if existing_type.is_some() {
+                    super::bookmarks::deletion_completed(std::slice::from_ref(location));
+                }
                 completed_locations.push(location.clone());
                 Some(location.clone())
             }
@@ -4063,6 +4066,7 @@ async fn run_deletion(
             failed_locations.push(target.location.clone());
             None
         } else {
+            super::bookmarks::deletion_completed(std::slice::from_ref(&target.location));
             deleted_locations.push(target.location.clone());
             Some(target.location.clone())
         };

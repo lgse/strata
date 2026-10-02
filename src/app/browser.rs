@@ -1187,6 +1187,9 @@ impl Browser {
     }
 
     fn navigate_for_selection(self: &Rc<Self>, location: Location, selection: LoadSelection) {
+        if !self.source.allows_navigation(&location) {
+            return;
+        }
         self.bump_navigation_generation();
         if self.active_location().as_ref() == Some(&location) {
             return;
@@ -1300,7 +1303,7 @@ impl Browser {
         select_first_on_load: bool,
         keep_parent_active: bool,
     ) {
-        if self.location_at(parent_depth).is_none() {
+        if !self.source.allows_navigation(&location) || self.location_at(parent_depth).is_none() {
             return;
         }
         self.emit(BrowserEvent::NavigationStarting);
@@ -1640,6 +1643,10 @@ impl Browser {
 
     pub fn can_go_parent(&self) -> bool {
         self.state.borrow().can_go_parent()
+            && self
+                .active_location()
+                .and_then(|location| location.parent())
+                .is_some_and(|parent| self.source.allows_navigation(&parent))
     }
 
     pub fn back(self: &Rc<Self>) {
@@ -1657,6 +1664,9 @@ impl Browser {
     }
 
     pub fn parent(self: &Rc<Self>) {
+        if !self.can_go_parent() {
+            return;
+        }
         let target = self.state.borrow_mut().go_parent();
         if let Some(target) = target {
             self.restore_path(target);
@@ -3229,6 +3239,13 @@ impl Browser {
     }
 
     fn restore_path(self: &Rc<Self>, path: NavigationPath) {
+        if path
+            .locations()
+            .iter()
+            .any(|location| !self.source.allows_navigation(location))
+        {
+            return;
+        }
         self.emit(BrowserEvent::NavigationStarting);
         self.close_peek();
         self.loads.borrow_mut().clear();

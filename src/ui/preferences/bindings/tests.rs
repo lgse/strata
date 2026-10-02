@@ -95,25 +95,35 @@ fn reentrant_changes_reach_all_bindings_without_notification_loops() {
 #[test]
 fn a_channel_change_reaches_only_the_views_that_still_exist() {
     let ran = RefCell::new(Vec::new());
-    let live = notify_live(
-        vec![(1, true), (2, false), (3, true)],
+    let listeners = RefCell::new(vec![(1, true), (2, false), (3, true)]);
+    notify_live(
+        &listeners,
         |(_, alive)| *alive,
         |(id, _)| ran.borrow_mut().push(*id),
     );
 
     assert_eq!(ran.into_inner(), vec![1, 3]);
-    assert_eq!(live, vec![(1, true), (3, true)]);
+    assert_eq!(listeners.into_inner(), vec![(1, true), (3, true)]);
 }
 
 #[test]
 fn a_channel_change_with_no_surviving_views_clears_the_registry() {
     let ran = RefCell::new(0_u32);
-    let live = notify_live(
-        vec![(1, false)],
-        |(_, alive)| *alive,
-        |_| *ran.borrow_mut() += 1,
-    );
+    let listeners = RefCell::new(vec![(1, false)]);
+    notify_live(&listeners, |(_, alive)| *alive, |_| *ran.borrow_mut() += 1);
 
     assert_eq!(ran.into_inner(), 0);
-    assert!(live.is_empty());
+    assert!(listeners.into_inner().is_empty());
+}
+
+#[test]
+fn listeners_added_during_notification_remain_registered_for_the_next_change() {
+    let listeners = RefCell::new(vec![(1, true)]);
+    notify_live(
+        &listeners,
+        |(_, alive)| *alive,
+        |_| listeners.borrow_mut().push((2, true)),
+    );
+
+    assert_eq!(listeners.into_inner(), vec![(1, true), (2, true)]);
 }

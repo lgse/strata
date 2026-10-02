@@ -2264,13 +2264,20 @@ fn build_icons_pane(
             );
         }
     });
-    let section = pane_section.clone();
+    let width_view = pane_section.view.downgrade();
     let width_context = Rc::downgrade(&context);
     after_icons_viewport_width_changes(&scroll, move |width| {
-        let Some(context) = width_context.upgrade() else {
+        let (Some(context), Some(view)) = (width_context.upgrade(), width_view.upgrade()) else {
             return;
         };
-        pin_ungrouped_icons_columns(&section, width, context.density.get());
+        let Some(sections) = context.sections.upgrade() else {
+            return;
+        };
+        let sections = sections.borrow();
+        let Some(section) = sections.iter().find(|section| section.view == view) else {
+            return;
+        };
+        pin_ungrouped_icons_columns(section, width, context.density.get());
     });
     let targets: super::marquee::MarqueeTargets = Rc::new(RefCell::new(Vec::new()));
     let (collection, marquee) = collection_with_marquee(

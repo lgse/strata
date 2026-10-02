@@ -969,7 +969,10 @@ impl ViewState {
         is_directory: bool,
         move_sources: Vec<Location>,
     ) {
-        if is_trash_location(&location) || location.is_recent_location() {
+        if (!self.interactive && !self.chooser_allows_create.get())
+            || is_trash_location(&location)
+            || location.is_recent_location()
+        {
             return;
         }
         self.cancel_new_entry();

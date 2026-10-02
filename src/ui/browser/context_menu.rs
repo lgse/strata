@@ -1961,16 +1961,20 @@ fn context_menu_toggle_option(
 }
 
 fn bind_context_hint(button: &gtk::Button, shortcut: &gtk::Label, label: &str, hint: ContextHint) {
-    let shown = shortcut.clone();
-    let button = button.clone();
+    let button = button.downgrade();
     let label = label.to_owned();
     PreferenceManager::shared().bind_preference(
         shortcut,
         move |preferences| shortcut_reference::context_hint_for(hint, preferences),
-        move |_, text| {
+        move |widget, text| {
+            let shown = widget
+                .downcast_ref::<gtk::Label>()
+                .expect("context hint label");
             shown.set_text(text);
             shown.set_visible(!text.is_empty());
-            crate::ui::accessibility::describe_menu_item(&button, &label, text);
+            if let Some(button) = button.upgrade() {
+                crate::ui::accessibility::describe_menu_item(&button, &label, text);
+            }
         },
     );
 }

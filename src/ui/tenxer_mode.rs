@@ -49,8 +49,7 @@ pub(crate) fn hide_sort_direction_while_enabled(widget: &impl IsA<gtk::Widget>) 
 pub(crate) fn hide_filter_while_enabled(button: &gtk::ToggleButton, revealer: &gtk::Revealer) {
     button.add_css_class("tenxer-suppressed-chrome");
     revealer.add_css_class("tenxer-filter-revealer");
-    let revealer = revealer.clone();
-    let button_for_restore = button.clone();
+    let revealer = revealer.downgrade();
     let primed = Cell::new(false);
     PreferenceManager::shared().bind_preference(
         button,
@@ -61,10 +60,16 @@ pub(crate) fn hide_filter_while_enabled(button: &gtk::ToggleButton, revealer: &g
             if !primed.replace(true) {
                 return;
             }
+            let Some(revealer) = revealer.upgrade() else {
+                return;
+            };
             if enabled {
                 revealer.set_reveal_child(false);
             } else {
-                revealer.set_reveal_child(button_for_restore.is_active());
+                let button = widget
+                    .downcast_ref::<gtk::ToggleButton>()
+                    .expect("filter toggle binding");
+                revealer.set_reveal_child(button.is_active());
             }
         },
     );

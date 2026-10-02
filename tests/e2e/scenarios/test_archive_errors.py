@@ -146,32 +146,24 @@ def test_cancelled_extract_to_does_not_hijack_later_extract_here(strata):
     strata.keyboard.press("ctrl+r")
     strata.open_context_menu(archive_name)
     strata.choose_menu_item("Extract to…")
-    destination = fixture.path("leftover")
-    dialog = strata.wait_for_dialog()
-    crumb = strata.wait(
-        lambda: dialog.find(role="button", name=fixture.root.name),
-        "the current destination breadcrumb",
-    )
-    strata.pointer.click(crumb)
-    field = strata.editable_field()
-    strata.keyboard.press("ctrl+a")
-    strata.keyboard.type_text(str(destination))
-    strata.wait(lambda: field.text == str(destination), "the destination field")
-    strata.keyboard.press("Return")
+    destination = fixture.path("documents")
+    chooser = strata.destination_chooser("Extract to")
+    strata.navigate_destination(chooser, destination)
+    strata.confirm_destination(chooser, "Extract here")
     strata.wait(
         lambda: (dialog := strata.dialog()) is not None and dialog.name == "Extract",
         "the password prompt",
     )
     strata.keyboard.press("Escape")
     strata.wait(lambda: strata.dialog() is None, "password prompt cancellation")
-    assert not destination.exists()
+    assert not (destination / "later.txt").exists()
     strata.open_context_menu("later.zip")
     strata.choose_menu_item("Extract here")
     strata.wait(lambda: fixture.path("later.txt").exists(), "later extraction")
     strata.wait(lambda: strata.dialog() is None, "extraction progress dismissal")
     assert strata.current_directory() == fixture.root.name
     assert fixture.path("later.txt").read_text() == "later extraction\n"
-    assert not destination.exists()
+    assert not (destination / "later.txt").exists()
     strata.entry("later.txt")
     collector = ArtifactCollector(test_name="cancelled-extract-to")
     strata.screenshot(collector.directory / "after.png")

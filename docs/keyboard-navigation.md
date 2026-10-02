@@ -106,12 +106,20 @@ While the input is focused, Space types into the query if no result is selected.
 ## Navigating an archive preview
 
 Quick Look on a local ZIP, 7z, TAR, or TAR.GZ opens the archive's member tree
-instead of extracting it. The preview starts at the archive root with its first
-member highlighted. In List and Columns modes, arrow keys act on the focused
-pane, not merely on an open preview. From the listing, **Right** enters the open
-preview; Quick Look hands focus to the archive directly. While the preview owns
-focus, its header shows the accent top border instead of the Miller column.
-Returning to the listing restores its cursor and column header indicator.
+instead of extracting it. In Columns (**Ctrl+1**), automatically previewing an
+archive shows its contents on the right without selecting a member or taking
+keyboard focus. **Up/Down** continue through the current column. **Right**,
+**Enter**, or **Space** explicitly enter the archive preview and highlight its
+first member. Enter opens the preview even when automatic previews are disabled;
+double-click and the archive's context menu still offer extraction. In Icons
+and List, Enter retains its archive extraction behavior.
+
+Other archive previews start at the archive root with the first member
+highlighted. In List and Columns modes, arrow keys act on the focused pane,
+not merely on an open preview. From the listing, **Right** enters the open
+preview. While the preview owns focus, its header shows the accent top border
+instead of the Miller column. Returning to the listing restores its cursor
+and column header indicator without changing the listing's selection.
 
 Inside the preview, **Up/Down** (or **k/j**) move the highlight, **Right/l/Enter**
 opens the highlighted folder, and **Left/h** returns to the parent. **Left** at the

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import zipfile
 
 import pytest
 
@@ -19,12 +20,55 @@ ENCRYPTED_ARCHIVES = {
 @pytest.fixture
 def fixture_tree(request):
     extension = request.param
-    tree = FixtureTree.create({f"encrypted.{extension}": ""})
-    tree.path(f"encrypted.{extension}").write_bytes(base64.b64decode(ENCRYPTED_ARCHIVES[extension]))
+    if extension == "plain":
+        tree = FixtureTree.create({"a.txt": "before", "bundle.zip": "", "z.txt": "after"})
+        with zipfile.ZipFile(tree.path("bundle.zip"), "w") as archive:
+            archive.writestr("docs/inside.txt", "inside")
+            archive.writestr("top.txt", "top")
+    else:
+        tree = FixtureTree.create({f"encrypted.{extension}": ""})
+        tree.path(f"encrypted.{extension}").write_bytes(base64.b64decode(ENCRYPTED_ARCHIVES[extension]))
     try:
         yield tree
     finally:
         tree.cleanup()
+
+
+@pytest.mark.parametrize("fixture_tree", ["plain"], indirect=True)
+@pytest.mark.parametrize("enter_key", ["Right", "Return", "space"])
+@pytest.mark.parametrize("automatic", [
+    pytest.param(True, marks=pytest.mark.preferences(single_click_previews=True), id="automatic"),
+    pytest.param(False, marks=pytest.mark.preferences(single_click_previews=False), id="manual"),
+])
+@pytest.mark.preferences(browser_mode="columns", type_to_search=False)
+def test_columns_archive_preview_waits_for_explicit_entry(strata, fixture_tree, enter_key, automatic):
+    root = strata.current_directory()
+    strata.select_entry_with_keyboard("a.txt")
+    strata.keyboard.press("Down")
+    strata.wait_for_focused_entry("bundle.zip")
+    if automatic:
+        strata.wait(lambda: strata.preview_shows("docs/"), "the passive archive contents")
+        assert strata.preview().find(states={"selected"}) is None
+    else:
+        assert strata.preview() is None
+
+    strata.keyboard.press("Down")
+    strata.wait_for_focused_entry("z.txt")
+    strata.keyboard.press("Up")
+    strata.wait_for_focused_entry("bundle.zip")
+    if automatic:
+        strata.wait(lambda: strata.preview_shows("docs/"), "the archive contents again")
+    strata.keyboard.press(enter_key)
+    strata.wait(lambda: strata.focused_name() is None, "explicit entry to focus the archive tree")
+    strata.wait(lambda: strata.preview_shows("docs/"), "the explicitly opened archive contents")
+    strata.keyboard.press("Right")
+    strata.wait(lambda: strata.preview_shows("inside.txt"), "Right to open the archive folder")
+    strata.keyboard.press("Escape")
+    strata.wait_for_focused_entry("bundle.zip")
+    strata.keyboard.press("Down")
+    strata.wait_for_focused_entry("z.txt")
+    assert strata.current_directory() == root
+    assert sorted(path.name for path in fixture_tree.root.iterdir()) == ["a.txt", "bundle.zip", "z.txt"]
 
 
 @pytest.mark.parametrize("fixture_tree", ["zip", "7z"], indirect=True)

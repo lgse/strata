@@ -324,11 +324,13 @@ fn append_experimental_label(row: &gtk::Box, manager: &Rc<PreferenceManager>) {
     experimental.set_xalign(0.0);
     experimental.set_wrap(true);
     experimental.set_wrap_mode(gtk::pango::WrapMode::WordChar);
-    let label = experimental.clone();
     manager.bind_preference(
         &experimental,
         PreferenceManager::tenxer_mode,
-        move |_, enabled| {
+        move |widget, enabled| {
+            let label = widget
+                .downcast_ref::<gtk::Label>()
+                .expect("10xer experimental label");
             label.set_text(if enabled {
                 crate::ui::shortcut_reference::EXPERIMENTAL_LABEL
             } else {

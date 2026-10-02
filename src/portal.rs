@@ -3,6 +3,8 @@
 mod dbus;
 mod window_geometry;
 
+pub(crate) use window_geometry::prepare_chooser_placement;
+
 #[cfg(test)]
 mod tests;
 

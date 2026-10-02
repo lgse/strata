@@ -447,16 +447,6 @@ def compress_from_the_context_menu(strata, entry_name, archive_name):
     return field
 
 
-def _enter_destination_edit_mode(strata):
-    dialog = strata.wait_for_dialog()
-    crumb = strata.wait(
-        lambda: dialog.find(role="button", name=strata.fixture.root.name),
-        "the current destination breadcrumb",
-    )
-    strata.pointer.click(crumb)
-    return strata.editable_field()
-
-
 def test_an_invalid_archive_name_keeps_the_compress_dialog_open(strata):
     compress_from_the_context_menu(strata, "readme.md", "../escape")
 
@@ -472,7 +462,10 @@ def test_an_invalid_archive_name_keeps_the_compress_dialog_open(strata):
     strata.keyboard.press("Escape")
 
 
-def test_enter_submits_compress_and_extract_to_dialogs(strata):
+def test_enter_submits_compress_then_floating_chooser_extracts(strata):
+    destination = strata.fixture.path("unpacked")
+    destination.mkdir()
+    strata.entry("unpacked")
     compress_from_the_context_menu(strata, "readme.md", "bundle")
     strata.keyboard.press("Return")
     strata.wait(lambda: strata.dialog() is None, "the compress dialog to close")
@@ -480,7 +473,6 @@ def test_enter_submits_compress_and_extract_to_dialogs(strata):
         lambda: strata.fixture.path("bundle.zip").exists(), "the archive to be created"
     )
 
-    destination = strata.fixture.path("unpacked")
     strata.open_context_menu("bundle.zip")
     assert_menu_order(strata, [
         "Open", "Open With…", "Extract here", "Extract to…", "Cut", "Copy",
@@ -489,38 +481,27 @@ def test_enter_submits_compress_and_extract_to_dialogs(strata):
         "Permanently delete",
     ])
     strata.choose_menu_item("Extract to…")
-    field = _enter_destination_edit_mode(strata)
-    strata.keyboard.press("ctrl+a")
-    strata.keyboard.type_text(str(destination))
-    strata.wait(
-        lambda: field.text == str(destination), "the destination to reach the field"
-    )
-
-    strata.keyboard.press("Return")
+    chooser = strata.destination_chooser("Extract to")
+    strata.navigate_destination(chooser, destination)
+    strata.confirm_destination(chooser, "Extract here")
 
     extracted = destination / "readme.md"
     # Extraction creates each member before streaming its bytes into place.
     strata.wait(
         lambda: extracted.is_file() and extracted.read_text() == "# Fixture\n",
-        "Enter to extract the complete member into the destination",
+        "the chooser action to extract the complete member into the destination",
     )
 
 
-def test_enter_submits_the_copy_to_dialog(strata):
+@pytest.mark.parametrize("action,accept_label", [("Copy to…", "Copy here"), ("Move to…", "Move here")])
+def test_floating_destination_chooser_transfers_files(strata, action, accept_label):
     destination = strata.fixture.path("documents")
-
+    source = strata.fixture.path("todo.txt")
     strata.open_context_menu("todo.txt")
-    strata.choose_menu_item("Copy to…")
-    field = _enter_destination_edit_mode(strata)
-    strata.keyboard.press("ctrl+a")
-    strata.keyboard.type_text(str(destination))
-    strata.wait(
-        lambda: field.text == str(destination), "the destination to reach the field"
-    )
-
-    strata.keyboard.press("Return")
-
-    strata.wait(
-        lambda: (destination / "todo.txt").exists(),
-        "Enter to copy into the destination",
-    )
+    strata.choose_menu_item(action)
+    chooser = strata.destination_chooser(action.rstrip("…"))
+    strata.navigate_destination(chooser, destination)
+    assert strata.current_directory() == strata.fixture.root.name
+    strata.confirm_destination(chooser, accept_label)
+    strata.wait(lambda: (destination / "todo.txt").exists(), "transfer into the chosen destination")
+    assert source.exists() == (action == "Copy to…")

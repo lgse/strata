@@ -383,6 +383,7 @@ impl Drop for SearchHandle {
     }
 }
 
+#[cfg(test)]
 pub fn index_tree(root: PathBuf, show_hidden: bool) -> (SearchHandle, Receiver<SearchEvent>) {
     index_trees(vec![root], show_hidden)
 }

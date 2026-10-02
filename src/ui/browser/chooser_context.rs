@@ -97,7 +97,7 @@ pub(super) fn install_folder(
                     crate::assets::icons::FOLDER_PLUS,
                     "New Folder",
                     ContextHint::NewFolder,
-                    true,
+                    state.chooser_allows_create.get(),
                     false,
                 )],
                 move |_| {

@@ -71,6 +71,85 @@ impl FileSource for MenuSource {
     }
 }
 
+#[test]
+fn dropping_an_action_menu_unparents_its_popover() {
+    crate::test_support::gtk_test(
+        "ui::browser::context_menu::tests::menus::dropping_an_action_menu_unparents_its_popover",
+        || {
+            let overlay = gtk::Overlay::new();
+            let before = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            let after = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            let menu =
+                actions::ActionMenuSection::new(&before, &after, None, overlay.upcast_ref(), None);
+            let popover = menu.popover();
+            overlay.add_overlay(&popover);
+            assert!(popover.parent().is_some());
+
+            drop(menu);
+
+            assert!(popover.parent().is_none());
+        },
+    );
+}
+
+#[test]
+fn repeated_navigation_releases_context_menu_bindings() {
+    crate::test_support::gtk_test(
+        "ui::browser::context_menu::tests::menus::repeated_navigation_releases_context_menu_bindings",
+        || {
+            let manager = crate::ui::preferences::PreferenceManager::shared();
+            manager.set_tenxer_mode(false);
+            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
+                let first = tempfile::tempdir().expect("first menu fixture");
+                let second = tempfile::tempdir().expect("second menu fixture");
+                let view = BrowserView::new(Rc::new(MenuSource), PeekBehavior::default());
+                view.set_view_mode(mode);
+                let window = gtk::Window::builder()
+                    .child(&view.widget())
+                    .default_width(1000)
+                    .default_height(850)
+                    .build();
+                window.present();
+
+                let browser = view.browser();
+                let navigate = |path: &std::path::Path| {
+                    let location = Location::local(path);
+                    browser.navigate(location.clone());
+                    wait_until(|| {
+                        browser.active_location() == Some(location.clone())
+                            && browser
+                                .column_snapshot(0)
+                                .is_some_and(|column| !column.loading)
+                    });
+                };
+                navigate(first.path());
+                let retired_menu = (mode == BrowserMode::Icons).then(|| {
+                    let menu = open_menu(&view, Some("notes.txt"));
+                    let retired = menu.downgrade();
+                    menu.popdown();
+                    wait_until(|| !menu.is_mapped());
+                    retired
+                });
+                let baseline = manager.listener_count();
+                navigate(second.path());
+                if let Some(retired) = retired_menu {
+                    wait_until(|| retired.upgrade().is_none());
+                }
+                wait_until(|| manager.listener_count() <= baseline);
+
+                assert_eq!(
+                    manager.listener_count(),
+                    baseline,
+                    "{mode:?} retained context-menu bindings from a retired pane"
+                );
+
+                browser.clear_observer();
+                window.destroy();
+            }
+        },
+    );
+}
+
 pub(super) fn descendants(widget: &gtk::Widget) -> Vec<gtk::Widget> {
     let mut result = vec![widget.clone()];
     let mut child = widget.first_child();
