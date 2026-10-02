@@ -62,8 +62,8 @@ impl ChooserState {
                 self.show_error(&format!("Could not name the downloaded image: {error}"));
                 return;
             }
-            // Accepted PNGs, including APNG or corrupt PNG, bypass sandbox inspection:
-            // the chooser opens them unchanged rather than requesting conversion.
+            // An accepted PNG, including an APNG or a corrupt PNG, bypasses sandbox inspection.
+            // The chooser opens it unchanged rather than requesting conversion.
             self.finish_remote(target);
             return;
         }

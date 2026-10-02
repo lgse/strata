@@ -88,7 +88,7 @@ fn process(input: &Path, convert: bool) -> Result<Vec<u8>, String> {
         {
             return Err(animated.into());
         }
-        // The chooser bypasses this helper for accepted PNGs. Keep the APNG check
+        // The chooser bypasses this helper for an accepted PNG. Keep the APNG check
         // and original-byte return as defense if ConvertImage is ever handed a PNG.
         if kind == ImageKind::Png
             && image::codecs::png::PngDecoder::with_limits(file()?, limits())
