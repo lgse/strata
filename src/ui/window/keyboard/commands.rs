@@ -116,6 +116,19 @@ impl Dispatcher {
         if event.key == Key::Escape && self.view.dismiss_focused_filter() {
             return Some(Propagation::Stop);
         }
+        if event.key == Key::slash
+            && event.without(
+                Modifiers::CONTROL_MASK
+                    | Modifiers::ALT_MASK
+                    | Modifiers::SUPER_MASK
+                    | Modifiers::SHIFT_MASK,
+            )
+            && !event.text_has_focus()
+            && self.view.item_view_has_focus()
+            && self.view.show_filter()
+        {
+            return Some(Propagation::Stop);
+        }
         if event.control()
             && event.without(Modifiers::SHIFT_MASK | Modifiers::ALT_MASK)
             && matches!(event.key, Key::f | Key::F)
