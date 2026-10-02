@@ -26,6 +26,8 @@ fn limits() -> Limits {
     let mut limits = Limits::default();
     limits.max_image_width = Some(MAX_EDGE);
     limits.max_image_height = Some(MAX_EDGE);
+    // image treats this allocation budget as best-effort; pre-decode dimensions
+    // and the sandbox's process limits remain the resource boundary.
     limits.max_alloc = Some(128 * 1024 * 1024);
     limits
 }
@@ -86,7 +88,8 @@ fn process(input: &Path, convert: bool) -> Result<Vec<u8>, String> {
         {
             return Err(animated.into());
         }
-        // PNGs are validated but never re-encoded by this operation.
+        // The chooser bypasses this helper for accepted PNGs. Keep the APNG check
+        // and original-byte return as defense if ConvertImage is ever handed a PNG.
         if kind == ImageKind::Png
             && image::codecs::png::PngDecoder::with_limits(file()?, limits())
                 .map_err(invalid)?

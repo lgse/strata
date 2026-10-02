@@ -62,11 +62,13 @@ impl ChooserState {
                 self.show_error(&format!("Could not name the downloaded image: {error}"));
                 return;
             }
+            // Accepted PNGs, including APNG or corrupt PNG, bypass sandbox inspection:
+            // the chooser opens them unchanged rather than requesting conversion.
             self.finish_remote(target);
             return;
         }
         let Some(target) = self.image_target(&path, ImageKind::Png) else {
-            self.show_error("The file does not match the selected filter");
+            self.finish_remote(path);
             return;
         };
         let input = path.clone();

@@ -75,6 +75,84 @@ fn active_filter_matches_actual_format_and_png_aliases_not_labels() {
 }
 
 #[test]
+fn remote_image_names_are_repaired_or_checked_by_the_original_filename_filter() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::image_conversion::remote_image_names_are_repaired_or_checked_by_the_original_filename_filter",
+        || {
+            crate::ui::prepare_portal_ui();
+            let mut bmp = std::io::Cursor::new(Vec::new());
+            image::DynamicImage::new_rgb8(1, 1)
+                .write_to(&mut bmp, image::ImageFormat::Bmp)
+                .expect("BMP fixture");
+            let text = b"Bitmap notes".as_slice();
+            let jpeg = b"\xff\xd8\xff...".as_slice();
+            for (bytes, name, pattern, expected) in [
+                (text, "notes.txt", Some("*.txt"), Some("notes.txt")),
+                (text, "README", Some("*"), Some("README")),
+                (text, "README", None, Some("README")),
+                (
+                    bmp.get_ref().as_slice(),
+                    "README",
+                    Some("*"),
+                    Some("README.bmp"),
+                ),
+                (
+                    jpeg,
+                    "attachment.pdf",
+                    Some("*.pdf"),
+                    Some("attachment.pdf"),
+                ),
+                (jpeg, "photo.bin", Some("*"), Some("photo.jpg")),
+                (jpeg, "photo.bin", None, Some("photo.jpg")),
+                (jpeg, "photo.bin", Some("*.txt"), None),
+            ] {
+                let root = tempfile::tempdir().expect("fixture");
+                let path = root.path().join(name);
+                std::fs::write(&path, bytes).expect("downloaded bytes");
+                let result = Rc::new(RefCell::new(None));
+                let received = result.clone();
+                let mut req = request(root.path().to_owned());
+                if let Some(pattern) = pattern {
+                    req.filters = vec![FileFilter::new("Test filter").glob(pattern)];
+                }
+                let state = build_chooser(req, Arc::new(AtomicBool::new(false)), move |value| {
+                    received.replace(Some(value));
+                })
+                .expect("chooser");
+                state.complete_remote(path.clone());
+                assert!(
+                    visible_modal_layer(&state.window).is_none(),
+                    "{name}: {pattern:?}"
+                );
+                assert!(
+                    !state.download_in_progress(),
+                    "must not decode {name}: {pattern:?}"
+                );
+                if let Some(expected) = expected {
+                    let selected = result
+                        .borrow_mut()
+                        .take()
+                        .expect("result")
+                        .expect("accepted");
+                    assert_eq!(selected.uris().len(), 1);
+                    let output = gio::File::for_uri(&selected.uris()[0].to_string())
+                        .path()
+                        .expect("local output");
+                    assert_eq!(output, root.path().join(expected));
+                    assert_eq!(std::fs::read(output).expect("returned bytes"), bytes);
+                } else {
+                    assert!(result.borrow().is_none());
+                    assert!(state.completion.borrow().is_some());
+                    assert!(state.error.is_visible());
+                    assert_eq!(std::fs::read(path).expect("original bytes"), bytes);
+                    state.cancel();
+                }
+            }
+        },
+    );
+}
+
+#[test]
 fn already_png_bytes_are_renamed_without_conversion_and_html_is_rejected() {
     crate::test_support::gtk_test(
         "ui::chooser::tests::image_conversion::already_png_bytes_are_renamed_without_conversion_and_html_is_rejected",

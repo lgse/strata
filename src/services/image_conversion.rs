@@ -71,9 +71,20 @@ impl ImageKind {
 pub(crate) fn detect(path: &Path) -> Option<ImageKind> {
     let mut header = [0; 32];
     let count = fs::File::open(path).ok()?.read(&mut header).ok()?;
-    match image::guess_format(&header[..count]).ok()? {
+    let header = &header[..count];
+    let dib_header_size = header
+        .get(14..18)
+        .and_then(|bytes| bytes.try_into().ok())
+        .map(u32::from_le_bytes);
+    match image::guess_format(header).ok()? {
         image::ImageFormat::Jpeg => Some(ImageKind::Jpeg),
-        image::ImageFormat::Bmp => Some(ImageKind::Bmp),
+        // The BM magic alone also matches ordinary text such as "Bitmap notes".
+        image::ImageFormat::Bmp
+            if header.get(6..10) == Some(&[0; 4])
+                && matches!(dib_header_size, Some(12 | 40 | 52 | 56 | 108 | 124)) =>
+        {
+            Some(ImageKind::Bmp)
+        }
         image::ImageFormat::Gif => Some(ImageKind::Gif),
         image::ImageFormat::WebP => Some(ImageKind::WebP),
         image::ImageFormat::Png => Some(ImageKind::Png),
