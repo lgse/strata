@@ -227,11 +227,14 @@ python3 scripts/portal-test.py single --binary target/debug/strata
 python3 scripts/portal-test.py multiple --binary target/debug/strata --view list --group-by-type
 python3 scripts/portal-test.py directory --binary target/debug/strata --view columns
 python3 scripts/portal-test.py filters --binary target/debug/strata
+python3 scripts/portal-test.py png --binary target/debug/strata
 python3 scripts/portal-test.py save --binary target/debug/strata --choices
 python3 scripts/portal-test.py savefiles --binary target/debug/strata --choices
 ```
 
 `--binary` starts a private session bus and backend with disposable settings, cache, and sample files. It disables accessibility integration for that isolated backend so it cannot replace the desktop's accessibility bus. It never installs portal metadata, changes your preferences, or restarts your desktop services. Closing the chooser prints the actual D-Bus response (`0` for success, `1` for cancellation) and cleans up the private backend. The client returns destinations but does not write to them.
+
+Use the `png` case to test image conversion: its only filter is **PNG images**, so a pasted JPEG, BMP, static WebP or single-frame GIF URL should offer conversion to PNG. The general `filters` case starts with **Text files**; its **Images** option accepts both JPEG and PNG and therefore does not offer JPEG conversion. To serve your own test images locally, run `python3 -m http.server 8765 --bind 127.0.0.1 --directory /path/to/images`, then paste a direct URL such as `http://127.0.0.1:8765/photo.jpg` into **Name** and click **Open**.
 
 Use `--folder /absolute/path` for your own files, `--theme classic-light` for a light theme, or `--cancel-after 1` to exercise `Request.Close`. Omit `--binary` to call an already-running Strata backend on your session bus. This client tests the backend directly, not portal frontend routing.
 
