@@ -193,7 +193,7 @@ def test_columns_keyboard_selection_opens_the_preview(strata, fixture_tree, root
     )
     strata.keyboard.press(PREVIOUS_ENTRY_KEY["Columns"])
     strata.wait_for_selection(["folder"], root)
-    strata.wait(lambda: strata.preview() is None, "the folder to hide the preview")
+    strata.wait(lambda: strata.preview_shows("No preview for this selection"), "the folder's reserved preview slot")
     strata.keyboard.press(NEXT_ENTRY_KEY["Columns"])
     strata.wait_for_selection(["data.csv"], root)
     strata.wait(lambda: strata.preview_shows("alpha"), "the preview to resume")
@@ -337,7 +337,7 @@ def test_preview_hides_on_a_folder_and_resumes_when_selection_moves(strata, mode
     strata.keyboard.press(PREVIOUS_ENTRY_KEY[mode])
 
     strata.wait_for_selection(["folder"], root)
-    if mode == "Icons":
+    if mode in ["Columns", "Icons"]:
         strata.wait(lambda: strata.preview_shows("No preview for this selection"), "the folder's reserved preview space")
     else:
         strata.wait(lambda: strata.preview() is None, "the folder to dismiss the preview")
@@ -704,9 +704,25 @@ def test_columns_preview_can_reopen_after_closing(strata):
     strata.pointer.click(close)
     strata.wait(lambda: strata.preview() is None, "the preview to close")
     strata.select_entry("nested-notes.txt")
+    assert strata.preview() is None, "closing the content must stop automatic previews"
+    strata.open_appearance_menu()
+    option = strata.wait(lambda: strata.window.find(role="toggle button", name="Preview panel"), "the preview toggle")
+    assert option.has_state("pressed"), "closing a preview must keep its space reserved"
+    strata.dismiss_menu()
     strata.select_entry("inner.txt")
     strata.keyboard.press("space")
     strata.wait(lambda: strata.preview_shows("inner"), "the preview to reopen")
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview() is None, "Space to dismiss the preview content")
+    strata.open_appearance_menu()
+    option = strata.wait(lambda: strata.window.find(role="toggle button", name="Preview panel"), "the retained preview toggle")
+    assert option.has_state("pressed")
+    strata.pointer.click(option)
+    strata.wait_for_menu_closed()
+    strata.open_appearance_menu()
+    option = strata.wait(lambda: strata.window.find(role="toggle button", name="Preview panel"), "the disabled preview toggle")
+    assert not option.has_state("pressed"), "Appearance explicitly releases the preview reservation"
+    strata.dismiss_menu()
 
 
 @pytest.mark.preferences(browser_mode="columns", single_click_previews=False)

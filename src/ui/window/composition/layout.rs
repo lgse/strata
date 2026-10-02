@@ -212,7 +212,7 @@ fn bind_sidebar_layout(
         let Some(sidebar) = weak_sidebar.upgrade() else {
             return glib::ControlFlow::Break;
         };
-        // An empty Icons placeholder owns the rail even when it cannot fit.
+        // A reserved empty preview owns the rail even when it cannot fit.
         if weak_preview.is_open()
             || weak_preview.is_suspended()
             || weak_preview.reserves_empty_preview()

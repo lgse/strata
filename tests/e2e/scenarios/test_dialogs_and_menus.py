@@ -255,6 +255,7 @@ def test_folder_background_customize_targets_the_presented_directory(strata):
 
 
 @pytest.mark.preferences(browser_mode="columns")
+@pytest.mark.usefixtures("unreserved_columns")
 def test_folder_background_customize_targets_a_non_active_ancestor_column(strata):
     nested = strata.fixture.path("documents/nested")
     nested.mkdir()

@@ -164,6 +164,7 @@ def test_dragging_onto_the_pane_background_is_a_no_op(strata):
     )
 
 
+@pytest.mark.usefixtures("unreserved_columns")
 def test_dragging_a_folder_into_another_folder_moves_its_contents(strata):
     fixture = strata.fixture
     source = strata.select_entry("pictures")

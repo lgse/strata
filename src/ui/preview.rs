@@ -131,6 +131,10 @@ struct DocumentPreview {
 struct PreviewState {
     provider: Rc<dyn PreviewProvider>,
     revealer: gtk::Revealer,
+    slot: gtk::Box,
+    reserve_columns: Cell<bool>,
+    // Dismissing content stops selection-following without reclaiming its column slot.
+    enabled: Cell<bool>,
     pane: gtk::Box,
     header_handle: gtk::Box,
     icon: gtk::Image,
@@ -316,9 +320,16 @@ impl PreviewDrawer {
             .reveal_child(false)
             .build();
 
+        let slot = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        revealer.set_hexpand(true);
+        slot.append(&revealer);
+
         let state = Rc::new(PreviewState {
             provider,
             revealer,
+            slot,
+            reserve_columns: Cell::new(true),
+            enabled: Cell::new(false),
             pane,
             header_handle: header_handle.clone(),
             icon,
@@ -378,17 +389,21 @@ impl PreviewDrawer {
         state.enabled_action.connect_activate(move |_, _| {
             if let Some(state) = weak.upgrade() {
                 let (entry, depth) = state.selected_entry();
-                state.toggle(entry, depth);
+                state.toggle_panel(entry, depth);
             }
         });
         let weak = Rc::downgrade(&state);
         state.enabled_action.connect_change_state(move |_, value| {
             if let Some(state) = weak.upgrade()
                 && let Some(enabled) = value.and_then(|value| value.get::<bool>())
-                && enabled != state.is_enabled()
+                && Some(enabled)
+                    != state
+                        .enabled_action
+                        .state()
+                        .and_then(|value| value.get::<bool>())
             {
                 let (entry, depth) = state.selected_entry();
-                state.toggle(entry, depth);
+                state.toggle_panel(entry, depth);
             }
         });
         install_preview_drag(&header_handle, &state);
@@ -549,7 +564,7 @@ impl PreviewDrawer {
     }
 
     pub fn widget(&self) -> gtk::Widget {
-        self.state.revealer.clone().upcast()
+        self.state.slot.clone().upcast()
     }
 
     pub fn is_open(&self) -> bool {
@@ -572,6 +587,7 @@ impl PreviewDrawer {
     }
 
     pub fn show(&self, entry: FileEntry, depth: Option<usize>) {
+        self.state.reserve_columns.set(true);
         self.state.set_enabled(true);
         if let Some(entry) = preview_target(Some(entry)) {
             self.state.show(entry, depth);
@@ -726,6 +742,7 @@ impl PreviewState {
     fn show(self: &Rc<Self>, entry: FileEntry, depth: Option<usize>) {
         self.cancel_pending_show();
         self.current_depth.set(depth);
+        self.reserve_columns.set(true);
         self.set_enabled(true);
         let was_open = self.revealer.reveals_child() || self.sizing.is_suspended();
         let already_showing =

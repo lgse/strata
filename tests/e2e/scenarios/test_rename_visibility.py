@@ -153,6 +153,7 @@ def test_already_visible_rename_preserves_scroll(strata, mode):
 
 
 @pytest.mark.parametrize("mode", ("Columns", "List"))
+@pytest.mark.usefixtures("unreserved_columns")
 def test_click_away_rename_respects_navigation(strata, mode):
     field, original = begin_long_directory_rename(strata, "file", False, mode)
     strata.keyboard.type_text("a-final")

@@ -12,7 +12,7 @@ impl PreviewDrawer {
     }
 
     pub(in crate::ui) fn reserves_empty_preview(&self) -> bool {
-        self.state.reserves_empty_preview()
+        self.state.reserves_empty_preview() || self.state.reserves_column_space()
     }
 
     pub(in crate::ui) fn action(&self) -> gio::SimpleAction {
@@ -26,24 +26,35 @@ impl PreviewDrawer {
 
 impl PreviewState {
     pub(super) fn is_enabled(&self) -> bool {
-        self.enabled_action
-            .state()
-            .and_then(|value| value.get::<bool>())
-            .unwrap_or(false)
+        self.enabled.get()
     }
 
     pub(super) fn set_enabled(&self, enabled: bool) -> bool {
-        let previous = self.is_enabled();
-        if previous != enabled {
-            self.enabled_action.set_state(&enabled.to_variant());
-        }
+        let previous = self.enabled.replace(enabled);
+        self.refresh_panel_action();
         previous
+    }
+
+    pub(super) fn refresh_panel_action(&self) {
+        self.enabled_action
+            .set_state(&(self.is_enabled() || self.reserves_column_space()).to_variant());
+    }
+
+    pub(super) fn toggle_panel(self: &Rc<Self>, entry: Option<FileEntry>, depth: Option<usize>) {
+        let enabled = self.is_enabled() || self.reserves_column_space();
+        self.reserve_columns.set(!enabled);
+        if enabled {
+            self.close();
+        } else {
+            self.toggle(entry, depth);
+        }
     }
 
     pub(super) fn toggle(self: &Rc<Self>, entry: Option<FileEntry>, depth: Option<usize>) {
         if self.is_enabled() {
             self.close();
         } else {
+            self.reserve_columns.set(true);
             self.set_enabled(true);
             self.focus_archive_on_ready.set(true);
             if let Some(entry) = entry.and_then(|entry| preview_target(Some(entry))) {
@@ -81,7 +92,7 @@ impl PreviewState {
             self.show_placeholder();
         } else {
             self.hide_panel();
-            if !reserves_empty_preview {
+            if !reserves_empty_preview && !self.reserves_column_space() {
                 self.release_sidebar_rail();
             }
         }

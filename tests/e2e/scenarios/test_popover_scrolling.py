@@ -95,6 +95,7 @@ def test_panel_wheel_routing(strata, mode, panel, target):
 
 
 @pytest.mark.parametrize("pointed_column", ["parent", "child"])
+@pytest.mark.usefixtures("unreserved_columns")
 def test_outside_wheel_only_moves_the_column_under_the_pointer(strata, pointed_column):
     root = strata.fixture.root.name
     strata.open_directory("nested")

@@ -186,6 +186,28 @@ def strata(
             application.stop()
 
 
+@pytest.fixture
+def unreserved_columns(strata: Strata) -> None:
+    """Explicitly reclaim preview space for workflows needing visible parent panes."""
+    strata.open_appearance_menu()
+    option = strata.wait(
+        lambda: strata.window.find(role="toggle button", name="Preview panel"),
+        "the preview panel toggle",
+    )
+    if option.has_state("pressed"):
+        strata.pointer.click(option)
+        strata.wait_for_menu_closed()
+    else:
+        strata.dismiss_menu()
+    strata.keyboard.press("ctrl+l")
+    strata.wait(
+        lambda: strata.window.find(role="text", states={"editable", "focused"}),
+        "the location editor to take focus",
+    )
+    strata.keyboard.press("Escape")
+    strata.wait(lambda: strata.focused_pane(), "focus to return to the file listing")
+
+
 _REPORT_KEY = pytest.StashKey[bool]()
 
 
