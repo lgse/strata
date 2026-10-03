@@ -147,13 +147,7 @@ fn tenxer_angle_brackets_step_through_audio_files_from_the_preview() {
             let fixture = KeyboardFixture::with_provider(Rc::new(AudioPreview));
             let root = fixture._directory.path();
             for name in ["a.wav", "c.wav", "d.wav"] {
-                let status = std::process::Command::new("ffmpeg")
-                    .args(["-nostdin", "-v", "error", "-f", "lavfi", "-i"])
-                    .arg("sine=frequency=440:duration=1")
-                    .arg(root.join(name))
-                    .status()
-                    .expect("FFmpeg tools are required");
-                assert!(status.success());
+                std::fs::write(root.join(name), []).expect("audio fixture");
             }
             let preferences = PreferenceManager::shared();
             preferences.set_tenxer_mode(true);

@@ -156,19 +156,19 @@ impl AudioView {
         let previous = transport_button(
             crate::assets::icons::SKIP_BACK,
             "Previous audio file",
-            "Previous audio file (<)",
+            "Previous audio file (Ctrl+Alt+<)",
         );
         let next = transport_button(
             crate::assets::icons::SKIP_FORWARD,
             "Next audio file",
-            "Next audio file (>)",
+            "Next audio file (Ctrl+Alt+>)",
         );
         let play_icon = crate::assets::primary_icon(crate::assets::icons::PLAY, 22);
         let play = gtk::Button::new();
         play.add_css_class("preview-media-center");
         play.add_css_class("preview-audio-play");
         play.set_child(Some(&play_icon));
-        play.set_tooltip_text(Some("Play/Pause (Space)"));
+        play.set_tooltip_text(Some("Play/Pause (Ctrl+Alt+Space)"));
         crate::ui::accessibility::set_label(&play, "Play or pause");
         let buttons = gtk::Box::new(gtk::Orientation::Horizontal, 10);
         buttons.set_valign(gtk::Align::Center);

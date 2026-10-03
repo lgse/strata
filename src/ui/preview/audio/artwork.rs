@@ -221,7 +221,6 @@ impl Artwork {
                     imp.fade.set(0.0);
                 }
             }
-            Change::Idle if *imp.cover.borrow() == cover => {}
             Change::Idle | Change::Tucking => {
                 imp.incoming.replace(Some(cover));
                 imp.change.set(Change::Tucking);
