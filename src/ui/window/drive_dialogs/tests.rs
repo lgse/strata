@@ -189,42 +189,58 @@ fn enter_submits_volume_rename_through_shared_validation() {
             let confirm = gtk::Button::new();
             let error = inline_error();
             let submitted = Rc::new(Cell::new(0));
-            let clicked_entry = field.entry.clone();
-            let clicked_error = error.clone();
             let clicked_submitted = submitted.clone();
             confirm.connect_clicked(move |_| {
-                if let Some(message) = rename_validation_error(&clicked_entry.text(), "CURRENT", 11)
-                {
-                    show_inline_error(&clicked_error, &message);
-                } else {
-                    clicked_submitted.set(clicked_submitted.get() + 1);
-                }
+                clicked_submitted.set(clicked_submitted.get() + 1);
+            });
+            let changed_confirm = confirm.clone();
+            let changed_error = error.clone();
+            field.entry.connect_changed(move |entry| {
+                refresh_rename_validity(
+                    entry,
+                    "CURRENT",
+                    FilesystemType::Fat32,
+                    true,
+                    &changed_confirm,
+                    &changed_error,
+                );
             });
             wire_entry_submission(&field.entry, &confirm);
 
             field.entry.set_text("BACKUP");
-            refresh_rename_validity(&field.entry, "CURRENT", 11, true, &confirm);
             confirm.emit_clicked();
             assert_eq!(submitted.get(), 1);
 
             for (text, expected_error) in [
-                ("", "The label cannot be empty."),
-                ("  ", "The label cannot be empty."),
-                ("CURRENT", "Enter a label different from the current one."),
+                ("", Some("The label cannot be empty.")),
+                ("  ", Some("The label cannot be empty.")),
+                (".", Some("FAT32 labels cannot contain “.”.")),
+                ("A/B", Some("FAT32 labels cannot contain “/”.")),
+                ("CURRENT", None),
+                (
+                    " CURRENT ",
+                    Some("Enter a label different from the current one."),
+                ),
             ] {
                 field.entry.set_text(text);
-                refresh_rename_validity(&field.entry, "CURRENT", 11, true, &confirm);
                 assert!(!confirm.is_sensitive());
-                error.set_visible(false);
+                assert_eq!(error.is_visible(), expected_error.is_some());
+                assert_eq!(field.entry.has_css_class("error"), expected_error.is_some());
+                if let Some(message) = expected_error {
+                    assert_eq!(error.text(), message);
+                }
                 field.entry.emit_activate();
-                assert_eq!(submitted.get(), 1);
-                assert!(error.is_visible());
-                assert_eq!(error.text(), expected_error);
+                assert_eq!(
+                    submitted.get(),
+                    1,
+                    "invalid Enter never activates submission"
+                );
             }
 
             field.entry.set_text("BACKUP");
-            refresh_rename_validity(&field.entry, "CURRENT", 11, true, &confirm);
             assert!(confirm.is_sensitive());
+            assert!(!error.is_visible());
+            assert!(!field.entry.has_css_class("error"));
             field.entry.emit_activate();
             assert_eq!(submitted.get(), 2);
         },
@@ -260,6 +276,7 @@ fn rename_requires_tools_and_a_changed_nonempty_label() {
         || {
             let field = FormTextField::with_character_limit(11);
             let confirm = gtk::Button::new();
+            let error = inline_error();
             for (text, tools_available, expected) in [
                 ("BACKUP", false, false),
                 ("BACKUP", true, true),
@@ -268,7 +285,14 @@ fn rename_requires_tools_and_a_changed_nonempty_label() {
                 ("  ", true, false),
             ] {
                 field.entry.set_text(text);
-                refresh_rename_validity(&field.entry, "CURRENT", 11, tools_available, &confirm);
+                refresh_rename_validity(
+                    &field.entry,
+                    "CURRENT",
+                    FilesystemType::Fat32,
+                    tools_available,
+                    &confirm,
+                    &error,
+                );
                 assert_eq!(confirm.is_sensitive(), expected);
             }
         },

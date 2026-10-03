@@ -779,6 +779,16 @@ impl Dispatcher {
         if key == Key::Escape && !command && !self.inline_editing_active() {
             return self.tenxer_escape(browser);
         }
+        // Unclaimed typing belongs to the listing in 10xer mode, even when
+        // compositor focus restoration selected a header or footer control.
+        // Text, menus, sidebar/header actions, and preview ownership run first.
+        if key != Key::space
+            && claims_file_list_typing(key, modifiers)
+            && !self.view.item_view_has_focus()
+            && !self.preview.owns_focus(focus.as_ref())
+        {
+            browser.focus_active();
+        }
         if let Some(result) = self
             .tenxer_prompt_keys(key, modifiers)
             .or_else(|| self.tenxer_file_keys(key, modifiers))

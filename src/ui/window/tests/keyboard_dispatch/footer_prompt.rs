@@ -64,6 +64,71 @@ pub(super) fn enable_tenxer(fixture: &KeyboardFixture) -> Rc<PreferenceManager> 
 }
 
 #[test]
+fn tenxer_routes_listing_shortcuts_from_non_text_controls() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::footer_prompt::tenxer_routes_listing_shortcuts_from_non_text_controls",
+        || {
+            let fixture = KeyboardFixture::new();
+            enable_tenxer(&fixture);
+            let container = fixture.overlay.child().expect("content container");
+            container.set_focusable(true);
+            let other = gtk::Window::new();
+            let refocus = |stranded: Option<&gtk::Widget>| {
+                other.present();
+                wait_until(|| other.is_active() && !fixture.window.is_active());
+                fixture.window.set_default_size(820, 540);
+                gtk::prelude::RootExt::set_focus(&fixture.window, stranded);
+                fixture.window.present();
+                wait_until(|| fixture.window.is_active() && !other.is_active());
+            };
+            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
+                fixture.view.set_view_mode(mode);
+                focus_files(&fixture);
+                for stranded in [
+                    None,
+                    Some(&container),
+                    Some(fixture.sidebar_toggle.upcast_ref()),
+                ] {
+                    refocus(stranded);
+                    assert_eq!(
+                        gtk::prelude::RootExt::focus(&fixture.window).as_ref(),
+                        stranded
+                    );
+                    assert!(fixture.press(Key::g, ModifierType::empty()));
+                    assert_eq!(
+                        fixture.shortcuts.armed_chord(),
+                        Some(crate::ui::tenxer_mode::Chord::Go),
+                        "{mode:?}"
+                    );
+                    fixture.press(Key::Escape, ModifierType::empty());
+                    for (key, kind) in [(Key::f, Prompt::Filter), (Key::s, Prompt::Search)] {
+                        refocus(stranded);
+                        assert!(
+                            fixture.press(key, ModifierType::empty()),
+                            "{mode:?} {key:?}"
+                        );
+                        assert_eq!(fixture.shortcuts.open_prompt_kind(), Some(kind));
+                        assert!(fixture.shortcuts.prompt_has_focus());
+                        fixture.press(Key::Escape, ModifierType::empty());
+                    }
+                }
+                fixture.press(Key::l, ModifierType::CONTROL_MASK);
+                assert!(fixture.view.location_has_focus());
+                other.present();
+                wait_until(|| other.is_active());
+                fixture.window.present();
+                wait_until(|| fixture.window.is_active());
+                fixture.press(Key::f, ModifierType::empty());
+                assert!(fixture.view.location_has_focus());
+                assert_eq!(fixture.shortcuts.open_prompt_kind(), None);
+                fixture.press(Key::Escape, ModifierType::empty());
+            }
+            other.destroy();
+        },
+    );
+}
+
+#[test]
 fn tenxer_slash_covers_the_footer_with_a_focused_find_prompt() {
     crate::test_support::gtk_test(
         "ui::window::tests::keyboard_dispatch::footer_prompt::tenxer_slash_covers_the_footer_with_a_focused_find_prompt",

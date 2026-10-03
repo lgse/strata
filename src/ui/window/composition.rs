@@ -15,6 +15,7 @@ mod input;
 mod layout;
 mod search;
 mod settings;
+mod tenxer_splash;
 
 pub(super) struct WindowContent {
     pub(super) browser: BrowserView,
@@ -62,6 +63,7 @@ impl WindowContent {
         install_browser_actions(window, &self.browser, preferences);
         let notice = settings::install(window, self, preferences);
         window.set_child(Some(&self.overlay));
+        tenxer_splash::install(window, &self.overlay, preferences);
         let click_browser = self.browser.clone();
         let click = gtk::GestureClick::new();
         click.set_propagation_phase(gtk::PropagationPhase::Capture);

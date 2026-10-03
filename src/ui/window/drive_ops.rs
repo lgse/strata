@@ -37,6 +37,26 @@ impl FilesystemType {
         }
     }
 
+    pub(super) fn label_character_error(self, label: &str) -> Option<String> {
+        let forbidden = match self {
+            Self::Fat32 => "*?.,;:/\\|+=<>[]\"",
+            Self::Exfat => "*?:/\\|<>\"",
+            Self::Ntfs => "",
+        };
+        label.chars().find_map(|character| {
+            if character.is_ascii_control() {
+                Some("Labels cannot contain control characters.".to_owned())
+            } else if forbidden.contains(character) {
+                Some(format!(
+                    "{} labels cannot contain “{character}”.",
+                    self.label()
+                ))
+            } else {
+                None
+            }
+        })
+    }
+
     /// Candidate executables, in preference order.
     fn mkfs_candidates(self) -> &'static [&'static str] {
         match self {
@@ -396,6 +416,9 @@ pub(super) async fn rename_volume(
             fs_type.max_label_len()
         )));
     }
+    if let Some(message) = fs_type.label_character_error(trimmed) {
+        return Err(DriveOpError::InvalidLabel(message));
+    }
     let cmd = tool_path(fs_type.label_cmd())
         .ok_or_else(|| DriveOpError::ToolNotFound(fs_type.label_cmd().to_owned()))?;
     let device = unmount_for_exclusive_access(&parent, &volume).await?;
@@ -436,52 +459,4 @@ where
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn format_args_map_quick_and_full_per_filesystem() {
-        assert_eq!(
-            FilesystemType::Fat32.format_args("", true),
-            vec!["-F", "32"]
-        );
-        assert_eq!(
-            FilesystemType::Fat32.format_args("", false),
-            vec!["-F", "32", "-c"]
-        );
-        assert_eq!(
-            FilesystemType::Fat32.format_args("Stick", true),
-            vec!["-F", "32", "-n", "Stick"]
-        );
-        assert_eq!(FilesystemType::Ntfs.format_args("", true), vec!["--quick"]);
-        assert_eq!(
-            FilesystemType::Ntfs.format_args("Stick", false),
-            vec!["-L", "Stick"]
-        );
-        assert!(FilesystemType::Exfat.format_args("", true).is_empty());
-        assert_eq!(FilesystemType::Exfat.format_args("", false), vec!["-f"]);
-        assert_eq!(
-            FilesystemType::Exfat.format_args("Stick", true),
-            vec!["-n", "Stick"]
-        );
-    }
-
-    #[test]
-    fn tool_path_finds_shell_and_rejects_missing_tools() {
-        assert!(tool_path("sh").is_some());
-        assert!(tool_path("strata-definitely-missing-tool").is_none());
-    }
-
-    #[test]
-    fn filesystem_label_limits_match_backends() {
-        assert_eq!(FilesystemType::Fat32.max_label_len(), 11);
-        assert_eq!(FilesystemType::Ntfs.max_label_len(), 32);
-        assert_eq!(FilesystemType::Exfat.max_label_len(), 32);
-    }
-
-    #[test]
-    fn ineligible_without_removable_drive() {
-        assert!(!is_eligible(None));
-        assert!(!show_mount(None));
-    }
-}
+mod tests;

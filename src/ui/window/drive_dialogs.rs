@@ -209,37 +209,60 @@ fn refresh_format_selection(
 fn wire_entry_submission(entry: &gtk::Entry, confirm: &gtk::Button) {
     let confirm = confirm.downgrade();
     entry.connect_activate(move |_| {
-        if let Some(confirm) = confirm.upgrade() {
+        if let Some(confirm) = confirm.upgrade()
+            && confirm.is_sensitive()
+        {
             confirm.emit_clicked();
         }
     });
 }
 
-fn rename_validation_error(label: &str, current_name: &str, max_len: usize) -> Option<String> {
-    if label.trim().is_empty() {
+fn rename_validation_error(
+    label: &str,
+    current_name: &str,
+    filesystem: FilesystemType,
+) -> Option<String> {
+    let label = label.trim();
+    if label.is_empty() {
         Some("The label cannot be empty.".to_owned())
-    } else if label == current_name {
+    } else if label == current_name.trim() {
         Some("Enter a label different from the current one.".to_owned())
-    } else if label.chars().count() > max_len {
+    } else if label.chars().count() > filesystem.max_label_len() {
         Some(format!(
-            "Labels on this volume hold at most {max_len} characters."
+            "Labels on this volume hold at most {} characters.",
+            filesystem.max_label_len()
         ))
     } else {
-        None
+        filesystem.label_character_error(label)
     }
 }
 
 fn refresh_rename_validity(
     entry: &gtk::Entry,
     current_name: &str,
-    max_len: usize,
+    filesystem: FilesystemType,
     tools_available: bool,
     confirm: &gtk::Button,
+    error: &gtk::Label,
 ) {
     let text = entry.text();
-    confirm.set_sensitive(
-        tools_available && rename_validation_error(&text, current_name, max_len).is_none(),
-    );
+    let message = rename_validation_error(&text, current_name, filesystem);
+    confirm.set_sensitive(tools_available && message.is_none());
+    let invalid = message.is_some() && text != current_name;
+    if invalid {
+        entry.add_css_class("error");
+        show_inline_error(error, message.as_deref().expect("invalid label"));
+    } else {
+        entry.remove_css_class("error");
+        error.set_visible(false);
+        error.set_text("");
+    }
+    crate::ui::accessibility::set_description(entry, message.as_deref().filter(|_| invalid));
+    entry.update_state(&[gtk::accessible::State::Invalid(if invalid {
+        gtk::AccessibleInvalidState::True
+    } else {
+        gtk::AccessibleInvalidState::False
+    })]);
 }
 
 /// Wire Cancel and Escape. Each dialog connects its own confirm button.
@@ -509,24 +532,37 @@ pub(super) fn show_rename_dialog(parent: &gtk::Widget, volume: &gio::Volume) {
     }
 
     let error = inline_error();
-    error.set_max_width_chars(40);
-    shell.layout.body.append(&error);
+    error.set_max_width_chars(26);
+    error.set_hexpand(true);
+    shell.layout.actions.prepend(&error);
 
     let confirm = shell.layout.confirm.clone();
-    confirm.set_sensitive(false);
+    refresh_rename_validity(
+        &entry,
+        &name,
+        fs,
+        fs.label_tool_available(),
+        &confirm,
+        &error,
+    );
     {
         let confirm = confirm.downgrade();
         let current_name = name.clone();
+        let error = error.downgrade();
         entry.connect_changed(move |entry| {
             let Some(confirm) = confirm.upgrade() else {
+                return;
+            };
+            let Some(error) = error.upgrade() else {
                 return;
             };
             refresh_rename_validity(
                 entry,
                 &current_name,
-                max_len,
+                fs,
                 fs.label_tool_available(),
                 &confirm,
+                &error,
             );
         });
     }
@@ -538,13 +574,20 @@ pub(super) fn show_rename_dialog(parent: &gtk::Widget, volume: &gio::Volume) {
     let parent = parent.clone();
     let fired = Rc::new(Cell::new(false));
     let submitted_entry = entry.clone();
-    shell.layout.confirm.connect_clicked(move |_| {
-        if fired.get() {
+    shell.layout.confirm.connect_clicked(move |button| {
+        if fired.get() || !button.is_sensitive() {
             return;
         }
         let new_label = submitted_entry.text().to_string();
-        if let Some(message) = rename_validation_error(&new_label, &name, max_len) {
-            show_inline_error(&error, &message);
+        if rename_validation_error(&new_label, &name, fs).is_some() {
+            refresh_rename_validity(
+                &submitted_entry,
+                &name,
+                fs,
+                fs.label_tool_available(),
+                button,
+                &error,
+            );
             return;
         }
         fired.set(true);
@@ -705,6 +748,7 @@ pub(super) fn show_format_dialog(parent: &gtk::Widget, volume: &gio::Volume) {
     let step1 = gtk::Box::new(gtk::Orientation::Vertical, 12);
     let options: Vec<&str> = available.iter().map(|fs| fs.label()).collect();
     let fs_combo = gtk::DropDown::from_strings(&options);
+    fs_combo.add_css_class("form-control");
     fs_combo.set_selected(0);
     step1.append(&field_block("Filesystem", &fs_combo));
 
