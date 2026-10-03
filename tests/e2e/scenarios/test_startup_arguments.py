@@ -106,3 +106,29 @@ def test_multiple_arguments_include_non_utf8_directory_and_file(strata):
         requested_windows_exist,
         "one window per argument, with the file and broken symlink revealed",
     )
+
+
+def test_terminal_launch_without_arguments_opens_working_directory(strata):
+    target_dir = strata.fixture.path("terminal-cwd-folder")
+    target_dir.mkdir()
+    (target_dir / "cwd-marker.txt").write_text("opened from terminal cwd\n")
+
+    variables = process_environment()
+    variables.update(strata.environment.variables())
+    variables.update(strata.display.environment)
+    variables["TERM"] = "xterm-256color"
+
+    subprocess.run(
+        [binary_path()],
+        env=variables,
+        cwd=target_dir,
+        check=True,
+        timeout=30,
+        capture_output=True,
+    )
+
+    def cwd_window_exists():
+        windows = strata.application.application_node.find_all(role="frame", name="Strata")
+        return any(window.find(name="cwd-marker.txt") is not None for window in windows)
+
+    strata.wait(cwd_window_exists, "a window opened at the terminal working directory")

@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-use std::{ffi::OsString, os::unix::ffi::OsStringExt, path::Path};
+use std::{
+    ffi::OsString,
+    os::unix::ffi::OsStringExt,
+    path::{Path, PathBuf},
+};
 
-use gtk::gio;
+use gtk::gio::{self, prelude::*};
 
 use super::{
     CommandLineAction, LaunchMode, classify_command_line, classify_udiskie_hook,
@@ -100,14 +104,20 @@ fn classify_udiskie_hook_non_utf8_fields() {
 
 #[test]
 fn classify_command_line_unlock_volume() {
-    match classify_command_line(Some("/dev/sdb1"), &[], false, false) {
+    match classify_command_line(Some("/dev/sdb1"), &[], false, false, None) {
         CommandLineAction::Unlock(target) => {
             assert_eq!(target.unix_device.as_deref(), Some(Path::new("/dev/sdb1")));
             assert_eq!(target.uuid, None);
         }
         other => panic!("unix-device should unlock, got {other:?}"),
     }
-    match classify_command_line(Some("6e5d75a7e4e24c7d9c1c8e5a5e5d75a7"), &[], false, false) {
+    match classify_command_line(
+        Some("6e5d75a7e4e24c7d9c1c8e5a5e5d75a7"),
+        &[],
+        false,
+        false,
+        None,
+    ) {
         CommandLineAction::Unlock(target) => {
             assert_eq!(target.unix_device, None);
             assert_eq!(
@@ -117,14 +127,51 @@ fn classify_command_line_unlock_volume() {
         }
         other => panic!("compact UUID should unlock, got {other:?}"),
     }
-    match classify_command_line(Some("not-a-valid-uuid"), &[], false, false) {
+    match classify_command_line(Some("not-a-valid-uuid"), &[], false, false, None) {
         CommandLineAction::Usage(_) => {}
         other => panic!("invalid operand should be usage, got {other:?}"),
     }
     let file = gio::File::for_path("/tmp/Documents");
-    match classify_command_line(Some("/dev/sdb1"), std::slice::from_ref(&file), false, false) {
+    match classify_command_line(
+        Some("/dev/sdb1"),
+        std::slice::from_ref(&file),
+        false,
+        false,
+        None,
+    ) {
         CommandLineAction::Usage(_) => {}
         other => panic!("unlock with files should be usage, got {other:?}"),
+    }
+}
+
+#[test]
+fn classify_command_line_terminal_working_directory() {
+    let cwd = Path::new("/workspace/project");
+    match classify_command_line(None, &[], false, false, Some(cwd)) {
+        CommandLineAction::Open(files) => {
+            assert_eq!(files.len(), 1);
+            assert_eq!(files[0].path(), Some(cwd.to_path_buf()));
+        }
+        other => panic!("terminal cwd should open directory, got {other:?}"),
+    }
+
+    let file = gio::File::for_path("/other/path");
+    match classify_command_line(None, std::slice::from_ref(&file), false, false, Some(cwd)) {
+        CommandLineAction::Open(files) => {
+            assert_eq!(files.len(), 1);
+            assert_eq!(files[0].path(), Some(PathBuf::from("/other/path")));
+        }
+        other => panic!("explicit file should take precedence over terminal cwd, got {other:?}"),
+    }
+
+    match classify_command_line(None, &[], true, false, Some(cwd)) {
+        CommandLineAction::ServiceNoop => {}
+        other => panic!("service launch should take precedence over terminal cwd, got {other:?}"),
+    }
+
+    match classify_command_line(None, &[], false, false, None) {
+        CommandLineAction::Activate => {}
+        other => panic!("desktop/non-terminal launch should activate, got {other:?}"),
     }
 }
 

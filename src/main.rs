@@ -22,7 +22,8 @@ mod ui;
 mod util;
 
 use std::{
-    ffi::OsString, ops::ControlFlow, os::unix::process::CommandExt, process::Stdio, time::Duration,
+    ffi::OsString, io::IsTerminal, ops::ControlFlow, os::unix::process::CommandExt, path::Path,
+    process::Stdio, time::Duration,
 };
 
 use gtk::{gio, glib, prelude::*};
@@ -220,7 +221,11 @@ fn main() -> gtk::glib::ExitCode {
 
     let application = gtk::Application::builder()
         .application_id(APPLICATION_ID)
-        .flags(gio::ApplicationFlags::HANDLES_OPEN | gio::ApplicationFlags::HANDLES_COMMAND_LINE)
+        .flags(
+            gio::ApplicationFlags::HANDLES_OPEN
+                | gio::ApplicationFlags::HANDLES_COMMAND_LINE
+                | gio::ApplicationFlags::SEND_ENVIRONMENT,
+        )
         .build();
 
     application.add_main_option(
@@ -258,11 +263,34 @@ enum CommandLineAction {
     Usage(&'static str),
 }
 
+fn is_terminal_invocation(cmdline: &gio::ApplicationCommandLine) -> bool {
+    if cmdline.getenv("TERM").is_some_and(|term| !term.is_empty()) {
+        return true;
+    }
+    if !cmdline.is_remote() {
+        if std::env::var_os("TERM").is_some_and(|term| !term.is_empty()) {
+            return true;
+        }
+        if std::io::stdout().is_terminal() || std::io::stdin().is_terminal() {
+            return true;
+        }
+    }
+    false
+}
+
+fn terminal_working_directory(cmdline: &gio::ApplicationCommandLine) -> Option<std::path::PathBuf> {
+    if !is_terminal_invocation(cmdline) {
+        return None;
+    }
+    cmdline.cwd().filter(|path| path.is_dir())
+}
+
 fn classify_command_line(
     unlock_volume: Option<&str>,
     remaining_files: &[gio::File],
     is_service: bool,
     is_remote: bool,
+    terminal_cwd: Option<&Path>,
 ) -> CommandLineAction {
     match unlock_volume {
         Some(_) if !remaining_files.is_empty() => {
@@ -274,7 +302,10 @@ fn classify_command_line(
         },
         None if !remaining_files.is_empty() => CommandLineAction::Open(remaining_files.to_vec()),
         None if !is_remote && is_service => CommandLineAction::ServiceNoop,
-        None => CommandLineAction::Activate,
+        None => match terminal_cwd {
+            Some(cwd) => CommandLineAction::Open(vec![gio::File::for_path(cwd)]),
+            None => CommandLineAction::Activate,
+        },
     }
 }
 
@@ -296,11 +327,13 @@ fn handle_command_line(
     let is_service = application
         .flags()
         .contains(gio::ApplicationFlags::IS_SERVICE);
+    let terminal_cwd = terminal_working_directory(cmdline);
     match classify_command_line(
         unlock_volume.as_deref(),
         &files,
         is_service,
         cmdline.is_remote(),
+        terminal_cwd.as_deref(),
     ) {
         CommandLineAction::Unlock(target) => {
             ui::present_unlock(application, target);
