@@ -17,7 +17,7 @@ use unicode_normalization::UnicodeNormalization;
 
 use super::{
     is_hidden_name, native_hidden_names, native_kind,
-    path_match::{self, Frecency, PathMatcher, PathQuery},
+    path_match::{self, Frecency, PathMatcher, PathQuery, TextScore},
 };
 
 pub(crate) const RESULT_LIMIT: usize = 100;
@@ -104,8 +104,12 @@ impl SearchItem {
         }
     }
 
-    pub(super) fn fuzzy_score(&self, normalized_query: &str) -> Option<i64> {
-        fuzzy_score_normalized(self, normalized_query)
+    pub(super) fn path_score(&self, matcher: &mut PathMatcher) -> Option<TextScore> {
+        matcher.score(&self.search_path, self.search_name_start)
+    }
+
+    pub(super) fn name_is(&self, normalized_name: &str) -> bool {
+        self.search_name() == normalized_name
     }
 
     #[cfg(test)]
@@ -356,33 +360,63 @@ type NameScorer = fn(&SearchItem, &str) -> Option<i64>;
 #[derive(Clone)]
 enum SearchScorer {
     Name(NameScorer),
-    Paths(Arc<Frecency>),
+    Paths {
+        frecency: Arc<Frecency>,
+        folders_only: bool,
+    },
 }
 
 impl SearchScorer {
     fn prepare<'a>(&'a self, normalized_query: &'a str) -> QueryScorer<'a> {
         match self {
             Self::Name(scorer) => QueryScorer::Name(*scorer, normalized_query),
-            Self::Paths(frecency) => QueryScorer::Paths(
+            Self::Paths {
+                frecency,
+                folders_only: true,
+            } if normalized_query.trim().is_empty() => QueryScorer::Folders(frecency),
+            Self::Paths {
+                frecency,
+                folders_only,
+            } => QueryScorer::Paths(
                 PathMatcher::new(&PathQuery::parse(normalized_query)),
                 frecency,
+                *folders_only,
             ),
         }
+    }
+
+    /// Whether an empty query has hits rather than none.
+    fn lists_without_query(&self) -> bool {
+        matches!(
+            self,
+            Self::Paths {
+                folders_only: true,
+                ..
+            }
+        )
     }
 }
 
 /// A scorer bound to one query, owned by one thread.
 enum QueryScorer<'a> {
     Name(NameScorer, &'a str),
-    Paths(PathMatcher, &'a Frecency),
+    Paths(PathMatcher, &'a Frecency, bool),
+    /// Every folder, the most visited first, then the shallowest.
+    Folders(&'a Frecency),
 }
 
 impl QueryScorer<'_> {
     fn score(&mut self, item: &SearchItem) -> Option<i64> {
         match self {
             Self::Name(scorer, query) => scorer(item, query),
-            Self::Paths(matcher, frecency) => {
-                let text = matcher.score(&item.search_path, item.search_name_start)?;
+            Self::Folders(frecency) => item.is_directory.then(|| {
+                frecency.bias(&item.path, true) * (i64::from(u8::MAX) + 1) - i64::from(item.depth)
+            }),
+            Self::Paths(matcher, frecency, folders_only) => {
+                if *folders_only && !item.is_directory {
+                    return None;
+                }
+                let text = item.path_score(matcher)?;
                 Some(path_match::rank(
                     text,
                     frecency.bias(&item.path, item.is_directory),
@@ -456,7 +490,28 @@ pub fn index_paths(
         vec![root],
         show_hidden,
         recursive,
-        SearchScorer::Paths(Arc::new(frecency)),
+        SearchScorer::Paths {
+            frecency: Arc::new(frecency),
+            folders_only: false,
+        },
+    )
+}
+
+/// The 10xer destination picker: like [`index_paths`] across the whole tree
+/// below `root`, but only folders are hits.
+pub fn index_folder_paths(
+    root: PathBuf,
+    show_hidden: bool,
+    frecency: Frecency,
+) -> (SearchHandle, Receiver<SearchEvent>) {
+    index_scoped(
+        vec![root],
+        show_hidden,
+        true,
+        SearchScorer::Paths {
+            frecency: Arc::new(frecency),
+            folders_only: true,
+        },
     )
 }
 
@@ -783,11 +838,12 @@ fn run_search_session(
             progress.query = query;
             progress.limit = limit;
         }
+        let lists = !progress.normalized_query.is_empty() || scorer.lists_without_query();
         if query_changed
             || revision != state.revision
             || (index_changed && progress.limit > RESULT_LIMIT)
         {
-            progress.matches = if progress.normalized_query.is_empty() {
+            progress.matches = if !lists {
                 Vec::new()
             } else {
                 score_index_with_limit(
@@ -797,7 +853,7 @@ fn run_search_session(
                     progress.limit,
                 )
             };
-        } else if index_changed && !progress.normalized_query.is_empty() {
+        } else if index_changed && lists {
             let mut scorer = scorer.prepare(&progress.normalized_query);
             for item in &state.items[indexed_items..] {
                 if let Some(score) = scorer.score(item) {
@@ -811,7 +867,7 @@ fn run_search_session(
         let indexing = state.indexing;
         let coverage = state.coverage;
         drop(state);
-        if query_changed || (index_changed && (!progress.query.is_empty() || !indexing)) {
+        if query_changed || (index_changed && (lists || !indexing)) {
             publish(events, &progress, indexing, coverage);
         }
     }

@@ -68,17 +68,12 @@ impl KeyboardFixture {
     }
 
     fn with_provider(provider: Rc<dyn crate::services::PreviewProvider>) -> Self {
-        Self::with_parts(
-            provider,
-            Rc::new(crate::ui::go_completion::GioFolders),
-            browser_for_window,
-        )
+        Self::with_parts(provider, browser_for_window)
     }
 
     /// `view` runs after the preferences are seeded, which it reads on creation.
     fn with_parts(
         provider: Rc<dyn crate::services::PreviewProvider>,
-        folders: Rc<dyn crate::ui::go_completion::FolderSource>,
         view: impl FnOnce() -> BrowserView,
     ) -> Self {
         PreferenceManager::seed_saved_preferences_for_test();
@@ -129,7 +124,6 @@ impl KeyboardFixture {
                     preferences,
                 },
                 shortcuts: shortcuts.clone(),
-                folders,
                 history: history.clone(),
             },
         );

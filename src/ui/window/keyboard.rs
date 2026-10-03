@@ -15,10 +15,7 @@ use crate::{
     app::Browser,
     services::NavigationHistory,
     ui::{
-        browser::BrowserView,
-        go_completion::{FolderSource, GoCompletion},
-        preview::PreviewDrawer,
-        shortcut_footer::ShortcutFooter,
+        browser::BrowserView, preview::PreviewDrawer, shortcut_footer::ShortcutFooter,
         top_bar_navigation::TopBarNavigation,
     },
 };
@@ -47,7 +44,6 @@ pub(super) struct Bindings {
     pub preview: PreviewDrawer,
     pub type_to_search: TypeToSearch,
     pub shortcuts: ShortcutFooter,
-    pub folders: Rc<dyn FolderSource>,
     pub history: Rc<NavigationHistory>,
 }
 
@@ -194,16 +190,13 @@ fn bind_footer_filter(dispatcher: &Dispatcher) {
         .connect_search_selection_changed(Rc::new(move || shortcuts.schedule_filter_refresh()));
 }
 
-/// Completion replacements are not edits; user edits invalidate pending lookups.
-fn bind_go_completion(dispatcher: &Dispatcher) {
+/// Edits drop a hint about earlier text and any pending destination check.
+fn bind_prompt_hints(dispatcher: &Dispatcher) {
     use crate::ui::tenxer_mode::Prompt;
-    let go = dispatcher.go.clone();
     let revision = dispatcher.destination_revision.clone();
     dispatcher.shortcuts.connect_prompt_reset(move || {
-        go.invalidate();
         revision.set(revision.get().wrapping_add(1));
     });
-    let go = dispatcher.go.clone();
     let hints: Vec<_> = [
         Prompt::Go,
         Prompt::Create,
@@ -218,33 +211,46 @@ fn bind_go_completion(dispatcher: &Dispatcher) {
     let revision = dispatcher.destination_revision.clone();
     dispatcher.shortcuts.connect_prompt_changed(move |kind, _| {
         revision.set(revision.get().wrapping_add(1));
-        if kind.completes_folders() {
-            go.invalidate();
-        }
         if let Some((_, hint)) = hints.iter().find(|(hinted, _)| *hinted == kind) {
             hint.show(None, None);
         }
     });
 }
 
-fn bind_history_prompts(dispatcher: &Dispatcher) {
+/// Folder candidates for the jump, go, and destination prompts.
+fn bind_candidate_prompts(dispatcher: &Dispatcher) {
     let shortcuts = dispatcher.shortcuts.clone();
     let history = dispatcher.history.clone();
     let browser = Rc::downgrade(&dispatcher.view.browser());
+    let destinations = dispatcher.destinations.clone();
+    let targets = dispatcher.destination_targets.clone();
     dispatcher.shortcuts.connect_prompt_changed(move |kind, _| {
         if let Some(browser) = browser.upgrade() {
             prompts::show_history_candidates(&shortcuts, &history, &browser, kind);
+            prompts::show_folder_candidates(
+                &shortcuts,
+                &destinations,
+                &browser,
+                &targets.borrow(),
+                kind,
+            );
         }
     });
     let shortcuts = dispatcher.shortcuts.clone();
     let view = dispatcher.view.clone();
+    let targets = dispatcher.destination_targets.clone();
+    let revision = dispatcher.destination_revision.clone();
     dispatcher
         .shortcuts
         .connect_candidate_activated(move |path| {
-            if !shortcuts
-                .open_prompt_kind()
-                .is_some_and(crate::ui::tenxer_mode::Prompt::picks_history)
-            {
+            let Some(kind) = shortcuts.open_prompt_kind() else {
+                return;
+            };
+            if kind.holds_targets() {
+                prompts::send_to_destination(&view, &shortcuts, &targets, &revision, kind, path);
+                return;
+            }
+            if !kind.picks_history() && kind != crate::ui::tenxer_mode::Prompt::Go {
                 return;
             }
             shortcuts.dismiss_prompt();
@@ -264,7 +270,6 @@ fn clear_find_on_mode_exit(
 ) {
     let shortcuts = dispatcher.shortcuts.clone();
     let open_with = dispatcher.open_with.clone();
-    let go = dispatcher.go.clone();
     let armed_actions = dispatcher.armed_actions.clone();
     let browser = browser.clone();
     let primed = Cell::new(false);
@@ -278,7 +283,6 @@ fn clear_find_on_mode_exit(
                 return;
             }
             open_with.invalidate();
-            go.invalidate();
             armed_actions.take();
             shortcuts.refresh_filter();
             let focus = window.root().and_then(|root| root.focus());
@@ -459,12 +463,12 @@ struct Dispatcher {
     preview: PreviewDrawer,
     type_to_search: TypeToSearch,
     shortcuts: ShortcutFooter,
-    go: GoCompletion,
     history: Rc<NavigationHistory>,
     rename_target: Rc<RefCell<Option<crate::model::FileEntry>>>,
     /// Cursor and fill changes must not retarget an open prompt.
     destination_targets: Rc<RefCell<Vec<crate::model::FileEntry>>>,
     destination_revision: Rc<Cell<u64>>,
+    destinations: crate::ui::folder_picker::FolderPicker,
     armed_actions: Rc<RefCell<Option<files::ArmedActions>>>,
     open_with: files::OpenWithLookup,
     chooser: Option<ChooserPolicy>,
@@ -517,11 +521,11 @@ impl Dispatcher {
             preview: bindings.preview,
             type_to_search: bindings.type_to_search,
             shortcuts: bindings.shortcuts,
-            go: GoCompletion::new(bindings.folders),
             history: bindings.history,
             rename_target: Rc::default(),
             destination_targets: Rc::default(),
             destination_revision: Rc::default(),
+            destinations: crate::ui::folder_picker::FolderPicker::default(),
             armed_actions: Rc::default(),
             open_with: files::OpenWithLookup::default(),
             sidebar: SidebarFocus {
@@ -539,21 +543,23 @@ impl Dispatcher {
             }
         });
         let cancel_on_destroy = dispatcher.shortcuts.clone();
-        let go_on_destroy = dispatcher.go.clone();
+        let destinations_on_destroy = dispatcher.destinations.clone();
         let open_with_on_destroy = dispatcher.open_with.clone();
         window.connect_unrealize(move |_| {
             cancel_on_destroy.cancel_chord();
-            go_on_destroy.invalidate();
+            destinations_on_destroy.cancel();
             open_with_on_destroy.invalidate();
         });
         let rename_target = dispatcher.rename_target.clone();
         let destination_targets = dispatcher.destination_targets.clone();
+        let destinations = dispatcher.destinations.clone();
         dispatcher.shortcuts.connect_prompt_reset(move || {
             drop(rename_target.take());
             drop(destination_targets.take());
+            destinations.cancel();
         });
-        bind_go_completion(&dispatcher);
-        bind_history_prompts(&dispatcher);
+        bind_prompt_hints(&dispatcher);
+        bind_candidate_prompts(&dispatcher);
         release_preview_keys_on_mode_exit(window, &dispatcher.preview, &weak_browser);
         clear_find_on_mode_exit(window, &dispatcher, &weak_browser);
         bind_footer_filter(&dispatcher);

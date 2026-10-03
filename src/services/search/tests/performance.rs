@@ -32,10 +32,13 @@ fn heap_and_parallel_scoring_match_a_full_stable_sort() {
     let items = ranked_fixture(50_003);
     let fuzzy = SearchScorer::Name(fuzzy_score_normalized);
     let filter = SearchScorer::Name(crate::services::search::filter_score_normalized);
-    let paths = SearchScorer::Paths(Arc::new(Frecency::within(
-        Path::new("/fixture"),
-        [(Path::new("/fixture/archive").to_path_buf(), 8.0)],
-    )));
+    let paths = SearchScorer::Paths {
+        frecency: Arc::new(Frecency::within(
+            Path::new("/fixture"),
+            [(Path::new("/fixture/archive").to_path_buf(), 8.0)],
+        )),
+        folders_only: false,
+    };
     for (query, scorer) in [
         ("needle", &fuzzy),
         ("nested/objects", &fuzzy),

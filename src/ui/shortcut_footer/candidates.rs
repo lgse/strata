@@ -10,10 +10,19 @@ use gtk::{glib, prelude::*};
 
 type ActivateListener = Rc<dyn Fn(PathBuf)>;
 
+/// What **Enter** and, where it applies, **Tab** do to the chosen candidate,
+/// as the strip under the list names them.
+#[derive(Clone, Copy, Debug, Default)]
+pub(in crate::ui) struct CandidateKeys {
+    pub(in crate::ui) enter: &'static str,
+    pub(in crate::ui) tab: Option<&'static str>,
+}
+
 pub(super) struct Candidates {
     popover: gtk::Popover,
     scroll: gtk::ScrolledWindow,
     list: gtk::ListBox,
+    keys: gtk::Label,
     paths: RefCell<Vec<PathBuf>>,
     chosen: Cell<usize>,
     activated: RefCell<Option<ActivateListener>>,
@@ -42,9 +51,6 @@ impl Candidates {
         let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
         content.append(&scroll);
         let keys = gtk::Label::new(None);
-        keys.set_markup(
-            "<b>\u{2191}\u{2193}</b> Choose   <b>\u{21b5}</b> Open   <b>Esc</b> Cancel",
-        );
         keys.set_xalign(0.0);
         keys.add_css_class("path-completion-shortcuts");
         content.append(&keys);
@@ -72,6 +78,7 @@ impl Candidates {
             popover,
             scroll,
             list: list.clone(),
+            keys,
             paths: RefCell::default(),
             chosen: Cell::new(0),
             activated: RefCell::default(),
@@ -96,7 +103,15 @@ impl Candidates {
         self.activated.replace(Some(Rc::new(listener)));
     }
 
-    pub(super) fn set(&self, paths: Vec<PathBuf>) {
+    /// Lists `paths`, naming what `keys` do to the chosen one.
+    pub(super) fn set(&self, paths: Vec<PathBuf>, keys: CandidateKeys) {
+        let tab = keys.tab.map_or_else(String::new, |tab| {
+            format!("<b>Tab</b> {}   ", glib::markup_escape_text(tab))
+        });
+        self.keys.set_markup(&format!(
+            "<b>\u{2191}\u{2193}</b> Choose   {tab}<b>\u{21b5}</b> {}   <b>Esc</b> Cancel",
+            glib::markup_escape_text(keys.enter)
+        ));
         while let Some(row) = self.list.first_child() {
             self.list.remove(&row);
         }
@@ -127,7 +142,7 @@ impl Candidates {
     }
 
     pub(super) fn clear(&self) {
-        self.set(Vec::new());
+        self.set(Vec::new(), CandidateKeys::default());
     }
 
     pub(super) fn step(&self, delta: i32) {
@@ -152,6 +167,11 @@ impl Candidates {
     #[cfg(test)]
     pub(super) fn paths(&self) -> Vec<PathBuf> {
         self.paths.borrow().clone()
+    }
+
+    #[cfg(test)]
+    pub(super) fn keys_text(&self) -> String {
+        self.keys.text().to_string()
     }
 
     #[cfg(test)]

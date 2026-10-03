@@ -17,7 +17,7 @@ fn draining_rejects_stale_queries_and_keeps_final_event_on_disconnect() {
     sender.send(result("current")).expect("send current result");
     sender.send(result("stale")).expect("send stale result");
     drop(sender);
-    let (batch, disconnected) = drain(&receiver, "current");
+    let (batch, disconnected) = drain(&receiver, "current", false);
     assert_eq!(batch.expect("current result").query, "current");
     assert!(disconnected);
 }
@@ -28,10 +28,15 @@ fn draining_is_bounded_and_dismissed_query_never_publishes() {
     for _ in 0..9 {
         sender.send(result("current")).expect("send current result");
     }
-    assert!(drain(&receiver, "current").0.is_some());
-    assert!(drain(&receiver, "current").0.is_some());
+    assert!(drain(&receiver, "current", false).0.is_some());
+    assert!(drain(&receiver, "current", false).0.is_some());
     sender.send(result("")).expect("send empty result");
-    assert!(drain(&receiver, "").0.is_none());
+    assert!(drain(&receiver, "", false).0.is_none());
+    sender.send(result("")).expect("send empty folder listing");
+    assert!(
+        drain(&receiver, "", true).0.is_some(),
+        "a folder search lists folders for an empty query"
+    );
 }
 
 #[test]

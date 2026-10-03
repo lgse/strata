@@ -674,15 +674,17 @@ fn abandoned_group_naming_keeps_a_later_rename_separate() {
 }
 
 #[test]
-fn tenxer_move_and_copy_prompts_send_targets_to_a_typed_folder() {
+fn tenxer_move_and_copy_prompts_send_targets_to_a_picked_folder() {
     crate::test_support::gtk_test(
-        "ui::window::tests::keyboard_dispatch::file_commands::tenxer_move_and_copy_prompts_send_targets_to_a_typed_folder",
+        "ui::window::tests::keyboard_dispatch::file_commands::tenxer_move_and_copy_prompts_send_targets_to_a_picked_folder",
         || {
             let fixture = KeyboardFixture::new();
             let directory = fixture._directory.path().to_path_buf();
             let destination = directory.join("dest");
-            std::fs::create_dir_all(destination.join("inner")).expect("destination");
-            std::fs::create_dir(directory.join("other")).expect("sibling destination");
+            let inner = destination.join("inner");
+            let other = directory.join("other");
+            std::fs::create_dir_all(&inner).expect("destination");
+            std::fs::create_dir(&other).expect("sibling destination");
             fixture.view.refresh();
             wait_until(|| rendered_name(&fixture.view.widget(), "dest"));
             enable_tenxer(&fixture);
@@ -694,19 +696,25 @@ fn tenxer_move_and_copy_prompts_send_targets_to_a_typed_folder() {
                 assert_eq!(fixture.shortcuts.open_prompt_kind(), Some(kind));
                 assert_eq!(fixture.shortcuts.prompt_label().as_deref(), Some(label));
             };
-            let submit = |text: &str| {
+            let listed = |text: &str, expected: &[&Path]| {
+                fixture.shortcuts.prompt().set_text(text);
+                wait_until(|| fixture.shortcuts.candidates() == expected);
+                assert!(fixture.shortcuts.candidates_shown(), "{text:?}");
+            };
+            let hint = || fixture.shortcuts.prompt_hint();
+            let refused = |text: &str, expected: &str| {
                 fixture.shortcuts.prompt().set_text(text);
                 plain(&fixture, Key::Return);
-                wait_until(|| {
-                    fixture.shortcuts.open_prompt_kind().is_none()
-                        || fixture.shortcuts.prompt_hint().is_some()
-                });
+                wait_until(|| hint().as_deref() == Some(expected));
+                assert_eq!(fixture.shortcuts.open_prompt_kind(), Some(Prompt::MoveTo));
             };
 
             fill_b_and_c(&fixture);
             open(Key::C, Prompt::CopyTo, "copy to \u{203a}");
-            submit("dest");
-            assert_eq!(fixture.shortcuts.open_prompt_kind(), None);
+            listed("dest", &[&destination, &inner]);
+            assert_eq!(hint().as_deref(), Some("1 of 2"));
+            plain(&fixture, Key::Return);
+            wait_until(|| fixture.shortcuts.open_prompt_kind().is_none());
             wait_until(|| directory_names(&destination) == ["b.txt", "c.txt", "inner"]);
             assert!(directory.join("b.txt").exists() && directory.join("c.txt").exists());
             assert_eq!(browser.active_location(), origin, "copying stays put");
@@ -714,13 +722,10 @@ fn tenxer_move_and_copy_prompts_send_targets_to_a_typed_folder() {
             browser.clear_active_selection();
             move_to_named(&fixture, &browser, "a.txt");
             open(Key::M, Prompt::MoveTo, "move to \u{203a}");
-            fixture.shortcuts.prompt().set_text("dest/in");
-            plain(&fixture, Key::Tab);
-            wait_until(|| fixture.shortcuts.prompt_text() == "dest/inner/");
+            listed("dest in", &[&inner]);
             plain(&fixture, Key::Return);
-            wait_until(|| {
-                destination.join("inner/a.txt").exists() && !directory.join("a.txt").exists()
-            });
+            wait_until(|| inner.join("a.txt").exists() && !directory.join("a.txt").exists());
+            assert_eq!(fixture.shortcuts.open_prompt_kind(), None);
             assert_eq!(browser.active_location(), origin, "moving stays put");
             wait_until(|| focused_name(&browser) == "b.txt");
             assert!(
@@ -730,21 +735,28 @@ fn tenxer_move_and_copy_prompts_send_targets_to_a_typed_folder() {
             plain(&fixture, Key::j);
             assert_eq!(focused_name(&browser), "c.txt");
             assert!(fill_names(&browser).is_empty());
+
             browser.clear_active_selection();
             move_to_named(&fixture, &browser, "b.txt");
-            for (text, hint) in [
-                ("nowhere", "No such folder"),
-                ("c.txt", "Not a folder"),
+            open(Key::M, Prompt::MoveTo, "move to \u{203a}");
+            plain(&fixture, Key::Return);
+            assert_eq!(
+                fixture.shortcuts.open_prompt_kind(),
+                None,
+                "empty Enter closes"
+            );
+            for (text, expected) in [
+                ("nowhere", "No matching folders"),
                 ("smb://host/share", "Only local folders can be chosen"),
                 ("~someone/x", "Only ~ and ~/ are supported"),
-                (".", "Already in this folder"),
+                ("./", "Already in this folder"),
+                ("./c.txt/", "Not a folder"),
+                ("./nowhere/", "No such folder"),
             ] {
                 open(Key::M, Prompt::MoveTo, "move to \u{203a}");
                 plain(&fixture, Key::Down);
                 assert_eq!(focused_name(&browser), "b.txt", "the target is fixed");
-                submit(text);
-                assert_eq!(fixture.shortcuts.open_prompt_kind(), Some(Prompt::MoveTo));
-                assert_eq!(fixture.shortcuts.prompt_hint().as_deref(), Some(hint));
+                refused(text, expected);
                 plain(&fixture, Key::Escape);
                 assert_eq!(fixture.shortcuts.open_prompt_kind(), None);
             }
@@ -752,23 +764,25 @@ fn tenxer_move_and_copy_prompts_send_targets_to_a_typed_folder() {
 
             move_to_named(&fixture, &browser, "dest");
             open(Key::M, Prompt::MoveTo, "move to \u{203a}");
-            submit("dest/inner");
-            assert_eq!(
-                fixture.shortcuts.prompt_hint().as_deref(),
-                Some("Can\u{2019}t put a folder inside itself")
+            fixture.shortcuts.prompt().set_text("inner");
+            wait_until(|| hint().as_deref() == Some("No matching folders"));
+            assert!(
+                fixture.shortcuts.candidates().is_empty(),
+                "a folder is never offered inside itself"
             );
+            refused("./dest/inner/", "Can\u{2019}t put a folder inside itself");
             plain(&fixture, Key::Escape);
             open(Key::C, Prompt::CopyTo, "copy to \u{203a}");
-            submit("dest/../other");
-            wait_until(|| directory.join("other/dest/inner/a.txt").exists());
-            assert!(
-                destination.join("inner/a.txt").exists(),
-                "copy preserves the source"
-            );
+            listed("./dest/../other/", &[&other]);
+            plain(&fixture, Key::Return);
+            wait_until(|| other.join("dest/inner/a.txt").exists());
+            assert!(inner.join("a.txt").exists(), "copy preserves the source");
 
             move_to_named(&fixture, &browser, "b.txt");
             open(Key::C, Prompt::CopyTo, "copy to \u{203a}");
-            submit(&destination.to_string_lossy());
+            let typed = format!("{}/", destination.display());
+            listed(&typed, &[&destination, &inner]);
+            plain(&fixture, Key::Return);
             wait_until(|| modal_visible(&fixture.overlay));
             wait_focused_button(&fixture, "Keep Both");
             close_modal(&fixture);
@@ -776,35 +790,51 @@ fn tenxer_move_and_copy_prompts_send_targets_to_a_typed_folder() {
 
             move_to_named(&fixture, &browser, "c.txt");
             open(Key::M, Prompt::MoveTo, "move to \u{203a}");
-            fixture.shortcuts.prompt().set_text("other");
-            plain(&fixture, Key::Return);
+            fixture.shortcuts.prompt().set_text("inner");
+            wait_until(|| fixture.shortcuts.candidates().len() == 2);
+            let mut found = fixture.shortcuts.candidates();
+            found.sort();
+            assert_eq!(found, [inner.clone(), other.join("dest/inner")]);
+            for (key, position) in [
+                (Key::Up, "2 of 2"),
+                (Key::Down, "1 of 2"),
+                (Key::Down, "2 of 2"),
+            ] {
+                plain(&fixture, key);
+                assert_eq!(hint().as_deref(), Some(position), "{key:?}");
+            }
+            assert_eq!(focused_name(&browser), "c.txt", "stepping keeps the cursor");
+            let chosen = fixture.shortcuts.candidates()[1].clone();
+            let relative = chosen.strip_prefix(&directory).expect("candidate below");
             plain(&fixture, Key::Tab);
-            wait_until(|| fixture.shortcuts.prompt_text() == "other/");
-            pump(200);
-            assert_eq!(fixture.shortcuts.open_prompt_kind(), Some(Prompt::MoveTo));
-            assert!(
-                directory.join("c.txt").exists(),
-                "completion requires a fresh submission"
+            assert_eq!(
+                fixture.shortcuts.prompt_text(),
+                format!("./{}/", relative.display()),
+                "Tab writes the chosen folder into the prompt"
             );
-            assert!(!directory.join("other/c.txt").exists());
-            plain(&fixture, Key::Escape);
+            assert!(directory.join("c.txt").exists(), "Tab never sends");
+            wait_until(|| fixture.shortcuts.candidates() == [chosen.clone()]);
+            plain(&fixture, Key::Return);
+            wait_until(|| chosen.join("c.txt").exists() && !directory.join("c.txt").exists());
 
+            move_to_named(&fixture, &browser, "b.txt");
             open(Key::M, Prompt::MoveTo, "move to \u{203a}");
-            fixture.shortcuts.prompt().set_text("dest/inner");
+            listed("^other$", &[&other]);
             plain(&fixture, Key::Return);
             plain(&fixture, Key::Escape);
-            open(Key::M, Prompt::MoveTo, "move to \u{203a}");
-            submit("nowhere");
-            assert_eq!(
-                fixture.shortcuts.prompt_hint().as_deref(),
-                Some("No such folder")
-            );
+            pump(200);
             assert!(
-                directory.join("c.txt").exists(),
+                directory.join("b.txt").exists(),
                 "cancelled validation must not move"
             );
-            assert!(!destination.join("inner/c.txt").exists());
-            plain(&fixture, Key::Escape);
+            assert!(!other.join("b.txt").exists());
+
+            open(Key::C, Prompt::CopyTo, "copy to \u{203a}");
+            listed("^other$", &[&other]);
+            fixture.shortcuts.click_candidate(0);
+            wait_until(|| other.join("b.txt").exists());
+            assert_eq!(fixture.shortcuts.open_prompt_kind(), None);
+            assert!(directory.join("b.txt").exists());
 
             open_empty_folder(&fixture);
             for (key, message) in [(Key::M, "Nothing to move"), (Key::C, "Nothing to copy")] {
@@ -900,9 +930,16 @@ fn tenxer_action_chord_compresses_and_extracts_archives() {
                 Some("extract to \u{203a}")
             );
             fixture.shortcuts.prompt().set_text("missing");
+            wait_until(|| {
+                fixture.shortcuts.prompt_hint().as_deref() == Some("No matching folders")
+            });
             plain(&fixture, Key::Return);
-            wait_until(|| fixture.shortcuts.prompt_hint().as_deref() == Some("No such folder"));
+            assert_eq!(
+                fixture.shortcuts.prompt_hint().as_deref(),
+                Some("No matching folders")
+            );
             fixture.shortcuts.prompt().set_text("dest");
+            wait_until(|| fixture.shortcuts.candidates() == [destination.clone()]);
             plain(&fixture, Key::Return);
             wait_until(|| std::fs::read_to_string(destination.join("notes.txt")).is_ok());
             assert_eq!(contents(&destination.join("notes.txt")), "notes");

@@ -190,7 +190,8 @@ impl Prompt {
         matches!(self, Self::Jump | Self::Recent)
     }
 
-    pub(crate) fn completes_folders(self) -> bool {
+    /// Prompts that list folders found by fuzzy path search.
+    pub(crate) fn picks_folder(self) -> bool {
         matches!(
             self,
             Self::Go | Self::MoveTo | Self::CopyTo | Self::ExtractTo

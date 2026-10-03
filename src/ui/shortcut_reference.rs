@@ -268,8 +268,11 @@ fn tenxer_places(chooser: bool) -> Vec<(&'static str, &'static str)> {
         ]);
     }
     shortcuts.extend_from_slice(&[
-        ("g Space", "Go to a typed path or URI"),
-        ("Tab / Shift+Tab in go ›", "Cycle matching folders"),
+        ("g Space", "Go to a folder, typed path, or URI"),
+        (
+            "Tab in go › / move to › / copy to ›",
+            "Write the chosen folder into the prompt",
+        ),
         ("z", "Jump to a visited folder"),
         ("Z", "Jump to a recent folder"),
         ("↑ / ↓ in jump › / recent ›", "Choose a visited folder"),

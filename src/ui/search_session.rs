@@ -6,7 +6,7 @@
 
 use crate::services::{
     NavigationHistory, SearchCoverage, SearchEvent, SearchHandle, SearchItem, index_filter,
-    index_paths,
+    index_folder_paths, index_paths,
 };
 use gtk::glib;
 use std::{
@@ -28,16 +28,19 @@ pub(in crate::ui) enum SearchScope {
     FolderTerms,
     /// The 10xer **s** search: fuzzy terms across paths below the folder.
     Paths,
+    /// The 10xer destination picker: fuzzy terms across the paths of folders
+    /// below the folder.
+    Folders,
 }
 
 impl SearchScope {
     pub(in crate::ui) fn recursive(self) -> bool {
-        matches!(self, Self::Subfolders | Self::Paths)
+        matches!(self, Self::Subfolders | Self::Paths | Self::Folders)
     }
 
     /// Whether hits match fzf-style terms and highlight what each matched.
     pub(in crate::ui) fn fuzzy(self) -> bool {
-        matches!(self, Self::FolderTerms | Self::Paths)
+        matches!(self, Self::FolderTerms | Self::Paths | Self::Folders)
     }
 }
 
@@ -138,8 +141,10 @@ impl SearchSession {
         }
     }
 
+    /// Searches `input` for `query`. An empty query ends the search, except
+    /// that [`SearchScope::Folders`] then lists every folder.
     pub(super) fn update(&self, input: SearchInput, query: &str, restart: bool, deliver: Deliver) {
-        if query.trim().is_empty() {
+        if query.trim().is_empty() && input.scope != SearchScope::Folders {
             self.cancel();
             return;
         }
@@ -157,6 +162,11 @@ impl SearchSession {
         }
         self.cancel();
         let (handle, receiver) = match input.scope {
+            SearchScope::Folders => index_folder_paths(
+                input.root.clone(),
+                input.show_hidden,
+                NavigationHistory::shared().frecency_within(&input.root),
+            ),
             scope if scope.fuzzy() => index_paths(
                 input.root.clone(),
                 input.show_hidden,
@@ -186,7 +196,8 @@ impl SearchSession {
                 let Some(worker) = worker.as_ref() else {
                     return glib::ControlFlow::Break;
                 };
-                drain(&worker.receiver, &state.query.borrow())
+                let lists_without_query = worker.input.scope == SearchScope::Folders;
+                drain(&worker.receiver, &state.query.borrow(), lists_without_query)
             };
             if let Some(batch) = latest {
                 let deliver = state.deliver.borrow().clone();
@@ -207,7 +218,11 @@ impl SearchSession {
     }
 }
 
-fn drain(receiver: &Receiver<SearchEvent>, current: &str) -> (Option<SearchBatch>, bool) {
+fn drain(
+    receiver: &Receiver<SearchEvent>,
+    current: &str,
+    lists_without_query: bool,
+) -> (Option<SearchBatch>, bool) {
     let mut latest = None;
     let mut disconnected = false;
     for _ in 0..8 {
@@ -219,7 +234,7 @@ fn drain(receiver: &Receiver<SearchEvent>, current: &str) -> (Option<SearchBatch
                 coverage,
                 has_more,
             }) => {
-                if !query.is_empty() && query == current {
+                if (lists_without_query || !query.is_empty()) && query == current {
                     latest = Some(SearchBatch {
                         query,
                         items,

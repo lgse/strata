@@ -15,7 +15,7 @@ mod scope;
 
 use super::{
     PathAdmission, SearchEvent, SearchItem, admit_path, fuzzy_score_normalized,
-    fuzzy_subsequence_score, index_tree, index_trees, index_trees_with_budget,
+    fuzzy_subsequence_score, index_folder_paths, index_tree, index_trees, index_trees_with_budget,
     index_trees_with_scheduler_budget,
 };
 
@@ -612,6 +612,31 @@ fn nested_ignore_rules_are_preserved_by_fair_directory_scheduling() {
     assert!(!coverage.is_partial());
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].path, visible);
+}
+
+#[test]
+fn folder_path_search_offers_only_folders_below_the_root() {
+    let root = unique_fixture_root("folder-paths");
+    fixture_file(&root, "reports/report-2024.txt");
+    fixture_file(&root, "archive/reports-old/summary.txt");
+    fixture_file(&root, "report.txt");
+
+    let (search, events) = index_folder_paths(
+        root.clone(),
+        false,
+        crate::services::path_match::Frecency::default(),
+    );
+    search.query("rep");
+    let SearchEvent::Results { items, .. } = wait_for_results(&events).expect("results");
+    drop(search);
+    fs::remove_dir_all(&root).expect("remove fixture");
+
+    let mut paths: Vec<_> = items.into_iter().map(|item| item.path).collect();
+    paths.sort();
+    assert_eq!(
+        paths,
+        [root.join("archive/reports-old"), root.join("reports")]
+    );
 }
 
 fn unique_fixture_root(label: &str) -> PathBuf {

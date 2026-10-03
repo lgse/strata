@@ -1854,14 +1854,6 @@ impl Browser {
         Some(read(entries.get(range)?))
     }
 
-    pub(crate) fn folder_names(
-        &self,
-        depth: usize,
-        include_hidden: bool,
-    ) -> Vec<std::ffi::OsString> {
-        self.state.borrow().folder_names(depth, include_hidden)
-    }
-
     pub fn column_preferences(&self, depth: usize) -> Option<ViewPreferences> {
         self.state.borrow().column_preferences(depth)
     }

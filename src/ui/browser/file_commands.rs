@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use std::{
-    path::{Path, PathBuf},
-    rc::Rc,
-};
+use std::{path::PathBuf, rc::Rc};
 
 use gtk::{glib, prelude::*};
 
@@ -11,7 +8,6 @@ use super::{
     BrowserView, PinStatus,
     clipboard::{self, copy_locations, copy_names},
     desktop::{can_open_terminal, launch_terminal},
-    destination::resolve_destination_path,
     paths::{can_remove_location, is_trash_item, is_trash_location},
 };
 use crate::{
@@ -450,30 +446,6 @@ impl BrowserView {
             }
             (false, _) => PinChange::NotPinned(name),
         }
-    }
-
-    pub fn typed_destination_folder(&self, text: &str) -> Result<PathBuf, &'static str> {
-        let text = text.trim();
-        if crate::ui::go_completion::looks_like_uri(text) {
-            return Err("Only local folders can be chosen");
-        }
-        if text.starts_with('~') && text != "~" && !text.starts_with("~/") {
-            return Err("Only ~ and ~/ are supported");
-        }
-        let home = glib::home_dir();
-        let base = self
-            .state
-            .browser
-            .active_location()
-            .and_then(|location| location.native_path().map(Path::to_path_buf));
-        let relative = !text.starts_with('~') && Path::new(text).is_relative();
-        let base = match base {
-            Some(base) => base,
-            None if relative => return Err("Type a full path here"),
-            None => home.clone(),
-        };
-        let path = resolve_destination_path(text, &base, &home);
-        Ok(gtk::gio::File::for_path(&path).path().unwrap_or(path))
     }
 
     pub fn transfer_targets(&self, moving: bool) -> Result<Vec<FileEntry>, &'static str> {

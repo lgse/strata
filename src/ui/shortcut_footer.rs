@@ -9,6 +9,7 @@ use std::{
 
 use gtk::{gdk, glib, prelude::*};
 
+pub(in crate::ui) use candidates::CandidateKeys;
 use candidates::Candidates;
 use chord_panel::ChordPanel;
 
@@ -1180,6 +1181,13 @@ impl ShortcutFooter {
         self.prompt.entry.text().to_string()
     }
 
+    /// Replaces the prompt's text as if typed, caret at the end, so change
+    /// listeners run; unlike a [`PromptSink`] replacement, it is an edit.
+    pub(in crate::ui) fn type_prompt_text(&self, text: &str) {
+        self.prompt.entry.set_text(text);
+        self.prompt.entry.set_position(-1);
+    }
+
     #[cfg(test)]
     pub(in crate::ui) fn prompt_label(&self) -> Option<String> {
         (self.root.visible_child().as_ref() == Some(self.prompt.bar.upcast_ref()))
@@ -1190,9 +1198,11 @@ impl ShortcutFooter {
         self.prompt.close();
     }
 
-    pub(in crate::ui) fn show_candidates(&self, paths: Vec<PathBuf>) {
+    /// Lists `paths` above the open prompt; `keys` name what the keys do to
+    /// the chosen one.
+    pub(in crate::ui) fn show_candidates(&self, paths: Vec<PathBuf>, keys: CandidateKeys) {
         if self.prompt.bar.is_visible() {
-            self.prompt.candidates.set(paths);
+            self.prompt.candidates.set(paths, keys);
         }
     }
 
@@ -1215,6 +1225,11 @@ impl ShortcutFooter {
     #[cfg(test)]
     pub(in crate::ui) fn candidates(&self) -> Vec<PathBuf> {
         self.prompt.candidates.paths()
+    }
+
+    #[cfg(test)]
+    pub(in crate::ui) fn candidate_keys(&self) -> String {
+        self.prompt.candidates.keys_text()
     }
 
     #[cfg(test)]
