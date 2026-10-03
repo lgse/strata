@@ -191,11 +191,12 @@ impl FileVersion {
 
 #[derive(Clone)]
 struct FolderArt {
-    directory: FileVersion,
-    source: Option<(PathBuf, FileVersion)>,
-    cover: Option<Cover>,
+    version: FileVersion,
+    cover: Cover,
 }
 
+/// The folder is rescanned every time: a directory's timestamps can miss an
+/// added or removed cover within one coarse timestamp tick.
 fn load_folder_art(
     directory: &Path,
     job: &Cancellation,
@@ -203,40 +204,25 @@ fn load_folder_art(
 ) -> Option<Option<Cover>> {
     static CACHE: OnceLock<Mutex<Lru<PathBuf, FolderArt>>> = OnceLock::new();
     let cache = CACHE.get_or_init(|| Mutex::new(Lru::new(DETAILS_CACHE)));
-    let version = FileVersion::read(directory)?;
-    let cached = cache
-        .lock()
-        .expect("folder artwork cache")
-        .get(&directory.to_path_buf());
-    if let Some(cached) = cached.filter(|cached| {
-        cached.directory == version
-            && cached
-                .source
-                .as_ref()
-                .is_none_or(|(path, version)| FileVersion::read(path).as_ref() == Some(version))
-    }) {
-        return Some(cached.cover);
-    }
-    let path = folder_art(directory).ok()?;
-    let (source, cover) = match path {
-        Some(path) => {
-            let version = FileVersion::read(&path)?;
-            let cover = texture(parse(&path, ParseOperation::PreviewImage, job)?)?;
-            (Some((path, version)), Some(cover))
-        }
-        None => (None, None),
+    let Some(path) = folder_art(directory).ok()? else {
+        return Some(None);
     };
+    let version = FileVersion::read(&path)?;
+    let cached = cache.lock().expect("folder artwork cache").get(&path);
+    if let Some(cached) = cached.filter(|cached| cached.version == version) {
+        return Some(Some(cached.cover));
+    }
+    let cover = texture(parse(&path, ParseOperation::PreviewImage, job)?)?;
     if !job.is_cancelled() {
         cache.lock().expect("folder artwork cache").insert(
-            directory.to_path_buf(),
+            path,
             FolderArt {
-                directory: version,
-                source,
+                version,
                 cover: cover.clone(),
             },
         );
     }
-    Some(cover)
+    Some(Some(cover))
 }
 
 /// Tags arrive first; embedded artwork, then folder artwork, follow.

@@ -43,7 +43,10 @@ fn folder_art_reuses_decodes_and_invalidates_changed_files() {
                 first == copy,
                 "identical artwork compares by content, not texture identity"
             );
-            std::fs::write(&path, png(200)).expect("replace artwork");
+            // Saved under a new inode, so the change shows even within one timestamp tick.
+            let replacement = directory.path().join("replacement.png");
+            std::fs::write(&replacement, png(200)).expect("write replacement");
+            std::fs::rename(&replacement, &path).expect("replace artwork");
             let changed = load().expect("changed cover");
             assert_eq!(decodes.get(), 2);
             assert!(first != changed);
