@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 //! Removable-drive management: format, rename (volume label), and properties.
-//! Only removable drives are eligible (see `is_eligible`).
+//! Only removable drives are eligible for modification (see `is_eligible`).
 
 use std::{
     future::Future,
@@ -274,6 +274,11 @@ fn run_privileged_tool(cmd: &str, args: &[String]) -> Result<String, DriveOpErro
         }
         other => other,
     }
+}
+
+pub(super) fn block_device_for_path(path: &Path) -> Option<PathBuf> {
+    let table = std::fs::read("/proc/self/mountinfo").ok()?;
+    super::devices::block_device_from_mount_table(&table, path)
 }
 
 pub(super) fn filesystem_of_device(device: &Path) -> FilesystemType {

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-//! Removable-drive dialogs: Format, Rename (volume label), Properties.
+//! Shared volume/mount properties and removable-drive Format/Rename dialogs.
 
 use std::{cell::Cell, future::Future, rc::Rc};
 
@@ -52,11 +52,60 @@ pub(super) fn open_from_sidebar(
     }
 }
 
+#[derive(Clone)]
+pub(super) enum PropertiesTarget {
+    Volume(gio::Volume),
+    Mount(gio::Mount),
+}
+
+impl PropertiesTarget {
+    pub(super) fn volume(&self) -> Option<gio::Volume> {
+        match self {
+            Self::Volume(volume) => Some(volume.clone()),
+            Self::Mount(mount) => mount.volume(),
+        }
+    }
+
+    fn mount(&self) -> Option<gio::Mount> {
+        match self {
+            Self::Volume(volume) => volume.get_mount(),
+            Self::Mount(mount) => Some(mount.clone()),
+        }
+    }
+
+    fn name(&self) -> String {
+        match self {
+            Self::Volume(volume) => volume.name().to_string(),
+            Self::Mount(mount) => mount.name().to_string(),
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 enum PropertyAction {
     Rename,
     Eject,
     Format,
+}
+
+fn property_action_control(
+    action: PropertyAction,
+    editable: bool,
+    can_release: bool,
+) -> Option<gtk::Button> {
+    if !editable && (!matches!(action, PropertyAction::Eject) || !can_release) {
+        return None;
+    }
+    let (label, icon, tone) = match action {
+        PropertyAction::Rename => ("Rename", assets::icons::PENCIL, ModalTone::Accent),
+        PropertyAction::Eject => ("Eject", assets::icons::EJECT, ModalTone::Accent),
+        PropertyAction::Format => ("Format", assets::icons::SHREDDER, ModalTone::Danger),
+    };
+    let button = properties_action(icon, label, tone);
+    if matches!(action, PropertyAction::Eject) {
+        button.set_sensitive(can_release);
+    }
+    Some(button)
 }
 
 struct ModalShell {
@@ -297,11 +346,12 @@ fn wire_modal_close(shell: &ModalShell) {
 /// Everything is read synchronously; unavailable data shows as em dash.
 pub(super) fn show_drive_properties(
     parent: &gtk::Widget,
-    volume: &gio::Volume,
+    target: &PropertiesTarget,
     on_release: Option<Rc<dyn Fn()>>,
 ) {
-    let name = volume.name().to_string();
-    let volume = volume.clone();
+    let name = target.name();
+    let volume = target.volume();
+    let mount = target.mount();
     let Some(shell) = modal_shell(
         parent,
         assets::icons::INFO,
@@ -345,7 +395,16 @@ pub(super) fn show_drive_properties(
     };
 
     add_row("Name", &name);
-    let block_device = drive_ops::block_device_for_volume(&volume);
+    let block_device = volume
+        .as_ref()
+        .and_then(drive_ops::block_device_for_volume)
+        .or_else(|| {
+            mount
+                .as_ref()
+                .and_then(|mount| mount.root().path())
+                .as_deref()
+                .and_then(drive_ops::block_device_for_path)
+        });
     add_row(
         "Device",
         &block_device
@@ -357,13 +416,27 @@ pub(super) fn show_drive_properties(
     let filesystem = block_device
         .as_ref()
         .and_then(|device| drive_ops::filesystem_label_for_device(device))
+        .or_else(|| {
+            mount
+                .as_ref()
+                .and_then(|mount| {
+                    mount
+                        .root()
+                        .query_filesystem_info("filesystem::type", gio::Cancellable::NONE)
+                        .ok()
+                })
+                .and_then(|info| {
+                    info.attribute_string("filesystem::type")
+                        .map(|name| name.to_string())
+                })
+        })
         .unwrap_or_else(|| "Unknown".to_owned());
     add_row("Filesystem", &filesystem);
 
     let total_bytes = block_device
         .as_ref()
         .and_then(|device| drive_ops::device_size_bytes(device));
-    match volume.get_mount() {
+    match mount {
         Some(mount) => {
             let location = mount
                 .root()
@@ -429,20 +502,20 @@ pub(super) fn show_drive_properties(
         glib::ControlFlow::Continue
     });
     wire_modal_close(&shell);
-    for (action, label, icon) in [
-        (PropertyAction::Rename, "Rename", assets::icons::PENCIL),
-        (PropertyAction::Eject, "Eject", assets::icons::EJECT),
-        (PropertyAction::Format, "Format", assets::icons::SHREDDER),
+    shell.layout.close.grab_focus();
+    let editable = drive_ops::is_eligible(volume.as_ref());
+    shell
+        .layout
+        .actions
+        .set_visible(editable || on_release.is_some());
+    for action in [
+        PropertyAction::Rename,
+        PropertyAction::Eject,
+        PropertyAction::Format,
     ] {
-        let tone = if matches!(action, PropertyAction::Format) {
-            ModalTone::Danger
-        } else {
-            ModalTone::Accent
+        let Some(button) = property_action_control(action, editable, on_release.is_some()) else {
+            continue;
         };
-        let button = properties_action(icon, label, tone);
-        if matches!(action, PropertyAction::Eject) {
-            button.set_sensitive(on_release.is_some());
-        }
         let parent = parent.clone();
         let volume = volume.clone();
         let layer = shell.layer.clone();
@@ -452,8 +525,16 @@ pub(super) fn show_drive_properties(
         button.connect_clicked(move |_| {
             dismiss_modal_layer(&layer, &overlay, root.as_ref());
             match action {
-                PropertyAction::Rename => show_rename_dialog(&parent, &volume),
-                PropertyAction::Format => show_format_dialog(&parent, &volume),
+                PropertyAction::Rename => {
+                    if let Some(volume) = &volume {
+                        show_rename_dialog(&parent, volume);
+                    }
+                }
+                PropertyAction::Format => {
+                    if let Some(volume) = &volume {
+                        show_format_dialog(&parent, volume);
+                    }
+                }
                 PropertyAction::Eject => {
                     if let Some(on_release) = &on_release {
                         on_release();
@@ -462,7 +543,7 @@ pub(super) fn show_drive_properties(
             }
         });
         shell.layout.actions.append(&button);
-        if matches!(action, PropertyAction::Rename) {
+        if matches!(action, PropertyAction::Rename) || !editable {
             button.grab_focus();
         }
     }

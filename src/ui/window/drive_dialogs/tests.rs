@@ -379,6 +379,33 @@ fn rename_requires_tools_and_a_changed_nonempty_label() {
 }
 
 #[test]
+fn fixed_storage_properties_never_offer_label_changes_or_formatting() {
+    crate::test_support::gtk_test(
+        "ui::window::drive_dialogs::tests::fixed_storage_properties_never_offer_label_changes_or_formatting",
+        || {
+            for (editable, expected) in [(false, [0, 1, 0]), (true, [1, 1, 1])] {
+                let invoked: [Rc<Cell<usize>>; 3] = std::array::from_fn(|_| Rc::new(Cell::new(0)));
+                for (index, action) in [
+                    PropertyAction::Rename,
+                    PropertyAction::Eject,
+                    PropertyAction::Format,
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    if let Some(button) = property_action_control(action, editable, true) {
+                        let invoked = invoked[index].clone();
+                        button.connect_clicked(move |_| invoked.set(invoked.get() + 1));
+                        button.emit_clicked();
+                    }
+                }
+                assert_eq!(invoked.map(|count| count.get()), expected);
+            }
+        },
+    );
+}
+
+#[test]
 fn format_filesystem_selection_updates_label_limit_and_validity() {
     crate::test_support::gtk_test(
         "ui::window::drive_dialogs::tests::format_filesystem_selection_updates_label_limit_and_validity",

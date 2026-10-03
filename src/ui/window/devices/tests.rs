@@ -385,6 +385,27 @@ fn a_non_system_drive_containing_home_is_still_included() {
 }
 
 #[test]
+fn properties_resolve_the_innermost_block_mount_including_btrfs_and_escaped_paths() {
+    let table = br"25 1 8:1 / / rw - ext4 /dev/sda1 rw
+26 25 0:40 /@home /home rw - btrfs /dev/nvme0n1p2 rw
+27 26 8:2 / /home/USB\040Backup rw - exfat /dev/sdb1 rw
+28 27 0:2 / /home/USB\040Backup/cache rw - tmpfs tmpfs rw
+";
+    for (path, device) in [
+        ("/", Some("/dev/sda1")),
+        ("/home/Documents", Some("/dev/nvme0n1p2")),
+        ("/home/USB Backup/file.txt", Some("/dev/sdb1")),
+        ("/home/USB Backup/cache", None),
+        ("/home/USB Backup-other", Some("/dev/nvme0n1p2")),
+    ] {
+        assert_eq!(
+            block_device_from_mount_table(table, Path::new(path)),
+            device.map(PathBuf::from)
+        );
+    }
+}
+
+#[test]
 fn mount_table_fallback_keeps_storage_but_not_system_mounts() {
     let devices = mounted_devices_from_table(
         br"25 1 8:1 / / rw - ext4 /dev/sda1 rw

@@ -37,6 +37,24 @@ fn mounted_devices_from_table(table: &[u8]) -> Vec<PathBuf> {
         .collect()
 }
 
+pub(super) fn block_device_from_mount_table(table: &[u8], path: &Path) -> Option<PathBuf> {
+    table
+        .split(|byte| *byte == b'\n')
+        .filter_map(|line| {
+            let fields: Vec<_> = line.split(|byte| *byte == b' ').collect();
+            let separator = fields.iter().position(|field| *field == b"-")?;
+            if separator < 6 {
+                return None;
+            }
+            let root = mount_path(fields[4])?;
+            let source = mount_path(fields.get(separator + 2)?)?;
+            (root.is_absolute() && path.starts_with(&root)).then_some((root, source))
+        })
+        .max_by_key(|(root, _)| root.as_os_str().len())
+        .map(|(_, source)| source)
+        .filter(|source| source.starts_with("/dev"))
+}
+
 fn mount_path(encoded: &[u8]) -> Option<PathBuf> {
     let mut decoded = Vec::with_capacity(encoded.len());
     let mut bytes = encoded.iter().copied();

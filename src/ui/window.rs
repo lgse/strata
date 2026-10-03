@@ -1679,7 +1679,14 @@ impl SidebarState {
                 );
             }) as Rc<dyn Fn()>
         });
-        self.append_device_chrome(&row, actions, on_crypto, on_release, None, None);
+        self.append_device_chrome(
+            &row,
+            actions,
+            on_crypto,
+            on_release,
+            None,
+            Some(drive_dialogs::PropertiesTarget::Mount(mount)),
+        );
         Some(ids)
     }
 
@@ -2175,7 +2182,7 @@ impl SidebarState {
             on_crypto,
             on_release,
             Some(on_mount),
-            Some(&volume),
+            Some(drive_dialogs::PropertiesTarget::Volume(volume)),
         );
         Some(ids)
     }
@@ -2488,7 +2495,7 @@ impl SidebarState {
         on_crypto: Option<Rc<dyn Fn()>>,
         on_release: Option<Rc<dyn Fn()>>,
         on_mount: Option<Rc<dyn Fn()>>,
-        volume: Option<&gio::Volume>,
+        properties: Option<drive_dialogs::PropertiesTarget>,
     ) {
         let lock = actions
             .encrypted
@@ -2498,13 +2505,9 @@ impl SidebarState {
             .release
             .zip(on_release.clone())
             .map(|(action, on_release)| sidebar_eject_button(action, move || on_release()));
-        if actions.encrypted.is_some()
-            || actions.release.is_some()
-            || drive_ops::is_eligible(volume)
-            || drive_ops::show_mount(volume)
-        {
+        if actions.encrypted.is_some() || actions.release.is_some() || properties.is_some() {
             attach_device_actions_menu(
-                row, &self.view, actions, on_crypto, on_release, on_mount, volume,
+                row, &self.view, actions, on_crypto, on_release, on_mount, properties,
             );
             self.widget
                 .append(&sidebar_device_row(row, lock.as_ref(), eject.as_ref()));
@@ -3736,13 +3739,12 @@ fn attach_device_actions_menu(
     on_crypto: Option<Rc<dyn Fn()>>,
     on_release: Option<Rc<dyn Fn()>>,
     on_mount: Option<Rc<dyn Fn()>>,
-    volume: Option<&gio::Volume>,
+    properties: Option<drive_dialogs::PropertiesTarget>,
 ) {
-    if actions.encrypted.is_none()
-        && actions.release.is_none()
-        && !drive_ops::is_eligible(volume)
-        && !drive_ops::show_mount(volume)
-    {
+    let volume = properties
+        .as_ref()
+        .and_then(drive_dialogs::PropertiesTarget::volume);
+    if actions.encrypted.is_none() && actions.release.is_none() && properties.is_none() {
         return;
     }
     let menu = super::accessibility::menu_box();
@@ -3780,7 +3782,7 @@ fn attach_device_actions_menu(
             on_release();
         });
     }
-    if drive_ops::show_mount(volume)
+    if drive_ops::show_mount(volume.as_ref())
         && let Some(on_mount) = on_mount
     {
         let option = sidebar_context_option(crate::assets::icons::HARD_DRIVE, "Mount", false);
@@ -3793,8 +3795,8 @@ fn attach_device_actions_menu(
             on_mount();
         });
     }
-    if drive_ops::is_eligible(volume) {
-        if let Some(volume) = volume {
+    if drive_ops::is_eligible(volume.as_ref()) {
+        if let Some(volume) = &volume {
             let format_volume = volume.clone();
             let option = sidebar_context_option(crate::assets::icons::SHREDDER, "Format…", true);
             menu.append(&option);
@@ -3811,7 +3813,7 @@ fn attach_device_actions_menu(
                 );
             });
         }
-        if let Some(volume) = volume {
+        if let Some(volume) = &volume {
             let rename_volume = volume.clone();
             let option = sidebar_context_option(crate::assets::icons::PENCIL, "Rename…", false);
             menu.append(&option);
@@ -3828,29 +3830,27 @@ fn attach_device_actions_menu(
                 );
             });
         }
-        // Properties needs a mount for usage details
-        if let Some(volume) = volume.filter(|volume| volume.get_mount().is_some()) {
-            let properties_volume = volume.clone();
-            let on_release = on_release.clone();
-            let option = sidebar_context_option(crate::assets::icons::INFO, "Properties", false);
-            menu.append(&option);
-            let properties_popover = popover.downgrade();
-            let properties_view = view.clone();
-            let parent = row.clone().upcast::<gtk::Widget>();
-            option.connect_clicked(move |_| {
-                drive_dialogs::open_from_sidebar(
-                    &properties_view,
-                    properties_popover.upgrade().as_ref(),
-                    || {
-                        drive_dialogs::show_drive_properties(
-                            &parent,
-                            &properties_volume,
-                            on_release.clone(),
-                        );
-                    },
-                );
-            });
-        }
+    }
+    if let Some(properties_target) = properties {
+        let on_release = on_release.clone();
+        let option = sidebar_context_option(crate::assets::icons::INFO, "Properties", false);
+        menu.append(&option);
+        let properties_popover = popover.downgrade();
+        let properties_view = view.clone();
+        let parent = row.clone().upcast::<gtk::Widget>();
+        option.connect_clicked(move |_| {
+            drive_dialogs::open_from_sidebar(
+                &properties_view,
+                properties_popover.upgrade().as_ref(),
+                || {
+                    drive_dialogs::show_drive_properties(
+                        &parent,
+                        &properties_target,
+                        on_release.clone(),
+                    );
+                },
+            );
+        });
     }
     let context = gtk::GestureClick::new();
     context.set_button(3);
