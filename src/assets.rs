@@ -88,6 +88,8 @@ pub mod icons {
     pub const SETTINGS: &str = "strata-settings";
     pub const SETTINGS_2: &str = "strata-settings-2";
     pub const REFRESH: &str = "strata-refresh";
+    pub const ROTATE_CCW: &str = "strata-rotate-ccw";
+    pub const ROTATE_CW: &str = "strata-rotate-cw";
     pub const SHREDDER: &str = "strata-shredder";
     pub const SLIDERS: &str = "strata-sliders-horizontal";
     pub const TERMINAL: &str = "strata-terminal";

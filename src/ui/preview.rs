@@ -31,6 +31,7 @@ mod media_layout;
 #[cfg(test)]
 mod pdf_ranges_tests;
 mod pdf_text;
+mod rotation;
 mod session;
 
 pub(in crate::ui) const DEFAULT_WIDTH: i32 = 520;
@@ -161,6 +162,7 @@ struct PreviewState {
     password_entry: RefCell<Option<gtk::PasswordEntry>>,
     media: RefCell<Option<gtk::MediaStream>>,
     media_signals: RefCell<Vec<glib::SignalHandlerId>>,
+    rotated_image: RefCell<Option<rotation::RotatedPaintable>>,
     media_volume_slider: RefCell<Option<gtk::Scale>>,
     media_volume_icon: RefCell<Option<gtk::Image>>,
     media_toggle_mute: RefCell<Option<Rc<dyn Fn()>>>,
@@ -356,6 +358,7 @@ impl PreviewDrawer {
             password_entry: RefCell::new(None),
             media: RefCell::new(None),
             media_signals: RefCell::new(Vec::new()),
+            rotated_image: RefCell::new(None),
             media_volume_slider: RefCell::new(None),
             media_volume_icon: RefCell::new(None),
             media_toggle_mute: RefCell::new(None),
@@ -1363,7 +1366,15 @@ impl PreviewState {
                 let bytes = glib::Bytes::from_owned(png);
                 match gtk::gdk::Texture::from_bytes(&bytes) {
                     Ok(texture) => {
-                        let picture = gtk::Picture::for_paintable(&texture);
+                        let rotatable = !model && !cover;
+                        let paintable = if rotatable {
+                            let rotated = rotation::RotatedPaintable::new(&texture);
+                            self.rotated_image.replace(Some(rotated.clone()));
+                            rotated.upcast::<gtk::gdk::Paintable>()
+                        } else {
+                            texture.clone().upcast::<gtk::gdk::Paintable>()
+                        };
+                        let picture = gtk::Picture::for_paintable(&paintable);
                         if model {
                             super::accessibility::set_label(&picture, "Model preview");
                         } else if cover {
@@ -1376,8 +1387,11 @@ impl PreviewState {
                         picture.set_vexpand(true);
                         picture.set_cursor_from_name(Some("grab"));
                         install_preview_drag(&picture, self);
-                        self.content
-                            .append(&media_layout::section(&picture, &texture));
+                        let section = media_layout::section(&picture, &paintable);
+                        if rotatable {
+                            self.append_image_rotation_controls(&section);
+                        }
+                        self.content.append(&section);
                     }
                     Err(error) => self.show_message("Preview unavailable", &error.to_string()),
                 }
@@ -1718,6 +1732,37 @@ impl PreviewState {
         picture.add_controller(click);
 
         (overlay, center_play)
+    }
+
+    fn append_image_rotation_controls(self: &Rc<Self>, section: &gtk::Box) {
+        let bar = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        bar.add_css_class("preview-media-bar");
+        bar.set_halign(gtk::Align::Center);
+        for (icon, label, clockwise) in [
+            (crate::assets::icons::ROTATE_CCW, "Rotate left", false),
+            (crate::assets::icons::ROTATE_CW, "Rotate right", true),
+        ] {
+            let button = gtk::Button::new();
+            button.add_css_class("preview-media-button");
+            button.set_child(Some(&crate::assets::primary_icon(icon, 18)));
+            button.set_tooltip_text(Some(label));
+            button.update_property(&[gtk::accessible::Property::Label(label)]);
+            let weak = Rc::downgrade(self);
+            button.connect_clicked(move |_| {
+                let Some(state) = weak.upgrade() else {
+                    return;
+                };
+                if let Some(rotated) = state.rotated_image.borrow().as_ref() {
+                    if clockwise {
+                        rotated.rotate_cw();
+                    } else {
+                        rotated.rotate_ccw();
+                    }
+                }
+            });
+            bar.append(&button);
+        }
+        section.append(&bar);
     }
 
     fn render_pdf_viewer(
@@ -2488,6 +2533,7 @@ impl PreviewState {
         self.document_view_button.set_visible(false);
         self.document_preview.borrow_mut().take();
         self.stop_media();
+        self.rotated_image.borrow_mut().take();
         self.media_toggle_mute.replace(None);
         self.media_volume_slider.replace(None);
         self.media_volume_icon.replace(None);

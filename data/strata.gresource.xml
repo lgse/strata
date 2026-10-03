@@ -77,6 +77,8 @@
     <file>icons/scalable/actions/strata-shredder.svg</file>
     <file>icons/scalable/actions/strata-sliders-horizontal.svg</file>
     <file>icons/scalable/actions/strata-refresh.svg</file>
+    <file>icons/scalable/actions/strata-rotate-ccw.svg</file>
+    <file>icons/scalable/actions/strata-rotate-cw.svg</file>
     <file>icons/scalable/actions/strata-terminal.svg</file>
     <file>icons/scalable/actions/strata-trash.svg</file>
     <file>icons/scalable/actions/strata-triangle-alert.svg</file>
