@@ -536,7 +536,7 @@ impl ChooserState {
             .filter(|(previous, path)| previous == url && path.is_file())
             .map(|(_, path)| path.clone());
         if let Some(path) = cached {
-            self.complete_remote(path);
+            self.complete_download(path);
             return;
         }
         self.downloaded_file.take();
@@ -588,7 +588,7 @@ impl ChooserState {
                         state
                             .downloaded_file
                             .replace(Some((url.clone(), path.clone())));
-                        state.complete_remote(path);
+                        state.complete_download(path);
                         break glib::ControlFlow::Break;
                     }
                     Ok(RemoteDownload::Failed(message)) => {
@@ -963,7 +963,7 @@ impl ChooserState {
                 }
                 Ok(entry) if state.view.browser().allows_entry(&entry) => {
                     match entry.location.native_path() {
-                        Some(path) => state.complete_remote(path.to_path_buf()),
+                        Some(path) => state.finish_remote(path.to_path_buf()),
                         None => state.show_error("Choose an existing, accessible file"),
                     }
                 }

@@ -119,7 +119,7 @@ fn remote_image_names_are_repaired_or_checked_by_the_original_filename_filter() 
                     received.replace(Some(value));
                 })
                 .expect("chooser");
-                state.complete_remote(path.clone());
+                state.complete_download(path.clone());
                 assert!(
                     visible_modal_layer(&state.window).is_none(),
                     "{name}: {pattern:?}"
@@ -174,10 +174,10 @@ fn already_png_bytes_are_renamed_without_conversion_and_html_is_rejected() {
             .expect("chooser");
             let invalid = root.path().join("error.png");
             std::fs::write(&invalid, b"<html>not an image</html>").expect("HTML");
-            state.complete_remote(invalid);
+            state.complete_download(invalid);
             assert!(state.error.is_visible());
             assert!(result.borrow().is_none());
-            state.complete_remote(path);
+            state.complete_download(path);
             let selected = result
                 .borrow_mut()
                 .take()
@@ -288,6 +288,60 @@ fn cancelled_image_worker_cannot_complete_a_replacement_and_failures_allow_retry
             assert!(state.accept_button.is_sensitive());
             assert!(!state.download_in_progress());
             state.cancel();
+        },
+    );
+}
+
+#[test]
+fn typed_local_name_opens_the_file_without_repairing_its_extension() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::image_conversion::typed_local_name_opens_the_file_without_repairing_its_extension",
+        || {
+            crate::ui::prepare_portal_ui();
+            let root = tempfile::tempdir().expect("fixture");
+            let typed = root.path().join("photo.jfif");
+            let neighbour = root.path().join("photo.jpg");
+            image::DynamicImage::new_rgb8(1, 1)
+                .save_with_format(&typed, image::ImageFormat::Jpeg)
+                .expect("JPEG fixture");
+            std::fs::write(&neighbour, "unrelated").expect("neighbour fixture");
+            let jpeg = std::fs::read(&typed).expect("JPEG bytes");
+            let result = Rc::new(RefCell::new(None));
+            let received = result.clone();
+            let state = build_chooser(
+                request(root.path().to_owned()),
+                Arc::new(AtomicBool::new(false)),
+                move |value| {
+                    received.replace(Some(value));
+                },
+            )
+            .expect("chooser");
+            wait_until(|| {
+                state
+                    .view
+                    .browser()
+                    .column_snapshot(0)
+                    .is_some_and(|column| !column.loading)
+            });
+            let filename = state.filename.as_ref().expect("open name field");
+            filename.set_text("photo.jfif");
+            filename.emit_activate();
+            wait_until(|| result.borrow().is_some());
+            let selected = result
+                .borrow_mut()
+                .take()
+                .expect("result")
+                .expect("accepted");
+            let output = gio::File::for_uri(&selected.uris()[0].to_string())
+                .path()
+                .expect("local output");
+            assert_eq!(output, typed);
+            assert_eq!(std::fs::read(&typed).expect("typed bytes"), jpeg);
+            assert_eq!(
+                std::fs::read_to_string(&neighbour).expect("neighbour retained"),
+                "unrelated"
+            );
+            assert!(!state.download_in_progress());
         },
     );
 }

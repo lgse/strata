@@ -39,7 +39,7 @@ impl ChooserState {
             .find(|candidate| matches(candidate))
     }
 
-    pub(super) fn complete_remote(self: &Rc<Self>, path: PathBuf) {
+    pub(super) fn complete_download(self: &Rc<Self>, path: PathBuf) {
         self.accept_button.set_sensitive(true);
         let Some(kind) = image_conversion::detect(&path) else {
             // A PNG-looking filename alone must not pass a PNG-only filter.
@@ -57,7 +57,7 @@ impl ChooserState {
         };
         if let Some(target) = self.image_target(&path, kind) {
             if path != target
-                && let Err(error) = std::fs::rename(&path, &target)
+                && let Err(error) = self.rename_download(&path, &target)
             {
                 self.show_error(&format!("Could not name the downloaded image: {error}"));
                 return;
@@ -79,6 +79,17 @@ impl ChooserState {
                 state.confirm_image_conversion(path.clone(), target.clone(), kind);
             },
         );
+    }
+
+    /// Renames a download to its canonical extension, keeping the reuse cache in step.
+    fn rename_download(&self, path: &Path, target: &Path) -> Result<(), std::io::Error> {
+        std::fs::rename(path, target)?;
+        if let Some((_, cached)) = self.downloaded_file.borrow_mut().as_mut()
+            && cached.as_path() == path
+        {
+            *cached = target.to_path_buf();
+        }
+        Ok(())
     }
 
     pub(super) fn image_job<T: Send + 'static>(
