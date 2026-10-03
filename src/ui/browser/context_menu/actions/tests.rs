@@ -1,14 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use crate::ui::browser::context_menu::tests::wait_until;
 use crate::ui::browser::{BrowserView, PeekBehavior, SendToMenuTestOverride};
-
-fn settle() {
-    let main_loop = gtk::glib::MainLoop::new(None, false);
-    let stop = main_loop.clone();
-    gtk::glib::timeout_add_local_once(std::time::Duration::from_millis(80), move || stop.quit());
-    main_loop.run();
-}
 
 fn has_visible_label(widget: &gtk::Widget, text: &str) -> bool {
     if let Some(label) = widget.downcast_ref::<gtk::Label>()
@@ -46,7 +40,7 @@ fn send_to_updates_an_open_menu_and_reopens_without_navigation() {
                 .build();
             window.present();
             view.navigate_location(Location::local(directory.path()));
-            settle();
+            wait_until(|| view.browser().entry_at(0, 0).is_some());
             let entry = view.browser().entry_at(0, 0).expect("source entry");
             let before = gtk::Box::new(gtk::Orientation::Vertical, 0);
             let after = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -82,8 +76,8 @@ fn send_to_updates_an_open_menu_and_reopens_without_navigation() {
                 Some(directory.path().to_owned()),
             );
             menu.show(&view.widget(), 400.0, 300.0);
-            settle();
             let popover = menu.popover();
+            wait_until(|| popover.is_mapped());
             assert!(!has_visible_label(popover.upcast_ref(), "Send to…"));
             let targets = vec![crate::ui::RemovableDestination {
                 id: "volume:fixture-usb".into(),
@@ -92,20 +86,20 @@ fn send_to_updates_an_open_menu_and_reopens_without_navigation() {
             }];
             update(targets.clone());
             menu.schedule_removable_refresh();
-            settle();
+            wait_until(|| has_visible_label(popover.upcast_ref(), "Send to…"));
             assert!(
                 has_visible_label(popover.upcast_ref(), "Send to…"),
                 "hot-plug updates the already open menu"
             );
             update(Vec::new());
             menu.schedule_removable_refresh();
-            settle();
+            wait_until(|| !has_visible_label(popover.upcast_ref(), "Send to…"));
             assert!(
                 !has_visible_label(popover.upcast_ref(), "Send to…"),
                 "unplug removes the action without closing the menu"
             );
             popover.popdown();
-            settle();
+            wait_until(|| !popover.is_mapped());
             update(targets);
             menu.rebuild_for_selection(
                 &view.state,
@@ -113,7 +107,7 @@ fn send_to_updates_an_open_menu_and_reopens_without_navigation() {
                 Some(directory.path().to_owned()),
             );
             menu.show(&view.widget(), 400.0, 300.0);
-            settle();
+            wait_until(|| popover.is_mapped());
             assert!(
                 has_visible_label(popover.upcast_ref(), "Send to…"),
                 "the same cached menu sees the new drive on reopening"
