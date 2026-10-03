@@ -129,7 +129,7 @@ fn format_feedback_reports_success_failure_and_authorization_cancellation() {
                             overlay.upcast_ref(),
                             "The drive was formatted successfully."
                         ));
-                        assert!(has_label(
+                        assert!(!has_label(
                             overlay.upcast_ref(),
                             "Click the drive in the sidebar to mount it."
                         ));

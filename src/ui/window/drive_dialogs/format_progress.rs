@@ -103,9 +103,7 @@ impl FormatProgress {
                 self.card
                     .info
                     .set_text("The drive was formatted successfully.");
-                self.card
-                    .meta
-                    .set_text("Click the drive in the sidebar to mount it.");
+                self.card.meta.set_text("");
                 self.card.progress.set_fraction(1.0);
                 self.card.cancel.set_visible(true);
                 self.card
