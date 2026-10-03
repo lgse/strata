@@ -401,8 +401,9 @@ packet crosses into an unsandboxed media parser.
 A media worker uses separate FFmpeg video and audio processes when both tracks
 exist. Each decodes only its selected track. This avoids cross-output pipe
 deadlocks with sparse/VFR video or attached cover art. Both processes remain in
-one sandbox, with access to the same single input. Cover art is decoded once in
-software and retained alongside audio; audio-only inputs need no video decoder.
+one sandbox, with access to the same single input. Cover art in a video preview
+is decoded once in software and retained alongside audio; audio files play
+through an audio-only session that never decodes artwork into frames.
 Video timing is normalized **inside the sandbox** to 30 fps, including holding
 VFR/GIF frames. Audio is 48 kHz, stereo, interleaved signed 16-bit little-endian
 PCM. Resampling preserves gaps/offsets relative to the common source timeline.
@@ -429,6 +430,45 @@ position; the previous texture remains visible. Changes that would not materiall
 change the fitted frame size do not restart decoding. A paused resize/seek stays
 paused. Mute/volume preferences initialize and update every player's raw-audio
 output live; backend preference changes apply on the next preview request.
+
+## Audio previews
+
+Audio files open in a now-playing view with artwork, tags, a live spectrum, and a
+waveform scrubber. Each part is sandboxed or derived from already-validated data:
+
+- **Playback** uses the incremental media path with the `preview-audio`
+  operation, which drops any video or attached-picture stream. Resizing the pane
+  therefore never restarts audio.
+- **Artwork** comes from a separate `audio-cover` operation that maps only
+  attached-picture streams and scales them to at most 800×800 inside the sandbox.
+  The result is validated like any preview PNG. Without embedded art, the first of
+  `cover`, `folder`, `front`, `album`, or `albumart` (`.jpg`, `.jpeg`, `.png`,
+  `.webp`) in the same local folder is decoded by the pooled image-preview
+  helper. Remote files use embedded art only.
+- **Tags** come from an `audio-tags` `ffprobe` operation limited to title, artist,
+  album, album artist, and track number/total, bounded like media metadata. The
+  parent removes control and bidirectional-override characters, collapses
+  whitespace, caps each value at 200 characters, and shows them as plain text.
+- **The spectrum** is computed in the application from the PCM it already plays,
+  aligned to the audio sink's clock rather than to the decoder, so no extra
+  parser or GStreamer analysis element sees the stream.
+- **The waveform overview** starts only after a track has stayed selected for
+  450 ms, so fast keyboard browsing never decodes. One `audio-peaks` operation
+  runs at a time with niceness 10. It streams `STRPEAK1` records: a header with
+  1,024 buckets and the duration, then in-order runs of at most 256 one-byte RMS
+  levels and an explicit empty end run. The parent rejects gaps, oversized or
+  out-of-range runs, trailing output, and helper failure. Changing tracks cancels
+  the decode, a 90-second limit bounds it, and finished overviews are cached in
+  memory for 64 tracks. Unknown durations, failures, and timeouts keep the plain
+  progress line.
+
+Audio previews always start from the beginning, like a music player, and do not
+remember where they stopped. Video previews reopen where they were closed, unless
+they had played less than a second or reached the end.
+
+Tags and artwork are cached in memory for the last 12 tracks. Consecutive audio
+files reuse one view, so artwork crossfades and the spectrum carries its motion
+into the next track.
 
 ## Wire validation and budgets
 

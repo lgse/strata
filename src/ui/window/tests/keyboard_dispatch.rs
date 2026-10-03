@@ -12,6 +12,7 @@ use super::super::*;
 use crate::services::{
     LoadHandle, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
 };
+mod audio_tracks;
 mod context_menus;
 mod escape_precedence;
 mod file_commands;

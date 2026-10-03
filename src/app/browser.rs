@@ -1843,6 +1843,15 @@ impl Browser {
         self.state.borrow().column_entry_counts(depth)
     }
 
+    pub fn with_column_entries<R>(
+        &self,
+        depth: usize,
+        read: impl FnOnce(&[FileEntry]) -> R,
+    ) -> Option<R> {
+        let state = self.state.borrow();
+        Some(read(&state.columns.get(depth)?.entries))
+    }
+
     pub fn with_entries<R>(
         &self,
         depth: usize,

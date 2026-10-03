@@ -2641,10 +2641,50 @@ paned > separator {
   outline-offset: 1px;
 }
 
-.preview-soundcloud-waveform {
-  background: transparent;
-  padding: 8px 12px;
-  min-height: 120px;
+.preview-audio-eyebrow {
+  color: @theme_dim_text;
+  font-size: 0.72em;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.preview-audio-title {
+  color: @theme_text;
+  font-size: 1.85em;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.preview-audio-artist {
+  color: @theme_accent;
+  font-weight: 700;
+}
+
+.preview-audio-album {
+  color: @theme_dim_text;
+}
+
+.preview-audio-time {
+  min-width: 3.4em;
+}
+
+.preview-media-time.preview-audio-time-target {
+  color: @theme_accent;
+}
+
+.preview-media-center.preview-audio-play {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 6px;
+}
+
+.preview-audio-scrubber {
+  border-radius: 4px;
+}
+
+.preview-audio-scrubber:focus-visible {
+  outline: 2px solid alpha(@theme_accent, 0.52);
+  outline-offset: 2px;
 }
 
 .preview-media-bar {

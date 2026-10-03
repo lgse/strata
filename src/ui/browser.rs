@@ -1695,6 +1695,78 @@ impl BrowserView {
         (!order.is_empty()).then_some(order)
     }
 
+    /// Entries of one pane in display order that satisfy `keep`.
+    pub(crate) fn displayed_entries_matching(
+        &self,
+        depth: usize,
+        keep: impl Fn(&FileEntry) -> bool,
+    ) -> Vec<FileEntry> {
+        let order = self.displayed_order(depth);
+        self.state
+            .browser
+            .with_column_entries(depth, |entries| match order {
+                Some(order) => order
+                    .iter()
+                    .filter_map(|position| entries.get(*position))
+                    .filter(|entry| keep(entry))
+                    .cloned()
+                    .collect(),
+                None => entries
+                    .iter()
+                    .filter(|entry| keep(entry))
+                    .cloned()
+                    .collect(),
+            })
+            .unwrap_or_default()
+    }
+
+    /// Moves to `location` as a keyboard step would, so the preview follows:
+    /// selecting it, or in 10xer mode moving only the cursor. A key press passes
+    /// its direction so the cursor ring and scrolling behave like **j** / **k**;
+    /// a pointer press leaves pointer navigation in place.
+    pub(crate) fn step_to(&self, depth: usize, location: &Location, key: Option<i32>) -> bool {
+        let Some(position) = self
+            .state
+            .browser
+            .with_column_entries(depth, |entries| {
+                entries.iter().position(|entry| entry.location == *location)
+            })
+            .flatten()
+        else {
+            return false;
+        };
+        if key.is_some() {
+            self.keyboard_navigation();
+        }
+        let collection = self
+            .state
+            .overlay
+            .root()
+            .and_then(|root| root.focus())
+            .as_ref()
+            .and_then(super::scrolling::focused_collection);
+        if crate::ui::preferences::PreferenceManager::shared().tenxer_mode() {
+            let order = self.displayed_order(depth);
+            self.state
+                .browser
+                .place_cursor(depth, position, order.as_deref());
+        } else {
+            self.state.browser.select(depth, position);
+        }
+        self.state.mirror_focused_folder(depth, Some(position));
+        if let (Some(direction), Some((view, scroll))) = (key, collection) {
+            let position = self.cursor_view_position(&view);
+            super::scrolling::reveal_cursor(
+                &view,
+                &scroll,
+                direction,
+                super::scrolling::CursorMotion::Step,
+                position,
+            );
+        }
+        true
+    }
+
     fn focused_listing_depth(&self) -> Option<usize> {
         if self.view_mode() == BrowserMode::Columns {
             self.state

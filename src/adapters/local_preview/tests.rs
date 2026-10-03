@@ -591,6 +591,7 @@ fn active_media_requests_are_never_retained_by_the_preview_cache() {
             size: MediaPreviewSize::new(520, 800),
             backend: MediaPreviewBackend::Software,
             input_owner: None,
+            audio_only: false,
         },
     };
     cache.insert(key.clone(), content.clone());
@@ -622,6 +623,7 @@ fn preview_content_size_computes_accurately() {
                 size: MediaPreviewSize::new(520, 800),
                 backend: MediaPreviewBackend::Software,
                 input_owner: None,
+                audio_only: false,
             },
         }),
         0

@@ -21,6 +21,7 @@ fn test_source(path: &str) -> SandboxedMedia {
         size: MediaPreviewSize::new(320, 240),
         backend: crate::sandbox::MediaPreviewBackend::Software,
         input_owner: None,
+        audio_only: false,
     }
 }
 
@@ -98,64 +99,63 @@ fn reopening_resumes_where_the_preview_closed() {
     media.imp().position.set(RESTORE_MIN_US);
     media.close();
     assert_eq!(recall_media_position(Path::new("/ended")), None);
+
+    // Songs always start from the beginning and leave nothing to resume.
+    remember_media_position("/song".into(), media::timestamp(900));
+    let media = DecodedMedia::new(SandboxedMedia {
+        audio_only: true,
+        ..test_source("/song")
+    });
+    let calls = Rc::new(RefCell::new(Vec::new()));
+    media.imp().loader.replace(Some(fake_loader(&calls)));
+    media.upcast_ref::<gtk::MediaStream>().play();
+    drive_until(&media, &calls, 1);
+    for _ in 0..20 {
+        media.tick().expect("tick succeeds");
+    }
+    assert_eq!(*calls.borrow(), vec![0]);
+    media.imp().position.set(media::timestamp(600));
+    media.close();
+    assert_eq!(recall_media_position(Path::new("/song")), None);
+}
+
+fn pcm(values: impl IntoIterator<Item = i16>) -> Vec<u8> {
+    values
+        .into_iter()
+        .flat_map(|value| {
+            let bytes = value.to_le_bytes();
+            [bytes[0], bytes[1], bytes[0], bytes[1]]
+        })
+        .collect()
 }
 
 #[test]
-fn silent_samples_produce_minimal_bands() {
-    let silent = vec![0u8; 4096];
-    let bands = compute_spectrum_bands(&silent);
-    assert_eq!(bands.len(), 24);
-    for &b in &bands {
-        assert!(b < 0.05, "Silence should produce minimal energy, got {b}");
-    }
-}
+fn played_audio_window_ends_at_the_playhead_not_the_decoder() {
+    let mut history = PcmHistory::default();
+    history.push(&pcm((0..8).map(|value| value * 4096)));
+    let mut window = [1.0; 4];
 
-#[test]
-fn low_frequency_tone_excites_bass_bands() {
-    // Generate a 100 Hz sine wave at 48 kHz
-    let mut samples = Vec::with_capacity(4096);
-    for k in 0..1024 {
-        let t = k as f32 / 48000.0;
-        let val = (2.0 * std::f32::consts::PI * 100.0 * t).sin();
-        let s = (val * 30000.0) as i16;
-        samples.extend_from_slice(&s.to_le_bytes()); // Left
-        samples.extend_from_slice(&s.to_le_bytes()); // Right
-    }
-    let bands = compute_spectrum_bands(&samples);
-    // 100 Hz falls in the lower log bands (around bands 3..7)
-    let bass_energy: f32 = bands[2..8].iter().copied().fold(0.0, f32::max);
-    let treble_energy: f32 = bands[18..24].iter().copied().fold(0.0, f32::max);
-    assert!(
-        bass_energy > 0.4,
-        "100 Hz tone should excite lower bands, got {bass_energy}"
-    );
-    assert!(
-        bass_energy > treble_energy,
-        "Bass energy ({bass_energy}) should exceed treble energy ({treble_energy})"
+    assert!(history.window_ending_at(6, &mut window));
+    assert_eq!(window, [0.25, 0.375, 0.5, 0.625]);
+
+    assert!(history.window_ending_at(2, &mut window));
+    assert_eq!(window, [0.0, 0.0, 0.0, 0.125]);
+
+    assert!(history.window_ending_at(100, &mut window));
+    assert_eq!(
+        window[3], 0.875,
+        "a lagging sink never reads past decoded audio"
     );
 }
 
 #[test]
-fn high_frequency_tone_excites_treble_bands() {
-    // Generate a 6000 Hz sine wave at 48 kHz
-    let mut samples = Vec::with_capacity(4096);
-    for k in 0..1024 {
-        let t = k as f32 / 48000.0;
-        let val = (2.0 * std::f32::consts::PI * 6000.0 * t).sin();
-        let s = (val * 30000.0) as i16;
-        samples.extend_from_slice(&s.to_le_bytes()); // Left
-        samples.extend_from_slice(&s.to_le_bytes()); // Right
-    }
-    let bands = compute_spectrum_bands(&samples);
-    // 6000 Hz falls in the upper log bands (around bands 18..22)
-    let treble_energy: f32 = bands[18..23].iter().copied().fold(0.0, f32::max);
-    let sub_bass_energy: f32 = bands[0..4].iter().copied().fold(0.0, f32::max);
-    assert!(
-        treble_energy > 0.4,
-        "6000 Hz tone should excite treble bands, got {treble_energy}"
-    );
-    assert!(
-        treble_energy > sub_bass_energy,
-        "Treble energy ({treble_energy}) should exceed sub-bass energy ({sub_bass_energy})"
-    );
+fn played_audio_history_drops_samples_older_than_its_window() {
+    let mut history = PcmHistory::default();
+    history.push(&pcm(std::iter::repeat_n(1, HISTORY_SAMPLES + 10)));
+    let mut window = [0.0; 4];
+    assert!(!history.window_ending_at(5, &mut window));
+    assert!(history.window_ending_at(HISTORY_SAMPLES as u64 + 10, &mut window));
+
+    history.clear();
+    assert!(!history.window_ending_at(1, &mut window));
 }

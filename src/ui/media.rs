@@ -99,8 +99,7 @@ mod imp {
         pub(super) recoveries: Cell<u32>,
         pub(super) audio_stuck_since: Cell<Option<Instant>>,
         pub(super) restore: Cell<Option<u64>>,
-        pub(super) spectrum: RefCell<[f32; 24]>,
-        pub(super) spectrum_requested: Cell<bool>,
+        pub(super) history: RefCell<Option<PcmHistory>>,
     }
 
     #[glib::object_subclass]
@@ -225,18 +224,38 @@ glib::wrapper! {
 }
 
 impl DecodedMedia {
-    pub(crate) fn spectrum(&self) -> [f32; 24] {
-        *self.imp().spectrum.borrow()
+    /// Keeps recently decoded PCM so `played_samples` can follow the sink.
+    pub(crate) fn retain_played_audio(&self) {
+        self.imp()
+            .history
+            .borrow_mut()
+            .get_or_insert_with(PcmHistory::default);
     }
 
-    pub(crate) fn enable_spectrum(&self) {
-        self.imp().spectrum_requested.set(true);
+    /// Fills `window` with the mono samples that ended at the audible playhead.
+    pub(crate) fn played_samples(&self, window: &mut [f32]) -> bool {
+        let imp = self.imp();
+        if !self.is_playing() || !imp.first_frame.get() {
+            return false;
+        }
+        let elapsed = imp
+            .clock
+            .get()
+            .map_or(0, |clock| clock.elapsed().as_micros() as u64);
+        let played = (imp.clock_base.get() + elapsed) * media::SAMPLE_RATE / 1_000_000;
+        imp.history
+            .borrow()
+            .as_ref()
+            .is_some_and(|history| history.window_ending_at(played, window))
     }
 
     pub fn new(source: SandboxedMedia) -> Self {
         let obj: Self = glib::Object::new();
-        let restore =
-            recall_media_position(&source.path).filter(|&position| position > RESTORE_MIN_US);
+        // Songs start from the top like in a music player; videos reopen where they closed.
+        let restore = (!source.audio_only)
+            .then(|| recall_media_position(&source.path))
+            .flatten()
+            .filter(|&position| position > RESTORE_MIN_US);
         obj.imp().source.replace(Some(source));
         if let Some(position) = restore {
             obj.imp().restore.set(Some(position));
@@ -278,7 +297,10 @@ impl DecodedMedia {
         if let Some(source) = imp.source.borrow().as_ref() {
             let position = imp.position.get();
             let duration = self.duration().max(0) as u64;
-            if position > RESTORE_MIN_US && (duration == 0 || position < duration) {
+            if !source.audio_only
+                && position > RESTORE_MIN_US
+                && (duration == 0 || position < duration)
+            {
                 remember_media_position(source.path.clone(), position);
             } else {
                 forget_media_position(&source.path);
@@ -291,6 +313,7 @@ impl DecodedMedia {
         imp.audio.borrow_mut().take();
         imp.frames.borrow_mut().clear();
         imp.texture.borrow_mut().take();
+        imp.history.borrow_mut().take();
         imp.source.borrow_mut().take();
         imp.restart.set(None);
         imp.seek_pending.set(None);
@@ -320,7 +343,9 @@ impl DecodedMedia {
         }
         imp.audio.borrow_mut().take();
         imp.frames.borrow_mut().clear();
-        imp.spectrum.replace([0.0; 24]);
+        if let Some(history) = imp.history.borrow_mut().as_mut() {
+            history.clear();
+        }
         imp.restart.set(Some(tick));
         imp.starting.set(Some(Instant::now()));
         imp.position.set(media::timestamp(tick));
@@ -561,8 +586,8 @@ impl DecodedMedia {
                             .samples
                             .truncate(samples_left.min(media::AUDIO_BYTES as u64 / 4) as usize * 4);
                         if !frame.samples.is_empty() {
-                            if imp.spectrum_requested.get() {
-                                imp.spectrum.replace(compute_spectrum_bands(&frame.samples));
+                            if let Some(history) = imp.history.borrow_mut().as_mut() {
+                                history.push(&frame.samples);
                             }
                             audio.push(
                                 std::mem::take(&mut frame.samples),
@@ -748,105 +773,49 @@ impl DecodedMedia {
     }
 }
 
-fn compute_spectrum_bands(samples: &[u8]) -> [f32; 24] {
-    let mut bands = [0.0f32; 24];
-    let num_samples = samples.len() / 4;
-    if num_samples < 16 {
-        return bands;
+const HISTORY_SAMPLES: usize = 48_000;
+
+/// Mono PCM indexed by samples since the last restart, matching the sink clock.
+#[derive(Default)]
+pub(crate) struct PcmHistory {
+    samples: VecDeque<f32>,
+    end: u64,
+}
+
+impl PcmHistory {
+    fn clear(&mut self) {
+        self.samples.clear();
+        self.end = 0;
     }
 
-    const CHUNK: usize = 1024;
-    let mut re = [0.0f32; CHUNK];
-    let mut im = [0.0f32; CHUNK];
-
-    let take = num_samples.min(CHUNK);
-    for k in 0..take {
-        let left = i16::from_le_bytes([samples[k * 4], samples[k * 4 + 1]]) as f32 / 32768.0;
-        let right = i16::from_le_bytes([samples[k * 4 + 2], samples[k * 4 + 3]]) as f32 / 32768.0;
-        let window =
-            0.5 * (1.0 - (2.0 * std::f32::consts::PI * k as f32 / (CHUNK - 1) as f32).cos());
-        re[k] = (left + right) * 0.5 * window;
-    }
-
-    // Radix-2 in-place Cooley-Tukey FFT
-    let mut j = 0;
-    for i in 0..CHUNK - 1 {
-        if i < j {
-            re.swap(i, j);
-            im.swap(i, j);
+    fn push(&mut self, interleaved: &[u8]) {
+        for frame in interleaved.as_chunks::<4>().0 {
+            let left = i16::from_le_bytes([frame[0], frame[1]]);
+            let right = i16::from_le_bytes([frame[2], frame[3]]);
+            self.samples
+                .push_back((f32::from(left) + f32::from(right)) / 65_536.0);
         }
-        let mut k = CHUNK / 2;
-        while k <= j {
-            j -= k;
-            k /= 2;
+        self.end += (interleaved.len() / 4) as u64;
+        let excess = self.samples.len().saturating_sub(HISTORY_SAMPLES);
+        self.samples.drain(..excess);
+    }
+
+    fn window_ending_at(&self, played: u64, window: &mut [f32]) -> bool {
+        let played = played.min(self.end);
+        let start = self.end - self.samples.len() as u64;
+        if played <= start {
+            return false;
         }
-        j += k;
-    }
-
-    let mut len = 2;
-    while len <= CHUNK {
-        let half = len / 2;
-        let angle = -2.0 * std::f32::consts::PI / len as f32;
-        let w_step_re = angle.cos();
-        let w_step_im = angle.sin();
-        let mut i = 0;
-        while i < CHUNK {
-            let mut w_re = 1.0f32;
-            let mut w_im = 0.0f32;
-            for k in 0..half {
-                let u_re = re[i + k];
-                let u_im = im[i + k];
-                let v_re = re[i + k + half] * w_re - im[i + k + half] * w_im;
-                let v_im = re[i + k + half] * w_im + im[i + k + half] * w_re;
-                re[i + k] = u_re + v_re;
-                im[i + k] = u_im + v_im;
-                re[i + k + half] = u_re - v_re;
-                im[i + k + half] = u_im - v_im;
-                let next_w_re = w_re * w_step_re - w_im * w_step_im;
-                let next_w_im = w_re * w_step_im + w_im * w_step_re;
-                w_re = next_w_re;
-                w_im = next_w_im;
-            }
-            i += len;
+        let available = (played - start) as usize;
+        let copied = available.min(window.len());
+        let missing = window.len() - copied;
+        window[..missing].fill(0.0);
+        for (target, source) in window[missing..]
+            .iter_mut()
+            .zip(self.samples.range(available - copied..available))
+        {
+            *target = *source;
         }
-        len *= 2;
+        true
     }
-
-    let mut mags = [0.0f32; CHUNK / 2];
-    let norm_factor = 2.0 / CHUNK as f32;
-    for (k, mag) in mags.iter_mut().enumerate() {
-        *mag = (re[k] * re[k] + im[k] * im[k]).sqrt() * norm_factor;
-    }
-
-    // Log-spaced frequency bands
-    let min_f = 20.0f32;
-    let max_f = 16000.0f32;
-    let rate = 48000.0f32;
-    let mut bin_edges = [0usize; 25];
-    for (i, edge) in bin_edges.iter_mut().enumerate() {
-        let f = min_f * (max_f / min_f).powf(i as f32 / 24.0);
-        let b = (f * CHUNK as f32 / rate).round() as usize;
-        *edge = b.clamp(1, CHUNK / 2);
-    }
-    for i in 1..25 {
-        if bin_edges[i] <= bin_edges[i - 1] {
-            bin_edges[i] = bin_edges[i - 1] + 1;
-        }
-    }
-
-    for (i, band) in bands.iter_mut().enumerate() {
-        let lo = bin_edges[i].min(CHUNK / 2 - 1);
-        let hi = bin_edges[i + 1].min(CHUNK / 2);
-        let avg_mag = if hi > lo {
-            mags[lo..hi].iter().sum::<f32>() / (hi - lo) as f32
-        } else {
-            mags[lo]
-        };
-        let db = 20.0 * (avg_mag + 1e-10).log10();
-        let norm_val = ((db + 96.0) / 96.0).max(0.0);
-        let tilt = 1.0 + (i as f32 / 24.0) * 4.0;
-        *band = (norm_val * tilt).clamp(0.0, 1.0);
-    }
-
-    bands
 }

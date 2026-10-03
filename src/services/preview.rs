@@ -75,6 +75,8 @@ pub struct SandboxedMedia {
     pub(crate) size: MediaPreviewSize,
     pub(crate) backend: crate::sandbox::MediaPreviewBackend,
     pub(crate) input_owner: Option<PreviewInputLease>,
+    /// Decodes only the audio track; set for audio previews.
+    pub(crate) audio_only: bool,
 }
 
 impl SandboxedMedia {

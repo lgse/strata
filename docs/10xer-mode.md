@@ -68,6 +68,7 @@ sidebar. In Icons, **h** / **j** / **k** / **l** and arrows move among tiles.
 | **Backspace** / **Alt+↑** | Parent folder |
 | **i** | On a file: toggle the preview drawer without moving focus into it. On a directory: in Columns, open the next Miller column without moving focus into it (mirroring usually has already); in List and Icons, toggle the folder-peek popover. |
 | **J** / **K** | Scroll the open preview without taking focus |
+| **<** / **>** | While the open preview shows audio: move to the previous / next audio file and keep playing, without taking focus |
 
 In Columns, the saved **Mirror columns selection** preference (on by default)
 applies to the cursor: shortly after **j** / **k** / arrows land on a directory,
@@ -139,6 +140,7 @@ every other key is typed or edits the text.
 | **Home** / **G** / **End** | Top / bottom | First / last member | Caret (**G** typed) | Swallowed |
 | Paging keys | Scroll half / full page | Swallowed | Text editing | Swallowed |
 | **m** | Swallowed | Swallowed | Typed | Mute / unmute |
+| **<** / **>** | Swallowed | Swallowed | Typed | Previous / next audio file in the listing; playback continues |
 | **J** / **K** | Scroll | Scroll | Typed | Swallowed |
 | **Shift+Tab** | Return to the listing | Return to the listing | Return to the listing | Return to the listing |
 | **Esc** | Close the drawer | Close the drawer | Close the drawer | Close the drawer |

@@ -113,5 +113,87 @@ impl MediaMetadata {
     }
 }
 
+pub(crate) const TAG_KEYS: &str = "title,artist,album,album_artist,track,tracktotal,totaltracks";
+const MAX_TAG_CHARS: usize = 200;
+
+/// Display tags for the audio preview. Embedded text is untrusted: controls and
+/// bidirectional overrides are removed, whitespace collapsed and length capped.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct AudioTags {
+    pub(crate) title: Option<String>,
+    pub(crate) artist: Option<String>,
+    pub(crate) album: Option<String>,
+    pub(crate) track: Option<u32>,
+    pub(crate) track_total: Option<u32>,
+}
+
+fn display_text(value: &str) -> Option<String> {
+    let mut text = String::new();
+    for word in value
+        .chars()
+        .filter(|character| {
+            !character.is_control()
+                && !matches!(
+                    character,
+                    '\u{061c}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}'
+                )
+        })
+        .collect::<String>()
+        .split_whitespace()
+    {
+        if !text.is_empty() {
+            text.push(' ');
+        }
+        text.push_str(word);
+    }
+    if text.chars().count() > MAX_TAG_CHARS {
+        text = text.chars().take(MAX_TAG_CHARS - 1).collect::<String>();
+        text.push('…');
+    }
+    (!text.is_empty()).then_some(text)
+}
+
+fn track_number(value: &str) -> Option<u32> {
+    value
+        .trim()
+        .parse::<u32>()
+        .ok()
+        .filter(|number| (1..=9_999).contains(number))
+}
+
+impl AudioTags {
+    pub(crate) fn from_json(bytes: &[u8]) -> Result<Self, String> {
+        if bytes.len() as u64 > MAX_METADATA_BYTES {
+            return Err("Audio tags exceed the size limit".into());
+        }
+        let value: Value = serde_json::from_slice(bytes).map_err(|error| error.to_string())?;
+        let sources = [&value["format"]["tags"], &value["streams"][0]["tags"]];
+        let tag = |name: &str| {
+            sources.iter().find_map(|tags| {
+                tags.as_object()?
+                    .iter()
+                    .find(|(key, _)| key.eq_ignore_ascii_case(name))
+                    .and_then(|(_, value)| value.as_str())
+            })
+        };
+        let (track, slash_total) = tag("track").map_or((None, None), |track| {
+            let (number, total) = track.split_once('/').unwrap_or((track, ""));
+            (track_number(number), track_number(total))
+        });
+        Ok(Self {
+            title: tag("title").and_then(display_text),
+            artist: tag("artist")
+                .or_else(|| tag("album_artist"))
+                .and_then(display_text),
+            album: tag("album").and_then(display_text),
+            track,
+            track_total: slash_total
+                .or_else(|| tag("tracktotal").and_then(track_number))
+                .or_else(|| tag("totaltracks").and_then(track_number))
+                .filter(|total| track.is_some_and(|track| track <= *total)),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests;

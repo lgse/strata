@@ -14,7 +14,10 @@ use crate::{
     services::MediaPreviewSize,
 };
 
-use super::{bounded_output_with_timeout, media_preview_size, stop_child};
+use super::{
+    MAX_OUTPUT_BYTES, bounded_output, bounded_output_with_timeout, media_preview_size,
+    read_limited, stop_child,
+};
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(4);
 const ATTEMPT_TIMEOUT: Duration = Duration::from_secs(4);
@@ -43,9 +46,10 @@ pub(super) fn run(
     size: &str,
     policy: MediaPreviewBackend,
     start_tick: u32,
+    audio_only: bool,
 ) -> Result<(), String> {
     let mut writer = std::fs::File::create(output).map_err(|error| error.to_string())?;
-    stream(input, size, policy, start_tick, &mut writer)
+    stream(input, size, policy, start_tick, audio_only, &mut writer)
 }
 
 fn stream(
@@ -53,10 +57,16 @@ fn stream(
     size: &str,
     policy: MediaPreviewBackend,
     start_tick: u32,
+    audio_only: bool,
     writer: &mut impl Write,
 ) -> Result<(), String> {
     let size = media_preview_size(size)?;
-    let input_info = probe(input, size, start_tick).map_err(|error| error.to_string())?;
+    let mut input_info = probe(input, size, start_tick).map_err(|error| error.to_string())?;
+    if audio_only {
+        input_info = input_info
+            .without_video()
+            .map_err(|error| error.to_string())?;
+    }
     let backends =
         if input_info.video.is_none() || input_info.cover || input_info.gif_period_us.is_some() {
             vec![Backend::Software]
@@ -209,6 +219,154 @@ fn metadata(bytes: &[u8], size: MediaPreviewSize, start_tick: u32) -> io::Result
         gif_period_us,
         raw_video,
     })
+}
+
+impl Input {
+    /// Plays only the audio track; cover art is fetched separately at display size.
+    fn without_video(self) -> io::Result<Self> {
+        if self.audio.is_none() {
+            return Err(media::invalid("The file has no audio track"));
+        }
+        let header = Header {
+            width: 0,
+            height: 0,
+            ..self.header
+        };
+        Ok(Self {
+            header,
+            video: None,
+            cover: false,
+            gif_period_us: None,
+            raw_video: false,
+            ..self
+        })
+    }
+}
+
+/// `background` lowers the decoder's priority so it never competes with playback.
+fn ffmpeg_command(background: bool) -> Command {
+    let mut command = if background {
+        let mut command = Command::new("nice");
+        command.args(["-n", "10", "prlimit"]);
+        command
+    } else {
+        Command::new("prlimit")
+    };
+    command.args([
+        "--core=0",
+        "--fsize=536870912",
+        "--as=2147483648",
+        "--",
+        "ffmpeg",
+        "-nostdin",
+        "-v",
+        "quiet",
+        "-max_alloc",
+        "536870912",
+        "-threads",
+        "1",
+    ]);
+    command.env("MALLOC_ARENA_MAX", "1");
+    command
+}
+
+/// Streams a waveform overview, decoding the audio as fast as the CPU allows.
+pub(super) fn run_peaks(input: &Path, output: &Path) -> Result<(), String> {
+    let mut writer = std::fs::File::create(output).map_err(|error| error.to_string())?;
+    let info = probe(input, MediaPreviewSize::new(16, 16), 0).map_err(|error| error.to_string())?;
+    let audio = info.audio.ok_or("The file has no audio track")?;
+    let duration_us = info.header.duration_us;
+    if duration_us >= media::MAX_DURATION_US {
+        return Err("The audio duration is unknown".into());
+    }
+    let mut child = ffmpeg_command(true)
+        .arg("-i")
+        .arg(input)
+        .arg("-map")
+        .arg(format!("0:{audio}"))
+        .args(["-vn", "-sn", "-dn", "-ac", "1", "-ar"])
+        .arg(media::peaks::SAMPLE_RATE.to_string())
+        .args(["-c:a", "pcm_s16le", "-f", "s16le", "pipe:1"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| error.to_string())?;
+    let result = (|| -> io::Result<()> {
+        let pcm = child
+            .stdout
+            .take()
+            .ok_or_else(|| io::Error::other("Missing decoded audio pipe"))?;
+        media::peaks::write_header(&mut writer, duration_us)?;
+        let mut accumulator = media::peaks::Accumulator::new(duration_us);
+        let mut buffer = vec![0; 16 * 1024];
+        loop {
+            let read = read_chunk(&pcm, &mut buffer, Instant::now() + FRAME_TIMEOUT)?;
+            if read == 0 {
+                break;
+            }
+            accumulator.push(&buffer[..read - read % 2], &mut writer)?;
+        }
+        if !child.wait()?.success() {
+            return Err(io::Error::other("The audio decoder failed"));
+        }
+        accumulator.finish(&mut writer)
+    })();
+    if result.is_err() {
+        stop_child(&mut child);
+    }
+    result.map_err(|error| error.to_string())
+}
+
+pub(super) fn audio_tags(input: &Path) -> Result<Vec<u8>, String> {
+    let keys = crate::sandbox::metadata::TAG_KEYS;
+    bounded_output_with_timeout(
+        Command::new("ffprobe")
+            .args(["-v", "error", "-threads", "1", "-select_streams", "a:0"])
+            .arg("-show_entries")
+            .arg(format!("format_tags={keys}:stream_tags={keys}"))
+            .args(["-of", "json"])
+            .arg(input),
+        crate::sandbox::metadata::MAX_METADATA_BYTES,
+        PROBE_TIMEOUT,
+    )
+    .map_err(|error| error.to_string())?
+    .filter(|output| output.status.success())
+    .map(|output| output.stdout)
+    .ok_or_else(|| "Unable to read audio tags".into())
+}
+
+/// Extracts embedded artwork (an attached-picture stream) as a PNG.
+pub(super) fn cover(input: &Path, size: u32) -> Result<Vec<u8>, String> {
+    let directory = tempfile::tempdir().map_err(|error| error.to_string())?;
+    let path = directory.path().join("cover.png");
+    let output = bounded_output(
+        ffmpeg_command(false)
+            .arg("-i")
+            .arg(input)
+            .args([
+                "-map",
+                "0:v",
+                "-map",
+                "-0:V",
+                "-frames:v",
+                "1",
+                "-an",
+                "-vf",
+            ])
+            .arg(format!(
+                "scale=w='min(iw,{size})':h='min(ih,{size})':force_original_aspect_ratio=decrease"
+            ))
+            .args(["-c:v", "png", "-y"])
+            .arg(&path),
+        MAX_OUTPUT_BYTES,
+    )
+    .map_err(|error| error.to_string())?;
+    if !output.status.success() {
+        return Err("The file has no embedded artwork".into());
+    }
+    let file = std::fs::File::open(path).map_err(|error| error.to_string())?;
+    read_limited(file, MAX_OUTPUT_BYTES).map_err(|error| error.to_string())
 }
 
 fn backends(devices: &[PathBuf], policy: MediaPreviewBackend) -> Vec<Backend> {

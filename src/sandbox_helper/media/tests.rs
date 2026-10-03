@@ -66,6 +66,7 @@ fn decoded(input: &Path, size: &str, start: u32) -> (Header, Vec<Frame>, u64) {
         size,
         MediaPreviewBackend::Software,
         start,
+        false,
         &mut bytes,
     )
     .expect("raw media stream");
@@ -144,6 +145,7 @@ fn full_sources_and_hour_long_seeks_reach_the_original_file_end() {
                 "520x800",
                 MediaPreviewBackend::Software,
                 seconds * 30,
+                false,
                 &mut Vec::new()
             )
             .is_err()
@@ -175,7 +177,7 @@ fn audio_only_and_attached_cover_art_do_not_require_a_hardware_video_decoder() {
         MediaPreviewBackend::Software,
     ] {
         let mut bytes = Vec::new();
-        stream(&audio, "520x800", policy, 0, &mut bytes).expect("audio under every policy");
+        stream(&audio, "520x800", policy, 0, false, &mut bytes).expect("audio under every policy");
         let h = Header::read(&mut Cursor::new(bytes), MediaPreviewSize::new(520, 800), 0)
             .expect("audio header");
         assert!(h.audio);
@@ -291,6 +293,7 @@ fn first_frames_arrive_before_completion_and_closed_consumers_cancel_backpressur
             "520x800",
             MediaPreviewBackend::Software,
             0,
+            false,
             &mut write,
         )
     });
@@ -458,6 +461,7 @@ fn assert_elementary_playback(path: &Path) {
             "520x800",
             MediaPreviewBackend::Software,
             90,
+            false,
             &mut past
         )
         .is_err(),
@@ -755,4 +759,116 @@ fn metadata_and_size_parsing_fail_closed_on_bad_sources_and_protocol_values() {
         Track::Video,
     ));
     assert!(probe(Path::new("/nonexistent-strata-media"), size, 0).is_err());
+}
+
+#[test]
+fn audio_previews_play_without_artwork_and_extract_tags_cover_and_peaks() {
+    let directory = tempfile::tempdir().expect("fixtures");
+    let art = directory.path().join("cover.png");
+    success(
+        Command::new("ffmpeg")
+            .args(["-nostdin", "-v", "error", "-f", "lavfi", "-i"])
+            .arg("color=c=blue:size=1000x600")
+            .args(["-frames:v", "1"])
+            .arg(&art),
+    );
+    let tagged = directory.path().join("tagged.mp3");
+    success(
+        Command::new("ffmpeg")
+            .args(["-nostdin", "-v", "error", "-f", "lavfi", "-i"])
+            .arg("sine=frequency=440:duration=2")
+            .arg("-i")
+            .arg(&art)
+            .args([
+                "-map",
+                "0:a",
+                "-map",
+                "1:v",
+                "-c:a",
+                "libmp3lame",
+                "-c:v",
+                "png",
+            ])
+            .args(["-disposition:v", "attached_pic"])
+            .args([
+                "-metadata",
+                "title=Night Drive",
+                "-metadata",
+                "artist=Layers",
+            ])
+            .args(["-metadata", "track=3/12"])
+            .arg(&tagged),
+    );
+    let plain = directory.path().join("plain.ogg");
+    success(
+        Command::new("ffmpeg")
+            .args(["-nostdin", "-v", "error", "-f", "lavfi", "-i"])
+            .arg("sine=frequency=440:duration=1")
+            .args(["-c:a", "libvorbis"])
+            .arg(&plain),
+    );
+
+    let mut bytes = Vec::new();
+    stream(
+        &tagged,
+        "520x800",
+        MediaPreviewBackend::Software,
+        0,
+        true,
+        &mut bytes,
+    )
+    .expect("audio-only playback");
+    let mut reader = Cursor::new(bytes);
+    let header = Header::read(&mut reader, MediaPreviewSize::new(520, 800), 0).expect("header");
+    assert!(header.audio);
+    assert_eq!(
+        (header.width, header.height),
+        (0, 0),
+        "artwork is not decoded"
+    );
+    let Packet::Frame(frame) = Decoder::new(header).read(&mut reader).expect("frame") else {
+        panic!("expected a frame");
+    };
+    assert!(frame.pixels.is_empty());
+
+    let video = directory.path().join("silent.mp4");
+    fixture(&video, "64x48", 30, 1, false);
+    assert!(
+        stream(
+            &video,
+            "520x800",
+            MediaPreviewBackend::Software,
+            0,
+            true,
+            &mut Vec::new()
+        )
+        .is_err(),
+        "audio-only playback needs an audio track"
+    );
+
+    let png = cover(&tagged, 800).expect("embedded artwork");
+    assert_eq!(crate::sandbox::png_dimensions(&png), Some((800, 480)));
+    assert!(cover(&plain, 800).is_err(), "no artwork is not an image");
+
+    let tags = crate::sandbox::metadata::AudioTags::from_json(&audio_tags(&tagged).expect("tags"))
+        .expect("tag JSON");
+    assert_eq!(tags.title.as_deref(), Some("Night Drive"));
+    assert_eq!(tags.artist.as_deref(), Some("Layers"));
+    assert_eq!((tags.track, tags.track_total), (Some(3), Some(12)));
+
+    let output = directory.path().join("peaks");
+    run_peaks(&tagged, &output).expect("waveform overview");
+    let bytes = std::fs::read(&output).expect("peaks output");
+    let mut reader = bytes.as_slice();
+    let duration = crate::media::peaks::read_header(&mut reader).expect("peaks header");
+    assert!((1_900_000..2_200_000).contains(&duration), "{duration}");
+    let mut runs = crate::media::peaks::RunReader::default();
+    let mut levels = Vec::new();
+    while let Some((_, run)) = runs.read(&mut reader).expect("peaks run") {
+        levels.extend(run);
+    }
+    assert!(reader.is_empty());
+    assert!(levels.len() > 1000, "{} buckets", levels.len());
+    let middle = crate::media::peaks::rms(levels[levels.len() / 2]);
+    assert!(middle > 0.02, "a steady tone has a visible level: {middle}");
 }
