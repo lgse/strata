@@ -66,6 +66,7 @@ zstd = "0.14.0"
 zip = "8.6.0"
 unrar = { version = "0.5.8", optional = true }
 unrar_sys = { version = "0.5.8", optional = true }
+frizbee = "0.13"
 
 [build-dependencies]
 glib-build-tools = "0.22.8"

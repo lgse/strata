@@ -1078,6 +1078,10 @@ headerbar menubutton.header-action > button:focus-visible {
   color: @theme_text;
 }
 
+.form-error {
+  color: @theme_danger;
+}
+
 .form-message.error,
 .authentication-error {
   background: alpha(@theme_danger, 0.1);
@@ -1123,14 +1127,6 @@ headerbar menubutton.header-action > button:focus-visible {
   padding: 24px 28px;
 }
 
-.transfer-pending-warning {
-  padding: 12px 16px;
-  background: @theme_surface;
-  color: @theme_danger;
-  border: 1px solid @theme_danger;
-  border-radius: 10px;
-}
-
 .transfer-progress-caption {
   color: @theme_dim_text;
   font-size: 0.76em;
@@ -1156,6 +1152,51 @@ headerbar menubutton.header-action > button:focus-visible {
   font-size: 0.82em;
 }
 
+.file-operation-dock,
+.file-operation-dock > viewport {
+  background: transparent;
+}
+
+.file-operation-card {
+  background: @theme_surface;
+  border: 1px solid alpha(@theme_border, 0.6);
+  border-radius: 12px;
+  box-shadow: 0 0 10px alpha(@theme_glow, 0.18);
+  color: @theme_text;
+  min-width: 280px;
+  padding: 16px;
+}
+
+.file-operation-card:focus-within {
+  border-color: @theme_accent;
+}
+
+.file-operation-card .job-status {
+  color: @theme_accent;
+}
+
+.file-operation-card .job-description {
+  color: @theme_text;
+}
+
+.file-operation-card .modal-progress trough,
+.file-operation-card .modal-progress progress {
+  min-height: 4px;
+}
+
+.file-operation-card button.progress-complete {
+  min-width: 0;
+  min-height: 0;
+  font-size: 0.82em;
+}
+
+.file-operation-card button.column-header-action {
+  min-width: 0;
+  min-height: 0;
+  padding: 1px;
+  border-radius: 8px;
+}
+
 .modal-progress trough {
   background: alpha(@theme_bg, 0.72);
   border: 1px solid alpha(@theme_border, 0.42);
@@ -1168,6 +1209,9 @@ headerbar menubutton.header-action > button:focus-visible {
   border: none;
   border-radius: 4px;
   min-height: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
 }
 
 spinbutton.form-control {
@@ -2641,6 +2685,52 @@ paned > separator {
   outline-offset: 1px;
 }
 
+.preview-audio-eyebrow {
+  color: @theme_dim_text;
+  font-size: 0.72em;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.preview-audio-title {
+  color: @theme_text;
+  font-size: 1.85em;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.preview-audio-artist {
+  color: @theme_accent;
+  font-weight: 700;
+}
+
+.preview-audio-album {
+  color: @theme_dim_text;
+}
+
+.preview-audio-time {
+  min-width: 3.4em;
+}
+
+.preview-media-time.preview-audio-time-target {
+  color: @theme_accent;
+}
+
+.preview-media-center.preview-audio-play {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 6px;
+}
+
+.preview-audio-scrubber {
+  border-radius: 4px;
+}
+
+.preview-audio-scrubber:focus-visible {
+  outline: 2px solid alpha(@theme_accent, 0.52);
+  outline-offset: 2px;
+}
+
 .preview-media-bar {
   background: alpha(@theme_bg, 0.55);
   border-top: 1px solid alpha(@theme_border, 0.24);
@@ -2890,6 +2980,30 @@ entry.preview-command-entry selection {
   color: @theme_accent;
 }
 
+.tenxer-splash {
+  opacity: 0;
+  transform: translateY(16px) scale(0.88);
+  transition: opacity 220ms ease-out, transform 360ms cubic-bezier(0.16, 1, 0.3, 1);
+  border: 1px solid alpha(@theme_accent, 0.65);
+  box-shadow: 0 0 36px alpha(@theme_glow, 0.4);
+}
+
+.tenxer-splash.tenxer-splash-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.tenxer-splash.tenxer-splash-exiting {
+  opacity: 0;
+  transform: translateY(-8px) scale(1);
+  transition: opacity 300ms ease-in, transform 300ms ease-in;
+}
+
+.tenxer-splash.tenxer-splash-static {
+  transform: none;
+  transition: none;
+}
+
 .shortcut-footer {
   background: @theme_surface;
   color: @theme_text;
@@ -2949,7 +3063,7 @@ entry.form-control.shortcut-footer-prompt:focus-within {
   background-color: alpha(@theme_accent, 0.14);
   border: 1px solid alpha(@theme_accent, 0.4);
   border-radius: 999px;
-  margin: 2px 0;
+  margin: 0;
   padding: 0 8px;
   font-weight: bold;
   letter-spacing: 0.5px;
@@ -3335,7 +3449,8 @@ menubutton.column-header-action > button:active {
   box-shadow: inset 0 -1px alpha(@theme_accent, 0.42);
 }
 
-.column-popover contents {
+.column-popover contents,
+dropdown.form-control popover > contents {
   background: @theme_surface;
   border: 1px solid alpha(@theme_border, 0.6);
   border-radius: 9px;
@@ -3343,10 +3458,16 @@ menubutton.column-header-action > button:active {
   padding: 0;
 }
 
-.column-menu {
+.column-menu,
+dropdown.form-control popover listview {
   font-size: 0.88em;
   min-width: 170px;
   padding: 8px;
+}
+
+dropdown.form-control popover listview {
+  background: @theme_surface;
+  color: @theme_text;
 }
 
 .column-menu separator {
@@ -3355,7 +3476,8 @@ menubutton.column-header-action > button:active {
   min-height: 1px;
 }
 
-.column-menu-option {
+.column-menu-option,
+dropdown.form-control popover row {
   background: transparent;
   border: none;
   border-radius: 5px;
@@ -3366,16 +3488,33 @@ menubutton.column-header-action > button:active {
   transition: transform 160ms ease-out, background 160ms ease-out, color 160ms ease-out;
 }
 
-.column-menu-option:hover {
+.column-menu-option:hover,
+dropdown.form-control popover row:hover,
+dropdown.form-control popover row:selected {
   background: alpha(@theme_accent, 0.15);
   color: @theme_text;
 }
 
-.column-menu-option:active {
+.column-menu-option:active,
+dropdown.form-control popover row:active {
   background: alpha(@theme_accent, 0.22);
   transform: scale(0.97);
 }
 
+
+.column-menu-option:focus-visible,
+dropdown.form-control popover row:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+}
+
+dropdown.form-control popover row:disabled {
+  color: @theme_dim_text;
+}
+
+dropdown.form-control popover row:selected check {
+  color: @theme_accent;
+}
 
 .authentication-dialog {
   min-width: 520px;
@@ -4144,10 +4283,12 @@ textview > popover.menu button.model:disabled {
   opacity: 0.42;
 }
 
+/* Preserve GTK's ownership of native images; use their allocation as the icon slot. */
 .actions-context-popover modelbutton image,
 .actions-context-popover button.model image,
 .item-context-icon,
 .folder-context-icon {
+  min-width: 1.25em;
   opacity: 0.72;
 }
 

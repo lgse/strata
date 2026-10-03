@@ -8,6 +8,8 @@ use std::{
     path::Path,
 };
 
+use crate::test_support::operations::operation_event;
+
 fn visible_texts(overlay: &gtk::Overlay) -> Vec<String> {
     let mut texts = Vec::new();
     let mut stack = Vec::new();
@@ -369,7 +371,7 @@ fn start_transfer_skips_noops_before_emitting_progress() {
                 let finished = Rc::new(Cell::new(false));
                 let observed_started = started.clone();
                 let observed_finished = finished.clone();
-                browser.observe(move |event| match event {
+                browser.observe(move |event| match operation_event(event) {
                     crate::app::BrowserEvent::TransferStarted { total, moving } => {
                         observed_started.borrow_mut().push((*total, *moving));
                     }
@@ -447,7 +449,8 @@ fn send_to_copies_every_source_without_reveal_or_navigation() {
             let browser = view.browser();
             let events = Rc::new(RefCell::new(Vec::new()));
             let observed = events.clone();
-            browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+            browser
+                .observe(move |event| observed.borrow_mut().push(operation_event(event).clone()));
 
             view.state.send_to_removable_device_with_resolver(
                 "volume:current-device",
@@ -556,7 +559,8 @@ fn send_to_drive_root_uses_current_root_after_same_id_remount() {
             let browser = view.browser();
             let events = Rc::new(RefCell::new(Vec::new()));
             let observed = events.clone();
-            browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+            browser
+                .observe(move |event| observed.borrow_mut().push(operation_event(event).clone()));
 
             let current = current_root.clone();
             view.state.send_to_removable_device_with_resolver(
@@ -665,7 +669,7 @@ fn choose_folder_rejects_invalid_destinations_and_copies_into_a_confined_directo
             let events = Rc::new(RefCell::new(Vec::new()));
             let observed = events.clone();
             view.browser()
-                .observe(move |event| observed.borrow_mut().push(event.clone()));
+                .observe(move |event| observed.borrow_mut().push(operation_event(event).clone()));
 
             let root = device.clone();
             view.state.show_send_to_folder_dialog_with_resolver(
@@ -799,7 +803,7 @@ fn choose_folder_revalidates_device_while_the_dialog_is_open() {
             let events = Rc::new(RefCell::new(Vec::new()));
             let observed = events.clone();
             view.browser()
-                .observe(move |event| observed.borrow_mut().push(event.clone()));
+                .observe(move |event| observed.borrow_mut().push(operation_event(event).clone()));
             let current = Rc::new(RefCell::new(Some(device.clone())));
             let resolved = current.clone();
             view.state.show_send_to_folder_dialog_with_resolver(
@@ -870,7 +874,7 @@ fn choose_folder_uses_the_current_root_after_a_remount() {
             let events = Rc::new(RefCell::new(Vec::new()));
             let observed = events.clone();
             view.browser()
-                .observe(move |event| observed.borrow_mut().push(event.clone()));
+                .observe(move |event| observed.borrow_mut().push(operation_event(event).clone()));
             let current = Rc::new(RefCell::new(Some(opened_root.clone())));
             let resolved = current.clone();
             view.state.show_send_to_folder_dialog_with_resolver(
@@ -1100,7 +1104,7 @@ fn open_transfer_browser(
     let events = Rc::new(RefCell::new(Vec::new()));
     let observed = events.clone();
     view.browser()
-        .observe(move |event| observed.borrow_mut().push(event.clone()));
+        .observe(move |event| observed.borrow_mut().push(operation_event(event).clone()));
     (view, overlay, window, events)
 }
 
@@ -1325,7 +1329,7 @@ fn open_send_to_toast_browser(fixture_name: &str, files: &[&str]) -> SendToToast
     let events = Rc::new(RefCell::new(Vec::new()));
     let observed = events.clone();
     view.browser()
-        .observe(move |event| observed.borrow_mut().push(event.clone()));
+        .observe(move |event| observed.borrow_mut().push(operation_event(event).clone()));
     SendToToastFixture {
         _tempdir: tempdir,
         view,
@@ -1455,8 +1459,8 @@ fn send_to_with_visible_progress_shows_no_toast() {
                 move |id| (id == "volume:toast-device").then(|| device_root.clone()),
             );
             wait_until(
-                || find_widget_with_class(&overlay, "app-modal-layer").is_some(),
-                "the progress modal",
+                || find_widget_with_class(&overlay, "file-operation-card").is_some(),
+                "the progress card",
             );
             wait_until(
                 || {
@@ -1468,8 +1472,19 @@ fn send_to_with_visible_progress_shows_no_toast() {
                 "the progress-covered send-to copy",
             );
             wait_until(
-                || find_widget_with_class(&overlay, "app-modal-layer").is_none(),
-                "the progress modal closes",
+                || {
+                    find_widget_with_class(&overlay, "progress-complete")
+                        .is_some_and(|widget| widget.is_visible())
+                },
+                "the completion card",
+            );
+            find_widget_with_class(&overlay, "progress-complete")
+                .and_downcast::<gtk::Button>()
+                .expect("completion action")
+                .emit_clicked();
+            wait_until(
+                || find_widget_with_class(&overlay, "file-operation-card").is_none(),
+                "the progress card closes",
             );
             assert!(
                 send_to_toast_labels(&overlay).is_empty(),
@@ -1625,9 +1640,9 @@ fn send_to_repeated_completions_replace_toast() {
 }
 
 #[test]
-fn superseded_send_to_shows_no_success_feedback() {
+fn overlapping_send_to_preserves_its_destination_and_feedback() {
     crate::test_support::gtk_test(
-        "ui::browser::transfer::tests::superseded_send_to_shows_no_success_feedback",
+        "ui::browser::transfer::tests::overlapping_send_to_preserves_its_destination_and_feedback",
         || {
             let SendToToastFixture {
                 _tempdir: _keepalive,
@@ -1656,15 +1671,19 @@ fn superseded_send_to_shows_no_success_feedback() {
             wait_until(
                 || {
                     device.join("other/b.txt").exists()
-                        && events.borrow().iter().any(|event| {
-                            matches!(event, crate::app::BrowserEvent::TransferFinished { .. })
-                        })
+                        && device.join("a.txt").exists()
+                        && send_to_toast_labels(&overlay) == ["Copied to VANIA"]
                 },
-                "the superseding copy completes",
+                "both independent copies complete with the Send-to destination's feedback",
             );
+            assert!(source_dir.join("a.txt").exists());
+            assert!(source_dir.join("b.txt").exists());
+            assert!(!device.join("other/a.txt").exists());
             assert!(
-                send_to_toast_labels(&overlay).is_empty(),
-                "a superseded Send-to never attributes feedback to the later transfer"
+                events.borrow().iter().any(|event| matches!(
+                    event,
+                    crate::app::BrowserEvent::TransferFinished { .. }
+                ))
             );
             view.browser().clear_observer();
             window.destroy();
@@ -1697,8 +1716,9 @@ fn normal_copy_and_move_to_keep_home_navigation_creation_and_reveal() {
                 window.present();
                 let events = Rc::new(RefCell::new(Vec::new()));
                 let observed = events.clone();
-                view.browser()
-                    .observe(move |event| observed.borrow_mut().push(event.clone()));
+                view.browser().observe(move |event| {
+                    observed.borrow_mut().push(operation_event(event).clone())
+                });
 
                 view.state
                     .show_transfer_dialog(vec![transfer_entry(&source)], move_sources);
@@ -2312,7 +2332,10 @@ fn background_move_without_reveal_restores_the_source_column() {
             let completed = Rc::new(Cell::new(false));
             let observed = completed.clone();
             browser.observe(move |event| {
-                if matches!(event, crate::app::BrowserEvent::TransferCompleted) {
+                if matches!(
+                    operation_event(event),
+                    crate::app::BrowserEvent::TransferCompleted
+                ) {
                     observed.set(true);
                 }
             });
@@ -2434,8 +2457,9 @@ fn drop_open_preference_applies_before_settings_and_live_across_views() {
                         view.navigate_location(Location::local(fixture.path()));
                         let events = Rc::new(RefCell::new(Vec::new()));
                         let observed = events.clone();
-                        view.browser()
-                            .observe(move |event| observed.borrow_mut().push(event.clone()));
+                        view.browser().observe(move |event| {
+                            observed.borrow_mut().push(operation_event(event).clone())
+                        });
                         let commit = if index == 0 {
                             DropCommit::Copy
                         } else {
@@ -2520,7 +2544,10 @@ fn cross_device_confirmation_reads_the_live_drop_open_preference() {
                 let finished = Rc::new(Cell::new(false));
                 let observed = finished.clone();
                 view.browser().observe(move |event| {
-                    if matches!(event, crate::app::BrowserEvent::TransferFinished { .. }) {
+                    if matches!(
+                        operation_event(event),
+                        crate::app::BrowserEvent::TransferFinished { .. }
+                    ) {
                         observed.set(true);
                     }
                 });

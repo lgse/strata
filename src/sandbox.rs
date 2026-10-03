@@ -155,6 +155,10 @@ pub(crate) enum ParseOperation {
     PreviewPdf(PdfRenderSize),
     PreviewModel(ModelRender),
     PreviewMedia(MediaPreviewSize),
+    PreviewAudio(MediaPreviewSize),
+    AudioPeaks,
+    AudioTags,
+    AudioCover,
     ArchiveList {
         format: ArchiveFormat,
         password: Option<SecretString>,
@@ -186,18 +190,31 @@ impl ParseOperation {
             Self::PreviewPdf(_) => "preview-pdf",
             Self::PreviewModel(_) => "preview-model",
             Self::PreviewMedia(_) => "preview-media",
+            Self::PreviewAudio(_) => "preview-audio",
+            Self::AudioPeaks => "audio-peaks",
+            Self::AudioTags => "audio-tags",
+            Self::AudioCover => "audio-cover",
             Self::ArchiveList { .. } => "archive-list",
         }
     }
 
     fn is_media(&self) -> bool {
-        matches!(self, Self::PreviewMedia(_))
+        matches!(
+            self,
+            Self::PreviewMedia(_) | Self::PreviewAudio(_) | Self::AudioPeaks
+        )
     }
 
     fn needs_media_libraries(&self) -> bool {
         matches!(
             self,
-            Self::ThumbnailVideo | Self::PreviewMedia(_) | Self::MediaMetadata
+            Self::ThumbnailVideo
+                | Self::PreviewMedia(_)
+                | Self::PreviewAudio(_)
+                | Self::AudioPeaks
+                | Self::AudioTags
+                | Self::AudioCover
+                | Self::MediaMetadata
         )
     }
 
@@ -205,6 +222,7 @@ impl ParseOperation {
         if matches!(
             self,
             Self::MediaMetadata
+                | Self::AudioTags
                 | Self::RawMetadata
                 | Self::PreviewWorkbook
                 | Self::PreviewDocument
@@ -229,7 +247,7 @@ impl ParseOperation {
             | Self::ThumbnailAppImage
             | Self::ThumbnailModel(_)
             | Self::ThumbnailCover(_) => Some((256, 256, 256 * 256)),
-            Self::PreviewCover(_) => Some((800, 800, 800 * 800)),
+            Self::PreviewCover(_) | Self::AudioCover => Some((800, 800, 800 * 800)),
             Self::ConvertImage => Some((
                 crate::services::image_conversion::MAX_EDGE,
                 crate::services::image_conversion::MAX_EDGE,
@@ -246,6 +264,9 @@ impl ParseOperation {
             }
             Self::PreviewMedia(_)
             | Self::InspectImage
+            | Self::PreviewAudio(_)
+            | Self::AudioPeaks
+            | Self::AudioTags
             | Self::MediaMetadata
             | Self::RawMetadata
             | Self::PreviewWorkbook
@@ -281,6 +302,10 @@ impl ParseOperation {
             Self::ThumbnailVideo
             | Self::ThumbnailAppImage
             | Self::PreviewMedia(_)
+            | Self::PreviewAudio(_)
+            | Self::AudioPeaks
+            | Self::AudioTags
+            | Self::AudioCover
             | Self::MediaMetadata
             | Self::ArchiveList { .. } => None,
         }
@@ -495,7 +520,7 @@ fn parse_sandboxed(
         32
     } else if matches!(
         operation,
-        ParseOperation::MediaMetadata | ParseOperation::RawMetadata
+        ParseOperation::MediaMetadata | ParseOperation::AudioTags | ParseOperation::RawMetadata
     ) {
         metadata::MAX_METADATA_BYTES
     } else {
@@ -759,10 +784,13 @@ fn sandbox_command(
         operation.argument(),
         &sandbox_input,
     ]);
-    if let ParseOperation::PreviewMedia(size) = operation {
+    if let ParseOperation::PreviewMedia(size) | ParseOperation::PreviewAudio(size) = operation {
         let size = MediaPreviewSize::new(size.width, size.height);
         command.arg("/dev/stdout");
         command.arg(format!("{}x{}", size.width, size.height));
+    } else if matches!(operation, ParseOperation::AudioPeaks) {
+        command.arg("/dev/stdout");
+        command.arg("0");
     } else {
         command.arg(format!("/output/{}", operation.output_name()));
         let value = match operation {
@@ -873,6 +901,9 @@ fn valid_output(operation: ParseOperation, data: &[u8]) -> bool {
             && serde_json::from_slice::<crate::services::image_conversion::ImageKind>(data)
                 .is_ok();
     }
+    if matches!(operation, ParseOperation::AudioCover) && data == b"null" {
+        return true;
+    }
     if matches!(operation, ParseOperation::PreviewWorkbook) {
         return crate::services::table::TableData::from_json(data).is_ok();
     }
@@ -881,6 +912,9 @@ fn valid_output(operation: ParseOperation, data: &[u8]) -> bool {
     }
     if matches!(operation, ParseOperation::RawMetadata) {
         return raw_metadata::RawMetadata::from_json(data).is_ok();
+    }
+    if matches!(operation, ParseOperation::AudioTags) {
+        return metadata::AudioTags::from_json(data).is_ok();
     }
     if matches!(operation, ParseOperation::MediaMetadata) {
         data.len() as u64 <= metadata::MAX_METADATA_BYTES

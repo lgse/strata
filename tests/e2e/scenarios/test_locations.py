@@ -178,27 +178,24 @@ def test_tenxer_go_chord_jumps_to_places_and_visible_pins(places, strata):
 
 
 @pytest.mark.preferences(tenxer_mode=True, type_to_search=False)
-def test_tenxer_go_prompt_completes_folders_and_navigates(strata):
+def test_tenxer_go_prompt_picks_folders_and_navigates(strata):
     (strata.fixture.path("documents") / "drafts").mkdir()
 
     strata.keyboard.press("g")
     strata.keyboard.press("space")
     field = strata.editable_field()
     assert strata.window.find(role="text", name="Go to a path or URI") is not None
-    for key, expected in (
-        ("Tab", "archive/"),
-        ("Tab", "documents/"),
-        ("Tab", "pictures/"),
-        ("shift+Tab", "documents/"),
-    ):
-        strata.keyboard.press(key)
-        strata.wait(lambda: field.text == expected, f"{key} to complete {expected}")
-    strata.keyboard.type_text("dr")
+    strata.keyboard.type_text("doc dr")
+    strata.wait(
+        lambda: strata.window.find(role="label", name="drafts") is not None,
+        "the matching folder to be listed",
+    )
     strata.keyboard.press("Tab")
     strata.wait(
-        lambda: field.text == "documents/drafts/",
-        "Tab after a slash to complete from that folder",
+        lambda: field.text == "./documents/drafts/",
+        "Tab to write the chosen folder into the prompt",
     )
+    assert strata.current_directory() != "drafts", "Tab never navigates"
     strata.keyboard.press("Return")
     strata.wait_for_directory("drafts")
 
@@ -208,12 +205,7 @@ def test_tenxer_go_prompt_completes_folders_and_navigates(strata):
     field = strata.editable_field()
     strata.keyboard.type_text(secret)
     strata.keyboard.press("Tab")
-    strata.wait(
-        lambda: strata.window.find(role="label", name="URIs are not completed")
-        is not None,
-        "Tab to leave a URI alone",
-    )
-    assert field.text == secret
+    assert field.text == secret, "Tab leaves a URI alone"
     strata.keyboard.press("Escape")
     strata.wait(
         lambda: strata.window.find(role="text", states={"editable", "focused"}) is None,

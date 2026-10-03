@@ -278,13 +278,10 @@ impl InlineSearch {
             .collect()
     }
 
-    pub(in crate::ui) fn visit_result_name_labels(&self, visit: &impl Fn(&gtk::Widget)) {
-        if let Some(state) = self.showing_results() {
-            for bound in state.collection.bound.borrow().iter() {
-                if let Some(label) = bound.rename_label.upgrade() {
-                    visit(&label);
-                }
-            }
+    pub(in crate::ui) fn refresh_result_highlights(&self, find: Option<&str>) {
+        if let Some(state) = self.state.as_ref() {
+            state.collection.highlights.borrow_mut().find = find.map(str::to_owned);
+            state.collection.refresh_highlights();
         }
     }
 
@@ -723,10 +720,9 @@ pub(super) fn wrap(
         marquee: Some(marquee),
     };
     let query_state = state.clone();
-    let binding = super::browser::bind_filter_query(
-        entry,
-        &state.session,
-        move |text, is_recursive, restart| {
+    let binding =
+        super::browser::bind_filter_query(entry, &state.session, move |text, scope, restart| {
+            let is_recursive = scope.recursive();
             let state = &query_state;
             state.recursive.set(is_recursive);
             recursive.set(is_recursive);
@@ -752,11 +748,13 @@ pub(super) fn wrap(
                 .is_some_and(|browser| browser.preferences().show_hidden);
             let weak = Rc::downgrade(state);
             let browser = weak_browser.clone();
+            let search_root = root.clone();
             state.session.update(
                 super::search_session::SearchInput {
                     root,
                     show_hidden,
-                    recursive: is_recursive,
+                    scope,
+                    refused: Default::default(),
                 },
                 query,
                 restart,
@@ -781,11 +779,15 @@ pub(super) fn wrap(
                     } else {
                         "No matching files".to_owned()
                     });
+                    state.collection.highlights.borrow_mut().hits = if scope.fuzzy() {
+                        super::browser::find::search_hit_ranges(&batch.query, &search_root, &items)
+                    } else {
+                        Default::default()
+                    };
                     update_results(&state, items, state.recursive.get());
                 }),
             );
-        },
-    );
+        });
     state.query_binding.replace(Some(binding));
     search
 }

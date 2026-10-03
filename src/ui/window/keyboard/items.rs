@@ -305,6 +305,11 @@ impl Dispatcher {
         }
         let search = self.view.selected_search_results().is_some();
         let mods = super::command_modifiers(modifiers);
+        if matches!(key, Key::less | Key::greater)
+            && (mods.is_empty() || mods == Modifiers::SHIFT_MASK)
+        {
+            return self.preview.media_key(key);
+        }
         if search && !mods.is_empty() {
             return match mods {
                 Modifiers::CONTROL_MASK => {
@@ -521,6 +526,7 @@ impl Dispatcher {
             Key::H => self.go_back(browser),
             Key::L => self.go_forward(browser),
             Key::J | Key::K => self.scroll_open_preview(key),
+            Key::less | Key::greater if self.preview.media_key(key) => {}
             _ => return false,
         }
         true
@@ -543,6 +549,8 @@ impl Dispatcher {
             Key::o | Key::Return | Key::KP_Enter => self.activate_focused(browser),
             Key::g => self.shortcuts.arm_chord(Chord::Go),
             Key::i if self.toggle_file_preview(browser) => {}
+            // Layouts with a dedicated `<` key send it without Shift.
+            Key::less | Key::greater if self.preview.media_key(key) => {}
             Key::i if self.view.view_mode() == BrowserMode::Columns => {
                 self.open_miller_child(browser);
             }

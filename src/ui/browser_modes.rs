@@ -1533,16 +1533,20 @@ impl ModeViews {
         })
     }
 
-    pub(in crate::ui) fn visit_name_labels(&self, visit: impl Fn(&gtk::Widget)) {
+    pub(in crate::ui) fn refresh_name_highlights(&self, find: Option<&str>) {
         for pane in self.all_panes() {
             for section in pane.item_sections() {
                 for bound in section.bound_items.borrow().iter() {
                     if let Some(label) = bound.rename_label.upgrade() {
-                        visit(&label);
+                        super::browser::find::highlight_listing_name(
+                            &label,
+                            find,
+                            &pane.filter_query.borrow(),
+                        );
                     }
                 }
             }
-            pane.search.visit_result_name_labels(&visit);
+            pane.search.refresh_result_highlights(find);
         }
     }
 
@@ -2130,20 +2134,16 @@ fn build_icons_pane(
     let filter = super::browser::entry_filter(show_hidden.clone(), filter_query.clone());
     let filtered_model = gtk::FilterListModel::new(Some(model.clone()), Some(filter.clone()));
     let filter_for_pane = filter.clone();
-    let query_for_filter = filter_query.clone();
-    let filter_for_settled = filter.clone();
     // Recursive-filter results replace a native listing; hiding its rows too
     // would drop their selection out of sight.
     let results_replace_listing = Rc::new(Cell::new(false));
-    let directory_filtered = results_replace_listing.clone();
-    super::browser::debounce_filter_entry(&controls.filter_entry, move |text| {
-        let text = if directory_filtered.get() {
-            String::new()
-        } else {
-            text
-        };
-        super::browser::notify_filter_query(&filter_for_settled, &query_for_filter, text);
-    });
+    super::browser::bind_listing_filter(
+        &controls.filter_entry,
+        &filter,
+        &filter_query,
+        results_replace_listing.clone(),
+        options.state.clone(),
+    );
     let sections: Rc<RefCell<Vec<PaneSection>>> = Rc::new(RefCell::new(Vec::new()));
     let context = Rc::new(IconsContext {
         browser,
@@ -2454,6 +2454,7 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
     let scrolling_for_bind = context.scrolling.clone();
     let state_for_bind = context.state.clone();
     let bound_for_bind = bound_items.clone();
+    let filter_query_for_bind = context.filter_query.clone();
     factory.connect_bind(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
             return;
@@ -2485,6 +2486,16 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
                 scrolling_for_bind.get(),
                 state.as_deref(),
             );
+            if let Some((_, label)) = super::icons_cell::parts(&card) {
+                super::browser::find::highlight_listing_name(
+                    label.upcast_ref(),
+                    state
+                        .as_ref()
+                        .and_then(|state| state.find_highlight())
+                        .as_deref(),
+                    &filter_query_for_bind.borrow(),
+                );
+            }
             if let Some(edit) = &edit {
                 edit.display.set_visible(!edit.is_editing());
                 edit.field.set_visible(edit.is_editing());
@@ -3097,20 +3108,16 @@ fn build_list_pane(
     let filter = super::browser::entry_filter(show_hidden.clone(), filter_query.clone());
     let filtered_model = gtk::FilterListModel::new(Some(model.clone()), Some(filter.clone()));
     let filter_for_pane = filter.clone();
-    let query_for_filter = filter_query.clone();
-    let filter_for_settled = filter.clone();
     // Recursive-filter results replace a native listing; hiding its rows too
     // would drop their selection out of sight.
     let results_replace_listing = Rc::new(Cell::new(false));
-    let directory_filtered = results_replace_listing.clone();
-    super::browser::debounce_filter_entry(&filter_entry, move |text| {
-        let text = if directory_filtered.get() {
-            String::new()
-        } else {
-            text
-        };
-        super::browser::notify_filter_query(&filter_for_settled, &query_for_filter, text);
-    });
+    super::browser::bind_listing_filter(
+        &filter_entry,
+        &filter,
+        &filter_query,
+        results_replace_listing.clone(),
+        options.state.clone(),
+    );
     let view_model =
         gtk::SortListModel::new(Some(filtered_model.clone()), None::<gtk::CustomSorter>);
     if options.group_by_type {
@@ -4677,10 +4684,6 @@ fn apply_icons_entry(
     if label.text().as_deref() != Some(shown_name) {
         label.set_text(Some(shown_name));
     }
-    super::browser::find::highlight_name(
-        label.upcast_ref(),
-        state.and_then(|state| state.find_highlight()).as_deref(),
-    );
     super::thumbnail::set_thumbnail_or_icon(
         &icon,
         entry,

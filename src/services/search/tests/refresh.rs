@@ -156,7 +156,7 @@ fn relocated_multi_root_indexes_follow_later_child_renames_and_new_sessions() {
             vec![root.join("old/subdir"), root.join("stable")],
             false,
             recursive,
-            fuzzy_score_normalized,
+            SearchScorer::Name(fuzzy_score_normalized),
         );
         handle.query("needle");
         let expected = if recursive {
@@ -184,7 +184,7 @@ fn relocated_multi_root_indexes_follow_later_child_renames_and_new_sessions() {
             vec![root.join("new/subdir"), root.join("stable")],
             false,
             recursive,
-            fuzzy_score_normalized,
+            SearchScorer::Name(fuzzy_score_normalized),
         );
         assert!(
             Arc::ptr_eq(&handle.index, &second.index),
@@ -250,7 +250,8 @@ fn refreshed_index_rejects_late_original_batches_and_rescores_smaller_snapshots(
         SearchItem::new(root.join("needle-stale.txt"), root, false),
     ];
     append_index_items(&index, &mut old_batch, false, SearchCoverage::default());
-    let (handle, events) = start_search_session(index.clone(), fuzzy_score_normalized);
+    let (handle, events) =
+        start_search_session(index.clone(), SearchScorer::Name(fuzzy_score_normalized));
     handle.query("needle");
     await_paths(&events, root, &["needle.txt", "needle-stale.txt"]);
     request_index_refresh(index.clone(), vec![root.to_path_buf()], false, true);

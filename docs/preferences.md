@@ -60,8 +60,8 @@ control that might be midway through synchronization.
 | Cross-device drag and drop | Drop dispatch reads the current Copy, Move, or Ask strategy; unresolved volume lookups follow the same cross-device policy. |
 | Sort key/direction, folders-first | Shared defaults for new columns; an existing column keeps its own sort, selection and navigation. Explicit field sorting updates the persisted defaults. Camera Photos libraries instead open in column-local Device order (see below). |
 | Type-to-search, opening search results directly | Keyboard/search actions read the current manager value at dispatch. |
-| 10xer mode | Interactive browsers and the portal file chooser bind pane Close/filter/refresh/sort chrome and the Yazi-style keymap at construction, including lazily rebuilt views. Window Search hides in interactive browsers. Window Close, chooser Accept/Cancel, and List column headings stay. Off by default; toggle with `Ctrl+Shift+M` or Settings → General → Browsing. |
-| Include subfolders | Every pane filter binds at construction, including lazy view rebuilds. Enabled by default; disabling indexes only immediate files and folders, without traversing descendants. Live changes cancel pending queries and invalidate old result streams before refreshing the active filter. Global search remains recursive. |
+| 10xer mode | Interactive browsers and the portal file chooser bind pane Close/filter/refresh/sort chrome and the Yazi-style keymap at construction, including lazily rebuilt views. Window Search hides in interactive browsers. Window Close, chooser Accept/Cancel, and List column headings stay. Unclaimed letter commands return focus from non-text window chrome to the listing; text fields, menus, and previews retain their own input. Off by default; toggle with `Ctrl+Shift+M` or Settings → General → Browsing. Enabling shows a brief non-interactive splash that respects Reduce motion; reopening an already-enabled window does not replay it. |
+| Include subfolders | Every pane filter binds at construction, including lazy view rebuilds. Enabled by default; disabling indexes only immediate files and folders, without traversing descendants. Live changes cancel pending queries and invalidate old result streams before refreshing the active filter. Global search remains recursive. 10xer mode ignores it: entering or leaving the mode re-runs active filters in the new scope. |
 | Element glow | Shared semantic glow color is applied by `ThemeManager` when the appearance preferences change, before Settings opens and live across windows, dialogs, menus, and rebuilt views. Focus outlines and ordinary depth shadows are preserved. |
 | Reduced motion | Set before any window is constructed; animation helpers read the current process-wide value. |
 | Theme, Omarchy following, text size | `ThemeManager` applies shared CSS when theme selection, Omarchy following, text size, or element glow change; controls and theme-card selections bind to preferences through `ThemeManager::bind_theme_preference`. Newly saved custom themes appear in other open theme pages. Missing themes/Omarchy use the existing fallback policy. |
@@ -81,6 +81,7 @@ control that might be midway through synchronization.
 | Sidebar expanded | Browser windows bind their header toggle at construction: a saved collapsed state starts closed without animation, and `Ctrl+B` or the header toggle persists the choice and updates all open browser windows live. Expanded by default; not exposed in Settings. The portal chooser keeps its own unsaved sidebar state. |
 | Modified date format | Modified-time labels read the saved format at every render; already-open labels re-render live. Properties uses full absolute local timestamps for Relative, while preserving ISO 8601 and Long. |
 | Folder colors/custom icons | Icon resolution reads the manager; existing customization refreshes notify rendered icons, including local sidebar folders, customization previews, and Properties. Sidebar folder icons retain their customization in collapsed mode and across row rebuilds. Local sidebar folders expose the shared Customize action. |
+| Device display labels | `device_labels` stores Strata-only labels by filesystem UUID, with mount URI fallback when a UUID is unavailable. Sidebar device rows and Properties bind at construction, update across open windows, and reapply on row rebuilds. Set label… edits the label; blank restores the system-provided name. Filesystem labels, mount/boot configuration, and other applications remain unchanged. Label editors retain their local draft while their Save action follows the latest shared value. Send-to menus and destructive Format confirmations retain system-provided drive names. No Settings page is required. |
 | Recent Send-to destinations | `send_to_recent_destinations` stores up to three relative directory paths per stable removable-device ID. The selection menu validates them against the device's current canonical root when opened and again when activated; no Settings control is exposed. |
 
 Location, selection, history, each column's sort, filter query, transient theme
@@ -216,6 +217,8 @@ on by default. Turn it off to match only immediate files and folders, without
 redundant path subtitles. The choice applies to pane filtering in Columns, Icons,
 and List views, not global search.
 Changing it refreshes active filters across windows and is saved for next launch.
+[10xer mode](10xer-mode.md) does not use it: there **f** filters only the
+current folder and **s** always searches below it.
 
 ## 10xer mode
 
@@ -231,7 +234,8 @@ the Yazi-style map with footer prompts (`/` `?` `f` `s` `a` `r` `g Space`
 `z`/`Z`), `g`-chord keycaps, and non-conflicting GUI keys (`Ctrl+C`/`X`/`V`,
 `F2`, `F5`, `Delete`, …). Keyboard navigation stays in the Columns, List, and
 Icons panes. The sidebar, window header, footer, and other controls outside
-those panes stay pointer-operated. **`s`** is current-folder recursive name search;
+those panes stay pointer-operated. **`s`** is current-folder recursive fuzzy path
+search and **`f`** filters the current folder with the same fuzzy terms;
 **`S`** is unbound. Toggle with **Ctrl+Shift+M**, close the window with **Q**. The
 preference is defined in `src/ui/preferences.rs`, saved as `tenxer_mode` in
 `settings.toml`, and live-updates every window. Real mode transitions clear
@@ -242,9 +246,10 @@ closing the drawer. Default **Ctrl+F** then follows the saved **Include subfolde
 choice again. Initial preference binding applies chrome and accelerators without
 transition teardown or a file-list focus grab at disabled startup.
 Context-menu shortcut hints and the F1 / `~` reference list the currently
-active map (including the kept Ctrl/F-key conventions). **Type to search** and
-**Keep arrows in file list** stay saved and editable; while the mode is on they
-are unused and those rows show the subtitle **Not used in 10xer mode.**
+active map (including the kept Ctrl/F-key conventions). **Type to search**,
+**Keep arrows in file list**, and **Include subfolders** stay saved and
+editable; while the mode is on they are unused and those rows show the subtitle
+**Not used in 10xer mode.**
 **Mirror columns selection** and **Single-click previews** keep applying, so in
 Columns the cursor opens the folder or preview under it. **i** opens the next
 Miller column without focusing it, or toggles the folder-peek popover in List

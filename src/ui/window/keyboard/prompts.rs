@@ -3,20 +3,26 @@
 //! 10xer footer prompts. While a prompt has focus only its own keys act; every
 //! other key edits the text and never reaches a browsing command.
 
+use std::{
+    cell::{Cell, RefCell},
+    path::{Path, PathBuf},
+    rc::Rc,
+};
+
 use gtk::{
     gdk::{Key, ModifierType as Modifiers},
-    glib::Propagation,
+    glib::{self, Propagation},
 };
 
 use super::{Dispatcher, KeyResult, command_modifiers};
 use crate::{
     app::Browser,
-    model::Location,
+    model::{FileEntry, Location},
     services::NavigationHistory,
     ui::{
-        browser::CreateRefusal,
-        go_completion::{Context, Step},
-        shortcut_footer::{PromptSink, ShortcutFooter},
+        browser::{BrowserView, CreateRefusal},
+        folder_picker::{self, FolderPicker, Refused, Request},
+        shortcut_footer::{CandidateKeys, ShortcutFooter},
         tenxer_mode::Prompt,
     },
 };
@@ -96,17 +102,10 @@ impl Dispatcher {
         }
         let kind = self.shortcuts.open_prompt_kind();
         match key {
-            Key::Tab | Key::KP_Tab | Key::ISO_Left_Tab
-                if let Some(kind) = kind.filter(|kind| kind.completes_folders()) =>
-            {
-                let backward =
-                    key == Key::ISO_Left_Tab || modifiers.contains(Modifiers::SHIFT_MASK);
-                self.complete_folder(browser, kind, backward);
-            }
             Key::Escape
                 if kind.is_some_and(|kind| {
                     matches!(kind, Prompt::Create)
-                        || kind.completes_folders()
+                        || kind.picks_folder()
                         || kind.holds_targets()
                         || kind.picks_history()
                 }) =>
@@ -142,6 +141,29 @@ impl Dispatcher {
                 self.shortcuts.step_candidate(delta);
                 show_candidate_hint(&self.shortcuts);
             }
+            Key::Tab | Key::KP_Tab | Key::ISO_Left_Tab
+                if kind.is_some_and(Prompt::picks_folder) =>
+            {
+                if let Some(chosen) = self.shortcuts.chosen_candidate() {
+                    let current = active_folder(browser);
+                    let text =
+                        folder_picker::typed_path(&chosen, current.as_deref(), &glib::home_dir());
+                    self.shortcuts.type_prompt_text(&text);
+                }
+            }
+            Key::Up | Key::KP_Up | Key::Down | Key::KP_Down
+                if kind.is_some_and(Prompt::picks_folder) =>
+            {
+                let delta = if matches!(key, Key::Up | Key::KP_Up) {
+                    -1
+                } else {
+                    1
+                };
+                self.shortcuts.step_candidate(delta);
+                if self.shortcuts.candidate_position().is_some() {
+                    show_candidate_hint(&self.shortcuts);
+                }
+            }
             Key::Up | Key::KP_Up | Key::Down | Key::KP_Down
                 if kind.is_some_and(Prompt::holds_targets) => {}
             Key::Up | Key::KP_Up => self.view.step_cursor_unfocused(-1),
@@ -164,13 +186,8 @@ impl Dispatcher {
                 self.view.commit_listing_search(&text);
                 return;
             }
-            Some(Prompt::Go) => {
-                // Closing clears the entry before navigation can show a dialog.
-                self.return_to_listing(browser);
-                if !text.trim().is_empty() {
-                    self.view.keyboard_navigation();
-                    self.view.open_typed_location(&text);
-                }
+            Some(kind @ (Prompt::Go | Prompt::MoveTo | Prompt::CopyTo | Prompt::ExtractTo)) => {
+                self.submit_folder(kind, text);
                 return;
             }
             Some(Prompt::Jump | Prompt::Recent) => {
@@ -193,10 +210,6 @@ impl Dispatcher {
                 self.submit_rename(browser, &text);
                 return;
             }
-            Some(kind @ (Prompt::MoveTo | Prompt::CopyTo | Prompt::ExtractTo)) => {
-                self.submit_destination(browser, kind, &text);
-                return;
-            }
             _ if text.is_empty() => true,
             Some(kind @ (Prompt::Find | Prompt::FindBackward)) => {
                 self.view.find(&text, kind == Prompt::FindBackward, false)
@@ -210,30 +223,36 @@ impl Dispatcher {
         }
     }
 
-    fn complete_folder(&self, browser: &Browser, kind: Prompt, backward: bool) {
-        let text = self.shortcuts.prompt_text();
-        let current = browser
-            .active_location()
-            .and_then(|location| location.native_path().map(std::path::Path::to_path_buf));
-        let home = gtk::glib::home_dir();
-        let listing = |include_hidden| {
-            browser
-                .active_depth()
-                .map(|depth| browser.folder_names(depth, include_hidden))
-                .unwrap_or_default()
+    fn submit_folder(&self, kind: Prompt, text: String) {
+        let submitted = self.destination_revision.get().wrapping_add(1);
+        self.destination_revision.set(submitted);
+        let prompt = FolderPrompt {
+            view: self.view.clone(),
+            shortcuts: self.shortcuts.clone(),
+            picker: self.destinations.clone(),
+            targets: self.destination_targets.clone(),
+            revision: self.destination_revision.clone(),
+            submitted,
+            navigation: self.view.browser().navigation_generation(),
         };
-        let context = Context {
-            current: current.as_deref(),
-            home: &home,
-            show_hidden: browser.preferences().show_hidden,
-            listing: &listing,
+        if self.shortcuts.candidate_stepped() {
+            return prompt.submit(kind, &text, None);
+        }
+        let current = active_folder(&self.view.browser());
+        let Some(target) =
+            folder_picker::typed_target(&text, current.as_deref(), &glib::home_dir())
+        else {
+            return prompt.submit_when_settled(kind, text);
         };
-        let sink = self.shortcuts.prompt_sink(kind);
-        let later = self.shortcuts.prompt_sink(kind);
-        let step = self.go.step(&text, backward, &context, move |step| {
-            show_step(&later, step)
+        glib::MainContext::default().spawn_local(async move {
+            let probed = target.clone();
+            let exists = gtk::gio::spawn_blocking(move || probed.exists()).await;
+            if exists.unwrap_or(false) {
+                prompt.submit(kind, &text, Some(target));
+            } else {
+                prompt.submit_when_settled(kind, text);
+            }
         });
-        show_step(&sink, step);
     }
 
     fn submit_create(&self, browser: &Browser, text: &str) {
@@ -277,67 +296,15 @@ impl Dispatcher {
             .show(None, Some(&hint));
     }
 
-    fn submit_destination(&self, browser: &Browser, kind: Prompt, text: &str) {
-        let mut targets = self.destination_targets.borrow().clone();
-        if text.trim().is_empty() || targets.is_empty() {
-            return self.return_to_listing(browser);
-        }
-        let destination = match self.view.typed_destination_folder(text) {
-            Ok(destination) => destination,
-            Err(reason) => {
-                self.shortcuts.prompt_sink(kind).show(None, Some(reason));
-                return;
-            }
-        };
-        let revision = self.destination_revision.clone();
-        let submitted = revision.get().wrapping_add(1);
-        revision.set(submitted);
-        let view = self.view.clone();
-        let shortcuts = self.shortcuts.clone();
-        let navigation = browser.navigation_generation();
-        let submitted_text = text.to_owned();
-        gtk::glib::MainContext::default().spawn_local(async move {
-            let result = gtk::gio::spawn_blocking(move || match std::fs::metadata(&destination) {
-                Ok(metadata) if metadata.is_dir() => Ok(destination),
-                Ok(_) => Err("Not a folder"),
-                Err(_) => Err("No such folder"),
-            })
-            .await;
-            if revision.get() != submitted
-                || view.browser().navigation_generation() != navigation
-                || shortcuts.open_prompt_kind() != Some(kind)
-                || shortcuts.prompt_text() != submitted_text
-            {
-                return;
-            }
-            let result = match result {
-                Ok(Ok(destination)) if kind == Prompt::ExtractTo => {
-                    view.extract_to_folder(targets.remove(0), destination);
-                    Ok(())
-                }
-                Ok(Ok(destination)) => {
-                    view.transfer_to_folder(targets, destination, kind == Prompt::MoveTo)
-                }
-                Ok(Err(reason)) => Err(reason),
-                Err(_) => Err("Unable to check folder"),
-            };
-            match result {
-                Ok(()) => {
-                    shortcuts.dismiss_prompt();
-                    if !view.focus_visible_results() {
-                        view.browser().focus_active();
-                    }
-                }
-                Err(reason) => shortcuts.prompt_sink(kind).show(None, Some(reason)),
-            }
-        });
-    }
-
     fn return_to_listing(&self, browser: &Browser) {
-        self.shortcuts.dismiss_prompt();
-        if !self.view.focus_visible_results() {
-            browser.focus_active();
-        }
+        return_to_listing(&self.shortcuts, &self.view, browser);
+    }
+}
+
+pub(super) fn return_to_listing(shortcuts: &ShortcutFooter, view: &BrowserView, browser: &Browser) {
+    shortcuts.dismiss_prompt();
+    if !view.focus_visible_results() {
+        browser.focus_active();
     }
 }
 
@@ -359,8 +326,177 @@ pub(super) fn show_history_candidates(
         history.recent_excluding(&text, excluded)
     };
     let paths = items.into_iter().map(|item| item.path).collect();
-    shortcuts.show_candidates(paths);
+    let keys = CandidateKeys {
+        enter: "Open",
+        tab: None,
+    };
+    shortcuts.show_candidates(paths, keys);
     show_candidate_hint(shortcuts);
+}
+
+struct FolderPrompt {
+    view: BrowserView,
+    shortcuts: ShortcutFooter,
+    picker: FolderPicker,
+    targets: Rc<RefCell<Vec<FileEntry>>>,
+    revision: Rc<Cell<u64>>,
+    submitted: u64,
+    navigation: u64,
+}
+
+impl FolderPrompt {
+    fn is_current(&self, kind: Prompt, text: &str) -> bool {
+        self.revision.get() == self.submitted
+            && self.view.browser().navigation_generation() == self.navigation
+            && self.shortcuts.open_prompt_kind() == Some(kind)
+            && self.shortcuts.prompt_text() == text
+    }
+
+    fn submit_when_settled(self, kind: Prompt, text: String) {
+        if !self.is_current(kind, &text) {
+            return;
+        }
+        if self.picker.is_pending() {
+            self.shortcuts
+                .prompt_sink(kind)
+                .show(None, Some(folder_picker::SEARCHING));
+        }
+        let picker = self.picker.clone();
+        picker.when_settled(move || self.submit(kind, &text, None));
+    }
+
+    fn submit(&self, kind: Prompt, text: &str, typed: Option<PathBuf>) {
+        if !self.is_current(kind, text) {
+            return;
+        }
+        if kind == Prompt::Go {
+            self.open(text, typed.is_some());
+        } else {
+            self.send(kind, text, typed);
+        }
+    }
+
+    fn open(&self, text: &str, typed: bool) {
+        let chosen = (!typed)
+            .then(|| self.shortcuts.chosen_candidate())
+            .flatten();
+        // Closing clears the entry before navigation can show a dialog.
+        self.return_to_listing();
+        if text.trim().is_empty() {
+            return;
+        }
+        self.view.keyboard_navigation();
+        match chosen {
+            Some(folder) => self
+                .view
+                .browser()
+                .navigate_with_selection(Location::local(folder), true),
+            None => self.view.open_typed_location(text),
+        }
+    }
+
+    fn send(&self, kind: Prompt, text: &str, typed: Option<PathBuf>) {
+        if text.trim().is_empty() || self.targets.borrow().is_empty() {
+            return self.return_to_listing();
+        }
+        let Some(destination) = typed.or_else(|| self.shortcuts.chosen_candidate()) else {
+            let current = active_folder(&self.view.browser());
+            let reason = folder_picker::scope(text, current.as_deref(), &glib::home_dir())
+                .err()
+                .unwrap_or(folder_picker::NO_MATCHES);
+            return self.shortcuts.prompt_sink(kind).show(None, Some(reason));
+        };
+        send_to_destination(
+            &self.view,
+            &self.shortcuts,
+            &self.targets,
+            &self.revision,
+            kind,
+            destination,
+        );
+    }
+
+    fn return_to_listing(&self) {
+        return_to_listing(&self.shortcuts, &self.view, &self.view.browser());
+    }
+}
+
+pub(super) fn show_folder_candidates(
+    shortcuts: &ShortcutFooter,
+    picker: &FolderPicker,
+    browser: &Browser,
+    targets: &[FileEntry],
+    kind: Prompt,
+) {
+    if !kind.picks_folder() || shortcuts.open_prompt_kind() != Some(kind) {
+        return;
+    }
+    let text = shortcuts.prompt_text();
+    let current = active_folder(browser);
+    let home = glib::home_dir();
+    let request = Request {
+        text: &text,
+        current: current.as_deref(),
+        home: &home,
+        show_hidden: browser.preferences().show_hidden,
+        uris: kind == Prompt::Go,
+        refused: refused_destinations(kind, targets),
+    };
+    let shortcuts = shortcuts.clone();
+    picker.update(request, move |shown| {
+        if shortcuts.open_prompt_kind() != Some(kind) {
+            return;
+        }
+        let listed = !shown.paths.is_empty();
+        let keys = CandidateKeys {
+            enter: destination_action(kind),
+            tab: Some("Complete"),
+        };
+        shortcuts.show_candidates(shown.paths, keys);
+        if listed {
+            show_candidate_hint(&shortcuts);
+        } else {
+            shortcuts.prompt_sink(kind).show(None, shown.hint);
+        }
+    });
+}
+
+fn destination_action(kind: Prompt) -> &'static str {
+    match kind {
+        Prompt::MoveTo => "Move",
+        Prompt::CopyTo => "Copy",
+        Prompt::ExtractTo => "Extract",
+        _ => "Open",
+    }
+}
+
+fn refused_destinations(kind: Prompt, targets: &[FileEntry]) -> Refused {
+    if !matches!(kind, Prompt::MoveTo | Prompt::CopyTo) {
+        return Refused::default();
+    }
+    let trees = targets
+        .iter()
+        .filter(|entry| entry.is_directory())
+        .filter_map(|entry| entry.location.native_path().map(Path::to_path_buf))
+        .collect();
+    let mut parents = targets.iter().map(|entry| {
+        entry
+            .location
+            .native_path()
+            .and_then(Path::parent)
+            .map(Path::to_path_buf)
+    });
+    let first = parents.next().flatten();
+    let folder = (kind == Prompt::MoveTo && parents.all(|parent| parent == first))
+        .then_some(first)
+        .flatten();
+    Refused { trees, folder }
+}
+
+fn active_folder(browser: &Browser) -> Option<PathBuf> {
+    browser
+        .active_location()
+        .and_then(|location| location.native_path().map(Path::to_path_buf))
 }
 
 fn show_candidate_hint(shortcuts: &ShortcutFooter) {
@@ -368,20 +504,60 @@ fn show_candidate_hint(shortcuts: &ShortcutFooter) {
         return;
     };
     let hint = match shortcuts.candidate_position() {
-        None => Some("No matching folders".to_owned()),
+        None => Some(folder_picker::NO_MATCHES.to_owned()),
         Some((_, 1)) => None,
         Some((index, count)) => Some(format!("{} of {count}", index + 1)),
     };
     shortcuts.prompt_sink(kind).show(None, hint.as_deref());
 }
 
-fn show_step(sink: &PromptSink, step: Step) {
-    match step {
-        Step::Complete { text, index, count } => {
-            let position = (count > 1).then(|| format!("{} of {count}", index + 1));
-            sink.show(Some(&text), position.as_deref());
-        }
-        Step::Pending => sink.show(None, Some("Listing folders\u{2026}")),
-        Step::Hint(hint) => sink.show(None, Some(hint.text())),
+pub(super) fn send_to_destination(
+    view: &BrowserView,
+    shortcuts: &ShortcutFooter,
+    targets: &RefCell<Vec<FileEntry>>,
+    revision: &Rc<Cell<u64>>,
+    kind: Prompt,
+    destination: PathBuf,
+) {
+    let mut targets = targets.borrow().clone();
+    if targets.is_empty() {
+        return;
     }
+    let revision = revision.clone();
+    let submitted = revision.get().wrapping_add(1);
+    revision.set(submitted);
+    let view = view.clone();
+    let shortcuts = shortcuts.clone();
+    let navigation = view.browser().navigation_generation();
+    let submitted_text = shortcuts.prompt_text();
+    gtk::glib::MainContext::default().spawn_local(async move {
+        let result = gtk::gio::spawn_blocking(move || match std::fs::metadata(&destination) {
+            Ok(metadata) if metadata.is_dir() => Ok(destination),
+            Ok(_) => Err("Not a folder"),
+            Err(_) => Err("No such folder"),
+        })
+        .await;
+        if revision.get() != submitted
+            || view.browser().navigation_generation() != navigation
+            || shortcuts.open_prompt_kind() != Some(kind)
+            || shortcuts.prompt_text() != submitted_text
+        {
+            return;
+        }
+        let result = match result {
+            Ok(Ok(destination)) if kind == Prompt::ExtractTo => {
+                view.extract_to_folder(targets.remove(0), destination);
+                Ok(())
+            }
+            Ok(Ok(destination)) => {
+                view.transfer_to_folder(targets, destination, kind == Prompt::MoveTo)
+            }
+            Ok(Err(reason)) => Err(reason),
+            Err(_) => Err("Unable to check folder"),
+        };
+        match result {
+            Ok(()) => return_to_listing(&shortcuts, &view, &view.browser()),
+            Err(reason) => shortcuts.prompt_sink(kind).show(None, Some(reason)),
+        }
+    });
 }

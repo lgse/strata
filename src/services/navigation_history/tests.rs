@@ -147,3 +147,58 @@ fn excluded_folder_does_not_consume_a_result_slot() {
         );
     }
 }
+
+#[test]
+fn frecency_snapshot_weighs_visits_by_recency_below_the_root() {
+    let directory = tempfile::tempdir().expect("history directory");
+    let history = NavigationHistory::open(directory.path().join("history.json"));
+    let now = 10 * WEEK_SECONDS;
+    history.record_at(Path::new("/work/stale"), now - 2 * WEEK_SECONDS);
+    history.record_at(Path::new("/work/fresh"), now - 10);
+    history.record_at(Path::new("/elsewhere/fresh"), now - 10);
+
+    let frecency = history.frecency_within_at(Path::new("/work"), now);
+    let stale = frecency.bias(Path::new("/work/stale"), true);
+    let fresh = frecency.bias(Path::new("/work/fresh"), true);
+    assert!(fresh > stale && stale > 0);
+    assert_eq!(frecency.bias(Path::new("/elsewhere/fresh"), true), 0);
+}
+
+#[test]
+fn jump_queries_take_fzf_terms_across_the_whole_path() {
+    let directory = tempfile::tempdir().expect("history directory");
+    let history = NavigationHistory::open(directory.path().join("history.json"));
+    let now = 10 * WEEK_SECONDS;
+    let strata = PathBuf::from("/home/me/dev/strata");
+    let source = PathBuf::from("/home/me/dev/strata/src");
+    let stratagem = PathBuf::from("/home/me/stratagem");
+    let notes = PathBuf::from("/home/me/notes/strata-notes");
+    for (path, visits) in [(&strata, 1), (&source, 30), (&stratagem, 30), (&notes, 30)] {
+        for _ in 0..visits {
+            history.record_at(path, now - 10);
+        }
+    }
+
+    let jump = |query| {
+        history
+            .search_at(query, now)
+            .into_iter()
+            .map(|item| item.path)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(jump("strata")[0], strata, "an exact name beats frecency");
+    assert_eq!(jump("strata dev"), [strata.clone(), source.clone()]);
+    assert_eq!(jump("dev src"), [source]);
+    let excluded = jump("strata !notes");
+    assert_eq!(excluded.len(), 3);
+    assert!(!excluded.contains(&notes));
+    assert_eq!(jump("^/home/me/notes"), std::slice::from_ref(&notes));
+    assert!(!jump("sta").is_empty());
+    assert!(jump("'sta").is_empty());
+    let recent = history
+        .recent_excluding("notes strata", None)
+        .into_iter()
+        .map(|item| item.path)
+        .collect::<Vec<_>>();
+    assert_eq!(recent, [notes]);
+}

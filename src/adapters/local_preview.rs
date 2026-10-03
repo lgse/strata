@@ -495,6 +495,7 @@ impl LocalPreviewProvider {
                     size: request.media_size,
                     backend: media_preview_backend,
                     input_owner: None,
+                    audio_only: false,
                 };
                 if let Some(staged) = staged {
                     media = media.retain_input(staged);

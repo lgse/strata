@@ -7,12 +7,13 @@ use super::{SEARCH_RESULTS_LABEL, SearchPresentation};
 use crate::{
     model::{FileEntry, Location},
     services::SearchItem,
+    ui::browser::find::{HitRanges, highlight_hit_name},
 };
 use gtk::{gio, glib, prelude::*};
 use std::{
     cell::{Cell, RefCell},
     collections::{HashMap, HashSet},
-    path::PathBuf,
+    path::{Path, PathBuf},
     rc::Rc,
 };
 
@@ -40,6 +41,22 @@ pub(super) enum ResultKind {
     Icons { thumbnail_size: Rc<Cell<i32>> },
 }
 
+#[derive(Default)]
+pub(super) struct NameHighlights {
+    pub(super) find: Option<String>,
+    pub(super) hits: HitRanges,
+}
+
+impl NameHighlights {
+    pub(super) fn apply(&self, label: &gtk::Widget, path: &Path) {
+        highlight_hit_name(
+            label,
+            self.find.as_deref(),
+            self.hits.get(path).map(Vec::as_slice),
+        );
+    }
+}
+
 pub(super) struct BoundResult {
     pub(super) item: glib::WeakRef<gtk::ListItem>,
     pub(super) widget: glib::WeakRef<gtk::Widget>,
@@ -62,6 +79,7 @@ pub(super) struct ResultCollection {
     pub(super) kind: ResultKind,
     pub(super) root: PathBuf,
     pub(super) reconciling: Rc<Cell<bool>>,
+    pub(super) highlights: Rc<RefCell<NameHighlights>>,
 }
 
 impl ResultCollection {
@@ -274,17 +292,36 @@ impl ResultCollection {
     }
 
     pub(super) fn refresh_bindings(&self, recursive: bool) {
+        let highlights = self.highlights.borrow();
         self.bound.borrow_mut().retain(|bound| {
             let (Some(item), Some(_widget)) = (bound.item.upgrade(), bound.widget.upgrade()) else {
                 return false;
             };
             if let Some(result) = self.item(item.position()) {
-                bound
-                    .presentation
-                    .bind(&self.kind, &item, &result, &self.root, recursive);
+                bound.presentation.bind(
+                    &self.kind,
+                    &item,
+                    &result,
+                    &self.root,
+                    recursive,
+                    &highlights,
+                );
             }
             true
         });
+    }
+
+    pub(super) fn refresh_highlights(&self) {
+        let highlights = self.highlights.borrow();
+        for bound in self.bound.borrow().iter() {
+            let (Some(item), Some(label)) = (bound.item.upgrade(), bound.rename_label.upgrade())
+            else {
+                continue;
+            };
+            if let Some(result) = self.item(item.position()) {
+                highlights.apply(&label, &result.path);
+            }
+        }
     }
 
     pub(super) fn clear(&self) {
@@ -569,6 +606,8 @@ pub(super) fn build_collection(
     let recursive_for_bind = recursive.clone();
     let root_for_bind = root.clone();
     let bound_for_bind = bound.clone();
+    let highlights = Rc::new(RefCell::new(NameHighlights::default()));
+    let highlights_for_bind = highlights.clone();
     factory.connect_bind(move |_, object| {
         let Some(item) = object.downcast_ref::<gtk::ListItem>() else {
             return;
@@ -592,6 +631,7 @@ pub(super) fn build_collection(
                 &result,
                 &root_for_bind,
                 recursive_for_bind.get(),
+                &highlights_for_bind.borrow(),
             );
         }
     });
@@ -704,6 +744,7 @@ pub(super) fn build_collection(
             kind,
             root,
             reconciling,
+            highlights,
         },
         scroll,
         overlay,

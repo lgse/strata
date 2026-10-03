@@ -13,6 +13,9 @@ use crate::ui::browser::collection::{
 };
 use crate::ui::browser::context_menu::{install_folder_context_menu, install_item_context_menu};
 use crate::ui::browser::entry::{entry_filter, entry_model_value, format_file_size};
+use crate::ui::browser::find::{
+    HitRanges, highlight_hit_name, highlight_listing_name, search_hit_ranges,
+};
 use crate::ui::browser::pane_header::{
     column_sort_direction_toggle, column_sort_menu, empty_trash_button, pane_new_folder_button,
     pane_refresh_button,
@@ -268,9 +271,37 @@ pub(super) struct ColumnView {
     query_binding: Rc<RefCell<Option<super::collection::FilterQueryBinding>>>,
     pub(super) search_model: gtk::StringList,
     pub(super) recursive_search_active: Rc<Cell<bool>>,
+    hits: Rc<RefCell<ColumnHits>>,
+}
+
+#[derive(Default)]
+pub(super) struct ColumnHits {
+    pub(super) ranges: HitRanges,
+    pub(super) recursive: bool,
 }
 
 impl ColumnView {
+    pub(super) fn refresh_name_highlights(&self, find: Option<&str>) {
+        let searching = self.recursive_search_active.get();
+        let results = self.search_results.borrow();
+        let hits = self.hits.borrow();
+        let filter = self.map.query();
+        for bound in self.bound_rows.borrow().iter() {
+            let (Some(label), Some(item)) = (bound.rename_label.upgrade(), bound.item.upgrade())
+            else {
+                continue;
+            };
+            if searching {
+                let hit = results
+                    .get(item.position() as usize)
+                    .and_then(|hit| hits.ranges.get(&hit.path));
+                highlight_hit_name(label.upcast_ref(), find, hit.map(Vec::as_slice));
+            } else {
+                highlight_listing_name(label.upcast_ref(), find, &filter);
+            }
+        }
+    }
+
     pub(super) fn flush_filter_query(&self) {
         if let Some(binding) = self.query_binding.borrow().as_ref() {
             binding.flush();
@@ -961,6 +992,7 @@ impl ViewState {
         );
         let selection = gtk::MultiSelection::new(Some(filtered_model.clone()));
         let recursive_search_active = Rc::new(Cell::new(false));
+        let hits = Rc::new(RefCell::new(ColumnHits::default()));
         let syncing_selection = Rc::new(Cell::new(false));
         let modified_selection = Rc::new(Cell::new(false));
         let focused_filtered = Rc::new(Cell::new(None::<u32>));
@@ -1064,10 +1096,11 @@ impl ViewState {
         let selection_for_search = selection.clone();
         let syncing_for_search = syncing_selection.clone();
         let filter_query_for_search = filter_query.clone();
+        let hits_for_search = hits.clone();
         let query_binding = bind_filter_query(
             &filter_entry,
             &search_session,
-            move |text, recursive, restart| {
+            move |text, scope, restart| {
                 if restart {
                     session_for_changed.cancel();
                     let changed = search::update_results(
@@ -1100,6 +1133,7 @@ impl ViewState {
                         &model_for_search,
                     );
                     if let Some(state) = weak_state_for_search.upgrade() {
+                        state.refresh_name_highlights();
                         state.notify_filter_results_changed();
                     }
                     return;
@@ -1126,6 +1160,7 @@ impl ViewState {
                         &filter_query_for_search,
                         fold_for_search(&text),
                     );
+                    state.refresh_name_highlights();
                     state.notify_filter_results_changed();
                     return;
                 };
@@ -1146,11 +1181,14 @@ impl ViewState {
                 let syncing = syncing_for_search.clone();
                 let browser = Rc::downgrade(&state.browser);
                 let weak_state = weak_state_for_search.clone();
+                let hits = hits_for_search.clone();
+                let root = path.clone();
                 session_for_changed.update(
                     crate::ui::search_session::SearchInput {
                         root: path,
                         show_hidden,
-                        recursive,
+                        scope,
+                        refused: Default::default(),
                     },
                     &query,
                     restart,
@@ -1175,9 +1213,18 @@ impl ViewState {
                             batch.items,
                             batch.has_more,
                         );
+                        hits.replace(ColumnHits {
+                            ranges: if scope.fuzzy() {
+                                search_hit_ranges(&batch.query, &root, &items)
+                            } else {
+                                HitRanges::new()
+                            },
+                            recursive: scope.recursive(),
+                        });
                         if search::update_results(&sm, &results, &selection, &syncing, items) {
                             state.notify_search_selection_changed();
                         }
+                        state.refresh_name_highlights();
                         state.notify_filter_results_changed();
                     }),
                 );
@@ -1195,6 +1242,7 @@ impl ViewState {
             &modified_selection,
             &recursive_search_active,
             &search_results,
+            &hits,
         );
 
         let list = gtk::ListView::new(Some(selection.clone()), Some(factory));
@@ -1665,6 +1713,7 @@ impl ViewState {
             query_binding: Rc::new(RefCell::new(Some(query_binding))),
             search_model,
             recursive_search_active,
+            hits,
         });
 
         if let Some(column) = self.columns.borrow().last() {
