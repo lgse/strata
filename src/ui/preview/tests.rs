@@ -198,10 +198,18 @@ fn an_explicit_close_blocks_automatic_previews_until_reopened() {
             );
             drawer.close();
 
-            // Without a bound browser the panel starts unreserved: switch it on, then off.
+            crate::ui::preferences::PreferenceManager::shared()
+                .set_browser_mode(crate::ui::browser_modes::BrowserMode::Columns);
+            let view = crate::ui::browser::BrowserView::new(
+                Rc::new(EmptySource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
             let released = PreviewDrawer::new(provider.clone(), false);
-            released.state.toggle_panel(None, None);
-            assert!(released.is_enabled());
+            let split = gtk::Paned::new(gtk::Orientation::Horizontal);
+            let content = gtk::Paned::new(gtk::Orientation::Horizontal);
+            released.attach_split(&split, &content, &view, None);
+            assert!(!released.is_enabled());
+            assert!(released.state.reserves_column_space());
             released.state.toggle_panel(None, None);
             released.handle_browser_event(&browser, &automatic);
             assert!(
