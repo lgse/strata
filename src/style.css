@@ -1157,10 +1157,6 @@ headerbar menubutton.header-action > button:focus-visible {
   background: transparent;
 }
 
-.file-operation-dock {
-  padding: 6px;
-}
-
 .file-operation-card {
   background: @theme_surface;
   border: 1px solid alpha(@theme_border, 0.6);
@@ -1168,7 +1164,7 @@ headerbar menubutton.header-action > button:focus-visible {
   box-shadow: 0 0 10px alpha(@theme_glow, 0.18);
   color: @theme_text;
   min-width: 280px;
-  padding: 8px 16px;
+  padding: 16px;
 }
 
 .file-operation-card:focus-within {
@@ -1189,9 +1185,10 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .file-operation-card button.column-header-action {
-  min-width: 16px;
-  min-height: 16px;
-  padding: 3px;
+  min-width: 0;
+  min-height: 0;
+  padding: 1px;
+  border-radius: 8px;
 }
 
 .modal-progress trough {

@@ -35,6 +35,11 @@ fn dock(overlay: &gtk::Overlay) -> (gtk::ScrolledWindow, gtk::Box) {
         }
     }
     let list = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    // Shadows must fit inside the viewport, not in the scroller's clipped padding.
+    list.set_margin_start(16);
+    list.set_margin_end(16);
+    list.set_margin_top(16);
+    list.set_margin_bottom(16);
     let scroll = gtk::ScrolledWindow::builder()
         .child(&list)
         .hscrollbar_policy(gtk::PolicyType::Never)
@@ -98,6 +103,7 @@ impl CompactProgress {
         root.append(&details);
         let destination = wrapped_label(42);
         destination.add_css_class("job-meta");
+        destination.set_margin_bottom(4);
         root.append(&destination);
         let progress = gtk::ProgressBar::new();
         progress.add_css_class("modal-progress");
