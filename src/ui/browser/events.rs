@@ -16,6 +16,7 @@ use crate::ui::browser::desktop::open_location;
 use crate::ui::browser::entry::item_count_label;
 use crate::ui::browser::location::MountStrategy;
 use crate::ui::browser::peek::append_peek_entries;
+use crate::ui::browser::transfer::FinishedSendToCompletion;
 use crate::ui::browser::trash::retryable_delete_entries;
 use crate::ui::browser_modes::BrowserMode;
 use crate::ui::modal::{show_delete_error_dialog, show_error_dialog};
@@ -51,6 +52,7 @@ impl ViewState {
         match event {
             BrowserEvent::SelectionSynced { .. } => return,
             BrowserEvent::NavigationStarting => {
+                self.forget_listing_search();
                 self.suppress_scroll_after_drop.set(false);
                 self.drop_active_depths.set(None);
             }
@@ -221,13 +223,17 @@ impl ViewState {
             BrowserEvent::SortingStarted { depth } => {
                 self.overlay.set_cursor_from_name(Some("wait"));
                 if let Some(column) = self.columns.borrow().get(*depth) {
-                    column.spinner.set_tooltip_text(Some("Sorting…"));
+                    crate::ui::accessibility::set_description(&column.spinner, Some("Sorting…"));
                     column.spinner.set_visible(true);
                     column.spinner.start();
                     set_column_busy(column, true);
                 }
             }
             BrowserEvent::SortingFinished { depth } => {
+                self.finish_keyboard_refocus(
+                    super::file_commands::KeyboardRefocus::Sort(*depth),
+                    true,
+                );
                 self.overlay.set_cursor(None::<&gtk::gdk::Cursor>);
                 if let Some(column) = self.columns.borrow().get(*depth) {
                     super::pane_header::sync_column_sort_direction(
@@ -236,7 +242,7 @@ impl ViewState {
                         &column.sort_direction_button,
                     );
                     stop_column_spinner(column);
-                    column.spinner.set_tooltip_text(None);
+                    crate::ui::accessibility::set_description(&column.spinner, None);
                     set_column_busy(column, false);
                 }
             }
@@ -258,14 +264,19 @@ impl ViewState {
                     }
                     column.entry_count.set(count);
                     set_filter_placeholder(column, count);
-                    let positions: Vec<_> = self
-                        .browser
-                        .selected_positions(*depth)
-                        .into_iter()
-                        .filter_map(|position| column.map.view_position(position))
-                        .collect();
-                    set_column_selections(column, &positions);
+                    // Recursive hits keep their own selection and cursor.
+                    let hits = column.recursive_search_active.get();
+                    if !hits {
+                        let positions: Vec<_> = self
+                            .browser
+                            .selected_positions(*depth)
+                            .into_iter()
+                            .filter_map(|position| column.map.view_position(position))
+                            .collect();
+                        set_column_selections(column, &positions);
+                    }
                     if restore_cursor
+                        && !hits
                         && let Some((focused_depth, position, _)) = self.browser.focused_item()
                         && focused_depth == *depth
                         && let Some(position) = column.map.view_position(position)
@@ -300,8 +311,9 @@ impl ViewState {
                         *depth,
                         &column.sort_direction_button,
                     );
-                    let preserve_search =
-                        self.refreshing_source_filter.get() && column.recursive_search_active.get();
+                    // Filters and searches outlive the monitor rescans of a busy
+                    // folder. Their hits come from the search, not this listing.
+                    let preserve_search = column.recursive_search_active.get();
                     if !preserve_search {
                         column.search_session.cancel();
                         super::collection::deactivate_recursive_search(
@@ -311,7 +323,6 @@ impl ViewState {
                             &column.filtered_model,
                             &column.model,
                         );
-                        column.filter_entry.set_text("");
                         column.syncing_selection.set(true);
                         column.selection.set_model(None::<&gio::ListModel>);
                     }
@@ -544,13 +555,16 @@ impl ViewState {
                         }
                     }
                 }
+                self.refresh_destination_style();
             }
             BrowserEvent::FocusChanged { depth, position } => {
                 let column = self.columns.borrow().get(*depth).cloned();
                 if let Some(column) = column {
                     let editing = self.active_rename.borrow().is_some();
-                    if let Some(filtered_position) =
-                        position.and_then(|position| column.map.view_position(position))
+                    // Recursive hits keep their own selection and cursor.
+                    if let Some(filtered_position) = position
+                        .filter(|_| !column.recursive_search_active.get())
+                        .and_then(|position| column.map.view_position(position))
                     {
                         let positions: Vec<_> = self
                             .browser
@@ -561,9 +575,11 @@ impl ViewState {
                         set_column_selections(&column, &positions);
                         if !editing && !self.suppress_focus_scroll.get() {
                             scroll_column_to(&column, filtered_position);
+                            restore_column_cursor(&column, filtered_position);
                         }
                     }
                     if !editing
+                        && !self.cursor_keeps_focus.get()
                         && self.mode_views.borrow().mode() == BrowserMode::Columns
                         && self.browser.active_depth() == Some(*depth)
                         && !self.suppress_scroll_after_drop.get()
@@ -580,6 +596,7 @@ impl ViewState {
                         self.reveal_column(column.shell);
                     }
                 }
+                self.refresh_destination_style();
                 self.mirror_focused_folder(*depth, *position);
             }
             BrowserEvent::PreviewRequested { .. } => {}
@@ -599,6 +616,10 @@ impl ViewState {
             BrowserEvent::RenameCompleted { request_id } => {
                 self.complete_pending_rename(*request_id);
                 self.prune_stale_search_results();
+                self.finish_keyboard_refocus(
+                    super::file_commands::KeyboardRefocus::Rename(*request_id),
+                    true,
+                );
             }
             BrowserEvent::RenameAbandoned { request_id } => {
                 self.abandon_pending_rename(*request_id);
@@ -608,6 +629,12 @@ impl ViewState {
                 message,
             } => {
                 self.fail_pending_rename_from_browser(*request_id);
+                if let Some(request_id) = request_id {
+                    self.finish_keyboard_refocus(
+                        super::file_commands::KeyboardRefocus::Rename(*request_id),
+                        false,
+                    );
+                }
                 show_error_dialog(&self.overlay, "Unable to rename item", message);
             }
             BrowserEvent::TransferStarted { total, moving } => {
@@ -627,19 +654,43 @@ impl ViewState {
                     "Cancelling will not undo completed changes",
                     Rc::new(move || browser.cancel_file_operation()),
                 );
-                self.update_transfer_progress(0, 0, None);
+                self.update_transfer_progress(0, 0, None, 0, None);
             }
             BrowserEvent::TransferProgress {
                 completed_items,
+                completed_files,
+                total_files,
+                current_file,
                 transferred_bytes,
                 total_bytes,
             } => {
-                self.update_transfer_progress(*completed_items, *transferred_bytes, *total_bytes);
+                self.transfer_current_file.replace(current_file.clone());
+                self.update_transfer_progress(
+                    *completed_items,
+                    *completed_files,
+                    *total_files,
+                    *transferred_bytes,
+                    *total_bytes,
+                );
             }
             BrowserEvent::FlushingToDevice => self.show_device_flush_status(),
+            BrowserEvent::TransferCancellationPending => show_error_dialog(
+                &self.overlay,
+                "Transfer cancellation pending",
+                "The device may still be writing. Wait for the transfer to finish or fail before starting another file operation. Do not unplug until you can safely eject it.",
+            ),
             BrowserEvent::TransferFinished { moved_locations } => {
                 if !moved_locations.is_empty() {
                     self.complete_cut_transfer(moved_locations);
+                }
+                // TransferFinished also fires on failure; defer feedback until TransferCompleted.
+                if let Some(completion) = self.pending_send_to_completion.take() {
+                    let progress_shown = self.file_progress_view.borrow().is_some();
+                    self.finished_send_to_completion
+                        .replace(Some(FinishedSendToCompletion {
+                            completion,
+                            progress_shown,
+                        }));
                 }
                 self.dismiss_file_operation_progress();
                 self.prune_stale_search_results();
@@ -702,6 +753,8 @@ impl ViewState {
                 self.suppress_scroll_after_drop.set(false);
                 self.drop_active_depths.set(None);
                 self.pending_new_entry.take();
+                self.pending_send_to_completion.take();
+                self.finished_send_to_completion.take();
                 self.clear_delete_animation();
                 self.dismiss_file_operation_progress();
                 self.pending_archive_destination.take();
@@ -729,6 +782,8 @@ impl ViewState {
                 self.suppress_scroll_after_drop.set(false);
                 self.drop_active_depths.set(None);
                 self.pending_archive_destination.take();
+                self.pending_send_to_completion.take();
+                self.finished_send_to_completion.take();
                 let retryable_entries = retryable_delete_entries(
                     self.pending_delete_entries.take(),
                     retryable_locations,
@@ -759,6 +814,8 @@ impl ViewState {
                 self.suppress_scroll_after_drop.set(false);
                 self.drop_active_depths.set(None);
                 self.pending_archive_destination.take();
+                self.pending_send_to_completion.take();
+                self.finished_send_to_completion.take();
                 self.browser.refresh_after_cancellation(affected_locations);
                 let message = format!(
                     "{} completed, {} failed, and {} not attempted.\n\nCompleted changes were not reverted.",
@@ -825,6 +882,10 @@ impl ViewState {
             }
             BrowserEvent::ArchiveCompleted { select_name, .. } => {
                 self.pending_extract_retry.replace(None);
+                let extracted_elsewhere = self
+                    .extract_destination
+                    .take()
+                    .is_some_and(|destination| self.browser.active_location() != Some(destination));
                 if select_name.is_empty() {
                     self.pending_archive_destination.take();
                 }
@@ -883,7 +944,7 @@ impl ViewState {
                         if let Some(state) = weak.upgrade()
                             && state.browser.navigation_generation() == navigation_generation
                         {
-                            if !select_name.is_empty() {
+                            if !select_name.is_empty() && !extracted_elsewhere {
                                 state.pending_select.borrow_mut().push(select_name);
                             }
                             state.browser.reload_active();
@@ -923,6 +984,14 @@ impl ViewState {
             }
             BrowserEvent::TransferCompleted => {
                 self.suppress_scroll_after_drop.set(false);
+                if let Some(finished) = self.finished_send_to_completion.take()
+                    && !finished.progress_shown
+                {
+                    self.show_send_to_success(
+                        &finished.completion.device_name,
+                        finished.completion.item_count,
+                    );
+                }
                 if let Some((source_depth, destination_depth)) =
                     self.drop_active_depths.replace(None)
                 {
@@ -1083,7 +1152,7 @@ impl ViewState {
         self.mode_views.borrow().prune_stale_search_results();
     }
 
-    fn mirror_focused_folder(self: &Rc<Self>, depth: usize, position: Option<usize>) {
+    pub(super) fn mirror_focused_folder(self: &Rc<Self>, depth: usize, position: Option<usize>) {
         if let Some(source) = self.pending_mirror.borrow_mut().take() {
             source.remove();
         }
@@ -1091,6 +1160,7 @@ impl ViewState {
             return;
         };
         if self.browser.child_mirror_suppressed()
+            || self.browser.visual_kind().is_some()
             || !self.columns_mirror_selection.get()
             || self.active_rename.borrow().is_some()
             || self.pending_new_entry.borrow().is_some()
@@ -1117,8 +1187,10 @@ impl ViewState {
             .borrow()
             .get(depth)
             .is_some_and(|column| column.map.has_query());
+        // Opening or closing the child column would end a 10xer range.
         if filtered
             || self.browser.child_mirror_suppressed()
+            || self.browser.visual_kind().is_some()
             || !self.columns_mirror_selection.get()
             || self.active_rename.borrow().is_some()
             || self.pending_new_entry.borrow().is_some()

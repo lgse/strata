@@ -93,6 +93,7 @@ def test_keyboard_selection_after_sidebar_navigation_initializes_the_range_ancho
     sort_key="modified", sort_direction="descending",
 )
 @pytest.mark.parametrize("target", ["name", "row-space"])
+@pytest.mark.usefixtures("unreserved_columns")
 def test_shift_click_revisits_a_file_after_opening_a_folder(strata, root, target):
     def click(name, modifiers=()):
         entry = strata.entry(name, root)
@@ -128,6 +129,7 @@ def test_modifier_click_on_a_filename_focuses_the_target(strata, mode, root):
 
 
 @pytest.mark.preferences(browser_mode="columns")
+@pytest.mark.usefixtures("unreserved_columns")
 def test_returning_to_a_parent_pane_anchors_its_first_entry(strata, root):
     strata.open_directory("documents", directory=root)
     strata.pointer.click(strata.pane(root), at=strata.background_point(root))
@@ -138,6 +140,7 @@ def test_returning_to_a_parent_pane_anchors_its_first_entry(strata, root):
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.usefixtures("unreserved_columns")
 def test_control_click_toggles_individual_entries(strata, mode, root):
     strata.select_entry("archive", directory=root)
 
@@ -270,3 +273,157 @@ def test_a_click_after_navigating_re_anchors_the_range(strata, mode, root):
         lambda: strata.selected_names("documents") == ["report.md", "spreadsheet.csv"],
         "the range to start at the clicked entry rather than the loaded one",
     )
+
+
+ROOT_ENTRIES = ["archive", "documents", "pictures", "readme.md", "todo.txt"]
+NEXT_ENTRY = {"Columns": "Down", "Icons": "Right", "List": "Down"}
+
+
+@pytest.mark.preferences(tenxer_mode=True, type_to_search=False, single_click_previews=False)
+@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.usefixtures("unreserved_columns")
+def test_tenxer_space_toggles_the_cursor_and_keeps_the_fill(strata, mode, root):
+    if mode == "Columns":
+        strata.keyboard.press("Home")
+        strata.wait_for_focused_entry("archive")
+        strata.keyboard.press("space")
+        strata.wait_for_selection(["archive"], root)
+        strata.wait_for_focused_entry("documents")
+        strata.keyboard.press("Escape")
+        strata.wait(lambda: strata.selected_names(root) == [], "Escape to clear the fill")
+    strata.keyboard.press("Home")
+    strata.wait_for_focused_entry("archive")
+    hovered = strata.entry("todo.txt", root)
+    strata.pointer.move_to(*hovered.screen_bounds().center)
+    strata.keyboard.press(NEXT_ENTRY[mode])
+    strata.wait_for_focused_entry("documents")
+    strata.keyboard.press("space")
+    strata.wait_for_selection(["documents"], root)
+    assert strata.preview() is None
+    assert "todo.txt" not in strata.selected_names(root)
+    strata.wait_for_focused_entry("pictures")
+
+    strata.keyboard.press("End")
+    strata.wait_for_focused_entry("todo.txt")
+    assert strata.selected_names(root) == ["documents"]
+
+    strata.keyboard.press("ctrl+a")
+    strata.wait_for_selection(ROOT_ENTRIES, root)
+    assert strata.focused_name() == "todo.txt"
+    strata.keyboard.press("Home")
+    strata.wait_for_focused_entry("archive")
+    assert strata.selected_names(root) == ROOT_ENTRIES
+
+    strata.keyboard.press("ctrl+r")
+    strata.wait(lambda: strata.selected_names(root) == [], "Ctrl+R to invert a full pane")
+    assert strata.focused_name() == "archive"
+    strata.keyboard.press("End")
+    strata.wait_for_focused_entry("todo.txt")
+    assert strata.selected_names(root) == []
+
+    strata.keyboard.press("ctrl+a")
+    strata.wait_for_selection(ROOT_ENTRIES, root)
+    strata.keyboard.press("Home")
+    strata.wait_for_focused_entry("archive")
+    assert strata.selected_names(root) == ROOT_ENTRIES
+    strata.keyboard.press("ctrl+Down")
+    strata.wait_for_focused_entry("todo.txt")
+    assert strata.selected_names(root) == ROOT_ENTRIES
+    strata.keyboard.press("ctrl+Up")
+    strata.wait_for_focused_entry("archive")
+    assert strata.selected_names(root) == ROOT_ENTRIES
+
+    if mode == "Icons":
+        strata.keyboard.press("ctrl+r")
+        strata.wait(lambda: strata.selected_names(root) == [], "Ctrl+R to clear the pane")
+        strata.keyboard.press("Home")
+        strata.wait_for_focused_entry("archive")
+        strata.keyboard.press("space")
+        strata.wait_for_selection(["archive"], root)
+        strata.wait_for_focused_entry("documents")
+        strata.keyboard.press("Right")
+        strata.wait_for_focused_entry("pictures")
+        assert strata.selected_names(root) == ["archive"]
+        strata.keyboard.press("ctrl+a")
+        strata.keyboard.press("ctrl+r")
+        strata.wait(lambda: strata.selected_names(root) == [], "Ctrl+R to empty the pane")
+        strata.keyboard.press("Home")
+        strata.wait_for_focused_entry("archive")
+        strata.keyboard.press("Right")
+        strata.wait_for_focused_entry("documents")
+        assert strata.selected_names(root) == []
+
+    if mode == "Columns":
+        strata.select_entry("documents", root)
+        strata.keyboard.press("i")
+        strata.wait(lambda: "documents" in strata.pane_names(), "the child column to open")
+        strata.hover_pane("documents")
+        strata.keyboard.press("ctrl+a")
+        strata.wait_for_selection(ROOT_ENTRIES, root)
+        assert set(strata.selected_names("documents")) != {
+            "notes.txt",
+            "report.md",
+            "spreadsheet.csv",
+        }
+
+    strata.keyboard.press("Home")
+    strata.wait_for_focused_entry("archive")
+    if mode == "Columns":
+        strata.keyboard.press("i")
+        strata.wait(lambda: "archive" in strata.pane_names(), "the empty column to open")
+        strata.keyboard.press("l")
+    else:
+        strata.keyboard.press("Return")
+    strata.wait_for_directory("archive")
+    strata.keyboard.press("space")
+    strata.wait(
+        lambda: strata.window.find(role="label", name="Nothing to select") is not None,
+        "Space in an empty folder to say there is nothing to select",
+    )
+    assert strata.selected_names("archive") == []
+    assert strata.preview() is None
+    strata.keyboard.press("BackSpace")
+    strata.wait_for_directory(root)
+    strata.keyboard.press("ctrl+a")
+    strata.wait_for_selection(ROOT_ENTRIES, root)
+    assert strata.window.find(role="label", name="Nothing to select") is None
+
+
+PREVIOUS_ENTRY = {"Columns": "Up", "Icons": "Left", "List": "Up"}
+
+
+@pytest.mark.preferences(tenxer_mode=True, type_to_search=False, single_click_previews=False)
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_tenxer_visual_ranges_select_unset_and_keep_the_fill(strata, mode, root):
+    strata.keyboard.press("Home")
+    strata.wait_for_focused_entry("archive")
+    strata.keyboard.press("space")
+    strata.wait_for_selection(["archive"], root)
+    strata.keyboard.press("End")
+    strata.wait_for_focused_entry("todo.txt")
+
+    strata.keyboard.press("v")
+    strata.wait_for_selection(["archive", "todo.txt"], root)
+    strata.keyboard.press(PREVIOUS_ENTRY[mode])
+    strata.keyboard.press(PREVIOUS_ENTRY[mode])
+    strata.wait_for_focused_entry("pictures")
+    strata.wait_for_selection(["archive", "pictures", "readme.md", "todo.txt"], root)
+    strata.keyboard.press("space")
+    strata.wait_for_selection(["archive", "readme.md", "todo.txt"], root)
+    assert strata.focused_name() == "pictures"
+    assert strata.preview() is None
+
+    strata.keyboard.press("Escape")
+    strata.keyboard.press(PREVIOUS_ENTRY[mode])
+    strata.wait_for_focused_entry("documents")
+    assert strata.selected_names(root) == ["archive", "readme.md", "todo.txt"]
+
+    strata.keyboard.press("V")
+    strata.keyboard.press(NEXT_ENTRY[mode])
+    strata.keyboard.press(NEXT_ENTRY[mode])
+    strata.wait_for_focused_entry("readme.md")
+    strata.wait_for_selection(["archive", "todo.txt"], root)
+    strata.keyboard.press("Escape")
+    strata.keyboard.press(NEXT_ENTRY[mode])
+    strata.wait_for_focused_entry("todo.txt")
+    assert strata.selected_names(root) == ["archive", "todo.txt"]

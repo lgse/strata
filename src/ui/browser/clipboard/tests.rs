@@ -590,7 +590,7 @@ fn filtered_cut_feedback_follows_results_across_windows_and_rebuilds() {
                 })
                 .collect();
             for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
-                clear_shared_cut();
+                clear_shared_marks();
                 for (view, _) in &views {
                     view.set_view_mode(mode);
                     assert!(view.show_filter_with_query("needle"));
@@ -618,7 +618,7 @@ fn filtered_cut_feedback_follows_results_across_windows_and_rebuilds() {
                             .has_css_class("cut")
                     );
                 }
-                clear_shared_cut();
+                clear_shared_marks();
                 for (view, _) in &views {
                     assert!(
                         !result_row(&view.widget(), "needle.txt")
@@ -643,7 +643,7 @@ fn cleared_shared_cut_is_not_revived_by_stale_view_state() {
     set_shared_cut(std::slice::from_ref(&native));
     assert!(is_cut_match(std::slice::from_ref(&uri)));
 
-    clear_shared_cut();
+    clear_shared_marks();
     assert!(!is_cut_match(std::slice::from_ref(&native)));
 }
 

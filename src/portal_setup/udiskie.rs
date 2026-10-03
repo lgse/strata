@@ -103,7 +103,7 @@ enum RestartMode {
 }
 
 pub(crate) fn install() -> Result<String, String> {
-    let executable = env::current_exe()
+    let executable = crate::services::installed_executable()
         .map_err(|error| format!("Could not locate the Strata executable: {error}"))?;
     let context = SetupContext::from_environment()?;
     let config = install_at(&context, &executable)?;
@@ -125,7 +125,7 @@ pub(crate) fn uninstall() -> Result<String, String> {
 }
 
 pub(crate) fn status() -> Result<UdiskieStatus, String> {
-    let executable = env::current_exe()
+    let executable = crate::services::installed_executable()
         .map_err(|error| format!("Could not locate the Strata executable: {error}"))?;
     status_at(
         &SetupContext::from_environment()?,

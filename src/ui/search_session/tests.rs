@@ -89,3 +89,50 @@ fn restart_intent_cancellation_and_drop_retire_worker_delivery() {
         },
     );
 }
+
+#[test]
+fn scope_change_retires_the_recursive_worker_for_the_same_query() {
+    crate::test_support::gtk_test(
+        "ui::search_session::tests::scope_change_retires_the_recursive_worker_for_the_same_query",
+        || {
+            let fixture = tempfile::tempdir().expect("fixture");
+            std::fs::create_dir(fixture.path().join("nested")).expect("nested folder");
+            std::fs::write(fixture.path().join("alpha.txt"), "a").expect("alpha file");
+            std::fs::write(fixture.path().join("nested/alpha-deep.txt"), "a")
+                .expect("nested alpha file");
+            let input = |recursive| SearchInput {
+                root: fixture.path().into(),
+                show_hidden: false,
+                recursive,
+            };
+            let session = SearchSession::default();
+            let delivered = Rc::new(RefCell::new(Vec::new()));
+            let output = delivered.clone();
+            session.update(
+                input(true),
+                "alpha",
+                false,
+                Rc::new(move |batch| output.borrow_mut().push(batch.items.len())),
+            );
+            // Typing with the scope forced off replaces the worker without an
+            // explicit restart; the recursive worker must not deliver afterwards.
+            delivered.borrow_mut().clear();
+            let output = delivered.clone();
+            session.update(
+                input(false),
+                "alpha",
+                false,
+                Rc::new(move |batch| output.borrow_mut().push(batch.items.len())),
+            );
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            while delivered.borrow().is_empty() {
+                assert!(std::time::Instant::now() < deadline);
+                while glib::MainContext::default().iteration(false) {}
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            std::thread::sleep(Duration::from_millis(100));
+            while glib::MainContext::default().iteration(false) {}
+            assert!(delivered.borrow().iter().all(|count| *count == 1));
+        },
+    );
+}

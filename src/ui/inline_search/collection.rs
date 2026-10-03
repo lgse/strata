@@ -295,7 +295,7 @@ impl ResultCollection {
         self.gesture_selection.borrow_mut().take();
     }
 
-    pub(super) fn refresh_cut_rows(&self) {
+    pub(super) fn refresh_mark_rows(&self) {
         self.bound.borrow_mut().retain(|bound| {
             let (Some(item), Some(widget)) = (bound.item.upgrade(), bound.widget.upgrade()) else {
                 return false;
@@ -304,7 +304,7 @@ impl ResultCollection {
                 self.item(item.position()),
                 widget.downcast_ref::<gtk::Box>(),
             ) {
-                crate::ui::browser::set_cut_result_style(row, &Location::local(&result.path));
+                crate::ui::browser::set_mark_result_style(row, &Location::local(&result.path));
             }
             true
         });
@@ -346,6 +346,29 @@ fn install_result_interactions(
     click.set_button(1);
     click.set_propagation_phase(gtk::PropagationPhase::Capture);
     pointer_activation.install(&click);
+    // GTK's single-click-activate mode also selects whatever the pointer enters, including
+    // results that reflow under a stationary pointer, so plain clicks activate here instead.
+    let weak_item = item.downgrade();
+    let selection_for_release = selection.clone();
+    let model_for_release = model.clone();
+    let pointer_for_release = pointer_activation.clone();
+    let single_click = interactions.behavior.single_click.clone();
+    crate::ui::pointer::connect_click_release(&click, item, move |gesture, press_count, _, _| {
+        if press_count != 1 || pointer_for_release.activation() != Some(true) {
+            return;
+        }
+        // Claiming keeps GTK's release-time selection from collapsing a preserved group.
+        gesture.set_state(gtk::EventSequenceState::Claimed);
+        if selection_for_release.selection().size() > 1 {
+            return;
+        }
+        if let Some(entry) = weak_item
+            .upgrade()
+            .and_then(|item| collection_entry(&model_for_release, item.position()))
+        {
+            single_click(entry);
+        }
+    });
     let weak_item = item.downgrade();
     let selection_for_press = selection.clone();
     let anchor_for_press = anchor.clone();
@@ -429,7 +452,6 @@ pub(super) fn build_collection(
 ) -> (ResultCollection, gtk::ScrolledWindow, gtk::Overlay) {
     let multiple_selection = behavior.multiple_selection.clone();
     let activate = behavior.activate.clone();
-    let single_click = behavior.single_click.clone();
     let (kind, max_columns) = match presentation {
         SearchPresentation::Rows => (ResultKind::Rows, None),
         SearchPresentation::Icons {
@@ -610,7 +632,7 @@ pub(super) fn build_collection(
             grid.set_min_columns(1);
             grid.set_max_columns(max_columns);
             grid.set_enable_rubberband(false);
-            grid.set_single_click_activate(true);
+            grid.set_single_click_activate(false);
             grid.set_vexpand(false);
             grid.upcast()
         }
@@ -618,7 +640,7 @@ pub(super) fn build_collection(
             let list = gtk::ListView::new(Some(selection.clone()), Some(factory));
             list.add_css_class("file-list");
             list.set_enable_rubberband(false);
-            list.set_single_click_activate(true);
+            list.set_single_click_activate(false);
             list.set_vexpand(true);
             list.upcast()
         }
@@ -646,15 +668,13 @@ pub(super) fn build_collection(
         });
     }
     let sorted_for_activate = sorted.clone();
-    let selection_for_activate = selection.clone();
+    // Ignore GTK activation after a pointer release; it would dispatch a second open.
     let dispatch_activate: Rc<dyn Fn(u32)> = Rc::new(move |position| {
-        let Some(entry) = collection_entry(&sorted_for_activate, position) else {
+        if pointer_activation.activation().is_some() {
             return;
-        };
-        match pointer_activation.activation() {
-            Some(true) if selection_for_activate.selection().size() <= 1 => single_click(entry),
-            Some(_) => {}
-            None => activate(entry),
+        }
+        if let Some(entry) = collection_entry(&sorted_for_activate, position) {
+            activate(entry);
         }
     });
     if let Some(list) = view.downcast_ref::<gtk::ListView>() {

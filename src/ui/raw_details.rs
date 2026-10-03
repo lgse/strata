@@ -104,7 +104,6 @@ impl RawDetails {
             label.set_selectable(true);
             label.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
             label.set_max_width_chars(32);
-            label.set_tooltip_text(Some(&value));
             label.update_property(&[gtk::accessible::Property::Description(name)]);
             row.append(&heading);
             row.append(&label);
@@ -117,7 +116,6 @@ impl RawDetails {
     pub(super) fn reset(&self) {
         for (label, (_, value)) in self.values.iter().zip(rows(&RawMetadata::default())) {
             label.set_text(&value);
-            label.set_tooltip_text(Some(&value));
         }
     }
 
@@ -147,7 +145,6 @@ impl RawDetails {
             for (label, (_, value)) in values.iter().zip(rows(&metadata)) {
                 if let Some(label) = label.upgrade() {
                     label.set_text(&value);
-                    label.set_tooltip_text(Some(&value));
                 }
             }
         });

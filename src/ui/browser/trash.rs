@@ -95,6 +95,13 @@ fn restore_error_summary(errors: &[String]) -> String {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DeleteDialog {
+    Permanent,
+    PermanentCancelFirst,
+    Trash,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum DeleteConfirmationFocus {
     Cancel,
     Confirm,
@@ -582,7 +589,10 @@ impl ViewState {
             destination_label.set_hexpand(true);
             destination_label.set_xalign(1.0);
             destination_label.set_selectable(true);
-            destination_label.set_tooltip_text(Some(&destination.to_string_lossy()));
+            crate::ui::accessibility::set_description(
+                &destination_label,
+                Some(&destination.to_string_lossy()),
+            );
             row.append(&icon);
             row.append(&name);
             row.append(&destination_label);
@@ -699,19 +709,48 @@ impl ViewState {
         if permanent {
             self.show_delete_confirmation(entries);
         } else {
-            self.pending_delete_entries.replace(entries.clone());
-            if let Some(trash_button) = self.trash_button.borrow().as_ref() {
-                let source = self
-                    .delete_animation_source()
-                    .unwrap_or_else(|| self.overlay.clone().upcast());
-                super::fly_to_trash::fly_to_trash(&source, &entries, trash_button, || {});
-            }
-            self.browser.delete(entries, false);
-            self.browser.focus_active();
+            self.move_to_trash(entries);
         }
     }
 
+    pub(super) fn request_confirmed_delete(
+        self: &Rc<Self>,
+        entries: Vec<FileEntry>,
+        permanent: bool,
+    ) {
+        if entries
+            .iter()
+            .any(|entry| !super::paths::can_remove_location(&entry.location))
+        {
+            return;
+        }
+        let kind = if permanent {
+            DeleteDialog::PermanentCancelFirst
+        } else {
+            DeleteDialog::Trash
+        };
+        self.show_delete_dialog(entries, kind);
+    }
+
+    fn move_to_trash(self: &Rc<Self>, entries: Vec<FileEntry>) {
+        self.pending_delete_entries.replace(entries.clone());
+        if let Some(trash_button) = self.trash_button.borrow().as_ref() {
+            let source = self
+                .delete_animation_source()
+                .unwrap_or_else(|| self.overlay.clone().upcast());
+            super::fly_to_trash::fly_to_trash(&source, &entries, trash_button, || {});
+        }
+        self.browser.delete(entries, false);
+        self.browser.focus_active();
+    }
+
     pub(super) fn show_delete_confirmation(self: &Rc<Self>, entries: Vec<FileEntry>) {
+        self.show_delete_dialog(entries, DeleteDialog::Permanent);
+    }
+
+    fn show_delete_dialog(self: &Rc<Self>, entries: Vec<FileEntry>, kind: DeleteDialog) {
+        let trash = kind == DeleteDialog::Trash;
+        let cancel_first = kind == DeleteDialog::PermanentCancelFirst;
         let Some(ModalHost {
             overlay: window_overlay,
             blurred_root,
@@ -721,16 +760,31 @@ impl ViewState {
         };
 
         let count = entries.len();
-        let title = format!("Permanently delete {}?", item_count_label(count));
-        let confirm_label = format!("Permanently delete {}", item_count_label(count));
+        let (title, confirm_label) = if trash {
+            (
+                format!("Move {} to Trash?", item_count_label(count)),
+                "Move to Trash".to_owned(),
+            )
+        } else {
+            (
+                format!("Permanently delete {}?", item_count_label(count)),
+                format!("Permanently delete {}", item_count_label(count)),
+            )
+        };
         let layout = message_dialog_layout(
             crate::assets::icons::TRASH,
             &title,
             &entry_kind_summary(&entries),
             &confirm_label,
-            ModalTone::Danger,
+            if trash {
+                ModalTone::Accent
+            } else {
+                ModalTone::Danger
+            },
         );
-        layout.set_loading(true, Some("Calculating total size…"));
+        if !trash {
+            layout.set_loading(true, Some("Calculating total size…"));
+        }
         let files = gtk::Box::new(gtk::Orientation::Vertical, 3);
         files.add_css_class("delete-confirmation-files");
         let (visible, hidden) = delete_confirmation_rows(&entries);
@@ -742,7 +796,7 @@ impl ViewState {
             name.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
             name.set_hexpand(true);
             name.set_xalign(0.0);
-            name.set_tooltip_text(Some(&entry.location.display_path()));
+            crate::ui::accessibility::set_description(&name, Some(&entry.location.display_path()));
             let metadata = gtk::Label::new(Some(&if entry.is_directory() {
                 "Folder".to_owned()
             } else {
@@ -777,9 +831,11 @@ impl ViewState {
             .build();
         file_scroller.add_css_class("delete-confirmation-list");
         layout.body.append(&file_scroller);
-        let explanation = message_dialog_description(
-            "These items will be permanently deleted. This action cannot be undone.",
-        );
+        let explanation = message_dialog_description(if trash {
+            "These items can be restored from Trash."
+        } else {
+            "These items will be permanently deleted. This action cannot be undone."
+        });
         layout.body.append(&explanation);
         let content = layout.content;
         let close = layout.close;
@@ -787,7 +843,7 @@ impl ViewState {
         let confirm = layout.confirm;
         let subtitle = layout.subtitle;
         let spinner = layout.loading;
-        confirm.set_sensitive(false);
+        confirm.set_sensitive(trash);
 
         let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
         window_overlay.add_overlay(&layer);
@@ -826,6 +882,12 @@ impl ViewState {
                 &confirmed_overlay,
                 confirmed_root.as_ref(),
                 move || {
+                    if trash {
+                        if let Some(ui) = weak_ui.upgrade() {
+                            ui.move_to_trash(entries_for_dissolve);
+                        }
+                        return;
+                    }
                     if let Some(ui) = weak_ui.upgrade() {
                         ui.clear_delete_animation();
                         let dissolve = ui.delete_animation_source().and_then(|source| {
@@ -848,6 +910,7 @@ impl ViewState {
         let escaped_root = blurred_root;
         let escaped_browser = self.browser.clone();
         let focused_cancel = cancel.clone();
+        let focused_cancel_initial = cancel.clone();
         let focused_confirm = confirm.clone();
         let enter_buttons = [cancel, confirm.clone(), close];
         keys.connect_key_pressed(move |_, key, _, modifiers| {
@@ -862,6 +925,17 @@ impl ViewState {
                 } else {
                     glib::Propagation::Proceed
                 }
+            } else if trash
+                && key == gtk::gdk::Key::d
+                && !modifiers.intersects(
+                    gtk::gdk::ModifierType::CONTROL_MASK
+                        | gtk::gdk::ModifierType::ALT_MASK
+                        | gtk::gdk::ModifierType::SUPER_MASK,
+                )
+                && crate::ui::preferences::PreferenceManager::shared().tenxer_mode()
+            {
+                focused_confirm.emit_clicked();
+                glib::Propagation::Stop
             } else if !modifiers
                 .intersects(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::ALT_MASK)
             {
@@ -879,7 +953,14 @@ impl ViewState {
             }
         });
         layer.add_controller(keys);
-        focus_button(&confirm);
+        if cancel_first {
+            focus_button(&focused_cancel_initial);
+        } else {
+            focus_button(&confirm);
+        }
+        if trash {
+            return;
+        }
 
         let weak_subtitle = subtitle.downgrade();
         let weak_confirm = confirm.downgrade();
@@ -903,7 +984,9 @@ impl ViewState {
             confirm.set_sensitive(true);
             spinner.stop();
             spinner.set_visible(false);
-            confirm.grab_focus();
+            if !cancel_first {
+                confirm.grab_focus();
+            }
         });
         let task = Rc::new(task);
         let closing_task = task.clone();

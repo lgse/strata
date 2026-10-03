@@ -21,12 +21,15 @@ pub(in crate::ui) fn pane_new_folder_button(
     )));
     crate::ui::controls::pane_header_action(&button);
     button.add_css_class("chooser-new-folder");
-    if state
-        .upgrade()
-        .and_then(|state| state.browser.location_at(depth))
-        .is_some_and(|location| location.is_recent_location())
-    {
-        button.set_visible(false);
+    if let Some(state) = state.upgrade() {
+        button.set_sensitive(state.interactive || state.chooser_allows_create.get());
+        if state
+            .browser
+            .location_at(depth)
+            .is_some_and(|location| location.is_recent_location())
+        {
+            button.set_visible(false);
+        }
     }
     button.update_property(&[gtk::accessible::Property::Label("New Folder")]);
     button.connect_clicked(move |_| {
@@ -95,7 +98,12 @@ pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gt
         }
         let (option, check) = menu_option(label, preferences.sort_key == key);
         if key == SortKey::DeviceOrder {
-            option.set_tooltip_text(Some("Append photos as the device lists them; not necessarily chronological. Selecting this reloads the library."));
+            crate::ui::accessibility::set_description(
+                &option,
+                Some(
+                    "Append photos as the device lists them; not necessarily chronological. Selecting this reloads the library.",
+                ),
+            );
         }
         selected_checks.borrow_mut().push((key, check));
         let checks = selected_checks.clone();

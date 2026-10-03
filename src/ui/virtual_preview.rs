@@ -1117,22 +1117,28 @@ fn document_tag_table() -> gtk::TextTagTable {
 }
 
 pub(super) fn set_table_cell(label: &gtk::Label, cell: &DocumentTableCellLayout) {
-    label.set_tooltip_text(None);
+    crate::ui::accessibility::set_description(label, None);
     if cell.text.len() > TABLE_CELL_DISPLAY_BYTES {
         label.set_text(&format!(
             "{}…",
             bounded_text_prefix(&cell.text, TABLE_CELL_DISPLAY_BYTES)
         ));
-        label.set_tooltip_text(Some(
-            "Cell shortened for responsive preview; copying the table keeps the complete text.",
-        ));
+        crate::ui::accessibility::set_description(
+            label,
+            Some(
+                "Cell shortened for responsive preview; copying the table keeps the complete text.",
+            ),
+        );
     } else if let Some(markup) = styled_markup(&cell.text, &cell.spans) {
         label.set_markup(&markup);
     } else {
         label.set_text(&cell.text);
-        label.set_tooltip_text(Some(
-            "Cell formatting omitted for responsive preview; copying keeps the complete text.",
-        ));
+        crate::ui::accessibility::set_description(
+            label,
+            Some(
+                "Cell formatting omitted for responsive preview; copying keeps the complete text.",
+            ),
+        );
     }
     if cell.header {
         label.add_css_class("header");

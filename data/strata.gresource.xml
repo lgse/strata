@@ -53,7 +53,6 @@
     <file>icons/scalable/actions/strata-lock.svg</file>
     <file>icons/scalable/actions/strata-lock-open.svg</file>
     <file>icons/scalable/actions/strata-key.svg</file>
-    <file>icons/scalable/actions/strata-keyboard.svg</file>
     <file>icons/scalable/actions/strata-monitor.svg</file>
     <file>icons/scalable/actions/strata-network.svg</file>
     <file>icons/scalable/actions/strata-package-open.svg</file>
@@ -71,9 +70,11 @@
     <file>icons/scalable/actions/strata-route.svg</file>
     <file>icons/scalable/actions/strata-scissors.svg</file>
     <file>icons/scalable/actions/strata-search.svg</file>
+    <file>icons/scalable/actions/strata-send-horizontal.svg</file>
     <file>icons/scalable/actions/strata-settings-active.svg</file>
     <file>icons/scalable/actions/strata-settings.svg</file>
     <file>icons/scalable/actions/strata-settings-2.svg</file>
+    <file>icons/scalable/actions/strata-shredder.svg</file>
     <file>icons/scalable/actions/strata-sliders-horizontal.svg</file>
     <file>icons/scalable/actions/strata-refresh.svg</file>
     <file>icons/scalable/actions/strata-terminal.svg</file>
@@ -83,6 +84,7 @@
     <file>icons/scalable/actions/strata-undo-2.svg</file>
     <file>icons/scalable/actions/strata-unplug.svg</file>
     <file>icons/scalable/actions/strata-video.svg</file>
+    <file>icons/scalable/actions/strata-music-2.svg</file>
     <file>icons/scalable/actions/strata-volume-2.svg</file>
     <file>icons/scalable/actions/strata-volume-x.svg</file>
     <file>icons/scalable/actions/strata-wrap-text.svg</file>

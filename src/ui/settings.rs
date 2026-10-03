@@ -18,18 +18,19 @@ use crate::{
     },
 };
 
+#[cfg(test)]
+mod tests;
+
 mod about;
 mod actions;
 mod bindings;
 mod general;
-mod keybindings;
 mod search;
 mod theme;
 mod wrap;
 use about::about_page;
 use bindings::bind_switch;
 use general::general_page;
-use keybindings::keybindings_page;
 use theme::theme_page;
 
 use super::{
@@ -501,7 +502,6 @@ fn reflow_settings(
             "settings-option",
             "settings-library-toolbar",
             "about-identity",
-            "keybinding-row",
             "theme-library-footer",
             "settings-inline-description",
             "settings-update-summary",
@@ -533,11 +533,6 @@ fn reflow_settings(
             row.set_orientation(orientation);
         }
     }
-    if let Some(row) = widget.downcast_ref::<wrap::WrapRow>()
-        && row.has_css_class("settings-keycaps")
-    {
-        row.set_end_align(!compact);
-    }
     if widget.has_css_class("settings-integration-actions")
         && let Some(actions) = widget.downcast_ref::<gtk::Box>()
     {
@@ -561,16 +556,6 @@ fn reflow_settings(
             child = button.next_sibling();
             button.set_hexpand(compact);
         }
-    }
-    if ["settings-keycaps", "settings-inline-keys"]
-        .iter()
-        .any(|class| widget.has_css_class(class))
-    {
-        widget.set_halign(if compact {
-            gtk::Align::Start
-        } else {
-            gtk::Align::End
-        });
     }
     if let Some(label) = widget.downcast_ref::<gtk::Label>()
         && (label.has_css_class("settings-nowrap") || label.has_css_class("menu-heading"))
@@ -670,7 +655,6 @@ pub fn build_layer(
     let (general, responsive_setting_rows, responsive_activation_rows) =
         general_page(preferences.clone());
     stack.add_named(&general, Some("general"));
-    stack.add_named(&keybindings_page(preferences.clone()), Some("keybindings"));
     stack.add_named(&about_page(), Some("about"));
     // Heavy pages build on first selection, never during startup: the
     // Updates page spawns package-manager detection plus release-note
@@ -705,15 +689,13 @@ pub fn build_layer(
     // Navigation entries register as their buttons are created, so the
     // responsive panel compacts correctly even with lazy pages.
     let responsive_for_nav = responsive_panel.clone();
-    let built: Rc<RefCell<std::collections::HashSet<&'static str>>> = Rc::new(RefCell::new(
-        ["general", "keybindings", "about"].into_iter().collect(),
-    ));
+    let built: Rc<RefCell<std::collections::HashSet<&'static str>>> =
+        Rc::new(RefCell::new(["general", "about"].into_iter().collect()));
     let nav_buttons: Rc<RefCell<Vec<gtk::Button>>> = Rc::new(RefCell::new(Vec::new()));
     for (label, icon, name) in [
         ("General", icons::SLIDERS, "general"),
         ("Appearance", icons::PALETTE, "theme"),
         ("Actions", icons::PLAY, "actions"),
-        ("Keybindings", icons::KEYBOARD, "keybindings"),
         ("Updates", icons::DOWNLOADS, "updates"),
         ("About", icons::INFO, "about"),
     ] {
@@ -1255,6 +1237,7 @@ fn release_notes_card(title: &str, initial: &str) -> ReleaseNotesCard {
     set_release_notes_message(&notes, initial);
     let fallback =
         gtk::LinkButton::with_label("https://github.com/lgse/strata/releases", "View on GitHub");
+    fallback.set_has_tooltip(false);
     fallback.add_css_class("release-notes-fallback");
     fallback.set_halign(gtk::Align::Start);
     fallback.set_visible(false);
@@ -2003,20 +1986,9 @@ fn restart_waiter(current_exe: &std::path::Path, parent_pid: u32) -> Option<Comm
 }
 
 fn restart(application: Option<&gtk::Application>) {
-    let Ok(mut current_exe) = std::env::current_exe() else {
+    let Ok(current_exe) = crate::services::installed_executable() else {
         return;
     };
-    // On Linux, replacing the running executable makes /proc/self/exe resolve to
-    // the old path with " (deleted)" appended. Relaunch the replacement at the
-    // original path instead of treating that suffix as part of the filename.
-    if !current_exe.exists()
-        && let Some(path) = current_exe
-            .to_str()
-            .and_then(|path| path.strip_suffix(" (deleted)"))
-        && std::path::Path::new(path).is_file()
-    {
-        current_exe = path.into();
-    }
     // Wait for this process to exit completely before relaunching. A fixed
     // delay could overlap the old and new GTK/Wayland clients and rapidly hand
     // keyboard focus through an underlying terminal. Besides re-activating the
@@ -2103,6 +2075,7 @@ pub(super) fn show_update_dialog(
         .build();
     notes_scroll.add_css_class("update-dialog-notes");
     let fallback = gtk::LinkButton::with_label(&release.url, "View release on GitHub");
+    fallback.set_has_tooltip(false);
     fallback.add_css_class("release-notes-fallback");
     fallback.set_halign(gtk::Align::Start);
     let status_message = match update_method {
@@ -2530,7 +2503,6 @@ fn navigation_button(icon: &str, label: &str) -> (gtk::Button, gtk::Label, gtk::
     let subtitle = match label {
         "General" => "Browsing, search, files",
         "Appearance" => "Theme, text, motion",
-        "Keybindings" => "Hints and reference",
         "Updates" => "Channel, release notes",
         _ => "Version and links",
     };
@@ -2543,10 +2515,8 @@ fn navigation_button(icon: &str, label: &str) -> (gtk::Button, gtk::Label, gtk::
     text.add_css_class("settings-nav-copy");
     content.append(&icon_image);
     content.append(&text);
-    let button = gtk::Button::builder()
-        .child(&content)
-        .tooltip_text(label)
-        .build();
+    let button = gtk::Button::builder().child(&content).build();
+    button.set_widget_name(label);
     button.set_has_frame(false);
     button.set_cursor_from_name(Some("pointer"));
     super::accessibility::set_label(

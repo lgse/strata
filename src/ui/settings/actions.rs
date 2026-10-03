@@ -175,7 +175,6 @@ impl PageState {
             .active(action.definition.enabled)
             .halign(gtk::Align::End)
             .valign(gtk::Align::Center)
-            .tooltip_text("Enable this action in the context menu")
             .build();
         toggle.update_property(&[gtk::accessible::Property::Label("Enabled")]);
         let state = self.clone();
@@ -655,7 +654,7 @@ impl EditorForm {
         id.set_sensitive(mode == EditorMode::Create);
         let description = form_entry();
         description.set_text(definition.description.as_deref().unwrap_or(""));
-        description.set_placeholder_text(Some("Shown as the menu tooltip"));
+        description.set_placeholder_text(Some("Describes this action to assistive technology"));
 
         let selected_icon = Rc::new(std::cell::RefCell::new(definition.icon.clone()));
         let icon = icon_chooser(&selected_icon);
@@ -789,11 +788,14 @@ impl EditorForm {
         entry_widths.add_widget(&extensions);
         entry_widths.add_widget(&max_items);
 
-        id.set_tooltip_text(Some(if mode == EditorMode::Create {
-            "Folder name: lowercase letters, digits, and dashes. Leave blank to use the name."
-        } else {
-            "The action id cannot change; duplicate it to create a variant."
-        }));
+        crate::ui::accessibility::set_description(
+            &id,
+            Some(if mode == EditorMode::Create {
+                "Folder name: lowercase letters, digits, and dashes. Leave blank to use the name."
+            } else {
+                "The action id cannot change; duplicate it to create a variant."
+            }),
+        );
         let kind_row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         kind_row.append(&files);
         kind_row.append(&folders);
@@ -832,7 +834,11 @@ impl EditorForm {
         id_field.set_hexpand(false);
         identity.append(&id_field);
         general.append(&identity);
-        general.append(&field("Description", "Optional tooltip", &description));
+        general.append(&field(
+            "Description",
+            "Optional accessible description",
+            &description,
+        ));
         general.append(&field("Icon", "Bundled Lucide icon", &icon));
         general.append(&enabled_row);
 

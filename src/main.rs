@@ -9,6 +9,8 @@ mod metrics;
 mod model;
 mod portal;
 mod portal_setup;
+#[cfg(feature = "rar")]
+mod rar_extraction;
 mod sandbox;
 mod sandbox_helper;
 mod services;

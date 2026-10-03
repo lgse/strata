@@ -3,22 +3,55 @@
 use crate::ui::blur::BlurBin;
 use crate::ui::browser::ViewState;
 use crate::ui::browser::entry::{format_file_size, item_count_label};
-use crate::ui::controls::modal_layout;
+use crate::ui::controls::{modal_layout, progress_summary};
 use crate::ui::modal::{ModalHost, dismiss_modal_layer, modal_layer};
 use gtk::glib;
 use gtk::prelude::*;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+#[cfg(test)]
+mod tests;
 
 const FILE_PROGRESS_DELAY: Duration = Duration::from_millis(350);
 
+#[cfg(test)]
+thread_local! {
+    static FILE_PROGRESS_DELAY_OVERRIDE: Cell<Option<Duration>> = const { Cell::new(None) };
+}
+
+fn file_progress_delay() -> Duration {
+    #[cfg(test)]
+    if let Some(delay) = FILE_PROGRESS_DELAY_OVERRIDE.with(Cell::get) {
+        return delay;
+    }
+    FILE_PROGRESS_DELAY
+}
+
+/// Tests of fast-operation feedback must not depend on how quickly a loaded
+/// CI filesystem finishes a small copy.
+#[cfg(test)]
+pub(super) fn set_file_progress_delay_for_test(delay: Duration) {
+    FILE_PROGRESS_DELAY_OVERRIDE.with(|cell| cell.set(Some(delay)));
+}
+
 const INDETERMINATE_PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
+const STALLED_CANCEL_DELAY: Duration = Duration::from_secs(8);
 
 const IMMEDIATE_PROGRESS_ITEM_COUNT: usize = 16;
 
 fn should_show_progress_immediately(total: usize) -> bool {
     total == 0 || total >= IMMEDIATE_PROGRESS_ITEM_COUNT
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct TransferProgressSnapshot {
+    completed_items: usize,
+    completed_files: usize,
+    total_files: Option<usize>,
+    transferred_bytes: u64,
+    total_bytes: Option<u64>,
 }
 
 pub(super) struct FileProgressView {
@@ -27,6 +60,16 @@ pub(super) struct FileProgressView {
     blurred_root: Option<BlurBin>,
     progress: gtk::ProgressBar,
     status: gtk::Label,
+    title: gtk::Label,
+    subtitle: gtk::Label,
+    cancel: gtk::Button,
+    status_row: gtk::Box,
+    transfer_header: gtk::Box,
+    transfer_footer: gtk::Box,
+    transfer_percent: gtk::Label,
+    transfer_bytes: gtk::Label,
+    transfer_items: gtk::Label,
+    transfer_rate: gtk::Label,
     archive_activity: gtk::Spinner,
     indeterminate: Rc<Cell<bool>>,
     pulse_source: Rc<RefCell<Option<glib::SourceId>>>,
@@ -35,42 +78,80 @@ pub(super) struct FileProgressView {
 fn transfer_progress_status(
     completed_items: usize,
     total_items: usize,
+    completed_files: usize,
+    total_files: Option<usize>,
     transferred_bytes: u64,
     total_bytes: Option<u64>,
-) -> (String, Option<f64>) {
-    match total_bytes {
+    current_file: Option<&str>,
+) -> (String, String, String, Option<f64>) {
+    let items = if let Some(total_files) = total_files.filter(|total| *total > 0) {
+        format!("{completed_files} of {total_files} files")
+    } else if total_items > 0 {
+        format!("{completed_items} of {total_items} items")
+    } else {
+        "Preparing items…".to_owned()
+    };
+    let items = match current_file.filter(|name| !name.is_empty()) {
+        Some(name) => format!("{items} · {name}"),
+        None => items,
+    };
+    let bytes = match total_bytes {
+        Some(total) => format!(
+            "{} / {}",
+            format_file_size(transferred_bytes),
+            format_file_size(total)
+        ),
+        None => format_file_size(transferred_bytes),
+    };
+    let (status, fraction) = match total_bytes {
         Some(0) if total_items > 0 => {
             let fraction = (completed_items as f64 / total_items as f64).clamp(0.0, 1.0);
-            let percentage = (fraction * 100.0) as usize;
-            (format!("{percentage}%"), Some(fraction))
+            (format!("{}%", (fraction * 100.0) as usize), Some(fraction))
         }
         Some(0) => ("Preparing…".to_owned(), None),
         Some(total) => {
             let fraction = (transferred_bytes as f64 / total as f64).clamp(0.0, 1.0);
             let percentage = (fraction * 100.0) as usize;
-            let percentage = if transferred_bytes > 0 {
-                percentage.max(1)
-            } else {
-                percentage
-            };
-            (format!("{percentage}%"), Some(fraction))
+            (
+                format!(
+                    "{}%",
+                    if transferred_bytes > 0 {
+                        percentage.max(1)
+                    } else {
+                        percentage
+                    }
+                ),
+                Some(fraction),
+            )
         }
         None if transferred_bytes == 0 && completed_items == 0 => ("Preparing…".to_owned(), None),
-        None if transferred_bytes == 0 => (
-            format!(
-                "{completed_items} {} copied",
-                if completed_items == 1 {
-                    "item"
-                } else {
-                    "items"
-                }
-            ),
-            None,
-        ),
-        None => (
-            format!("{} copied", format_file_size(transferred_bytes)),
-            None,
-        ),
+        None => ("Transferring…".to_owned(), None),
+    };
+    (status, bytes, items, fraction)
+}
+
+fn transfer_rate_status(rate: Option<f64>, transferred: u64, total: Option<u64>) -> String {
+    let Some(rate) = rate.filter(|rate| rate.is_finite() && *rate > 0.0) else {
+        return "Calculating speed…".to_owned();
+    };
+    let speed = format!("{}/s", format_file_size(rate as u64));
+    let Some(remaining) = total.and_then(|total| total.checked_sub(transferred)) else {
+        return speed;
+    };
+    if remaining == 0 {
+        return speed;
+    }
+    let seconds = (remaining as f64 / rate).ceil().max(1.0) as u64;
+    if seconds < 60 {
+        format!("{speed} · {seconds}s left")
+    } else if seconds < 3600 {
+        format!("{speed} · {}m {}s left", seconds / 60, seconds % 60)
+    } else {
+        format!(
+            "{speed} · {}h {}m left",
+            seconds / 3600,
+            seconds % 3600 / 60
+        )
     }
 }
 
@@ -94,7 +175,7 @@ impl ViewState {
         let icon = icon.to_owned();
         let title_text = title_text.to_owned();
         let subtitle_text = subtitle_text.to_owned();
-        let source = glib::timeout_add_local_once(FILE_PROGRESS_DELAY, move || {
+        let source = glib::timeout_add_local_once(file_progress_delay(), move || {
             let Some(state) = weak.upgrade() else {
                 return;
             };
@@ -126,16 +207,35 @@ impl ViewState {
         let status = gtk::Label::new(Some("0%"));
         status.add_css_class("modal-progress-status");
         status.set_xalign(0.0);
-        let progress = gtk::ProgressBar::new();
-        progress.add_css_class("modal-progress");
-        progress.set_fraction(0.0);
+        let summary = progress_summary("Transferred");
+        let progress = summary.progress;
         let archive_activity = gtk::Spinner::new();
         archive_activity.set_visible(false);
         let status_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         status_row.append(&archive_activity);
         status_row.append(&status);
         layout.body.append(&status_row);
-        layout.body.append(&progress);
+
+        let transfer_header = summary.header;
+        transfer_header.set_visible(false);
+        let transfer_bytes = summary.amount;
+        let transfer_percent = summary.percent;
+        layout.body.append(&summary.widget);
+
+        let transfer_footer = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        transfer_footer.add_css_class("transfer-progress-footer");
+        transfer_footer.set_visible(false);
+        let transfer_items = gtk::Label::new(None);
+        transfer_items.set_xalign(0.0);
+        transfer_items.set_hexpand(true);
+        transfer_items.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
+        let transfer_rate = gtk::Label::new(None);
+        transfer_rate.set_xalign(1.0);
+        transfer_footer.append(&transfer_items);
+        transfer_footer.append(&transfer_rate);
+        layout.body.append(&transfer_footer);
+        let title = layout.title;
+        let subtitle = layout.subtitle;
         let content = layout.content;
         let cancel = layout.confirm;
 
@@ -155,17 +255,39 @@ impl ViewState {
             blurred_root,
             progress,
             status,
+            title,
+            subtitle,
+            cancel: cancel.clone(),
+            status_row,
+            transfer_header,
+            transfer_footer,
+            transfer_percent,
+            transfer_bytes,
+            transfer_items,
+            transfer_rate,
             archive_activity,
             indeterminate,
             pulse_source,
         }));
-        let cancel_action = on_cancel.clone();
-        cancel.connect_clicked(move |_| cancel_action());
+        let weak = Rc::downgrade(self);
+        let cancel_action: Rc<dyn Fn()> = Rc::new(move || {
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            if state.transfer_cancel_timed_out.get() {
+                state.hide_stalled_transfer_progress();
+            } else if state.transfer_progress.get().is_some() {
+                state.request_transfer_cancel(&on_cancel);
+            } else {
+                on_cancel();
+            }
+        });
+        let click_action = cancel_action.clone();
+        cancel.connect_clicked(move |_| click_action());
         let escape = gtk::EventControllerKey::new();
-        let escape_action = on_cancel;
         escape.connect_key_pressed(move |_, key, _, _| {
             if key == gtk::gdk::Key::Escape {
-                escape_action();
+                cancel_action();
                 glib::Propagation::Stop
             } else {
                 glib::Propagation::Proceed
@@ -178,10 +300,21 @@ impl ViewState {
         if let Some(view) = self.file_progress_view.borrow().as_ref() {
             ensure_indeterminate_pulse(view);
         }
-        if let Some((completed_items, transferred_bytes, total_bytes)) =
-            self.transfer_progress.get()
+        if let Some(TransferProgressSnapshot {
+            completed_items,
+            completed_files,
+            total_files,
+            transferred_bytes,
+            total_bytes,
+        }) = self.transfer_progress.get()
         {
-            self.update_transfer_progress(completed_items, transferred_bytes, total_bytes);
+            self.update_transfer_progress(
+                completed_items,
+                completed_files,
+                total_files,
+                transferred_bytes,
+                total_bytes,
+            );
         } else if self.flushing_to_device.get() {
             self.apply_device_flush_status();
         } else {
@@ -193,26 +326,151 @@ impl ViewState {
     pub(super) fn update_transfer_progress(
         &self,
         completed_items: usize,
+        completed_files: usize,
+        total_files: Option<usize>,
         transferred_bytes: u64,
         total_bytes: Option<u64>,
     ) {
-        self.transfer_progress
-            .set(Some((completed_items, transferred_bytes, total_bytes)));
-        if self.flushing_to_device.get() {
-            self.apply_device_flush_status();
-            return;
+        self.transfer_progress.set(Some(TransferProgressSnapshot {
+            completed_items,
+            completed_files,
+            total_files,
+            transferred_bytes,
+            total_bytes,
+        }));
+        let now = Instant::now();
+        if transferred_bytes > 0 {
+            match self.transfer_rate_sample.get() {
+                Some((last, last_bytes))
+                    if transferred_bytes > last_bytes
+                        && now.duration_since(last) >= Duration::from_millis(250) =>
+                {
+                    let measured = (transferred_bytes - last_bytes) as f64
+                        / now.duration_since(last).as_secs_f64();
+                    let rate = self
+                        .transfer_rate_bytes_per_second
+                        .get()
+                        .map_or(measured, |previous| previous * 0.6 + measured * 0.4);
+                    self.transfer_rate_bytes_per_second.set(Some(rate));
+                    self.transfer_rate_sample
+                        .set(Some((now, transferred_bytes)));
+                }
+                None => self
+                    .transfer_rate_sample
+                    .set(Some((now, transferred_bytes))),
+                _ => {}
+            }
         }
         let progress_view = self.file_progress_view.borrow();
         let Some(view) = progress_view.as_ref() else {
             return;
         };
         let total_items = self.file_operation_progress.get().1;
-        let (status, fraction) =
-            transfer_progress_status(completed_items, total_items, transferred_bytes, total_bytes);
-        view.status.set_text(&status);
+        let current_file = self.transfer_current_file.borrow();
+        let (status, bytes, items, fraction) = transfer_progress_status(
+            completed_items,
+            total_items,
+            completed_files,
+            total_files,
+            transferred_bytes,
+            total_bytes,
+            current_file.as_deref(),
+        );
+        view.status_row.set_visible(false);
+        view.transfer_header.set_visible(true);
+        view.transfer_footer.set_visible(true);
+        view.transfer_percent.set_text(&status);
+        view.transfer_bytes.set_text(&bytes);
+        view.transfer_items.set_text(&items);
+        view.transfer_rate.set_text(&transfer_rate_status(
+            self.transfer_rate_bytes_per_second.get(),
+            transferred_bytes,
+            total_bytes,
+        ));
+        view.layer.add_css_class("transfer-progress-dialog");
         view.indeterminate.set(fraction.is_none());
         if let Some(fraction) = fraction {
             view.progress.set_fraction(fraction);
+        }
+        drop(progress_view);
+        if self.flushing_to_device.get() {
+            self.apply_device_flush_status();
+        }
+        if self.transfer_cancel_requested.get() {
+            self.apply_transfer_cancel_status();
+        }
+    }
+
+    fn request_transfer_cancel(self: &Rc<Self>, on_cancel: &Rc<dyn Fn()>) {
+        if self.transfer_cancel_requested.replace(true) {
+            return;
+        }
+        self.apply_transfer_cancel_status();
+        let weak = Rc::downgrade(self);
+        let timeout = glib::timeout_add_local_once(STALLED_CANCEL_DELAY, move || {
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            state.transfer_cancel_timeout.borrow_mut().take();
+            if state.transfer_cancel_requested.get() {
+                state.transfer_cancel_timed_out.set(true);
+                state.apply_transfer_cancel_status();
+            }
+        });
+        self.transfer_cancel_timeout.replace(Some(timeout));
+        on_cancel();
+    }
+
+    fn apply_transfer_cancel_status(&self) {
+        let progress_view = self.file_progress_view.borrow();
+        let Some(view) = progress_view.as_ref() else {
+            return;
+        };
+        if self.transfer_cancel_timed_out.get() {
+            view.title.set_text("Device not responding");
+            view.subtitle.set_text("Cancellation is still pending. The device may still be writing; do not unplug it. Return to the browser does not make it safe to eject.");
+            view.subtitle.set_wrap(true);
+            view.subtitle.set_max_width_chars(60);
+            view.cancel.set_label("Return to browser");
+            view.cancel.set_sensitive(true);
+            view.transfer_rate.set_text("Waiting for device…");
+        } else {
+            view.title.set_text("Cancelling transfer…");
+            view.subtitle
+                .set_text("Waiting for the active write to stop. The device may still be writing.");
+            view.subtitle.set_wrap(true);
+            view.cancel.set_label("Cancellation requested");
+            view.cancel.set_sensitive(false);
+            view.transfer_rate.set_text("Waiting for device…");
+        }
+        view.indeterminate.set(true);
+        ensure_indeterminate_pulse(view);
+    }
+
+    fn hide_stalled_transfer_progress(&self) {
+        if !self.transfer_cancel_timed_out.get() || self.transfer_warning_banner.borrow().is_some()
+        {
+            return;
+        }
+        let banner = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        banner.add_css_class("transfer-pending-warning");
+        banner.set_halign(gtk::Align::Center);
+        banner.set_valign(gtk::Align::Start);
+        banner.set_margin_top(12);
+        banner.set_can_target(false);
+        let text = gtk::Label::new(Some(
+            "Transfer cancellation pending · Device may still be writing · Do not unplug or use this drive",
+        ));
+        text.set_wrap(true);
+        banner.append(&text);
+        self.overlay.add_overlay(&banner);
+        self.transfer_warning_banner.replace(Some(banner));
+        if let Some(view) = self.file_progress_view.take() {
+            view.indeterminate.set(false);
+            if let Some(source) = view.pulse_source.take() {
+                source.remove();
+            }
+            dismiss_modal_layer(&view.layer, &view.overlay, view.blurred_root.as_ref());
         }
     }
 
@@ -226,10 +484,19 @@ impl ViewState {
         let Some(view) = progress_view.as_ref() else {
             return;
         };
-        view.status.set_text("Writing to device…");
+        if self.transfer_progress.get().is_some() {
+            view.transfer_percent.set_text("…");
+            view.transfer_rate.set_text("Writing to device…");
+        } else {
+            view.status.set_text("Writing to device…");
+        }
         view.indeterminate.set(true);
         view.progress.pulse();
         ensure_indeterminate_pulse(view);
+        drop(progress_view);
+        if self.transfer_cancel_requested.get() {
+            self.apply_transfer_cancel_status();
+        }
     }
 
     pub(super) fn update_item_progress(&self, completed: usize, total: usize) {
@@ -282,7 +549,18 @@ impl ViewState {
             source.remove();
         }
         self.file_operation_progress.set((0, 0));
+        if let Some(source) = self.transfer_cancel_timeout.take() {
+            source.remove();
+        }
+        self.transfer_cancel_requested.set(false);
+        self.transfer_cancel_timed_out.set(false);
+        if let Some(banner) = self.transfer_warning_banner.take() {
+            self.overlay.remove_overlay(&banner);
+        }
         self.transfer_progress.set(None);
+        self.transfer_current_file.take();
+        self.transfer_rate_sample.set(None);
+        self.transfer_rate_bytes_per_second.set(None);
         self.flushing_to_device.set(false);
         if let Some(view) = self.file_progress_view.take() {
             view.indeterminate.set(false);

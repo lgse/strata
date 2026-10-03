@@ -19,19 +19,21 @@ use super::{
     },
     paths::is_trash_location,
 };
+use crate::ui::shortcut_reference::ContextHint;
 
 #[derive(Clone, Copy)]
 enum Action {
     Rename,
     Preview,
     Properties,
+    Compress,
     Trash,
     PermanentDelete,
     NewFolder,
 }
 
 fn menu(
-    options: &[(Action, &str, &str, &str, bool, bool)],
+    options: &[(Action, &str, &str, ContextHint, bool, bool)],
     run: impl Fn(Action) + 'static,
 ) -> (gtk::Popover, gtk::ScrolledWindow) {
     let content = super::super::accessibility::menu_box();
@@ -40,11 +42,11 @@ fn menu(
     let (popover, scroll) = context_menu_popover(&content);
     popover.add_css_class("folder-context-popover");
     let pending = Rc::new(Cell::new(None));
-    for &(action, icon, label, shortcut, enabled, danger) in options {
+    for &(action, icon, label, hint, enabled, danger) in options {
         let button = if danger {
-            context_menu_danger_option(icon, label, shortcut)
+            context_menu_danger_option(icon, label, hint)
         } else {
-            context_menu_option(icon, label, shortcut)
+            context_menu_option(icon, label, hint)
         };
         button.set_sensitive(enabled);
         let pending = pending.clone();
@@ -94,8 +96,8 @@ pub(super) fn install_folder(
                     Action::NewFolder,
                     crate::assets::icons::FOLDER_PLUS,
                     "New Folder",
-                    "Ctrl+Shift+N",
-                    true,
+                    ContextHint::NewFolder,
+                    state.chooser_allows_create.get(),
                     false,
                 )],
                 move |_| {
@@ -171,7 +173,7 @@ pub(super) fn install_item(
             Action::Rename,
             crate::assets::icons::PENCIL,
             "Rename",
-            "F2 / Ctrl+R",
+            ContextHint::Rename,
             single,
             false,
         )];
@@ -180,7 +182,7 @@ pub(super) fn install_item(
                 Action::Preview,
                 crate::assets::icons::EYE,
                 "Quick preview",
-                "Space",
+                ContextHint::ChooserPreview,
                 true,
                 false,
             ));
@@ -189,10 +191,20 @@ pub(super) fn install_item(
             Action::Properties,
             crate::assets::icons::INFO,
             "Properties",
-            "Alt+Enter",
+            ContextHint::Properties,
             true,
             false,
         ));
+        if entry.location.native_path().is_some() {
+            options.push((
+                Action::Compress,
+                crate::assets::icons::PACKAGE_PLUS,
+                "Compress…",
+                ContextHint::None,
+                true,
+                false,
+            ));
+        }
         if trash_visible {
             options.push((
                 if in_trash {
@@ -202,7 +214,7 @@ pub(super) fn install_item(
                 },
                 crate::assets::icons::TRASH,
                 delete_label,
-                "Del",
+                ContextHint::Trash,
                 true,
                 in_trash,
             ));
@@ -212,7 +224,7 @@ pub(super) fn install_item(
                 Action::PermanentDelete,
                 crate::assets::icons::TRASH,
                 "Permanently delete",
-                "Shift+Del",
+                ContextHint::PermanentDelete,
                 true,
                 true,
             ));
@@ -229,6 +241,10 @@ pub(super) fn install_item(
                 }
                 Action::Preview => preview_context_entry(&state, depth, source, entry.clone()),
                 Action::Properties => state.show_entry_properties_at(entry.clone(), depth),
+                Action::Compress => {
+                    let entries = super::context_menu::context_entries(&state, &target);
+                    state.show_compress_dialog(entries);
+                }
                 Action::Trash | Action::PermanentDelete => {
                     let entries = super::context_menu::context_entries(&state, &target);
                     let permanent = matches!(action, Action::PermanentDelete);

@@ -18,7 +18,8 @@ fn ranks_exact_labels_aliases_and_small_typing_errors() {
         ("nightly", "updates", "channel"),
         ("relase chanel", "updates", "channel"),
         ("copyright", "about", "license"),
-        ("rename", "keybindings", "shortcuts"),
+        ("shortcuts button", "general", "hints"),
+        ("keybindings", "general", "hints"),
     ] {
         let matches = find_matches(&normalized(query));
         assert_eq!(matches.best_page, Some(page), "{query}");

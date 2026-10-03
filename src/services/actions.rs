@@ -127,7 +127,22 @@ impl ActionCatalog {
         });
         matched
     }
+
+    pub fn numbered(&self, inputs: &[ActionInput]) -> Vec<Rc<ActionHandle>> {
+        let (top, submenu): (Vec<_>, Vec<_>) = self
+            .matches(inputs)
+            .into_iter()
+            .filter(|matched| matched.action.is_available())
+            .partition(|matched| matched.placement == MenuPlacement::Top);
+        top.into_iter()
+            .chain(submenu)
+            .map(|matched| matched.action)
+            .take(NUMBERED_ACTIONS)
+            .collect()
+    }
 }
+
+const NUMBERED_ACTIONS: usize = 10;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ActionScript {

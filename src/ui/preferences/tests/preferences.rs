@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-use std::{cell::RefCell, path::Path, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    path::{Path, PathBuf},
+    rc::Rc,
+};
 
 use super::super::*;
 use crate::{
@@ -47,6 +52,7 @@ fn older_preferences_keep_backward_compatible_behavior_defaults() {
     saved.remove("filter_include_subfolders");
     saved.remove("open_folder_after_drop");
     saved.remove("date_format");
+    saved.remove("send_to_recent_destinations");
     saved.remove("tenxer_mode");
     let restored: Preferences = saved.try_into().expect("backward-compatible preferences");
     assert_eq!(
@@ -55,9 +61,79 @@ fn older_preferences_keep_backward_compatible_behavior_defaults() {
             filter_include_subfolders: true,
             open_folder_after_drop: false,
             date_format: "relative".into(),
+            send_to_recent_destinations: HashMap::new(),
             tenxer_mode: false,
             ..non_default_preferences()
         }
+    );
+}
+
+#[test]
+fn empty_send_to_history_is_omitted_from_saved_preferences() {
+    let serialized = toml::Table::try_from(Preferences::default()).expect("default preferences");
+    assert!(!serialized.contains_key("send_to_recent_destinations"));
+}
+
+#[test]
+fn malformed_send_to_history_does_not_discard_other_preferences() {
+    let mut saved = toml::Table::try_from(non_default_preferences()).expect("saved preferences");
+    saved.insert("send_to_recent_destinations".into(), "invalid".into());
+    assert!(saved.clone().try_into::<Preferences>().is_err());
+
+    assert_eq!(
+        salvage_preferences(saved),
+        Preferences {
+            send_to_recent_destinations: HashMap::new(),
+            ..non_default_preferences()
+        }
+    );
+}
+
+#[test]
+fn send_to_history_is_device_scoped_deduplicated_capped_and_persistent() {
+    gtk_test(
+        "ui::preferences::tests::preferences::send_to_history_is_device_scoped_deduplicated_capped_and_persistent",
+        || {
+            let manager = PreferenceManager::shared();
+            for path in ["A", "B", "C", "B", "D"] {
+                manager.remember_send_to_destination("volume:kingston", Path::new(path), None);
+            }
+            manager.remember_send_to_destination("volume:sandisk", Path::new("Backup"), None);
+            manager.remember_send_to_destination("volume:drive-root", Path::new(""), None);
+
+            let expected = vec![PathBuf::from("D"), PathBuf::from("B"), PathBuf::from("C")];
+            assert_eq!(
+                manager.send_to_recent_destinations("volume:kingston"),
+                expected
+            );
+            assert_eq!(
+                manager.send_to_recent_destinations("volume:sandisk"),
+                [PathBuf::from("Backup")]
+            );
+            assert!(
+                manager
+                    .send_to_recent_destinations("volume:drive-root")
+                    .is_empty()
+            );
+
+            let reloaded = PreferenceManager::load();
+            assert_eq!(
+                reloaded.send_to_recent_destinations("volume:kingston"),
+                expected
+            );
+            assert_eq!(
+                reloaded.send_to_recent_destinations("volume:sandisk"),
+                [PathBuf::from("Backup")]
+            );
+            let saved: Preferences =
+                toml::from_str(&fs::read_to_string(settings_path()).expect("saved preferences"))
+                    .expect("persisted preferences reload");
+            assert!(
+                !saved
+                    .send_to_recent_destinations
+                    .contains_key("volume:drive-root")
+            );
+        },
     );
 }
 
@@ -367,12 +443,14 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
             assert!(!manager.sidebar_show_desktop());
             assert!(!manager.sidebar_show_documents());
             assert!(!manager.sidebar_show_downloads());
+            assert!(!manager.sidebar_show_music());
             assert!(!manager.sidebar_show_pictures());
             assert!(!manager.sidebar_show_videos());
+            assert!(!manager.sidebar_expanded());
             assert_eq!(
                 manager.sidebar_places_visibility(),
                 [
-                    false, false, false, false, false, false, false, false, false
+                    false, false, false, false, false, false, false, false, false, false
                 ]
             );
             assert_eq!(manager.text_size(), TextSize::new(24));
@@ -398,6 +476,14 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
                 CrossVolumeDropStrategy::Move
             );
             assert_eq!(manager.date_format(), crate::util::DateFormat::Iso8601);
+            assert_eq!(
+                manager.send_to_recent_destinations("volume:fixture-kingston"),
+                [PathBuf::from("Academia/2026"), PathBuf::from("Teaching")]
+            );
+            assert_eq!(
+                manager.send_to_recent_destinations("volume:fixture-sandisk"),
+                [PathBuf::from("Backup")]
+            );
             assert_eq!(
                 manager.default_directory(),
                 Some(std::path::PathBuf::from("/fixture/default"))
@@ -512,8 +598,10 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_sidebar_show_desktop(true),
                 |m| m.set_sidebar_show_documents(true),
                 |m| m.set_sidebar_show_downloads(true),
+                |m| m.set_sidebar_show_music(true),
                 |m| m.set_sidebar_show_pictures(true),
                 |m| m.set_sidebar_show_videos(true),
+                |m| m.set_sidebar_expanded(true),
                 |m| m.set_sort_preferences(ViewPreferences::default()),
                 |m| m.set_text_size(TextSize::new(11)),
                 |m| m.set_interface_renderer(InterfaceRenderer::System),
@@ -526,9 +614,20 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_auto_refresh_interval(60),
                 |m| m.set_thumbnail_workers(3),
                 |m| m.set_icons_thumbnail_size(96),
+                |m| m.set_chooser_column_width(Some(360)),
+                |m| m.set_chooser_list_columns(None),
+                |m| m.set_browser_column_width(Some(400)),
+                |m| m.set_browser_list_columns(None),
                 |m| m.set_cross_volume_drop_strategy(CrossVolumeDropStrategy::Copy),
                 |m| m.set_date_format(crate::util::DateFormat::Long),
                 |m| m.set_default_directory(None),
+                |m| {
+                    m.remember_send_to_destination(
+                        "volume:fixture-kingston",
+                        Path::new("Research"),
+                        None,
+                    )
+                },
                 |m| m.set_open_folder_after_drop(false),
                 |m| m.set_folder_color(Path::new("/fixture/folder"), None),
                 |m| m.set_custom_icon(Path::new("/fixture/folder"), None),

@@ -16,7 +16,7 @@ pub(super) fn button() -> gtk::MenuButton {
     let button = gtk::MenuButton::builder().child(&content).build();
     button.add_css_class("settings-action-library-button");
     accessibility::set_label(&button, "Library");
-    button.set_tooltip_text(Some("Choose a bundled script template"));
+    crate::ui::accessibility::set_description(&button, Some("Choose a bundled script template"));
     button
 }
 
@@ -255,10 +255,10 @@ fn template_row(example: &ActionExample) -> gtk::Button {
     button.add_css_class("column-menu-option");
     button.add_css_class("action-library-template");
     accessibility::set_label(&button, example.name);
-    button.set_tooltip_text(Some(&format!(
-        "{} · {}",
-        example.requirements, example.inputs
-    )));
+    crate::ui::accessibility::set_description(
+        &button,
+        Some(&format!("{} · {}", example.requirements, example.inputs)),
+    );
     button
 }
 

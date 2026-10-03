@@ -18,19 +18,19 @@ def extract_archive(strata, archive_name, activation):
         strata.open_context_menu(archive_name)
         strata.choose_menu_item(activation)
         if activation == "Extract to…":
-            field = strata.editable_field()
-            strata.keyboard.press("ctrl+a")
-            strata.keyboard.type_text(str(strata.fixture.root))
-            strata.wait(lambda: field.text == str(strata.fixture.root), "extraction destination")
-            strata.keyboard.press("Return")
+            chooser = strata.destination_chooser("Extract to")
+            strata.confirm_destination(chooser, "Extract here")
 
 
 @pytest.mark.preferences(
     list_file_clicks=2, grid_file_clicks=2, explorer_file_clicks=2,
 )
 @pytest.mark.parametrize("format,activation", [
-    ("zip", "keyboard"), ("zip", "double-click"),
-    ("tar.gz", "keyboard"), ("tar.gz", "double-click"),
+    pytest.param("zip", "keyboard", marks=pytest.mark.preferences(browser_mode="list")),
+    pytest.param("zip", "keyboard", marks=pytest.mark.preferences(browser_mode="icons")),
+    ("zip", "double-click"),
+    pytest.param("tar.gz", "keyboard", marks=pytest.mark.preferences(browser_mode="list")),
+    ("tar.gz", "double-click"),
     ("zip", "Extract here"), ("zip", "Extract to…"),
 ])
 def test_archive_activation_extracts_to_subfolder(strata, activation, format):
@@ -64,6 +64,9 @@ def test_archive_activation_extracts_to_subfolder(strata, activation, format):
     assert fixture.path(archive_name).exists()
     assert strata.pane().name == fixture.root.name
     strata.entry("activation")
+    if activation != "Extract to…":
+        strata.wait_for_selection(["activation"], fixture.root.name)
+        strata.wait_for_focused_entry("activation")
     extracted.write_text("keep existing edits\n")
     for suffix in [1, 2]:
         extract_archive(strata, archive_name, activation)
@@ -73,6 +76,9 @@ def test_archive_activation_extracts_to_subfolder(strata, activation, format):
         assert fresh.read_text() == contents
         assert extracted.read_text() == "keep existing edits\n"
         strata.entry(f"activation ({suffix})")
+        if activation != "Extract to…":
+            strata.wait_for_selection([f"activation ({suffix})"], fixture.root.name)
+            strata.wait_for_focused_entry(f"activation ({suffix})")
 
 
 @pytest.mark.preferences(

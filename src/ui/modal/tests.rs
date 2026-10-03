@@ -100,6 +100,51 @@ fn enter_in_a_single_line_field_invokes_the_primary_action() {
     );
 }
 
+#[test]
+fn modal_focus_restoration_preserves_explicit_action_focus() {
+    crate::test_support::gtk_test(
+        "ui::modal::tests::modal_focus_restoration_preserves_explicit_action_focus",
+        || {
+            let body = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            let origin = gtk::Button::with_label("Origin");
+            let action_target = gtk::Entry::new();
+            body.append(&origin);
+            body.append(&action_target);
+            let overlay = gtk::Overlay::new();
+            overlay.set_child(Some(&body));
+            let window = gtk::Window::builder().child(&overlay).build();
+            window.present();
+            origin.grab_focus();
+            let modal_field = gtk::Entry::new();
+            let layer = modal_layer(&modal_field, &overlay, None, None);
+            let restore = remember_modal_focus(&layer, &overlay);
+            overlay.add_overlay(&layer);
+            modal_field.grab_focus();
+            let unwanted_restores = Rc::new(Cell::new(0));
+            let restored = unwanted_restores.clone();
+            origin.connect_has_focus_notify(move |origin| {
+                if origin.has_focus() {
+                    restored.set(restored.get() + 1);
+                }
+            });
+            restore.set(false);
+            let target = action_target.clone();
+            dismiss_modal_layer_then(&layer, &overlay, None, move || {
+                target.grab_focus();
+            });
+            wait_until(|| layer.parent().is_none());
+            let focus = gtk::prelude::RootExt::focus(&window).expect("action focus");
+            assert!(
+                focus == action_target.clone().upcast::<gtk::Widget>()
+                    || focus.is_ancestor(&action_target)
+            );
+            assert!(!origin.has_focus());
+            assert_eq!(unwanted_restores.get(), 0);
+            window.destroy();
+        },
+    );
+}
+
 fn wait_until(condition: impl Fn() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(5);
     while !condition() {

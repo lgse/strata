@@ -2,16 +2,16 @@
 
 use super::{
     BoundRow, PendingActivationKind, PendingPointerActivation, column_size_text,
-    set_active_path_style, set_cut_path_style, should_activate_single_click,
+    set_active_path_style, set_mark_path_style, should_activate_single_click,
     should_preview_pointer_press,
 };
 use crate::ui::{
     browser::{
         ViewState,
         clipboard::{
-            PreparedFileDrop, drag_actions_for_modifiers, drag_icon_with_count, file_drag_content,
-            file_drop_action, file_drop_commit, locations_equal, locations_from_file_list_value,
-            prepare_file_drop_target, shared_cut_locations,
+            ClipboardMark, PreparedFileDrop, clipboard_mark, drag_actions_for_modifiers,
+            drag_icon_with_count, file_drag_content, file_drop_action, file_drop_commit,
+            locations_from_file_list_value, prepare_file_drop_target,
         },
         collection::{ViewMap, activate_recursive_search_result, cancel_source},
         entry::{
@@ -158,6 +158,7 @@ pub(super) fn column_rows(
 
         item.set_child(Some(&row));
         let pending_activation = Rc::new(RefCell::new(None::<PendingPointerActivation>));
+        let was_selected = Rc::new(Cell::new(false));
         let mut content_drag: Option<gtk::DragSource> = None;
         if weak_state.upgrade().is_some_and(|state| state.interactive) {
             let drag = gtk::DragSource::builder()
@@ -171,11 +172,14 @@ pub(super) fn column_rows(
             let search_active_for_drag = search_active_for_factory.clone();
             let search_results_for_drag = search_results_for_factory.clone();
             let selection_for_drag = selection_for_rows.clone();
+            let was_selected_for_drag = was_selected.clone();
             drag.connect_prepare(move |source, x, y| {
                 let prepare_row = prepare_row.upgrade()?;
                 if prepare_row
                     .pick(x, y, gtk::PickFlags::DEFAULT)
                     .is_some_and(|target| crate::ui::focus_navigation::editable(&target))
+                    || (!was_selected_for_drag.get()
+                        && !crate::ui::pointer::hits_item_content(prepare_row.upcast_ref(), x, y))
                 {
                     return None;
                 }
@@ -374,7 +378,6 @@ pub(super) fn column_rows(
         let pending_activation_for_motion = pending_activation.clone();
         let pending_activation_for_release = pending_activation.clone();
         let pending_activation_for_cancel = pending_activation;
-        let was_selected = Rc::new(Cell::new(false));
         let was_selected_for_press = was_selected.clone();
         let was_selected_for_release = was_selected.clone();
         let sequence = crate::ui::collection_interaction::PointerSequence::default();
@@ -434,10 +437,18 @@ pub(super) fn column_rows(
             if !shift && let Some(anchor) = change.anchor {
                 anchor_at(&weak_state_for_click, depth, &map_for_click, anchor);
             }
+            // Own this write for the whole synchronous selection-changed emission.
+            // A click on the cursor row is otherwise identical to a focus echo.
+            let pointer_owner = weak_state_for_click
+                .upgrade()
+                .inspect(|state| state.pointer_owns_selection.set(true));
             selection_for_click.set_selection(
                 &change.selected,
                 &gtk::Bitset::new_range(0, selection_for_click.n_items()),
             );
+            if let Some(state) = pointer_owner {
+                state.pointer_owns_selection.set(false);
+            }
             if (control || shift)
                 && let Some(widget) = gesture.widget()
                 && crate::ui::pointer::hits_item_content(&widget, x, y)
@@ -806,6 +817,13 @@ pub(super) fn column_rows(
         } else {
             label.set_opacity(1.0);
         }
+        crate::ui::browser::find::highlight_name(
+            label.upcast_ref(),
+            state
+                .as_ref()
+                .and_then(|state| state.find_highlight())
+                .as_deref(),
+        );
         let origin = entry
             .as_ref()
             .filter(|_| searching)
@@ -815,7 +833,8 @@ pub(super) fn column_rows(
             origin.is_some()
                 && crate::ui::preferences::PreferenceManager::shared().filter_include_subfolders(),
         );
-        row.set_tooltip_text(origin.as_deref());
+        row.set_widget_name(origin.as_deref().unwrap_or("file-row"));
+        crate::ui::accessibility::set_description(&row, origin.as_deref());
         let active = entry.as_ref().is_some_and(|entry| {
             browser
                 .as_ref()
@@ -824,13 +843,11 @@ pub(super) fn column_rows(
         let immediate =
             browser.as_ref().and_then(|browser| browser.active_depth()) == Some(depth + 1);
         set_active_path_style(&row, active, immediate);
-        set_cut_path_style(
+        set_mark_path_style(
             &row,
-            entry.as_ref().is_some_and(|entry| {
-                shared_cut_locations()
-                    .iter()
-                    .any(|cut| locations_equal(cut, &entry.location))
-            }),
+            entry
+                .as_ref()
+                .map_or(ClipboardMark::None, |entry| clipboard_mark(&entry.location)),
         );
         if let Some(entry) = entry.as_ref() {
             let mode_active = state
@@ -877,7 +894,7 @@ pub(super) fn column_rows(
         } else {
             crate::ui::thumbnail::show_fallback_icon(&icon, crate::assets::icons::DOCUMENTS, 17);
             icon.set_hidden(false);
-            icon.set_cut(false);
+            icon.set_mark(ClipboardMark::None);
             icon.set_base_opacity(0.72);
             chevron.set_visible(false);
         }

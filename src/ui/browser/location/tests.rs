@@ -69,7 +69,8 @@ fn a_genuine_mount_failure_still_reports_an_error() {
     let location = Location::uri("smb://host/share");
     let error = glib::Error::new(gio::IOErrorEnum::HostNotFound, "no route to host");
     let message = mount_failure_message(&location, &error).expect("should report a message");
-    assert!(message.contains("no route to host"));
+    assert!(message.contains("couldn’t be found"));
+    assert!(!message.contains("no route to host"));
 }
 
 #[test]
@@ -80,6 +81,102 @@ fn authentication_failure_without_a_backend_prompt_gets_login_fields() {
     assert!(details.flags.contains(gio::AskPasswordFlags::NEED_USERNAME));
     assert!(details.flags.contains(gio::AskPasswordFlags::NEED_DOMAIN));
     assert!(details.flags.contains(gio::AskPasswordFlags::NEED_PASSWORD));
+}
+
+#[test]
+fn sftp_failure_guidance_and_host_key_rejection_do_not_reopen_credentials() {
+    let location = Location::uri("sftp://host.example:2222/home/alice");
+    for (kind, expected) in [
+        (gio::IOErrorEnum::HostNotFound, "address"),
+        (gio::IOErrorEnum::ConnectionRefused, "port"),
+        (gio::IOErrorEnum::TimedOut, "firewall"),
+        (gio::IOErrorEnum::HostUnreachable, "network"),
+    ] {
+        let error = glib::Error::new(kind, "backend detail");
+        let guidance = mount_failure_message(&location, &error).expect("actionable failure");
+        assert!(guidance.contains(expected), "{kind:?}: {guidance}");
+        assert!(!guidance.contains("backend detail"));
+    }
+    let rejected = glib::Error::new(
+        gio::IOErrorEnum::Failed,
+        "Host key verification failed. Permission denied",
+    );
+    assert!(!mount_error_is_authentication_failure(&location, &rejected));
+    assert!(
+        mount_failure_message(&location, &rejected)
+            .expect("trust rejection is reportable")
+            .contains("fingerprint")
+    );
+    let wrong_password = glib::Error::new(
+        gio::IOErrorEnum::Failed,
+        "Permission denied (publickey,password)",
+    );
+    assert!(mount_error_is_authentication_failure(
+        &location,
+        &wrong_password
+    ));
+}
+
+#[test]
+fn backend_failures_do_not_echo_uri_secrets() {
+    let location = Location::uri("sftp://host.example/home/alice");
+    let error = glib::Error::new(
+        gio::IOErrorEnum::Failed,
+        "Unable to mount sftp://alice:hunter2@host.example/home/alice?token=hidden#secret",
+    );
+    let message = mount_failure_message(&location, &error).expect("reportable error");
+    assert!(message.contains("sftp://host.example/home/alice"));
+    assert!(!message.contains("hunter2"));
+    assert!(!message.contains("alice:"));
+    assert!(!message.contains("hidden"));
+    assert!(!message.contains("#secret"));
+}
+
+#[test]
+fn sftp_prompt_uses_only_relevant_fields_and_labels_key_secrets() {
+    let flags = MountPromptDetails::fallback(&Location::uri("sftp://host:2222/home")).flags;
+    assert!(flags.contains(gio::AskPasswordFlags::NEED_USERNAME));
+    assert!(flags.contains(gio::AskPasswordFlags::NEED_PASSWORD));
+    assert!(!flags.contains(gio::AskPasswordFlags::NEED_DOMAIN));
+    assert!(!flags.contains(gio::AskPasswordFlags::ANONYMOUS_SUPPORTED));
+    assert!(
+        MountCredentials::default_for_prompt(flags)
+            .domain
+            .is_empty()
+    );
+    assert!(!authentication_retry_message(flags, "Password required").contains("domain"));
+    assert!(
+        authentication_retry_message(gio::AskPasswordFlags::NEED_PASSWORD, "key passphrase")
+            .contains("passphrase")
+    );
+    assert_eq!(
+        authentication_retry_message(gio::AskPasswordFlags::empty(), "authentication"),
+        "That attempt wasn’t accepted. Try again."
+    );
+}
+
+#[test]
+fn mount_logging_keeps_remote_identity_out_of_normal_events() {
+    let location = Location::uri("sftp://alice:secret@host.example/private?token=secret#fragment");
+    let output = crate::test_support::capture_logs(|| {
+        log_mount_started(&location, MountStrategy::EnclosingVolume);
+        log_mount_finished(
+            &location,
+            &Err(glib::Error::new(gio::IOErrorEnum::Failed, "secret")),
+        );
+    });
+    let started = crate::test_support::captured_event(&output, "mount requested");
+    let failed = crate::test_support::captured_event(&output, "mount failed");
+    for line in [started, failed] {
+        assert!(line.contains("backend=sftp"));
+        assert!(!line.contains("host.example"));
+        assert!(!line.contains("alice"));
+        assert!(!line.contains("secret"));
+    }
+    let diagnostic = crate::test_support::captured_event(&output, "mount location");
+    assert!(diagnostic.contains("host.example"));
+    assert!(!diagnostic.contains("alice"));
+    assert!(!diagnostic.contains("secret"));
 }
 
 #[test]
@@ -570,6 +667,103 @@ fn encrypted_volume_presents_unlocking_chrome() {
             view.browser().clear_observer();
         },
     );
+}
+
+#[test]
+fn sftp_trust_prompt_requires_a_choice_and_preserves_backend_choice_indexes() {
+    crate::test_support::gtk_test(
+        "ui::browser::location::tests::sftp_trust_prompt_requires_a_choice_and_preserves_backend_choice_indexes",
+        || {
+            let overlay = gtk::Overlay::new();
+            overlay.set_child(Some(&gtk::Box::new(gtk::Orientation::Vertical, 0)));
+            let window = gtk::Window::builder().child(&overlay).build();
+            window.present();
+            let choices = ["Log In Anyway".to_owned(), "Cancel Login".to_owned()];
+            for (label, expected_choice) in [("Cancel Login", 1), ("Log In Anyway", 0)] {
+                let operation = gio::MountOperation::new();
+                let replies = Rc::new(RefCell::new(Vec::new()));
+                let observed = replies.clone();
+                operation.connect_reply(move |operation, reply| {
+                    observed.borrow_mut().push((reply, operation.choice()));
+                });
+                let declined = Rc::new(Cell::new(false));
+                let prompt = show_trust_question_dialog(
+                    &overlay,
+                    &operation,
+                    "Identity Verification Failed\nThe identity of sftp://user:secret@host/path is ???",
+                    &choices,
+                    declined.clone(),
+                )
+                .expect("themed trust question");
+                assert!(
+                    replies.borrow().is_empty(),
+                    "trust must not be answered automatically"
+                );
+                let widgets = descendants(&prompt.clone().upcast());
+                let text: String = widgets
+                    .iter()
+                    .filter_map(|widget| widget.downcast_ref::<gtk::Label>())
+                    .map(|label| label.text().to_string())
+                    .collect();
+                assert!(text.contains("Identity Verification Failed"));
+                assert!(!text.contains("user:secret"));
+                let button = widgets
+                    .iter()
+                    .filter_map(|widget| widget.downcast_ref::<gtk::Button>())
+                    .find(|button| button.label().as_deref() == Some(label))
+                    .expect("backend choice");
+                button.emit_clicked();
+                assert_eq!(
+                    *replies.borrow(),
+                    vec![(gio::MountOperationResult::Handled, expected_choice)]
+                );
+                assert_eq!(declined.get(), expected_choice == 1);
+                dismiss_authentication_prompt(&overlay, &prompt);
+            }
+
+            let operation = gio::MountOperation::new();
+            let replies = Rc::new(RefCell::new(Vec::new()));
+            let observed = replies.clone();
+            operation.connect_reply(move |_, reply| observed.borrow_mut().push(reply));
+            let declined = Rc::new(Cell::new(false));
+            let prompt = show_trust_question_dialog(
+                &overlay,
+                &operation,
+                "Identity Verification Failed",
+                &choices,
+                declined.clone(),
+            )
+            .expect("themed trust question");
+            let close = descendants(&prompt.clone().upcast())
+                .into_iter()
+                .find_map(|widget| {
+                    widget
+                        .downcast::<gtk::Button>()
+                        .ok()
+                        .filter(|button| button.has_css_class("action-dialog-close"))
+                })
+                .expect("trust dialog close button");
+            close.emit_clicked();
+            assert_eq!(*replies.borrow(), vec![gio::MountOperationResult::Aborted]);
+            assert!(declined.get());
+            dismiss_authentication_prompt(&overlay, &prompt);
+            window.destroy();
+        },
+    );
+}
+
+#[test]
+fn declined_trust_question_never_reports_backend_cancel_as_connection_failure() {
+    let location = Location::uri("sftp://host.example/");
+    let backend_error = glib::Error::new(gio::IOErrorEnum::Failed, "Login cancelled");
+    let error = trust_question_result(Err(backend_error.clone()), true)
+        .expect_err("declined trust question should be cancelled");
+    assert!(error.matches(gio::IOErrorEnum::Cancelled));
+    assert!(mount_failure_message(&location, &error).is_none());
+
+    let genuine_error = trust_question_result(Err(backend_error), false)
+        .expect_err("genuine connection failures must not be suppressed");
+    assert!(mount_failure_message(&location, &genuine_error).is_some());
 }
 
 #[test]

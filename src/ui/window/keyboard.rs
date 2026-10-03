@@ -13,17 +13,30 @@ use gtk::{
 
 use crate::{
     app::Browser,
+    services::NavigationHistory,
     ui::{
-        browser::BrowserView, preview::PreviewDrawer, shortcut_footer::ShortcutFooter,
+        browser::BrowserView,
+        go_completion::{FolderSource, GoCompletion},
+        preview::PreviewDrawer,
+        shortcut_footer::ShortcutFooter,
         top_bar_navigation::TopBarNavigation,
     },
 };
 
 use super::{SidebarState, SidebarView, TypeToSearch, visible_modal_layer};
 
+mod chooser;
+pub(super) mod chords;
 mod commands;
+mod escape;
+mod files;
 mod focus;
 mod items;
+mod preview;
+mod prompts;
+mod sidebar;
+
+use sidebar::{SidebarChord, activate_sidebar_focus, move_sidebar_focus, sidebar_chord};
 
 // None tries the next Strata stage; Some(Proceed) gives the event to GTK instead.
 type KeyResult = Option<Propagation>;
@@ -34,33 +47,24 @@ pub(super) struct Bindings {
     pub preview: PreviewDrawer,
     pub type_to_search: TypeToSearch,
     pub shortcuts: ShortcutFooter,
+    pub folders: Rc<dyn FolderSource>,
+    pub history: Rc<NavigationHistory>,
 }
 
-pub(super) fn install(window: &gtk::ApplicationWindow, sidebar: &SidebarView, bindings: Bindings) {
+pub(super) fn install(window: &impl IsA<gtk::Window>, sidebar: &SidebarView, bindings: Bindings) {
+    let window = window.upcast_ref::<gtk::Window>();
     let keys = gtk::EventControllerKey::new();
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
     let weak_browser = Rc::downgrade(&bindings.view.browser());
-    let dispatcher = Dispatcher {
-        window: window.clone(),
-        view: bindings.view,
-        top_bar: bindings.top_bar,
-        preview: bindings.preview,
-        type_to_search: bindings.type_to_search,
-        shortcuts: bindings.shortcuts,
-        sidebar: SidebarFocus {
-            state: sidebar.state.clone(),
-            widget: sidebar.widget.clone(),
-            previous: RefCell::new(None),
-        },
-    };
-    let preferences = dispatcher.type_to_search.preferences.clone();
+    let preferences = bindings.type_to_search.preferences.clone();
+    let dispatcher = Dispatcher::bind(window, sidebar, bindings, None);
     keys.connect_key_pressed(move |_, key, _, modifiers| {
         let Some(browser) = weak_browser.upgrade() else {
             return Propagation::Proceed;
         };
         dispatcher.handle_key(&browser, key, modifiers)
     });
-    window.add_controller(keys);
+    window.add_controller(keys.clone());
 
     // Ctrl+wheel mirrors the Ctrl +/- text-size shortcut. Capture phase so
     // scrolled windows cannot consume it first; the PDF preview's own zoom is
@@ -87,7 +91,206 @@ pub(super) fn install(window: &gtk::ApplicationWindow, sidebar: &SidebarView, bi
             dy,
         )
     });
-    window.add_controller(wheel);
+    window.add_controller(wheel.clone());
+    release_controllers_on_close(window, &[keys.upcast(), wheel.upcast()]);
+}
+
+// Key controllers retain the dispatcher and its window; unrealize breaks the cycle.
+fn release_controllers_on_close(window: &gtk::Window, controllers: &[gtk::EventController]) {
+    let controllers: Vec<_> = controllers.iter().map(ObjectExt::downgrade).collect();
+    window.connect_unrealize(move |window| {
+        for controller in controllers.iter().filter_map(glib::WeakRef::upgrade) {
+            window.remove_controller(&controller);
+        }
+    });
+}
+
+pub(in crate::ui) struct ChooserPolicy {
+    pub(in crate::ui) multiple: bool,
+    pub(in crate::ui) confirm: Rc<dyn Fn(crate::model::FileEntry)>,
+    pub(in crate::ui) cancel: Rc<dyn Fn()>,
+    pub(in crate::ui) save: Option<Rc<dyn Fn()>>,
+    pub(in crate::ui) edit_name: Option<Rc<dyn Fn()>>,
+}
+
+pub(in crate::ui) struct ChooserKeys {
+    dispatcher: Dispatcher,
+    browser: std::rc::Weak<Browser>,
+}
+
+impl ChooserKeys {
+    pub(super) fn new(
+        window: &gtk::Window,
+        sidebar: &SidebarView,
+        bindings: Bindings,
+        policy: ChooserPolicy,
+    ) -> Self {
+        let browser = Rc::downgrade(&bindings.view.browser());
+        Self {
+            dispatcher: Dispatcher::bind(window, sidebar, bindings, Some(policy)),
+            browser,
+        }
+    }
+
+    pub(in crate::ui) fn handle(&self, key: Key, modifiers: Modifiers) -> KeyResult {
+        let browser = self.browser.upgrade()?;
+        self.dispatcher.handle_chooser_key(&browser, key, modifiers)
+    }
+}
+
+/// Leaving 10xer mode ends preview key ownership but keeps the drawer open.
+fn release_preview_keys_on_mode_exit(
+    window: &gtk::Window,
+    preview: &PreviewDrawer,
+    browser: &std::rc::Weak<Browser>,
+) {
+    let preview = preview.clone();
+    let browser = browser.clone();
+    crate::ui::preferences::PreferenceManager::shared().bind_preference(
+        window,
+        crate::ui::preferences::PreferenceManager::tenxer_mode,
+        move |window, enabled| {
+            if !enabled
+                && preview.owns_focus(window.root().and_then(|root| root.focus()).as_ref())
+                && let Some(browser) = browser.upgrade()
+            {
+                browser.focus_active();
+            }
+        },
+    );
+}
+
+/// The **f** and **s** prompts filter and search as they are typed, and the
+/// footer reports the focused listing's filter or search while the mode is on.
+fn bind_footer_filter(dispatcher: &Dispatcher) {
+    let view = dispatcher.view.downgrade();
+    dispatcher
+        .shortcuts
+        .connect_prompt_changed(move |kind, text| {
+            let Some(view) = view.upgrade() else {
+                return;
+            };
+            match kind {
+                crate::ui::tenxer_mode::Prompt::Filter => view.set_listing_filter(&text),
+                crate::ui::tenxer_mode::Prompt::Search => view.set_listing_search(&text),
+                _ => {}
+            }
+        });
+    let view = dispatcher.view.downgrade();
+    dispatcher.shortcuts.observe_filter(move || {
+        if !crate::ui::tenxer_mode::chrome_suppressed() {
+            return Some(None);
+        }
+        view.upgrade()
+            .map_or(Some(None), |view| view.filter_status())
+    });
+    let shortcuts = dispatcher.shortcuts.clone();
+    dispatcher
+        .view
+        .connect_filter_results_changed(Rc::new(move || shortcuts.refresh_filter()));
+    let shortcuts = dispatcher.shortcuts.clone();
+    dispatcher
+        .view
+        .connect_search_selection_changed(Rc::new(move || shortcuts.schedule_filter_refresh()));
+}
+
+/// Completion replacements are not edits; user edits invalidate pending lookups.
+fn bind_go_completion(dispatcher: &Dispatcher) {
+    use crate::ui::tenxer_mode::Prompt;
+    let go = dispatcher.go.clone();
+    let revision = dispatcher.destination_revision.clone();
+    dispatcher.shortcuts.connect_prompt_reset(move || {
+        go.invalidate();
+        revision.set(revision.get().wrapping_add(1));
+    });
+    let go = dispatcher.go.clone();
+    let hints: Vec<_> = [
+        Prompt::Go,
+        Prompt::Create,
+        Prompt::Rename,
+        Prompt::MoveTo,
+        Prompt::CopyTo,
+        Prompt::ExtractTo,
+    ]
+    .into_iter()
+    .map(|kind| (kind, dispatcher.shortcuts.prompt_sink(kind)))
+    .collect();
+    let revision = dispatcher.destination_revision.clone();
+    dispatcher.shortcuts.connect_prompt_changed(move |kind, _| {
+        revision.set(revision.get().wrapping_add(1));
+        if kind.completes_folders() {
+            go.invalidate();
+        }
+        if let Some((_, hint)) = hints.iter().find(|(hinted, _)| *hinted == kind) {
+            hint.show(None, None);
+        }
+    });
+}
+
+fn bind_history_prompts(dispatcher: &Dispatcher) {
+    let shortcuts = dispatcher.shortcuts.clone();
+    let history = dispatcher.history.clone();
+    let browser = Rc::downgrade(&dispatcher.view.browser());
+    dispatcher.shortcuts.connect_prompt_changed(move |kind, _| {
+        if let Some(browser) = browser.upgrade() {
+            prompts::show_history_candidates(&shortcuts, &history, &browser, kind);
+        }
+    });
+    let shortcuts = dispatcher.shortcuts.clone();
+    let view = dispatcher.view.clone();
+    dispatcher
+        .shortcuts
+        .connect_candidate_activated(move |path| {
+            if !shortcuts
+                .open_prompt_kind()
+                .is_some_and(crate::ui::tenxer_mode::Prompt::picks_history)
+            {
+                return;
+            }
+            shortcuts.dismiss_prompt();
+            if !view.focus_visible_results() {
+                view.browser().focus_active();
+            }
+            view.keyboard_navigation();
+            view.browser()
+                .navigate_with_selection(crate::model::Location::local(path), true);
+        });
+}
+
+fn clear_find_on_mode_exit(
+    window: &gtk::Window,
+    dispatcher: &Dispatcher,
+    browser: &std::rc::Weak<Browser>,
+) {
+    let shortcuts = dispatcher.shortcuts.clone();
+    let open_with = dispatcher.open_with.clone();
+    let go = dispatcher.go.clone();
+    let armed_actions = dispatcher.armed_actions.clone();
+    let browser = browser.clone();
+    let primed = Cell::new(false);
+    crate::ui::preferences::PreferenceManager::shared().bind_preference(
+        window,
+        crate::ui::preferences::PreferenceManager::tenxer_mode,
+        move |window, enabled| {
+            let starting = !primed.replace(true);
+            if enabled || starting {
+                shortcuts.refresh_filter();
+                return;
+            }
+            open_with.invalidate();
+            go.invalidate();
+            armed_actions.take();
+            shortcuts.refresh_filter();
+            let focus = window.root().and_then(|root| root.focus());
+            let prompt_focused = shortcuts.prompt_has_focus();
+            shortcuts.dismiss_prompt();
+            if (prompt_focused || focus.is_none())
+                && let Some(browser) = browser.upgrade()
+            {
+                browser.focus_active();
+            }
+        },
+    );
 }
 
 /// Accumulates fractional scroll deltas into whole text-size steps so smooth
@@ -220,9 +423,6 @@ fn claims_file_list_typing(key: Key, modifiers: Modifiers) -> bool {
     if key == Key::space {
         return true;
     }
-    if matches!(key, Key::q | Key::Q) {
-        return false;
-    }
     super::type_to_search_query(key, modifiers).is_some()
 }
 
@@ -252,13 +452,22 @@ fn inside_pdf_scroll(widget: &gtk::Widget) -> bool {
 }
 
 struct Dispatcher {
-    window: gtk::ApplicationWindow,
+    window: gtk::Window,
     view: BrowserView,
     sidebar: SidebarFocus,
     top_bar: TopBarNavigation,
     preview: PreviewDrawer,
     type_to_search: TypeToSearch,
     shortcuts: ShortcutFooter,
+    go: GoCompletion,
+    history: Rc<NavigationHistory>,
+    rename_target: Rc<RefCell<Option<crate::model::FileEntry>>>,
+    /// Cursor and fill changes must not retarget an open prompt.
+    destination_targets: Rc<RefCell<Vec<crate::model::FileEntry>>>,
+    destination_revision: Rc<Cell<u64>>,
+    armed_actions: Rc<RefCell<Option<files::ArmedActions>>>,
+    open_with: files::OpenWithLookup,
+    chooser: Option<ChooserPolicy>,
 }
 
 struct KeyEvent {
@@ -294,16 +503,106 @@ impl KeyEvent {
 }
 
 impl Dispatcher {
+    fn bind(
+        window: &gtk::Window,
+        sidebar: &SidebarView,
+        bindings: Bindings,
+        chooser: Option<ChooserPolicy>,
+    ) -> Self {
+        let weak_browser = Rc::downgrade(&bindings.view.browser());
+        let dispatcher = Self {
+            window: window.clone(),
+            view: bindings.view,
+            top_bar: bindings.top_bar,
+            preview: bindings.preview,
+            type_to_search: bindings.type_to_search,
+            shortcuts: bindings.shortcuts,
+            go: GoCompletion::new(bindings.folders),
+            history: bindings.history,
+            rename_target: Rc::default(),
+            destination_targets: Rc::default(),
+            destination_revision: Rc::default(),
+            armed_actions: Rc::default(),
+            open_with: files::OpenWithLookup::default(),
+            sidebar: SidebarFocus {
+                state: sidebar.state.clone(),
+                widget: sidebar.widget.clone(),
+                previous: RefCell::new(None),
+            },
+            chooser,
+        };
+        dispatcher.preview.bind_keyboard_view(&dispatcher.view);
+        let keycaps = Rc::downgrade(&sidebar.state);
+        dispatcher.shortcuts.connect_chord_changed(move |chord| {
+            if let Some(sidebar) = keycaps.upgrade() {
+                sidebar.show_place_keycaps(chord == Some(crate::ui::tenxer_mode::Chord::Go));
+            }
+        });
+        let cancel_on_destroy = dispatcher.shortcuts.clone();
+        let go_on_destroy = dispatcher.go.clone();
+        let open_with_on_destroy = dispatcher.open_with.clone();
+        window.connect_unrealize(move |_| {
+            cancel_on_destroy.cancel_chord();
+            go_on_destroy.invalidate();
+            open_with_on_destroy.invalidate();
+        });
+        let rename_target = dispatcher.rename_target.clone();
+        let destination_targets = dispatcher.destination_targets.clone();
+        dispatcher.shortcuts.connect_prompt_reset(move || {
+            drop(rename_target.take());
+            drop(destination_targets.take());
+        });
+        bind_go_completion(&dispatcher);
+        bind_history_prompts(&dispatcher);
+        release_preview_keys_on_mode_exit(window, &dispatcher.preview, &weak_browser);
+        clear_find_on_mode_exit(window, &dispatcher, &weak_browser);
+        bind_footer_filter(&dispatcher);
+        dispatcher
+    }
+
+    fn handle_chooser_key(
+        &self,
+        browser: &Rc<Browser>,
+        key: Key,
+        modifiers: Modifiers,
+    ) -> KeyResult {
+        if !self.type_to_search.preferences.tenxer_mode() {
+            return self.tenxer_keys(browser, key, modifiers);
+        }
+        if !items::is_modifier_key(key) {
+            self.open_with.invalidate();
+        }
+        if self.text_focused()
+            && !self.shortcuts.prompt_has_focus()
+            && !self.preview_document_focused()
+        {
+            // The open reference's search entry counts as focused text; its
+            // keys, Escape included, must reach the reference, not the request.
+            if key == Key::F1 || self.shortcuts.reference_is_open() {
+                return self.shortcuts.handle_key(key, modifiers);
+            }
+            return self.tenxer_keys(browser, key, modifiers);
+        }
+        self.input_owner(browser, key, modifiers)
+            .or_else(|| self.tenxer_keys(browser, key, modifiers))
+    }
+
     fn handle_key(&self, browser: &Rc<Browser>, key: Key, modifiers: Modifiers) -> Propagation {
+        if !items::is_modifier_key(key) {
+            self.open_with.invalidate();
+        }
         let preferences = &self.type_to_search.preferences;
         if let Some(size) = preferences.text_size().for_shortcut(key, modifiers) {
+            // Text-size shortcuts run before the chord consumer. Drop the mark
+            // first, then resize, matching Ctrl+, opening Settings.
+            self.shortcuts.cancel_chord();
             preferences.set_text_size(size);
             return Propagation::Stop;
         }
-        if let Some(result) = self.input_owner(key, modifiers) {
+        if let Some(result) = self.input_owner(browser, key, modifiers) {
             return result;
         }
-        if let Some(result) = self.tenxer_keys(key, modifiers) {
+        if let Some(result) = self.tenxer_keys(browser, key, modifiers) {
             return result;
         }
         let focused = gtk::prelude::RootExt::focus(&self.window);
@@ -362,17 +661,18 @@ impl Dispatcher {
             })
             .or_else(|| self.text_input(&event))
             .or_else(|| self.file_commands(browser, &event))
-            .or_else(|| self.archive_navigation(&event))
+            .or_else(|| self.preview_navigation(&event))
             .or_else(|| self.focus_navigation(browser, &mut event))
             .or_else(|| self.dismissal(browser, &event))
             .or_else(|| self.item_navigation(browser, &event))
             .unwrap_or(Propagation::Proceed)
     }
 
-    fn input_owner(&self, key: Key, modifiers: Modifiers) -> KeyResult {
+    fn input_owner(&self, browser: &Browser, key: Key, modifiers: Modifiers) -> KeyResult {
         if let Some(layer) = visible_modal_layer(&self.window) {
             let focus_is_inside = gtk::prelude::RootExt::focus(&self.window)
                 .is_some_and(|focus| focus == layer || focus.is_ancestor(&layer));
+            self.shortcuts.cancel_chord();
             if !focus_is_inside {
                 layer.grab_focus();
                 return Some(Propagation::Stop);
@@ -382,15 +682,36 @@ impl Dispatcher {
         if self.native_menu_owns_input() {
             return Some(Propagation::Proceed);
         }
+        if self.shortcuts.prompt_has_focus() {
+            if let Some(result) = self.footer_key(key, modifiers) {
+                return Some(result);
+            }
+            return Some(self.prompt_key(browser, key, modifiers));
+        }
+        if let Some(result) = self.tenxer_preview_text(browser, key, modifiers) {
+            return Some(result);
+        }
         if !self.inline_editing_active()
-            && let Some(result) = self.shortcuts.handle_key(key, modifiers)
+            && let Some(result) = self.footer_key(key, modifiers)
         {
             return Some(result);
         }
         if key == Key::Escape && crate::ui::scrolling::stop_autoscroll() {
+            self.shortcuts.cancel_chord();
             return Some(Propagation::Stop);
         }
         None
+    }
+
+    /// Shortcut-reference keys run before the chord consumer. A visible prompt
+    /// keeps its armed chord; every other claimed footer key cancels first.
+    fn footer_key(&self, key: Key, modifiers: Modifiers) -> KeyResult {
+        let prompted = self.shortcuts.prompt_is_visible();
+        let result = self.shortcuts.handle_key(key, modifiers)?;
+        if !prompted {
+            self.shortcuts.cancel_chord();
+        }
+        Some(result)
     }
 
     fn inline_editing_active(&self) -> bool {
@@ -410,7 +731,7 @@ impl Dispatcher {
         visible_popover_menu(self.window.upcast_ref())
     }
 
-    fn tenxer_keys(&self, key: Key, modifiers: Modifiers) -> KeyResult {
+    fn tenxer_keys(&self, browser: &Rc<Browser>, key: Key, modifiers: Modifiers) -> KeyResult {
         if visible_modal_layer(&self.window).is_some() {
             return None;
         }
@@ -422,17 +743,55 @@ impl Dispatcher {
         if !preferences.tenxer_mode() {
             return None;
         }
-        if self.text_focused() || self.focus_in_popover() {
+        if (self.text_focused() && !self.preview_document_focused()) || self.focus_in_popover() {
+            self.shortcuts.cancel_chord();
             return None;
+        }
+        if let Some(result) = self.tenxer_chord(browser, key, modifiers) {
+            return Some(result);
         }
         let command = modifiers
             .intersects(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK);
-        if key == Key::q && !modifiers.contains(Modifiers::SHIFT_MASK) && !command {
-            preferences.set_tenxer_mode(false);
-            return Some(Propagation::Stop);
+        if let Some(result) = self
+            .chooser_refusal(key, modifiers)
+            .or_else(|| self.chooser_save(key, modifiers))
+        {
+            return Some(result);
         }
         if key == Key::Q && modifiers.contains(Modifiers::SHIFT_MASK) && !command {
             self.window.close();
+            return Some(Propagation::Stop);
+        }
+        if let Some(result) = self.tenxer_preview(browser, key, modifiers) {
+            return Some(result);
+        }
+        let focus = gtk::prelude::RootExt::focus(&self.window);
+        if self.sidebar.contains(&focus)
+            && let Some(result) = self.tenxer_sidebar(browser, key, modifiers)
+        {
+            return Some(result);
+        }
+        if self.tenxer_header_focused(&focus)
+            && let Some(result) = self.tenxer_header(browser, key, modifiers)
+        {
+            return Some(result);
+        }
+        if key == Key::Escape && !command && !self.inline_editing_active() {
+            return self.tenxer_escape(browser);
+        }
+        if let Some(result) = self
+            .tenxer_prompt_keys(key, modifiers)
+            .or_else(|| self.tenxer_file_keys(key, modifiers))
+        {
+            return Some(result);
+        }
+        let icons = self.view.view_mode() == crate::ui::browser_modes::BrowserMode::Icons;
+        let claimed = if icons {
+            self.tenxer_icons(browser, key, modifiers)
+        } else {
+            self.tenxer_listing(browser, key, modifiers)
+        };
+        if claimed {
             return Some(Propagation::Stop);
         }
         if claims_unbound_command(key, modifiers)
@@ -468,6 +827,78 @@ impl Dispatcher {
             .then(|| event.focused.clone())
             .flatten();
         self.sidebar.enter(&previous);
+    }
+
+    fn tenxer_sidebar(&self, browser: &Browser, key: Key, modifiers: Modifiers) -> KeyResult {
+        if super::is_context_menu_shortcut(key, modifiers)
+            && sidebar::open_sidebar_context_menu(&self.sidebar.widget)
+        {
+            self.shortcuts.cancel_chord();
+            return Some(Propagation::Stop);
+        }
+        let chord = sidebar_chord(key, modifiers)?;
+        match chord {
+            SidebarChord::Move(delta) => {
+                move_sidebar_focus(&self.sidebar.widget, delta);
+            }
+            SidebarChord::Activate => self.activate_sidebar(browser),
+            SidebarChord::Leave => self.sidebar.restore(browser, true),
+            SidebarChord::Swallow => {}
+        }
+        Some(Propagation::Stop)
+    }
+
+    fn activate_sidebar(&self, browser: &Browser) {
+        let before = browser.active_location();
+        if !activate_sidebar_focus(&self.sidebar.widget) {
+            return;
+        }
+        if browser.active_location() != before {
+            self.sidebar.previous.replace(None);
+            if !self.view.item_view_has_focus() {
+                browser.focus_active();
+            }
+        }
+    }
+
+    fn tenxer_header_focused(&self, focus: &Option<gtk::Widget>) -> bool {
+        if self.top_bar.has_focus() || self.view.header_actions_have_focus() {
+            return true;
+        }
+        let panes = self.view.widget();
+        crate::ui::focus_navigation::contains_widget(&panes, focus.as_ref())
+            && !self.view.item_view_has_focus()
+    }
+
+    fn tenxer_header(&self, browser: &Browser, key: Key, modifiers: Modifiers) -> KeyResult {
+        if modifiers
+            .intersects(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
+        {
+            return None;
+        }
+        if modifiers.contains(Modifiers::SHIFT_MASK) && !matches!(key, Key::Tab | Key::ISO_Left_Tab)
+        {
+            return Some(Propagation::Stop);
+        }
+        match key {
+            Key::h | Key::j => {
+                self.return_from_header(browser);
+                Some(Propagation::Stop)
+            }
+            Key::Return | Key::KP_Enter | Key::space => {
+                crate::ui::focus_navigation::activate(self.window.upcast_ref());
+                Some(Propagation::Stop)
+            }
+            Key::Delete => Some(Propagation::Stop),
+            _ => None,
+        }
+    }
+
+    fn return_from_header(&self, browser: &Browser) {
+        if self.view.header_actions_have_focus() && self.view.focus_items_from_header() {
+            return;
+        }
+        browser.focus_active();
     }
 }
 

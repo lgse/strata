@@ -107,7 +107,6 @@ pub(super) fn indicator(
             row.add_css_class(state);
             icons.set_visible_child_name(state);
             label.set_text(&text);
-            label.set_tooltip_text(Some(&detail));
             label.update_property(&[gtk::accessible::Property::Description(&detail)]);
         }
     });

@@ -422,33 +422,21 @@ fn global_search_combines_home_and_drives_and_refreshes_mounts() {
                 dialog.state.status.text(),
                 "Type to search Home and mounted local drives"
             );
-            let tooltip = dialog.state.field.tooltip_text().expect("scope locations");
-            assert!(tooltip.contains("Remote shares are not included."));
-            assert!(tooltip.contains(&home.display().to_string()));
-            assert!(tooltip.contains(&usb.display().to_string()));
+            assert!(dialog.state.field.tooltip_text().is_none());
             dialog.state.field.set_text("needle");
             wait_until(|| dialog.state.visible_results.borrow().len() == 2);
-            for (position, item) in dialog.state.visible_results.borrow().iter().enumerate() {
+            for position in 0..dialog.state.visible_results.borrow().len() {
                 let row = dialog
                     .state
                     .list
                     .row_at_index(position as i32)
                     .expect("result row");
-                assert_eq!(
-                    row.tooltip_text().as_deref(),
-                    Some(item.path.to_string_lossy().as_ref())
-                );
+                assert!(row.tooltip_text().is_none());
             }
 
             dialog.show(vec![home.clone()], false);
             assert!(dialog.state.visible_results.borrow().is_empty());
-            let tooltip = dialog
-                .state
-                .field
-                .tooltip_text()
-                .expect("updated scope locations");
-            assert!(tooltip.contains(&home.display().to_string()));
-            assert!(!tooltip.contains(&usb.display().to_string()));
+            assert!(dialog.state.field.tooltip_text().is_none());
             dialog.state.field.set_text("needle");
             wait_until(|| {
                 !dialog.state.indexing_spinner.is_visible()
@@ -466,10 +454,7 @@ fn global_search_combines_home_and_drives_and_refreshes_mounts() {
             };
             render_results(&dialog.state, Vec::new(), false, coverage);
             assert!(dialog.state.truncated_hint.is_visible());
-            assert_eq!(
-                dialog.state.truncated_hint.tooltip_text().as_deref(),
-                Some(coverage.message().as_str())
-            );
+            assert!(dialog.state.truncated_hint.tooltip_text().is_none());
             render_results(&dialog.state, Vec::new(), false, SearchCoverage::default());
             assert!(!dialog.state.truncated_hint.is_visible());
 

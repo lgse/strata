@@ -3,19 +3,6 @@
 use super::*;
 
 #[test]
-fn navigation_reference_matches_each_mode() {
-    assert!(
-        navigation_shortcuts(BrowserMode::Columns)
-            .contains(&("← / →", "Parent pane / enter folder"))
-    );
-    assert!(
-        navigation_shortcuts(BrowserMode::Icons)
-            .contains(&("← at left edge", "Focus the visible sidebar"))
-    );
-    assert!(navigation_shortcuts(BrowserMode::List).contains(&("←", "Focus the visible sidebar")));
-}
-
-#[test]
 #[ignore = "requires a mapped GTK window; run this test alone"]
 fn footer_tracks_modes_and_shields_files_while_open() {
     const CHILD: &str = "STRATA_SHORTCUT_FOOTER_GTK_CHILD";
@@ -69,12 +56,7 @@ fn footer_tracks_modes_and_shields_files_while_open() {
     }
     view.browser().set_selection(0, &[], None);
     assert_eq!(footer.count.text(), "3 items");
-    assert_eq!(
-        footer.count.tooltip_text().as_deref(),
-        Some("2 files, 1 folder")
-    );
-    // Other test windows must not compete for the display's global popup grab.
-    footer.popover.set_autohide(false);
+    assert!(footer.count.tooltip_text().is_none());
     let updated = footer.clone();
     view.connect_view_mode_changed(move |mode| updated.set_mode(mode));
     let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -82,7 +64,7 @@ fn footer_tracks_modes_and_shields_files_while_open() {
     root.append(&entry);
     root.append(footer.widget());
     let window = gtk::Window::builder()
-        .child(&root)
+        .child(&gtk::Overlay::builder().child(&root).build())
         .default_width(600)
         .default_height(500)
         .build();
@@ -95,14 +77,15 @@ fn footer_tracks_modes_and_shields_files_while_open() {
             .reference
             .first_child()
             .and_then(|section| section.first_child())
+            .and_then(|heading| heading.first_child())
             .and_downcast::<gtk::Label>()
             .expect("navigation reference heading");
         assert_eq!(
             heading.text(),
             match mode {
-                BrowserMode::Columns => "Columns navigation",
-                BrowserMode::Icons => "Icons navigation",
-                BrowserMode::List => "List navigation",
+                BrowserMode::Columns => "COLUMNS NAVIGATION",
+                BrowserMode::Icons => "ICONS NAVIGATION",
+                BrowserMode::List => "LIST NAVIGATION",
             }
         );
         assert!(footer.widget().is_visible());
@@ -115,12 +98,7 @@ fn footer_tracks_modes_and_shields_files_while_open() {
             settle();
         }
         assert_eq!(footer.count.text(), "1 folder, 2 files selected (6 B)");
-        assert!(
-            footer
-                .count
-                .tooltip_text()
-                .is_some_and(|text| { text.contains("folder contents are not counted") })
-        );
+        assert!(footer.count.tooltip_text().is_none());
         let folder = (0..3)
             .find(|position| {
                 view.browser()
@@ -192,25 +170,36 @@ fn footer_tracks_modes_and_shields_files_while_open() {
         footer.handle_key(gdk::Key::F1, none),
         Some(glib::Propagation::Stop)
     );
-    assert!(footer.popover.is_visible());
-    assert!(footer.popover.child_focus(gtk::DirectionType::TabForward));
+    assert!(footer.session.is_open());
+    assert!(footer.panel.child_focus(gtk::DirectionType::TabForward));
+    footer.search.grab_focus();
+    assert_eq!(
+        footer.handle_key(gdk::Key::Delete, none),
+        Some(glib::Propagation::Proceed)
+    );
+    assert_eq!(
+        footer.handle_key(gdk::Key::v, gdk::ModifierType::CONTROL_MASK),
+        Some(glib::Propagation::Proceed)
+    );
+    footer.scroll.grab_focus();
     assert_eq!(
         footer.handle_key(gdk::Key::Delete, none),
         Some(glib::Propagation::Stop)
     );
     assert_eq!(
-        footer.handle_key(gdk::Key::v, gdk::ModifierType::CONTROL_MASK),
+        footer.handle_key(gdk::Key::Tab, none),
         Some(glib::Propagation::Stop)
     );
-    assert_eq!(
-        footer.handle_key(gdk::Key::Tab, none),
-        Some(glib::Propagation::Proceed)
+    assert!(
+        gtk::prelude::RootExt::focus(&window)
+            .is_some_and(|focus| focus == *footer.search.upcast_ref::<gtk::Widget>()
+                || focus.is_ancestor(&footer.search))
     );
     assert_eq!(
         footer.handle_key(gdk::Key::Escape, none),
         Some(glib::Propagation::Stop)
     );
-    assert!(!footer.popover.is_visible());
+    assert!(!footer.session.is_open());
     while glib::MainContext::default().iteration(false) {}
     assert!(
         gtk::prelude::RootExt::focus(&window).is_some_and(|focus| {
@@ -237,14 +226,14 @@ fn footer_tracks_modes_and_shields_files_while_open() {
     assert_eq!(saved["show_keybinding_hints"].as_bool(), Some(false));
     footer.handle_key(gdk::Key::F1, none);
     settle();
-    assert!(footer.popover.is_visible());
+    assert!(footer.session.is_open());
     footer.handle_key(gdk::Key::F1, none);
     footer.handle_key(gdk::Key::F1, none);
     settle();
-    assert!(footer.popover.is_visible());
+    assert!(footer.session.is_open());
     footer.handle_key(gdk::Key::F1, none);
     settle();
-    assert!(!footer.popover.is_visible());
+    assert!(!footer.session.is_open());
     footer.assert_hints_visible(false);
     assert!(!manager.show_keybinding_hints());
     assert!(gtk::prelude::RootExt::focus(&window).is_some_and(|focus| {
@@ -261,6 +250,391 @@ impl ShortcutFooter {
             visible || self.paste.is_visible() || self.count.is_visible()
         );
         assert_eq!(self.more.is_visible(), visible);
+    }
+}
+
+#[test]
+fn tenxer_reference_follows_the_active_map() {
+    crate::test_support::gtk_test(
+        "ui::shortcut_footer::tests::tenxer_reference_follows_the_active_map",
+        || {
+            let manager = super::super::preferences::PreferenceManager::shared();
+            manager.set_tenxer_mode(false);
+            manager.set_show_keybinding_hints(true);
+            let footer = ShortcutFooter::new(BrowserMode::Columns);
+            footer.bind_preferences(&manager);
+            let entry = gtk::Entry::new();
+            let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            root.append(&entry);
+            root.append(footer.widget());
+            let overlay = gtk::Overlay::new();
+            overlay.set_child(Some(&root));
+            let window = gtk::Window::builder()
+                .child(&overlay)
+                .default_width(640)
+                .default_height(480)
+                .build();
+            window.present();
+            entry.grab_focus();
+            settle();
+            let phrase = crate::ui::shortcut_reference::EXPERIMENTAL_LABEL;
+            let none = gdk::ModifierType::empty();
+            assert!(!footer.tag.is_visible());
+            assert!(
+                reference_labels(&footer)
+                    .iter()
+                    .any(|label| label == "Preview a file, or open a folder")
+            );
+            assert_eq!(footer.handle_key(gdk::Key::asciitilde, none), None);
+            assert!(!footer.session.is_open());
+
+            manager.set_tenxer_mode(true);
+            settle();
+            assert!(footer.tag.is_visible());
+            assert_eq!(footer.tag.text(), crate::ui::tenxer_mode::TAG_TEXT);
+            assert!(
+                footer
+                    .status
+                    .observe_children()
+                    .into_iter()
+                    .flatten()
+                    .all(|child| {
+                        child
+                            .downcast_ref::<gtk::Label>()
+                            .is_none_or(|label| !label.is_visible() || label.text() != phrase)
+                    }),
+                "the footer shows only the pill"
+            );
+            assert!(footer.tag.tooltip_text().is_none());
+            let columns = reference_labels(&footer);
+            assert!(columns.iter().any(|label| label == "Toggle 10xer mode"));
+            assert!(
+                columns
+                    .iter()
+                    .any(|label| label == "Open the focused directory")
+            );
+            assert!(
+                columns
+                    .iter()
+                    .any(|label| label == "Open the next column for the focused directory")
+            );
+            assert!(columns.iter().any(|label| label == "Move half a page"));
+            assert!(
+                !columns
+                    .iter()
+                    .any(|label| label == "Preview a file, or open a folder")
+            );
+            assert!(
+                !columns
+                    .iter()
+                    .any(|label| label == "Move spatially between tiles")
+            );
+            footer.set_mode(BrowserMode::Icons);
+            let icons = reference_labels(&footer);
+            assert!(
+                icons
+                    .iter()
+                    .any(|label| label == "Move spatially between tiles")
+            );
+            assert!(
+                icons
+                    .iter()
+                    .any(|label| label == "Toggle folder peek for the focused directory")
+            );
+            assert!(
+                !icons
+                    .iter()
+                    .any(|label| label == "Open the focused directory")
+            );
+            assert!(
+                !icons
+                    .iter()
+                    .any(|label| label == "Open the next column for the focused directory")
+            );
+
+            footer.handle_key(gdk::Key::F1, none);
+            settle();
+            assert!(footer.session.is_open());
+            assert!(
+                overlay
+                    .observe_children()
+                    .into_iter()
+                    .flatten()
+                    .any(|child| child
+                        .downcast_ref::<gtk::Widget>()
+                        .is_some_and(|widget| widget.has_css_class("search-backdrop")))
+            );
+            assert!(
+                gtk::prelude::RootExt::focus(&window).is_some_and(|focus| {
+                    focus == *footer.search.upcast_ref::<gtk::Widget>()
+                        || focus.is_ancestor(&footer.search)
+                }),
+                "the open reference takes keyboard focus"
+            );
+            for _ in 0..4 {
+                press_reference(&footer, gdk::Key::Tab);
+                settle();
+                assert!(footer.category_buttons()[0].has_focus());
+                press_reference(&footer, gdk::Key::Tab);
+                settle();
+                assert!(footer.scroll.has_focus());
+                press_reference(&footer, gdk::Key::Tab);
+                settle();
+                assert!(
+                    gtk::prelude::RootExt::focus(&window)
+                        .is_some_and(|focus| focus == *footer.search.upcast_ref::<gtk::Widget>()
+                            || focus.is_ancestor(&footer.search))
+                );
+            }
+            footer.search.set_text("half a page");
+            settle();
+            let matches = reference_labels(&footer);
+            assert!(matches.iter().any(|label| label == "Move half a page"));
+            assert!(!matches.iter().any(|label| label == "Toggle 10xer mode"));
+            footer.search.set_text("");
+            settle();
+            let places = footer.category_buttons()[2].clone();
+            places.emit_clicked();
+            let matches = reference_labels(&footer);
+            assert!(matches.iter().any(|label| label == "Home / ~/.config"));
+            assert!(!matches.iter().any(|label| label == "Move half a page"));
+            footer.search.grab_focus();
+            for _ in 0..2 {
+                press_reference(&footer, gdk::Key::Tab);
+                settle();
+                assert!(places.has_focus());
+                press_reference(&footer, gdk::Key::Tab);
+                settle();
+                assert!(footer.scroll.has_focus());
+                press_reference(&footer, gdk::Key::Tab);
+                settle();
+            }
+            footer.category_buttons()[0].emit_clicked();
+            let ctrl = gdk::ModifierType::CONTROL_MASK;
+            assert_eq!(
+                footer.handle_key(gdk::Key::b, ctrl),
+                Some(glib::Propagation::Stop)
+            );
+            assert!(footer.category_buttons()[0].has_focus());
+            assert_eq!(
+                footer.handle_key(gdk::Key::j, none),
+                Some(glib::Propagation::Stop)
+            );
+            assert!(
+                reference_labels(&footer)
+                    .iter()
+                    .any(|label| label == "Move half a page")
+            );
+            assert!(
+                !reference_labels(&footer)
+                    .iter()
+                    .any(|label| label == "Toggle 10xer mode")
+            );
+            assert_eq!(
+                footer.handle_key(gdk::Key::k, none),
+                Some(glib::Propagation::Stop)
+            );
+            assert!(
+                reference_labels(&footer)
+                    .iter()
+                    .any(|label| label == "Toggle 10xer mode")
+            );
+            assert_eq!(
+                footer.handle_key(gdk::Key::Right, none),
+                Some(glib::Propagation::Stop)
+            );
+            assert!(footer.category_buttons()[1].has_focus());
+            assert_eq!(
+                footer.handle_key(gdk::Key::h, none),
+                Some(glib::Propagation::Stop)
+            );
+            assert!(footer.category_buttons()[0].has_focus());
+            assert_eq!(
+                footer.handle_key(gdk::Key::Tab, none),
+                Some(glib::Propagation::Stop)
+            );
+            assert!(footer.scroll.has_focus());
+            let before = footer.scroll.vadjustment().value();
+            assert_eq!(
+                footer.handle_key(gdk::Key::j, none),
+                Some(glib::Propagation::Stop)
+            );
+            assert!(footer.scroll.vadjustment().value() > before);
+            assert_eq!(
+                footer.handle_key(gdk::Key::f, ctrl),
+                Some(glib::Propagation::Stop)
+            );
+            assert!(
+                gtk::prelude::RootExt::focus(&window)
+                    .is_some_and(|focus| focus == *footer.search.upcast_ref::<gtk::Widget>()
+                        || focus.is_ancestor(&footer.search))
+            );
+            assert_eq!(
+                footer.handle_key(gdk::Key::l, ctrl),
+                Some(glib::Propagation::Stop)
+            );
+            assert!(footer.scroll.has_focus());
+            assert_eq!(
+                footer.handle_key(gdk::Key::f, ctrl),
+                Some(glib::Propagation::Stop)
+            );
+            assert_eq!(
+                footer.handle_key(gdk::Key::Tab, gdk::ModifierType::SHIFT_MASK),
+                Some(glib::Propagation::Stop)
+            );
+            assert!(footer.scroll.has_focus());
+            entry.grab_focus();
+            assert!(
+                gtk::prelude::RootExt::focus(&window)
+                    .is_some_and(|focus| focus == *footer.search.upcast_ref::<gtk::Widget>()
+                        || focus.is_ancestor(&footer.search))
+            );
+            press_reference(&footer, gdk::Key::F1);
+            settle();
+            assert!(
+                !footer.session.is_open(),
+                "F1 from the open reference closes it"
+            );
+            assert!(
+                !overlay
+                    .observe_children()
+                    .into_iter()
+                    .flatten()
+                    .any(|child| child
+                        .downcast_ref::<gtk::Widget>()
+                        .is_some_and(|widget| widget.has_css_class("search-backdrop")))
+            );
+            assert!(gtk::prelude::RootExt::focus(&window).is_some_and(|focus| {
+                focus == *entry.upcast_ref::<gtk::Widget>() || focus.is_ancestor(&entry)
+            }));
+            footer.handle_key(gdk::Key::asciitilde, none);
+            settle();
+            assert!(footer.session.is_open());
+            footer.search.grab_focus();
+            settle();
+            assert_eq!(
+                footer.handle_key(gdk::Key::Delete, none),
+                Some(glib::Propagation::Proceed)
+            );
+            footer.handle_key(gdk::Key::Escape, none);
+            settle();
+            assert!(!footer.session.is_open());
+
+            let other = ShortcutFooter::new(BrowserMode::List);
+            other.bind_preferences(&manager);
+            let list = reference_labels(&other);
+            assert!(list.iter().any(|label| label == "Toggle 10xer mode"));
+            assert!(
+                list.iter()
+                    .any(|label| label == "Open the focused directory")
+            );
+            assert!(
+                reference_pairs(&list, "Space", "Toggle the focused item and move down"),
+                "the List reference lists Space for the toggle action"
+            );
+            assert!(
+                reference_pairs(&list, "Ctrl+R", "Invert the selection"),
+                "the List reference lists Ctrl+R for invert"
+            );
+            assert!(
+                reference_pairs(&list, "v / V", "Visual select / visual unset"),
+                "the List reference lists v and V for visual ranges"
+            );
+            assert!(
+                !list
+                    .iter()
+                    .any(|label| label == "Open the next column for the focused directory")
+            );
+            assert!(reference_pairs(
+                &list,
+                "i",
+                "Toggle folder peek for the focused directory"
+            ));
+
+            let chooser = ShortcutFooter::new(BrowserMode::List);
+            chooser.bind_preferences(&manager);
+            chooser.set_chooser(crate::ui::shortcut_reference::ChooserScope {
+                request: crate::ui::shortcut_reference::ChooserRequest::Files,
+                multiple: false,
+            });
+            let refused = reference_labels(&chooser);
+            assert!(reference_pairs(
+                &refused,
+                "Enter / o on a file",
+                "Choose the file"
+            ));
+            assert!(refused.iter().any(|label| label == "Toggle 10xer mode"));
+            for unavailable in [
+                "Yank / cut the selection, or the focused item",
+                "Close the current window",
+                "Toggle folder peek for the focused directory",
+                "Toggle the focused item and move down",
+                "Open global search",
+            ] {
+                assert!(
+                    !refused.iter().any(|label| label == unavailable),
+                    "the chooser refuses {unavailable:?}"
+                );
+            }
+            manager.set_tenxer_mode(false);
+            settle();
+            assert!(!footer.tag.is_visible());
+            assert!(footer.tag.tooltip_text().is_none());
+            for shown in [&footer, &other] {
+                let labels = reference_labels(shown);
+                assert!(reference_pairs(
+                    &labels,
+                    "Space",
+                    "Preview a file, or open a folder"
+                ));
+                assert!(
+                    !labels
+                        .iter()
+                        .any(|label| label == "Toggle the focused item and move down")
+                );
+                assert!(!labels.iter().any(|label| label == "Toggle 10xer mode"));
+            }
+            window.destroy();
+        },
+    );
+}
+
+fn press_reference(footer: &ShortcutFooter, key: gdk::Key) {
+    let controllers = footer.panel.observe_controllers();
+    let controller = (0..controllers.n_items())
+        .filter_map(|index| {
+            controllers
+                .item(index)
+                .and_downcast::<gtk::EventControllerKey>()
+        })
+        .next()
+        .expect("reference key controller");
+    assert!(
+        controller.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &gdk::ModifierType::empty()]),
+        "{key:?} should be handled by the open reference"
+    );
+}
+
+fn reference_pairs(labels: &[String], key: &str, action: &str) -> bool {
+    labels
+        .windows(2)
+        .any(|pair| pair[0] == action && pair[1] == key)
+}
+
+fn reference_labels(footer: &ShortcutFooter) -> Vec<String> {
+    let mut labels = Vec::new();
+    collect_label_text(footer.reference.upcast_ref(), &mut labels);
+    labels
+}
+
+fn collect_label_text(widget: &gtk::Widget, labels: &mut Vec<String>) {
+    if let Some(label) = widget.downcast_ref::<gtk::Label>() {
+        labels.push(label.text().to_string());
+    }
+    let mut child = widget.first_child();
+    while let Some(current) = child {
+        collect_label_text(&current, labels);
+        child = current.next_sibling();
     }
 }
 

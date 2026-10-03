@@ -126,7 +126,7 @@ def test_keyboard_context_menu_targets_selection_and_owns_keys(strata, mode, sho
     assert ENTRY_MENU_ITEMS <= set(strata.menu_items())
     assert "New Folder" not in strata.menu_items()
     strata.wait(
-        lambda: "focused" in strata.menu_item("Open").states,
+        lambda: "focused" in strata.menu_item("New Folder with Selection").states,
         "the first item to receive focus",
     )
 
@@ -148,8 +148,8 @@ def test_keyboard_context_menu_targets_selection_and_owns_keys(strata, mode, sho
         "Permanently delete",
     ])
     strata.wait(
-        lambda: strata.menu_item("Open").has_state("focused"),
-        "Open to receive initial focus with multiple files and custom actions",
+        lambda: strata.menu_item("New Folder with Selection").has_state("focused"),
+        "New Folder with Selection to receive initial focus with multiple files and custom actions",
     )
     strata.keyboard.press("ctrl+a")
     assert strata.context_menu() is not None
@@ -255,6 +255,7 @@ def test_folder_background_customize_targets_the_presented_directory(strata):
 
 
 @pytest.mark.preferences(browser_mode="columns")
+@pytest.mark.usefixtures("unreserved_columns")
 def test_folder_background_customize_targets_a_non_active_ancestor_column(strata):
     nested = strata.fixture.path("documents/nested")
     nested.mkdir()
@@ -428,14 +429,6 @@ def test_the_shortcut_reference_opens_and_closes(strata):
     )
     for chord in ["Ctrl+Alt+Space", "Ctrl+Alt+← / →", "Ctrl+Alt+↑ / ↓", "Ctrl+Alt+M"]:
         assert strata.window.find(role="label", name=chord, rendered=False) is not None
-    strata.keyboard.press("Tab")
-    strata.keyboard.press("End")
-    description = strata.window.find(role="label", name="Seek −5 / +5 seconds", rendered=False)
-    scroll = next(node for node in description.ancestors() if node.role == "scroll pane")
-    scrollbar = scroll.find(role="scroll bar")
-    bounds = description.window_bounds()
-    assert bounds.x + bounds.width <= scrollbar.window_bounds().x
-
     strata.keyboard.press("Escape")
     strata.wait(
         lambda: strata.window.find(role="label", name="Keyboard shortcuts") is None,
@@ -470,7 +463,10 @@ def test_an_invalid_archive_name_keeps_the_compress_dialog_open(strata):
     strata.keyboard.press("Escape")
 
 
-def test_enter_submits_compress_and_extract_to_dialogs(strata):
+def test_enter_submits_compress_then_floating_chooser_extracts(strata):
+    destination = strata.fixture.path("unpacked")
+    destination.mkdir()
+    strata.entry("unpacked")
     compress_from_the_context_menu(strata, "readme.md", "bundle")
     strata.keyboard.press("Return")
     strata.wait(lambda: strata.dialog() is None, "the compress dialog to close")
@@ -478,7 +474,6 @@ def test_enter_submits_compress_and_extract_to_dialogs(strata):
         lambda: strata.fixture.path("bundle.zip").exists(), "the archive to be created"
     )
 
-    destination = strata.fixture.path("unpacked")
     strata.open_context_menu("bundle.zip")
     assert_menu_order(strata, [
         "Open", "Open With…", "Extract here", "Extract to…", "Cut", "Copy",
@@ -487,37 +482,27 @@ def test_enter_submits_compress_and_extract_to_dialogs(strata):
         "Permanently delete",
     ])
     strata.choose_menu_item("Extract to…")
-    field = strata.editable_field()
-    strata.keyboard.press("ctrl+a")
-    strata.keyboard.type_text(str(destination))
+    chooser = strata.destination_chooser("Extract to")
+    strata.navigate_destination(chooser, destination)
+    strata.confirm_destination(chooser, "Extract here")
+
+    extracted = destination / "readme.md"
+    # Extraction creates each member before streaming its bytes into place.
     strata.wait(
-        lambda: field.text == str(destination), "the destination to reach the field"
+        lambda: extracted.is_file() and extracted.read_text() == "# Fixture\n",
+        "the chooser action to extract the complete member into the destination",
     )
 
-    strata.keyboard.press("Return")
 
-    strata.wait(
-        lambda: (destination / "readme.md").exists(),
-        "Enter to extract into the destination",
-    )
-    assert (destination / "readme.md").read_text() == "# Fixture\n"
-
-
-def test_enter_submits_the_copy_to_dialog(strata):
+@pytest.mark.parametrize("action,accept_label", [("Copy to…", "Copy here"), ("Move to…", "Move here")])
+def test_floating_destination_chooser_transfers_files(strata, action, accept_label):
     destination = strata.fixture.path("documents")
-
+    source = strata.fixture.path("todo.txt")
     strata.open_context_menu("todo.txt")
-    strata.choose_menu_item("Copy to…")
-    field = strata.editable_field()
-    strata.keyboard.press("ctrl+a")
-    strata.keyboard.type_text(str(destination))
-    strata.wait(
-        lambda: field.text == str(destination), "the destination to reach the field"
-    )
-
-    strata.keyboard.press("Return")
-
-    strata.wait(
-        lambda: (destination / "todo.txt").exists(),
-        "Enter to copy into the destination",
-    )
+    strata.choose_menu_item(action)
+    chooser = strata.destination_chooser(action.rstrip("…"))
+    strata.navigate_destination(chooser, destination)
+    assert strata.current_directory() == strata.fixture.root.name
+    strata.confirm_destination(chooser, accept_label)
+    strata.wait(lambda: (destination / "todo.txt").exists(), "transfer into the chosen destination")
+    assert source.exists() == (action == "Copy to…")

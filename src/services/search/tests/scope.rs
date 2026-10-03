@@ -196,3 +196,35 @@ fn recursive_and_directory_filters_never_share_the_wrong_scope() {
         wait_for_results(&local_events).expect("local results");
     assert!(items.is_empty());
 }
+
+#[test]
+fn recursive_filter_stays_below_its_root_while_other_roots_are_indexed() {
+    let fixture = tempfile::tempdir().expect("fixture");
+    let parent = fixture.path();
+    for name in [
+        "current/needle.txt",
+        "current/deep/nested/needle-deep.txt",
+        "sibling/needle.txt",
+        "sibling/deep/needle-sibling.txt",
+        "needle-parent.txt",
+    ] {
+        fixture_file(parent, name);
+    }
+    let current = parent.join("current");
+    let (parent_search, parent_events) = index_tree(parent.to_path_buf(), false);
+    parent_search.query("needle");
+    wait_for_results(&parent_events).expect("parent index");
+    let (sibling_search, sibling_events) = index_filter(parent.join("sibling"), false, true);
+    sibling_search.query("needle");
+    wait_for_results(&sibling_events).expect("sibling index");
+
+    let (search, events) = index_filter(current.clone(), false, true);
+    search.query("needle");
+    let SearchEvent::Results { items, .. } = wait_for_results(&events).expect("current results");
+    let actual: HashSet<_> = items.iter().map(|item| item.path.clone()).collect();
+    let expected: HashSet<_> = ["needle.txt", "deep/nested/needle-deep.txt"]
+        .into_iter()
+        .map(|name| current.join(name))
+        .collect();
+    assert_eq!(actual, expected);
+}

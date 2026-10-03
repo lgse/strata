@@ -16,7 +16,7 @@ use crate::{
     ui::{
         browser::{BrowserView, show_error_dialog},
         controls::{message_dialog_description, modal_layout},
-        modal::{ModalHost, dismiss_modal_layer, modal_layer},
+        modal::{ModalHost, dismiss_modal_layer, modal_layer, remember_modal_focus},
     },
 };
 
@@ -242,25 +242,26 @@ pub(super) fn unmatched_pending(live: &[DeviceIds]) -> Vec<ReleaseKey> {
 
 pub(super) fn pending_device_shell(row: &gtk::Button) -> gtk::Box {
     row.set_sensitive(false);
-    row.set_tooltip_text(Some(RELEASE_ROW_TOOLTIP));
     row.update_property(&[gtk::accessible::Property::Label(RELEASE_ROW_TOOLTIP)]);
     let spinner = gtk::Spinner::new();
-    spinner.add_css_class("sidebar-device-action");
     spinner.add_css_class("sidebar-device-spinner");
-    spinner.set_tooltip_text(Some(RELEASE_ROW_TOOLTIP));
     spinner.update_property(&[gtk::accessible::Property::Label(RELEASE_ROW_TOOLTIP)]);
     spinner.set_hexpand(false);
     spinner.set_halign(gtk::Align::Center);
     spinner.set_valign(gtk::Align::Center);
-    spinner.set_width_request(24);
+    spinner.set_size_request(14, 14);
     spinner.start();
+    let slot = gtk::CenterBox::new();
+    slot.add_css_class("sidebar-device-action");
+    slot.set_width_request(24);
+    slot.set_center_widget(Some(&spinner));
     let shell = super::sidebar_device_row(row, None, None);
     let actions = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     actions.add_css_class("sidebar-device-actions");
     actions.set_hexpand(false);
     actions.set_halign(gtk::Align::End);
     actions.set_valign(gtk::Align::Center);
-    actions.append(&spinner);
+    actions.append(&slot);
     shell.append(&actions);
     shell
 }
@@ -666,6 +667,7 @@ pub(super) fn present_release_overlay(parent: &gtk::Widget, key: &ReleaseKey) {
         host.blurred_root.clone(),
         Some(Rc::new(|| true)),
     );
+    remember_modal_focus(&layer, &host.overlay);
     host.overlay.add_overlay(&layer);
 
     let mode = Rc::new(Cell::new(OverlayMode::Hide));
@@ -814,7 +816,7 @@ fn show_safe_to_remove(overlay: &ReleaseOverlay, display_name: &str) {
     overlay.title.set_text("Safe to remove");
     overlay.loading.stop();
     overlay.loading.set_visible(false);
-    overlay.loading.set_tooltip_text(None);
+    crate::ui::accessibility::set_description(&overlay.loading, None);
     overlay
         .body
         .set_text(&format!("{display_name} can be unplugged."));

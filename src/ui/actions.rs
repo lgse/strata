@@ -132,10 +132,11 @@ pub(crate) fn run_action(
     paths: Vec<PathBuf>,
     parent: PathBuf,
     source: InvocationSource,
+    closed: Option<Rc<dyn Fn()>>,
 ) {
     let jobs = super::jobs::shared();
     if action.definition.run.confirm {
-        confirm_and_run(anchor, action, paths, parent, source);
+        confirm_and_run(anchor, action, paths, parent, source, closed);
         return;
     }
     enqueue(anchor, &jobs, action, paths, parent, source);
@@ -166,6 +167,7 @@ fn confirm_and_run(
     paths: Vec<PathBuf>,
     parent: PathBuf,
     source: InvocationSource,
+    closed: Option<Rc<dyn Fn()>>,
 ) {
     let Some(ModalHost {
         overlay,
@@ -201,6 +203,12 @@ fn confirm_and_run(
     let cancel = layout.cancel;
     let run = layout.confirm;
     let layer = modal_layer(&content, &overlay, blurred_root.clone(), None);
+    if let Some(closed) = closed {
+        layer.connect_unrealize(move |_| {
+            let closed = closed.clone();
+            gtk::glib::idle_add_local_once(move || closed());
+        });
+    }
     overlay.add_overlay(&layer);
     focus_button(&run);
     for button in [close, cancel] {

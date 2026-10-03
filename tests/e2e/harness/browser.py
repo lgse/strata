@@ -7,11 +7,12 @@ in widget nesting is absorbed here instead of in twelve test files.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
 from . import screenshots, tree
-from .application import Application
+from .application import APPLICATION_NAME, Application
 from .environment import TestEnvironment
 from .fixtures import FixtureTree
 from .display import HeadlessDisplay
@@ -19,6 +20,7 @@ from .interaction import Keyboard, Pointer
 from .tree import Bounds, Node, wait_until
 
 ENTRY_ROLES = ("list item", "table cell")
+MENU_RETRY_INTERVAL = 1.0
 
 
 def _row_label_matches(node: Node) -> bool:
@@ -472,10 +474,22 @@ class Strata:
         if button is None:
             raise AssertionError("the Appearance button is missing")
         self.pointer.click(button)
-        return self.wait(
-            lambda: self.window.find(role="button", name="Columns"),
-            "the appearance menu to open",
-        )
+        clicked = time.monotonic()
+
+        def opened() -> Node | None:
+            nonlocal clicked
+            menu = self.window.find(role="button", name="Columns")
+            if (
+                menu is None
+                and time.monotonic() - clicked > MENU_RETRY_INTERVAL
+                and not button.has_state("checked")
+            ):
+                # A late startup focus change can close the menu as it opens.
+                self.pointer.click(button)
+                clicked = time.monotonic()
+            return menu
+
+        return self.wait(opened, "the appearance menu to open")
 
     def switch_view(self, mode: str) -> None:
         """Switch presentation through the appearance menu."""
@@ -555,6 +569,33 @@ class Strata:
             lambda: self.window.find(role="text", states={"editable", "focused"}),
             "an editable field to take focus",
         )
+
+    def destination_chooser(self, title: str) -> Node:
+        def chooser():
+            application = tree.find_application(APPLICATION_NAME)
+            return application.find(name=title) if application is not None else None
+
+        return self.wait(chooser, f"the floating {title} chooser")
+
+    def navigate_destination(self, chooser: Node, destination: Path) -> None:
+        self.keyboard.press("ctrl+l")
+        field = self.wait(
+            lambda: chooser.find(role="text", states={"editable", "focused"}),
+            "the chooser path entry",
+        )
+        self.keyboard.press("ctrl+a")
+        self.keyboard.type_text(str(destination))
+        self.wait(lambda: field.text == str(destination), "the destination path")
+        self.keyboard.press("Return")
+        self.wait(
+            lambda: chooser.find(role="label", name=destination.name, description=str(destination)),
+            "the destination breadcrumb",
+        )
+
+    def confirm_destination(self, chooser: Node, label: str) -> None:
+        button = self.wait(lambda: chooser.find(role="button", name=label), "the destination action")
+        self.pointer.click(button)
+        self.wait(lambda: not chooser.is_rendered(), "the destination chooser to close")
 
     def preview(self) -> Node | None:
         """The quick preview drawer, when it is on screen."""

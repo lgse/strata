@@ -17,6 +17,19 @@ filename and then doing an ordinary rename is not safe: a concurrent writer
 could create that filename between the two operations. Users can instead copy
 the item to a destination they explicitly choose.
 
+Deleting or trashing a folder in Strata removes its sidebar pin and pins inside
+it from GTK's shared bookmarks file and every open sidebar. Only confirmed
+deletions remove pins; failed and unattempted items keep theirs. Unavailable
+drives and network locations stay pinned. Restoring a folder, including Undo,
+does not restore its former pins; pin it again if needed.
+
+Pin cleanup runs in the deletion provider before progress is reported, so it
+does not depend on the originating window staying open. Pins identify paths;
+deleting a symlink does not remove pins to its target. If updating bookmarks
+fails, Strata reports that separately and does not revert a completed deletion.
+Cleanup is not guaranteed if the process exits before the provider confirms
+the deletion.
+
 ## Automated regressions
 
 Run the full Rust suite with isolated GTK, disposable preferences, and required
@@ -35,6 +48,9 @@ Focused selections can be run on the same infrastructure:
 ```bash
 ./scripts/test-headless.py restore
 ./scripts/test-headless.py volume
+./scripts/test-headless.py ui::window::bookmarks::tests
+./scripts/test-headless.py adapters::bookmarks::tests
+./scripts/test-headless.py adapters::local_operations::tests::deletion
 ```
 
 The tests create their own temporary payloads and metadata. They cover:

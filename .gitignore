@@ -6,6 +6,9 @@
 .vscode/
 .DS_Store
 
+# Transient mise lockfiles; keep the committed mise.lock.
+/.mise.lock.*
+
 __pycache__/
 *.py[cod]
 

@@ -18,9 +18,6 @@ use crate::adapters::gio_file_for_location;
 use crate::model::{FileEntry, Location};
 use crate::services::{ArchiveFormat, TransferConflict, validate_basename};
 use crate::ui::browser::ViewState;
-use crate::ui::browser::destination::{
-    folder_input_path, resolve_destination_path, setup_transfer_search,
-};
 use crate::ui::browser::entry::{entry_kind_summary, item_count_label};
 use crate::ui::browser::paths::compact_display_path;
 use crate::ui::collection_edit::update_basename_validation;
@@ -75,6 +72,7 @@ impl ViewState {
     ///   still dismiss.
     fn build_archive_modal(
         self: &Rc<Self>,
+        icon: &str,
         title: &str,
         subtitle: &str,
         confirm_label: &str,
@@ -88,12 +86,7 @@ impl ViewState {
             return (gtk::Box::default(), gtk::Button::default(), Rc::new(|| {}));
         };
 
-        let layout = modal_layout(
-            crate::assets::icons::FILE_ARCHIVE,
-            title,
-            subtitle,
-            confirm_label,
-        );
+        let layout = modal_layout(icon, title, subtitle, confirm_label);
         let layer = modal_layer(
             &layout.content,
             &window_overlay,
@@ -148,6 +141,7 @@ impl ViewState {
         format: ArchiveFormat,
         password: Option<String>,
     ) {
+        self.extract_destination.take();
         let final_name = format!("{archive_name}.{}", format.extension());
         if !archive_has_collision(&destination, &final_name) {
             self.pending_archive_destination
@@ -308,6 +302,7 @@ impl ViewState {
         let dirty_password = password_entry.clone();
         let dirty_confirm = confirm_entry.clone();
         let (body, confirm, dismiss) = self.build_archive_modal(
+            crate::assets::icons::PACKAGE_PLUS,
             &title,
             &subtitle,
             "Compress",
@@ -397,7 +392,7 @@ impl ViewState {
             let archive_name = normalized_archive_name(&name, format);
             if let Err(message) = validate_basename(&archive_name) {
                 name_for_confirm.add_css_class("error");
-                name_for_confirm.set_tooltip_text(Some(message));
+                crate::ui::accessibility::set_description(&name_for_confirm, Some(message));
                 name_for_confirm.grab_focus();
                 return;
             }
@@ -460,19 +455,24 @@ impl ViewState {
             );
             return;
         };
+        self.extract_entry_to(entry, parent);
+    }
+
+    pub(super) fn extract_entry_to(self: &Rc<Self>, entry: FileEntry, destination: Location) {
+        self.extract_destination.replace(Some(destination.clone()));
         let format = ArchiveFormat::from_extension(&entry.display_name);
         if format.map(|f| f.supports_password()).unwrap_or(false) {
             self.pending_extract_retry
-                .replace(Some((entry.clone(), parent.clone())));
+                .replace(Some((entry.clone(), destination.clone())));
         }
-        self.browser.extract(entry, parent, false, None);
+        self.browser.extract(entry, destination, false, None);
     }
 
     /// Opens the "Extract to" folder picker for `entry`.
     ///
-    /// Returns immediately when the archive is not a native path. Confirm
-    /// creates the typed destination if it does not exist, then extracts into
-    /// that folder and navigates there when the operation finishes. Password
+    /// Requires a native archive path and a parent window. The shared chooser
+    /// handles navigation and folder creation; confirmation extracts into the
+    /// chosen folder and navigates there when the operation finishes. Password
     /// retry is recorded the same way as [`Self::extract_entry`].
     pub(super) fn show_extract_to_dialog(self: &Rc<Self>, entry: FileEntry) {
         if entry.location.native_path().is_none() {
@@ -483,90 +483,32 @@ impl ViewState {
             .parent()
             .and_then(|p| p.native_path().map(Path::to_path_buf))
             .unwrap_or_else(glib::home_dir);
-        let field = form_entry();
-        field.set_hexpand(true);
-        field.set_placeholder_text(Some("Search for a folder…"));
-        field.set_text(&folder_input_path(&base));
-        field.set_position(-1);
-        let extract_initial_text = folder_input_path(&base);
-        let dirty_field = field.clone();
-        let (body, confirm, dismiss) = self.build_archive_modal(
-            "Extract to",
-            &entry.display_name,
-            "Extract here",
-            Some(Rc::new(move || dirty_field.text() != extract_initial_text)),
-        );
-        let field_label = form_label("Destination folder");
-        body.append(&field_label);
-        body.append(&field);
-
-        let suggestions = gtk::Box::new(gtk::Orientation::Vertical, 2);
-        suggestions.add_css_class("transfer-suggestions");
-        let suggestion_scroll = gtk::ScrolledWindow::builder()
-            .child(&suggestions)
-            .hscrollbar_policy(gtk::PolicyType::Never)
-            .vscrollbar_policy(gtk::PolicyType::Automatic)
-            .min_content_height(150)
-            .max_content_height(220)
-            .propagate_natural_height(true)
-            .build();
-        suggestion_scroll.add_css_class("transfer-suggestion-scroll");
-        body.append(&suggestion_scroll);
-        let error = gtk::Label::new(None);
-        error.add_css_class("form-message");
-        error.add_css_class("error");
-        error.set_wrap(true);
-        error.set_xalign(0.0);
-        error.set_visible(false);
-        body.append(&error);
-
-        let generation = Rc::new(Cell::new(0_u64));
-        let suggestions_box = suggestions.clone();
-        let extract_error = error.clone();
-        setup_transfer_search(
-            &field,
-            &suggestions_box,
-            &generation,
-            base.clone(),
-            self.browser.preferences().show_hidden,
-            move |field| {
-                field.remove_css_class("error");
-                extract_error.set_visible(false);
+        let Some(parent) = self.overlay.root().and_downcast::<gtk::Window>() else {
+            return;
+        };
+        let state = self.clone();
+        crate::ui::chooser::present_destination_chooser(
+            crate::ui::chooser::DestinationRequest {
+                parent,
+                title: "Extract to".into(),
+                accept_label: "Extract here".into(),
+                initial_directory: base,
+                root_limit: None,
+                allow_create: true,
+                validate: Rc::new(|path| {
+                    if path.is_dir() {
+                        Ok(path.to_path_buf())
+                    } else {
+                        Err("Choose an existing folder.".into())
+                    }
+                }),
+            },
+            move |path| {
+                let destination = Location::local(path);
+                state.pending_navigate.replace(Some(destination.clone()));
+                state.extract_entry_to(entry, destination);
             },
         );
-
-        let extract_state = self.clone();
-        let confirm_field = field.clone();
-        let confirm_error = error.clone();
-        let confirm_base = base.clone();
-        let extract_entry = entry.clone();
-        let dismiss_for_confirm = dismiss.clone();
-        confirm.connect_clicked(move |_| {
-            let path =
-                resolve_destination_path(&confirm_field.text(), &confirm_base, &glib::home_dir());
-            if path.exists() && !path.is_dir() {
-                confirm_error.set_text("The destination exists, but it is not a folder.");
-                confirm_error.set_visible(true);
-                confirm_field.add_css_class("error");
-                confirm_field.grab_focus();
-                return;
-            }
-            let dest = Location::local(path);
-            let format = ArchiveFormat::from_extension(&extract_entry.display_name);
-            if format.map(|f| f.supports_password()).unwrap_or(false) {
-                extract_state
-                    .pending_extract_retry
-                    .replace(Some((extract_entry.clone(), dest.clone())));
-            }
-            extract_state.pending_navigate.replace(Some(dest.clone()));
-            extract_state
-                .browser
-                .extract(extract_entry.clone(), dest, false, None);
-            dismiss_for_confirm();
-        });
-
-        submit_on_enter(&body, &confirm);
-        field.grab_focus();
     }
 
     /// Prompts for a password after a password-capable extract failed.
@@ -585,6 +527,7 @@ impl ViewState {
         password_entry.set_show_peek_icon(true);
         let dirty_password = password_entry.clone();
         let (body, confirm, dismiss) = self.build_archive_modal(
+            crate::assets::icons::FILE_ARCHIVE,
             "Extract",
             &entry.display_name,
             "Extract",

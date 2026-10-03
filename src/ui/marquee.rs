@@ -53,21 +53,35 @@ pub(super) struct MarqueeTarget {
 pub(super) type MarqueeTargets = Rc<RefCell<Vec<MarqueeTarget>>>;
 
 /// An item-origin policy that treats the whole allocated row as item space.
-///
-/// Unlike [`super::pointer::hits_item_content`], this uses allocated bounds rather
-/// than `Widget::pick`, so transparent row allocation (the inert space beside
-/// rendered label text) is correctly claimed as item space and not as marquee
-/// background.
 pub(super) fn item_bounds_predicate(targets: MarqueeTargets) -> ItemPredicate {
-    Rc::new(move |surface, x, y| hits_item_bounds(surface, x, y, &targets, None))
+    Rc::new(move |surface, x, y| {
+        for target in targets.borrow().iter() {
+            let mut hit = false;
+            (target.visit_items)(&mut |_, widget| {
+                if widget.is_mapped()
+                    && let Some(bounds) = widget.compute_bounds(surface)
+                {
+                    hit |= x >= f64::from(bounds.x())
+                        && x < f64::from(bounds.x() + bounds.width())
+                        && y >= f64::from(bounds.y())
+                        && y < f64::from(bounds.y() + bounds.height());
+                }
+            });
+            if hit {
+                return true;
+            }
+        }
+        false
+    })
 }
 
-/// Applies a content policy in each mapped item's local coordinates.
+/// Selected rows claim their whole allocation for file drag; unselected rows
+/// claim only rendered content, leaving their blank space for marquee selection.
 pub(super) fn item_content_predicate(
     targets: MarqueeTargets,
     content: ItemPredicate,
 ) -> ItemPredicate {
-    Rc::new(move |surface, x, y| hits_item_bounds(surface, x, y, &targets, Some(&content)))
+    Rc::new(move |surface, x, y| hits_item_bounds(surface, x, y, &targets, &content))
 }
 
 fn hits_item_bounds(
@@ -75,11 +89,11 @@ fn hits_item_bounds(
     x: f64,
     y: f64,
     targets: &MarqueeTargets,
-    content: Option<&ItemPredicate>,
+    content: &ItemPredicate,
 ) -> bool {
     for target in targets.borrow().iter() {
         let mut hit = false;
-        (target.visit_items)(&mut |_, widget| {
+        (target.visit_items)(&mut |position, widget| {
             if !widget.is_mapped() {
                 return;
             }
@@ -89,13 +103,12 @@ fn hits_item_bounds(
                 && y >= f64::from(bounds.y())
                 && y < f64::from(bounds.y() + bounds.height())
             {
-                hit |= content.is_none_or(|content| {
-                    surface
+                hit |= target.selection.is_selected(position)
+                    || surface
                         .compute_point(widget, &graphene::Point::new(x as f32, y as f32))
                         .is_some_and(|point| {
                             content(widget, f64::from(point.x()), f64::from(point.y()))
-                        })
-                });
+                        });
             }
         });
         if hit {

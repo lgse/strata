@@ -159,6 +159,7 @@ def test_slow_click_away_from_the_name_does_not_rename(strata, mode, target):
 
 
 @pytest.mark.preferences(browser_mode="columns")
+@pytest.mark.usefixtures("unreserved_columns")
 def test_columns_reclick_open_folder_name_renames_and_empty_space_closes(strata):
     root = strata.fixture.root.name
     strata.pointer.click(strata.entry("documents"))

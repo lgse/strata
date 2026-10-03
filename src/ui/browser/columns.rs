@@ -113,6 +113,7 @@ pub(super) fn install_resize_edges(state: &Rc<ViewState>) {
     state.scroller.add_controller(motion);
 
     let resize = gtk::GestureDrag::new();
+    resize.set_name(Some("column-resize"));
     resize.set_button(1);
     resize.set_propagation_phase(gtk::PropagationPhase::Capture);
     let active = Rc::new(RefCell::new(None::<(gtk::Box, i32, f64)>));
@@ -129,6 +130,7 @@ pub(super) fn install_resize_edges(state: &Rc<ViewState>) {
             gesture.set_state(gtk::EventSequenceState::Denied);
             return;
         };
+        state.column_resizing.set(true);
         let now = glib::monotonic_time() as u64;
         let autofit = last_press
             .borrow()
@@ -145,6 +147,7 @@ pub(super) fn install_resize_edges(state: &Rc<ViewState>) {
                 .map(|column| max_child_natural_width(&column))
                 .unwrap_or(COLUMN_WIDTH);
             shell.set_size_request(max_natural.max(COLUMN_WIDTH), -1);
+            remember_column_width(&state, &shell);
             gesture.set_state(gtk::EventSequenceState::Claimed);
             return;
         }
@@ -156,7 +159,10 @@ pub(super) fn install_resize_edges(state: &Rc<ViewState>) {
             Some((shell.clone(), shell.width().max(COLUMN_WIDTH), pointer_x));
         gesture.set_state(gtk::EventSequenceState::Claimed);
     });
+    let weak_for_end = Rc::downgrade(state);
     let active_for_update = active.clone();
+    let active_for_end = active.clone();
+    let active_for_cancel = active.clone();
     resize.connect_drag_update(move |gesture, fallback_offset_x, _| {
         let active = active_for_update.borrow();
         let Some((shell, initial, start)) = active.as_ref() else {
@@ -169,7 +175,20 @@ pub(super) fn install_resize_edges(state: &Rc<ViewState>) {
         shell.set_size_request(resized_column_width(*initial, offset_x), -1);
     });
     resize.connect_drag_end(move |_, _, _| {
-        active.borrow_mut().take();
+        let resized = active_for_end.borrow_mut().take();
+        if let Some(state) = weak_for_end.upgrade() {
+            state.column_resizing.set(false);
+            if let Some((shell, _, _)) = resized {
+                remember_column_width(&state, &shell);
+            }
+        }
+    });
+    let weak_for_cancel = Rc::downgrade(state);
+    resize.connect_cancel(move |_, _| {
+        active_for_cancel.borrow_mut().take();
+        if let Some(state) = weak_for_cancel.upgrade() {
+            state.column_resizing.set(false);
+        }
     });
     state.scroller.add_controller(resize);
 }
@@ -233,6 +252,8 @@ pub(super) struct ColumnView {
     pub(super) listing_scroll: gtk::ScrolledWindow,
     pub(super) marquee: crate::ui::marquee::Marquee,
     pub(super) bound_rows: Rc<RefCell<Vec<BoundRow>>>,
+    /// Bumped by each cursor restore so an older pending restore cannot land late.
+    pub(super) cursor_restore_generation: Rc<Cell<u64>>,
     pub(super) folder_context_trigger: Rc<dyn Fn(f64, f64)>,
     pub(super) item_context_trigger: Rc<dyn Fn(f64, f64)>,
     pub(super) entry_count: Rc<Cell<usize>>,
@@ -250,6 +271,19 @@ pub(super) struct ColumnView {
 }
 
 impl ColumnView {
+    pub(super) fn flush_filter_query(&self) {
+        if let Some(binding) = self.query_binding.borrow().as_ref() {
+            binding.flush();
+        }
+    }
+
+    pub(super) fn with_query_binding<T>(
+        &self,
+        apply: impl FnOnce(&super::collection::FilterQueryBinding) -> T,
+    ) -> Option<T> {
+        self.query_binding.borrow().as_ref().map(apply)
+    }
+
     pub(super) fn context_menu_target(
         &self,
         position: Option<usize>,
@@ -400,15 +434,27 @@ pub(super) fn scroll_column_to(column: &ColumnView, position: u32) {
 pub(super) fn restore_column_cursor(column: &ColumnView, position: u32) {
     let list = column.list.downgrade();
     let rows = column.bound_rows.clone();
+    let generations = column.cursor_restore_generation.clone();
+    let generation = generations.get().wrapping_add(1);
+    generations.set(generation);
+    // Recursive hits that replaced the rows since keep their own cursor.
+    let hits = column.recursive_search_active.clone();
     glib::idle_add_local_once(move || {
         let Some(list) = list.upgrade() else { return };
         let frames = Cell::new(0u8);
         list.add_tick_callback(move |list, _| {
+            if generations.get() != generation || hits.get() {
+                return glib::ControlFlow::Break;
+            }
             let focused = list.root().and_then(|root| root.focus());
-            if !focused
-                .as_ref()
-                .is_some_and(|focused| focused == list || list.is_ancestor(focused))
-            {
+            // `is_ancestor` is true when the receiver sits inside the argument.
+            // Restore while focus is the list or one of its rows, and also while
+            // a parent of the list still holds focus. An inline name editor also
+            // sits inside a row and must keep the focus it took after this queued.
+            if !focused.as_ref().is_some_and(|focused| {
+                (focused == list || focused.is_ancestor(list) || list.is_ancestor(focused))
+                    && !crate::ui::focus_navigation::editable(focused)
+            }) {
                 return glib::ControlFlow::Break;
             }
             let cursor = rows.borrow().iter().find_map(|bound| {
@@ -522,8 +568,8 @@ pub(super) fn set_active_path_style(row: &gtk::Box, active: bool, immediate: boo
     }
 }
 
-pub(super) fn set_cut_path_style(row: &gtk::Box, cut: bool) {
-    if cut {
+pub(super) fn set_mark_path_style(row: &gtk::Box, mark: super::clipboard::ClipboardMark) {
+    if mark == super::clipboard::ClipboardMark::Cut {
         row.add_css_class("cut");
     } else {
         row.remove_css_class("cut");
@@ -532,7 +578,7 @@ pub(super) fn set_cut_path_style(row: &gtk::Box, cut: bool) {
         .first_child()
         .and_downcast::<crate::ui::thumbnail::ThumbnailSlot>()
     {
-        icon.set_cut(cut);
+        icon.set_mark(mark);
     }
 }
 
@@ -554,6 +600,27 @@ fn animate_column_entry(column: &gtk::Box, generation: &Rc<Cell<u64>>) {
             column.remove_css_class("column-entering");
         }
     });
+}
+
+fn remember_column_width(state: &ViewState, shell: &gtk::Box) {
+    let preferences = crate::ui::preferences::PreferenceManager::shared();
+    let width = (f64::from(shell.width_request()) / preferences.interface_scale()).round() as i32;
+    let width = Some(width.max(COLUMN_WIDTH));
+    if state.browser.is_chooser_mode() {
+        preferences.set_chooser_column_width(width);
+    } else {
+        preferences.set_browser_column_width(width);
+    }
+}
+
+fn initial_column_width(state: &ViewState) -> i32 {
+    let preferences = crate::ui::preferences::PreferenceManager::shared();
+    let saved = if state.browser.is_chooser_mode() {
+        preferences.chooser_column_width()
+    } else {
+        preferences.browser_column_width()
+    };
+    saved.map_or(COLUMN_WIDTH, |width| width.max(COLUMN_WIDTH))
 }
 
 fn resized_column_width(initial_width: i32, horizontal_offset: f64) -> i32 {
@@ -789,12 +856,15 @@ impl ViewState {
         heading.set_hexpand(true);
         heading.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
         heading.set_max_width_chars(1);
-        heading.set_tooltip_text(Some(&location.display_path()));
+        crate::ui::accessibility::set_description(&heading, Some(&location.display_path()));
         let truncated_hint = crate::assets::primary_icon(crate::assets::icons::TRIANGLE_ALERT, 16);
         truncated_hint.add_css_class("column-truncated-hint");
-        truncated_hint.set_tooltip_text(Some(
-            "This directory has more entries than could be loaded; showing a partial listing.",
-        ));
+        crate::ui::accessibility::set_description(
+            &truncated_hint,
+            Some(
+                "This directory has more entries than could be loaded; showing a partial listing.",
+            ),
+        );
         truncated_hint.set_visible(false);
         heading_box.append(&heading);
         heading_box.append(&truncated_hint);
@@ -956,9 +1026,25 @@ impl ViewState {
                     .find_map(|(filtered, source)| (*filtered == position).then_some(*source))
             });
             if let Some(state) = weak_selection_state.upgrade() {
+                // Marquee and row-gesture writes own the selection. A later focus
+                // echo of the cursor does not, and must not replace a committed fill.
+                if crate::ui::marquee::is_updating_selection() || state.pointer_owns_selection.get()
+                {
+                    state.browser.commit_selection();
+                }
                 state
                     .browser
                     .set_selection(depth, &source_positions, focused_source);
+                let model = state.browser.selected_positions(depth);
+                if model != source_positions {
+                    let filtered: Vec<u32> = model
+                        .iter()
+                        .filter_map(|position| map_for_selection.view_position(*position))
+                        .collect();
+                    syncing_selection_changed.set(true);
+                    apply_selection_plan(selection, selection.n_items(), &filtered);
+                    syncing_selection_changed.set(false);
+                }
                 state.refresh_destination_style();
             }
         });
@@ -1013,6 +1099,9 @@ impl ViewState {
                         &filtered_model_for_search,
                         &model_for_search,
                     );
+                    if let Some(state) = weak_state_for_search.upgrade() {
+                        state.notify_filter_results_changed();
+                    }
                     return;
                 }
                 let Some(state) = weak_state_for_search.upgrade() else {
@@ -1037,6 +1126,7 @@ impl ViewState {
                         &filter_query_for_search,
                         fold_for_search(&text),
                     );
+                    state.notify_filter_results_changed();
                     return;
                 };
                 *filter_query_for_search.borrow_mut() = fold_for_search(&text);
@@ -1088,6 +1178,7 @@ impl ViewState {
                         if search::update_results(&sm, &results, &selection, &syncing, items) {
                             state.notify_search_selection_changed();
                         }
+                        state.notify_filter_results_changed();
                     }),
                 );
             },
@@ -1318,7 +1409,10 @@ impl ViewState {
             scroll: scroll.clone(),
             overlay: self.overlay.clone(),
             targets: marquee_targets.clone(),
-            is_item: crate::ui::marquee::item_bounds_predicate(marquee_targets),
+            is_item: crate::ui::marquee::item_content_predicate(
+                marquee_targets,
+                Rc::new(crate::ui::pointer::hits_item_content),
+            ),
             clear_selection: Rc::new(move || {
                 if let Some(state) = weak_for_clear.upgrade() {
                     state.clear_column_selections();
@@ -1456,7 +1550,7 @@ impl ViewState {
         });
         shell.add_controller(filter_focus);
 
-        shell.set_size_request(COLUMN_WIDTH, -1);
+        shell.set_size_request(initial_column_width(self), -1);
         let previous_scale = Cell::new(1.0);
         crate::ui::preferences::PreferenceManager::shared().bind_interface_scale(
             &shell,
@@ -1556,6 +1650,7 @@ impl ViewState {
             listing_scroll: scroll,
             marquee,
             bound_rows,
+            cursor_restore_generation: Rc::new(Cell::new(0)),
             folder_context_trigger,
             item_context_trigger,
             entry_count,

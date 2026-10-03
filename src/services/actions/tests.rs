@@ -69,6 +69,50 @@ fn matches_only_enabled_actions_whose_rules_accept_every_input() {
     assert!(catalog.matches(&[]).is_empty());
 }
 
+#[test]
+fn numbered_actions_follow_the_menu_and_stop_at_ten() {
+    let mut actions = vec![
+        handle("sub", "Aardvark", true, MenuPlacement::Submenu),
+        handle("top-z", "Zebra", true, MenuPlacement::Top),
+        handle("top-a", "Apple", true, MenuPlacement::Top),
+        handle("off", "Aaa off", false, MenuPlacement::Top),
+    ];
+    let mut unavailable = (*handle("broken", "Aaa broken", true, MenuPlacement::Top)).clone();
+    unavailable.availability = ActionAvailability::Unavailable {
+        reason: "missing".to_owned(),
+    };
+    actions.push(Rc::new(unavailable));
+    actions.extend((0..9).map(|index| {
+        handle(
+            &format!("more-{index}"),
+            &format!("More {index}"),
+            true,
+            MenuPlacement::Submenu,
+        )
+    }));
+    let catalog = ActionCatalog::new(actions, Vec::new());
+    let images = [ActionInput::file("a.png", Some("image/png"))];
+
+    let numbered: Vec<_> = catalog
+        .numbered(&images)
+        .iter()
+        .map(|action| action.id().to_owned())
+        .collect();
+
+    let mut expected = vec!["top-a", "top-z", "sub"];
+    let more: Vec<String> = (0..7).map(|index| format!("more-{index}")).collect();
+    expected.extend(more.iter().map(String::as_str));
+    assert_eq!(
+        numbered, expected,
+        "top level first, runnable only, ten at most"
+    );
+    assert!(
+        catalog
+            .numbered(&[ActionInput::file("a.txt", None)])
+            .is_empty()
+    );
+}
+
 struct FakeStore {
     catalog: RefCell<ActionCatalog>,
     writes: Cell<usize>,

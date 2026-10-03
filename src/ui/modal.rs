@@ -6,7 +6,7 @@ use crate::ui::controls::{
 };
 use gtk::glib;
 use gtk::prelude::*;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -14,6 +14,101 @@ pub(super) mod layout;
 
 #[cfg(test)]
 mod tests;
+
+struct ModalFocusOrigin {
+    widget: Option<glib::WeakRef<gtk::Widget>>,
+    restore: RefCell<Option<Rc<dyn Fn()>>>,
+}
+
+type FocusOrigins = Vec<(glib::WeakRef<gtk::Box>, Rc<ModalFocusOrigin>)>;
+
+thread_local! {
+    static MODAL_FOCUS_ORIGINS: RefCell<FocusOrigins> = const { RefCell::new(Vec::new()) };
+}
+
+pub(super) fn remember_modal_focus(layer: &gtk::Box, overlay: &gtk::Overlay) -> Rc<Cell<bool>> {
+    let window = overlay.root().and_downcast::<gtk::Window>();
+    let previous = window
+        .as_ref()
+        .and_then(crate::ui::window::visible_modal_layer);
+    let origin = MODAL_FOCUS_ORIGINS.with(|origins| {
+        let mut origins = origins.borrow_mut();
+        origins.retain(|(layer, _)| layer.upgrade().is_some());
+        // Chained dialogs inherit the browser origin, not the preceding modal's focus.
+        let origin = if let Some(previous) = previous {
+            origins.iter().find_map(|(layer, origin)| {
+                layer
+                    .upgrade()
+                    .filter(|layer| layer.upcast_ref::<gtk::Widget>() == &previous)
+                    .map(|_| origin.clone())
+            })
+        } else {
+            None
+        }
+        .unwrap_or_else(|| {
+            Rc::new(ModalFocusOrigin {
+                widget: window
+                    .as_ref()
+                    .and_then(gtk::prelude::RootExt::focus)
+                    .map(|focus| focus.downgrade()),
+                restore: RefCell::new(None),
+            })
+        });
+        origins.push((layer.downgrade(), origin.clone()));
+        origin
+    });
+    let overlay = overlay.downgrade();
+    let restore = Rc::new(Cell::new(true));
+    let restore_on_close = restore.clone();
+    layer.connect_parent_notify(move |layer| {
+        if layer.parent().is_some() {
+            return;
+        }
+        MODAL_FOCUS_ORIGINS.with(|origins| {
+            origins.borrow_mut().retain(|(candidate, _)| {
+                candidate
+                    .upgrade()
+                    .is_some_and(|candidate| candidate != *layer)
+            });
+        });
+        if !layer.has_css_class("dismissing") || !restore_on_close.get() {
+            return;
+        }
+        // The focus trap releases the browser only after the final modal is removed.
+        let Some(window) = overlay
+            .upgrade()
+            .and_then(|overlay| overlay.root())
+            .and_downcast::<gtk::Window>()
+        else {
+            return;
+        };
+        if crate::ui::window::visible_modal_layer(&window).is_some() {
+            return;
+        }
+        let restore = origin.restore.borrow().clone();
+        if let Some(restore) = restore {
+            restore();
+        } else if let Some(origin) = origin.widget.as_ref().and_then(glib::WeakRef::upgrade)
+            && origin.is_mapped()
+            && origin.root().as_ref() == Some(window.upcast_ref())
+        {
+            origin.grab_focus();
+        }
+    });
+    restore
+}
+
+pub(super) fn set_modal_focus_restore(layer: &gtk::Widget, restore: Rc<dyn Fn()>) {
+    MODAL_FOCUS_ORIGINS.with(|origins| {
+        if let Some((_, origin)) = origins.borrow().iter().find(|(candidate, _)| {
+            candidate
+                .upgrade()
+                .is_some_and(|candidate| candidate.upcast_ref::<gtk::Widget>() == layer)
+        }) {
+            origin.restore.replace(Some(restore));
+        }
+    });
+}
 
 pub(super) struct ModalHost {
     pub(super) overlay: gtk::Overlay,
@@ -265,6 +360,7 @@ pub(super) fn show_error_dialog_after_close(
     let close = layout.confirm;
 
     let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
+    remember_modal_focus(&layer, &window_overlay);
     window_overlay.add_overlay(&layer);
     let close_layer = layer.clone();
     let close_overlay = window_overlay.clone();
@@ -332,6 +428,7 @@ pub(super) fn show_delete_error_dialog(
     let confirm = layout.confirm;
 
     let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
+    remember_modal_focus(&layer, &window_overlay);
     window_overlay.add_overlay(&layer);
     let dismissed = Rc::new(Cell::new(false));
 

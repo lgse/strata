@@ -80,7 +80,7 @@ impl NavigationHistory {
         self.record_at(path, unix_time());
     }
 
-    fn record_at(&self, path: &Path, now: u64) {
+    pub(crate) fn record_at(&self, path: &Path, now: u64) {
         if !path.is_absolute() {
             return;
         }
@@ -106,12 +106,26 @@ impl NavigationHistory {
         self.search_at(query, unix_time())
     }
 
+    pub(crate) fn search_excluding(&self, query: &str, excluded: Option<&Path>) -> Vec<SearchItem> {
+        self.search_at_excluding(query, unix_time(), excluded)
+    }
+
     fn search_at(&self, query: &str, now: u64) -> Vec<SearchItem> {
+        self.search_at_excluding(query, now, None)
+    }
+
+    fn search_at_excluding(
+        &self,
+        query: &str,
+        now: u64,
+        excluded: Option<&Path>,
+    ) -> Vec<SearchItem> {
         let query = fold_for_search(query.trim());
         let mut matches = self
             .entries
             .borrow()
             .iter()
+            .filter(|entry| Some(entry.path.as_path()) != excluded)
             .filter_map(|entry| {
                 let item = SearchItem::for_history(entry.path.clone());
                 let text_score = if query.is_empty() {
@@ -140,6 +154,32 @@ impl NavigationHistory {
             .into_iter()
             .take(MAX_RESULTS)
             .map(|(_, _, item)| item)
+            .collect()
+    }
+
+    pub(crate) fn recent_excluding(&self, query: &str, excluded: Option<&Path>) -> Vec<SearchItem> {
+        let query = fold_for_search(query.trim());
+        let mut matches = self
+            .entries
+            .borrow()
+            .iter()
+            .filter(|entry| Some(entry.path.as_path()) != excluded)
+            .filter_map(|entry| {
+                let item = SearchItem::for_history(entry.path.clone());
+                (query.is_empty() || item.fuzzy_score(&query).is_some())
+                    .then_some((entry.last_accessed, item))
+            })
+            .collect::<Vec<_>>();
+        matches.sort_unstable_by(|left, right| {
+            right
+                .0
+                .cmp(&left.0)
+                .then_with(|| left.1.path.cmp(&right.1.path))
+        });
+        matches
+            .into_iter()
+            .take(MAX_RESULTS)
+            .map(|(_, item)| item)
             .collect()
     }
 }

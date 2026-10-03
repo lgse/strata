@@ -2,7 +2,7 @@
 
 use std::{
     fs,
-    io::{self, Read},
+    io::{self, Read, Seek},
     os::fd::RawFd,
     path::Path,
     process::{Child, Command, Output, Stdio},
@@ -16,18 +16,59 @@ use gtk::gio;
 
 use crate::{
     adapters::{encode_archive_result, list_archive_entries_direct},
-    sandbox::{MAX_OUTPUT_BYTES, MediaPreviewBackend, PdfRenderSize},
+    sandbox::{FILE_SIZE_LIMIT_BYTES, MAX_OUTPUT_BYTES, MediaPreviewBackend, PdfRenderSize},
     services::{ArchiveFormat, MediaPreviewSize},
 };
 
 mod appimage;
+pub(crate) mod archive_cover;
+#[cfg(feature = "rar")]
+mod archive_rar;
 mod document_media;
 mod media;
+mod model;
 mod raw_metadata;
 
 const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(20);
 
 pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
+    #[cfg(not(feature = "rar"))]
+    if arguments
+        .first()
+        .is_some_and(|operation| operation == "extract-rar")
+    {
+        return Err("RAR support is disabled in this build.".to_owned());
+    }
+    // Streams to its own stdout pipe instead of a bound `/output` file, so it
+    // does not fit the fixed [operation, input, output, value, media_backend]
+    // shape every other operation below shares.
+    #[cfg(feature = "rar")]
+    if let [operation, input, rest @ ..] = arguments
+        && operation == "extract-rar"
+    {
+        let password = match rest {
+            [] => None,
+            [descriptor] => {
+                let descriptor = descriptor
+                    .parse::<RawFd>()
+                    .ok()
+                    .filter(|fd| *fd >= 0)
+                    .ok_or_else(|| "Invalid preview helper secret descriptor".to_owned())?;
+                let secret = read_secret_fd(descriptor)?;
+                if secret.len() > crate::adapters::MAX_ARCHIVE_PASSWORD_BYTES {
+                    return Err("Archive password is too long.".to_owned());
+                }
+                Some(
+                    String::from_utf8(secret)
+                        .map_err(|_| "Archive password is not valid text.".to_owned())?,
+                )
+            }
+            _ => return Err("Invalid preview helper arguments".to_owned()),
+        };
+        let stdout = io::stdout();
+        let mut stdout = stdout.lock();
+        return archive_rar::run(Path::new(input), password.as_deref(), &mut stdout);
+    }
     let (arguments, start_tick) = match arguments {
         [operation, ..] if operation == "preview-media" && arguments.len() == 6 => (
             &arguments[..5],
@@ -104,6 +145,31 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
             appimage::render(input, numeric_value()?.clamp(16, 256))?,
             None,
         ),
+        "thumbnail-model" => (
+            model::thumbnail(
+                input,
+                crate::services::ModelFormat::from_argument(value).ok_or("Invalid model format")?,
+                256,
+                256,
+                &|_| {},
+            )?,
+            None,
+        ),
+        "thumbnail-cover" => (
+            archive_cover::thumbnail(
+                input,
+                crate::sandbox::CoverFormat::from_argument(value).ok_or("Invalid cover format")?,
+            )?,
+            None,
+        ),
+        "preview-cover" => (
+            archive_cover::render(
+                input,
+                crate::sandbox::CoverFormat::from_argument(value).ok_or("Invalid cover format")?,
+                800,
+            )?,
+            None,
+        ),
         "preview-image" | "document-image" => (document_media::image(input, 800)?, None),
         "document-mermaid" => (document_media::mermaid(input)?, None),
         "document-math" => (document_media::math(input, true)?, None),
@@ -113,6 +179,24 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
             let (png, page, pages, text_layer) = render_pdf_page(input, page, size)?;
             text_layer_bytes = text_layer;
             (png, Some(format!("{page} {pages}")))
+        }
+        "preview-model" => {
+            let progress = |stage| {
+                if let Ok(bytes) = serde_json::to_vec(&stage) {
+                    let pending = output.with_file_name("result.progress.tmp");
+                    if fs::write(&pending, bytes).is_ok() {
+                        let _ = fs::rename(pending, output.with_file_name("result.progress"));
+                    }
+                }
+            };
+            let png = match model::render_reporting(input, value, &progress) {
+                Ok(result) => result,
+                Err(message) => {
+                    let _ = fs::write(output.with_file_name("result.error"), message.as_bytes());
+                    return Err(message);
+                }
+            };
+            (png, None)
         }
         _ => return Err("Unknown preview helper operation".to_owned()),
     };
@@ -261,11 +345,7 @@ pub(crate) fn browser_render(
 ) -> crate::sandbox::browser::wire::Response {
     use crate::sandbox::browser::wire::{Operation, Response};
     let mut response = Response::default();
-    let dimensions = || {
-        gdk_pixbuf::Pixbuf::file_info(input)
-            .filter(|(_, width, height)| *width > 0 && *height > 0)
-            .map(|(_, width, height)| (width, height))
-    };
+    let dimensions = || image_dimensions(input);
     let encode_dimensions =
         |(width, height)| video_stream_metadata(width, height).unwrap_or_default();
     match operation {
@@ -278,12 +358,18 @@ pub(crate) fn browser_render(
                 response.png = rendered.png;
             }
             if response.png.is_empty() {
-                if let Some(size) = dimensions() {
+                let size = dimensions();
+                let oversized = size.is_some_and(|(w, h)| exceeds_decoded_frame_budget(w, h));
+                if let Some(size) = size {
                     response.metadata = encode_dimensions(size);
-                    response.png =
-                        render_pixbuf(input, 256.min(size.0.max(size.1))).unwrap_or_default();
+                    if !oversized {
+                        response.png =
+                            render_pixbuf(input, 256.min(size.0.max(size.1))).unwrap_or_default();
+                    } else if let Some(png) = read_exif_thumbnail(input, 256) {
+                        response.png = png;
+                    }
                 }
-                if response.png.is_empty() {
+                if response.png.is_empty() && !oversized {
                     response.png = render_imagemagick(input, 256)
                         .or_else(|_| render_dcraw(input, 256))
                         .unwrap_or_default();
@@ -293,6 +379,14 @@ pub(crate) fn browser_render(
         Operation::Raw => response.png = render_raw_thumbnail(input, 256).unwrap_or_default(),
         Operation::Pdf => response.png = render_pdf_thumbnail(input, 256).unwrap_or_default(),
         Operation::Video => response.png = render_media(input, 256).unwrap_or_default(),
+        Operation::ThreeMfThumbnail | Operation::FreeCadThumbnail => {
+            let format = if operation == Operation::ThreeMfThumbnail {
+                crate::services::ModelFormat::ThreeMf
+            } else {
+                crate::services::ModelFormat::FreeCad
+            };
+            response.png = model::thumbnail(input, format, 256, 256, &|_| {}).unwrap_or_default();
+        }
         Operation::ImageMetadata => {
             response.metadata = svg_source(input)
                 .and_then(|source| document_media::svg_dimensions(&source))
@@ -320,7 +414,118 @@ pub(crate) fn browser_render(
     response
 }
 
+pub(crate) fn exceeds_decoded_frame_budget(width: i32, height: i32) -> bool {
+    let width = u64::try_from(width).unwrap_or(0);
+    let height = u64::try_from(height).unwrap_or(0);
+    const RGBA_CHANNELS: u64 = 4;
+    width.saturating_mul(height).saturating_mul(RGBA_CHANNELS) > FILE_SIZE_LIMIT_BYTES
+}
+
+fn read_jpeg_dimensions<R: io::Read + io::Seek>(reader: &mut R) -> Option<(i32, i32)> {
+    let mut header = [0u8; 2];
+    reader.read_exact(&mut header).ok()?;
+    if header != [0xFF, 0xD8] {
+        return None;
+    }
+    let mut byte = [0u8; 1];
+    loop {
+        loop {
+            reader.read_exact(&mut byte).ok()?;
+            if byte[0] == 0xFF {
+                break;
+            }
+        }
+        loop {
+            reader.read_exact(&mut byte).ok()?;
+            if byte[0] != 0xFF {
+                break;
+            }
+        }
+        let marker = byte[0];
+        if marker == 0xDA || marker == 0xD9 {
+            return None;
+        }
+        if (0xD0..=0xD8).contains(&marker) || marker == 0x01 {
+            continue;
+        }
+        let mut len_buf = [0u8; 2];
+        reader.read_exact(&mut len_buf).ok()?;
+        let length = u16::from_be_bytes(len_buf) as usize;
+        if length < 2 {
+            return None;
+        }
+        if matches!(marker, 0xC0..=0xC3 | 0xC5..=0xC7 | 0xC9..=0xCB | 0xCD..=0xCF) {
+            let mut sof_buf = [0u8; 5];
+            reader.read_exact(&mut sof_buf).ok()?;
+            let height = i32::from(u16::from_be_bytes([sof_buf[1], sof_buf[2]]));
+            let width = i32::from(u16::from_be_bytes([sof_buf[3], sof_buf[4]]));
+            if width > 0 && height > 0 {
+                return Some((width, height));
+            }
+            return None;
+        }
+        reader
+            .seek(io::SeekFrom::Current((length - 2) as i64))
+            .ok()?;
+    }
+}
+
+fn read_png_dimensions<R: io::Read>(reader: &mut R) -> Option<(i32, i32)> {
+    let mut buf = [0u8; 24];
+    reader.read_exact(&mut buf).ok()?;
+    if &buf[0..8] != b"\x89PNG\r\n\x1a\n" || &buf[12..16] != b"IHDR" {
+        return None;
+    }
+    let width = i32::try_from(u32::from_be_bytes(buf[16..20].try_into().ok()?)).ok()?;
+    let height = i32::try_from(u32::from_be_bytes(buf[20..24].try_into().ok()?)).ok()?;
+    if width > 0 && height > 0 {
+        Some((width, height))
+    } else {
+        None
+    }
+}
+
+fn read_gif_dimensions<R: io::Read>(reader: &mut R) -> Option<(i32, i32)> {
+    let mut buf = [0u8; 10];
+    reader.read_exact(&mut buf).ok()?;
+    if &buf[0..6] != b"GIF87a" && &buf[0..6] != b"GIF89a" {
+        return None;
+    }
+    let width = i32::from(u16::from_le_bytes([buf[6], buf[7]]));
+    let height = i32::from(u16::from_le_bytes([buf[8], buf[9]]));
+    if width > 0 && height > 0 {
+        Some((width, height))
+    } else {
+        None
+    }
+}
+
+fn image_dimensions(path: &Path) -> Option<(i32, i32)> {
+    if let Ok(file) = fs::File::open(path) {
+        let mut reader = io::BufReader::new(file);
+        if let Some(dimensions) = read_jpeg_dimensions(&mut reader) {
+            return Some(dimensions);
+        }
+        let _ = reader.seek(io::SeekFrom::Start(0));
+        if let Some(dimensions) = read_png_dimensions(&mut reader) {
+            return Some(dimensions);
+        }
+        let _ = reader.seek(io::SeekFrom::Start(0));
+        if let Some(dimensions) = read_gif_dimensions(&mut reader) {
+            return Some(dimensions);
+        }
+    }
+    gdk_pixbuf::Pixbuf::file_info(path)
+        .filter(|(_, width, height)| *width > 0 && *height > 0)
+        .map(|(_, width, height)| (width, height))
+}
+
 fn render_pixbuf(path: &Path, size: i32) -> Result<Vec<u8>, String> {
+    if let Some((width, height)) = image_dimensions(path)
+        && exceeds_decoded_frame_budget(width, height)
+    {
+        return Err("Image dimensions exceed the decoded frame budget".to_owned());
+    }
     gdk_pixbuf::Pixbuf::from_file_at_scale(path, size, size, true)
         .map_err(|error| error.to_string())?
         .save_to_bufferv("png", &[("compression", "1")])
@@ -329,19 +534,55 @@ fn render_pixbuf(path: &Path, size: i32) -> Result<Vec<u8>, String> {
 
 fn render_raw(path: &Path, size: i32) -> Result<Vec<u8>, String> {
     // Preserve small sources so the preview can bound upscaling by their native dimensions.
-    gdk_pixbuf::Pixbuf::file_info(path)
-        .filter(|(_, width, height)| *width > 0 && *height > 0)
-        .ok_or_else(|| "Unable to read image dimensions".to_owned())
-        .and_then(|(_, width, height)| render_pixbuf(path, size.min(width.max(height))))
-        .or_else(|_| render_imagemagick(path, size))
-        .or_else(|_| render_dcraw(path, size))
+    let info = image_dimensions(path);
+    if let Some((width, height)) = info
+        && width > 0
+        && height > 0
+    {
+        if exceeds_decoded_frame_budget(width, height) {
+            if let Some(png) = read_exif_thumbnail(path, size) {
+                return Ok(png);
+            }
+            return Err("Image dimensions exceed the decoded frame budget".to_owned());
+        }
+        return render_pixbuf(path, size.min(width.max(height)))
+            .or_else(|_| render_imagemagick(path, size))
+            .or_else(|_| render_dcraw(path, size));
+    }
+    render_imagemagick(path, size).or_else(|_| render_dcraw(path, size))
 }
 
 fn render_raw_thumbnail(path: &Path, size: i32) -> Result<Vec<u8>, String> {
+    if let Some((width, height)) = image_dimensions(path)
+        && exceeds_decoded_frame_budget(width, height)
+    {
+        return read_exif_thumbnail(path, size)
+            .or_else(|| render_dcraw(path, size).ok())
+            .ok_or_else(|| "Image dimensions exceed the decoded frame budget".to_owned());
+    }
     // Prefer the camera JPEG so ImageMagick does not demosaic the list thumbnail.
     render_dcraw(path, size)
         .or_else(|_| render_pixbuf(path, size))
         .or_else(|_| render_imagemagick(path, size))
+}
+
+fn read_exif_thumbnail(path: &Path, size: i32) -> Option<Vec<u8>> {
+    let file = fs::File::open(path).ok()?;
+    let mut reader = io::BufReader::new(file);
+    let exif = exif::Reader::new()
+        .continue_on_error(true)
+        .read_from_container(&mut reader)
+        .or_else(|error| error.distill_partial_result(|_| {}))
+        .ok()?;
+    let offset = exif
+        .get_field(exif::Tag::JPEGInterchangeFormat, exif::In::THUMBNAIL)
+        .and_then(|field| field.value.get_uint(0))? as usize;
+    let len = exif
+        .get_field(exif::Tag::JPEGInterchangeFormatLength, exif::In::THUMBNAIL)
+        .and_then(|field| field.value.get_uint(0))? as usize;
+    let end = offset.checked_add(len)?;
+    let data = exif.buf().get(offset..end)?;
+    scale_embedded_thumbnail(data, size).ok()
 }
 
 fn render_imagemagick(path: &Path, size: i32) -> Result<Vec<u8>, String> {
@@ -416,6 +657,16 @@ fn render_simple_dcraw(path: &Path, size: i32) -> Result<Vec<u8>, String> {
 }
 
 fn scale_embedded_thumbnail(data: &[u8], size: i32) -> Result<Vec<u8>, String> {
+    let dimensions = read_jpeg_dimensions(&mut io::Cursor::new(data))
+        .or_else(|| read_png_dimensions(&mut io::Cursor::new(data)))
+        .or_else(|| read_gif_dimensions(&mut io::Cursor::new(data)));
+    if dimensions.is_some_and(|(width, height)| exceeds_decoded_frame_budget(width, height)) {
+        return Err("Embedded thumbnail exceeds the decoded frame budget".to_owned());
+    }
+    scale_embedded_thumbnail_pixbuf(data, size).or_else(|_| render_imagemagick_bytes(data, size))
+}
+
+fn scale_embedded_thumbnail_pixbuf(data: &[u8], size: i32) -> Result<Vec<u8>, String> {
     let loader = gdk_pixbuf::PixbufLoader::new();
     loader
         .write(data)
@@ -423,21 +674,38 @@ fn scale_embedded_thumbnail(data: &[u8], size: i32) -> Result<Vec<u8>, String> {
         .map_err(|error| error.to_string())?;
     let pixbuf = loader
         .pixbuf()
-        .ok_or_else(|| "Unable to decode embedded RAW thumbnail".to_owned())?;
+        .ok_or_else(|| "Unable to decode embedded thumbnail".to_owned())?;
     let width = pixbuf.width().max(1);
     let height = pixbuf.height().max(1);
     let scale = (f64::from(size) / f64::from(width))
         .min(f64::from(size) / f64::from(height))
         .min(1.0);
+    let target_width = (f64::from(width) * scale).round().max(1.0) as i32;
+    let target_height = (f64::from(height) * scale).round().max(1.0) as i32;
+    let pixbuf = if target_width == width && target_height == height {
+        pixbuf
+    } else {
+        pixbuf
+            .scale_simple(
+                target_width,
+                target_height,
+                gdk_pixbuf::InterpType::Bilinear,
+            )
+            .ok_or_else(|| "Unable to scale embedded thumbnail".to_owned())?
+    };
     pixbuf
-        .scale_simple(
-            (f64::from(width) * scale).round().max(1.0) as i32,
-            (f64::from(height) * scale).round().max(1.0) as i32,
-            gdk_pixbuf::InterpType::Bilinear,
-        )
-        .ok_or_else(|| "Unable to scale embedded RAW thumbnail".to_owned())?
         .save_to_bufferv("png", &[("compression", "1")])
         .map_err(|error| error.to_string())
+}
+
+fn render_imagemagick_bytes(data: &[u8], size: i32) -> Result<Vec<u8>, String> {
+    use std::io::Write;
+    if data.len() as u64 > MAX_OUTPUT_BYTES {
+        return Err("Embedded thumbnail exceeds the input budget".to_owned());
+    }
+    let mut input = tempfile::NamedTempFile::new().map_err(|error| error.to_string())?;
+    input.write_all(data).map_err(|error| error.to_string())?;
+    render_imagemagick(input.path(), size)
 }
 
 fn render_pdf_thumbnail(path: &Path, size: i32) -> Result<Vec<u8>, String> {

@@ -8,6 +8,200 @@ use crate::ui::preferences::PreferenceManager;
 use crate::ui::tenxer_mode::UNUSED_SUBTITLE;
 
 #[test]
+fn sidebar_folder_customization_loads_and_updates_across_windows() {
+    gtk_test(
+        "ui::window::tests::preferences::sidebar_folder_customization_loads_and_updates_across_windows",
+        || {
+            use crate::assets::{self, icons};
+            use crate::model::{FolderColorValue, Location};
+
+            let directory = tempfile::tempdir().expect("pinned folder");
+            let path = directory.path();
+            let location = Location::local(path);
+            let home = gtk::glib::home_dir();
+            let downloads = home.join("Downloads");
+            std::fs::create_dir_all(&downloads).expect("Downloads fixture");
+            std::fs::create_dir_all(gtk::glib::user_config_dir()).expect("config fixture");
+            std::fs::write(
+                gtk::glib::user_config_dir().join("user-dirs.dirs"),
+                "XDG_DOWNLOAD_DIR=\"$HOME/Downloads\"\n",
+            )
+            .expect("XDG directories fixture");
+            gtk::glib::reload_user_special_dirs_cache();
+            assert_eq!(
+                gtk::glib::user_special_dir(gtk::glib::UserDirectory::Downloads),
+                Some(downloads.clone())
+            );
+            let cases = [
+                (location.clone(), icons::FOLDER),
+                (Location::local(&home), icons::HOME),
+                (Location::local(&downloads), icons::DOWNLOADS),
+            ];
+            super::super::save_pinned_places(&[(location.clone(), "Custom folder".into())])
+                .expect("save pin");
+            let mut settings = String::from("[folder_colors]\n");
+            for (location, _) in &cases {
+                settings.push_str(&format!("\"{}\" = \"red\"\n", location.display_path()));
+            }
+            settings.push_str("[custom_icons]\n");
+            for (location, _) in &cases {
+                settings.push_str(&format!(
+                    "\"{}\" = \"{}\"\n",
+                    location.display_path(),
+                    icons::PICTURES,
+                ));
+            }
+            write_settings(&settings);
+            let manager = PreferenceManager::shared();
+            let first = OpenWindow::open();
+            let second = OpenWindow::open();
+            let local_sidebar = super::super::sidebar::build_sidebar(
+                first.content.browser.clone(),
+                manager.clone(),
+                true,
+            );
+            let sidebars = [
+                first.content.sidebar.state.clone(),
+                second.content.sidebar.state.clone(),
+                local_sidebar.state.clone(),
+            ];
+            let sidebar_image = |state: &super::super::SidebarState, location: &Location| {
+                let row = state
+                    .place_rows
+                    .borrow()
+                    .iter()
+                    .find(|(candidate, _)| candidate == location)
+                    .expect("folder row")
+                    .1
+                    .clone();
+                row.child()
+                    .and_then(|content| content.first_child())
+                    .and_downcast::<gtk::Image>()
+                    .expect("folder icon")
+            };
+            let assert_icons = |location: &Location, expected: gtk::gdk::Texture| {
+                for state in &sidebars {
+                    let actual = sidebar_image(state, location)
+                        .paintable()
+                        .expect("rendered icon")
+                        .downcast::<gtk::gdk::Texture>()
+                        .expect("icon texture");
+                    assert!(
+                        texture_pixels(&actual) == texture_pixels(&expected),
+                        "sidebar icon differs from expected folder customization: {}",
+                        location.display_path()
+                    );
+                }
+            };
+            for (location, _) in &cases {
+                assert_icons(
+                    location,
+                    assets::folder_decoration_paintable(
+                        icons::PICTURES,
+                        manager
+                            .folder_color(location.native_path().expect("folder path"))
+                            .expect("saved color")
+                            .hex(),
+                    )
+                    .expect("decorated folder"),
+                );
+            }
+            for state in &sidebars {
+                state.set_rail(true);
+            }
+            for (location, fallback) in &cases {
+                let path = location.native_path().expect("folder path");
+                manager.set_folder_color(path, Some(FolderColorValue::Custom("#123456".into())));
+                assert_icons(
+                    location,
+                    assets::folder_decoration_paintable(icons::PICTURES, "#123456")
+                        .expect("recolored folder"),
+                );
+                manager.set_custom_icon(path, Some("emoji:🚀"));
+                assert_icons(
+                    location,
+                    assets::folder_decoration_paintable("emoji:🚀", "#123456")
+                        .expect("emoji folder"),
+                );
+                manager.clear_item_customization(path);
+                assert_icons(
+                    location,
+                    assets::primary_icon_paintable(fallback).expect("default folder"),
+                );
+                manager.set_folder_color(path, Some(FolderColorValue::Custom("#123456".into())));
+                assert_icons(
+                    location,
+                    assets::custom_colored_icon_paintable(fallback, "#123456")
+                        .expect("color-only folder"),
+                );
+                manager.clear_item_customization(path);
+            }
+            for state in &sidebars {
+                state.set_rail(false);
+                state.rebuild();
+            }
+            for open in [&first, &second] {
+                assert!(settings_closed(open));
+            }
+            for (location, _) in &cases {
+                manager.set_custom_icon(
+                    location.native_path().expect("folder path"),
+                    Some(icons::KEY),
+                );
+                assert_icons(
+                    location,
+                    assets::folder_decoration_paintable(icons::KEY, &assets::primary_icon_color())
+                        .expect("rebuilt folder decoration"),
+                );
+            }
+            crate::ui::theme::ThemeManager::shared().select_theme("dracula");
+            for (location, _) in &cases {
+                assert_icons(
+                    location,
+                    assets::folder_decoration_paintable(icons::KEY, &assets::primary_icon_color())
+                        .expect("theme-colored folder"),
+                );
+            }
+            let row = first
+                .content
+                .sidebar
+                .state
+                .place_rows
+                .borrow()
+                .iter()
+                .find(|(candidate, _)| candidate == &location)
+                .expect("rebuilt pin")
+                .1
+                .clone();
+            walk(row.upcast_ref(), &mut |widget| {
+                if let Some(popover) = widget.downcast_ref::<gtk::Popover>() {
+                    popover.popup();
+                }
+            });
+            settle();
+            let customize = label_named(row.upcast_ref(), "Customize…")
+                .ancestor(gtk::Button::static_type())
+                .and_downcast::<gtk::Button>()
+                .expect("customize action");
+            customize.emit_clicked();
+            assert!(
+                !class_in_shown_pane(first.content.overlay().upcast_ref(), "customize-dialog")
+                    .is_empty()
+            );
+            label_named(first.content.overlay().upcast_ref(), "Customize Folder");
+            local_sidebar.disconnect();
+        },
+    );
+}
+
+fn texture_pixels(texture: &gtk::gdk::Texture) -> Vec<u8> {
+    let stride = texture.width() as usize * 4;
+    let mut pixels = vec![0; stride * texture.height() as usize];
+    texture.download(&mut pixels, stride);
+    pixels
+}
+
+#[test]
 fn default_chrome_stays_operable_without_a_saved_tenxer_mode() {
     gtk_test(
         "ui::window::tests::preferences::default_chrome_stays_operable_without_a_saved_tenxer_mode",
@@ -18,6 +212,15 @@ fn default_chrome_stays_operable_without_a_saved_tenxer_mode() {
             let _directory = load_folder(&open);
             assert!(!open.content.footer().tag_visible());
             assert_controls(&open, true);
+            for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
+                open.content.browser.set_view_mode(mode);
+                wait_until(|| !column_loading(&open, 0));
+                assert_icon_only_tooltips(open.window.upcast_ref());
+            }
+            open.content.sidebar.state.set_rail(true);
+            assert_icon_only_tooltips(open.window.upcast_ref());
+            open.content.sidebar.state.set_rail(false);
+            assert_icon_only_tooltips(open.window.upcast_ref());
             press(
                 &open.window,
                 gtk::gdk::Key::q,
@@ -147,9 +350,51 @@ fn browsing_control_and_shortcut_update_both_windows() {
 }
 
 #[test]
-fn q_leaves_tenxer_and_shift_q_closes_only_the_current_window() {
+fn saved_sidebar_collapsed_restores_and_ctrl_b_updates_both_windows() {
     gtk_test(
-        "ui::window::tests::preferences::q_leaves_tenxer_and_shift_q_closes_only_the_current_window",
+        "ui::window::tests::preferences::saved_sidebar_collapsed_restores_and_ctrl_b_updates_both_windows",
+        || {
+            write_settings("sidebar_expanded = false\n");
+            let manager = PreferenceManager::shared();
+            assert!(!manager.sidebar_expanded());
+            let first = OpenWindow::open();
+            let second = OpenWindow::open();
+            for open in [&first, &second] {
+                assert!(!open.content.sidebar_toggle().is_active());
+                assert!(!open.content.sidebar_visible());
+            }
+            press(
+                &first.window,
+                gtk::gdk::Key::b,
+                gtk::gdk::ModifierType::CONTROL_MASK,
+            );
+            settle();
+            assert!(manager.sidebar_expanded());
+            for open in [&first, &second] {
+                assert!(open.content.sidebar_toggle().is_active());
+                wait_until(|| open.content.sidebar_visible());
+            }
+            press(
+                &second.window,
+                gtk::gdk::Key::b,
+                gtk::gdk::ModifierType::CONTROL_MASK,
+            );
+            settle();
+            assert!(!manager.sidebar_expanded());
+            for open in [&first, &second] {
+                assert!(!open.content.sidebar_toggle().is_active());
+                wait_until(|| !open.content.sidebar_visible());
+            }
+            let saved = std::fs::read_to_string(settings_file()).expect("saved settings");
+            assert!(saved.contains("sidebar_expanded = false"), "{saved}");
+        },
+    );
+}
+
+#[test]
+fn toggle_leaves_tenxer_everywhere_and_shift_q_closes_only_the_current_window() {
+    gtk_test(
+        "ui::window::tests::preferences::toggle_leaves_tenxer_everywhere_and_shift_q_closes_only_the_current_window",
         || {
             let manager = PreferenceManager::shared();
             let first = OpenWindow::open();
@@ -158,8 +403,8 @@ fn q_leaves_tenxer_and_shift_q_closes_only_the_current_window() {
             settle();
             press(
                 &first.window,
-                gtk::gdk::Key::q,
-                gtk::gdk::ModifierType::empty(),
+                gtk::gdk::Key::m,
+                gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK,
             );
             settle();
             assert!(!manager.tenxer_mode());
@@ -179,6 +424,62 @@ fn q_leaves_tenxer_and_shift_q_closes_only_the_current_window() {
             assert!(window_listed(&second.window));
             assert!(manager.tenxer_mode());
             assert!(second.content.footer().tag_visible());
+        },
+    );
+}
+
+#[test]
+fn mode_cycles_and_closed_windows_leave_no_duplicate_commands_or_listeners() {
+    gtk_test(
+        "ui::window::tests::preferences::mode_cycles_and_closed_windows_leave_no_duplicate_commands_or_listeners",
+        || {
+            let manager = PreferenceManager::shared();
+            let toggle = gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK;
+            let first = OpenWindow::open();
+            settle();
+            let baseline = manager.listener_count();
+            for _ in 0..3 {
+                manager.set_tenxer_mode(true);
+                settle();
+                manager.set_tenxer_mode(false);
+                settle();
+            }
+            assert_eq!(manager.listener_count(), baseline, "cycles added listeners");
+
+            let closed = {
+                let window = gtk::ApplicationWindow::builder()
+                    .application(&test_application())
+                    .build();
+                let content = super::super::composition::WindowContent::new(&window, &manager);
+                content.bind(&window, &manager);
+                content.connect_cleanup(&window);
+                window.present();
+                settle();
+                assert!(manager.listener_count() > baseline);
+                window.destroy();
+                window.downgrade()
+            };
+            settle_for(std::time::Duration::from_millis(100));
+            assert_eq!(
+                manager.listener_count(),
+                baseline,
+                "a closed window kept listeners"
+            );
+            assert!(
+                closed.upgrade().is_none(),
+                "a closed window was never released"
+            );
+            assert!(window_listed(&first.window));
+
+            let third = OpenWindow::open();
+            settle();
+            for (window, expected) in [(&third.window, true), (&first.window, false)] {
+                press(window, gtk::gdk::Key::M, toggle);
+                settle();
+                assert_eq!(manager.tenxer_mode(), expected, "one toggle per press");
+                assert_eq!(first.content.footer().tag_visible(), expected);
+                assert_eq!(third.content.footer().tag_visible(), expected);
+            }
         },
     );
 }
@@ -232,13 +533,15 @@ fn browsing_preferences_stay_saved_but_unused_until_exit() {
             settle();
             assert!(manager.type_to_search());
             assert!(manager.arrow_navigation_scoped());
-            assert!(manager.columns_mirror_selection());
-            assert!(!open.content.browser.columns_mirror_selection_enabled());
-            for title in [
-                "Type to search",
-                "Keep arrows in file list",
-                "Mirror columns selection",
-            ] {
+            assert!(
+                open.content.browser.columns_mirror_selection_enabled(),
+                "10xer Columns keep saved mirroring"
+            );
+            assert_ne!(
+                description_named(open.content.overlay(), "Mirror columns selection"),
+                UNUSED_SUBTITLE
+            );
+            for title in ["Type to search", "Keep arrows in file list"] {
                 let switch = switch_named(open.content.overlay(), title);
                 assert!(switch.is_active() && switch.is_sensitive());
                 assert_eq!(
@@ -253,7 +556,6 @@ fn browsing_preferences_stay_saved_but_unused_until_exit() {
             type_to_search.set_active(true);
             settle();
             assert!(manager.type_to_search());
-            assert!(!open.content.browser.columns_mirror_selection_enabled());
             close_settings(&open);
             open.content.browser.browser().focus_active();
             wait_until(|| open.content.browser.item_view_has_focus());
@@ -471,6 +773,9 @@ fn assert_controls(open: &OpenWindow, operable: bool) {
             "hidden Search does not open"
         );
     }
+    if !operable && open.content.browser.view_mode() != BrowserMode::Columns {
+        return;
+    }
     let mut required = vec!["Refresh (F5)"];
     if open.content.browser.view_mode() != BrowserMode::List {
         required.push("Choose sort field");
@@ -590,9 +895,35 @@ fn filter_buttons(open: &OpenWindow) -> Vec<gtk::ToggleButton> {
         .collect()
 }
 
+fn assert_icon_only_tooltips(root: &gtk::Widget) {
+    walk(root, &mut |widget| {
+        if !widget.is_visible() || widget.tooltip_text().is_none() {
+            return;
+        }
+        assert!(
+            widget.is::<gtk::Button>() || widget.is::<gtk::MenuButton>(),
+            "non-button tooltip: {}",
+            widget.type_().name()
+        );
+        walk(widget, &mut |child| {
+            if let Some(label) = child.downcast_ref::<gtk::Label>() {
+                assert!(
+                    !label.is_visible() || label.text().is_empty(),
+                    "labelled control has a tooltip: {}",
+                    label.text()
+                );
+            }
+        });
+    });
+}
+
 fn controls_in_shown_pane(root: &gtk::Widget, tooltip: &str) -> Vec<gtk::Widget> {
     widgets_in_shown_pane(root, |widget| {
         widget.tooltip_text().as_deref() == Some(tooltip)
+            || widget.downcast_ref::<gtk::Entry>().is_some_and(|entry| {
+                tooltip == "Filter by name. Use * for any characters: *.png, IMG*, or IMG*.png."
+                    && entry.has_css_class("column-filter-entry")
+            })
     })
 }
 

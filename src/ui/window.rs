@@ -35,14 +35,22 @@ use super::{
     preferences::PreferenceManager,
 };
 
+mod bookmarks;
 mod composition;
 mod device_release;
 mod devices;
+mod drive_dialogs;
+mod drive_ops;
 mod keyboard;
 mod open_argument;
 mod sidebar;
 mod unlock_argument;
 mod volume_password;
+
+pub(super) use devices::{
+    RemovableDestination, removable_destinations, resolve_removable_destination,
+};
+pub(in crate::ui) use keyboard::{ChooserKeys, ChooserPolicy};
 
 pub use open_argument::present_open;
 pub use unlock_argument::{UnlockTarget, present_unlock};
@@ -70,6 +78,7 @@ const STANDARD_PLACE_IDS: &[&str] = &[
     "desktop",
     "documents",
     "downloads",
+    "music",
     "pictures",
     "videos",
 ];
@@ -131,6 +140,34 @@ impl TypeToSearch {
                 }
             }
     }
+}
+
+pub(super) fn chooser_keys(
+    window: &gtk::Window,
+    view: &BrowserView,
+    sidebar: &SidebarView,
+    top_bar: super::top_bar_navigation::TopBarNavigation,
+    preview: &super::preview::PreviewDrawer,
+    shortcuts: &super::shortcut_footer::ShortcutFooter,
+    policy: ChooserPolicy,
+) -> ChooserKeys {
+    ChooserKeys::new(
+        window,
+        sidebar,
+        keyboard::Bindings {
+            view: view.clone(),
+            top_bar,
+            preview: preview.clone(),
+            type_to_search: TypeToSearch {
+                view: view.clone(),
+                preferences: PreferenceManager::shared(),
+            },
+            shortcuts: shortcuts.clone(),
+            folders: Rc::new(super::go_completion::GioFolders),
+            history: crate::services::NavigationHistory::shared(),
+        },
+        policy,
+    )
 }
 
 fn mouse_history_action(button: u32) -> Option<MouseHistoryAction> {
@@ -733,7 +770,10 @@ pub(super) fn build_appearance_menu(
         grouped,
         current_mode.supports_type_grouping(),
     );
-    group_by_type.set_tooltip_text(Some("Group List entries under file-type headings"));
+    crate::ui::accessibility::set_description(
+        &group_by_type,
+        Some("Group List entries under file-type headings"),
+    );
     preferences.bind_preference(
         &group_check,
         PreferenceManager::group_by_type,
@@ -788,9 +828,13 @@ pub(super) fn build_appearance_menu(
     let (row, check, _) = appearance_row(
         crate::assets::icons::EYE,
         "Preview panel",
-        "Space",
+        "",
         preview.is_enabled(),
     );
+    let preview_shortcut = gtk::Label::new(None);
+    preview_shortcut.add_css_class("folder-context-shortcut");
+    row.append(&preview_shortcut);
+    row.reorder_child_after(&check, Some(&preview_shortcut));
     let preview_toggle = gtk::ToggleButton::builder()
         .child(&row)
         .has_frame(false)
@@ -798,7 +842,33 @@ pub(super) fn build_appearance_menu(
     preview_toggle.add_css_class("appearance-option");
     preview_toggle.add_css_class("preview-panel-option");
     super::accessibility::set_label(&preview_toggle, "Preview panel");
-    preview_toggle.set_tooltip_text(Some("Toggle preview panel while browsing (Space)"));
+    let description_toggle = preview_toggle.downgrade();
+    preferences.bind_preference(
+        &preview_shortcut,
+        |preferences| {
+            crate::ui::shortcut_reference::context_hint_for(
+                crate::ui::shortcut_reference::ContextHint::Preview,
+                preferences,
+            )
+        },
+        move |widget, text| {
+            let shortcut = widget
+                .downcast_ref::<gtk::Label>()
+                .expect("preview shortcut label");
+            shortcut.set_text(text);
+            shortcut.set_visible(!text.is_empty());
+            if let Some(toggle) = description_toggle.upgrade() {
+                crate::ui::accessibility::set_description(
+                    &toggle,
+                    Some(&if text.is_empty() {
+                        "Toggle preview panel while browsing".to_owned()
+                    } else {
+                        format!("Toggle preview panel while browsing ({text})")
+                    }),
+                );
+            }
+        },
+    );
     let actions = gio::SimpleActionGroup::new();
     actions.add_action(&preview.action());
     preview_toggle.insert_action_group("preview", Some(&actions));
@@ -1028,7 +1098,7 @@ pub(super) struct SidebarState {
     mount_monitor: gio_unix::MountMonitor,
     preference_manager: Rc<super::preferences::PreferenceManager>,
     place_order: RefCell<Vec<&'static str>>,
-    places_visibility: RefCell<[bool; 9]>,
+    places_visibility: RefCell<[bool; 10]>,
     pinned_places: Rc<RefCell<Vec<(Location, String)>>>,
     place_rows: RefCell<Vec<(Location, gtk::Button)>>,
     trash_contents: Cell<TrashContents>,
@@ -1044,6 +1114,9 @@ pub(super) struct SidebarState {
     pub(in crate::ui) rail: Cell<bool>,
     pub(in crate::ui) saved_width: Cell<Option<i32>>,
     update_label: gtk::Label,
+    keycaps: RefCell<Vec<gtk::Label>>,
+    keycaps_shown: Cell<bool>,
+    visible_pins: RefCell<Vec<Location>>,
 }
 
 /// Rows of the Trash sidebar context menu that only make sense while Trash holds items.
@@ -1115,6 +1188,7 @@ pub(super) struct SidebarView {
         reason = "held so Drop keeps this window registered for pending-release rebuilds"
     )]
     release_watch: device_release::SidebarWatch,
+    bookmark_watch: RefCell<Option<crate::adapters::bookmarks::BookmarkWatch>>,
 }
 
 impl SidebarView {
@@ -1167,6 +1241,7 @@ impl SidebarView {
     }
 
     pub(super) fn disconnect(&self) {
+        self.bookmark_watch.take();
         for handler in self.handlers.take() {
             self.state.volume_monitor.disconnect(handler);
         }
@@ -1200,6 +1275,8 @@ impl SidebarState {
             self.widget.remove(&child);
         }
         self.place_rows.borrow_mut().clear();
+        self.keycaps.borrow_mut().clear();
+        self.visible_pins.borrow_mut().clear();
 
         self.append_static_places();
         self.append_devices();
@@ -1289,36 +1366,23 @@ impl SidebarState {
                 }
             }
         }
-        if !rail {
-            for (location, row) in self.place_rows.borrow().iter() {
-                row.set_tooltip_text(Some(&location.display_path()));
-            }
-        }
+        self.sync_keycaps();
     }
 }
 
 fn sync_sidebar_button(button: &gtk::Button, rail: bool) {
     let size = if rail { sidebar_rail_button_size() } else { -1 };
     button.set_size_request(size, size);
-    let is_pinned = button.has_css_class("sidebar-pinned-row");
     if let Some(content) = button.child() {
         let mut child = content.first_child();
         while let Some(widget) = child {
             child = widget.next_sibling();
             if let Some(label) = widget.downcast_ref::<gtk::Label>() {
-                if rail {
-                    button.set_tooltip_text(Some(label.label().as_str()));
+                if label.has_css_class("sidebar-keycap") {
+                    continue;
                 }
+                button.set_tooltip_text(rail.then_some(label.label().as_str()));
                 label.set_visible(!rail);
-            } else if is_pinned && let Some(image) = widget.downcast_ref::<gtk::Image>() {
-                crate::assets::set_primary_icon(
-                    image,
-                    if rail {
-                        crate::assets::icons::PIN
-                    } else {
-                        crate::assets::icons::FOLDER
-                    },
-                );
             }
         }
         content.set_halign(if rail {
@@ -1401,6 +1465,7 @@ impl SidebarState {
                 }
                 let location = Location::local(home_directory());
                 let row = self.append_place(crate::assets::icons::HOME, "Home", location.clone());
+                self.add_keycap(&row, "h");
                 if !self.local_only {
                     self.attach_place_context_menu(&row, location, |state| {
                         state.preference_manager.set_sidebar_show_home(false);
@@ -1420,6 +1485,7 @@ impl SidebarState {
                 let location = Location::uri("network:///");
                 let row =
                     self.append_place(crate::assets::icons::NETWORK, "Network", location.clone());
+                self.add_keycap(&row, "n");
                 self.attach_place_context_menu(&row, location, |state| {
                     state.preference_manager.set_sidebar_show_network(false);
                 });
@@ -1449,10 +1515,13 @@ impl SidebarState {
             && let Some(path) = glib::user_special_dir(directory)
                 .filter(|path| should_show_standard_place(place, path, &home_directory()))
         {
-            if self.local_only {
-                self.append_place(icon, name, Location::local(path));
+            let row = if self.local_only {
+                self.append_place(icon, name, Location::local(path))
             } else {
-                self.append_reorderable_place(place, icon, name, Location::local(path));
+                self.append_reorderable_place(place, icon, name, Location::local(path))
+            };
+            if let Some(key) = standard_place_chord_key(place) {
+                self.add_keycap(&row, key);
             }
         }
     }
@@ -1472,12 +1541,17 @@ impl SidebarState {
                 self.append_separator();
             }
             self.append_heading("PINNED");
-            for (index, location, name) in pinned {
-                if self.local_only {
+            for (ordinal, (index, location, name)) in pinned.into_iter().enumerate() {
+                self.visible_pins.borrow_mut().push(location.clone());
+                let row = if self.local_only {
                     let row = self.append_place(crate::assets::icons::FOLDER, &name, location);
                     row.add_css_class("sidebar-pinned-row");
+                    row
                 } else {
-                    self.append_pinned_place(index, &name, location);
+                    self.append_pinned_place(index, &name, location)
+                };
+                if let Some(key) = PIN_CHORD_KEYS.get(ordinal) {
+                    self.add_keycap(&row, key);
                 }
             }
         }
@@ -1556,7 +1630,7 @@ impl SidebarState {
         }
         let ids = device_release::ids_for_mount(&mount);
         let row = sidebar_button(crate::assets::icons::HARD_DRIVE, name);
-        row.set_tooltip_text(Some(&location.display_path()));
+        crate::ui::accessibility::set_description(&row, Some(&location.display_path()));
         if device_release::is_pending(&ids) {
             self.widget
                 .append(&device_release::pending_device_shell(&row));
@@ -1605,7 +1679,7 @@ impl SidebarState {
                 );
             }) as Rc<dyn Fn()>
         });
-        self.append_device_chrome(&row, actions, on_crypto, on_release);
+        self.append_device_chrome(&row, actions, on_crypto, on_release, None, None);
         Some(ids)
     }
 
@@ -1672,6 +1746,11 @@ impl SidebarState {
         for (index, (_, row)) in rows.iter().enumerate() {
             set_sidebar_row_active(row, selected == Some(index));
         }
+    }
+
+    #[cfg(test)]
+    pub(super) fn places_for_test(&self) -> gtk::Box {
+        self.widget.clone()
     }
 
     pub(super) fn focus_active_place(&self) -> bool {
@@ -1750,7 +1829,8 @@ impl SidebarState {
     fn append_recent_place(self: &Rc<Self>) {
         let location = Location::uri("recent:///");
         let row = sidebar_button(crate::assets::icons::CLOCK, "Recent");
-        row.set_tooltip_text(Some("recent:///"));
+        crate::ui::accessibility::set_description(&row, Some("recent:///"));
+        self.add_keycap(&row, "r");
         self.bind_place_row(&row, location, PlaceNavigation::Direct);
         self.make_place_reorderable(&row, "recent");
         self.widget.append(&row);
@@ -1759,7 +1839,8 @@ impl SidebarState {
     fn append_trash_place(self: &Rc<Self>) {
         let location = Location::uri("trash:///");
         let row = sidebar_button(crate::assets::icons::TRASH, "Trash");
-        row.set_tooltip_text(Some("trash:///"));
+        crate::ui::accessibility::set_description(&row, Some("trash:///"));
+        self.add_keycap(&row, "t");
         self.bind_place_row(&row, location, PlaceNavigation::Direct);
 
         let menu = super::accessibility::menu_box();
@@ -1818,14 +1899,16 @@ impl SidebarState {
         context.set_button(3);
         let weak_popover = popover.downgrade();
         let weak_state = Rc::downgrade(self);
+        popover.connect_show(move |_| {
+            if let Some(state) = weak_state.upgrade() {
+                state.refresh_trash_contents();
+            }
+        });
         context.connect_pressed(move |gesture, _, x, y| {
             gesture.set_state(gtk::EventSequenceState::Claimed);
             let Some(popover) = weak_popover.upgrade() else {
                 return;
             };
-            if let Some(state) = weak_state.upgrade() {
-                state.refresh_trash_contents();
-            }
             popover.set_pointing_to(Some(&gtk::gdk::Rectangle::new(
                 x.round() as i32,
                 y.round() as i32,
@@ -1896,9 +1979,10 @@ impl SidebarState {
         icon: &str,
         name: &str,
         location: Location,
-    ) {
+    ) -> gtk::Button {
         let row = sidebar_button(icon, name);
-        row.set_tooltip_text(Some(&location.display_path()));
+        customize_sidebar_folder_icon(&row, &location, icon);
+        crate::ui::accessibility::set_description(&row, Some(&location.display_path()));
         self.bind_place_row(&row, location.clone(), PlaceNavigation::Direct);
         self.attach_place_context_menu(&row, location, move |state| {
             let manager = &state.preference_manager;
@@ -1906,6 +1990,7 @@ impl SidebarState {
                 "desktop" => manager.set_sidebar_show_desktop(false),
                 "documents" => manager.set_sidebar_show_documents(false),
                 "downloads" => manager.set_sidebar_show_downloads(false),
+                "music" => manager.set_sidebar_show_music(false),
                 "pictures" => manager.set_sidebar_show_pictures(false),
                 "videos" => manager.set_sidebar_show_videos(false),
                 _ => {}
@@ -1914,6 +1999,7 @@ impl SidebarState {
 
         self.make_place_reorderable(&row, id);
         self.widget.append(&row);
+        row
     }
 
     fn make_place_reorderable(self: &Rc<Self>, row: &gtk::Button, id: &'static str) {
@@ -1983,7 +2069,7 @@ impl SidebarState {
     fn append_volume(self: &Rc<Self>, volume: gio::Volume) -> Option<device_release::DeviceIds> {
         let name = volume.name().to_string();
         let row = sidebar_button(crate::assets::icons::HARD_DRIVE, &name);
-        row.set_tooltip_text(Some(&name));
+        crate::ui::accessibility::set_description(&row, Some(&name));
         let mounted_location = volume
             .get_mount()
             .as_ref()
@@ -2078,7 +2164,19 @@ impl SidebarState {
                 ),
             }) as Rc<dyn Fn()>
         });
-        self.append_device_chrome(&row, actions, on_crypto, on_release);
+        let on_mount = {
+            let mount_view = self.view.clone();
+            let mount_volume = volume.clone();
+            Rc::new(move || mount_view.mount_volume(mount_volume.clone())) as Rc<dyn Fn()>
+        };
+        self.append_device_chrome(
+            &row,
+            actions,
+            on_crypto,
+            on_release,
+            Some(on_mount),
+            Some(&volume),
+        );
         Some(ids)
     }
 
@@ -2092,7 +2190,7 @@ impl SidebarState {
         let ids = device_release::ids_for_drive(&drive);
         let name = drive.name().to_string();
         let row = sidebar_button(crate::assets::icons::HARD_DRIVE, &name);
-        row.set_tooltip_text(Some(&name));
+        crate::ui::accessibility::set_description(&row, Some(&name));
         if device_release::is_pending(&ids) {
             self.widget
                 .append(&device_release::pending_device_shell(&row));
@@ -2127,7 +2225,7 @@ impl SidebarState {
                 );
             }) as Rc<dyn Fn()>
         });
-        self.append_device_chrome(&row, actions, on_crypto, on_release);
+        self.append_device_chrome(&row, actions, on_crypto, on_release, None, None);
         Some(ids)
     }
 
@@ -2199,7 +2297,12 @@ impl SidebarState {
         row.add_controller(context);
     }
 
-    fn append_pinned_place(self: &Rc<Self>, index: usize, name: &str, location: Location) {
+    fn append_pinned_place(
+        self: &Rc<Self>,
+        index: usize,
+        name: &str,
+        location: Location,
+    ) -> gtk::Button {
         let row = self.append_place(crate::assets::icons::FOLDER, name, location.clone());
         row.add_css_class("sidebar-pinned-row");
         self.make_pinned_row_reorderable(&row, index);
@@ -2207,6 +2310,36 @@ impl SidebarState {
         self.attach_place_context_menu(&row, location, move |state| {
             state.unpin_location(&unpinned_location);
         });
+        row
+    }
+
+    /// Keycaps name the second key of the **g** place chord while it is armed.
+    fn add_keycap(&self, row: &gtk::Button, key: &str) {
+        let Some(content) = row.child().and_downcast::<gtk::Box>() else {
+            return;
+        };
+        let keycap = gtk::Label::new(Some(key));
+        keycap.add_css_class("sidebar-keycap");
+        keycap.set_visible(self.keycaps_shown.get() && !self.rail.get());
+        content.append(&keycap);
+        self.keycaps.borrow_mut().push(keycap);
+    }
+
+    pub(in crate::ui) fn show_place_keycaps(&self, shown: bool) {
+        self.keycaps_shown.set(shown);
+        self.sync_keycaps();
+    }
+
+    fn sync_keycaps(&self) {
+        let visible = self.keycaps_shown.get() && !self.rail.get();
+        for keycap in self.keycaps.borrow().iter() {
+            keycap.set_visible(visible);
+        }
+    }
+
+    /// Pinned places in sidebar display order, excluding rows the sidebar hides.
+    pub(in crate::ui) fn visible_pins(&self) -> Vec<Location> {
+        self.visible_pins.borrow().clone()
     }
 
     fn attach_place_context_menu(
@@ -2220,6 +2353,11 @@ impl SidebarState {
         let unpin = sidebar_context_option(crate::assets::icons::PIN, "Unpin", false);
         let properties = sidebar_context_option(crate::assets::icons::INFO, "Properties", false);
         menu.append(&unpin);
+        let customize = location.native_path().map(|path| {
+            let button = sidebar_context_option(crate::assets::icons::PALETTE, "Customize…", false);
+            menu.append(&button);
+            (button, path.to_path_buf())
+        });
         menu.append(&properties);
         let popover = gtk::Popover::builder()
             .child(&menu)
@@ -2228,6 +2366,24 @@ impl SidebarState {
             .build();
         popover.add_css_class("folder-context-popover");
         popover.set_parent(row);
+
+        if let Some((customize, path)) = customize {
+            let weak_popover = popover.downgrade();
+            let weak_row = row.downgrade();
+            customize.connect_clicked(move |_| {
+                if let Some(popover) = weak_popover.upgrade() {
+                    popover.popdown();
+                }
+                if let Some(row) = weak_row.upgrade() {
+                    super::browser::show_customize_modal(
+                        &row,
+                        path.clone(),
+                        true,
+                        crate::assets::icons::FOLDER,
+                    );
+                }
+            });
+        }
 
         let weak_state = Rc::downgrade(self);
         let unpin_popover = popover.downgrade();
@@ -2282,7 +2438,9 @@ impl SidebarState {
     }
 
     fn append_place(&self, icon: &str, name: &str, location: Location) -> gtk::Button {
-        self.append_device_place(icon, name, location, None)
+        let row = self.append_device_place(icon, name, location.clone(), None);
+        customize_sidebar_folder_icon(&row, &location, icon);
+        row
     }
 
     fn append_device_place(
@@ -2293,7 +2451,7 @@ impl SidebarState {
         release: Option<(MediaRelease, Rc<dyn Fn()>)>,
     ) -> gtk::Button {
         let row = sidebar_button(icon, name);
-        row.set_tooltip_text(Some(&location.display_path()));
+        crate::ui::accessibility::set_description(&row, Some(&location.display_path()));
         self.bind_place_row(&row, location, PlaceNavigation::Validate);
         match release {
             Some((action, on_release)) => {
@@ -2303,12 +2461,15 @@ impl SidebarState {
                 });
                 attach_device_actions_menu(
                     &row,
+                    &self.view,
                     DeviceRowActions {
                         encrypted: None,
                         release: Some(action),
                     },
                     None,
                     Some(on_release),
+                    None,
+                    None,
                 );
                 self.widget
                     .append(&sidebar_device_row(&row, None, Some(&eject)));
@@ -2326,6 +2487,8 @@ impl SidebarState {
         actions: DeviceRowActions,
         on_crypto: Option<Rc<dyn Fn()>>,
         on_release: Option<Rc<dyn Fn()>>,
+        on_mount: Option<Rc<dyn Fn()>>,
+        volume: Option<&gio::Volume>,
     ) {
         let lock = actions
             .encrypted
@@ -2335,8 +2498,14 @@ impl SidebarState {
             .release
             .zip(on_release.clone())
             .map(|(action, on_release)| sidebar_eject_button(action, move || on_release()));
-        if actions.encrypted.is_some() || actions.release.is_some() {
-            attach_device_actions_menu(row, actions, on_crypto, on_release);
+        if actions.encrypted.is_some()
+            || actions.release.is_some()
+            || drive_ops::is_eligible(volume)
+            || drive_ops::show_mount(volume)
+        {
+            attach_device_actions_menu(
+                row, &self.view, actions, on_crypto, on_release, on_mount, volume,
+            );
             self.widget
                 .append(&sidebar_device_row(row, lock.as_ref(), eject.as_ref()));
         } else {
@@ -2629,11 +2798,11 @@ fn release_kind(action: MediaRelease) -> device_release::ReleaseKind {
     }
 }
 
-fn drive_can_unplug(drive: &gio::Drive) -> bool {
+pub(super) fn drive_can_unplug(drive: &gio::Drive) -> bool {
     drive.is_removable() || drive.is_media_removable() || drive.can_eject()
 }
 
-fn mount_can_unplug(mount: &gio::Mount) -> bool {
+pub(super) fn mount_can_unplug(mount: &gio::Mount) -> bool {
     if mount.can_eject() {
         return true;
     }
@@ -2643,7 +2812,7 @@ fn mount_can_unplug(mount: &gio::Mount) -> bool {
         .is_some_and(|drive| drive_can_unplug(&drive))
 }
 
-fn volume_can_unplug(volume: &gio::Volume) -> bool {
+pub(super) fn volume_can_unplug(volume: &gio::Volume) -> bool {
     if volume.can_eject() {
         return true;
     }
@@ -3225,7 +3394,7 @@ fn gio_icons_are_encrypted(
     devices::is_encrypted_device(&names, start_stop, hint.as_ref())
 }
 
-fn gio_volume_unix_device(volume: &gio::Volume) -> Option<glib::GString> {
+pub(super) fn gio_volume_unix_device(volume: &gio::Volume) -> Option<glib::GString> {
     volume.identifier(gio::VOLUME_IDENTIFIER_KIND_UNIX_DEVICE.as_str())
 }
 
@@ -3314,6 +3483,7 @@ fn is_standard_place_location(location: &Location) -> bool {
         glib::UserDirectory::Desktop,
         glib::UserDirectory::Documents,
         glib::UserDirectory::Downloads,
+        glib::UserDirectory::Music,
         glib::UserDirectory::Pictures,
         glib::UserDirectory::Videos,
     ]
@@ -3334,6 +3504,7 @@ fn sidebar_standard_place_visible(
         "desktop" => manager.sidebar_show_desktop(),
         "documents" => manager.sidebar_show_documents(),
         "downloads" => manager.sidebar_show_downloads(),
+        "music" => manager.sidebar_show_music(),
         "pictures" => manager.sidebar_show_pictures(),
         "videos" => manager.sidebar_show_videos(),
         _ => true,
@@ -3371,6 +3542,19 @@ fn resolve_place_order(persisted: &[String]) -> Vec<&'static str> {
     order
 }
 
+const PIN_CHORD_KEYS: [&str; 9] = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
+
+fn standard_place_chord_key(id: &str) -> Option<&'static str> {
+    match id {
+        "documents" => Some("k"),
+        "downloads" => Some("d"),
+        "music" => Some("m"),
+        "pictures" => Some("p"),
+        "videos" => Some("v"),
+        _ => None,
+    }
+}
+
 fn standard_place(id: &str) -> Option<(&'static str, &'static str, glib::UserDirectory)> {
     match id {
         "desktop" => Some((
@@ -3387,6 +3571,11 @@ fn standard_place(id: &str) -> Option<(&'static str, &'static str, glib::UserDir
             crate::assets::icons::DOWNLOADS,
             "Downloads",
             glib::UserDirectory::Downloads,
+        )),
+        "music" => Some((
+            crate::assets::icons::MUSIC,
+            "Music",
+            glib::UserDirectory::Music,
         )),
         "pictures" => Some((
             crate::assets::icons::PICTURES,
@@ -3434,6 +3623,17 @@ fn sidebar_context_option(icon: &str, label: &str, danger: bool) -> gtk::Button 
     row.append(&title);
     button.set_child(Some(&row));
     button
+}
+
+fn customize_sidebar_folder_icon(row: &gtk::Button, location: &Location, icon: &str) {
+    if let Some(path) = location.native_path()
+        && let Some(image) = row
+            .child()
+            .and_then(|content| content.first_child())
+            .and_downcast::<gtk::Image>()
+    {
+        super::thumbnail::show_customized_folder_image(&image, path, icon, image.pixel_size());
+    }
 }
 
 fn sidebar_button(icon: &str, name: &str) -> gtk::Button {
@@ -3531,11 +3731,18 @@ fn sidebar_device_row(
 
 fn attach_device_actions_menu(
     row: &gtk::Button,
+    view: &BrowserView,
     actions: DeviceRowActions,
     on_crypto: Option<Rc<dyn Fn()>>,
     on_release: Option<Rc<dyn Fn()>>,
+    on_mount: Option<Rc<dyn Fn()>>,
+    volume: Option<&gio::Volume>,
 ) {
-    if actions.encrypted.is_none() && actions.release.is_none() {
+    if actions.encrypted.is_none()
+        && actions.release.is_none()
+        && !drive_ops::is_eligible(volume)
+        && !drive_ops::show_mount(volume)
+    {
         return;
     }
     let menu = super::accessibility::menu_box();
@@ -3558,7 +3765,7 @@ fn attach_device_actions_menu(
             on_crypto();
         });
     }
-    if let (Some(action), Some(on_release)) = (actions.release, on_release) {
+    if let (Some(action), Some(on_release)) = (actions.release, on_release.clone()) {
         let option = sidebar_context_option(
             crate::assets::icons::EJECT,
             media_release_label(action),
@@ -3572,6 +3779,78 @@ fn attach_device_actions_menu(
             }
             on_release();
         });
+    }
+    if drive_ops::show_mount(volume)
+        && let Some(on_mount) = on_mount
+    {
+        let option = sidebar_context_option(crate::assets::icons::HARD_DRIVE, "Mount", false);
+        menu.append(&option);
+        let mount_popover = popover.downgrade();
+        option.connect_clicked(move |_| {
+            if let Some(popover) = mount_popover.upgrade() {
+                popover.popdown();
+            }
+            on_mount();
+        });
+    }
+    if drive_ops::is_eligible(volume) {
+        if let Some(volume) = volume {
+            let format_volume = volume.clone();
+            let option = sidebar_context_option(crate::assets::icons::SHREDDER, "Format…", true);
+            menu.append(&option);
+            let format_popover = popover.downgrade();
+            let format_view = view.clone();
+            let parent = row.clone().upcast::<gtk::Widget>();
+            option.connect_clicked(move |_| {
+                drive_dialogs::open_from_sidebar(
+                    &format_view,
+                    format_popover.upgrade().as_ref(),
+                    || {
+                        drive_dialogs::show_format_dialog(&parent, &format_volume);
+                    },
+                );
+            });
+        }
+        if let Some(volume) = volume {
+            let rename_volume = volume.clone();
+            let option = sidebar_context_option(crate::assets::icons::PENCIL, "Rename…", false);
+            menu.append(&option);
+            let rename_popover = popover.downgrade();
+            let rename_view = view.clone();
+            let parent = row.clone().upcast::<gtk::Widget>();
+            option.connect_clicked(move |_| {
+                drive_dialogs::open_from_sidebar(
+                    &rename_view,
+                    rename_popover.upgrade().as_ref(),
+                    || {
+                        drive_dialogs::show_rename_dialog(&parent, &rename_volume);
+                    },
+                );
+            });
+        }
+        // Properties needs a mount for usage details
+        if let Some(volume) = volume.filter(|volume| volume.get_mount().is_some()) {
+            let properties_volume = volume.clone();
+            let on_release = on_release.clone();
+            let option = sidebar_context_option(crate::assets::icons::INFO, "Properties", false);
+            menu.append(&option);
+            let properties_popover = popover.downgrade();
+            let properties_view = view.clone();
+            let parent = row.clone().upcast::<gtk::Widget>();
+            option.connect_clicked(move |_| {
+                drive_dialogs::open_from_sidebar(
+                    &properties_view,
+                    properties_popover.upgrade().as_ref(),
+                    || {
+                        drive_dialogs::show_drive_properties(
+                            &parent,
+                            &properties_volume,
+                            on_release.clone(),
+                        );
+                    },
+                );
+            });
+        }
     }
     let context = gtk::GestureClick::new();
     context.set_button(3);
@@ -3615,7 +3894,7 @@ fn sidebar_update_label(release: &ReleaseMetadata) -> String {
 }
 
 fn pinned_places_path() -> PathBuf {
-    glib::user_config_dir().join("gtk-3.0/bookmarks")
+    crate::adapters::bookmarks::pinned_places_path()
 }
 
 fn load_pinned_places() -> std::io::Result<Vec<(Location, String)>> {

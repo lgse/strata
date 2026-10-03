@@ -1,6 +1,38 @@
 // SPDX-License-Identifier: MIT
 
-use super::super::serialize_pinned_places;
+use super::super::{resolve_place_order, serialize_pinned_places};
+
+#[test]
+fn existing_sidebar_order_gains_music_after_downloads() {
+    let previous_order = [
+        "home",
+        "trash",
+        "network",
+        "recent",
+        "desktop",
+        "documents",
+        "downloads",
+        "pictures",
+        "videos",
+    ]
+    .map(str::to_owned);
+    let upgraded = resolve_place_order(&previous_order);
+    assert_eq!(
+        upgraded,
+        [
+            "home",
+            "trash",
+            "network",
+            "recent",
+            "desktop",
+            "documents",
+            "downloads",
+            "music",
+            "pictures",
+            "videos"
+        ]
+    );
+}
 
 #[test]
 fn gtk_bookmark_serialization_sanitizes_uris_with_credentials() {

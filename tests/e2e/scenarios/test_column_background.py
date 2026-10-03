@@ -5,6 +5,7 @@ import pytest
 @pytest.mark.preferences(browser_mode="columns", single_click_previews=False)
 @pytest.mark.parametrize("surface", ["item", "background"])
 @pytest.mark.parametrize("previous", ["root", "nested"])
+@pytest.mark.usefixtures("unreserved_columns")
 def test_context_menu_keeps_the_clicked_column_target(strata, surface, previous):
     root = strata.fixture.root.name
     nested = strata.fixture.path("documents/nested")
@@ -44,6 +45,7 @@ def test_context_menu_keeps_the_clicked_column_target(strata, surface, previous)
 
 @pytest.mark.preferences(browser_mode="columns")
 @pytest.mark.parametrize("surface", ["content", "header"])
+@pytest.mark.usefixtures("unreserved_columns")
 def test_column_background_click_focuses_parent(strata, surface):
     root = strata.fixture.root.name
     strata.open_directory("documents")

@@ -213,11 +213,8 @@ fn pending_row_shows_a_do_not_unplug_spinner() {
                 .find_map(|widget| widget.downcast::<gtk::Spinner>().ok())
                 .expect("spinner");
             assert!(spinner.is_spinning());
-            assert!(
-                spinner
-                    .tooltip_text()
-                    .is_some_and(|text| text.contains("Do not unplug"))
-            );
+            assert!(spinner.tooltip_text().is_none());
+            assert!(row.tooltip_text().is_none());
             assert!(!row.is_sensitive());
         },
     );

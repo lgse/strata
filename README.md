@@ -54,7 +54,7 @@ Strata combines spatial Miller-column navigation with familiar Icons and List vi
 - **Rich previews and thumbnails:** native rendered Markdown and static HTML, plus bounded previews for text, source code, images, camera RAW, PDF, audio, and video, with native parser-backed formats isolated from the application. File Properties shows available media resolution, duration, bitrate, codecs, and audio/video rates. RAW previews and Properties also show dimensions, camera, lens, focal length, shutter speed, ISO, and GPS coordinates, with `N/A` for unavailable values.
 - **Responsive filesystem work:** cancellable directory loading, bounded streaming, incremental monitoring, stable selection, and virtualized large directories.
 - **Everyday file operations:** create folders, rename, cut, copy, paste, trash, permanent delete, sorting, hidden files, pins, and history.
-- **Remote locations:** browse GIO/GVfs locations such as authenticated SMB shares from the location field.
+- **Remote locations:** browse GIO/GVfs locations such as authenticated SMB shares and SFTP servers from the location field, with explicit host-key decisions.
 - **Adaptive appearance:** compact or airy density, six bundled themes, custom themes, and live Omarchy Quattro theme following.
 - **Updates in the app:** opt-in automatic checks, release notes, verified downloads, and in-place installation for release binaries.
 - **Custom actions:** add your own scripts to the file and folder context menus, with a manager in **Settings → Actions** and background progress in the Jobs dashboard. See [Custom actions](docs/custom-actions.md).
@@ -478,7 +478,9 @@ should be isolated and reversible.
 
 ### Network shares
 
-Press <kbd>Ctrl</kbd>+<kbd>L</kbd>, enter an address such as `smb://server/share`, and press <kbd>Enter</kbd>. Strata uses GIO/GVfs and prompts for credentials when required. Install your distribution's SMB GVfs backend (`gvfs-smb` on Arch) to enable SMB browsing.
+Press <kbd>Ctrl</kbd>+<kbd>L</kbd>, enter an address such as `smb://server/share` or `sftp://user@host:2222/path`, and press <kbd>Enter</kbd>. Strata uses GIO/GVfs and prompts for credentials when required. Remote protocols need their GVfs backend installed; distributions split these up differently, so check yours for the SMB backend (`gvfs-smb` on Arch) and the SFTP backend (part of `gvfs` on Arch, `gvfs-backends` on Debian and Ubuntu).
+
+SFTP accepts password and SSH-key authentication. Encrypted keys can be unlocked in your SSH agent; if GVfs asks Strata for a key passphrase or host-key decision, Strata presents the request without deciding for you. See [docs/remote-sftp.md](docs/remote-sftp.md), which also documents `scripts/sftp-fixture.sh`, a disposable OpenSSH server for testing.
 
 ## Custom actions and script authoring
 
@@ -704,6 +706,23 @@ mise run dev              # build and launch the main app once
 mise run chooser-dev      # build and open an isolated Save chooser with choices
 mise run check            # format, compile, Clippy, tests, and policy checks
 ```
+
+### Builds without RAR support
+
+The default `rar` Cargo feature embeds RARLAB's non-free UnRAR implementation.
+Official releases and AUR builds retain RAR extraction and CBR cover previews.
+Packagers who cannot distribute UnRAR can exclude it with:
+
+```bash
+cargo build --locked --release --no-default-features
+```
+
+This build does not compile or link `unrar` or `unrar_sys`. RAR files are not
+offered for extraction, and CBR cover previews report that RAR support is disabled.
+ZIP, 7z, TAR, CBZ, and EPUB support is unchanged. Use `--features rar` to opt back
+in; `--all-features` also enables UnRAR. The source lockfile and license notices
+still describe the optional dependency; they do not mean it is linked into the
+feature-disabled binary. See [third-party notices](THIRD_PARTY_LICENSES.md#unrar).
 
 Start with [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Deeper references:
 

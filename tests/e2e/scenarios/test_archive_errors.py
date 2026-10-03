@@ -123,6 +123,8 @@ def test_wrong_extract_password_reopens_dialog_until_password_is_correct(strata,
     )
     assert dialog.find(role="label", name="Invalid password") is not None
     assert dialog.find(role="label", name="Unable to complete operation") is None
+    if source.suffix == ".rar":
+        assert not fixture.path(member).exists()
 
     if source.suffix == ".rar":
         collector = ArtifactCollector(test_name=f"rar-password-{source.stem}")
@@ -144,26 +146,24 @@ def test_cancelled_extract_to_does_not_hijack_later_extract_here(strata):
     strata.keyboard.press("ctrl+r")
     strata.open_context_menu(archive_name)
     strata.choose_menu_item("Extract to…")
-    destination = fixture.path("leftover")
-    field = strata.editable_field()
-    strata.keyboard.press("ctrl+a")
-    strata.keyboard.type_text(str(destination))
-    strata.wait(lambda: field.text == str(destination), "the destination field")
-    strata.keyboard.press("Return")
+    destination = fixture.path("documents")
+    chooser = strata.destination_chooser("Extract to")
+    strata.navigate_destination(chooser, destination)
+    strata.confirm_destination(chooser, "Extract here")
     strata.wait(
         lambda: (dialog := strata.dialog()) is not None and dialog.name == "Extract",
         "the password prompt",
     )
     strata.keyboard.press("Escape")
     strata.wait(lambda: strata.dialog() is None, "password prompt cancellation")
-    assert not destination.exists()
+    assert not (destination / "later.txt").exists()
     strata.open_context_menu("later.zip")
     strata.choose_menu_item("Extract here")
     strata.wait(lambda: fixture.path("later.txt").exists(), "later extraction")
     strata.wait(lambda: strata.dialog() is None, "extraction progress dismissal")
     assert strata.current_directory() == fixture.root.name
     assert fixture.path("later.txt").read_text() == "later extraction\n"
-    assert not destination.exists()
+    assert not (destination / "later.txt").exists()
     strata.entry("later.txt")
     collector = ArtifactCollector(test_name="cancelled-extract-to")
     strata.screenshot(collector.directory / "after.png")
@@ -331,7 +331,7 @@ def test_zipcrypto_collision_reopens_extract_dialog(strata, deflated, contents):
     assert dialog.find(role="label", name="This file is not a valid archive or is damaged.") is None
 
     strata.keyboard.type_text("zipsecret")
-    strata.pointer.click(strata.dialog_button("Extract"))
+    strata.keyboard.press("Return")
     extracted = fixture.path("some.txt")
     strata.wait(lambda: extracted.exists(), "the archive to extract with the correct password")
     assert extracted.read_text() == contents.decode()

@@ -395,7 +395,7 @@ fn bind_catalog_filter(
             catalog_card_visible(
                 appearance.get(),
                 card.has_css_class("light"),
-                card.tooltip_text().as_deref().unwrap_or_default(),
+                card.widget_name().as_str(),
                 &query.borrow(),
             )
         });
@@ -518,7 +518,7 @@ fn append_theme_card(
 ) -> gtk::FlowBoxChild {
     let card = gtk::Button::new();
     card.add_css_class("theme-card");
-    card.set_tooltip_text(Some(&theme.tokens.name));
+    card.set_widget_name(&theme.tokens.name);
     if theme_is_light(&theme.tokens) {
         card.add_css_class("light");
     }

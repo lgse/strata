@@ -95,7 +95,7 @@ fn append_date_format_option(content: &gtk::Box, manager: &Rc<PreferenceManager>
         .build();
     button.add_css_class("form-control");
     button.add_css_class("settings-choice");
-    button.set_tooltip_text(Some("Modified date format"));
+    crate::ui::accessibility::set_description(&button, Some("Modified date format"));
     crate::ui::accessibility::set_label(&button, "Modified date format");
     manager.bind_preference(&button, PreferenceManager::date_format, |widget, format| {
         if let Some(button) = widget.downcast_ref::<gtk::MenuButton>() {
@@ -261,6 +261,12 @@ fn append_browsing_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) 
             read: PreferenceManager::tenxer_mode,
             write: PreferenceManager::set_tenxer_mode,
         },
+        PreferenceSwitch {
+            title: "Show F1 Shortcuts button",
+            description: "Show the shortcuts button in the bottom bar. Item counts and clipboard status remain visible when the button is hidden. F1 always opens the full reference.",
+            read: PreferenceManager::show_keybinding_hints,
+            write: PreferenceManager::set_show_keybinding_hints,
+        },
     ] {
         append_preference_switch(&browsing, manager, switch);
     }
@@ -296,16 +302,44 @@ fn append_preference_switch(
 ) {
     let (row, toggle) = settings_option(switch.title, switch.description, (switch.read)(manager));
     bind_switch(manager, &toggle, switch.read, switch.write);
-    if matches!(
-        switch.title,
-        "Type to search" | "Keep arrows in file list" | "Mirror columns selection"
-    ) {
+    if matches!(switch.title, "Type to search" | "Keep arrows in file list") {
         bind_tenxer_unused_subtitle(&row, manager, switch.description);
     }
     if switch.title == "Include subfolders" {
         super::indent_row(&row);
     }
+    if switch.title == "10xer mode" {
+        append_experimental_label(&row, manager);
+    }
     content.append(&row);
+}
+
+fn append_experimental_label(row: &gtk::Box, manager: &Rc<PreferenceManager>) {
+    let Some(copy) = row.first_child().and_downcast::<gtk::Box>() else {
+        return;
+    };
+    let experimental = gtk::Label::new(None);
+    experimental.add_css_class("settings-option-description");
+    experimental.add_css_class("tenxer-experimental");
+    experimental.set_xalign(0.0);
+    experimental.set_wrap(true);
+    experimental.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    manager.bind_preference(
+        &experimental,
+        PreferenceManager::tenxer_mode,
+        move |widget, enabled| {
+            let label = widget
+                .downcast_ref::<gtk::Label>()
+                .expect("10xer experimental label");
+            label.set_text(if enabled {
+                crate::ui::shortcut_reference::EXPERIMENTAL_LABEL
+            } else {
+                ""
+            });
+            label.set_visible(enabled);
+        },
+    );
+    copy.append(&experimental);
 }
 
 fn bind_tenxer_unused_subtitle(
@@ -338,14 +372,17 @@ fn append_default_directory_option(content: &gtk::Box, manager: &Rc<PreferenceMa
     choose.set_valign(gtk::Align::Center);
     choose.add_css_class("form-control");
     choose.add_css_class("settings-choice");
-    choose.set_tooltip_text(Some("Select default directory"));
+    crate::ui::accessibility::set_description(&choose, Some("Select default directory"));
     super::super::accessibility::set_label(&choose, "Default directory");
 
     let reset = gtk::Button::with_label("Reset");
     reset.add_css_class("form-control");
     reset.set_valign(gtk::Align::Center);
     reset.set_sensitive(manager.default_directory().is_some());
-    reset.set_tooltip_text(Some("Restore the home directory as default"));
+    crate::ui::accessibility::set_description(
+        &reset,
+        Some("Restore the home directory as default"),
+    );
 
     let controls = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     controls.append(&choose);
@@ -441,6 +478,7 @@ fn append_sidebar_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
         icons::MONITOR,
         icons::DOCUMENTS,
         icons::DOWNLOADS,
+        icons::MUSIC,
         icons::PICTURES,
         icons::VIDEOS,
     ];
@@ -486,6 +524,12 @@ fn append_sidebar_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
             description: "Show the Downloads folder in the sidebar.",
             read: PreferenceManager::sidebar_show_downloads,
             write: PreferenceManager::set_sidebar_show_downloads,
+        },
+        PreferenceSwitch {
+            title: "Show Music in sidebar",
+            description: "Show the Music folder in the sidebar.",
+            read: PreferenceManager::sidebar_show_music,
+            write: PreferenceManager::set_sidebar_show_music,
         },
         PreferenceSwitch {
             title: "Show Pictures in sidebar",

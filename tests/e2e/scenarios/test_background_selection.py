@@ -40,6 +40,7 @@ def test_background_press_clears_selection_before_drag_intent(strata, mode):
     strata.wait(lambda: bool(strata.selected_names(root)), "marquee selection to survive release")
 
 
+@pytest.mark.usefixtures("unreserved_columns")
 def test_clicking_an_empty_column_clears_other_columns_without_closing_them(strata):
     strata.open_directory("archive")
     _select_files(strata)

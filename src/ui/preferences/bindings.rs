@@ -45,6 +45,11 @@ impl PreferenceChanges {
         self.latest.replace(preferences.clone());
     }
 
+    #[cfg(test)]
+    pub(super) fn listener_count(&self) -> usize {
+        self.listeners.borrow().len()
+    }
+
     pub(super) fn observe(&self, observer: Rc<dyn Fn()>) {
         self.observers.borrow_mut().push(observer);
     }
@@ -85,6 +90,26 @@ impl PreferenceChanges {
         (listener.refresh)(anchor.as_ref(), manager);
     }
 
+    pub(super) fn release_within(&self, root: &gtk::Widget) {
+        let released: Vec<_> = {
+            let mut listeners = self.listeners.borrow_mut();
+            let (released, kept) =
+                std::mem::take(&mut *listeners)
+                    .into_iter()
+                    .partition(|listener| {
+                        listener
+                            .anchor
+                            .upgrade()
+                            .is_some_and(|anchor| &anchor == root || anchor.is_ancestor(root))
+                    });
+            *listeners = kept;
+            released
+        };
+        for listener in &released {
+            listener.active.set(false);
+        }
+    }
+
     pub(super) fn notify(&self, manager: &PreferenceManager) {
         if self.notifying.replace(true) {
             return;
@@ -95,9 +120,8 @@ impl PreferenceChanges {
             for observer in observers {
                 observer();
             }
-            let listeners = self.listeners.borrow().clone();
             notify_live(
-                listeners,
+                &self.listeners,
                 |listener| listener.active.get() && listener.anchor.upgrade().is_some(),
                 |listener| {
                     if listener.active.get()
@@ -115,19 +139,18 @@ impl PreferenceChanges {
     }
 }
 
-pub(in crate::ui) fn notify_live<T>(
-    listeners: Vec<T>,
+pub(in crate::ui) fn notify_live<T: Clone>(
+    listeners: &RefCell<Vec<T>>,
     is_live: impl Fn(&T) -> bool,
     run: impl Fn(&T),
-) -> Vec<T> {
-    let live: Vec<T> = listeners
-        .into_iter()
-        .filter(|entry| is_live(entry))
-        .collect();
+) {
+    listeners.borrow_mut().retain(|entry| is_live(entry));
+    let live = listeners.borrow().clone();
     for entry in &live {
-        run(entry);
+        if is_live(entry) {
+            run(entry);
+        }
     }
-    live
 }
 
 #[cfg(test)]

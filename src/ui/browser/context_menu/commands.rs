@@ -16,6 +16,7 @@ pub(super) struct CommandMenus {
     pub before: Vec<gio::Menu>,
     pub after: Vec<gio::Menu>,
     pub group: gio::SimpleActionGroup,
+    pub transfer_sections: Option<[gio::Menu; 2]>,
     _actions: Vec<gio::SimpleAction>,
     _controls: [gtk::Widget; 2],
     refresh: Vec<Rc<dyn Fn(bool)>>,
@@ -28,32 +29,44 @@ impl CommandMenus {
         popover: &gtk::PopoverMenu,
         dispatch: &MenuDispatch,
         navigation: &Rc<super::keyboard::NativeMenuNavigation>,
+        transfer_buttons: Option<&[gtk::Button; 2]>,
     ) -> Self {
         let group = gio::SimpleActionGroup::new();
         let mut actions = Vec::new();
         let mut refresh = Vec::new();
-        let before_models = sections(
+        let (before_models, _) = sections(
             before,
-            &group,
-            &mut actions,
-            popover,
-            &mut refresh,
-            dispatch,
-            navigation,
+            SectionContext {
+                group: &group,
+                actions: &mut actions,
+                popover,
+                updates: &mut refresh,
+                dispatch,
+                navigation,
+                transfer_buttons: None,
+            },
         );
-        let after_models = sections(
+        let (after_models, transfer_sections) = sections(
             after,
-            &group,
-            &mut actions,
-            popover,
-            &mut refresh,
-            dispatch,
-            navigation,
+            SectionContext {
+                group: &group,
+                actions: &mut actions,
+                popover,
+                updates: &mut refresh,
+                dispatch,
+                navigation,
+                transfer_buttons,
+            },
         );
+        let transfer_sections = match transfer_sections {
+            [Some(single), Some(multiple)] => Some([single, multiple]),
+            _ => None,
+        };
         Self {
             before: before_models,
             after: after_models,
             group,
+            transfer_sections,
             _actions: actions,
             _controls: [before.clone(), after.clone()],
             refresh,
@@ -67,18 +80,33 @@ impl CommandMenus {
     }
 }
 
+struct SectionContext<'a> {
+    group: &'a gio::SimpleActionGroup,
+    actions: &'a mut Vec<gio::SimpleAction>,
+    popover: &'a gtk::PopoverMenu,
+    updates: &'a mut Vec<Rc<dyn Fn(bool)>>,
+    dispatch: &'a MenuDispatch,
+    navigation: &'a Rc<super::keyboard::NativeMenuNavigation>,
+    transfer_buttons: Option<&'a [gtk::Button; 2]>,
+}
+
 fn sections(
     source: &gtk::Widget,
-    group: &gio::SimpleActionGroup,
-    actions: &mut Vec<gio::SimpleAction>,
-    popover: &gtk::PopoverMenu,
-    updates: &mut Vec<Rc<dyn Fn(bool)>>,
-    dispatch: &MenuDispatch,
-    navigation: &Rc<super::keyboard::NativeMenuNavigation>,
-) -> Vec<gio::Menu> {
+    context: SectionContext<'_>,
+) -> (Vec<gio::Menu>, [Option<gio::Menu>; 2]) {
+    let SectionContext {
+        group,
+        actions,
+        popover,
+        updates,
+        dispatch,
+        navigation,
+        transfer_buttons,
+    } = context;
     let mut rows = Vec::new();
     collect(source, &mut rows);
     let mut sections = vec![gio::Menu::new()];
+    let mut transfer_sections = [None, None];
     for row in rows {
         let Some(button) = row else {
             if sections.last().is_some_and(|section| section.n_items() > 0) {
@@ -104,6 +132,11 @@ fn sections(
         update_item(&item, &button);
         let index = section.n_items();
         section.append_item(&item);
+        if let Some(transfer_index) = transfer_buttons
+            .and_then(|buttons| buttons.iter().position(|candidate| candidate == &button))
+        {
+            transfer_sections[transfer_index] = Some(section.clone());
+        }
 
         let weak_button = button.downgrade();
         let weak_section = section.downgrade();
@@ -127,8 +160,10 @@ fn sections(
                 }
             }
         });
-        let tooltip_refresh = refresh.clone();
-        button.connect_tooltip_text_notify(move |_| tooltip_refresh(false));
+        if let Some(option) = button.downcast_ref::<super::presentation::MenuOption>() {
+            let description_refresh = refresh.clone();
+            option.connect_menu_description_notify(move |_| description_refresh(false));
+        }
         if let Some(row) = button.child() {
             let mut child = row.first_child();
             while let Some(widget) = child {
@@ -191,7 +226,7 @@ fn sections(
         actions.push(action);
     }
     sections.retain(|section| section.n_items() > 0);
-    sections
+    (sections, transfer_sections)
 }
 
 fn collect(widget: &gtk::Widget, rows: &mut Vec<Option<gtk::Button>>) {
@@ -233,33 +268,34 @@ fn update_item(item: &gio::MenuItem, button: &gtk::Button) {
         item.set_label(Some(&label.replace('_', "__")));
     }
     let shortcut = labels.get(1).map(String::as_str).unwrap_or("");
-    let tooltip = button.tooltip_text();
-    let description = tooltip.as_deref().unwrap_or(shortcut);
+    let description = button
+        .downcast_ref::<super::presentation::MenuOption>()
+        .map(|option| option.menu_description())
+        .filter(|description| !description.is_empty())
+        .unwrap_or_else(|| shortcut.to_owned());
     item.set_attribute_value("x-strata-description", Some(&description.to_variant()));
-    item.set_attribute_value(
-        "x-strata-tooltip",
-        tooltip.as_ref().map(|text| text.to_variant()).as_ref(),
-    );
     item.set_attribute_value(
         "x-strata-danger",
         Some(&button.has_css_class("danger").to_variant()),
     );
-    if !shortcut.is_empty() {
-        let accelerator = shortcut
-            .split(" / ")
-            .next()
-            .unwrap_or(shortcut)
-            .replace("Ctrl+", "<Control>")
-            .replace("Shift+", "<Shift>")
-            .replace("Alt+", "<Alt>")
-            .replace('↵', "Return");
-        let accelerator = match accelerator.as_str() {
-            "Del" => "Delete".to_owned(),
-            "Enter" => "Return".to_owned(),
-            "Space" => "space".to_owned(),
-            "<Shift>Del" => "<Shift>Delete".to_owned(),
-            _ => accelerator,
-        };
-        item.set_attribute_value("accel", Some(&accelerator.to_variant()));
+    if shortcut.is_empty() {
+        item.set_attribute_value("accel", None);
+        return;
     }
+    let accelerator = shortcut
+        .split(" / ")
+        .next()
+        .unwrap_or(shortcut)
+        .replace("Ctrl+", "<Control>")
+        .replace("Shift+", "<Shift>")
+        .replace("Alt+", "<Alt>")
+        .replace('↵', "Return");
+    let accelerator = match accelerator.as_str() {
+        "Del" => "Delete".to_owned(),
+        "Enter" => "Return".to_owned(),
+        "Space" => "space".to_owned(),
+        "<Shift>Del" => "<Shift>Delete".to_owned(),
+        _ => accelerator,
+    };
+    item.set_attribute_value("accel", Some(&accelerator.to_variant()));
 }

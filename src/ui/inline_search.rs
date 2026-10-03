@@ -48,6 +48,8 @@ pub(super) struct SearchCollectionOptions {
     pub(super) single_click: Rc<dyn Fn(FileEntry)>,
     pub(super) selection_changed: SearchSelectionChanged,
     pub(super) focus_items: Rc<dyn Fn()>,
+    /// Runs after the displayed results (or the return to the directory) change.
+    pub(super) results_changed: Rc<dyn Fn()>,
 }
 
 enum Publication {
@@ -72,6 +74,7 @@ struct State {
     context_menu_trigger: RefCell<Option<super::browser::ContextMenuTrigger>>,
     activate: Rc<dyn Fn(FileEntry)>,
     selection_callbacks: RefCell<Vec<SearchSelectionChanged>>,
+    results_changed: Rc<dyn Fn()>,
 }
 
 impl State {
@@ -275,6 +278,37 @@ impl InlineSearch {
             .collect()
     }
 
+    pub(in crate::ui) fn visit_result_name_labels(&self, visit: &impl Fn(&gtk::Widget)) {
+        if let Some(state) = self.showing_results() {
+            for bound in state.collection.bound.borrow().iter() {
+                if let Some(label) = bound.rename_label.upgrade() {
+                    visit(&label);
+                }
+            }
+        }
+    }
+
+    pub(in crate::ui) fn focus_current(&self) -> bool {
+        let Some(state) = self.state.as_ref() else {
+            return false;
+        };
+        if state.stack.visible_child_name().as_deref() != Some("search") {
+            return false;
+        }
+        state.collection.view.grab_focus()
+    }
+
+    pub(super) fn selected_anchor(&self) -> Option<(gtk::Widget, FileEntry)> {
+        let state = self.state.as_ref()?;
+        if state.stack.visible_child_name().as_deref() != Some("search") {
+            return None;
+        }
+        let position = state.collection.current_position()?;
+        let entry = collection_entry(&state.collection.sorted, position)?;
+        let (_, widget) = state.collection.bound_at(position)?;
+        Some((widget, entry))
+    }
+
     pub fn focus_result(&self, path: &Path) -> bool {
         self.focus_result_with_selection(path, false)
     }
@@ -305,9 +339,9 @@ impl InlineSearch {
         )
     }
 
-    pub fn refresh_cut_rows(&self) {
+    pub fn refresh_mark_rows(&self) {
         if let Some(state) = self.state.as_ref() {
-            state.collection.refresh_cut_rows();
+            state.collection.refresh_mark_rows();
         }
     }
 
@@ -381,6 +415,104 @@ impl InlineSearch {
             show_directory_listing(state);
         }
     }
+
+    pub(super) fn replaces_listing(&self) -> bool {
+        self.state.is_some()
+    }
+
+    fn showing_results(&self) -> Option<&Rc<State>> {
+        self.state
+            .as_ref()
+            .filter(|state| state.stack.visible_child_name().as_deref() == Some("search"))
+    }
+
+    pub(in crate::ui) fn flush_query(&self) {
+        if let Some(state) = self.state.as_ref()
+            && let Some(binding) = state.query_binding.borrow().as_ref()
+        {
+            binding.flush();
+        }
+    }
+
+    /// Runs `apply` on the field's query binding, if results can replace the
+    /// listing.
+    pub(in crate::ui) fn with_query_binding<T>(
+        &self,
+        apply: impl FnOnce(&super::browser::FilterQueryBinding) -> T,
+    ) -> Option<T> {
+        self.state
+            .as_ref()?
+            .query_binding
+            .borrow()
+            .as_ref()
+            .map(apply)
+    }
+
+    pub(in crate::ui) fn results(&self) -> Option<Vec<SearchItem>> {
+        Some(self.showing_results()?.collection.items())
+    }
+
+    pub(in crate::ui) fn current_result(&self) -> Option<SearchItem> {
+        let collection = &self.showing_results()?.collection;
+        collection.item(collection.current_position()?)
+    }
+
+    pub(in crate::ui) fn results_view(&self) -> Option<gtk::Widget> {
+        Some(self.showing_results()?.collection.view.clone())
+    }
+
+    pub(in crate::ui) fn hits(&self) -> Option<(gtk::MultiSelection, gtk::Widget, Option<u32>)> {
+        let collection = &self.showing_results()?.collection;
+        Some((
+            collection.selection.clone(),
+            collection.view.clone(),
+            collection.current_position(),
+        ))
+    }
+
+    pub(in crate::ui) fn invert_selection(&self) -> bool {
+        let Some(state) = self.showing_results() else {
+            return false;
+        };
+        let selection = &state.collection.selection;
+        let count = selection.n_items();
+        if count == 0 {
+            return false;
+        }
+        let inverted = gtk::Bitset::new_range(0, count);
+        inverted.subtract(&selection.selection());
+        selection.set_selection(&inverted, &gtk::Bitset::new_range(0, count));
+        true
+    }
+
+    /// Moves the result cursor `steps` rows; `usize::MAX` jumps to an end. The
+    /// prompt keeps keyboard focus unless `take_focus`.
+    pub(in crate::ui) fn step(&self, direction: i32, steps: usize, take_focus: bool) -> bool {
+        let Some(state) = self.showing_results() else {
+            return false;
+        };
+        let collection = &state.collection;
+        let current = if steps == 0 {
+            super::browser::selected_cursor(&collection.selection)
+        } else {
+            collection.current_position()
+        };
+        let Some(target) = super::browser::results_step_target(
+            current,
+            collection.selection.n_items(),
+            direction,
+            steps,
+        ) else {
+            return true;
+        };
+        if take_focus {
+            collection.focus(target, true);
+        } else {
+            collection.selection.select_item(target, true);
+            super::browser::scroll_results_to(&collection.view, target, gtk::ListScrollFlags::NONE);
+        }
+        true
+    }
 }
 
 fn show_directory_listing(state: &State) {
@@ -394,6 +526,7 @@ fn show_directory_listing(state: &State) {
     state.stack.set_visible_child_name("files");
     state.updating.set(false);
     state.emit_selection_changed();
+    (state.results_changed)();
 }
 
 fn install_marquee(
@@ -440,11 +573,12 @@ fn install_marquee(
 pub(super) fn wrap(
     content: &impl IsA<gtk::Widget>,
     entry: &gtk::Entry,
-    root: Option<PathBuf>,
+    root: impl Fn() -> Option<PathBuf> + 'static,
     browser: &Rc<Browser>,
     options: SearchCollectionOptions,
 ) -> InlineSearch {
-    let Some(root) = root else {
+    let root = Rc::new(root);
+    let Some(initial_root) = root() else {
         return InlineSearch {
             widget: content.clone().upcast(),
             state: None,
@@ -458,6 +592,7 @@ pub(super) fn wrap(
         single_click,
         selection_changed,
         focus_items,
+        results_changed,
     } = options;
     let stack = gtk::Stack::builder().hexpand(true).vexpand(true).build();
     stack.add_named(content, Some("files"));
@@ -469,7 +604,7 @@ pub(super) fn wrap(
     let (collection, scroll, overlay) = build_collection(
         presentation,
         recursive.clone(),
-        root.clone(),
+        initial_root.clone(),
         CollectionBehavior {
             multiple_selection: multiple_selection.clone(),
             activate: activate.clone(),
@@ -496,6 +631,7 @@ pub(super) fn wrap(
         context_menu_trigger: RefCell::new(None),
         activate,
         selection_callbacks: RefCell::new(vec![selection_changed]),
+        results_changed,
     });
     let weak_state = Rc::downgrade(&state);
     state
@@ -599,7 +735,14 @@ pub(super) fn wrap(
                 show_directory_listing(state);
                 return;
             }
+            let Some(root) = root() else {
+                return;
+            };
             state.stack.set_visible_child_name("search");
+            if restart {
+                // As in Columns, a restarted query drops the previous query's hits.
+                update_results(state, Vec::new(), is_recursive);
+            }
             if state.collection.sorted.n_items() == 0 {
                 state.status.set_text("Searching…");
                 state.status.set_visible(true);
@@ -611,7 +754,7 @@ pub(super) fn wrap(
             let browser = weak_browser.clone();
             state.session.update(
                 super::search_session::SearchInput {
-                    root: root.clone(),
+                    root,
                     show_hidden,
                     recursive: is_recursive,
                 },
@@ -661,6 +804,7 @@ fn update_results(state: &State, items: Vec<SearchItem>, recursive: bool) {
     state.collection.update(&items, recursive);
     state.updating.set(false);
     state.emit_selection_changed();
+    (state.results_changed)();
 }
 
 pub(super) fn eligible_results(

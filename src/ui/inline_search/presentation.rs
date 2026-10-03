@@ -116,12 +116,13 @@ impl ResultWidgets {
                 name.set_text(&result.name);
                 origin.set_text(&path);
                 origin.set_visible(recursive);
-                self.widget.set_tooltip_text(Some(&path));
+                self.widget.set_widget_name(&path);
+                crate::ui::accessibility::set_description(&self.widget, Some(&path));
             }
             Labels::Icons { name, origin } => {
                 icons_cell::set_slot(&self.widget, size);
                 name.set_text(Some(&result.name));
-                name.set_tooltip_text(Some(&result.name));
+                crate::ui::accessibility::set_description(name, Some(&result.name));
                 origin.add_css_class("file-search-path");
                 origin.set_text(&path);
                 origin.set_visible(recursive);
@@ -143,7 +144,7 @@ impl ResultWidgets {
                 size,
             );
         }
-        browser::set_cut_result_style(&self.widget, &Location::local(&result.path));
+        browser::set_mark_result_style(&self.widget, &Location::local(&result.path));
     }
 }
 

@@ -381,7 +381,6 @@ impl PathCompletion {
                 .focusable(false)
                 .selectable(true)
                 .activatable(true)
-                .tooltip_text(&candidate.replacement)
                 .build();
             list_row.add_css_class("path-completion-row");
 

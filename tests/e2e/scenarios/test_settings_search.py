@@ -83,6 +83,12 @@ def test_settings_search_filters_navigates_and_clears(strata, width):
         lambda: strata.environment.read_preferences().get("date_format") == '"iso"',
         "date format selection persists from General",
     )
+    # The preference is saved before the choice popover pops down; a click while
+    # it is still open would only dismiss it.
+    strata.wait(
+        lambda: strata.window.find(role="label", name="Relative") is None,
+        "date format choices close",
+    )
     if width == 640:
         strata.pointer.click(strata.window.find(role="button", name="Search settings"))
     search = strata.wait(

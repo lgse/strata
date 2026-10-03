@@ -147,6 +147,49 @@ fn location_input_accepts_uri_schemes_for_local_and_remote_locations() {
 }
 
 #[test]
+fn relative_input_resolves_only_against_a_given_native_folder() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.navigate(Location::local("/fixture"));
+    let base = Some(Path::new("/fixture"));
+
+    assert_eq!(
+        browser.navigate_input("child/grandchild/"),
+        Err(LocationValidationError::NotAbsolute),
+        "the location bar still requires an absolute path"
+    );
+    assert_eq!(browser.active_location(), Some(Location::local("/fixture")));
+
+    for (input, expected) in [
+        (
+            "child/grandchild/",
+            Location::local("/fixture/child/grandchild"),
+        ),
+        ("./child/../../sibling", Location::local("/sibling")),
+        ("../../..", Location::local("/")),
+        ("/absolute", Location::local("/absolute")),
+        (
+            "~/Documents",
+            Location::local(glib::home_dir().join("Documents")),
+        ),
+        (
+            "smb://host/share/sub",
+            Location::uri("smb://host/share/sub"),
+        ),
+    ] {
+        browser.navigate(Location::local("/fixture"));
+        assert_eq!(browser.navigate_input_from(input, base), Ok(()), "{input}");
+        assert_eq!(browser.active_location(), Some(expected), "{input}");
+    }
+
+    browser.navigate(Location::local("/fixture"));
+    assert!(matches!(
+        browser.navigate_input_from("user@host:path", base),
+        Err(LocationValidationError::UnsupportedShorthand(_))
+    ));
+    assert_eq!(browser.active_location(), Some(Location::local("/fixture")));
+}
+
+#[test]
 fn location_input_rejects_unsupported_uri_schemes() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     browser.navigate(Location::local("/fixture"));

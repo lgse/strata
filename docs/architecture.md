@@ -356,12 +356,15 @@ particular, editable controls and native single-pane selection must not fall thr
 browser commands. The file chooser retains its separate, restricted keyboard policy
 when 10xer mode is off.
 
-When [10xer mode](10xer-mode.md) is on, that dispatcher skips the default
-`h`/`j`/`k`/`l` arrow remap and command pipeline and runs `keyboard/tenxer.rs`
-instead. The chooser installs the same dispatcher alongside its default map and
-delegates to it while the preference is on: **Enter** / **o** still confirm a
-file, **Esc** cancels after dismissing prompts or preview, and global search /
-Open With stay unavailable. Window-local browse / visual / chord / prompt state
+When [10xer mode](10xer-mode.md) is on, that dispatcher runs its 10xer stages
+(`tenxer_keys` and the `keyboard/` modules) ahead of the default pipeline. The
+chooser builds the same dispatcher with a `ChooserPolicy` and, while the
+preference is on, asks only its 10xer stages first (`ChooserKeys`); keys they
+leave go to the chooser's own restricted map. Window-wide stages such as global
+search, clipboard, and undo never see chooser keys, and `keyboard/chooser.rs`
+refuses commands the request does not allow: **Enter** / **o** confirm a file,
+**Esc** cancels after dismissing prompts or preview, and Open With, custom
+actions, and clipboard verbs stay unavailable. Window-local browse / visual / chord / prompt state
 lives in `ui/tenxer_mode.rs`, not on `Browser`. Per-window preference bindings
 update the shared `gtk::Application` accelerators idempotently; window destruction
 does not restore them while other windows still use 10xer mode.
@@ -373,8 +376,11 @@ pointer-operated. The preference is
 
 Initial binding applies the saved mode without transition teardown. Real transitions
 clear hidden queries and forced recursion, prompts, chords, and preview key ownership.
-Footer preference/observer callbacks and prompt controllers use weak owners so a
-closed window can release its view and bindings. `ui/shortcut_reference.rs` supplies
+Footer preference/observer callbacks and prompt controllers use weak owners.
+`gtk_window_destroy()` unrealizes a window but frees it only with its last
+reference, so window and chooser cleanup, their key controllers, and every
+preference binding anchored inside them are released on unrealize rather than on
+the destroy signal. `ui/shortcut_reference.rs` supplies
 shared Settings/F1 presentation; default F1 navigation remains view-specific.
 
 ## Capability boundaries

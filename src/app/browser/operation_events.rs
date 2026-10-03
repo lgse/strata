@@ -158,6 +158,9 @@ impl Browser {
             }
             OperationEvent::TransferProgress {
                 completed_items,
+                completed_files,
+                total_files,
+                current_file,
                 transferred_bytes,
                 total_bytes,
                 created_location,
@@ -168,6 +171,9 @@ impl Browser {
                 }
                 BrowserEvent::TransferProgress {
                     completed_items: *completed_items,
+                    completed_files: *completed_files,
+                    total_files: *total_files,
+                    current_file: current_file.clone(),
                     transferred_bytes: *transferred_bytes,
                     total_bytes: *total_bytes,
                 }
@@ -251,6 +257,7 @@ impl Browser {
 
     fn finish_operation(self: &Rc<Self>, context: &OperationContext, event: OperationEvent) {
         self.current_operation.set(None);
+        self.transfer_cancel_pending.set(false);
         if context.rename && self.rename_operation.get() == Some(context.request_id) {
             self.rename_operation.set(None);
         }
@@ -613,7 +620,7 @@ fn finish_claimed_replay(redo: bool, generation: u64, entry: &UndoEntry, event: 
     );
     let completed = match entry {
         _ if progress_marked => Vec::new(),
-        UndoEntry::Move(_) => moved_locations(event),
+        UndoEntry::Move(_) | UndoEntry::Group { .. } => moved_locations(event),
         UndoEntry::Rename(_) => Vec::new(),
         _ => deleted_locations(event),
     };
@@ -626,7 +633,9 @@ fn finish_claimed_replay(redo: bool, generation: u64, entry: &UndoEntry, event: 
     );
     let succeeded = match entry {
         _ if restoring => matches!(event, OperationEvent::Restored { .. }),
-        UndoEntry::Move(_) => matches!(event, OperationEvent::Pasted { .. }),
+        UndoEntry::Move(_) | UndoEntry::Group { .. } => {
+            matches!(event, OperationEvent::Pasted { .. })
+        }
         UndoEntry::Rename(_) => matches!(event, OperationEvent::Renamed { .. }),
         _ => matches!(event, OperationEvent::Deleted { .. }),
     };
@@ -641,9 +650,9 @@ fn finish_claimed_replay(redo: bool, generation: u64, entry: &UndoEntry, event: 
     };
     if redo {
         push_regenerated_undo(applied);
-    } else if !matches!(applied, UndoEntry::Merge { .. }) {
-        // A merge undo mixes deletes and restores that no single redo
-        // operation can replay, so it offers no redo.
+    } else if !matches!(applied, UndoEntry::Merge { .. } | UndoEntry::Group { .. }) {
+        // A merge undo mixes deletes and restores, and a group undo a move
+        // plus a trash, that no single redo operation can replay.
         push_pending_redo(applied);
     }
 }

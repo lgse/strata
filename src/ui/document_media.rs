@@ -218,7 +218,7 @@ fn show_error(row: &gtk::Box, source: &DocumentMedia, alt: &str, message: &str) 
     } = source
     {
         let label = gtk::Label::new(Some(&format!("${source}$")));
-        label.set_tooltip_text(Some(message));
+        crate::ui::accessibility::set_description(&label, Some(message));
         label.add_css_class("preview-document");
         row.append(&label);
         return;

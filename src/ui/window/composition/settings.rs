@@ -42,6 +42,7 @@ pub(super) fn install(
         preferences: preferences.clone(),
         notice: notice.clone(),
         guard,
+        shortcuts: content.footer.shortcuts.clone(),
     });
     let clicked_settings = launcher.clone();
     content
@@ -69,6 +70,7 @@ struct SettingsLauncher {
     preferences: Rc<PreferenceManager>,
     notice: UpdateNoticeHandler,
     guard: InstallGuard,
+    shortcuts: crate::ui::shortcut_footer::ShortcutFooter,
 }
 
 impl SettingsLauncher {
@@ -96,6 +98,7 @@ impl SettingsLauncher {
                 return;
             }
         }
+        self.shortcuts.cancel_chord();
         let layer = self.layer();
         self.blurred_root.set_blurred(true);
         layer.set_visible(true);
@@ -112,11 +115,14 @@ fn bind_update_notice(
 ) -> UpdateNoticeHandler {
     let available: AvailableUpdate = Rc::new(RefCell::new(None));
     let available_for_click = available.clone();
-    let parent = window.clone().upcast::<gtk::Window>();
+    let parent = window.upcast_ref::<gtk::Window>().downgrade();
     let guard = guard.clone();
     sidebar.update_notice.connect_clicked(move |_| {
         let Some((release, download_url, update_method)) = available_for_click.borrow().clone()
         else {
+            return;
+        };
+        let Some(parent) = parent.upgrade() else {
             return;
         };
         settings::show_update_dialog(
@@ -136,7 +142,10 @@ fn notice_handler(sidebar: &SidebarView, available: AvailableUpdate) -> UpdateNo
     let area = sidebar.update_area.clone();
     Rc::new(move |release| {
         if let Some((release, download_url, update_method)) = release {
-            button.set_tooltip_text(Some(&update_tooltip(&release, update_method)));
+            crate::ui::accessibility::set_description(
+                &button,
+                Some(&update_tooltip(&release, update_method)),
+            );
             label.set_text(&sidebar_update_label(&release));
             if release.kind == BuildKind::Stable {
                 button.remove_css_class("preview");

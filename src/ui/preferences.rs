@@ -4,7 +4,7 @@ use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
     fs, io,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     rc::Rc,
 };
 
@@ -18,6 +18,8 @@ use crate::{
 };
 
 use super::icons_cell::{MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE};
+
+pub(in crate::ui) const SEND_TO_RECENT_DESTINATIONS_LIMIT: usize = 3;
 
 mod bindings;
 #[cfg(test)]
@@ -105,9 +107,13 @@ pub(in crate::ui) struct Preferences {
     #[serde(default = "default_enabled")]
     sidebar_show_downloads: bool,
     #[serde(default = "default_enabled")]
+    sidebar_show_music: bool,
+    #[serde(default = "default_enabled")]
     sidebar_show_pictures: bool,
     #[serde(default = "default_enabled")]
     sidebar_show_videos: bool,
+    #[serde(default = "default_enabled")]
+    sidebar_expanded: bool,
     #[serde(default)]
     show_hidden: bool,
     #[serde(default)]
@@ -136,6 +142,10 @@ pub(in crate::ui) struct Preferences {
     thumbnail_workers: usize,
     #[serde(default = "default_icons_thumbnail_size")]
     icons_thumbnail_size: i32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    chooser_column_width: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    browser_column_width: Option<i32>,
     #[serde(default = "default_cross_volume_drop_strategy")]
     cross_volume_drop_strategy: String,
     #[serde(default)]
@@ -150,6 +160,33 @@ pub(in crate::ui) struct Preferences {
     folder_colors: HashMap<String, String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     custom_icons: HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    send_to_recent_destinations: HashMap<String, Vec<PathBuf>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    chooser_list_columns: Option<ListColumns>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    browser_list_columns: Option<ListColumns>,
+}
+
+/// Unscaled pixels; an unset `name` lets Name absorb the remaining space.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct ListColumns {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<i32>,
+    pub mode: i32,
+    pub size: i32,
+    #[serde(rename = "type")]
+    pub kind: i32,
+    pub modified: i32,
+}
+
+impl ListColumns {
+    fn is_valid(&self) -> bool {
+        self.name.is_none_or(|width| width > 0)
+            && [self.mode, self.size, self.kind, self.modified]
+                .iter()
+                .all(|width| *width > 0)
+    }
 }
 
 impl Default for Preferences {
@@ -188,8 +225,10 @@ impl Default for Preferences {
             sidebar_show_desktop: true,
             sidebar_show_documents: true,
             sidebar_show_downloads: true,
+            sidebar_show_music: true,
             sidebar_show_pictures: true,
             sidebar_show_videos: true,
+            sidebar_expanded: true,
             show_hidden: false,
             text_size: TextSize::default(),
             interface_renderer: InterfaceRenderer::default(),
@@ -204,6 +243,8 @@ impl Default for Preferences {
             auto_refresh_interval: 0,
             thumbnail_workers: crate::sandbox::browser::default_worker_limit(),
             icons_thumbnail_size: default_icons_thumbnail_size(),
+            chooser_column_width: None,
+            browser_column_width: None,
             cross_volume_drop_strategy: default_cross_volume_drop_strategy(),
             open_folder_after_drop: false,
             date_format: default_date_format(),
@@ -211,6 +252,9 @@ impl Default for Preferences {
             default_directory: None,
             folder_colors: HashMap::new(),
             custom_icons: HashMap::new(),
+            send_to_recent_destinations: HashMap::new(),
+            chooser_list_columns: None,
+            browser_list_columns: None,
         }
     }
 }
@@ -272,6 +316,7 @@ fn default_sidebar_order() -> Vec<String> {
         "desktop".to_owned(),
         "documents".to_owned(),
         "downloads".to_owned(),
+        "music".to_owned(),
         "pictures".to_owned(),
         "videos".to_owned(),
     ]
@@ -309,6 +354,12 @@ fn normalized_volume(volume: f64) -> f64 {
     }
 }
 
+pub(in crate::ui) fn is_valid_send_to_relative_path(path: &Path) -> bool {
+    let mut components = path.components();
+    matches!(components.next(), Some(Component::Normal(_)))
+        && components.all(|component| matches!(component, Component::Normal(_)))
+}
+
 pub struct PreferenceManager {
     preferences: RefCell<Preferences>,
     startup_interface_renderer: InterfaceRenderer,
@@ -344,6 +395,16 @@ impl PreferenceManager {
         preferences.icons_thumbnail_size = preferences
             .icons_thumbnail_size
             .clamp(MIN_ICONS_THUMBNAIL_SIZE, MAX_ICONS_THUMBNAIL_SIZE);
+        preferences.chooser_column_width =
+            preferences.chooser_column_width.filter(|width| *width > 0);
+        preferences.browser_column_width =
+            preferences.browser_column_width.filter(|width| *width > 0);
+        preferences.chooser_list_columns = preferences
+            .chooser_list_columns
+            .filter(ListColumns::is_valid);
+        preferences.browser_list_columns = preferences
+            .browser_list_columns
+            .filter(ListColumns::is_valid);
         super::motion::set_reduce_motion(preferences.reduce_motion);
         crate::util::set_date_format(crate::util::DateFormat::parse(&preferences.date_format));
 
@@ -405,6 +466,17 @@ impl PreferenceManager {
         apply: impl Fn(&gtk::Widget, T) + 'static,
     ) {
         self.changes.bind(self, anchor, read, apply);
+    }
+
+    /// A closed window can outlive its close while its own closures still
+    /// reference it, so its bindings end here rather than on destroy.
+    pub(in crate::ui) fn release_bindings_within(&self, root: &impl IsA<gtk::Widget>) {
+        self.changes.release_within(root.as_ref());
+    }
+
+    #[cfg(test)]
+    pub(in crate::ui) fn listener_count(&self) -> usize {
+        self.changes.listener_count()
     }
 
     /// Registers a process-lifetime callback invoked after preference changes are
@@ -733,6 +805,42 @@ impl PreferenceManager {
         self.save_preferences();
     }
 
+    pub fn chooser_column_width(&self) -> Option<i32> {
+        self.preferences.borrow().chooser_column_width
+    }
+
+    pub fn set_chooser_column_width(&self, width: Option<i32>) {
+        self.preferences.borrow_mut().chooser_column_width = width.filter(|width| *width > 0);
+        self.save_preferences();
+    }
+
+    pub fn browser_column_width(&self) -> Option<i32> {
+        self.preferences.borrow().browser_column_width
+    }
+
+    pub fn set_browser_column_width(&self, width: Option<i32>) {
+        self.preferences.borrow_mut().browser_column_width = width.filter(|width| *width > 0);
+        self.save_preferences();
+    }
+
+    pub fn browser_list_columns(&self) -> Option<ListColumns> {
+        self.preferences.borrow().browser_list_columns
+    }
+
+    pub fn set_browser_list_columns(&self, columns: Option<ListColumns>) {
+        self.preferences.borrow_mut().browser_list_columns = columns.filter(ListColumns::is_valid);
+        self.save_preferences();
+    }
+
+    pub fn chooser_list_columns(&self) -> Option<ListColumns> {
+        self.preferences.borrow().chooser_list_columns
+    }
+
+    pub fn set_chooser_list_columns(&self, columns: Option<ListColumns>) {
+        self.preferences.borrow_mut().chooser_list_columns = columns.filter(ListColumns::is_valid);
+        self.save_preferences();
+    }
+
     pub fn auto_refresh_interval(&self) -> u32 {
         self.preferences.borrow().auto_refresh_interval
     }
@@ -748,6 +856,39 @@ impl PreferenceManager {
 
     pub fn set_default_directory(&self, path: Option<PathBuf>) {
         self.preferences.borrow_mut().default_directory = path;
+        self.save_preferences();
+    }
+
+    pub(in crate::ui) fn send_to_recent_destinations(&self, device_id: &str) -> Vec<PathBuf> {
+        self.preferences
+            .borrow()
+            .send_to_recent_destinations
+            .get(device_id)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    pub(in crate::ui) fn remember_send_to_destination(
+        &self,
+        device_id: &str,
+        relative_path: &Path,
+        remove_relative_path: Option<&Path>,
+    ) {
+        if !is_valid_send_to_relative_path(relative_path) {
+            return;
+        }
+        {
+            let mut preferences = self.preferences.borrow_mut();
+            let recent = preferences
+                .send_to_recent_destinations
+                .entry(device_id.to_owned())
+                .or_default();
+            recent.retain(|path| {
+                path != relative_path && Some(path.as_path()) != remove_relative_path
+            });
+            recent.insert(0, relative_path.to_path_buf());
+            recent.truncate(SEND_TO_RECENT_DESTINATIONS_LIMIT);
+        }
         self.save_preferences();
     }
 
@@ -1032,6 +1173,15 @@ impl PreferenceManager {
         self.save_preferences();
     }
 
+    pub fn sidebar_show_music(&self) -> bool {
+        self.preferences.borrow().sidebar_show_music
+    }
+
+    pub fn set_sidebar_show_music(&self, visible: bool) {
+        self.preferences.borrow_mut().sidebar_show_music = visible;
+        self.save_preferences();
+    }
+
     pub fn sidebar_show_pictures(&self) -> bool {
         self.preferences.borrow().sidebar_show_pictures
     }
@@ -1050,7 +1200,16 @@ impl PreferenceManager {
         self.save_preferences();
     }
 
-    pub fn sidebar_places_visibility(&self) -> [bool; 9] {
+    pub fn sidebar_expanded(&self) -> bool {
+        self.preferences.borrow().sidebar_expanded
+    }
+
+    pub fn set_sidebar_expanded(&self, expanded: bool) {
+        self.preferences.borrow_mut().sidebar_expanded = expanded;
+        self.save_preferences();
+    }
+
+    pub fn sidebar_places_visibility(&self) -> [bool; 10] {
         let preferences = self.preferences.borrow();
         [
             preferences.sidebar_show_home,
@@ -1060,6 +1219,7 @@ impl PreferenceManager {
             preferences.sidebar_show_desktop,
             preferences.sidebar_show_documents,
             preferences.sidebar_show_downloads,
+            preferences.sidebar_show_music,
             preferences.sidebar_show_pictures,
             preferences.sidebar_show_videos,
         ]

@@ -2,6 +2,59 @@
 
 use super::*;
 
+struct BoundarySource(RecordingFileSource);
+
+impl FileSource for BoundarySource {
+    fn allows_navigation(&self, location: &Location) -> bool {
+        location
+            .native_path()
+            .is_some_and(|path| path.starts_with("/fixture/device"))
+    }
+
+    fn validate_location(&self, location: &Location) -> Result<(), LocationValidationError> {
+        self.0.validate_location(location)
+    }
+
+    fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle {
+        self.0.enumerate(request, emit)
+    }
+}
+
+#[test]
+fn navigation_boundary_blocks_trusted_routes_without_loading_outside_locations() {
+    let requests = Rc::new(Cell::new(0));
+    let browser = Browser::new(Rc::new(BoundarySource(RecordingFileSource {
+        request_count: requests.clone(),
+    })));
+    let root = Location::local("/fixture/device");
+    let child = Location::local("/fixture/device/child");
+    let outside = Location::local("/fixture/outside");
+    browser.navigate(root.clone());
+    assert!(!browser.can_go_parent());
+    browser.parent();
+    browser.navigate(outside.clone());
+    browser.descend(0, outside.clone());
+    browser.show_child(0, outside);
+    assert_eq!(browser.active_location(), Some(root.clone()));
+    assert_eq!(
+        requests.get(),
+        1,
+        "rejected navigation never enumerates an outside location"
+    );
+    assert!(
+        !browser.can_go_back(),
+        "rejected routes do not enter navigation history"
+    );
+    browser.navigate(child.clone());
+    assert!(browser.can_go_parent());
+    browser.parent();
+    assert_eq!(browser.active_location(), Some(root.clone()));
+    browser.back();
+    assert_eq!(browser.active_location(), Some(child));
+    browser.forward();
+    assert_eq!(browser.active_location(), Some(root));
+}
+
 #[test]
 fn column_snapshots_preserve_load_errors() {
     let browser = Browser::new(Rc::new(RetryFileSource {

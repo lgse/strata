@@ -586,7 +586,14 @@ fn merge_undo_uses_recorded_identity_when_trash_dates_collide() -> Result<(), Bo
 }
 
 #[test]
-fn merge_undo_restores_staged_originals_and_removes_created() -> Result<(), Box<dyn Error>> {
+fn merge_undo_restores_staged_originals_and_removes_created() {
+    crate::test_support::gtk_test(
+        "adapters::local_operations::tests::merge::merge_undo_restores_staged_originals_and_removes_created",
+        || check_merge_undo_restores_staged_originals_and_removes_created().expect("merge undo"),
+    );
+}
+
+fn check_merge_undo_restores_staged_originals_and_removes_created() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
         .map_err(|error| error.to_string())?;
@@ -599,6 +606,13 @@ fn merge_undo_restores_staged_originals_and_removes_created() -> Result<(), Box<
     fs::write(&shared, b"incoming wins")?;
     fs::write(&incoming, b"new")?;
     fs::write(&stays, b"keep me")?;
+    let bookmarks = crate::adapters::bookmarks::pinned_places_path();
+    fs::create_dir_all(bookmarks.parent().expect("bookmarks directory"))?;
+    let pin = |path: &Path| format!("{} Pin\n", gio::File::for_path(path).uri());
+    fs::write(
+        &bookmarks,
+        format!("{}{}{}", pin(&shared), pin(&incoming), pin(&stays)),
+    )?;
     let staged = staged_trash_fixture(root.path(), "shared.txt", &shared, b"old")?;
     let staged_path = staged
         .source
@@ -635,6 +649,10 @@ fn merge_undo_restores_staged_originals_and_removes_created() -> Result<(), Box<
     assert!(!staged_path.exists(), "the staged copy left the fake trash");
     assert_eq!(fs::read(&stays)?, b"keep me");
     assert!(target.exists(), "the destination folder itself survives");
+    assert_eq!(
+        fs::read_to_string(bookmarks)?,
+        format!("{}{}", pin(&shared), pin(&stays))
+    );
     Ok(())
 }
 

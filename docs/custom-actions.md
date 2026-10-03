@@ -177,7 +177,7 @@ confirm = false
 | `schema_version` | Must be `1`. A newer version is refused with an explanation. |
 | `id` | Directory name: lowercase letters, digits, `.`, `-`, `_`. Cannot change later. |
 | `name` | Menu label, 1–64 characters. |
-| `description` | Optional tooltip. |
+| `description` | Optional accessible description. |
 | `icon` | Bundled Lucide icon slug, for example `play`, `terminal`, `image`. |
 | `enabled` | `false` keeps the action in Settings but out of menus. |
 | `menu` | `submenu` (default) groups the action under **Actions**; `top` puts it in the menu body. |
@@ -339,7 +339,7 @@ collapses it. The header summarizes running, queued, and finished jobs. Rows use
 the action's icon and theme-accent status, with elapsed time and a check or X for
 finished results. Failure output appears only in Details, not a separate banner.
 The dashboard opens above the footer without covering it.
-Controls retain tooltips and accessible names. **Minimize** keeps history;
+Icon-only buttons retain tooltips; controls retain accessible names. **Minimize** keeps history;
 **Dismiss** removes one finished job,
 and **Clear finished** removes finished history without disturbing active work.
 
@@ -354,7 +354,7 @@ already written to disk, and Strata does not retry a failed or cancelled action.
   Import copies only `action.toml` and its entrypoint.
 - Strata never discovers or runs scripts found in browsed folders, and never
   installs runtimes, interpreters, or packages. A missing interpreter or program
-  leaves the action visible but disabled, with the reason in its tooltip.
+  leaves the action visible but disabled, with the reason in its accessible description.
 - Manifests and generated scripts are written owner-only (0600) inside an
   owner-only directory, and entrypoints are read as regular files: a symlinked
   manifest, entrypoint, action directory, or scratch directory is refused rather

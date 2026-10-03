@@ -160,6 +160,16 @@ impl ArchiveBrowser {
         let list = gtk::ListView::new(Some(selection.clone()), Some(factory));
         list.add_css_class("preview-archive-list");
         list.set_single_click_activate(true);
+        let focus = gtk::EventControllerFocus::new();
+        let selection_on_focus = selection.clone();
+        focus.connect_enter(move |_| {
+            if selection_on_focus.selected() == gtk::INVALID_LIST_POSITION
+                && selection_on_focus.n_items() > 0
+            {
+                selection_on_focus.set_selected(0);
+            }
+        });
+        list.add_controller(focus);
         let list_scroll = gtk::ScrolledWindow::builder()
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vscrollbar_policy(gtk::PolicyType::Automatic)
@@ -199,6 +209,15 @@ impl ArchiveBrowser {
 
     pub(super) fn list(&self) -> &gtk::ListView {
         &self.list
+    }
+
+    pub(super) fn clear_selection(&self) {
+        self.selection.set_can_unselect(true);
+        self.selection.set_selected(gtk::INVALID_LIST_POSITION);
+    }
+
+    pub(super) fn at_root(&self) -> bool {
+        self.path.borrow().is_empty()
     }
 
     pub(super) fn move_cursor(&self, delta: isize) -> bool {

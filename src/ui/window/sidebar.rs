@@ -32,6 +32,7 @@ pub(in crate::ui) fn build_sidebar(
         shell.update_label.clone(),
     );
     state.bind_order();
+    let bookmark_watch = super::bookmarks::watch_sidebar(&state);
     state.observe_navigation_and_trash();
     let (handlers, mount_handler) = connect_device_changes(&state);
     let recent_setting_handler = connect_recent_setting_changes(&state);
@@ -56,6 +57,7 @@ pub(in crate::ui) fn build_sidebar(
         mount_handler: RefCell::new(Some(mount_handler)),
         recent_setting_handler: RefCell::new(recent_setting_handler),
         release_watch,
+        bookmark_watch: RefCell::new(Some(bookmark_watch)),
     }
 }
 
@@ -173,6 +175,9 @@ impl SidebarState {
             rail: Cell::new(false),
             saved_width: Cell::new(None),
             update_label,
+            keycaps: RefCell::new(Vec::new()),
+            keycaps_shown: Cell::new(false),
+            visible_pins: RefCell::new(Vec::new()),
         })
     }
 

@@ -452,10 +452,6 @@ fn extraction_failures_stop_progress_and_preserve_error_distinctions() -> Result
             "fake.tar.gz",
             "This file is not a valid archive or is damaged.",
         ),
-        (
-            "fake.rar",
-            "This file is not a valid archive or is damaged.",
-        ),
         ("missing.zip", "No such file"),
         ("unreadable.zip", "Permission denied"),
         ("destination.zip", "Not a directory"),

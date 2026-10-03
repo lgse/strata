@@ -8,8 +8,10 @@ use crate::ui::browser::desktop::open_location;
 use crate::ui::browser::entry::{entry_icon, format_file_size};
 use crate::ui::browser::paths::{PinAction, compact_display_path, is_trash_root, pin_action_for};
 use crate::ui::browser::{PinStatus, ViewState};
-use crate::ui::controls::{form_check_button, modal_layout};
-use crate::ui::modal::{ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog};
+use crate::ui::controls::{ModalTone, form_check_button, modal_layout, properties_action};
+use crate::ui::modal::{
+    ModalHost, dismiss_modal_layer, modal_layer, remember_modal_focus, show_error_dialog,
+};
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::cell::Cell;
@@ -346,52 +348,8 @@ fn measurement_warning_text(summary: &DirectorySummary) -> Option<String> {
 }
 
 fn set_measurement_warning(warning: &gtk::Image, message: Option<&str>) {
-    warning.set_tooltip_text(message);
     warning.update_property(&[gtk::accessible::Property::Label(message.unwrap_or(""))]);
     warning.set_visible(message.is_some());
-}
-
-fn properties_action(icon: &str, label: &str) -> gtk::Button {
-    let content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    content.set_halign(gtk::Align::Center);
-    content.append(&crate::assets::primary_icon(icon, 14));
-    content.append(&gtk::Label::new(Some(label)));
-    let button = gtk::Button::builder().child(&content).build();
-    button.add_css_class("properties-action");
-    button.set_hexpand(true);
-    button
-}
-
-fn remember_properties_focus(layer: &gtk::Box, overlay: &gtk::Overlay) -> Rc<Cell<bool>> {
-    let origin = overlay
-        .root()
-        .and_then(|root| root.focus())
-        .map(|focus| focus.downgrade());
-    let overlay = overlay.downgrade();
-    let restore = Rc::new(Cell::new(true));
-    let restore_on_close = restore.clone();
-    // Restore after removal, when the modal focus trap no longer redirects focus.
-    layer.connect_parent_notify(move |layer| {
-        if layer.parent().is_some() || !layer.has_css_class("dismissing") || !restore_on_close.get()
-        {
-            return;
-        }
-        let Some(window) = overlay
-            .upgrade()
-            .and_then(|overlay| overlay.root())
-            .and_downcast::<gtk::Window>()
-        else {
-            return;
-        };
-        if crate::ui::window::visible_modal_layer(&window).is_none()
-            && let Some(origin) = origin.as_ref().and_then(glib::WeakRef::upgrade)
-            && origin.is_mapped()
-            && origin.root().as_ref() == Some(window.upcast_ref())
-        {
-            origin.grab_focus();
-        }
-    });
-    restore
 }
 
 impl ViewState {
@@ -464,7 +422,7 @@ impl ViewState {
         let details = gtk::Box::new(gtk::Orientation::Vertical, 0);
         details.add_css_class("properties-details");
         let location_value = properties_row(&details, "LOCATION", &compact_display_path(&location));
-        location_value.set_tooltip_text(Some(&location.display_path()));
+        crate::ui::accessibility::set_description(&location_value, Some(&location.display_path()));
         let trash_root = is_trash_root(&location);
         let measuring_directory = is_directory || trash_root;
         let initial_size = if measuring_directory {
@@ -482,7 +440,6 @@ impl ViewState {
         let size_spinner = gtk::Spinner::new();
         size_spinner.add_css_class("properties-size-spinner");
         size_spinner.set_valign(gtk::Align::Center);
-        size_spinner.set_tooltip_text(Some("Calculating folder size…"));
         crate::ui::accessibility::set_label(&size_spinner, "Calculating folder size");
         size_spinner.set_spinning(measuring_directory);
         size_spinner.set_visible(measuring_directory);
@@ -582,7 +539,6 @@ impl ViewState {
         let executable_label = "Allow executing file as a program (+x)";
         let executable = form_check_button(executable_label);
         executable.add_css_class("properties-executable");
-        executable.set_tooltip_text(Some(executable_label));
         let responsive_actions = layout.actions.clone();
         let responsive_executable = executable.clone();
         layout.content.add_tick_callback(move |content, _| {
@@ -613,8 +569,12 @@ impl ViewState {
         layout.body.append(&permissions);
 
         layout.actions.add_css_class("properties-actions");
-        let open = properties_action(crate::assets::icons::EXTERNAL_LINK, "Open");
-        let rename = properties_action(crate::assets::icons::PENCIL, "Rename");
+        let open = properties_action(
+            crate::assets::icons::EXTERNAL_LINK,
+            "Open",
+            ModalTone::Accent,
+        );
+        let rename = properties_action(crate::assets::icons::PENCIL, "Rename", ModalTone::Accent);
         rename.set_visible(!super::paths::is_trash_location(&location));
         rename.set_sensitive(
             entry.is_some() && (self.interactive || self.browser.selected_entries().len() == 1),
@@ -627,9 +587,11 @@ impl ViewState {
         let pin = properties_action(
             crate::assets::icons::PIN,
             pin_action.unwrap_or(PinAction::Pin).label(),
+            ModalTone::Accent,
         );
         pin.set_visible(self.interactive && pin_action.is_some());
-        let copy_path = properties_action(crate::assets::icons::COPY, "Copy path");
+        let copy_path =
+            properties_action(crate::assets::icons::COPY, "Copy path", ModalTone::Accent);
         layout.actions.append(&open);
         layout.actions.append(&rename);
         layout.actions.append(&pin);
@@ -637,7 +599,7 @@ impl ViewState {
         let content = layout.content;
 
         let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
-        let restore_focus = remember_properties_focus(&layer, &window_overlay);
+        let restore_focus = remember_modal_focus(&layer, &window_overlay);
         window_overlay.add_overlay(&layer);
         let metadata_load = entry.as_ref().filter(|_| !is_directory).and_then(|entry| {
             if crate::ui::raw_details::supports(entry) {
@@ -678,7 +640,10 @@ impl ViewState {
             for ((button, mask), permission) in
                 row.bits.iter().zip(masks).zip(["read", "write", "execute"])
             {
-                button.set_tooltip_text(Some(&format!("Toggle {subject} {permission} permission")));
+                crate::ui::accessibility::set_description(
+                    button,
+                    Some(&format!("Toggle {subject} {permission} permission")),
+                );
                 let edited_file = gio_file_for_location(&location);
                 let editor = permission_editor.clone();
                 let parent = layer.clone();
@@ -876,7 +841,6 @@ impl ViewState {
         let size_spinner = gtk::Spinner::new();
         size_spinner.add_css_class("properties-size-spinner");
         size_spinner.set_valign(gtk::Align::Center);
-        size_spinner.set_tooltip_text(Some("Calculating selection size…"));
         crate::ui::accessibility::set_label(&size_spinner, "Calculating selection size");
         size_spinner.set_spinning(true);
         let size = properties_size_row(&details, &format_file_size(0), &size_spinner);
@@ -896,7 +860,7 @@ impl ViewState {
         let content = layout.content;
 
         let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
-        remember_properties_focus(&layer, &window_overlay);
+        remember_modal_focus(&layer, &window_overlay);
         window_overlay.add_overlay(&layer);
 
         let close = layout.close.clone();

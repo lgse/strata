@@ -7,6 +7,41 @@ directories (FHS, NixOS/Guix system profiles, and NixOS wrappers), not inherited
 `PATH`. The executed path is the search hit; its canonical target must sit under
 FHS, `/run/wrappers/bin`, `/nix/store`, or `/gnu/store`.
 
+## Packaging non-FHS runtimes
+
+Packagers can set these optional environment variables **when compiling Strata**.
+They are embedded in the executable; setting them when launching Strata has no
+effect and does not override the sandbox's cleared environment.
+
+| Build-time variable | Default | Purpose |
+| --- | --- | --- |
+| `STRATA_SANDBOX_PATH` | `/usr/bin` | Colon-separated helper binary directories inside the sandbox |
+| `STRATA_SANDBOX_ROOT` | `/usr` | System runtime tree, bound read-only at the same absolute path |
+| `STRATA_SANDBOX_PRLIMIT` | `/usr/bin/prlimit` | Absolute resource-limit launcher path inside the sandbox |
+| `STRATA_SANDBOX_GDK_PIXBUF_MODULE_FILE` | Unset | Optional absolute gdk-pixbuf `loaders.cache` path passed to helpers |
+
+For example, a Nix package can compile with:
+
+```sh
+STRATA_SANDBOX_PATH='/nix/store/<ffmpeg>/bin:/nix/store/<imagemagick>/bin' \
+STRATA_SANDBOX_ROOT='/nix/store' \
+STRATA_SANDBOX_PRLIMIT='/nix/store/<util-linux>/bin/prlimit' \
+STRATA_SANDBOX_GDK_PIXBUF_MODULE_FILE='/nix/store/<pixbuf-loaders>/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache' \
+cargo build --release --locked
+```
+
+Replace the illustrative store paths with package dependency paths and include
+all required helper binary directories. The root replaces `/usr`, rather than
+adding another mount. The launcher, helpers, loaders cache, and its referenced
+modules and runtime dependencies must be reachable within the sandbox mounts.
+Use only trusted, admin-managed runtime trees: binding `/` or a user-data tree
+would expose private files to untrusted decoders. Values are taken literally;
+leave variables unset to use defaults, rather than setting empty values.
+
+These settings apply to one-shot, pooled browser, media, and RAR extraction
+sandboxes. They do not change host-side trusted bubblewrap lookup, namespace
+isolation, resource limits, or the other narrow optional runtime mounts.
+
 ## Providers
 
 - GDK Pixbuf/camera RAW, Poppler PDF, ImageMagick, and dcraw fallbacks normalize
@@ -33,6 +68,69 @@ FHS, `/run/wrappers/bin`, `/nix/store`, or `/gnu/store`.
   the pooled sandbox supervisors described below. QuickJS has no host APIs or module loader,
   and user equations are passed as data, not evaluated as JavaScript;
   SVG resource resolution is disabled and only validated PNG output returns.
+
+## Local 3D model previews
+
+Quick Preview accepts STL, 3MF and FreeCAD (`.FCStd`) files. STL and single-part
+3MF geometry use a fixed-angle software render; FreeCAD uses its saved image.
+A 3MF package with exactly one usable embedded PNG uses that image, even if other
+candidates are corrupt or its geometry spans multiple model parts. Two usable
+images are ambiguous: Quick Preview tries geometry, while browser thumbnailing
+leaves the normal file icon. Multipart geometry is not rendered.
+
+Browser thumbnails extract embedded images only, through the **existing browser
+worker pool** and its normal cache, cancellation and slow-job admission. There is
+no geometry fallback, new pool or thumbnail job for STL. The decoder does not read
+model XML when selecting an embedded image. Missing or unusable images leave the
+file icon, with the existing failure cache preventing immediate retries.
+
+Heavy Quick Previews (models, PDFs, workbooks and DOCX) share one process-wide
+permit and use one-shot sandboxes. Cancellation retains that permit until the
+helper exits. Format is carried explicitly across the sandbox boundary, including
+for symlinks; the UI supplies the render palette. Geometry PNG cache keys include
+format, size and palette, and open model previews reload on palette changes.
+
+Input, package and geometry limits are centralized in
+`src/services/model_preview.rs`. These are compile-time constants, not Settings
+options or environment variables:
+
+| Constant | Limit | Applies to |
+| --- | --- | --- |
+| `MAX_MODEL_INPUT_BYTES` | 128 MiB (134,217,728 bytes) | Input file, including embedded-thumbnail requests |
+| `MAX_MODEL_XML_BYTES` | 128 MiB, independently of compressed file size | Unpacked 3MF model XML |
+| `MAX_3MF_ARCHIVE_ENTRIES` | 256 | All ZIP entries in a 3MF package |
+| `MAX_FREECAD_ARCHIVE_ENTRIES` | 4096 | All ZIP entries in a FreeCAD package |
+| `MAX_3MF_OBJECTS` | 1024 | Objects in the 3MF model XML |
+| `MAX_3MF_BUILD_ITEMS` | 1024 | Build items in the 3MF model XML |
+| `MAX_3MF_COMPONENT_DEPTH` | 16 | Component nesting below a build item (depth zero) |
+| `MAX_3MF_RELATIONSHIPS_BYTES` | 64 KiB | Unpacked `_rels/.rels` in a 3MF package |
+| `MAX_MODEL_TRIANGLES` | 2 million | Parsed/emitted triangles |
+| `MAX_MODEL_VERTICES` | 2 million | 3MF vertices |
+| `MAX_MODEL_COMPONENT_REFERENCES` | 100,000 | Stored component references |
+| `MAX_MODEL_COMPONENT_EXPANSIONS` | 100,000 | Expanded objects, including pending expansion work |
+| `MAX_MODEL_RASTER_WORK` | 100 million | Triangle bounding-box pixel visits |
+
+Package entry caps are checked **before looking for an embedded thumbnail**. A
+package exceeding its entry cap is rejected even if it contains a usable PNG:
+Quick Preview reports “Model package entry limit exceeded” and the browser keeps
+the normal file icon. The `_rels/.rels` byte limit also applies before thumbnail
+selection in 3MF packages. Object, build-item and component limits apply when
+geometry is parsed, not when a usable embedded image is selected. Component
+admission checks precede expansion-stack allocation. Render output is at most
+800×800 pixels.
+
+**These input-size limits are not RAM limits.** Input, parsed geometry and codec
+allocations consume additional memory. Rendering releases source bytes first and
+projects triangles in two passes rather than retaining a second mesh. Existing
+sandbox CPU/wall-time and 2-GiB address-space limits remain a last-resort boundary;
+address space is not a resident-memory guarantee or the total application budget.
+
+Embedded-image limits live in `src/sandbox_helper/model/embedded.rs`: at most 16
+candidates, 4 MiB per candidate, 16 MiB total candidate bytes read and 16 megapixels
+(16×1024×1024 pixels) total admitted to decoding. Oversized/invalid images are not
+usable; exhausting a total inspection budget fails the operation rather than
+assuming uninspected candidates are invalid. Only bounded PNG results return to
+GTK. Thumbnail output remains at most 256×256, in the image's original colors.
 
 ## Browser worker pool
 
@@ -116,7 +214,7 @@ runs from idle after the frame, outside GTK binding/layout callbacks. Identical
 in-flight file requests are reused, and presentation refreshes do not resubmit
 them. This removes fixed scheduling waits, not the time needed for I/O or decoding.
 With more than one render slot, slow
-RAW/PDF/video work leaves capacity for ordinary images. Browser metadata admission
+RAW/PDF/video and embedded-model work leaves capacity for ordinary images. Browser metadata admission
 uses the same viewport policy; cheap filesystem metadata is published before
 media inspection or directory counting. Each completed detail is published
 without waiting for other probes. Viewport fills keep one active batch per folder,
@@ -136,7 +234,7 @@ not a wall-clock guarantee: long probes, source I/O, and the existing fill budge
 can still delay details; a one-worker configuration must serialize decoding and
 probing.
 
-Quick previews and document media (images, Mermaid diagrams, equations) reuse
+Still-image quick previews and document media (images, Mermaid diagrams, equations) reuse
 the same supervisor implementation through a **second pool**, so an interactive
 Space preview never queues behind a scrolled directory's thumbnail flood. Both
 pools share the launcher thread, idle retirement, per-job isolation, and cache
@@ -390,8 +488,8 @@ have separate limits, not a machine-global scheduler.
 
 | State | Bound / behavior |
 | --- | --- |
-| Startup or seek | 22 seconds from request to first frame; includes a 4-second probe, hardware attempts of at most 4 seconds each / 8 seconds combined, and up to 8 seconds for software. |
-| Active decoding | 8 seconds for a complete next record, not a deadline restarted by each byte. A stalled audio playback clock also fails after 8 seconds. |
+| Startup or seek | 22 seconds from request to first frame; includes a 4-second probe, hardware attempts of at most 4 seconds each / 8 seconds combined, and up to 8 seconds for software. Isolated seeks restart at once; bursts within 200 ms coalesce to the settled position. |
+| Active decoding | 8 seconds for a complete next record, not a deadline restarted by each byte. A stall mid-playback (frozen audio clock, decoder/worker failure, audio-sink error) restarts at the last position up to 3 times, then fails with the last error. |
 | Backpressure | A full queue stops consumption and propagates pressure through bounded pipes; it does not accumulate a whole clip. Waiting for the consumer is not charged as decoder progress time. |
 | Paused | Keep position, frame and bounded queues for 30 seconds, then cancel the worker, drop PCM output/queues, and stop the polling timer. The displayed frame and position remain. Resume or a paused seek starts a new bounded decode. |
 | Close / selection change / destruction | Cancel promptly; pipe/queue waits check cancellation at 10–20-ms intervals. Kill/reap the renderer and its sandbox descendants. No join of a blocked pipe reader on the GTK thread. |
@@ -406,8 +504,9 @@ plateau for every toolkit/driver.
 Bubblewrap retains the existing namespace/mount policy:
 
 - new user, mount, PID, IPC, UTS, cgroup, and network namespaces;
-- read-only `/usr`, required runtime libraries and font/ImageMagick configuration,
-  the Strata executable, and exactly one canonicalized regular input file;
+- read-only `/usr` (or the build-configured runtime tree), required runtime
+  libraries and font/ImageMagick configuration, the Strata executable, and
+  exactly one canonicalized regular input file;
 - writable private mode-0700 output directories for image providers and a
   size-limited (512 MiB) private `/tmp`; media uses pipes, not output mounts;
 - an empty environment, nonexistent home, and no desktop, session-bus, or
