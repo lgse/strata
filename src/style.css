@@ -4197,10 +4197,12 @@ textview > popover.menu button.model:disabled {
   opacity: 0.42;
 }
 
+/* Preserve GTK's ownership of native images; use their allocation as the icon slot. */
 .actions-context-popover modelbutton image,
 .actions-context-popover button.model image,
 .item-context-icon,
 .folder-context-icon {
+  min-width: 1.25em;
   opacity: 0.72;
 }
 
