@@ -357,12 +357,28 @@ pub(crate) use pattern::{filter_name_matches, filter_query_allows_typos};
 
 type NameScorer = fn(&SearchItem, &str) -> Option<i64>;
 
+/// Folders a transfer would refuse, so a folder search never lists them.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct RefusedFolders {
+    /// Folders being moved or copied, which cannot hold themselves.
+    pub(crate) trees: Vec<PathBuf>,
+    /// The folder a move would leave its items in.
+    pub(crate) folder: Option<PathBuf>,
+}
+
+impl RefusedFolders {
+    pub(crate) fn refuses(&self, path: &Path) -> bool {
+        self.folder.as_deref() == Some(path) || self.trees.iter().any(|tree| path.starts_with(tree))
+    }
+}
+
 #[derive(Clone)]
 enum SearchScorer {
     Name(NameScorer),
     Paths {
         frecency: Arc<Frecency>,
-        folders_only: bool,
+        /// Only folders are hits, never these.
+        folders: Option<Arc<RefusedFolders>>,
     },
 }
 
@@ -372,16 +388,14 @@ impl SearchScorer {
             Self::Name(scorer) => QueryScorer::Name(*scorer, normalized_query),
             Self::Paths {
                 frecency,
-                folders_only: true,
-            } if normalized_query.trim().is_empty() => QueryScorer::Folders(frecency),
-            Self::Paths {
+                folders: Some(refused),
+            } if normalized_query.trim().is_empty() => QueryScorer::Folders(frecency, refused),
+            Self::Paths { frecency, folders } => QueryScorer::Paths {
+                matcher: PathMatcher::new(&PathQuery::parse(normalized_query)),
+                query: normalized_query,
                 frecency,
-                folders_only,
-            } => QueryScorer::Paths(
-                PathMatcher::new(&PathQuery::parse(normalized_query)),
-                frecency,
-                *folders_only,
-            ),
+                folders: folders.as_deref(),
+            },
         }
     }
 
@@ -390,7 +404,7 @@ impl SearchScorer {
         matches!(
             self,
             Self::Paths {
-                folders_only: true,
+                folders: Some(_),
                 ..
             }
         )
@@ -400,27 +414,43 @@ impl SearchScorer {
 /// A scorer bound to one query, owned by one thread.
 enum QueryScorer<'a> {
     Name(NameScorer, &'a str),
-    Paths(PathMatcher, &'a Frecency, bool),
+    Paths {
+        matcher: PathMatcher,
+        query: &'a str,
+        frecency: &'a Frecency,
+        folders: Option<&'a RefusedFolders>,
+    },
     /// Every folder, the most visited first, then the shallowest.
-    Folders(&'a Frecency),
+    Folders(&'a Frecency, &'a RefusedFolders),
 }
 
 impl QueryScorer<'_> {
     fn score(&mut self, item: &SearchItem) -> Option<i64> {
         match self {
             Self::Name(scorer, query) => scorer(item, query),
-            Self::Folders(frecency) => item.is_directory.then(|| {
-                frecency.bias(&item.path, true) * (i64::from(u8::MAX) + 1) - i64::from(item.depth)
-            }),
-            Self::Paths(matcher, frecency, folders_only) => {
-                if *folders_only && !item.is_directory {
+            Self::Folders(frecency, refused) => (item.is_directory && !refused.refuses(&item.path))
+                .then(|| {
+                    frecency.bias(&item.path, true) * (i64::from(u8::MAX) + 1)
+                        - i64::from(item.depth)
+                }),
+            Self::Paths {
+                matcher,
+                query,
+                frecency,
+                folders,
+            } => {
+                if let Some(refused) = folders
+                    && (!item.is_directory || refused.refuses(&item.path))
+                {
                     return None;
                 }
                 let text = item.path_score(matcher)?;
-                Some(path_match::rank(
-                    text,
-                    frecency.bias(&item.path, item.is_directory),
-                ))
+                let exact = if folders.is_some() {
+                    path_match::exact_bonus(&item.search_path, item.search_name_start, query)
+                } else {
+                    0
+                };
+                Some(path_match::rank(text, frecency.bias(&item.path, item.is_directory)) + exact)
             }
         }
     }
@@ -492,17 +522,19 @@ pub fn index_paths(
         recursive,
         SearchScorer::Paths {
             frecency: Arc::new(frecency),
-            folders_only: false,
+            folders: None,
         },
     )
 }
 
 /// The 10xer destination picker: like [`index_paths`] across the whole tree
-/// below `root`, but only folders are hits.
+/// below `root`, but only folders are hits, and never `refused` ones. A folder
+/// the whole query names outright leads.
 pub fn index_folder_paths(
     root: PathBuf,
     show_hidden: bool,
     frecency: Frecency,
+    refused: RefusedFolders,
 ) -> (SearchHandle, Receiver<SearchEvent>) {
     index_scoped(
         vec![root],
@@ -510,7 +542,7 @@ pub fn index_folder_paths(
         true,
         SearchScorer::Paths {
             frecency: Arc::new(frecency),
-            folders_only: true,
+            folders: Some(Arc::new(refused)),
         },
     )
 }
@@ -986,8 +1018,20 @@ fn directory_walker(
         .overrides(overrides.clone())
         .max_depth(Some(1))
         // Nested mounts are walked separately, never through both roots.
-        .filter_entry(move |entry| entry.depth() == 0 || !boundaries.contains(entry.path()));
+        .filter_entry(move |entry| {
+            entry.depth() == 0
+                || !(boundaries.contains(entry.path()) || is_kernel_filesystem(entry.path()))
+        });
     builder.build()
+}
+
+/// Kernel interfaces rather than files. Walking them from `/` would fill the
+/// index with process and device entries; a search rooted inside one still
+/// lists them, since a root is never filtered.
+fn is_kernel_filesystem(path: &Path) -> bool {
+    ["/proc", "/sys", "/dev"]
+        .iter()
+        .any(|mount| path == Path::new(mount))
 }
 
 struct TraversalBudget {

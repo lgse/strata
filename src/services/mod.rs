@@ -92,7 +92,7 @@ pub(crate) use remote_download::{
 };
 pub(crate) use search::{RESULT_LIMIT as SEARCH_RESULT_LIMIT, refresh_search_indexes_for_rename};
 pub(crate) use search::{
-    SearchCoverage, SearchEvent, SearchHandle, SearchItem, filter_name_matches,
+    RefusedFolders, SearchCoverage, SearchEvent, SearchHandle, SearchItem, filter_name_matches,
     filter_query_allows_typos, fold_for_search, index_filter, index_folder_paths, index_paths,
     index_trees,
 };

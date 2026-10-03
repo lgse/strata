@@ -51,6 +51,7 @@ fn restart_intent_cancellation_and_drop_retire_worker_delivery() {
                 root: fixture.path().into(),
                 show_hidden: false,
                 scope: SearchScope::Subfolders,
+                refused: Default::default(),
             };
             let session = SearchSession::default();
             let delivered = Rc::new(RefCell::new(Vec::new()));
@@ -109,6 +110,7 @@ fn scope_change_retires_the_recursive_worker_for_the_same_query() {
                 root: fixture.path().into(),
                 show_hidden: false,
                 scope,
+                refused: Default::default(),
             };
             let session = SearchSession::default();
             let delivered = Rc::new(RefCell::new(Vec::new()));

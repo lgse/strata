@@ -94,8 +94,6 @@ impl BrowserView {
             // The hidden directory's range would otherwise keep the footer
             // mark and the first Esc. Its fill stays, and the prompt keeps focus.
             self.state.browser.take_visual();
-            // Hit highlights follow theme changes like find's.
-            super::find::register_highlight_view(&self.state);
             self.clear_other_column_filters(&target);
             target.apply(query, true);
         }

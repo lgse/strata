@@ -1191,6 +1191,7 @@ impl ViewState {
                         root: path,
                         show_hidden,
                         scope,
+                        refused: Default::default(),
                     },
                     &query,
                     restart,

@@ -644,6 +644,8 @@ impl BrowserView {
             send_to_menu_test_override: RefCell::new(None),
             browser,
         });
+        // Find, filter, and search highlights all follow theme changes.
+        find::register_highlight_view(&state);
 
         let weak_state = Rc::downgrade(&state);
         *pending_submit.borrow_mut() = Some(Rc::new(move || {

@@ -32,8 +32,7 @@ type Rgb = (u16, u16, u16);
 
 thread_local! {
     static HIGHLIGHT_COLORS: Cell<Option<(Rgb, Rgb)>> = const { Cell::new(None) };
-    /// Windows that have shown find or search highlights, so a theme change
-    /// can recolor them.
+    /// Every view, so a theme change can recolor its highlights.
     static HIGHLIGHT_VIEWS: RefCell<Vec<Weak<ViewState>>> = const { RefCell::new(Vec::new()) };
 }
 
@@ -238,7 +237,6 @@ impl BrowserView {
         if query.is_empty() {
             return false;
         }
-        register_highlight_view(&self.state);
         self.state.find.replace(FindState {
             query: query.to_owned(),
             backward,

@@ -37,7 +37,7 @@ fn heap_and_parallel_scoring_match_a_full_stable_sort() {
             Path::new("/fixture"),
             [(Path::new("/fixture/archive").to_path_buf(), 8.0)],
         )),
-        folders_only: false,
+        folders: None,
     };
     for (query, scorer) in [
         ("needle", &fuzzy),

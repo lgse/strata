@@ -21,30 +21,50 @@ fn seed_report_names(fixture: &KeyboardFixture) {
 }
 
 /// Bound name labels (Columns and List) or inscriptions (Icons) that carry
-/// find highlight attributes, including views not currently shown.
-pub(super) fn highlighted_names(widget: &gtk::Widget) -> Vec<String> {
-    fn collect(widget: &gtk::Widget, names: &mut Vec<String>) {
+/// highlight attributes, including views not currently shown.
+fn highlighted_labels(widget: &gtk::Widget) -> Vec<(String, gtk::pango::AttrList)> {
+    fn collect(widget: &gtk::Widget, labels: &mut Vec<(String, gtk::pango::AttrList)>) {
         if let Some(label) = widget.downcast_ref::<gtk::Label>()
-            && label.attributes().is_some()
+            && let Some(attributes) = label.attributes()
         {
-            names.push(label.text().to_string());
+            labels.push((label.text().to_string(), attributes));
         }
         if let Some(label) = widget.downcast_ref::<gtk::Inscription>()
-            && label.attributes().is_some()
+            && let Some(attributes) = label.attributes()
         {
-            names.push(label.text().unwrap_or_default().to_string());
+            labels.push((label.text().unwrap_or_default().to_string(), attributes));
         }
         let mut child = widget.first_child();
         while let Some(current) = child {
-            collect(&current, names);
+            collect(&current, labels);
             child = current.next_sibling();
         }
     }
-    let mut names = Vec::new();
-    collect(widget, &mut names);
+    let mut labels = Vec::new();
+    collect(widget, &mut labels);
+    labels
+}
+
+pub(super) fn highlighted_names(widget: &gtk::Widget) -> Vec<String> {
+    let mut names: Vec<_> = highlighted_labels(widget)
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect();
     names.sort();
     names.dedup();
     names
+}
+
+/// Every color the highlighted names are drawn with.
+fn highlight_colors(widget: &gtk::Widget) -> Vec<String> {
+    highlighted_labels(widget)
+        .into_iter()
+        .flat_map(|(_, attributes)| attributes.attributes())
+        .filter_map(|attribute| {
+            let color = attribute.downcast_ref::<gtk::pango::AttrColor>()?;
+            Some(color.color().to_str().to_string())
+        })
+        .collect()
 }
 
 pub(super) fn type_and_submit(fixture: &KeyboardFixture, prompt: Key, text: &str) {
@@ -667,7 +687,11 @@ fn tenxer_filter_ignores_include_subfolders_and_survives_view_rebuilds() {
             assert!(first.press(Key::f, ModifierType::empty()));
             first.shortcuts.prompt().set_text("gamma");
             assert!(first.press(Key::Return, ModifierType::empty()));
-            for mode in [BrowserMode::List, BrowserMode::Icons, BrowserMode::Columns] {
+            for (mode, accent, drawn) in [
+                (BrowserMode::List, "#aa0000", "#aaaa00000000"),
+                (BrowserMode::Icons, "#00aa00", "#0000aaaa0000"),
+                (BrowserMode::Columns, "#0000aa", "#00000000aaaa"),
+            ] {
                 first.view.set_view_mode(mode);
                 wait_results(&first, &["gamma-report.md"]);
                 assert_eq!(
@@ -675,6 +699,8 @@ fn tenxer_filter_ignores_include_subfolders_and_survives_view_rebuilds() {
                     Some("gamma"),
                     "{mode:?}"
                 );
+                crate::ui::browser::find::apply_theme(accent, "#000000");
+                wait_until(|| highlight_colors(&first.view.widget()).contains(&drawn.to_owned()));
                 wait_until(|| first.shortcuts.filter_mark().as_deref() == Some("filter: gamma"));
                 assert_eq!(
                     revealed_filter_funnels(&first.view.widget()),

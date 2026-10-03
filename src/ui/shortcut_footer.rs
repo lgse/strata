@@ -1210,6 +1210,18 @@ impl ShortcutFooter {
         self.prompt.candidates.step(delta);
     }
 
+    /// Lets the next candidates, listed for new text, choose their first row
+    /// again.
+    pub(in crate::ui) fn forget_candidate_step(&self) {
+        self.prompt.candidates.forget_step();
+    }
+
+    /// Whether the chosen candidate was picked with **↑** / **↓** rather than
+    /// being the best match.
+    pub(in crate::ui) fn candidate_stepped(&self) -> bool {
+        self.prompt.candidates.stepped()
+    }
+
     pub(in crate::ui) fn chosen_candidate(&self) -> Option<PathBuf> {
         self.prompt.candidates.chosen()
     }

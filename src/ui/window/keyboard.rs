@@ -225,6 +225,7 @@ fn bind_candidate_prompts(dispatcher: &Dispatcher) {
     let destinations = dispatcher.destinations.clone();
     let targets = dispatcher.destination_targets.clone();
     dispatcher.shortcuts.connect_prompt_changed(move |kind, _| {
+        shortcuts.forget_candidate_step();
         if let Some(browser) = browser.upgrade() {
             prompts::show_history_candidates(&shortcuts, &history, &browser, kind);
             prompts::show_folder_candidates(
@@ -253,10 +254,7 @@ fn bind_candidate_prompts(dispatcher: &Dispatcher) {
             if !kind.picks_history() && kind != crate::ui::tenxer_mode::Prompt::Go {
                 return;
             }
-            shortcuts.dismiss_prompt();
-            if !view.focus_visible_results() {
-                view.browser().focus_active();
-            }
+            prompts::return_to_listing(&shortcuts, &view, &view.browser());
             view.keyboard_navigation();
             view.browser()
                 .navigate_with_selection(crate::model::Location::local(path), true);
