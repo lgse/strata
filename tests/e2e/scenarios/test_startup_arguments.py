@@ -4,6 +4,10 @@
 import os
 import subprocess
 
+import pytest
+
+from harness import tree
+from harness.process import terminate
 from harness.application import binary_path
 from harness.environment import process_environment
 
@@ -108,29 +112,39 @@ def test_multiple_arguments_include_non_utf8_directory_and_file(strata):
     )
 
 
-def test_startup_with_closed_stdout_and_stderr_pipes(strata):
+@pytest.mark.parametrize("closed_streams", ["stdout", "stderr", "both"])
+def test_startup_with_closed_pipes(strata, closed_streams):
     target_dir = strata.fixture.path("closed-pipe-target")
     target_dir.mkdir()
     (target_dir / "target.txt").write_text("pipe regression\n")
 
+    strata.application.stop()
     variables = process_environment()
     variables.update(strata.environment.variables())
     variables.update(strata.display.environment)
+    variables["RUST_LOG"] = "trace"
 
     process = subprocess.Popen(
         [binary_path(), str(target_dir)],
         env=variables,
         cwd=strata.fixture.root,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        start_new_session=True,
+        stdout=subprocess.PIPE if closed_streams in ("stdout", "both") else subprocess.DEVNULL,
+        stderr=subprocess.PIPE if closed_streams in ("stderr", "both") else subprocess.DEVNULL,
     )
-    assert process.stdout is not None
-    assert process.stderr is not None
-    process.stdout.close()
-    process.stderr.close()
+    try:
+        for stream in (process.stdout, process.stderr):
+            if stream is not None:
+                stream.close()
 
-    def target_window_exists():
-        windows = strata.application.application_node.find_all(role="frame", name="Strata")
-        return any(window.find(name="target.txt") is not None for window in windows)
+        def target_window_exists():
+            assert process.poll() is None, f"Strata exited during startup: {process.returncode}"
+            application = tree.find_application("io.github.lgse.Strata")
+            if application is None:
+                return False
+            windows = application.find_all(role="frame", name="Strata")
+            return any(window.find(name="target.txt") is not None for window in windows)
 
-    strata.wait(target_window_exists, "a window opened even when stdout and stderr pipes are closed")
+        strata.wait(target_window_exists, "primary startup with closed output pipes")
+    finally:
+        terminate(process)

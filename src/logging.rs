@@ -9,10 +9,10 @@ use std::{
 use tracing_subscriber::{
     filter::{LevelFilter, Targets},
     layer::SubscriberExt,
+    util::SubscriberInitExt,
 };
 
-/// An `io::Write` wrapper that swallows `ErrorKind::BrokenPipe` errors so logging
-/// continues silently when stdout or stderr is connected to a closed pipe.
+// Closed launcher pipes must not turn logging failures into panics at a GLib boundary.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct PipeSafeWriter<W>(pub W);
 
@@ -34,7 +34,6 @@ impl<W: Write> Write for PipeSafeWriter<W> {
     }
 }
 
-/// Initializes global tracing subscriber with broken-pipe safety.
 pub fn initialize() {
     let targets = match env::var("RUST_LOG") {
         Ok(var) => Targets::from_str(&var).unwrap_or_default(),
@@ -46,7 +45,7 @@ pub fn initialize() {
         .log_internal_errors(false)
         .finish()
         .with(targets);
-    let _ = tracing::subscriber::set_global_default(subscriber);
+    let _ = subscriber.try_init();
 }
 
 #[cfg(test)]
