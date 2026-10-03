@@ -148,12 +148,13 @@ impl ListFactory {
             edit.bind(&binding.entry.location);
         }
         row.bind_labels(item, &binding.entry, pending_name.as_deref());
-        crate::ui::browser::find::highlight_name(
+        crate::ui::browser::find::highlight_listing_name(
             row.name.upcast_ref(),
             state
                 .as_ref()
                 .and_then(|state| state.find_highlight())
                 .as_deref(),
+            &self.filter_query.borrow(),
         );
         if let Some(edit) = &edit {
             edit.display.set_visible(!edit.is_editing());

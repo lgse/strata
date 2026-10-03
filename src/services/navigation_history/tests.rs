@@ -147,3 +147,19 @@ fn excluded_folder_does_not_consume_a_result_slot() {
         );
     }
 }
+
+#[test]
+fn frecency_snapshot_weighs_visits_by_recency_below_the_root() {
+    let directory = tempfile::tempdir().expect("history directory");
+    let history = NavigationHistory::open(directory.path().join("history.json"));
+    let now = 10 * WEEK_SECONDS;
+    history.record_at(Path::new("/work/stale"), now - 2 * WEEK_SECONDS);
+    history.record_at(Path::new("/work/fresh"), now - 10);
+    history.record_at(Path::new("/elsewhere/fresh"), now - 10);
+
+    let frecency = history.frecency_within_at(Path::new("/work"), now);
+    let stale = frecency.bias(Path::new("/work/stale"), true);
+    let fresh = frecency.bias(Path::new("/work/fresh"), true);
+    assert!(fresh > stale && stale > 0);
+    assert_eq!(frecency.bias(Path::new("/elsewhere/fresh"), true), 0);
+}

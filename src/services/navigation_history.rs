@@ -10,7 +10,10 @@ use std::{
 use gio::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use super::search::{SearchItem, fold_for_search};
+use super::{
+    path_match::Frecency,
+    search::{SearchItem, fold_for_search},
+};
 
 const HISTORY_VERSION: u32 = 1;
 const MAX_ENTRIES: usize = 1_000;
@@ -100,6 +103,21 @@ impl NavigationHistory {
         if let Err(error) = save_entries(&self.path, &entries) {
             tracing::warn!(%error, path = %self.path.display(), "folder history could not be saved");
         }
+    }
+
+    /// The current frecency of the visited folders below `root`.
+    pub(crate) fn frecency_within(&self, root: &Path) -> Frecency {
+        self.frecency_within_at(root, unix_time())
+    }
+
+    fn frecency_within_at(&self, root: &Path, now: u64) -> Frecency {
+        Frecency::within(
+            root,
+            self.entries
+                .borrow()
+                .iter()
+                .map(|entry| (entry.path.clone(), frecency_score(entry, now))),
+        )
     }
 
     pub(crate) fn search(&self, query: &str) -> Vec<SearchItem> {

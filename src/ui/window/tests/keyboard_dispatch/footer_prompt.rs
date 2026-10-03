@@ -424,6 +424,7 @@ fn tenxer_filter_commits_results_without_touching_the_hidden_directory() {
                 assert_eq!(fixture.shortcuts.prompt_label().as_deref(), Some("filter:"));
                 fixture.shortcuts.prompt().set_text("report");
                 wait_results(&fixture, &IMMEDIATE_REPORTS);
+                wait_until(|| highlighted_names(&fixture.view.widget()) == IMMEDIATE_REPORTS);
                 assert!(
                     fixture.shortcuts.prompt_has_focus(),
                     "{mode:?}: typing filters live and stays in the prompt"
@@ -532,6 +533,13 @@ fn tenxer_filter_commits_results_without_touching_the_hidden_directory() {
                 assert!(fixture.press(Key::Escape, none));
                 wait_until(|| fixture.view.listing_filter().is_none());
 
+                commit_filter(&fixture, "md rep");
+                wait_results(&fixture, &["gamma-report.md"]);
+                wait_until(|| highlighted_names(&fixture.view.widget()) == ["gamma-report.md"]);
+                assert!(fixture.press(Key::Escape, none));
+                wait_until(|| fixture.view.listing_filter().is_none());
+                wait_until(|| highlighted_names(&fixture.view.widget()).is_empty());
+
                 commit_filter(&fixture, "reports");
                 wait_until(|| {
                     fixture
@@ -566,15 +574,15 @@ fn fixture_name(fixture: &KeyboardFixture) -> &str {
 }
 
 #[test]
-fn tenxer_filter_follows_live_scope_and_survives_view_rebuilds() {
+fn tenxer_filter_ignores_include_subfolders_and_survives_view_rebuilds() {
     crate::test_support::gtk_test(
-        "ui::window::tests::keyboard_dispatch::footer_prompt::tenxer_filter_follows_live_scope_and_survives_view_rebuilds",
+        "ui::window::tests::keyboard_dispatch::footer_prompt::tenxer_filter_ignores_include_subfolders_and_survives_view_rebuilds",
         || {
             let first = KeyboardFixture::new();
             let second = KeyboardFixture::new();
             let preferences = enable_tenxer(&first);
             second.shortcuts.bind_preferences(&preferences);
-            preferences.set_filter_include_subfolders(false);
+            preferences.set_filter_include_subfolders(true);
             for fixture in [&first, &second] {
                 seed_filter_tree(fixture);
                 focus_files(fixture);
@@ -582,15 +590,13 @@ fn tenxer_filter_follows_live_scope_and_survives_view_rebuilds() {
                 wait_results(fixture, &IMMEDIATE_REPORTS);
             }
 
-            preferences.set_filter_include_subfolders(true);
-            for fixture in [&first, &second] {
-                wait_results(fixture, &ALL_REPORTS);
-                wait_until(|| fixture.shortcuts.count_text().0 == "4 items");
-            }
-            preferences.set_filter_include_subfolders(false);
-            for fixture in [&first, &second] {
-                wait_results(fixture, &IMMEDIATE_REPORTS);
-                wait_until(|| fixture.view.item_view_has_focus());
+            for include_subfolders in [false, true] {
+                preferences.set_filter_include_subfolders(include_subfolders);
+                pump(200);
+                for fixture in [&first, &second] {
+                    wait_results(fixture, &IMMEDIATE_REPORTS);
+                    wait_until(|| fixture.shortcuts.count_text().0 == "3 items");
+                }
             }
 
             assert!(first.press(Key::f, ModifierType::empty()));
@@ -720,10 +726,7 @@ fn tenxer_search_covers_the_current_tree_and_restores_the_filter() {
                     location_ends_with(browser.active_location(), fixture_name(&fixture)),
                     "{mode:?}: applying the search opens nothing"
                 );
-                assert_eq!(
-                    highlighted_names(&fixture.view.widget()),
-                    Vec::<String>::new()
-                );
+                wait_until(|| highlighted_names(&fixture.view.widget()) == ALL_REPORTS);
 
                 type_and_submit(&fixture, Key::slash, "deep-report");
                 assert_eq!(
@@ -737,7 +740,7 @@ fn tenxer_search_covers_the_current_tree_and_restores_the_filter() {
                 );
                 wait_until(|| highlighted_names(&fixture.view.widget()) == ["deep-report.txt"]);
                 assert!(fixture.press(Key::Escape, none));
-                wait_until(|| highlighted_names(&fixture.view.widget()).is_empty());
+                wait_until(|| highlighted_names(&fixture.view.widget()) == ALL_REPORTS);
 
                 let selected = selected_result_names(&fixture);
                 assert!(fixture.press(Key::r, ModifierType::CONTROL_MASK));
@@ -771,6 +774,14 @@ fn tenxer_search_covers_the_current_tree_and_restores_the_filter() {
                 type_search(&fixture, "report");
                 wait_results(&fixture, &ALL_REPORTS);
                 fixture.shortcuts.prompt().set_text("");
+                assert!(fixture.press(Key::Escape, none));
+                wait_filter_restored(&fixture, "gamma", &["gamma-report.md"]);
+
+                type_search(&fixture, "deep reports");
+                wait_results(&fixture, &["deep-report.txt"]);
+                wait_until(|| highlighted_names(&fixture.view.widget()) == ["deep-report.txt"]);
+                assert!(fixture.press(Key::Escape, none));
+                wait_until(|| fixture.view.item_view_has_focus());
                 assert!(fixture.press(Key::Escape, none));
                 wait_filter_restored(&fixture, "gamma", &["gamma-report.md"]);
 

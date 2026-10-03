@@ -45,7 +45,7 @@ fn restart_intent_cancellation_and_drop_retire_worker_delivery() {
             let input = SearchInput {
                 root: fixture.path().into(),
                 show_hidden: false,
-                recursive: true,
+                scope: SearchScope::Subfolders,
             };
             let session = SearchSession::default();
             let delivered = Rc::new(RefCell::new(Vec::new()));
@@ -100,16 +100,16 @@ fn scope_change_retires_the_recursive_worker_for_the_same_query() {
             std::fs::write(fixture.path().join("alpha.txt"), "a").expect("alpha file");
             std::fs::write(fixture.path().join("nested/alpha-deep.txt"), "a")
                 .expect("nested alpha file");
-            let input = |recursive| SearchInput {
+            let input = |scope| SearchInput {
                 root: fixture.path().into(),
                 show_hidden: false,
-                recursive,
+                scope,
             };
             let session = SearchSession::default();
             let delivered = Rc::new(RefCell::new(Vec::new()));
             let output = delivered.clone();
             session.update(
-                input(true),
+                input(SearchScope::Subfolders),
                 "alpha",
                 false,
                 Rc::new(move |batch| output.borrow_mut().push(batch.items.len())),
@@ -119,7 +119,7 @@ fn scope_change_retires_the_recursive_worker_for_the_same_query() {
             delivered.borrow_mut().clear();
             let output = delivered.clone();
             session.update(
-                input(false),
+                input(SearchScope::Folder),
                 "alpha",
                 false,
                 Rc::new(move |batch| output.borrow_mut().push(batch.items.len())),

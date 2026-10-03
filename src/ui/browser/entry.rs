@@ -4,14 +4,19 @@ use crate::adapters::directory_summary::{DirectorySummary, summarize_directory};
 use crate::adapters::gio_file_for_location;
 use crate::model::{EntryKind, FileEntry, MetadataValue};
 use crate::services::{
-    PreviewContent, content_family, filter_name_matches, fold_for_search, has_plain_text_extension,
-    is_extensionless_dotfile,
+    PathMatcher, PathQuery, PreviewContent, content_family, filter_name_matches, fold_for_search,
+    has_plain_text_extension, is_extensionless_dotfile,
 };
 use gtk::gio;
 use gtk::prelude::*;
 use std::cell::{Cell, RefCell};
 use std::path::Path;
 use std::rc::Rc;
+
+thread_local! {
+    /// The 10xer **f** matcher for the last filter query, reused across rows.
+    static FILTER_TERMS: RefCell<Option<(String, PathMatcher)>> = const { RefCell::new(None) };
+}
 
 pub(in crate::ui) fn format_file_size(bytes: u64) -> String {
     const UNITS: [&str; 5] = ["B", "kB", "MB", "GB", "TB"];
@@ -154,8 +159,26 @@ pub(in crate::ui) fn entry_icon(entry: &FileEntry) -> &'static str {
 /// `query` must already be folded through `fold_for_search` by the caller.
 pub(super) fn entry_matches(value: &str, show_hidden: bool, query: &str) -> bool {
     (show_hidden || !model_is_hidden(value))
-        && (query.is_empty()
-            || filter_name_matches(&fold_for_search(model_display_name(value)), query))
+        && (query.trim().is_empty() || {
+            let name = fold_for_search(model_display_name(value));
+            if crate::ui::tenxer_mode::chrome_suppressed() {
+                with_filter_terms(query, |terms| terms.score(&name, 0).is_some())
+            } else {
+                filter_name_matches(&name, query)
+            }
+        })
+}
+
+/// Runs `apply` with the 10xer **f** matcher for the folded `query`: the
+/// **s** search's fuzzy terms, matched against a name alone.
+pub(super) fn with_filter_terms<R>(query: &str, apply: impl FnOnce(&mut PathMatcher) -> R) -> R {
+    FILTER_TERMS.with_borrow_mut(|cached| {
+        if cached.as_ref().is_none_or(|(cached, _)| cached != query) {
+            *cached = Some((query.to_owned(), PathMatcher::new(&PathQuery::parse(query))));
+        }
+        let (_, matcher) = cached.as_mut().expect("filter terms cached above");
+        apply(matcher)
+    })
 }
 
 pub(in crate::ui) fn icon_for_name(name: &str) -> &'static str {

@@ -4,7 +4,10 @@
 //! the session. Polling holds only a weak reference; cancellation/drop removes the source and
 //! drops the worker handle/receiver. Delivery runs without session borrows and may restart it.
 
-use crate::services::{SearchCoverage, SearchEvent, SearchHandle, SearchItem, index_filter};
+use crate::services::{
+    NavigationHistory, SearchCoverage, SearchEvent, SearchHandle, SearchItem, index_filter,
+    index_paths,
+};
 use gtk::glib;
 use std::{
     cell::{Cell, RefCell},
@@ -14,11 +17,35 @@ use std::{
     time::Duration,
 };
 
+/// What a listing's filter field matches.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::ui) enum SearchScope {
+    /// Names in the listing's folder.
+    Folder,
+    /// Names in the folder and its subfolders.
+    Subfolders,
+    /// The 10xer **f** filter: fuzzy terms against names in the folder.
+    FolderTerms,
+    /// The 10xer **s** search: fuzzy terms across paths below the folder.
+    Paths,
+}
+
+impl SearchScope {
+    pub(in crate::ui) fn recursive(self) -> bool {
+        matches!(self, Self::Subfolders | Self::Paths)
+    }
+
+    /// Whether hits match fzf-style terms and highlight what each matched.
+    pub(in crate::ui) fn fuzzy(self) -> bool {
+        matches!(self, Self::FolderTerms | Self::Paths)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct SearchInput {
     pub(super) root: PathBuf,
     pub(super) show_hidden: bool,
-    pub(super) recursive: bool,
+    pub(super) scope: SearchScope,
 }
 
 pub(super) struct SearchBatch {
@@ -129,8 +156,15 @@ impl SearchSession {
             return;
         }
         self.cancel();
-        let (handle, receiver) =
-            index_filter(input.root.clone(), input.show_hidden, input.recursive);
+        let (handle, receiver) = match input.scope {
+            scope if scope.fuzzy() => index_paths(
+                input.root.clone(),
+                input.show_hidden,
+                scope.recursive(),
+                NavigationHistory::shared().frecency_within(&input.root),
+            ),
+            scope => index_filter(input.root.clone(), input.show_hidden, scope.recursive()),
+        };
         self.0.worker.replace(Some(Worker {
             input,
             handle,

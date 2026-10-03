@@ -61,7 +61,7 @@ control that might be midway through synchronization.
 | Sort key/direction, folders-first | Shared defaults for new columns; an existing column keeps its own sort, selection and navigation. Explicit field sorting updates the persisted defaults. Camera Photos libraries instead open in column-local Device order (see below). |
 | Type-to-search, opening search results directly | Keyboard/search actions read the current manager value at dispatch. |
 | 10xer mode | Interactive browsers and the portal file chooser bind pane Close/filter/refresh/sort chrome and the Yazi-style keymap at construction, including lazily rebuilt views. Window Search hides in interactive browsers. Window Close, chooser Accept/Cancel, and List column headings stay. Off by default; toggle with `Ctrl+Shift+M` or Settings → General → Browsing. |
-| Include subfolders | Every pane filter binds at construction, including lazy view rebuilds. Enabled by default; disabling indexes only immediate files and folders, without traversing descendants. Live changes cancel pending queries and invalidate old result streams before refreshing the active filter. Global search remains recursive. |
+| Include subfolders | Every pane filter binds at construction, including lazy view rebuilds. Enabled by default; disabling indexes only immediate files and folders, without traversing descendants. Live changes cancel pending queries and invalidate old result streams before refreshing the active filter. Global search remains recursive. 10xer mode ignores it: entering or leaving the mode re-runs active filters in the new scope. |
 | Element glow | Shared semantic glow color is applied by `ThemeManager` when the appearance preferences change, before Settings opens and live across windows, dialogs, menus, and rebuilt views. Focus outlines and ordinary depth shadows are preserved. |
 | Reduced motion | Set before any window is constructed; animation helpers read the current process-wide value. |
 | Theme, Omarchy following, text size | `ThemeManager` applies shared CSS when theme selection, Omarchy following, text size, or element glow change; controls and theme-card selections bind to preferences through `ThemeManager::bind_theme_preference`. Newly saved custom themes appear in other open theme pages. Missing themes/Omarchy use the existing fallback policy. |
@@ -216,6 +216,8 @@ on by default. Turn it off to match only immediate files and folders, without
 redundant path subtitles. The choice applies to pane filtering in Columns, Icons,
 and List views, not global search.
 Changing it refreshes active filters across windows and is saved for next launch.
+[10xer mode](10xer-mode.md) does not use it: there **f** filters only the
+current folder and **s** always searches below it.
 
 ## 10xer mode
 
@@ -231,7 +233,8 @@ the Yazi-style map with footer prompts (`/` `?` `f` `s` `a` `r` `g Space`
 `z`/`Z`), `g`-chord keycaps, and non-conflicting GUI keys (`Ctrl+C`/`X`/`V`,
 `F2`, `F5`, `Delete`, …). Keyboard navigation stays in the Columns, List, and
 Icons panes. The sidebar, window header, footer, and other controls outside
-those panes stay pointer-operated. **`s`** is current-folder recursive name search;
+those panes stay pointer-operated. **`s`** is current-folder recursive fuzzy path
+search and **`f`** filters the current folder with the same fuzzy terms;
 **`S`** is unbound. Toggle with **Ctrl+Shift+M**, close the window with **Q**. The
 preference is defined in `src/ui/preferences.rs`, saved as `tenxer_mode` in
 `settings.toml`, and live-updates every window. Real mode transitions clear
@@ -242,9 +245,10 @@ closing the drawer. Default **Ctrl+F** then follows the saved **Include subfolde
 choice again. Initial preference binding applies chrome and accelerators without
 transition teardown or a file-list focus grab at disabled startup.
 Context-menu shortcut hints and the F1 / `~` reference list the currently
-active map (including the kept Ctrl/F-key conventions). **Type to search** and
-**Keep arrows in file list** stay saved and editable; while the mode is on they
-are unused and those rows show the subtitle **Not used in 10xer mode.**
+active map (including the kept Ctrl/F-key conventions). **Type to search**,
+**Keep arrows in file list**, and **Include subfolders** stay saved and
+editable; while the mode is on they are unused and those rows show the subtitle
+**Not used in 10xer mode.**
 **Mirror columns selection** and **Single-click previews** keep applying, so in
 Columns the cursor opens the folder or preview under it. **i** opens the next
 Miller column without focusing it, or toggles the folder-peek popover in List

@@ -36,8 +36,9 @@ as in [keyboard navigation](keyboard-navigation.md).
 **Ctrl+Shift+M** also works while a browser text field has focus; modal dialogs
 keep their own input handling.
 
-**Type to search** and **Keep arrows in file list** stay saved. While the mode
-is on they are unused, and those Settings rows show **Not used in 10xer mode.**
+**Type to search**, **Keep arrows in file list**, and **Include subfolders**
+stay saved. While the mode is on they are unused, and those Settings rows show
+**Not used in 10xer mode.**
 **Mirror columns selection** stays in effect and drives the Columns cursor.
 
 Leaving the mode clears footer prompts (including typed credentials), chords,
@@ -478,8 +479,8 @@ listing row closes the prompt and keeps that selection.
 | --- | --- |
 | **/** / **?** | Find next / previous name in this listing. Does not hide rows. Enter keeps matching substring highlights; **Esc** from the listing dismisses them. |
 | **n** / **N** | Repeat the last find. **N** reverses. |
-| **f** | Filter this listing (hides non-matches). The footer shows `filter: …` until dismissed. |
-| **s** | Recursive name search in the current folder (cap 100). The footer shows `search: …` until dismissed. Prompt **Esc** keeps hits; listing **Esc** follows the precedence above. |
+| **f** | Fuzzy name filter for this folder (hides non-matches). The footer shows `filter: …` until dismissed. |
+| **s** | Fuzzy path search below the current folder (cap 100). The footer shows `search: …` until dismissed. Prompt **Esc** keeps hits; listing **Esc** follows the precedence above. |
 | **z** | Jump to a visited folder (name match, then frecency) |
 | **Z** | Jump to a recently visited folder (last visit first) |
 | **a** | Create |
@@ -512,10 +513,20 @@ count, including zero, with a file/folder breakdown in its accessible descriptio
 **Enter**, and **Ctrl+R** act on the results, never on the hidden directory's
 cursor or fill.
 
-**f** follows the saved **Include subfolders** preference. **s** always searches
-the current folder tree, not every indexed root, and adds no full-name find
-highlight. **S** is unbound; there is no content search. **Enter** on **s**
-applies the query, closes the prompt, and returns keyboard focus to the results,
+**s** always searches the current folder tree, not every indexed root, and
+matches paths below it the way fzf does: each space-separated term must match
+somewhere in a hit's path, in any order, as a fuzzy subsequence, so
+`git trading readme` finds `git/trading/README.md`. A term written `'term`
+matches exactly, `^term` at the start of the path, `term$` at its end, and
+`!term` excludes paths that contain it. Hits whose names match more terms rank
+first, then closer matches; among similar matches, folders visited often and
+recently, and files inside them, rank higher. The characters a hit's name
+matched stay highlighted in the theme's accent color; while find highlights
+show, they replace them. **f** uses the same terms and highlights, but never
+recurses: it ignores **Include subfolders** and matches only the names of the
+folder's own items, so `rep md` keeps `gamma-report.md`. Wildcard filter
+patterns do not apply in either. **S** is unbound; there is no content search.
+**Enter** on **s** applies the query, closes the prompt, and returns keyboard focus to the results,
 on the first hit when there is one. It does not open that hit. A following
 **Enter** opens it through ordinary item activation, not **Open search results
 directly**. **Ctrl+K** global search is unchanged. **Esc** from the prompt keeps

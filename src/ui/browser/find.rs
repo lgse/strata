@@ -5,14 +5,19 @@
 
 use std::{
     cell::{Cell, RefCell},
+    collections::HashMap,
     ops::Range,
+    path::{Path, PathBuf},
     rc::{Rc, Weak},
 };
 
 use gtk::prelude::*;
 
 use super::{BrowserView, ViewState};
-use crate::ui::browser_modes::BrowserMode;
+use crate::{
+    services::{PathMatcher, PathQuery, SearchItem},
+    ui::browser_modes::BrowserMode,
+};
 
 /// The last committed find of a window. `n` repeats it after its highlights are
 /// dismissed; leaving 10xer mode forgets it.
@@ -27,8 +32,9 @@ type Rgb = (u16, u16, u16);
 
 thread_local! {
     static HIGHLIGHT_COLORS: Cell<Option<(Rgb, Rgb)>> = const { Cell::new(None) };
-    /// Windows that have committed a find, so a theme change can recolor them.
-    static FIND_VIEWS: RefCell<Vec<Weak<ViewState>>> = const { RefCell::new(Vec::new()) };
+    /// Windows that have shown find or search highlights, so a theme change
+    /// can recolor them.
+    static HIGHLIGHT_VIEWS: RefCell<Vec<Weak<ViewState>>> = const { RefCell::new(Vec::new()) };
 }
 
 fn rgb(color: &str) -> Option<Rgb> {
@@ -45,17 +51,17 @@ fn rgb(color: &str) -> Option<Rgb> {
 /// background here and live highlights are recolored.
 pub(in crate::ui) fn apply_theme(accent: &str, background: &str) {
     HIGHLIGHT_COLORS.set(rgb(accent).zip(rgb(background)));
-    let views = FIND_VIEWS.with_borrow_mut(|views| {
+    let views = HIGHLIGHT_VIEWS.with_borrow_mut(|views| {
         views.retain(|view| view.strong_count() > 0);
         views.iter().filter_map(Weak::upgrade).collect::<Vec<_>>()
     });
     for view in views {
-        view.refresh_find_highlights();
+        view.refresh_name_highlights();
     }
 }
 
-fn register_find_view(state: &Rc<ViewState>) {
-    FIND_VIEWS.with_borrow_mut(|views| {
+pub(super) fn register_highlight_view(state: &Rc<ViewState>) {
+    HIGHLIGHT_VIEWS.with_borrow_mut(|views| {
         if !views
             .iter()
             .any(|view| std::ptr::eq(view.as_ptr(), Rc::as_ptr(state)))
@@ -98,11 +104,17 @@ pub(in crate::ui) fn match_ranges(name: &str, query: &str) -> Vec<Range<usize>> 
     ranges
 }
 
-fn highlight_attributes(text: &str, query: &str) -> Option<gtk::pango::AttrList> {
-    let ranges = match_ranges(text, query);
-    if ranges.is_empty() {
-        return None;
-    }
+fn highlight_attributes(text: &str, ranges: &[Range<usize>]) -> Option<gtk::pango::AttrList> {
+    let mut ranges = ranges
+        .iter()
+        .filter(|range| {
+            range.start < range.end
+                && range.end <= text.len()
+                && text.is_char_boundary(range.start)
+                && text.is_char_boundary(range.end)
+        })
+        .peekable();
+    ranges.peek()?;
     // A solid accent segment stays visible over the translucent accent of
     // selected rows. Before any theme is applied, bold still marks the match.
     let attributes = gtk::pango::AttrList::new();
@@ -126,21 +138,76 @@ fn highlight_attributes(text: &str, query: &str) -> Option<gtk::pango::AttrList>
     Some(attributes)
 }
 
-pub(in crate::ui) fn highlight_name(widget: &gtk::Widget, query: Option<&str>) {
+fn set_name_highlight(widget: &gtk::Widget, ranges: impl FnOnce(&str) -> Vec<Range<usize>>) {
     if let Some(label) = widget.downcast_ref::<gtk::Label>() {
-        let attributes = query.and_then(|query| highlight_attributes(&label.text(), query));
+        let text = label.text();
+        let attributes = highlight_attributes(&text, &ranges(&text));
         if attributes.is_some() || label.attributes().is_some() {
             label.set_attributes(attributes.as_ref());
         }
     } else if let Some(label) = widget.downcast_ref::<gtk::Inscription>() {
-        let attributes = query.and_then(|query| {
-            label
-                .text()
-                .and_then(|text| highlight_attributes(&text, query))
-        });
+        let text = label.text().unwrap_or_default();
+        let attributes = highlight_attributes(&text, &ranges(&text));
         if attributes.is_some() || label.attributes().is_some() {
             label.set_attributes(attributes.as_ref());
         }
+    }
+}
+
+/// Highlights `query`'s matches in a name label, or clears them without one.
+pub(in crate::ui) fn highlight_name(widget: &gtk::Widget, query: Option<&str>) {
+    set_name_highlight(widget, |text| {
+        query.map_or_else(Vec::new, |query| match_ranges(text, query))
+    });
+}
+
+/// The characters of each 10xer **f** filter or **s** search hit's name that
+/// its query matched, by hit path.
+pub(in crate::ui) type HitRanges = HashMap<PathBuf, Vec<Range<usize>>>;
+
+pub(in crate::ui) fn search_hit_ranges(query: &str, root: &Path, hits: &[SearchItem]) -> HitRanges {
+    let mut matcher = PathMatcher::new(&PathQuery::parse(query));
+    hits.iter()
+        .map(|hit| (hit.path.clone(), matcher.name_highlight(root, &hit.path)))
+        .filter(|(_, ranges)| !ranges.is_empty())
+        .collect()
+}
+
+/// Highlights a listing row's name: find's matches while find shows them,
+/// otherwise the characters a 10xer **f** filter's folded `filter` query
+/// matched in it.
+pub(in crate::ui) fn highlight_listing_name(
+    widget: &gtk::Widget,
+    find: Option<&str>,
+    filter: &str,
+) {
+    if find.is_some() {
+        highlight_name(widget, find);
+    } else {
+        set_name_highlight(widget, |text| filter_term_ranges(text, filter));
+    }
+}
+
+/// The characters of `name` the 10xer **f** filter's folded `query` matched,
+/// or none outside 10xer mode, where filters do not highlight.
+fn filter_term_ranges(name: &str, query: &str) -> Vec<Range<usize>> {
+    if query.trim().is_empty() || !crate::ui::tenxer_mode::chrome_suppressed() {
+        return Vec::new();
+    }
+    super::entry::with_filter_terms(query, |terms| terms.highlight(name, 0))
+}
+
+/// Highlights a search hit's name: find's matches while find shows them,
+/// otherwise the characters the **f** filter or **s** search matched.
+pub(in crate::ui) fn highlight_hit_name(
+    widget: &gtk::Widget,
+    find: Option<&str>,
+    hit: Option<&[Range<usize>]>,
+) {
+    if find.is_some() {
+        highlight_name(widget, find);
+    } else {
+        set_name_highlight(widget, |_| hit.map(<[_]>::to_vec).unwrap_or_default());
     }
 }
 
@@ -150,18 +217,16 @@ impl ViewState {
         (find.highlighted && !find.query.is_empty()).then(|| find.query.clone())
     }
 
-    fn refresh_find_highlights(&self) {
+    /// Reapplies find, **f** filter, and **s** search highlights to every
+    /// bound name.
+    pub(in crate::ui) fn refresh_name_highlights(&self) {
         let query = self.find_highlight();
         for column in self.columns.borrow().iter() {
-            for bound in column.bound_rows.borrow().iter() {
-                if let Some(label) = bound.rename_label.upgrade() {
-                    highlight_name(label.upcast_ref(), query.as_deref());
-                }
-            }
+            column.refresh_name_highlights(query.as_deref());
         }
         self.mode_views
             .borrow()
-            .visit_name_labels(|label| highlight_name(label, query.as_deref()));
+            .refresh_name_highlights(query.as_deref());
     }
 }
 
@@ -173,13 +238,13 @@ impl BrowserView {
         if query.is_empty() {
             return false;
         }
-        register_find_view(&self.state);
+        register_highlight_view(&self.state);
         self.state.find.replace(FindState {
             query: query.to_owned(),
             backward,
             highlighted: true,
         });
-        self.state.refresh_find_highlights();
+        self.state.refresh_name_highlights();
         self.find_next(query, backward, listing_focused)
     }
 
@@ -194,8 +259,13 @@ impl BrowserView {
             find.highlighted = true;
             (find.query.clone(), find.backward != reverse)
         };
-        self.state.refresh_find_highlights();
+        self.state.refresh_name_highlights();
         Some(self.find_next(&query, backward, listing_focused))
+    }
+
+    #[cfg(test)]
+    pub(in crate::ui) fn find_highlighted(&self) -> bool {
+        self.state.find_highlight().is_some()
     }
 
     pub(in crate::ui) fn find_query(&self) -> Option<String> {
@@ -208,7 +278,7 @@ impl BrowserView {
     pub(in crate::ui) fn dismiss_find_highlight(&self) -> bool {
         let dismissed = std::mem::replace(&mut self.state.find.borrow_mut().highlighted, false);
         if dismissed {
-            self.state.refresh_find_highlights();
+            self.state.refresh_name_highlights();
         }
         dismissed
     }
@@ -216,7 +286,7 @@ impl BrowserView {
     pub(in crate::ui) fn clear_find(&self) {
         let had_highlight = self.state.find.replace(FindState::default()).highlighted;
         if had_highlight {
-            self.state.refresh_find_highlights();
+            self.state.refresh_name_highlights();
         }
     }
 

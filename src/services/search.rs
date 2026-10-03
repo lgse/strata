@@ -15,7 +15,10 @@ use std::{
 use crate::model::{EntryKind, MetadataValue};
 use unicode_normalization::UnicodeNormalization;
 
-use super::{is_hidden_name, native_hidden_names, native_kind};
+use super::{
+    is_hidden_name, native_hidden_names, native_kind,
+    path_match::{self, Frecency, PathMatcher, PathQuery},
+};
 
 pub(crate) const RESULT_LIMIT: usize = 100;
 const PUBLISH_INTERVAL: Duration = Duration::from_millis(50);
@@ -348,7 +351,46 @@ mod pattern;
 
 pub(crate) use pattern::{filter_name_matches, filter_query_allows_typos};
 
-type SearchScorer = fn(&SearchItem, &str) -> Option<i64>;
+type NameScorer = fn(&SearchItem, &str) -> Option<i64>;
+
+#[derive(Clone)]
+enum SearchScorer {
+    Name(NameScorer),
+    Paths(Arc<Frecency>),
+}
+
+impl SearchScorer {
+    fn prepare<'a>(&'a self, normalized_query: &'a str) -> QueryScorer<'a> {
+        match self {
+            Self::Name(scorer) => QueryScorer::Name(*scorer, normalized_query),
+            Self::Paths(frecency) => QueryScorer::Paths(
+                PathMatcher::new(&PathQuery::parse(normalized_query)),
+                frecency,
+            ),
+        }
+    }
+}
+
+/// A scorer bound to one query, owned by one thread.
+enum QueryScorer<'a> {
+    Name(NameScorer, &'a str),
+    Paths(PathMatcher, &'a Frecency),
+}
+
+impl QueryScorer<'_> {
+    fn score(&mut self, item: &SearchItem) -> Option<i64> {
+        match self {
+            Self::Name(scorer, query) => scorer(item, query),
+            Self::Paths(matcher, frecency) => {
+                let text = matcher.score(&item.search_path, item.search_name_start)?;
+                Some(path_match::rank(
+                    text,
+                    frecency.bias(&item.path, item.is_directory),
+                ))
+            }
+        }
+    }
+}
 
 type IndexRegistry = Vec<((Vec<PathBuf>, bool, bool), Weak<SharedIndex>)>;
 static SHARED_INDEXES: OnceLock<Mutex<IndexRegistry>> = OnceLock::new();
@@ -397,7 +439,24 @@ pub fn index_filter(
         vec![root],
         show_hidden,
         include_subfolders,
-        filter_score_normalized,
+        SearchScorer::Name(filter_score_normalized),
+    )
+}
+
+/// The 10xer **s** search and **f** filter: fzf-style terms matched against
+/// paths below `root`, or only its children's names when not `recursive`,
+/// biased toward folders the user visits. Shares the filter's index.
+pub fn index_paths(
+    root: PathBuf,
+    show_hidden: bool,
+    recursive: bool,
+    frecency: Frecency,
+) -> (SearchHandle, Receiver<SearchEvent>) {
+    index_scoped(
+        vec![root],
+        show_hidden,
+        recursive,
+        SearchScorer::Paths(Arc::new(frecency)),
     )
 }
 
@@ -407,7 +466,12 @@ pub fn index_trees(
     roots: Vec<PathBuf>,
     show_hidden: bool,
 ) -> (SearchHandle, Receiver<SearchEvent>) {
-    index_scoped(roots, show_hidden, true, fuzzy_score_normalized)
+    index_scoped(
+        roots,
+        show_hidden,
+        true,
+        SearchScorer::Name(fuzzy_score_normalized),
+    )
 }
 
 fn index_scoped(
@@ -646,7 +710,7 @@ fn index_trees_with_scheduler_budget(
             max_pending_directories,
         },
     );
-    start_search_session(index, fuzzy_score_normalized)
+    start_search_session(index, SearchScorer::Name(fuzzy_score_normalized))
 }
 
 fn start_search_session(
@@ -667,7 +731,7 @@ fn start_search_session(
                 &worker_cancelled,
                 &command_receiver,
                 &event_sender,
-                scorer,
+                &scorer,
             );
         });
     if let Err(error) = worker {
@@ -690,7 +754,7 @@ fn run_search_session(
     cancelled: &AtomicBool,
     commands: &Receiver<SearchCommand>,
     events: &Sender<SearchEvent>,
-    scorer: SearchScorer,
+    scorer: &SearchScorer,
 ) {
     let mut progress = WalkProgress::default();
     let mut indexed_items = 0;
@@ -734,8 +798,9 @@ fn run_search_session(
                 )
             };
         } else if index_changed && !progress.normalized_query.is_empty() {
+            let mut scorer = scorer.prepare(&progress.normalized_query);
             for item in &state.items[indexed_items..] {
-                if let Some(score) = scorer(item, &progress.normalized_query) {
+                if let Some(score) = scorer.score(item) {
                     insert_match_with_limit(&mut progress.matches, score, item, progress.limit);
                 }
             }
@@ -1155,13 +1220,13 @@ type RankedPosition = Reverse<(i64, Reverse<usize>)>;
 
 #[cfg(test)]
 fn score_index(index: &[SearchItem], query: &str, scorer: SearchScorer) -> Vec<(i64, SearchItem)> {
-    score_index_with_limit(index, query, scorer, RESULT_LIMIT)
+    score_index_with_limit(index, query, &scorer, RESULT_LIMIT)
 }
 
 fn score_index_with_limit(
     index: &[SearchItem],
     normalized_query: &str,
-    scorer: SearchScorer,
+    scorer: &SearchScorer,
     limit: usize,
 ) -> Vec<(i64, SearchItem)> {
     let worker_count = std::thread::available_parallelism()
@@ -1209,12 +1274,13 @@ fn score_range(
     index: &[SearchItem],
     normalized_query: &str,
     position_offset: usize,
-    scorer: SearchScorer,
+    scorer: &SearchScorer,
     limit: usize,
 ) -> BinaryHeap<RankedPosition> {
     let mut best = BinaryHeap::with_capacity(limit + 1);
+    let mut scorer = scorer.prepare(normalized_query);
     for (position, item) in index.iter().enumerate() {
-        let Some(score) = scorer(item, normalized_query) else {
+        let Some(score) = scorer.score(item) else {
             continue;
         };
         retain_candidate(

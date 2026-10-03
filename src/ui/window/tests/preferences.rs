@@ -520,6 +520,7 @@ fn browsing_preferences_stay_saved_but_unused_until_exit() {
             for title in [
                 "Type to search",
                 "Keep arrows in file list",
+                "Include subfolders",
                 "Mirror columns selection",
             ] {
                 let switch = switch_named(open.content.overlay(), title);
@@ -541,7 +542,11 @@ fn browsing_preferences_stay_saved_but_unused_until_exit() {
                 description_named(open.content.overlay(), "Mirror columns selection"),
                 UNUSED_SUBTITLE
             );
-            for title in ["Type to search", "Keep arrows in file list"] {
+            for title in [
+                "Type to search",
+                "Keep arrows in file list",
+                "Include subfolders",
+            ] {
                 let switch = switch_named(open.content.overlay(), title);
                 assert!(switch.is_active() && switch.is_sensitive());
                 assert_eq!(
@@ -580,6 +585,7 @@ fn browsing_preferences_stay_saved_but_unused_until_exit() {
             for title in [
                 "Type to search",
                 "Keep arrows in file list",
+                "Include subfolders",
                 "Mirror columns selection",
             ] {
                 assert_ne!(
