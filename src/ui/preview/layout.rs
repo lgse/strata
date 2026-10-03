@@ -205,7 +205,15 @@ impl PreviewDrawer {
                 if browser.selected_search_results().is_none() {
                     return;
                 }
-                if let Some(entry) = preview_target(browser.selected_search_result()) {
+                let entry = if browser.results_replace_listing() {
+                    browser
+                        .browser()
+                        .active_depth()
+                        .and_then(|depth| browser.displayed_cursor_entry(depth))
+                } else {
+                    browser.selected_search_result()
+                };
+                if let Some(entry) = preview_target(entry) {
                     state.show_after_focus_change(entry, browser.browser().active_depth());
                 } else {
                     state.clear_target();
@@ -681,17 +689,15 @@ impl PreviewState {
         {
             browser.clear_preview_scroll_space();
         }
-        if restored {
-            if self.sizing.reload_on_resume.replace(false) {
-                let entry = self.current.borrow().clone();
-                if let Some(entry) = entry {
-                    self.load(entry, 0);
-                }
-            } else if self.sizing.resume_media.replace(false) {
-                let media = self.media.borrow().clone();
-                if let Some(media) = media {
-                    media.play();
-                }
+        if self.sizing.reload_on_resume.replace(false) {
+            let entry = self.current.borrow().clone();
+            if let Some(entry) = entry {
+                self.load(entry, 0);
+            }
+        } else if restored && self.sizing.resume_media.replace(false) {
+            let media = self.media.borrow().clone();
+            if let Some(media) = media {
+                media.play();
             }
         }
         if restored {

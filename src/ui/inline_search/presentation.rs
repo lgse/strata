@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use super::collection::ResultKind;
+use super::collection::{NameHighlights, ResultKind};
 use crate::{
     model::Location,
     services::SearchItem,
@@ -100,6 +100,7 @@ impl ResultWidgets {
         result: &SearchItem,
         root: &Path,
         recursive: bool,
+        highlights: &NameHighlights,
     ) {
         let entry = browser::search_result_entry(result);
         self.edit.bind(&entry.location);
@@ -128,6 +129,7 @@ impl ResultWidgets {
                 origin.set_visible(recursive);
             }
         }
+        highlights.apply(&self.rename_label(), &result.path);
         if result.is_directory {
             thumbnail::show_customized_icon(
                 &self.icon,

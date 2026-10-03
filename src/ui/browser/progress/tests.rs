@@ -2,6 +2,8 @@
 
 use super::{transfer_progress_status, transfer_rate_status};
 
+mod minimization;
+
 #[test]
 fn transfer_status_tracks_completed_files_and_live_bytes() {
     let (percent, bytes, items, fraction) = transfer_progress_status(
@@ -48,6 +50,7 @@ fn live_transfer_updates_the_visible_dialog_and_device_flush() {
                 Rc::new(crate::adapters::LocalFileSource),
                 crate::ui::browser::PeekBehavior::default(),
             );
+            let progress_state = view.state.file_progress();
             let overlay = view.overlay();
             let window = gtk::Window::builder().child(&overlay).build();
             window.present();
@@ -58,14 +61,16 @@ fn live_transfer_updates_the_visible_dialog_and_device_flush() {
                 "Cancelling will not undo completed changes",
                 Rc::new(|| {}),
             );
-            view.state
+            progress_state
                 .transfer_current_file
                 .replace(Some("archive.tar".into()));
-            view.state.transfer_rate_bytes_per_second.set(Some(2_000.0));
+            progress_state
+                .transfer_rate_bytes_per_second
+                .set(Some(2_000.0));
             view.state
                 .update_transfer_progress(3, 5, Some(21), 2_000, Some(10_000));
             {
-                let progress = view.state.file_progress_view.borrow();
+                let progress = progress_state.file_progress_view.borrow();
                 let progress = progress.as_ref().expect("visible progress dialog");
                 assert_eq!(progress.transfer_percent.text(), "20%");
                 assert_eq!(progress.transfer_bytes.text(), "2 kB / 10 kB");
@@ -79,7 +84,7 @@ fn live_transfer_updates_the_visible_dialog_and_device_flush() {
             }
             view.state.show_device_flush_status();
             assert_eq!(
-                view.state
+                progress_state
                     .file_progress_view
                     .borrow()
                     .as_ref()
@@ -95,9 +100,9 @@ fn live_transfer_updates_the_visible_dialog_and_device_flush() {
 }
 
 #[test]
-fn stalled_cancellation_can_return_to_browser_without_claiming_the_drive_is_safe() {
+fn stalled_cancellation_keeps_the_dock_cancellable_only_once() {
     crate::test_support::gtk_test(
-        "ui::browser::progress::tests::stalled_cancellation_can_return_to_browser_without_claiming_the_drive_is_safe",
+        "ui::browser::progress::tests::stalled_cancellation_keeps_the_dock_cancellable_only_once",
         || {
             use gtk::prelude::*;
             use std::{cell::Cell, rc::Rc};
@@ -109,10 +114,12 @@ fn stalled_cancellation_can_return_to_browser_without_claiming_the_drive_is_safe
             );
             let window = gtk::Window::builder().child(&view.overlay()).build();
             window.present();
+            let progress_state = view.state.file_progress();
             let cancellations = Rc::new(Cell::new(0));
             let count = cancellations.clone();
             let on_cancel: Rc<dyn Fn()> = Rc::new(move || count.set(count.get() + 1));
-            view.state.show_file_operation_progress(
+            progress_state.dock_only.set(true);
+            progress_state.show_file_operation_progress(
                 16,
                 crate::assets::icons::COPY,
                 "Copying items",
@@ -121,39 +128,34 @@ fn stalled_cancellation_can_return_to_browser_without_claiming_the_drive_is_safe
             );
             view.state
                 .update_transfer_progress(0, 0, Some(4), 100, Some(1_000));
-            view.state.request_transfer_cancel(&on_cancel);
-            view.state.request_transfer_cancel(&on_cancel);
+            progress_state.request_transfer_cancel(&on_cancel);
+            progress_state.request_transfer_cancel(&on_cancel);
             assert_eq!(cancellations.get(), 1);
             {
-                let progress = view.state.file_progress_view.borrow();
+                let progress = progress_state.file_progress_view.borrow();
                 let progress = progress.as_ref().expect("visible transfer");
                 assert_eq!(progress.title.text(), "Cancelling transfer…");
                 assert!(!progress.cancel.is_sensitive());
             }
-            view.state.transfer_cancel_timed_out.set(true);
-            view.state.apply_transfer_cancel_status();
+            progress_state.transfer_cancel_timed_out.set(true);
+            progress_state.apply_transfer_cancel_status();
             {
-                let progress = view.state.file_progress_view.borrow();
+                let progress = progress_state.file_progress_view.borrow();
                 let progress = progress.as_ref().expect("stalled transfer");
                 assert_eq!(progress.title.text(), "Device not responding");
                 assert!(progress.subtitle.text().contains("do not unplug"));
-                assert_eq!(
-                    progress.cancel.label().as_deref(),
-                    Some("Return to browser")
-                );
-                assert!(progress.cancel.is_sensitive());
+                assert!(!progress.cancel.is_sensitive());
+                let card = progress.compact.as_ref().expect("docked stalled transfer");
+                assert!(!card.cancel.is_sensitive());
+                assert!(card.info.text().contains("Do not unplug"));
+                card.cancel.emit_clicked();
             }
-            view.state.hide_stalled_transfer_progress();
-            assert!(view.state.file_progress_view.borrow().is_none());
-            assert!(view.state.transfer_cancel_requested.get());
-            assert!(view.state.transfer_warning_banner.borrow().is_some());
-            view.state
-                .handle(&crate::app::BrowserEvent::TransferCancellationPending);
-            assert!(view.state.transfer_warning_banner.borrow().is_some());
-            assert!(view.state.transfer_cancel_requested.get());
+            assert_eq!(cancellations.get(), 1);
+            assert!(progress_state.file_progress_view.borrow().is_some());
+            assert!(progress_state.transfer_cancel_requested.get());
+            assert!(crate::ui::window::visible_modal_layer(&window).is_none());
             view.state.dismiss_file_operation_progress();
-            assert!(view.state.transfer_warning_banner.borrow().is_none());
-            assert!(!view.state.transfer_cancel_requested.get());
+            assert!(!progress_state.transfer_cancel_requested.get());
             window.close();
         },
     );

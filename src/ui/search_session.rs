@@ -4,7 +4,10 @@
 //! the session. Polling holds only a weak reference; cancellation/drop removes the source and
 //! drops the worker handle/receiver. Delivery runs without session borrows and may restart it.
 
-use crate::services::{SearchCoverage, SearchEvent, SearchHandle, SearchItem, index_filter};
+use crate::services::{
+    NavigationHistory, RefusedFolders, SearchCoverage, SearchEvent, SearchHandle, SearchItem,
+    index_filter, index_folder_paths, index_paths,
+};
 use gtk::glib;
 use std::{
     cell::{Cell, RefCell},
@@ -14,11 +17,31 @@ use std::{
     time::Duration,
 };
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::ui) enum SearchScope {
+    Folder,
+    Subfolders,
+    FolderTerms,
+    Paths,
+    Folders,
+}
+
+impl SearchScope {
+    pub(in crate::ui) fn recursive(self) -> bool {
+        matches!(self, Self::Subfolders | Self::Paths | Self::Folders)
+    }
+
+    pub(in crate::ui) fn fuzzy(self) -> bool {
+        matches!(self, Self::FolderTerms | Self::Paths | Self::Folders)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct SearchInput {
     pub(super) root: PathBuf,
     pub(super) show_hidden: bool,
-    pub(super) recursive: bool,
+    pub(super) scope: SearchScope,
+    pub(super) refused: RefusedFolders,
 }
 
 pub(super) struct SearchBatch {
@@ -59,6 +82,14 @@ pub(super) struct SearchSession(Rc<State>);
 impl SearchSession {
     pub(super) fn is_active(&self) -> bool {
         self.0.worker.borrow().is_some()
+    }
+
+    pub(super) fn searches(&self, input: &SearchInput) -> bool {
+        self.0
+            .worker
+            .borrow()
+            .as_ref()
+            .is_some_and(|worker| worker.input == *input)
     }
 
     pub(super) fn cancel(&self) {
@@ -111,8 +142,9 @@ impl SearchSession {
         }
     }
 
+    /// Only folder pickers accept empty queries; other empty queries cancel.
     pub(super) fn update(&self, input: SearchInput, query: &str, restart: bool, deliver: Deliver) {
-        if query.trim().is_empty() {
+        if query.trim().is_empty() && input.scope != SearchScope::Folders {
             self.cancel();
             return;
         }
@@ -129,8 +161,21 @@ impl SearchSession {
             return;
         }
         self.cancel();
-        let (handle, receiver) =
-            index_filter(input.root.clone(), input.show_hidden, input.recursive);
+        let (handle, receiver) = match input.scope {
+            SearchScope::Folders => index_folder_paths(
+                input.root.clone(),
+                input.show_hidden,
+                NavigationHistory::shared().frecency_within(&input.root),
+                input.refused.clone(),
+            ),
+            scope if scope.fuzzy() => index_paths(
+                input.root.clone(),
+                input.show_hidden,
+                scope.recursive(),
+                NavigationHistory::shared().frecency_within(&input.root),
+            ),
+            scope => index_filter(input.root.clone(), input.show_hidden, scope.recursive()),
+        };
         self.0.worker.replace(Some(Worker {
             input,
             handle,
@@ -152,7 +197,8 @@ impl SearchSession {
                 let Some(worker) = worker.as_ref() else {
                     return glib::ControlFlow::Break;
                 };
-                drain(&worker.receiver, &state.query.borrow())
+                let lists_without_query = worker.input.scope == SearchScope::Folders;
+                drain(&worker.receiver, &state.query.borrow(), lists_without_query)
             };
             if let Some(batch) = latest {
                 let deliver = state.deliver.borrow().clone();
@@ -173,7 +219,11 @@ impl SearchSession {
     }
 }
 
-fn drain(receiver: &Receiver<SearchEvent>, current: &str) -> (Option<SearchBatch>, bool) {
+fn drain(
+    receiver: &Receiver<SearchEvent>,
+    current: &str,
+    lists_without_query: bool,
+) -> (Option<SearchBatch>, bool) {
     let mut latest = None;
     let mut disconnected = false;
     for _ in 0..8 {
@@ -185,7 +235,7 @@ fn drain(receiver: &Receiver<SearchEvent>, current: &str) -> (Option<SearchBatch
                 coverage,
                 has_more,
             }) => {
-                if !query.is_empty() && query == current {
+                if (lists_without_query || !query.is_empty()) && query == current {
                     latest = Some(SearchBatch {
                         query,
                         items,

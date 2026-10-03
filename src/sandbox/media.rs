@@ -129,12 +129,14 @@ fn send(
     }
 }
 
-fn render(
+/// The returned output directory may hold the executable snapshot bwrap binds,
+/// so it must outlive the helper.
+fn spawn_helper(
     source: &SandboxedMedia,
-    start_tick: u32,
+    operation: ParseOperation,
+    start_tick: Option<u32>,
     cancellation: &Cancellation,
-    sender: &mpsc::SyncSender<Event>,
-) -> Result<(), String> {
+) -> Result<(Child, PrivateOutput), String> {
     let input = source
         .path
         .canonicalize()
@@ -148,27 +150,49 @@ fn render(
     let executable = resolve_renderer_executable(&current, &running, output.path())?;
     let bwrap = crate::trusted_command::resolve("bwrap")
         .map_err(|error| format!("Unable to start the preview sandbox: {error}"))?;
-    let devices = gpu_devices(Path::new("/dev"), source.backend);
+    let backend = if matches!(operation, ParseOperation::PreviewMedia(_)) {
+        source.backend
+    } else {
+        MediaPreviewBackend::Software
+    };
+    let devices = gpu_devices(Path::new("/dev"), backend);
     let mut command = sandbox_command(
         &bwrap,
         &executable,
         &input,
         output.path(),
-        ParseOperation::PreviewMedia(source.size),
+        operation,
         0,
-        source.backend,
+        backend,
         &devices,
     );
+    if let Some(start_tick) = start_tick {
+        command.arg(start_tick.to_string());
+    }
     command
-        .arg(start_tick.to_string())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
     if cancellation.is_cancelled() {
         return Err("Preview cancelled".into());
     }
-    let mut child = spawn_renderer(&mut command)
+    let child = spawn_renderer(&mut command)
         .map_err(|error| format!("Unable to start the preview sandbox: {error}"))?;
+    Ok((child, output))
+}
+
+fn render(
+    source: &SandboxedMedia,
+    start_tick: u32,
+    cancellation: &Cancellation,
+    sender: &mpsc::SyncSender<Event>,
+) -> Result<(), String> {
+    let operation = if source.audio_only {
+        ParseOperation::PreviewAudio(source.size)
+    } else {
+        ParseOperation::PreviewMedia(source.size)
+    };
+    let (mut child, _output) = spawn_helper(source, operation, Some(start_tick), cancellation)?;
     let result = consume(&mut child, source, start_tick, cancellation, sender);
     // Also tear down descendants which keep a pipe open or outlive their leader.
     if result.is_err() {
@@ -215,6 +239,128 @@ fn consume(
         }
         send(sender, Event::Packet(packet), cancellation).map_err(io::Error::other)?;
     }
+}
+
+pub(crate) enum PeaksEvent {
+    Levels { start: u32, levels: Vec<u8> },
+    Finished,
+    Failed,
+}
+
+const PEAKS_TIMEOUT: Duration = Duration::from_secs(90);
+static ACTIVE_PEAKS: AtomicUsize = AtomicUsize::new(0);
+
+struct PeaksSlot;
+
+impl Drop for PeaksSlot {
+    fn drop(&mut self) {
+        ACTIVE_PEAKS.store(0, Ordering::Release);
+    }
+}
+
+/// A background waveform-overview decode. Dropping it cancels the sandbox.
+pub(crate) struct PeaksSession {
+    cancellation: Cancellation,
+    receiver: mpsc::Receiver<PeaksEvent>,
+}
+
+impl PeaksSession {
+    /// Only one overview decodes at a time; callers retry once the slot frees.
+    pub fn start(source: SandboxedMedia) -> Option<Self> {
+        ACTIVE_PEAKS
+            .compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire)
+            .ok()?;
+        let cancellation = Cancellation::default();
+        let cancelled = cancellation.clone();
+        let (sender, receiver) = mpsc::sync_channel(64);
+        let spawned = thread::Builder::new()
+            .name("audio-peaks".into())
+            .spawn(move || {
+                let _slot = PeaksSlot;
+                let event = match render_peaks(&source, &cancelled, &sender) {
+                    Ok(()) => PeaksEvent::Finished,
+                    Err(_) => PeaksEvent::Failed,
+                };
+                let _sent = sender.send(event);
+            });
+        if spawned.is_err() {
+            ACTIVE_PEAKS.store(0, Ordering::Release);
+            return None;
+        }
+        Some(Self {
+            cancellation,
+            receiver,
+        })
+    }
+
+    pub fn receive(&self) -> Option<PeaksEvent> {
+        match self.receiver.try_recv() {
+            Ok(event) => Some(event),
+            Err(mpsc::TryRecvError::Empty) => None,
+            Err(mpsc::TryRecvError::Disconnected) => Some(PeaksEvent::Failed),
+        }
+    }
+}
+
+impl Drop for PeaksSession {
+    fn drop(&mut self) {
+        self.cancellation.cancel();
+    }
+}
+
+fn render_peaks(
+    source: &SandboxedMedia,
+    cancellation: &Cancellation,
+    sender: &mpsc::SyncSender<PeaksEvent>,
+) -> Result<(), String> {
+    let (mut child, _output) =
+        spawn_helper(source, ParseOperation::AudioPeaks, None, cancellation)?;
+    let result = consume_peaks(&mut child, cancellation, sender);
+    if result.is_err() {
+        terminate(&mut child);
+    }
+    result.map_err(|error| error.to_string())
+}
+
+fn consume_peaks(
+    child: &mut Child,
+    cancellation: &Cancellation,
+    sender: &mpsc::SyncSender<PeaksEvent>,
+) -> io::Result<()> {
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| io::Error::other("Missing waveform pipe"))?;
+    let deadline = Instant::now() + PEAKS_TIMEOUT;
+    let mut reader = TimedReader {
+        fd: &stdout,
+        deadline: Instant::now() + STARTUP_TIMEOUT,
+        cancellation,
+    };
+    crate::media::peaks::read_header(&mut reader)?;
+    let forward = |event| {
+        sender
+            .send(event)
+            .map_err(|_| io::Error::other("Waveform preview closed"))
+    };
+    let mut runs = crate::media::peaks::RunReader::default();
+    loop {
+        reader.deadline = deadline.min(Instant::now() + FRAME_TIMEOUT);
+        let Some((start, levels)) = runs.read(&mut reader)? else {
+            break;
+        };
+        forward(PeaksEvent::Levels { start, levels })?;
+    }
+    reader.deadline = Instant::now() + Duration::from_secs(2);
+    if reader.read(&mut [0])? != 0 {
+        return Err(io::Error::other("Trailing waveform output"));
+    }
+    let status =
+        wait_for_renderer(child, cancellation, Duration::from_secs(2)).map_err(io::Error::other)?;
+    if !status.success() {
+        return Err(io::Error::other("The sandboxed waveform decoder failed"));
+    }
+    Ok(())
 }
 
 #[cfg(test)]

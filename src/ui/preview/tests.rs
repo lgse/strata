@@ -3,6 +3,8 @@
 use super::*;
 use crate::model::{Location, MetadataValue};
 
+mod audio;
+
 struct Pending {
     request: PreviewRequest,
     emit: Rc<dyn Fn(PreviewEvent)>,
@@ -18,7 +20,7 @@ impl PreviewProvider for Provider {
     }
 }
 
-fn entry(name: &str) -> FileEntry {
+pub(super) fn entry(name: &str) -> FileEntry {
     FileEntry {
         location: Location::local(name),
         thumbnail_path: None,
@@ -195,6 +197,72 @@ fn an_explicit_close_blocks_automatic_previews_until_reopened() {
                 "mirroring follows again after an explicit reopen"
             );
             drawer.close();
+        },
+    );
+}
+
+#[test]
+fn preview_loads_on_first_show_when_sidebar_rails_in_narrow_split() {
+    crate::test_support::gtk_test(
+        "ui::preview::tests::preview_loads_on_first_show_when_sidebar_rails_in_narrow_split",
+        || {
+            let provider = Rc::new(Provider::default());
+            let preview = PreviewDrawer::new(provider.clone(), false);
+            let preferences = crate::ui::preferences::PreferenceManager::shared();
+            preferences.set_browser_mode(crate::ui::browser_modes::BrowserMode::List);
+            let browser = crate::ui::browser::BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            let sidebar =
+                crate::ui::window::build_sidebar(browser.clone(), preferences.clone(), false);
+
+            let window = gtk::Window::builder()
+                .default_width(700)
+                .default_height(500)
+                .build();
+            let split = gtk::Paned::new(gtk::Orientation::Horizontal);
+            let content = gtk::Paned::new(gtk::Orientation::Horizontal);
+            content.set_start_child(Some(&sidebar.widget));
+            content.set_end_child(Some(&browser.widget()));
+            content.set_position(crate::ui::window::preferred_sidebar_width());
+            split.set_start_child(Some(&content));
+            split.set_end_child(Some(&preview.widget()));
+            window.set_child(Some(&split));
+
+            preview.attach_split(&split, &content, &browser, Some(&sidebar));
+            window.present();
+
+            while glib::MainContext::default().iteration(false) {}
+
+            assert!(!sidebar.state.rail.get(), "sidebar should start unrailed");
+            assert!(!preview.is_open(), "preview should start closed");
+
+            preview.show(entry("sample.txt"), None);
+
+            while glib::MainContext::default().iteration(false) {}
+
+            assert!(preview.is_open(), "preview drawer should be open");
+            assert!(
+                sidebar.state.rail.get(),
+                "sidebar should be railed to fit preview"
+            );
+            assert_eq!(
+                preview.state.title.text(),
+                "sample.txt",
+                "preview header title must be populated on first view in narrow window"
+            );
+            assert_eq!(
+                provider.0.borrow().len(),
+                1,
+                "preview content must be loaded on first view in narrow window"
+            );
+            assert_eq!(
+                provider.0.borrow()[0].request.entry.display_name,
+                "sample.txt"
+            );
+
+            window.destroy();
         },
     );
 }

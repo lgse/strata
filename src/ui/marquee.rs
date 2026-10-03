@@ -328,6 +328,11 @@ fn is_inert_chrome(surface: &gtk::Widget, picked: &gtk::Widget) -> bool {
             || widget.is::<gtk::ColumnView>()
             || widget.is::<gtk::ListBox>()
             || widget.is::<gtk::FlowBox>()
+            // Custom-drawn controls and artwork, such as the audio preview's scrubber.
+            || matches!(
+                widget.accessible_role(),
+                gtk::AccessibleRole::Slider | gtk::AccessibleRole::Img
+            )
         {
             return false;
         }
@@ -925,3 +930,6 @@ fn band_placement(
         (bottom - top).round().max(1.0) as i32,
     ))
 }
+
+#[cfg(test)]
+mod tests;

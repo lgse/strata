@@ -18,6 +18,8 @@ pub(crate) const FRAME_TIMEOUT: Duration = Duration::from_secs(8);
 pub(crate) const HEADER_BYTES: usize = 40;
 const MAGIC: &[u8; 8] = b"STRRAW01";
 
+pub(crate) mod peaks;
+
 pub(crate) fn timestamp(tick: u32) -> u64 {
     u64::from(tick) * 1_000_000 / u64::from(FPS)
 }

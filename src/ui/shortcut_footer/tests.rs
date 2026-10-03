@@ -329,6 +329,37 @@ fn tenxer_reference_follows_the_active_map() {
                     .iter()
                     .any(|label| label == "Move spatially between tiles")
             );
+            let mode_category = footer
+                .category_buttons()
+                .into_iter()
+                .find(|button| {
+                    let mut labels = Vec::new();
+                    collect_label_text(button.upcast_ref(), &mut labels);
+                    labels.iter().any(|label| label == "10xer mode")
+                })
+                .expect("10xer category");
+            mode_category.emit_clicked();
+            let mode_shortcuts = reference_labels(&footer);
+            for (keys, action) in [
+                ("v / V", "Visual select / visual unset"),
+                ("g g", "First item"),
+                ("g Space", "Go to a folder, typed path, or URI"),
+                ("s", "Search this folder and its subfolders"),
+                ("f", "Filter this listing"),
+                ("c c / c n", "Copy path / name"),
+                ("M / C", "Move / copy to a typed folder"),
+                ("Ctrl+R", "Invert the selection"),
+                ("Space", "Toggle the focused item and move down"),
+                ("i", "Open the next column for the focused directory"),
+            ] {
+                assert!(reference_pairs(&mode_shortcuts, keys, action), "{keys}");
+            }
+            assert!(
+                !mode_shortcuts
+                    .iter()
+                    .any(|label| label == "Ctrl+C / Ctrl+X")
+            );
+            footer.category_buttons()[0].emit_clicked();
             footer.set_mode(BrowserMode::Icons);
             let icons = reference_labels(&footer);
             assert!(
@@ -576,6 +607,24 @@ fn tenxer_reference_follows_the_active_map() {
                     "the chooser refuses {unavailable:?}"
                 );
             }
+            chooser
+                .category_buttons()
+                .into_iter()
+                .find(|button| {
+                    let mut labels = Vec::new();
+                    collect_label_text(button.upcast_ref(), &mut labels);
+                    labels.iter().any(|label| label == "10xer mode")
+                })
+                .expect("chooser 10xer category")
+                .emit_clicked();
+            let chooser_mode = reference_labels(&chooser);
+            assert!(reference_pairs(
+                &chooser_mode,
+                "s",
+                "Search this folder and its subfolders"
+            ));
+            assert!(!chooser_mode.iter().any(|label| label == "v / V"));
+            assert!(!chooser_mode.iter().any(|label| label == "M / C"));
             manager.set_tenxer_mode(false);
             settle();
             assert!(!footer.tag.is_visible());

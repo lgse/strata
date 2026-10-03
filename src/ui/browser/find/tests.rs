@@ -77,3 +77,45 @@ fn find_highlights_follow_the_applied_theme_colors() {
         },
     );
 }
+
+#[test]
+fn listing_filters_use_and_highlight_fuzzy_terms_only_in_tenxer_mode() {
+    crate::test_support::gtk_test(
+        "ui::browser::find::tests::listing_filters_use_and_highlight_fuzzy_terms_only_in_tenxer_mode",
+        || {
+            use crate::{
+                services::fold_for_search, ui::browser::entry::entry_matches,
+                ui::preferences::PreferenceManager,
+            };
+            use gtk::prelude::*;
+
+            let matches =
+                |query: &str| entry_matches("fv\tgamma-report.md", false, &fold_for_search(query));
+            let highlighted = |query: &str| {
+                let label = gtk::Label::new(Some("gamma-report.md"));
+                super::highlight_listing_name(label.upcast_ref(), None, &fold_for_search(query));
+                label.attributes().is_some()
+            };
+            let preferences = PreferenceManager::shared();
+
+            preferences.set_tenxer_mode(false);
+            assert!(matches("*.md"));
+            assert!(!matches("rep md"));
+            assert!(!highlighted("report"), "ordinary filters do not highlight");
+
+            preferences.set_tenxer_mode(true);
+            for (query, expected) in [
+                ("rep md", true),
+                ("MD Rep", true),
+                ("^gamma .md$", true),
+                ("rep !gamma", false),
+                ("*.md", false),
+                ("reports", false),
+            ] {
+                assert_eq!(matches(query), expected, "{query:?}");
+            }
+            assert!(highlighted("rep md"));
+            assert!(!highlighted(""));
+        },
+    );
+}

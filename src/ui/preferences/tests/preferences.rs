@@ -477,6 +477,10 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
             );
             assert_eq!(manager.date_format(), crate::util::DateFormat::Iso8601);
             assert_eq!(
+                manager.device_label("volume:fixture-kingston").as_deref(),
+                Some("Research drive")
+            );
+            assert_eq!(
                 manager.send_to_recent_destinations("volume:fixture-kingston"),
                 [PathBuf::from("Academia/2026"), PathBuf::from("Teaching")]
             );
@@ -621,6 +625,8 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_cross_volume_drop_strategy(CrossVolumeDropStrategy::Copy),
                 |m| m.set_date_format(crate::util::DateFormat::Long),
                 |m| m.set_default_directory(None),
+                |m| m.set_device_label("volume:fixture-kingston", "Photos / 📁"),
+                |m| m.set_device_label("volume:fixture-kingston", ""),
                 |m| {
                     m.remember_send_to_destination(
                         "volume:fixture-kingston",

@@ -9,6 +9,7 @@ use std::{
 use super::*;
 
 mod archive_activation;
+mod background_operations;
 mod camera_photos;
 #[path = "deferred/tests.rs"]
 mod deferred;

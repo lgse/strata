@@ -25,6 +25,7 @@ pub(crate) mod archive_cover;
 #[cfg(feature = "rar")]
 mod archive_rar;
 mod document_media;
+mod image_conversion;
 mod media;
 mod model;
 mod raw_metadata;
@@ -70,12 +71,17 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
         return archive_rar::run(Path::new(input), password.as_deref(), &mut stdout);
     }
     let (arguments, start_tick) = match arguments {
-        [operation, ..] if operation == "preview-media" && arguments.len() == 6 => (
-            &arguments[..5],
-            arguments[5]
-                .parse::<u32>()
-                .map_err(|_| "Invalid media seek position".to_owned())?,
-        ),
+        [operation, ..]
+            if matches!(operation.as_str(), "preview-media" | "preview-audio")
+                && arguments.len() == 6 =>
+        {
+            (
+                &arguments[..5],
+                arguments[5]
+                    .parse::<u32>()
+                    .map_err(|_| "Invalid media seek position".to_owned())?,
+            )
+        }
         _ => (arguments, 0),
     };
     let secret_fd = match arguments {
@@ -96,8 +102,18 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
     let output = Path::new(output);
     let media_backend = MediaPreviewBackend::from_argument(media_backend)
         .ok_or_else(|| "Invalid media preview backend".to_owned())?;
-    if operation == "preview-media" {
-        return media::run(input, output, value, media_backend, start_tick);
+    if matches!(operation.as_str(), "inspect-image" | "convert-image") {
+        return image_conversion::run(input, output, operation == "convert-image");
+    }
+    if operation == "preview-media" || operation == "preview-audio" {
+        let audio_only = operation == "preview-audio";
+        return media::run(input, output, value, media_backend, start_tick, audio_only);
+    }
+    if operation == "audio-peaks" {
+        return media::run_peaks(input, output);
+    }
+    if operation == "audio-tags" {
+        return fs::write(output, media::audio_tags(input)?).map_err(|error| error.to_string());
     }
     if operation == "preview-workbook" {
         let table = crate::services::table::read_workbook(input)?;
@@ -141,6 +157,17 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
             None,
         ),
         "thumbnail-video" => (render_media(input, numeric_value()?.clamp(16, 256))?, None),
+        "audio-cover" => {
+            let cover = media::cover(input, 800)?;
+            (
+                if cover.is_empty() {
+                    b"null".to_vec()
+                } else {
+                    cover
+                },
+                None,
+            )
+        }
         "thumbnail-appimage" => (
             appimage::render(input, numeric_value()?.clamp(16, 256))?,
             None,

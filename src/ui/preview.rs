@@ -25,6 +25,7 @@ use crate::{
 use super::{blur::BlurBin, controls::form_password_entry, controls::modal_layout};
 
 mod archive;
+pub(super) mod audio;
 mod keyboard;
 mod layout;
 pub(in crate::ui) use layout::separator_width;
@@ -167,8 +168,9 @@ struct PreviewState {
     media: RefCell<Option<gtk::MediaStream>>,
     media_signals: RefCell<Vec<glib::SignalHandlerId>>,
     media_volume_slider: RefCell<Option<gtk::Scale>>,
-    media_volume_icon: RefCell<Option<gtk::Image>>,
     media_toggle_mute: RefCell<Option<Rc<dyn Fn()>>>,
+    audio: RefCell<Option<AudioPreview>>,
+    continue_playback: RefCell<Option<PlaybackContinuation>>,
     split: RefCell<Option<gtk::Paned>>,
     sizing: layout::SplitSizing,
     current: RefCell<Option<FileEntry>>,
@@ -364,7 +366,6 @@ impl PreviewDrawer {
             media: RefCell::new(None),
             media_signals: RefCell::new(Vec::new()),
             media_volume_slider: RefCell::new(None),
-            media_volume_icon: RefCell::new(None),
             media_toggle_mute: RefCell::new(None),
             split: RefCell::new(None),
             sizing: layout::SplitSizing::default(),
@@ -390,6 +391,8 @@ impl PreviewDrawer {
             animating: Cell::new(false),
             animation_generation: Rc::new(Cell::new(0)),
             keyboard_view: RefCell::new(None),
+            audio: RefCell::new(None),
+            continue_playback: RefCell::new(None),
             claim_on_resume: Cell::new(false),
         });
         let weak = Rc::downgrade(&state);
@@ -586,14 +589,20 @@ impl PreviewDrawer {
         self.state.revealer.reveals_child()
     }
 
+    /// Media keys apply to a playing stream, or to an audio view between tracks.
     pub fn has_video(&self) -> bool {
-        self.is_open() && !self.state.sizing.is_suspended() && self.state.media.borrow().is_some()
+        self.is_open()
+            && !self.state.sizing.is_suspended()
+            && (self.state.media.borrow().is_some() || self.state.audio.borrow().is_some())
     }
 
     pub fn handle_video_key(&self, key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
         use gtk::gdk::ModifierType as Modifiers;
+        // `<` and `>` need Shift on most layouts.
+        let shift_allowed = matches!(key, gtk::gdk::Key::less | gtk::gdk::Key::greater);
         if !modifiers.contains(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK)
-            || modifiers.intersects(Modifiers::SHIFT_MASK | Modifiers::SUPER_MASK)
+            || modifiers.contains(Modifiers::SUPER_MASK)
+            || (modifiers.contains(Modifiers::SHIFT_MASK) && !shift_allowed)
             || !self.has_video()
         {
             return false;
@@ -659,16 +668,38 @@ impl Drop for PreviewState {
 }
 
 impl PreviewState {
-    fn media_command(&self, key: gtk::gdk::Key) -> bool {
-        let media = match self.media.borrow().as_ref() {
-            Some(m) => m.clone(),
-            None => return false,
-        };
+    fn media_command(self: &Rc<Self>, key: gtk::gdk::Key) -> bool {
+        if matches!(key, gtk::gdk::Key::less | gtk::gdk::Key::greater) {
+            let audio = self.audio.borrow().is_some();
+            let step = if key == gtk::gdk::Key::less { -1 } else { 1 };
+            return audio && self.step_audio(step, true);
+        }
         let preferences = super::preferences::PreferenceManager::shared();
-        let slider = self.media_volume_slider.borrow().clone();
-        let icon = self.media_volume_icon.borrow().clone();
-        let fallback = gtk::Image::new();
-        let icon = icon.as_ref().unwrap_or(&fallback);
+        if self.media_volume_slider.borrow().is_some() {
+            match key {
+                gtk::gdk::Key::Up | gtk::gdk::Key::Down => {
+                    let delta = if key == gtk::gdk::Key::Up { 0.1 } else { -0.1 };
+                    let current = if preferences.preview_muted() {
+                        0.0
+                    } else {
+                        preferences.preview_volume()
+                    };
+                    let volume = (current + delta).clamp(0.0, 1.0);
+                    preferences.set_preview_audio(volume, volume == 0.0);
+                    return true;
+                }
+                gtk::gdk::Key::m | gtk::gdk::Key::M => {
+                    if let Some(toggle) = self.media_toggle_mute.borrow().as_ref() {
+                        toggle();
+                        return true;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let Some(media) = self.media.borrow().clone() else {
+            return false;
+        };
         match key {
             gtk::gdk::Key::space => {
                 if media.is_playing() {
@@ -677,29 +708,6 @@ impl PreviewState {
                     media.play();
                 }
                 true
-            }
-            gtk::gdk::Key::Up | gtk::gdk::Key::Down => {
-                let delta = if matches!(key, gtk::gdk::Key::Up) {
-                    0.1
-                } else {
-                    -0.1
-                };
-                let current_vol = if preferences.preview_muted() {
-                    0.0
-                } else {
-                    preferences.preview_volume()
-                };
-                let volume = (current_vol + delta).clamp(0.0, 1.0);
-                set_preview_volume(&media, &preferences, &slider, icon, volume);
-                true
-            }
-            gtk::gdk::Key::m | gtk::gdk::Key::M => {
-                if let Some(toggle_volume) = self.media_toggle_mute.borrow().as_ref() {
-                    toggle_volume();
-                    true
-                } else {
-                    false
-                }
             }
             gtk::gdk::Key::Left | gtk::gdk::Key::Right if media.is_seekable() => {
                 let delta: i64 = if matches!(key, gtk::gdk::Key::Right) {
@@ -723,6 +731,7 @@ impl PreviewState {
 
     fn show_after_focus_change(self: &Rc<Self>, entry: FileEntry, depth: Option<usize>) {
         self.cancel_pending_show();
+        self.retain_pending_playback(&entry);
         if self.current.borrow().as_ref() == Some(&entry) && self.current_request.get().is_some() {
             return;
         }
@@ -765,6 +774,7 @@ impl PreviewState {
 
     fn show(self: &Rc<Self>, entry: FileEntry, depth: Option<usize>) {
         self.cancel_pending_show();
+        self.retain_pending_playback(&entry);
         self.current_depth.set(depth);
         self.reserve_columns.set(true);
         self.dismissed.set(false);
@@ -1119,6 +1129,17 @@ impl PreviewState {
         )
     }
 
+    fn retain_pending_playback(&self, entry: &FileEntry) {
+        let keep = self
+            .continue_playback
+            .borrow()
+            .as_ref()
+            .is_some_and(|pending| pending.request.is_none() && pending.location == entry.location);
+        if !keep {
+            self.continue_playback.take();
+        }
+    }
+
     fn load(self: &Rc<Self>, entry: FileEntry, pdf_page: i32) {
         self.load_with_password(entry, pdf_page, None);
     }
@@ -1183,6 +1204,10 @@ impl PreviewState {
         self.next_request
             .set(self.next_request.get().saturating_add(1));
         self.current_request.set(Some(request_id));
+        self.retain_pending_playback(&entry);
+        if let Some(pending) = self.continue_playback.borrow_mut().as_mut() {
+            pending.request = Some(request_id);
+        }
         if self.focus_archive_on_ready.replace(false) {
             self.focus_archive_request.set(Some(request_id));
         }
@@ -1235,6 +1260,7 @@ impl PreviewState {
                 entry,
                 message,
             } if request_id == expected => {
+                self.continue_playback.take();
                 self.load.borrow_mut().take();
                 self.cancel_loading();
                 self.current_request.set(Some(expected));
@@ -1243,10 +1269,13 @@ impl PreviewState {
                     self.render_archive_password_prompt(entry, Some(&message));
                 } else {
                     self.current_request.set(None);
-                    self.show_message("Preview unavailable", &message);
+                    if !self.show_audio_error("Preview unavailable", &message, None) {
+                        self.show_message("Preview unavailable", &message);
+                    }
                 }
             }
             PreviewEvent::NeedsPassword { request_id, entry } if request_id == expected => {
+                self.continue_playback.take();
                 self.load.borrow_mut().take();
                 self.cancel_loading();
                 self.title.set_text(&entry.display_name);
@@ -1330,8 +1359,15 @@ impl PreviewState {
     }
 
     fn render(self: &Rc<Self>, preview: Preview) {
+        let continue_playback = self
+            .continue_playback
+            .take()
+            .is_some_and(|pending| pending.request == Some(preview.request_id));
         self.content_type.set_text(&preview.content_type);
-        self.clear_content();
+        self.reset_content(
+            matches!(preview.content, PreviewContent::SandboxedMedia { .. })
+                && is_audio_type(&preview.content_type),
+        );
         match preview.content {
             PreviewContent::Text { content, truncated } => {
                 self.print.set_visible(true);
@@ -1412,9 +1448,12 @@ impl PreviewState {
                     Err(error) => self.show_message("Preview unavailable", &error.to_string()),
                 }
             }
-            PreviewContent::SandboxedMedia { media: source } => {
-                let media = super::media::DecodedMedia::new(source).upcast::<gtk::MediaStream>();
+            PreviewContent::SandboxedMedia { media: mut source } => {
                 let is_gif = preview.content_type == "image/gif";
+                let is_audio = is_audio_type(&preview.content_type);
+                source.audio_only = is_audio;
+                let media =
+                    super::media::DecodedMedia::new(source.clone()).upcast::<gtk::MediaStream>();
                 self.media.replace(Some(media.clone()));
                 let weak = Rc::downgrade(self);
                 media.connect_error_notify(move |media| {
@@ -1426,28 +1465,47 @@ impl PreviewState {
                     }
                 });
 
-                let (overlay, center_play) = self.build_media_view(&media);
-                let section = media_layout::section(&overlay, &media);
-                self.content.append(&section);
-
                 let preferences = super::preferences::PreferenceManager::shared();
                 if is_gif {
                     media.set_loop(true);
-                    self.append_media_controls(&media, &preferences, &section, &center_play, true);
                 } else {
                     let muted = preferences.preview_muted();
-                    let volume = if muted {
+                    media.set_volume(if muted {
                         0.0
                     } else {
                         preferences.preview_volume()
-                    };
-                    media.set_volume(volume);
+                    });
                     media.set_muted(muted);
-                    self.append_media_controls(&media, &preferences, &section, &center_play, false);
                 }
-                if preferences.preview_autoplay() {
-                    self.sizing.play_or_defer(&media);
+                let center_play = if is_audio {
+                    self.render_audio(preview.entry, source, &media, &preferences);
+                    let weak = Rc::downgrade(self);
+                    let handler = media.connect_prepared_notify(move |media| {
+                        if media.is_prepared()
+                            && media.has_video()
+                            && let Some(state) = weak.upgrade()
+                        {
+                            state.replace_audio_with_video(media);
+                        }
+                    });
+                    self.media_signals.borrow_mut().push(handler);
+                    None
                 } else {
+                    let (overlay, center_play) = self.build_media_view(&media);
+                    let section = media_layout::section(&overlay, &media);
+                    self.content.append(&section);
+                    self.append_media_controls(
+                        &media,
+                        &preferences,
+                        &section,
+                        &center_play,
+                        is_gif,
+                    );
+                    Some(center_play)
+                };
+                if preferences.preview_autoplay() || (continue_playback && is_audio) {
+                    self.sizing.play_or_defer(&media);
+                } else if let Some(center_play) = center_play {
                     center_play.set_visible(true);
                 }
 
@@ -2357,38 +2415,13 @@ impl PreviewState {
         seek.set_range(0.0, 0.0);
         seek.set_sensitive(false);
 
-        let volume_toggle = gtk::Button::new();
-        volume_toggle.add_css_class("preview-media-button");
-        volume_toggle.set_tooltip_text(Some("Mute/unmute (Ctrl+Alt+M)"));
-        let muted = preferences.preview_muted();
-        let volume_icon = crate::assets::primary_icon(
-            if muted {
-                crate::assets::icons::VOLUME_X
-            } else {
-                crate::assets::icons::VOLUME_2
-            },
-            16,
-        );
-        volume_toggle.set_child(Some(&volume_icon));
-
-        let volume_slider = gtk::Scale::builder()
-            .orientation(gtk::Orientation::Horizontal)
-            .draw_value(false)
-            .width_request(72)
-            .build();
-        volume_slider.add_css_class("preview-media-volume");
-        volume_slider.set_range(0.0, 1.0);
-        let initial_slider = if preferences.preview_muted() {
-            0.0
-        } else {
-            preferences.preview_volume()
-        };
-        volume_slider.set_value(initial_slider);
+        let weak_media = media.downgrade();
+        let volume = VolumeControls::new(preferences, move || weak_media.upgrade());
 
         bar.append(&time_label);
         bar.append(&seek);
-        bar.append(&volume_toggle);
-        bar.append(&volume_slider);
+        bar.append(&volume.toggle);
+        bar.append(&volume.slider);
         preferences.bind_interface_scale(&bar, |widget, scale| {
             widget
                 .downcast_ref::<gtk::Box>()
@@ -2400,10 +2433,7 @@ impl PreviewState {
                 });
         });
         section.append(&bar);
-
-        self.media_volume_slider
-            .replace(Some(volume_slider.clone()));
-        self.media_volume_icon.replace(Some(volume_icon.clone()));
+        self.adopt_volume_controls(&volume);
 
         let seeking = Rc::new(Cell::new(false));
         let update_time = {
@@ -2440,60 +2470,151 @@ impl PreviewState {
             }
         });
         seek.add_controller(drag);
+    }
 
-        let updating_slider = Rc::new(Cell::new(false));
-        let updating = updating_slider.clone();
-        let weak_media = media.downgrade();
-        let weak_icon = volume_icon.downgrade();
-        preferences.bind_preference(
-            &volume_slider,
-            |preferences| (preferences.preview_volume(), preferences.preview_muted()),
-            move |widget, (volume, muted)| {
-                let Some(slider) = widget.downcast_ref::<gtk::Scale>() else {
-                    return;
-                };
-                let previous = updating.replace(true);
-                slider.set_value(if muted { 0.0 } else { volume });
-                if let Some(media) = weak_media.upgrade() {
-                    media.set_volume(volume);
-                    media.set_muted(muted);
-                }
-                if let Some(icon) = weak_icon.upgrade() {
-                    crate::assets::set_primary_icon(
-                        &icon,
-                        if muted {
-                            crate::assets::icons::VOLUME_X
-                        } else {
-                            crate::assets::icons::VOLUME_2
-                        },
-                    );
-                }
-                updating.set(previous);
-            },
+    fn adopt_volume_controls(&self, volume: &VolumeControls) {
+        self.media_volume_slider
+            .replace(Some(volume.slider.clone()));
+        self.media_toggle_mute
+            .replace(Some(volume.toggle_mute.clone()));
+    }
+
+    fn render_audio(
+        self: &Rc<Self>,
+        entry: FileEntry,
+        source: crate::services::SandboxedMedia,
+        media: &gtk::MediaStream,
+        preferences: &Rc<super::preferences::PreferenceManager>,
+    ) {
+        let existing = self.audio.borrow_mut().take();
+        let audio = existing.unwrap_or_else(|| {
+            let weak = Rc::downgrade(self);
+            let volume = VolumeControls::new(preferences, move || {
+                weak.upgrade()
+                    .and_then(|state| state.media.borrow().clone())
+            });
+            let volume_box = gtk::Box::new(gtk::Orientation::Horizontal, 2);
+            volume_box.add_css_class("preview-audio-volume");
+            volume_box.append(&volume.toggle);
+            volume_box.append(&volume.slider);
+            let weak = Rc::downgrade(self);
+            let view = audio::AudioView::new(
+                volume_box.upcast_ref(),
+                Rc::new(move |step| {
+                    if let Some(state) = weak.upgrade() {
+                        state.step_audio(step, false);
+                    }
+                }),
+            );
+            self.content.append(view.widget());
+            AudioPreview { view, volume }
+        });
+        self.adopt_volume_controls(&audio.volume);
+        let (folder, has_previous, has_next) = self.audio_position();
+        audio.view.show(audio::Track {
+            entry,
+            source,
+            media: media.clone(),
+            folder,
+            has_previous,
+            has_next,
+        });
+        self.audio.replace(Some(audio));
+    }
+
+    fn audio_position(&self) -> (Option<audio::TrackPosition>, bool, bool) {
+        let Some((files, index)) = self.audio_listing(None) else {
+            return (None, false, false);
+        };
+        let results = self
+            .keyboard_view
+            .borrow()
+            .as_ref()
+            .and_then(super::browser::WeakBrowserView::upgrade)
+            .is_some_and(|view| view.results_replace_listing());
+        (
+            Some(audio::TrackPosition {
+                position: index + 1,
+                count: files.len(),
+                results,
+            }),
+            index > 0,
+            index + 1 < files.len(),
+        )
+    }
+
+    fn audio_listing(
+        &self,
+        around: Option<crate::model::Location>,
+    ) -> Option<(Vec<FileEntry>, usize)> {
+        let view = self
+            .keyboard_view
+            .borrow()
+            .as_ref()
+            .and_then(super::browser::WeakBrowserView::upgrade)?;
+        let depth = self.current_depth.get()?;
+        let current = self.current.borrow().as_ref()?.location.clone();
+        let files = view.displayed_entries_matching(depth, is_audio_entry);
+        let position = |location: &crate::model::Location| {
+            files.iter().position(|entry| entry.location == *location)
+        };
+        let index = around
+            .as_ref()
+            .and_then(position)
+            .or_else(|| position(&current))?;
+        Some((files, index))
+    }
+
+    fn step_audio(self: &Rc<Self>, step: i32, keyboard: bool) -> bool {
+        // Repeated presses outrun the preview's debounce, so step from the cursor.
+        let cursor = self.current_depth.get().and_then(|depth| {
+            self.keyboard_view
+                .borrow()
+                .as_ref()
+                .and_then(super::browser::WeakBrowserView::upgrade)?
+                .displayed_cursor_entry(depth)
+        });
+        let Some((files, index)) = self.audio_listing(cursor.map(|entry| entry.location)) else {
+            return false;
+        };
+        let Some(target) = index
+            .checked_add_signed(step as isize)
+            .and_then(|index| files.get(index))
+        else {
+            return false;
+        };
+        let (Some(view), Some(depth)) = (
+            self.keyboard_view
+                .borrow()
+                .as_ref()
+                .and_then(super::browser::WeakBrowserView::upgrade),
+            self.current_depth.get(),
+        ) else {
+            return false;
+        };
+        let owned = self.content_owns_keys();
+        let playing = self.media.borrow().as_ref().map_or_else(
+            || self.continue_playback.borrow().is_some(),
+            |media| media.is_playing(),
         );
-
-        let toggle_volume = Rc::new({
-            let preferences = preferences.clone();
-            move || {
-                preferences.set_preview_muted(!preferences.preview_muted());
-            }
-        });
-        let toggle_volume_for_click = toggle_volume.clone();
-        self.media_toggle_mute.replace(Some(toggle_volume));
-        volume_toggle.connect_clicked(move |_| {
-            toggle_volume_for_click();
-        });
-
-        let preferences = preferences.clone();
-        volume_slider.connect_value_changed(move |scale| {
-            if !updating_slider.get() {
-                preferences.set_preview_audio(scale.value(), scale.value() == 0.0);
-            }
-        });
+        self.continue_playback
+            .replace(playing.then(|| PlaybackContinuation {
+                location: target.location.clone(),
+                request: None,
+            }));
+        let moved = view.step_to(depth, &target.location, keyboard.then_some(step));
+        if moved && view.results_replace_listing() {
+            self.show_after_focus_change(target.clone(), Some(depth));
+        } else if !moved {
+            self.continue_playback.take();
+        }
+        self.keep_keys_in_content(owned);
+        moved
     }
 
     fn stop_media(&self) {
-        if let Some(stream) = self.media.borrow_mut().take() {
+        let stream = self.media.borrow_mut().take();
+        if let Some(stream) = stream {
             for handler in self.media_signals.borrow_mut().drain(..) {
                 stream.disconnect(handler);
             }
@@ -2511,23 +2632,38 @@ impl PreviewState {
     }
 
     fn clear_content(&self) {
+        self.reset_content(false);
+    }
+
+    /// Keep the audio view across tracks to preserve artwork transitions.
+    fn reset_content(&self, keep_audio: bool) {
         let owned = self.content_owns_keys();
         self.source_preview.cancel();
         self.source_preview.scroll.borrow_mut().take();
         self.source_preview.virtual_state.borrow_mut().take();
         self.document_view_button.set_visible(false);
         self.document_preview.borrow_mut().take();
+        let audio = self.audio.borrow_mut().take();
+        if let Some(audio) = audio.as_ref() {
+            audio.view.detach();
+        }
         self.stop_media();
-        self.media_toggle_mute.replace(None);
-        self.media_volume_slider.replace(None);
-        self.media_volume_icon.replace(None);
+        if !keep_audio || audio.is_none() {
+            self.media_toggle_mute.replace(None);
+            self.media_volume_slider.replace(None);
+        }
         self.print.set_visible(false);
         self.wrap.set_visible(false);
         self.text_view.take();
         self.text_scroll.take();
         self.archive_browser.take();
         self.clear_password_entry();
-        clear_box(&self.content);
+        match audio {
+            Some(audio) if keep_audio => {
+                self.audio.replace(Some(audio));
+            }
+            _ => clear_box(&self.content),
+        }
         self.keep_keys_in_content(owned);
     }
 
@@ -2541,8 +2677,16 @@ impl PreviewState {
     }
 
     fn show_loading(self: &Rc<Self>, request_id: PreviewRequestId) {
-        self.clear_content();
+        let audio_next = self.current.borrow().as_ref().is_some_and(is_audio_entry);
+        self.reset_content(audio_next);
         self.cancel_loading();
+        if let Some(audio) = self.audio.borrow().as_ref() {
+            let (folder, previous, next) = self.audio_position();
+            if let Some(entry) = self.current.borrow().as_ref() {
+                audio.view.prepare(entry, folder, previous, next);
+            }
+            return;
+        }
         let weak = Rc::downgrade(self);
         if self
             .current
@@ -2594,12 +2738,44 @@ impl PreviewState {
     fn show_media_error(&self, error: &glib::Error) {
         let message = error.message();
         let (title, detail, command) = media_error_feedback(message);
-        self.show_message_with_icon(
-            title,
-            &detail,
-            Some(crate::assets::icons::TRIANGLE_ALERT),
-            command,
+        self.continue_playback.take();
+        if !self.show_audio_error(title, &detail, command) {
+            self.show_message_with_icon(
+                title,
+                &detail,
+                Some(crate::assets::icons::TRIANGLE_ALERT),
+                command,
+            );
+        }
+    }
+
+    fn show_audio_error(&self, title: &str, detail: &str, command: Option<&str>) -> bool {
+        let audio = self.audio.borrow();
+        let Some(audio) = audio.as_ref() else {
+            return false;
+        };
+        audio.view.show_error(title, detail, command);
+        self.stop_media();
+        true
+    }
+
+    fn replace_audio_with_video(self: &Rc<Self>, media: &gtk::MediaStream) {
+        let Some(audio) = self.audio.take() else {
+            return;
+        };
+        audio.view.detach();
+        clear_box(&self.content);
+        let (overlay, center) = self.build_media_view(media);
+        let section = media_layout::section(&overlay, media);
+        self.content.append(&section);
+        self.append_media_controls(
+            media,
+            &super::preferences::PreferenceManager::shared(),
+            &section,
+            &center,
+            false,
         );
+        center.set_visible(!media.is_playing());
     }
 
     fn show_message(&self, title: &str, detail: &str) {
@@ -2638,6 +2814,146 @@ impl PreviewState {
         }
         self.content.append(&box_);
     }
+}
+
+struct VolumeControls {
+    toggle: gtk::Button,
+    slider: gtk::Scale,
+    toggle_mute: Rc<dyn Fn()>,
+}
+
+impl VolumeControls {
+    /// `media` resolves the stream to update, which can change while the controls live.
+    fn new(
+        preferences: &Rc<super::preferences::PreferenceManager>,
+        media: impl Fn() -> Option<gtk::MediaStream> + 'static,
+    ) -> Self {
+        let toggle = gtk::Button::new();
+        toggle.add_css_class("preview-media-button");
+        toggle.set_tooltip_text(Some("Mute/unmute (Ctrl+Alt+M)"));
+        let muted = preferences.preview_muted();
+        let icon = crate::assets::primary_icon(
+            if muted {
+                crate::assets::icons::VOLUME_X
+            } else {
+                crate::assets::icons::VOLUME_2
+            },
+            16,
+        );
+        toggle.set_child(Some(&icon));
+
+        let slider = gtk::Scale::builder()
+            .orientation(gtk::Orientation::Horizontal)
+            .draw_value(false)
+            .width_request(72)
+            .build();
+        slider.add_css_class("preview-media-volume");
+        slider.set_range(0.0, 1.0);
+        slider.set_value(if muted {
+            0.0
+        } else {
+            preferences.preview_volume()
+        });
+
+        let updating_slider = Rc::new(Cell::new(false));
+        let updating = updating_slider.clone();
+        let weak_icon = icon.downgrade();
+        preferences.bind_preference(
+            &slider,
+            |preferences| (preferences.preview_volume(), preferences.preview_muted()),
+            move |widget, (volume, muted)| {
+                let Some(slider) = widget.downcast_ref::<gtk::Scale>() else {
+                    return;
+                };
+                let previous = updating.replace(true);
+                slider.set_value(if muted { 0.0 } else { volume });
+                if let Some(media) = media() {
+                    media.set_volume(volume);
+                    media.set_muted(muted);
+                }
+                if let Some(icon) = weak_icon.upgrade() {
+                    crate::assets::set_primary_icon(
+                        &icon,
+                        if muted {
+                            crate::assets::icons::VOLUME_X
+                        } else {
+                            crate::assets::icons::VOLUME_2
+                        },
+                    );
+                }
+                updating.set(previous);
+            },
+        );
+
+        let toggle_mute: Rc<dyn Fn()> = Rc::new({
+            let preferences = preferences.clone();
+            move || {
+                preferences.set_preview_muted(!preferences.preview_muted());
+            }
+        });
+        let toggle_for_click = toggle_mute.clone();
+        toggle.connect_clicked(move |_| {
+            toggle_for_click();
+        });
+
+        let preferences = preferences.clone();
+        slider.connect_value_changed(move |scale| {
+            if !updating_slider.get() {
+                preferences.set_preview_audio(scale.value(), scale.value() == 0.0);
+            }
+        });
+        Self {
+            toggle,
+            slider,
+            toggle_mute,
+        }
+    }
+}
+
+struct PlaybackContinuation {
+    location: crate::model::Location,
+    request: Option<PreviewRequestId>,
+}
+
+struct AudioPreview {
+    view: Rc<audio::AudioView>,
+    volume: VolumeControls,
+}
+
+/// Cached per extension: track stepping scans whole folders on the main thread.
+fn is_audio_entry(entry: &FileEntry) -> bool {
+    thread_local! {
+        static AUDIO_EXTENSIONS: RefCell<HashMap<String, bool>> = RefCell::new(HashMap::new());
+    }
+    let Some(extension) = Path::new(&entry.native_name)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .filter(|_| !entry.is_directory())
+        .map(str::to_ascii_lowercase)
+    else {
+        return false;
+    };
+    AUDIO_EXTENSIONS.with_borrow_mut(|known| {
+        *known.entry(extension).or_insert_with_key(|extension| {
+            is_audio_type(
+                &gio::content_type_guess(Some(Path::new(&format!("a.{extension}"))), None::<&[u8]>)
+                    .0,
+            )
+        })
+    })
+}
+
+fn is_audio_type(content_type: &str) -> bool {
+    content_type.starts_with("audio/")
+        && !matches!(
+            content_type,
+            "audio/x-mpegurl"
+                | "audio/mpegurl"
+                | "audio/x-scpls"
+                | "audio/midi"
+                | "audio/x-midi"
+                | "audio/sp-midi"
+        )
 }
 
 fn print_progress_for_page(completed: i32, total: i32) -> (String, f64) {
@@ -3379,42 +3695,6 @@ fn format_file_size(bytes: u64) -> String {
         }
     } else {
         format!("{value:.1} {}", units[unit])
-    }
-}
-
-fn set_preview_mute(
-    media: &impl IsA<gtk::MediaStream>,
-    icon: &gtk::Image,
-    preferences: &Rc<super::preferences::PreferenceManager>,
-    muted: bool,
-) {
-    media.set_muted(muted);
-    crate::assets::set_primary_icon(
-        icon,
-        if muted {
-            crate::assets::icons::VOLUME_X
-        } else {
-            crate::assets::icons::VOLUME_2
-        },
-    );
-    preferences.set_preview_muted(muted);
-}
-
-fn set_preview_volume(
-    media: &impl IsA<gtk::MediaStream>,
-    preferences: &Rc<super::preferences::PreferenceManager>,
-    slider: &Option<gtk::Scale>,
-    icon: &gtk::Image,
-    volume: f64,
-) {
-    media.set_volume(volume);
-    preferences.set_preview_audio(volume, volume == 0.0);
-    if let Some(slider) = slider {
-        slider.set_value(volume);
-    }
-    let muted = volume == 0.0;
-    if preferences.preview_muted() != muted {
-        set_preview_mute(media, icon, preferences, muted);
     }
 }
 

@@ -14,7 +14,10 @@ use crate::{
     services::MediaPreviewSize,
 };
 
-use super::{bounded_output_with_timeout, media_preview_size, stop_child};
+use super::{
+    MAX_OUTPUT_BYTES, bounded_output, bounded_output_with_timeout, media_preview_size,
+    read_limited, stop_child,
+};
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(4);
 const ATTEMPT_TIMEOUT: Duration = Duration::from_secs(4);
@@ -43,9 +46,10 @@ pub(super) fn run(
     size: &str,
     policy: MediaPreviewBackend,
     start_tick: u32,
+    audio_only: bool,
 ) -> Result<(), String> {
     let mut writer = std::fs::File::create(output).map_err(|error| error.to_string())?;
-    stream(input, size, policy, start_tick, &mut writer)
+    stream(input, size, policy, start_tick, audio_only, &mut writer)
 }
 
 fn stream(
@@ -53,10 +57,16 @@ fn stream(
     size: &str,
     policy: MediaPreviewBackend,
     start_tick: u32,
+    audio_only: bool,
     writer: &mut impl Write,
 ) -> Result<(), String> {
     let size = media_preview_size(size)?;
-    let input_info = probe(input, size, start_tick).map_err(|error| error.to_string())?;
+    let mode = if audio_only {
+        ProbeMode::SkipArtwork
+    } else {
+        ProbeMode::Playback
+    };
+    let input_info = probe(input, size, start_tick, mode).map_err(|error| error.to_string())?;
     let backends =
         if input_info.video.is_none() || input_info.cover || input_info.gif_period_us.is_some() {
             vec![Backend::Software]
@@ -105,49 +115,97 @@ fn stream(
     Err("No sandboxed media decoder succeeded".into())
 }
 
-fn probe(path: &Path, size: MediaPreviewSize, start_tick: u32) -> io::Result<Input> {
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ProbeMode {
+    Playback,
+    SkipArtwork,
+    Audio,
+}
+
+fn probe(
+    path: &Path,
+    size: MediaPreviewSize,
+    start_tick: u32,
+    mode: ProbeMode,
+) -> io::Result<Input> {
+    metadata(&probe_json(path)?, size, start_tick, mode)
+}
+
+fn probe_json(path: &Path) -> io::Result<Vec<u8>> {
     let output = bounded_output_with_timeout(Command::new("ffprobe").args([
         "-v", "error", "-show_entries",
-        "stream=index,codec_type,width,height,sample_aspect_ratio:stream_disposition=attached_pic:stream_side_data=rotation:format=duration,format_name",
+        "stream=index,codec_type,width,height,sample_aspect_ratio:stream_disposition=attached_pic:stream_tags=comment,title:stream_side_data=rotation:format=duration,format_name",
         "-of", "json",
     ]).arg(path), 64 * 1024, PROBE_TIMEOUT)?
         .filter(|output| output.status.success()).ok_or_else(|| io::Error::other("Unable to inspect media inside the sandbox"))?;
-    metadata(&output.stdout, size, start_tick)
+    Ok(output.stdout)
 }
 
-fn metadata(bytes: &[u8], size: MediaPreviewSize, start_tick: u32) -> io::Result<Input> {
+fn is_cover(stream: &serde_json::Value) -> bool {
+    stream["codec_type"] == "video" && stream["disposition"]["attached_pic"].as_u64() == Some(1)
+}
+
+fn stream_index(stream: &serde_json::Value) -> io::Result<u32> {
+    stream["index"]
+        .as_u64()
+        .filter(|index| *index < 1024)
+        .map(|index| index as u32)
+        .ok_or_else(|| media::invalid("Invalid media stream index"))
+}
+
+fn attached_picture(streams: &[serde_json::Value]) -> Option<&serde_json::Value> {
+    let mut pictures = streams.iter().filter(|stream| is_cover(stream));
+    pictures
+        .clone()
+        .find(|stream| {
+            ["comment", "title"].iter().any(|key| {
+                stream["tags"][*key].as_str().is_some_and(|tag| {
+                    matches!(
+                        tag.to_ascii_lowercase().as_str(),
+                        "cover (front)" | "front cover" | "front"
+                    )
+                })
+            })
+        })
+        .or_else(|| pictures.next())
+}
+
+fn metadata(
+    bytes: &[u8],
+    size: MediaPreviewSize,
+    start_tick: u32,
+    mode: ProbeMode,
+) -> io::Result<Input> {
     let value: serde_json::Value = serde_json::from_slice(bytes)?;
     let streams = value["streams"]
         .as_array()
         .ok_or_else(|| media::invalid("Missing media streams"))?;
-    let is_cover =
-        |stream: &serde_json::Value| stream["disposition"]["attached_pic"].as_u64() == Some(1);
-    let video = streams
-        .iter()
-        .find(|stream| stream["codec_type"] == "video" && !is_cover(stream))
-        .or_else(|| {
-            streams
-                .iter()
-                .find(|stream| stream["codec_type"] == "video")
-        });
+    let video = if mode == ProbeMode::Audio {
+        None
+    } else {
+        streams
+            .iter()
+            .find(|stream| stream["codec_type"] == "video" && !is_cover(stream))
+            .or_else(|| {
+                (mode == ProbeMode::Playback)
+                    .then(|| attached_picture(streams))
+                    .flatten()
+            })
+    };
     let audio = streams
         .iter()
         .find(|stream| stream["codec_type"] == "audio");
-    let index = |stream: &serde_json::Value| -> io::Result<u32> {
-        stream["index"]
-            .as_u64()
-            .filter(|index| *index < 1024)
-            .map(|index| index as u32)
-            .ok_or_else(|| media::invalid("Invalid media stream index"))
-    };
+    if mode == ProbeMode::Audio && audio.is_none() {
+        return Err(media::invalid("The file has no audio track"));
+    }
     let duration = value["format"]["duration"]
         .as_str()
         .and_then(|duration| duration.parse::<f64>().ok())
         .filter(|duration| duration.is_finite() && *duration > 0.0)
         .unwrap_or(media::MAX_DURATION_US as f64 / 1_000_000.0);
     let format_name = value["format"]["format_name"].as_str().unwrap_or("");
-    let gif_period_us =
-        (format_name == "gif" && duration < 30.0).then_some((duration * 1_000_000.0).ceil() as u64);
+    let gif_period_us = (video.is_some() && format_name == "gif" && duration < 30.0)
+        .then_some((duration * 1_000_000.0).ceil() as u64);
     let raw_video = format_name
         .split(',')
         .any(|name| matches!(name.trim(), "h264" | "hevc"));
@@ -203,12 +261,146 @@ fn metadata(bytes: &[u8], size: MediaPreviewSize, start_tick: u32) -> io::Result
     .validate(size, start_tick)?;
     Ok(Input {
         header,
-        video: video.map(index).transpose()?,
-        audio: audio.map(index).transpose()?,
+        video: video.map(stream_index).transpose()?,
+        audio: audio.map(stream_index).transpose()?,
         cover: video.is_some_and(is_cover),
         gif_period_us,
         raw_video,
     })
+}
+
+fn ffmpeg_command(backend: &Backend, background: bool) -> Command {
+    let mut command = if background {
+        let mut command = Command::new("nice");
+        command.args(["-n", "10", "prlimit"]);
+        command
+    } else {
+        Command::new("prlimit")
+    };
+    command.args(["--core=0", "--fsize=536870912"]);
+    if *backend == Backend::Software {
+        command.arg("--as=2147483648");
+    }
+    command.args([
+        "--",
+        "ffmpeg",
+        "-nostdin",
+        "-v",
+        "quiet",
+        "-max_alloc",
+        "536870912",
+        "-max_pixels",
+        "50000000",
+        "-threads",
+        "2",
+        "-thread_queue_size",
+        "2",
+        "-filter_threads",
+        "1",
+        "-filter_complex_threads",
+        "1",
+    ]);
+    command.env("MALLOC_ARENA_MAX", "1");
+    command
+}
+
+pub(super) fn run_peaks(input: &Path, output: &Path) -> Result<(), String> {
+    let mut writer = std::fs::File::create(output).map_err(|error| error.to_string())?;
+    let info = probe(input, MediaPreviewSize::new(16, 16), 0, ProbeMode::Audio)
+        .map_err(|error| error.to_string())?;
+    let audio = info.audio.ok_or("The file has no audio track")?;
+    let duration_us = info.header.duration_us;
+    if duration_us >= media::MAX_DURATION_US {
+        return Err("The audio duration is unknown".into());
+    }
+    let mut child = ffmpeg_command(&Backend::Software, true)
+        .arg("-i")
+        .arg(input)
+        .arg("-map")
+        .arg(format!("0:{audio}"))
+        .args(["-vn", "-sn", "-dn", "-ac", "1", "-ar"])
+        .arg(media::peaks::SAMPLE_RATE.to_string())
+        .args(["-c:a", "pcm_s16le", "-f", "s16le", "pipe:1"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| error.to_string())?;
+    let result = (|| -> io::Result<()> {
+        let pcm = child
+            .stdout
+            .take()
+            .ok_or_else(|| io::Error::other("Missing decoded audio pipe"))?;
+        media::peaks::write_header(&mut writer, duration_us)?;
+        let mut accumulator = media::peaks::Accumulator::new(duration_us);
+        let mut buffer = vec![0; 16 * 1024];
+        loop {
+            let read = read_chunk(&pcm, &mut buffer, Instant::now() + FRAME_TIMEOUT)?;
+            if read == 0 {
+                break;
+            }
+            accumulator.push(&buffer[..read - read % 2], &mut writer)?;
+        }
+        if !child.wait()?.success() {
+            return Err(io::Error::other("The audio decoder failed"));
+        }
+        accumulator.finish(&mut writer)
+    })();
+    if result.is_err() {
+        stop_child(&mut child);
+    }
+    result.map_err(|error| error.to_string())
+}
+
+pub(super) fn audio_tags(input: &Path) -> Result<Vec<u8>, String> {
+    let keys = crate::sandbox::metadata::TAG_KEYS;
+    bounded_output_with_timeout(
+        Command::new("ffprobe")
+            .args(["-v", "error", "-threads", "1", "-select_streams", "a:0"])
+            .arg("-show_entries")
+            .arg(format!("format_tags={keys}:stream_tags={keys}"))
+            .args(["-of", "json"])
+            .arg(input),
+        crate::sandbox::metadata::MAX_METADATA_BYTES,
+        PROBE_TIMEOUT,
+    )
+    .map_err(|error| error.to_string())?
+    .filter(|output| output.status.success())
+    .map(|output| output.stdout)
+    .ok_or_else(|| "Unable to read audio tags".into())
+}
+
+pub(super) fn cover(input: &Path, size: u32) -> Result<Vec<u8>, String> {
+    let bytes = probe_json(input).map_err(|error| error.to_string())?;
+    let value: serde_json::Value =
+        serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
+    let streams = value["streams"].as_array().ok_or("Missing media streams")?;
+    let Some(picture) = attached_picture(streams) else {
+        return Ok(Vec::new());
+    };
+    let index = stream_index(picture).map_err(|error| error.to_string())?;
+    let directory = tempfile::tempdir().map_err(|error| error.to_string())?;
+    let path = directory.path().join("cover.png");
+    let output = bounded_output(
+        ffmpeg_command(&Backend::Software, false)
+            .arg("-i")
+            .arg(input)
+            .arg("-map")
+            .arg(format!("0:{index}"))
+            .args(["-frames:v", "1", "-an", "-sn", "-dn", "-vf"])
+            .arg(format!(
+                "scale=w='min(iw,{size})':h='min(ih,{size})':force_original_aspect_ratio=decrease"
+            ))
+            .args(["-c:v", "png", "-threads", "1", "-y"])
+            .arg(&path),
+        MAX_OUTPUT_BYTES,
+    )
+    .map_err(|error| error.to_string())?;
+    if !output.status.success() {
+        return Err("Unable to decode embedded artwork".into());
+    }
+    let file = std::fs::File::open(path).map_err(|error| error.to_string())?;
+    read_limited(file, MAX_OUTPUT_BYTES).map_err(|error| error.to_string())
 }
 
 fn backends(devices: &[PathBuf], policy: MediaPreviewBackend) -> Vec<Backend> {
@@ -256,31 +448,7 @@ enum Track {
 }
 
 fn command(path: &Path, input: &Input, backend: &Backend, track: Track) -> Command {
-    let mut command = Command::new("prlimit");
-    command.args(["--core=0", "--fsize=536870912"]);
-    if *backend == Backend::Software {
-        command.arg("--as=2147483648");
-    }
-    command.args([
-        "--",
-        "ffmpeg",
-        "-nostdin",
-        "-v",
-        "quiet",
-        "-max_alloc",
-        "536870912",
-        "-max_pixels",
-        "50000000",
-        "-threads",
-        "2",
-        "-thread_queue_size",
-        "2",
-        "-filter_threads",
-        "1",
-        "-filter_complex_threads",
-        "1",
-    ]);
-    command.env("MALLOC_ARENA_MAX", "1");
+    let mut command = ffmpeg_command(backend, false);
     match backend {
         Backend::VaApi(device) => {
             command

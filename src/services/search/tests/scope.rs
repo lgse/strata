@@ -2,8 +2,8 @@
 
 use super::*;
 use crate::services::search::{
-    SearchCoverage, SharedIndex, append_index_items, filter_score_normalized, index_filter,
-    start_search_session,
+    SearchCoverage, SearchScorer, SharedIndex, append_index_items, filter_score_normalized,
+    index_filter, start_search_session,
 };
 use std::sync::Arc;
 
@@ -150,7 +150,8 @@ fn plain_filters_rank_literal_names_above_typos_and_reject_scattered_or_path_mat
 #[test]
 fn wildcard_scoring_is_session_local_and_applies_to_new_index_batches() {
     let index = Arc::new(SharedIndex::new());
-    let (filter, events) = start_search_session(index.clone(), filter_score_normalized);
+    let (filter, events) =
+        start_search_session(index.clone(), SearchScorer::Name(filter_score_normalized));
     filter.query("*.MOV");
     let SearchEvent::Results { items, .. } = wait_for_results(&events).expect("empty index");
     assert!(items.is_empty());
@@ -168,7 +169,8 @@ fn wildcard_scoring_is_session_local_and_applies_to_new_index_batches() {
     let SearchEvent::Results { items, .. } = wait_for_results(&events).expect("rescored results");
     assert_eq!(items, expected);
 
-    let (global, global_events) = start_search_session(index, fuzzy_score_normalized);
+    let (global, global_events) =
+        start_search_session(index, SearchScorer::Name(fuzzy_score_normalized));
     global.query("*.MOV");
     let SearchEvent::Results { items, .. } =
         wait_for_results(&global_events).expect("global results");

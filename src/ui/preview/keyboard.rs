@@ -57,7 +57,8 @@ impl PreviewDrawer {
         self.state.scroll_document(motion)
     }
 
-    /// Plain media keys for a keyboard-owned media preview.
+    /// Plain media keys for a keyboard-owned media preview, plus `<` / `>` from
+    /// the 10xer listing while an audio preview is open.
     pub(in crate::ui) fn media_key(&self, key: gtk::gdk::Key) -> bool {
         self.has_video() && self.state.media_command(key)
     }
@@ -281,9 +282,10 @@ impl PreviewState {
         if accepts_typing(focused) {
             return PreviewSurface::Text;
         }
-        let media_view = self.media.borrow().is_some()
+        let media_view = (self.media.borrow().is_some() || self.audio.borrow().is_some())
             && (focused == self.content.upcast_ref::<gtk::Widget>()
-                || focused.is::<gtk::Overlay>());
+                || focused.is::<gtk::Overlay>()
+                || focused.is::<super::audio::Scrubber>());
         if media_view {
             return PreviewSurface::Media;
         }

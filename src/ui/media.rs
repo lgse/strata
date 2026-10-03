@@ -99,6 +99,7 @@ mod imp {
         pub(super) recoveries: Cell<u32>,
         pub(super) audio_stuck_since: Cell<Option<Instant>>,
         pub(super) restore: Cell<Option<u64>>,
+        pub(super) history: RefCell<Option<PcmHistory>>,
     }
 
     #[glib::object_subclass]
@@ -223,6 +224,30 @@ glib::wrapper! {
 }
 
 impl DecodedMedia {
+    pub(crate) fn retain_played_audio(&self) {
+        self.imp()
+            .history
+            .borrow_mut()
+            .get_or_insert_with(PcmHistory::default);
+    }
+
+    /// Fills `window` with the mono samples that ended at the audible playhead.
+    pub(crate) fn played_samples(&self, window: &mut [f32]) -> bool {
+        let imp = self.imp();
+        if !self.is_playing() || !imp.first_frame.get() {
+            return false;
+        }
+        let elapsed = imp
+            .clock
+            .get()
+            .map_or(0, |clock| clock.elapsed().as_micros() as u64);
+        let played = (imp.clock_base.get() + elapsed) * media::SAMPLE_RATE / 1_000_000;
+        imp.history
+            .borrow()
+            .as_ref()
+            .is_some_and(|history| history.window_ending_at(played, window))
+    }
+
     pub fn new(source: SandboxedMedia) -> Self {
         let obj: Self = glib::Object::new();
         let restore =
@@ -268,7 +293,10 @@ impl DecodedMedia {
         if let Some(source) = imp.source.borrow().as_ref() {
             let position = imp.position.get();
             let duration = self.duration().max(0) as u64;
-            if position > RESTORE_MIN_US && (duration == 0 || position < duration) {
+            if imp.header.get().is_some_and(|header| header.width > 0)
+                && position > RESTORE_MIN_US
+                && (duration == 0 || position < duration)
+            {
                 remember_media_position(source.path.clone(), position);
             } else {
                 forget_media_position(&source.path);
@@ -281,6 +309,7 @@ impl DecodedMedia {
         imp.audio.borrow_mut().take();
         imp.frames.borrow_mut().clear();
         imp.texture.borrow_mut().take();
+        imp.history.borrow_mut().take();
         imp.source.borrow_mut().take();
         imp.restart.set(None);
         imp.seek_pending.set(None);
@@ -310,6 +339,9 @@ impl DecodedMedia {
         }
         imp.audio.borrow_mut().take();
         imp.frames.borrow_mut().clear();
+        if let Some(history) = imp.history.borrow_mut().as_mut() {
+            history.clear();
+        }
         imp.restart.set(Some(tick));
         imp.starting.set(Some(Instant::now()));
         imp.position.set(media::timestamp(tick));
@@ -508,6 +540,7 @@ impl DecodedMedia {
             match event {
                 Some(Event::Prepared(header)) => {
                     if let Some(saved) = imp.restore.take()
+                        && header.width > 0
                         && saved < header.duration_us
                     {
                         imp.header.set(Some(header));
@@ -550,6 +583,9 @@ impl DecodedMedia {
                             .samples
                             .truncate(samples_left.min(media::AUDIO_BYTES as u64 / 4) as usize * 4);
                         if !frame.samples.is_empty() {
+                            if let Some(history) = imp.history.borrow_mut().as_mut() {
+                                history.push(&frame.samples);
+                            }
                             audio.push(
                                 std::mem::take(&mut frame.samples),
                                 media::timestamp(frame.tick - header.start_tick),
@@ -731,5 +767,52 @@ impl DecodedMedia {
             }
             self.invalidate_contents();
         }
+    }
+}
+
+const HISTORY_SAMPLES: usize = 48_000;
+
+/// Mono PCM indexed by samples since the last restart, matching the sink clock.
+#[derive(Default)]
+pub(crate) struct PcmHistory {
+    samples: VecDeque<f32>,
+    end: u64,
+}
+
+impl PcmHistory {
+    fn clear(&mut self) {
+        self.samples.clear();
+        self.end = 0;
+    }
+
+    fn push(&mut self, interleaved: &[u8]) {
+        for frame in interleaved.as_chunks::<4>().0 {
+            let left = i16::from_le_bytes([frame[0], frame[1]]);
+            let right = i16::from_le_bytes([frame[2], frame[3]]);
+            self.samples
+                .push_back((f32::from(left) + f32::from(right)) / 65_536.0);
+        }
+        self.end += (interleaved.len() / 4) as u64;
+        let excess = self.samples.len().saturating_sub(HISTORY_SAMPLES);
+        self.samples.drain(..excess);
+    }
+
+    fn window_ending_at(&self, played: u64, window: &mut [f32]) -> bool {
+        let played = played.min(self.end);
+        let start = self.end - self.samples.len() as u64;
+        if played <= start {
+            return false;
+        }
+        let available = (played - start) as usize;
+        let copied = available.min(window.len());
+        let missing = window.len() - copied;
+        window[..missing].fill(0.0);
+        for (target, source) in window[missing..]
+            .iter_mut()
+            .zip(self.samples.range(available - copied..available))
+        {
+            *target = *source;
+        }
+        true
     }
 }

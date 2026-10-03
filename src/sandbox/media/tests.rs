@@ -111,6 +111,7 @@ fn decoder_failure_and_trailing_output_are_not_successful_end_of_stream() {
         size: crate::services::MediaPreviewSize::new(16, 16),
         backend: MediaPreviewBackend::Software,
         input_owner: None,
+        audio_only: false,
     };
     let h = Header {
         width: 1,
@@ -146,6 +147,40 @@ fn decoder_failure_and_trailing_output_are_not_successful_end_of_stream() {
                 .try_iter()
                 .any(|event| matches!(event, Event::Packet(Packet::End(_))))
         );
+        terminate(&mut child);
+    }
+}
+
+#[test]
+fn waveform_streams_forward_levels_and_reject_failed_or_trailing_output() {
+    let mut bytes = Vec::new();
+    crate::media::peaks::write_header(&mut bytes, 2_000_000).expect("header");
+    let mut accumulator = crate::media::peaks::Accumulator::new(2_000_000);
+    accumulator
+        .push(&[0x40; 32_000], &mut bytes)
+        .expect("levels");
+    accumulator.finish(&mut bytes).expect("end");
+    let file = tempfile::NamedTempFile::new().expect("wire fixture");
+    fs::write(file.path(), bytes).expect("wire bytes");
+    for (suffix, succeeds) in [("", true), ("exit 1", false), ("printf garbage", false)] {
+        let mut child = spawn_renderer(
+            Command::new("sh")
+                .args(["-c", &format!("cat \"$1\"; {suffix}"), "fixture"])
+                .arg(file.path())
+                .stdout(Stdio::piped()),
+        )
+        .expect("worker");
+        let (sender, receiver) = mpsc::sync_channel(4096);
+        let result = consume_peaks(&mut child, &Cancellation::default(), &sender);
+        assert_eq!(result.is_ok(), succeeds, "{suffix:?}");
+        let levels: usize = receiver
+            .try_iter()
+            .map(|event| match event {
+                PeaksEvent::Levels { levels, .. } => levels.len(),
+                _ => 0,
+            })
+            .sum();
+        assert_eq!(levels, crate::media::peaks::BUCKETS as usize);
         terminate(&mut child);
     }
 }

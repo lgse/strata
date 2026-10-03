@@ -17,7 +17,7 @@ use crate::ui::browser::location::{
 };
 use crate::ui::browser::paths::{can_pin_entry, is_trash_location};
 use crate::ui::browser::peek::{PeekAnchor, PeekView};
-use crate::ui::browser::progress::{FileProgressView, TransferProgressSnapshot};
+use crate::ui::browser::progress::{BackgroundProgress, FileProgressState};
 use crate::ui::browser::transfer::FinishedSendToCompletion;
 use crate::ui::browser::transfer::PendingSendToCompletion;
 use crate::ui::browser::transfer::duplicate_transfer;
@@ -26,7 +26,7 @@ use crate::ui::browser_modes::{BrowserDensity, BrowserMode, ClickActivation, Mod
 use gtk::glib;
 use gtk::prelude::*;
 use std::cell::{Cell, RefCell};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
@@ -74,7 +74,7 @@ pub(crate) use crate::ui::browser::clipboard::{
     locations_from_file_list_value, prepare_file_drop_target,
 };
 pub(crate) use crate::ui::browser::collection::{
-    ActivePaneFilter, debounce_filter_entry, detach_collection_view, filter_placeholder,
+    ActivePaneFilter, bind_listing_filter, detach_collection_view, filter_placeholder,
     focus_collection_item_when_allocated, focus_filter_entry, notify_filter_query,
     prepare_collection_inline_edit, restore_filter_controls, reveal_collection_after_layout,
     scroll_collection_when_allocated, search_result_entry,
@@ -221,22 +221,14 @@ pub(super) struct ViewState {
     pending_click_rename: RefCell<Option<glib::SourceId>>,
     click_rename_generation: Cell<u64>,
     pending_new_entry: RefCell<Option<Rc<PendingEntryRename>>>,
-    file_progress_view: RefCell<Option<FileProgressView>>,
-    pending_file_progress: RefCell<Option<glib::SourceId>>,
+    progress_state: RefCell<Rc<FileProgressState>>,
+    background_file_progress:
+        RefCell<HashMap<crate::services::OperationRequestId, Rc<BackgroundProgress>>>,
     pending_send_to_completion: RefCell<Option<PendingSendToCompletion>>,
     finished_send_to_completion: RefCell<Option<FinishedSendToCompletion>>,
     send_to_success_widget: RefCell<Option<gtk::Widget>>,
     send_to_success_generation: Cell<u64>,
-    file_operation_progress: Cell<(usize, usize)>,
-    transfer_progress: Cell<Option<TransferProgressSnapshot>>,
-    transfer_current_file: RefCell<Option<String>>,
-    transfer_rate_sample: Cell<Option<(std::time::Instant, u64)>>,
-    transfer_rate_bytes_per_second: Cell<Option<f64>>,
-    flushing_to_device: Cell<bool>,
-    transfer_cancel_requested: Cell<bool>,
-    transfer_cancel_timed_out: Cell<bool>,
-    transfer_cancel_timeout: RefCell<Option<glib::SourceId>>,
-    transfer_warning_banner: RefCell<Option<gtk::Box>>,
+
     pin_handler: RefCell<Option<PinHandler>>,
     unpin_handler: RefCell<Option<UnpinHandler>>,
     pin_status_handler: RefCell<Option<PinStatusHandler>>,
@@ -563,7 +555,7 @@ impl BrowserView {
             },
         );
         let state = Rc::new(ViewState {
-            overlay,
+            overlay: overlay.clone(),
             location_control,
             location_stack,
             global_activity_spinner,
@@ -610,22 +602,13 @@ impl BrowserView {
             pending_click_rename: RefCell::new(None),
             click_rename_generation: Cell::new(0),
             pending_new_entry: RefCell::new(None),
-            file_progress_view: RefCell::new(None),
-            pending_file_progress: RefCell::new(None),
+            progress_state: RefCell::new(Rc::new(FileProgressState::new(&overlay))),
+            background_file_progress: RefCell::new(HashMap::new()),
             pending_send_to_completion: RefCell::new(None),
             finished_send_to_completion: RefCell::new(None),
             send_to_success_widget: RefCell::new(None),
             send_to_success_generation: Cell::new(0),
-            file_operation_progress: Cell::new((0, 0)),
-            transfer_progress: Cell::new(None),
-            transfer_current_file: RefCell::new(None),
-            transfer_rate_sample: Cell::new(None),
-            transfer_rate_bytes_per_second: Cell::new(None),
-            flushing_to_device: Cell::new(false),
-            transfer_cancel_requested: Cell::new(false),
-            transfer_cancel_timed_out: Cell::new(false),
-            transfer_cancel_timeout: RefCell::new(None),
-            transfer_warning_banner: RefCell::new(None),
+
             pin_handler: RefCell::new(None),
             unpin_handler: RefCell::new(None),
             pin_status_handler: RefCell::new(None),
@@ -661,6 +644,7 @@ impl BrowserView {
             send_to_menu_test_override: RefCell::new(None),
             browser,
         });
+        find::register_highlight_view(&state);
 
         let weak_state = Rc::downgrade(&state);
         *pending_submit.borrow_mut() = Some(Rc::new(move || {
@@ -1693,6 +1677,114 @@ impl BrowserView {
             self.state.mode_views.borrow().visual_order(depth)
         };
         (!order.is_empty()).then_some(order)
+    }
+
+    pub(crate) fn displayed_entries_matching(
+        &self,
+        depth: usize,
+        keep: impl Fn(&FileEntry) -> bool,
+    ) -> Vec<FileEntry> {
+        if let Some(results) = self.filter_target().and_then(|target| target.results()) {
+            return results
+                .iter()
+                .map(search_result_entry)
+                .filter(keep)
+                .collect();
+        }
+        let order = self.displayed_order(depth);
+        self.state
+            .browser
+            .with_column_entries(depth, |entries| match order {
+                Some(order) => order
+                    .iter()
+                    .filter_map(|position| entries.get(*position))
+                    .filter(|entry| keep(entry))
+                    .cloned()
+                    .collect(),
+                None => entries
+                    .iter()
+                    .filter(|entry| keep(entry))
+                    .cloned()
+                    .collect(),
+            })
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn displayed_cursor_entry(&self, depth: usize) -> Option<FileEntry> {
+        if let Some(target) = self
+            .filter_target()
+            .filter(|target| target.results_view().is_some())
+        {
+            return target.current_result().as_ref().map(search_result_entry);
+        }
+        self.state.browser.cursor_entry(depth)
+    }
+
+    /// `key` supplies the keyboard scroll direction; `None` preserves pointer navigation.
+    pub(crate) fn step_to(&self, depth: usize, location: &Location, key: Option<i32>) -> bool {
+        if let Some(target) = self.filter_target()
+            && let Some(results) = target.results()
+        {
+            let Some(position) = results
+                .iter()
+                .position(|item| search_result_entry(item).location == *location)
+            else {
+                return false;
+            };
+            let cursor = target.hits().and_then(|hits| hits.cursor);
+            let delta = position as i32 - cursor.unwrap_or(0) as i32;
+            if key.is_some() {
+                self.keyboard_navigation();
+            }
+            if cursor.is_none() {
+                target.step(1, 0, key.is_some());
+            }
+            return self.step_filter_results(
+                delta.signum(),
+                delta.unsigned_abs() as usize,
+                key.is_some(),
+            );
+        }
+        let Some(position) = self
+            .state
+            .browser
+            .with_column_entries(depth, |entries| {
+                entries.iter().position(|entry| entry.location == *location)
+            })
+            .flatten()
+        else {
+            return false;
+        };
+        if key.is_some() {
+            self.keyboard_navigation();
+        }
+        let collection = self
+            .state
+            .overlay
+            .root()
+            .and_then(|root| root.focus())
+            .as_ref()
+            .and_then(super::scrolling::focused_collection);
+        if crate::ui::preferences::PreferenceManager::shared().tenxer_mode() {
+            let order = self.displayed_order(depth);
+            self.state
+                .browser
+                .place_cursor(depth, position, order.as_deref());
+        } else {
+            self.state.browser.select(depth, position);
+        }
+        self.state.mirror_focused_folder(depth, Some(position));
+        if let (Some(direction), Some((view, scroll))) = (key, collection) {
+            let position = self.cursor_view_position(&view);
+            super::scrolling::reveal_cursor(
+                &view,
+                &scroll,
+                direction,
+                super::scrolling::CursorMotion::Step,
+                position,
+            );
+        }
+        true
     }
 
     fn focused_listing_depth(&self) -> Option<usize> {
