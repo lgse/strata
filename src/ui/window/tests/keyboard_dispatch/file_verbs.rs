@@ -926,6 +926,540 @@ fn tenxer_numbered_actions_run_the_listed_match_on_the_current_targets() {
     );
 }
 
+fn launch_recorder(id: &str, targets: &[(&Path, &str)]) {
+    let wanted = format!("{id}.desktop");
+    let files: Vec<gtk::gio::File> = targets
+        .iter()
+        .map(|(path, _)| gtk::gio::File::for_path(path))
+        .collect();
+    let types: Vec<String> = targets.iter().map(|(_, mime)| mime.to_string()).collect();
+    for mime in &types {
+        wait_until(|| {
+            gtk::gio::AppInfo::all_for_type(mime)
+                .iter()
+                .any(|app| app.id().is_some_and(|app_id| app_id.as_str() == wanted))
+        });
+    }
+    let app = gtk::gio::AppInfo::all_for_type(&types[0])
+        .into_iter()
+        .find(|app| app.id().is_some_and(|app_id| app_id.as_str() == wanted))
+        .expect("fake application");
+    crate::ui::open_with::launch(&app, &files, &types, None::<&gtk::gio::AppLaunchContext>)
+        .expect("fake launch records history");
+}
+
+fn visible_chooser_sections(overlay: &gtk::Overlay) -> Vec<(String, Vec<String>)> {
+    let Some(list) = widget_with_class(overlay.upcast_ref(), "open-with-list") else {
+        return Vec::new();
+    };
+    let mut sections: Vec<(String, Vec<String>)> = Vec::new();
+    let mut row = list.first_child();
+    while let Some(widget) = row {
+        if widget.is_visible() {
+            let labels = label_texts(&widget);
+            if widget.has_css_class("open-with-heading-row") {
+                sections.push((labels.join(""), Vec::new()));
+            } else if let (Some(section), Some(name)) = (sections.last_mut(), labels.first()) {
+                section.1.push(name.clone());
+            }
+        }
+        row = widget.next_sibling();
+    }
+    sections
+}
+
+fn open_single_with_dialog(fixture: &KeyboardFixture, browser: &crate::app::Browser, name: &str) {
+    fixture.view.browser().clear_active_selection();
+    move_to_named(fixture, browser, name);
+    plain(fixture, Key::space);
+    shifted(fixture, Key::O);
+    wait_until(|| modal_visible(&fixture.overlay));
+}
+
+fn close_dialog(fixture: &KeyboardFixture) {
+    assert!(click_class(&fixture.overlay, "action-dialog-close"));
+    wait_until(|| !modal_visible(&fixture.overlay));
+    pump(200);
+}
+
+fn history_path() -> PathBuf {
+    gtk::glib::user_data_dir().join("strata/recent-apps.toml")
+}
+
+#[test]
+fn open_with_shows_recently_used_first_and_excludes_it_from_recommended() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::file_verbs::open_with_shows_recently_used_first_and_excludes_it_from_recommended",
+        || {
+            let output_alpha = gtk::glib::user_data_dir().join("received-alpha");
+            let output_beta = gtk::glib::user_data_dir().join("received-beta");
+            recorder_app("strata-alpha", "Alpha Editor", "text/plain;", &output_alpha);
+            recorder_app("strata-beta", "Beta Editor", "text/plain;", &output_beta);
+            let fixture = KeyboardFixture::new();
+            let directory = fixture._directory.path().to_path_buf();
+            let browser = fixture.view.browser();
+            enable_tenxer(&fixture);
+
+            open_single_with_dialog(&fixture, &browser, "a.txt");
+            let sections = chooser_sections(&fixture.overlay);
+            assert!(
+                !sections.iter().any(|(title, _)| title == "Recently Used"),
+                "{sections:?}"
+            );
+            close_dialog(&fixture);
+            assert!(
+                !output_alpha.exists() && !output_beta.exists(),
+                "cancelling launches nothing"
+            );
+
+            launch_recorder("strata-beta", &[(&directory.join("a.txt"), "text/plain")]);
+            wait_until(|| received(&output_beta) == [directory.join("a.txt")]);
+            open_single_with_dialog(&fixture, &browser, "b.txt");
+            let sections = chooser_sections(&fixture.overlay);
+            assert_eq!(sections[0].0, "Recently Used", "{sections:?}");
+            assert_eq!(sections[0].1, ["Beta Editor"], "{sections:?}");
+            assert!(
+                sections
+                    .iter()
+                    .skip(1)
+                    .all(|(_, apps)| !apps.contains(&"Beta Editor".to_owned())),
+                "{sections:?}"
+            );
+
+            assert!(click_class(&fixture.overlay, "action-dialog-confirm"));
+            wait_until(|| received(&output_beta) == [directory.join("b.txt")]);
+            wait_until(|| !modal_visible(&fixture.overlay));
+
+            launch_recorder("strata-alpha", &[(&directory.join("a.txt"), "text/plain")]);
+            open_single_with_dialog(&fixture, &browser, "a.txt");
+            let sections = chooser_sections(&fixture.overlay);
+            assert_eq!(
+                sections[0].1,
+                ["Alpha Editor", "Beta Editor"],
+                "{sections:?}"
+            );
+            close_dialog(&fixture);
+        },
+    );
+}
+
+#[test]
+fn open_with_keeps_independent_histories_per_file_type() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::file_verbs::open_with_keeps_independent_histories_per_file_type",
+        || {
+            let output_alpha = gtk::glib::user_data_dir().join("received-alpha");
+            let output_gamma = gtk::glib::user_data_dir().join("received-gamma");
+            recorder_app("strata-alpha", "Alpha Editor", "text/plain;", &output_alpha);
+            recorder_app("strata-gamma", "Gamma Viewer", "image/png;", &output_gamma);
+            let fixture = KeyboardFixture::new();
+            let directory = fixture._directory.path().to_path_buf();
+            std::fs::write(directory.join("picture.png"), b"\x89PNG\r\n\x1a\n").expect("png");
+            let browser = fixture.view.browser();
+            enable_tenxer(&fixture);
+            refresh(&fixture, "picture.png");
+
+            launch_recorder("strata-alpha", &[(&directory.join("a.txt"), "text/plain")]);
+            launch_recorder(
+                "strata-gamma",
+                &[(&directory.join("picture.png"), "image/png")],
+            );
+
+            open_single_with_dialog(&fixture, &browser, "b.txt");
+            let sections = chooser_sections(&fixture.overlay);
+            assert_eq!(sections[0].0, "Recently Used", "{sections:?}");
+            assert_eq!(sections[0].1, ["Alpha Editor"], "{sections:?}");
+            close_dialog(&fixture);
+
+            open_single_with_dialog(&fixture, &browser, "picture.png");
+            let sections = chooser_sections(&fixture.overlay);
+            assert_eq!(sections[0].0, "Recently Used", "{sections:?}");
+            assert_eq!(sections[0].1, ["Gamma Viewer"], "{sections:?}");
+            close_dialog(&fixture);
+        },
+    );
+}
+
+#[test]
+fn open_with_recently_used_intersects_multi_type_selections() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::file_verbs::open_with_recently_used_intersects_multi_type_selections",
+        || {
+            let output = gtk::glib::user_data_dir().join("received");
+            recorder_app(
+                "strata-shared",
+                "Shared Viewer",
+                "text/plain;image/png;",
+                &output,
+            );
+            recorder_app("strata-text", "Text Only", "text/plain;", &output);
+            let fixture = KeyboardFixture::new();
+            let directory = fixture._directory.path().to_path_buf();
+            std::fs::write(directory.join("picture.png"), b"\x89PNG\r\n\x1a\n").expect("png");
+            let browser = fixture.view.browser();
+            enable_tenxer(&fixture);
+            refresh(&fixture, "picture.png");
+
+            launch_recorder(
+                "strata-shared",
+                &[
+                    (&directory.join("a.txt"), "text/plain"),
+                    (&directory.join("picture.png"), "image/png"),
+                ],
+            );
+            launch_recorder("strata-text", &[(&directory.join("a.txt"), "text/plain")]);
+
+            move_to_named(&fixture, &browser, "a.txt");
+            plain(&fixture, Key::space);
+            move_to_named(&fixture, &browser, "picture.png");
+            plain(&fixture, Key::space);
+            shifted(&fixture, Key::O);
+            wait_until(|| modal_visible(&fixture.overlay));
+            let sections = chooser_sections(&fixture.overlay);
+            assert_eq!(sections[0].0, "Recently Used", "{sections:?}");
+            assert_eq!(sections[0].1, ["Shared Viewer"], "{sections:?}");
+            close_dialog(&fixture);
+
+            open_single_with_dialog(&fixture, &browser, "b.txt");
+            let sections = chooser_sections(&fixture.overlay);
+            assert_eq!(
+                sections[0].1,
+                ["Text Only", "Shared Viewer"],
+                "{sections:?}"
+            );
+            close_dialog(&fixture);
+        },
+    );
+}
+
+#[test]
+fn open_with_recently_used_surfaces_launched_apps_without_declared_handler() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::file_verbs::open_with_recently_used_surfaces_launched_apps_without_declared_handler",
+        || {
+            let output = gtk::glib::user_data_dir().join("received-oddball");
+            recorder_app("strata-oddball", "Oddball", "image/png;", &output);
+            let fixture = KeyboardFixture::new();
+            let directory = fixture._directory.path().to_path_buf();
+            let browser = fixture.view.browser();
+            enable_tenxer(&fixture);
+
+            let wanted = "strata-oddball.desktop";
+            wait_until(|| {
+                gtk::gio::AppInfo::all_for_type("image/png")
+                    .iter()
+                    .any(|app| app.id().is_some_and(|app_id| app_id.as_str() == wanted))
+            });
+            let app = gtk::gio::AppInfo::all_for_type("image/png")
+                .into_iter()
+                .find(|app| app.id().is_some_and(|app_id| app_id.as_str() == wanted))
+                .expect("fake application");
+            crate::ui::open_with::launch(
+                &app,
+                std::slice::from_ref(&gtk::gio::File::for_path(directory.join("a.txt"))),
+                std::slice::from_ref(&"text/plain".to_string()),
+                None::<&gtk::gio::AppLaunchContext>,
+            )
+            .expect("fake launch records history");
+            wait_until(|| received(&output) == [directory.join("a.txt")]);
+
+            open_single_with_dialog(&fixture, &browser, "b.txt");
+            let sections = chooser_sections(&fixture.overlay);
+            assert_eq!(sections[0].0, "Recently Used", "{sections:?}");
+            assert_eq!(sections[0].1, ["Oddball"], "{sections:?}");
+            assert!(
+                sections
+                    .iter()
+                    .skip(1)
+                    .all(|(_, apps)| !apps.contains(&"Oddball".to_owned())),
+                "{sections:?}"
+            );
+            close_dialog(&fixture);
+        },
+    );
+}
+
+#[test]
+fn open_with_recently_used_caps_displayed_entries_at_five() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::file_verbs::open_with_recently_used_caps_displayed_entries_at_five",
+        || {
+            let fixture = KeyboardFixture::new();
+            let directory = fixture._directory.path().to_path_buf();
+            let browser = fixture.view.browser();
+            enable_tenxer(&fixture);
+            for index in 0..6 {
+                let output = gtk::glib::user_data_dir().join(format!("received-{index}"));
+                recorder_app(
+                    &format!("strata-cap{index}"),
+                    &format!("Cap {index}"),
+                    "text/plain;",
+                    &output,
+                );
+                launch_recorder(
+                    &format!("strata-cap{index}"),
+                    &[(&directory.join("a.txt"), "text/plain")],
+                );
+            }
+
+            open_single_with_dialog(&fixture, &browser, "b.txt");
+            let sections = chooser_sections(&fixture.overlay);
+            assert_eq!(sections[0].0, "Recently Used", "{sections:?}");
+            assert_eq!(
+                sections[0].1,
+                ["Cap 5", "Cap 4", "Cap 3", "Cap 2", "Cap 1"],
+                "{sections:?}"
+            );
+            close_dialog(&fixture);
+        },
+    );
+}
+
+#[test]
+fn open_with_hides_recently_used_for_uninstalled_applications() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::file_verbs::open_with_hides_recently_used_for_uninstalled_applications",
+        || {
+            let output = gtk::glib::user_data_dir().join("received");
+            recorder_app("strata-gone", "Gone Editor", "text/plain;", &output);
+            let fixture = KeyboardFixture::new();
+            let directory = fixture._directory.path().to_path_buf();
+            let browser = fixture.view.browser();
+            enable_tenxer(&fixture);
+
+            launch_recorder("strata-gone", &[(&directory.join("a.txt"), "text/plain")]);
+            open_single_with_dialog(&fixture, &browser, "b.txt");
+            assert_eq!(
+                chooser_sections(&fixture.overlay)[0].0,
+                "Recently Used",
+                "history recorded"
+            );
+            close_dialog(&fixture);
+
+            std::fs::remove_file(
+                gtk::glib::user_data_dir().join("applications/strata-gone.desktop"),
+            )
+            .expect("uninstall fake application");
+            wait_until(|| gio_unix::DesktopAppInfo::new("strata-gone.desktop").is_none());
+            open_single_with_dialog(&fixture, &browser, "b.txt");
+            let sections = chooser_sections(&fixture.overlay);
+            assert!(
+                !sections.iter().any(|(title, _)| title == "Recently Used"),
+                "{sections:?}"
+            );
+            close_dialog(&fixture);
+        },
+    );
+}
+
+#[test]
+fn open_with_keeps_the_default_first_when_recently_used_is_present() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::file_verbs::open_with_keeps_the_default_first_when_recently_used_is_present",
+        || {
+            let output_alpha = gtk::glib::user_data_dir().join("received-alpha");
+            let output_beta = gtk::glib::user_data_dir().join("received-beta");
+            recorder_app("strata-alpha", "Alpha Editor", "text/plain;", &output_alpha);
+            recorder_app("strata-beta", "Beta Editor", "text/plain;", &output_beta);
+            let associations = gtk::glib::user_config_dir().join("mimeapps.list");
+            let mut mimeapps = std::fs::read_to_string(&associations).expect("mimeapps");
+            mimeapps.push_str("[Default Applications]\ntext/plain=strata-beta.desktop;\n");
+            std::fs::write(&associations, mimeapps).expect("default application");
+            let fixture = KeyboardFixture::new();
+            let directory = fixture._directory.path().to_path_buf();
+            let browser = fixture.view.browser();
+            enable_tenxer(&fixture);
+
+            launch_recorder("strata-alpha", &[(&directory.join("a.txt"), "text/plain")]);
+            open_single_with_dialog(&fixture, &browser, "b.txt");
+            let sections = chooser_sections(&fixture.overlay);
+            assert_eq!(sections[0].0, "Recently Used", "{sections:?}");
+            assert_eq!(sections[0].1, ["Alpha Editor"], "{sections:?}");
+            assert_eq!(sections[1].0, "Recommended Applications", "{sections:?}");
+            assert_eq!(
+                sections[1].1.first().map(String::as_str),
+                Some("Beta Editor"),
+                "{sections:?}"
+            );
+            close_dialog(&fixture);
+        },
+    );
+}
+
+#[test]
+fn open_with_deduplicates_the_default_application_inside_recently_used() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::file_verbs::open_with_deduplicates_the_default_application_inside_recently_used",
+        || {
+            let output_alpha = gtk::glib::user_data_dir().join("received-alpha");
+            let output_beta = gtk::glib::user_data_dir().join("received-beta");
+            recorder_app("strata-alpha", "Alpha Editor", "text/plain;", &output_alpha);
+            recorder_app("strata-beta", "Beta Editor", "text/plain;", &output_beta);
+            let associations = gtk::glib::user_config_dir().join("mimeapps.list");
+            let mut mimeapps = std::fs::read_to_string(&associations).expect("mimeapps");
+            mimeapps.push_str("[Default Applications]\ntext/plain=strata-beta.desktop;\n");
+            std::fs::write(&associations, mimeapps).expect("default application");
+            let fixture = KeyboardFixture::new();
+            let directory = fixture._directory.path().to_path_buf();
+            let browser = fixture.view.browser();
+            enable_tenxer(&fixture);
+
+            open_single_with_dialog(&fixture, &browser, "a.txt");
+            let baseline = chooser_sections(&fixture.overlay);
+            assert_eq!(baseline[0].0, "Recommended Applications", "{baseline:?}");
+            assert_eq!(
+                baseline[0].1.first().map(String::as_str),
+                Some("Beta Editor"),
+                "{baseline:?}"
+            );
+            close_dialog(&fixture);
+
+            launch_recorder("strata-beta", &[(&directory.join("a.txt"), "text/plain")]);
+            open_single_with_dialog(&fixture, &browser, "b.txt");
+            let sections = chooser_sections(&fixture.overlay);
+            assert_eq!(sections[0].0, "Recently Used", "{sections:?}");
+            assert_eq!(sections[0].1, ["Beta Editor"], "{sections:?}");
+            let remaining: Vec<String> = baseline[0]
+                .1
+                .iter()
+                .filter(|name| *name != "Beta Editor")
+                .cloned()
+                .collect();
+            assert_eq!(sections[1].0, "Recommended Applications", "{sections:?}");
+            assert_eq!(sections[1].1, remaining, "{sections:?}");
+            assert_eq!(
+                sections
+                    .iter()
+                    .flat_map(|(_, apps)| apps)
+                    .filter(|name| *name == "Beta Editor")
+                    .count(),
+                1,
+                "{sections:?}"
+            );
+            close_dialog(&fixture);
+        },
+    );
+}
+
+#[test]
+fn open_with_search_hides_recently_used_without_match_and_confirms_selection() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::file_verbs::open_with_search_hides_recently_used_without_match_and_confirms_selection",
+        || {
+            let output_alpha = gtk::glib::user_data_dir().join("received-alpha");
+            let output_beta = gtk::glib::user_data_dir().join("received-beta");
+            recorder_app("strata-alpha", "Alpha Editor", "text/plain;", &output_alpha);
+            recorder_app("strata-beta", "Beta Editor", "text/plain;", &output_beta);
+            let fixture = KeyboardFixture::new();
+            let directory = fixture._directory.path().to_path_buf();
+            let browser = fixture.view.browser();
+            enable_tenxer(&fixture);
+
+            launch_recorder("strata-alpha", &[(&directory.join("a.txt"), "text/plain")]);
+            open_single_with_dialog(&fixture, &browser, "b.txt");
+            assert_eq!(
+                chooser_sections(&fixture.overlay)[0].0,
+                "Recently Used",
+                "history recorded"
+            );
+
+            let search = widget_with_class(fixture.overlay.upcast_ref(), "open-with-search")
+                .expect("application search");
+            search
+                .downcast_ref::<gtk::SearchEntry>()
+                .expect("search entry")
+                .set_text("beta editor");
+            pump(200);
+            let visible = visible_chooser_sections(&fixture.overlay);
+            assert!(
+                visible.iter().all(|(title, _)| title != "Recently Used"),
+                "{visible:?}"
+            );
+            assert!(
+                visible
+                    .iter()
+                    .any(|(title, apps)| title == "Recommended Applications"
+                        && apps.contains(&"Beta Editor".to_owned())),
+                "{visible:?}"
+            );
+            assert!(click_class(&fixture.overlay, "action-dialog-confirm"));
+            wait_until(|| received(&output_beta) == [directory.join("b.txt")]);
+            wait_until(|| !modal_visible(&fixture.overlay));
+        },
+    );
+}
+
+#[test]
+fn open_with_survives_malformed_history() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::file_verbs::open_with_survives_malformed_history",
+        || {
+            let output = gtk::glib::user_data_dir().join("received");
+            recorder_app("strata-alpha", "Alpha Editor", "text/plain;", &output);
+            std::fs::create_dir_all(history_path().parent().expect("history parent"))
+                .expect("history directory");
+            std::fs::write(history_path(), "not = [valid toml").expect("malformed history");
+            let fixture = KeyboardFixture::new();
+            let browser = fixture.view.browser();
+            enable_tenxer(&fixture);
+
+            open_single_with_dialog(&fixture, &browser, "a.txt");
+            let sections = chooser_sections(&fixture.overlay);
+            assert!(
+                !sections.iter().any(|(title, _)| title == "Recently Used"),
+                "{sections:?}"
+            );
+            assert_eq!(sections[0].0, "Recommended Applications", "{sections:?}");
+            close_dialog(&fixture);
+        },
+    );
+}
+
+#[test]
+fn default_activation_records_application_history_for_files_and_folders() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::file_verbs::default_activation_records_application_history_for_files_and_folders",
+        || {
+            let output_alpha = gtk::glib::user_data_dir().join("received-alpha");
+            let output_dirs = gtk::glib::user_data_dir().join("received-dirs");
+            recorder_app("strata-alpha", "Alpha Editor", "text/plain;", &output_alpha);
+            recorder_app(
+                "strata-dirs",
+                "Dir Handler",
+                "inode/directory;",
+                &output_dirs,
+            );
+            let fixture = KeyboardFixture::new();
+            let directory = fixture._directory.path().to_path_buf();
+            let browser = fixture.view.browser();
+            enable_tenxer(&fixture);
+
+            launch_recorder("strata-dirs", &[(&directory, "inode/directory")]);
+            wait_until(|| received(&output_dirs) == [directory.clone()]);
+            let stored =
+                crate::ui::recent_apps::load().recent_ids(&["inode/directory".to_string()]);
+            assert_eq!(stored, ["strata-dirs.desktop"]);
+            assert!(
+                crate::ui::recent_apps::load()
+                    .recent_ids(&["text/plain".to_string()])
+                    .is_empty()
+            );
+
+            let associations = gtk::glib::user_config_dir().join("mimeapps.list");
+            let mut mimeapps = std::fs::read_to_string(&associations).expect("mimeapps");
+            mimeapps.push_str("[Default Applications]\ntext/plain=strata-alpha.desktop;\n");
+            std::fs::write(&associations, mimeapps).expect("default application");
+            move_to_named(&fixture, &browser, "a.txt");
+            plain(&fixture, Key::Return);
+            wait_until(|| received(&output_alpha) == [directory.join("a.txt")]);
+            wait_until(|| {
+                crate::ui::recent_apps::load().recent_ids(&["text/plain".to_string()])
+                    == ["strata-alpha.desktop"]
+            });
+        },
+    );
+}
+
 const LETTERED_ACTIONS: &[(&str, &str)] = &[
     ("t", "Open terminal here"),
     ("c", "Compress\u{2026}"),

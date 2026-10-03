@@ -1184,7 +1184,12 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
             return;
         };
         let context = state.overlay.display().app_launch_context();
-        if let Err(error) = crate::ui::open_with::launch(&app, &selection.files, Some(&context)) {
+        if let Err(error) = crate::ui::open_with::launch(
+            &app,
+            &selection.files,
+            &selection.content_types,
+            Some(&context),
+        ) {
             crate::ui::modal::show_error_dialog(
                 &state.overlay,
                 "Unable to open file",

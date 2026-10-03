@@ -33,6 +33,7 @@ pub(crate) mod preferences;
 mod preview;
 mod progress_dock;
 mod raw_details;
+mod recent_apps;
 mod scrolling;
 mod search;
 mod search_session;
