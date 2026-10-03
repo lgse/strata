@@ -641,7 +641,7 @@ where
     message.set_wrap(true);
     message.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     message.set_max_width_chars(40);
-    let status = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+    let status = gtk::Box::new(gtk::Orientation::Horizontal, 20);
     status.append(&activity);
     status.append(&message);
     shell.layout.body.append(&status);
