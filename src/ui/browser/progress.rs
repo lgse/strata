@@ -15,6 +15,8 @@ use std::time::{Duration, Instant};
 mod tests;
 
 const FILE_PROGRESS_DELAY: Duration = Duration::from_millis(350);
+const TRANSFER_ITEM_TEXT_WIDTH_CHARS: i32 = 48;
+const TRANSFER_RATE_TEXT_WIDTH_CHARS: i32 = 26;
 
 #[cfg(test)]
 thread_local! {
@@ -227,10 +229,17 @@ impl ViewState {
         transfer_footer.set_visible(false);
         let transfer_items = gtk::Label::new(None);
         transfer_items.set_xalign(0.0);
+        transfer_items.set_halign(gtk::Align::Start);
         transfer_items.set_hexpand(true);
         transfer_items.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
+        // Equal minimum and maximum text widths keep live updates from resizing the modal.
+        transfer_items.set_width_chars(TRANSFER_ITEM_TEXT_WIDTH_CHARS);
+        transfer_items.set_max_width_chars(TRANSFER_ITEM_TEXT_WIDTH_CHARS);
         let transfer_rate = gtk::Label::new(None);
         transfer_rate.set_xalign(1.0);
+        transfer_rate.set_ellipsize(gtk::pango::EllipsizeMode::End);
+        transfer_rate.set_width_chars(TRANSFER_RATE_TEXT_WIDTH_CHARS);
+        transfer_rate.set_max_width_chars(TRANSFER_RATE_TEXT_WIDTH_CHARS);
         transfer_footer.append(&transfer_items);
         transfer_footer.append(&transfer_rate);
         layout.body.append(&transfer_footer);
