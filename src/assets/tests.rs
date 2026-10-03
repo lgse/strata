@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+use gtk::prelude::*;
+
 use super::{folder_decoration_texture, icons, recolor_icon_source};
 
 #[test]
@@ -114,6 +116,54 @@ fn cold_interface_icons_render_when_decoder_workers_cannot_start() {
             assert!(folder_decoration_texture(icons::PICTURES, "#d46b31").is_some());
             assert!(super::emoji_icon_paintable("🚀").is_some());
             assert!(folder_decoration_texture("emoji:🚀", "#d46b31").is_some());
+        },
+    );
+}
+
+#[test]
+fn icon_texture_cache_bounds_entries_and_preserves_lru() {
+    crate::test_support::gtk_test(
+        "assets::tests::icon_texture_cache_bounds_entries_and_preserves_lru",
+        || {
+            let mut cache = super::IconTextureCache::default();
+            let format = if cfg!(target_endian = "little") {
+                gtk::gdk::MemoryFormat::B8g8r8a8Premultiplied
+            } else {
+                gtk::gdk::MemoryFormat::A8r8g8b8Premultiplied
+            };
+            let dummy_texture = gtk::gdk::MemoryTexture::new(
+                1,
+                1,
+                format,
+                &gtk::glib::Bytes::from_static(&[0, 0, 0, 0]),
+                4,
+            )
+            .upcast::<gtk::gdk::Texture>();
+
+            for index in 0..super::ICON_TEXTURE_CACHE_LIMIT {
+                let key = (format!("icon-{index}"), "#000000".to_owned(), 16);
+                cache.insert(key, dummy_texture.clone());
+            }
+            assert_eq!(cache.entries.len(), super::ICON_TEXTURE_CACHE_LIMIT);
+
+            let hot_key = ("icon-0".to_owned(), "#000000".to_owned(), 16);
+            for _ in 0..super::ICON_TEXTURE_CACHE_LIMIT * 5 {
+                assert!(cache.get(&hot_key).is_some());
+            }
+            assert!(cache.recent.len() <= super::ICON_TEXTURE_CACHE_LIMIT * 4);
+
+            let new_key = ("icon-new".to_owned(), "#000000".to_owned(), 16);
+            cache.insert(new_key.clone(), dummy_texture.clone());
+
+            assert!(cache.get(&hot_key).is_some());
+            let evicted_key = ("icon-1".to_owned(), "#000000".to_owned(), 16);
+            assert!(cache.get(&evicted_key).is_none());
+            assert!(cache.get(&new_key).is_some());
+            assert_eq!(cache.entries.len(), super::ICON_TEXTURE_CACHE_LIMIT);
+
+            cache.clear();
+            assert_eq!(cache.entries.len(), 0);
+            assert_eq!(cache.recent.len(), 0);
         },
     );
 }
