@@ -311,7 +311,7 @@ impl PreviewState {
             && let Some(content) = binding.content.upgrade()
             && let Some(browser) = binding.browser.upgrade()
         {
-            let sidebar = sidebar_width(&content);
+            let sidebar = self.intended_sidebar_width(binding, &content);
             geometry.columns = browser.view_mode() == BrowserMode::Columns;
             geometry.occupied =
                 sidebar + browser.preview_navigated_width((available - sidebar).max(0));
@@ -326,6 +326,39 @@ impl PreviewState {
             }
         }
         geometry
+    }
+
+    // A window squeeze can pin the divider below the width the user chose; the
+    // preview must leave room for that width so the sidebar can recover.
+    fn intended_sidebar_width(&self, binding: &BrowserBinding, content: &gtk::Paned) -> i32 {
+        let current = sidebar_width(content);
+        if current == 0
+            || binding
+                .sidebar
+                .as_ref()
+                .and_then(Weak::upgrade)
+                .is_some_and(|sidebar| sidebar.rail.get())
+        {
+            return current;
+        }
+        current.max(self.saved_sidebar_width(binding) + separator_width(content))
+    }
+
+    fn saved_sidebar_width(&self, binding: &BrowserBinding) -> i32 {
+        binding
+            .sidebar
+            .as_ref()
+            .and_then(Weak::upgrade)
+            .and_then(|sidebar| sidebar.saved_width.get())
+            .unwrap_or_else(|| {
+                let saved = self.sizing.sidebar_saved_width.get();
+                if saved > 0 {
+                    saved
+                } else {
+                    preferred_sidebar_width()
+                }
+            })
+            .max(MIN_SIDEBAR_WIDTH)
     }
 
     pub(super) fn can_show_in(&self, split: &gtk::Paned) -> bool {
@@ -540,10 +573,28 @@ impl PreviewState {
                 } else {
                     is_railed && content_has_room
                 };
+            let squeezed_room = !is_railed
+                && visible
+                && !wants_rail
+                && !resizing_columns
+                && !self.sizing.resizing.get()
+                && content.position() < saved_width
+                && content.width() >= saved_width + content_sep + COLUMN_WIDTH;
+            if squeezed_room {
+                content.set_position(saved_width);
+                geometry = self.geometry(split);
+            }
             if change_applies {
                 if wants_rail {
                     if visible {
-                        let width = content.position().max(MIN_SIDEBAR_WIDTH);
+                        // A narrow window clamps the divider; keep the user's width instead.
+                        let squeezed =
+                            content.position() + content_sep + COLUMN_WIDTH >= content.width();
+                        let width = if squeezed {
+                            saved_width
+                        } else {
+                            content.position().max(MIN_SIDEBAR_WIDTH)
+                        };
                         self.sizing.sidebar_saved_width.set(width);
                         if let Some(sidebar) = sidebar.as_ref() {
                             sidebar.saved_width.set(Some(width));

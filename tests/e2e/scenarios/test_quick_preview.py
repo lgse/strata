@@ -216,7 +216,13 @@ def test_columns_keyboard_selection_opens_the_preview(strata, fixture_tree, root
 
 @pytest.mark.preferences(browser_mode="columns", single_click_previews=True)
 @pytest.mark.parametrize("fixture_tree", [DEEP_FIXTURE], indirect=True)
-def test_columns_keyboard_mirror_keeps_the_focused_column_stationary(strata):
+@pytest.mark.parametrize("width", [None, 820], ids=["wide", "narrow"])
+def test_columns_keyboard_mirror_keeps_the_focused_column_stationary(strata, width):
+    if width is not None:
+        # Narrow enough that the child column cannot fit in the lent slot.
+        bounds = strata.window_bounds()
+        strata.keyboard.connection.resize_surface(bounds.width, bounds.height, width, bounds.height)
+        strata.wait(lambda: strata.window_bounds().width == width, "the narrow window")
     for name in ("level1", "level2", "level3"):
         strata.open_directory(name)
     strata.select_entry_with_keyboard("deep.txt")

@@ -16,6 +16,7 @@ impl ViewState {
         Some(ColumnSpan {
             left: f64::from(left),
             right: f64::from(left.saturating_add(column_width(column))),
+            trailing: f64::from(self.columns_width(depth.saturating_add(1)..)),
         })
     }
 
@@ -92,14 +93,14 @@ impl BrowserView {
     pub(in crate::ui) fn preview_navigation_width(&self) -> i32 {
         self.state
             .focused_column_span()
-            .map_or(COLUMN_WIDTH, |span| (span.width() + span.peek()) as i32)
+            .map_or(COLUMN_WIDTH, |span| span.width() as i32)
     }
 
     pub(in crate::ui) fn preview_standard_navigation_width(&self) -> i32 {
         self.state
             .focused_column_span()
             .map_or(COLUMN_WIDTH, |span| {
-                (span.width().min(f64::from(COLUMN_WIDTH)) + span.peek()) as i32
+                span.width().min(f64::from(COLUMN_WIDTH)) as i32
             })
     }
 

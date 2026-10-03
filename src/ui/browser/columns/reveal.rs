@@ -2,12 +2,12 @@
 
 use super::*;
 
-pub(in crate::ui::browser) const COLUMN_PEEK_WIDTH: f64 = 48.0;
-
 #[derive(Clone, Copy, Debug)]
 pub(in crate::ui::browser) struct ColumnSpan {
     pub left: f64,
     pub right: f64,
+    // Columns beyond this one; they share the right pane while it keeps focus.
+    pub trailing: f64,
 }
 
 impl ColumnSpan {
@@ -15,28 +15,18 @@ impl ColumnSpan {
         self.right - self.left
     }
 
-    // A column with a neighbour to its left keeps one clickable sliver of it.
-    pub fn peek(self) -> f64 {
-        if self.left > 0.0 {
-            COLUMN_PEEK_WIDTH
-        } else {
-            0.0
-        }
-    }
-
-    // Scrolls only when the column is clipped: a column clipped on the right
-    // meets the right pane, one clipped on the left keeps its peek sliver.
+    // Scrolls only when the column is clipped, and then aligns the strip's end
+    // with the right pane without ever scrolling past the column's own left
+    // edge, so whatever remains on the left is the same for every selection
+    // until the layout changes.
     pub fn reveal_target(self, current: f64, page_size: f64, lower: f64, upper: f64) -> f64 {
         let maximum = (upper - page_size).max(lower);
         if self.left >= current && self.right <= current + page_size {
             return current.clamp(lower, maximum);
         }
-        let target = if self.right > current + page_size {
-            self.right - page_size
-        } else {
-            self.left - self.peek()
-        };
-        target.clamp(lower, maximum)
+        (self.right + self.trailing - page_size)
+            .min(self.left)
+            .clamp(lower, maximum)
     }
 }
 

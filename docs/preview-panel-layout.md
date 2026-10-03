@@ -52,7 +52,7 @@ Constants live in `src/ui/preview/layout.rs` and `src/ui/preview.rs`.
 | Manual width minimum | one standard column, 300 px |
 | Maximum width | 3000 px (`MAX_WIDTH`) |
 | Sidebar rail hysteresis | 24 px (`RAIL_RELEASE_MARGIN`) |
-| Peek sliver of the previous column | 48 px (`COLUMN_PEEK_WIDTH`), all or nothing |
+| Peek sliver of earlier columns | never reserved; whatever the focused column and preview leave |
 
 - **Automatic width in Columns** fills the free space right of the navigated
   columns, clamped between the preview minimum and the space that keeps the
@@ -70,7 +70,14 @@ Constants live in `src/ui/preview/layout.rs` and `src/ui/preview.rs`.
   focused column. A hidden preview pauses media and defers loading; widening the
   window restores it with the same selection and manual width. The sidebar
   collapses to a rail while a preview is present and space is short, with 24 px
-  of hysteresis so it does not flicker at the threshold.
+  of hysteresis so it does not flicker at the threshold. A divider position
+  that a narrow window pinned is never recorded as the user's sidebar width:
+  the preview is sized against the width the user chose, and the sidebar
+  returns to it as soon as the content has room again.
+- **Space-constrained priority**: the focused column is never moved to make a
+  trailing child column fit. When the lent slot is narrower than the child, the
+  child is clipped at the right edge instead, and revealing a column beyond the
+  active one reveals the active column.
 
 ## The right pane in Columns
 
@@ -94,17 +101,18 @@ Constants live in `src/ui/preview/layout.rs` and `src/ui/preview.rs`.
    fit beside the reserved slot; when two or more trailing columns are wider
    than the reserved space; when the window is too narrow for a preview; or when
    the user scrolls or resizes. Those scrolls reveal only as much as needed.
-6. **Peek slivers are all or nothing.** `ColumnSpan::reveal_target` in
-   `src/ui/browser/columns/reveal.rs` never moves a fully visible column. When
-   a column must be revealed, one clipped on the right is aligned with the
-   right pane, and one clipped on the left is placed with exactly one 48 px
-   sliver of the column to its left (`COLUMN_PEEK_WIDTH`), or flush left for
-   the root column. The preview's maximum width always leaves that same sliver
-   beside the focused column. No allowance depends on the viewport size or on
-   whether the panel is open, so the same column lands in the same place
-   whatever the panel is doing. Clipped columns show a "Reveal X column"
-   button over whatever part of them is visible. The breadcrumbs, the sidebar,
-   and **Left** remain the reliable routes to earlier columns.
+6. **Priority: focused column, then preview, then peek.** The focused column
+   is always fully visible. The preview takes what remains beside it, down to
+   its hide threshold. A sliver of earlier columns is whatever space is left
+   after those two; nothing is ever reserved for it, so it is the same for
+   every selection until the window, the sidebar, or the focused column's
+   width changes. `ColumnSpan::reveal_target` in
+   `src/ui/browser/columns/reveal.rs` never moves a fully visible column and
+   otherwise applies one rule: align the end of the strip (the focused column
+   plus the trailing columns that fit beside it) with the right pane. Clipped
+   columns show a "Reveal X column" button over whatever part of them is
+   visible. The breadcrumbs, the sidebar, and **Left** remain the reliable
+   routes to earlier columns.
 
 ## Dismissal
 

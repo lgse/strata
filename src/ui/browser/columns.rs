@@ -1774,6 +1774,18 @@ impl ViewState {
     }
 
     pub(super) fn reveal_column(self: &Rc<Self>, shell: gtk::Box) {
+        // Columns beyond the active one share its right pane: revealing them
+        // must never move the active column, so reveal that one instead.
+        let shell = {
+            let columns = self.columns.borrow();
+            let depth = columns.iter().position(|column| column.shell == shell);
+            match (depth, self.browser.active_depth()) {
+                (Some(depth), Some(active)) if depth > active => columns
+                    .get(active)
+                    .map_or(shell, |column| column.shell.clone()),
+                _ => shell,
+            }
+        };
         let animation_id = self.horizontal_scroll_generation.get().saturating_add(1);
         self.horizontal_scroll_generation.set(animation_id);
         self.columns_widget.set_margin_end(0);
