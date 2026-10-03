@@ -235,6 +235,22 @@ def test_columns_dismissed_preview_ignores_keyboard_mirroring_until_reopened(str
     strata.keyboard.press(NEXT_ENTRY_KEY["Columns"])
     strata.wait_for_selection(["page.md"], root)
     strata.wait(lambda: strata.preview_shows("Body text."), "the reopened preview to follow again")
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview() is None, "Space to dismiss the preview again")
+    strata.open_appearance_menu()
+    option = strata.wait(lambda: strata.window.find(role="toggle button", name="Preview panel"), "the preview toggle")
+    strata.pointer.click(option)
+    strata.wait_for_menu_closed()
+    strata.keyboard.press("ctrl+l")
+    strata.wait(lambda: strata.window.find(role="text", states={"editable", "focused"}), "the location editor")
+    strata.keyboard.press("Escape")
+    strata.wait(lambda: strata.focused_pane(), "focus to return to the listing")
+    column = strata.settle(strata.pane(root)).screen_bounds()
+    strata.keyboard.press(NEXT_ENTRY_KEY["Columns"])
+    strata.wait_for_selection(["third.txt"], root)
+    strata.settle(strata.entry("third.txt"))
+    assert strata.preview() is None, "a released panel must not be reopened by keyboard selection"
+    assert strata.pane(root).screen_bounds().x == column.x, "a released panel keeps the columns in place"
 
 
 @pytest.mark.preferences(browser_mode="columns", single_click_previews=False)
