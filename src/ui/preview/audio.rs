@@ -241,7 +241,8 @@ impl AudioView {
         self.scrubber.set_media(None);
         self.scrubber.clear_levels();
         self.spectrum.set_media(None);
-        self.artwork.set_playing(false);
+        // The record keeps its place until the next track reports its own state,
+        // rather than tucking away for the moment between songs.
         self.set_playing_icon(false);
     }
 

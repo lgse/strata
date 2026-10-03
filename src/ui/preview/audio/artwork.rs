@@ -80,6 +80,8 @@ mod imp {
         /// placeholder record.
         pub(super) fresh: Cell<bool>,
         pub(super) playing: Cell<bool>,
+        /// How far the record sits right of the cover, as a share of the cover's
+        /// side, so it stays put however the art is resized.
         pub(super) disc_offset: Cell<Option<f32>>,
         pub(super) angle: Cell<f32>,
         pub(super) tick: RefCell<Option<gtk::TickCallbackId>>,
@@ -207,20 +209,28 @@ impl Artwork {
         (self.height() as f32).min(self.width() as f32 / ASPECT)
     }
 
-    fn disc_target(&self, size: f32) -> f32 {
+    fn disc_target(&self) -> f32 {
         let imp = self.imp();
+        // Without motion there is no tucking while art loads: the record stays
+        // put, then appears where the new track places it.
+        if imp.awaiting.get()
+            && !crate::ui::motion::animations_enabled()
+            && let Some(offset) = imp.disc_offset.get()
+        {
+            return offset;
+        }
         let has_cover = imp.cover.borrow().is_some();
         let sleeve = has_cover
             || matches!(imp.incoming.borrow().as_ref(), Some(Some(_)))
             || matches!(imp.previous.borrow().as_ref(), Some(Some(_)));
         let changing = imp.awaiting.get() || imp.change.get() != Change::Idle;
         if changing && sleeve {
-            return size * TUCKED;
+            return TUCKED;
         }
         if !has_cover {
-            return (size * ASPECT - size) / 2.0;
+            return (ASPECT - 1.0) / 2.0;
         }
-        size * if imp.playing.get() { SLID_OUT } else { TUCKED }
+        if imp.playing.get() { SLID_OUT } else { TUCKED }
     }
 
     fn disc_visible(&self) -> bool {
@@ -281,7 +291,7 @@ impl Artwork {
             .map_or(0.0, |last| (frame_time - last) as f32 / 1_000_000.0)
             .min(0.1);
         let animated = crate::ui::motion::animations_enabled();
-        let size = self.cover_size();
+        let size = self.cover_size().max(1.0);
         let has_cover = imp.cover.borrow().is_some();
         let visible = self.disc_visible();
         let previous_opacity = imp.disc_opacity.get();
@@ -297,7 +307,7 @@ impl Artwork {
         };
         imp.disc_opacity.set(opacity);
 
-        let target = self.disc_target(size);
+        let target = self.disc_target();
         let previous_offset = imp.disc_offset.get();
         let previous_fade = imp.fade.get();
         let rate = if imp.change.get() == Change::Idle && !imp.awaiting.get() {
@@ -308,7 +318,7 @@ impl Artwork {
         let offset = if opacity <= 0.0 {
             // Hidden, it waits where it reappears; behind art that is tucked, so it
             // can then slide out.
-            if has_cover { size * TUCKED } else { target }
+            if has_cover { TUCKED } else { target }
         } else if !visible {
             previous_offset.unwrap_or(target)
         } else {
@@ -318,7 +328,7 @@ impl Artwork {
             } else {
                 target
             };
-            if (target - moved).abs() < 0.5 {
+            if (target - moved).abs() * size < 0.5 {
                 target
             } else {
                 moved
@@ -327,7 +337,7 @@ impl Artwork {
         imp.disc_offset.set(Some(offset));
         if imp.change.get() == Change::Tucking {
             let ready = if has_cover {
-                (target - offset).abs() <= TUCK_SETTLED
+                (target - offset).abs() * size <= TUCK_SETTLED
             } else {
                 opacity <= 0.0
             };
@@ -371,7 +381,7 @@ impl Artwork {
         }
         // A phase may have just ended, so judge the remaining motion afresh.
         spinning
-            || offset != self.disc_target(size)
+            || offset != self.disc_target()
             || fade < 1.0
             || opacity != if self.disc_visible() { 1.0 } else { 0.0 }
             || imp.change.get() != Change::Idle
@@ -388,10 +398,7 @@ impl Artwork {
         let colors = palette();
         let left = (width - size * ASPECT) / 2.0;
         let top = (height - size) / 2.0;
-        let offset = imp
-            .disc_offset
-            .get()
-            .unwrap_or_else(|| self.disc_target(size));
+        let offset = imp.disc_offset.get().unwrap_or_else(|| self.disc_target()) * size;
         let disc_opacity = imp.disc_opacity.get();
         if disc_opacity > 0.0 {
             snapshot.push_opacity(f64::from(disc_opacity));
