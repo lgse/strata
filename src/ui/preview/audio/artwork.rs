@@ -594,13 +594,16 @@ fn render(
     ))
 }
 
-fn shadow_color(colors: &Palette) -> gdk::RGBA {
+/// The darker and lighter of the theme's background and text. The record is
+/// dark in every theme, so its grooves need the lighter one to show; in light
+/// themes the text is the dark colour.
+fn shades(colors: &Palette) -> (gdk::RGBA, gdk::RGBA) {
     let luminance =
         |color: gdk::RGBA| color.red() * 0.2126 + color.green() * 0.7152 + color.blue() * 0.0722;
     if luminance(colors.background) <= luminance(colors.text) {
-        colors.background
+        (colors.background, colors.text)
     } else {
-        colors.text
+        (colors.text, colors.background)
     }
 }
 
@@ -614,7 +617,7 @@ fn paint_cover(
     let rounded = gsk::RoundedRect::from_rect(*frame, (size * 0.035).clamp(4.0, 14.0));
     snapshot.append_outset_shadow(
         &rounded,
-        &with_alpha(shadow_color(colors), 0.55),
+        &with_alpha(shades(colors).0, 0.55),
         0.0,
         size * 0.03,
         0.0,
@@ -652,11 +655,12 @@ fn circle(center: graphene::Point, radius: f32) -> gsk::RoundedRect {
 }
 
 fn paint_disc(snapshot: &gtk::Snapshot, colors: &Palette, center: graphene::Point, radius: f32) {
-    let body = mix(shadow_color(colors), colors.text, 0.06);
+    let (dark, light) = shades(colors);
+    let body = mix(dark, light, 0.06);
     let outline = circle(center, radius);
     snapshot.append_outset_shadow(
         &outline,
-        &with_alpha(shadow_color(colors), 0.5),
+        &with_alpha(dark, 0.5),
         0.0,
         radius * 0.04,
         0.0,
@@ -664,15 +668,15 @@ fn paint_disc(snapshot: &gtk::Snapshot, colors: &Palette, center: graphene::Poin
     );
     snapshot.push_rounded_clip(&outline);
     snapshot.append_color(&body, outline.bounds());
-    let groove = with_alpha(colors.text, 0.05);
+    let groove = with_alpha(light, 0.05);
     let mut ring = 0.42;
     while ring < 0.97 {
         snapshot.append_border(&circle(center, radius * ring), &[1.0; 4], &[groove; 4]);
         ring += 0.055;
     }
     // The light catching the grooves stays put while the record turns under it.
-    let glint = with_alpha(colors.text, 0.09);
-    let clear = with_alpha(colors.text, 0.0);
+    let glint = with_alpha(light, 0.09);
+    let clear = with_alpha(light, 0.0);
     snapshot.append_conic_gradient(
         outline.bounds(),
         &center,
@@ -688,7 +692,7 @@ fn paint_disc(snapshot: &gtk::Snapshot, colors: &Palette, center: graphene::Poin
         ],
     );
     snapshot.pop();
-    snapshot.append_border(&outline, &[1.0; 4], &[with_alpha(colors.text, 0.14); 4]);
+    snapshot.append_border(&outline, &[1.0; 4], &[with_alpha(light, 0.14); 4]);
 }
 
 /// Paints the label around the origin; the stripe makes its turning visible.
