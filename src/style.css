@@ -3058,7 +3058,8 @@ entry.form-control.shortcut-footer-prompt:focus-within {
 }
 
 .tenxer-tag,
-.shortcut-footer-chord-pill {
+.shortcut-footer-chord-pill,
+.shortcut-footer-paste {
   color: @theme_accent;
   background-color: alpha(@theme_accent, 0.14);
   border: 1px solid alpha(@theme_accent, 0.4);
@@ -3067,16 +3068,6 @@ entry.form-control.shortcut-footer-prompt:focus-within {
   padding: 0 8px;
   font-weight: bold;
   letter-spacing: 0.5px;
-}
-
-.shortcut-footer-paste {
-  color: @theme_accent;
-  background-color: alpha(@theme_accent, 0.10);
-  border: 1px solid alpha(@theme_accent, 0.35);
-  border-radius: 4px;
-  margin: 2px 0;
-  padding: 1px 6px;
-  font-weight: bold;
 }
 
 .shortcut-footer-button > button,
