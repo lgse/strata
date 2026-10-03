@@ -62,8 +62,7 @@ impl ChooserState {
                 self.show_error(&format!("Could not name the downloaded image: {error}"));
                 return;
             }
-            // An accepted PNG, including an APNG or a corrupt PNG, bypasses sandbox inspection.
-            // The chooser opens it unchanged rather than requesting conversion.
+            // Accepted PNG downloads bypass validation, including APNG and corrupt PNG data.
             self.finish_remote(target);
             return;
         }
@@ -81,7 +80,6 @@ impl ChooserState {
         );
     }
 
-    /// Renames a download to its canonical extension, keeping the reuse cache in step.
     fn rename_download(&self, path: &Path, target: &Path) -> Result<(), std::io::Error> {
         std::fs::rename(path, target)?;
         if let Some((_, cached)) = self.downloaded_file.borrow_mut().as_mut()
