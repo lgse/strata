@@ -158,7 +158,6 @@ pub enum BrowserEvent {
     },
     PreviewRequested {
         entry: FileEntry,
-        /// Raised by selection mirroring rather than an explicit preview action.
         automatic: bool,
     },
     ExtractRequested {
@@ -3146,7 +3145,6 @@ impl Browser {
         if entry.is_directory() {
             self.descend(depth, entry.location);
         } else {
-            // The preview takes the right pane, so deeper columns close like the keyboard mirror.
             self.close_column(depth + 1);
             self.emit(BrowserEvent::PreviewRequested {
                 entry,

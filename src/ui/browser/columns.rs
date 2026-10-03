@@ -1823,8 +1823,7 @@ impl ViewState {
     }
 
     pub(super) fn reveal_column(self: &Rc<Self>, shell: gtk::Box) {
-        // Columns beyond the active one share its right pane: revealing them
-        // must never move the active column, so reveal that one instead.
+        // Trailing columns borrow preview space without displacing the active column.
         let shell = {
             let columns = self.columns.borrow();
             let depth = columns.iter().position(|column| column.shell == shell);
@@ -1840,8 +1839,7 @@ impl ViewState {
         self.columns_widget.set_margin_end(0);
         let weak = Rc::downgrade(self);
         let measured_shell = shell.downgrade();
-        // The preview slot resizes in the same frame as a focus change, so the
-        // viewport is measured only after that layout has run.
+        // Wait for the preview slot to resize before measuring the viewport.
         let laid_out = std::cell::Cell::new(false);
         let _tick = self.scroller.add_tick_callback(move |_, _| {
             let Some(state) = weak.upgrade() else {

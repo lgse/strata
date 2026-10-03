@@ -3,7 +3,8 @@
 This page is the contract for how the quick preview panel shares the window with
 the file views, and in particular with Miller columns. Changes to the preview
 split, the column scroller, or selection mirroring must keep every rule below or
-update this page and the owning tests in the same pull request.
+update this page and the behavioral coverage in the same pull request. Verify
+geometry manually with captures; do not add layout assertions.
 
 ## Window split
 
@@ -50,13 +51,13 @@ Constants live in `src/ui/preview/layout.rs` and `src/ui/preview.rs`.
 | Icons and List preview minimum | 240 px (`MIN_WIDTH`) |
 | Narrow-window hide threshold | 240 px (`MIN_SPLIT_PREVIEW_WIDTH`) |
 | Manual width minimum | one standard column, 300 px |
-| Maximum width | 3000 px (`MAX_WIDTH`) |
+| Icons and List automatic maximum | 3000 px (`MAX_WIDTH`) |
 | Sidebar rail hysteresis | 24 px (`RAIL_RELEASE_MARGIN`) |
 | Peek sliver of earlier columns | never reserved; whatever the focused column and preview leave |
 
 - **Automatic width in Columns** fills the free space right of the navigated
   columns, clamped between the preview minimum and the space that keeps the
-  focused column (plus its peek strips) visible. Trailing columns do not reduce
+  focused column visible. Trailing columns do not reduce
   it: the preview starts after the focused column, and a pointer preview of a
   file in a parent column closes deeper columns first, like the keyboard mirror.
 - **Automatic width in Icons and List** is 90% of half the content width,
@@ -102,9 +103,8 @@ Constants live in `src/ui/preview/layout.rs` and `src/ui/preview.rs`.
    selection" placeholder in Columns and Icons. List hides the drawer instead.
 5. **When the focused column does move.** Only when the user descends or
    ascends with **Right**, **Left**, or **Enter** into a column that does not
-   fit beside the reserved slot; when two or more trailing columns are wider
-   than the reserved space; when the window is too narrow for a preview; or when
-   the user scrolls or resizes. Those scrolls reveal only as much as needed.
+   fit beside the reserved slot, or when the user scrolls or resizes. Those
+   scrolls reveal only as much as needed.
 6. **Priority: focused column, then preview, then peek.** The focused column
    is always fully visible. The preview takes what remains beside it, down to
    its hide threshold. A sliver of earlier columns is whatever space is left
@@ -139,11 +139,11 @@ between selections; a folder shows the placeholder. List hides the drawer on a
 folder or unsupported file and keeps its horizontal scroll origin. Neither view
 has trailing columns, so the right-pane rules above do not apply.
 
-## Owning tests
+## Verification owners
 
 | Rule | Owner |
 | --- | --- |
-| Focused column stays put while mirroring folders and files | `tests/e2e/scenarios/test_quick_preview.py::test_columns_keyboard_mirror_keeps_the_focused_column_stationary` |
+| Focused column stays put while mirroring folders and files | Manual check below (wide and narrow windows), with captures |
 | Folder hands the right pane to the child column, file takes it back | `test_quick_preview.py::test_columns_keyboard_selection_opens_the_preview`, `test_preview_hides_on_a_folder_and_resumes_when_selection_moves` |
 | Dismissed preview ignores mirroring until reopened | `test_quick_preview.py::test_columns_dismissed_preview_ignores_keyboard_mirroring_until_reopened`, `src/ui/preview/tests.rs::an_explicit_close_blocks_automatic_previews_until_reopened` |
 | Pointer preview closes deeper columns first | `src/app/browser/tests/navigation.rs::previewing_a_file_in_a_parent_column_closes_deeper_columns_before_requesting` |

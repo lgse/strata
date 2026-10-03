@@ -137,9 +137,7 @@ struct PreviewState {
     reserve_columns: Cell<bool>,
     // Dismissing content stops selection-following without reclaiming its column slot.
     enabled: Cell<bool>,
-    // An explicit close keeps automatic (keyboard mirror) previews from reopening the drawer.
     dismissed: Cell<bool>,
-    // A focused folder hands the right pane to its child column instead of a placeholder.
     child_pane: Cell<bool>,
     pane: gtk::Box,
     header_handle: gtk::Box,
@@ -763,8 +761,7 @@ impl PreviewState {
         self.pending_show.replace(Some(source));
     }
 
-    // Columns gives the right pane to a focused folder's child column, including the
-    // focus event the mirror emits for that column itself (beyond the active depth).
+    // Mirroring also emits focus for the child beyond the active depth.
     fn lend_slot_to_child(&self, browser: &Browser, depth: usize, entry: Option<&FileEntry>) {
         let child_pane = self.browsing_columns()
             && (entry.is_some_and(FileEntry::is_directory)

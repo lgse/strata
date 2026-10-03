@@ -44,6 +44,7 @@ impl PreviewState {
         let enabled = self.is_enabled() || self.reserves_column_space();
         self.reserve_columns.set(!enabled);
         if enabled {
+            self.dismissed.set(true);
             self.close();
         } else {
             self.toggle(entry, depth);

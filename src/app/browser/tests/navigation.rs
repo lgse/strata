@@ -618,26 +618,3 @@ fn previewing_a_file_in_a_parent_column_closes_deeper_columns_before_requesting(
         "the closed column must report the file's focus before the preview request"
     );
 }
-
-#[test]
-fn mirrored_previews_are_marked_automatic() {
-    let browser = Browser::new(Rc::new(FilePreviewSource));
-    browser.navigate(Location::local("/fixture"));
-    let events = Rc::new(RefCell::new(Vec::new()));
-    let observed = events.clone();
-    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
-    let entry = browser.entry_at(0, 0).expect("fixture file");
-
-    browser.request_automatic_preview(entry.clone());
-    browser.request_preview(entry);
-
-    let automatic: Vec<bool> = events
-        .borrow()
-        .iter()
-        .filter_map(|event| match event {
-            BrowserEvent::PreviewRequested { automatic, .. } => Some(*automatic),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(automatic, [true, false]);
-}

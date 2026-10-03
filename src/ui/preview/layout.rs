@@ -70,7 +70,6 @@ struct BrowserBinding {
 struct Geometry {
     available: i32,
     occupied: i32,
-    // Columns beyond the active depth: they borrow the empty slot's width.
     trailing: i32,
     start_minimum: i32,
     show_minimum: i32,
@@ -98,8 +97,6 @@ impl Geometry {
         minimum.min(self.maximum_width())
     }
 
-    // The slot's natural width beside the navigated columns, before the floor
-    // that preview content needs.
     fn desired_width(self, manual: Option<i32>) -> i32 {
         let free = (self.available - self.separator - self.occupied).max(0);
         let desired = manual.unwrap_or_else(|| {
@@ -276,7 +273,6 @@ impl PreviewState {
         )
     }
 
-    // Nothing is displayed and no placeholder is pending: the slot is bare space.
     pub(super) fn slot_is_empty(&self) -> bool {
         self.current.borrow().is_none() && !self.reserves_empty_preview()
     }
@@ -340,8 +336,7 @@ impl PreviewState {
         geometry
     }
 
-    // A window squeeze can pin the divider below the width the user chose; the
-    // preview must leave room for that width so the sidebar can recover.
+    // Budget the intended sidebar width so a clamped divider can recover.
     fn intended_sidebar_width(&self, binding: &BrowserBinding, content: &gtk::Paned) -> i32 {
         let current = sidebar_width(content);
         if current == 0
@@ -594,7 +589,6 @@ impl PreviewState {
             if change_applies {
                 if wants_rail {
                     if visible {
-                        // A narrow window clamps the divider; keep the user's width instead.
                         let squeezed =
                             content.position() + content_sep + COLUMN_WIDTH >= content.width();
                         let width = if squeezed {
@@ -626,9 +620,7 @@ impl PreviewState {
                 geometry = self.geometry(split);
             }
         }
-        // A reserved slot never disappears: it shrinks to whatever remains beside
-        // the focused column, and only the preview content yields when that is
-        // too narrow, so the columns keep their offset at every width.
+        // Keep the slot even below the content threshold to prevent scroll clamping.
         let bare = reserved
             && (self.slot_is_empty() || !split.is_mapped() || !geometry.can_show_preview());
         if bare {

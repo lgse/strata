@@ -195,8 +195,6 @@ fn columns_preview_archives_without_taking_navigation() {
                 .enumerate()
             {
                 select_named(&fixture, "b.txt");
-                // Esc dismissed the previous round's preview; mirroring stays
-                // closed until an explicit open, so later rounds follow instead.
                 if round > 0 && !fixture.preview.is_enabled() {
                     fixture.press(Key::space, ModifierType::empty());
                     wait_until(|| fixture.preview.is_open());

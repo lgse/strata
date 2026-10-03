@@ -30,7 +30,6 @@ impl ViewState {
         self.column_span(depth)
     }
 
-    // Columns beyond the active depth share the right pane with the preview.
     fn navigated_len(&self) -> usize {
         let count = self.columns.borrow().len();
         self.browser
@@ -246,8 +245,6 @@ impl BrowserView {
                         let gap = view.state.columns_widget.margin_end().min(maximum_gap);
                         view.state.columns_widget.set_margin_end(gap);
                         view.release_preview_scroll_space(&weak_preview);
-                        // A narrower viewport must not leave the focused column clipped
-                        // until the next navigation reveals it.
                         if let Some(span) = view.state.focused_column_span() {
                             let target = span.reveal_target(
                                 adjustment.value(),
