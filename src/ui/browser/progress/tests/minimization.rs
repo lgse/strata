@@ -13,6 +13,7 @@ use crate::{
         browser::{BrowserView, PeekBehavior},
     },
 };
+use gtk::subclass::prelude::ObjectSubclassIsExt;
 use std::{
     rc::Rc,
     time::{Duration, Instant},
@@ -22,6 +23,7 @@ struct Fixture {
     temp: tempfile::TempDir,
     view: BrowserView,
     window: gtk::Window,
+    blur: BlurBin,
     operations: Rc<HeldOperations>,
 }
 
@@ -48,6 +50,7 @@ impl Fixture {
             temp,
             view,
             window,
+            blur,
             operations,
         }
     }
@@ -149,14 +152,35 @@ fn copy_starts_in_the_dock_with_destination_and_continues_while_browsing() {
             let progress = fixture.progress(id);
             assert!(crate::ui::window::visible_modal_layer(&fixture.window).is_none());
             assert!(!fixture.view.browser().has_foreground_operation());
+            assert!(
+                !fixture.blur.imp().blurred.get(),
+                "docked progress must not blur browsing"
+            );
             fixture.update(id, &name, 45);
             let card = progress_card(&progress);
             assert_eq!(card.status.text(), "45%");
-            assert!(card.info.text().contains(&name));
+            assert_eq!(card.info.text(), name);
+            assert_eq!(card.count.text(), "0/1");
             assert_eq!(
                 card.destination.text(),
-                format!("Destination: {}", fixture.temp.path().display())
+                format!("→ {}", fixture.temp.path().display())
             );
+            fixture.operations.emit(
+                id,
+                OperationEvent::TransferProgress {
+                    request_id: id,
+                    completed_items: 1,
+                    completed_files: 1,
+                    total_files: Some(2),
+                    current_file: Some("next-file.txt".to_owned()),
+                    created_location: None,
+                    transferred_bytes: 50,
+                    total_bytes: Some(100),
+                },
+            );
+            assert_eq!(card.info.text(), "next-file.txt");
+            assert_eq!(card.count.text(), "1/2");
+            assert_eq!(card.status.text(), "50%");
             let elsewhere = fixture.temp.path().join("elsewhere");
             std::fs::create_dir(&elsewhere).expect("browsing destination");
             fixture.view.browser().navigate(Location::local(&elsewhere));
@@ -169,6 +193,37 @@ fn copy_starts_in_the_dock_with_destination_and_continues_while_browsing() {
             assert_eq!(card.status.text(), "75%");
             fixture.finish(id);
             assert!(card.root.parent().is_none());
+        },
+    );
+}
+
+#[test]
+fn docked_progress_does_not_change_an_existing_modal_blur() {
+    crate::test_support::gtk_test(
+        "ui::browser::progress::tests::minimization::docked_progress_does_not_change_an_existing_modal_blur",
+        || {
+            let fixture = Fixture::new();
+            crate::ui::modal::show_error_dialog(
+                &fixture.window,
+                "Existing modal",
+                "Keep this modal open.",
+            );
+            let layer =
+                crate::ui::window::visible_modal_layer(&fixture.window).expect("existing modal");
+            assert!(fixture.blur.imp().blurred.get());
+            let id = fixture.transfer("background.txt", false);
+            fixture.progress(id);
+            assert!(fixture.blur.imp().blurred.get());
+            assert_eq!(
+                crate::ui::window::visible_modal_layer(&fixture.window),
+                Some(layer.clone())
+            );
+            fixture.finish(id);
+            assert!(fixture.blur.imp().blurred.get());
+            assert_eq!(
+                crate::ui::window::visible_modal_layer(&fixture.window),
+                Some(layer)
+            );
         },
     );
 }
@@ -221,7 +276,7 @@ fn docked_copy_archive_and_deletion_update_and_cancel_independently() {
             assert_eq!(progress_card(&archive_progress).status.text(), "50%");
             assert_eq!(
                 progress_card(&deletion_progress).destination.text(),
-                "Destination: Trash"
+                "→ Trash"
             );
             second_card.cancel.emit_clicked();
             assert!(fixture.operations.cancelled(second));
@@ -286,6 +341,10 @@ fn background_failure_preserves_an_exclusive_foreground_move() {
                     .is_some()
             });
             fixture.update(next, "moving.txt", 50);
+            assert!(
+                fixture.blur.imp().blurred.get(),
+                "foreground progress should retain modal blur"
+            );
             fixture.operations.emit(
                 first,
                 OperationEvent::TransferFailed {
@@ -349,7 +408,7 @@ fn archive_activity_is_retained_before_display_and_while_a_large_member_is_runni
             assert_eq!(card.meta.text(), "Compressing…");
             assert_eq!(
                 card.destination.text(),
-                format!("Destination: {}", fixture.temp.path().display())
+                format!("→ {}", fixture.temp.path().display())
             );
             fixture.operations.emit(
                 id,

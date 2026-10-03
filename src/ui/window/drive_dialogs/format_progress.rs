@@ -23,7 +23,7 @@ pub(super) struct FormatProgress {
 
 impl FormatProgress {
     pub(super) fn new(parent: &gtk::Widget, display_name: &str) -> Option<Rc<Self>> {
-        let host = ModalHost::blurred_for(parent)?;
+        let host = ModalHost::for_widget(parent)?;
         let card = Rc::new(CompactProgress::new(&host.overlay, assets::icons::SHREDDER));
         card.title.set_text("Formatting drive");
         card.status.set_text("…");

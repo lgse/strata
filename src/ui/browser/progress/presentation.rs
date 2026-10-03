@@ -60,13 +60,41 @@ impl FileProgressState {
                 .info
                 .set_text("Device may still be writing. Do not unplug until the operation stops.");
         } else if transferring {
-            compact.info.set_text(&view.transfer_items.text());
+            let file = self.transfer_current_file.borrow();
+            let description = self.task_description.borrow();
+            compact.info.set_text(
+                file.as_deref()
+                    .filter(|name| !name.is_empty())
+                    .unwrap_or(&description),
+            );
         } else {
             compact.info.set_text(&self.task_description.borrow());
         }
+        let count = self
+            .transfer_progress
+            .get()
+            .filter(|_| transferring)
+            .map(|snapshot| {
+                let (completed, total) = if let Some(total) = snapshot.total_files {
+                    (snapshot.completed_files, total)
+                } else {
+                    (
+                        snapshot.completed_items,
+                        self.file_operation_progress.get().1,
+                    )
+                };
+                format!("{completed}/{total}")
+            });
+        compact.count.set_text(count.as_deref().unwrap_or_default());
+        compact.count.set_visible(count.is_some());
+        let destination = self.destination_description.borrow();
         compact
             .destination
-            .set_text(&self.destination_description.borrow());
+            .set_text(&match destination.strip_prefix("Destination: ") {
+                Some(path) => format!("→ {path}"),
+                None => destination.to_string(),
+            });
+        crate::ui::accessibility::set_description(&compact.destination, Some(&destination));
         compact
             .destination
             .set_visible(!self.destination_description.borrow().is_empty());

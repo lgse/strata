@@ -12,6 +12,7 @@ pub(super) struct CompactProgress {
     pub(super) title: gtk::Label,
     pub(super) status: gtk::Label,
     pub(super) info: gtk::Label,
+    pub(super) count: gtk::Label,
     pub(super) destination: gtk::Label,
     pub(super) meta: gtk::Label,
     pub(super) progress: gtk::ProgressBar,
@@ -63,7 +64,7 @@ fn wrapped_label(width: i32) -> gtk::Label {
 impl CompactProgress {
     pub(super) fn new(overlay: &gtk::Overlay, icon: &str) -> Self {
         let (dock, list) = dock(overlay);
-        let root = gtk::Box::new(gtk::Orientation::Vertical, 6);
+        let root = gtk::Box::new(gtk::Orientation::Vertical, 4);
         root.add_css_class("file-operation-card");
         let header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         header.append(&assets::primary_icon(icon, 14));
@@ -73,7 +74,6 @@ impl CompactProgress {
         header.append(&title);
         let status = gtk::Label::builder().xalign(1.0).build();
         status.add_css_class("job-status");
-        header.append(&status);
         let cancel = gtk::Button::new();
         pane_header_action(&cancel);
         cancel.add_css_class("progress-cancel");
@@ -82,24 +82,41 @@ impl CompactProgress {
         accessibility::set_label(&cancel, "Cancel operation");
         header.append(&cancel);
         root.append(&header);
-        let info = wrapped_label(36);
+        let details = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        let info = wrapped_label(42);
+        info.set_hexpand(true);
         info.add_css_class("job-meta");
-        root.append(&info);
-        let destination = wrapped_label(36);
+        info.add_css_class("job-description");
+        details.append(&info);
+        let count = gtk::Label::builder()
+            .xalign(1.0)
+            .valign(gtk::Align::Start)
+            .visible(false)
+            .build();
+        count.add_css_class("job-meta");
+        details.append(&count);
+        root.append(&details);
+        let destination = wrapped_label(42);
         destination.add_css_class("job-meta");
         root.append(&destination);
         let progress = gtk::ProgressBar::new();
         progress.add_css_class("modal-progress");
         root.append(&progress);
-        let meta = wrapped_label(36);
+        let footer = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        let meta = wrapped_label(42);
+        meta.set_hexpand(true);
         meta.add_css_class("job-meta");
-        root.append(&meta);
+        footer.append(&meta);
+        status.set_valign(gtk::Align::Start);
+        footer.append(&status);
+        root.append(&footer);
         list.append(&root);
         Self {
             root,
             title,
             status,
             info,
+            count,
             destination,
             meta,
             progress,

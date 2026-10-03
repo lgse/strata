@@ -1164,11 +1164,11 @@ headerbar menubutton.header-action > button:focus-visible {
 .file-operation-card {
   background: @theme_surface;
   border: 1px solid alpha(@theme_border, 0.6);
-  border-radius: 9px;
+  border-radius: 12px;
   box-shadow: 0 0 10px alpha(@theme_glow, 0.18);
   color: @theme_text;
   min-width: 280px;
-  padding: 10px;
+  padding: 8px 16px;
 }
 
 .file-operation-card:focus-within {
@@ -1177,6 +1177,15 @@ headerbar menubutton.header-action > button:focus-visible {
 
 .file-operation-card .job-status {
   color: @theme_accent;
+}
+
+.file-operation-card .job-description {
+  color: @theme_text;
+}
+
+.file-operation-card .modal-progress trough,
+.file-operation-card .modal-progress progress {
+  min-height: 4px;
 }
 
 .file-operation-card button.column-header-action {

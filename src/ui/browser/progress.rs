@@ -200,10 +200,15 @@ impl FileProgressState {
         subtitle_text: &str,
         on_cancel: Rc<dyn Fn()>,
     ) {
+        let host = if self.dock_only.get() {
+            ModalHost::for_widget(&self.overlay)
+        } else {
+            ModalHost::blurred_for(&self.overlay)
+        };
         let Some(ModalHost {
             overlay: window_overlay,
             blurred_root,
-        }) = ModalHost::blurred_for(&self.overlay)
+        }) = host
         else {
             return;
         };

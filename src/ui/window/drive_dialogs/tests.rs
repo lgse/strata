@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use gtk::subclass::prelude::ObjectSubclassIsExt;
 
 pub(in crate::ui::window) fn focus_dialog_fixture(
     parent: &gtk::Widget,
@@ -77,7 +78,8 @@ fn format_feedback_reports_success_failure_and_authorization_cancellation() {
                 let origin = gtk::Button::with_label("Browser item");
                 parent.append(&origin);
                 let overlay = gtk::Overlay::new();
-                overlay.set_child(Some(&parent));
+                let blur = crate::ui::blur::BlurBin::new(&parent);
+                overlay.set_child(Some(&blur));
                 let window = gtk::Window::builder().child(&overlay).build();
                 window.present();
                 origin.grab_focus();
@@ -95,6 +97,10 @@ fn format_feedback_reports_success_failure_and_authorization_cancellation() {
                 );
                 wait_until(|| started.get());
                 assert!(has_label(overlay.upcast_ref(), "Formatting drive"));
+                assert!(
+                    !blur.imp().blurred.get(),
+                    "format card must not blur browsing"
+                );
                 assert!(super::super::visible_modal_layer(&window).is_none());
                 assert_eq!(
                     gtk::prelude::GtkWindowExt::focus(&window),
