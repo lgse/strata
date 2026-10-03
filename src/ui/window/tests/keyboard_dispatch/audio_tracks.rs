@@ -54,9 +54,9 @@ fn shows_track(fixture: &KeyboardFixture, name: &str) -> bool {
 }
 
 #[test]
-fn audio_steps_follow_filtered_results_including_subfolders() {
+fn audio_steps_follow_search_results_including_subfolders() {
     crate::test_support::gtk_test(
-        "ui::window::tests::keyboard_dispatch::audio_tracks::audio_steps_follow_filtered_results_including_subfolders",
+        "ui::window::tests::keyboard_dispatch::audio_tracks::audio_steps_follow_search_results_including_subfolders",
         || {
             let fixture = KeyboardFixture::with_provider(Rc::new(AudioPreview));
             let root = fixture._directory.path();
@@ -72,7 +72,6 @@ fn audio_steps_follow_filtered_results_including_subfolders() {
             }
             let preferences = footer_prompt::enable_tenxer(&fixture);
             preferences.set_group_by_type(false);
-            preferences.set_filter_include_subfolders(true);
             let browser = fixture.view.browser();
             fixture.preview.observe_browser(&browser);
             fixture.view.refresh();
@@ -80,13 +79,13 @@ fn audio_steps_follow_filtered_results_including_subfolders() {
             browser.set_sort(0, SortKey::Name, SortDirection::Ascending);
             for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
                 fixture.preview.close();
-                fixture.view.clear_listing_filter();
+                fixture.view.dismiss_listing_search();
                 fixture.view.set_view_mode(mode);
                 wait_loaded(&browser, 0);
                 move_to_named(&fixture, &browser, "b-hidden.wav");
                 let hidden_cursor = || browser.cursor_entry(0).expect("directory cursor").location;
                 let hidden = hidden_cursor();
-                footer_prompt::commit_filter(&fixture, "song");
+                footer_prompt::commit_search(&fixture, "song");
                 footer_prompt::wait_results(
                     &fixture,
                     &["a-song.wav", "c-song.wav", "d-song.m3u", "e-song.mid"],
