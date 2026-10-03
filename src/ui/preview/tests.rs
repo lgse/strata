@@ -195,6 +195,18 @@ fn an_explicit_close_blocks_automatic_previews_until_reopened() {
                 "mirroring follows again after an explicit reopen"
             );
             drawer.close();
+
+            // Without a bound browser the panel starts unreserved: switch it on, then off.
+            let released = PreviewDrawer::new(provider.clone(), false);
+            released.state.toggle_panel(None, None);
+            assert!(released.is_enabled());
+            released.state.toggle_panel(None, None);
+            released.handle_browser_event(&browser, &automatic);
+            assert!(
+                !released.is_enabled(),
+                "releasing the panel before any preview also blocks mirroring"
+            );
+            assert_eq!(provider.0.borrow().len(), 3);
         },
     );
 }

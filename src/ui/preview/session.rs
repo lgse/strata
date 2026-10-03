@@ -44,6 +44,8 @@ impl PreviewState {
         let enabled = self.is_enabled() || self.reserves_column_space();
         self.reserve_columns.set(!enabled);
         if enabled {
+            // Releasing the panel is explicit even when nothing was previewed.
+            self.dismissed.set(true);
             self.close();
         } else {
             self.toggle(entry, depth);
