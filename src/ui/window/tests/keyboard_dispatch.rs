@@ -22,6 +22,7 @@ mod go_prompt;
 mod mode_exit;
 mod place_chords;
 mod preview_ownership;
+mod sidebar_sections;
 
 use crate::ui::{
     preview::{DocumentScroll, PreviewDrawer},
@@ -84,6 +85,8 @@ impl KeyboardFixture {
         PreferenceManager::seed_saved_preferences_for_test();
         let preferences = PreferenceManager::shared();
         preferences.set_sidebar_show_home(true);
+        preferences.set_sidebar_pinned_collapsed(false);
+        preferences.set_sidebar_devices_collapsed(false);
         preferences.set_tenxer_mode(false);
         let directory = tempfile::tempdir().expect("fixture");
         for name in ["a.txt", "b.txt", "c.txt"] {
