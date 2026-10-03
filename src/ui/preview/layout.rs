@@ -98,7 +98,9 @@ impl Geometry {
         minimum.min(self.maximum_width())
     }
 
-    fn preview_width(self, manual: Option<i32>) -> i32 {
+    // The slot's natural width beside the navigated columns, before the floor
+    // that preview content needs.
+    fn desired_width(self, manual: Option<i32>) -> i32 {
         let free = (self.available - self.separator - self.occupied).max(0);
         let desired = manual.unwrap_or_else(|| {
             if self.columns {
@@ -107,9 +109,11 @@ impl Geometry {
                 free.saturating_mul(9).saturating_div(10).min(MAX_WIDTH)
             }
         });
-        desired
-            .clamp(self.minimum_width(manual.is_some()), self.maximum_width())
-            .max(MIN_SPLIT_PREVIEW_WIDTH)
+        desired.clamp(self.minimum_width(manual.is_some()), self.maximum_width())
+    }
+
+    fn preview_width(self, manual: Option<i32>) -> i32 {
+        self.desired_width(manual).max(MIN_SPLIT_PREVIEW_WIDTH)
     }
 
     fn position(self, manual: Option<i32>) -> i32 {
@@ -121,7 +125,7 @@ impl Geometry {
     }
 
     fn empty_slot_width(self, manual: Option<i32>) -> i32 {
-        (self.preview_width(manual) - self.trailing).max(0)
+        (self.desired_width(manual) - self.trailing).max(0)
     }
 
     fn empty_slot_position(self, manual: Option<i32>) -> i32 {
@@ -140,7 +144,7 @@ fn separator(split: &gtk::Paned) -> Option<gtk::Widget> {
     None
 }
 
-fn separator_width(split: &gtk::Paned) -> i32 {
+pub(in crate::ui) fn separator_width(split: &gtk::Paned) -> i32 {
     separator(split).map_or(0, |handle| {
         handle.measure(gtk::Orientation::Horizontal, -1).0
     })
@@ -442,12 +446,7 @@ impl PreviewState {
                         binding.content.upgrade().is_some_and(|content| content.has_focus())
                     })
                 });
-        let keep_slot = self.reserves_column_space()
-            && self
-                .split
-                .borrow()
-                .as_ref()
-                .is_some_and(|split| self.geometry(split).can_show_preview());
+        let keep_slot = self.reserves_column_space();
         if let Some(split) = self.split.borrow().as_ref()
             && self.revealer.is_visible()
             && !keep_slot
@@ -619,25 +618,27 @@ impl PreviewState {
                 geometry = self.geometry(split);
             }
         }
-        if reserved && self.slot_is_empty() {
+        // A reserved slot never disappears: it shrinks to whatever remains beside
+        // the focused column, and only the preview content yields when that is
+        // too narrow, so the columns keep their offset at every width.
+        let bare = reserved
+            && (self.slot_is_empty() || !split.is_mapped() || !geometry.can_show_preview());
+        if bare {
             if self.sizing.resizing.get() {
                 return;
             }
-            if self.revealer.reveals_child() {
+            if self.current.borrow().is_some() {
+                self.suspend_panel();
+            } else if self.revealer.reveals_child() {
                 self.hide_panel();
             }
-            if geometry.can_show_preview() {
-                let manual = self.sizing.manual_width.get();
-                self.slot.set_visible(true);
-                self.slot
-                    .set_width_request(geometry.empty_slot_minimum(manual.is_some()));
-                split.set_resize_start_child(true);
-                split.set_resize_end_child(false);
-                split.set_position(geometry.empty_slot_position(manual));
-            } else {
-                self.slot.set_visible(false);
-                split.set_position(split.width());
-            }
+            let manual = self.sizing.manual_width.get();
+            self.slot.set_visible(true);
+            self.slot
+                .set_width_request(geometry.empty_slot_minimum(manual.is_some()));
+            split.set_resize_start_child(true);
+            split.set_resize_end_child(false);
+            split.set_position(geometry.empty_slot_position(manual));
             return;
         }
         self.slot.set_width_request(0);

@@ -27,6 +27,7 @@ use super::{blur::BlurBin, controls::form_password_entry, controls::modal_layout
 mod archive;
 mod keyboard;
 mod layout;
+pub(in crate::ui) use layout::separator_width;
 mod media_layout;
 #[cfg(test)]
 mod pdf_ranges_tests;

@@ -66,9 +66,12 @@ Constants live in `src/ui/preview/layout.rs` and `src/ui/preview.rs`.
   reopening, and folder changes, and is forgotten when the window closes. A
   manual width can go down to one column but never below the hide threshold.
 - **Narrow windows**: the file view has priority. The preview shrinks to its
-  minimum, then hides entirely when less than 240 px would remain beside the
-  focused column. A hidden preview pauses media and defers loading; widening the
-  window restores it with the same selection and manual width. The sidebar
+  minimum, then its content hides when less than 240 px would remain beside
+  the focused column. In Columns the reserved slot itself never disappears: it
+  keeps whatever remains beside the focused column, down to zero, so the
+  columns keep their offset at every width. A hidden preview pauses media and
+  defers loading; widening the window restores it with the same selection and
+  manual width. The sidebar
   collapses to a rail while a preview is present and space is short, with 24 px
   of hysteresis so it does not flicker at the threshold. A divider position
   that a narrow window pinned is never recorded as the user's sidebar width:
@@ -85,7 +88,8 @@ Constants live in `src/ui/preview/layout.rs` and `src/ui/preview.rs`.
    **Esc**, and the close button dismiss the content without reclaiming the
    space. **Appearance → Preview panel** off releases it; any explicit preview
    reserves it again. The reservation is window-local, is not a saved
-   preference, and does not enable automatic previews by itself.
+   preference, does not enable automatic previews by itself, and never yields
+   to a narrow window (the slot just gets as narrow as the space allows).
 2. **A focused folder hands the right pane to its child column.** The drawer
    hides its pane (no placeholder) and the empty slot lends the child column
    exactly its width. The columns scroller and its content grow by the same

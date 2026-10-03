@@ -267,9 +267,10 @@ fn bind_sidebar_toggle(
             }
         } else if content.position() < MIN_SIDEBAR_WIDTH {
             content.set_position(MIN_SIDEBAR_WIDTH);
-        } else if content
-            .end_child()
-            .is_none_or(|browser| browser.width() > crate::ui::browser::COLUMN_WIDTH)
+        } else if content.position()
+            + crate::ui::preview::separator_width(content)
+            + crate::ui::browser::COLUMN_WIDTH
+            < content.width()
         {
             // A divider pinned by a narrow window is not the user's choice.
             state.saved_width.set(Some(content.position()));
