@@ -179,6 +179,10 @@ pub enum BrowserEvent {
         request_id: Option<OperationRequestId>,
         message: String,
     },
+    BackgroundOperation {
+        request_id: OperationRequestId,
+        event: Box<BrowserEvent>,
+    },
     TransferStarted {
         total: usize,
         moving: bool,
@@ -395,6 +399,7 @@ struct MergeUndoState {
 }
 
 struct PendingUndo {
+    background: bool,
     generation: u64,
     entry: UndoEntry,
     /// Items already reversed, kept so a partial undo can offer a matching
@@ -439,13 +444,20 @@ impl UndoState {
         self.next_generation = generation;
         let stack = self.stack_mut(redo);
         stack.push(PendingUndo {
+            background: false,
             generation,
             completed: None,
             entry,
             claimed: false,
         });
-        if stack.len() > MAX_UNDO_HISTORY {
-            stack.remove(0);
+        while stack.len() > MAX_UNDO_HISTORY {
+            let Some(index) = stack[..stack.len() - 1]
+                .iter()
+                .position(|pending| !pending.claimed)
+            else {
+                break;
+            };
+            stack.remove(index);
         }
     }
 
@@ -538,9 +550,29 @@ fn push_pending_undo(entry: UndoEntry) {
     }
     PENDING_UNDO.with(|pending| {
         let mut pending = pending.borrow_mut();
-        pending.redo.clear();
+        pending.redo.retain(|entry| entry.claimed);
         pending.push_entry(false, entry);
         pending.fold_group_tail();
+    });
+}
+
+fn push_background_undo(entry: UndoEntry) {
+    if entry.is_empty() {
+        return;
+    }
+    PENDING_UNDO.with(|pending| {
+        let mut pending = pending.borrow_mut();
+        pending.redo.retain(|entry| entry.claimed);
+        pending.push_entry(false, entry);
+        let mut entry = pending.history.pop().expect("new background undo");
+        entry.background = true;
+        let anchor = pending.group_folder.as_ref().and_then(|folder| {
+            pending.history.iter().rposition(|entry| !entry.claimed && matches!(&entry.entry,
+                UndoEntry::Copy(locations) if locations.as_slice() == std::slice::from_ref(folder))
+                || !entry.claimed && matches!(&entry.entry, UndoEntry::Group { folder: grouped, .. } if grouped == folder))
+        });
+        let position = anchor.unwrap_or(pending.history.len());
+        pending.history.insert(position, entry);
     });
 }
 
@@ -824,6 +856,12 @@ pub struct Browser {
     navigation_cleanup: RefCell<Option<Box<dyn FnOnce()>>>,
     operation_provider: RefCell<Option<Rc<dyn OperationProvider>>>,
     operation_load: RefCell<Option<LoadHandle>>,
+    background_operations:
+        RefCell<HashMap<OperationRequestId, Rc<operation_events::BackgroundOperation>>>,
+    operation_backgroundable: Cell<bool>,
+    operation_cancel_requested: Cell<bool>,
+    operation_description: RefCell<String>,
+    operation_destination_description: RefCell<String>,
     transfer_cancel_pending: Cell<bool>,
     current_operation: Cell<Option<OperationRequestId>>,
     last_started_operation: Cell<Option<OperationRequestId>>,
@@ -882,6 +920,11 @@ impl Browser {
             navigation_cleanup: RefCell::new(None),
             operation_provider: RefCell::new(None),
             operation_load: RefCell::new(None),
+            background_operations: RefCell::new(HashMap::new()),
+            operation_backgroundable: Cell::new(false),
+            operation_cancel_requested: Cell::new(false),
+            operation_description: RefCell::new(String::new()),
+            operation_destination_description: RefCell::new(String::new()),
             transfer_cancel_pending: Cell::new(false),
             current_operation: Cell::new(None),
             last_started_operation: Cell::new(None),
@@ -2234,6 +2277,13 @@ impl Browser {
             return;
         };
         self.transfer_operation.set(Some(move_sources));
+        self.operation_backgroundable.set(!move_sources);
+        self.operation_description.replace(
+            items
+                .first()
+                .map(|item| item.source.display_name())
+                .unwrap_or_default(),
+        );
         self.state.borrow_mut().set_selectionless_removals(
             items
                 .iter()
@@ -2241,6 +2291,8 @@ impl Browser {
                 .map(|item| item.source.clone()),
         );
         self.transfer_destination.replace(Some(destination.clone()));
+        self.operation_destination_description
+            .replace(format!("Destination: {}", destination.display_path()));
         self.transfer_reveal.set(reveal);
         self.emit(BrowserEvent::TransferStarted {
             total: items.len(),
@@ -2280,6 +2332,19 @@ impl Browser {
         };
         self.deletion_operation.set(true);
         self.deletion_permanent.set(permanent);
+        self.operation_destination_description
+            .replace(if permanent {
+                "Permanent deletion".to_owned()
+            } else {
+                "Destination: Trash".to_owned()
+            });
+        self.operation_backgroundable.set(true);
+        self.operation_description.replace(
+            entries
+                .first()
+                .map(|entry| entry.display_name.clone())
+                .unwrap_or_default(),
+        );
         self.emit(BrowserEvent::DeletionStarted { total });
         let load = provider.delete(
             DeleteRequest {
@@ -2382,6 +2447,12 @@ impl Browser {
     pub fn expect_group_folder(&self, created: Location) {
         PENDING_UNDO.with(|pending| {
             let mut pending = pending.borrow_mut();
+            if let Some(mut anchor) = pending.history.iter().rposition(|entry| !entry.claimed && !entry.background && matches!(&entry.entry, UndoEntry::Copy(locations) if locations.as_slice() == std::slice::from_ref(&created))) {
+                while anchor + 1 < pending.history.len() && pending.history[anchor + 1].background {
+                    pending.history.swap(anchor, anchor + 1);
+                    anchor += 1;
+                }
+            }
             pending.group_folder = Some(created);
             pending.group_rename_finished = false;
         });
@@ -2932,6 +3003,11 @@ impl Browser {
             return;
         };
         self.archive_operation.set(true);
+        self.operation_backgroundable.set(true);
+        self.operation_description.replace(archive_name.clone());
+        self.operation_destination_description
+            .replace(format!("Destination: {}", destination.display_path()));
+        let refresh = HashSet::from([destination.clone()]);
         let load = provider.compress(
             CompressRequest {
                 id: request_id,
@@ -2942,7 +3018,7 @@ impl Browser {
                 format,
                 password,
             },
-            self.operation_callback(request_id, false, HashSet::new()),
+            self.operation_callback(request_id, false, refresh),
         );
         self.install_operation_load(request_id, load);
     }
@@ -2978,14 +3054,23 @@ impl Browser {
     }
 
     pub fn cancel_file_operation(&self) {
+        self.operation_cancel_requested
+            .set(self.current_operation.get().is_some());
         if self.current_operation.get().is_some() && self.transfer_operation.get().is_some() {
             self.transfer_cancel_pending.set(true);
         }
-        self.operation_load.borrow_mut().take();
+        let load = self.operation_load.take();
+        drop(load);
     }
 
     fn try_begin_operation(&self) -> Option<OperationRequestId> {
-        if self.transfer_cancel_pending.get() {
+        if self.transfer_cancel_pending.get()
+            || self
+                .background_operations
+                .borrow()
+                .values()
+                .any(|job| job.cancel_pending.get())
+        {
             self.emit(BrowserEvent::TransferCancellationPending);
             return None;
         }
@@ -3028,13 +3113,30 @@ impl Browser {
         self.deferred_file_operation_changes.borrow_mut().clear();
         self.restoration_operation.set(false);
         self.archive_operation.set(false);
+        self.operation_backgroundable.set(false);
+        self.operation_cancel_requested.set(false);
+        self.operation_description.borrow_mut().clear();
+        self.operation_destination_description.borrow_mut().clear();
         self.current_operation.set(Some(request_id));
         request_id
     }
 
     fn install_operation_load(&self, request_id: OperationRequestId, load: LoadHandle) {
         if self.is_current_operation(request_id) {
-            self.operation_load.replace(Some(load));
+            if !self.operation_cancel_requested.get() {
+                self.operation_load.replace(Some(load));
+            }
+        } else {
+            let background = self
+                .background_operations
+                .borrow()
+                .get(&request_id)
+                .cloned();
+            if let Some(job) = background
+                && !job.cancel_requested.get()
+            {
+                job.load.replace(Some(load));
+            }
         }
     }
 

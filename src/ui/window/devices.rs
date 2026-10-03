@@ -37,6 +37,40 @@ fn mounted_devices_from_table(table: &[u8]) -> Vec<PathBuf> {
         .collect()
 }
 
+fn mount_entries(table: &[u8]) -> impl Iterator<Item = (PathBuf, PathBuf)> {
+    table.split(|byte| *byte == b'\n').filter_map(|line| {
+        let fields: Vec<_> = line.split(|byte| *byte == b' ').collect();
+        let separator = fields.iter().position(|field| *field == b"-")?;
+        if separator < 6 {
+            return None;
+        }
+        let root = mount_path(fields[4])?;
+        let source = mount_path(fields.get(separator + 2)?)?;
+        root.is_absolute().then_some((root, source))
+    })
+}
+
+pub(super) fn block_device_from_mount_table(table: &[u8], path: &Path) -> Option<PathBuf> {
+    mount_entries(table)
+        .filter(|(root, _)| path.starts_with(root))
+        .max_by_key(|(root, _)| root.as_os_str().len())
+        .map(|(_, source)| source)
+        .filter(|source| source.starts_with("/dev"))
+}
+
+pub(super) fn mounted_path_from_table(table: &[u8], device: &Path) -> Option<PathBuf> {
+    let device = device
+        .canonicalize()
+        .unwrap_or_else(|_| device.to_path_buf());
+    mount_entries(table).find_map(|(root, source)| {
+        if !source.starts_with("/dev") {
+            return None;
+        }
+        let source = source.canonicalize().unwrap_or(source);
+        (source == device).then_some(root)
+    })
+}
+
 fn mount_path(encoded: &[u8]) -> Option<PathBuf> {
     let mut decoded = Vec::with_capacity(encoded.len());
     let mut bytes = encoded.iter().copied();
@@ -55,6 +89,17 @@ fn mount_path(encoded: &[u8]) -> Option<PathBuf> {
         }
     }
     Some(std::ffi::OsString::from_vec(decoded).into())
+}
+
+pub(super) fn label_identity(uuid: Option<&str>, root_uri: Option<&str>) -> Option<String> {
+    [("volume", uuid), ("root", root_uri)]
+        .into_iter()
+        .find_map(|(namespace, value)| {
+            value
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| format!("{namespace}:{value}"))
+        })
 }
 
 pub(super) fn device_identity(

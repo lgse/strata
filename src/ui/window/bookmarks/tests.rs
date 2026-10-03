@@ -47,7 +47,9 @@ fn check_trash_and_restore_do_not_resurrect_removed_pins() {
     let finished = Rc::new(RefCell::new(None));
     let observed = finished.clone();
     browser.observe(move |event| {
-        if let crate::app::BrowserEvent::DeletionFinished { succeeded } = event {
+        if let crate::app::BrowserEvent::DeletionFinished { succeeded } =
+            crate::test_support::operations::operation_event(event)
+        {
             observed.replace(Some(*succeeded));
         }
     });
