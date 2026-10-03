@@ -686,6 +686,14 @@ impl Dispatcher {
         if self.native_menu_owns_input() {
             return Some(Propagation::Proceed);
         }
+        let mut focused = gtk::prelude::RootExt::focus(&self.window);
+        while let Some(widget) = focused {
+            if widget.has_css_class("file-operation-card") {
+                self.shortcuts.cancel_chord();
+                return Some(Propagation::Proceed);
+            }
+            focused = widget.parent();
+        }
         if self.shortcuts.prompt_has_focus() {
             if let Some(result) = self.footer_key(key, modifiers) {
                 return Some(result);
@@ -782,6 +790,16 @@ impl Dispatcher {
         }
         if key == Key::Escape && !command && !self.inline_editing_active() {
             return self.tenxer_escape(browser);
+        }
+        // Unclaimed typing belongs to the listing in 10xer mode, even when
+        // compositor focus restoration selected a header or footer control.
+        // Text, menus, sidebar/header actions, and preview ownership run first.
+        if key != Key::space
+            && claims_file_list_typing(key, modifiers)
+            && !self.view.item_view_has_focus()
+            && !self.preview.owns_focus(focus.as_ref())
+        {
+            browser.focus_active();
         }
         if let Some(result) = self
             .tenxer_prompt_keys(key, modifiers)

@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
-    rc::Rc,
+    rc::{Rc, Weak},
 };
 
 use gtk::{gio, prelude::*};
+
+#[cfg(test)]
+mod tests;
 
 use crate::{
     assets::{self, icons},
@@ -32,10 +35,35 @@ pub(super) struct ActionMenuSection {
     dispatch: super::commands::MenuDispatch,
     _commands: super::commands::CommandMenus,
     navigation: Rc<super::keyboard::NativeMenuNavigation>,
+    monitor: gio::VolumeMonitor,
+    monitor_handlers: RefCell<Vec<gtk::glib::SignalHandlerId>>,
+    refresh_pending: Cell<bool>,
+    selection: RefCell<Option<SelectionMenuContext>>,
+}
+
+#[derive(Clone)]
+struct SelectionMenuContext {
+    state: Weak<ViewState>,
+    entries: Vec<FileEntry>,
+    parent: Option<PathBuf>,
+}
+
+fn refresh_on_change<T>(
+    menu: &Rc<ActionMenuSection>,
+) -> impl Fn(&gio::VolumeMonitor, &T) + 'static {
+    let menu = Rc::downgrade(menu);
+    move |_, _| {
+        if let Some(menu) = menu.upgrade() {
+            menu.schedule_removable_refresh();
+        }
+    }
 }
 
 impl Drop for ActionMenuSection {
     fn drop(&mut self) {
+        for handler in self.monitor_handlers.get_mut().drain(..) {
+            self.monitor.disconnect(handler);
+        }
         if self.popover.parent().is_some() {
             self.popover.unparent();
         }
@@ -49,7 +77,7 @@ impl ActionMenuSection {
         header: Option<&gtk::Widget>,
         anchor: &gtk::Widget,
         transfer_buttons: Option<[gtk::Button; 2]>,
-    ) -> Self {
+    ) -> Rc<Self> {
         let model = gio::Menu::new();
         let root = gio::Menu::new();
         let popover =
@@ -115,7 +143,7 @@ impl ActionMenuSection {
         });
         refresh_presentation(&popover, &navigation);
         let transfer_sections = commands.transfer_sections.clone();
-        Self {
+        let menu = Rc::new(Self {
             popover,
             model,
             transfer_sections,
@@ -127,6 +155,52 @@ impl ActionMenuSection {
             dispatch,
             _commands: commands,
             navigation,
+            monitor: gio::VolumeMonitor::get(),
+            monitor_handlers: RefCell::new(Vec::new()),
+            refresh_pending: Cell::new(false),
+            selection: RefCell::new(None),
+        });
+        let monitor = &menu.monitor;
+        if menu.transfer_sections.is_some() {
+            menu.monitor_handlers.replace(vec![
+                monitor.connect_mount_added(refresh_on_change(&menu)),
+                monitor.connect_mount_removed(refresh_on_change(&menu)),
+                monitor.connect_mount_changed(refresh_on_change(&menu)),
+                monitor.connect_volume_added(refresh_on_change(&menu)),
+                monitor.connect_volume_removed(refresh_on_change(&menu)),
+                monitor.connect_volume_changed(refresh_on_change(&menu)),
+                monitor.connect_drive_connected(refresh_on_change(&menu)),
+                monitor.connect_drive_disconnected(refresh_on_change(&menu)),
+                monitor.connect_drive_changed(refresh_on_change(&menu)),
+            ]);
+        }
+        menu
+    }
+
+    fn schedule_removable_refresh(self: &Rc<Self>) {
+        if !self.popover.is_visible() || self.refresh_pending.replace(true) {
+            return;
+        }
+        let weak = Rc::downgrade(self);
+        gtk::glib::idle_add_local_once(move || {
+            if let Some(menu) = weak.upgrade() {
+                menu.refresh_pending.set(false);
+                menu.refresh_removable_destinations();
+            }
+        });
+    }
+
+    fn refresh_removable_destinations(&self) {
+        let Some(selection) = self.selection.borrow().clone() else {
+            return;
+        };
+        if !self.popover.is_visible() {
+            return;
+        }
+        if let Some(state) = selection.state.upgrade() {
+            self.rebuild_for_selection(&state, &selection.entries, selection.parent);
+            self.popover.set_visible_submenu(Some("main"));
+            self.navigation.model_changed();
         }
     }
 
@@ -165,6 +239,11 @@ impl ActionMenuSection {
         entries: &[FileEntry],
         parent: Option<PathBuf>,
     ) {
+        self.selection.replace(Some(SelectionMenuContext {
+            state: Rc::downgrade(state),
+            entries: entries.to_vec(),
+            parent: parent.clone(),
+        }));
         #[cfg(test)]
         if let Some(test_override) = state.send_to_menu_test_override.borrow().clone() {
             self.rebuild_for_selection_with_destinations(
@@ -278,6 +357,7 @@ impl ActionMenuSection {
     }
 
     pub(super) fn rebuild_for_folder(&self, state: &Rc<ViewState>, location: &Location) {
+        self.selection.take();
         self.clear();
         let (Some(input), Some(path)) = (folder_input(location), location.native_path()) else {
             refresh_presentation(&self.popover, &self.navigation);

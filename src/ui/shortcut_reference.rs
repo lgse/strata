@@ -135,10 +135,6 @@ fn tenxer_sections(mode: BrowserMode, chooser: Option<ChooserScope>) -> Vec<Refe
             rows: tenxer_preview(mode, chooser.is_some()),
         },
         ReferenceSection {
-            title: "10xer mode",
-            rows: tenxer_mode_rows(chooser.is_some()),
-        },
-        ReferenceSection {
             title: "Search and tools",
             rows: tenxer_tools(mode, chooser.is_some()),
         },
@@ -147,6 +143,18 @@ fn tenxer_sections(mode: BrowserMode, chooser: Option<ChooserScope>) -> Vec<Refe
             rows: MEDIA.to_vec(),
         },
     ]);
+    let mode_rows = tenxer_mode_rows(mode, chooser.is_some(), &sections);
+    let mode_index = sections
+        .iter()
+        .position(|section| section.title == "Search and tools")
+        .expect("search section");
+    sections.insert(
+        mode_index,
+        ReferenceSection {
+            title: "10xer mode",
+            rows: mode_rows,
+        },
+    );
     sections
 }
 
@@ -442,7 +450,11 @@ fn chooser_files(chooser: ChooserScope) -> Vec<(&'static str, &'static str)> {
     shortcuts
 }
 
-fn tenxer_mode_rows(chooser: bool) -> Vec<(&'static str, &'static str)> {
+fn tenxer_mode_rows(
+    mode: BrowserMode,
+    chooser: bool,
+    sections: &[ReferenceSection],
+) -> Vec<(&'static str, &'static str)> {
     let mut shortcuts = Vec::new();
     if !chooser {
         shortcuts.push(("Q", "Close the current window"));
@@ -451,6 +463,28 @@ fn tenxer_mode_rows(chooser: bool) -> Vec<(&'static str, &'static str)> {
         ("Ctrl+Shift+M", "Toggle 10xer mode"),
         ("F1 / ~", "Show or hide this reference"),
     ]);
+    let default = default_sections(mode);
+    for &row in sections.iter().flat_map(|section| &section.rows) {
+        let keys = row.0;
+        // Keep grouped aliases together when they include a 10xer binding.
+        // Space is shared, but its selection action replaces ordinary preview.
+        let shared = keys != "Space"
+            && (default
+                .iter()
+                .flat_map(|section| &section.rows)
+                .any(|&(default_keys, _)| default_keys == keys)
+                || matches!(
+                    keys,
+                    "Home"
+                        | "Esc"
+                        | "Ctrl+Enter"
+                        | "Shift+Tab in any preview"
+                        | "Space / ← → / ↑ ↓ / m in media"
+                ));
+        if !shared && !shortcuts.contains(&row) {
+            shortcuts.push(row);
+        }
+    }
     shortcuts
 }
 
