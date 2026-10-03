@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-//! Removable-drive management: format, rename (volume label), and properties.
-//! Only removable drives are eligible (see `is_eligible`).
+//! Storage metadata and removable-only formatting.
+//! Display labels belong to Strata preferences, not the filesystem.
 
 use std::{
-    future::Future,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -37,6 +36,26 @@ impl FilesystemType {
         }
     }
 
+    pub(super) fn label_character_error(self, label: &str) -> Option<String> {
+        let forbidden = match self {
+            Self::Fat32 => "*?.,;:/\\|+=<>[]\"",
+            Self::Exfat => "*?:/\\|<>\"",
+            Self::Ntfs => "",
+        };
+        label.chars().find_map(|character| {
+            if character.is_ascii_control() {
+                Some("Labels cannot contain control characters.".to_owned())
+            } else if forbidden.contains(character) {
+                Some(format!(
+                    "{} labels cannot contain “{character}”.",
+                    self.label()
+                ))
+            } else {
+                None
+            }
+        })
+    }
+
     /// Candidate executables, in preference order.
     fn mkfs_candidates(self) -> &'static [&'static str] {
         match self {
@@ -46,54 +65,31 @@ impl FilesystemType {
         }
     }
 
-    /// Command-line arguments (before the device path) for formatting.
-    fn format_args(self, label: &str, quick: bool) -> Vec<String> {
-        let mut args: Vec<String> = match self {
-            Self::Fat32 => {
-                let mut args = vec!["-F".to_owned(), "32".to_owned()];
-                if !quick {
-                    args.push("-c".to_owned());
-                }
-                args
-            }
-            Self::Ntfs => {
-                if quick {
-                    vec!["--quick".to_owned()]
-                } else {
-                    Vec::new()
-                }
-            }
-            Self::Exfat => {
-                if quick {
-                    Vec::new()
-                } else {
-                    vec!["-f".to_owned()]
-                }
-            }
-        };
+    fn format_options(self, label: &str, quick: bool) -> glib::Variant {
+        let options = glib::VariantDict::new(None);
+        options.insert("update-partition-type", true);
         if !label.is_empty() {
-            match self {
-                Self::Fat32 | Self::Exfat => {
-                    args.extend(["-n".to_owned(), label.to_owned()]);
-                }
-                Self::Ntfs => {
-                    args.extend(["-L".to_owned(), label.to_owned()]);
-                }
-            }
+            options.insert("label", label);
         }
-        args
+        if !quick {
+            options.insert("erase", "zero");
+        }
+        if self == Self::Fat32 {
+            options.insert("mkfs-args", vec!["-F", "32"]);
+        }
+        options.end()
+    }
+
+    fn udisks_type(self) -> &'static str {
+        match self {
+            Self::Fat32 => "vfat",
+            Self::Ntfs => "ntfs",
+            Self::Exfat => "exfat",
+        }
     }
 
     fn resolve_mkfs(self) -> Option<PathBuf> {
         self.mkfs_candidates().iter().find_map(|cmd| tool_path(cmd))
-    }
-
-    pub(super) fn label_cmd(self) -> &'static str {
-        match self {
-            Self::Fat32 => "fatlabel",
-            Self::Ntfs => "ntfslabel",
-            Self::Exfat => "exfatlabel",
-        }
     }
 
     pub(super) fn format_tool_name(self) -> &'static str {
@@ -106,10 +102,6 @@ impl FilesystemType {
 
     pub(super) fn available(self) -> bool {
         self.resolve_mkfs().is_some()
-    }
-
-    pub(super) fn label_tool_available(self) -> bool {
-        tool_path(self.label_cmd()).is_some()
     }
 }
 
@@ -131,7 +123,6 @@ pub(super) fn is_eligible(volume: Option<&gio::Volume>) -> bool {
 
 #[derive(Debug)]
 pub(super) enum DriveOpError {
-    ToolNotFound(String),
     CommandFailed(String),
     DeviceNotFound,
     Cancelled,
@@ -142,7 +133,6 @@ pub(super) enum DriveOpError {
 impl std::fmt::Display for DriveOpError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::ToolNotFound(cmd) => write!(f, "Required tool “{cmd}” was not found"),
             Self::CommandFailed(msg) => write!(f, "{msg}"),
             Self::DeviceNotFound => f.write_str("Could not identify the drive's block device"),
             Self::Cancelled => f.write_str("Operation cancelled"),
@@ -162,7 +152,9 @@ impl From<std::io::Error> for DriveOpError {
 
 impl From<glib::Error> for DriveOpError {
     fn from(error: glib::Error) -> Self {
-        if error.matches(gio::IOErrorEnum::Cancelled)
+        if gio::DBusError::remote_error(&error)
+            .is_some_and(|name| name == "org.freedesktop.UDisks2.Error.NotAuthorizedDismissed")
+            || error.matches(gio::IOErrorEnum::Cancelled)
             || error.matches(gio::IOErrorEnum::FailedHandled)
         {
             Self::Cancelled
@@ -208,19 +200,13 @@ pub(super) fn block_device_for_volume(volume: &gio::Volume) -> Option<PathBuf> {
     if let Some(device) = super::gio_volume_unix_device(volume) {
         return Some(PathBuf::from(device.as_str()));
     }
-    if let Some(drive) = volume.drive()
-        && let Some(id) = drive.identifier(gio::VOLUME_IDENTIFIER_KIND_UNIX_DEVICE.as_str())
-    {
-        return Some(PathBuf::from(id.as_str()));
-    }
     None
 }
 
 /// Total and available bytes for a mounted path, or `None` when the
 /// filesystem does not report capacity.
 pub(super) fn usage_for_path(path: &Path) -> Option<(u64, u64)> {
-    let file = std::fs::File::open(path).ok()?;
-    let stat = rustix::fs::fstatvfs(&file).ok()?;
+    let stat = rustix::fs::statvfs(path).ok()?;
     if stat.f_blocks == 0 {
         return None;
     }
@@ -235,59 +221,14 @@ pub(super) fn usage_for_path(path: &Path) -> Option<(u64, u64)> {
     ))
 }
 
-fn run_tool_path(exe: &Path, args: &[String]) -> Result<String, DriveOpError> {
-    let output = Command::new(exe)
-        .args(args)
-        .output()
-        .map_err(DriveOpError::Io)?;
-    if !output.status.success() {
-        let detail = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-        let message = if detail.is_empty() {
-            format!("“{}” failed without further details", exe.display())
-        } else {
-            detail
-        };
-        return Err(DriveOpError::CommandFailed(message));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+pub(super) fn block_device_for_path(path: &Path) -> Option<PathBuf> {
+    let table = std::fs::read("/proc/self/mountinfo").ok()?;
+    super::devices::block_device_from_mount_table(&table, path)
 }
 
-/// Run a mutating storage tool, elevating through `pkexec` when not root:
-/// block devices are not writable by desktop users. A dismissed
-/// authorization prompt maps to `Cancelled` and stays quiet; genuine
-/// failures keep their stderr.
-fn run_privileged_tool(cmd: &str, args: &[String]) -> Result<String, DriveOpError> {
-    let exe = tool_path(cmd).ok_or_else(|| DriveOpError::ToolNotFound(cmd.to_owned()))?;
-    if rustix::process::geteuid().is_root() {
-        return run_tool_path(&exe, args);
-    }
-    let Some(pkexec) = tool_path("pkexec") else {
-        return run_tool_path(&exe, args);
-    };
-    let mut full_args = vec![exe.to_string_lossy().into_owned()];
-    full_args.extend(args.iter().cloned());
-    match run_tool_path(&pkexec, &full_args) {
-        Err(DriveOpError::CommandFailed(message)) if message.to_lowercase().contains("dismiss") => {
-            Err(DriveOpError::Cancelled)
-        }
-        other => other,
-    }
-}
-
-pub(super) fn filesystem_of_device(device: &Path) -> FilesystemType {
-    let fstype = tool_path("lsblk").and_then(|exe| {
-        Command::new(exe)
-            .args(["-n", "-o", "FSTYPE", &device.to_string_lossy()])
-            .output()
-            .ok()
-            .filter(|output| output.status.success())
-            .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_owned())
-    });
-    match fstype.as_deref() {
-        Some("ntfs") => FilesystemType::Ntfs,
-        Some("exfat") => FilesystemType::Exfat,
-        _ => FilesystemType::Fat32,
-    }
+pub(super) fn mounted_path_for_device(device: &Path) -> Option<PathBuf> {
+    let table = std::fs::read("/proc/self/mountinfo").ok()?;
+    super::devices::mounted_path_from_table(&table, device)
 }
 
 /// Human-readable filesystem name for a block device.
@@ -356,54 +297,80 @@ pub(super) async fn format_volume(
     label: String,
     quick: bool,
 ) -> Result<(), DriveOpError> {
-    let cmd = fs_type
-        .resolve_mkfs()
-        .ok_or_else(|| DriveOpError::ToolNotFound("mkfs".to_owned()))?;
-    let device = unmount_for_exclusive_access(&parent, &volume).await?;
-    let device_arg = device.to_string_lossy().into_owned();
-    let mut args = fs_type.format_args(&label, quick);
-    args.push(device_arg);
-    let cmd_display = cmd.display().to_string();
-    gio::spawn_blocking(move || run_privileged_tool(&cmd_display, &args).map(|_| ()))
-        .await
-        .map_err(|_| DriveOpError::CommandFailed("Formatting task did not complete".to_owned()))?
-}
-
-/// Persist a new filesystem label. The volume is unmounted first because
-/// the label tools require exclusive access.
-pub(super) async fn rename_volume(
-    parent: gtk::Widget,
-    volume: gio::Volume,
-    label: String,
-) -> Result<(), DriveOpError> {
-    let trimmed = label.trim();
-    if trimmed.is_empty() {
+    if !is_eligible(Some(&volume)) {
+        return Err(DriveOpError::DeviceNotFound);
+    }
+    if label.chars().count() > fs_type.max_label_len() {
         return Err(DriveOpError::InvalidLabel(
-            "The label cannot be empty".to_owned(),
+            "Filesystem label is too long.".to_owned(),
         ));
     }
-    let device = block_device_for_volume(&volume).ok_or(DriveOpError::DeviceNotFound)?;
-    let fs_type = gio::spawn_blocking({
-        let device = device.clone();
-        move || filesystem_of_device(&device)
+    if let Some(message) = fs_type.label_character_error(&label) {
+        return Err(DriveOpError::InvalidLabel(message));
+    }
+    let device = unmount_for_exclusive_access(&parent, &volume).await?;
+    gio::spawn_blocking(move || {
+        let connection = gio::bus_get_sync(gio::BusType::System, gio::Cancellable::NONE)?;
+        format_device(
+            &device,
+            fs_type,
+            &label,
+            quick,
+            |path, interface, method, parameters| {
+                connection
+                    .call_sync(
+                        Some("org.freedesktop.UDisks2"),
+                        path,
+                        interface,
+                        method,
+                        Some(parameters),
+                        None,
+                        gio::DBusCallFlags::NONE,
+                        i32::MAX,
+                        gio::Cancellable::NONE,
+                    )
+                    .map_err(DriveOpError::from)
+            },
+        )
     })
     .await
-    .map_err(|_| DriveOpError::CommandFailed("Could not inspect the filesystem".to_owned()))?;
-    if trimmed.chars().count() > fs_type.max_label_len() {
-        return Err(DriveOpError::InvalidLabel(format!(
-            "“{}” labels hold at most {} characters",
-            fs_type.label(),
-            fs_type.max_label_len()
-        )));
-    }
-    let cmd = tool_path(fs_type.label_cmd())
-        .ok_or_else(|| DriveOpError::ToolNotFound(fs_type.label_cmd().to_owned()))?;
-    let device = unmount_for_exclusive_access(&parent, &volume).await?;
-    let cmd_display = cmd.display().to_string();
-    let args = vec![device.to_string_lossy().into_owned(), trimmed.to_owned()];
-    gio::spawn_blocking(move || run_privileged_tool(&cmd_display, &args).map(|_| ()))
-        .await
-        .map_err(|_| DriveOpError::CommandFailed("Relabelling task did not complete".to_owned()))?
+    .map_err(|_| DriveOpError::CommandFailed("Formatting task did not complete".to_owned()))?
+}
+
+fn format_device(
+    device: &Path,
+    fs_type: FilesystemType,
+    label: &str,
+    quick: bool,
+    mut call: impl FnMut(&str, &str, &str, &glib::Variant) -> Result<glib::Variant, DriveOpError>,
+) -> Result<(), DriveOpError> {
+    let device = device.to_str().ok_or(DriveOpError::DeviceNotFound)?;
+    let spec = glib::VariantDict::new(None);
+    spec.insert("path", device);
+    let options = glib::VariantDict::new(None).end();
+    let resolved = call(
+        "/org/freedesktop/UDisks2/Manager",
+        "org.freedesktop.UDisks2.Manager",
+        "ResolveDevice",
+        &glib::Variant::tuple_from_iter([spec.end(), options]),
+    )?;
+    let (paths,) = resolved
+        .get::<(Vec<glib::variant::ObjectPath>,)>()
+        .ok_or(DriveOpError::DeviceNotFound)?;
+    let [path] = paths.as_slice() else {
+        return Err(DriveOpError::DeviceNotFound);
+    };
+    // UDisks updates the partition type and reprobes the new filesystem together.
+    call(
+        path.as_str(),
+        "org.freedesktop.UDisks2.Block",
+        "Format",
+        &glib::Variant::tuple_from_iter([
+            fs_type.udisks_type().to_variant(),
+            fs_type.format_options(label, quick),
+        ]),
+    )?;
+    Ok(())
 }
 
 /// Report the outcome: stay quiet on cancellation and success, and show
@@ -424,64 +391,5 @@ pub(super) fn report_result(
     }
 }
 
-pub(super) fn spawn_drive_task<F, Fut>(parent: gtk::Widget, display_name: String, task: F)
-where
-    F: FnOnce() -> Fut + 'static,
-    Fut: Future<Output = Result<(), DriveOpError>> + 'static,
-{
-    glib::MainContext::default().spawn_local(async move {
-        let result = task().await;
-        report_result(&parent, &display_name, result);
-    });
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn format_args_map_quick_and_full_per_filesystem() {
-        assert_eq!(
-            FilesystemType::Fat32.format_args("", true),
-            vec!["-F", "32"]
-        );
-        assert_eq!(
-            FilesystemType::Fat32.format_args("", false),
-            vec!["-F", "32", "-c"]
-        );
-        assert_eq!(
-            FilesystemType::Fat32.format_args("Stick", true),
-            vec!["-F", "32", "-n", "Stick"]
-        );
-        assert_eq!(FilesystemType::Ntfs.format_args("", true), vec!["--quick"]);
-        assert_eq!(
-            FilesystemType::Ntfs.format_args("Stick", false),
-            vec!["-L", "Stick"]
-        );
-        assert!(FilesystemType::Exfat.format_args("", true).is_empty());
-        assert_eq!(FilesystemType::Exfat.format_args("", false), vec!["-f"]);
-        assert_eq!(
-            FilesystemType::Exfat.format_args("Stick", true),
-            vec!["-n", "Stick"]
-        );
-    }
-
-    #[test]
-    fn tool_path_finds_shell_and_rejects_missing_tools() {
-        assert!(tool_path("sh").is_some());
-        assert!(tool_path("strata-definitely-missing-tool").is_none());
-    }
-
-    #[test]
-    fn filesystem_label_limits_match_backends() {
-        assert_eq!(FilesystemType::Fat32.max_label_len(), 11);
-        assert_eq!(FilesystemType::Ntfs.max_label_len(), 32);
-        assert_eq!(FilesystemType::Exfat.max_label_len(), 32);
-    }
-
-    #[test]
-    fn ineligible_without_removable_drive() {
-        assert!(!is_eligible(None));
-        assert!(!show_mount(None));
-    }
-}
+mod tests;
