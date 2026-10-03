@@ -37,12 +37,30 @@ pub(super) fn clock(microseconds: i64) -> String {
     }
 }
 
-/// The track number from the tags, else the file's place among the folder's audio files.
-pub(super) fn track_caption(tags: &AudioTags, folder: Option<(usize, usize)>) -> Option<String> {
+#[derive(Clone, Copy)]
+pub(super) struct TrackPosition {
+    pub(super) position: usize,
+    pub(super) count: usize,
+    pub(super) results: bool,
+}
+
+/// The tag's track number, else the position in the folder or filtered results.
+pub(super) fn track_caption(tags: &AudioTags, folder: Option<TrackPosition>) -> Option<String> {
     match (tags.track, tags.track_total, folder) {
         (Some(track), Some(total), _) => Some(format!("Track {track} of {total}")),
         (Some(track), None, _) => Some(format!("Track {track}")),
-        (None, _, Some((position, count))) => Some(format!("{position} of {count} in folder")),
+        (
+            None,
+            _,
+            Some(TrackPosition {
+                position,
+                count,
+                results,
+            }),
+        ) => Some(format!(
+            "{position} of {count} in {}",
+            if results { "results" } else { "folder" }
+        )),
         (None, _, None) => None,
     }
 }
@@ -51,8 +69,8 @@ pub(super) struct Track {
     pub(super) entry: FileEntry,
     pub(super) source: SandboxedMedia,
     pub(super) media: gtk::MediaStream,
-    /// 1-based position among the folder's audio files, and their count.
-    pub(super) folder: Option<(usize, usize)>,
+    /// 1-based position among the displayed audio files, and their count.
+    pub(super) folder: Option<TrackPosition>,
     pub(super) has_previous: bool,
     pub(super) has_next: bool,
 }
@@ -69,6 +87,8 @@ pub(super) struct AudioView {
     elapsed: gtk::Label,
     total: gtk::Label,
     play_icon: gtk::Image,
+    play: gtk::Button,
+    error: gtk::Box,
     previous: gtk::Button,
     next: gtk::Button,
     media: RefCell<Option<gtk::MediaStream>>,
@@ -76,7 +96,7 @@ pub(super) struct AudioView {
     hover: Cell<Option<i64>>,
     shown_seconds: Cell<(i64, i64)>,
     stem: RefCell<String>,
-    folder: Cell<Option<(usize, usize)>>,
+    folder: Cell<Option<TrackPosition>>,
     details: RefCell<Option<details::DetailsLoad>>,
     peaks: RefCell<Option<details::PeaksLoad>>,
 }
@@ -124,6 +144,9 @@ impl AudioView {
         header.append(&eyebrow_row);
         header.append(&title);
         header.append(&byline);
+        let error = gtk::Box::new(gtk::Orientation::Vertical, 4);
+        error.set_visible(false);
+        header.append(&error);
 
         let elapsed = label("preview-media-time");
         elapsed.add_css_class("preview-audio-time");
@@ -179,6 +202,8 @@ impl AudioView {
             elapsed,
             total,
             play_icon,
+            play: play.clone(),
+            error,
             previous,
             next,
             media: RefCell::default(),
@@ -202,6 +227,7 @@ impl AudioView {
             view.spectrum.upcast_ref(),
         ] {
             let click = gtk::GestureClick::new();
+            click.set_button(gtk::gdk::BUTTON_PRIMARY);
             let weak = Rc::downgrade(&view);
             click.connect_released(move |_, _, _, _| {
                 if let Some(view) = weak.upgrade() {
@@ -256,17 +282,8 @@ impl AudioView {
             has_previous,
             has_next,
         } = track;
-        self.previous.set_sensitive(has_previous);
-        self.next.set_sensitive(has_next);
-        self.folder.set(folder);
-        self.stem.replace(
-            std::path::Path::new(&entry.display_name)
-                .file_stem()
-                .map_or_else(
-                    || entry.display_name.clone(),
-                    |stem| stem.to_string_lossy().into_owned(),
-                ),
-        );
+        self.prepare(&entry, folder, has_previous, has_next);
+        self.play.set_sensitive(true);
 
         let weak = Rc::downgrade(self);
         let mut handlers = vec![
@@ -289,7 +306,21 @@ impl AudioView {
         self.spectrum
             .set_media(media.downcast_ref::<DecodedMedia>());
         self.scrubber.set_media(Some(&media));
-        self.sync_playing(media.is_playing());
+        // An unprepared replacement has not reported its playback state yet.
+        // Keep the record in place until playback starts or preparation finishes.
+        if media.is_prepared() || media.is_playing() {
+            self.sync_playing(media.is_playing());
+        }
+        let weak = Rc::downgrade(self);
+        self.handlers
+            .borrow_mut()
+            .push(media.connect_prepared_notify(move |media| {
+                if media.is_prepared()
+                    && let Some(view) = weak.upgrade()
+                {
+                    view.sync_playing(media.is_playing());
+                }
+            }));
         self.shown_seconds.set((-1, -1));
         self.sync_time();
 
@@ -298,8 +329,6 @@ impl AudioView {
             self.show_tags(&cached.tags);
             self.artwork.set_cover(cached.cover.clone());
         } else {
-            self.clear_tags();
-            self.artwork.await_cover();
             let weak = Rc::downgrade(self);
             let tags = move |tags: AudioTags| {
                 if let Some(view) = weak.upgrade() {
@@ -327,18 +356,53 @@ impl AudioView {
         )));
     }
 
+    pub(super) fn prepare(
+        &self,
+        entry: &FileEntry,
+        folder: Option<TrackPosition>,
+        has_previous: bool,
+        has_next: bool,
+    ) {
+        self.error.set_visible(false);
+        self.play.set_sensitive(false);
+        self.previous.set_sensitive(has_previous);
+        self.next.set_sensitive(has_next);
+        self.folder.set(folder);
+        self.stem.replace(
+            std::path::Path::new(&entry.display_name)
+                .file_stem()
+                .map_or_else(
+                    || entry.display_name.clone(),
+                    |stem| stem.to_string_lossy().into_owned(),
+                ),
+        );
+        self.show_tags(&AudioTags::default());
+    }
+
+    pub(super) fn show_error(&self, title: &str, detail: &str, command: Option<&str>) {
+        self.detach();
+        self.sync_playing(false);
+        self.play.set_sensitive(false);
+        super::clear_box(&self.error);
+        let heading = gtk::Label::new(Some(title));
+        heading.add_css_class("preview-feedback-title");
+        heading.set_wrap(true);
+        let detail = gtk::Label::new(Some(detail));
+        detail.add_css_class("preview-feedback-detail");
+        detail.set_wrap(true);
+        self.error.append(&heading);
+        self.error.append(&detail);
+        if let Some(command) = command {
+            self.error
+                .append(&crate::ui::controls::copyable_command(command));
+        }
+        self.error.set_visible(true);
+    }
+
     fn toggle_playback(&self) {
         let media = self.media.borrow().clone();
         if let Some(media) = media {
             media.set_playing(!media.is_playing());
-        }
-    }
-
-    /// Every text row keeps its line while tags load or are missing, so
-    /// switching tracks never moves the controls.
-    fn clear_tags(&self) {
-        for label in [&self.eyebrow, &self.title, &self.artist, &self.album] {
-            label.set_text("");
         }
     }
 

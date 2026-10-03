@@ -757,6 +757,12 @@ fn video_thumbnails_execute_the_helper_inside_the_bounded_sandbox() {
 
 #[test]
 fn accepts_only_bounded_png_outputs_and_never_compressed_media() {
+    assert!(valid_output(ParseOperation::AudioCover, b"null"));
+    assert!(!valid_output(ParseOperation::PreviewImage, b"null"));
+    assert!(!valid_output(ParseOperation::AudioCover, b""));
+    assert!(!valid_output(ParseOperation::AudioCover, b"null trailing"));
+    assert!(valid_output(ParseOperation::AudioCover, &png(800, 800)));
+    assert!(!valid_output(ParseOperation::AudioCover, &png(801, 800)));
     assert!(valid_output(ParseOperation::ThumbnailImage, &png(256, 256)));
     assert!(!valid_output(ParseOperation::ThumbnailImage, &png(257, 1)));
     assert!(valid_output(ParseOperation::PreviewImage, &png(800, 800)));

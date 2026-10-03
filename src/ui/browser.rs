@@ -1701,6 +1701,13 @@ impl BrowserView {
         depth: usize,
         keep: impl Fn(&FileEntry) -> bool,
     ) -> Vec<FileEntry> {
+        if let Some(results) = self.filter_target().and_then(|target| target.results()) {
+            return results
+                .iter()
+                .map(search_result_entry)
+                .filter(keep)
+                .collect();
+        }
         let order = self.displayed_order(depth);
         self.state
             .browser
@@ -1720,11 +1727,44 @@ impl BrowserView {
             .unwrap_or_default()
     }
 
+    pub(crate) fn displayed_cursor_entry(&self, depth: usize) -> Option<FileEntry> {
+        if let Some(target) = self
+            .filter_target()
+            .filter(|target| target.results_view().is_some())
+        {
+            return target.current_result().as_ref().map(search_result_entry);
+        }
+        self.state.browser.cursor_entry(depth)
+    }
+
     /// Moves to `location` as a keyboard step would, so the preview follows:
     /// selecting it, or in 10xer mode moving only the cursor. A key press passes
     /// its direction so the cursor ring and scrolling behave like **j** / **k**;
     /// a pointer press leaves pointer navigation in place.
     pub(crate) fn step_to(&self, depth: usize, location: &Location, key: Option<i32>) -> bool {
+        if let Some(target) = self.filter_target()
+            && let Some(results) = target.results()
+        {
+            let Some(position) = results
+                .iter()
+                .position(|item| search_result_entry(item).location == *location)
+            else {
+                return false;
+            };
+            let cursor = target.hits().and_then(|hits| hits.cursor);
+            let delta = position as i32 - cursor.unwrap_or(0) as i32;
+            if key.is_some() {
+                self.keyboard_navigation();
+            }
+            if cursor.is_none() {
+                target.step(1, 0, key.is_some());
+            }
+            return self.step_filter_results(
+                delta.signum(),
+                delta.unsigned_abs() as usize,
+                key.is_some(),
+            );
+        }
         let Some(position) = self
             .state
             .browser

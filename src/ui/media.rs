@@ -252,10 +252,8 @@ impl DecodedMedia {
     pub fn new(source: SandboxedMedia) -> Self {
         let obj: Self = glib::Object::new();
         // Songs start from the top like in a music player; videos reopen where they closed.
-        let restore = (!source.audio_only)
-            .then(|| recall_media_position(&source.path))
-            .flatten()
-            .filter(|&position| position > RESTORE_MIN_US);
+        let restore =
+            recall_media_position(&source.path).filter(|&position| position > RESTORE_MIN_US);
         obj.imp().source.replace(Some(source));
         if let Some(position) = restore {
             obj.imp().restore.set(Some(position));
@@ -297,7 +295,7 @@ impl DecodedMedia {
         if let Some(source) = imp.source.borrow().as_ref() {
             let position = imp.position.get();
             let duration = self.duration().max(0) as u64;
-            if !source.audio_only
+            if imp.header.get().is_some_and(|header| header.width > 0)
                 && position > RESTORE_MIN_US
                 && (duration == 0 || position < duration)
             {
@@ -544,6 +542,7 @@ impl DecodedMedia {
             match event {
                 Some(Event::Prepared(header)) => {
                     if let Some(saved) = imp.restore.take()
+                        && header.width > 0
                         && saved < header.duration_us
                     {
                         imp.header.set(Some(header));

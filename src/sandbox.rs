@@ -863,6 +863,9 @@ pub(crate) fn numbered_name(name: &std::ffi::OsStr, prefix: &str) -> bool {
 }
 
 fn valid_output(operation: ParseOperation, data: &[u8]) -> bool {
+    if matches!(operation, ParseOperation::AudioCover) && data == b"null" {
+        return true;
+    }
     if matches!(operation, ParseOperation::PreviewWorkbook) {
         return crate::services::table::TableData::from_json(data).is_ok();
     }

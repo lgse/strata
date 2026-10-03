@@ -56,6 +56,90 @@ fn shows_track(fixture: &KeyboardFixture, name: &str) -> bool {
 }
 
 #[test]
+fn audio_steps_follow_filtered_results_including_subfolders() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::audio_tracks::audio_steps_follow_filtered_results_including_subfolders",
+        || {
+            let fixture = KeyboardFixture::with_provider(Rc::new(AudioPreview));
+            let root = fixture._directory.path();
+            std::fs::create_dir(root.join("nested")).expect("nested folder");
+            for name in [
+                "a-song.wav",
+                "b-hidden.wav",
+                "nested/c-song.wav",
+                "d-song.m3u",
+                "e-song.mid",
+            ] {
+                std::fs::write(root.join(name), []).expect("filter fixture");
+            }
+            let preferences = footer_prompt::enable_tenxer(&fixture);
+            preferences.set_group_by_type(false);
+            preferences.set_filter_include_subfolders(true);
+            let browser = fixture.view.browser();
+            fixture.preview.observe_browser(&browser);
+            fixture.view.refresh();
+            wait_loaded(&browser, 0);
+            browser.set_sort(0, SortKey::Name, SortDirection::Ascending);
+            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
+                fixture.preview.close();
+                fixture.view.clear_listing_filter();
+                fixture.view.set_view_mode(mode);
+                wait_loaded(&browser, 0);
+                move_to_named(&fixture, &browser, "b-hidden.wav");
+                let hidden_cursor = || browser.cursor_entry(0).expect("directory cursor").location;
+                let hidden = hidden_cursor();
+                footer_prompt::commit_filter(&fixture, "song");
+                footer_prompt::wait_results(
+                    &fixture,
+                    &["a-song.wav", "c-song.wav", "d-song.m3u", "e-song.mid"],
+                );
+                fixture.press(Key::Home, ModifierType::empty());
+                for _ in 0..4 {
+                    pump(40);
+                    if fixture
+                        .view
+                        .selected_search_result()
+                        .is_some_and(|entry| entry.display_name == "a-song.wav")
+                    {
+                        break;
+                    }
+                    fixture.press(Key::j, ModifierType::empty());
+                }
+                let first = fixture
+                    .view
+                    .selected_search_result()
+                    .expect("first audio result");
+                assert_eq!(first.display_name, "a-song.wav");
+                fixture.preview.show(first, Some(0));
+                fixture.preview.take_keyboard();
+                settle("first filtered track", || {
+                    shows_track(&fixture, "a-song.wav") && preview_has_focus(&fixture)
+                });
+                assert!(
+                    fixture.press(Key::greater, ModifierType::SHIFT_MASK),
+                    "{mode:?}"
+                );
+                settle("nested track", || shows_track(&fixture, "c-song.wav"));
+                assert!(preview_has_focus(&fixture));
+                settle("results caption", || {
+                    widget_with_class(&fixture.preview.widget(), "preview-audio-eyebrow")
+                        .and_downcast::<gtk::Label>()
+                        .is_some_and(|label| label.text() == "2 of 2 in results")
+                });
+                assert_eq!(hidden_cursor(), hidden);
+                fixture.press(Key::h, ModifierType::empty());
+                settle("filtered listing keys", || file_panes_have_focus(&fixture));
+                assert!(fixture.press(Key::less, ModifierType::SHIFT_MASK));
+                settle(&format!("{mode:?} previous filtered track"), || {
+                    shows_track(&fixture, "a-song.wav")
+                });
+                assert_eq!(hidden_cursor(), hidden);
+            }
+        },
+    );
+}
+
+#[test]
 fn tenxer_angle_brackets_step_through_audio_files_from_the_preview() {
     crate::test_support::gtk_test(
         "ui::window::tests::keyboard_dispatch::audio_tracks::tenxer_angle_brackets_step_through_audio_files_from_the_preview",

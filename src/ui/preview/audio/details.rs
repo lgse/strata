@@ -3,9 +3,11 @@
 use std::{
     cell::{Cell, RefCell},
     collections::VecDeque,
+    os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
     rc::Rc,
-    time::{Duration, Instant},
+    sync::{Mutex, OnceLock},
+    time::Duration,
 };
 
 use gtk::{gdk, gio, glib};
@@ -24,7 +26,7 @@ use crate::{
 const DETAILS_CACHE: usize = 12;
 const PEAKS_CACHE: usize = 64;
 /// Fast j/k browsing must not start a full decode for every track it passes.
-const PEAKS_SETTLE: Duration = Duration::from_millis(450);
+const LOAD_SETTLE: Duration = Duration::from_millis(50);
 const PEAKS_POLL: Duration = Duration::from_millis(40);
 const FOLDER_ART_STEMS: [&str; 5] = ["cover", "folder", "front", "album", "albumart"];
 const FOLDER_ART_EXTENSIONS: [&str; 4] = ["jpg", "jpeg", "png", "webp"];
@@ -53,12 +55,12 @@ fn known<T: Copy>(value: &MetadataValue<T>) -> Option<T> {
     }
 }
 
-struct Lru<V> {
+struct Lru<K, V> {
     capacity: usize,
-    entries: VecDeque<(TrackKey, V)>,
+    entries: VecDeque<(K, V)>,
 }
 
-impl<V: Clone> Lru<V> {
+impl<K: PartialEq, V: Clone> Lru<K, V> {
     const fn new(capacity: usize) -> Self {
         Self {
             capacity,
@@ -66,7 +68,7 @@ impl<V: Clone> Lru<V> {
         }
     }
 
-    fn get(&mut self, key: &TrackKey) -> Option<V> {
+    fn get(&mut self, key: &K) -> Option<V> {
         let index = self.entries.iter().position(|(entry, _)| entry == key)?;
         let entry = self.entries.remove(index)?;
         let value = entry.1.clone();
@@ -74,7 +76,7 @@ impl<V: Clone> Lru<V> {
         Some(value)
     }
 
-    fn insert(&mut self, key: TrackKey, value: V) {
+    fn insert(&mut self, key: K, value: V) {
         self.entries.retain(|(entry, _)| *entry != key);
         if self.entries.len() >= self.capacity {
             self.entries.pop_front();
@@ -83,15 +85,27 @@ impl<V: Clone> Lru<V> {
     }
 }
 
+#[derive(Clone)]
+pub(super) struct Cover {
+    pub(super) texture: gdk::Texture,
+    digest: [u8; 32],
+}
+
+impl PartialEq for Cover {
+    fn eq(&self, other: &Self) -> bool {
+        self.digest == other.digest
+    }
+}
+
 #[derive(Clone, Default)]
 pub(super) struct Details {
     pub(super) tags: AudioTags,
-    pub(super) cover: Option<gdk::Texture>,
+    pub(super) cover: Option<Cover>,
 }
 
 thread_local! {
-    static DETAILS: RefCell<Lru<Rc<Details>>> = const { RefCell::new(Lru::new(DETAILS_CACHE)) };
-    static PEAKS: RefCell<Lru<Rc<Vec<u8>>>> = const { RefCell::new(Lru::new(PEAKS_CACHE)) };
+    static DETAILS: RefCell<Lru<TrackKey, Rc<Details>>> = const { RefCell::new(Lru::new(DETAILS_CACHE)) };
+    static PEAKS: RefCell<Lru<TrackKey, Rc<Vec<u8>>>> = const { RefCell::new(Lru::new(PEAKS_CACHE)) };
 }
 
 pub(super) fn cached_details(key: &TrackKey) -> Option<Rc<Details>> {
@@ -119,26 +133,110 @@ fn parse(path: &Path, operation: ParseOperation, cancellation: &Cancellation) ->
     .map(|output| output.data)
 }
 
-fn folder_art(directory: &Path) -> Option<PathBuf> {
-    let mut candidates: Vec<(usize, PathBuf)> = std::fs::read_dir(directory)
-        .ok()?
-        .flatten()
-        .filter_map(|entry| {
-            let path = entry.path();
-            let stem = path.file_stem()?.to_str()?.to_ascii_lowercase();
-            let extension = path.extension()?.to_str()?.to_ascii_lowercase();
-            let rank = FOLDER_ART_STEMS.iter().position(|name| *name == stem)?;
-            (FOLDER_ART_EXTENSIONS.contains(&extension.as_str())
-                && entry.file_type().is_ok_and(|kind| kind.is_file()))
-            .then_some((rank, path))
-        })
-        .collect();
-    candidates.sort();
-    candidates.into_iter().next().map(|(_, path)| path)
+fn folder_art(directory: &Path) -> std::io::Result<Option<PathBuf>> {
+    let mut best = None;
+    for entry in std::fs::read_dir(directory)? {
+        let entry = entry?;
+        let path = entry.path();
+        let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
+            continue;
+        };
+        let Some(extension) = path.extension().and_then(|extension| extension.to_str()) else {
+            continue;
+        };
+        let Some(rank) = FOLDER_ART_STEMS
+            .iter()
+            .position(|name| name.eq_ignore_ascii_case(stem))
+        else {
+            continue;
+        };
+        if FOLDER_ART_EXTENSIONS
+            .iter()
+            .any(|name| name.eq_ignore_ascii_case(extension))
+            && entry.file_type()?.is_file()
+        {
+            let candidate = (rank, path);
+            if best.as_ref().is_none_or(|best| candidate < *best) {
+                best = Some(candidate);
+            }
+        }
+    }
+    Ok(best.map(|(_, path)| path))
 }
 
-fn texture(png: Vec<u8>) -> Option<gdk::Texture> {
-    gdk::Texture::from_bytes(&glib::Bytes::from_owned(png)).ok()
+fn texture(png: Vec<u8>) -> Option<Cover> {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(&png).into();
+    let texture = gdk::Texture::from_bytes(&glib::Bytes::from_owned(png)).ok()?;
+    Some(Cover { texture, digest })
+}
+
+#[derive(Clone, PartialEq)]
+struct FileVersion(u64, u64, u64, i64, i64, i64, i64);
+
+impl FileVersion {
+    fn read(path: &Path) -> Option<Self> {
+        let info = std::fs::metadata(path).ok()?;
+        Some(Self(
+            info.dev(),
+            info.ino(),
+            info.len(),
+            info.mtime(),
+            info.mtime_nsec(),
+            info.ctime(),
+            info.ctime_nsec(),
+        ))
+    }
+}
+
+#[derive(Clone)]
+struct FolderArt {
+    directory: FileVersion,
+    source: Option<(PathBuf, FileVersion)>,
+    cover: Option<Cover>,
+}
+
+fn load_folder_art(
+    directory: &Path,
+    job: &Cancellation,
+    parse: &impl Fn(&Path, ParseOperation, &Cancellation) -> Option<Vec<u8>>,
+) -> Option<Option<Cover>> {
+    static CACHE: OnceLock<Mutex<Lru<PathBuf, FolderArt>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(Lru::new(DETAILS_CACHE)));
+    let version = FileVersion::read(directory)?;
+    let cached = cache
+        .lock()
+        .expect("folder artwork cache")
+        .get(&directory.to_path_buf());
+    if let Some(cached) = cached.filter(|cached| {
+        cached.directory == version
+            && cached
+                .source
+                .as_ref()
+                .is_none_or(|(path, version)| FileVersion::read(path).as_ref() == Some(version))
+    }) {
+        return Some(cached.cover);
+    }
+    let path = folder_art(directory).ok()?;
+    let (source, cover) = match path {
+        Some(path) => {
+            let version = FileVersion::read(&path)?;
+            let cover = texture(parse(&path, ParseOperation::PreviewImage, job)?)?;
+            (Some((path, version)), Some(cover))
+        }
+        None => (None, None),
+    };
+    if !job.is_cancelled() {
+        cache.lock().expect("folder artwork cache").insert(
+            directory.to_path_buf(),
+            FolderArt {
+                directory: version,
+                source,
+                cover: cover.clone(),
+            },
+        );
+    }
+    Some(cover)
 }
 
 /// Tags arrive first; embedded artwork, then folder artwork, follow.
@@ -146,18 +244,30 @@ pub(super) fn load_details(
     entry: &FileEntry,
     source: &SandboxedMedia,
     on_tags: impl Fn(AudioTags) + 'static,
-    on_cover: impl Fn(Option<gdk::Texture>) + 'static,
+    on_cover: impl Fn(Option<Cover>) + 'static,
+) -> DetailsLoad {
+    load_details_with(entry, source, on_tags, on_cover, parse)
+}
+
+fn load_details_with(
+    entry: &FileEntry,
+    source: &SandboxedMedia,
+    on_tags: impl Fn(AudioTags) + 'static,
+    on_cover: impl Fn(Option<Cover>) + 'static,
+    parse: impl Fn(&Path, ParseOperation, &Cancellation) -> Option<Vec<u8>> + Clone + Send + 'static,
 ) -> DetailsLoad {
     let key = TrackKey::of(entry);
     let cancellation = Cancellation::default();
     let details = Rc::new(RefCell::new(Details::default()));
     let pending = Rc::new(Cell::new(2));
+    let completed = Cell::new(true);
     let finish = {
         let details = details.clone();
         let cancellation = cancellation.clone();
-        move || {
+        move |success: bool| {
+            completed.set(completed.get() && success);
             pending.set(pending.get() - 1);
-            if pending.get() == 0 && !cancellation.is_cancelled() {
+            if pending.get() == 0 && completed.get() && !cancellation.is_cancelled() {
                 let details = Rc::new(details.borrow().clone());
                 DETAILS.with_borrow_mut(|cache| cache.insert(key.clone(), details));
             }
@@ -171,22 +281,28 @@ pub(super) fn load_details(
     let cancelled = cancellation.clone();
     let tags_details = details.clone();
     let tags_finish = finish.clone();
+    let parse_tags = parse.clone();
     glib::MainContext::default().spawn_local(async move {
+        glib::timeout_future(LOAD_SETTLE).await;
+        if cancelled.is_cancelled() {
+            return;
+        }
         let tags = gio::spawn_blocking(move || {
             let _lease = lease;
-            parse(&path, ParseOperation::AudioTags, &job)
+            parse_tags(&path, ParseOperation::AudioTags, &job)
                 .and_then(|json| AudioTags::from_json(&json).ok())
         })
         .await
         .ok()
-        .flatten()
-        .unwrap_or_default();
+        .flatten();
         // A reused view may already show another track.
         if cancelled.is_cancelled() {
             return;
         }
+        let completed = tags.is_some();
+        let tags = tags.unwrap_or_default();
         tags_details.borrow_mut().tags = tags.clone();
-        tags_finish();
+        tags_finish(completed);
         on_tags(tags);
     });
 
@@ -200,23 +316,35 @@ pub(super) fn load_details(
     let job = cancellation.clone();
     let cancelled = cancellation.clone();
     glib::MainContext::default().spawn_local(async move {
-        let cover = gio::spawn_blocking(move || {
+        glib::timeout_future(LOAD_SETTLE).await;
+        if cancelled.is_cancelled() {
+            return;
+        }
+        let (cover, completed) = gio::spawn_blocking(move || {
             let _lease = lease;
-            parse(&path, ParseOperation::AudioCover, &job)
-                .or_else(|| {
-                    let art = folder_art(directory.as_deref()?)?;
-                    parse(&art, ParseOperation::PreviewImage, &job)
-                })
-                .and_then(texture)
+            let embedded = parse(&path, ParseOperation::AudioCover, &job).and_then(|bytes| {
+                if bytes == b"null" {
+                    Some(None)
+                } else {
+                    texture(bytes).map(Some)
+                }
+            });
+            if let Some(Some(cover)) = embedded.as_ref() {
+                return (Some(cover.clone()), true);
+            }
+            let folder = directory.as_deref().map_or(Some(None), |directory| {
+                load_folder_art(directory, &job, &parse)
+            });
+            let completed = embedded.is_some() && folder.is_some();
+            (folder.flatten(), completed)
         })
         .await
-        .ok()
-        .flatten();
+        .unwrap_or((None, false));
         if cancelled.is_cancelled() {
             return;
         }
         details.borrow_mut().cover = cover.clone();
-        finish();
+        finish(completed);
         on_cover(cover);
     });
     DetailsLoad(cancellation)
@@ -246,7 +374,6 @@ pub(super) fn load_peaks(
         return PeaksLoad(Timer::default());
     }
     let source = source.clone();
-    let started = Instant::now();
     let session: RefCell<Option<PeaksSession>> = RefCell::new(None);
     let levels = RefCell::new(Vec::with_capacity(BUCKETS as usize));
     let handle = Timer::default();
@@ -255,32 +382,37 @@ pub(super) fn load_peaks(
         finished.borrow_mut().take();
         glib::ControlFlow::Break
     };
-    let timer = glib::timeout_add_local(PEAKS_POLL, move || {
-        if started.elapsed() < PEAKS_SETTLE {
-            return glib::ControlFlow::Continue;
-        }
-        let mut session = session.borrow_mut();
-        // Another overview holds the single slot; wait while this track is shown.
-        if session.is_none() {
-            *session = PeaksSession::start(source.clone());
-            return glib::ControlFlow::Continue;
-        }
-        while let Some(event) = session.as_ref().and_then(PeaksSession::receive) {
-            match event {
-                PeaksEvent::Levels { start, levels: run } => {
-                    on_levels(start, &run);
-                    levels.borrow_mut().extend_from_slice(&run);
-                }
-                PeaksEvent::Finished => {
-                    let levels = Rc::new(levels.take());
-                    PEAKS.with_borrow_mut(|cache| cache.insert(key.clone(), levels));
-                    return stop();
-                }
-                PeaksEvent::Failed => return stop(),
+    let polling = handle.clone();
+    let timer = glib::timeout_add_local_once(LOAD_SETTLE, move || {
+        *session.borrow_mut() = PeaksSession::start(source.clone());
+        let timer = glib::timeout_add_local(PEAKS_POLL, move || {
+            let mut session = session.borrow_mut();
+            // Another overview holds the single slot; wait while this track is shown.
+            if session.is_none() {
+                *session = PeaksSession::start(source.clone());
+                return glib::ControlFlow::Continue;
             }
-        }
-        glib::ControlFlow::Continue
+            while let Some(event) = session.as_ref().and_then(PeaksSession::receive) {
+                match event {
+                    PeaksEvent::Levels { start, levels: run } => {
+                        on_levels(start, &run);
+                        levels.borrow_mut().extend_from_slice(&run);
+                    }
+                    PeaksEvent::Finished => {
+                        let levels = Rc::new(levels.take());
+                        PEAKS.with_borrow_mut(|cache| cache.insert(key.clone(), levels));
+                        return stop();
+                    }
+                    PeaksEvent::Failed => return stop(),
+                }
+            }
+            glib::ControlFlow::Continue
+        });
+        polling.replace(Some(timer));
     });
     handle.replace(Some(timer));
     PeaksLoad(handle)
 }
+
+#[cfg(test)]
+mod tests;

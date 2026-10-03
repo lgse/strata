@@ -100,6 +100,21 @@ fn reopening_resumes_where_the_preview_closed() {
     media.close();
     assert_eq!(recall_media_position(Path::new("/ended")), None);
 
+    remember_media_position("/movie.ogg".into(), media::timestamp(900));
+    let media = DecodedMedia::new(SandboxedMedia {
+        audio_only: true,
+        ..test_source("/movie.ogg")
+    });
+    let calls = Rc::new(RefCell::new(Vec::new()));
+    media.imp().loader.replace(Some(fake_loader(&calls)));
+    drive_until(&media, &calls, 2);
+    assert_eq!(
+        *calls.borrow(),
+        vec![0, 900],
+        "probed video resumes despite an audio extension"
+    );
+    media.close();
+
     // Songs always start from the beginning and leave nothing to resume.
     remember_media_position("/song".into(), media::timestamp(900));
     let media = DecodedMedia::new(SandboxedMedia {
@@ -107,7 +122,16 @@ fn reopening_resumes_where_the_preview_closed() {
         ..test_source("/song")
     });
     let calls = Rc::new(RefCell::new(Vec::new()));
-    media.imp().loader.replace(Some(fake_loader(&calls)));
+    let audio_calls = calls.clone();
+    media.imp().loader.replace(Some(Rc::new(move |_, tick| {
+        audio_calls.borrow_mut().push(tick);
+        crate::sandbox::media::tests::stream(Header {
+            width: 0,
+            height: 0,
+            audio: true,
+            ..test_header(tick)
+        })
+    })));
     media.upcast_ref::<gtk::MediaStream>().play();
     drive_until(&media, &calls, 1);
     for _ in 0..20 {

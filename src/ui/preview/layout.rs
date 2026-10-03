@@ -187,7 +187,15 @@ impl PreviewDrawer {
                 if browser.selected_search_results().is_none() {
                     return;
                 }
-                if let Some(entry) = preview_target(browser.selected_search_result()) {
+                let entry = if browser.results_replace_listing() {
+                    browser
+                        .browser()
+                        .active_depth()
+                        .and_then(|depth| browser.displayed_cursor_entry(depth))
+                } else {
+                    browser.selected_search_result()
+                };
+                if let Some(entry) = preview_target(entry) {
                     state.show_after_focus_change(entry, browser.browser().active_depth());
                 } else {
                     state.clear_target();

@@ -3,6 +3,8 @@
 use super::*;
 use crate::model::{Location, MetadataValue};
 
+mod audio;
+
 struct Pending {
     request: PreviewRequest,
     emit: Rc<dyn Fn(PreviewEvent)>,
@@ -18,7 +20,7 @@ impl PreviewProvider for Provider {
     }
 }
 
-fn entry(name: &str) -> FileEntry {
+pub(super) fn entry(name: &str) -> FileEntry {
     FileEntry {
         location: Location::local(name),
         thumbnail_path: None,

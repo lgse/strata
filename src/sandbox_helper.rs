@@ -153,7 +153,17 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
             None,
         ),
         "thumbnail-video" => (render_media(input, numeric_value()?.clamp(16, 256))?, None),
-        "audio-cover" => (media::cover(input, 800)?, None),
+        "audio-cover" => {
+            let cover = media::cover(input, 800)?;
+            (
+                if cover.is_empty() {
+                    b"null".to_vec()
+                } else {
+                    cover
+                },
+                None,
+            )
+        }
         "thumbnail-appimage" => (
             appimage::render(input, numeric_value()?.clamp(16, 256))?,
             None,

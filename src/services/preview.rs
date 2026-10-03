@@ -75,7 +75,7 @@ pub struct SandboxedMedia {
     pub(crate) size: MediaPreviewSize,
     pub(crate) backend: crate::sandbox::MediaPreviewBackend,
     pub(crate) input_owner: Option<PreviewInputLease>,
-    /// Decodes only the audio track; set for audio previews.
+    /// Audio-name hint: skip attached pictures, but preserve any real video found by the probe.
     pub(crate) audio_only: bool,
 }
 

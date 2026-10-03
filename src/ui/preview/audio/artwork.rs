@@ -7,7 +7,12 @@ use std::{
 
 use gtk::{gdk, glib, graphene, gsk, prelude::*, subclass::prelude::*};
 
-use super::palette::{Palette, follow_theme, mix, palette, with_alpha};
+use super::{
+    details::Cover,
+    palette::{Palette, follow_theme, mix, palette, with_alpha},
+};
+
+const RESIZE_SETTLE: std::time::Duration = std::time::Duration::from_millis(120);
 
 /// Width over height: the square cover plus room for the disc to slide out.
 pub(super) const ASPECT: f32 = 1.3;
@@ -67,12 +72,13 @@ mod imp {
 
     #[derive(Default)]
     pub struct Artwork {
-        pub(super) cover: RefCell<Option<gdk::Texture>>,
-        pub(super) previous: RefCell<Option<Option<gdk::Texture>>>,
+        pub(super) cover: RefCell<Option<Cover>>,
+        pub(super) previous: RefCell<Option<Option<Cover>>>,
         pub(super) fade: Cell<f32>,
         pub(super) change: Cell<Change>,
-        pub(super) incoming: RefCell<Option<Option<gdk::Texture>>>,
-        pub(super) awaiting: Cell<bool>,
+        pub(super) incoming: RefCell<Option<Option<Cover>>>,
+        pub(super) allocated: Cell<(i32, i32)>,
+        pub(super) resize: RefCell<Option<glib::SourceId>>,
         pub(super) disc_opacity: Cell<f32>,
         /// Set while art appears or disappears, so the record stays out of the fade.
         pub(super) disc_hidden: Cell<bool>,
@@ -102,7 +108,13 @@ mod imp {
         }
     }
 
-    impl ObjectImpl for Artwork {}
+    impl ObjectImpl for Artwork {
+        fn dispose(&self) {
+            if let Some(timer) = self.resize.borrow_mut().take() {
+                timer.remove();
+            }
+        }
+    }
 
     impl WidgetImpl for Artwork {
         fn measure(&self, _: gtk::Orientation, _: i32) -> (i32, i32, i32, i32) {
@@ -115,11 +127,34 @@ mod imp {
         }
 
         fn unmap(&self) {
+            if let Some(timer) = self.resize.borrow_mut().take() {
+                timer.remove();
+            }
             if let Some(id) = self.tick.borrow_mut().take() {
                 id.remove();
             }
             self.last_frame.set(None);
             self.parent_unmap();
+        }
+
+        fn size_allocate(&self, width: i32, height: i32, baseline: i32) {
+            self.parent_size_allocate(width, height, baseline);
+            if self.allocated.replace((width, height)) == (width, height) {
+                return;
+            }
+            if let Some(timer) = self.resize.borrow_mut().take() {
+                timer.remove();
+            }
+            let weak = self.obj().downgrade();
+            self.resize.replace(Some(glib::timeout_add_local_once(
+                RESIZE_SETTLE,
+                move || {
+                    if let Some(artwork) = weak.upgrade() {
+                        artwork.imp().resize.borrow_mut().take();
+                        artwork.queue_draw();
+                    }
+                },
+            )));
         }
 
         fn snapshot(&self, snapshot: &gtk::Snapshot) {
@@ -145,16 +180,11 @@ impl Artwork {
         artwork
     }
 
-    /// Keeps the record tucked while the next track's art loads, so it does not
-    /// slide out only to tuck away again when the art arrives.
-    pub(super) fn await_cover(&self) {
-        self.imp().awaiting.set(true);
-        self.wake();
-    }
-
-    pub(super) fn set_cover(&self, cover: Option<gdk::Texture>) {
+    pub(super) fn set_cover(&self, cover: Option<Cover>) {
         let imp = self.imp();
-        imp.awaiting.set(false);
+        if !imp.fresh.get() && imp.change.get() == Change::Idle && *imp.cover.borrow() == cover {
+            return;
+        }
         let animated = crate::ui::motion::animations_enabled();
         if imp.fresh.replace(false) && animated {
             // Art fades in on its own, then the record slides out from behind
@@ -211,19 +241,11 @@ impl Artwork {
 
     fn disc_target(&self) -> f32 {
         let imp = self.imp();
-        // Without motion there is no tucking while art loads: the record stays
-        // put, then appears where the new track places it.
-        if imp.awaiting.get()
-            && !crate::ui::motion::animations_enabled()
-            && let Some(offset) = imp.disc_offset.get()
-        {
-            return offset;
-        }
         let has_cover = imp.cover.borrow().is_some();
         let sleeve = has_cover
             || matches!(imp.incoming.borrow().as_ref(), Some(Some(_)))
             || matches!(imp.previous.borrow().as_ref(), Some(Some(_)));
-        let changing = imp.awaiting.get() || imp.change.get() != Change::Idle;
+        let changing = imp.change.get() != Change::Idle;
         if changing && sleeve {
             return TUCKED;
         }
@@ -310,7 +332,7 @@ impl Artwork {
         let target = self.disc_target();
         let previous_offset = imp.disc_offset.get();
         let previous_fade = imp.fade.get();
-        let rate = if imp.change.get() == Change::Idle && !imp.awaiting.get() {
+        let rate = if imp.change.get() == Change::Idle {
             SLIDE_RATE
         } else {
             TUCK_RATE
@@ -385,7 +407,6 @@ impl Artwork {
             || fade < 1.0
             || opacity != if self.disc_visible() { 1.0 } else { 0.0 }
             || imp.change.get() != Change::Idle
-            || imp.awaiting.get()
     }
 
     fn draw(&self, snapshot: &gtk::Snapshot) {
@@ -420,10 +441,10 @@ impl Artwork {
             } else {
                 1.0 - fade
             };
-            self.draw_cover(snapshot, &colors, texture, &frame, opacity);
+            self.draw_cover(snapshot, &colors, &texture.texture, &frame, opacity);
         }
         if let Some(texture) = imp.cover.borrow().as_ref() {
-            self.draw_cover(snapshot, &colors, texture, &frame, fade);
+            self.draw_cover(snapshot, &colors, &texture.texture, &frame, fade);
         }
     }
 
@@ -463,7 +484,7 @@ impl Artwork {
         let side_pixels = (size * scale as f32).round() as i32;
         if let Some(sleeve) = imp.sleeves.borrow().iter().find(|sleeve| {
             sleeve.source == *texture
-                && sleeve.side_pixels == side_pixels
+                && (sleeve.side_pixels == side_pixels || imp.resize.borrow().is_some())
                 && sleeve.scale == scale
                 && sleeve.palette == *colors
         }) {
@@ -479,8 +500,17 @@ impl Artwork {
                 &graphene::Rect::new(reach, reach, size, size),
             );
         })?;
-        let current = imp.cover.borrow().clone();
-        let previous = imp.previous.borrow().clone().flatten();
+        let current = imp
+            .cover
+            .borrow()
+            .as_ref()
+            .map(|cover| cover.texture.clone());
+        let previous = imp
+            .previous
+            .borrow()
+            .as_ref()
+            .and_then(|cover| cover.as_ref())
+            .map(|cover| cover.texture.clone());
         let mut sleeves = imp.sleeves.borrow_mut();
         // Only the covers on screen are worth keeping.
         sleeves.retain(|sleeve| {
@@ -553,7 +583,9 @@ impl Artwork {
         let scale = self.scale_factor();
         let radius_pixels = (radius * scale as f32).round() as i32;
         if let Some(disc) = imp.disc.borrow().as_ref().filter(|disc| {
-            disc.radius_pixels == radius_pixels && disc.scale == scale && disc.palette == *colors
+            (disc.radius_pixels == radius_pixels || imp.resize.borrow().is_some())
+                && disc.scale == scale
+                && disc.palette == *colors
         }) {
             return Some((disc.body.clone(), disc.label.clone()));
         }

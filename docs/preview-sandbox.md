@@ -437,11 +437,16 @@ Audio files open in a now-playing view with artwork, tags, a live spectrum, and 
 waveform scrubber. Each part is sandboxed or derived from already-validated data:
 
 - **Playback** uses the incremental media path with the `preview-audio`
-  operation, which drops any video or attached-picture stream. Resizing the pane
-  therefore never restarts audio.
-- **Artwork** comes from a separate `audio-cover` operation that maps only
-  attached-picture streams and scales them to at most 800×800 inside the sandbox.
-  The result is validated like any preview PNG. Without embedded art, the first of
+  operation, which ignores attached pictures before validating dimensions.
+  Broken or oversized artwork cannot prevent playback. A real video stream
+  overrides the filename's audio type: the stream header selects the video view,
+  including its normal resize and resume behavior. Pure audio never restarts on resize.
+- **Artwork** comes from a separate `audio-cover` operation that maps exactly one
+  attached-picture stream (tagged front cover first, otherwise the first picture)
+  and scales it to at most 800×800 inside the sandbox. The result is validated like
+  any preview PNG; the exact `null` payload means the probe found no artwork,
+  distinct from a failed lookup. Playback, cover extraction and waveform decoding
+  share FFmpeg allocation, pixel and filter-thread limits. Without embedded art, the first of
   `cover`, `folder`, `front`, `album`, or `albumart` (`.jpg`, `.jpeg`, `.png`,
   `.webp`) in the same local folder is decoded by the pooled image-preview
   helper. Remote files use embedded art only.
@@ -453,7 +458,7 @@ waveform scrubber. Each part is sandboxed or derived from already-validated data
   aligned to the audio sink's clock rather than to the decoder, so no extra
   parser or GStreamer analysis element sees the stream.
 - **The waveform overview** starts only after a track has stayed selected for
-  450 ms, so fast keyboard browsing never decodes. One `audio-peaks` operation
+  50 ms, avoiding work for selections replaced within that interval. One `audio-peaks` operation
   runs at a time with niceness 10. It streams `STRPEAK1` records: a header with
   1,024 buckets and the duration, then in-order runs of at most 256 one-byte RMS
   levels and an explicit empty end run. The parent rejects gaps, oversized or
@@ -466,9 +471,18 @@ Audio previews always start from the beginning, like a music player, and do not
 remember where they stopped. Video previews reopen where they were closed, unless
 they had played less than a second or reached the end.
 
-Tags and artwork are cached in memory for the last 12 tracks. Consecutive audio
-files reuse one view, so artwork crossfades and the spectrum carries its motion
-into the next track.
+Uncached tags and artwork also wait 50 ms; cache hits are immediate. Completed
+lookups are cached for the last 12 tracks, but failed or cancelled lookups are
+retried on revisiting. Folder artwork is separately cached for 12 directories,
+with source-version checks before reuse. Consecutive audio files reuse one view.
+The current artwork stays in place while details load, and only different artwork
+crossfades. Cached artwork textures scale during resizing and regenerate after
+120 ms at a stable size.
+
+Previous/next skip playlists and MIDI. During filtering they follow visible audio
+results, including subfolders, and untagged captions read “X of Y in results”
+instead of “X of Y in folder”. Playback errors remain visible inside the audio
+view without disabling track navigation. Tracks never advance automatically.
 
 ## Wire validation and budgets
 

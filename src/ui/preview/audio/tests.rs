@@ -4,13 +4,18 @@ use super::*;
 
 #[test]
 fn track_caption_prefers_tags_and_falls_back_to_the_folder() {
+    let folder = TrackPosition {
+        position: 7,
+        count: 9,
+        results: false,
+    };
     let tagged = AudioTags {
         track: Some(3),
         track_total: Some(12),
         ..AudioTags::default()
     };
     assert_eq!(
-        track_caption(&tagged, Some((7, 9))).as_deref(),
+        track_caption(&tagged, Some(folder)).as_deref(),
         Some("Track 3 of 12")
     );
     let numbered = AudioTags {
@@ -18,14 +23,25 @@ fn track_caption_prefers_tags_and_falls_back_to_the_folder() {
         ..AudioTags::default()
     };
     assert_eq!(
-        track_caption(&numbered, Some((7, 9))).as_deref(),
+        track_caption(&numbered, Some(folder)).as_deref(),
         Some("Track 3")
     );
     assert_eq!(
-        track_caption(&AudioTags::default(), Some((7, 9))).as_deref(),
+        track_caption(&AudioTags::default(), Some(folder)).as_deref(),
         Some("7 of 9 in folder")
     );
     assert_eq!(track_caption(&AudioTags::default(), None), None);
+    assert_eq!(
+        track_caption(
+            &AudioTags::default(),
+            Some(TrackPosition {
+                results: true,
+                ..folder
+            })
+        )
+        .as_deref(),
+        Some("7 of 9 in results")
+    );
 }
 
 #[test]

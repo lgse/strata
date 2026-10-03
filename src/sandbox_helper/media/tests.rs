@@ -4,6 +4,14 @@ use super::*;
 use crate::media::{Decoder, Packet};
 use std::{io::Cursor, os::unix::net::UnixStream, thread};
 
+fn probe(path: &Path, size: MediaPreviewSize, start_tick: u32) -> io::Result<Input> {
+    super::probe(path, size, start_tick, ProbeMode::Playback)
+}
+
+fn metadata(bytes: &[u8], size: MediaPreviewSize, start_tick: u32) -> io::Result<Input> {
+    super::metadata(bytes, size, start_tick, ProbeMode::Playback)
+}
+
 fn success(command: &mut Command) -> Vec<u8> {
     let output = bounded_output_with_timeout(command, 32 * 1024 * 1024, Duration::from_secs(30))
         .expect("FFmpeg tools are required")
@@ -355,7 +363,24 @@ fn hardware_order_and_commands_decode_only_and_bound_all_outputs() {
         assert!(!args.contains("h264"));
         assert!(!args.contains("libvpx"));
         assert!(!args.contains(" copy"));
+        assert_eq!(
+            args.contains("--as=2147483648"),
+            backend == Backend::Software
+        );
+        assert!(args.contains("-max_pixels 50000000"));
+        assert!(args.contains("-max_alloc 536870912"));
+        assert!(args.contains("-filter_threads 1 -filter_complex_threads 1"));
     }
+    let background = ffmpeg_command(&Backend::Software, true);
+    assert_eq!(background.get_program(), "nice");
+    let args = background
+        .get_args()
+        .map(|arg| arg.to_string_lossy())
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(args.starts_with("-n 10 prlimit --core=0 --fsize=536870912 --as=2147483648"));
+    assert!(args.contains("-max_pixels 50000000"));
+    assert!(args.contains("-filter_threads 1 -filter_complex_threads 1"));
     let positive = command_args(
         Path::new("/input"),
         &ordinary,
@@ -706,6 +731,33 @@ fn metadata_and_size_parsing_fail_closed_on_bad_sources_and_protocol_values() {
         });
         assert!(metadata(&serde_json::to_vec(&value).expect("metadata"), size, 0).is_err());
     }
+    for (width, height) in [(0, 0), (10_000, 6_000)] {
+        for attached in [true, false] {
+            let value = serde_json::json!({
+                "streams": [
+                    {"index": 0, "codec_type": "audio"},
+                    {"index": 1, "codec_type": "video", "width": width, "height": height,
+                     "disposition": {"attached_pic": u8::from(attached)}}
+                ],
+                "format": {"duration": "2"}
+            });
+            let bytes = serde_json::to_vec(&value).expect("metadata");
+            assert!(metadata(&bytes, size, 0).is_err());
+            let audio = super::metadata(&bytes, size, 0, ProbeMode::Audio)
+                .expect("peaks ignore every video stream");
+            assert_eq!(audio.audio, Some(0));
+            assert_eq!(audio.video, None);
+            assert_eq!((audio.header.width, audio.header.height), (0, 0));
+            let playback = super::metadata(&bytes, size, 0, ProbeMode::SkipArtwork);
+            if attached {
+                let playback = playback.expect("bad artwork cannot block audio");
+                assert_eq!(playback.video, None);
+                assert!(playback.header.audio);
+            } else {
+                assert!(playback.is_err(), "real video dimensions remain validated");
+            }
+        }
+    }
     let unknown = metadata(
         br#"{"streams":[{"index":0,"codec_type":"audio"}]}"#,
         size,
@@ -831,24 +883,81 @@ fn audio_previews_play_without_artwork_and_extract_tags_cover_and_peaks() {
     };
     assert!(frame.pixels.is_empty());
 
-    let video = directory.path().join("silent.mp4");
+    let video = directory.path().join("silent.mkv");
     fixture(&video, "64x48", 30, 1, false);
-    assert!(
-        stream(
-            &video,
-            "520x800",
-            MediaPreviewBackend::Software,
-            0,
-            true,
-            &mut Vec::new()
-        )
-        .is_err(),
-        "audio-only playback needs an audio track"
-    );
+    let mut video_bytes = Vec::new();
+    stream(
+        &video,
+        "520x800",
+        MediaPreviewBackend::Software,
+        0,
+        true,
+        &mut video_bytes,
+    )
+    .expect("real video survives an audio-classified request");
+    let header = Header::read(
+        &mut Cursor::new(video_bytes),
+        MediaPreviewSize::new(520, 800),
+        0,
+    )
+    .expect("video header");
+    assert_eq!((header.width, header.height), (64, 48));
+    assert!(!header.audio);
+    assert!(cover(&video, 800).expect("no attached picture").is_empty());
 
     let png = cover(&tagged, 800).expect("embedded artwork");
     assert_eq!(crate::sandbox::png_dimensions(&png), Some((800, 480)));
-    assert!(cover(&plain, 800).is_err(), "no artwork is not an image");
+    let back = directory.path().join("back.png");
+    success(
+        Command::new("ffmpeg")
+            .args(["-nostdin", "-v", "error", "-f", "lavfi", "-i"])
+            .arg("color=c=red:size=64x48")
+            .args(["-frames:v", "1", "-threads", "1"])
+            .arg(&back),
+    );
+    for front_tag in [true, false] {
+        let multiple = directory.path().join(format!("multiple-{front_tag}.mp3"));
+        success(
+            Command::new("ffmpeg")
+                .args(["-nostdin", "-v", "error", "-i"])
+                .arg(&plain)
+                .arg("-i")
+                .arg(&back)
+                .arg("-i")
+                .arg(&art)
+                .args([
+                    "-map",
+                    "0:a",
+                    "-map",
+                    "1:v",
+                    "-map",
+                    "2:v",
+                    "-c:a",
+                    "libmp3lame",
+                    "-c:v",
+                    "copy",
+                    "-disposition:v",
+                    "attached_pic",
+                    "-metadata:s:v:0",
+                    "comment=Cover (back)",
+                    "-metadata:s:v:1",
+                ])
+                .arg(if front_tag {
+                    "comment=Cover (front)"
+                } else {
+                    "comment=Other"
+                })
+                .arg(&multiple),
+        );
+        let selected = cover(&multiple, 800).expect("exactly one of two attached pictures");
+        if front_tag {
+            assert_eq!(selected, png, "front artwork wins over the first picture");
+        } else {
+            assert_eq!(crate::sandbox::png_dimensions(&selected), Some((64, 48)));
+        }
+    }
+    assert!(cover(&plain, 800).expect("no artwork").is_empty());
+    assert!(cover(&directory.path().join("missing"), 800).is_err());
 
     let tags = crate::sandbox::metadata::AudioTags::from_json(&audio_tags(&tagged).expect("tags"))
         .expect("tag JSON");

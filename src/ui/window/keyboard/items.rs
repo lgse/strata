@@ -305,6 +305,11 @@ impl Dispatcher {
         }
         let search = self.view.selected_search_results().is_some();
         let mods = super::command_modifiers(modifiers);
+        if matches!(key, Key::less | Key::greater)
+            && (mods.is_empty() || mods == Modifiers::SHIFT_MASK)
+        {
+            return self.preview.media_key(key);
+        }
         if search && !mods.is_empty() {
             return match mods {
                 Modifiers::CONTROL_MASK => {
