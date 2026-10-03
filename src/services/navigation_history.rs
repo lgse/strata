@@ -19,8 +19,7 @@ const HISTORY_VERSION: u32 = 1;
 const MAX_ENTRIES: usize = 1_000;
 const MAX_RESULTS: usize = 100;
 const MAX_TOTAL_RANK: f64 = 10_000.0;
-/// A folder named exactly what was typed outranks other folders whose names
-/// match as many terms, however often those were visited.
+// Exact names must outrank frecency within the same name-term tier.
 const EXACT_NAME_BONUS: i64 = 1 << 24;
 const HOUR_SECONDS: u64 = 60 * 60;
 const DAY_SECONDS: u64 = 24 * HOUR_SECONDS;
@@ -108,7 +107,6 @@ impl NavigationHistory {
         }
     }
 
-    /// The current frecency of the visited folders below `root`.
     pub(crate) fn frecency_within(&self, root: &Path) -> Frecency {
         self.frecency_within_at(root, unix_time())
     }
@@ -209,8 +207,6 @@ impl NavigationHistory {
     }
 }
 
-/// Matches visited folders' full paths with the 10xer **s** terms. An empty
-/// query matches every folder without a text score.
 struct HistoryMatcher(Option<PathMatcher>);
 
 impl HistoryMatcher {

@@ -32,7 +32,6 @@ type Rgb = (u16, u16, u16);
 
 thread_local! {
     static HIGHLIGHT_COLORS: Cell<Option<(Rgb, Rgb)>> = const { Cell::new(None) };
-    /// Every view, so a theme change can recolor its highlights.
     static HIGHLIGHT_VIEWS: RefCell<Vec<Weak<ViewState>>> = const { RefCell::new(Vec::new()) };
 }
 
@@ -153,15 +152,13 @@ fn set_name_highlight(widget: &gtk::Widget, ranges: impl FnOnce(&str) -> Vec<Ran
     }
 }
 
-/// Highlights `query`'s matches in a name label, or clears them without one.
 pub(in crate::ui) fn highlight_name(widget: &gtk::Widget, query: Option<&str>) {
     set_name_highlight(widget, |text| {
         query.map_or_else(Vec::new, |query| match_ranges(text, query))
     });
 }
 
-/// The characters of each 10xer **f** filter or **s** search hit's name that
-/// its query matched, by hit path.
+/// Ranges index the displayed filename, not the full path.
 pub(in crate::ui) type HitRanges = HashMap<PathBuf, Vec<Range<usize>>>;
 
 pub(in crate::ui) fn search_hit_ranges(query: &str, root: &Path, hits: &[SearchItem]) -> HitRanges {
@@ -172,9 +169,6 @@ pub(in crate::ui) fn search_hit_ranges(query: &str, root: &Path, hits: &[SearchI
         .collect()
 }
 
-/// Highlights a listing row's name: find's matches while find shows them,
-/// otherwise the characters a 10xer **f** filter's folded `filter` query
-/// matched in it.
 pub(in crate::ui) fn highlight_listing_name(
     widget: &gtk::Widget,
     find: Option<&str>,
@@ -187,8 +181,6 @@ pub(in crate::ui) fn highlight_listing_name(
     }
 }
 
-/// The characters of `name` the 10xer **f** filter's folded `query` matched,
-/// or none outside 10xer mode, where filters do not highlight.
 fn filter_term_ranges(name: &str, query: &str) -> Vec<Range<usize>> {
     if query.trim().is_empty() || !crate::ui::tenxer_mode::chrome_suppressed() {
         return Vec::new();
@@ -196,8 +188,6 @@ fn filter_term_ranges(name: &str, query: &str) -> Vec<Range<usize>> {
     super::entry::with_filter_terms(query, |terms| terms.highlight(name, 0))
 }
 
-/// Highlights a search hit's name: find's matches while find shows them,
-/// otherwise the characters the **f** filter or **s** search matched.
 pub(in crate::ui) fn highlight_hit_name(
     widget: &gtk::Widget,
     find: Option<&str>,
@@ -216,8 +206,6 @@ impl ViewState {
         (find.highlighted && !find.query.is_empty()).then(|| find.query.clone())
     }
 
-    /// Reapplies find, **f** filter, and **s** search highlights to every
-    /// bound name.
     pub(in crate::ui) fn refresh_name_highlights(&self) {
         let query = self.find_highlight();
         for column in self.columns.borrow().iter() {

@@ -357,12 +357,9 @@ pub(crate) use pattern::{filter_name_matches, filter_query_allows_typos};
 
 type NameScorer = fn(&SearchItem, &str) -> Option<i64>;
 
-/// Folders a transfer would refuse, so a folder search never lists them.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct RefusedFolders {
-    /// Folders being moved or copied, which cannot hold themselves.
     pub(crate) trees: Vec<PathBuf>,
-    /// The folder a move would leave its items in.
     pub(crate) folder: Option<PathBuf>,
 }
 
@@ -377,7 +374,7 @@ enum SearchScorer {
     Name(NameScorer),
     Paths {
         frecency: Arc<Frecency>,
-        /// Only folders are hits, never these.
+        /// `Some` restricts hits to directories and applies transfer exclusions.
         folders: Option<Arc<RefusedFolders>>,
     },
 }
@@ -399,7 +396,6 @@ impl SearchScorer {
         }
     }
 
-    /// Whether an empty query has hits rather than none.
     fn lists_without_query(&self) -> bool {
         matches!(
             self,
@@ -411,7 +407,6 @@ impl SearchScorer {
     }
 }
 
-/// A scorer bound to one query, owned by one thread.
 enum QueryScorer<'a> {
     Name(NameScorer, &'a str),
     Paths {
@@ -420,7 +415,6 @@ enum QueryScorer<'a> {
         frecency: &'a Frecency,
         folders: Option<&'a RefusedFolders>,
     },
-    /// Every folder, the most visited first, then the shallowest.
     Folders(&'a Frecency, &'a RefusedFolders),
 }
 
@@ -507,9 +501,6 @@ pub fn index_filter(
     )
 }
 
-/// The 10xer **s** search and **f** filter: fzf-style terms matched against
-/// paths below `root`, or only its children's names when not `recursive`,
-/// biased toward folders the user visits. Shares the filter's index.
 pub fn index_paths(
     root: PathBuf,
     show_hidden: bool,
@@ -527,9 +518,6 @@ pub fn index_paths(
     )
 }
 
-/// The 10xer destination picker: like [`index_paths`] across the whole tree
-/// below `root`, but only folders are hits, and never `refused` ones. A folder
-/// the whole query names outright leads.
 pub fn index_folder_paths(
     root: PathBuf,
     show_hidden: bool,
@@ -1025,9 +1013,7 @@ fn directory_walker(
     builder.build()
 }
 
-/// Kernel interfaces rather than files. Walking them from `/` would fill the
-/// index with process and device entries; a search rooted inside one still
-/// lists them, since a root is never filtered.
+// Avoid filling a root search with kernel interfaces; explicit roots bypass this filter.
 fn is_kernel_filesystem(path: &Path) -> bool {
     ["/proc", "/sys", "/dev"]
         .iter()

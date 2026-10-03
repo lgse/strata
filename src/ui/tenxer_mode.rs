@@ -190,7 +190,6 @@ impl Prompt {
         matches!(self, Self::Jump | Self::Recent)
     }
 
-    /// Prompts that list folders found by fuzzy path search.
     pub(crate) fn picks_folder(self) -> bool {
         matches!(
             self,

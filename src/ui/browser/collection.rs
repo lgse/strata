@@ -285,9 +285,7 @@ fn debounce_filter_entry(entry: &gtk::Entry, on_settled: impl Fn(String) + 'stat
     });
 }
 
-/// Filters a List or Icons directory listing in place once `entry` settles,
-/// and again when 10xer mode changes how names match. While `replaced`,
-/// search results stand in for the listing, so it stays unfiltered.
+// Don't filter a replaced listing: doing so would discard its hidden selection.
 pub(crate) fn bind_listing_filter(
     entry: &gtk::Entry,
     filter: &gtk::CustomFilter,
@@ -334,9 +332,7 @@ pub(in crate::ui) struct FilterQueryBinding {
     scope: FilterScope,
 }
 
-/// The saved **Include subfolders** preference, which 10xer mode replaces:
-/// there **f** filters only the folder and **s** searches below it, both with
-/// fuzzy terms. Neither changes the preference.
+// 10xer overrides scope without overwriting the saved subfolder preference.
 #[derive(Clone, Default)]
 struct FilterScope {
     include_subfolders: Rc<Cell<bool>>,
@@ -657,7 +653,6 @@ impl ViewMap {
         !self.query.borrow().trim().is_empty()
     }
 
-    /// The folded filter query hiding rows of the directory listing.
     pub(crate) fn query(&self) -> std::cell::Ref<'_, String> {
         self.query.borrow()
     }

@@ -2396,7 +2396,6 @@ fn tenxer_icons_move_spatially_open_explicitly_and_peek() {
             preferences.set_tenxer_mode(true);
             let start_name = start.display_name.clone();
             let start_path = start.location.native_path().expect("search hit path");
-            // The filter reruns as a 10xer folder filter; its hits are all here.
             wait_until(|| fixture.view.focus_search_result(start_path));
             let mut search_landed = Vec::new();
             for key in [Key::j, Key::Down, Key::KP_Down] {

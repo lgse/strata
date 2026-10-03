@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Matches typed queries against entries below a searched folder, fzf style.
-//! Whitespace separates terms that must all match, each anywhere in the path
-//! relative to that folder, so folder names narrow a search for a file. Terms
-//! take fzf's `'exact`, `^prefix`, `suffix$`, and `!excluded` forms.
-//!
-//! Results rank by how many terms matched inside the entry's own name, then by
-//! match quality, then by how often and how recently the user visited the
-//! folders around them.
-
 use std::{
     collections::HashMap,
     ops::Range,
@@ -19,24 +10,15 @@ use frizbee::{CaseMatching, Config, Matcher, Pattern};
 
 use super::search::fold_for_search;
 
-/// Each term matched inside the name outranks any match quality or frecency,
-/// so a weak name match still beats a strong match on folder names alone.
+// Name matches must outrank path-only matches regardless of frecency.
 const NAME_TERM_TIER: i64 = 1 << 32;
-/// Roughly four matched characters: enough to order similar matches by
-/// visits, never enough to lift a poor match over a good one.
+// About four matched characters: frecency should only reorder similar matches.
 const MAX_FRECENCY_BIAS: f64 = 48.0;
 const FRECENCY_BIAS_SCALE: f64 = 12.0;
-/// A folder named exactly by the whole query outranks partial matches,
-/// however often those were visited.
 const EXACT_NAME_BONUS: i64 = 4 * MAX_FRECENCY_BIAS as i64;
-/// A folder whose path below the searched folder is the whole query, as
-/// `~/Archive` types it, outranks other folders with that name.
 const EXACT_PATH_BONUS: i64 = NAME_TERM_TIER / 2;
-/// Each folder between an entry and its nearest visited folder halves that
-/// folder's frecency.
 const ANCESTOR_DECAY: f64 = 0.5;
 
-/// A parsed, Unicode-folded query.
 #[derive(Clone, Debug)]
 pub(crate) struct PathQuery {
     terms: Vec<Pattern>,
@@ -58,22 +40,16 @@ impl PathQuery {
     }
 }
 
-/// How well a path matched, before frecency. Orders by terms matched inside
-/// the name, then by match quality.
 #[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
 pub(crate) struct TextScore {
     name_terms: u32,
     quality: u32,
 }
 
-/// Ranks a match: the name tier first, then quality and frecency together.
 pub(crate) fn rank(text: TextScore, frecency_bias: i64) -> i64 {
     i64::from(text.name_terms) * NAME_TERM_TIER + i64::from(text.quality) + frecency_bias
 }
 
-/// Extra rank for an entry the query names outright: its folded relative
-/// `path`, whose name starts at byte `name_start`, or that name alone equals
-/// the folded `query`.
 pub(crate) fn exact_bonus(path: &str, name_start: usize, query: &str) -> i64 {
     if path == query {
         EXACT_PATH_BONUS
@@ -84,8 +60,7 @@ pub(crate) fn exact_bonus(path: &str, name_start: usize, query: &str) -> i64 {
     }
 }
 
-/// Matches one query against many paths. Cheap to build per query and thread;
-/// it keeps scratch space between paths, so reuse it across a list.
+/// Reuse across candidates to retain matcher scratch space.
 #[derive(Clone, Debug)]
 pub(crate) struct PathMatcher {
     terms: Vec<Matcher>,
@@ -108,8 +83,7 @@ impl PathMatcher {
         }
     }
 
-    /// Scores a folded relative path whose entry name starts at byte
-    /// `name_start`. Every term must match and no excluded term may.
+    /// `path` must be folded; `name_start` is a byte boundary.
     pub(crate) fn score(&mut self, path: &str, name_start: usize) -> Option<TextScore> {
         if self.terms.is_empty() && self.exclusions.is_empty() {
             return None;
@@ -124,7 +98,6 @@ impl PathMatcher {
         let name = &path[name_start..];
         let mut score = TextScore::default();
         for matcher in &mut self.terms {
-            // The name ends the path, so a name match is also a path match.
             if let Some(found) = matcher.match_one(name, 0) {
                 score.name_terms += 1;
                 score.quality += u32::from(found.score);
@@ -135,9 +108,7 @@ impl PathMatcher {
         Some(score)
     }
 
-    /// Byte ranges of `path`, an unfolded relative path as displayed, that the
-    /// terms matched. A term that matches inside the name is shown there, as
-    /// it was scored. Ranges are sorted and never overlap.
+    /// Returns non-overlapping byte ranges in the original, unfolded text.
     pub(crate) fn highlight(&mut self, path: &str, name_start: usize) -> Vec<Range<usize>> {
         let (folded, spans) = fold_with_spans(path);
         let folded_name_start = spans.partition_point(|span| span.start < name_start);
@@ -170,8 +141,6 @@ impl PathMatcher {
         merged
     }
 
-    /// Byte ranges of `path`'s file name, displayed lossily, that the terms
-    /// matched when `path` was scored below `root`.
     pub(crate) fn name_highlight(&mut self, root: &Path, path: &Path) -> Vec<Range<usize>> {
         let relative = path.strip_prefix(root).unwrap_or(path).to_string_lossy();
         let name_len = path
@@ -186,9 +155,7 @@ impl PathMatcher {
     }
 }
 
-/// Lowercases `text` character by character, recording the source span of
-/// every output byte. Unlike [`fold_for_search`] it skips NFC composition,
-/// which would merge spans; names on disk are almost always composed already.
+// Unlike scoring, this preserves source spans without NFC composition.
 fn fold_with_spans(text: &str) -> (String, Vec<Range<usize>>) {
     let mut folded = String::with_capacity(text.len());
     let mut spans = Vec::with_capacity(text.len());
@@ -202,8 +169,7 @@ fn fold_with_spans(text: &str) -> (String, Vec<Range<usize>>) {
     (folded, spans)
 }
 
-/// Visit frecency of the folders below a search root, snapshotted so search
-/// workers can bias results without touching the history.
+/// Snapshot for search workers, which cannot access the UI-owned history.
 #[derive(Debug, Default)]
 pub(crate) struct Frecency {
     root_len: usize,
@@ -211,8 +177,7 @@ pub(crate) struct Frecency {
 }
 
 impl Frecency {
-    /// Keeps the folders strictly below `root`. The root and its ancestors
-    /// would bias every result equally.
+    // The root and its ancestors would bias every result equally.
     pub(crate) fn within(root: &Path, folders: impl IntoIterator<Item = (PathBuf, f64)>) -> Self {
         Self {
             root_len: root.as_os_str().len(),
@@ -225,9 +190,7 @@ impl Frecency {
         }
     }
 
-    /// A folder's own frecency, or a file's containing folder's, at full
-    /// weight. Without a visit there, the nearest visited ancestor counts at
-    /// half weight per level between them.
+    // Prefer the nearest visited ancestor, not the most frequently visited one.
     pub(crate) fn bias(&self, path: &Path, is_directory: bool) -> i64 {
         if self.folders.is_empty() {
             return 0;

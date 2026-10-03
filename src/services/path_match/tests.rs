@@ -40,7 +40,6 @@ fn folder_terms_narrow_matches_in_any_order() {
     for query in ["git trading readme", "readme trading git"] {
         assert_eq!(ranked(query, &paths), ["git/trading/README.md"], "{query}");
     }
-    // Abbreviated terms match loosely but still rank the intended path first.
     assert_eq!(
         ranked("GIT Trad READ", &paths),
         ["git/trading/README.md", "git/notes/README.md"]

@@ -343,7 +343,7 @@ fn tenxer_reference_follows_the_active_map() {
             for (keys, action) in [
                 ("v / V", "Visual select / visual unset"),
                 ("g g", "First item"),
-                ("g Space", "Go to a typed path or URI"),
+                ("g Space", "Go to a folder, typed path, or URI"),
                 ("s", "Search this folder and its subfolders"),
                 ("f", "Filter this listing"),
                 ("c c / c n", "Copy path / name"),

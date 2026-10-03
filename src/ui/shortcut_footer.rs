@@ -1181,8 +1181,7 @@ impl ShortcutFooter {
         self.prompt.entry.text().to_string()
     }
 
-    /// Replaces the prompt's text as if typed, caret at the end, so change
-    /// listeners run; unlike a [`PromptSink`] replacement, it is an edit.
+    /// Unlike `PromptSink`, this notifies edit listeners.
     pub(in crate::ui) fn type_prompt_text(&self, text: &str) {
         self.prompt.entry.set_text(text);
         self.prompt.entry.set_position(-1);
@@ -1198,8 +1197,6 @@ impl ShortcutFooter {
         self.prompt.close();
     }
 
-    /// Lists `paths` above the open prompt; `keys` name what the keys do to
-    /// the chosen one.
     pub(in crate::ui) fn show_candidates(&self, paths: Vec<PathBuf>, keys: CandidateKeys) {
         if self.prompt.bar.is_visible() {
             self.prompt.candidates.set(paths, keys);
@@ -1210,14 +1207,10 @@ impl ShortcutFooter {
         self.prompt.candidates.step(delta);
     }
 
-    /// Lets the next candidates, listed for new text, choose their first row
-    /// again.
     pub(in crate::ui) fn forget_candidate_step(&self) {
         self.prompt.candidates.forget_step();
     }
 
-    /// Whether the chosen candidate was picked with **↑** / **↓** rather than
-    /// being the best match.
     pub(in crate::ui) fn candidate_stepped(&self) -> bool {
         self.prompt.candidates.stepped()
     }

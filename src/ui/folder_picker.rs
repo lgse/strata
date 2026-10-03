@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The 10xer folder picker behind **g Space**, **M**, **C**, and **; E**. Typed terms
-//! match the paths of folders below the open folder, fzf style, as **s** does.
-//! Text that starts as a path (`/`, `~`, `./`, `../`) searches below the
-//! folder it names instead; whatever follows its last `/` is the query.
-
 use std::{
     cell::{Cell, RefCell},
     path::{Component, Path, PathBuf},
@@ -19,20 +14,15 @@ pub(crate) use crate::services::RefusedFolders as Refused;
 
 pub(crate) const NO_MATCHES: &str = "No matching folders";
 pub(crate) const SEARCHING: &str = "Searching\u{2026}";
-/// Typing a path passes through every folder above the one meant, so a
-/// search below any folder but the open one starts once typing pauses.
+// Avoid crawling intermediate roots while a path is still being typed.
 const TYPED_BASE_DELAY: Duration = Duration::from_millis(150);
 
-/// Where a picker searches, and for what. An empty query offers `base`
-/// itself, then every folder below it, the most visited first.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct PickerScope {
     pub(crate) base: PathBuf,
     pub(crate) query: String,
 }
 
-/// Reads typed text as a search below `current`, or below the folder a typed
-/// path names. Empty text searches nothing.
 pub(crate) fn scope(
     text: &str,
     current: Option<&Path>,
@@ -70,18 +60,13 @@ pub(crate) fn scope(
     }))
 }
 
-/// The path that text typed as a path names outright, such as `~/dev/strata`
-/// or `./src`, whether or not it exists.
 pub(crate) fn typed_target(text: &str, current: Option<&Path>, home: &Path) -> Option<PathBuf> {
     split_typed_path(text.trim())?;
     let scope = scope(text, current, home).ok()??;
     Some(normalize(&scope.base.join(scope.query)))
 }
 
-/// How **Tab** writes a picked folder back into the prompt: below the open
-/// folder as `./`, below home as `~/`, otherwise absolute. The trailing `/`
-/// makes the folder the search base, so it is offered alone and more typing
-/// searches inside it.
+/// The trailing slash makes the selected folder the next search root.
 pub(crate) fn typed_path(folder: &Path, current: Option<&Path>, home: &Path) -> String {
     let below = |base: &Path, prefix: &str| {
         let relative = folder.strip_prefix(base).ok()?;
@@ -104,14 +89,11 @@ pub(crate) fn typed_path(folder: &Path, current: Option<&Path>, home: &Path) -> 
         })
 }
 
-/// Schemes the location bar opens, which name a location even without `//`.
 const LOCATION_SCHEMES: [&str; 10] = [
     "smb", "sftp", "ftp", "ftps", "dav", "davs", "trash", "network", "recent", "file",
 ];
 
-/// `scheme://`, a scheme the location bar opens (`sftp:`), `//host`,
-/// `\\host`, or `user@host:`. Such text is never searched or probed; other
-/// text with a colon, such as `10:30`, is an ordinary query.
+// A colon alone is legal in a filename; don't treat every such name as a URI.
 pub(crate) fn looks_like_uri(text: &str) -> bool {
     if text.starts_with("//") || text.starts_with('\\') {
         return true;
@@ -141,8 +123,6 @@ fn is_scheme(text: &str) -> bool {
         })
 }
 
-/// Splits text that starts as a path into the folder part, through its last
-/// `/`, and the query after it.
 fn split_typed_path(text: &str) -> Option<(&str, &str)> {
     if text == "~" || text == ".." {
         return Some((text, ""));
@@ -160,7 +140,7 @@ fn split_typed_path(text: &str) -> Option<(&str, &str)> {
     }
 }
 
-/// Resolves `.` and `..` the way a shell's `cd` does, without following links.
+// Preserve logical paths rather than following symlinks.
 fn normalize(path: &Path) -> PathBuf {
     let mut normal = PathBuf::new();
     for component in path.components() {
@@ -175,8 +155,6 @@ fn normalize(path: &Path) -> PathBuf {
     normal
 }
 
-/// Hidden folders are offered when the listing shows them or a term asks for
-/// one by its leading dot.
 fn wants_hidden(query: &str) -> bool {
     query.split_whitespace().any(|term| {
         term.trim_start_matches(['!', '^', '\'']).starts_with('.') || term.contains("/.")
@@ -188,13 +166,11 @@ pub(crate) struct Request<'a> {
     pub(crate) current: Option<&'a Path>,
     pub(crate) home: &'a Path,
     pub(crate) show_hidden: bool,
-    /// Whether URIs are accepted as typed rather than refused; either way
-    /// they list nothing.
+    /// Go accepts URI input without searching it; transfer prompts reject it.
     pub(crate) uris: bool,
     pub(crate) refused: Refused,
 }
 
-/// What the prompt should list, or why it lists nothing.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Shown {
     pub(crate) paths: Vec<PathBuf>,
@@ -221,11 +197,10 @@ pub(crate) struct FolderPicker {
 }
 
 impl FolderPicker {
-    /// Lists folders for `request`. Searches report to `show` as results
-    /// arrive; everything else reports before this returns.
     pub(crate) fn update(&self, request: Request<'_>, show: impl Fn(Shown) + 'static) {
         self.deferred.take();
         self.stop_delay();
+        show(Shown::default());
         if request.uris && looks_like_uri(request.text.trim()) {
             return self.settle(&show, Shown::default());
         }
@@ -235,7 +210,6 @@ impl FolderPicker {
             Err(reason) => return self.settle(&show, Shown::hint(reason)),
         };
         let refused = request.refused;
-        // The typed folder leads, so Enter picks it however the rest ranks.
         let typed =
             (scope.query.is_empty() && !refused.refuses(&scope.base)).then(|| scope.base.clone());
         if let Some(typed) = &typed {
@@ -266,8 +240,7 @@ impl FolderPicker {
                 (true, false) => Some(NO_MATCHES),
             };
             show(Shown { paths, hint });
-            // Enter waits for the whole tree, so a better match found late
-            // still wins.
+            // Early Enter must not commit to a partial ranking.
             if !batch.indexing {
                 pending.set(false);
                 let action = deferred.take();
@@ -290,14 +263,11 @@ impl FolderPicker {
         self.delayed.replace(Some(source));
     }
 
-    /// Whether the listed folders are from earlier text than the prompt's,
-    /// or the search for its text is still looking.
     pub(crate) fn is_pending(&self) -> bool {
         self.pending.get()
     }
 
-    /// Runs `action` now, or once the search for the current text finishes.
-    /// Editing the text or cancelling drops it.
+    /// Editing or cancelling invalidates the deferred submission.
     pub(crate) fn when_settled(&self, action: impl FnOnce() + 'static) {
         if self.pending.get() {
             self.deferred.replace(Some(Box::new(action)));

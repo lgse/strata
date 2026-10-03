@@ -41,8 +41,6 @@ pub(super) enum ResultKind {
     Icons { thumbnail_size: Rc<Cell<i32>> },
 }
 
-/// What result names highlight: find's matches while find shows them,
-/// otherwise the characters each **s** search hit matched.
 #[derive(Default)]
 pub(super) struct NameHighlights {
     pub(super) find: Option<String>,

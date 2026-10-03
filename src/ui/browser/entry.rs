@@ -14,7 +14,6 @@ use std::path::Path;
 use std::rc::Rc;
 
 thread_local! {
-    /// The 10xer **f** matcher for the last filter query, reused across rows.
     static FILTER_TERMS: RefCell<Option<(String, PathMatcher)>> = const { RefCell::new(None) };
 }
 
@@ -169,8 +168,6 @@ pub(super) fn entry_matches(value: &str, show_hidden: bool, query: &str) -> bool
         })
 }
 
-/// Runs `apply` with the 10xer **f** matcher for the folded `query`: the
-/// **s** search's fuzzy terms, matched against a name alone.
 pub(super) fn with_filter_terms<R>(query: &str, apply: impl FnOnce(&mut PathMatcher) -> R) -> R {
     FILTER_TERMS.with_borrow_mut(|cached| {
         if cached.as_ref().is_none_or(|(cached, _)| cached != query) {

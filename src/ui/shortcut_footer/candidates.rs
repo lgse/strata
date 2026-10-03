@@ -10,8 +10,6 @@ use gtk::{glib, prelude::*};
 
 type ActivateListener = Rc<dyn Fn(PathBuf)>;
 
-/// What **Enter** and, where it applies, **Tab** do to the chosen candidate,
-/// as the strip under the list names them.
 #[derive(Clone, Copy, Debug, Default)]
 pub(in crate::ui) struct CandidateKeys {
     pub(in crate::ui) enter: &'static str,
@@ -25,8 +23,6 @@ pub(super) struct Candidates {
     keys: gtk::Label,
     paths: RefCell<Vec<PathBuf>>,
     chosen: Cell<usize>,
-    /// Whether **↑** / **↓** picked the chosen row since the list was for
-    /// new text.
     stepped: Cell<bool>,
     activated: RefCell<Option<ActivateListener>>,
 }
@@ -107,9 +103,7 @@ impl Candidates {
         self.activated.replace(Some(Rc::new(listener)));
     }
 
-    /// Lists `paths`, naming what `keys` do to the chosen one. A row the
-    /// user stepped to stays chosen while it is still listed, so results that
-    /// arrive later never move the choice.
+    // Preserve explicit selection across batches, but let the default follow ranking.
     pub(super) fn set(&self, paths: Vec<PathBuf>, keys: CandidateKeys) {
         let tab = keys.tab.map_or_else(String::new, |tab| {
             format!("<b>Tab</b> {}   ", glib::markup_escape_text(tab))
@@ -158,7 +152,6 @@ impl Candidates {
         self.set(Vec::new(), CandidateKeys::default());
     }
 
-    /// The next list is for new text, so it starts from its first row.
     pub(super) fn forget_step(&self) {
         self.stepped.set(false);
     }

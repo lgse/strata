@@ -274,12 +274,9 @@ pub(super) struct ColumnView {
     hits: Rc<RefCell<ColumnHits>>,
 }
 
-/// How a column shows the hits its filter field found.
 #[derive(Default)]
 pub(super) struct ColumnHits {
-    /// The characters each fuzzy hit's name matched.
     pub(super) ranges: HitRanges,
-    /// Hits come from subfolders, so rows show where each one is.
     pub(super) recursive: bool,
 }
 

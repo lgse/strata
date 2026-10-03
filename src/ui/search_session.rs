@@ -17,19 +17,12 @@ use std::{
     time::Duration,
 };
 
-/// What a listing's filter field matches.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::ui) enum SearchScope {
-    /// Names in the listing's folder.
     Folder,
-    /// Names in the folder and its subfolders.
     Subfolders,
-    /// The 10xer **f** filter: fuzzy terms against names in the folder.
     FolderTerms,
-    /// The 10xer **s** search: fuzzy terms across paths below the folder.
     Paths,
-    /// The 10xer destination picker: fuzzy terms across the paths of folders
-    /// below the folder.
     Folders,
 }
 
@@ -38,7 +31,6 @@ impl SearchScope {
         matches!(self, Self::Subfolders | Self::Paths | Self::Folders)
     }
 
-    /// Whether hits match fzf-style terms and highlight what each matched.
     pub(in crate::ui) fn fuzzy(self) -> bool {
         matches!(self, Self::FolderTerms | Self::Paths | Self::Folders)
     }
@@ -49,7 +41,6 @@ pub(super) struct SearchInput {
     pub(super) root: PathBuf,
     pub(super) show_hidden: bool,
     pub(super) scope: SearchScope,
-    /// Folders a [`SearchScope::Folders`] search never lists.
     pub(super) refused: RefusedFolders,
 }
 
@@ -93,7 +84,6 @@ impl SearchSession {
         self.0.worker.borrow().is_some()
     }
 
-    /// Whether a worker for `input` is running, so a new query starts at once.
     pub(super) fn searches(&self, input: &SearchInput) -> bool {
         self.0
             .worker
@@ -152,8 +142,7 @@ impl SearchSession {
         }
     }
 
-    /// Searches `input` for `query`. An empty query ends the search, except
-    /// that [`SearchScope::Folders`] then lists every folder.
+    /// Only folder pickers accept empty queries; other empty queries cancel.
     pub(super) fn update(&self, input: SearchInput, query: &str, restart: bool, deliver: Deliver) {
         if query.trim().is_empty() && input.scope != SearchScope::Folders {
             self.cancel();

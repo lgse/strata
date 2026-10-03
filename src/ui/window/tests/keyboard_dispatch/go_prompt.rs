@@ -344,7 +344,22 @@ fn tenxer_go_clears_typed_text_on_every_dismissal() {
                 "undo cannot bring the text back"
             );
 
-            type_text(&fixture, secret);
+            let target = seed_folders(&fixture, &["pending"]).join("pending");
+            let text = target.to_string_lossy();
+            fixture.shortcuts.prompt().set_text(&text);
+            assert!(fixture.press(Key::Return, ModifierType::empty()));
+            assert!(fixture.press(Key::Escape, ModifierType::empty()));
+            fixture.shortcuts.open_prompt(Prompt::Go);
+            fixture.shortcuts.prompt().set_text(&text);
+            pump(300);
+            assert_eq!(
+                browser.active_location(),
+                origin,
+                "a cancelled probe stays cancelled when the same text is reopened"
+            );
+            assert_eq!(fixture.shortcuts.open_prompt_kind(), Some(Prompt::Go));
+
+            fixture.shortcuts.prompt().set_text(secret);
             move_to_named(&fixture, &browser, "a.txt");
             assert!(press_file_row(&fixture.view.widget(), "b.txt"));
             wait_until(|| fixture.shortcuts.open_prompt_kind().is_none());
@@ -498,9 +513,11 @@ fn tenxer_go_lists_matching_folders_and_tab_fills_the_chosen_one() {
                 "alp",
                 &[root.join("alpha"), root.join("alpha/inner")],
             );
+            type_text(&fixture, "ha$");
+            assert!(fixture.press(Key::Down, ModifierType::empty()));
             assert!(fixture.press(Key::Return, ModifierType::empty()));
-            assert_eq!(fixture.shortcuts.open_prompt_kind(), None);
             wait_until(|| browser.active_location() == Some(Location::local(root.join("alpha"))));
+            assert_eq!(fixture.shortcuts.open_prompt_kind(), None);
         },
     );
 }

@@ -20,8 +20,6 @@ fn seed_report_names(fixture: &KeyboardFixture) {
     wait_until(|| entry_count(&browser) == 7);
 }
 
-/// Bound name labels (Columns and List) or inscriptions (Icons) that carry
-/// highlight attributes, including views not currently shown.
 fn highlighted_labels(widget: &gtk::Widget) -> Vec<(String, gtk::pango::AttrList)> {
     fn collect(widget: &gtk::Widget, labels: &mut Vec<(String, gtk::pango::AttrList)>) {
         if let Some(label) = widget.downcast_ref::<gtk::Label>()
@@ -55,7 +53,6 @@ pub(super) fn highlighted_names(widget: &gtk::Widget) -> Vec<String> {
     names
 }
 
-/// Every color the highlighted names are drawn with.
 fn highlight_colors(widget: &gtk::Widget) -> Vec<String> {
     highlighted_labels(widget)
         .into_iter()

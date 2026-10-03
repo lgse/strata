@@ -223,16 +223,17 @@ impl Dispatcher {
         }
     }
 
-    /// Acts at once on a folder stepped to with **↑** / **↓**, or on a typed
-    /// path that exists. Otherwise Enter waits for the search to finish, so
-    /// the best match wins rather than the first found.
     fn submit_folder(&self, kind: Prompt, text: String) {
+        let submitted = self.destination_revision.get().wrapping_add(1);
+        self.destination_revision.set(submitted);
         let prompt = FolderPrompt {
             view: self.view.clone(),
             shortcuts: self.shortcuts.clone(),
             picker: self.destinations.clone(),
             targets: self.destination_targets.clone(),
             revision: self.destination_revision.clone(),
+            submitted,
+            navigation: self.view.browser().navigation_generation(),
         };
         if self.shortcuts.candidate_stepped() {
             return prompt.submit(kind, &text, None);
@@ -246,7 +247,6 @@ impl Dispatcher {
         glib::MainContext::default().spawn_local(async move {
             let probed = target.clone();
             let exists = gtk::gio::spawn_blocking(move || probed.exists()).await;
-            // Go shows a file in its folder; a transfer reports it is no folder.
             if exists.unwrap_or(false) {
                 prompt.submit(kind, &text, Some(target));
             } else {
@@ -301,7 +301,6 @@ impl Dispatcher {
     }
 }
 
-/// Closes the open prompt and gives the listing keyboard focus back.
 pub(super) fn return_to_listing(shortcuts: &ShortcutFooter, view: &BrowserView, browser: &Browser) {
     shortcuts.dismiss_prompt();
     if !view.focus_visible_results() {
@@ -335,18 +334,28 @@ pub(super) fn show_history_candidates(
     show_candidate_hint(shortcuts);
 }
 
-/// What a **g Space**, **M**, **C**, or **; E** prompt needs to act on the
-/// chosen folder after the key that asked for it.
 struct FolderPrompt {
     view: BrowserView,
     shortcuts: ShortcutFooter,
     picker: FolderPicker,
     targets: Rc<RefCell<Vec<FileEntry>>>,
     revision: Rc<Cell<u64>>,
+    submitted: u64,
+    navigation: u64,
 }
 
 impl FolderPrompt {
+    fn is_current(&self, kind: Prompt, text: &str) -> bool {
+        self.revision.get() == self.submitted
+            && self.view.browser().navigation_generation() == self.navigation
+            && self.shortcuts.open_prompt_kind() == Some(kind)
+            && self.shortcuts.prompt_text() == text
+    }
+
     fn submit_when_settled(self, kind: Prompt, text: String) {
+        if !self.is_current(kind, &text) {
+            return;
+        }
         if self.picker.is_pending() {
             self.shortcuts
                 .prompt_sink(kind)
@@ -356,10 +365,8 @@ impl FolderPrompt {
         picker.when_settled(move || self.submit(kind, &text, None));
     }
 
-    /// Acts on `typed`, an existing path the text names, or else on the
-    /// chosen folder, unless the prompt changed meanwhile.
     fn submit(&self, kind: Prompt, text: &str, typed: Option<PathBuf>) {
-        if self.shortcuts.open_prompt_kind() != Some(kind) || self.shortcuts.prompt_text() != text {
+        if !self.is_current(kind, text) {
             return;
         }
         if kind == Prompt::Go {
@@ -369,9 +376,6 @@ impl FolderPrompt {
         }
     }
 
-    /// Opens the chosen folder. With none listed, or when the text names an
-    /// existing path, the text goes to navigation as **Ctrl+L** would take
-    /// it, so URIs and files still open.
     fn open(&self, text: &str, typed: bool) {
         let chosen = (!typed)
             .then(|| self.shortcuts.chosen_candidate())
@@ -417,8 +421,6 @@ impl FolderPrompt {
     }
 }
 
-/// Lists the folders a **g Space**, **M**, **C**, or **; E** prompt's text
-/// picks out.
 pub(super) fn show_folder_candidates(
     shortcuts: &ShortcutFooter,
     picker: &FolderPicker,
@@ -468,8 +470,6 @@ fn destination_action(kind: Prompt) -> &'static str {
     }
 }
 
-/// Folders a move or copy would refuse: the folders being sent, and for a
-/// move the folder the targets already share.
 fn refused_destinations(kind: Prompt, targets: &[FileEntry]) -> Refused {
     if !matches!(kind, Prompt::MoveTo | Prompt::CopyTo) {
         return Refused::default();
@@ -511,8 +511,6 @@ fn show_candidate_hint(shortcuts: &ShortcutFooter) {
     shortcuts.prompt_sink(kind).show(None, hint.as_deref());
 }
 
-/// Sends the prompt's fixed targets into `destination` once it is confirmed
-/// to be a folder, unless the prompt changed meanwhile.
 pub(super) fn send_to_destination(
     view: &BrowserView,
     shortcuts: &ShortcutFooter,

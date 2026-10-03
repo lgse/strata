@@ -190,7 +190,6 @@ fn bind_footer_filter(dispatcher: &Dispatcher) {
         .connect_search_selection_changed(Rc::new(move || shortcuts.schedule_filter_refresh()));
 }
 
-/// Edits drop a hint about earlier text and any pending destination check.
 fn bind_prompt_hints(dispatcher: &Dispatcher) {
     use crate::ui::tenxer_mode::Prompt;
     let revision = dispatcher.destination_revision.clone();
@@ -217,7 +216,6 @@ fn bind_prompt_hints(dispatcher: &Dispatcher) {
     });
 }
 
-/// Folder candidates for the jump, go, and destination prompts.
 fn bind_candidate_prompts(dispatcher: &Dispatcher) {
     let shortcuts = dispatcher.shortcuts.clone();
     let history = dispatcher.history.clone();
