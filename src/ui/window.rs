@@ -37,6 +37,7 @@ use super::{
 
 mod bookmarks;
 mod composition;
+mod device_labels;
 mod device_release;
 mod devices;
 mod drive_dialogs;
@@ -1630,6 +1631,9 @@ impl SidebarState {
         }
         let ids = device_release::ids_for_mount(&mount);
         let row = sidebar_button(crate::assets::icons::HARD_DRIVE, name);
+        if let Some(id) = drive_dialogs::PropertiesTarget::Mount(mount.clone()).label_id() {
+            device_labels::bind_row_label(&row, &self.preference_manager, &id, name);
+        }
         crate::ui::accessibility::set_description(&row, Some(&location.display_path()));
         if device_release::is_pending(&ids) {
             self.widget
@@ -2076,6 +2080,9 @@ impl SidebarState {
     fn append_volume(self: &Rc<Self>, volume: gio::Volume) -> Option<device_release::DeviceIds> {
         let name = volume.name().to_string();
         let row = sidebar_button(crate::assets::icons::HARD_DRIVE, &name);
+        if let Some(id) = drive_dialogs::PropertiesTarget::Volume(volume.clone()).label_id() {
+            device_labels::bind_row_label(&row, &self.preference_manager, &id, &name);
+        }
         crate::ui::accessibility::set_description(&row, Some(&name));
         let mounted_location = volume
             .get_mount()
@@ -3795,41 +3802,41 @@ fn attach_device_actions_menu(
             on_mount();
         });
     }
-    if drive_ops::is_eligible(volume.as_ref()) {
-        if let Some(volume) = &volume {
-            let format_volume = volume.clone();
-            let option = sidebar_context_option(crate::assets::icons::SHREDDER, "Format…", true);
-            menu.append(&option);
-            let format_popover = popover.downgrade();
-            let format_view = view.clone();
-            let parent = row.clone().upcast::<gtk::Widget>();
-            option.connect_clicked(move |_| {
-                drive_dialogs::open_from_sidebar(
-                    &format_view,
-                    format_popover.upgrade().as_ref(),
-                    || {
-                        drive_dialogs::show_format_dialog(&parent, &format_volume);
-                    },
-                );
+    if drive_ops::is_eligible(volume.as_ref())
+        && let Some(volume) = &volume
+    {
+        let format_volume = volume.clone();
+        let option = sidebar_context_option(crate::assets::icons::SHREDDER, "Format…", true);
+        menu.append(&option);
+        let format_popover = popover.downgrade();
+        let format_view = view.clone();
+        let parent = row.clone().upcast::<gtk::Widget>();
+        option.connect_clicked(move |_| {
+            drive_dialogs::open_from_sidebar(
+                &format_view,
+                format_popover.upgrade().as_ref(),
+                || {
+                    drive_dialogs::show_format_dialog(&parent, &format_volume);
+                },
+            );
+        });
+    }
+    if let Some(target) = properties
+        .as_ref()
+        .filter(|target| target.label_id().is_some())
+        .cloned()
+    {
+        let option =
+            sidebar_context_option(crate::assets::icons::PENCIL, "Set Strata label…", false);
+        menu.append(&option);
+        let label_popover = popover.downgrade();
+        let label_view = view.clone();
+        let parent = row.clone().upcast::<gtk::Widget>();
+        option.connect_clicked(move |_| {
+            drive_dialogs::open_from_sidebar(&label_view, label_popover.upgrade().as_ref(), || {
+                drive_dialogs::show_label_dialog(&parent, &target);
             });
-        }
-        if let Some(volume) = &volume {
-            let rename_volume = volume.clone();
-            let option = sidebar_context_option(crate::assets::icons::PENCIL, "Rename…", false);
-            menu.append(&option);
-            let rename_popover = popover.downgrade();
-            let rename_view = view.clone();
-            let parent = row.clone().upcast::<gtk::Widget>();
-            option.connect_clicked(move |_| {
-                drive_dialogs::open_from_sidebar(
-                    &rename_view,
-                    rename_popover.upgrade().as_ref(),
-                    || {
-                        drive_dialogs::show_rename_dialog(&parent, &rename_volume);
-                    },
-                );
-            });
-        }
+        });
     }
     if let Some(properties_target) = properties {
         let on_release = on_release.clone();

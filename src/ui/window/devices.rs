@@ -91,6 +91,17 @@ fn mount_path(encoded: &[u8]) -> Option<PathBuf> {
     Some(std::ffi::OsString::from_vec(decoded).into())
 }
 
+pub(super) fn label_identity(uuid: Option<&str>, root_uri: Option<&str>) -> Option<String> {
+    [("volume", uuid), ("root", root_uri)]
+        .into_iter()
+        .find_map(|(namespace, value)| {
+            value
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| format!("{namespace}:{value}"))
+        })
+}
+
 pub(super) fn device_identity(
     unix_device: Option<&str>,
     uuid: Option<&str>,

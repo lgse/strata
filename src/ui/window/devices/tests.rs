@@ -385,6 +385,23 @@ fn a_non_system_drive_containing_home_is_still_included() {
 }
 
 #[test]
+fn strata_label_identity_survives_mount_changes_without_using_recycled_device_paths() {
+    assert_eq!(
+        label_identity(Some("fixture-uuid"), Some("file:///media/old")),
+        label_identity(Some("fixture-uuid"), Some("file:///media/new"))
+    );
+    assert_ne!(
+        label_identity(Some("fixture-uuid"), None),
+        label_identity(Some("other-uuid"), None)
+    );
+    assert_eq!(
+        label_identity(None, Some("smb://server/share")),
+        Some("root:smb://server/share".to_owned())
+    );
+    assert_eq!(label_identity(Some(""), None), None);
+}
+
+#[test]
 fn properties_resolve_the_innermost_block_mount_including_btrfs_and_escaped_paths() {
     let table = br"25 1 8:1 / / rw - ext4 /dev/sda1 rw
 26 25 0:40 /@home /home rw - btrfs /dev/nvme0n1p2 rw

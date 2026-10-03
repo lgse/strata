@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-//! Shared volume/mount properties and removable-drive Format/Rename dialogs.
+//! Storage properties, Strata-only display labels, and removable-only formatting.
 
 use std::{cell::Cell, future::Future, rc::Rc};
 
@@ -66,6 +66,15 @@ impl PropertiesTarget {
         }
     }
 
+    pub(super) fn label_id(&self) -> Option<String> {
+        let uuid = self
+            .volume()
+            .and_then(|volume| volume.uuid())
+            .or_else(|| self.mount().and_then(|mount| mount.uuid()));
+        let uri = self.mount().map(|mount| mount.root().uri());
+        super::devices::label_identity(uuid.as_deref(), uri.as_deref())
+    }
+
     fn mount(&self) -> Option<gio::Mount> {
         match self {
             Self::Volume(volume) => volume.get_mount(),
@@ -83,7 +92,7 @@ impl PropertiesTarget {
 
 #[derive(Clone, Copy)]
 enum PropertyAction {
-    Rename,
+    Label,
     Eject,
     Format,
 }
@@ -92,12 +101,18 @@ fn property_action_control(
     action: PropertyAction,
     editable: bool,
     can_release: bool,
+    can_label: bool,
 ) -> Option<gtk::Button> {
-    if !editable && (!matches!(action, PropertyAction::Eject) || !can_release) {
+    let available = match action {
+        PropertyAction::Label => can_label,
+        PropertyAction::Format => editable,
+        PropertyAction::Eject => editable || can_release,
+    };
+    if !available {
         return None;
     }
     let (label, icon, tone) = match action {
-        PropertyAction::Rename => ("Rename", assets::icons::PENCIL, ModalTone::Accent),
+        PropertyAction::Label => ("Set label", assets::icons::PENCIL, ModalTone::Accent),
         PropertyAction::Eject => ("Eject", assets::icons::EJECT, ModalTone::Accent),
         PropertyAction::Format => ("Format", assets::icons::SHREDDER, ModalTone::Danger),
     };
@@ -268,38 +283,26 @@ fn wire_entry_submission(entry: &gtk::Entry, confirm: &gtk::Button) {
     });
 }
 
-fn rename_validation_error(
-    label: &str,
-    current_name: &str,
-    filesystem: FilesystemType,
-) -> Option<String> {
-    let label = label.trim();
-    if label.is_empty() {
-        Some("The label cannot be empty.".to_owned())
-    } else if label == current_name.trim() {
-        Some("Enter a label different from the current one.".to_owned())
-    } else if label.chars().count() > filesystem.max_label_len() {
-        Some(format!(
-            "Labels on this volume hold at most {} characters.",
-            filesystem.max_label_len()
-        ))
+fn label_validation_error(label: &str) -> Option<String> {
+    if label.chars().count() > 255 {
+        Some("Strata labels hold at most 255 characters.".to_owned())
+    } else if label.chars().any(char::is_control) {
+        Some("Labels cannot contain control characters.".to_owned())
     } else {
-        filesystem.label_character_error(label)
+        None
     }
 }
 
-fn refresh_rename_validity(
+fn refresh_label_validity(
     entry: &gtk::Entry,
-    current_name: &str,
-    filesystem: FilesystemType,
-    tools_available: bool,
+    current_label: &str,
     confirm: &gtk::Button,
     error: &gtk::Label,
 ) {
     let text = entry.text();
-    let message = rename_validation_error(&text, current_name, filesystem);
-    confirm.set_sensitive(tools_available && message.is_none());
-    let invalid = message.is_some() && text != current_name;
+    let message = label_validation_error(&text);
+    confirm.set_sensitive(message.is_none() && text.trim() != current_label.trim());
+    let invalid = message.is_some();
     if invalid {
         entry.add_css_class("error");
         show_inline_error(error, message.as_deref().expect("invalid label"));
@@ -392,9 +395,23 @@ pub(super) fn show_drive_properties(
         grid.attach(&label, 0, row, 1, 1);
         grid.attach(&value, 1, row, 1, 1);
         row += 1;
+        value
     };
 
-    add_row("Name", &name);
+    add_row("System name", &name);
+    if let Some(id) = target.label_id() {
+        let label = add_row("Strata label", "Not set");
+        super::super::preferences::PreferenceManager::shared().bind_preference(
+            &label,
+            move |manager| manager.device_label(&id),
+            |widget, value| {
+                widget
+                    .downcast_ref::<gtk::Label>()
+                    .expect("Strata label value")
+                    .set_text(value.as_deref().unwrap_or("Not set"))
+            },
+        );
+    }
     let block_device = volume
         .as_ref()
         .and_then(drive_ops::block_device_for_volume)
@@ -469,7 +486,9 @@ pub(super) fn show_drive_properties(
                     add_row("Capacity", &human_size(total));
                     add_row("Used", "Unavailable");
                 }
-                (None, _) => add_row("Capacity", "Unavailable"),
+                (None, _) => {
+                    add_row("Capacity", "Unavailable");
+                }
             }
         }
         None => {
@@ -507,20 +526,24 @@ pub(super) fn show_drive_properties(
     wire_modal_close(&shell);
     shell.layout.close.grab_focus();
     let editable = drive_ops::is_eligible(volume.as_ref());
+    let can_label = target.label_id().is_some();
     shell
         .layout
         .actions
-        .set_visible(editable || on_release.is_some());
+        .set_visible(editable || can_label || on_release.is_some());
     for action in [
-        PropertyAction::Rename,
+        PropertyAction::Label,
         PropertyAction::Eject,
         PropertyAction::Format,
     ] {
-        let Some(button) = property_action_control(action, editable, on_release.is_some()) else {
+        let Some(button) =
+            property_action_control(action, editable, on_release.is_some(), can_label)
+        else {
             continue;
         };
         let parent = parent.clone();
         let volume = volume.clone();
+        let target = target.clone();
         let layer = shell.layer.clone();
         let overlay = shell.overlay.clone();
         let root = shell.blurred_root.clone();
@@ -528,11 +551,7 @@ pub(super) fn show_drive_properties(
         button.connect_clicked(move |_| {
             dismiss_modal_layer(&layer, &overlay, root.as_ref());
             match action {
-                PropertyAction::Rename => {
-                    if let Some(volume) = &volume {
-                        show_rename_dialog(&parent, volume);
-                    }
-                }
+                PropertyAction::Label => show_label_dialog(&parent, &target),
                 PropertyAction::Format => {
                     if let Some(volume) = &volume {
                         show_format_dialog(&parent, volume);
@@ -546,146 +565,117 @@ pub(super) fn show_drive_properties(
             }
         });
         shell.layout.actions.append(&button);
-        if matches!(action, PropertyAction::Rename) || !editable {
+        if matches!(action, PropertyAction::Label) || !editable {
             button.grab_focus();
         }
     }
 }
 
-pub(super) fn show_rename_dialog(parent: &gtk::Widget, volume: &gio::Volume) {
-    let detected_fs = drive_ops::block_device_for_volume(volume)
-        .map(|device| drive_ops::filesystem_of_device(&device));
-    let fs = detected_fs.unwrap_or(FilesystemType::Fat32);
-    if !fs.label_tool_available() {
-        show_missing_tools(
-            parent,
-            "Renaming this volume requires an additional filesystem label tool.",
-            &[required_drive_tool(fs, fs.label_cmd())],
-        );
+pub(super) fn show_label_dialog(parent: &gtk::Widget, target: &PropertiesTarget) {
+    let Some(id) = target.label_id() else {
         return;
-    }
-    let name = volume.name().to_string();
-    let volume = volume.clone();
+    };
+    show_label_dialog_for_identity(
+        parent,
+        &id,
+        &target.name(),
+        super::super::preferences::PreferenceManager::shared(),
+    );
+}
+
+fn show_label_dialog_for_identity(
+    parent: &gtk::Widget,
+    id: &str,
+    system_name: &str,
+    preferences: Rc<super::super::preferences::PreferenceManager>,
+) {
     let Some(shell) = modal_shell(
         parent,
         assets::icons::PENCIL,
-        "Rename Volume",
-        &name,
-        "Rename",
+        "Set Strata Label",
+        system_name,
+        "Save label",
         false,
     ) else {
         return;
     };
-
-    shell.layout.content.set_width_request(480);
-    shell.layout.subtitle.set_max_width_chars(32);
-    shell
-        .layout
-        .subtitle
-        .set_ellipsize(gtk::pango::EllipsizeMode::End);
-
-    let max_len = detected_fs.map(|fs| fs.max_label_len()).unwrap_or(11);
-    let filesystem = gtk::Label::new(Some(detected_fs.map(|fs| fs.label()).unwrap_or("Unknown")));
-    filesystem.set_xalign(0.0);
-    shell
-        .layout
-        .body
-        .append(&field_block("Filesystem", &filesystem));
-
-    let field = FormTextField::with_character_limit(max_len as i32);
+    let current_label = preferences.device_label(id).unwrap_or_default();
+    let field = FormTextField::with_character_limit(255);
     let entry = field.entry;
-    entry.set_placeholder_text(Some("Volume label"));
-    entry.set_max_width_chars(32);
-    entry.set_text(&name);
+    entry.set_placeholder_text(Some(system_name));
+    entry.set_text(&current_label);
     entry.select_region(0, -1);
     shell
         .layout
         .body
-        .append(&field_block("Label", &field.widget));
-
-    // The label tools need exclusive access, so a mounted volume is
-    // unmounted first. Only say so when that actually applies.
-    if volume.get_mount().is_some() {
-        let hint = gtk::Label::new(Some(
-            "This volume is currently mounted. It will be unmounted to apply the new label; click it in the sidebar afterwards to mount it again.",
-        ));
-        hint.add_css_class("dim-label");
-        hint.set_xalign(0.0);
-        hint.set_max_width_chars(40);
-        hint.set_wrap(true);
-        hint.set_wrap_mode(gtk::pango::WrapMode::WordChar);
-        shell.layout.body.append(&hint);
-    }
-
+        .append(&field_block("Label shown in Strata", &field.widget));
+    let hint = gtk::Label::new(Some(
+        "Only changes the display label in Strata’s sidebar and Properties. The filesystem label, mount configuration, and other applications are unchanged. Leave blank to restore the normal device name.",
+    ));
+    hint.set_xalign(0.0);
+    hint.set_wrap(true);
+    hint.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    shell.layout.body.append(&hint);
     let error = inline_error();
-    error.set_max_width_chars(26);
-    error.set_hexpand(true);
     shell.layout.actions.prepend(&error);
-
     let confirm = shell.layout.confirm.clone();
-    refresh_rename_validity(
-        &entry,
-        &name,
-        fs,
-        fs.label_tool_available(),
-        &confirm,
-        &error,
-    );
+    {
+        let id = id.to_owned();
+        let confirm = confirm.downgrade();
+        let error = error.downgrade();
+        preferences.bind_preference(
+            &entry,
+            move |manager| manager.device_label(&id),
+            move |widget, label| {
+                if let (Some(confirm), Some(error)) = (confirm.upgrade(), error.upgrade()) {
+                    refresh_label_validity(
+                        widget
+                            .downcast_ref::<gtk::Entry>()
+                            .expect("Strata label entry"),
+                        label.as_deref().unwrap_or(""),
+                        &confirm,
+                        &error,
+                    );
+                }
+            },
+        );
+    }
     {
         let confirm = confirm.downgrade();
-        let current_name = name.clone();
         let error = error.downgrade();
+        let id = id.to_owned();
+        let preferences = Rc::downgrade(&preferences);
         entry.connect_changed(move |entry| {
-            let Some(confirm) = confirm.upgrade() else {
-                return;
-            };
-            let Some(error) = error.upgrade() else {
-                return;
-            };
-            refresh_rename_validity(
-                entry,
-                &current_name,
-                fs,
-                fs.label_tool_available(),
-                &confirm,
-                &error,
-            );
+            if let (Some(confirm), Some(error), Some(preferences)) =
+                (confirm.upgrade(), error.upgrade(), preferences.upgrade())
+            {
+                refresh_label_validity(
+                    entry,
+                    preferences.device_label(&id).as_deref().unwrap_or(""),
+                    &confirm,
+                    &error,
+                );
+            }
         });
     }
-
     wire_entry_submission(&entry, &confirm);
-    let shell_layer = shell.layer.clone();
-    let shell_overlay = shell.overlay.clone();
-    let shell_root = shell.blurred_root.clone();
-    let parent = parent.clone();
+    let layer = shell.layer.clone();
+    let overlay = shell.overlay.clone();
+    let root = shell.blurred_root.clone();
     let fired = Rc::new(Cell::new(false));
     let submitted_entry = entry.clone();
+    let id = id.to_owned();
     shell.layout.confirm.connect_clicked(move |button| {
         if fired.get() || !button.is_sensitive() {
             return;
         }
-        let new_label = submitted_entry.text().to_string();
-        if rename_validation_error(&new_label, &name, fs).is_some() {
-            refresh_rename_validity(
-                &submitted_entry,
-                &name,
-                fs,
-                fs.label_tool_available(),
-                button,
-                &error,
-            );
+        let new_label = submitted_entry.text();
+        if label_validation_error(&new_label).is_some() {
             return;
         }
         fired.set(true);
-        dismiss_modal_layer(&shell_layer, &shell_overlay, shell_root.as_ref());
-        let display = name.clone();
-        let task_parent = parent.clone();
-        let task_volume = volume.clone();
-        drive_ops::spawn_drive_task(task_parent.clone(), display, move || {
-            let volume = task_volume.clone();
-            let new_label = new_label.clone();
-            async move { drive_ops::rename_volume(task_parent.clone(), volume, new_label).await }
-        });
+        dismiss_modal_layer(&layer, &overlay, root.as_ref());
+        preferences.set_device_label(&id, &new_label);
     });
     wire_modal_close_except_confirm(&shell);
     entry.grab_focus();
@@ -795,7 +785,7 @@ pub(super) fn show_format_dialog(parent: &gtk::Widget, volume: &gio::Volume) {
     );
     let label_entry = label_field.entry;
     label_entry.set_placeholder_text(Some("Volume label (optional)"));
-    step1.append(&field_block("Label", &label_field.widget));
+    step1.append(&field_block("Filesystem label", &label_field.widget));
 
     let quick_check = form_check_button("Quick format");
     quick_check.set_active(true);

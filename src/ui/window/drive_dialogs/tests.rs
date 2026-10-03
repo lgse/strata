@@ -260,11 +260,11 @@ fn capacity_summary_reports_used_bytes_and_fraction() {
 }
 
 #[test]
-fn enter_submits_volume_rename_through_shared_validation() {
+fn enter_submits_strata_label_through_shared_validation() {
     crate::test_support::gtk_test(
-        "ui::window::drive_dialogs::tests::enter_submits_volume_rename_through_shared_validation",
+        "ui::window::drive_dialogs::tests::enter_submits_strata_label_through_shared_validation",
         || {
-            let field = FormTextField::with_character_limit(11);
+            let field = FormTextField::with_character_limit(255);
             let confirm = gtk::Button::new();
             let error = inline_error();
             let submitted = Rc::new(Cell::new(0));
@@ -275,14 +275,7 @@ fn enter_submits_volume_rename_through_shared_validation() {
             let changed_confirm = confirm.clone();
             let changed_error = error.clone();
             field.entry.connect_changed(move |entry| {
-                refresh_rename_validity(
-                    entry,
-                    "CURRENT",
-                    FilesystemType::Fat32,
-                    true,
-                    &changed_confirm,
-                    &changed_error,
-                );
+                refresh_label_validity(entry, "CURRENT", &changed_confirm, &changed_error);
             });
             wire_entry_submission(&field.entry, &confirm);
 
@@ -291,14 +284,11 @@ fn enter_submits_volume_rename_through_shared_validation() {
             assert_eq!(submitted.get(), 1);
 
             for (text, expected_error) in [
-                ("", Some("The label cannot be empty.")),
-                ("  ", Some("The label cannot be empty.")),
-                (".", Some("FAT32 labels cannot contain “.”.")),
-                ("A/B", Some("FAT32 labels cannot contain “/”.")),
                 ("CURRENT", None),
+                (" CURRENT ", None),
                 (
-                    " CURRENT ",
-                    Some("Enter a label different from the current one."),
+                    "BAD\tLABEL",
+                    Some("Labels cannot contain control characters."),
                 ),
             ] {
                 field.entry.set_text(text);
@@ -316,12 +306,14 @@ fn enter_submits_volume_rename_through_shared_validation() {
                 );
             }
 
-            field.entry.set_text("BACKUP");
-            assert!(confirm.is_sensitive());
-            assert!(!error.is_visible());
-            assert!(!field.entry.has_css_class("error"));
-            field.entry.emit_activate();
-            assert_eq!(submitted.get(), 2);
+            for text in ["", "  ", ".", "A/B", "A long Unicode label 📁"] {
+                field.entry.set_text(text);
+                assert!(confirm.is_sensitive());
+                assert!(!error.is_visible());
+                assert!(!field.entry.has_css_class("error"));
+                field.entry.emit_activate();
+            }
+            assert_eq!(submitted.get(), 6);
         },
     );
 }
@@ -349,51 +341,123 @@ fn ntfs_install_guidance_uses_the_native_utilities_package() {
 }
 
 #[test]
-fn rename_requires_tools_and_a_changed_nonempty_label() {
+fn strata_labels_allow_clearing_and_do_not_require_filesystem_tools() {
     crate::test_support::gtk_test(
-        "ui::window::drive_dialogs::tests::rename_requires_tools_and_a_changed_nonempty_label",
+        "ui::window::drive_dialogs::tests::strata_labels_allow_clearing_and_do_not_require_filesystem_tools",
         || {
-            let field = FormTextField::with_character_limit(11);
-            let confirm = gtk::Button::new();
-            let error = inline_error();
-            for (text, tools_available, expected) in [
-                ("BACKUP", false, false),
-                ("BACKUP", true, true),
-                ("CURRENT", true, false),
-                ("", true, false),
-                ("  ", true, false),
+            let preferences = super::super::super::preferences::PreferenceManager::shared();
+            let id = "volume:strata-label-dialog-fixture";
+            preferences.set_device_label(id, "Existing label");
+            let parent = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            let overlay = gtk::Overlay::new();
+            overlay.set_child(Some(&crate::ui::blur::BlurBin::new(&parent)));
+            let window = gtk::Window::builder().child(&overlay).build();
+            window.present();
+            for (text, save, expected) in [
+                ("Cancelled label", false, Some("Existing label")),
+                ("  Photos / 📁  ", true, Some("Photos / 📁")),
+                ("", true, None),
             ] {
-                field.entry.set_text(text);
-                refresh_rename_validity(
-                    &field.entry,
-                    "CURRENT",
-                    FilesystemType::Fat32,
-                    tools_available,
-                    &confirm,
-                    &error,
+                show_label_dialog_for_identity(
+                    parent.upcast_ref(),
+                    id,
+                    "System device name",
+                    preferences.clone(),
                 );
-                assert_eq!(confirm.is_sensitive(), expected);
+                let layer =
+                    super::super::visible_modal_layer(&window).expect("Strata label dialog");
+                let entry = descendants(layer.upcast_ref())
+                    .into_iter()
+                    .find_map(|widget| widget.downcast::<gtk::Entry>().ok())
+                    .expect("label entry");
+                assert_eq!(
+                    entry.placeholder_text().as_deref(),
+                    Some("System device name")
+                );
+                assert_eq!(
+                    entry.text().as_str(),
+                    preferences.device_label(id).as_deref().unwrap_or("")
+                );
+                entry.set_text(text);
+                if save {
+                    entry.emit_activate();
+                } else {
+                    let cancel = descendants(layer.upcast_ref())
+                        .into_iter()
+                        .find_map(|widget| {
+                            widget
+                                .downcast::<gtk::Button>()
+                                .ok()
+                                .filter(|button| button.label().as_deref() == Some("Cancel"))
+                        })
+                        .expect("cancel action");
+                    cancel.emit_clicked();
+                }
+                wait_until(|| super::super::visible_modal_layer(&window).is_none());
+                assert_eq!(preferences.device_label(id).as_deref(), expected);
             }
+            show_label_dialog_for_identity(
+                parent.upcast_ref(),
+                id,
+                "System device name",
+                preferences.clone(),
+            );
+            let layer = super::super::visible_modal_layer(&window).expect("label editor");
+            let widgets = descendants(layer.upcast_ref());
+            let entry = widgets
+                .iter()
+                .find_map(|widget| widget.clone().downcast::<gtk::Entry>().ok())
+                .expect("draft entry");
+            let save = widgets
+                .iter()
+                .find_map(|widget| {
+                    widget
+                        .clone()
+                        .downcast::<gtk::Button>()
+                        .ok()
+                        .filter(|button| button.label().as_deref() == Some("Save label"))
+                })
+                .expect("save action");
+            entry.set_text("Draft label");
+            preferences.set_device_label(id, "Elsewhere");
+            assert_eq!(entry.text(), "Draft label");
+            assert!(save.is_sensitive());
+            preferences.set_device_label(id, "Draft label");
+            assert!(!save.is_sensitive());
+            preferences.set_device_label(id, "Different label");
+            assert!(save.is_sensitive());
+            entry.emit_activate();
+            assert_eq!(preferences.device_label(id).as_deref(), Some("Draft label"));
+            preferences.set_device_label(id, "");
+            window.close();
         },
     );
 }
 
 #[test]
-fn fixed_storage_properties_never_offer_label_changes_or_formatting() {
+fn storage_properties_separate_strata_labels_from_formatting() {
     crate::test_support::gtk_test(
-        "ui::window::drive_dialogs::tests::fixed_storage_properties_never_offer_label_changes_or_formatting",
+        "ui::window::drive_dialogs::tests::storage_properties_separate_strata_labels_from_formatting",
         || {
-            for (editable, expected) in [(false, [0, 1, 0]), (true, [1, 1, 1])] {
+            for (editable, can_label, can_release, expected) in [
+                (false, true, true, [1, 1, 0]),
+                (false, false, true, [0, 1, 0]),
+                (true, true, true, [1, 1, 1]),
+                (false, true, false, [1, 0, 0]),
+                (false, false, false, [0, 0, 0]),
+            ] {
                 let invoked: [Rc<Cell<usize>>; 3] = std::array::from_fn(|_| Rc::new(Cell::new(0)));
                 for (index, action) in [
-                    PropertyAction::Rename,
+                    PropertyAction::Label,
                     PropertyAction::Eject,
                     PropertyAction::Format,
                 ]
                 .into_iter()
                 .enumerate()
                 {
-                    if let Some(button) = property_action_control(action, editable, true) {
+                    if let Some(button) =
+                        property_action_control(action, editable, can_release, can_label)
+                    {
                         let invoked = invoked[index].clone();
                         button.connect_clicked(move |_| invoked.set(invoked.get() + 1));
                         button.emit_clicked();

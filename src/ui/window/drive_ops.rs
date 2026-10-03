@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-//! Removable-drive management: format, rename (volume label), and properties.
-//! Only removable drives are eligible for modification (see `is_eligible`).
+//! Storage metadata and removable-only formatting.
+//! Display labels belong to Strata preferences, not the filesystem.
 
 use std::{
-    future::Future,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -93,14 +92,6 @@ impl FilesystemType {
         self.mkfs_candidates().iter().find_map(|cmd| tool_path(cmd))
     }
 
-    pub(super) fn label_cmd(self) -> &'static str {
-        match self {
-            Self::Fat32 => "fatlabel",
-            Self::Ntfs => "ntfslabel",
-            Self::Exfat => "exfatlabel",
-        }
-    }
-
     pub(super) fn format_tool_name(self) -> &'static str {
         match self {
             Self::Fat32 => "mkfs.fat",
@@ -111,10 +102,6 @@ impl FilesystemType {
 
     pub(super) fn available(self) -> bool {
         self.resolve_mkfs().is_some()
-    }
-
-    pub(super) fn label_tool_available(self) -> bool {
-        tool_path(self.label_cmd()).is_some()
     }
 }
 
@@ -136,7 +123,6 @@ pub(super) fn is_eligible(volume: Option<&gio::Volume>) -> bool {
 
 #[derive(Debug)]
 pub(super) enum DriveOpError {
-    ToolNotFound(String),
     CommandFailed(String),
     DeviceNotFound,
     Cancelled,
@@ -147,7 +133,6 @@ pub(super) enum DriveOpError {
 impl std::fmt::Display for DriveOpError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::ToolNotFound(cmd) => write!(f, "Required tool “{cmd}” was not found"),
             Self::CommandFailed(msg) => write!(f, "{msg}"),
             Self::DeviceNotFound => f.write_str("Could not identify the drive's block device"),
             Self::Cancelled => f.write_str("Operation cancelled"),
@@ -236,45 +221,6 @@ pub(super) fn usage_for_path(path: &Path) -> Option<(u64, u64)> {
     ))
 }
 
-fn run_tool_path(exe: &Path, args: &[String]) -> Result<String, DriveOpError> {
-    let output = Command::new(exe)
-        .args(args)
-        .output()
-        .map_err(DriveOpError::Io)?;
-    if !output.status.success() {
-        let detail = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-        let message = if detail.is_empty() {
-            format!("“{}” failed without further details", exe.display())
-        } else {
-            detail
-        };
-        return Err(DriveOpError::CommandFailed(message));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
-}
-
-/// Run a mutating storage tool, elevating through `pkexec` when not root:
-/// block devices are not writable by desktop users. A dismissed
-/// authorization prompt maps to `Cancelled` and stays quiet; genuine
-/// failures keep their stderr.
-fn run_privileged_tool(cmd: &str, args: &[String]) -> Result<String, DriveOpError> {
-    let exe = tool_path(cmd).ok_or_else(|| DriveOpError::ToolNotFound(cmd.to_owned()))?;
-    if rustix::process::geteuid().is_root() {
-        return run_tool_path(&exe, args);
-    }
-    let Some(pkexec) = tool_path("pkexec") else {
-        return run_tool_path(&exe, args);
-    };
-    let mut full_args = vec![exe.to_string_lossy().into_owned()];
-    full_args.extend(args.iter().cloned());
-    match run_tool_path(&pkexec, &full_args) {
-        Err(DriveOpError::CommandFailed(message)) if message.to_lowercase().contains("dismiss") => {
-            Err(DriveOpError::Cancelled)
-        }
-        other => other,
-    }
-}
-
 pub(super) fn block_device_for_path(path: &Path) -> Option<PathBuf> {
     let table = std::fs::read("/proc/self/mountinfo").ok()?;
     super::devices::block_device_from_mount_table(&table, path)
@@ -283,22 +229,6 @@ pub(super) fn block_device_for_path(path: &Path) -> Option<PathBuf> {
 pub(super) fn mounted_path_for_device(device: &Path) -> Option<PathBuf> {
     let table = std::fs::read("/proc/self/mountinfo").ok()?;
     super::devices::mounted_path_from_table(&table, device)
-}
-
-pub(super) fn filesystem_of_device(device: &Path) -> FilesystemType {
-    let fstype = tool_path("lsblk").and_then(|exe| {
-        Command::new(exe)
-            .args(["-n", "-o", "FSTYPE", &device.to_string_lossy()])
-            .output()
-            .ok()
-            .filter(|output| output.status.success())
-            .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_owned())
-    });
-    match fstype.as_deref() {
-        Some("ntfs") => FilesystemType::Ntfs,
-        Some("exfat") => FilesystemType::Exfat,
-        _ => FilesystemType::Fat32,
-    }
 }
 
 /// Human-readable filesystem name for a block device.
@@ -370,6 +300,14 @@ pub(super) async fn format_volume(
     if !is_eligible(Some(&volume)) {
         return Err(DriveOpError::DeviceNotFound);
     }
+    if label.chars().count() > fs_type.max_label_len() {
+        return Err(DriveOpError::InvalidLabel(
+            "Filesystem label is too long.".to_owned(),
+        ));
+    }
+    if let Some(message) = fs_type.label_character_error(&label) {
+        return Err(DriveOpError::InvalidLabel(message));
+    }
     let device = unmount_for_exclusive_access(&parent, &volume).await?;
     gio::spawn_blocking(move || {
         let connection = gio::bus_get_sync(gio::BusType::System, gio::Cancellable::NONE)?;
@@ -435,46 +373,6 @@ fn format_device(
     Ok(())
 }
 
-/// Persist a new filesystem label. The volume is unmounted first because
-/// the label tools require exclusive access.
-pub(super) async fn rename_volume(
-    parent: gtk::Widget,
-    volume: gio::Volume,
-    label: String,
-) -> Result<(), DriveOpError> {
-    let trimmed = label.trim();
-    if trimmed.is_empty() {
-        return Err(DriveOpError::InvalidLabel(
-            "The label cannot be empty".to_owned(),
-        ));
-    }
-    let device = block_device_for_volume(&volume).ok_or(DriveOpError::DeviceNotFound)?;
-    let fs_type = gio::spawn_blocking({
-        let device = device.clone();
-        move || filesystem_of_device(&device)
-    })
-    .await
-    .map_err(|_| DriveOpError::CommandFailed("Could not inspect the filesystem".to_owned()))?;
-    if trimmed.chars().count() > fs_type.max_label_len() {
-        return Err(DriveOpError::InvalidLabel(format!(
-            "“{}” labels hold at most {} characters",
-            fs_type.label(),
-            fs_type.max_label_len()
-        )));
-    }
-    if let Some(message) = fs_type.label_character_error(trimmed) {
-        return Err(DriveOpError::InvalidLabel(message));
-    }
-    let cmd = tool_path(fs_type.label_cmd())
-        .ok_or_else(|| DriveOpError::ToolNotFound(fs_type.label_cmd().to_owned()))?;
-    let device = unmount_for_exclusive_access(&parent, &volume).await?;
-    let cmd_display = cmd.display().to_string();
-    let args = vec![device.to_string_lossy().into_owned(), trimmed.to_owned()];
-    gio::spawn_blocking(move || run_privileged_tool(&cmd_display, &args).map(|_| ()))
-        .await
-        .map_err(|_| DriveOpError::CommandFailed("Relabelling task did not complete".to_owned()))?
-}
-
 /// Report the outcome: stay quiet on cancellation and success, and show
 /// everything else through the error dialog.
 pub(super) fn report_result(
@@ -491,17 +389,6 @@ pub(super) fn report_result(
             &error.to_string(),
         ),
     }
-}
-
-pub(super) fn spawn_drive_task<F, Fut>(parent: gtk::Widget, display_name: String, task: F)
-where
-    F: FnOnce() -> Fut + 'static,
-    Fut: Future<Output = Result<(), DriveOpError>> + 'static,
-{
-    glib::MainContext::default().spawn_local(async move {
-        let result = task().await;
-        report_result(&parent, &display_name, result);
-    });
 }
 
 #[cfg(test)]
