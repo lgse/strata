@@ -592,17 +592,24 @@ fn show_label_dialog_for_identity(
     let Some(shell) = modal_shell(
         parent,
         assets::icons::PENCIL,
-        "Set Strata Label",
+        "Set label",
         system_name,
         "Save label",
         false,
     ) else {
         return;
     };
+    shell.layout.content.set_width_request(480);
+    shell.layout.subtitle.set_max_width_chars(32);
+    shell
+        .layout
+        .subtitle
+        .set_ellipsize(gtk::pango::EllipsizeMode::End);
     let current_label = preferences.device_label(id).unwrap_or_default();
     let field = FormTextField::with_character_limit(255);
     let entry = field.entry;
     entry.set_placeholder_text(Some(system_name));
+    entry.set_max_width_chars(32);
     entry.set_text(&current_label);
     entry.select_region(0, -1);
     shell
@@ -610,13 +617,17 @@ fn show_label_dialog_for_identity(
         .body
         .append(&field_block("Label shown in Strata", &field.widget));
     let hint = gtk::Label::new(Some(
-        "Only changes the display label in Strata’s sidebar and Properties. The filesystem label, mount configuration, and other applications are unchanged. Leave blank to restore the normal device name.",
+        "Strata-only display label; filesystem unchanged. Leave blank to reset.",
     ));
+    hint.add_css_class("dim-label");
+    hint.set_max_width_chars(40);
     hint.set_xalign(0.0);
     hint.set_wrap(true);
     hint.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     shell.layout.body.append(&hint);
     let error = inline_error();
+    error.set_max_width_chars(26);
+    error.set_hexpand(true);
     shell.layout.actions.prepend(&error);
     let confirm = shell.layout.confirm.clone();
     {

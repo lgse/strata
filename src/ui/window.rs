@@ -3826,8 +3826,7 @@ fn attach_device_actions_menu(
         .filter(|target| target.label_id().is_some())
         .cloned()
     {
-        let option =
-            sidebar_context_option(crate::assets::icons::PENCIL, "Set Strata label…", false);
+        let option = sidebar_context_option(crate::assets::icons::PENCIL, "Set label…", false);
         menu.append(&option);
         let label_popover = popover.downgrade();
         let label_view = view.clone();
