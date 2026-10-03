@@ -2398,3 +2398,52 @@ fn visual_ranges_end_without_an_anchor_listing_or_pointer_commit() {
     assert_eq!(state.visual_kind(), None);
     assert_eq!(state.refresh_visual(None), None);
 }
+
+#[test]
+fn precomputed_sort_preserves_natural_utf8_order() {
+    let names = vec![
+        "über_10.txt",
+        "über_2.txt",
+        "Straße_1.txt",
+        "STRASSE_2.txt",
+        "café_latte.txt",
+        "café.txt",
+        "apple.txt",
+        "Banana.txt",
+    ];
+    let entries: Vec<FileEntry> = names
+        .into_iter()
+        .map(|name| FileEntry {
+            location: location(&format!("/test/{name}")),
+            thumbnail_path: None,
+            native_name: name.into(),
+            display_name: name.to_string(),
+            kind: EntryKind::File,
+            size: MetadataValue::Known(100),
+            modified_unix_seconds: MetadataValue::Known(100),
+            recent_unix_seconds: MetadataValue::Known(100),
+            mode: MetadataValue::Known(0o644),
+            image_dimensions: MetadataValue::Unavailable,
+            child_count: MetadataValue::Unavailable,
+            duration_seconds: MetadataValue::Unavailable,
+            is_hidden: false,
+        })
+        .collect();
+
+    let sorted = super::sort_entries(entries, ViewPreferences::default());
+    let sorted_names: Vec<&str> = sorted.iter().map(|e| e.display_name.as_str()).collect();
+
+    assert_eq!(
+        sorted_names,
+        vec![
+            "apple.txt",
+            "Banana.txt",
+            "café.txt",
+            "café_latte.txt",
+            "Straße_1.txt",
+            "STRASSE_2.txt",
+            "über_2.txt",
+            "über_10.txt",
+        ]
+    );
+}
