@@ -31,6 +31,7 @@ mod pointer;
 mod portal_preferences;
 pub(crate) mod preferences;
 mod preview;
+mod progress_dock;
 mod raw_details;
 mod recent_apps;
 mod scrolling;

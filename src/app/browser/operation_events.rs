@@ -10,6 +10,9 @@ use crate::{
     services::{OperationEvent, OperationRequestId},
 };
 
+mod background;
+pub(super) use background::BackgroundOperation;
+
 use super::{
     Browser, BrowserEvent, MAX_INCREMENTAL_OPERATION_UPDATES, MergeUndoState, UndoEntry,
     completed_replay_items, finish_replay, mark_replay_item_completed, move_records,
@@ -53,7 +56,7 @@ impl OperationCompletion {
         }
     }
 
-    fn record_trash_undo(&self, event: &OperationEvent) {
+    fn record_trash_undo(&self, event: &OperationEvent, publish: fn(UndoEntry)) {
         if !self.deleting || self.deletion_permanent || self.undoing {
             return;
         }
@@ -65,7 +68,7 @@ impl OperationCompletion {
             OperationEvent::Cancelled { result, .. } => result.completed.clone(),
             _ => Vec::new(),
         };
-        push_pending_undo(UndoEntry::Trash(locations));
+        publish(UndoEntry::Trash(locations));
     }
 
     fn record_transfer_undo(
@@ -73,6 +76,7 @@ impl OperationCompletion {
         moved: &[Location],
         created: Vec<Location>,
         merged: MergeUndoState,
+        publish: fn(UndoEntry),
     ) {
         if self.undoing {
             return;
@@ -87,11 +91,11 @@ impl OperationCompletion {
                         .filter(|source| !merged.sources.contains(*source))
                         .cloned()
                         .collect();
-                    push_pending_undo(UndoEntry::Move(move_records(&movable, destination)));
+                    publish(UndoEntry::Move(move_records(&movable, destination)));
                 }
             }
             Some(false) if merged.overwritten.is_empty() && merged.created.is_empty() => {
-                push_pending_undo(UndoEntry::Copy(created))
+                publish(UndoEntry::Copy(created))
             }
             Some(false) => {
                 let mut all_created = created;
@@ -100,7 +104,7 @@ impl OperationCompletion {
                 // progress; it must undo through the overwritten restore
                 // path instead, or the restored original would be trashed.
                 all_created.retain(|location| !merged.overwritten.contains(location));
-                push_pending_undo(UndoEntry::Merge {
+                publish(UndoEntry::Merge {
                     created: all_created,
                     overwritten: merged.overwritten,
                     originals: HashMap::new(),
@@ -131,7 +135,19 @@ impl Browser {
                 return;
             };
             let event_id = operation_event_id(&event);
-            if event_id != context.request_id || !browser.is_current_operation(event_id) {
+            if event_id != context.request_id {
+                return;
+            }
+            let background = browser
+                .background_operations
+                .borrow()
+                .get(&event_id)
+                .cloned();
+            if let Some(job) = background {
+                browser.handle_background_operation(&context, event, job);
+                return;
+            }
+            if !browser.is_current_operation(event_id) {
                 return;
             }
             if !browser.publish_operation_progress(&event) {
@@ -273,7 +289,7 @@ impl Browser {
             finish_claimed_replay(true, *generation, entry, &event);
         }
         completion.undoing = undoing.is_some() || redoing.is_some();
-        completion.record_trash_undo(&event);
+        completion.record_trash_undo(&event, push_pending_undo);
         self.finish_transfer(&mut completion, &event);
         if completion.deleting {
             self.emit(BrowserEvent::DeletionFinished {
@@ -283,7 +299,8 @@ impl Browser {
         if completion.restoring {
             self.emit(BrowserEvent::RestorationFinished);
         }
-        self.operation_load.borrow_mut().take();
+        let load = self.operation_load.take();
+        drop(load);
         self.publish_operation_outcome(context, completion, event);
     }
 
@@ -329,7 +346,12 @@ impl Browser {
         self.state
             .borrow_mut()
             .retain_selectionless_removals(moved.iter().cloned());
-        completion.record_transfer_undo(&moved, created, self.merged_undo.take());
+        completion.record_transfer_undo(
+            &moved,
+            created,
+            self.merged_undo.take(),
+            push_pending_undo,
+        );
         for location in &moved {
             self.retire_recent_target(location);
         }

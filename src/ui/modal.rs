@@ -116,16 +116,21 @@ pub(super) struct ModalHost {
 }
 
 impl ModalHost {
-    pub(super) fn blurred_for(parent: &impl IsA<gtk::Widget>) -> Option<Self> {
+    pub(super) fn for_widget(parent: &impl IsA<gtk::Widget>) -> Option<Self> {
         let overlay = window_overlay(parent)?;
         let blurred_root = overlay.child().and_downcast::<BlurBin>();
-        if let Some(root) = blurred_root.as_ref() {
-            root.set_blurred(true);
-        }
         Some(Self {
             overlay,
             blurred_root,
         })
+    }
+
+    pub(super) fn blurred_for(parent: &impl IsA<gtk::Widget>) -> Option<Self> {
+        let host = Self::for_widget(parent)?;
+        if let Some(root) = host.blurred_root.as_ref() {
+            root.set_blurred(true);
+        }
+        Some(host)
     }
 }
 
