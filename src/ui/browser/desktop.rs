@@ -34,10 +34,11 @@ pub(in crate::ui) fn open_location(
     let browser = Rc::downgrade(browser);
     glib::MainContext::default().spawn_local(async move {
         match resolve_default_application(&file).await {
-            Ok((_content_type, Some(app))) => {
+            Ok((content_type, Some(app))) => {
                 let result = crate::ui::open_with::launch(
                     &app,
                     std::slice::from_ref(&file),
+                    std::slice::from_ref(&content_type),
                     None::<&gio::AppLaunchContext>,
                 );
                 if let Some(parent) = parent.upgrade() {

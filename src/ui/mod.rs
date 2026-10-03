@@ -32,6 +32,7 @@ mod portal_preferences;
 pub(crate) mod preferences;
 mod preview;
 mod raw_details;
+mod recent_apps;
 mod scrolling;
 mod search;
 mod search_session;
