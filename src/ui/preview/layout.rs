@@ -616,17 +616,15 @@ impl PreviewState {
         {
             browser.clear_preview_scroll_space();
         }
-        if restored {
-            if self.sizing.reload_on_resume.replace(false) {
-                let entry = self.current.borrow().clone();
-                if let Some(entry) = entry {
-                    self.load(entry, 0);
-                }
-            } else if self.sizing.resume_media.replace(false) {
-                let media = self.media.borrow().clone();
-                if let Some(media) = media {
-                    media.play();
-                }
+        if self.sizing.reload_on_resume.replace(false) {
+            let entry = self.current.borrow().clone();
+            if let Some(entry) = entry {
+                self.load(entry, 0);
+            }
+        } else if restored && self.sizing.resume_media.replace(false) {
+            let media = self.media.borrow().clone();
+            if let Some(media) = media {
+                media.play();
             }
         }
         if restored {
