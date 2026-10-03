@@ -299,7 +299,18 @@ impl ViewState {
             _ => false,
         };
         if finished {
-            progress.dismiss_file_operation_progress();
+            match event {
+                BrowserEvent::TransferCompleted => {
+                    progress.complete_file_operation_progress("Copy complete")
+                }
+                BrowserEvent::ArchiveCompleted { .. } => {
+                    progress.complete_file_operation_progress("Compression complete")
+                }
+                BrowserEvent::DeletionFinished { succeeded: true } => {
+                    progress.complete_file_operation_progress("Deletion complete")
+                }
+                _ => progress.dismiss_file_operation_progress(),
+            }
             self.background_file_progress
                 .borrow_mut()
                 .remove(&request_id);

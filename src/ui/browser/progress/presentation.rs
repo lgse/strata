@@ -23,7 +23,7 @@ impl FileProgressState {
     pub(super) fn attach_dock(self: &Rc<Self>, view: &mut FileProgressView) {
         let compact = Rc::new(CompactProgress::new(&view.overlay, &view.icon_name));
         let weak = Rc::downgrade(self);
-        compact.cancel.connect_clicked(move |_| {
+        compact.set_cancel_action(Rc::new(move || {
             if let Some(state) = weak.upgrade()
                 && !state.transfer_cancel_requested.get()
             {
@@ -36,7 +36,7 @@ impl FileProgressState {
                     action();
                 }
             }
-        });
+        }));
         view.compact = Some(compact);
         self.sync_compact(view);
     }

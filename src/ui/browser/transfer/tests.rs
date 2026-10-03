@@ -1472,6 +1472,17 @@ fn send_to_with_visible_progress_shows_no_toast() {
                 "the progress-covered send-to copy",
             );
             wait_until(
+                || {
+                    find_widget_with_class(&overlay, "progress-complete")
+                        .is_some_and(|widget| widget.is_visible())
+                },
+                "the completion card",
+            );
+            find_widget_with_class(&overlay, "progress-complete")
+                .and_downcast::<gtk::Button>()
+                .expect("completion action")
+                .emit_clicked();
+            wait_until(
                 || find_widget_with_class(&overlay, "file-operation-card").is_none(),
                 "the progress card closes",
             );

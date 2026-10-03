@@ -568,6 +568,32 @@ impl FileProgressState {
         self.sync_compact(view);
     }
 
+    pub(super) fn complete_file_operation_progress(&self, title: &str) {
+        let compact = self
+            .file_progress_view
+            .borrow_mut()
+            .as_mut()
+            .and_then(|view| view.compact.take());
+        if let Some(compact) = compact {
+            let file = self.transfer_current_file.borrow();
+            let description = self.task_description.borrow();
+            compact.info.set_text(
+                file.as_deref()
+                    .filter(|name| !name.is_empty())
+                    .unwrap_or(&description),
+            );
+            let total = self
+                .transfer_progress
+                .get()
+                .and_then(|snapshot| snapshot.total_files)
+                .unwrap_or(self.file_operation_progress.get().1);
+            compact.count.set_text(&format!("{total}/{total}"));
+            compact.count.set_visible(total > 0);
+            compact.completed(title);
+        }
+        self.dismiss_file_operation_progress();
+    }
+
     pub(super) fn dismiss_file_operation_progress(&self) {
         self.dismiss_file_operation_progress_then(|| {});
     }

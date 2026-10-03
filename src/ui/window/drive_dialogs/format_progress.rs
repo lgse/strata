@@ -8,7 +8,7 @@ use crate::{
 use gtk::{glib, prelude::*};
 use std::{
     cell::{Cell, RefCell},
-    rc::{Rc, Weak},
+    rc::Rc,
     time::Duration,
 };
 
@@ -17,7 +17,6 @@ pub(super) struct FormatProgress {
     pulse: RefCell<Option<glib::SourceId>>,
     finished: Cell<bool>,
     display_name: String,
-    owner: Weak<RefCell<Option<Rc<Self>>>>,
     overlay: gtk::Overlay,
 }
 
@@ -32,25 +31,12 @@ impl FormatProgress {
             .set_text("Do not unplug until formatting finishes.");
         card.meta.set_text("Formatting…");
         card.cancel.set_visible(false);
-        let owner = Rc::new(RefCell::new(None));
         let state = Rc::new(Self {
             card,
             pulse: RefCell::new(None),
             finished: Cell::new(false),
             display_name: display_name.to_owned(),
-            owner: Rc::downgrade(&owner),
             overlay: host.overlay,
-        });
-        owner.replace(Some(state.clone()));
-        let retained = owner.clone();
-        state.card.cancel.connect_clicked(move |_| {
-            let state = retained.borrow().clone();
-            if let Some(state) = state
-                && state.finished.get()
-            {
-                retained.borrow_mut().take();
-                state.dismiss();
-            }
         });
         let weak = Rc::downgrade(&state);
         state.pulse.replace(Some(glib::timeout_add_local(
@@ -71,13 +57,10 @@ impl FormatProgress {
                     glib::Propagation::Stop
                 } else { glib::Propagation::Proceed }
             });
-            let weak_owner = Rc::downgrade(&owner);
+            let weak = Rc::downgrade(&state);
             window.connect_unrealize(move |_| {
-                if let Some(owner) = weak_owner.upgrade() {
-                    let state = owner.borrow_mut().take();
-                    if let Some(state) = state {
-                        state.dismiss();
-                    }
+                if let Some(state) = weak.upgrade() {
+                    state.dismiss();
                 }
             });
         }
@@ -98,23 +81,12 @@ impl FormatProgress {
         }
         match result {
             Ok(()) => {
-                self.card.title.set_text("Format complete");
-                self.card.status.set_text("Done");
                 self.card
                     .info
                     .set_text("The drive was formatted successfully.");
-                self.card.meta.set_text("");
-                self.card.progress.set_fraction(1.0);
-                self.card.cancel.set_visible(true);
-                self.card
-                    .cancel
-                    .set_tooltip_text(Some("Close formatting result"));
-                crate::ui::accessibility::set_label(&self.card.cancel, "Close formatting result");
+                self.card.completed("Format complete");
             }
             Err(error) => {
-                if let Some(owner) = self.owner.upgrade() {
-                    owner.borrow_mut().take();
-                }
                 self.dismiss();
                 if self.overlay.root().is_some() {
                     drive_ops::report_result(

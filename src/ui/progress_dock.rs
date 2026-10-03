@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: MIT
 
 use gtk::prelude::*;
+use std::{rc::Rc, time::Duration};
+
+mod completion;
+#[cfg(test)]
+mod tests;
 
 use crate::{
     assets,
@@ -17,9 +22,10 @@ pub(super) struct CompactProgress {
     pub(super) meta: gtk::Label,
     pub(super) progress: gtk::ProgressBar,
     pub(super) cancel: gtk::Button,
-    overlay: gtk::Overlay,
-    dock: gtk::ScrolledWindow,
-    list: gtk::Box,
+    pub(super) complete: gtk::Button,
+    pub(super) pin: gtk::ToggleButton,
+    icon: gtk::Image,
+    completion: Rc<completion::Completion>,
 }
 
 fn dock(overlay: &gtk::Overlay) -> (gtk::ScrolledWindow, gtk::Box) {
@@ -72,16 +78,26 @@ impl CompactProgress {
         let root = gtk::Box::new(gtk::Orientation::Vertical, 4);
         root.add_css_class("file-operation-card");
         let header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-        header.append(&assets::primary_icon(icon, 14));
+        let icon = assets::primary_icon(icon, 14);
+        header.append(&icon);
         let title = wrapped_label(22);
         title.set_hexpand(true);
         title.add_css_class("job-name");
         header.append(&title);
         let status = gtk::Label::builder().xalign(1.0).build();
         status.add_css_class("job-status");
+        let pin = gtk::ToggleButton::new();
+        pane_header_action(&pin);
+        pin.add_css_class("progress-card-action");
+        pin.set_child(Some(&assets::primary_icon(assets::icons::PIN, 14)));
+        pin.set_tooltip_text(Some("Keep notification"));
+        accessibility::set_label(&pin, "Keep notification");
+        pin.set_visible(false);
+        header.append(&pin);
         let cancel = gtk::Button::new();
         pane_header_action(&cancel);
         cancel.add_css_class("progress-cancel");
+        cancel.add_css_class("progress-card-action");
         cancel.set_child(Some(&assets::primary_icon(assets::icons::X, 14)));
         cancel.set_tooltip_text(Some("Cancel operation"));
         accessibility::set_label(&cancel, "Cancel operation");
@@ -108,15 +124,33 @@ impl CompactProgress {
         let progress = gtk::ProgressBar::new();
         progress.add_css_class("modal-progress");
         root.append(&progress);
-        let footer = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        let footer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        let complete = gtk::Button::with_label("Complete");
+        complete.add_css_class("job-action");
+        complete.add_css_class("progress-complete");
+        complete.set_cursor_from_name(Some("pointer"));
+        accessibility::set_label(&complete, "Dismiss completed notification");
+        complete.set_visible(false);
+        footer.append(&complete);
         let meta = wrapped_label(42);
         meta.set_hexpand(true);
         meta.add_css_class("job-meta");
         footer.append(&meta);
         status.set_valign(gtk::Align::Start);
+        status.set_margin_start(8);
         footer.append(&status);
         root.append(&footer);
         list.append(&root);
+        let completion = completion::Completion::new(completion::Widgets {
+            root: root.downgrade(),
+            overlay: overlay.downgrade(),
+            dock: dock.downgrade(),
+            list: list.downgrade(),
+            meta: meta.downgrade(),
+            status: status.downgrade(),
+            progress: progress.downgrade(),
+        });
+        completion.bind(&root, &cancel, &complete, &pin);
         Self {
             root,
             title,
@@ -127,18 +161,37 @@ impl CompactProgress {
             meta,
             progress,
             cancel,
-            overlay: overlay.clone(),
-            dock,
-            list,
+            complete,
+            pin,
+            icon,
+            completion,
         }
     }
 
+    pub(super) fn set_cancel_action(&self, action: Rc<dyn Fn()>) {
+        self.completion.set_cancel(action);
+    }
+
+    pub(super) fn completed(&self, title: &str) {
+        self.complete_after(title, Duration::from_secs(5));
+    }
+
+    fn complete_after(&self, title: &str, duration: Duration) {
+        if self.root.parent().is_none() {
+            return;
+        }
+        self.title.set_text(title);
+        assets::set_primary_icon(&self.icon, assets::icons::CHECK);
+        self.complete.set_visible(true);
+        self.pin.set_visible(true);
+        self.cancel.set_visible(true);
+        self.cancel.set_sensitive(true);
+        self.cancel.set_tooltip_text(Some("Dismiss notification"));
+        accessibility::set_label(&self.cancel, "Dismiss notification");
+        self.completion.complete(duration);
+    }
+
     pub(super) fn remove(&self) {
-        if self.root.parent().as_ref() == Some(self.list.upcast_ref()) {
-            self.list.remove(&self.root);
-        }
-        if self.list.first_child().is_none() && self.dock.parent().is_some() {
-            self.overlay.remove_overlay(&self.dock);
-        }
+        self.completion.dismiss();
     }
 }

@@ -1184,6 +1184,12 @@ headerbar menubutton.header-action > button:focus-visible {
   min-height: 4px;
 }
 
+.file-operation-card button.progress-complete {
+  min-width: 0;
+  min-height: 0;
+  font-size: 0.82em;
+}
+
 .file-operation-card button.column-header-action {
   min-width: 0;
   min-height: 0;

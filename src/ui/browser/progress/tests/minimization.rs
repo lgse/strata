@@ -192,7 +192,18 @@ fn copy_starts_in_the_dock_with_destination_and_continues_while_browsing() {
             fixture.update(id, &name, 75);
             assert_eq!(card.status.text(), "75%");
             fixture.finish(id);
+            assert!(card.root.parent().is_some());
+            assert_eq!(card.title.text(), "Copy complete");
+            assert_eq!(card.status.text(), "100%");
+            assert_eq!(card.count.text(), "1/1");
+            assert!(!fixture.view.browser().has_background_operations());
+            let next = fixture.transfer("new-copy.txt", false);
+            fixture.progress(next);
+            card.complete.emit_clicked();
             assert!(card.root.parent().is_none());
+            assert!(!fixture.operations.cancelled(next));
+            assert!(fixture.view.browser().has_background_operations());
+            fixture.finish(next);
         },
     );
 }

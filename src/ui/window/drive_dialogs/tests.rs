@@ -133,7 +133,18 @@ fn format_feedback_reports_success_failure_and_authorization_cancellation() {
                             overlay.upcast_ref(),
                             "Click the drive in the sidebar to mount it."
                         ));
-                        close.emit_clicked();
+                        assert!(has_label(overlay.upcast_ref(), "100%"));
+                        assert!(!has_label(overlay.upcast_ref(), "Done"));
+                        let complete = descendants(overlay.upcast_ref())
+                            .into_iter()
+                            .find_map(|widget| {
+                                widget
+                                    .downcast::<gtk::Button>()
+                                    .ok()
+                                    .filter(|button| button.has_css_class("progress-complete"))
+                            })
+                            .expect("completed notification action");
+                        complete.emit_clicked();
                     } else {
                         assert!(!has_label(overlay.upcast_ref(), "Format complete"));
                         assert!(has_label(

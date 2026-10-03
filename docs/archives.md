@@ -102,8 +102,14 @@ once started: its card keeps the unplug warning visible and offers Close only
 after completion. Normal progress and pending cancellation use neutral styling,
 not error borders or text.
 
+Successful cards show an operation-complete title, a clickable **Complete**
+status, and `100%`. Their bar becomes a five-second auto-dismiss countdown.
+Hovering or focusing a card pauses the remaining time; leaving resumes it rather
+than restarting the countdown. Pin a completed card to keep it until dismissed.
+**Complete** or X dismisses only that notification, never another operation.
+
 Finish or cancel running operations before closing their window. Completed
-formatting cards can be closed without affecting another job.
+cards are notifications, not active jobs, and do not block window closure.
 
 Cancellation is cooperative. Encoded output and TAR's input-to-encoder writes
 check cancellation, as do 7Z source reads and existing ZIP copy chunks. Errors
