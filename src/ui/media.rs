@@ -224,7 +224,6 @@ glib::wrapper! {
 }
 
 impl DecodedMedia {
-    /// Keeps recently decoded PCM so `played_samples` can follow the sink.
     pub(crate) fn retain_played_audio(&self) {
         self.imp()
             .history
@@ -251,7 +250,6 @@ impl DecodedMedia {
 
     pub fn new(source: SandboxedMedia) -> Self {
         let obj: Self = glib::Object::new();
-        // Songs start from the top like in a music player; videos reopen where they closed.
         let restore =
             recall_media_position(&source.path).filter(|&position| position > RESTORE_MIN_US);
         obj.imp().source.replace(Some(source));

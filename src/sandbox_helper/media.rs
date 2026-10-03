@@ -269,7 +269,6 @@ fn metadata(
     })
 }
 
-/// `background` lowers the decoder's priority so it never competes with playback.
 fn ffmpeg_command(backend: &Backend, background: bool) -> Command {
     let mut command = if background {
         let mut command = Command::new("nice");
@@ -305,7 +304,6 @@ fn ffmpeg_command(backend: &Backend, background: bool) -> Command {
     command
 }
 
-/// Streams a waveform overview, decoding the audio as fast as the CPU allows.
 pub(super) fn run_peaks(input: &Path, output: &Path) -> Result<(), String> {
     let mut writer = std::fs::File::create(output).map_err(|error| error.to_string())?;
     let info = probe(input, MediaPreviewSize::new(16, 16), 0, ProbeMode::Audio)
@@ -372,7 +370,6 @@ pub(super) fn audio_tags(input: &Path) -> Result<Vec<u8>, String> {
     .ok_or_else(|| "Unable to read audio tags".into())
 }
 
-/// Extracts embedded artwork (an attached-picture stream) as a PNG.
 pub(super) fn cover(input: &Path, size: u32) -> Result<Vec<u8>, String> {
     let bytes = probe_json(input).map_err(|error| error.to_string())?;
     let value: serde_json::Value =

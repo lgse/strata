@@ -165,7 +165,6 @@ struct PreviewState {
     media_volume_slider: RefCell<Option<gtk::Scale>>,
     media_toggle_mute: RefCell<Option<Rc<dyn Fn()>>>,
     audio: RefCell<Option<AudioPreview>>,
-    /// The file a skip moved to while playing; it starts even when autoplay is off.
     continue_playback: RefCell<Option<PlaybackContinuation>>,
     split: RefCell<Option<gtk::Paned>>,
     sizing: layout::SplitSizing,
@@ -2514,8 +2513,6 @@ impl PreviewState {
         )
     }
 
-    /// The listing's audio files in display order, and the index of `around`
-    /// (the cursor's file, else the previewed one).
     fn audio_listing(
         &self,
         around: Option<crate::model::Location>,
@@ -2538,7 +2535,6 @@ impl PreviewState {
         Some((files, index))
     }
 
-    /// Moves the listing to the neighbouring audio file; the preview follows it.
     fn step_audio(self: &Rc<Self>, step: i32, keyboard: bool) -> bool {
         // Repeated presses outrun the preview's debounce, so step from the cursor.
         let cursor = self.current_depth.get().and_then(|depth| {
@@ -2609,8 +2605,7 @@ impl PreviewState {
         self.reset_content(false);
     }
 
-    /// `keep_audio` lets the audio view outlive its track so the next one can
-    /// crossfade into it instead of rebuilding.
+    /// Keep the audio view across tracks to preserve artwork transitions.
     fn reset_content(&self, keep_audio: bool) {
         let owned = self.content_owns_keys();
         self.source_preview.cancel();
@@ -2791,7 +2786,6 @@ impl PreviewState {
     }
 }
 
-/// Mute toggle and volume slider bound to the shared preview volume preference.
 struct VolumeControls {
     toggle: gtk::Button,
     slider: gtk::Scale,

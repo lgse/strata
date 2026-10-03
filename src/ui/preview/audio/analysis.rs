@@ -3,7 +3,7 @@
 use std::f32::consts::PI;
 
 pub(super) const FFT_SIZE: usize = 2048;
-const SAMPLE_RATE: f32 = 48_000.0;
+const SAMPLE_RATE: f32 = crate::media::SAMPLE_RATE as f32;
 const MIN_FREQUENCY: f32 = 40.0;
 const MAX_FREQUENCY: f32 = 16_000.0;
 const FLOOR_DB: f32 = -62.0;
@@ -78,10 +78,7 @@ impl Analyzer {
     }
 }
 
-/// Fills `levels` with 0..1 bar heights on a log-frequency axis.
-///
-/// Each bar sums the power across its band, so pink noise (equal energy per
-/// octave, close to typical music) reads flat without an extra tilt.
+/// Summing band power makes pink noise read flat on the log-frequency axis.
 pub(super) fn band_levels(power: &[f32], levels: &mut [f32]) {
     let count = levels.len();
     if count == 0 || power.is_empty() {
@@ -111,8 +108,6 @@ struct Peak {
     velocity: f32,
 }
 
-/// Winamp-style motion: bars jump up instantly and fall fast; peak caps hold,
-/// then drop under gravity. Rates are per second so any refresh rate matches.
 #[derive(Default)]
 pub(super) struct Ballistics {
     bars: Vec<f32>,
@@ -140,7 +135,7 @@ impl Ballistics {
             .collect();
     }
 
-    /// Advances by `elapsed` seconds toward `targets`; `None` lets everything fall.
+    /// `elapsed` is in seconds; absent targets let the bars and peaks decay.
     pub(super) fn update(&mut self, targets: Option<&[f32]>, elapsed: f32) {
         let elapsed = elapsed.clamp(0.0, 0.25);
         for (index, (bar, peak)) in self.bars.iter_mut().zip(&mut self.peaks).enumerate() {

@@ -70,7 +70,6 @@ pub(super) fn palette() -> Palette {
     palette
 }
 
-/// Redraws `widget` whenever the theme changes.
 pub(super) fn follow_theme(widget: &impl IsA<gtk::Widget>) {
     SURFACES.with_borrow_mut(|surfaces| {
         surfaces.retain(|surface| surface.upgrade().is_some());

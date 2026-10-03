@@ -23,7 +23,6 @@ const WIDE_ART_SHARE: f32 = 0.5;
 const ENTER_WIDE: f32 = 1.12;
 const LEAVE_WIDE: f32 = 0.95;
 
-/// Children in order: artwork, header, spectrum, scrubber, transport.
 struct Parts {
     artwork: gtk::Widget,
     header: gtk::Widget,
@@ -52,7 +51,6 @@ impl Parts {
         [&self.header, &self.scrubber, &self.transport]
     }
 
-    /// The narrowest panel every control fits in.
     fn panel_minimum(&self) -> i32 {
         self.panel_parts()
             .iter()
@@ -82,8 +80,6 @@ struct Plan {
     spectrum: i32,
 }
 
-/// Sizes the art and spectrum for the space available. When room runs out the
-/// spectrum shrinks and goes first, then the art.
 fn plan(width: i32, height: i32, wide: bool, panel_min: i32, fixed: impl Fn(i32) -> i32) -> Plan {
     let art_width = |art_height: i32| (art_height as f32 * ASPECT).round() as i32;
     let content_height = (height - 2 * PADDING).max(0);

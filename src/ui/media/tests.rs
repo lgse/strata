@@ -115,7 +115,6 @@ fn reopening_resumes_where_the_preview_closed() {
     );
     media.close();
 
-    // Songs always start from the beginning and leave nothing to resume.
     remember_media_position("/song".into(), media::timestamp(900));
     let media = DecodedMedia::new(SandboxedMedia {
         audio_only: true,

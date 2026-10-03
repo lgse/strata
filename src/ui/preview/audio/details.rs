@@ -195,8 +195,7 @@ struct FolderArt {
     cover: Cover,
 }
 
-/// The folder is rescanned every time: a directory's timestamps can miss an
-/// added or removed cover within one coarse timestamp tick.
+/// Rescan: coarse directory timestamps can miss cover additions and removals.
 fn load_folder_art(
     directory: &Path,
     job: &Cancellation,
@@ -225,7 +224,6 @@ fn load_folder_art(
     Some(Some(cover))
 }
 
-/// Tags arrive first; embedded artwork, then folder artwork, follow.
 pub(super) fn load_details(
     entry: &FileEntry,
     source: &SandboxedMedia,

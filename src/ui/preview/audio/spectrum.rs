@@ -149,7 +149,6 @@ impl Spectrum {
         self.imp().last_frame.set(None);
     }
 
-    /// Returns whether another frame is needed.
     fn advance(&self, frame_time: i64) -> bool {
         let imp = self.imp();
         let elapsed = imp

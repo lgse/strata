@@ -101,7 +101,6 @@ impl Scrubber {
         scrubber
     }
 
-    /// Reports the time under the pointer while hovering or dragging.
     pub(super) fn connect_preview(&self, callback: impl Fn(Option<i64>) + 'static) {
         self.imp().on_preview.replace(Some(Rc::new(callback)));
     }
@@ -133,7 +132,6 @@ impl Scrubber {
         self.sync_position();
     }
 
-    /// Lowers the current waveform back to the line before the next track's arrives.
     pub(super) fn clear_levels(&self) {
         self.imp().targets.borrow_mut().fill(0.0);
         // The outgoing waveform keeps its scale while it lowers.

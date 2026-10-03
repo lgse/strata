@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-//! The audio preview: artwork, tags, a live spectrum, a waveform scrubber and
-//! transport. One view lives across consecutive audio files so artwork can
-//! crossfade and the bars carry their motion into the next track.
+//! One view survives consecutive tracks to preserve artwork transitions and spectrum motion.
 
 mod analysis;
 mod artwork;
@@ -39,12 +37,12 @@ pub(super) fn clock(microseconds: i64) -> String {
 
 #[derive(Clone, Copy)]
 pub(super) struct TrackPosition {
+    /// One-based, unlike the listing cursor.
     pub(super) position: usize,
     pub(super) count: usize,
     pub(super) results: bool,
 }
 
-/// The tag's track number, else the position in the folder or filtered results.
 pub(super) fn track_caption(tags: &AudioTags, folder: Option<TrackPosition>) -> Option<String> {
     match (tags.track, tags.track_total, folder) {
         (Some(track), Some(total), _) => Some(format!("Track {track} of {total}")),
@@ -69,7 +67,6 @@ pub(super) struct Track {
     pub(super) entry: FileEntry,
     pub(super) source: SandboxedMedia,
     pub(super) media: gtk::MediaStream,
-    /// 1-based position among the displayed audio files, and their count.
     pub(super) folder: Option<TrackPosition>,
     pub(super) has_previous: bool,
     pub(super) has_next: bool,
@@ -255,7 +252,6 @@ impl AudioView {
         &self.root
     }
 
-    /// Lets go of the previous track's stream; the visuals stay and settle.
     pub(super) fn detach(&self) {
         if let Some(media) = self.media.borrow_mut().take() {
             for handler in self.handlers.borrow_mut().drain(..) {
@@ -267,8 +263,7 @@ impl AudioView {
         self.scrubber.set_media(None);
         self.scrubber.clear_levels();
         self.spectrum.set_media(None);
-        // The record keeps its place until the next track reports its own state,
-        // rather than tucking away for the moment between songs.
+        // Preserve the record's position between tracks.
         self.set_playing_icon(false);
     }
 
@@ -306,8 +301,7 @@ impl AudioView {
         self.spectrum
             .set_media(media.downcast_ref::<DecodedMedia>());
         self.scrubber.set_media(Some(&media));
-        // An unprepared replacement has not reported its playback state yet.
-        // Keep the record in place until playback starts or preparation finishes.
+        // An unprepared replacement must not briefly tuck the record away.
         if media.is_prepared() || media.is_playing() {
             self.sync_playing(media.is_playing());
         }

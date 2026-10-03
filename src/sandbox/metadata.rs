@@ -116,8 +116,7 @@ impl MediaMetadata {
 pub(crate) const TAG_KEYS: &str = "title,artist,album,album_artist,track,tracktotal,totaltracks";
 const MAX_TAG_CHARS: usize = 200;
 
-/// Display tags for the audio preview. Embedded text is untrusted: controls and
-/// bidirectional overrides are removed, whitespace collapsed and length capped.
+/// Untrusted tags sanitized for plain-text display.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct AudioTags {
     pub(crate) title: Option<String>,

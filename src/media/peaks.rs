@@ -46,8 +46,7 @@ pub(crate) fn rms(level: u8) -> f32 {
     (f32::from(level) / 255.0).powi(2)
 }
 
-/// Folds 16-bit mono PCM at `SAMPLE_RATE` into `BUCKETS` levels and streams
-/// completed runs so the overview can draw while decoding continues.
+/// Accepts 16-bit little-endian mono PCM at `SAMPLE_RATE`.
 pub(crate) struct Accumulator {
     samples_per_bucket: f64,
     consumed: u64,
@@ -126,7 +125,6 @@ pub(crate) struct RunReader {
 }
 
 impl RunReader {
-    /// Returns the next run as `(first bucket, levels)`, or `None` at the end.
     pub(crate) fn read(&mut self, reader: &mut impl Read) -> io::Result<Option<(u32, Vec<u8>)>> {
         if self.ended {
             return Err(invalid("Waveform data after its end"));

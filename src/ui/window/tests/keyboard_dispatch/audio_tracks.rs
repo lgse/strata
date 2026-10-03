@@ -3,7 +3,6 @@
 use super::*;
 use crate::services::SandboxedMedia;
 
-/// Serves every file as a sandboxed audio preview, like the local provider does for audio.
 struct AudioPreview;
 
 impl PreviewProvider for AudioPreview {
@@ -46,7 +45,6 @@ fn settle(step: &str, condition: impl Fn() -> bool) {
     }
 }
 
-/// The audio view shows `name`; its tag line may still be loading.
 fn shows_track(fixture: &KeyboardFixture, name: &str) -> bool {
     let preview = fixture.preview.widget();
     widget_with_class(&preview, "preview-audio").is_some()
@@ -159,7 +157,6 @@ fn tenxer_angle_brackets_step_through_audio_files_from_the_preview() {
             browser.set_folders_first(0, false);
             browser.set_sort(0, SortKey::Name, SortDirection::Ascending);
             fixture.view.set_view_mode(BrowserMode::List);
-            // The fixture's text files sit between the tracks.
             settle("sorted listing", || {
                 list_display_names(&fixture.view.widget())
                     == ["a.txt", "a.wav", "b.txt", "c.txt", "c.wav", "d.wav"]
@@ -170,7 +167,6 @@ fn tenxer_angle_brackets_step_through_audio_files_from_the_preview() {
                 preview_has_focus(&fixture) && shows_track(&fixture, "a.wav")
             });
 
-            // Repeated presses outrun the preview's debounce and still advance.
             assert!(fixture.press(Key::greater, ModifierType::SHIFT_MASK));
             assert!(fixture.press(Key::greater, ModifierType::SHIFT_MASK));
             settle("repeated steps", || focused_name(&browser) == "d.wav");
@@ -195,7 +191,6 @@ fn tenxer_angle_brackets_step_through_audio_files_from_the_preview() {
                 assert!(preview_has_focus(&fixture), "{key:?} kept the keys");
             }
 
-            // From the listing, like J / K, they act on the open audio preview.
             fixture.press(Key::h, ModifierType::empty());
             settle("listing keys", || file_panes_have_focus(&fixture));
             for (key, modifiers, expected) in [

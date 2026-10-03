@@ -20,12 +20,10 @@ const DISC: f32 = 0.94;
 const TUCKED: f32 = 0.06;
 const SLID_OUT: f32 = 0.3;
 const SLIDE_RATE: f32 = 7.0;
-/// Tucking away before a cover change is brisk so the new art is not kept waiting.
 const TUCK_RATE: f32 = 14.0;
 /// The crossfade starts once the record is this close to tucked, in pixels.
 const TUCK_SETTLED: f32 = 2.0;
 const FADE_SECONDS: f32 = 0.24;
-/// The record fades on its own, never through a translucent cover.
 const DISC_FADE_SECONDS: f32 = 0.18;
 const SECONDS_PER_TURN: f32 = 2.4;
 const LABEL: f32 = 0.34;
@@ -34,9 +32,7 @@ const SHADOW_MARGIN: f32 = 0.2;
 /// The CPU renderer repaints every pixel itself, so the label turns at film rate.
 const SOFTWARE_SPIN_INTERVAL_US: i64 = 33_333;
 
-/// A cover change runs in sequence so the record and the art never blend: the
-/// record tucks behind the sleeve (or fades away when there is none), the art
-/// fades, then the record slides out (or fades in when the art is gone).
+/// Tuck before crossfading so the record never shows through translucent art.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum Change {
     #[default]
@@ -48,8 +44,7 @@ enum Change {
 /// Room around a cover for its shadow, as a share of its side.
 const SLEEVE_MARGIN: f32 = 0.12;
 
-/// A cover pre-scaled with its shadow and rounded corners, so fades only blend
-/// a finished image instead of re-filtering the source every frame.
+/// Cache the filtered cover and shadow to keep animation frames cheap.
 struct Sleeve {
     source: gdk::Texture,
     side_pixels: i32,
@@ -58,7 +53,6 @@ struct Sleeve {
     rendered: gdk::Texture,
 }
 
-/// The record rendered once: a static body, and a label that only needs rotating.
 struct DiscTextures {
     radius_pixels: i32,
     scale: i32,
@@ -82,12 +76,10 @@ mod imp {
         pub(super) disc_opacity: Cell<f32>,
         /// Set while art appears or disappears, so the record stays out of the fade.
         pub(super) disc_hidden: Cell<bool>,
-        /// Nothing shown yet: the first art fades in alone rather than after a
-        /// placeholder record.
+        /// The first cover must not crossfade from a placeholder record.
         pub(super) fresh: Cell<bool>,
         pub(super) playing: Cell<bool>,
-        /// How far the record sits right of the cover, as a share of the cover's
-        /// side, so it stays put however the art is resized.
+        /// Fraction of the cover side, independent of allocation size.
         pub(super) disc_offset: Cell<Option<f32>>,
         pub(super) angle: Cell<f32>,
         pub(super) tick: RefCell<Option<gtk::TickCallbackId>>,
@@ -187,8 +179,6 @@ impl Artwork {
         }
         let animated = crate::ui::motion::animations_enabled();
         if imp.fresh.replace(false) && animated {
-            // Art fades in on its own, then the record slides out from behind
-            // it; without art the record simply fades in.
             let art = cover.is_some();
             imp.disc_opacity.set(0.0);
             imp.cover.replace(cover);
@@ -337,8 +327,7 @@ impl Artwork {
             TUCK_RATE
         };
         let offset = if opacity <= 0.0 {
-            // Hidden, it waits where it reappears; behind art that is tucked, so it
-            // can then slide out.
+            // Reposition while invisible to avoid sliding across incoming art.
             if has_cover { TUCKED } else { target }
         } else if !visible {
             previous_offset.unwrap_or(target)
@@ -379,8 +368,7 @@ impl Artwork {
                 imp.disc_hidden.set(false);
             }
         }
-        // With a cover the label is hidden behind it and grooves look the same at
-        // any angle, so turning would only repaint the cover every frame.
+        // A sleeve hides the rotating label; repainting cannot reveal any motion.
         let spinning = animated && imp.playing.get() && imp.cover.borrow().is_none();
         let mut redraw =
             previous_offset != Some(offset) || previous_fade != fade || previous_opacity != opacity;
@@ -400,7 +388,6 @@ impl Artwork {
         if redraw {
             self.queue_draw();
         }
-        // A phase may have just ended, so judge the remaining motion afresh.
         spinning
             || offset != self.disc_target()
             || fade < 1.0
@@ -433,8 +420,7 @@ impl Artwork {
         let frame = graphene::Rect::new(left, top, size, size);
         let fade = imp.fade.get();
         if let Some(Some(texture)) = imp.previous.borrow().as_ref() {
-            // Under an incoming cover the old one stays opaque so the crossfade
-            // never dips; with nothing incoming it fades out to the bare record.
+            // Keep the old cover opaque beneath an incoming one to avoid a brightness dip.
             let opacity = if imp.cover.borrow().is_some() {
                 1.0
             } else {
@@ -511,7 +497,6 @@ impl Artwork {
             .and_then(|cover| cover.as_ref())
             .map(|cover| cover.texture.clone());
         let mut sleeves = imp.sleeves.borrow_mut();
-        // Only the covers on screen are worth keeping.
         sleeves.retain(|sleeve| {
             Some(&sleeve.source) == current.as_ref() || Some(&sleeve.source) == previous.as_ref()
         });
@@ -575,8 +560,6 @@ impl Artwork {
         snapshot.restore();
     }
 
-    /// Renders the record at this size, scale and theme once; spinning then only
-    /// rotates the small label texture.
     fn disc_textures(&self, colors: &Palette, radius: f32) -> Option<(gdk::Texture, gdk::Texture)> {
         let imp = self.imp();
         let scale = self.scale_factor();
@@ -625,9 +608,7 @@ fn render(
     ))
 }
 
-/// The darker and lighter of the theme's background and text. The record is
-/// dark in every theme, so its grooves need the lighter one to show; in light
-/// themes the text is the dark colour.
+/// The record stays dark even in light themes, where text cannot supply groove contrast.
 fn shades(colors: &Palette) -> (gdk::RGBA, gdk::RGBA) {
     let luminance =
         |color: gdk::RGBA| color.red() * 0.2126 + color.green() * 0.7152 + color.blue() * 0.0722;
@@ -654,7 +635,6 @@ fn paint_cover(
         0.0,
         size * 0.07,
     );
-    // Fill the square like a record sleeve: crop rather than letterbox odd shapes.
     let (texture_width, texture_height) = (texture.width() as f32, texture.height() as f32);
     let scale = (size / texture_width).max(size / texture_height);
     let (drawn_width, drawn_height) = (texture_width * scale, texture_height * scale);
@@ -726,7 +706,6 @@ fn paint_disc(snapshot: &gtk::Snapshot, colors: &Palette, center: graphene::Poin
     snapshot.append_border(&outline, &[1.0; 4], &[with_alpha(light, 0.14); 4]);
 }
 
-/// Paints the label around the origin; the stripe makes its turning visible.
 fn paint_label(snapshot: &gtk::Snapshot, colors: &Palette, radius: f32) {
     let label = radius * LABEL;
     let origin = graphene::Point::new(0.0, 0.0);

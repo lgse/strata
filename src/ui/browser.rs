@@ -1695,7 +1695,6 @@ impl BrowserView {
         (!order.is_empty()).then_some(order)
     }
 
-    /// Entries of one pane in display order that satisfy `keep`.
     pub(crate) fn displayed_entries_matching(
         &self,
         depth: usize,
@@ -1737,10 +1736,7 @@ impl BrowserView {
         self.state.browser.cursor_entry(depth)
     }
 
-    /// Moves to `location` as a keyboard step would, so the preview follows:
-    /// selecting it, or in 10xer mode moving only the cursor. A key press passes
-    /// its direction so the cursor ring and scrolling behave like **j** / **k**;
-    /// a pointer press leaves pointer navigation in place.
+    /// `key` supplies the keyboard scroll direction; `None` preserves pointer navigation.
     pub(crate) fn step_to(&self, depth: usize, location: &Location, key: Option<i32>) -> bool {
         if let Some(target) = self.filter_target()
             && let Some(results) = target.results()
