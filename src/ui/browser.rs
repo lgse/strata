@@ -17,7 +17,7 @@ use crate::ui::browser::location::{
 };
 use crate::ui::browser::paths::{can_pin_entry, is_trash_location};
 use crate::ui::browser::peek::{PeekAnchor, PeekView};
-use crate::ui::browser::progress::{FileProgressView, TransferProgressSnapshot};
+use crate::ui::browser::progress::{BackgroundProgress, FileProgressState};
 use crate::ui::browser::transfer::FinishedSendToCompletion;
 use crate::ui::browser::transfer::PendingSendToCompletion;
 use crate::ui::browser::transfer::duplicate_transfer;
@@ -26,7 +26,7 @@ use crate::ui::browser_modes::{BrowserDensity, BrowserMode, ClickActivation, Mod
 use gtk::glib;
 use gtk::prelude::*;
 use std::cell::{Cell, RefCell};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
@@ -221,22 +221,14 @@ pub(super) struct ViewState {
     pending_click_rename: RefCell<Option<glib::SourceId>>,
     click_rename_generation: Cell<u64>,
     pending_new_entry: RefCell<Option<Rc<PendingEntryRename>>>,
-    file_progress_view: RefCell<Option<FileProgressView>>,
-    pending_file_progress: RefCell<Option<glib::SourceId>>,
+    progress_state: RefCell<Rc<FileProgressState>>,
+    background_file_progress:
+        RefCell<HashMap<crate::services::OperationRequestId, Rc<BackgroundProgress>>>,
     pending_send_to_completion: RefCell<Option<PendingSendToCompletion>>,
     finished_send_to_completion: RefCell<Option<FinishedSendToCompletion>>,
     send_to_success_widget: RefCell<Option<gtk::Widget>>,
     send_to_success_generation: Cell<u64>,
-    file_operation_progress: Cell<(usize, usize)>,
-    transfer_progress: Cell<Option<TransferProgressSnapshot>>,
-    transfer_current_file: RefCell<Option<String>>,
-    transfer_rate_sample: Cell<Option<(std::time::Instant, u64)>>,
-    transfer_rate_bytes_per_second: Cell<Option<f64>>,
-    flushing_to_device: Cell<bool>,
-    transfer_cancel_requested: Cell<bool>,
-    transfer_cancel_timed_out: Cell<bool>,
-    transfer_cancel_timeout: RefCell<Option<glib::SourceId>>,
-    transfer_warning_banner: RefCell<Option<gtk::Box>>,
+
     pin_handler: RefCell<Option<PinHandler>>,
     unpin_handler: RefCell<Option<UnpinHandler>>,
     pin_status_handler: RefCell<Option<PinStatusHandler>>,
@@ -563,7 +555,7 @@ impl BrowserView {
             },
         );
         let state = Rc::new(ViewState {
-            overlay,
+            overlay: overlay.clone(),
             location_control,
             location_stack,
             global_activity_spinner,
@@ -610,22 +602,13 @@ impl BrowserView {
             pending_click_rename: RefCell::new(None),
             click_rename_generation: Cell::new(0),
             pending_new_entry: RefCell::new(None),
-            file_progress_view: RefCell::new(None),
-            pending_file_progress: RefCell::new(None),
+            progress_state: RefCell::new(Rc::new(FileProgressState::new(&overlay))),
+            background_file_progress: RefCell::new(HashMap::new()),
             pending_send_to_completion: RefCell::new(None),
             finished_send_to_completion: RefCell::new(None),
             send_to_success_widget: RefCell::new(None),
             send_to_success_generation: Cell::new(0),
-            file_operation_progress: Cell::new((0, 0)),
-            transfer_progress: Cell::new(None),
-            transfer_current_file: RefCell::new(None),
-            transfer_rate_sample: Cell::new(None),
-            transfer_rate_bytes_per_second: Cell::new(None),
-            flushing_to_device: Cell::new(false),
-            transfer_cancel_requested: Cell::new(false),
-            transfer_cancel_timed_out: Cell::new(false),
-            transfer_cancel_timeout: RefCell::new(None),
-            transfer_warning_banner: RefCell::new(None),
+
             pin_handler: RefCell::new(None),
             unpin_handler: RefCell::new(None),
             pin_status_handler: RefCell::new(None),

@@ -2,6 +2,8 @@
 
 #![cfg(test)]
 
+pub(crate) mod operations;
+
 use std::{
     io::Write,
     sync::{Arc, LockResult, Mutex, MutexGuard, Once},

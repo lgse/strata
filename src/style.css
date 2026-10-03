@@ -1127,14 +1127,6 @@ headerbar menubutton.header-action > button:focus-visible {
   padding: 24px 28px;
 }
 
-.transfer-pending-warning {
-  padding: 12px 16px;
-  background: @theme_surface;
-  color: @theme_danger;
-  border: 1px solid @theme_danger;
-  border-radius: 10px;
-}
-
 .transfer-progress-caption {
   color: @theme_dim_text;
   font-size: 0.76em;
@@ -1160,6 +1152,39 @@ headerbar menubutton.header-action > button:focus-visible {
   font-size: 0.82em;
 }
 
+.file-operation-dock,
+.file-operation-dock > viewport {
+  background: transparent;
+}
+
+.file-operation-dock {
+  padding: 6px;
+}
+
+.file-operation-card {
+  background: @theme_surface;
+  border: 1px solid alpha(@theme_border, 0.6);
+  border-radius: 9px;
+  box-shadow: 0 0 10px alpha(@theme_glow, 0.18);
+  color: @theme_text;
+  min-width: 280px;
+  padding: 10px;
+}
+
+.file-operation-card:focus-within {
+  border-color: @theme_accent;
+}
+
+.file-operation-card .job-status {
+  color: @theme_accent;
+}
+
+.file-operation-card button.column-header-action {
+  min-width: 16px;
+  min-height: 16px;
+  padding: 3px;
+}
+
 .modal-progress trough {
   background: alpha(@theme_bg, 0.72);
   border: 1px solid alpha(@theme_border, 0.42);
@@ -1172,6 +1197,9 @@ headerbar menubutton.header-action > button:focus-visible {
   border: none;
   border-radius: 4px;
   min-height: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
 }
 
 spinbutton.form-control {

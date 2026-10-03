@@ -82,9 +82,28 @@ retains its existing overwrite behavior.
 
 ## Feedback and cancellation
 
-Archive operations show `Preparing…` immediately, then completed-file counts.
-An activity spinner remains visible while the current file is processed and
-while the archive is finalized; it is not a byte-level progress estimate.
+Archive operations show `Preparing…` while counting members, then `Compressing…`
+(or `Processing archive…` for extraction) and completed-file counts. A large
+member can take time before the completed count advances. The activity indicator
+continues animating during that work and finalization; it is not a byte-level
+progress estimate.
+
+Copying, compression, deletion, and drive formatting use independent progress
+cards at the bottom right, without a progress modal or a restore action. Browsing
+continues while the jobs run. Cards show the full filename/status and destination
+(or the drive being formatted), wrapping long text instead of truncating it.
+Moves, extraction, and undo/redo keep their foreground presentation.
+
+The X cancels only its own copying, compression, or deletion job. Once requested,
+it is disabled while the worker stops; device-writing warnings remain in that
+card, without a separate banner or a Return to browser action. Do not unplug a
+drive while cancellation or writes are pending. Formatting cannot be cancelled
+once started: its card keeps the unplug warning visible and offers Close only
+after completion. Normal progress and pending cancellation use neutral styling,
+not error borders or text.
+
+Finish or cancel running operations before closing their window. Completed
+formatting cards can be closed without affecting another job.
 
 Cancellation is cooperative. Encoded output and TAR's input-to-encoder writes
 check cancellation, as do 7Z source reads and existing ZIP copy chunks. Errors

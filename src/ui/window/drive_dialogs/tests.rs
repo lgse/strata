@@ -95,39 +95,37 @@ fn format_feedback_reports_success_failure_and_authorization_cancellation() {
                 );
                 wait_until(|| started.get());
                 assert!(has_label(overlay.upcast_ref(), "Formatting drive"));
-                let widgets = descendants(overlay.upcast_ref());
-                let loading = widgets
-                    .iter()
-                    .find_map(|widget| {
-                        widget
-                            .clone()
-                            .downcast::<gtk::Spinner>()
-                            .ok()
-                            .filter(|spinner| spinner.is_visible())
-                    })
-                    .expect("formatting activity spinner");
-                assert!(loading.is_spinning());
-                let close = widgets
+                assert!(super::super::visible_modal_layer(&window).is_none());
+                assert_eq!(
+                    gtk::prelude::GtkWindowExt::focus(&window),
+                    Some(origin.clone().upcast::<gtk::Widget>())
+                );
+                assert!(has_label(overlay.upcast_ref(), "Drive: Test drive"));
+                let close = descendants(overlay.upcast_ref())
                     .into_iter()
                     .find_map(|widget| {
                         widget
                             .downcast::<gtk::Button>()
                             .ok()
-                            .filter(|button| button.label().as_deref() == Some("Close"))
+                            .filter(|button| button.has_css_class("progress-cancel"))
                     })
-                    .expect("close format feedback");
-                assert!(!close.is_sensitive());
+                    .expect("format result close control");
+                assert!(!close.is_visible());
                 close.emit_clicked();
                 assert!(has_label(overlay.upcast_ref(), "Formatting drive"));
                 finish.send(result).expect("complete controlled format");
                 if let Some(title) = expected_title {
                     wait_until(|| has_label(overlay.upcast_ref(), title));
-                    assert!(!loading.is_spinning());
                     if title == "Format complete" {
-                        assert!(close.is_sensitive());
+                        assert!(close.is_visible());
+                        assert!(super::super::visible_modal_layer(&window).is_none());
                         assert!(has_label(
                             overlay.upcast_ref(),
-                            "The drive was formatted successfully. Click it in the sidebar to mount it."
+                            "The drive was formatted successfully."
+                        ));
+                        assert!(has_label(
+                            overlay.upcast_ref(),
+                            "Click the drive in the sidebar to mount it."
                         ));
                         close.emit_clicked();
                     } else {
@@ -148,15 +146,79 @@ fn format_feedback_reports_success_failure_and_authorization_cancellation() {
                         error_close.emit_clicked();
                     }
                 }
+                wait_until(|| !has_label(overlay.upcast_ref(), "Formatting drive"));
                 wait_until(|| {
                     !descendants(overlay.upcast_ref())
                         .iter()
                         .any(|widget| widget.has_css_class("app-modal-layer"))
                 });
                 assert!(!has_label(overlay.upcast_ref(), "Format complete"));
-                assert!(origin.has_focus());
+                assert_eq!(
+                    gtk::prelude::GtkWindowExt::focus(&window),
+                    Some(origin.clone().upcast::<gtk::Widget>())
+                );
                 window.close();
             }
+        },
+    );
+}
+
+#[test]
+fn docked_format_blocks_window_close_until_the_worker_finishes() {
+    crate::test_support::gtk_test(
+        "ui::window::drive_dialogs::tests::docked_format_blocks_window_close_until_the_worker_finishes",
+        || {
+            let parent = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            let origin = gtk::Button::with_label("Browser item");
+            parent.append(&origin);
+            let overlay = gtk::Overlay::new();
+            overlay.set_child(Some(&parent));
+            let window = gtk::Window::builder().child(&overlay).build();
+            window.present();
+            origin.grab_focus();
+            let (finish, pending) = futures_channel::oneshot::channel();
+            run_format_with_feedback(
+                parent.upcast_ref(),
+                "Test drive",
+                move |parent| async move {
+                    let result = pending.await.expect("format worker stays alive");
+                    assert!(parent.root().is_some());
+                    result
+                },
+            );
+            assert!(super::super::visible_modal_layer(&window).is_none());
+            assert_eq!(
+                gtk::prelude::GtkWindowExt::focus(&window),
+                Some(origin.clone().upcast::<gtk::Widget>())
+            );
+            window.close();
+            wait_until(|| has_label(overlay.upcast_ref(), "Drive formatting is still active"));
+            assert!(window.is_visible());
+            let error_close = descendants(overlay.upcast_ref())
+                .into_iter()
+                .find_map(|widget| {
+                    widget.downcast::<gtk::Button>().ok().filter(|button| {
+                        button.label().as_deref() == Some("Close") && button.is_sensitive()
+                    })
+                })
+                .expect("close active-format warning");
+            error_close.emit_clicked();
+            finish
+                .send(Ok(()))
+                .expect("finish format without cancellation");
+            wait_until(|| has_label(overlay.upcast_ref(), "Format complete"));
+            let result_close = descendants(overlay.upcast_ref())
+                .into_iter()
+                .find_map(|widget| {
+                    widget
+                        .downcast::<gtk::Button>()
+                        .ok()
+                        .filter(|button| button.has_css_class("progress-cancel"))
+                })
+                .expect("close format result");
+            assert!(result_close.is_visible());
+            result_close.emit_clicked();
+            window.close();
         },
     );
 }

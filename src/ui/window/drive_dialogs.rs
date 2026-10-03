@@ -21,6 +21,8 @@ use crate::{
 
 use super::drive_ops::{self, FilesystemType};
 
+mod format_progress;
+
 #[cfg(test)]
 pub(super) mod tests;
 
@@ -610,97 +612,22 @@ where
     F: FnOnce(gtk::Widget) -> Fut + 'static,
     Fut: Future<Output = Result<(), drive_ops::DriveOpError>> + 'static,
 {
-    let Some(shell) = modal_shell(
-        parent,
-        assets::icons::SHREDDER,
-        "Formatting drive",
-        display_name,
-        "Close",
-        false,
-    ) else {
+    let Some(progress) = format_progress::FormatProgress::new(parent, display_name) else {
         return;
     };
-    shell.layout.content.set_width_request(480);
-    shell.layout.subtitle.set_max_width_chars(32);
-    shell
-        .layout
-        .subtitle
-        .set_ellipsize(gtk::pango::EllipsizeMode::End);
-    shell.layout.cancel.set_visible(false);
-    shell.layout.confirm.set_sensitive(false);
-    shell.layout.close.set_sensitive(false);
-    let activity = gtk::Spinner::new();
-    activity.add_css_class("action-dialog-loading");
-    activity.set_valign(gtk::Align::Center);
-    crate::ui::accessibility::set_description(&activity, Some("Formatting drive"));
-    activity.start();
-    let message = gtk::Label::new(Some(
-        "Formatting the drive. Do not unplug it until formatting finishes.",
-    ));
-    message.set_xalign(0.0);
-    message.set_wrap(true);
-    message.set_wrap_mode(gtk::pango::WrapMode::WordChar);
-    message.set_max_width_chars(40);
-    let status = gtk::Box::new(gtk::Orientation::Horizontal, 20);
-    status.append(&activity);
-    status.append(&message);
-    shell.layout.body.append(&status);
-
-    let finished = Rc::new(Cell::new(false));
-    let layer = shell.layer.downgrade();
-    let overlay = shell.overlay.downgrade();
-    let root = shell.blurred_root.as_ref().map(|root| root.downgrade());
-    let can_close = finished.clone();
-    let close = Rc::new(move || {
-        if can_close.get()
-            && let Some((layer, overlay)) = layer.upgrade().zip(overlay.upgrade())
-        {
-            let root = root.as_ref().and_then(glib::WeakRef::upgrade);
-            dismiss_modal_layer(&layer, &overlay, root.as_ref());
-        }
-    });
-    let clicked = close.clone();
-    shell.layout.confirm.connect_clicked(move |_| clicked());
-    let clicked = close.clone();
-    shell.layout.close.connect_clicked(move |_| clicked());
-    let escape = gtk::EventControllerKey::new();
-    escape.connect_key_pressed(move |_, key, _, _| {
-        if key == gtk::gdk::Key::Escape {
-            close();
-            glib::Propagation::Stop
-        } else {
-            glib::Propagation::Proceed
-        }
-    });
-    shell.layer.add_controller(escape);
-
-    let task_parent = shell.layout.content.clone().upcast::<gtk::Widget>();
-    let display_name = display_name.to_owned();
+    let task_parent = parent
+        .root()
+        .and_downcast::<gtk::Window>()
+        .map(|window| window.upcast::<gtk::Widget>())
+        .unwrap_or_else(|| parent.clone());
+    let hold = parent
+        .root()
+        .and_downcast::<gtk::Window>()
+        .and_then(|window| window.application())
+        .map(|application| application.hold());
     glib::MainContext::default().spawn_local(async move {
-        let result = task(task_parent).await;
-        activity.stop();
-        activity.set_visible(false);
-        match result {
-            Ok(()) => {
-                finished.set(true);
-                shell.layout.title.set_text("Format complete");
-                assets::set_primary_icon(&shell.layout.icon, assets::icons::CIRCLE_CHECK);
-                message.set_text(
-                    "The drive was formatted successfully. Click it in the sidebar to mount it.",
-                );
-                shell.layout.confirm.set_sensitive(true);
-                shell.layout.close.set_sensitive(true);
-                shell.layout.confirm.grab_focus();
-            }
-            Err(error) => {
-                dismiss_modal_layer(&shell.layer, &shell.overlay, shell.blurred_root.as_ref());
-                drive_ops::report_result(
-                    &shell.overlay.clone().upcast::<gtk::Widget>(),
-                    &display_name,
-                    Err(error),
-                );
-            }
-        }
+        let _hold = hold;
+        progress.complete(task(task_parent).await);
     });
 }
 
@@ -872,9 +799,13 @@ pub(super) fn show_format_dialog(parent: &gtk::Widget, volume: &gio::Volume) {
         let label = submitted_label_entry.text().to_string();
         let quick = quick_check.is_active();
         let task_volume = volume.clone();
-        run_format_with_feedback(&parent, &name, move |task_parent| async move {
-            drive_ops::format_volume(task_parent, task_volume, fs_type, label, quick).await
-        });
+        run_format_with_feedback(
+            &parent,
+            &format!("{name} ({device})"),
+            move |task_parent| async move {
+                drive_ops::format_volume(task_parent, task_volume, fs_type, label, quick).await
+            },
+        );
     });
     wire_modal_close_except_confirm(&shell);
     label_entry.grab_focus();

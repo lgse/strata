@@ -75,6 +75,19 @@ impl WindowContent {
         window.add_controller(click);
         input::install_edit_cancellation(window, &self.browser);
         super::install_modal_focus_trap(window);
+        let operation_browser = self.browser.browser();
+        window.connect_close_request(move |window| {
+            if operation_browser.has_background_operations() {
+                crate::ui::modal::show_error_dialog(
+                    window,
+                    "File operations are still active",
+                    "Wait for these operations to finish, or cancel them before closing this window. Cancellation does not undo completed changes.",
+                );
+                gtk::glib::Propagation::Stop
+            } else {
+                gtk::glib::Propagation::Proceed
+            }
+        });
         window.connect_unrealize(|window| {
             PreferenceManager::shared().release_bindings_within(window);
         });
@@ -142,12 +155,18 @@ impl WindowContent {
     /// the destroy signal.
     pub(super) fn connect_cleanup(self, window: &gtk::ApplicationWindow) {
         let browser = self.browser.browser();
+        let progress_view = self.browser.downgrade();
         let sidebar = self.sidebar;
         let footer = self.footer;
         window.connect_unrealize(move |_| {
             footer.disconnect_clipboard();
             browser.bump_navigation_generation();
             browser.clear_observer();
+            if let Some(view) = progress_view.upgrade() {
+                view.dispose_file_progress();
+            }
+            browser.cancel_background_operations();
+            browser.cancel_file_operation();
             sidebar.disconnect();
         });
     }

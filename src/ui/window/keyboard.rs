@@ -682,6 +682,14 @@ impl Dispatcher {
         if self.native_menu_owns_input() {
             return Some(Propagation::Proceed);
         }
+        let mut focused = gtk::prelude::RootExt::focus(&self.window);
+        while let Some(widget) = focused {
+            if widget.has_css_class("file-operation-card") {
+                self.shortcuts.cancel_chord();
+                return Some(Propagation::Proceed);
+            }
+            focused = widget.parent();
+        }
         if self.shortcuts.prompt_has_focus() {
             if let Some(result) = self.footer_key(key, modifiers) {
                 return Some(result);

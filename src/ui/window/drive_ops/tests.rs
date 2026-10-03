@@ -25,14 +25,16 @@ fn formatting_resolves_only_the_selected_volume_and_updates_partition_discovery(
                             let spec = parameters.child_value(0);
                             let spec = glib::VariantDict::new(Some(&spec));
                             assert_eq!(
-                                spec.lookup::<String>("path").unwrap().as_deref(),
+                                spec.lookup::<String>("path")
+                                    .expect("device path variant")
+                                    .as_deref(),
                                 Some("/dev/test-partition")
                             );
                             Ok((vec![
                                 glib::variant::ObjectPath::try_from(
                                     "/org/freedesktop/UDisks2/block_devices/test_partition",
                                 )
-                                .unwrap(),
+                                .expect("valid UDisks object path"),
                             ],)
                                 .to_variant())
                         }
@@ -43,7 +45,10 @@ fn formatting_resolves_only_the_selected_volume_and_updates_partition_discovery(
                             );
                             assert_eq!(interface, "org.freedesktop.UDisks2.Block");
                             assert_eq!(parameters.type_().as_str(), "(sa{sv})");
-                            let kind = parameters.child_value(0).get::<String>().unwrap();
+                            let kind = parameters
+                                .child_value(0)
+                                .get::<String>()
+                                .expect("filesystem type");
                             let options = parameters.child_value(1);
                             assert_eq!(
                                 kind,
@@ -55,19 +60,29 @@ fn formatting_resolves_only_the_selected_volume_and_updates_partition_discovery(
                             );
                             let options = glib::VariantDict::new(Some(&options));
                             assert_eq!(
-                                options.lookup::<bool>("update-partition-type").unwrap(),
+                                options
+                                    .lookup::<bool>("update-partition-type")
+                                    .expect("partition-update option"),
                                 Some(true)
                             );
                             assert_eq!(
-                                options.lookup::<String>("label").unwrap().as_deref(),
+                                options
+                                    .lookup::<String>("label")
+                                    .expect("label option")
+                                    .as_deref(),
                                 Some("Backup")
                             );
                             assert_eq!(
-                                options.lookup::<String>("erase").unwrap().as_deref(),
+                                options
+                                    .lookup::<String>("erase")
+                                    .expect("erase option")
+                                    .as_deref(),
                                 if quick { None } else { Some("zero") }
                             );
                             assert_eq!(
-                                options.lookup::<Vec<String>>("mkfs-args").unwrap(),
+                                options
+                                    .lookup::<Vec<String>>("mkfs-args")
+                                    .expect("mkfs arguments"),
                                 if fs == FilesystemType::Fat32 {
                                     Some(vec!["-F".into(), "32".into()])
                                 } else {
@@ -80,7 +95,7 @@ fn formatting_resolves_only_the_selected_volume_and_updates_partition_discovery(
                     }
                 },
             )
-            .unwrap();
+            .expect("format fixture succeeds");
             assert_eq!(methods, ["ResolveDevice", "Format"]);
         }
     }
@@ -98,7 +113,9 @@ fn missing_or_ambiguous_device_never_formats() {
                 assert_eq!(method, "ResolveDevice");
                 Ok((paths
                     .iter()
-                    .map(|path| glib::variant::ObjectPath::try_from(*path).unwrap())
+                    .map(|path| {
+                        glib::variant::ObjectPath::try_from(*path).expect("fixture object path")
+                    })
                     .collect::<Vec<_>>(),)
                     .to_variant())
             },
@@ -118,7 +135,10 @@ fn format_failure_is_not_reported_as_success_or_retried() {
         |_, _, method, _| {
             calls += 1;
             if method == "ResolveDevice" {
-                Ok((vec![glib::variant::ObjectPath::try_from("/test").unwrap()],).to_variant())
+                Ok((vec![
+                    glib::variant::ObjectPath::try_from("/test").expect("fixture object path"),
+                ],)
+                    .to_variant())
             } else {
                 Err(DriveOpError::CommandFailed("format failed".into()))
             }
