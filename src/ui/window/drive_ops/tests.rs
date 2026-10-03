@@ -3,6 +3,20 @@
 use super::*;
 
 #[test]
+fn mounted_usage_does_not_require_directory_read_permission() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = tempfile::tempdir().expect("mounted usage fixture");
+    std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o111))
+        .expect("search-only directory");
+    let usage = usage_for_path(root.path());
+    std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700))
+        .expect("restore fixture permissions");
+    let (total, available) = usage.expect("filesystem usage without directory enumeration");
+    assert!(total > 0);
+    assert!(available <= total);
+}
+
+#[test]
 fn formatting_resolves_only_the_selected_volume_and_updates_partition_discovery() {
     for fs in [
         FilesystemType::Fat32,

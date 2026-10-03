@@ -221,8 +221,7 @@ pub(super) fn block_device_for_volume(volume: &gio::Volume) -> Option<PathBuf> {
 /// Total and available bytes for a mounted path, or `None` when the
 /// filesystem does not report capacity.
 pub(super) fn usage_for_path(path: &Path) -> Option<(u64, u64)> {
-    let file = std::fs::File::open(path).ok()?;
-    let stat = rustix::fs::fstatvfs(&file).ok()?;
+    let stat = rustix::fs::statvfs(path).ok()?;
     if stat.f_blocks == 0 {
         return None;
     }
@@ -279,6 +278,11 @@ fn run_privileged_tool(cmd: &str, args: &[String]) -> Result<String, DriveOpErro
 pub(super) fn block_device_for_path(path: &Path) -> Option<PathBuf> {
     let table = std::fs::read("/proc/self/mountinfo").ok()?;
     super::devices::block_device_from_mount_table(&table, path)
+}
+
+pub(super) fn mounted_path_for_device(device: &Path) -> Option<PathBuf> {
+    let table = std::fs::read("/proc/self/mountinfo").ok()?;
+    super::devices::mounted_path_from_table(&table, device)
 }
 
 pub(super) fn filesystem_of_device(device: &Path) -> FilesystemType {

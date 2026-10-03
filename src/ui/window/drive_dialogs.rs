@@ -351,7 +351,7 @@ pub(super) fn show_drive_properties(
 ) {
     let name = target.name();
     let volume = target.volume();
-    let mount = target.mount();
+    let mount_root = target.mount().map(|mount| mount.root());
     let Some(shell) = modal_shell(
         parent,
         assets::icons::INFO,
@@ -399,12 +399,18 @@ pub(super) fn show_drive_properties(
         .as_ref()
         .and_then(drive_ops::block_device_for_volume)
         .or_else(|| {
-            mount
+            mount_root
                 .as_ref()
-                .and_then(|mount| mount.root().path())
+                .and_then(|root| root.path())
                 .as_deref()
                 .and_then(drive_ops::block_device_for_path)
         });
+    let mount_root = mount_root.or_else(|| {
+        block_device
+            .as_deref()
+            .and_then(drive_ops::mounted_path_for_device)
+            .map(gio::File::for_path)
+    });
     add_row(
         "Device",
         &block_device
@@ -417,12 +423,10 @@ pub(super) fn show_drive_properties(
         .as_ref()
         .and_then(|device| drive_ops::filesystem_label_for_device(device))
         .or_else(|| {
-            mount
+            mount_root
                 .as_ref()
-                .and_then(|mount| {
-                    mount
-                        .root()
-                        .query_filesystem_info("filesystem::type", gio::Cancellable::NONE)
+                .and_then(|root| {
+                    root.query_filesystem_info("filesystem::type", gio::Cancellable::NONE)
                         .ok()
                 })
                 .and_then(|info| {
@@ -436,19 +440,17 @@ pub(super) fn show_drive_properties(
     let total_bytes = block_device
         .as_ref()
         .and_then(|device| drive_ops::device_size_bytes(device));
-    match mount {
-        Some(mount) => {
-            let location = mount
-                .root()
+    match mount_root {
+        Some(root) => {
+            let location = root
                 .path()
                 .map(|path| path.display().to_string())
                 .unwrap_or_else(|| "—".to_owned());
             add_row("Mount point", &location);
             add_row("Status", "Mounted");
-            let usage = mount
-                .root()
+            let usage = root
                 .path()
-                .and_then(|root| drive_ops::usage_for_path(&root));
+                .and_then(|path| drive_ops::usage_for_path(&path));
             let total = usage
                 .map(|(total, _)| total)
                 .filter(|total| *total > 0)
@@ -475,6 +477,7 @@ pub(super) fn show_drive_properties(
             if let Some(total) = total_bytes {
                 add_row("Capacity", &human_size(total));
             }
+            add_row("Used", "Unavailable (not mounted)");
         }
     }
 

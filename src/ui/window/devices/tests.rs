@@ -391,6 +391,17 @@ fn properties_resolve_the_innermost_block_mount_including_btrfs_and_escaped_path
 27 26 8:2 / /home/USB\040Backup rw - exfat /dev/sdb1 rw
 28 27 0:2 / /home/USB\040Backup/cache rw - tmpfs tmpfs rw
 ";
+    for (device, root) in [
+        ("/dev/sda1", Some("/")),
+        ("/dev/nvme0n1p2", Some("/home")),
+        ("/dev/sdb1", Some("/home/USB Backup")),
+        ("/dev/strata-unmounted-fixture", None),
+    ] {
+        assert_eq!(
+            mounted_path_from_table(table, Path::new(device)),
+            root.map(PathBuf::from)
+        );
+    }
     for (path, device) in [
         ("/", Some("/dev/sda1")),
         ("/home/Documents", Some("/dev/nvme0n1p2")),
