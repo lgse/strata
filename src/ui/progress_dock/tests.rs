@@ -11,6 +11,17 @@ struct Fixture {
 
 impl Fixture {
     fn new() -> Self {
+        let fixture = Self::unpresented();
+        fixture.window.present();
+        fixture
+            .overlay
+            .child()
+            .expect("browser button")
+            .grab_focus();
+        fixture
+    }
+
+    fn unpresented() -> Self {
         let browser = gtk::Button::with_label("Browser");
         let overlay = gtk::Overlay::new();
         overlay.set_child(Some(&browser));
@@ -19,8 +30,6 @@ impl Fixture {
             .default_width(640)
             .default_height(480)
             .build();
-        window.present();
-        browser.grab_focus();
         Self { window, overlay }
     }
 
@@ -110,12 +119,24 @@ fn completed_notifications_count_down_and_auto_dismiss() {
     crate::test_support::gtk_test(
         "ui::progress_dock::tests::completed_notifications_count_down_and_auto_dismiss",
         || {
-            let fixture = Fixture::new();
+            let fixture = Fixture::unpresented();
             let card = fixture.card();
-            card.complete_after("Deletion complete", Duration::from_millis(500));
-            pump_for(Duration::from_millis(100));
-            assert!(card.progress.fraction() > 0.0 && card.progress.fraction() < 1.0);
+            card.complete_after("Deletion complete", Duration::from_millis(80));
+            pump_for(Duration::from_millis(120));
+            assert!(
+                card.root.parent().is_some(),
+                "expiry waits until the notification is realized"
+            );
+            assert_eq!(card.progress.fraction(), 1.0);
             assert_eq!(card.status.text(), "100%");
+            fixture.window.present();
+            fixture
+                .overlay
+                .child()
+                .expect("browser button")
+                .grab_focus();
+            pump_for(Duration::from_millis(10));
+            hover(&card, false);
             wait_removed(&card);
         },
     );

@@ -17,20 +17,20 @@ ARCHIVE_FIXTURES = Path(__file__).parents[1] / "fixtures"
 @pytest.mark.parametrize("format", ["7Z", "TAR.GZ"])
 def test_cancel_compression_stops_before_publishing_and_allows_another_operation(strata, format):
     fixture = strata.fixture
-    fixture.path("payload.bin").write_bytes(os.urandom(16 * 1024 * 1024))
+    payload_size = 64 * 1024 * 1024
+    fixture.path("payload.bin").write_bytes(os.urandom(payload_size))
     strata.entry("payload.bin")
     strata.open_context_menu("payload.bin")
     strata.choose_menu_item("Compress…")
     dialog = strata.wait_for_dialog()
     strata.pointer.click(dialog.find(role="toggle button", name=format))
     strata.pointer.click(strata.dialog_button("Compress"))
-    strata.wait(
-        lambda: (dialog := strata.dialog()) is not None
-        and dialog.name == "Processing archive…"
-        and dialog.find(role="label", name="Preparing…") is not None,
-        "immediate preparation feedback",
+    cancel = strata.wait(
+        lambda: strata.window.find(role="button", name="Cancel Compressing items"),
+        "docked compression cancellation action",
     )
-    strata.pointer.click(strata.dialog_button("Cancel"))
+    strata.wait(lambda: strata.dialog() is None, "compression configuration dismissal")
+    strata.pointer.click(cancel)
     strata.wait(
         lambda: (dialog := strata.dialog()) is not None and dialog.name == "Operation cancelled",
         "compression worker to stop and report cancellation",
@@ -39,7 +39,7 @@ def test_cancel_compression_stops_before_publishing_and_allows_another_operation
     assert not list(fixture.root.glob(".strata-compression-*"))
     assert not list(fixture.root.glob("*.7z"))
     assert not list(fixture.root.glob("*.tar.gz"))
-    assert fixture.path("payload.bin").stat().st_size == 16 * 1024 * 1024
+    assert fixture.path("payload.bin").stat().st_size == payload_size
     strata.pointer.click(strata.dialog_button("Close"))
     strata.wait(lambda: strata.dialog() is None, "cancellation summary dismissal")
 

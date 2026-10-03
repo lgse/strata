@@ -108,7 +108,13 @@ impl Completion {
             }
         });
         let state = self.clone();
-        root.connect_unrealize(move |_| state.stop());
+        root.connect_realize(move |_| state.update_pause());
+        let state = self.clone();
+        root.connect_unrealize(move |_| {
+            state.remaining.set(state.time_left(Instant::now()));
+            state.started.set(None);
+            state.stop();
+        });
     }
 
     pub(super) fn set_cancel(&self, action: Rc<dyn Fn()>) {
@@ -131,6 +137,7 @@ impl Completion {
                 Some("Time remaining before notification closes"),
             );
         }
+        self.render(Instant::now());
         self.update_pause();
     }
 
@@ -148,6 +155,14 @@ impl Completion {
 
     fn update_pause(self: &Rc<Self>) {
         if !self.completed.get() {
+            return;
+        }
+        if !self
+            .widgets
+            .root
+            .upgrade()
+            .is_some_and(|root| root.parent().is_some() && root.is_realized())
+        {
             return;
         }
         let now = Instant::now();
