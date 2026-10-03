@@ -182,3 +182,121 @@ fn played_audio_history_drops_samples_older_than_its_window() {
     history.clear();
     assert!(!history.window_ending_at(1, &mut window));
 }
+
+// Holds 300 ms before rendering and then consumes in real time, so the sink
+// position follows rendered data the way PipeWire-Pulse and Bluetooth sinks do.
+const LATE_SINK: &str = "queue min-threshold-time=300000000 max-size-time=400000000 \
+    max-size-bytes=0 max-size-buffers=0 ! identity sleep-time=33333 ! fakesink sync=false";
+
+fn open_on_late_sink(
+    header: Header,
+    size: MediaPreviewSize,
+) -> (DecodedMedia, Rc<RefCell<Vec<u32>>>) {
+    let media = DecodedMedia::new(SandboxedMedia {
+        audio_only: header.width == 0,
+        size,
+        ..test_source("/late-sink")
+    });
+    media.imp().audio_sink.replace(Some(LATE_SINK.into()));
+    let calls = Rc::new(RefCell::new(Vec::new()));
+    let loader_calls = calls.clone();
+    media.imp().loader.replace(Some(Rc::new(move |_, tick| {
+        loader_calls.borrow_mut().push(tick);
+        crate::sandbox::media::tests::stream(Header {
+            start_tick: tick,
+            ..header
+        })
+    })));
+    media.upcast_ref::<gtk::MediaStream>().play();
+    drive_until(&media, &calls, 1);
+    (media, calls)
+}
+
+#[test]
+fn audio_feeds_a_sink_that_starts_late_without_rewinding_the_playhead() {
+    crate::test_support::gtk_test(
+        "ui::media::tests::audio_feeds_a_sink_that_starts_late_without_rewinding_the_playhead",
+        audio_feeds_a_late_sink,
+    );
+}
+
+fn audio_feeds_a_late_sink() {
+    let header = Header {
+        width: 0,
+        height: 0,
+        audio: true,
+        ..test_header(0)
+    };
+    let (media, _calls) = open_on_late_sink(header, MediaPreviewSize::new(320, 240));
+    let imp = media.imp();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let mut shown = 0;
+    let mut deepest = 0;
+    while shown < 600_000 {
+        media.tick().expect("tick succeeds");
+        let now = media.timestamp() as u64;
+        assert!(now >= shown, "playhead rewound from {shown} to {now}");
+        shown = now;
+        let heard = imp
+            .audio
+            .borrow()
+            .as_ref()
+            .and_then(PcmOutput::position_us)
+            .unwrap_or(0);
+        assert!(
+            shown <= heard + 100_000,
+            "playhead {shown} ran ahead of the sink at {heard}"
+        );
+        deepest = deepest.max(imp.frames.borrow().len());
+        assert!(Instant::now() < deadline, "late sink playback deadline");
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert_eq!(imp.recoveries.get(), 0, "a late start is not a stall");
+    assert!(
+        deepest > PRESENTATION_QUEUE,
+        "audio read ahead stopped at the presentation queue ({deepest})"
+    );
+    media.close();
+}
+
+#[test]
+fn video_lookahead_is_bounded_by_the_pixel_budget_and_silent_video_by_the_queue() {
+    crate::test_support::gtk_test(
+        "ui::media::tests::video_lookahead_is_bounded_by_the_pixel_budget_and_silent_video_by_the_queue",
+        video_lookahead_bounds,
+    );
+}
+
+fn video_lookahead_bounds() {
+    for (edge, audio, expected) in [
+        (16, false, PRESENTATION_QUEUE..=PRESENTATION_QUEUE),
+        (16, true, PRESENTATION_QUEUE + 1..=usize::MAX),
+        (
+            1280,
+            true,
+            PRESENTATION_QUEUE + 1..=PRESENTATION_BYTES / (1280 * 1280 * 4),
+        ),
+    ] {
+        let header = Header {
+            width: edge,
+            height: edge,
+            audio,
+            ..test_header(0)
+        };
+        let (media, _calls) =
+            open_on_late_sink(header, MediaPreviewSize::new(edge as i32, edge as i32));
+        let imp = media.imp();
+        let until = Instant::now() + Duration::from_millis(700);
+        let mut deepest = 0;
+        while Instant::now() < until {
+            media.tick().expect("tick succeeds");
+            deepest = deepest.max(imp.frames.borrow().len());
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert!(
+            expected.contains(&deepest),
+            "{edge}px audio={audio}: queued {deepest} frames, expected {expected:?}"
+        );
+        media.close();
+    }
+}
