@@ -2,7 +2,7 @@
 
 use std::{
     cell::{Cell, RefCell},
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     ffi::CString,
     fs, io,
     os::unix::ffi::OsStrExt,
@@ -155,8 +155,7 @@ thread_local! {
     static TEXT_ICONS: RefCell<Vec<PrimaryIcon>> = const { RefCell::new(Vec::new()) };
     static DANGER_ICON_COLOR: RefCell<String> = RefCell::new("#e5484d".to_owned());
     static DANGER_ICONS: RefCell<Vec<PrimaryIcon>> = const { RefCell::new(Vec::new()) };
-    static ICON_TEXTURES: RefCell<HashMap<(String, String, i32), gdk::Texture>> =
-        RefCell::new(HashMap::new());
+    static ICON_TEXTURES: RefCell<IconTextureCache> = RefCell::new(IconTextureCache::default());
 }
 
 pub fn prepare() -> Result<(), Box<dyn std::error::Error>> {
@@ -615,19 +614,82 @@ fn texture_from_surface(surface: &cairo::ImageSurface) -> Option<gdk::Texture> {
     )
 }
 
-fn cached_icon_texture(key: &(String, String, i32)) -> Option<gdk::Texture> {
-    ICON_TEXTURES.with(|textures| textures.borrow().get(key).cloned())
+type IconTextureKey = (String, String, i32);
+
+struct CachedIconTexture {
+    texture: gdk::Texture,
+    generation: u64,
 }
 
-fn cache_icon_texture(key: (String, String, i32), texture: gdk::Texture) -> gdk::Texture {
-    ICON_TEXTURES.with(|textures| {
-        let mut textures = textures.borrow_mut();
-        if textures.len() >= ICON_TEXTURE_CACHE_LIMIT {
-            textures.clear();
+#[derive(Default)]
+struct IconTextureCache {
+    entries: HashMap<IconTextureKey, CachedIconTexture>,
+    recent: VecDeque<(IconTextureKey, u64)>,
+    generation: u64,
+}
+
+impl IconTextureCache {
+    fn get(&mut self, key: &IconTextureKey) -> Option<gdk::Texture> {
+        let cached = self.entries.get_mut(key)?;
+        self.generation = self.generation.saturating_add(1);
+        cached.generation = self.generation;
+        self.recent.push_back((key.clone(), self.generation));
+        let texture = cached.texture.clone();
+        self.compact_recent();
+        Some(texture)
+    }
+
+    fn insert(&mut self, key: IconTextureKey, texture: gdk::Texture) -> gdk::Texture {
+        self.generation = self.generation.saturating_add(1);
+        let generation = self.generation;
+        self.entries.insert(
+            key.clone(),
+            CachedIconTexture {
+                texture: texture.clone(),
+                generation,
+            },
+        );
+        self.recent.push_back((key, generation));
+        while self.entries.len() > ICON_TEXTURE_CACHE_LIMIT {
+            let Some((oldest_key, oldest_generation)) = self.recent.pop_front() else {
+                break;
+            };
+            if self
+                .entries
+                .get(&oldest_key)
+                .is_some_and(|cached| cached.generation == oldest_generation)
+            {
+                self.entries.remove(&oldest_key);
+            }
         }
-        textures.insert(key, texture.clone());
-    });
-    texture
+        self.compact_recent();
+        texture
+    }
+
+    #[cfg(test)]
+    fn clear(&mut self) {
+        self.entries.clear();
+        self.recent.clear();
+        self.generation = 0;
+    }
+
+    fn compact_recent(&mut self) {
+        if self.recent.len() > ICON_TEXTURE_CACHE_LIMIT * 4 {
+            self.recent.retain(|(key, generation)| {
+                self.entries
+                    .get(key)
+                    .is_some_and(|cached| cached.generation == *generation)
+            });
+        }
+    }
+}
+
+fn cached_icon_texture(key: &IconTextureKey) -> Option<gdk::Texture> {
+    ICON_TEXTURES.with(|textures| textures.borrow_mut().get(key))
+}
+
+fn cache_icon_texture(key: IconTextureKey, texture: gdk::Texture) -> gdk::Texture {
+    ICON_TEXTURES.with(|textures| textures.borrow_mut().insert(key, texture))
 }
 
 fn recolor_icon_source(source: &str, color: &str) -> String {
