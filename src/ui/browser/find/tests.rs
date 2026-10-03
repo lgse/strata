@@ -107,7 +107,7 @@ fn listing_filters_use_and_highlight_fuzzy_terms_only_in_tenxer_mode() {
             for (query, expected) in [
                 ("rep md", true),
                 ("MD Rep", true),
-                ("^gam .md$", true),
+                ("^gamma .md$", true),
                 ("rep !gamma", false),
                 ("*.md", false),
                 ("reports", false),
