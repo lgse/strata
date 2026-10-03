@@ -374,24 +374,50 @@ fn format_filesystem_selection_updates_label_limit_and_validity() {
         || {
             let field = FormTextField::with_character_limit(11);
             let confirm = gtk::Button::new();
+            let available = [
+                FilesystemType::Fat32,
+                FilesystemType::Ntfs,
+                FilesystemType::Exfat,
+            ];
 
             for (fs, expected_text) in [
                 (FilesystemType::Fat32, "abcdefghijk"),
                 (FilesystemType::Ntfs, "abcdefghijklmnop"),
                 (FilesystemType::Exfat, "abcdefghijklmnop"),
             ] {
-                refresh_format_selection(Some(fs), true, &field.entry, &confirm);
+                let selector = format_filesystem_selector(&available, Some(fs.label()));
+                let selected = selector
+                    .selected_item()
+                    .and_downcast::<gtk::StringObject>()
+                    .expect("selected filesystem");
+                assert_eq!(selected.string(), format!("{} (current)", fs.label()));
+                let selected_fs = available.get(selector.selected() as usize).copied();
+                refresh_format_selection(selected_fs, true, &field.entry, &confirm);
                 field.entry.set_text("abcdefghijklmnop");
-                refresh_format_selection(Some(fs), true, &field.entry, &confirm);
+                refresh_format_selection(selected_fs, true, &field.entry, &confirm);
                 assert_eq!(field.entry.text(), expected_text);
                 assert!(confirm.is_sensitive());
 
-                refresh_format_selection(Some(fs), false, &field.entry, &confirm);
+                refresh_format_selection(selected_fs, false, &field.entry, &confirm);
                 assert!(!confirm.is_sensitive());
                 assert_eq!(field.entry.text(), expected_text);
             }
 
-            refresh_format_selection(Some(FilesystemType::Fat32), true, &field.entry, &confirm);
+            let unsupported = format_filesystem_selector(&available, Some("ext4"));
+            assert_eq!(
+                unsupported
+                    .selected_item()
+                    .and_downcast::<gtk::StringObject>()
+                    .expect("fallback filesystem")
+                    .string(),
+                "FAT32"
+            );
+            refresh_format_selection(
+                available.get(unsupported.selected() as usize).copied(),
+                true,
+                &field.entry,
+                &confirm,
+            );
             assert_eq!(field.entry.text(), "abcdefghijk");
             assert!(confirm.is_sensitive());
 

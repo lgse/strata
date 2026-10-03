@@ -631,6 +631,32 @@ where
     });
 }
 
+fn format_filesystem_selector(
+    available: &[FilesystemType],
+    current: Option<&str>,
+) -> gtk::DropDown {
+    let options: Vec<String> = available
+        .iter()
+        .map(|fs| {
+            if current == Some(fs.label()) {
+                format!("{} (current)", fs.label())
+            } else {
+                fs.label().to_owned()
+            }
+        })
+        .collect();
+    let labels: Vec<&str> = options.iter().map(String::as_str).collect();
+    let selector = gtk::DropDown::from_strings(&labels);
+    selector.add_css_class("form-control");
+    selector.set_selected(
+        available
+            .iter()
+            .position(|fs| current == Some(fs.label()))
+            .unwrap_or(0) as u32,
+    );
+    selector
+}
+
 /// Format in two steps: configure on step one, then review a summary and
 /// press the confirm button a second time.
 pub(super) fn show_format_dialog(parent: &gtk::Widget, volume: &gio::Volume) {
@@ -653,7 +679,11 @@ pub(super) fn show_format_dialog(parent: &gtk::Widget, volume: &gio::Volume) {
         return;
     }
     let name = volume.name().to_string();
-    let device = drive_ops::block_device_for_volume(volume)
+    let block_device = drive_ops::block_device_for_volume(volume);
+    let current_filesystem = block_device
+        .as_deref()
+        .and_then(drive_ops::filesystem_label_for_device);
+    let device = block_device
         .map(|path| path.display().to_string())
         .unwrap_or_else(|| "unknown device".to_owned());
     let subtitle = format!("{name} ({device})");
@@ -673,13 +703,12 @@ pub(super) fn show_format_dialog(parent: &gtk::Widget, volume: &gio::Volume) {
 
     // Configuration
     let step1 = gtk::Box::new(gtk::Orientation::Vertical, 12);
-    let options: Vec<&str> = available.iter().map(|fs| fs.label()).collect();
-    let fs_combo = gtk::DropDown::from_strings(&options);
-    fs_combo.add_css_class("form-control");
-    fs_combo.set_selected(0);
+    let fs_combo = format_filesystem_selector(&available, current_filesystem.as_deref());
     step1.append(&field_block("Filesystem", &fs_combo));
 
-    let label_field = FormTextField::with_character_limit(available[0].max_label_len() as i32);
+    let label_field = FormTextField::with_character_limit(
+        available[fs_combo.selected() as usize].max_label_len() as i32,
+    );
     let label_entry = label_field.entry;
     label_entry.set_placeholder_text(Some("Volume label (optional)"));
     step1.append(&field_block("Label", &label_field.widget));
@@ -755,6 +784,7 @@ pub(super) fn show_format_dialog(parent: &gtk::Widget, volume: &gio::Volume) {
     let armed = Rc::new(Cell::new(false));
     let fired = Rc::new(Cell::new(false));
     let submitted_label_entry = label_entry.clone();
+    let focus_selector = fs_combo.clone();
     shell.layout.confirm.connect_clicked(move |_| {
         if fired.get() {
             return;
@@ -808,7 +838,7 @@ pub(super) fn show_format_dialog(parent: &gtk::Widget, volume: &gio::Volume) {
         );
     });
     wire_modal_close_except_confirm(&shell);
-    label_entry.grab_focus();
+    focus_selector.grab_focus();
 }
 
 /// Wire Cancel and Escape without touching the confirm button, which each
