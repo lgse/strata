@@ -190,9 +190,17 @@ fn columns_preview_archives_without_taking_navigation() {
             let opened = record_opens(&browser);
             let before = directory_names(fixture._directory.path());
 
-            for key in [Key::Right, Key::Return, Key::space] {
-                fixture.preview.close();
+            for (round, key) in [Key::Right, Key::Return, Key::space]
+                .into_iter()
+                .enumerate()
+            {
                 select_named(&fixture, "b.txt");
+                // Esc dismissed the previous round's preview; mirroring stays
+                // closed until an explicit open, so later rounds follow instead.
+                if round > 0 && !fixture.preview.is_enabled() {
+                    fixture.press(Key::space, ModifierType::empty());
+                    wait_until(|| fixture.preview.is_open());
+                }
                 fixture.press(Key::Down, ModifierType::empty());
                 wait_until(|| focused_name(&browser) == "bundle.zip");
                 wait_until(|| {

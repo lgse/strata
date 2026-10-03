@@ -70,6 +70,8 @@ struct BrowserBinding {
 struct Geometry {
     available: i32,
     occupied: i32,
+    // Columns beyond the active depth: they borrow the empty slot's width.
+    trailing: i32,
     start_minimum: i32,
     show_minimum: i32,
     separator: i32,
@@ -112,6 +114,18 @@ impl Geometry {
 
     fn position(self, manual: Option<i32>) -> i32 {
         self.available - self.separator - self.preview_width(manual)
+    }
+
+    fn empty_slot_minimum(self, manual: bool) -> i32 {
+        (self.minimum_width(manual) - self.trailing).max(0)
+    }
+
+    fn empty_slot_width(self, manual: Option<i32>) -> i32 {
+        (self.preview_width(manual) - self.trailing).max(0)
+    }
+
+    fn empty_slot_position(self, manual: Option<i32>) -> i32 {
+        self.available - self.separator - self.empty_slot_width(manual)
     }
 }
 
@@ -250,8 +264,14 @@ impl PreviewState {
         )
     }
 
+    // Nothing is displayed and no placeholder is pending: the slot is bare space.
+    pub(super) fn slot_is_empty(&self) -> bool {
+        self.current.borrow().is_none() && !self.reserves_empty_preview()
+    }
+
     pub(super) fn reserves_empty_preview(&self) -> bool {
         self.is_enabled()
+            && !self.child_pane.get()
             && self
                 .sizing
                 .binding
@@ -266,12 +286,14 @@ impl PreviewState {
                 })
     }
 
+    pub(super) fn browsing_columns(&self) -> bool {
+        self.sizing
+            .browser()
+            .is_some_and(|browser| browser.view_mode() == BrowserMode::Columns)
+    }
+
     pub(super) fn reserves_column_space(&self) -> bool {
-        self.reserve_columns.get()
-            && self
-                .sizing
-                .browser()
-                .is_some_and(|browser| browser.view_mode() == BrowserMode::Columns)
+        self.reserve_columns.get() && self.browsing_columns()
     }
 
     fn geometry(&self, split: &gtk::Paned) -> Geometry {
@@ -279,6 +301,7 @@ impl PreviewState {
         let mut geometry = Geometry {
             available,
             occupied: available.saturating_sub(DEFAULT_WIDTH),
+            trailing: 0,
             start_minimum: 0,
             show_minimum: 0,
             separator: separator_width(split),
@@ -291,15 +314,12 @@ impl PreviewState {
             let sidebar = sidebar_width(&content);
             geometry.columns = browser.view_mode() == BrowserMode::Columns;
             geometry.occupied =
-                sidebar + browser.preview_occupied_width((available - sidebar).max(0));
+                sidebar + browser.preview_navigated_width((available - sidebar).max(0));
             if geometry.columns {
-                geometry.start_minimum = sidebar.saturating_add(browser.preview_navigation_width(
-                    (available - sidebar - geometry.separator - MIN_SPLIT_PREVIEW_WIDTH).max(0),
-                ));
+                geometry.trailing = browser.preview_trailing_width();
+                geometry.start_minimum = sidebar.saturating_add(browser.preview_navigation_width());
                 geometry.show_minimum =
-                    sidebar.saturating_add(browser.preview_standard_navigation_width(
-                        (available - sidebar - geometry.separator - MIN_SPLIT_PREVIEW_WIDTH).max(0),
-                    ));
+                    sidebar.saturating_add(browser.preview_standard_navigation_width());
             } else {
                 geometry.start_minimum = sidebar.saturating_add(COLUMN_WIDTH);
                 geometry.show_minimum = geometry.start_minimum;
@@ -401,9 +421,6 @@ impl PreviewState {
         {
             self.preserve_column_positions(split.width());
         }
-        if keep_slot {
-            self.slot.set_width_request(self.slot.width());
-        }
         self.revealer.set_transition_duration(0);
         self.revealer.set_reveal_child(false);
         self.revealer.set_visible(false);
@@ -488,14 +505,7 @@ impl PreviewState {
                 .is_some_and(|browser| browser.is_resizing_columns());
             let occupied = if let Some(browser) = binding.browser.upgrade() {
                 if geometry.columns {
-                    browser.preview_standard_navigation_width(
-                        (geometry.available
-                            - full
-                            - content_sep
-                            - geometry.separator
-                            - MIN_SPLIT_PREVIEW_WIDTH)
-                            .max(0),
-                    )
+                    browser.preview_standard_navigation_width()
                 } else {
                     COLUMN_WIDTH
                 }
@@ -558,18 +568,21 @@ impl PreviewState {
                 geometry = self.geometry(split);
             }
         }
-        if reserved && !self.is_enabled() {
+        if reserved && self.slot_is_empty() {
             if self.sizing.resizing.get() {
                 return;
             }
+            if self.revealer.reveals_child() {
+                self.hide_panel();
+            }
             if geometry.can_show_preview() {
+                let manual = self.sizing.manual_width.get();
                 self.slot.set_visible(true);
-                self.slot.set_width_request(
-                    geometry.minimum_width(self.sizing.manual_width.get().is_some()),
-                );
+                self.slot
+                    .set_width_request(geometry.empty_slot_minimum(manual.is_some()));
                 split.set_resize_start_child(true);
                 split.set_resize_end_child(false);
-                split.set_position(geometry.position(self.sizing.manual_width.get()));
+                split.set_position(geometry.empty_slot_position(manual));
             } else {
                 self.slot.set_visible(false);
                 split.set_position(split.width());
@@ -702,7 +715,12 @@ impl PreviewState {
         if !geometry.can_show_preview() {
             return;
         }
-        let width = (geometry.available - geometry.separator - position)
+        let lent = if self.slot_is_empty() {
+            geometry.trailing
+        } else {
+            0
+        };
+        let width = (geometry.available - geometry.separator - position + lent)
             .clamp(geometry.minimum_width(true), geometry.maximum_width());
         self.sizing.manual_width.set(Some(width));
         self.sync_split(split);

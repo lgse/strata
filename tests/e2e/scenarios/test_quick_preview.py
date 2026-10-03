@@ -20,6 +20,19 @@ PREVIEW_FIXTURE = {
     "folder": {"inner.txt": "inner\n", "nested-notes.txt": "nested preview fixture\n"},
 }
 
+# Deep enough that the focused column sits beside the minimum-width preview slot.
+DEEP_FIXTURE = {
+    "level1": {
+        "level2": {
+            "level3": {
+                "branch": {"leaf.txt": "leaf\n"},
+                "deep.txt": "deep preview fixture\n",
+                "deeper.txt": "deeper preview fixture\n",
+            },
+        },
+    },
+}
+
 
 @pytest.mark.preferences(browser_mode="list", single_click_previews=False)
 def test_model_preview_renders_stl_prefers_thumbnails_and_reports_limits(strata):
@@ -193,10 +206,62 @@ def test_columns_keyboard_selection_opens_the_preview(strata, fixture_tree, root
     )
     strata.keyboard.press(PREVIOUS_ENTRY_KEY["Columns"])
     strata.wait_for_selection(["folder"], root)
-    strata.wait(lambda: strata.preview_shows("No preview for this selection"), "the folder's reserved preview slot")
+    strata.wait(lambda: strata.preview() is None, "the folder to hand the right pane to its child column")
+    strata.pane("folder")
     strata.keyboard.press(NEXT_ENTRY_KEY["Columns"])
     strata.wait_for_selection(["data.csv"], root)
     strata.wait(lambda: strata.preview_shows("alpha"), "the preview to resume")
+    strata.wait(lambda: "folder" not in strata.pane_names(), "the child column to yield to the preview")
+
+
+@pytest.mark.preferences(browser_mode="columns", single_click_previews=True)
+@pytest.mark.parametrize("fixture_tree", [DEEP_FIXTURE], indirect=True)
+def test_columns_keyboard_mirror_keeps_the_focused_column_stationary(strata):
+    for name in ("level1", "level2", "level3"):
+        strata.open_directory(name)
+    strata.select_entry_with_keyboard("deep.txt")
+    strata.wait(lambda: strata.preview_shows("deep preview fixture"), "the first mirrored preview")
+    column = strata.settle(strata.pane("level3")).screen_bounds()
+
+    def stationary():
+        return strata.settle(strata.pane("level3")).screen_bounds().x == column.x
+
+    strata.keyboard.press(PREVIOUS_ENTRY_KEY["Columns"])
+    strata.wait_for_selection(["branch"], "level3")
+    strata.wait(lambda: strata.preview() is None, "the folder to hand the right pane to its child column")
+    child = strata.settle(strata.pane("branch")).screen_bounds()
+    assert stationary(), "mirroring a folder must not scroll the focused column"
+    assert abs(child.x - (column.x + column.width)) <= 3, "the child column takes the preview's space"
+
+    strata.keyboard.press(NEXT_ENTRY_KEY["Columns"])
+    strata.wait_for_selection(["deep.txt"], "level3")
+    strata.wait(lambda: strata.preview_shows("deep preview fixture"), "the preview to take the right pane back")
+    strata.wait(lambda: "branch" not in strata.pane_names(), "the child column to close")
+    assert stationary(), "mirroring a file must not scroll the focused column"
+    preview = strata.preview().screen_bounds()
+    assert abs(preview.x - (column.x + column.width)) <= 3, "the preview meets the focused column"
+
+    strata.keyboard.press(NEXT_ENTRY_KEY["Columns"])
+    strata.wait_for_selection(["deeper.txt"], "level3")
+    strata.wait(lambda: strata.preview_shows("deeper preview fixture"), "the preview to follow the next file")
+    assert stationary()
+
+
+@pytest.mark.preferences(browser_mode="columns", single_click_previews=True)
+def test_columns_dismissed_preview_ignores_keyboard_mirroring_until_reopened(strata, root):
+    strata.select_entry_with_keyboard("data.csv")
+    strata.wait(lambda: strata.preview_shows("alpha"), "keyboard selection to open the preview")
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview() is None, "Space to dismiss the preview")
+    strata.keyboard.press(NEXT_ENTRY_KEY["Columns"])
+    strata.wait_for_selection(["notes.txt"], root)
+    strata.settle(strata.entry("notes.txt"))
+    assert strata.preview() is None, "a dismissed preview must not follow keyboard selection"
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview_shows("the quick brown fox"), "Space to reopen the preview")
+    strata.keyboard.press(NEXT_ENTRY_KEY["Columns"])
+    strata.wait_for_selection(["page.md"], root)
+    strata.wait(lambda: strata.preview_shows("Body text."), "the reopened preview to follow again")
 
 
 @pytest.mark.preferences(browser_mode="columns", single_click_previews=False)
@@ -337,7 +402,7 @@ def test_preview_hides_on_a_folder_and_resumes_when_selection_moves(strata, mode
     strata.keyboard.press(PREVIOUS_ENTRY_KEY[mode])
 
     strata.wait_for_selection(["folder"], root)
-    if mode in ["Columns", "Icons"]:
+    if mode == "Icons":
         strata.wait(lambda: strata.preview_shows("No preview for this selection"), "the folder's reserved preview space")
     else:
         strata.wait(lambda: strata.preview() is None, "the folder to dismiss the preview")

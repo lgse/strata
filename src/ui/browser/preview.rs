@@ -16,7 +16,6 @@ impl ViewState {
         Some(ColumnSpan {
             left: f64::from(left),
             right: f64::from(left.saturating_add(column_width(column))),
-            total: columns.iter().map(column_width).map(f64::from).sum(),
         })
     }
 
@@ -28,6 +27,26 @@ impl ViewState {
             .filter(|depth| *depth < count)
             .or_else(|| count.checked_sub(1))?;
         self.column_span(depth)
+    }
+
+    // Columns beyond the active depth share the right pane with the preview.
+    fn navigated_len(&self) -> usize {
+        let count = self.columns.borrow().len();
+        self.browser
+            .active_depth()
+            .map_or(count, |depth| depth.saturating_add(1).min(count))
+    }
+
+    fn columns_width(
+        &self,
+        range: impl std::slice::SliceIndex<[ColumnView], Output = [ColumnView]>,
+    ) -> i32 {
+        self.columns.borrow().get(range).map_or(0, |columns| {
+            columns
+                .iter()
+                .map(column_width)
+                .fold(0, i32::saturating_add)
+        })
     }
 }
 
@@ -56,20 +75,31 @@ impl BrowserView {
             .fold(0, i32::saturating_add)
     }
 
-    pub(in crate::ui) fn preview_navigation_width(&self, available: i32) -> i32 {
-        self.state
-            .focused_column_span()
-            .map_or(COLUMN_WIDTH, |span| {
-                (span.width() + span.peek_space(f64::from(available))) as i32
-            })
+    pub(in crate::ui) fn preview_navigated_width(&self, available: i32) -> i32 {
+        if self.view_mode() != BrowserMode::Columns {
+            return single_pane_preview_reservation(available);
+        }
+        self.state.columns_width(..self.state.navigated_len())
     }
 
-    pub(in crate::ui) fn preview_standard_navigation_width(&self, available: i32) -> i32 {
+    pub(in crate::ui) fn preview_trailing_width(&self) -> i32 {
+        if self.view_mode() != BrowserMode::Columns {
+            return 0;
+        }
+        self.state.columns_width(self.state.navigated_len()..)
+    }
+
+    pub(in crate::ui) fn preview_navigation_width(&self) -> i32 {
+        self.state
+            .focused_column_span()
+            .map_or(COLUMN_WIDTH, |span| (span.width() + span.peek()) as i32)
+    }
+
+    pub(in crate::ui) fn preview_standard_navigation_width(&self) -> i32 {
         self.state
             .focused_column_span()
             .map_or(COLUMN_WIDTH, |span| {
-                (span.width().min(f64::from(COLUMN_WIDTH)) + span.peek_space(f64::from(available)))
-                    as i32
+                (span.width().min(f64::from(COLUMN_WIDTH)) + span.peek()) as i32
             })
     }
 

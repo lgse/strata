@@ -106,9 +106,11 @@ class Strata:
         return pane.find(description=ENTRY_CONTAINER_DESCRIPTION)
 
     def view_mode(self) -> str:
-        containers = self.containers()
-        if not containers:
-            raise AssertionError("no browser pane is on screen")
+        # A window resize can briefly publish no pane; the panes come back.
+        containers = self.wait(
+            lambda: self.containers() or None,
+            "a browser pane to be on screen",
+        )
         return VIEW_DESCRIPTIONS[containers[0].description]
 
     def wait_for_view(self, mode: str) -> None:
@@ -167,6 +169,11 @@ class Strata:
             lambda: self.current_directory() == name,
             f"the browser to be working in {name!r}",
         )
+        # Entering a column can scroll the strip to make room for the preview
+        # slot; callers measure entries right after, so wait for the pane to stop.
+        pane = self._pane_or_none(name) or self._pane_or_none(None)
+        if pane is not None:
+            self.settle(pane)
 
     # ---------------------------------------------------------------- entries
 

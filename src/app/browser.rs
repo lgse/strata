@@ -158,6 +158,8 @@ pub enum BrowserEvent {
     },
     PreviewRequested {
         entry: FileEntry,
+        /// Raised by selection mirroring rather than an explicit preview action.
+        automatic: bool,
     },
     ExtractRequested {
         entry: FileEntry,
@@ -3041,12 +3043,27 @@ impl Browser {
         if entry.is_directory() {
             self.descend(depth, entry.location);
         } else {
-            self.emit(BrowserEvent::PreviewRequested { entry });
+            // The preview takes the right pane, so deeper columns close like the keyboard mirror.
+            self.close_column(depth + 1);
+            self.emit(BrowserEvent::PreviewRequested {
+                entry,
+                automatic: false,
+            });
         }
     }
 
     pub fn request_preview(&self, entry: FileEntry) {
-        self.emit(BrowserEvent::PreviewRequested { entry });
+        self.emit(BrowserEvent::PreviewRequested {
+            entry,
+            automatic: false,
+        });
+    }
+
+    pub fn request_automatic_preview(&self, entry: FileEntry) {
+        self.emit(BrowserEvent::PreviewRequested {
+            entry,
+            automatic: true,
+        });
     }
 
     pub fn open_location(&self, location: Location) {

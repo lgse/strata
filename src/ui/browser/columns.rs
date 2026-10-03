@@ -1779,6 +1779,9 @@ impl ViewState {
         self.columns_widget.set_margin_end(0);
         let weak = Rc::downgrade(self);
         let measured_shell = shell.downgrade();
+        // The preview slot resizes in the same frame as a focus change, so the
+        // viewport is measured only after that layout has run.
+        let laid_out = std::cell::Cell::new(false);
         let _tick = self.scroller.add_tick_callback(move |_, _| {
             let Some(state) = weak.upgrade() else {
                 return glib::ControlFlow::Break;
@@ -1792,7 +1795,10 @@ impl ViewState {
                 return glib::ControlFlow::Break;
             }
             let adjustment = state.scroller.hadjustment();
-            if measured_shell.width() <= 0 || adjustment.page_size() <= 0.0 {
+            if !laid_out.replace(true)
+                || measured_shell.width() <= 0
+                || adjustment.page_size() <= 0.0
+            {
                 return glib::ControlFlow::Continue;
             }
             let depth = state

@@ -561,8 +561,10 @@ fn preview_and_open_are_distinct_file_actions() {
 
     assert!(events.borrow().iter().any(|event| matches!(
         event,
-        BrowserEvent::PreviewRequested { entry }
-            if entry.location == Location::local("/fixture/example.conf")
+        BrowserEvent::PreviewRequested {
+            entry,
+            automatic: false
+        } if entry.location == Location::local("/fixture/example.conf")
     )));
     events.borrow_mut().clear();
 
@@ -573,4 +575,69 @@ fn preview_and_open_are_distinct_file_actions() {
         BrowserEvent::OpenRequested { location }
             if location == &Location::local("/fixture/example.conf")
     )));
+}
+
+#[test]
+fn previewing_a_file_in_a_parent_column_closes_deeper_columns_before_requesting() {
+    let browser = Browser::new(Rc::new(OpenChildBesideFileSource));
+    browser.navigate(Location::local("/fixture"));
+    browser.select(0, 0);
+    browser.enter_focused_directory();
+    assert_eq!(browser.active_depth(), Some(1));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+
+    browser.preview(0, 1);
+
+    assert!(browser.location_at(1).is_none());
+    assert_eq!(browser.active_depth(), Some(0));
+    let events = events.borrow();
+    let focused_file = events.iter().rposition(|event| {
+        matches!(
+            event,
+            BrowserEvent::FocusChanged {
+                depth: 0,
+                position: Some(1)
+            }
+        )
+    });
+    let requested = events.iter().position(|event| {
+        matches!(
+            event,
+            BrowserEvent::PreviewRequested {
+                entry,
+                automatic: false
+            } if entry.location == Location::local("/fixture/example.conf")
+        )
+    });
+    assert!(
+        focused_file
+            .zip(requested)
+            .is_some_and(|(focus, request)| focus < request),
+        "the closed column must report the file's focus before the preview request"
+    );
+}
+
+#[test]
+fn mirrored_previews_are_marked_automatic() {
+    let browser = Browser::new(Rc::new(FilePreviewSource));
+    browser.navigate(Location::local("/fixture"));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    let entry = browser.entry_at(0, 0).expect("fixture file");
+
+    browser.request_automatic_preview(entry.clone());
+    browser.request_preview(entry);
+
+    let automatic: Vec<bool> = events
+        .borrow()
+        .iter()
+        .filter_map(|event| match event {
+            BrowserEvent::PreviewRequested { automatic, .. } => Some(*automatic),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(automatic, [true, false]);
 }
