@@ -358,6 +358,7 @@ def test_dragging_a_file_to_the_strip_edge_scrolls_columns_in(strata):
     bounds = strata.window.window_bounds()
     strata.keyboard.connection.resize_surface(bounds.width, bounds.height, 640, 360)
     strata.wait(lambda: strata.window.window_bounds().width == 640, "a narrow window")
+    strata.wait_for_view("Columns")
 
     strata.open_directory("documents")
     strata.open_directory("deep", directory="documents")
