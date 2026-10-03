@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use super::*;
 use crate::ui::{
     browser::{ClipboardMark, CreateRefusal, clipboard_mark},
+    shortcut_footer::CandidateKeys,
     tenxer_mode::Prompt,
 };
 
@@ -762,6 +763,15 @@ fn tenxer_move_and_copy_prompts_send_targets_to_a_picked_folder() {
             }
             assert!(directory.join("b.txt").exists(), "refusals move nothing");
 
+            open(Key::M, Prompt::MoveTo, "move to \u{203a}");
+            fixture.shortcuts.prompt().set_text("./");
+            wait_until(|| {
+                let mut found = fixture.shortcuts.candidates();
+                found.sort();
+                found == [destination.clone(), inner.clone(), other.clone()]
+            });
+            plain(&fixture, Key::Escape);
+
             move_to_named(&fixture, &browser, "dest");
             open(Key::M, Prompt::MoveTo, "move to \u{203a}");
             fixture.shortcuts.prompt().set_text("inner");
@@ -805,6 +815,15 @@ fn tenxer_move_and_copy_prompts_send_targets_to_a_picked_folder() {
             }
             assert_eq!(focused_name(&browser), "c.txt", "stepping keeps the cursor");
             let chosen = fixture.shortcuts.candidates()[1].clone();
+            let later = fixture.shortcuts.candidates();
+            fixture
+                .shortcuts
+                .show_candidates(later, CandidateKeys::default());
+            assert_eq!(
+                fixture.shortcuts.chosen_candidate().as_ref(),
+                Some(&chosen),
+                "results that arrive later keep the stepped choice"
+            );
             let relative = chosen.strip_prefix(&directory).expect("candidate below");
             plain(&fixture, Key::Tab);
             assert_eq!(

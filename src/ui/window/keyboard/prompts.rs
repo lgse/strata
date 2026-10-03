@@ -223,22 +223,36 @@ impl Dispatcher {
         }
     }
 
-    /// Submits once the picker has an answer for the typed text, so Enter
-    /// right after typing waits for the search rather than being refused.
+    /// Acts at once on a folder stepped to with **↑** / **↓**, or on a typed
+    /// path that exists. Otherwise Enter waits for the search to finish, so
+    /// the best match wins rather than the first found.
     fn submit_folder(&self, kind: Prompt, text: String) {
-        if self.destinations.is_pending() {
-            self.shortcuts
-                .prompt_sink(kind)
-                .show(None, Some(folder_picker::SEARCHING));
-        }
         let prompt = FolderPrompt {
             view: self.view.clone(),
             shortcuts: self.shortcuts.clone(),
+            picker: self.destinations.clone(),
             targets: self.destination_targets.clone(),
             revision: self.destination_revision.clone(),
         };
-        self.destinations
-            .when_settled(move || prompt.submit(kind, &text));
+        if self.shortcuts.candidate_stepped() {
+            return prompt.submit(kind, &text, None);
+        }
+        let current = active_folder(&self.view.browser());
+        let Some(target) =
+            folder_picker::typed_target(&text, current.as_deref(), &glib::home_dir())
+        else {
+            return prompt.submit_when_settled(kind, text);
+        };
+        glib::MainContext::default().spawn_local(async move {
+            let probed = target.clone();
+            let exists = gtk::gio::spawn_blocking(move || probed.exists()).await;
+            // Go shows a file in its folder; a transfer reports it is no folder.
+            if exists.unwrap_or(false) {
+                prompt.submit(kind, &text, Some(target));
+            } else {
+                prompt.submit_when_settled(kind, text);
+            }
+        });
     }
 
     fn submit_create(&self, browser: &Browser, text: &str) {
@@ -283,10 +297,15 @@ impl Dispatcher {
     }
 
     fn return_to_listing(&self, browser: &Browser) {
-        self.shortcuts.dismiss_prompt();
-        if !self.view.focus_visible_results() {
-            browser.focus_active();
-        }
+        return_to_listing(&self.shortcuts, &self.view, browser);
+    }
+}
+
+/// Closes the open prompt and gives the listing keyboard focus back.
+pub(super) fn return_to_listing(shortcuts: &ShortcutFooter, view: &BrowserView, browser: &Browser) {
+    shortcuts.dismiss_prompt();
+    if !view.focus_visible_results() {
+        browser.focus_active();
     }
 }
 
@@ -321,26 +340,42 @@ pub(super) fn show_history_candidates(
 struct FolderPrompt {
     view: BrowserView,
     shortcuts: ShortcutFooter,
+    picker: FolderPicker,
     targets: Rc<RefCell<Vec<FileEntry>>>,
     revision: Rc<Cell<u64>>,
 }
 
 impl FolderPrompt {
-    fn submit(&self, kind: Prompt, text: &str) {
+    fn submit_when_settled(self, kind: Prompt, text: String) {
+        if self.picker.is_pending() {
+            self.shortcuts
+                .prompt_sink(kind)
+                .show(None, Some(folder_picker::SEARCHING));
+        }
+        let picker = self.picker.clone();
+        picker.when_settled(move || self.submit(kind, &text, None));
+    }
+
+    /// Acts on `typed`, an existing path the text names, or else on the
+    /// chosen folder, unless the prompt changed meanwhile.
+    fn submit(&self, kind: Prompt, text: &str, typed: Option<PathBuf>) {
         if self.shortcuts.open_prompt_kind() != Some(kind) || self.shortcuts.prompt_text() != text {
             return;
         }
         if kind == Prompt::Go {
-            self.open(text);
+            self.open(text, typed.is_some());
         } else {
-            self.send(kind, text);
+            self.send(kind, text, typed);
         }
     }
 
-    /// Opens the chosen folder. With none listed, the text goes to
-    /// navigation as **Ctrl+L** would take it, so URIs and files still open.
-    fn open(&self, text: &str) {
-        let chosen = self.shortcuts.chosen_candidate();
+    /// Opens the chosen folder. With none listed, or when the text names an
+    /// existing path, the text goes to navigation as **Ctrl+L** would take
+    /// it, so URIs and files still open.
+    fn open(&self, text: &str, typed: bool) {
+        let chosen = (!typed)
+            .then(|| self.shortcuts.chosen_candidate())
+            .flatten();
         // Closing clears the entry before navigation can show a dialog.
         self.return_to_listing();
         if text.trim().is_empty() {
@@ -356,11 +391,11 @@ impl FolderPrompt {
         }
     }
 
-    fn send(&self, kind: Prompt, text: &str) {
+    fn send(&self, kind: Prompt, text: &str, typed: Option<PathBuf>) {
         if text.trim().is_empty() || self.targets.borrow().is_empty() {
             return self.return_to_listing();
         }
-        let Some(destination) = self.shortcuts.chosen_candidate() else {
+        let Some(destination) = typed.or_else(|| self.shortcuts.chosen_candidate()) else {
             let current = active_folder(&self.view.browser());
             let reason = folder_picker::scope(text, current.as_deref(), &glib::home_dir())
                 .err()
@@ -378,10 +413,7 @@ impl FolderPrompt {
     }
 
     fn return_to_listing(&self) {
-        self.shortcuts.dismiss_prompt();
-        if !self.view.focus_visible_results() {
-            self.view.browser().focus_active();
-        }
+        return_to_listing(&self.shortcuts, &self.view, &self.view.browser());
     }
 }
 
@@ -472,7 +504,7 @@ fn show_candidate_hint(shortcuts: &ShortcutFooter) {
         return;
     };
     let hint = match shortcuts.candidate_position() {
-        None => Some("No matching folders".to_owned()),
+        None => Some(folder_picker::NO_MATCHES.to_owned()),
         Some((_, 1)) => None,
         Some((index, count)) => Some(format!("{} of {count}", index + 1)),
     };
@@ -526,12 +558,7 @@ pub(super) fn send_to_destination(
             Err(_) => Err("Unable to check folder"),
         };
         match result {
-            Ok(()) => {
-                shortcuts.dismiss_prompt();
-                if !view.focus_visible_results() {
-                    view.browser().focus_active();
-                }
-            }
+            Ok(()) => return_to_listing(&shortcuts, &view, &view.browser()),
             Err(reason) => shortcuts.prompt_sink(kind).show(None, Some(reason)),
         }
     });

@@ -5,8 +5,8 @@
 //! drops the worker handle/receiver. Delivery runs without session borrows and may restart it.
 
 use crate::services::{
-    NavigationHistory, SearchCoverage, SearchEvent, SearchHandle, SearchItem, index_filter,
-    index_folder_paths, index_paths,
+    NavigationHistory, RefusedFolders, SearchCoverage, SearchEvent, SearchHandle, SearchItem,
+    index_filter, index_folder_paths, index_paths,
 };
 use gtk::glib;
 use std::{
@@ -49,6 +49,8 @@ pub(super) struct SearchInput {
     pub(super) root: PathBuf,
     pub(super) show_hidden: bool,
     pub(super) scope: SearchScope,
+    /// Folders a [`SearchScope::Folders`] search never lists.
+    pub(super) refused: RefusedFolders,
 }
 
 pub(super) struct SearchBatch {
@@ -89,6 +91,15 @@ pub(super) struct SearchSession(Rc<State>);
 impl SearchSession {
     pub(super) fn is_active(&self) -> bool {
         self.0.worker.borrow().is_some()
+    }
+
+    /// Whether a worker for `input` is running, so a new query starts at once.
+    pub(super) fn searches(&self, input: &SearchInput) -> bool {
+        self.0
+            .worker
+            .borrow()
+            .as_ref()
+            .is_some_and(|worker| worker.input == *input)
     }
 
     pub(super) fn cancel(&self) {
@@ -166,6 +177,7 @@ impl SearchSession {
                 input.root.clone(),
                 input.show_hidden,
                 NavigationHistory::shared().frecency_within(&input.root),
+                input.refused.clone(),
             ),
             scope if scope.fuzzy() => index_paths(
                 input.root.clone(),

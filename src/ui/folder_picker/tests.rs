@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use super::{PickerScope, Refused, scope, typed_path, wants_hidden};
+use super::{PickerScope, Refused, scope, typed_path, typed_target, wants_hidden};
 
 const HOME: &str = "/home/user";
 const CURRENT: &str = "/work/project";
@@ -23,6 +23,10 @@ fn text_searches_the_open_folder_until_it_names_another() {
         ("  src ui ", picked(CURRENT, "src ui")),
         ("src/ui", picked(CURRENT, "src/ui")),
         (".config", picked(CURRENT, ".config")),
+        ("10:30", picked(CURRENT, "10:30")),
+        ("meeting 10:30", picked(CURRENT, "meeting 10:30")),
+        ("C:drive-backup", picked(CURRENT, "C:drive-backup")),
+        ("notes:2024/q1", picked(CURRENT, "notes:2024/q1")),
         ("~", picked(HOME, "")),
         ("~/", picked(HOME, "")),
         ("~/dev/str", picked("/home/user/dev", "str")),
@@ -63,6 +67,27 @@ fn uris_are_never_searched_even_with_slashes_or_credentials() {
         assert_eq!(
             scope(text, Some(Path::new(CURRENT)), Path::new(HOME)),
             Err("Only local folders can be chosen"),
+            "{text:?}"
+        );
+    }
+}
+
+#[test]
+fn typed_paths_name_a_target_and_queries_do_not() {
+    for (text, expected) in [
+        ("~/dev/strata", Some("/home/user/dev/strata")),
+        ("~", Some(HOME)),
+        ("./src", Some("/work/project/src")),
+        ("./", Some(CURRENT)),
+        ("../sib/", Some("/work/sib")),
+        ("/etc/hosts", Some("/etc/hosts")),
+        ("src", None),
+        ("dev str", None),
+        ("smb://host/share", None),
+    ] {
+        assert_eq!(
+            typed_target(text, Some(Path::new(CURRENT)), Path::new(HOME)),
+            expected.map(PathBuf::from),
             "{text:?}"
         );
     }

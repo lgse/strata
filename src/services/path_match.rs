@@ -26,6 +26,12 @@ const NAME_TERM_TIER: i64 = 1 << 32;
 /// visits, never enough to lift a poor match over a good one.
 const MAX_FRECENCY_BIAS: f64 = 48.0;
 const FRECENCY_BIAS_SCALE: f64 = 12.0;
+/// A folder named exactly by the whole query outranks partial matches,
+/// however often those were visited.
+const EXACT_NAME_BONUS: i64 = 4 * MAX_FRECENCY_BIAS as i64;
+/// A folder whose path below the searched folder is the whole query, as
+/// `~/Archive` types it, outranks other folders with that name.
+const EXACT_PATH_BONUS: i64 = NAME_TERM_TIER / 2;
 /// Each folder between an entry and its nearest visited folder halves that
 /// folder's frecency.
 const ANCESTOR_DECAY: f64 = 0.5;
@@ -63,6 +69,19 @@ pub(crate) struct TextScore {
 /// Ranks a match: the name tier first, then quality and frecency together.
 pub(crate) fn rank(text: TextScore, frecency_bias: i64) -> i64 {
     i64::from(text.name_terms) * NAME_TERM_TIER + i64::from(text.quality) + frecency_bias
+}
+
+/// Extra rank for an entry the query names outright: its folded relative
+/// `path`, whose name starts at byte `name_start`, or that name alone equals
+/// the folded `query`.
+pub(crate) fn exact_bonus(path: &str, name_start: usize, query: &str) -> i64 {
+    if path == query {
+        EXACT_PATH_BONUS
+    } else if &path[name_start..] == query {
+        EXACT_NAME_BONUS
+    } else {
+        0
+    }
 }
 
 /// Matches one query against many paths. Cheap to build per query and thread;

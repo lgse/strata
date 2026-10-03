@@ -216,7 +216,8 @@ fn tenxer_g_space_opens_go_and_submits_typed_paths() {
         || {
             let fixture = KeyboardFixture::new();
             enable_tenxer(&fixture);
-            let root = seed_folders(&fixture, &["nested"]);
+            let root = seed_folders(&fixture, &["nested", "ghosts"]);
+            std::fs::write(root.join("hosts"), b"hosts").expect("fixture file");
             let browser = fixture.view.browser();
             let origin = browser.active_location();
             move_to_named(&fixture, &browser, "a.txt");
@@ -247,7 +248,7 @@ fn tenxer_g_space_opens_go_and_submits_typed_paths() {
             assert_eq!(browser.active_location(), origin);
 
             assert!(fixture.press(Key::Return, ModifierType::empty()));
-            assert_eq!(fixture.shortcuts.open_prompt_kind(), None);
+            wait_until(|| fixture.shortcuts.open_prompt_kind().is_none());
             assert!(
                 fixture.shortcuts.prompt().text().is_empty(),
                 "submit clears the text"
@@ -280,6 +281,20 @@ fn tenxer_g_space_opens_go_and_submits_typed_paths() {
             assert!(fixture.press(Key::Return, ModifierType::empty()));
             wait_until(|| browser.active_location() == Some(Location::local(&root)));
             wait_until(|| focused_name(&browser) == "b.txt");
+
+            open_go(&fixture);
+            listed(
+                &fixture,
+                &root.join("hosts").to_string_lossy(),
+                &[root.join("ghosts")],
+            );
+            assert!(fixture.press(Key::Return, ModifierType::empty()));
+            wait_until(|| focused_name(&browser) == "hosts");
+            assert_eq!(
+                browser.active_location(),
+                Some(Location::local(&root)),
+                "a typed file opens rather than a folder it fuzzily matches"
+            );
 
             let before = browser.active_location();
             open_go(&fixture);

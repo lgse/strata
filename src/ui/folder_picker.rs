@@ -9,12 +9,19 @@ use std::{
     cell::{Cell, RefCell},
     path::{Component, Path, PathBuf},
     rc::Rc,
+    time::Duration,
 };
 
-use super::search_session::{SearchInput, SearchScope, SearchSession};
+use gtk::glib;
+
+use super::search_session::{SearchBatch, SearchInput, SearchScope, SearchSession};
+pub(crate) use crate::services::RefusedFolders as Refused;
 
 pub(crate) const NO_MATCHES: &str = "No matching folders";
 pub(crate) const SEARCHING: &str = "Searching\u{2026}";
+/// Typing a path passes through every folder above the one meant, so a
+/// search below any folder but the open one starts once typing pauses.
+const TYPED_BASE_DELAY: Duration = Duration::from_millis(150);
 
 /// Where a picker searches, and for what. An empty query offers `base`
 /// itself, then every folder below it, the most visited first.
@@ -63,6 +70,14 @@ pub(crate) fn scope(
     }))
 }
 
+/// The path that text typed as a path names outright, such as `~/dev/strata`
+/// or `./src`, whether or not it exists.
+pub(crate) fn typed_target(text: &str, current: Option<&Path>, home: &Path) -> Option<PathBuf> {
+    split_typed_path(text.trim())?;
+    let scope = scope(text, current, home).ok()??;
+    Some(normalize(&scope.base.join(scope.query)))
+}
+
 /// How **Tab** writes a picked folder back into the prompt: below the open
 /// folder as `./`, below home as `~/`, otherwise absolute. The trailing `/`
 /// makes the folder the search base, so it is offered alone and more typing
@@ -89,15 +104,41 @@ pub(crate) fn typed_path(folder: &Path, current: Option<&Path>, home: &Path) -> 
         })
 }
 
-/// A scheme (`sftp:`), `//host`, `\\host`, or `user@host:`. Such text is
-/// never searched or probed.
+/// Schemes the location bar opens, which name a location even without `//`.
+const LOCATION_SCHEMES: [&str; 10] = [
+    "smb", "sftp", "ftp", "ftps", "dav", "davs", "trash", "network", "recent", "file",
+];
+
+/// `scheme://`, a scheme the location bar opens (`sftp:`), `//host`,
+/// `\\host`, or `user@host:`. Such text is never searched or probed; other
+/// text with a colon, such as `10:30`, is an ordinary query.
 pub(crate) fn looks_like_uri(text: &str) -> bool {
-    text.starts_with("//")
-        || text.starts_with('\\')
-        || text
-            .split('/')
-            .next()
-            .is_some_and(|first| first.contains(':'))
+    if text.starts_with("//") || text.starts_with('\\') {
+        return true;
+    }
+    let first = text.split('/').next().unwrap_or_default();
+    if let Some((scheme, _)) = first.split_once(':')
+        && is_scheme(scheme)
+        && (text[scheme.len() + 1..].starts_with("//")
+            || LOCATION_SCHEMES.contains(&scheme.to_ascii_lowercase().as_str()))
+    {
+        return true;
+    }
+    first
+        .split_once('@')
+        .and_then(|(user, rest)| Some((user, rest.split_once(':')?.0)))
+        .is_some_and(|(user, host)| {
+            [user, host]
+                .iter()
+                .all(|part| !part.is_empty() && !part.contains(char::is_whitespace))
+        })
+}
+
+fn is_scheme(text: &str) -> bool {
+    text.starts_with(|character: char| character.is_ascii_alphabetic())
+        && text.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '+' | '.' | '-')
+        })
 }
 
 /// Splits text that starts as a path into the folder part, through its last
@@ -142,21 +183,6 @@ fn wants_hidden(query: &str) -> bool {
     })
 }
 
-/// Folders a transfer would refuse, so they are never offered by a search.
-#[derive(Clone, Debug, Default)]
-pub(crate) struct Refused {
-    /// Folders being moved or copied, which cannot hold themselves.
-    pub(crate) trees: Vec<PathBuf>,
-    /// The folder a move would leave its items in.
-    pub(crate) folder: Option<PathBuf>,
-}
-
-impl Refused {
-    fn refuses(&self, path: &Path) -> bool {
-        self.folder.as_deref() == Some(path) || self.trees.iter().any(|tree| path.starts_with(tree))
-    }
-}
-
 pub(crate) struct Request<'a> {
     pub(crate) text: &'a str,
     pub(crate) current: Option<&'a Path>,
@@ -191,6 +217,7 @@ pub(crate) struct FolderPicker {
     session: SearchSession,
     pending: Rc<Cell<bool>>,
     deferred: Deferred,
+    delayed: Rc<RefCell<Option<glib::SourceId>>>,
 }
 
 impl FolderPicker {
@@ -198,6 +225,7 @@ impl FolderPicker {
     /// arrive; everything else reports before this returns.
     pub(crate) fn update(&self, request: Request<'_>, show: impl Fn(Shown) + 'static) {
         self.deferred.take();
+        self.stop_delay();
         if request.uris && looks_like_uri(request.text.trim()) {
             return self.settle(&show, Shown::default());
         }
@@ -206,65 +234,70 @@ impl FolderPicker {
             Ok(None) => return self.settle(&show, Shown::default()),
             Err(reason) => return self.settle(&show, Shown::hint(reason)),
         };
+        let refused = request.refused;
         // The typed folder leads, so Enter picks it however the rest ranks.
-        let typed = scope.query.is_empty().then(|| scope.base.clone());
+        let typed =
+            (scope.query.is_empty() && !refused.refuses(&scope.base)).then(|| scope.base.clone());
         if let Some(typed) = &typed {
             show(Shown {
                 paths: vec![typed.clone()],
                 hint: None,
             });
         }
+        let below_open_folder = request.current == Some(scope.base.as_path());
         let input = SearchInput {
             root: scope.base,
             show_hidden: request.show_hidden || wants_hidden(&scope.query),
             scope: SearchScope::Folders,
+            refused,
         };
-        let refused = request.refused;
         let pending = self.pending.clone();
         let deferred = self.deferred.clone();
         pending.set(typed.is_none());
-        self.session.update(
-            input,
-            &scope.query,
-            false,
-            Rc::new(move |batch| {
-                let paths: Vec<_> = typed
-                    .iter()
-                    .cloned()
-                    .chain(
-                        batch
-                            .items
-                            .into_iter()
-                            .map(|item| item.path)
-                            .filter(|path| !refused.refuses(path)),
-                    )
-                    .collect();
-                let hint = match (paths.is_empty(), batch.indexing) {
-                    (false, _) => None,
-                    (true, true) => Some(SEARCHING),
-                    (true, false) => Some(NO_MATCHES),
-                };
-                let settled = hint != Some(SEARCHING);
-                show(Shown { paths, hint });
-                if settled {
-                    pending.set(false);
-                    let action = deferred.take();
-                    if let Some(action) = action {
-                        action();
-                    }
+        let deliver: Rc<dyn Fn(SearchBatch)> = Rc::new(move |batch: SearchBatch| {
+            let paths: Vec<_> = typed
+                .iter()
+                .cloned()
+                .chain(batch.items.into_iter().map(|item| item.path))
+                .collect();
+            let hint = match (paths.is_empty(), batch.indexing) {
+                (false, _) => None,
+                (true, true) => Some(SEARCHING),
+                (true, false) => Some(NO_MATCHES),
+            };
+            show(Shown { paths, hint });
+            // Enter waits for the whole tree, so a better match found late
+            // still wins.
+            if !batch.indexing {
+                pending.set(false);
+                let action = deferred.take();
+                if let Some(action) = action {
+                    action();
                 }
-            }),
-        );
+            }
+        });
+        if below_open_folder || self.session.searches(&input) {
+            return self.session.update(input, &scope.query, false, deliver);
+        }
+        self.session.cancel();
+        let session = self.session.clone();
+        let delayed = self.delayed.clone();
+        let query = scope.query;
+        let source = glib::timeout_add_local_once(TYPED_BASE_DELAY, move || {
+            delayed.take();
+            session.update(input, &query, false, deliver);
+        });
+        self.delayed.replace(Some(source));
     }
 
     /// Whether the listed folders are from earlier text than the prompt's,
-    /// or a search has found nothing yet but is still looking.
+    /// or the search for its text is still looking.
     pub(crate) fn is_pending(&self) -> bool {
         self.pending.get()
     }
 
-    /// Runs `action` now, or once the search for the current text lists a
-    /// folder or finishes. Editing the text or cancelling drops it.
+    /// Runs `action` now, or once the search for the current text finishes.
+    /// Editing the text or cancelling drops it.
     pub(crate) fn when_settled(&self, action: impl FnOnce() + 'static) {
         if self.pending.get() {
             self.deferred.replace(Some(Box::new(action)));
@@ -276,7 +309,14 @@ impl FolderPicker {
     pub(crate) fn cancel(&self) {
         self.pending.set(false);
         self.deferred.take();
+        self.stop_delay();
         self.session.cancel();
+    }
+
+    fn stop_delay(&self) {
+        if let Some(source) = self.delayed.take() {
+            source.remove();
+        }
     }
 
     fn settle(&self, show: &impl Fn(Shown), shown: Shown) {

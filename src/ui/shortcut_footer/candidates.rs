@@ -25,6 +25,9 @@ pub(super) struct Candidates {
     keys: gtk::Label,
     paths: RefCell<Vec<PathBuf>>,
     chosen: Cell<usize>,
+    /// Whether **↑** / **↓** picked the chosen row since the list was for
+    /// new text.
+    stepped: Cell<bool>,
     activated: RefCell<Option<ActivateListener>>,
 }
 
@@ -81,6 +84,7 @@ impl Candidates {
             keys,
             paths: RefCell::default(),
             chosen: Cell::new(0),
+            stepped: Cell::new(false),
             activated: RefCell::default(),
         });
         let weak = Rc::downgrade(&candidates);
@@ -103,7 +107,9 @@ impl Candidates {
         self.activated.replace(Some(Rc::new(listener)));
     }
 
-    /// Lists `paths`, naming what `keys` do to the chosen one.
+    /// Lists `paths`, naming what `keys` do to the chosen one. A row the
+    /// user stepped to stays chosen while it is still listed, so results that
+    /// arrive later never move the choice.
     pub(super) fn set(&self, paths: Vec<PathBuf>, keys: CandidateKeys) {
         let tab = keys.tab.map_or_else(String::new, |tab| {
             format!("<b>Tab</b> {}   ", glib::markup_escape_text(tab))
@@ -120,8 +126,15 @@ impl Candidates {
             self.list.append(&candidate_row(path, &home));
         }
         let empty = paths.is_empty();
+        let kept = self
+            .stepped
+            .get()
+            .then(|| self.chosen())
+            .flatten()
+            .and_then(|chosen| paths.iter().position(|path| *path == chosen));
+        self.stepped.set(kept.is_some());
         self.paths.replace(paths);
-        self.choose(0);
+        self.choose(kept.unwrap_or(0));
         if empty {
             self.popover.popdown();
             return;
@@ -145,6 +158,15 @@ impl Candidates {
         self.set(Vec::new(), CandidateKeys::default());
     }
 
+    /// The next list is for new text, so it starts from its first row.
+    pub(super) fn forget_step(&self) {
+        self.stepped.set(false);
+    }
+
+    pub(super) fn stepped(&self) -> bool {
+        self.stepped.get()
+    }
+
     pub(super) fn step(&self, delta: i32) {
         let count = self.paths.borrow().len();
         if count == 0 {
@@ -152,6 +174,7 @@ impl Candidates {
         }
         let count = count as i64;
         let next = (self.chosen.get() as i64 + i64::from(delta)).rem_euclid(count);
+        self.stepped.set(true);
         self.choose(next as usize);
     }
 

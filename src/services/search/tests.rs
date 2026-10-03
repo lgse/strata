@@ -14,7 +14,7 @@ use std::{
 mod scope;
 
 use super::{
-    PathAdmission, SearchEvent, SearchItem, admit_path, fuzzy_score_normalized,
+    PathAdmission, RefusedFolders, SearchEvent, SearchItem, admit_path, fuzzy_score_normalized,
     fuzzy_subsequence_score, index_folder_paths, index_tree, index_trees, index_trees_with_budget,
     index_trees_with_scheduler_budget,
 };
@@ -625,6 +625,7 @@ fn folder_path_search_offers_only_folders_below_the_root() {
         root.clone(),
         false,
         crate::services::path_match::Frecency::default(),
+        RefusedFolders::default(),
     );
     search.query("rep");
     let SearchEvent::Results { items, .. } = wait_for_results(&events).expect("results");
@@ -637,6 +638,82 @@ fn folder_path_search_offers_only_folders_below_the_root() {
         paths,
         [root.join("archive/reports-old"), root.join("reports")]
     );
+}
+
+fn folder_hits(
+    root: &Path,
+    query: &str,
+    visited: &[&str],
+    refused: RefusedFolders,
+) -> Vec<PathBuf> {
+    let frecency = crate::services::path_match::Frecency::within(
+        root,
+        visited.iter().map(|folder| (root.join(folder), 100.0)),
+    );
+    let (search, events) = index_folder_paths(root.to_path_buf(), false, frecency, refused);
+    search.query(query);
+    let SearchEvent::Results { items, .. } = wait_for_results(&events).expect("results");
+    items.into_iter().map(|item| item.path).collect()
+}
+
+#[test]
+fn folder_path_search_leads_with_a_folder_the_query_names_outright() {
+    let root = unique_fixture_root("folder-exact");
+    for folder in [
+        "Archive",
+        "Projects/Archive",
+        "Projects/archive-tool",
+        "Deep/x/Archive",
+        "Deep/x/archive-tool",
+    ] {
+        fs::create_dir_all(root.join(folder)).expect("fixture folder");
+    }
+
+    for (base, visited, first) in [
+        ("", "Projects/archive-tool", "Archive"),
+        ("", "Projects/Archive", "Archive"),
+        ("Deep", "x/archive-tool", "Deep/x/Archive"),
+    ] {
+        let hits = folder_hits(
+            &root.join(base),
+            "Archive",
+            &[visited],
+            RefusedFolders::default(),
+        );
+        assert_eq!(hits.first(), Some(&root.join(first)), "visited {visited}");
+    }
+    let hits = folder_hits(
+        &root,
+        "projects/archive",
+        &["Deep/x/Archive"],
+        RefusedFolders::default(),
+    );
+    assert_eq!(hits.first(), Some(&root.join("Projects/Archive")));
+    fs::remove_dir_all(&root).expect("remove fixture");
+}
+
+#[test]
+fn folder_path_search_skips_refused_folders_before_the_result_limit() {
+    let root = unique_fixture_root("folder-refused");
+    for index in 0..150 {
+        fs::create_dir_all(root.join(format!("photos/photos-{index:03}"))).expect("sent folder");
+    }
+    let valid: Vec<_> = (0..5)
+        .map(|index| root.join(format!("zarchive/old-photos-{index}")))
+        .collect();
+    for folder in &valid {
+        fs::create_dir_all(folder).expect("destination folder");
+    }
+
+    let refused = RefusedFolders {
+        trees: vec![root.join("photos")],
+        folder: Some(root.clone()),
+    };
+    let mut hits = folder_hits(&root, "photos", &[], refused);
+    fs::remove_dir_all(&root).expect("remove fixture");
+
+    hits.sort();
+    assert_eq!(hits, valid);
 }
 
 fn unique_fixture_root(label: &str) -> PathBuf {

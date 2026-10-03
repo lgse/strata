@@ -436,8 +436,8 @@ other places with their own sidebar rows flash `Can’t pin “…”`.
 **g Space** opens **go ›** in the footer instead of toggling the selection.
 Typing never navigates; it lists matching folders through the
 [folder picker](#folder-picker). **Enter**, or a click, opens the chosen folder.
-When nothing is listed, such as for a URI, a file, or a path no folder matches,
-**Enter** submits the text through the same navigation as the location bar
+When nothing is listed, such as for a URI or a path no folder matches, or when
+the typed path names an existing file or folder, **Enter** submits the text through the same navigation as the location bar
 (**Ctrl+L**): a path naming a file opens its folder with the file selected, and
 URI input is submitted unchanged, except that a password typed in the URI moves
 into the mount operation instead of the location. A missing or unreachable
@@ -446,8 +446,9 @@ Empty **Enter** just closes the prompt. **Esc** cancels without navigating;
 clicking a listing row ends the prompt and keeps the clicked selection. The
 entry is cleared on submit, **Esc**, focus loss, a replacing prompt, and mode
 exit, and it keeps no undo history, so reopening the prompt or another window
-cannot recover typed credentials. Anything that looks like a URI (a scheme,
-`//host`, `\\host`, or `user@host:`) lists nothing and is never searched,
+cannot recover typed credentials. Anything that looks like a URI (`scheme://`,
+a scheme the location bar opens such as `sftp:`, `//host`, `\\host`, or
+`user@host:`) lists nothing and is never searched,
 mounted, or probed before **Enter**.
 
 ## Prompts
@@ -553,27 +554,34 @@ the prompt without opening a candidate.
 **g Space**, **M**, **C**, and **; E** pick a folder from a list above the
 footer, like **z**. Typed text is matched against the paths of folders below the
 open folder with the same terms and ranking as **s**, but only folders are
-listed (up to 100). Hidden folders are listed when the listing shows them or a
-term starts with `.`.
+listed (up to 100). A folder the whole query names outright comes first: one at
+exactly that path below the searched folder, then any with exactly that name,
+however often other folders were visited. Hidden folders are listed when the
+listing shows them or a term starts with `.`. Searches from `/` skip `/proc`,
+`/sys`, and `/dev`, and a search below a typed path starts once typing pauses.
+Other text with a colon, such as `10:30`, is an ordinary query.
 
 Text that starts as a path (`/`, `~`, `~/`, `./`, `../`, or just `..`) moves the
 search: everything through its last `/` names the folder to search below, and
 the rest is the query, so `/etc/ss` searches below `/etc` for `ss` and
 `~/dev/ str` searches `~/dev`. `.` and `..` resolve like a shell's `cd`. With
 nothing after the last `/`, as in `/etc/`, the list starts with that folder
-itself, then every folder below it, the most visited first and then the
-shallowest. Without an open local folder, such as in Trash, only those paths
-work and other text shows `Type a full path here`. Another user's home (`~name`)
+itself (unless a move or copy would refuse it), then every folder below it, the
+most visited first and then the shallowest. Without an open local folder, such
+as in Trash, only those paths work and other text shows `Type a full path here`. Another user's home (`~name`)
 shows `Only ~ and ~/ are supported`, and **M**, **C**, and **; E** show
 `Only local folders can be chosen` for a URI.
 
 The first folder is chosen. **Up** / **Down** choose another (wrapping) and the
-footer shows the position (`2 of 5`). **Tab** writes the chosen folder into the
+footer shows the position (`2 of 5`); results that arrive later keep that
+choice while it is still listed. **Tab** writes the chosen folder into the
 prompt as `./…/` below the open folder, `~/…/` below home, or an absolute path,
 always ending in `/`. That lists the folder first and searches inside it as you
 type more; **Tab** never acts on it. **Enter** or a click acts on the chosen
-folder. **Enter** pressed before results arrive waits until a folder is listed
-or the search ends. While nothing is found yet the footer shows `Searching…`,
+folder. When the typed path names an existing item, **Enter** acts on it at once
+unless another folder was chosen with **Up** / **Down**. Otherwise **Enter**
+before the search finishes waits for it, so a better match found late still
+wins. While nothing is found yet the footer shows `Searching…`,
 and a finished search with no folder shows `No matching folders`. Editing the
 text, **Esc**, focus loss, a replacing prompt, leaving the mode, and closing the
 window cancel a search, and a late result never changes the list.
