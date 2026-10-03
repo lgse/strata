@@ -106,3 +106,31 @@ def test_multiple_arguments_include_non_utf8_directory_and_file(strata):
         requested_windows_exist,
         "one window per argument, with the file and broken symlink revealed",
     )
+
+
+def test_startup_with_closed_stdout_and_stderr_pipes(strata):
+    target_dir = strata.fixture.path("closed-pipe-target")
+    target_dir.mkdir()
+    (target_dir / "target.txt").write_text("pipe regression\n")
+
+    variables = process_environment()
+    variables.update(strata.environment.variables())
+    variables.update(strata.display.environment)
+
+    process = subprocess.Popen(
+        [binary_path(), str(target_dir)],
+        env=variables,
+        cwd=strata.fixture.root,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert process.stdout is not None
+    assert process.stderr is not None
+    process.stdout.close()
+    process.stderr.close()
+
+    def target_window_exists():
+        windows = strata.application.application_node.find_all(role="frame", name="Strata")
+        return any(window.find(name="target.txt") is not None for window in windows)
+
+    strata.wait(target_window_exists, "a window opened even when stdout and stderr pipes are closed")

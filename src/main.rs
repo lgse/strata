@@ -4,6 +4,7 @@ mod adapters;
 mod app;
 mod assets;
 mod build_info;
+mod logging;
 mod media;
 mod metrics;
 mod model;
@@ -173,9 +174,7 @@ fn main() -> gtk::glib::ExitCode {
 
     install_application_identity();
     metrics::initialize();
-    if let Err(error) = tracing_subscriber::fmt::try_init() {
-        eprintln!("Unable to initialize logging: {error}");
-    }
+    logging::initialize();
     if should_select_cairo(
         std::env::var_os("GSK_RENDERER").as_deref(),
         ui::preferences::PreferenceManager::shared().interface_renderer(),
@@ -234,16 +233,36 @@ fn main() -> gtk::glib::ExitCode {
     application.connect_handle_local_options(|_, _| ControlFlow::Continue(()));
     application.connect_startup(|_| install_x11_program_class());
     application.connect_startup(export_file_manager_interface);
-    application.connect_activate(ui::present);
-    application.connect_open(|application, files, _| {
-        if files.is_empty() {
+    application.connect_activate(|application| {
+        if let Err(error) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             ui::present(application);
-        }
-        for file in files {
-            ui::present_open(application, file.clone());
+        })) {
+            tracing::error!("panic during application activation: {error:?}");
         }
     });
-    application.connect_command_line(handle_command_line);
+    application.connect_open(|application, files, _| {
+        if let Err(error) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            if files.is_empty() {
+                ui::present(application);
+            }
+            for file in files {
+                ui::present_open(application, file.clone());
+            }
+        })) {
+            tracing::error!("panic during application open: {error:?}");
+        }
+    });
+    application.connect_command_line(|application, cmdline| {
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            handle_command_line(application, cmdline)
+        })) {
+            Ok(code) => code,
+            Err(error) => {
+                tracing::error!("panic during command line handling: {error:?}");
+                glib::ExitCode::FAILURE
+            }
+        }
+    });
     application.run()
 }
 
