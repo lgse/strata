@@ -66,42 +66,27 @@ impl FilesystemType {
         }
     }
 
-    /// Command-line arguments (before the device path) for formatting.
-    fn format_args(self, label: &str, quick: bool) -> Vec<String> {
-        let mut args: Vec<String> = match self {
-            Self::Fat32 => {
-                let mut args = vec!["-F".to_owned(), "32".to_owned()];
-                if !quick {
-                    args.push("-c".to_owned());
-                }
-                args
-            }
-            Self::Ntfs => {
-                if quick {
-                    vec!["--quick".to_owned()]
-                } else {
-                    Vec::new()
-                }
-            }
-            Self::Exfat => {
-                if quick {
-                    Vec::new()
-                } else {
-                    vec!["-f".to_owned()]
-                }
-            }
-        };
+    fn format_options(self, label: &str, quick: bool) -> glib::Variant {
+        let options = glib::VariantDict::new(None);
+        options.insert("update-partition-type", true);
         if !label.is_empty() {
-            match self {
-                Self::Fat32 | Self::Exfat => {
-                    args.extend(["-n".to_owned(), label.to_owned()]);
-                }
-                Self::Ntfs => {
-                    args.extend(["-L".to_owned(), label.to_owned()]);
-                }
-            }
+            options.insert("label", label);
         }
-        args
+        if !quick {
+            options.insert("erase", "zero");
+        }
+        if self == Self::Fat32 {
+            options.insert("mkfs-args", vec!["-F", "32"]);
+        }
+        options.end()
+    }
+
+    fn udisks_type(self) -> &'static str {
+        match self {
+            Self::Fat32 => "vfat",
+            Self::Ntfs => "ntfs",
+            Self::Exfat => "exfat",
+        }
     }
 
     fn resolve_mkfs(self) -> Option<PathBuf> {
@@ -182,7 +167,9 @@ impl From<std::io::Error> for DriveOpError {
 
 impl From<glib::Error> for DriveOpError {
     fn from(error: glib::Error) -> Self {
-        if error.matches(gio::IOErrorEnum::Cancelled)
+        if gio::DBusError::remote_error(&error)
+            .is_some_and(|name| name == "org.freedesktop.UDisks2.Error.NotAuthorizedDismissed")
+            || error.matches(gio::IOErrorEnum::Cancelled)
             || error.matches(gio::IOErrorEnum::FailedHandled)
         {
             Self::Cancelled
@@ -227,11 +214,6 @@ fn is_executable(path: &Path) -> bool {
 pub(super) fn block_device_for_volume(volume: &gio::Volume) -> Option<PathBuf> {
     if let Some(device) = super::gio_volume_unix_device(volume) {
         return Some(PathBuf::from(device.as_str()));
-    }
-    if let Some(drive) = volume.drive()
-        && let Some(id) = drive.identifier(gio::VOLUME_IDENTIFIER_KIND_UNIX_DEVICE.as_str())
-    {
-        return Some(PathBuf::from(id.as_str()));
     }
     None
 }
@@ -376,17 +358,72 @@ pub(super) async fn format_volume(
     label: String,
     quick: bool,
 ) -> Result<(), DriveOpError> {
-    let cmd = fs_type
-        .resolve_mkfs()
-        .ok_or_else(|| DriveOpError::ToolNotFound("mkfs".to_owned()))?;
+    if !is_eligible(Some(&volume)) {
+        return Err(DriveOpError::DeviceNotFound);
+    }
     let device = unmount_for_exclusive_access(&parent, &volume).await?;
-    let device_arg = device.to_string_lossy().into_owned();
-    let mut args = fs_type.format_args(&label, quick);
-    args.push(device_arg);
-    let cmd_display = cmd.display().to_string();
-    gio::spawn_blocking(move || run_privileged_tool(&cmd_display, &args).map(|_| ()))
-        .await
-        .map_err(|_| DriveOpError::CommandFailed("Formatting task did not complete".to_owned()))?
+    gio::spawn_blocking(move || {
+        let connection = gio::bus_get_sync(gio::BusType::System, gio::Cancellable::NONE)?;
+        format_device(
+            &device,
+            fs_type,
+            &label,
+            quick,
+            |path, interface, method, parameters| {
+                connection
+                    .call_sync(
+                        Some("org.freedesktop.UDisks2"),
+                        path,
+                        interface,
+                        method,
+                        Some(parameters),
+                        None,
+                        gio::DBusCallFlags::NONE,
+                        i32::MAX,
+                        gio::Cancellable::NONE,
+                    )
+                    .map_err(DriveOpError::from)
+            },
+        )
+    })
+    .await
+    .map_err(|_| DriveOpError::CommandFailed("Formatting task did not complete".to_owned()))?
+}
+
+fn format_device(
+    device: &Path,
+    fs_type: FilesystemType,
+    label: &str,
+    quick: bool,
+    mut call: impl FnMut(&str, &str, &str, &glib::Variant) -> Result<glib::Variant, DriveOpError>,
+) -> Result<(), DriveOpError> {
+    let device = device.to_str().ok_or(DriveOpError::DeviceNotFound)?;
+    let spec = glib::VariantDict::new(None);
+    spec.insert("path", device);
+    let options = glib::VariantDict::new(None).end();
+    let resolved = call(
+        "/org/freedesktop/UDisks2/Manager",
+        "org.freedesktop.UDisks2.Manager",
+        "ResolveDevice",
+        &glib::Variant::tuple_from_iter([spec.end(), options]),
+    )?;
+    let (paths,) = resolved
+        .get::<(Vec<glib::variant::ObjectPath>,)>()
+        .ok_or(DriveOpError::DeviceNotFound)?;
+    let [path] = paths.as_slice() else {
+        return Err(DriveOpError::DeviceNotFound);
+    };
+    // UDisks updates the partition type and reprobes the new filesystem together.
+    call(
+        path.as_str(),
+        "org.freedesktop.UDisks2.Block",
+        "Format",
+        &glib::Variant::tuple_from_iter([
+            fs_type.udisks_type().to_variant(),
+            fs_type.format_options(label, quick),
+        ]),
+    )?;
+    Ok(())
 }
 
 /// Persist a new filesystem label. The volume is unmounted first because

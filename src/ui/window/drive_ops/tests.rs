@@ -3,29 +3,130 @@
 use super::*;
 
 #[test]
-fn format_args_map_quick_and_full_per_filesystem() {
-    assert_eq!(
-        FilesystemType::Fat32.format_args("", true),
-        vec!["-F", "32"]
+fn formatting_resolves_only_the_selected_volume_and_updates_partition_discovery() {
+    for fs in [
+        FilesystemType::Fat32,
+        FilesystemType::Ntfs,
+        FilesystemType::Exfat,
+    ] {
+        for quick in [true, false] {
+            let mut methods = Vec::new();
+            format_device(
+                Path::new("/dev/test-partition"),
+                fs,
+                "Backup",
+                quick,
+                |path, interface, method, parameters| {
+                    methods.push(method.to_owned());
+                    match method {
+                        "ResolveDevice" => {
+                            assert_eq!(interface, "org.freedesktop.UDisks2.Manager");
+                            assert_eq!(parameters.type_().as_str(), "(a{sv}a{sv})");
+                            let spec = parameters.child_value(0);
+                            let spec = glib::VariantDict::new(Some(&spec));
+                            assert_eq!(
+                                spec.lookup::<String>("path").unwrap().as_deref(),
+                                Some("/dev/test-partition")
+                            );
+                            Ok((vec![
+                                glib::variant::ObjectPath::try_from(
+                                    "/org/freedesktop/UDisks2/block_devices/test_partition",
+                                )
+                                .unwrap(),
+                            ],)
+                                .to_variant())
+                        }
+                        "Format" => {
+                            assert_eq!(
+                                path,
+                                "/org/freedesktop/UDisks2/block_devices/test_partition"
+                            );
+                            assert_eq!(interface, "org.freedesktop.UDisks2.Block");
+                            assert_eq!(parameters.type_().as_str(), "(sa{sv})");
+                            let kind = parameters.child_value(0).get::<String>().unwrap();
+                            let options = parameters.child_value(1);
+                            assert_eq!(
+                                kind,
+                                match fs {
+                                    FilesystemType::Fat32 => "vfat",
+                                    FilesystemType::Ntfs => "ntfs",
+                                    FilesystemType::Exfat => "exfat",
+                                }
+                            );
+                            let options = glib::VariantDict::new(Some(&options));
+                            assert_eq!(
+                                options.lookup::<bool>("update-partition-type").unwrap(),
+                                Some(true)
+                            );
+                            assert_eq!(
+                                options.lookup::<String>("label").unwrap().as_deref(),
+                                Some("Backup")
+                            );
+                            assert_eq!(
+                                options.lookup::<String>("erase").unwrap().as_deref(),
+                                if quick { None } else { Some("zero") }
+                            );
+                            assert_eq!(
+                                options.lookup::<Vec<String>>("mkfs-args").unwrap(),
+                                if fs == FilesystemType::Fat32 {
+                                    Some(vec!["-F".into(), "32".into()])
+                                } else {
+                                    None
+                                }
+                            );
+                            Ok(().to_variant())
+                        }
+                        _ => panic!("unexpected storage operation"),
+                    }
+                },
+            )
+            .unwrap();
+            assert_eq!(methods, ["ResolveDevice", "Format"]);
+        }
+    }
+}
+
+#[test]
+fn missing_or_ambiguous_device_never_formats() {
+    for paths in [vec![], vec!["/one", "/two"]] {
+        let result = format_device(
+            Path::new("/dev/missing"),
+            FilesystemType::Exfat,
+            "",
+            true,
+            |_, _, method, _| {
+                assert_eq!(method, "ResolveDevice");
+                Ok((paths
+                    .iter()
+                    .map(|path| glib::variant::ObjectPath::try_from(*path).unwrap())
+                    .collect::<Vec<_>>(),)
+                    .to_variant())
+            },
+        );
+        assert!(matches!(result, Err(DriveOpError::DeviceNotFound)));
+    }
+}
+
+#[test]
+fn format_failure_is_not_reported_as_success_or_retried() {
+    let mut calls = 0;
+    let result = format_device(
+        Path::new("/dev/test"),
+        FilesystemType::Exfat,
+        "",
+        true,
+        |_, _, method, _| {
+            calls += 1;
+            if method == "ResolveDevice" {
+                Ok((vec![glib::variant::ObjectPath::try_from("/test").unwrap()],).to_variant())
+            } else {
+                Err(DriveOpError::CommandFailed("format failed".into()))
+            }
+        },
     );
-    assert_eq!(
-        FilesystemType::Fat32.format_args("", false),
-        vec!["-F", "32", "-c"]
-    );
-    assert_eq!(
-        FilesystemType::Fat32.format_args("Stick", true),
-        vec!["-F", "32", "-n", "Stick"]
-    );
-    assert_eq!(FilesystemType::Ntfs.format_args("", true), vec!["--quick"]);
-    assert_eq!(
-        FilesystemType::Ntfs.format_args("Stick", false),
-        vec!["-L", "Stick"]
-    );
-    assert!(FilesystemType::Exfat.format_args("", true).is_empty());
-    assert_eq!(FilesystemType::Exfat.format_args("", false), vec!["-f"]);
-    assert_eq!(
-        FilesystemType::Exfat.format_args("Stick", true),
-        vec!["-n", "Stick"]
+    assert_eq!(calls, 2);
+    assert!(
+        matches!(result, Err(DriveOpError::CommandFailed(message)) if message == "format failed")
     );
 }
 
