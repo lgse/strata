@@ -208,11 +208,19 @@ fn model_sink(hold_ms: u64, block_us: u32) -> String {
     )
 }
 
-fn open_with(header: Header, sink: String, clock: Option<gst::Clock>) -> DecodedMedia {
+fn open_with(
+    header: Header,
+    sink: String,
+    clock: Option<gst::Clock>,
+    retain_audio: bool,
+) -> DecodedMedia {
     let media = DecodedMedia::new(SandboxedMedia {
         audio_only: header.width == 0,
         ..test_source("/model-sink")
     });
+    if retain_audio {
+        media.retain_played_audio();
+    }
     media.imp().audio_sink.replace(Some(sink));
     media.imp().audio_clock.replace(clock);
     let calls = Rc::new(RefCell::new(Vec::new()));
@@ -237,7 +245,7 @@ fn open_with(header: Header, sink: String, clock: Option<gst::Clock>) -> Decoded
 }
 
 fn open_on(sink: String, header: Header) -> DecodedMedia {
-    open_with(header, sink, None)
+    open_with(header, sink, None, false)
 }
 
 fn audio_header(edge: u32) -> Header {
@@ -331,6 +339,7 @@ fn slow_start_is_not_a_stall() {
         audio_header(0),
         "fakesink sync=true".into(),
         Some(clock.clone().upcast()),
+        false,
     );
     let imp = media.imp();
     // The sink has not run yet, so the stuck timer must not count this wait.
@@ -362,6 +371,48 @@ fn slow_start_is_not_a_stall() {
 }
 
 #[test]
+fn a_mid_play_stall_keeps_the_samples_the_sink_will_still_play() {
+    crate::test_support::gtk_test(
+        "ui::media::tests::a_mid_play_stall_keeps_the_samples_the_sink_will_still_play",
+        stall_keeps_unplayed_samples,
+    );
+}
+
+fn stall_keeps_unplayed_samples() {
+    let clock = ManualClock::new();
+    let media = open_with(
+        audio_header(0),
+        "fakesink sync=true".into(),
+        Some(clock.clone().upcast()),
+        true,
+    );
+    let imp = media.imp();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let (started, mut last) = (Instant::now(), 0);
+    loop {
+        clock.set_time(started.elapsed().as_micros() as u64);
+        if observe(&media, &mut last).shown >= 300_000 {
+            break;
+        }
+        assert!(Instant::now() < deadline, "manual clock playback deadline");
+    }
+    // Freeze the sink for longer than the retained second while the playhead runs on.
+    let base = imp.clock_base.get();
+    let until = Instant::now() + Duration::from_millis(1_500);
+    while Instant::now() < until {
+        media.tick().expect("tick succeeds");
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert_eq!(imp.recoveries.get(), 0);
+    let mut window = [0.0; 4];
+    let kept = imp.history.borrow().as_ref().is_some_and(|history| {
+        history.window_ending_at(base * media::SAMPLE_RATE / 1_000_000 + 4, &mut window)
+    });
+    assert!(kept, "samples at the stalled sink position were trimmed");
+    media.close();
+}
+
+#[test]
 fn resume_waits_for_the_sink_instead_of_leading_and_snapping_back() {
     crate::test_support::gtk_test(
         "ui::media::tests::resume_waits_for_the_sink_instead_of_leading_and_snapping_back",
@@ -375,6 +426,7 @@ fn resume_waits_for_the_sink() {
         audio_header(0),
         "fakesink sync=true".into(),
         Some(clock.clone().upcast()),
+        false,
     );
     let imp = media.imp();
     let deadline = Instant::now() + Duration::from_secs(10);

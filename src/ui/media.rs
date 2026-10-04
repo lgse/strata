@@ -255,13 +255,15 @@ impl DecodedMedia {
             .is_some_and(|history| history.window_ending_at(self.played_sample(), window))
     }
 
+    // Mirrors the playhead: wall time past the last sink position, capped like
+    // the scrubber while the sink is stalled.
     fn played_sample(&self) -> u64 {
         let imp = self.imp();
         let elapsed = imp
             .clock
             .get()
             .map_or(0, |clock| clock.elapsed().as_micros() as u64);
-        (imp.clock_base.get() + elapsed) * media::SAMPLE_RATE / 1_000_000
+        (imp.clock_base.get() + elapsed.min(AUDIO_LEAD_CAP_US)) * media::SAMPLE_RATE / 1_000_000
     }
 
     pub fn new(source: SandboxedMedia) -> Self {
@@ -709,8 +711,10 @@ impl DecodedMedia {
                 None => break,
             }
         }
+        // Trim behind the sink itself, not the extrapolated playhead: a stalled
+        // sink resumes from its last position and still needs those samples.
         if let Some(history) = imp.history.borrow_mut().as_mut() {
-            history.trim_behind(self.played_sample());
+            history.trim_behind(imp.clock_base.get() * media::SAMPLE_RATE / 1_000_000);
         }
         let audio_error = imp.audio.borrow().as_ref().and_then(PcmOutput::error);
         if let Some(error) = audio_error {
