@@ -47,6 +47,8 @@ const PREVIEW_SPINNER_DELAY: Duration = Duration::from_millis(120);
 const PRINT_TEXT_BYTE_LIMIT: usize = 16 * 1024 * 1024;
 const TRANSITION: Duration = Duration::from_millis(260);
 const PDF_PAGE_GAP: i32 = 6;
+/// A handoff within this much of either end opens the file from the start.
+const HANDOFF_MARGIN_US: u64 = 1_000_000;
 const PDF_MIN_ZOOM: f64 = 1.0;
 const PDF_MAX_ZOOM: f64 = 4.0;
 const MEDIA_PLUGIN_INSTALL_COMMAND: &str =
@@ -490,9 +492,43 @@ impl PreviewDrawer {
         Self { state }
     }
 
+    /// Pauses the previewed video and reports where it stopped, for opening it
+    /// externally at that point. Other previews and the first or last second
+    /// yield nothing.
+    pub(in crate::ui) fn prepare_handoff(
+        &self,
+        location: &crate::model::Location,
+    ) -> Option<Duration> {
+        let state = &self.state;
+        if state
+            .current
+            .borrow()
+            .as_ref()
+            .is_none_or(|entry| entry.location != *location)
+        {
+            return None;
+        }
+        let media = state.media.borrow().clone()?;
+        media.set_playing(false);
+        media
+            .downcast_ref::<super::media::DecodedMedia>()?
+            .video_size()?;
+        let position = media.timestamp().max(0) as u64;
+        let duration = media.duration().max(0) as u64;
+        let inside = position > HANDOFF_MARGIN_US
+            && (duration == 0 || position.saturating_add(HANDOFF_MARGIN_US) < duration);
+        inside.then(|| Duration::from_micros(position))
+    }
+
+    #[cfg(test)]
+    pub(in crate::ui) fn media_for_test(&self) -> Option<gtk::MediaStream> {
+        self.state.media.borrow().clone()
+    }
+
     pub fn observe_browser(&self, browser: &Rc<Browser>) {
         let weak_state = Rc::downgrade(&self.state);
         let weak_browser = Rc::downgrade(browser);
+        let preview = self.clone();
         self.state.open.connect_clicked(move |_| {
             let (Some(state), Some(browser)) = (weak_state.upgrade(), weak_browser.upgrade())
             else {
@@ -506,10 +542,8 @@ impl PreviewDrawer {
             else {
                 return;
             };
-            if let Some(stream) = state.media.borrow().as_ref() {
-                stream.set_playing(false);
-            }
-            super::browser::open_location(&location, &state.pane, &browser);
+            let position = preview.prepare_handoff(&location);
+            super::browser::open_location_at(&location, position, &state.pane, &browser);
         });
         let preview = self.clone();
         let weak_browser = Rc::downgrade(browser);

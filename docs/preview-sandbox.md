@@ -530,6 +530,15 @@ durations have no storyboard. A 90-second limit bounds the decode, and finished
 or partial boards are cached in memory for the last 8 clips (at most about 14
 MB), with partial boards refilled on the next visit.
 
+Opening a previewed video externally, with **Enter**, the header's Open button
+or activation in the listing, pauses the preview and hands its position to the
+default player. The launcher inserts the player's start option into its desktop
+`Exec` line before the file placeholder (or a bare `--`), seen through `env`
+and Flatpak wrappers: `--start` for mpv, `--start-time` for VLC, `--mpv-start`
+for Celluloid and `-ss` for MPlayer. Unknown players, failed timed launches and
+positions within a second of either end open the file plainly. The launch uses
+the display's launch context, so the player gets startup notification.
+
 With **Preview autoplay** on, a video starts silent: the player scales its
 output by a fade gain on top of the saved volume, which it never changes. One
 second after the first frame the gain ramps up over about 0.7 s through the

@@ -45,6 +45,18 @@ const EDGE_SAMPLE_INTERVAL: Duration = Duration::from_millis(100);
 static MEDIA_POSITIONS: LazyLock<Mutex<HashMap<PathBuf, (u64, Instant)>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
+#[cfg(test)]
+thread_local! {
+    static TEST_STREAMS: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Every stream created afterwards on this thread decodes the synthetic test
+/// clip, for tests that reach the player only through the window.
+#[cfg(test)]
+pub(crate) fn use_test_streams(enabled: bool) {
+    TEST_STREAMS.with(|streams| streams.set(enabled));
+}
+
 fn remember_media_position(path: PathBuf, position: u64) {
     if let Ok(mut positions) = MEDIA_POSITIONS.lock() {
         if positions.len() >= MAX_REMEMBERED_POSITIONS && !positions.contains_key(&path) {
@@ -294,6 +306,10 @@ impl DecodedMedia {
         obj.imp()
             .start_after
             .set(Some(Instant::now() + START_DWELL));
+        #[cfg(test)]
+        if TEST_STREAMS.with(Cell::get) {
+            obj.use_test_stream();
+        }
         obj.restart_at(0);
         obj.ensure_timer();
         obj

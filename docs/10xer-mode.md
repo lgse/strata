@@ -135,7 +135,7 @@ every other key is typed or edits the text.
 | **j** / **k** / **↑** / **↓** | Scroll | Move the member highlight | Typed / text editing | **↑** / **↓** volume; **j** / **k** swallowed |
 | **h** / **←** | Return to the listing | Archive parent; at the archive root, return to the listing | Typed / caret | **h** returns to the listing; **←** seeks −5 s |
 | **l** / **→** | Swallowed | Open the highlighted folder; a member file does nothing | Typed / caret | **→** seeks +5 s; **l** swallowed |
-| **Enter** | Open the file from the listing | Same as **l** | Unlock | Open the file from the listing |
+| **Enter** | Open the file from the listing | Same as **l** | Unlock | Open the file from the listing; a video opens in the default player where the preview stopped |
 | **Space** | Swallowed | Swallowed | Typed | Play / pause |
 | **i** | Close the drawer | Close the drawer | Typed | Close the drawer |
 | **Home** / **G** / **End** | Top / bottom | First / last member | Caret (**G** typed) | Swallowed |

@@ -611,7 +611,17 @@ impl ViewState {
             }
             BrowserEvent::OpenRequested { location } => {
                 if self.interactive {
-                    open_location(location, &self.overlay, &self.browser);
+                    let position = self
+                        .playback_handoff
+                        .borrow()
+                        .as_ref()
+                        .and_then(|handoff| handoff(location));
+                    super::desktop::open_location_at(
+                        location,
+                        position,
+                        &self.overlay,
+                        &self.browser,
+                    );
                 }
             }
             BrowserEvent::EntryCreated { location } => {

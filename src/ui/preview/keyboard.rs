@@ -35,6 +35,12 @@ impl PreviewDrawer {
     /// while the drawer owns the keys.
     pub(in crate::ui) fn bind_keyboard_view(&self, view: &BrowserView) {
         self.state.keyboard_view.replace(Some(view.downgrade()));
+        let weak = Rc::downgrade(&self.state);
+        view.set_playback_handoff(Rc::new(move |location| {
+            weak.upgrade()
+                .map(|state| PreviewDrawer { state })
+                .and_then(|drawer| drawer.prepare_handoff(location))
+        }));
     }
 
     /// Whether keyboard focus is anywhere inside the drawer.

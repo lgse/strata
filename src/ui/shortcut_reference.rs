@@ -597,6 +597,10 @@ const MEDIA: &[(&str, &str)] = &[
     ("Ctrl+Alt+↑ / ↓", "Volume up / down"),
     ("Ctrl+Alt+M", "Mute / unmute"),
     ("Ctrl+Alt+< / >", "Previous / next file of the same type"),
+    (
+        "Enter on a video",
+        "Open it in the default app where the preview stopped",
+    ),
 ];
 
 fn default_hint(hint: ContextHint, type_to_search: bool) -> &'static str {

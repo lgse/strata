@@ -228,24 +228,168 @@ pub(super) fn launch(
     content_types: &[String],
     context: Option<&impl IsA<gio::AppLaunchContext>>,
 ) -> Result<(), glib::Error> {
-    launch_with_recent_registration(app, files, content_types, context, register_recent_file)
+    launch_with_recent_registration(
+        app,
+        app,
+        files,
+        content_types,
+        context,
+        register_recent_file,
+    )
+}
+
+/// Opens `file` in `app`, telling a known media player to start at `position`.
+/// Players without a known start option, or whose timed launch fails, open plainly.
+pub(in crate::ui) fn launch_at(
+    app: &gio::AppInfo,
+    file: &gio::File,
+    content_type: &str,
+    position: Option<std::time::Duration>,
+    context: Option<&impl IsA<gio::AppLaunchContext>>,
+) -> Result<(), glib::Error> {
+    let files = std::slice::from_ref(file);
+    let content_types = [content_type.to_owned()];
+    let timed = position
+        .and_then(|position| {
+            let exec = app.commandline()?;
+            command_line_at(&exec.to_string_lossy(), position.as_secs_f64())
+        })
+        .and_then(|command_line| {
+            let flags = if app.supports_uris() {
+                gio::AppInfoCreateFlags::SUPPORTS_URIS
+            } else {
+                gio::AppInfoCreateFlags::NONE
+            };
+            gio::AppInfo::create_from_commandline(command_line, Some(app.name().as_str()), flags)
+                .ok()
+        });
+    if let Some(timed) = timed
+        && launch_with_recent_registration(
+            app,
+            &timed,
+            files,
+            &content_types,
+            context,
+            register_recent_file,
+        )
+        .is_ok()
+    {
+        return Ok(());
+    }
+    launch(app, files, &content_types, context)
+}
+
+/// Field codes and Flatpak forwarding markers must stay unquoted and mark
+/// where the file arguments go.
+fn is_placeholder(token: &str) -> bool {
+    matches!(
+        token,
+        "%f" | "%F" | "%u" | "%U" | "%i" | "%c" | "%k" | "%d" | "%D" | "%n" | "%N" | "%v" | "%m"
+    ) || token.starts_with("@@")
+}
+
+fn basename(token: &str) -> &str {
+    token.rsplit('/').next().unwrap_or(token)
+}
+
+/// The program a desktop `Exec` line really runs, seen through `env`
+/// assignments and Flatpak wrappers.
+fn player_name(tokens: &[String]) -> Option<String> {
+    let mut command = tokens.iter().peekable();
+    let mut program = command.next()?;
+    while basename(program) == "env" {
+        program = command.find(|token| !token.contains('=') && !token.starts_with('-'))?;
+    }
+    if basename(program) == "flatpak" {
+        if let Some(name) = tokens
+            .iter()
+            .find_map(|token| token.strip_prefix("--command="))
+        {
+            return Some(basename(name).to_owned());
+        }
+        return tokens
+            .iter()
+            .skip(1)
+            .find(|token| {
+                token.contains('.')
+                    && !token.starts_with('-')
+                    && !token.contains('/')
+                    && !is_placeholder(token)
+            })
+            .cloned();
+    }
+    Some(basename(program).to_owned())
+}
+
+/// How a known player takes a start time on its command line.
+fn start_arguments(player: &str, seconds: f64) -> Option<Vec<String>> {
+    let seconds = format!("{seconds:.3}");
+    Some(match player {
+        "mpv" | "io.mpv.Mpv" => vec![format!("--start={seconds}")],
+        "vlc" | "cvlc" | "qvlc" | "nvlc" | "org.videolan.VLC" => {
+            vec![format!("--start-time={seconds}")]
+        }
+        "celluloid" | "io.github.celluloid_player.Celluloid" => {
+            vec![format!("--mpv-start={seconds}")]
+        }
+        "mplayer" => vec!["-ss".to_owned(), seconds],
+        _ => return None,
+    })
+}
+
+/// `exec` with the player's start option inserted before its file arguments,
+/// or `None` when the player is not known to take one.
+pub(super) fn command_line_at(exec: &str, seconds: f64) -> Option<String> {
+    let tokens: Vec<String> = glib::shell_parse_argv(exec)
+        .ok()?
+        .into_iter()
+        .map(|token| token.to_string_lossy().into_owned())
+        .collect();
+    let arguments = start_arguments(&player_name(&tokens)?, seconds)?;
+    // Options go before the first file placeholder, or before a bare `--`
+    // that already separates options from files.
+    let insert_at = tokens
+        .iter()
+        .enumerate()
+        .skip(1)
+        .find(|(_, token)| is_placeholder(token) || *token == "--")
+        .map_or(tokens.len(), |(index, _)| index);
+    let mut tokens = tokens;
+    tokens.splice(insert_at..insert_at, arguments);
+    Some(
+        tokens
+            .iter()
+            .map(|token| {
+                let plain = token
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || b"_-./=:@%+,".contains(&byte));
+                if plain && !token.is_empty() || is_placeholder(token) {
+                    token.clone()
+                } else {
+                    glib::shell_quote(token).to_string_lossy().into_owned()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" "),
+    )
 }
 
 fn launch_with_recent_registration(
     app: &gio::AppInfo,
+    launcher: &gio::AppInfo,
     files: &[gio::File],
     content_types: &[String],
     context: Option<&impl IsA<gio::AppLaunchContext>>,
     register_recent: impl Fn(&gio::File) -> bool + 'static,
 ) -> Result<(), glib::Error> {
     // GIO drops files without a local path when expanding %f/%F.
-    if !app.supports_uris() && requires_uri_handlers(files) {
+    if !launcher.supports_uris() && requires_uri_handlers(files) {
         return Err(glib::Error::new(
             gio::IOErrorEnum::NotSupported,
             "This application cannot open files at this location",
         ));
     }
-    app.launch(files, context)?;
+    launcher.launch(files, context)?;
     if let Some(app_id) = app.id() {
         let known_ids = gio::AppInfo::all()
             .into_iter()
@@ -956,3 +1100,6 @@ pub(super) fn show(
         search_entry.grab_focus();
     }
 }
+
+#[cfg(test)]
+mod tests;

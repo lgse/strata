@@ -526,3 +526,65 @@ fn autoplay_starts_silent_and_eases_in_unless_the_viewer_acts_or_is_muted() {
         },
     );
 }
+
+#[test]
+fn handoffs_pause_the_shown_video_and_report_positions_away_from_the_ends() {
+    crate::test_support::gtk_test(
+        "ui::preview::tests::video::handoffs_pause_the_shown_video_and_report_positions_away_from_the_ends",
+        || {
+            let provider = Rc::new(Provider::default());
+            let drawer = PreviewDrawer::new(provider.clone(), false);
+            crate::ui::preferences::PreferenceManager::shared().set_preview_autoplay(false);
+            let clip = entry("clip.mp4");
+            drawer.show(clip.clone(), None);
+            ready(&provider, 0, "video/mp4");
+            let media = drawer
+                .state
+                .media
+                .borrow()
+                .clone()
+                .and_downcast::<crate::ui::media::DecodedMedia>()
+                .expect("decoded stream");
+            media.present_test_frame(64, 36);
+            media.play();
+            assert_eq!(
+                drawer.prepare_handoff(&entry("other.mp4").location),
+                None,
+                "only the previewed file hands off"
+            );
+            assert!(
+                media.is_playing(),
+                "a foreign location leaves playback alone"
+            );
+            assert_eq!(
+                drawer.prepare_handoff(&clip.location),
+                None,
+                "the first second opens from the start"
+            );
+            assert!(!media.is_playing(), "the preview pauses for the handoff");
+
+            media.play();
+            media.seek(5_000_000);
+            assert_eq!(
+                drawer.prepare_handoff(&clip.location),
+                Some(std::time::Duration::from_secs(5))
+            );
+            assert!(!media.is_playing());
+            media.seek(9_500_000);
+            assert_eq!(
+                drawer.prepare_handoff(&clip.location),
+                None,
+                "the last second opens from the start"
+            );
+
+            drawer.show(entry("song.mp3"), None);
+            ready(&provider, 1, "audio/mpeg");
+            assert_eq!(
+                drawer.prepare_handoff(&entry("song.mp3").location),
+                None,
+                "audio always opens from the start"
+            );
+            drawer.close();
+        },
+    );
+}

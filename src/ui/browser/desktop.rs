@@ -20,6 +20,17 @@ pub(in crate::ui) fn open_location(
     parent: &impl IsA<gtk::Widget>,
     browser: &Rc<Browser>,
 ) {
+    open_location_at(location, None, parent, browser);
+}
+
+/// Opens `location` in its default application; a known media player starts
+/// at `position`, where the preview left off.
+pub(in crate::ui) fn open_location_at(
+    location: &Location,
+    position: Option<std::time::Duration>,
+    parent: &impl IsA<gtk::Widget>,
+    browser: &Rc<Browser>,
+) {
     if is_trash_location(location) {
         show_error_dialog(
             parent,
@@ -29,17 +40,19 @@ pub(in crate::ui) fn open_location(
         return;
     }
     let file = gio_file_for_location(location);
+    let context = parent.as_ref().display().app_launch_context();
     let parent = parent.as_ref().downgrade();
     let location = location.clone();
     let browser = Rc::downgrade(browser);
     glib::MainContext::default().spawn_local(async move {
         match resolve_default_application(&file).await {
             Ok((content_type, Some(app))) => {
-                let result = crate::ui::open_with::launch(
+                let result = crate::ui::open_with::launch_at(
                     &app,
-                    std::slice::from_ref(&file),
-                    std::slice::from_ref(&content_type),
-                    None::<&gio::AppLaunchContext>,
+                    &file,
+                    &content_type,
+                    position,
+                    Some(&context),
                 );
                 if let Some(parent) = parent.upgrade() {
                     report_open_result(&location, &parent, result);
