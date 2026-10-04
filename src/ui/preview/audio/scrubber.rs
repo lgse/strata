@@ -88,7 +88,7 @@ glib::wrapper! {
 }
 
 impl Scrubber {
-    pub(super) fn new() -> Self {
+    pub(in crate::ui::preview) fn new() -> Self {
         let scrubber: Self = glib::Object::new();
         scrubber.add_css_class("preview-audio-scrubber");
         scrubber.set_focusable(true);
@@ -101,11 +101,11 @@ impl Scrubber {
         scrubber
     }
 
-    pub(super) fn connect_preview(&self, callback: impl Fn(Option<i64>) + 'static) {
+    pub(in crate::ui::preview) fn connect_preview(&self, callback: impl Fn(Option<i64>) + 'static) {
         self.imp().on_preview.replace(Some(Rc::new(callback)));
     }
 
-    pub(super) fn set_media(&self, media: Option<&gtk::MediaStream>) {
+    pub(in crate::ui::preview) fn set_media(&self, media: Option<&gtk::MediaStream>) {
         let imp = self.imp();
         if let Some(previous) = imp.media.borrow_mut().take() {
             for handler in imp.handlers.borrow_mut().drain(..) {
@@ -132,7 +132,7 @@ impl Scrubber {
         self.sync_position();
     }
 
-    pub(super) fn clear_levels(&self) {
+    pub(in crate::ui::preview) fn clear_levels(&self) {
         self.imp().targets.borrow_mut().fill(0.0);
         // The outgoing waveform keeps its scale while it lowers.
         self.imp().stale.set(true);

@@ -33,7 +33,7 @@ impl PreviewProvider for AudioPreview {
     }
 }
 
-fn settle(step: &str, condition: impl Fn() -> bool) {
+pub(super) fn settle(step: &str, condition: impl Fn() -> bool) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     while !condition() {
         assert!(

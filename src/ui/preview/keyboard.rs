@@ -282,7 +282,7 @@ impl PreviewState {
         if accepts_typing(focused) {
             return PreviewSurface::Text;
         }
-        let media_view = (self.media.borrow().is_some() || self.audio.borrow().is_some())
+        let media_view = self.has_media_view()
             && (focused == self.content.upcast_ref::<gtk::Widget>()
                 || focused.is::<gtk::Overlay>()
                 || focused.is::<super::audio::Scrubber>());

@@ -2731,6 +2731,41 @@ paned > separator {
   outline-offset: 2px;
 }
 
+.preview-video-header {
+  padding: 2px 12px 0;
+}
+
+.preview-video-eyebrow {
+  color: @theme_dim_text;
+  font-size: 0.72em;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.preview-video-title {
+  color: @theme_text;
+  font-size: 1.1em;
+  font-weight: 700;
+}
+
+.preview-video-transport {
+  padding: 2px 12px 8px;
+}
+
+.preview-video-time {
+  min-width: 3.4em;
+}
+
+.preview-media-time.preview-video-time-target {
+  color: @theme_accent;
+}
+
+.preview-media-center.preview-video-play {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 6px;
+}
+
 .preview-media-bar {
   background: alpha(@theme_bg, 0.55);
   border-top: 1px solid alpha(@theme_border, 0.24);

@@ -95,7 +95,7 @@ fn audio_steps_keep_playback_and_volume_but_never_reuse_an_ended_request() {
                 .view
                 .clone();
 
-            assert!(state.step_audio(1, true));
+            assert!(state.step_media(1, true));
             show_cursor();
             assert!(state.media.borrow().is_none());
             assert!(Rc::ptr_eq(
@@ -108,7 +108,7 @@ fn audio_steps_keep_playback_and_volume_but_never_reuse_an_ended_request() {
             assert!(state.media_command(gtk::gdk::Key::m));
             assert!(preferences.preview_muted());
 
-            assert!(state.step_audio(1, true));
+            assert!(state.step_media(1, true));
             show_cursor();
             ready(&provider, 2);
             assert!(
@@ -120,14 +120,14 @@ fn audio_steps_keep_playback_and_volume_but_never_reuse_an_ended_request() {
             state.show_media_error(&glib::Error::new(gio::IOErrorEnum::Failed, "bad audio"));
             assert!(state.audio.borrow().is_some());
             assert!(
-                state.step_audio(-1, true),
+                state.step_media(-1, true),
                 "a decoder error must not strand navigation"
             );
             show_cursor();
             ready(&provider, 3);
             stream().play();
 
-            assert!(state.step_audio(-1, true));
+            assert!(state.step_media(-1, true));
             show_cursor();
             {
                 let pending = provider.0.borrow();
@@ -144,7 +144,7 @@ fn audio_steps_keep_playback_and_volume_but_never_reuse_an_ended_request() {
             assert!(!stream().is_playing());
 
             stream().play();
-            assert!(state.step_audio(1, true));
+            assert!(state.step_media(1, true));
             show_cursor();
             drawer.close();
             drawer.show(browser.entry_at(0, 1).expect("second track"), Some(0));

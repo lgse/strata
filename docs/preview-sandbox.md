@@ -486,6 +486,16 @@ results, including subfolders, and untagged captions read “X of Y in results�
 instead of “X of Y in folder”. Playback errors remain visible inside the audio
 view without disabling track navigation. Tracks never advance automatically.
 
+## Video previews
+
+Video files open in a now-playing view of their own: the frame on top, a header
+with the file's position among the folder's videos and the volume control, a
+timeline, and a transport with previous/next buttons. Consecutive video files
+reuse one view, like audio. Previous/next step to the previous or next file of
+the same media family, so audio steps to audio and video to video, following
+visible search results like audio does. Playback errors remain visible inside the
+view without disabling navigation.
+
 ## Wire validation and budgets
 
 The versioned `STRRAW01` little-endian protocol has a 40-byte header: magic,

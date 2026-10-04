@@ -1,14 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-//! One view survives consecutive tracks to preserve artwork transitions and spectrum motion.
-
-mod analysis;
-mod artwork;
-mod details;
-mod layout;
-mod palette;
-mod scrubber;
-mod spectrum;
+//! One view survives consecutive videos, so stepping through a folder never
+//! rebuilds the frame area or its controls.
 
 use std::{
     cell::{Cell, RefCell},
@@ -17,68 +10,44 @@ use std::{
 
 use gtk::{glib, prelude::*};
 
-use crate::{
-    model::FileEntry, sandbox::metadata::AudioTags, services::SandboxedMedia,
-    ui::media::DecodedMedia,
+use crate::{model::FileEntry, services::MediaPreviewSize, ui::media::DecodedMedia};
+
+use super::{
+    ListingPosition,
+    audio::{Scrubber, clock},
+    media_layout::MediaLayout,
 };
 
-use super::ListingPosition;
+const FRAME_MARGIN: i32 = 12;
 
-pub(in crate::ui) use palette::apply_theme;
-pub(in crate::ui::preview) use scrubber::Scrubber;
-
-pub(super) fn clock(microseconds: i64) -> String {
-    let seconds = microseconds.max(0) / 1_000_000;
-    let (hours, minutes, seconds) = (seconds / 3600, seconds / 60 % 60, seconds % 60);
-    if hours > 0 {
-        format!("{hours}:{minutes:02}:{seconds:02}")
-    } else {
-        format!("{minutes}:{seconds:02}")
-    }
-}
-
-pub(super) fn track_caption(tags: &AudioTags, folder: Option<ListingPosition>) -> Option<String> {
-    match (tags.track, tags.track_total, folder) {
-        (Some(track), Some(total), _) => Some(format!("Track {track} of {total}")),
-        (Some(track), None, _) => Some(format!("Track {track}")),
-        (None, _, Some(position)) => Some(position.caption()),
-        (None, _, None) => None,
-    }
-}
-
-pub(super) struct Track {
+pub(super) struct Clip {
     pub(super) entry: FileEntry,
-    pub(super) source: SandboxedMedia,
     pub(super) media: gtk::MediaStream,
-    pub(super) folder: Option<ListingPosition>,
+    pub(super) position: Option<ListingPosition>,
     pub(super) has_previous: bool,
     pub(super) has_next: bool,
 }
 
-pub(super) struct AudioView {
+pub(super) struct VideoView {
     root: gtk::Box,
-    artwork: artwork::Artwork,
-    spectrum: spectrum::Spectrum,
-    scrubber: Scrubber,
+    layout: MediaLayout,
+    picture: gtk::Picture,
+    frame: gtk::Overlay,
+    center_play: gtk::Button,
     eyebrow: gtk::Label,
     title: gtk::Label,
-    artist: gtk::Label,
-    album: gtk::Label,
+    error: gtk::Box,
+    scrubber: Scrubber,
     elapsed: gtk::Label,
     total: gtk::Label,
     play_icon: gtk::Image,
     play: gtk::Button,
-    error: gtk::Box,
     previous: gtk::Button,
     next: gtk::Button,
     media: RefCell<Option<gtk::MediaStream>>,
     handlers: RefCell<Vec<glib::SignalHandlerId>>,
     hover: Cell<Option<i64>>,
     shown_seconds: Cell<(i64, i64)>,
-    stem: RefCell<String>,
-    folder: Cell<Option<ListingPosition>>,
-    details: RefCell<Option<details::DetailsLoad>>,
-    peaks: RefCell<Option<details::PeaksLoad>>,
 }
 
 fn label(class: &str) -> gtk::Label {
@@ -98,55 +67,87 @@ fn transport_button(icon: &str, name: &str, tooltip: &str) -> gtk::Button {
     button
 }
 
-impl AudioView {
-    /// `navigate(-1 | 1)` moves the listing to the previous or next audio file.
-    pub(super) fn new(volume: &gtk::Widget, navigate: Rc<dyn Fn(i32)>) -> Rc<Self> {
+impl VideoView {
+    /// `navigate(-1 | 1)` moves the listing to the previous or next video.
+    /// `decode_size` is the frame size to decode at, or `None` while the pane
+    /// is still animating open.
+    pub(super) fn new(
+        volume: &gtk::Widget,
+        navigate: Rc<dyn Fn(i32)>,
+        decode_size: Rc<dyn Fn() -> Option<MediaPreviewSize>>,
+    ) -> Rc<Self> {
         let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        root.add_css_class("preview-audio");
+        root.add_css_class("preview-video");
         root.set_hexpand(true);
         root.set_vexpand(true);
-        root.set_layout_manager(Some(glib::Object::new::<layout::NowPlayingLayout>()));
+        let layout = MediaLayout::new();
+        root.set_layout_manager(Some(layout.clone()));
 
-        let eyebrow = label("preview-audio-eyebrow");
+        let picture = gtk::Picture::new();
+        picture.add_css_class("preview-media");
+        picture.set_content_fit(gtk::ContentFit::Contain);
+        picture.set_can_shrink(true);
+        picture.set_hexpand(true);
+        picture.set_vexpand(true);
+        picture.set_cursor_from_name(Some("grab"));
+        let frame = gtk::Overlay::new();
+        frame.set_child(Some(&picture));
+        frame.set_focusable(true);
+        frame.set_can_target(true);
+        frame.set_margin_start(FRAME_MARGIN);
+        frame.set_margin_end(FRAME_MARGIN);
+        frame.set_margin_top(FRAME_MARGIN);
+        frame.set_margin_bottom(FRAME_MARGIN);
+        crate::ui::accessibility::set_label(&frame, "Video frame");
+        let center_play = gtk::Button::new();
+        center_play.add_css_class("preview-media-center");
+        center_play.set_halign(gtk::Align::Center);
+        center_play.set_valign(gtk::Align::Center);
+        center_play.set_visible(false);
+        center_play.set_child(Some(&crate::assets::primary_icon(
+            crate::assets::icons::PLAY,
+            48,
+        )));
+        crate::ui::accessibility::set_label(&center_play, "Play");
+        frame.add_overlay(&center_play);
+
+        let eyebrow = label("preview-video-eyebrow");
         eyebrow.set_hexpand(true);
         let eyebrow_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         eyebrow_row.append(&eyebrow);
         eyebrow_row.append(volume);
-        let title = label("preview-audio-title");
-        let artist = label("preview-audio-artist");
-        let album = label("preview-audio-album");
-        album.set_hexpand(true);
-        let byline = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        byline.append(&artist);
-        byline.append(&album);
+        let title = label("preview-video-title");
         let header = gtk::Box::new(gtk::Orientation::Vertical, 2);
-        header.add_css_class("preview-audio-header");
+        header.add_css_class("preview-video-header");
         header.append(&eyebrow_row);
         header.append(&title);
-        header.append(&byline);
         let error = gtk::Box::new(gtk::Orientation::Vertical, 4);
         error.set_visible(false);
         header.append(&error);
 
+        let scrubber = Scrubber::new();
+        scrubber.set_margin_start(FRAME_MARGIN);
+        scrubber.set_margin_end(FRAME_MARGIN);
+
         let elapsed = label("preview-media-time");
-        elapsed.add_css_class("preview-audio-time");
+        elapsed.add_css_class("preview-video-time");
         let total = label("preview-media-time");
-        total.add_css_class("preview-audio-time");
+        total.add_css_class("preview-video-time");
         total.set_xalign(1.0);
         let previous = transport_button(
             crate::assets::icons::SKIP_BACK,
-            "Previous audio file",
-            "Previous audio file (Ctrl+Alt+<)",
+            "Previous video",
+            "Previous video (Ctrl+Alt+<)",
         );
         let next = transport_button(
             crate::assets::icons::SKIP_FORWARD,
-            "Next audio file",
-            "Next audio file (Ctrl+Alt+>)",
+            "Next video",
+            "Next video (Ctrl+Alt+>)",
         );
         let play_icon = crate::assets::primary_icon(crate::assets::icons::PLAY, 22);
         let play = gtk::Button::new();
         play.add_css_class("preview-media-center");
-        play.add_css_class("preview-audio-play");
+        play.add_css_class("preview-video-play");
         play.set_child(Some(&play_icon));
         play.set_tooltip_text(Some("Play/Pause (Ctrl+Alt+Space)"));
         crate::ui::accessibility::set_label(&play, "Play or pause");
@@ -156,66 +157,56 @@ impl AudioView {
         buttons.append(&play);
         buttons.append(&next);
         let transport = gtk::CenterBox::new();
-        transport.add_css_class("preview-audio-transport");
+        transport.add_css_class("preview-video-transport");
         transport.set_start_widget(Some(&elapsed));
         transport.set_center_widget(Some(&buttons));
         transport.set_end_widget(Some(&total));
 
-        let artwork = artwork::Artwork::new();
-        let spectrum = spectrum::Spectrum::new();
-        let scrubber = Scrubber::new();
-        root.append(&artwork);
+        root.append(&frame);
         root.append(&header);
-        root.append(&spectrum);
         root.append(&scrubber);
         root.append(&transport);
 
         let view = Rc::new(Self {
             root,
-            artwork,
-            spectrum,
-            scrubber,
+            layout,
+            picture,
+            frame,
+            center_play: center_play.clone(),
             eyebrow,
             title,
-            artist,
-            album,
+            error,
+            scrubber,
             elapsed,
             total,
             play_icon,
             play: play.clone(),
-            error,
             previous,
             next,
             media: RefCell::default(),
             handlers: RefCell::default(),
             hover: Cell::default(),
             shown_seconds: Cell::new((-1, -1)),
-            stem: RefCell::default(),
-            folder: Cell::default(),
-            details: RefCell::default(),
-            peaks: RefCell::default(),
         });
 
-        let weak = Rc::downgrade(&view);
-        play.connect_clicked(move |_| {
-            if let Some(view) = weak.upgrade() {
-                view.toggle_playback();
-            }
-        });
-        for surface in [
-            view.artwork.upcast_ref::<gtk::Widget>(),
-            view.spectrum.upcast_ref(),
-        ] {
-            let click = gtk::GestureClick::new();
-            click.set_button(gtk::gdk::BUTTON_PRIMARY);
+        for button in [&play, &center_play] {
             let weak = Rc::downgrade(&view);
-            click.connect_released(move |_, _, _, _| {
+            button.connect_clicked(move |_| {
                 if let Some(view) = weak.upgrade() {
                     view.toggle_playback();
                 }
             });
-            surface.add_controller(click);
         }
+        let click = gtk::GestureClick::new();
+        click.set_button(gtk::gdk::BUTTON_PRIMARY);
+        let weak = Rc::downgrade(&view);
+        click.connect_pressed(move |_, _, _, _| {
+            if let Some(view) = weak.upgrade() {
+                view.frame.grab_focus();
+                view.toggle_playback();
+            }
+        });
+        view.picture.add_controller(click);
         for (button, step) in [(&view.previous, -1), (&view.next, 1)] {
             let navigate = navigate.clone();
             button.connect_clicked(move |_| navigate(step));
@@ -228,11 +219,30 @@ impl AudioView {
                 view.sync_time();
             }
         });
+        // The decode rectangle follows the pane; `resize` ignores unchanged sizes.
+        let weak = Rc::downgrade(&view);
+        view.picture.add_tick_callback(move |_, _| {
+            let Some(view) = weak.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+            if let Some(size) = decode_size()
+                && let Some(media) = view.media.borrow().as_ref()
+                && let Some(media) = media.downcast_ref::<DecodedMedia>()
+            {
+                media.resize(size);
+            }
+            glib::ControlFlow::Continue
+        });
         view
     }
 
     pub(super) fn widget(&self) -> &gtk::Box {
         &self.root
+    }
+
+    /// The frame picture, which the drawer makes a drag source for the file.
+    pub(super) fn picture(&self) -> &gtk::Picture {
+        &self.picture
     }
 
     pub(super) fn detach(&self) {
@@ -241,27 +251,27 @@ impl AudioView {
                 media.disconnect(handler);
             }
         }
-        self.details.borrow_mut().take();
-        self.peaks.borrow_mut().take();
+        self.picture.set_paintable(None::<&gtk::gdk::Paintable>);
+        self.layout.set_paintable(None);
         self.scrubber.set_media(None);
         self.scrubber.clear_levels();
-        self.spectrum.set_media(None);
-        // Preserve the record's position between tracks.
-        self.set_playing_icon(false);
+        self.sync_playing(false);
+        self.center_play.set_visible(false);
     }
 
-    pub(super) fn show(self: &Rc<Self>, track: Track) {
+    pub(super) fn show(self: &Rc<Self>, clip: Clip) {
         self.detach();
-        let Track {
+        let Clip {
             entry,
-            source,
             media,
-            folder,
+            position,
             has_previous,
             has_next,
-        } = track;
-        self.prepare(&entry, folder, has_previous, has_next);
+        } = clip;
+        self.prepare(&entry, position, has_previous, has_next);
         self.play.set_sensitive(true);
+        self.picture.set_paintable(Some(&media));
+        self.layout.set_paintable(Some(media.upcast_ref()));
 
         let weak = Rc::downgrade(self);
         let mut handlers = vec![
@@ -281,62 +291,16 @@ impl AudioView {
         }
         self.handlers.replace(handlers);
         self.media.replace(Some(media.clone()));
-        self.spectrum
-            .set_media(media.downcast_ref::<DecodedMedia>());
         self.scrubber.set_media(Some(&media));
-        // An unprepared replacement must not briefly tuck the record away.
-        if media.is_prepared() || media.is_playing() {
-            self.sync_playing(media.is_playing());
-        }
-        let weak = Rc::downgrade(self);
-        self.handlers
-            .borrow_mut()
-            .push(media.connect_prepared_notify(move |media| {
-                if media.is_prepared()
-                    && let Some(view) = weak.upgrade()
-                {
-                    view.sync_playing(media.is_playing());
-                }
-            }));
+        self.sync_playing(media.is_playing());
         self.shown_seconds.set((-1, -1));
         self.sync_time();
-
-        let key = details::TrackKey::of(&entry);
-        if let Some(cached) = details::cached_details(&key) {
-            self.show_tags(&cached.tags);
-            self.artwork.set_cover(cached.cover.clone());
-        } else {
-            let weak = Rc::downgrade(self);
-            let tags = move |tags: AudioTags| {
-                if let Some(view) = weak.upgrade() {
-                    view.show_tags(&tags);
-                }
-            };
-            let weak = Rc::downgrade(self);
-            let cover = move |cover| {
-                if let Some(view) = weak.upgrade() {
-                    view.artwork.set_cover(cover);
-                }
-            };
-            self.details
-                .replace(Some(details::load_details(&entry, &source, tags, cover)));
-        }
-        let weak = Rc::downgrade(self);
-        self.peaks.replace(Some(details::load_peaks(
-            &entry,
-            &source,
-            move |start, levels| {
-                if let Some(view) = weak.upgrade() {
-                    view.scrubber.add_levels(start, levels);
-                }
-            },
-        )));
     }
 
     pub(super) fn prepare(
         &self,
         entry: &FileEntry,
-        folder: Option<ListingPosition>,
+        position: Option<ListingPosition>,
         has_previous: bool,
         has_next: bool,
     ) {
@@ -344,21 +308,20 @@ impl AudioView {
         self.play.set_sensitive(false);
         self.previous.set_sensitive(has_previous);
         self.next.set_sensitive(has_next);
-        self.folder.set(folder);
-        self.stem.replace(
-            std::path::Path::new(&entry.display_name)
+        self.eyebrow
+            .set_text(&position.map(ListingPosition::caption).unwrap_or_default());
+        self.title.set_text(
+            &std::path::Path::new(&entry.display_name)
                 .file_stem()
                 .map_or_else(
                     || entry.display_name.clone(),
                     |stem| stem.to_string_lossy().into_owned(),
                 ),
         );
-        self.show_tags(&AudioTags::default());
     }
 
     pub(super) fn show_error(&self, title: &str, detail: &str, command: Option<&str>) {
         self.detach();
-        self.sync_playing(false);
         self.play.set_sensitive(false);
         super::clear_box(&self.error);
         let heading = gtk::Label::new(Some(title));
@@ -383,20 +346,7 @@ impl AudioView {
         }
     }
 
-    fn show_tags(&self, tags: &AudioTags) {
-        let caption = track_caption(tags, self.folder.get());
-        self.eyebrow.set_text(caption.as_deref().unwrap_or(""));
-        self.title
-            .set_text(tags.title.as_deref().unwrap_or(&self.stem.borrow()));
-        self.artist.set_text(tags.artist.as_deref().unwrap_or(""));
-        self.album.set_text(&match (&tags.artist, &tags.album) {
-            (Some(_), Some(album)) => format!(" — {album}"),
-            (None, Some(album)) => album.clone(),
-            (_, None) => String::new(),
-        });
-    }
-
-    fn set_playing_icon(&self, playing: bool) {
+    fn sync_playing(&self, playing: bool) {
         crate::assets::set_primary_icon(
             &self.play_icon,
             if playing {
@@ -405,12 +355,8 @@ impl AudioView {
                 crate::assets::icons::PLAY
             },
         );
-    }
-
-    fn sync_playing(&self, playing: bool) {
-        self.set_playing_icon(playing);
-        self.artwork.set_playing(playing);
-        self.spectrum.wake();
+        self.center_play
+            .set_visible(!playing && self.media.borrow().is_some());
     }
 
     fn sync_time(&self) {
@@ -425,9 +371,9 @@ impl AudioView {
         }
         self.elapsed.set_text(&clock(shown));
         if self.hover.get().is_some() {
-            self.elapsed.add_css_class("preview-audio-time-target");
+            self.elapsed.add_css_class("preview-video-time-target");
         } else {
-            self.elapsed.remove_css_class("preview-audio-time-target");
+            self.elapsed.remove_css_class("preview-video-time-target");
         }
         self.total.set_text(&if duration > 0 {
             clock(duration)
@@ -436,6 +382,3 @@ impl AudioView {
         });
     }
 }
-
-#[cfg(test)]
-mod tests;

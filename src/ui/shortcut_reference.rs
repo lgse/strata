@@ -297,7 +297,7 @@ fn tenxer_preview(mode: BrowserMode, chooser: bool) -> Vec<(&'static str, &'stat
     shortcuts.push(("J / K", "Scroll the open preview without taking focus"));
     shortcuts.push((
         "< / >",
-        "Previous / next audio file while the preview shows audio",
+        "Previous / next file of the same type while the preview shows audio or video",
     ));
     // Icons have no key that moves into the preview.
     if mode != BrowserMode::Icons {
@@ -331,7 +331,7 @@ const TENXER_PREVIEW_OWNED: &[(&str, &str)] = &[
     ),
     (
         "Space / ← → / ↑ ↓ / m / < > in media",
-        "Play, seek, volume, mute, previous / next audio file",
+        "Play, seek, volume, mute, previous / next file of the same type",
     ),
     (
         "h / ← in a document, h in media",
@@ -596,7 +596,7 @@ const MEDIA: &[(&str, &str)] = &[
     ("Ctrl+Alt+← / →", "Seek −5 / +5 seconds"),
     ("Ctrl+Alt+↑ / ↓", "Volume up / down"),
     ("Ctrl+Alt+M", "Mute / unmute"),
-    ("Ctrl+Alt+< / >", "Previous / next audio file"),
+    ("Ctrl+Alt+< / >", "Previous / next file of the same type"),
 ];
 
 fn default_hint(hint: ContextHint, type_to_search: bool) -> &'static str {

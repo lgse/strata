@@ -133,6 +133,17 @@ glib::wrapper! {
     pub struct MediaLayout(ObjectSubclass<imp::MediaLayout>) @extends gtk::LayoutManager;
 }
 
+impl MediaLayout {
+    pub(super) fn new() -> Self {
+        glib::Object::new()
+    }
+
+    /// The media child is fitted to this paintable's aspect; `None` lets it fill.
+    pub(super) fn set_paintable(&self, paintable: Option<&gdk::Paintable>) {
+        self.imp().paintable.set(paintable);
+    }
+}
+
 pub(super) fn section(
     media: &impl IsA<gtk::Widget>,
     paintable: &impl IsA<gdk::Paintable>,
@@ -140,8 +151,8 @@ pub(super) fn section(
     let section = gtk::Box::new(gtk::Orientation::Vertical, 0);
     section.set_hexpand(true);
     section.set_vexpand(true);
-    let layout: MediaLayout = glib::Object::new();
-    layout.imp().paintable.set(Some(paintable.as_ref()));
+    let layout = MediaLayout::new();
+    layout.set_paintable(Some(paintable.as_ref()));
     section.set_layout_manager(Some(layout));
     media.set_margin_start(MEDIA_MARGIN);
     media.set_margin_end(MEDIA_MARGIN);
