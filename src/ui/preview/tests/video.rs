@@ -430,3 +430,99 @@ fn the_glow_stays_dark_without_the_preference_or_under_reduced_motion() {
         },
     );
 }
+
+fn pump(duration: std::time::Duration) {
+    let until = std::time::Instant::now() + duration;
+    while std::time::Instant::now() < until {
+        glib::MainContext::default().iteration(false);
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+}
+
+fn wait_until(what: &str, condition: impl Fn() -> bool) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while !condition() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "{what} did not happen"
+        );
+        glib::MainContext::default().iteration(false);
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+}
+
+#[test]
+fn autoplay_starts_silent_and_eases_in_unless_the_viewer_acts_or_is_muted() {
+    crate::test_support::gtk_test(
+        "ui::preview::tests::video::autoplay_starts_silent_and_eases_in_unless_the_viewer_acts_or_is_muted",
+        || {
+            let provider = Rc::new(Provider::default());
+            let drawer = PreviewDrawer::new(provider.clone(), false);
+            let preferences = crate::ui::preferences::PreferenceManager::shared();
+            preferences.set_preview_autoplay(true);
+            preferences.set_preview_audio(0.8, false);
+            let state = &drawer.state;
+            let decoded = || {
+                state
+                    .media
+                    .borrow()
+                    .clone()
+                    .and_downcast::<crate::ui::media::DecodedMedia>()
+                    .expect("decoded stream")
+            };
+            let view = || {
+                state
+                    .video
+                    .borrow()
+                    .as_ref()
+                    .expect("video view")
+                    .view
+                    .clone()
+            };
+
+            drawer.show(entry("a.mp4"), None);
+            ready(&provider, 0, "video/mp4");
+            let media = decoded();
+            media.use_test_stream();
+            assert!(media.is_playing(), "autoplay starts playback");
+            assert_eq!(media.fade(), 0.0, "but silently");
+            assert!(view().is_easing_in());
+            media.present_test_frame(64, 36);
+            pump(std::time::Duration::from_millis(300));
+            assert_eq!(media.fade(), 0.0, "the dwell has not passed");
+            wait_until("the ease-in", || media.fade() == 1.0);
+            assert!(!view().is_easing_in());
+            assert_eq!(media.volume(), 0.8, "the saved volume is untouched");
+
+            drawer.show(entry("b.mp4"), None);
+            ready(&provider, 1, "video/mp4");
+            let media = decoded();
+            media.use_test_stream();
+            assert_eq!(media.fade(), 0.0);
+            assert!(state.media_command(gtk::gdk::Key::space));
+            assert_eq!(media.fade(), 1.0, "pausing brings the sound in at once");
+            assert!(!view().is_easing_in());
+
+            preferences.set_preview_muted(true);
+            drawer.show(entry("c.mp4"), None);
+            ready(&provider, 2, "video/mp4");
+            let media = decoded();
+            media.use_test_stream();
+            assert!(media.is_muted());
+            assert_eq!(media.fade(), 1.0, "a muted viewer gets no ramp");
+            assert!(!view().is_easing_in());
+
+            preferences.set_preview_muted(false);
+            drawer.show(entry("d.mp4"), None);
+            ready(&provider, 3, "video/mp4");
+            let media = decoded();
+            media.use_test_stream();
+            assert_eq!(media.fade(), 0.0);
+            preferences.set_preview_audio(0.5, false);
+            assert_eq!(media.fade(), 1.0, "changing the volume ends the ease-in");
+
+            preferences.set_preview_autoplay(false);
+            drawer.close();
+        },
+    );
+}

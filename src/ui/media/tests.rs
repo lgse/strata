@@ -603,3 +603,35 @@ fn prepared_streams_size_the_frame_before_it_is_decoded() {
         },
     );
 }
+
+#[test]
+fn the_fade_scales_the_volume_without_replacing_it() {
+    crate::test_support::gtk_test(
+        "ui::media::tests::the_fade_scales_the_volume_without_replacing_it",
+        || {
+            let output = PcmOutput::test_sink(
+                false,
+                0.8,
+                Duration::from_secs(2),
+                "fakesink sync=false",
+                None,
+            )
+            .expect("test sink");
+            assert!((output.effective_volume() - 0.8).abs() < 1e-6);
+            output.set_fade(0.5);
+            assert!((output.effective_volume() - 0.4).abs() < 1e-6);
+            output.set_audio(false, 0.5);
+            assert!((output.effective_volume() - 0.25).abs() < 1e-6);
+            output.set_fade(1.0);
+            assert!((output.effective_volume() - 0.5).abs() < 1e-6);
+            output.set_fade(f64::NAN);
+            assert!((output.effective_volume() - 0.5).abs() < 1e-6);
+
+            let media = DecodedMedia::new(test_source("/faded"));
+            media.set_fade(0.0);
+            assert_eq!(media.fade(), 0.0);
+            assert_eq!(media.volume(), 1.0, "the stream's own volume is untouched");
+            media.close();
+        },
+    );
+}

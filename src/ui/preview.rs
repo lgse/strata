@@ -672,6 +672,9 @@ impl PreviewState {
             let step = if key == gtk::gdk::Key::less { -1 } else { 1 };
             return self.step_media(step, true);
         }
+        if let Some(video) = self.video.borrow().as_ref() {
+            video.view.end_ease_in();
+        }
         let preferences = super::preferences::PreferenceManager::shared();
         if self.media_volume_slider.borrow().is_some() {
             match key {
@@ -1509,6 +1512,14 @@ impl PreviewState {
                     }
                 };
                 if preferences.preview_autoplay() || (continue_playback && family.is_some()) {
+                    // Unasked-for playback starts silent; a continued one keeps its sound.
+                    if preferences.preview_autoplay()
+                        && !continue_playback
+                        && family == Some(MediaFamily::Video)
+                        && let Some(video) = self.video.borrow().as_ref()
+                    {
+                        video.view.start_silently();
+                    }
                     self.sizing.play_or_defer(&media);
                 } else if let Some(center_play) = center_play {
                     center_play.set_visible(true);

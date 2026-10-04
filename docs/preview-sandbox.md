@@ -530,6 +530,13 @@ durations have no storyboard. A 90-second limit bounds the decode, and finished
 or partial boards are cached in memory for the last 8 clips (at most about 14
 MB), with partial boards refilled on the next visit.
 
+With **Preview autoplay** on, a video starts silent: the player scales its
+output by a fade gain on top of the saved volume, which it never changes. One
+second after the first frame the gain ramps up over about 0.7 s through the
+GStreamer `volume` element, so no audio is processed in the application. A muted
+saved state skips the ramp, and any play, pause, seek, volume or mute input, or
+moving to another file, ends it immediately.
+
 Ambient light bleeds the frame's border colours into a 24-pixel band around the
 picture. The player samples a 6×4 grid of a few pixels each from a decoded frame
 at most ten times a second, the view eases towards it and uploads it as a tiny

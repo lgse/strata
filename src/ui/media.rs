@@ -118,6 +118,7 @@ mod imp {
         pub(super) history: RefCell<Option<PcmHistory>>,
         pub(super) edge_grid: Cell<Option<ambient::EdgeGrid>>,
         pub(super) edge_sampled: Cell<Option<Instant>>,
+        pub(super) fade: Cell<Option<f64>>,
     }
 
     #[glib::object_subclass]
@@ -319,6 +320,35 @@ impl DecodedMedia {
     /// Border colours of a recent frame, refreshed at most ten times a second.
     pub(crate) fn edge_grid(&self) -> Option<ambient::EdgeGrid> {
         self.imp().edge_grid.get()
+    }
+
+    /// Scales the audio output by `fade` on top of the user's volume, across
+    /// restarts of the sink. It never touches the stream's volume property.
+    pub(crate) fn set_fade(&self, fade: f64) {
+        let fade = fade.clamp(0.0, 1.0);
+        self.imp().fade.set(Some(fade));
+        if let Some(audio) = self.imp().audio.borrow().as_ref() {
+            audio.set_fade(fade);
+        }
+    }
+
+    pub(crate) fn fade(&self) -> f64 {
+        self.imp().fade.get().unwrap_or(1.0)
+    }
+
+    /// Decodes a synthetic minute-long clip instead of the sandbox, so a
+    /// test's stream survives without a real file.
+    #[cfg(test)]
+    pub(crate) fn use_test_stream(&self) {
+        self.imp().loader.replace(Some(std::rc::Rc::new(|_, tick| {
+            crate::sandbox::media::tests::stream(Header {
+                width: 16,
+                height: 16,
+                audio: false,
+                duration_us: 60_000_000,
+                start_tick: tick,
+            })
+        })));
     }
 
     #[cfg(test)]
@@ -557,16 +587,23 @@ impl DecodedMedia {
 
     fn pcm_output(&self) -> Result<PcmOutput, String> {
         #[cfg(test)]
-        if let Some(description) = self.imp().audio_sink.borrow().as_deref() {
-            return PcmOutput::test_sink(
+        let output = if let Some(description) = self.imp().audio_sink.borrow().as_deref() {
+            PcmOutput::test_sink(
                 self.is_muted(),
                 self.volume(),
                 AUDIO_LOOKAHEAD,
                 description,
                 self.imp().audio_clock.borrow().as_ref(),
-            );
+            )?
+        } else {
+            PcmOutput::new(self.is_muted(), self.volume(), AUDIO_LOOKAHEAD)?
+        };
+        #[cfg(not(test))]
+        let output = PcmOutput::new(self.is_muted(), self.volume(), AUDIO_LOOKAHEAD)?;
+        if let Some(fade) = self.imp().fade.get() {
+            output.set_fade(fade);
         }
-        PcmOutput::new(self.is_muted(), self.volume(), AUDIO_LOOKAHEAD)
+        Ok(output)
     }
 
     fn tick(&self) -> Result<(), String> {
