@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-use std::cell::Cell;
-
 use gtk::{gdk, glib, graphene, gsk, prelude::*, subclass::prelude::*};
 
 pub(super) const MAX_CONTENT_WIDTH: i32 = 1280;
@@ -33,18 +31,9 @@ pub(super) fn fitted_size(
 mod imp {
     use super::*;
 
+    #[derive(Default)]
     pub struct MediaLayout {
         pub paintable: glib::WeakRef<gdk::Paintable>,
-        pub margin: Cell<i32>,
-    }
-
-    impl Default for MediaLayout {
-        fn default() -> Self {
-            Self {
-                paintable: glib::WeakRef::default(),
-                margin: Cell::new(MEDIA_MARGIN),
-            }
-        }
     }
 
     #[glib::object_subclass]
@@ -108,15 +97,14 @@ mod imp {
                 .paintable
                 .upgrade()
                 .map_or((0, 0), |p| (p.intrinsic_width(), p.intrinsic_height()));
-            let margin = self.margin.get();
             let (fitted_width, fitted_height) = fitted_size(
-                section_width - margin * 2,
-                media_height - margin * 2,
+                section_width - MEDIA_MARGIN * 2,
+                media_height - MEDIA_MARGIN * 2,
                 intrinsic_width,
                 intrinsic_height,
             );
-            let outer_width = (fitted_width + margin * 2).min(section_width);
-            let outer_height = (fitted_height + margin * 2).min(media_height);
+            let outer_width = (fitted_width + MEDIA_MARGIN * 2).min(section_width);
+            let outer_height = (fitted_height + MEDIA_MARGIN * 2).min(media_height);
             allocate_at(
                 &media,
                 outer_width,
@@ -160,13 +148,6 @@ impl MediaLayout {
     /// The media child is fitted to this paintable's aspect; `None` lets it fill.
     pub(super) fn set_paintable(&self, paintable: Option<&gdk::Paintable>) {
         self.imp().paintable.set(paintable);
-    }
-
-    /// Space kept around the fitted media on every side.
-    pub(super) fn set_margin(&self, margin: i32) {
-        if self.imp().margin.replace(margin) != margin {
-            self.layout_changed();
-        }
     }
 }
 
