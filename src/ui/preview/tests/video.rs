@@ -305,3 +305,84 @@ fn badges_replace_their_skeleton_once_the_probe_answers() {
         },
     );
 }
+
+#[test]
+fn seeks_show_the_nearest_storyboard_cell_until_the_new_frame_lands() {
+    crate::test_support::gtk_test(
+        "ui::preview::tests::video::seeks_show_the_nearest_storyboard_cell_until_the_new_frame_lands",
+        || {
+            let provider = Rc::new(Provider::default());
+            let drawer = PreviewDrawer::new(provider.clone(), false);
+            let preferences = crate::ui::preferences::PreferenceManager::shared();
+            preferences.set_preview_autoplay(false);
+            preferences.set_reduce_motion(true);
+            drawer.show(entry("clip.mp4"), None);
+            ready(&provider, 0, "video/mp4");
+            let state = &drawer.state;
+            let view = state
+                .video
+                .borrow()
+                .as_ref()
+                .expect("video view")
+                .view
+                .clone();
+            let media = state
+                .media
+                .borrow()
+                .clone()
+                .and_downcast::<crate::ui::media::DecodedMedia>()
+                .expect("decoded stream");
+            media.present_test_frame(64, 36);
+            assert!(!view.placeholder().is_visible());
+
+            let board = crate::ui::preview::video::storyboard::Storyboard::new(
+                crate::media::storyboard::Sheet {
+                    width: 2,
+                    height: 1,
+                    count: 8,
+                    duration_us: 10_000_000,
+                },
+            );
+            board.set_cell(6, vec![0; 8]);
+            view.set_storyboard_for_test(board.clone());
+            let cell = board.nearest(7_000_000).expect("cell");
+
+            media.seek(7_000_000);
+            assert!(media.is_seeking());
+            assert!(
+                view.placeholder().is_visible(),
+                "a cell covers the stale frame"
+            );
+            assert_eq!(view.placeholder().poster().as_ref(), Some(&cell));
+            assert_eq!(view.picture().opacity(), 0.0);
+
+            media.present_test_frame(64, 36);
+            media.seek_success();
+            assert!(!media.is_seeking());
+            assert_eq!(view.picture().opacity(), 1.0);
+            assert!(
+                !view.placeholder().is_visible(),
+                "the decoded frame retires the cell"
+            );
+
+            let empty = crate::ui::preview::video::storyboard::Storyboard::new(
+                crate::media::storyboard::Sheet {
+                    width: 2,
+                    height: 1,
+                    count: 8,
+                    duration_us: 10_000_000,
+                },
+            );
+            view.set_storyboard_for_test(empty);
+            media.seek(2_000_000);
+            assert!(
+                !view.placeholder().is_visible(),
+                "without a cell the last frame stays on screen"
+            );
+            assert_eq!(view.picture().opacity(), 1.0);
+            media.seek_success();
+            preferences.set_reduce_motion(false);
+            drawer.close();
+        },
+    );
+}

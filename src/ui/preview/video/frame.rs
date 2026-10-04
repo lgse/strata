@@ -15,7 +15,7 @@ use crate::ui::preview::audio::palette::{follow_theme, palette, with_alpha};
 const FADE: Duration = Duration::from_millis(150);
 const RADIUS: f32 = 8.0;
 const DEFAULT_ASPECT: f64 = 16.0 / 9.0;
-const POSTER_OPACITY: f64 = 0.55;
+pub(super) const POSTER_OPACITY: f64 = 0.55;
 
 /// The largest rectangle of `aspect` inside `width` × `height`, centred.
 pub(super) fn fitted(width: f32, height: f32, aspect: f64) -> graphene::Rect {
@@ -39,6 +39,7 @@ mod imp {
     #[derive(Default)]
     pub struct Placeholder {
         pub(super) poster: RefCell<Option<gdk::Texture>>,
+        pub(super) poster_opacity: Cell<f64>,
         pub(super) aspect: Cell<Option<f64>>,
         pub(super) fade: Cell<Option<Instant>>,
         pub(super) tick: RefCell<Option<gtk::TickCallbackId>>,
@@ -59,6 +60,7 @@ mod imp {
             widget.set_can_target(false);
             widget.set_can_focus(false);
             widget.set_accessible_role(gtk::AccessibleRole::Presentation);
+            self.poster_opacity.set(POSTER_OPACITY);
             follow_theme(&*widget);
         }
 
@@ -97,7 +99,7 @@ mod imp {
             snapshot.push_rounded_clip(&rounded);
             match poster {
                 Some(poster) => {
-                    snapshot.push_opacity(POSTER_OPACITY);
+                    snapshot.push_opacity(self.poster_opacity.get());
                     snapshot.append_texture(&poster, &rect);
                     snapshot.pop();
                 }
@@ -121,7 +123,13 @@ impl Placeholder {
     }
 
     pub(super) fn set_poster(&self, poster: Option<gdk::Texture>) {
+        self.set_poster_with_opacity(poster, POSTER_OPACITY);
+    }
+
+    /// A storyboard cell stands in at nearly full strength during a seek.
+    pub(super) fn set_poster_with_opacity(&self, poster: Option<gdk::Texture>, opacity: f64) {
         self.imp().poster.replace(poster);
+        self.imp().poster_opacity.set(opacity);
         self.queue_draw();
     }
 

@@ -511,6 +511,25 @@ cached for the last 12 files. Until it answers, empty pills hold the row; a
 failed probe leaves the row empty. Badges fade in with a short stagger once per
 file, or appear at once under reduced motion; they never animate while idle.
 
+The timeline shows a storyboard bubble while the pointer hovers or drags: the
+keyframe nearest that time with its timestamp, or an empty cell until one has
+arrived. A seek covers the stale frame with the nearest cell until the new frame
+is decoded, so scrubbing never shows a frozen picture. Cells come from a
+`video-storyboard` operation that starts only after the first frame is on screen
+plus the 50 ms settle, shares the single nice-10 background slot with the audio
+waveform, and is cancelled when the selection moves on. The helper probes once,
+then runs one software `ffmpeg` keyframe decode per cell with an input seek and
+`-skip_frame nokey`, so the cost scales with the cell count rather than the file
+length: 8 to 48 cells at one per two seconds, 128 pixels on the long edge,
+never enlarged, in binary-subdivision order so the middle, quarters and eighths
+arrive first. The `STRSTB01` stream carries a sheet header and raw RGBA cells
+whose exact length, unique index and explicit end the parent checks; cells a seek
+could not produce are absent and the nearest neighbour stands in. Clips under
+four seconds, animations, attached pictures, raw elementary streams and unknown
+durations have no storyboard. A 90-second limit bounds the decode, and finished
+or partial boards are cached in memory for the last 8 clips (at most about 14
+MB), with partial boards refilled on the next visit.
+
 The frame area never shows a spinner. Until the first decoded frame it shows the
 listing's cached thumbnail dimmed as a poster when that rendition is already in
 memory, otherwise an outline, at the probed aspect once the header has arrived.

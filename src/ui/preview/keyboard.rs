@@ -285,7 +285,8 @@ impl PreviewState {
         let media_view = self.has_media_view()
             && (focused == self.content.upcast_ref::<gtk::Widget>()
                 || focused.is::<gtk::Overlay>()
-                || focused.is::<super::audio::Scrubber>());
+                || focused.is::<super::audio::Scrubber>()
+                || focused.is::<super::video::Timeline>());
         if media_view {
             return PreviewSurface::Media;
         }

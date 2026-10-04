@@ -2794,6 +2794,33 @@ paned > separator {
   min-height: 16px;
 }
 
+.preview-video-timeline {
+  border-radius: 4px;
+}
+
+.preview-video-timeline:focus-visible {
+  outline: 2px solid alpha(@theme_accent, 0.52);
+  outline-offset: 2px;
+}
+
+.preview-video-bubble {
+  background: alpha(@theme_bg, 0.92);
+  border: 1px solid alpha(@theme_border, 0.5);
+  border-radius: 6px;
+  padding: 3px;
+}
+
+.preview-video-bubble-cell {
+  background: alpha(@theme_dim_text, 0.14);
+  border-radius: 4px;
+}
+
+.preview-video-bubble-time {
+  color: @theme_text;
+  font-size: 0.72em;
+  font-weight: 700;
+}
+
 .preview-media-bar {
   background: alpha(@theme_bg, 0.55);
   border-top: 1px solid alpha(@theme_border, 0.24);

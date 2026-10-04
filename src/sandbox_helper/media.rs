@@ -352,6 +352,89 @@ pub(super) fn run_peaks(input: &Path, output: &Path) -> Result<(), String> {
     result.map_err(|error| error.to_string())
 }
 
+/// One software keyframe decode per cell, each an input seek, so the cost
+/// scales with the cell count rather than the file length.
+pub(super) fn run_storyboard(input: &Path, output: &Path, cell_edge: u32) -> Result<(), String> {
+    use media::storyboard::{self, Sheet};
+
+    let mut writer = std::fs::File::create(output).map_err(|error| error.to_string())?;
+    let edge = cell_edge.clamp(storyboard::MIN_CELL_EDGE, storyboard::MAX_CELL_EDGE) as i32;
+    let info = probe(
+        input,
+        MediaPreviewSize::new(edge, edge),
+        0,
+        ProbeMode::Playback,
+    )
+    .map_err(|error| error.to_string())?;
+    let Some(video) = info.video.filter(|_| !info.cover && !info.raw_video) else {
+        return Err("The file has no seekable video stream".into());
+    };
+    if info.gif_period_us.is_some() {
+        return Err("Animations have no storyboard".into());
+    }
+    let duration_us = info.header.duration_us;
+    if duration_us >= media::MAX_DURATION_US {
+        return Err("The video duration is unknown".into());
+    }
+    if duration_us < storyboard::MIN_DURATION_US {
+        return Err("The video is too short for a storyboard".into());
+    }
+    let sheet = Sheet {
+        width: info.header.width,
+        height: info.header.height,
+        count: storyboard::cell_count(duration_us),
+        duration_us,
+    }
+    .validate()
+    .map_err(|error| error.to_string())?;
+    sheet
+        .write(&mut writer)
+        .map_err(|error| error.to_string())?;
+    let filter = format!(
+        "scale={}:{}:flags=fast_bilinear,setsar=1,format=rgba",
+        sheet.width, sheet.height
+    );
+    for index in storyboard::subdivision_order(sheet.count) {
+        let seconds = sheet.cell_time_us(index) as f64 / 1_000_000.0;
+        let mut child = ffmpeg_command(&Backend::Software, true)
+            .args(["-skip_frame", "nokey", "-ss"])
+            .arg(format!("{seconds:.6}"))
+            .arg("-i")
+            .arg(input)
+            .arg("-map")
+            .arg(format!("0:{video}"))
+            .args(["-an", "-sn", "-dn", "-vf"])
+            .arg(&filter)
+            .args(["-frames:v", "1", "-f", "rawvideo", "pipe:1"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|error| error.to_string())?;
+        let result = (|| -> io::Result<()> {
+            let pipe = child
+                .stdout
+                .take()
+                .ok_or_else(|| io::Error::other("Missing storyboard pipe"))?;
+            let mut pixels = vec![0; sheet.cell_bytes()];
+            let read = read_chunk(&pipe, &mut pixels, Instant::now() + FRAME_TIMEOUT)?;
+            drop(pipe);
+            let exited = child.wait()?.success();
+            // A seek past the last keyframe yields nothing; that cell stays empty.
+            if exited && read == pixels.len() {
+                storyboard::write_cell(&mut writer, index, &pixels)?;
+                writer.flush()?;
+            }
+            Ok(())
+        })();
+        if let Err(error) = result {
+            stop_child(&mut child);
+            return Err(error.to_string());
+        }
+    }
+    storyboard::write_end(&mut writer, sheet).map_err(|error| error.to_string())
+}
+
 pub(super) fn audio_tags(input: &Path) -> Result<Vec<u8>, String> {
     let keys = crate::sandbox::metadata::TAG_KEYS;
     bounded_output_with_timeout(

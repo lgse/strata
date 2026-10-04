@@ -112,6 +112,12 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
     if operation == "audio-peaks" {
         return media::run_peaks(input, output);
     }
+    if operation == "video-storyboard" {
+        let cell_edge = value
+            .parse::<u32>()
+            .map_err(|_| "Invalid storyboard cell size".to_owned())?;
+        return media::run_storyboard(input, output, cell_edge);
+    }
     if operation == "audio-tags" {
         return fs::write(output, media::audio_tags(input)?).map_err(|error| error.to_string());
     }

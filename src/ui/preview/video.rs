@@ -6,6 +6,8 @@
 mod badges;
 mod details;
 mod frame;
+mod scrubber;
+pub(super) mod storyboard;
 
 use std::{
     cell::{Cell, RefCell},
@@ -24,11 +26,18 @@ use crate::{
 
 use super::{
     ListingPosition,
-    audio::{Scrubber, clock, details::TrackKey},
+    audio::{clock, details::TrackKey},
     media_layout::MediaLayout,
 };
 
+pub(in crate::ui::preview) use scrubber::Timeline;
+
 const FRAME_MARGIN: i32 = 12;
+const BUBBLE_MARGIN: i32 = 10;
+/// Padding plus border around the bubble's cell.
+const BUBBLE_CHROME: i32 = 8;
+/// A storyboard cell stands in at this strength while a seek decodes.
+const SEEK_COVER_OPACITY: f64 = 0.9;
 const BADGE_FADE: Duration = Duration::from_millis(140);
 const BADGE_STAGGER: Duration = Duration::from_millis(40);
 const SKELETON_BADGE_WIDTHS: [i32; 3] = [44, 56, 38];
@@ -53,7 +62,10 @@ pub(super) struct VideoView {
     title: gtk::Label,
     badges: gtk::Box,
     error: gtk::Box,
-    scrubber: Scrubber,
+    timeline: Timeline,
+    bubble: gtk::Box,
+    bubble_cell: gtk::Picture,
+    bubble_time: gtk::Label,
     elapsed: gtk::Label,
     total: gtk::Label,
     play_icon: gtk::Image,
@@ -65,6 +77,11 @@ pub(super) struct VideoView {
     hover: Cell<Option<i64>>,
     shown_seconds: Cell<(i64, i64)>,
     details: RefCell<Option<details::DetailsLoad>>,
+    clip: RefCell<Option<(FileEntry, SandboxedMedia)>>,
+    storyboard: RefCell<Option<Rc<storyboard::Storyboard>>>,
+    storyboard_load: RefCell<Option<storyboard::StoryboardLoad>>,
+    first_frame_seen: Cell<bool>,
+    seek_covered: Cell<bool>,
 }
 
 fn label(class: &str) -> gtk::Label {
@@ -118,6 +135,22 @@ impl VideoView {
         crate::ui::accessibility::set_label(&frame, "Video frame");
         let placeholder = frame::Placeholder::new();
         frame.add_overlay(&placeholder);
+        let bubble_cell = gtk::Picture::new();
+        bubble_cell.add_css_class("preview-video-bubble-cell");
+        bubble_cell.set_content_fit(gtk::ContentFit::Fill);
+        bubble_cell.set_can_shrink(false);
+        let bubble_time = gtk::Label::new(None);
+        bubble_time.add_css_class("preview-video-bubble-time");
+        let bubble = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        bubble.add_css_class("preview-video-bubble");
+        bubble.set_can_target(false);
+        bubble.set_halign(gtk::Align::Start);
+        bubble.set_valign(gtk::Align::End);
+        bubble.set_margin_bottom(BUBBLE_MARGIN);
+        bubble.set_visible(false);
+        bubble.append(&bubble_cell);
+        bubble.append(&bubble_time);
+        frame.add_overlay(&bubble);
         let center_play = gtk::Button::new();
         center_play.add_css_class("preview-media-center");
         center_play.set_halign(gtk::Align::Center);
@@ -147,9 +180,9 @@ impl VideoView {
         error.set_visible(false);
         header.append(&error);
 
-        let scrubber = Scrubber::new();
-        scrubber.set_margin_start(FRAME_MARGIN);
-        scrubber.set_margin_end(FRAME_MARGIN);
+        let timeline = Timeline::new();
+        timeline.set_margin_start(FRAME_MARGIN);
+        timeline.set_margin_end(FRAME_MARGIN);
 
         let elapsed = label("preview-media-time");
         elapsed.add_css_class("preview-video-time");
@@ -186,7 +219,7 @@ impl VideoView {
 
         root.append(&frame);
         root.append(&header);
-        root.append(&scrubber);
+        root.append(&timeline);
         root.append(&transport);
 
         let view = Rc::new(Self {
@@ -200,7 +233,10 @@ impl VideoView {
             title,
             badges,
             error,
-            scrubber,
+            timeline,
+            bubble,
+            bubble_cell,
+            bubble_time,
             elapsed,
             total,
             play_icon,
@@ -212,6 +248,11 @@ impl VideoView {
             hover: Cell::default(),
             shown_seconds: Cell::new((-1, -1)),
             details: RefCell::default(),
+            clip: RefCell::default(),
+            storyboard: RefCell::default(),
+            storyboard_load: RefCell::default(),
+            first_frame_seen: Cell::default(),
+            seek_covered: Cell::default(),
         });
 
         for button in [&play, &center_play] {
@@ -237,11 +278,12 @@ impl VideoView {
             button.connect_clicked(move |_| navigate(step));
         }
         let weak = Rc::downgrade(&view);
-        view.scrubber.connect_preview(move |time| {
+        view.timeline.connect_preview(move |time| {
             if let Some(view) = weak.upgrade() {
                 view.hover.set(time);
                 view.shown_seconds.set((-1, -1));
                 view.sync_time();
+                view.refresh_bubble();
             }
         });
         // The decode rectangle follows the pane; `resize` ignores unchanged sizes.
@@ -282,11 +324,17 @@ impl VideoView {
             }
         }
         self.details.borrow_mut().take();
+        self.storyboard_load.borrow_mut().take();
+        self.storyboard.borrow_mut().take();
+        self.clip.borrow_mut().take();
+        self.first_frame_seen.set(false);
+        self.seek_covered.set(false);
+        self.picture.set_opacity(1.0);
         self.picture.set_paintable(None::<&gtk::gdk::Paintable>);
         self.layout.set_paintable(None);
         self.placeholder.reveal();
-        self.scrubber.set_media(None);
-        self.scrubber.clear_levels();
+        self.bubble.set_visible(false);
+        self.timeline.set_media(None);
         self.sync_playing(false);
         self.center_play.set_visible(false);
     }
@@ -303,7 +351,10 @@ impl VideoView {
         } = clip;
         self.prepare(&entry, position, has_previous, has_next);
         self.play.set_sensitive(true);
-        if let Some(cached) = details::cached_details(&TrackKey::of(&entry)) {
+        let key = TrackKey::of(&entry);
+        self.storyboard.replace(storyboard::cached_storyboard(&key));
+        self.clip.replace(Some((entry.clone(), source.clone())));
+        if let Some(cached) = details::cached_details(&key) {
             self.show_badges(Some(cached));
         } else {
             let weak = Rc::downgrade(self);
@@ -344,34 +395,170 @@ impl VideoView {
                 }
             }));
             // Every presented frame invalidates the paintable; the first one
-            // retires the placeholder.
+            // retires the placeholder and starts the storyboard.
             let weak = Rc::downgrade(self);
             handlers.push(decoded.connect_invalidate_contents(move |media| {
                 if media.has_frame()
                     && let Some(view) = weak.upgrade()
                 {
-                    view.placeholder.conceal();
+                    view.frame_arrived();
+                }
+            }));
+            let weak = Rc::downgrade(self);
+            handlers.push(decoded.connect_seeking_notify(move |media| {
+                if let Some(view) = weak.upgrade() {
+                    if media.is_seeking() {
+                        view.cover_seek(media.timestamp().max(0) as u64);
+                    } else {
+                        view.uncover_seek();
+                    }
                 }
             }));
             self.sync_frame_size(decoded);
-            if decoded.has_frame() {
-                self.placeholder.conceal();
-            }
         }
         self.handlers.replace(handlers);
         self.media.replace(Some(media.clone()));
-        self.scrubber.set_media(Some(&media));
+        self.timeline.set_media(Some(&media));
+        if media
+            .downcast_ref::<DecodedMedia>()
+            .is_some_and(DecodedMedia::has_frame)
+        {
+            self.frame_arrived();
+        }
         self.sync_playing(media.is_playing());
         self.shown_seconds.set((-1, -1));
         self.sync_time();
     }
 
     fn sync_frame_size(&self, media: &DecodedMedia) {
-        self.placeholder.set_aspect(
+        self.placeholder.set_aspect(self.video_aspect(media));
+    }
+
+    fn video_aspect(&self, media: &DecodedMedia) -> Option<f64> {
+        media
+            .video_size()
+            .map(|(width, height)| f64::from(width) / f64::from(height))
+    }
+
+    fn frame_arrived(self: &Rc<Self>) {
+        if self.first_frame_seen.replace(true) {
+            return;
+        }
+        self.placeholder.conceal();
+        self.start_storyboard();
+    }
+
+    /// Runs once the first frame is on screen, so it never delays playback.
+    fn start_storyboard(self: &Rc<Self>) {
+        let Some((entry, source)) = self.clip.borrow().clone() else {
+            return;
+        };
+        let duration = self
+            .media
+            .borrow()
+            .as_ref()
+            .map_or(0, |media| media.duration().max(0)) as u64;
+        if duration < crate::media::storyboard::MIN_DURATION_US
+            || self
+                .storyboard
+                .borrow()
+                .as_ref()
+                .is_some_and(|board| board.is_complete())
+        {
+            return;
+        }
+        let weak = Rc::downgrade(self);
+        let load = storyboard::load_storyboard(&entry, &source, move |board| {
+            if let Some(view) = weak.upgrade() {
+                view.storyboard.replace(Some(board));
+                view.refresh_bubble();
+            }
+        });
+        self.storyboard_load.replace(Some(load));
+    }
+
+    /// The nearest decoded cell replaces the stale frame while the seek decodes.
+    fn cover_seek(&self, target_us: u64) {
+        let cell = self
+            .storyboard
+            .borrow()
+            .as_ref()
+            .and_then(|board| board.nearest(target_us));
+        let Some(cell) = cell else {
+            return;
+        };
+        let aspect = self.media.borrow().as_ref().and_then(|media| {
             media
-                .video_size()
-                .map(|(width, height)| f64::from(width) / f64::from(height)),
+                .downcast_ref::<DecodedMedia>()
+                .and_then(|media| self.video_aspect(media))
+        });
+        self.placeholder
+            .set_poster_with_opacity(Some(cell), SEEK_COVER_OPACITY);
+        self.placeholder.set_aspect(aspect);
+        self.placeholder.reveal();
+        self.picture.set_opacity(0.0);
+        self.seek_covered.set(true);
+    }
+
+    fn uncover_seek(&self) {
+        if self.seek_covered.replace(false) {
+            self.picture.set_opacity(1.0);
+            self.placeholder.conceal();
+        }
+    }
+
+    /// The bubble follows the pointer along the frame's width.
+    fn refresh_bubble(&self) {
+        let Some(time) = self.hover.get().filter(|time| *time >= 0) else {
+            self.bubble.set_visible(false);
+            return;
+        };
+        let board = self.storyboard.borrow().clone();
+        let cell = board.as_ref().and_then(|board| board.nearest(time as u64));
+        let (width, height) = board.map_or_else(
+            || {
+                let aspect = self
+                    .media
+                    .borrow()
+                    .as_ref()
+                    .and_then(|media| {
+                        media
+                            .downcast_ref::<DecodedMedia>()
+                            .and_then(|media| self.video_aspect(media))
+                    })
+                    .unwrap_or(16.0 / 9.0);
+                let edge = storyboard::CELL_EDGE as f64;
+                if aspect >= 1.0 {
+                    (edge as i32, (edge / aspect).round() as i32)
+                } else {
+                    ((edge * aspect).round() as i32, edge as i32)
+                }
+            },
+            |board| (board.sheet.width as i32, board.sheet.height as i32),
         );
+        self.bubble_cell.set_size_request(width, height);
+        self.bubble_cell.set_paintable(cell.as_ref());
+        self.bubble_time.set_text(&clock(time));
+        let frame_width = self.frame.width();
+        let bubble_width = width + BUBBLE_CHROME;
+        let fraction = self.timeline.pointer_fraction().unwrap_or(0.0);
+        let x = (fraction * f64::from(frame_width)) as i32 - bubble_width / 2;
+        self.bubble
+            .set_margin_start(x.clamp(0, (frame_width - bubble_width).max(0)));
+        self.bubble.set_visible(true);
+    }
+
+    #[cfg(test)]
+    pub(super) fn set_storyboard_for_test(&self, board: Rc<storyboard::Storyboard>) {
+        self.storyboard.replace(Some(board));
+    }
+
+    #[cfg(test)]
+    pub(super) fn storyboard_cell_count(&self) -> Option<usize> {
+        self.storyboard
+            .borrow()
+            .as_ref()
+            .map(|board| board.loaded_cells())
     }
 
     pub(super) fn prepare(
@@ -389,6 +576,7 @@ impl VideoView {
             .set_poster(crate::ui::thumbnail::cached_thumbnail(entry));
         self.placeholder.set_aspect(None);
         self.placeholder.reveal();
+        self.timeline.set_chapters(Vec::new());
         self.show_badge_skeleton();
         self.eyebrow
             .set_text(&position.map(ListingPosition::caption).unwrap_or_default());
