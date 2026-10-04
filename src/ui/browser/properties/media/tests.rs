@@ -25,4 +25,27 @@ fn media_rows_show_units_and_omit_unavailable_properties() {
         ]
     );
     assert!(rows(&MediaMetadata::default()).is_empty());
+
+    let hdr = MediaMetadata::from_json(
+        br#"{
+        "streams":[
+            {"codec_type":"video", "codec_name":"hevc", "color_transfer":"smpte2084"},
+            {"codec_type":"subtitle", "tags":{"language":"eng"}},
+            {"codec_type":"subtitle"}
+        ],
+        "chapters":[{"start_time":"0", "end_time":"5"}],
+        "format":{}
+    }"#,
+        false,
+    )
+    .expect("parse hdr metadata");
+    assert_eq!(
+        rows(&hdr),
+        vec![
+            ("VIDEO CODEC", "hevc".into()),
+            ("HDR", "HDR10".into()),
+            ("SUBTITLES", "2 (eng)".into()),
+            ("CHAPTERS", "1".into()),
+        ]
+    );
 }

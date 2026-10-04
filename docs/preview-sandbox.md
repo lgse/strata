@@ -329,8 +329,12 @@ finishing that folder's enumeration before it publishes entries.
 ## Media metadata
 
 File Properties shows available source-media details: image
-resolution; audio/video duration and overall bitrate; video codec and frame rate;
-and audio codec, sample rate, and channel count. These describe the original file,
+resolution; audio/video duration and overall bitrate; video codec, frame rate and
+HDR system; audio codec, sample rate, and channel count; and subtitle track and
+chapter counts. The probe also returns the video profile, pixel format, colour
+transfer and primaries, channel layout, container name, chapter times with
+sanitized titles (at most 200) and subtitle languages (at most 64 tracks) for
+the video preview's badges. These describe the original file,
 not the preview's scaled frames or resampled audio. Attached album artwork is not
 reported as a video track, and still images do not show synthetic video timing.
 For ordinary images and audio/video, missing individual fields are omitted; an
@@ -495,6 +499,17 @@ reuse one view, like audio. Previous/next step to the previous or next file of
 the same media family, so audio steps to audio and video to video, following
 visible search results like audio does. Playback errors remain visible inside the
 view without disabling navigation.
+
+Badges under the title summarise the file from the same bounded `media-metadata`
+`ffprobe` operation that File Properties uses: resolution class by the long
+edge (SD, 720p, 1080p, 2K, 4K, 8K), HDR10 or HLG from the transfer
+characteristics, 10-, 12- or 16-bit from the pixel format, rounded frame rate,
+video codec, audio codec with channel layout, and a captions badge counting
+embedded subtitle tracks. The probe starts after the same 50 ms settle as audio
+details, is cancelled when the selection moves on, and completed results are
+cached for the last 12 files. Until it answers, empty pills hold the row; a
+failed probe leaves the row empty. Badges fade in with a short stagger once per
+file, or appear at once under reduced motion; they never animate while idle.
 
 The frame area never shows a spinner. Until the first decoded frame it shows the
 listing's cached thumbnail dimmed as a poster when that rendition is already in

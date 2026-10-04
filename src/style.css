@@ -2766,6 +2766,34 @@ paned > separator {
   padding: 6px;
 }
 
+.preview-video-badges {
+  margin-top: 4px;
+  min-height: 18px;
+}
+
+.preview-video-badge {
+  background: alpha(@theme_muted, 0.55);
+  border: 1px solid alpha(@theme_border, 0.4);
+  border-radius: 4px;
+  color: @theme_text;
+  font-size: 0.7em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 1px 6px;
+}
+
+.preview-video-badge-hdr {
+  background: alpha(@theme_accent, 0.22);
+  border-color: alpha(@theme_accent, 0.6);
+  color: @theme_accent;
+}
+
+.preview-video-badge-skeleton {
+  background: alpha(@theme_dim_text, 0.22);
+  border-color: transparent;
+  min-height: 16px;
+}
+
 .preview-media-bar {
   background: alpha(@theme_bg, 0.55);
   border-top: 1px solid alpha(@theme_border, 0.24);

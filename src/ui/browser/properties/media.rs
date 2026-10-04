@@ -59,6 +59,9 @@ fn rows(metadata: &MediaMetadata) -> Vec<(&'static str, String)> {
     if let Some(codec) = &metadata.video_codec {
         rows.push(("VIDEO CODEC", codec.clone()));
     }
+    if let Some(hdr) = metadata.hdr_format() {
+        rows.push(("HDR", hdr.into()));
+    }
     if let Some(rate) = metadata.frame_rate {
         rows.push(("FRAME RATE", format!("{rate:.2} fps")));
     }
@@ -77,6 +80,28 @@ fn rows(metadata: &MediaMetadata) -> Vec<(&'static str, String)> {
                 _ => channels.to_string(),
             },
         ));
+    }
+    if !metadata.subtitle_tracks.is_empty() {
+        let languages: Vec<&str> = metadata
+            .subtitle_tracks
+            .iter()
+            .filter_map(|track| track.language.as_deref())
+            .collect();
+        rows.push((
+            "SUBTITLES",
+            if languages.is_empty() {
+                metadata.subtitle_tracks.len().to_string()
+            } else {
+                format!(
+                    "{} ({})",
+                    metadata.subtitle_tracks.len(),
+                    languages.join(", ")
+                )
+            },
+        ));
+    }
+    if !metadata.chapters.is_empty() {
+        rows.push(("CHAPTERS", metadata.chapters.len().to_string()));
     }
     rows
 }

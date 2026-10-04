@@ -3,27 +3,39 @@
 //! One view survives consecutive videos, so stepping through a folder never
 //! rebuilds the frame area or its controls.
 
+mod badges;
+mod details;
 mod frame;
 
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
+    time::Duration,
 };
 
 use gtk::{glib, prelude::*};
 
-use crate::{model::FileEntry, services::MediaPreviewSize, ui::media::DecodedMedia};
+use crate::{
+    model::FileEntry,
+    sandbox::metadata::MediaMetadata,
+    services::{MediaPreviewSize, SandboxedMedia},
+    ui::media::DecodedMedia,
+};
 
 use super::{
     ListingPosition,
-    audio::{Scrubber, clock},
+    audio::{Scrubber, clock, details::TrackKey},
     media_layout::MediaLayout,
 };
 
 const FRAME_MARGIN: i32 = 12;
+const BADGE_FADE: Duration = Duration::from_millis(140);
+const BADGE_STAGGER: Duration = Duration::from_millis(40);
+const SKELETON_BADGE_WIDTHS: [i32; 3] = [44, 56, 38];
 
 pub(super) struct Clip {
     pub(super) entry: FileEntry,
+    pub(super) source: SandboxedMedia,
     pub(super) media: gtk::MediaStream,
     pub(super) position: Option<ListingPosition>,
     pub(super) has_previous: bool,
@@ -39,6 +51,7 @@ pub(super) struct VideoView {
     center_play: gtk::Button,
     eyebrow: gtk::Label,
     title: gtk::Label,
+    badges: gtk::Box,
     error: gtk::Box,
     scrubber: Scrubber,
     elapsed: gtk::Label,
@@ -51,6 +64,7 @@ pub(super) struct VideoView {
     handlers: RefCell<Vec<glib::SignalHandlerId>>,
     hover: Cell<Option<i64>>,
     shown_seconds: Cell<(i64, i64)>,
+    details: RefCell<Option<details::DetailsLoad>>,
 }
 
 fn label(class: &str) -> gtk::Label {
@@ -122,10 +136,13 @@ impl VideoView {
         eyebrow_row.append(&eyebrow);
         eyebrow_row.append(volume);
         let title = label("preview-video-title");
+        let badges = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        badges.add_css_class("preview-video-badges");
         let header = gtk::Box::new(gtk::Orientation::Vertical, 2);
         header.add_css_class("preview-video-header");
         header.append(&eyebrow_row);
         header.append(&title);
+        header.append(&badges);
         let error = gtk::Box::new(gtk::Orientation::Vertical, 4);
         error.set_visible(false);
         header.append(&error);
@@ -181,6 +198,7 @@ impl VideoView {
             center_play: center_play.clone(),
             eyebrow,
             title,
+            badges,
             error,
             scrubber,
             elapsed,
@@ -193,6 +211,7 @@ impl VideoView {
             handlers: RefCell::default(),
             hover: Cell::default(),
             shown_seconds: Cell::new((-1, -1)),
+            details: RefCell::default(),
         });
 
         for button in [&play, &center_play] {
@@ -262,6 +281,7 @@ impl VideoView {
                 media.disconnect(handler);
             }
         }
+        self.details.borrow_mut().take();
         self.picture.set_paintable(None::<&gtk::gdk::Paintable>);
         self.layout.set_paintable(None);
         self.placeholder.reveal();
@@ -275,6 +295,7 @@ impl VideoView {
         self.detach();
         let Clip {
             entry,
+            source,
             media,
             position,
             has_previous,
@@ -282,6 +303,20 @@ impl VideoView {
         } = clip;
         self.prepare(&entry, position, has_previous, has_next);
         self.play.set_sensitive(true);
+        if let Some(cached) = details::cached_details(&TrackKey::of(&entry)) {
+            self.show_badges(Some(cached));
+        } else {
+            let weak = Rc::downgrade(self);
+            self.details.replace(Some(details::load_details(
+                &entry,
+                &source,
+                move |details| {
+                    if let Some(view) = weak.upgrade() {
+                        view.show_badges(details);
+                    }
+                },
+            )));
+        }
         self.picture.set_paintable(Some(&media));
         self.layout.set_paintable(Some(media.upcast_ref()));
 
@@ -354,6 +389,7 @@ impl VideoView {
             .set_poster(crate::ui::thumbnail::cached_thumbnail(entry));
         self.placeholder.set_aspect(None);
         self.placeholder.reveal();
+        self.show_badge_skeleton();
         self.eyebrow
             .set_text(&position.map(ListingPosition::caption).unwrap_or_default());
         self.title.set_text(
@@ -383,6 +419,79 @@ impl VideoView {
                 .append(&crate::ui::controls::copyable_command(command));
         }
         self.error.set_visible(true);
+    }
+
+    /// Empty pills hold the row's height until the probe answers.
+    fn show_badge_skeleton(&self) {
+        super::clear_box(&self.badges);
+        for width in SKELETON_BADGE_WIDTHS {
+            let pill = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+            pill.add_css_class("preview-video-badge");
+            pill.add_css_class("preview-video-badge-skeleton");
+            pill.set_size_request(width, -1);
+            self.badges.append(&pill);
+        }
+    }
+
+    /// Badges enter with a short stagger once; a failed probe leaves the row empty.
+    fn show_badges(&self, details: Option<Rc<MediaMetadata>>) {
+        super::clear_box(&self.badges);
+        let Some(details) = details else {
+            return;
+        };
+        let animated = crate::ui::motion::animations_enabled() && self.badges.is_mapped();
+        for (index, badge) in badges::badges(&details, 0).into_iter().enumerate() {
+            let label = gtk::Label::new(Some(&badge.label));
+            label.add_css_class("preview-video-badge");
+            label.add_css_class(badge.kind.css_class());
+            let revealer = gtk::Revealer::builder()
+                .child(&label)
+                .transition_type(gtk::RevealerTransitionType::Crossfade)
+                .transition_duration(if animated {
+                    BADGE_FADE.as_millis() as u32
+                } else {
+                    0
+                })
+                .build();
+            self.badges.append(&revealer);
+            if animated {
+                let weak = revealer.downgrade();
+                glib::timeout_add_local_once(BADGE_STAGGER * index as u32, move || {
+                    if let Some(revealer) = weak.upgrade() {
+                        revealer.set_reveal_child(true);
+                    }
+                });
+            } else {
+                revealer.set_reveal_child(true);
+            }
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn badge_labels(&self) -> Vec<String> {
+        let mut labels = Vec::new();
+        let mut child = self.badges.first_child();
+        while let Some(widget) = child {
+            if let Some(label) = widget
+                .downcast_ref::<gtk::Revealer>()
+                .and_then(gtk::Revealer::child)
+                .and_downcast::<gtk::Label>()
+            {
+                labels.push(label.text().to_string());
+            }
+            child = widget.next_sibling();
+        }
+        labels
+    }
+
+    #[cfg(test)]
+    pub(super) fn show_details_for_test(&self, details: Option<Rc<MediaMetadata>>) {
+        self.show_badges(details);
+    }
+
+    #[cfg(test)]
+    pub(super) fn badges_row(&self) -> &gtk::Box {
+        &self.badges
     }
 
     fn toggle_playback(&self) {

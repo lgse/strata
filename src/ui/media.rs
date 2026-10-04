@@ -293,6 +293,10 @@ impl DecodedMedia {
         obj
     }
 
+    pub(crate) fn source(&self) -> Option<SandboxedMedia> {
+        self.imp().source.borrow().clone()
+    }
+
     /// The probed video frame size, known once the stream is prepared.
     pub(crate) fn video_size(&self) -> Option<(u32, u32)> {
         self.imp()

@@ -155,3 +155,85 @@ fn audio_tags_strip_unsafe_text_and_bad_numbers() {
         (Some(9), None)
     );
 }
+
+#[test]
+fn video_metadata_reads_color_chapters_and_subtitle_tracks() {
+    let metadata = MediaMetadata::from_json(
+        br#"{
+        "streams": [
+            {"codec_type":"video", "codec_name":"hevc", "profile":"Main 10", "width":3840, "height":2160,
+             "pix_fmt":"yuv420p10le", "color_transfer":"smpte2084", "color_primaries":"bt2020",
+             "avg_frame_rate":"24000/1001"},
+            {"codec_type":"audio", "codec_name":"eac3", "channels":6, "channel_layout":"5.1(side)",
+             "tags":{"language":"eng"}},
+            {"codec_type":"subtitle", "codec_name":"subrip", "tags":{"LANGUAGE":"ENG"}},
+            {"codec_type":"subtitle", "codec_name":"hdmv_pgs_subtitle", "tags":{"language":"und"}},
+            {"codec_type":"subtitle", "codec_name":"<bad>", "tags":{"language":"x"}}
+        ],
+        "chapters": [
+            {"start_time":"0.000000", "end_time":"60.5", "tags":{"title":" Intro\u202e\n  reel "}},
+            {"start_time":"60.5", "end_time":"10.0"},
+            {"start_time":"-1", "end_time":"5"},
+            {"start_time":"120", "end_time":"180"}
+        ],
+        "format":{"duration":"180", "format_name":"matroska,webm"}
+    }"#,
+        false,
+    )
+    .expect("parse video metadata");
+    assert_eq!(metadata.video_profile.as_deref(), Some("Main 10"));
+    assert_eq!(metadata.pixel_format.as_deref(), Some("yuv420p10le"));
+    assert_eq!(metadata.color_transfer.as_deref(), Some("smpte2084"));
+    assert_eq!(metadata.color_primaries.as_deref(), Some("bt2020"));
+    assert_eq!(metadata.channel_layout.as_deref(), Some("5.1(side)"));
+    assert_eq!(metadata.container.as_deref(), Some("matroska"));
+    assert_eq!(
+        metadata.chapters,
+        vec![
+            Chapter {
+                start: 0.0,
+                end: 60.5,
+                title: Some("Intro reel".into()),
+            },
+            Chapter {
+                start: 120.0,
+                end: 180.0,
+                title: None,
+            },
+        ],
+        "reversed and negative chapters are dropped, titles are sanitized"
+    );
+    assert_eq!(
+        metadata.subtitle_tracks,
+        vec![
+            SubtitleTrack {
+                codec: Some("subrip".into()),
+                language: Some("eng".into()),
+            },
+            SubtitleTrack {
+                codec: Some("hdmv_pgs_subtitle".into()),
+                language: None,
+            },
+            SubtitleTrack {
+                codec: None,
+                language: None,
+            },
+        ]
+    );
+
+    let mut many = serde_json::json!({"streams": [], "chapters": [], "format": {}});
+    for index in 0..MAX_CHAPTERS + 5 {
+        many["chapters"]
+            .as_array_mut()
+            .expect("chapters")
+            .push(serde_json::json!({"start_time": index, "end_time": index + 1}));
+    }
+    let bytes = serde_json::to_vec(&many).expect("serialize chapters");
+    assert_eq!(
+        MediaMetadata::from_json(&bytes, false)
+            .expect("parse many chapters")
+            .chapters
+            .len(),
+        MAX_CHAPTERS
+    );
+}

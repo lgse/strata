@@ -249,3 +249,59 @@ fn the_frame_shows_a_poster_or_outline_until_the_first_frame() {
         },
     );
 }
+
+#[test]
+fn badges_replace_their_skeleton_once_the_probe_answers() {
+    crate::test_support::gtk_test(
+        "ui::preview::tests::video::badges_replace_their_skeleton_once_the_probe_answers",
+        || {
+            let provider = Rc::new(Provider::default());
+            let drawer = PreviewDrawer::new(provider.clone(), false);
+            crate::ui::preferences::PreferenceManager::shared().set_preview_autoplay(false);
+            drawer.show(entry("clip.mkv"), None);
+            ready(&provider, 0, "video/x-matroska");
+            let view = drawer
+                .state
+                .video
+                .borrow()
+                .as_ref()
+                .expect("video view")
+                .view
+                .clone();
+            assert!(
+                view.badge_labels().is_empty(),
+                "skeleton pills carry no text"
+            );
+            assert_eq!(
+                view.badges_row().observe_children().n_items(),
+                3,
+                "the row keeps its height with empty pills"
+            );
+
+            let metadata = crate::sandbox::metadata::MediaMetadata::from_json(
+                br#"{"streams":[
+                    {"codec_type":"video","codec_name":"av1","width":3840,"height":1600,
+                     "pix_fmt":"yuv420p10le","color_transfer":"arib-std-b67","avg_frame_rate":"50/1"},
+                    {"codec_type":"audio","codec_name":"opus","channels":2,"channel_layout":"stereo"},
+                    {"codec_type":"subtitle","codec_name":"ass"}
+                ],"format":{}}"#,
+                false,
+            )
+            .expect("probe json");
+            view.show_details_for_test(Some(Rc::new(metadata)));
+            assert_eq!(
+                view.badge_labels(),
+                ["4K", "HLG", "10-bit", "50 fps", "AV1", "Opus Stereo", "CC"]
+            );
+
+            view.show_details_for_test(None);
+            assert!(view.badge_labels().is_empty());
+            assert_eq!(
+                view.badges_row().observe_children().n_items(),
+                0,
+                "a failed probe leaves no pills behind"
+            );
+            drawer.close();
+        },
+    );
+}

@@ -1491,7 +1491,7 @@ impl PreviewState {
                         None
                     }
                     Some(MediaFamily::Video) => {
-                        self.render_video(preview.entry, &media, &preferences);
+                        self.render_video(preview.entry, source, &media, &preferences);
                         None
                     }
                     None => {
@@ -2530,6 +2530,7 @@ impl PreviewState {
     fn render_video(
         self: &Rc<Self>,
         entry: FileEntry,
+        source: crate::services::SandboxedMedia,
         media: &gtk::MediaStream,
         preferences: &Rc<super::preferences::PreferenceManager>,
     ) {
@@ -2565,6 +2566,7 @@ impl PreviewState {
         let (position, has_previous, has_next) = self.listing_position(MediaFamily::Video);
         video.view.show(video::Clip {
             entry,
+            source,
             media: media.clone(),
             position,
             has_previous,
@@ -2873,11 +2875,17 @@ impl PreviewState {
         };
         audio.view.detach();
         clear_box(&self.content);
-        let Some(entry) = self.current.borrow().clone() else {
+        let (Some(entry), Some(source)) = (
+            self.current.borrow().clone(),
+            media
+                .downcast_ref::<super::media::DecodedMedia>()
+                .and_then(super::media::DecodedMedia::source),
+        ) else {
             return;
         };
         self.render_video(
             entry,
+            source,
             media,
             &super::preferences::PreferenceManager::shared(),
         );
