@@ -28,6 +28,8 @@ const PAUSED_IDLE: Duration = Duration::from_secs(30);
 // A selection replaced within the dwell never spawns a decoder.
 pub(crate) const START_DWELL: Duration = Duration::from_millis(50);
 const RESIZE_DELAY: Duration = Duration::from_millis(250);
+// A pane that grows less than this shows a slight upscale instead of a restart.
+const RESIZE_GROWTH: f64 = 0.08;
 const SEEK_DELAY: Duration = Duration::from_millis(200);
 const PRESENTATION_QUEUE: usize = 3;
 // PCM appsrc may hold: the lead the first record carries plus slack, so the
@@ -930,8 +932,13 @@ impl DecodedMedia {
         if header.width + 1 < loaded.width as u32 && header.height + 1 < loaded.height as u32 {
             scale = scale.min(1.0);
         }
-        (f64::from(header.width) * (scale - 1.0)).abs() >= 2.0
-            || (f64::from(header.height) * (scale - 1.0)).abs() >= 2.0
+        // Shrinking never restarts: the larger frames downsample well and the
+        // next seek or restart adopts the smaller size. Growing restarts only
+        // once the upscale would show, so a resize costs at most one restart
+        // and only when the frame gets meaningfully bigger.
+        scale >= 1.0 + RESIZE_GROWTH
+            && (f64::from(header.width) * (scale - 1.0) >= 2.0
+                || f64::from(header.height) * (scale - 1.0) >= 2.0)
     }
 
     fn present(&self, frame: Frame) {

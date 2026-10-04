@@ -635,3 +635,64 @@ fn the_fade_scales_the_volume_without_replacing_it() {
         },
     );
 }
+
+#[test]
+fn shrinking_the_pane_keeps_the_decode_and_only_real_growth_restarts_it() {
+    crate::test_support::gtk_test(
+        "ui::media::tests::shrinking_the_pane_keeps_the_decode_and_only_real_growth_restarts_it",
+        || {
+            let media = DecodedMedia::new(test_source("/resized"));
+            let calls = Rc::new(RefCell::new(Vec::new()));
+            let loader_calls = calls.clone();
+            media.imp().loader.replace(Some(Rc::new(move |_, tick| {
+                loader_calls.borrow_mut().push(tick);
+                crate::sandbox::media::tests::stream(Header {
+                    width: 320,
+                    height: 240,
+                    ..test_header(tick)
+                })
+            })));
+            media.upcast_ref::<gtk::MediaStream>().play();
+            drive_until(&media, &calls, 1);
+            let deadline = Instant::now() + Duration::from_secs(15);
+            while !media.imp().first_frame.get() {
+                media.tick().expect("tick succeeds");
+                assert!(Instant::now() < deadline, "first frame deadline");
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            let settle = |media: &DecodedMedia| {
+                let until = Instant::now() + RESIZE_DELAY * 2;
+                while Instant::now() < until {
+                    media.tick().expect("tick succeeds");
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+            };
+
+            media.resize(MediaPreviewSize::new(200, 150));
+            settle(&media);
+            assert_eq!(
+                calls.borrow().len(),
+                1,
+                "shrinking keeps the running decode"
+            );
+
+            media.resize(MediaPreviewSize::new(336, 252));
+            settle(&media);
+            assert_eq!(
+                calls.borrow().len(),
+                1,
+                "growth inside the tolerance is upscaled"
+            );
+
+            media.resize(MediaPreviewSize::new(640, 480));
+            drive_until(&media, &calls, 2);
+            let position = media.timestamp().max(0) as u64;
+            let restarted_at = media::timestamp(calls.borrow()[1]);
+            assert!(
+                restarted_at <= position && position - restarted_at < 1_000_000,
+                "a real growth restarts near the current position ({restarted_at} vs {position})"
+            );
+            media.close();
+        },
+    );
+}

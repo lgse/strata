@@ -429,10 +429,11 @@ sentinel, not a practical preview-length policy.
 The decode rectangle follows the pane's logical size times display scale, capped
 at 1280 pixels on either axis. Frames preserve display aspect ratio, including
 sample aspect ratio/right-angle rotation, without unnecessarily enlarging small
-sources. Resizes settle for 250 ms before restarting at the current playback
-position; the previous texture remains visible. Changes that would not materially
-change the fitted frame size do not restart decoding. A paused resize/seek stays
-paused. Mute/volume preferences initialize and update every player's raw-audio
+sources. Resizes settle for 250 ms; the previous texture remains visible.
+Shrinking the pane never restarts decoding: the larger frames are downsampled on
+screen and the next seek or restart adopts the smaller size. Growing restarts at
+the current playback position only when the fitted frame would grow by 8 % or
+more, so a resize costs at most one restart. A paused resize/seek stays paused. Mute/volume preferences initialize and update every player's raw-audio
 output live; backend preference changes apply on the next preview request.
 
 ## Audio previews
