@@ -401,8 +401,8 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
                     let (glow, accent) = {
                         let style = surface.style_context();
                         (
-                            style.lookup_color("theme_glow").expect("glow color"),
-                            style.lookup_color("theme_accent").expect("accent color"),
+                            style.lookup_color("strata_glow").expect("glow color"),
+                            style.lookup_color("strata_accent").expect("accent color"),
                         )
                     };
                     if enabled {
