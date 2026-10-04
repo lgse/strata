@@ -11,9 +11,13 @@ use crate::ui::modal::{ModalHost, dismiss_modal_layer, modal_layer, show_error_d
 use crate::ui::terminal;
 use gtk::gio;
 use gtk::prelude::*;
-use std::path::Path;
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::rc::{Rc, Weak};
+
+#[cfg(test)]
+mod tests;
 
 pub(in crate::ui) fn open_location(
     location: &Location,
@@ -310,5 +314,82 @@ pub(in crate::ui) fn launch_terminal(location: &Location, parent: &impl IsA<gtk:
             "Unable to open terminal",
             &terminal.launch_failure(&error),
         );
+    }
+}
+
+/// Basename of the official LocalSend terminal client used for device-to-device
+/// sharing. It stays an optional host tool: nothing references it unless the
+/// context menu finds it in a trusted system directory.
+pub(crate) const LOCALSEND_CLI: &str = "localsend-cli";
+
+/// Whether the LocalSend client is available for sharing.
+pub(crate) fn localsend_cli_available() -> bool {
+    crate::trusted_command::resolve(LOCALSEND_CLI).is_ok()
+}
+
+/// Native paths backing every selected entry. `None` when the selection is
+/// empty or holds anything without a local file (Trash, recent, remote), which
+/// the LocalSend client cannot address.
+pub(crate) fn localsend_send_targets(entries: &[FileEntry]) -> Option<Vec<PathBuf>> {
+    if entries.is_empty() {
+        return None;
+    }
+    entries
+        .iter()
+        .map(|entry| entry.location.native_path().map(PathBuf::from))
+        .collect()
+}
+
+/// `localsend-cli -f <path> …` opens the client's own device picker, so Strata
+/// never handles discovery or credentials itself.
+fn localsend_send_argv(cli: &Path, targets: &[PathBuf]) -> Vec<OsString> {
+    let mut argv = Vec::with_capacity(targets.len() * 2 + 1);
+    argv.push(cli.as_os_str().to_os_string());
+    for target in targets {
+        argv.push(OsString::from("-f"));
+        argv.push(target.as_os_str().to_os_string());
+    }
+    argv
+}
+
+pub(super) fn send_via_localsend(targets: Vec<PathBuf>, parent: &impl IsA<gtk::Widget>) {
+    let Ok(cli) = crate::trusted_command::resolve(LOCALSEND_CLI) else {
+        tracing::warn!("localsend-cli is not installed in a trusted system directory");
+        show_error_dialog(
+            parent,
+            "Unable to share via LocalSend",
+            "Install LocalSend 1.18 or newer (localsend-cli) from localsend.org or your system package manager, then try again.",
+        );
+        return;
+    };
+    let Some(terminal) = terminal::Terminal::resolve() else {
+        tracing::warn!("no terminal emulator found on PATH");
+        show_error_dialog(
+            parent,
+            "Unable to share via LocalSend",
+            &terminal::no_terminal_message(),
+        );
+        return;
+    };
+    let program = terminal.program().to_string_lossy().into_owned();
+    match terminal
+        .exec_command(&localsend_send_argv(&cli, &targets))
+        .spawn()
+    {
+        Ok(mut child) => {
+            std::thread::spawn(move || {
+                if let Err(error) = child.wait() {
+                    tracing::warn!(%error, "unable to reap localsend-cli");
+                }
+            });
+        }
+        Err(error) => {
+            tracing::warn!(%error, %program, "unable to launch localsend-cli");
+            show_error_dialog(
+                parent,
+                "Unable to share via LocalSend",
+                &terminal.launch_failure(&error),
+            );
+        }
     }
 }

@@ -339,6 +339,38 @@ impl ActionMenuSection {
                 self.send_to_row_indices.borrow_mut()[transfer_index] = Some(row_index);
             }
         }
+        // The LocalSend row stays hidden unless the optional client is installed,
+        // so a default install renders the same menu as before.
+        if let Some(targets) = super::super::desktop::localsend_send_targets(entries)
+            && super::super::desktop::localsend_cli_available()
+            && let Some(transfer_index) = match sources.len() {
+                0 => None,
+                1 => Some(0),
+                _ => Some(1),
+            }
+            && let Some(transfer_sections) = &self.transfer_sections
+        {
+            let action = gio::SimpleAction::new("send-via-localsend", None);
+            let weak_state = Rc::downgrade(state);
+            let dispatch = self.dispatch.clone();
+            action.connect_activate(move |_, _| {
+                let targets = targets.clone();
+                let weak_state = weak_state.clone();
+                let dispatch = dispatch.clone();
+                dispatch.defer(move || {
+                    if let Some(state) = weak_state.upgrade() {
+                        state.send_via_localsend(targets);
+                    }
+                });
+            });
+            self.actions.add_action(&action);
+            let item = gio::MenuItem::new(
+                Some("Send via LocalSend…"),
+                Some("custom.send-via-localsend"),
+            );
+            item.set_icon(&gio::ThemedIcon::new(icons::SEND_HORIZONTAL));
+            transfer_sections[transfer_index].append_item(&item);
+        }
 
         let (Some(inputs), Some(paths), Some(parent)) =
             (inputs_for_entries(entries), native_paths(entries), parent)

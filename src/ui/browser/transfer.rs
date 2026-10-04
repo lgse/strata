@@ -328,6 +328,10 @@ impl ViewState {
         );
     }
 
+    pub(super) fn send_via_localsend(self: &Rc<Self>, targets: Vec<PathBuf>) {
+        super::desktop::send_via_localsend(targets, &self.overlay);
+    }
+
     pub(super) fn send_to_removable_device_with_resolver(
         self: &Rc<Self>,
         id: &str,
