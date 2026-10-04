@@ -386,3 +386,47 @@ fn seeks_show_the_nearest_storyboard_cell_until_the_new_frame_lands() {
         },
     );
 }
+
+#[test]
+fn the_glow_stays_dark_without_the_preference_or_under_reduced_motion() {
+    crate::test_support::gtk_test(
+        "ui::preview::tests::video::the_glow_stays_dark_without_the_preference_or_under_reduced_motion",
+        || {
+            let provider = Rc::new(Provider::default());
+            let drawer = PreviewDrawer::new(provider.clone(), false);
+            let preferences = crate::ui::preferences::PreferenceManager::shared();
+            preferences.set_preview_autoplay(false);
+            preferences.set_element_glow(true);
+            preferences.set_reduce_motion(true);
+            drawer.show(entry("clip.mp4"), None);
+            ready(&provider, 0, "video/mp4");
+            let state = &drawer.state;
+            let view = state
+                .video
+                .borrow()
+                .as_ref()
+                .expect("video view")
+                .view
+                .clone();
+            let media = state
+                .media
+                .borrow()
+                .clone()
+                .and_downcast::<crate::ui::media::DecodedMedia>()
+                .expect("decoded stream");
+            media.present_test_frame(64, 36);
+            assert!(media.edge_grid().is_some(), "frames are sampled");
+            assert!(!view.glow().is_lit(), "reduced motion keeps the glow dark");
+
+            preferences.set_reduce_motion(false);
+            preferences.set_element_glow(false);
+            media.present_test_frame(64, 36);
+            assert!(
+                !view.glow().is_lit(),
+                "the Element glow preference is respected"
+            );
+            preferences.set_element_glow(true);
+            drawer.close();
+        },
+    );
+}

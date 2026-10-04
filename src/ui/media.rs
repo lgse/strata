@@ -16,6 +16,7 @@ use crate::{
     services::{MediaPreviewSize, SandboxedMedia},
 };
 
+pub(crate) mod ambient;
 mod audio;
 #[cfg(debug_assertions)]
 mod diagnostics;
@@ -38,6 +39,8 @@ const AUDIO_LEAD_CAP_US: u64 = 2_000_000;
 const AUDIO_STUCK_TIMEOUT: Duration = Duration::from_secs(3);
 const RESTORE_MIN_US: u64 = 1_000_000;
 const MAX_REMEMBERED_POSITIONS: usize = 128;
+// Edge colours for the glow are refreshed at most this often.
+const EDGE_SAMPLE_INTERVAL: Duration = Duration::from_millis(100);
 
 static MEDIA_POSITIONS: LazyLock<Mutex<HashMap<PathBuf, (u64, Instant)>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -113,6 +116,8 @@ mod imp {
         pub(super) audio_chunks: Cell<u32>,
         pub(super) restore: Cell<Option<u64>>,
         pub(super) history: RefCell<Option<PcmHistory>>,
+        pub(super) edge_grid: Cell<Option<ambient::EdgeGrid>>,
+        pub(super) edge_sampled: Cell<Option<Instant>>,
     }
 
     #[glib::object_subclass]
@@ -311,6 +316,11 @@ impl DecodedMedia {
         self.imp().texture.borrow().is_some()
     }
 
+    /// Border colours of a recent frame, refreshed at most ten times a second.
+    pub(crate) fn edge_grid(&self) -> Option<ambient::EdgeGrid> {
+        self.imp().edge_grid.get()
+    }
+
     #[cfg(test)]
     pub(crate) fn present_test_frame(&self, width: u32, height: u32) {
         let imp = self.imp();
@@ -382,6 +392,7 @@ impl DecodedMedia {
         imp.frames.borrow_mut().clear();
         imp.texture.borrow_mut().take();
         imp.history.borrow_mut().take();
+        imp.edge_grid.set(None);
         imp.source.borrow_mut().take();
         imp.restart.set(None);
         imp.seek_pending.set(None);
@@ -874,6 +885,15 @@ impl DecodedMedia {
         if let Some(header) = imp.header.get()
             && header.width > 0
         {
+            if imp
+                .edge_sampled
+                .get()
+                .is_none_or(|sampled| sampled.elapsed() >= EDGE_SAMPLE_INTERVAL)
+            {
+                imp.edge_sampled.set(Some(Instant::now()));
+                imp.edge_grid
+                    .set(ambient::sample(&frame.pixels, header.width, header.height));
+            }
             #[cfg(debug_assertions)]
             let pixels = diagnostics::Pixels::new(frame.pixels);
             #[cfg(not(debug_assertions))]

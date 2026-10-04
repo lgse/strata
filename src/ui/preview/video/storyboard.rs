@@ -82,11 +82,6 @@ pub(super) fn cached_storyboard(key: &TrackKey) -> Option<Rc<Storyboard>> {
     STORYBOARDS.with_borrow_mut(|cache| cache.get(key))
 }
 
-#[cfg(test)]
-pub(super) fn remember_storyboard_for_test(key: TrackKey, storyboard: Rc<Storyboard>) {
-    STORYBOARDS.with_borrow_mut(|cache| cache.insert(key, storyboard));
-}
-
 type Timer = Rc<RefCell<Option<glib::SourceId>>>;
 
 /// Streams cells into `on_update`; dropping it stops the decode.

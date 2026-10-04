@@ -14,6 +14,7 @@ pub(in crate::ui::preview) struct Palette {
     pub(in crate::ui::preview) text: gdk::RGBA,
     pub(in crate::ui::preview) dim: gdk::RGBA,
     pub(in crate::ui::preview) background: gdk::RGBA,
+    pub(in crate::ui::preview) surface: gdk::RGBA,
 }
 
 thread_local! {
@@ -51,6 +52,7 @@ fn from_tokens(tokens: &ThemeTokens) -> Option<Palette> {
         text,
         dim: parse(&tokens.dim_text).unwrap_or(text),
         background: parse(&tokens.background)?,
+        surface: parse(&tokens.surface).or_else(|| parse(&tokens.background))?,
     })
 }
 
@@ -65,6 +67,7 @@ pub(in crate::ui::preview) fn palette() -> Palette {
         text: gdk::RGBA::BLACK,
         dim: gdk::RGBA::BLACK,
         background: gdk::RGBA::WHITE,
+        surface: gdk::RGBA::WHITE,
     });
     PALETTE.set(Some(palette));
     palette

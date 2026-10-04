@@ -3,6 +3,7 @@
 //! One view survives consecutive videos, so stepping through a folder never
 //! rebuilds the frame area or its controls.
 
+mod ambient;
 mod badges;
 mod details;
 mod frame;
@@ -15,7 +16,7 @@ use std::{
     time::Duration,
 };
 
-use gtk::{glib, prelude::*};
+use gtk::{glib, gsk, prelude::*};
 
 use crate::{
     model::FileEntry,
@@ -56,6 +57,8 @@ pub(super) struct VideoView {
     layout: MediaLayout,
     picture: gtk::Picture,
     frame: gtk::Overlay,
+    glow: ambient::Glow,
+    band: Cell<i32>,
     placeholder: frame::Placeholder,
     center_play: gtk::Button,
     eyebrow: gtk::Label,
@@ -124,8 +127,11 @@ impl VideoView {
         picture.set_hexpand(true);
         picture.set_vexpand(true);
         picture.set_cursor_from_name(Some("grab"));
+        let glow = ambient::Glow::new();
         let frame = gtk::Overlay::new();
-        frame.set_child(Some(&picture));
+        // The glow is the base layer; the picture sits over it, inset by the band.
+        frame.set_child(Some(&glow));
+        frame.add_overlay(&picture);
         frame.set_focusable(true);
         frame.set_can_target(true);
         frame.set_margin_start(FRAME_MARGIN);
@@ -227,6 +233,8 @@ impl VideoView {
             layout,
             picture,
             frame,
+            glow,
+            band: Cell::new(0),
             placeholder,
             center_play: center_play.clone(),
             eyebrow,
@@ -286,6 +294,17 @@ impl VideoView {
                 view.refresh_bubble();
             }
         });
+        let preferences = crate::ui::preferences::PreferenceManager::shared();
+        let weak = Rc::downgrade(&view);
+        preferences.bind_preference(
+            &view.root,
+            crate::ui::preferences::PreferenceManager::element_glow,
+            move |_, enabled| {
+                if let Some(view) = weak.upgrade() {
+                    view.set_band(if enabled { ambient::BAND } else { 0 });
+                }
+            },
+        );
         // The decode rectangle follows the pane; `resize` ignores unchanged sizes.
         let weak = Rc::downgrade(&view);
         view.picture.add_tick_callback(move |_, _| {
@@ -317,6 +336,58 @@ impl VideoView {
         &self.placeholder
     }
 
+    #[cfg(test)]
+    pub(super) fn glow(&self) -> &ambient::Glow {
+        &self.glow
+    }
+
+    /// Reserves `band` pixels around the picture for the glow.
+    fn set_band(&self, band: i32) {
+        if self.band.replace(band) == band {
+            return;
+        }
+        self.layout.set_margin(FRAME_MARGIN + band);
+        for widget in [
+            self.picture.upcast_ref::<gtk::Widget>(),
+            self.placeholder.upcast_ref(),
+        ] {
+            widget.set_margin_start(band);
+            widget.set_margin_end(band);
+            widget.set_margin_top(band);
+            widget.set_margin_bottom(band);
+        }
+        self.bubble.set_margin_bottom(BUBBLE_MARGIN + band);
+        if band == 0 {
+            self.glow.clear();
+        }
+    }
+
+    fn software_rendered(&self) -> bool {
+        self.root
+            .native()
+            .and_then(|native| native.renderer())
+            .is_some_and(|renderer| renderer.is::<gsk::CairoRenderer>())
+    }
+
+    /// Feeds the glow from the latest frame, or keeps it dark when disallowed.
+    fn light(&self, media: &DecodedMedia) {
+        let allowed = self.band.get() > 0
+            && ambient::allowed(
+                crate::ui::preferences::PreferenceManager::shared().element_glow(),
+                crate::ui::motion::animations_enabled(),
+                self.software_rendered(),
+            );
+        if !allowed {
+            if self.glow.is_lit() {
+                self.glow.clear();
+            }
+            return;
+        }
+        if let Some(grid) = media.edge_grid() {
+            self.glow.update(&grid);
+        }
+    }
+
     pub(super) fn detach(&self) {
         if let Some(media) = self.media.borrow_mut().take() {
             for handler in self.handlers.borrow_mut().drain(..) {
@@ -324,6 +395,7 @@ impl VideoView {
             }
         }
         self.details.borrow_mut().take();
+        self.glow.clear();
         self.storyboard_load.borrow_mut().take();
         self.storyboard.borrow_mut().take();
         self.clip.borrow_mut().take();
@@ -402,6 +474,7 @@ impl VideoView {
                     && let Some(view) = weak.upgrade()
                 {
                     view.frame_arrived();
+                    view.light(media);
                 }
             }));
             let weak = Rc::downgrade(self);
@@ -539,26 +612,19 @@ impl VideoView {
         self.bubble_cell.set_size_request(width, height);
         self.bubble_cell.set_paintable(cell.as_ref());
         self.bubble_time.set_text(&clock(time));
-        let frame_width = self.frame.width();
+        let band = self.band.get();
+        let picture_width = self.picture.width();
         let bubble_width = width + BUBBLE_CHROME;
         let fraction = self.timeline.pointer_fraction().unwrap_or(0.0);
-        let x = (fraction * f64::from(frame_width)) as i32 - bubble_width / 2;
+        let x = (fraction * f64::from(picture_width)) as i32 - bubble_width / 2;
         self.bubble
-            .set_margin_start(x.clamp(0, (frame_width - bubble_width).max(0)));
+            .set_margin_start(band + x.clamp(0, (picture_width - bubble_width).max(0)));
         self.bubble.set_visible(true);
     }
 
     #[cfg(test)]
     pub(super) fn set_storyboard_for_test(&self, board: Rc<storyboard::Storyboard>) {
         self.storyboard.replace(Some(board));
-    }
-
-    #[cfg(test)]
-    pub(super) fn storyboard_cell_count(&self) -> Option<usize> {
-        self.storyboard
-            .borrow()
-            .as_ref()
-            .map(|board| board.loaded_cells())
     }
 
     pub(super) fn prepare(

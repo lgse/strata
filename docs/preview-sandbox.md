@@ -530,6 +530,15 @@ durations have no storyboard. A 90-second limit bounds the decode, and finished
 or partial boards are cached in memory for the last 8 clips (at most about 14
 MB), with partial boards refilled on the next visit.
 
+Ambient light bleeds the frame's border colours into a 24-pixel band around the
+picture. The player samples a 6×4 grid of a few pixels each from a decoded frame
+at most ten times a second, the view eases towards it and uploads it as a tiny
+texture that the GPU scales with linear filtering under the picture, and four
+gradients fade the band into the pane. There is no blur, no per-frame CPU work
+beyond those samples, and nothing updates while playback is paused. The light
+follows the **Element glow** preference, which also releases the band, stays off
+under reduced motion, and never runs on the Cairo software renderer.
+
 The frame area never shows a spinner. Until the first decoded frame it shows the
 listing's cached thumbnail dimmed as a poster when that rendition is already in
 memory, otherwise an outline, at the probed aspect once the header has arrived.
