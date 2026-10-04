@@ -496,6 +496,14 @@ the same media family, so audio steps to audio and video to video, following
 visible search results like audio does. Playback errors remain visible inside the
 view without disabling navigation.
 
+The frame area never shows a spinner. Until the first decoded frame it shows the
+listing's cached thumbnail dimmed as a poster when that rendition is already in
+memory, otherwise an outline, at the probed aspect once the header has arrived.
+The lookup never queues thumbnail work. The first frame fades the stand-in out
+over 150 ms, or replaces it at once under reduced motion. Every media stream
+waits 50 ms before starting its sandbox session, so a selection that moves on
+within that window spawns no decoder.
+
 ## Wire validation and budgets
 
 The versioned `STRRAW01` little-endian protocol has a 40-byte header: magic,

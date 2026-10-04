@@ -24,6 +24,8 @@ mod tests;
 use audio::PcmOutput;
 
 const PAUSED_IDLE: Duration = Duration::from_secs(30);
+// A selection replaced within the dwell never spawns a decoder.
+pub(crate) const START_DWELL: Duration = Duration::from_millis(50);
 const RESIZE_DELAY: Duration = Duration::from_millis(250);
 const SEEK_DELAY: Duration = Duration::from_millis(200);
 const PRESENTATION_QUEUE: usize = 3;
@@ -93,6 +95,7 @@ mod imp {
         pub(super) timer: RefCell<Option<glib::SourceId>>,
         pub(super) closed: Cell<bool>,
         pub(super) restart: Cell<Option<u32>>,
+        pub(super) start_after: Cell<Option<Instant>>,
         pub(super) starting: Cell<Option<Instant>>,
         pub(super) resized: Cell<Option<Instant>>,
         pub(super) paused: Cell<Option<Instant>>,
@@ -205,23 +208,31 @@ mod imp {
         }
     }
 
+    impl DecodedMedia {
+        // The probed frame size, so the layout settles before the first frame.
+        fn frame_size(&self) -> (i32, i32) {
+            if let Some(texture) = self.texture.borrow().as_ref() {
+                return (texture.width(), texture.height());
+            }
+            self.header
+                .get()
+                .filter(|header| header.width > 0)
+                .map_or((0, 0), |header| (header.width as i32, header.height as i32))
+        }
+    }
+
     impl gdk::subclass::prelude::PaintableImpl for DecodedMedia {
         fn intrinsic_width(&self) -> i32 {
-            self.texture
-                .borrow()
-                .as_ref()
-                .map_or(0, |texture| texture.width())
+            self.frame_size().0
         }
         fn intrinsic_height(&self) -> i32 {
-            self.texture
-                .borrow()
-                .as_ref()
-                .map_or(0, |texture| texture.height())
+            self.frame_size().1
         }
         fn intrinsic_aspect_ratio(&self) -> f64 {
-            self.texture.borrow().as_ref().map_or(0.0, |texture| {
-                f64::from(texture.width()) / f64::from(texture.height())
-            })
+            match self.frame_size() {
+                (_, 0) => 0.0,
+                (width, height) => f64::from(width) / f64::from(height),
+            }
         }
         fn snapshot(&self, snapshot: &gdk::Snapshot, width: f64, height: f64) {
             if let Some(texture) = self.texture.borrow().as_ref() {
@@ -274,9 +285,48 @@ impl DecodedMedia {
         if let Some(position) = restore {
             obj.imp().restore.set(Some(position));
         }
+        obj.imp()
+            .start_after
+            .set(Some(Instant::now() + START_DWELL));
         obj.restart_at(0);
         obj.ensure_timer();
         obj
+    }
+
+    /// The probed video frame size, known once the stream is prepared.
+    pub(crate) fn video_size(&self) -> Option<(u32, u32)> {
+        self.imp()
+            .header
+            .get()
+            .filter(|header| header.width > 0)
+            .map(|header| (header.width, header.height))
+    }
+
+    /// Whether a decoded frame is on screen.
+    pub(crate) fn has_frame(&self) -> bool {
+        self.imp().texture.borrow().is_some()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn present_test_frame(&self, width: u32, height: u32) {
+        let imp = self.imp();
+        let header = imp.header.get().unwrap_or(Header {
+            width,
+            height,
+            audio: false,
+            duration_us: 10_000_000,
+            start_tick: 0,
+        });
+        imp.header.set(Some(header));
+        if !self.is_prepared() {
+            self.stream_prepared(false, true, true, header.duration_us as i64);
+        }
+        imp.first_frame.set(true);
+        self.present(Frame {
+            tick: header.start_tick,
+            pixels: vec![0; header.video_bytes()],
+            samples: Vec::new(),
+        });
     }
 
     fn ensure_timer(&self) {
@@ -561,6 +611,14 @@ impl DecodedMedia {
             {
                 return Ok(());
             }
+            if imp
+                .start_after
+                .get()
+                .is_some_and(|after| Instant::now() < after)
+            {
+                return Ok(());
+            }
+            imp.start_after.set(None);
             imp.session.borrow_mut().take();
             let source = imp
                 .source
@@ -603,6 +661,7 @@ impl DecodedMedia {
                         && saved < header.duration_us
                     {
                         imp.header.set(Some(header));
+                        self.invalidate_size();
                         tracing::debug!(position_us = saved, "resuming media preview");
                         self.restart_at(saved);
                         break;
@@ -610,6 +669,7 @@ impl DecodedMedia {
                     let audio = header.audio.then(|| self.pcm_output()).transpose()?;
                     imp.audio.replace(audio);
                     imp.header.set(Some(header));
+                    self.invalidate_size();
                     if imp.source.borrow().as_ref().map(|source| source.size)
                         != imp.loaded_size.get()
                     {

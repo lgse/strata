@@ -543,3 +543,63 @@ mod manual_clock {
     }
 }
 use manual_clock::ManualClock;
+
+#[test]
+fn sessions_start_after_the_dwell_and_never_for_a_replaced_selection() {
+    crate::test_support::gtk_test(
+        "ui::media::tests::sessions_start_after_the_dwell_and_never_for_a_replaced_selection",
+        || {
+            let media = DecodedMedia::new(test_source("/replaced"));
+            let calls = Rc::new(RefCell::new(Vec::new()));
+            media.imp().loader.replace(Some(fake_loader(&calls)));
+            let created = Instant::now();
+            while created.elapsed() < START_DWELL / 2 {
+                media.tick().expect("tick succeeds");
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            assert!(calls.borrow().is_empty(), "no decoder inside the dwell");
+            media.close();
+            std::thread::sleep(START_DWELL);
+            let _ = media.tick();
+            assert!(
+                calls.borrow().is_empty(),
+                "a selection replaced within the dwell never spawns a decoder"
+            );
+
+            let media = DecodedMedia::new(test_source("/kept"));
+            let calls = Rc::new(RefCell::new(Vec::new()));
+            media.imp().loader.replace(Some(fake_loader(&calls)));
+            let created = Instant::now();
+            drive_until(&media, &calls, 1);
+            assert!(created.elapsed() >= START_DWELL);
+            assert_eq!(*calls.borrow(), vec![0]);
+            media.close();
+        },
+    );
+}
+
+#[test]
+fn prepared_streams_size_the_frame_before_it_is_decoded() {
+    crate::test_support::gtk_test(
+        "ui::media::tests::prepared_streams_size_the_frame_before_it_is_decoded",
+        || {
+            let media = DecodedMedia::new(test_source("/sized"));
+            assert_eq!(media.video_size(), None);
+            assert_eq!(media.intrinsic_width(), 0);
+            let calls = Rc::new(RefCell::new(Vec::new()));
+            media.imp().loader.replace(Some(fake_loader(&calls)));
+            let deadline = Instant::now() + Duration::from_secs(15);
+            while !media.is_prepared() {
+                media.tick().expect("tick succeeds");
+                assert!(Instant::now() < deadline, "prepare deadline");
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            assert_eq!(media.video_size(), Some((16, 16)));
+            assert_eq!(
+                (media.intrinsic_width(), media.intrinsic_height()),
+                (16, 16)
+            );
+            media.close();
+        },
+    );
+}

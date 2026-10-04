@@ -188,3 +188,64 @@ fn steps_stay_within_the_same_media_type() {
         },
     );
 }
+
+#[test]
+fn the_frame_shows_a_poster_or_outline_until_the_first_frame() {
+    crate::test_support::gtk_test(
+        "ui::preview::tests::video::the_frame_shows_a_poster_or_outline_until_the_first_frame",
+        || {
+            let provider = Rc::new(Provider::default());
+            let drawer = PreviewDrawer::new(provider.clone(), false);
+            let preferences = crate::ui::preferences::PreferenceManager::shared();
+            preferences.set_preview_autoplay(false);
+            preferences.set_reduce_motion(true);
+            let poster = gtk::gdk::MemoryTexture::new(
+                32,
+                18,
+                gtk::gdk::MemoryFormat::R8g8b8a8,
+                &glib::Bytes::from_owned(vec![0; 32 * 18 * 4]),
+                32 * 4,
+            )
+            .upcast::<gtk::gdk::Texture>();
+            let mut clip = entry("clip.mp4");
+            clip.size = MetadataValue::Known(10);
+            clip.modified_unix_seconds = MetadataValue::Known(1);
+            crate::ui::thumbnail::remember_thumbnail_for_test(&clip, poster.clone());
+
+            drawer.show(clip, None);
+            ready(&provider, 0, "video/mp4");
+            let state = &drawer.state;
+            let view = state
+                .video
+                .borrow()
+                .as_ref()
+                .expect("video view")
+                .view
+                .clone();
+            assert!(view.placeholder().is_visible());
+            assert_eq!(view.placeholder().poster().as_ref(), Some(&poster));
+            let media = state
+                .media
+                .borrow()
+                .clone()
+                .and_downcast::<crate::ui::media::DecodedMedia>()
+                .expect("decoded stream");
+            media.present_test_frame(64, 36);
+            assert!(
+                !view.placeholder().is_visible(),
+                "reduced motion retires the placeholder with the first frame"
+            );
+
+            drawer.show(entry("other.mp4"), None);
+            assert!(view.placeholder().is_visible(), "a new clip starts covered");
+            assert!(
+                view.placeholder().poster().is_none(),
+                "no listing thumbnail means an outline"
+            );
+            ready(&provider, 1, "video/mp4");
+            assert!(view.placeholder().is_visible());
+            preferences.set_reduce_motion(false);
+            drawer.close();
+        },
+    );
+}

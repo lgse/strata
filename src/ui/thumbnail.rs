@@ -286,6 +286,35 @@ impl CachedThumbnail {
     }
 }
 
+/// The listing's in-memory rendition of `entry`, for an instant placeholder.
+/// Misses are not rendered: the preview never queues thumbnail work.
+pub(in crate::ui) fn cached_thumbnail(entry: &FileEntry) -> Option<gdk::Texture> {
+    let key = ThumbnailKey {
+        path: entry.local_thumbnail_path()?.to_path_buf(),
+        modified: known_metadata(&entry.modified_unix_seconds),
+        file_size: known_metadata(&entry.size),
+        thumbnail_size: super::thumbnail_cache::CANONICAL_MAX_EDGE,
+    };
+    match THUMBNAIL_CACHE.with(|cache| cache.borrow_mut().get(&key)) {
+        Some(CacheHit::Ready(texture)) => Some(texture),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+pub(in crate::ui) fn remember_thumbnail_for_test(entry: &FileEntry, texture: gdk::Texture) {
+    let key = ThumbnailKey {
+        path: entry
+            .local_thumbnail_path()
+            .expect("local entry")
+            .to_path_buf(),
+        modified: known_metadata(&entry.modified_unix_seconds),
+        file_size: known_metadata(&entry.size),
+        thumbnail_size: super::thumbnail_cache::CANONICAL_MAX_EDGE,
+    };
+    THUMBNAIL_CACHE.with(|cache| cache.borrow_mut().insert(key, texture));
+}
+
 pub(super) fn preserve_renamed_thumbnail(from: &crate::model::Location, entry: &FileEntry) {
     let Some((from, to)) = from.native_path().zip(entry.location.native_path()) else {
         return;

@@ -6,7 +6,7 @@ mod analysis;
 mod artwork;
 mod details;
 mod layout;
-mod palette;
+pub(in crate::ui::preview) mod palette;
 mod scrubber;
 mod spectrum;
 

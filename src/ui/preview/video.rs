@@ -3,6 +3,8 @@
 //! One view survives consecutive videos, so stepping through a folder never
 //! rebuilds the frame area or its controls.
 
+mod frame;
+
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
@@ -33,6 +35,7 @@ pub(super) struct VideoView {
     layout: MediaLayout,
     picture: gtk::Picture,
     frame: gtk::Overlay,
+    placeholder: frame::Placeholder,
     center_play: gtk::Button,
     eyebrow: gtk::Label,
     title: gtk::Label,
@@ -99,6 +102,8 @@ impl VideoView {
         frame.set_margin_top(FRAME_MARGIN);
         frame.set_margin_bottom(FRAME_MARGIN);
         crate::ui::accessibility::set_label(&frame, "Video frame");
+        let placeholder = frame::Placeholder::new();
+        frame.add_overlay(&placeholder);
         let center_play = gtk::Button::new();
         center_play.add_css_class("preview-media-center");
         center_play.set_halign(gtk::Align::Center);
@@ -172,6 +177,7 @@ impl VideoView {
             layout,
             picture,
             frame,
+            placeholder,
             center_play: center_play.clone(),
             eyebrow,
             title,
@@ -245,6 +251,11 @@ impl VideoView {
         &self.picture
     }
 
+    #[cfg(test)]
+    pub(super) fn placeholder(&self) -> &frame::Placeholder {
+        &self.placeholder
+    }
+
     pub(super) fn detach(&self) {
         if let Some(media) = self.media.borrow_mut().take() {
             for handler in self.handlers.borrow_mut().drain(..) {
@@ -253,6 +264,7 @@ impl VideoView {
         }
         self.picture.set_paintable(None::<&gtk::gdk::Paintable>);
         self.layout.set_paintable(None);
+        self.placeholder.reveal();
         self.scrubber.set_media(None);
         self.scrubber.clear_levels();
         self.sync_playing(false);
@@ -289,12 +301,42 @@ impl VideoView {
                 }
             }));
         }
+        if let Some(decoded) = media.downcast_ref::<DecodedMedia>() {
+            let weak = Rc::downgrade(self);
+            handlers.push(decoded.connect_prepared_notify(move |media| {
+                if let Some(view) = weak.upgrade() {
+                    view.sync_frame_size(media);
+                }
+            }));
+            // Every presented frame invalidates the paintable; the first one
+            // retires the placeholder.
+            let weak = Rc::downgrade(self);
+            handlers.push(decoded.connect_invalidate_contents(move |media| {
+                if media.has_frame()
+                    && let Some(view) = weak.upgrade()
+                {
+                    view.placeholder.conceal();
+                }
+            }));
+            self.sync_frame_size(decoded);
+            if decoded.has_frame() {
+                self.placeholder.conceal();
+            }
+        }
         self.handlers.replace(handlers);
         self.media.replace(Some(media.clone()));
         self.scrubber.set_media(Some(&media));
         self.sync_playing(media.is_playing());
         self.shown_seconds.set((-1, -1));
         self.sync_time();
+    }
+
+    fn sync_frame_size(&self, media: &DecodedMedia) {
+        self.placeholder.set_aspect(
+            media
+                .video_size()
+                .map(|(width, height)| f64::from(width) / f64::from(height)),
+        );
     }
 
     pub(super) fn prepare(
@@ -308,6 +350,10 @@ impl VideoView {
         self.play.set_sensitive(false);
         self.previous.set_sensitive(has_previous);
         self.next.set_sensitive(has_next);
+        self.placeholder
+            .set_poster(crate::ui::thumbnail::cached_thumbnail(entry));
+        self.placeholder.set_aspect(None);
+        self.placeholder.reveal();
         self.eyebrow
             .set_text(&position.map(ListingPosition::caption).unwrap_or_default());
         self.title.set_text(
