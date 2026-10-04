@@ -505,7 +505,11 @@ Badges under the title summarise the file from the same bounded `media-metadata`
 edge (SD, 720p, 1080p, 2K, 4K, 8K), HDR10 or HLG from the transfer
 characteristics, 10-, 12- or 16-bit from the pixel format, rounded frame rate,
 video codec, audio codec with channel layout, and a captions badge counting
-embedded subtitle tracks. The probe starts after the same 50 ms settle as audio
+embedded subtitle tracks plus subtitle files named after the video (`clip.srt`,
+`clip.en.vtt`, and the `ass`, `ssa` and `sub` extensions), found by a bounded
+scan of the original's folder off the GTK thread. Chapter starts become ticks on
+the timeline and chapter titles join the time in the storyboard bubble; nothing
+renders subtitles over the frames. The probe starts after the same 50 ms settle as audio
 details, is cancelled when the selection moves on, and completed results are
 cached for the last 12 files. Until it answers, empty pills hold the row; a
 failed probe leaves the row empty. Badges fade in with a short stagger once per

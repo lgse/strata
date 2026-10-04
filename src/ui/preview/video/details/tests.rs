@@ -12,6 +12,16 @@ fn failed_probes_are_retried_and_cancelled_loads_never_publish() {
         || {
             let directory = tempfile::tempdir().expect("clip directory");
             let path = directory.path().join("clip.mp4");
+            for sidecar in [
+                "clip.srt",
+                "Clip.EN.vtt",
+                "clip2.srt",
+                "other.ass",
+                "clip.txt",
+            ] {
+                std::fs::write(directory.path().join(sidecar), "1").expect("sidecar");
+            }
+            std::fs::create_dir(directory.path().join("clip.sub")).expect("decoy folder");
             let entry = crate::ui::preview::tests::entry(path.to_str().expect("fixture path"));
             let source = SandboxedMedia {
                 path: path.clone(),
@@ -21,7 +31,7 @@ fn failed_probes_are_retried_and_cancelled_loads_never_publish() {
                 audio_only: false,
             };
             let key = TrackKey::of(&entry);
-            let load = |results: Rc<RefCell<Vec<Option<Rc<MediaMetadata>>>>>| {
+            let load = |results: Rc<RefCell<Vec<Option<Rc<VideoDetails>>>>>| {
                 load_details_with(
                     &entry,
                     &source,
@@ -50,7 +60,11 @@ fn failed_probes_are_retried_and_cancelled_loads_never_publish() {
             let pending = load(results.clone());
             wait(|| !results.borrow().is_empty());
             let details = cached_details(&key).expect("successful probes are cached");
-            assert_eq!(details.video_codec.as_deref(), Some("av1"));
+            assert_eq!(details.metadata.video_codec.as_deref(), Some("av1"));
+            assert_eq!(
+                details.sidecar_captions, 2,
+                "sidecars next to the clip are counted"
+            );
             assert_eq!(results.borrow()[0].as_deref(), Some(&*details));
             drop(pending);
             std::thread::sleep(LOAD_SETTLE * 2);

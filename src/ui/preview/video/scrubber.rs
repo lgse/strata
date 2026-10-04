@@ -127,6 +127,11 @@ impl Timeline {
         self.queue_draw();
     }
 
+    #[cfg(test)]
+    pub(super) fn chapters(&self) -> Vec<f64> {
+        self.imp().chapters.borrow().clone()
+    }
+
     /// The pointer's position along the track, as a fraction of the duration.
     pub(super) fn pointer_fraction(&self) -> Option<f64> {
         let imp = self.imp();

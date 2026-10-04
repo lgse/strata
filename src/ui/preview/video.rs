@@ -20,10 +20,12 @@ use gtk::{glib, gsk, prelude::*};
 
 use crate::{
     model::FileEntry,
-    sandbox::metadata::MediaMetadata,
+    sandbox::metadata::Chapter,
     services::{MediaPreviewSize, SandboxedMedia},
     ui::media::DecodedMedia,
 };
+
+pub(in crate::ui::preview) use details::VideoDetails;
 
 use super::{
     ListingPosition,
@@ -84,6 +86,7 @@ pub(super) struct VideoView {
     hover: Cell<Option<i64>>,
     shown_seconds: Cell<(i64, i64)>,
     details: RefCell<Option<details::DetailsLoad>>,
+    chapters: RefCell<Vec<Chapter>>,
     clip: RefCell<Option<(FileEntry, SandboxedMedia)>>,
     storyboard: RefCell<Option<Rc<storyboard::Storyboard>>>,
     storyboard_load: RefCell<Option<storyboard::StoryboardLoad>>,
@@ -271,6 +274,7 @@ impl VideoView {
             hover: Cell::default(),
             shown_seconds: Cell::new((-1, -1)),
             details: RefCell::default(),
+            chapters: RefCell::default(),
             clip: RefCell::default(),
             storyboard: RefCell::default(),
             storyboard_load: RefCell::default(),
@@ -724,7 +728,11 @@ impl VideoView {
         );
         self.bubble_cell.set_size_request(width, height);
         self.bubble_cell.set_paintable(cell.as_ref());
-        self.bubble_time.set_text(&clock(time));
+        self.bubble_time
+            .set_text(&match self.chapter_title_at(time) {
+                Some(title) => format!("{} · {title}", clock(time)),
+                None => clock(time),
+            });
         let band = self.band.get();
         let picture_width = self.picture.width();
         let bubble_width = width + BUBBLE_CHROME;
@@ -755,6 +763,7 @@ impl VideoView {
             .set_poster(crate::ui::thumbnail::cached_thumbnail(entry));
         self.placeholder.set_aspect(None);
         self.placeholder.reveal();
+        self.chapters.borrow_mut().clear();
         self.timeline.set_chapters(Vec::new());
         self.show_badge_skeleton();
         self.eyebrow
@@ -801,13 +810,17 @@ impl VideoView {
     }
 
     /// Badges enter with a short stagger once; a failed probe leaves the row empty.
-    fn show_badges(&self, details: Option<Rc<MediaMetadata>>) {
+    fn show_badges(&self, details: Option<Rc<VideoDetails>>) {
         super::clear_box(&self.badges);
         let Some(details) = details else {
             return;
         };
+        self.show_chapters(&details);
         let animated = crate::ui::motion::animations_enabled() && self.badges.is_mapped();
-        for (index, badge) in badges::badges(&details, 0).into_iter().enumerate() {
+        for (index, badge) in badges::badges(&details.metadata, details.sidecar_captions)
+            .into_iter()
+            .enumerate()
+        {
             let label = gtk::Label::new(Some(&badge.label));
             label.add_css_class("preview-video-badge");
             label.add_css_class(badge.kind.css_class());
@@ -851,9 +864,39 @@ impl VideoView {
         labels
     }
 
+    /// Chapter starts become ticks on the timeline and titles in the bubble.
+    fn show_chapters(&self, details: &VideoDetails) {
+        let duration = details.metadata.duration.filter(|seconds| *seconds > 0.0);
+        self.chapters.replace(details.metadata.chapters.clone());
+        self.timeline
+            .set_chapters(duration.map_or_else(Vec::new, |duration| {
+                details
+                    .metadata
+                    .chapters
+                    .iter()
+                    .map(|chapter| (chapter.start / duration).clamp(0.0, 1.0))
+                    .filter(|fraction| *fraction > 0.0)
+                    .collect()
+            }));
+    }
+
+    fn chapter_title_at(&self, time_us: i64) -> Option<String> {
+        let seconds = time_us as f64 / 1_000_000.0;
+        self.chapters
+            .borrow()
+            .iter()
+            .find(|chapter| seconds >= chapter.start && seconds < chapter.end)
+            .and_then(|chapter| chapter.title.clone())
+    }
+
     #[cfg(test)]
-    pub(super) fn show_details_for_test(&self, details: Option<Rc<MediaMetadata>>) {
+    pub(super) fn show_details_for_test(&self, details: Option<Rc<VideoDetails>>) {
         self.show_badges(details);
+    }
+
+    #[cfg(test)]
+    pub(super) fn chapter_ticks(&self) -> Vec<f64> {
+        self.timeline.chapters()
     }
 
     #[cfg(test)]

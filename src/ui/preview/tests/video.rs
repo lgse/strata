@@ -288,10 +288,42 @@ fn badges_replace_their_skeleton_once_the_probe_answers() {
                 false,
             )
             .expect("probe json");
-            view.show_details_for_test(Some(Rc::new(metadata)));
+            view.show_details_for_test(Some(Rc::new(crate::ui::preview::video::VideoDetails {
+                metadata,
+                sidecar_captions: 2,
+            })));
             assert_eq!(
                 view.badge_labels(),
-                ["4K", "HLG", "10-bit", "50 fps", "AV1", "Opus Stereo", "CC"]
+                [
+                    "4K",
+                    "HLG",
+                    "10-bit",
+                    "50 fps",
+                    "AV1",
+                    "Opus Stereo",
+                    "CC ×3"
+                ]
+            );
+            assert!(view.chapter_ticks().is_empty());
+
+            let chaptered = crate::sandbox::metadata::MediaMetadata::from_json(
+                br#"{"streams":[{"codec_type":"video","codec_name":"h264","width":1280,"height":720}],
+                    "chapters":[{"start_time":"0","end_time":"30","tags":{"title":"Intro"}},
+                                {"start_time":"30","end_time":"120"},
+                                {"start_time":"90","end_time":"120","tags":{"title":"End"}}],
+                    "format":{"duration":"120"}}"#,
+                false,
+            )
+            .expect("chaptered json");
+            view.show_details_for_test(Some(Rc::new(crate::ui::preview::video::VideoDetails {
+                metadata: chaptered,
+                sidecar_captions: 0,
+            })));
+            assert_eq!(view.badge_labels(), ["720p", "H.264"]);
+            assert_eq!(
+                view.chapter_ticks(),
+                [0.25, 0.75],
+                "ticks mark chapter starts after the beginning"
             );
 
             view.show_details_for_test(None);

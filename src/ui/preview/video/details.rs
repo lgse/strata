@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-//! The sandboxed probe behind the badges, settled and cached like audio tags.
+//! The sandboxed probe behind the badges, settled and cached like audio tags,
+//! plus a count of subtitle files sitting next to the video.
 
 use std::{
     cell::{Cell, RefCell},
@@ -18,14 +19,49 @@ use crate::{
 };
 
 const DETAILS_CACHE: usize = 12;
+const SIDECAR_EXTENSIONS: [&str; 5] = ["srt", "vtt", "ass", "ssa", "sub"];
+/// Folder scans for sidecars stop here; huge folders cost nothing more.
+const SIDECAR_SCAN_LIMIT: usize = 5_000;
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(in crate::ui::preview) struct VideoDetails {
+    pub(in crate::ui::preview) metadata: MediaMetadata,
+    pub(in crate::ui::preview) sidecar_captions: usize,
+}
 
 thread_local! {
-    static DETAILS: RefCell<Lru<TrackKey, Rc<MediaMetadata>>> =
+    static DETAILS: RefCell<Lru<TrackKey, Rc<VideoDetails>>> =
         const { RefCell::new(Lru::new(DETAILS_CACHE)) };
 }
 
-pub(super) fn cached_details(key: &TrackKey) -> Option<Rc<MediaMetadata>> {
+pub(super) fn cached_details(key: &TrackKey) -> Option<Rc<VideoDetails>> {
     DETAILS.with_borrow_mut(|cache| cache.get(key))
+}
+
+/// Subtitle files named after the video, like `clip.srt` or `clip.en.vtt`.
+pub(super) fn sidecar_captions(video: &Path) -> usize {
+    let (Some(directory), Some(stem)) = (
+        video.parent(),
+        video.file_stem().and_then(|stem| stem.to_str()),
+    ) else {
+        return 0;
+    };
+    let Ok(entries) = std::fs::read_dir(directory) else {
+        return 0;
+    };
+    let prefix = format!("{}.", stem.to_ascii_lowercase());
+    entries
+        .take(SIDECAR_SCAN_LIMIT)
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_file()))
+        .filter(|entry| {
+            let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
+            name.starts_with(&prefix)
+                && SIDECAR_EXTENSIONS
+                    .iter()
+                    .any(|extension| name.ends_with(&format!(".{extension}")))
+        })
+        .count()
 }
 
 /// Cancels its sandbox job when dropped.
@@ -41,7 +77,7 @@ impl Drop for DetailsLoad {
 pub(super) fn load_details(
     entry: &FileEntry,
     source: &SandboxedMedia,
-    on_details: impl Fn(Option<Rc<MediaMetadata>>) + 'static,
+    on_details: impl Fn(Option<Rc<VideoDetails>>) + 'static,
 ) -> DetailsLoad {
     load_details_with(entry, source, on_details, parse)
 }
@@ -49,12 +85,14 @@ pub(super) fn load_details(
 fn load_details_with(
     entry: &FileEntry,
     source: &SandboxedMedia,
-    on_details: impl Fn(Option<Rc<MediaMetadata>>) + 'static,
+    on_details: impl Fn(Option<Rc<VideoDetails>>) + 'static,
     parse: impl Fn(&Path, ParseOperation, &Cancellation) -> Option<Vec<u8>> + Send + 'static,
 ) -> DetailsLoad {
     let key = TrackKey::of(entry);
     let cancellation = Cancellation::default();
     let path = source.path.clone();
+    // Sidecars sit next to the original, not next to a staged remote copy.
+    let original = entry.location.native_path().map(Path::to_path_buf);
     let lease = source.clone();
     let job = cancellation.clone();
     let cancelled = cancellation.clone();
@@ -66,8 +104,12 @@ fn load_details_with(
         }
         let details = gio::spawn_blocking(move || {
             let _lease = lease;
-            parse(&path, ParseOperation::MediaMetadata, &job)
-                .and_then(|json| MediaMetadata::from_json(&json, false).ok())
+            let metadata = parse(&path, ParseOperation::MediaMetadata, &job)
+                .and_then(|json| MediaMetadata::from_json(&json, false).ok())?;
+            Some(VideoDetails {
+                metadata,
+                sidecar_captions: original.as_deref().map_or(0, sidecar_captions),
+            })
         })
         .await
         .ok()
