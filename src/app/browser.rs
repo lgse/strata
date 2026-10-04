@@ -158,6 +158,7 @@ pub enum BrowserEvent {
     },
     PreviewRequested {
         entry: FileEntry,
+        automatic: bool,
     },
     ExtractRequested {
         entry: FileEntry,
@@ -3144,12 +3145,26 @@ impl Browser {
         if entry.is_directory() {
             self.descend(depth, entry.location);
         } else {
-            self.emit(BrowserEvent::PreviewRequested { entry });
+            self.close_column(depth + 1);
+            self.emit(BrowserEvent::PreviewRequested {
+                entry,
+                automatic: false,
+            });
         }
     }
 
     pub fn request_preview(&self, entry: FileEntry) {
-        self.emit(BrowserEvent::PreviewRequested { entry });
+        self.emit(BrowserEvent::PreviewRequested {
+            entry,
+            automatic: false,
+        });
+    }
+
+    pub fn request_automatic_preview(&self, entry: FileEntry) {
+        self.emit(BrowserEvent::PreviewRequested {
+            entry,
+            automatic: true,
+        });
     }
 
     pub fn open_location(&self, location: Location) {

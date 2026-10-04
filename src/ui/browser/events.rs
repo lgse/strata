@@ -1236,7 +1236,7 @@ impl ViewState {
             if self.single_click_previews.get()
                 && let Some(entry) = preview_target(Some(entry))
             {
-                self.browser.request_preview(entry);
+                self.browser.request_automatic_preview(entry);
             }
         }
     }

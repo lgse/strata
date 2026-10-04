@@ -1823,11 +1823,24 @@ impl ViewState {
     }
 
     pub(super) fn reveal_column(self: &Rc<Self>, shell: gtk::Box) {
+        // Trailing columns borrow preview space without displacing the active column.
+        let shell = {
+            let columns = self.columns.borrow();
+            let depth = columns.iter().position(|column| column.shell == shell);
+            match (depth, self.browser.active_depth()) {
+                (Some(depth), Some(active)) if depth > active => columns
+                    .get(active)
+                    .map_or(shell, |column| column.shell.clone()),
+                _ => shell,
+            }
+        };
         let animation_id = self.horizontal_scroll_generation.get().saturating_add(1);
         self.horizontal_scroll_generation.set(animation_id);
         self.columns_widget.set_margin_end(0);
         let weak = Rc::downgrade(self);
         let measured_shell = shell.downgrade();
+        // Wait for the preview slot to resize before measuring the viewport.
+        let laid_out = std::cell::Cell::new(false);
         let _tick = self.scroller.add_tick_callback(move |_, _| {
             let Some(state) = weak.upgrade() else {
                 return glib::ControlFlow::Break;
@@ -1841,7 +1854,10 @@ impl ViewState {
                 return glib::ControlFlow::Break;
             }
             let adjustment = state.scroller.hadjustment();
-            if measured_shell.width() <= 0 || adjustment.page_size() <= 0.0 {
+            if !laid_out.replace(true)
+                || measured_shell.width() <= 0
+                || adjustment.page_size() <= 0.0
+            {
                 return glib::ControlFlow::Continue;
             }
             let depth = state

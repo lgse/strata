@@ -28,6 +28,7 @@ mod archive;
 pub(super) mod audio;
 mod keyboard;
 mod layout;
+pub(in crate::ui) use layout::separator_width;
 mod media_layout;
 #[cfg(test)]
 mod pdf_ranges_tests;
@@ -136,6 +137,8 @@ struct PreviewState {
     reserve_columns: Cell<bool>,
     // Dismissing content stops selection-following without reclaiming its column slot.
     enabled: Cell<bool>,
+    dismissed: Cell<bool>,
+    child_pane: Cell<bool>,
     pane: gtk::Box,
     header_handle: gtk::Box,
     icon: gtk::Image,
@@ -332,6 +335,8 @@ impl PreviewDrawer {
             slot,
             reserve_columns: Cell::new(true),
             enabled: Cell::new(false),
+            dismissed: Cell::new(false),
+            child_pane: Cell::new(false),
             pane,
             header_handle: header_handle.clone(),
             icon,
@@ -515,7 +520,10 @@ impl PreviewDrawer {
 
     pub fn handle_browser_event(&self, browser: &Browser, event: &BrowserEvent) {
         match event {
-            BrowserEvent::PreviewRequested { entry } => {
+            BrowserEvent::PreviewRequested { entry, automatic } => {
+                if *automatic && self.state.dismissed.get() {
+                    return;
+                }
                 self.show(entry.clone(), browser.active_depth());
             }
             BrowserEvent::SelectionSynced { .. } if super::marquee::is_updating_selection() => {}
@@ -532,19 +540,24 @@ impl PreviewDrawer {
                 focused: position,
                 ..
             } if self.is_enabled() => {
-                if let Some(entry) = browser
-                    .entry_at(*depth, *position)
-                    .and_then(|entry| preview_target(Some(entry)))
-                {
+                let entry = browser.entry_at(*depth, *position);
+                if let Some(entry) = entry.clone().and_then(|entry| preview_target(Some(entry))) {
                     self.show_after_focus_change(entry, Some(*depth));
                 } else {
+                    self.state
+                        .lend_slot_to_child(browser, *depth, entry.as_ref());
                     self.clear_target();
                 }
             }
-            BrowserEvent::FocusChanged { position: None, .. }
-            | BrowserEvent::SelectionSynced { focused: None, .. }
-                if self.is_enabled() =>
-            {
+            BrowserEvent::FocusChanged {
+                depth,
+                position: None,
+            }
+            | BrowserEvent::SelectionSynced {
+                depth,
+                focused: None,
+            } if self.is_enabled() => {
+                self.state.lend_slot_to_child(browser, *depth, None);
                 self.clear_target()
             }
             BrowserEvent::EntriesSpliced { depth, splices }
@@ -748,11 +761,21 @@ impl PreviewState {
         self.pending_show.replace(Some(source));
     }
 
+    // Mirroring also emits focus for the child beyond the active depth.
+    fn lend_slot_to_child(&self, browser: &Browser, depth: usize, entry: Option<&FileEntry>) {
+        let child_pane = self.browsing_columns()
+            && (entry.is_some_and(FileEntry::is_directory)
+                || browser.active_depth().is_some_and(|active| depth > active));
+        self.child_pane.set(child_pane);
+    }
+
     fn show(self: &Rc<Self>, entry: FileEntry, depth: Option<usize>) {
         self.cancel_pending_show();
         self.retain_pending_playback(&entry);
         self.current_depth.set(depth);
         self.reserve_columns.set(true);
+        self.dismissed.set(false);
+        self.child_pane.set(false);
         self.set_enabled(true);
         let was_open = self.revealer.reveals_child() || self.sizing.is_suspended();
         let already_showing =
@@ -788,6 +811,7 @@ impl PreviewState {
 
     fn stop(&self) {
         self.set_enabled(false);
+        self.child_pane.set(false);
         self.clear_target();
         self.cancel_print();
         // Destroying a focused prompt does not always report a focus leave.
@@ -809,6 +833,9 @@ impl PreviewState {
                             || focused.is_ancestor(browser.root())
                     })
             });
+        if self.is_enabled() {
+            self.dismissed.set(true);
+        }
         self.stop();
         self.pane.set_size_request(MIN_WIDTH, -1);
         if tree_focused && let Some(browser) = self.sizing.browser() {
