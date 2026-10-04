@@ -26,7 +26,7 @@ struct WorkerSlot;
 impl WorkerSlot {
     fn acquire() -> Option<Self> {
         ACTIVE_WORKERS
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |count| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |count| {
                 (count < MAX_WORKERS).then_some(count + 1)
             })
             .ok()
