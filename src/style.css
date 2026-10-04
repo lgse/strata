@@ -2732,7 +2732,7 @@ paned > separator {
 }
 
 .preview-video-header {
-  padding: 2px 12px 0;
+  padding: 8px 12px 2px;
 }
 
 .preview-video-eyebrow {

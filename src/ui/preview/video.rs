@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
 
 //! One view survives consecutive videos, so stepping through a folder never
-//! rebuilds the frame area or its controls.
+//! rebuilds the frame area or its controls. Like the audio view, the header
+//! sits on top and the frame, timeline and transport form the block below it.
 
 mod ambient;
 mod badges;
 mod details;
 mod frame;
+mod layout;
 mod scrubber;
 pub(super) mod storyboard;
 
@@ -30,7 +32,6 @@ pub(in crate::ui::preview) use details::VideoDetails;
 use super::{
     ListingPosition,
     audio::{clock, details::TrackKey},
-    media_layout::MediaLayout,
 };
 
 pub(in crate::ui::preview) use scrubber::Timeline;
@@ -60,13 +61,12 @@ pub(super) struct Clip {
 
 pub(super) struct VideoView {
     root: gtk::Box,
-    layout: MediaLayout,
+    layout: layout::PlayerLayout,
     picture: gtk::Picture,
     frame: gtk::Overlay,
     glow: ambient::Glow,
     band: Cell<i32>,
     placeholder: frame::Placeholder,
-    center_play: gtk::Button,
     eyebrow: gtk::Label,
     title: gtk::Label,
     badges: gtk::Box,
@@ -135,7 +135,7 @@ impl VideoView {
         root.add_css_class("preview-video");
         root.set_hexpand(true);
         root.set_vexpand(true);
-        let layout = MediaLayout::new();
+        let layout = layout::PlayerLayout::new();
         root.set_layout_manager(Some(layout.clone()));
 
         let picture = gtk::Picture::new();
@@ -175,17 +175,6 @@ impl VideoView {
         bubble.append(&bubble_cell);
         bubble.append(&bubble_time);
         frame.add_overlay(&bubble);
-        let center_play = gtk::Button::new();
-        center_play.add_css_class("preview-media-center");
-        center_play.set_halign(gtk::Align::Center);
-        center_play.set_valign(gtk::Align::Center);
-        center_play.set_visible(false);
-        center_play.set_child(Some(&crate::assets::primary_icon(
-            crate::assets::icons::PLAY,
-            48,
-        )));
-        crate::ui::accessibility::set_label(&center_play, "Play");
-        frame.add_overlay(&center_play);
 
         let eyebrow = label("preview-video-eyebrow");
         eyebrow.set_hexpand(true);
@@ -241,8 +230,8 @@ impl VideoView {
         transport.set_center_widget(Some(&buttons));
         transport.set_end_widget(Some(&total));
 
-        root.append(&frame);
         root.append(&header);
+        root.append(&frame);
         root.append(&timeline);
         root.append(&transport);
 
@@ -254,7 +243,6 @@ impl VideoView {
             glow,
             band: Cell::new(0),
             placeholder,
-            center_play: center_play.clone(),
             eyebrow,
             title,
             badges,
@@ -284,14 +272,12 @@ impl VideoView {
             ease_timer: RefCell::default(),
         });
 
-        for button in [&play, &center_play] {
-            let weak = Rc::downgrade(&view);
-            button.connect_clicked(move |_| {
-                if let Some(view) = weak.upgrade() {
-                    view.toggle_playback();
-                }
-            });
-        }
+        let weak = Rc::downgrade(&view);
+        play.connect_clicked(move |_| {
+            if let Some(view) = weak.upgrade() {
+                view.toggle_playback();
+            }
+        });
         let click = gtk::GestureClick::new();
         click.set_button(gtk::gdk::BUTTON_PRIMARY);
         let weak = Rc::downgrade(&view);
@@ -441,7 +427,6 @@ impl VideoView {
         self.bubble.set_visible(false);
         self.timeline.set_media(None);
         self.sync_playing(false);
-        self.center_play.set_visible(false);
     }
 
     pub(super) fn show(self: &Rc<Self>, clip: Clip) {
@@ -921,8 +906,6 @@ impl VideoView {
                 crate::assets::icons::PLAY
             },
         );
-        self.center_play
-            .set_visible(!playing && self.media.borrow().is_some());
     }
 
     fn sync_time(&self) {

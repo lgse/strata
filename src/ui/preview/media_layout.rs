@@ -8,7 +8,14 @@ pub(super) const MAX_CONTENT_WIDTH: i32 = 1280;
 const MAX_UPSCALE: f64 = 2.0;
 const MEDIA_MARGIN: i32 = 12;
 
-fn fitted_size(width: i32, height: i32, intrinsic_width: i32, intrinsic_height: i32) -> (i32, i32) {
+/// The largest size inside `width` × `height` with the paintable's aspect,
+/// enlarged at most twice; an unknown aspect fills the area.
+pub(super) fn fitted_size(
+    width: i32,
+    height: i32,
+    intrinsic_width: i32,
+    intrinsic_height: i32,
+) -> (i32, i32) {
     let width = width.max(0);
     let height = height.max(0);
     if intrinsic_width <= 0 || intrinsic_height <= 0 {

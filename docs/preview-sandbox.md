@@ -493,9 +493,11 @@ view without disabling track navigation. Tracks never advance automatically.
 
 ## Video previews
 
-Video files open in a now-playing view of their own: the frame on top, a header
-with the file's position among the folder's videos and the volume control, a
-timeline, and a transport with previous/next buttons. Consecutive video files
+Video files open in a now-playing view of their own, laid out like the audio
+view: a header with the file's position among the folder's videos, the volume
+control, the title and the badges on top, then the frame with its timeline
+directly beneath it and the same previous/play/next transport. Clicking the
+frame toggles playback; there is no separate centre button. Consecutive video files
 reuse one view, like audio. Previous/next step to the previous or next file of
 the same media family, so audio steps to audio and video to video, following
 visible search results like audio does. Playback errors remain visible inside the
