@@ -3141,6 +3141,7 @@ fn entry_family(entry: &FileEntry) -> Option<MediaFamily> {
     })
 }
 
+#[cfg(test)]
 fn is_audio_entry(entry: &FileEntry) -> bool {
     entry_family(entry) == Some(MediaFamily::Audio)
 }

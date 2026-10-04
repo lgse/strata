@@ -56,6 +56,7 @@ impl Storyboard {
         self.complete.get()
     }
 
+    #[cfg(test)]
     pub(super) fn loaded_cells(&self) -> usize {
         self.cells.borrow().iter().flatten().count()
     }

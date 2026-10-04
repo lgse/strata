@@ -133,6 +133,7 @@ impl Placeholder {
         self.queue_draw();
     }
 
+    #[cfg(test)]
     pub(in crate::ui::preview) fn poster(&self) -> Option<gdk::Texture> {
         self.imp().poster.borrow().clone()
     }

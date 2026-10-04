@@ -12,7 +12,6 @@ use crate::ui::browser::columns::{
     set_column_busy, set_column_selections, set_filter_placeholder, stop_column_spinner,
     touch_source_model, update_empty_trash_sensitivity,
 };
-use crate::ui::browser::desktop::open_location;
 use crate::ui::browser::entry::item_count_label;
 use crate::ui::browser::location::MountStrategy;
 use crate::ui::browser::peek::append_peek_entries;

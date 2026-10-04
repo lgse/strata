@@ -348,6 +348,7 @@ impl DecodedMedia {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn fade(&self) -> f64 {
         self.imp().fade.get().unwrap_or(1.0)
     }
