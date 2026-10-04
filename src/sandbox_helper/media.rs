@@ -558,7 +558,8 @@ struct RawDecoder {
     audio: Option<ChildStdout>,
     last_pixels: Vec<u8>,
     video_ended: bool,
-    audio_ended: bool,
+    audio_tick: u32,
+    audio_end: Option<u32>,
     decoded_video: bool,
 }
 
@@ -569,7 +570,8 @@ impl RawDecoder {
             video: None,
             audio: None,
             video_ended: input.video.is_none(),
-            audio_ended: input.audio.is_none(),
+            audio_tick: input.header.start_tick,
+            audio_end: input.audio.is_none().then_some(input.header.start_tick),
             decoded_video: false,
             last_pixels: vec![0; input.header.video_bytes()],
         };
@@ -605,13 +607,7 @@ impl RawDecoder {
 
     fn frame(&mut self, tick: u32, deadline: Instant) -> io::Result<Option<Frame>> {
         let mut pixels = self.last_pixels.clone();
-        let mut samples = if self.audio.is_some() {
-            vec![0; AUDIO_BYTES]
-        } else {
-            Vec::new()
-        };
         let mut video_bytes = 0;
-        let mut audio_bytes = 0;
         if let Some(video) = &self.video
             && !self.video_ended
         {
@@ -628,21 +624,31 @@ impl RawDecoder {
         if self.video.is_some() && !self.decoded_video {
             return Err(media::invalid("No decoded video frame"));
         }
-        if let Some(audio) = &self.audio
-            && !self.audio_ended
-        {
-            audio_bytes = read_chunk(audio, &mut samples, deadline)?;
-            if audio_bytes < samples.len() {
-                self.audio_ended = true;
-            }
-            if audio_bytes % 4 != 0 {
-                return Err(media::invalid("Truncated PCM sample"));
+        let mut samples = Vec::new();
+        if let Some(audio) = &self.audio {
+            // The first record carries the whole lead, later ones a single block;
+            // blocks past the end of the track stay silent.
+            let wanted = tick
+                .saturating_add(media::AUDIO_LEAD_TICKS + 1)
+                .saturating_sub(self.audio_tick);
+            samples = vec![0; wanted as usize * AUDIO_BYTES];
+            for block in samples.chunks_mut(AUDIO_BYTES) {
+                if self.audio_end.is_none() {
+                    let read = read_chunk(audio, block, deadline)?;
+                    if read % 4 != 0 {
+                        return Err(media::invalid("Truncated PCM sample"));
+                    }
+                    if read < AUDIO_BYTES {
+                        self.audio_end = Some(self.audio_tick.saturating_add(u32::from(read > 0)));
+                    }
+                }
+                self.audio_tick = self.audio_tick.saturating_add(1);
             }
         }
         if !self.successful()? {
             return Err(io::Error::other("The media decoder failed"));
         }
-        if video_bytes == 0 && audio_bytes == 0 {
+        if video_bytes == 0 && self.audio_end.is_some_and(|end| tick >= end) {
             return Ok(None);
         }
         Ok(Some(Frame {

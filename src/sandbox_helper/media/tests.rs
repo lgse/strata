@@ -94,6 +94,17 @@ fn decoded(input: &Path, size: &str, start: u32) -> (Header, Vec<Frame>, u64) {
     }
 }
 
+/// The PCM block for the audio tick `offset` ticks after the first frame; the
+/// lead places it in the first record or ahead of its own frame.
+fn audio_block(frames: &[Frame], offset: usize) -> &[u8] {
+    let lead = media::AUDIO_LEAD_TICKS as usize;
+    if offset <= lead {
+        &frames[0].samples[offset * AUDIO_BYTES..(offset + 1) * AUDIO_BYTES]
+    } else {
+        &frames[offset - lead].samples
+    }
+}
+
 #[test]
 fn raw_software_video_fits_landscape_portrait_hidpi_and_does_not_enlarge() {
     let directory = tempfile::tempdir().expect("fixtures");
@@ -631,19 +642,20 @@ fn variable_frame_rate_and_offset_audio_keep_their_original_timeline() {
     let (_, frames, end) = decoded(&input, "160x90", 0);
     assert_eq!(end, 3_000_000);
     assert_eq!(frames.len(), 90);
+    assert!((0..8).all(|tick| audio_block(&frames, tick).iter().all(|sample| *sample == 0)));
+    assert!(audio_block(&frames, 10).iter().any(|sample| *sample != 0));
     assert!(
-        frames[..8]
-            .iter()
-            .all(|frame| frame.samples.iter().all(|sample| *sample == 0))
+        audio_block(&frames, 89).iter().any(|sample| *sample != 0)
+            && frames[89].samples.iter().all(|sample| *sample == 0),
+        "audio keeps its timeline while running a lead ahead of the frames"
     );
-    assert!(frames[10].samples.iter().any(|sample| *sample != 0));
     assert!(
         frames[34].pixels == frames[35].pixels,
         "VFR frames must hold until their next presentation time"
     );
     let (_, sought, _) = decoded(&input, "160x90", 45);
     assert_eq!(sought[0].tick, 45);
-    assert!(sought[0].samples.iter().any(|sample| *sample != 0));
+    assert!(audio_block(&sought, 0).iter().any(|sample| *sample != 0));
     assert!(
         frames[44..=46]
             .iter()

@@ -42,23 +42,24 @@ impl PcmOutput {
             muted,
             volume,
             lookahead,
-            true,
+            None,
         )
     }
 
-    /// A sink bin without a pipeline clock: its position follows rendered data,
-    /// like an audio ring buffer, instead of wall time.
+    /// A sink bin driven by `clock`, or without a pipeline clock so that its
+    /// position follows rendered data like an audio ring buffer.
     #[cfg(test)]
-    pub(super) fn clockless(
+    pub(super) fn test_sink(
         muted: bool,
         volume: f64,
         lookahead: Duration,
         description: &str,
+        clock: Option<&gst::Clock>,
     ) -> Result<Self, String> {
         gst::init().map_err(|error| error.to_string())?;
         let sink = gst::parse::bin_from_description(description, true)
             .map_err(|error| error.to_string())?;
-        Self::with_sink(sink.upcast(), muted, volume, lookahead, false)
+        Self::with_sink(sink.upcast(), muted, volume, lookahead, Some(clock))
     }
 
     fn with_sink(
@@ -66,11 +67,11 @@ impl PcmOutput {
         muted: bool,
         volume: f64,
         lookahead: Duration,
-        clocked: bool,
+        clock: Option<Option<&gst::Clock>>,
     ) -> Result<Self, String> {
         let pipeline = gst::Pipeline::new();
-        if !clocked {
-            pipeline.use_clock(None::<&gst::Clock>);
+        if let Some(clock) = clock {
+            pipeline.use_clock(clock);
         }
         let max_time_ns = u64::try_from(lookahead.as_nanos())
             .map_err(|_| "PCM lookahead exceeds the clock range".to_owned())?;

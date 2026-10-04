@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
-use crate::media::{AUDIO_BYTES, Frame};
+use crate::media::Frame;
 
 pub(crate) fn stream(header: Header) -> Result<Session, String> {
     stream_to(header, header.duration_us)
@@ -28,11 +28,7 @@ pub(crate) fn stream_to(header: Header, end: u64) -> Result<Session, String> {
             let frame = Frame {
                 tick,
                 pixels: vec![(tick % 255) as u8; header.video_bytes()],
-                samples: if header.audio {
-                    vec![0; AUDIO_BYTES]
-                } else {
-                    Vec::new()
-                },
+                samples: vec![0; crate::media::audio_bytes(header, tick)],
             };
             if send(&sender, Event::Packet(Packet::Frame(frame)), &cancelled).is_err() {
                 return;

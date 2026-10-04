@@ -27,12 +27,10 @@ const PAUSED_IDLE: Duration = Duration::from_secs(30);
 const RESIZE_DELAY: Duration = Duration::from_millis(250);
 const SEEK_DELAY: Duration = Duration::from_millis(200);
 const PRESENTATION_QUEUE: usize = 3;
-// Pixels a video may queue past the presentation queue while audio runs ahead.
-const PRESENTATION_BYTES: usize = 64 << 20;
-// Slack queued in appsrc beyond the sink's own buffer; the sink fills first.
-const AUDIO_LOOKAHEAD: Duration = Duration::from_millis(200);
-// Every chunk of video audio pins a frame, so video keeps two chunks of slack.
-const VIDEO_AUDIO_LOOKAHEAD: Duration = Duration::from_micros(66_667);
+// PCM appsrc may hold: the lead the first record carries plus slack, so the
+// sink's own buffer fills before the playhead has to move.
+const AUDIO_LOOKAHEAD: Duration =
+    Duration::from_micros((media::AUDIO_LEAD_TICKS as u64 + 6) * 1_000_000 / media::FPS as u64);
 const MAX_STALL_RECOVERIES: u32 = 3;
 const AUDIO_LEAD_CAP_US: u64 = 2_000_000;
 const AUDIO_STUCK_TIMEOUT: Duration = Duration::from_secs(3);
@@ -83,6 +81,8 @@ mod imp {
         pub(super) loader: RefCell<Option<TestLoader>>,
         #[cfg(test)]
         pub(super) audio_sink: RefCell<Option<String>>,
+        #[cfg(test)]
+        pub(super) audio_clock: RefCell<Option<gstreamer::Clock>>,
         pub(super) source: RefCell<Option<SandboxedMedia>>,
         pub(super) session: RefCell<Option<Session>>,
         pub(super) header: Cell<Option<Header>>,
@@ -107,6 +107,7 @@ mod imp {
         pub(super) recoveries: Cell<u32>,
         pub(super) audio_stuck_since: Cell<Option<Instant>>,
         pub(super) audio_anchored: Cell<bool>,
+        pub(super) audio_chunks: Cell<u32>,
         pub(super) restore: Cell<Option<u64>>,
         pub(super) history: RefCell<Option<PcmHistory>>,
     }
@@ -157,6 +158,8 @@ mod imp {
 
         fn pause(&self) {
             self.obj().capture_position();
+            // Resuming waits for the sink again, like a fresh start.
+            self.audio_anchored.set(false);
             self.clock.set(None);
             self.audio_stuck_since.set(None);
             self.paused.set(Some(Instant::now()));
@@ -246,15 +249,19 @@ impl DecodedMedia {
         if !self.is_playing() || !imp.first_frame.get() {
             return false;
         }
+        imp.history
+            .borrow()
+            .as_ref()
+            .is_some_and(|history| history.window_ending_at(self.played_sample(), window))
+    }
+
+    fn played_sample(&self) -> u64 {
+        let imp = self.imp();
         let elapsed = imp
             .clock
             .get()
             .map_or(0, |clock| clock.elapsed().as_micros() as u64);
-        let played = (imp.clock_base.get() + elapsed) * media::SAMPLE_RATE / 1_000_000;
-        imp.history
-            .borrow()
-            .as_ref()
-            .is_some_and(|history| history.window_ending_at(played, window))
+        (imp.clock_base.get() + elapsed) * media::SAMPLE_RATE / 1_000_000
     }
 
     pub fn new(source: SandboxedMedia) -> Self {
@@ -358,6 +365,7 @@ impl DecodedMedia {
         imp.clock_base.set(0);
         imp.audio_stuck_since.set(None);
         imp.audio_anchored.set(false);
+        imp.audio_chunks.set(0);
         imp.first_frame.set(false);
         imp.end.set(None);
         imp.dormant.set(false);
@@ -426,9 +434,14 @@ impl DecodedMedia {
                     relative = position;
                 }
                 // Keep the audio anchor so a recovered sink can take over again.
+                // The stuck timer only watches a clock that has run; a sink that is
+                // still starting is bounded by the progress watchdog instead.
                 _ => {
                     relative = relative.min(base + AUDIO_LEAD_CAP_US);
-                    if self.is_playing() && imp.audio_stuck_since.get().is_none() {
+                    if self.is_playing()
+                        && imp.audio_anchored.get()
+                        && imp.audio_stuck_since.get().is_none()
+                    {
                         imp.audio_stuck_since.set(Some(Instant::now()));
                     }
                 }
@@ -448,18 +461,19 @@ impl DecodedMedia {
         }
     }
 
-    // Until the sink has advanced in this generation, the playhead waits for it
-    // rather than leading on wall time, which would later snap back by the
-    // sink's start-up delay. Afterwards a stalled clock still lets video lead.
+    // Until the sink has advanced since the generation started or playback
+    // resumed, the playhead waits for it rather than leading on wall time, which
+    // would later snap back by the sink's delay. Afterwards a stalled clock
+    // still lets video lead.
     fn wall_clock_allowed(&self) -> bool {
         let imp = self.imp();
         imp.audio.borrow().is_none() || imp.audio_anchored.get()
     }
 
-    // Audio reads ahead until appsrc and the sink are full, so a sink that only
-    // starts once its own buffer fills is fed regardless of the playhead. Frames
-    // pin pixels per chunk, so video stays within a byte budget past the
-    // presentation queue, and silent video keeps only the presentation queue.
+    // Audio files read ahead until appsrc is full, so a sink that only starts
+    // once its own buffer fills is fed regardless of the playhead. Video keeps
+    // the three-frame presentation queue; its audio runs ahead inside the
+    // records instead of pinning frames.
     fn can_queue_more(&self) -> bool {
         let imp = self.imp();
         let frames = imp.frames.borrow().len();
@@ -468,25 +482,24 @@ impl DecodedMedia {
         };
         match imp.audio.borrow().as_ref() {
             Some(audio) => {
-                audio.has_capacity()
-                    && (frames < PRESENTATION_QUEUE
-                        || (frames + 1) * header.video_bytes() <= PRESENTATION_BYTES)
+                audio.has_capacity() && (header.width == 0 || frames < PRESENTATION_QUEUE)
             }
             None => frames < PRESENTATION_QUEUE,
         }
     }
 
-    fn pcm_output(&self, video: bool) -> Result<PcmOutput, String> {
-        let lookahead = if video {
-            VIDEO_AUDIO_LOOKAHEAD
-        } else {
-            AUDIO_LOOKAHEAD
-        };
+    fn pcm_output(&self) -> Result<PcmOutput, String> {
         #[cfg(test)]
         if let Some(description) = self.imp().audio_sink.borrow().as_deref() {
-            return PcmOutput::clockless(self.is_muted(), self.volume(), lookahead, description);
+            return PcmOutput::test_sink(
+                self.is_muted(),
+                self.volume(),
+                AUDIO_LOOKAHEAD,
+                description,
+                self.imp().audio_clock.borrow().as_ref(),
+            );
         }
-        PcmOutput::new(self.is_muted(), self.volume(), lookahead)
+        PcmOutput::new(self.is_muted(), self.volume(), AUDIO_LOOKAHEAD)
     }
 
     fn tick(&self) -> Result<(), String> {
@@ -592,10 +605,7 @@ impl DecodedMedia {
                         self.restart_at(saved);
                         break;
                     }
-                    let audio = header
-                        .audio
-                        .then(|| self.pcm_output(header.width > 0))
-                        .transpose()?;
+                    let audio = header.audio.then(|| self.pcm_output()).transpose()?;
                     imp.audio.replace(audio);
                     imp.header.set(Some(header));
                     if imp.source.borrow().as_ref().map(|source| source.size)
@@ -620,20 +630,23 @@ impl DecodedMedia {
                 Some(Event::Packet(Packet::Frame(mut frame))) => {
                     let header = imp.header.get().ok_or("Missing media header")?;
                     if let Some(audio) = imp.audio.borrow().as_ref() {
-                        let samples_left = (header.duration_us - media::timestamp(frame.tick))
-                            * media::SAMPLE_RATE
-                            / 1_000_000;
-                        frame
-                            .samples
-                            .truncate(samples_left.min(media::AUDIO_BYTES as u64 / 4) as usize * 4);
-                        if !frame.samples.is_empty() {
-                            if let Some(history) = imp.history.borrow_mut().as_mut() {
-                                history.push(&frame.samples);
+                        // Blocks belong to successive audio ticks, running ahead of the frame.
+                        for block in std::mem::take(&mut frame.samples).chunks(media::AUDIO_BYTES) {
+                            let chunk = imp.audio_chunks.get();
+                            let tick = header.start_tick.saturating_add(chunk);
+                            let samples_left =
+                                header.duration_us.saturating_sub(media::timestamp(tick))
+                                    * media::SAMPLE_RATE
+                                    / 1_000_000;
+                            let block =
+                                &block[..samples_left.min(block.len() as u64 / 4) as usize * 4];
+                            if !block.is_empty() {
+                                if let Some(history) = imp.history.borrow_mut().as_mut() {
+                                    history.push(block);
+                                }
+                                audio.push(block.to_vec(), media::timestamp(chunk))?;
                             }
-                            audio.push(
-                                std::mem::take(&mut frame.samples),
-                                media::timestamp(frame.tick - header.start_tick),
-                            )?;
+                            imp.audio_chunks.set(chunk + 1);
                         }
                     }
                     if !imp.first_frame.get() {
@@ -695,6 +708,9 @@ impl DecodedMedia {
                 }
                 None => break,
             }
+        }
+        if let Some(history) = imp.history.borrow_mut().as_mut() {
+            history.trim_behind(self.played_sample());
         }
         let audio_error = imp.audio.borrow().as_ref().and_then(PcmOutput::error);
         if let Some(error) = audio_error {
@@ -814,8 +830,9 @@ impl DecodedMedia {
     }
 }
 
-// Two seconds outlast the audio lead: sink buffer, device delay and appsrc slack.
-const HISTORY_SAMPLES: usize = 96_000;
+// Samples kept behind the playhead; everything decoded ahead of it is kept too,
+// however far the sink's buffer and device delay push that lead.
+const HISTORY_SAMPLES: usize = 48_000;
 
 /// Mono PCM indexed by samples since the last restart, matching the sink clock.
 #[derive(Default)]
@@ -838,8 +855,14 @@ impl PcmHistory {
                 .push_back((f32::from(left) + f32::from(right)) / 65_536.0);
         }
         self.end += (interleaved.len() / 4) as u64;
-        let excess = self.samples.len().saturating_sub(HISTORY_SAMPLES);
-        self.samples.drain(..excess);
+    }
+
+    fn trim_behind(&mut self, played: u64) {
+        let keep_from = played.min(self.end).saturating_sub(HISTORY_SAMPLES as u64);
+        let start = self.end - self.samples.len() as u64;
+        if keep_from > start {
+            self.samples.drain(..(keep_from - start) as usize);
+        }
     }
 
     fn window_ending_at(&self, played: u64, window: &mut [f32]) -> bool {

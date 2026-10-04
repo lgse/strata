@@ -456,7 +456,9 @@ waveform scrubber. Each part is sandboxed or derived from already-validated data
   whitespace, caps each value at 200 characters, and shows them as plain text.
 - **The spectrum** is computed in the application from the PCM it already plays,
   aligned to the audio sink's clock rather than to the decoder, so no extra
-  parser or GStreamer analysis element sees the stream.
+  parser or GStreamer analysis element sees the stream. It keeps one second
+  behind the playhead plus everything decoded ahead of it, so it follows the
+  sink however far the device delays playback.
 - **The waveform overview** starts only after a track has stayed selected for
   50 ms, avoiding work for selections replaced within that interval. One `audio-peaks` operation
   runs at a time with niceness 10. It streams `STRPEAK1` records: a header with
@@ -500,29 +502,30 @@ The parent independently checks:
 - strictly consecutive ticks below the declared duration, exact
   `floor(tick * 1,000,000 / 30)` timestamps, and an end tick that cannot overflow;
 - video length exactly `width * height * 4`, at most 6,553,600 bytes;
-- PCM length exactly 6,400 bytes per tick (1,600 stereo samples), with the last
-  block truncated to the advertised content duration before audio output;
+- PCM length exactly 6,400 bytes per tick (1,600 stereo samples); the first
+  record of a generation carries 61 blocks because audio runs 60 ticks (2 s)
+  ahead of video, and the last block is truncated to the advertised content
+  duration before audio output;
 - end timestamp/lengths, no trailing output, and successful helper exit.
 
 Lengths are checked **before allocation**. Helper buffers cannot mutate textures:
 pipe reads create owned buffers, and the texture owns its `glib::Bytes` until its
 last reference is released. There is no shared writable memory.
 
-The worker-to-GTK queue holds three records and a worker may hold one pending
-frame. The presentation queue holds three frames for silent video. While audio
-plays, records are read ahead until GStreamer's appsrc queue and the sink's own
-buffer are full, not until the playhead catches up: a sink that only starts once
-its buffer fills (PipeWire-Pulse, or a Bluetooth A2DP device whose delay is
-subtracted from the reported position) is never starved by a lookahead tied to
-the position it has not advanced yet. Audio files queue no pixels for that
-read-ahead. Video with audio may queue frames past the presentation queue up to
-a 64 MiB pixel budget. Including the displayed CPU texture, that is at most
-eight directly application-held frames for silent video (50 MiB at the maximum
-square size) and five frames plus the budget for video with audio (about 96 MiB
-at the maximum square size), plus small audio buffers and bounded kernel pipes.
-FFmpeg's input and output packet queues are limited to two packets each.
-GStreamer's appsrc queue is capped at 200 ms for audio files and at two 30-fps
-chunks (66.7 ms) for video; no unbounded queue element is inserted.
+The worker-to-GTK queue holds three records, the presentation queue three frames,
+and a worker may hold one pending frame. Including the displayed CPU texture,
+that is at most eight directly application-held frames (50 MiB at the maximum
+square size), plus small audio buffers and bounded kernel pipes. Audio never
+pins frames to stay ahead of a slow sink: the first record of a generation
+carries a 2-second PCM lead and later records run that far ahead of their frame,
+so a sink that only starts once its own buffer fills, or whose device delay is
+subtracted from its reported position (PipeWire-Pulse, Bluetooth A2DP), is
+primed before playback starts. Audio files additionally read ahead until
+GStreamer's appsrc queue is full rather than until the playhead moves, so no
+device delay can starve them; video keeps its three-frame queue, which bounds the
+start-up delay it tolerates at the lead. FFmpeg's input and output packet queues
+are limited to two packets each. GStreamer's appsrc queue is capped at 66 blocks
+(2.2 s, about 420 KiB); no unbounded queue element is inserted.
 GTK/driver rendering caches and codec working memory are additional, not part of
 that application-buffer claim. Total decoded bytes scale with playback duration,
 but queued memory does not: no complete clip is accumulated. Audio timestamp
@@ -553,8 +556,8 @@ have separate limits, not a machine-global scheduler.
 | --- | --- |
 | Startup or seek | 22 seconds from request to first frame; includes a 4-second probe, hardware attempts of at most 4 seconds each / 8 seconds combined, and up to 8 seconds for software. Isolated seeks restart at once; bursts within 200 ms coalesce to the settled position. |
 | Active decoding | 8 seconds for a complete next record, not a deadline restarted by each byte. A stall mid-playback (frozen audio clock, decoder/worker failure, audio-sink error) restarts at the last position up to 3 times, then fails with the last error. |
-| Backpressure | A full queue stops consumption and propagates pressure through bounded pipes; it does not accumulate a whole clip. Audio read-ahead is bounded by the appsrc queue, the sink buffer and the video pixel budget, not by the playhead. Waiting for the consumer is not charged as decoder progress time. |
-| Audio clock | Until the sink first advances in a generation, the playhead and video hold at the start position instead of leading on wall time, so a sink's start-up delay never snaps the playhead back. After that, a stalled clock lets video lead on wall time by at most 2 seconds. |
+| Backpressure | A full queue stops consumption and propagates pressure through bounded pipes; it does not accumulate a whole clip. Audio files read ahead until the appsrc queue is full, video until the presentation queue is, never until the playhead moves. Waiting for the consumer is not charged as decoder progress time. |
+| Audio clock | Until the sink first advances after a start, seek or resume, the playhead and video hold their position instead of leading on wall time, so a start-up or resume delay never snaps the playhead back; the 3-second stuck-clock recovery is armed only once the clock has run, leaving the 8-second progress watchdog as the bound for a sink that never starts. After that, a stalled clock lets video lead on wall time by at most 2 seconds. |
 | Paused | Keep position, frame and bounded queues for 30 seconds, then cancel the worker, drop PCM output/queues, and stop the polling timer. The displayed frame and position remain. Resume or a paused seek starts a new bounded decode. |
 | Close / selection change / destruction | Cancel promptly; pipe/queue waits check cancellation at 10–20-ms intervals. Kill/reap the renderer and its sandbox descendants. No join of a blocked pipe reader on the GTK thread. |
 | End / malformed output / failure | Release the worker; malformed/truncated output, unavailable decoding and unsuccessful exit fail closed. No unsandboxed fallback. End-of-audio allows only sample-grid rounding (at most 22 µs), not a stalled clock. |
