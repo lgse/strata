@@ -55,7 +55,7 @@ def test_camera_formats_render_through_preview_sandbox(strata, request):
             )
         strata.wait(rendered, "the HEIC image decoded by the preview sandbox")
     else:
-        strata.wait(lambda: strata.preview_shows("/0:04"), "the sandboxed video duration")
+        strata.wait(lambda: strata.preview_shows("0:04"), "the sandboxed video duration")
     assert not strata.preview_shows("Preview unavailable")
     strata.keyboard.press("space")
     strata.wait(lambda: strata.preview() is None, "the preview to close")
