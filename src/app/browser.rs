@@ -957,9 +957,7 @@ impl Browser {
     }
 
     fn should_extract_on_activate(&self, entry: &FileEntry) -> bool {
-        !self.is_chooser_mode()
-            && entry.location.native_path().is_some()
-            && ArchiveFormat::from_extension(&entry.display_name).is_some()
+        !self.is_chooser_mode() && ArchiveFormat::for_entry(entry).is_some()
     }
 
     pub fn set_chooser_mode(&self, chooser: bool) {

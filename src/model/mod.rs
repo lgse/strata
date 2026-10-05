@@ -421,6 +421,10 @@ impl FileEntry {
         )
     }
 
+    pub fn is_file(&self) -> bool {
+        matches!(self.kind, EntryKind::File | EntryKind::FileSymbolicLink)
+    }
+
     pub fn is_symbolic_link(&self) -> bool {
         matches!(
             self.kind,

@@ -910,8 +910,12 @@ fn tenxer_action_chord_compresses_and_extracts_archives() {
             .expect("fixture archive");
             let destination = directory.join("dest");
             std::fs::create_dir(&destination).expect("destination");
+            std::fs::create_dir(directory.join("nested.zip")).expect("folder named like an archive");
             fixture.view.refresh();
-            wait_until(|| rendered_name(&fixture.view.widget(), "bundle.tar"));
+            wait_until(|| {
+                rendered_name(&fixture.view.widget(), "bundle.tar")
+                    && rendered_name(&fixture.view.widget(), "nested.zip")
+            });
             enable_tenxer(&fixture);
             let browser = fixture.view.browser();
             let origin = browser.active_location();
@@ -929,6 +933,13 @@ fn tenxer_action_chord_compresses_and_extracts_archives() {
             wait_until(|| modal_visible(&fixture.overlay));
             close_modal(&fixture);
             assert_eq!(directory_names(&destination), Vec::<String>::new());
+
+            move_to_named(&fixture, &browser, "nested.zip");
+            action(Key::e, ModifierType::empty());
+            assert_eq!(feedback(&fixture), "Not an archive");
+            action(Key::E, ModifierType::SHIFT_MASK);
+            assert_eq!(fixture.shortcuts.open_prompt_kind(), None);
+            assert_eq!(feedback(&fixture), "Not an archive");
 
             move_to_named(&fixture, &browser, "bundle.tar");
             action(Key::e, ModifierType::empty());

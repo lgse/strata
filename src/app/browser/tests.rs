@@ -322,6 +322,21 @@ impl FileSource for ArchiveFileSource {
                     child_count: MetadataValue::Unknown,
                     duration_seconds: MetadataValue::Unknown,
                 },
+                FileEntry {
+                    location: Location::local("/fixture/socket.zip"),
+                    native_name: OsString::from("socket.zip"),
+                    thumbnail_path: None,
+                    display_name: "socket.zip".into(),
+                    kind: EntryKind::Other,
+                    size: MetadataValue::Known(0),
+                    modified_unix_seconds: MetadataValue::Known(1),
+                    recent_unix_seconds: MetadataValue::Unknown,
+                    is_hidden: false,
+                    mode: MetadataValue::Unknown,
+                    image_dimensions: MetadataValue::Unknown,
+                    child_count: MetadataValue::Unknown,
+                    duration_seconds: MetadataValue::Unknown,
+                },
             ],
         });
         emit(DirectoryEvent::Finished {

@@ -532,10 +532,7 @@ impl BrowserView {
             1 => entries.remove(0),
             _ => return Err("Extract one archive at a time"),
         };
-        if entry.is_directory()
-            || entry.location.native_path().is_none()
-            || ArchiveFormat::from_extension(&entry.display_name).is_none()
-        {
+        if ArchiveFormat::for_entry(&entry).is_none() {
             return Err("Not an archive");
         }
         Ok(entry)
