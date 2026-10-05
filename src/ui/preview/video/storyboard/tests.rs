@@ -39,3 +39,36 @@ fn nearest_cell_falls_back_outwards_while_the_board_is_partial() {
     );
     assert!(!board.is_complete());
 }
+
+#[test]
+fn a_restarted_decode_keeps_the_cells_of_a_partial_board() {
+    let key = TrackKey::of(&crate::ui::preview::tests::entry("partial.mp4"));
+    let sheet = Sheet {
+        width: 1,
+        height: 1,
+        count: 8,
+        duration_us: 8_000_000,
+    };
+    let partial = adopt(&key, sheet);
+    assert!(partial.set_cell(3, vec![0; 4]));
+    let resumed = adopt(&key, sheet);
+    assert!(
+        Rc::ptr_eq(&partial, &resumed),
+        "the same sheet keeps the board"
+    );
+    assert_eq!(resumed.loaded_cells(), 1);
+    assert!(
+        !resumed.set_cell(3, vec![0; 4]),
+        "a decoded cell is not replaced"
+    );
+    let recut = adopt(&key, Sheet { count: 16, ..sheet });
+    assert!(
+        !Rc::ptr_eq(&partial, &recut),
+        "a different sheet starts over"
+    );
+    assert_eq!(recut.loaded_cells(), 0);
+    assert!(Rc::ptr_eq(
+        &recut,
+        &cached_storyboard(&key).expect("the fresh board is cached")
+    ));
+}

@@ -38,9 +38,14 @@ impl Storyboard {
         })
     }
 
-    pub(in crate::ui::preview) fn set_cell(&self, index: u32, pixels: Vec<u8>) {
+    /// Fills an empty cell; a cell decoded on an earlier visit is kept.
+    pub(in crate::ui::preview) fn set_cell(&self, index: u32, pixels: Vec<u8>) -> bool {
         if index >= self.sheet.count || pixels.len() != self.sheet.cell_bytes() {
-            return;
+            return false;
+        }
+        let mut cells = self.cells.borrow_mut();
+        if cells[index as usize].is_some() {
+            return false;
         }
         let texture = gdk::MemoryTexture::new(
             self.sheet.width as i32,
@@ -49,7 +54,8 @@ impl Storyboard {
             &glib::Bytes::from_owned(pixels),
             self.sheet.width as usize * 4,
         );
-        self.cells.borrow_mut()[index as usize] = Some(texture.upcast::<gdk::Texture>());
+        cells[index as usize] = Some(texture.upcast::<gdk::Texture>());
+        true
     }
 
     pub(super) fn is_complete(&self) -> bool {
@@ -83,6 +89,19 @@ pub(super) fn cached_storyboard(key: &TrackKey) -> Option<Rc<Storyboard>> {
     STORYBOARDS.with_borrow_mut(|cache| cache.get(key))
 }
 
+/// The cached board cut from the same sheet, so a partial board keeps the
+/// cells it has; any other sheet starts a fresh board in its place.
+fn adopt(key: &TrackKey, sheet: Sheet) -> Rc<Storyboard> {
+    STORYBOARDS.with_borrow_mut(|cache| {
+        if let Some(board) = cache.get(key).filter(|board| board.sheet == sheet) {
+            return board;
+        }
+        let fresh = Storyboard::new(sheet);
+        cache.insert(key.clone(), fresh.clone());
+        fresh
+    })
+}
+
 type Timer = Rc<RefCell<Option<glib::SourceId>>>;
 
 /// Streams cells into `on_update`; dropping it stops the decode.
@@ -96,7 +115,8 @@ impl Drop for StoryboardLoad {
     }
 }
 
-/// A complete cached board answers at once; a partial one is shown and refilled.
+/// A complete cached board answers at once; a partial one is shown while its
+/// missing cells are decoded.
 pub(super) fn load_storyboard(
     entry: &FileEntry,
     source: &SandboxedMedia,
@@ -132,14 +152,12 @@ pub(super) fn load_storyboard(
             while let Some(event) = session.as_ref().and_then(StoryboardSession::receive) {
                 match event {
                     StoryboardEvent::Sheet(sheet) => {
-                        let fresh = Storyboard::new(sheet);
-                        STORYBOARDS
-                            .with_borrow_mut(|cache| cache.insert(key.clone(), fresh.clone()));
-                        board.replace(Some(fresh));
+                        board.replace(Some(adopt(&key, sheet)));
                     }
                     StoryboardEvent::Cell { index, pixels } => {
-                        if let Some(board) = board.borrow().as_ref() {
-                            board.set_cell(index, pixels);
+                        if let Some(board) = board.borrow().as_ref()
+                            && board.set_cell(index, pixels)
+                        {
                             on_update(board.clone());
                         }
                     }

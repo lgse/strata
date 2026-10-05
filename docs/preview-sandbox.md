@@ -539,7 +539,7 @@ could not produce are absent and the nearest neighbour stands in. Clips under
 four seconds, animations, attached pictures, raw elementary streams and unknown
 durations have no storyboard. A 90-second limit bounds the decode, and finished
 or partial boards are cached in memory for the last 8 clips (at most about 14
-MB), with partial boards refilled on the next visit.
+MB); the next visit to a partial board decodes only its missing cells.
 
 Opening a previewed video externally, with **Enter**, the header's Open button
 or activation in the listing, pauses the preview and hands its position to the
