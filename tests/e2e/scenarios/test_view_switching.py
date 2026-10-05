@@ -117,7 +117,7 @@ def test_switching_preserves_the_pane_filter(strata):
 
 def test_list_column_resize_tracks_the_pointer_without_an_initial_jump(strata):
     strata.switch_view("List")
-    for label in ["Name", "Mode", "Size", "Type", "Modified"]:
+    for label in ["Name", "Size", "Type", "Modified"]:
         heading = strata.wait(
             lambda: strata.pane().find(role="button", name=label),
             f"the {label} heading to appear",

@@ -2865,6 +2865,8 @@ fn register_list_column_cell(
     index: usize,
     widget: &impl IsA<gtk::Widget>,
 ) {
+    // Preserve saved column indices while omitting UNIX permissions from List views.
+    widget.set_visible(index != 1);
     widget.set_width_request(columns.widths[index].get());
     // Until the user resizes it, Name absorbs space left after the fixed metadata columns.
     widget.set_hexpand(index == 0 && !columns.name_manually_resized.get());
