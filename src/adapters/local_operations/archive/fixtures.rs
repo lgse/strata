@@ -234,6 +234,21 @@ pub(super) fn write_tar_entries(
     Ok(())
 }
 
+/// Rewrites the plain TAR at `path` as two concatenated gzip members split at
+/// byte `split_at`, as parallel compressors such as pigz produce.
+pub(super) fn split_into_gzip_members(path: &Path, split_at: usize) -> Result<(), Box<dyn Error>> {
+    let tar = fs::read(path)?;
+    let mut members = Vec::new();
+    for part in [&tar[..split_at], &tar[split_at..]] {
+        let mut encoder =
+            flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        encoder.write_all(part)?;
+        members.extend(encoder.finish()?);
+    }
+    fs::write(path, members)?;
+    Ok(())
+}
+
 /// Flips one byte of the gzip trailer: `8` is the first CRC32 byte, `4` the first ISIZE byte.
 pub(super) fn corrupt_gzip_trailer(
     path: &Path,

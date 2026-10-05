@@ -3,8 +3,8 @@
 use super::super::fixtures::{
     FixtureMember, always_cancelled, completed_extract, corrupt_gzip_trailer, expected_mode,
     extract_zip, never_cancelled, patch_zip_external_attributes, patch_zip_uncompressed_size,
-    write_7z, write_7z_entries, write_compression_fixture, write_members, write_tar,
-    write_tar_entries, write_zip, zip_extended_timestamp,
+    split_into_gzip_members, write_7z, write_7z_entries, write_compression_fixture,
+    write_members, write_tar, write_tar_entries, write_zip, zip_extended_timestamp,
 };
 use super::{
     ArchiveError, ArchiveOutcome, extract_7z_from_reader, extract_tar,
@@ -2020,6 +2020,52 @@ fn zip_prefers_the_extended_timestamp_over_the_dos_time() -> Result<(), Box<dyn 
     for name in ["dos.txt", "negative.txt"] {
         let mtime = fs::metadata(destination.join("times").join(name))?.mtime();
         assert_eq!(mtime, dos_local, "{name}");
+    }
+    Ok(())
+}
+
+#[test]
+fn every_gzip_member_of_a_tar_gz_is_read_and_verified() -> Result<(), Box<dyn Error>> {
+    for corrupt_second_member in [false, true] {
+        let root = tempfile::tempdir()?;
+        let archive = root.path().join("content.tar.gz");
+        write_tar_entries(
+            &archive,
+            &[
+                (tar::EntryType::Regular, "a.txt", b"a"),
+                (tar::EntryType::Regular, "b.txt", b"b"),
+            ],
+            false,
+        )?;
+        // After `a.txt`'s header and data blocks, so a reader that stops at
+        // the first member sees a complete archive.
+        split_into_gzip_members(&archive, 1024)?;
+        if corrupt_second_member {
+            corrupt_gzip_trailer(&archive, 8)?;
+        }
+        let destination = root.path().join("destination");
+        fs::create_dir(&destination)?;
+
+        let result = extract_tar(
+            &archive,
+            &destination,
+            "content.tar.gz",
+            true,
+            &Arc::new(AtomicUsize::new(0)),
+            &never_cancelled(),
+        );
+
+        if corrupt_second_member {
+            let kept = format!("{} Extracted entries remain in `content`.", super::INVALID_ARCHIVE);
+            assert!(
+                matches!(&result, Err(ArchiveError::Failed(message)) if *message == kept),
+                "{result:?}"
+            );
+        } else {
+            assert_eq!(completed_extract(result?)?.as_deref(), Some("content"));
+        }
+        assert_eq!(fs::read(destination.join("content/a.txt"))?, b"a");
+        assert_eq!(fs::read(destination.join("content/b.txt"))?, b"b");
     }
     Ok(())
 }

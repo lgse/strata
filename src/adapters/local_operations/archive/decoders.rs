@@ -8,7 +8,7 @@
 //! device nodes are refused.
 //!
 //! Gzip streams are read to the end after the last TAR entry so the CRC32 and
-//! length trailer is verified.
+//! length trailer of every gzip member is verified.
 
 use std::{
     borrow::Cow,
@@ -295,8 +295,9 @@ pub(super) fn extract_tar(
     let mut session = ExtractionSession::open(dest_dir, archive_name, progress, cancelled)?;
     session.record_hard_link_targets();
     let file = std::fs::File::open(archive_path).map_err(archive_failed)?;
+    // Parallel compressors such as pigz and bgzip write several gzip members.
     let reader: Box<dyn std::io::Read> = if gzip {
-        Box::new(flate2::read::GzDecoder::new(file))
+        Box::new(flate2::read::MultiGzDecoder::new(file))
     } else {
         Box::new(file)
     };

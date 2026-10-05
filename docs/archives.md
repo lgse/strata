@@ -47,10 +47,11 @@ as after a wrong password, never merges into it. An archive with several
 top-level entries is extracted into the next numbered folder; a single entry
 lands in the destination under its own name, as usual.
 
-`.tar.gz` archives are read to the end of the gzip stream, so the CRC32 and
-length trailer is verified after the last member. A mismatch or a truncated
-trailer is reported as a damaged archive. Members already written are kept as
-described above, but their contents are unverified.
+`.tar.gz` archives are read to the end of the gzip stream, including every
+gzip member that parallel compressors such as pigz write, so each member's
+CRC32 and length trailer is verified. A mismatch or a truncated trailer is
+reported as a damaged archive. Members already written are kept as described
+above, but their contents are unverified.
 
 ## Links, permissions and times
 
