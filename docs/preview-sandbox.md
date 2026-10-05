@@ -550,12 +550,12 @@ for Celluloid and `-ss` for MPlayer. Unknown players, failed timed launches and
 positions within a second of either end open the file plainly. The launch uses
 the display's launch context, so the player gets startup notification.
 
-With **Preview autoplay** on, a video starts silent: the player scales its
-output by a fade gain on top of the saved volume, which it never changes. From
-the first frame the gain rises over 2 s on a slow-in, slow-out curve (a
-smoothstep squared, so the ear hears an even rise), set about sixty times a
-second on the GStreamer `volume` element, so no audio is processed in the
-application. A muted
+With **Preview autoplay** on, playback starts silent: the player scales its
+output by a fade gain on top of the saved volume, which it never changes. The
+gain rises on a slow-in, slow-out curve (a smoothstep squared, so the ear hears
+an even rise), over 1 s from the first frame for video and over 0.5 s from the
+first sample for audio, set about sixty times a second on the GStreamer
+`volume` element, so no audio is processed in the application. A muted
 saved state skips the ramp, and any play, pause, seek, volume or mute input, or
 moving to another file, ends it immediately.
 

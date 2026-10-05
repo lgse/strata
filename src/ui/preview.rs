@@ -26,6 +26,7 @@ use super::{blur::BlurBin, controls::form_password_entry, controls::modal_layout
 
 mod archive;
 pub(super) mod audio;
+mod ease_in;
 mod keyboard;
 mod layout;
 pub(in crate::ui) use layout::separator_width;
@@ -708,6 +709,9 @@ impl PreviewState {
         }
         if let Some(video) = self.video.borrow().as_ref() {
             video.view.end_ease_in();
+        }
+        if let Some(audio) = self.audio.borrow().as_ref() {
+            audio.view.end_ease_in();
         }
         let preferences = super::preferences::PreferenceManager::shared();
         if self.media_volume_slider.borrow().is_some() {
@@ -1547,12 +1551,20 @@ impl PreviewState {
                 };
                 if preferences.preview_autoplay() || (continue_playback && family.is_some()) {
                     // Unasked-for playback starts silent; a continued one keeps its sound.
-                    if preferences.preview_autoplay()
-                        && !continue_playback
-                        && family == Some(MediaFamily::Video)
-                        && let Some(video) = self.video.borrow().as_ref()
-                    {
-                        video.view.start_silently();
+                    if preferences.preview_autoplay() && !continue_playback {
+                        match family {
+                            Some(MediaFamily::Video) => {
+                                if let Some(video) = self.video.borrow().as_ref() {
+                                    video.view.start_silently();
+                                }
+                            }
+                            Some(MediaFamily::Audio) => {
+                                if let Some(audio) = self.audio.borrow().as_ref() {
+                                    audio.view.start_silently();
+                                }
+                            }
+                            None => {}
+                        }
                     }
                     self.sizing.play_or_defer(&media);
                 } else if let Some(center_play) = center_play {

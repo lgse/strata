@@ -22,7 +22,10 @@ use crate::{
     ui::media::DecodedMedia,
 };
 
-use super::ListingPosition;
+use super::{ListingPosition, ease_in::EaseIn};
+
+/// Autoplayed sound rises from silence over this long, from the first sample.
+const EASE_IN_RAMP: std::time::Duration = std::time::Duration::from_millis(500);
 
 pub(in crate::ui) use palette::apply_theme;
 pub(in crate::ui::preview) use scrubber::Scrubber;
@@ -79,6 +82,7 @@ pub(super) struct AudioView {
     folder: Cell<Option<ListingPosition>>,
     details: RefCell<Option<details::DetailsLoad>>,
     peaks: RefCell<Option<details::PeaksLoad>>,
+    ease: Rc<EaseIn>,
 }
 
 fn label(class: &str) -> gtk::Label {
@@ -194,7 +198,19 @@ impl AudioView {
             folder: Cell::default(),
             details: RefCell::default(),
             peaks: RefCell::default(),
+            ease: EaseIn::new(EASE_IN_RAMP),
         });
+        // Touching the volume or mute is a choice about sound: bring it in at once.
+        let weak = Rc::downgrade(&view);
+        crate::ui::preferences::PreferenceManager::shared().bind_preference(
+            &view.root,
+            |preferences| (preferences.preview_volume(), preferences.preview_muted()),
+            move |_, _| {
+                if let Some(view) = weak.upgrade() {
+                    view.ease.end();
+                }
+            },
+        );
 
         let weak = Rc::downgrade(&view);
         play.connect_clicked(move |_| {
@@ -243,11 +259,29 @@ impl AudioView {
         }
         self.details.borrow_mut().take();
         self.peaks.borrow_mut().take();
+        self.ease.stop();
         self.scrubber.set_media(None);
         self.scrubber.clear_levels();
         self.spectrum.set_media(None);
         // Preserve the record's position between tracks.
         self.set_playing_icon(false);
+    }
+
+    /// Autoplay starts silent; the sound fades in once it starts flowing.
+    pub(super) fn start_silently(&self) {
+        if let Some(media) = self.media.borrow().as_ref() {
+            self.ease.arm(media);
+        }
+    }
+
+    /// Any deliberate playback input brings the sound in immediately.
+    pub(super) fn end_ease_in(&self) {
+        self.ease.end();
+    }
+
+    #[cfg(test)]
+    pub(super) fn is_easing_in(&self) -> bool {
+        self.ease.is_active()
     }
 
     pub(super) fn show(self: &Rc<Self>, track: Track) {
@@ -279,6 +313,25 @@ impl AudioView {
                 }
             }));
         }
+        // The playhead first moves when sound starts flowing; the rise begins there.
+        let weak = Rc::downgrade(self);
+        handlers.push(media.connect_notify_local(Some("timestamp"), move |_, _| {
+            if let Some(view) = weak.upgrade()
+                && view.ease.is_armed()
+            {
+                view.ease.start();
+            }
+        }));
+        let weak = Rc::downgrade(self);
+        handlers.push(
+            media.connect_notify_local(Some("seeking"), move |media, _| {
+                if media.is_seeking()
+                    && let Some(view) = weak.upgrade()
+                {
+                    view.ease.end();
+                }
+            }),
+        );
         self.handlers.replace(handlers);
         self.media.replace(Some(media.clone()));
         self.spectrum
@@ -377,6 +430,7 @@ impl AudioView {
     }
 
     fn toggle_playback(&self) {
+        self.ease.end();
         let media = self.media.borrow().clone();
         if let Some(media) = media {
             media.set_playing(!media.is_playing());

@@ -520,10 +520,10 @@ fn autoplay_starts_silent_and_eases_in_unless_the_viewer_acts_or_is_muted() {
             assert_eq!(media.fade(), 0.0, "but silently");
             assert!(view().is_easing_in());
             media.present_test_frame(64, 36);
-            pump(std::time::Duration::from_millis(300));
+            pump(std::time::Duration::from_millis(200));
             let early = media.fade();
             assert!(
-                early > 0.0 && early < 0.1,
+                early > 0.0 && early < 0.2,
                 "the fade starts at the first frame and rises gently ({early})"
             );
             wait_until("the ease-in", || media.fade() == 1.0);
@@ -627,7 +627,7 @@ fn handoffs_pause_the_shown_video_and_report_positions_away_from_the_ends() {
 
 #[test]
 fn the_ease_in_curve_rises_evenly_and_lands_softly() {
-    use crate::ui::preview::video::ease_in_gain;
+    use crate::ui::preview::ease_in::gain as ease_in_gain;
     assert_eq!(ease_in_gain(0.0), 0.0);
     assert_eq!(ease_in_gain(1.0), 1.0);
     assert_eq!(ease_in_gain(-0.5), 0.0);

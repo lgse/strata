@@ -42,17 +42,7 @@ const BUBBLE_CHROME: i32 = 8;
 /// A storyboard cell stands in at this strength while a seek decodes.
 const SEEK_COVER_OPACITY: f64 = 0.9;
 /// Autoplayed sound rises from silence over this long, from the first frame.
-const EASE_IN_RAMP: Duration = Duration::from_secs(2);
-const EASE_IN_STEP: Duration = Duration::from_millis(16);
-
-/// Slow in, slow out, on a loudness-friendly curve: a smoothstep squared, so
-/// the gain leaves zero and reaches one with no slope, and the ear hears an
-/// even rise rather than a late jump.
-pub(super) fn ease_in_gain(progress: f64) -> f64 {
-    let progress = progress.clamp(0.0, 1.0);
-    let smooth = progress * progress * (3.0 - 2.0 * progress);
-    smooth * smooth
-}
+const EASE_IN_RAMP: Duration = Duration::from_secs(1);
 const BADGE_FADE: Duration = Duration::from_millis(140);
 const BADGE_STAGGER: Duration = Duration::from_millis(40);
 const SKELETON_BADGE_WIDTHS: [i32; 3] = [44, 56, 38];
@@ -99,17 +89,7 @@ pub(super) struct VideoView {
     storyboard_load: RefCell<Option<storyboard::StoryboardLoad>>,
     first_frame_seen: Cell<bool>,
     seek_covered: Cell<bool>,
-    ease_in: Cell<EaseIn>,
-    ease_timer: RefCell<Option<glib::SourceId>>,
-}
-
-/// Where autoplay's silent start is in its ease-in.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum EaseIn {
-    Off,
-    /// Silent until the first frame arrives and the ramp starts.
-    Armed,
-    Ramping,
+    ease: Rc<super::ease_in::EaseIn>,
 }
 
 fn label(class: &str) -> gtk::Label {
@@ -269,8 +249,7 @@ impl VideoView {
             storyboard_load: RefCell::default(),
             first_frame_seen: Cell::default(),
             seek_covered: Cell::default(),
-            ease_in: Cell::new(EaseIn::Off),
-            ease_timer: RefCell::default(),
+            ease: super::ease_in::EaseIn::new(EASE_IN_RAMP),
         });
 
         let weak = Rc::downgrade(&view);
@@ -444,7 +423,7 @@ impl VideoView {
             }
         }
         self.details.borrow_mut().take();
-        self.stop_ease_in(EaseIn::Off);
+        self.ease.stop();
         self.glow.clear();
         self.storyboard_load.borrow_mut().take();
         self.storyboard.borrow_mut().take();
@@ -573,80 +552,24 @@ impl VideoView {
         }
         self.placeholder.conceal();
         self.start_storyboard();
-        self.ramp_audio();
+        self.ease.start();
     }
 
     /// Autoplay starts silent; the sound fades in from the first frame.
     pub(super) fn start_silently(&self) {
-        let Some(media) = self.media.borrow().clone() else {
-            return;
-        };
-        if media.is_muted() {
-            return;
-        }
-        if let Some(decoded) = media.downcast_ref::<DecodedMedia>() {
-            decoded.set_fade(0.0);
-            self.ease_in.set(EaseIn::Armed);
+        if let Some(media) = self.media.borrow().as_ref() {
+            self.ease.arm(media);
         }
     }
 
     /// Any deliberate playback input brings the sound in immediately.
     pub(super) fn end_ease_in(&self) {
-        if self.ease_in.get() == EaseIn::Off {
-            return;
-        }
-        self.stop_ease_in(EaseIn::Off);
-        self.set_fade(1.0);
-    }
-
-    fn stop_ease_in(&self, state: EaseIn) {
-        self.ease_in.set(state);
-        if let Some(timer) = self.ease_timer.borrow_mut().take() {
-            timer.remove();
-        }
-    }
-
-    fn set_fade(&self, fade: f64) {
-        if let Some(decoded) = self
-            .media
-            .borrow()
-            .as_ref()
-            .and_then(|media| media.downcast_ref::<DecodedMedia>())
-        {
-            decoded.set_fade(fade);
-        }
-    }
-
-    fn ramp_audio(self: &Rc<Self>) {
-        if self.ease_in.get() != EaseIn::Armed {
-            return;
-        }
-        self.ease_in.set(EaseIn::Ramping);
-        let started = std::time::Instant::now();
-        let weak = Rc::downgrade(self);
-        let timer = glib::timeout_add_local(EASE_IN_STEP, move || {
-            let Some(view) = weak.upgrade() else {
-                return glib::ControlFlow::Break;
-            };
-            if view.ease_in.get() != EaseIn::Ramping {
-                return glib::ControlFlow::Break;
-            }
-            let progress = started.elapsed().as_secs_f64() / EASE_IN_RAMP.as_secs_f64();
-            if progress >= 1.0 {
-                view.ease_timer.borrow_mut().take();
-                view.ease_in.set(EaseIn::Off);
-                view.set_fade(1.0);
-                return glib::ControlFlow::Break;
-            }
-            view.set_fade(ease_in_gain(progress));
-            glib::ControlFlow::Continue
-        });
-        self.ease_timer.replace(Some(timer));
+        self.ease.end();
     }
 
     #[cfg(test)]
     pub(super) fn is_easing_in(&self) -> bool {
-        self.ease_in.get() != EaseIn::Off
+        self.ease.is_active()
     }
 
     /// Runs once the first frame is on screen, so it never delays playback.
