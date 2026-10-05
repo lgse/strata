@@ -4,8 +4,8 @@ use super::{
     ArchiveError, copy_with_big_buf,
     decoders::{extract_7z_from_reader, extract_tar},
     fixtures::{
-        COMPRESSION_STAGE, EXTRACTION_STAGE, HomeTrashGuard, corrupt_gzip_trailer, extract_zip, stages,
-        never_cancelled,
+        COMPRESSION_STAGE, EXTRACTION_STAGE, HomeTrashGuard, corrupt_gzip_trailer, expected_mode,
+        extract_zip, stages, never_cancelled, set_times_without_following,
         tempdir_on_home_device, test_file_entry, write_7z_entries, write_tar_entries,
         write_zip_stored,
     },
@@ -25,7 +25,7 @@ use std::{
     cell::RefCell,
     error::Error,
     fs,
-    os::unix::fs::PermissionsExt,
+    os::unix::fs::{MetadataExt, PermissionsExt},
     path::Path,
     rc::Rc,
     sync::{
@@ -289,6 +289,107 @@ fn every_compression_format_commits_a_readable_archive() -> Result<(), Box<dyn E
         );
     }
     assert!(stages(&destination, COMPRESSION_STAGE)?.is_empty());
+    Ok(())
+}
+
+#[test]
+fn strata_archives_round_trip_links_modes_and_times() -> Result<(), Box<dyn Error>> {
+    const SOURCE_TIME: i64 = 1_000_000_000;
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    for format in [
+        ArchiveFormat::Zip,
+        ArchiveFormat::Tar,
+        ArchiveFormat::TarGz,
+        ArchiveFormat::SevenZ,
+    ] {
+        let context = format!("{format:?}");
+        let root = tempfile::tempdir()?;
+        let source = root.path().join("source");
+        fs::create_dir_all(source.join("inner"))?;
+        fs::write(source.join("run.sh"), b"#!/bin/sh\necho ok\n")?;
+        fs::write(source.join("secret.txt"), b"secret")?;
+        fs::write(source.join("inner/note.txt"), b"note")?;
+        let with_link = format != ArchiveFormat::SevenZ;
+        if with_link {
+            std::os::unix::fs::symlink("run.sh", source.join("link"))?;
+            set_times_without_following(&source.join("link"), SOURCE_TIME)?;
+        }
+        let modes = [
+            ("run.sh", 0o755),
+            ("secret.txt", 0o600),
+            ("inner/note.txt", 0o644),
+            ("inner", 0o700),
+            ("", 0o750),
+        ];
+        for (name, mode) in modes {
+            let path = source.join(name);
+            fs::set_permissions(&path, fs::Permissions::from_mode(mode))?;
+            set_times_without_following(&path, SOURCE_TIME)?;
+        }
+        let archives = root.path().join("archives");
+        fs::create_dir(&archives)?;
+        let events = run_compression(CompressRequest {
+            id: OperationRequestId(1),
+            entries: vec![test_file_entry(&source)],
+            destination: Location::local(&archives),
+            archive_name: "source".to_owned(),
+            conflict: TransferConflict::FailIfExists,
+            format,
+            password: None,
+        });
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, OperationEvent::Compressed { .. })),
+            "{context}: {events:?}"
+        );
+        let extracted = root.path().join("extracted");
+        fs::create_dir(&extracted)?;
+
+        let events = run_extraction(ExtractRequest {
+            id: OperationRequestId(2),
+            entry: test_file_entry(&archives.join(format!("source.{}", format.extension()))),
+            destination: Location::local(&extracted),
+            created_destination: false,
+            password: None,
+        });
+
+        assert!(
+            matches!(
+                events.last(),
+                Some(OperationEvent::Extracted { first_name: Some(name), .. }) if name == "source"
+            ),
+            "{context}: {events:?}"
+        );
+        let output = extracted.join("source");
+        if with_link {
+            let link = output.join("link");
+            let metadata = fs::symlink_metadata(&link)?;
+            assert!(
+                metadata.file_type().is_symlink(),
+                "{context}: `source/link` extracted as a {} of {} bytes, not as a symlink",
+                if metadata.is_dir() { "directory" } else { "regular file" },
+                metadata.len()
+            );
+            assert_eq!(fs::read_link(&link)?, Path::new("run.sh"), "{context}");
+            assert_eq!(metadata.mtime(), SOURCE_TIME, "{context}: link mtime");
+        }
+        for (name, mode) in modes {
+            let metadata = fs::metadata(output.join(name))?;
+            assert_eq!(
+                format!("{:o}", metadata.permissions().mode() & 0o7777),
+                format!("{:o}", expected_mode(mode)),
+                "{context}: mode of `source/{name}`"
+            );
+            assert_eq!(
+                metadata.mtime(),
+                SOURCE_TIME,
+                "{context}: mtime of `source/{name}`"
+            );
+        }
+    }
     Ok(())
 }
 

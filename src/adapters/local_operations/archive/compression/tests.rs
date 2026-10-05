@@ -4,8 +4,8 @@ mod cancellation;
 mod policy;
 
 use super::super::fixtures::{
-    COMPRESSION_STAGE, HomeTrashGuard, compression_stage_mode, never_cancelled, stages,
-    tempdir_on_home_device, write_compression_fixture,
+    COMPRESSION_STAGE, HomeTrashGuard, compression_stage_mode, never_cancelled,
+    set_times_without_following, stages, tempdir_on_home_device, write_compression_fixture,
 };
 use super::{ArchiveError, inspect_archive_sources, process_umask, write_staged_archive};
 use crate::{
@@ -625,5 +625,278 @@ fn encrypted_seven_z_archives_are_still_compressed() -> Result<(), Box<dyn Error
         encrypted_len < 1 << 20,
         "encrypted archive should compress ({encrypted_len} bytes, plain {plain_len} bytes)"
     );
+    Ok(())
+}
+
+const SOURCE_TIME: i64 = 1_000_000_000;
+
+#[derive(PartialEq, Eq)]
+struct CompressedMetadata {
+    mode: Option<u32>,
+    modified: Option<i64>,
+}
+
+impl std::fmt::Debug for CompressedMetadata {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.mode {
+            Some(mode) => write!(formatter, "mode {mode:o}, ")?,
+            None => formatter.write_str("no mode, ")?,
+        }
+        match self.modified {
+            Some(seconds) => write!(formatter, "modified {seconds}"),
+            None => formatter.write_str("no time"),
+        }
+    }
+}
+
+fn zip_dos_seconds(time: zip::DateTime) -> Result<i64, Box<dyn Error>> {
+    Ok(glib::DateTime::from_local(
+        i32::from(time.year()),
+        i32::from(time.month()),
+        i32::from(time.day()),
+        i32::from(time.hour()),
+        i32::from(time.minute()),
+        f64::from(time.second()),
+    )?
+    .to_unix())
+}
+
+fn zip_extended_time(entry: &zip::read::ZipFile<'_, fs::File>) -> Option<i64> {
+    entry.extra_data_fields().find_map(|field| match field {
+        zip::ExtraField::ExtendedTimestamp(stamp) => stamp.mod_time().map(i64::from),
+        zip::ExtraField::Ntfs(_) => None,
+    })
+}
+
+/// Mode bits and the modification time each member records, preferring the
+/// ZIP `UT` field over the DOS time.
+fn read_compressed_metadata(
+    path: &Path,
+    format: ArchiveFormat,
+    password: Option<&str>,
+) -> Result<BTreeMap<PathBuf, CompressedMetadata>, Box<dyn Error>> {
+    let file = fs::File::open(path)?;
+    let mut result = BTreeMap::new();
+    match format {
+        ArchiveFormat::Zip => {
+            let mut archive = zip::ZipArchive::new(file)?;
+            for index in 0..archive.len() {
+                let options =
+                    zip::read::ZipReadOptions::new().password(password.map(str::as_bytes));
+                let entry = archive.by_index_with_options(index, options)?;
+                let modified = match zip_extended_time(&entry) {
+                    Some(seconds) => Some(seconds),
+                    None => entry.last_modified().map(zip_dos_seconds).transpose()?,
+                };
+                let metadata = CompressedMetadata {
+                    mode: entry.unix_mode().map(|mode| mode & 0o7777),
+                    modified,
+                };
+                let name = PathBuf::from(entry.name().trim_end_matches('/'));
+                assert!(result.insert(name, metadata).is_none());
+            }
+        }
+        ArchiveFormat::Tar | ArchiveFormat::TarGz => {
+            let reader: Box<dyn Read> = if format == ArchiveFormat::TarGz {
+                Box::new(flate2::read::GzDecoder::new(file))
+            } else {
+                Box::new(file)
+            };
+            for entry in tar::Archive::new(reader).entries()? {
+                let entry = entry?;
+                let metadata = CompressedMetadata {
+                    mode: Some(entry.header().mode()? & 0o7777),
+                    modified: Some(i64::try_from(entry.header().mtime()?)?),
+                };
+                assert!(result.insert(entry.path()?.into_owned(), metadata).is_none());
+            }
+        }
+        ArchiveFormat::SevenZ => {
+            let archive = sevenz_rust2::ArchiveReader::new(
+                file,
+                password
+                    .map(sevenz_rust2::Password::from)
+                    .unwrap_or_default(),
+            )?;
+            for entry in &archive.archive().files {
+                let mode = (entry.has_windows_attributes && entry.windows_attributes & 0x8000 != 0)
+                    .then_some((entry.windows_attributes >> 16) & 0o7777);
+                let modified = if entry.has_last_modified_date {
+                    let time = std::time::SystemTime::from(entry.last_modified_date);
+                    Some(i64::try_from(
+                        time.duration_since(std::time::UNIX_EPOCH)?.as_secs(),
+                    )?)
+                } else {
+                    None
+                };
+                let metadata = CompressedMetadata { mode, modified };
+                assert!(result.insert(PathBuf::from(entry.name()), metadata).is_none());
+            }
+        }
+        ArchiveFormat::Rar => return Err("RAR compression is not supported".into()),
+    }
+    Ok(result)
+}
+
+#[test]
+fn compression_records_source_times_and_modes_in_every_format() -> Result<(), Box<dyn Error>> {
+    for (format, password) in [
+        (ArchiveFormat::Zip, None),
+        (ArchiveFormat::Zip, Some("test-password")),
+        (ArchiveFormat::Tar, None),
+        (ArchiveFormat::TarGz, None),
+        (ArchiveFormat::SevenZ, None),
+    ] {
+        let context = format!("{format:?} password={}", password.is_some());
+        let root = tempfile::tempdir()?;
+        let source = root.path().join("dir");
+        fs::create_dir(&source)?;
+        fs::write(source.join("run.sh"), b"#!/bin/sh\n")?;
+        fs::write(source.join("secret.txt"), b"secret")?;
+        fs::set_permissions(source.join("run.sh"), fs::Permissions::from_mode(0o755))?;
+        fs::set_permissions(source.join("secret.txt"), fs::Permissions::from_mode(0o600))?;
+        // 7z refuses links (`compression_reports_unsupported_7z_links_without_committing`).
+        let with_link = format != ArchiveFormat::SevenZ;
+        if with_link {
+            std::os::unix::fs::symlink("run.sh", source.join("link"))?;
+            set_times_without_following(&source.join("link"), SOURCE_TIME)?;
+        }
+        set_times_without_following(&source.join("run.sh"), SOURCE_TIME)?;
+        set_times_without_following(&source.join("secret.txt"), SOURCE_TIME)?;
+        fs::set_permissions(&source, fs::Permissions::from_mode(0o750))?;
+        set_times_without_following(&source, SOURCE_TIME)?;
+        let mut expected = BTreeMap::from([
+            (PathBuf::from("dir"), (0o750, SOURCE_TIME)),
+            (PathBuf::from("dir/run.sh"), (0o755, SOURCE_TIME)),
+            (PathBuf::from("dir/secret.txt"), (0o600, SOURCE_TIME)),
+        ]);
+        if with_link {
+            expected.insert(PathBuf::from("dir/link"), (0o777, SOURCE_TIME));
+        }
+        let expected = expected
+            .into_iter()
+            .map(|(name, (mode, modified))| {
+                (
+                    name,
+                    CompressedMetadata {
+                        mode: Some(mode),
+                        modified: Some(modified),
+                    },
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        let archive = root.path().join("archive");
+
+        write_compression_fixture(&archive, &[source], format, password)?;
+
+        assert_eq!(
+            read_compressed_metadata(&archive, format, password)?,
+            expected,
+            "{context}"
+        );
+        if format == ArchiveFormat::Zip {
+            let mut zip = zip::ZipArchive::new(fs::File::open(&archive)?)?;
+            let local = glib::DateTime::from_unix_local(SOURCE_TIME)?;
+            for index in 0..zip.len() {
+                let entry = zip.by_index_raw(index)?;
+                let dos = entry.last_modified().ok_or("ZIP entry has no DOS time")?;
+                assert_eq!(
+                    (
+                        i32::from(dos.year()),
+                        i32::from(dos.month()),
+                        i32::from(dos.day()),
+                        i32::from(dos.hour()),
+                        i32::from(dos.minute()),
+                        i32::from(dos.second()),
+                    ),
+                    (
+                        local.year(),
+                        local.month(),
+                        local.day_of_month(),
+                        local.hour(),
+                        local.minute(),
+                        local.second(),
+                    ),
+                    "{context}: DOS time of `{}`",
+                    entry.name()
+                );
+                assert_eq!(
+                    zip_extended_time(&entry),
+                    Some(SOURCE_TIME),
+                    "{context}: UT field of `{}`",
+                    entry.name()
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn zip_times_outside_the_dos_range_are_clamped_without_failing() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source");
+    fs::create_dir(&source)?;
+    let epoch = source.join("epoch.txt");
+    let beyond_i32 = source.join("beyond-i32.txt");
+    let beyond_dos = source.join("beyond-dos.txt");
+    let beyond_i32_time = i64::from(u32::MAX) + 10;
+    let beyond_dos_time = 4_360_000_000;
+    for (path, seconds) in [
+        (&epoch, 0),
+        (&beyond_i32, beyond_i32_time),
+        (&beyond_dos, beyond_dos_time),
+    ] {
+        fs::write(path, b"time")?;
+        set_times_without_following(path, seconds)?;
+    }
+    let archive = root.path().join("archive.zip");
+
+    write_compression_fixture(
+        &archive,
+        &[epoch, beyond_i32, beyond_dos],
+        ArchiveFormat::Zip,
+        None,
+    )?;
+
+    let mut zip = zip::ZipArchive::new(fs::File::open(&archive)?)?;
+    let dos_parts = |time: zip::DateTime| {
+        (
+            time.year(),
+            time.month(),
+            time.day(),
+            time.hour(),
+            time.minute(),
+            time.second(),
+        )
+    };
+    let entry = zip.by_name("epoch.txt")?;
+    assert_eq!(
+        entry.last_modified().map(dos_parts),
+        Some(dos_parts(zip::DateTime::DEFAULT))
+    );
+    assert_eq!(zip_extended_time(&entry), Some(0));
+    drop(entry);
+    let entry = zip.by_name("beyond-i32.txt")?;
+    let local = glib::DateTime::from_unix_local(beyond_i32_time)?;
+    assert_eq!(
+        entry.last_modified().map(dos_parts),
+        Some((
+            u16::try_from(local.year())?,
+            u8::try_from(local.month())?,
+            u8::try_from(local.day_of_month())?,
+            u8::try_from(local.hour())?,
+            u8::try_from(local.minute())?,
+            u8::try_from(local.second() & !1)?,
+        ))
+    );
+    assert_eq!(zip_extended_time(&entry), None);
+    drop(entry);
+    let entry = zip.by_name("beyond-dos.txt")?;
+    assert_eq!(
+        entry.last_modified().map(dos_parts),
+        Some((2107, 12, 31, 23, 59, 58))
+    );
+    assert_eq!(zip_extended_time(&entry), None);
     Ok(())
 }

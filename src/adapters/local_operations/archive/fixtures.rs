@@ -611,3 +611,21 @@ pub(super) fn patch_zip_external_attributes(path: &Path, value: u32) -> Result<(
 pub(super) fn expected_mode(mode: u32) -> u32 {
     mode & 0o777 & !super::destination::process_umask()
 }
+
+/// Sets the access and modification times of `path` itself, not a link target.
+pub(super) fn set_times_without_following(path: &Path, seconds: i64) -> Result<(), Box<dyn Error>> {
+    let time = rustix::fs::Timespec {
+        tv_sec: seconds,
+        tv_nsec: 0,
+    };
+    rustix::fs::utimensat(
+        rustix::fs::CWD,
+        path,
+        &rustix::fs::Timestamps {
+            last_access: time,
+            last_modification: time,
+        },
+        rustix::fs::AtFlags::SYMLINK_NOFOLLOW,
+    )?;
+    Ok(())
+}
