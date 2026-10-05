@@ -993,3 +993,65 @@ fn audio_previews_play_without_artwork_and_extract_tags_cover_and_peaks() {
     let middle = crate::media::peaks::rms(levels[levels.len() / 2]);
     assert!(middle > 0.02, "a steady tone has a visible level: {middle}");
 }
+
+#[test]
+fn storyboards_sample_keyframes_in_subdivision_order_and_skip_unsuitable_inputs() {
+    use crate::media::storyboard::{CellReader, Sheet, subdivision_order};
+
+    let directory = tempfile::tempdir().expect("storyboard fixtures");
+    let video = directory.path().join("clip.mkv");
+    fixture(&video, "64x48", 10, 12, false);
+    let output = directory.path().join("board");
+    run_storyboard(&video, &output, 128).expect("storyboard");
+    let mut reader = Cursor::new(std::fs::read(&output).expect("board bytes"));
+    let sheet = Sheet::read(&mut reader).expect("sheet");
+    assert_eq!(
+        sheet,
+        Sheet {
+            width: 64,
+            height: 48,
+            count: 8,
+            duration_us: 12_000_000,
+        },
+        "cells are never enlarged beyond the source"
+    );
+    let mut cells = CellReader::new(sheet);
+    let mut indices = Vec::new();
+    let mut distinct = std::collections::HashSet::new();
+    while let Some((index, pixels)) = cells.read(&mut reader).expect("cell") {
+        indices.push(index);
+        distinct.insert(pixels);
+    }
+    assert_eq!(indices, subdivision_order(8));
+    assert!(distinct.len() > 1, "cells sample different moments");
+    assert_eq!(reader.position() as usize, reader.get_ref().len());
+
+    let short = directory.path().join("short.mkv");
+    fixture(&short, "64x48", 10, 2, false);
+    assert!(run_storyboard(&short, &output, 128).is_err());
+    let animation = directory.path().join("loop.gif");
+    success(
+        Command::new("ffmpeg")
+            .args([
+                "-nostdin",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc2=size=64x48:rate=10:duration=1",
+                "-threads",
+                "1",
+            ])
+            .arg(&animation),
+    );
+    assert!(run_storyboard(&animation, &output, 128).is_err());
+    let audio = directory.path().join("tone.wav");
+    success(
+        Command::new("ffmpeg")
+            .args(["-nostdin", "-v", "error", "-f", "lavfi", "-i"])
+            .arg("sine=frequency=440:duration=6")
+            .arg(&audio),
+    );
+    assert!(run_storyboard(&audio, &output, 128).is_err());
+}

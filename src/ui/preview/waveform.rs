@@ -7,8 +7,13 @@ use std::{
 
 use gtk::{gdk, glib, graphene, prelude::*, subclass::prelude::*};
 
-use super::palette::{follow_theme, palette, with_alpha};
-use crate::media::peaks::{BUCKETS, rms};
+use crate::{
+    media::peaks::{BUCKETS, rms},
+    ui::preview::audio::{
+        clock,
+        palette::{follow_theme, palette, with_alpha},
+    },
+};
 
 const HEIGHT: i32 = 40;
 const BAR_WIDTH: f32 = 2.0;
@@ -17,6 +22,7 @@ const LINE_HEIGHT: f32 = 3.0;
 const MIN_LOUDEST: f32 = 0.04;
 const GROW_RATE: f32 = 9.0;
 const SETTLED: f32 = 0.002;
+const CHAPTER_TICK: f32 = 6.0;
 const KEY_SEEK_US: i64 = 5_000_000;
 
 type PreviewCallback = Rc<dyn Fn(Option<i64>)>;
@@ -25,13 +31,14 @@ mod imp {
     use super::*;
 
     #[derive(Default)]
-    pub struct Scrubber {
+    pub struct Waveform {
         pub(super) media: RefCell<Option<gtk::MediaStream>>,
         pub(super) handlers: RefCell<Vec<glib::SignalHandlerId>>,
         pub(super) targets: RefCell<Vec<f32>>,
         pub(super) shown: RefCell<Vec<f32>>,
         pub(super) loudest: Cell<f32>,
         pub(super) stale: Cell<bool>,
+        pub(super) chapters: RefCell<Vec<f64>>,
         pub(super) played_pixels: Cell<i32>,
         pub(super) spoken_second: Cell<i64>,
         pub(super) hover: Cell<Option<f64>>,
@@ -43,9 +50,9 @@ mod imp {
     }
 
     #[glib::object_subclass]
-    impl ObjectSubclass for Scrubber {
-        const NAME: &'static str = "StrataAudioScrubber";
-        type Type = super::Scrubber;
+    impl ObjectSubclass for Waveform {
+        const NAME: &'static str = "StrataWaveform";
+        type Type = super::Waveform;
         type ParentType = gtk::Widget;
 
         fn class_init(klass: &mut Self::Class) {
@@ -53,13 +60,13 @@ mod imp {
         }
     }
 
-    impl ObjectImpl for Scrubber {
+    impl ObjectImpl for Waveform {
         fn dispose(&self) {
             self.obj().set_media(None);
         }
     }
 
-    impl WidgetImpl for Scrubber {
+    impl WidgetImpl for Waveform {
         fn measure(&self, orientation: gtk::Orientation, _: i32) -> (i32, i32, i32, i32) {
             match orientation {
                 gtk::Orientation::Vertical => (HEIGHT, HEIGHT, -1, -1),
@@ -82,30 +89,30 @@ mod imp {
 }
 
 glib::wrapper! {
-    pub struct Scrubber(ObjectSubclass<imp::Scrubber>)
+    pub struct Waveform(ObjectSubclass<imp::Waveform>)
         @extends gtk::Widget,
         @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
 }
 
-impl Scrubber {
-    pub(super) fn new() -> Self {
-        let scrubber: Self = glib::Object::new();
-        scrubber.add_css_class("preview-audio-scrubber");
-        scrubber.set_focusable(true);
-        scrubber.set_cursor_from_name(Some("pointer"));
-        scrubber.update_property(&[gtk::accessible::Property::Label("Playback position")]);
-        scrubber.imp().targets.replace(vec![0.0; BUCKETS as usize]);
-        scrubber.imp().shown.replace(vec![0.0; BUCKETS as usize]);
-        follow_theme(&scrubber);
-        scrubber.install_input();
-        scrubber
+impl Waveform {
+    pub(in crate::ui::preview) fn new() -> Self {
+        let waveform: Self = glib::Object::new();
+        waveform.add_css_class("preview-waveform");
+        waveform.set_focusable(true);
+        waveform.set_cursor_from_name(Some("pointer"));
+        waveform.update_property(&[gtk::accessible::Property::Label("Playback position")]);
+        waveform.imp().targets.replace(vec![0.0; BUCKETS as usize]);
+        waveform.imp().shown.replace(vec![0.0; BUCKETS as usize]);
+        follow_theme(&waveform);
+        waveform.install_input();
+        waveform
     }
 
-    pub(super) fn connect_preview(&self, callback: impl Fn(Option<i64>) + 'static) {
+    pub(in crate::ui::preview) fn connect_preview(&self, callback: impl Fn(Option<i64>) + 'static) {
         self.imp().on_preview.replace(Some(Rc::new(callback)));
     }
 
-    pub(super) fn set_media(&self, media: Option<&gtk::MediaStream>) {
+    pub(in crate::ui::preview) fn set_media(&self, media: Option<&gtk::MediaStream>) {
         let imp = self.imp();
         if let Some(previous) = imp.media.borrow_mut().take() {
             for handler in imp.handlers.borrow_mut().drain(..) {
@@ -121,8 +128,8 @@ impl Scrubber {
         let handlers = ["timestamp", "duration", "seekable"].map(|property| {
             let weak = weak.clone();
             media.connect_notify_local(Some(property), move |_, _| {
-                if let Some(scrubber) = weak.upgrade() {
-                    scrubber.sync_position();
+                if let Some(waveform) = weak.upgrade() {
+                    waveform.sync_position();
                 }
             })
         });
@@ -132,14 +139,29 @@ impl Scrubber {
         self.sync_position();
     }
 
-    pub(super) fn clear_levels(&self) {
+    pub(in crate::ui::preview) fn set_chapters(&self, chapters: Vec<f64>) {
+        self.imp().chapters.replace(chapters);
+        self.queue_draw();
+    }
+
+    #[cfg(test)]
+    pub(in crate::ui::preview) fn chapters(&self) -> Vec<f64> {
+        self.imp().chapters.borrow().clone()
+    }
+
+    pub(in crate::ui::preview) fn pointer_fraction(&self) -> Option<f64> {
+        let imp = self.imp();
+        imp.drag.get().or(imp.hover.get())
+    }
+
+    pub(in crate::ui::preview) fn clear_levels(&self) {
         self.imp().targets.borrow_mut().fill(0.0);
         // The outgoing waveform keeps its scale while it lowers.
         self.imp().stale.set(true);
         self.animate();
     }
 
-    pub(super) fn add_levels(&self, start: u32, levels: &[u8]) {
+    pub(in crate::ui::preview) fn add_levels(&self, start: u32, levels: &[u8]) {
         let imp = self.imp();
         let mut targets = imp.targets.borrow_mut();
         let mut loudest = if imp.stale.replace(false) {
@@ -154,6 +176,11 @@ impl Scrubber {
         imp.loudest.set(loudest);
         drop(targets);
         self.animate();
+    }
+
+    #[cfg(test)]
+    pub(in crate::ui::preview) fn shown_levels(&self) -> Vec<f32> {
+        self.imp().shown.borrow().clone()
     }
 
     fn duration(&self) -> i64 {
@@ -206,8 +233,8 @@ impl Scrubber {
                 gtk::accessible::Property::ValueNow(second as f64),
                 gtk::accessible::Property::ValueText(&format!(
                     "{} of {}",
-                    super::clock(timestamp),
-                    super::clock(duration)
+                    clock(timestamp),
+                    clock(duration)
                 )),
             ]);
         }
@@ -216,7 +243,7 @@ impl Scrubber {
     fn preview(&self) {
         let imp = self.imp();
         let duration = self.duration();
-        let fraction = imp.drag.get().or(imp.hover.get());
+        let fraction = self.pointer_fraction();
         let callback = imp.on_preview.borrow().clone();
         if let Some(callback) = callback {
             callback(
@@ -238,39 +265,39 @@ impl Scrubber {
     fn install_input(&self) {
         let drag = gtk::GestureDrag::new();
         drag.connect_drag_begin(glib::clone!(
-            #[weak(rename_to = scrubber)]
+            #[weak(rename_to = waveform)]
             self,
             move |gesture, x, _| {
-                if scrubber.duration() <= 0 {
+                if waveform.duration() <= 0 {
                     gesture.set_state(gtk::EventSequenceState::Denied);
                     return;
                 }
-                scrubber.grab_focus();
-                scrubber.imp().drag_origin.set(x);
-                scrubber.imp().drag.set(Some(scrubber.fraction_at(x)));
-                scrubber.preview();
+                waveform.grab_focus();
+                waveform.imp().drag_origin.set(x);
+                waveform.imp().drag.set(Some(waveform.fraction_at(x)));
+                waveform.preview();
             }
         ));
         drag.connect_drag_update(glib::clone!(
-            #[weak(rename_to = scrubber)]
+            #[weak(rename_to = waveform)]
             self,
             move |_, dx, _| {
-                let imp = scrubber.imp();
+                let imp = waveform.imp();
                 if imp.drag.get().is_some() {
                     imp.drag
-                        .set(Some(scrubber.fraction_at(imp.drag_origin.get() + dx)));
-                    scrubber.preview();
+                        .set(Some(waveform.fraction_at(imp.drag_origin.get() + dx)));
+                    waveform.preview();
                 }
             }
         ));
         drag.connect_drag_end(glib::clone!(
-            #[weak(rename_to = scrubber)]
+            #[weak(rename_to = waveform)]
             self,
             move |_, _, _| {
-                if let Some(fraction) = scrubber.imp().drag.take() {
-                    scrubber.seek_to((fraction * scrubber.duration() as f64) as i64);
-                    scrubber.imp().played_pixels.set(-1);
-                    scrubber.preview();
+                if let Some(fraction) = waveform.imp().drag.take() {
+                    waveform.seek_to((fraction * waveform.duration() as f64) as i64);
+                    waveform.imp().played_pixels.set(-1);
+                    waveform.preview();
                 }
             }
         ));
@@ -278,26 +305,36 @@ impl Scrubber {
 
         let motion = gtk::EventControllerMotion::new();
         motion.connect_motion(glib::clone!(
-            #[weak(rename_to = scrubber)]
+            #[weak(rename_to = waveform)]
             self,
             move |_, x, _| {
-                scrubber.imp().hover.set(Some(scrubber.fraction_at(x)));
-                scrubber.preview();
+                let fraction = waveform.fraction_at(x);
+                // Pointer motion arrives far faster than a pixel moves.
+                let moved = waveform
+                    .imp()
+                    .hover
+                    .replace(Some(fraction))
+                    .is_none_or(|previous| {
+                        ((previous - fraction) * f64::from(waveform.width())).abs() >= 1.0
+                    });
+                if moved {
+                    waveform.preview();
+                }
             }
         ));
         motion.connect_leave(glib::clone!(
-            #[weak(rename_to = scrubber)]
+            #[weak(rename_to = waveform)]
             self,
             move |_| {
-                scrubber.imp().hover.set(None);
-                scrubber.preview();
+                waveform.imp().hover.set(None);
+                waveform.preview();
             }
         ));
         self.add_controller(motion);
 
         let keys = gtk::EventControllerKey::new();
         keys.connect_key_pressed(glib::clone!(
-            #[weak(rename_to = scrubber)]
+            #[weak(rename_to = waveform)]
             self,
             #[upgrade_or]
             glib::Propagation::Proceed,
@@ -310,13 +347,13 @@ impl Scrubber {
                 if !modifiers.is_empty() {
                     return glib::Propagation::Proceed;
                 }
-                let timestamp = scrubber
+                let timestamp = waveform
                     .imp()
                     .media
                     .borrow()
                     .as_ref()
                     .map_or(0, |media| media.timestamp());
-                scrubber.seek_to(timestamp + delta);
+                waveform.seek_to(timestamp + delta);
                 glib::Propagation::Stop
             }
         ));
@@ -333,8 +370,8 @@ impl Scrubber {
         if imp.tick.borrow().is_some() {
             return;
         }
-        let id = self.add_tick_callback(|scrubber, clock| {
-            let imp = scrubber.imp();
+        let id = self.add_tick_callback(|waveform, clock| {
+            let imp = waveform.imp();
             let now = clock.frame_time();
             let elapsed = imp
                 .last_frame
@@ -355,7 +392,7 @@ impl Scrubber {
                     *shown = *target;
                 }
             }
-            scrubber.queue_draw();
+            waveform.queue_draw();
             if moving {
                 glib::ControlFlow::Continue
             } else {
@@ -375,10 +412,8 @@ impl Scrubber {
         }
         let colors = palette();
         let played = self.played_fraction() as f32 * width;
-        let hover = imp
-            .drag
-            .get()
-            .or(imp.hover.get())
+        let hover = self
+            .pointer_fraction()
             .map(|fraction| fraction as f32 * width);
         let center = (height / 2.0).round();
         let shown = imp.shown.borrow();
@@ -409,6 +444,14 @@ impl Scrubber {
             );
         }
 
+        for chapter in imp.chapters.borrow().iter() {
+            let x = (*chapter as f32 * width).clamp(0.5, width - 0.5);
+            snapshot.append_color(
+                &with_alpha(colors.text, 0.5),
+                &graphene::Rect::new(x - 0.5, height - CHAPTER_TICK, 1.0, CHAPTER_TICK),
+            );
+        }
+
         let head = played.clamp(1.0, width - 1.0);
         snapshot.append_color(
             &colors.peak,
@@ -422,3 +465,6 @@ impl Scrubber {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

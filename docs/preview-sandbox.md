@@ -329,10 +329,14 @@ finishing that folder's enumeration before it publishes entries.
 ## Media metadata
 
 File Properties shows available source-media details: image
-resolution; audio/video duration and overall bitrate; video codec and frame rate;
-and audio codec, sample rate, and channel count. These describe the original file,
-not the preview's scaled frames or resampled audio. Attached album artwork is not
-reported as a video track, and still images do not show synthetic video timing.
+resolution; audio/video duration and overall bitrate; video codec, frame rate and
+HDR system; audio codec, sample rate, and channel count; and subtitle track and
+chapter counts. The probe also returns the pixel format, colour transfer,
+channel layout, chapter times with sanitized titles (at most 200) and subtitle
+languages (at most 64 tracks) for the video preview's badges. These describe
+the original file, not the preview's scaled frames or resampled audio. Attached
+album artwork is not reported as a video track, and still images do not show
+synthetic video timing.
 For ordinary images and audio/video, missing individual fields are omitted; an
 unsuccessful inspection shows `Media: Unavailable` without blocking the other
 file information.
@@ -340,7 +344,7 @@ file information.
 Properties uses an asynchronous inspector. Only regular files with a
 local source are inspected; remote files are not downloaded for metadata. The
 inspector runs `ffprobe` inside the existing software-only bubblewrap sandbox,
-with a four-second probe timeout and a 64 KiB JSON limit. Image information can
+with a four-second probe timeout and a 256 KiB JSON limit. Image information can
 fall back to GDK Pixbuf inside that same sandbox. The enclosing helper retains
 the existing memory, CPU, and wall-time limits and receives no GPU access. Media
 sandboxes expose only the optional BLAS/LAPACK runtime alternatives for supported
@@ -369,7 +373,7 @@ Support depends on the format and available tools; unavailable tags in other
 RAW containers remain `N/A`.
 
 Both parsers run only inside a short-lived, software-only sandbox with the
-existing 512 MiB input limit, memory/CPU/wall-time limits, and a 64 KiB output
+existing 512 MiB input limit, memory/CPU/wall-time limits, and a 256 KiB output
 budget. Only the seven validated properties reach the UI; camera/lens strings
 are bounded plain text. Locally backed Trash entries use their existing local
 thumbnail source, recognizing the original display-name extension even when the
@@ -410,7 +414,9 @@ PCM. Resampling preserves gaps/offsets relative to the common source timeline.
 
 Previews play **the entire source**, without a 30-second playback cap. Seeking
 restarts the sandbox at the requested source position, rounded down to the 30-fps
-grid. Video retains decoder preroll so a seek into a VFR gap can show the frame
+grid. A seek whose decoder dies before its first frame, as happens past the real
+end of a truncated download whose header overstates the duration, resumes where
+playback was instead of ending the preview. Video retains decoder preroll so a seek into a VFR gap can show the frame
 covering that point. Short GIFs still batch loops into a 30-second generation,
 with seeks mapped to their animation phase to avoid restarting a process every
 cycle; this does not truncate the animation. Longer GIFs play their complete
@@ -425,10 +431,11 @@ sentinel, not a practical preview-length policy.
 The decode rectangle follows the pane's logical size times display scale, capped
 at 1280 pixels on either axis. Frames preserve display aspect ratio, including
 sample aspect ratio/right-angle rotation, without unnecessarily enlarging small
-sources. Resizes settle for 250 ms before restarting at the current playback
-position; the previous texture remains visible. Changes that would not materially
-change the fitted frame size do not restart decoding. A paused resize/seek stays
-paused. Mute/volume preferences initialize and update every player's raw-audio
+sources. Resizes settle for 250 ms; the previous texture remains visible.
+Shrinking the pane never restarts decoding: the larger frames are downsampled on
+screen and the next seek or restart adopts the smaller size. Growing restarts at
+the current playback position only when the fitted frame would grow by 8 % or
+more, so a resize costs at most one restart. A paused resize/seek stays paused. Mute/volume preferences initialize and update every player's raw-audio
 output live; backend preference changes apply on the next preview request.
 
 ## Audio previews
@@ -485,6 +492,109 @@ Previous/next skip playlists and MIDI. During filtering they follow visible audi
 results, including subfolders, and untagged captions read “X of Y in results”
 instead of “X of Y in folder”. Playback errors remain visible inside the audio
 view without disabling track navigation. Tracks never advance automatically.
+
+## Video previews
+
+Video files open in a now-playing view of their own, laid out like the audio
+view: the frame is the hero, the header with the file's position among the
+folder's videos, the volume control, the title and the badges sits directly
+under it, then the timeline and the same previous/play/next transport, with
+the whole stack centred in the pane. The frame keeps its place from the first
+paint, sized by the poster's aspect until the probe answers. Clicking the frame
+toggles playback; there is no separate centre button. Consecutive video files
+reuse one view, like audio. Previous/next step to the previous or next file of
+the same media family, so audio steps to audio and video to video, following
+visible search results like audio does. Playback errors remain visible inside the
+view without disabling navigation. The timeline is the audio view's waveform
+slider: the same overview peaks, grown in from nothing the same way once the
+storyboard has finished with the shared decode slot, with the played range,
+playhead and hover line shared and chapter starts added as ticks.
+
+Badges under the title summarise the file from the same bounded `media-metadata`
+`ffprobe` operation that File Properties uses: resolution class by the long
+edge (SD, 720p, 1080p, 2K, 4K, 8K), HDR10 or HLG from the transfer
+characteristics, 10-, 12- or 16-bit from the pixel format, rounded frame rate,
+video codec, audio codec with channel layout, and a captions badge counting
+embedded subtitle tracks plus subtitle files named after the video (`clip.srt`,
+`clip.en.vtt`, and the `ass`, `ssa` and `sub` extensions), found by a bounded
+scan of the original's folder off the GTK thread. Chapter starts become ticks on
+the timeline and chapter titles join the time in the storyboard bubble; nothing
+renders subtitles over the frames. The probe starts after the same 50 ms settle as audio
+details, is cancelled when the selection moves on, and completed results are
+cached for the last 12 files. Until it answers, empty pills hold the row; a
+failed probe leaves the row empty. Badges fade in with a short stagger once per
+file, or appear at once under reduced motion; they never animate while idle.
+
+The timeline shows a storyboard bubble while the pointer hovers or drags: the
+keyframe nearest that time with its timestamp, or an empty cell until one has
+arrived. A seek covers the stale frame with the nearest cell until the new frame
+is decoded, so scrubbing never shows a frozen picture. Cells come from a
+`video-storyboard` operation that starts only after the first frame is on screen
+plus the 50 ms settle, shares the single nice-10 background slot with the
+waveform overviews, and is cancelled when the selection moves on. A video's own
+storyboard and its waveform peaks take that one slot in turn: the storyboard
+goes first, since it is short and bounded by the cell count, and the waveform's
+length-proportional audio decode follows once the storyboard has finished, so
+scrubbing is never blocked behind it. The helper probes once,
+then runs one software `ffmpeg` decode per cell of the keyframe at or before its
+time (the frame a seek there lands on), with an input seek and `-skip_frame
+nokey`, so the cost scales with the cell count rather than the file
+length: 8 to 48 cells at one per two seconds, 128 pixels on the long edge,
+never enlarged, in binary-subdivision order so the middle, quarters and eighths
+arrive first. The `STRSTB01` stream carries a sheet header and raw RGBA cells
+whose exact length, unique index and explicit end the parent checks; cells a seek
+could not produce are absent and the nearest neighbour stands in. Clips under
+four seconds, animations, attached pictures, raw elementary streams and unknown
+durations have no storyboard. A 90-second limit bounds the decode, and finished
+or partial boards are cached in memory for the last 8 clips (at most about 14
+MB); a partial board keeps its decoded cells while the next visit decodes the
+board again.
+
+Opening a previewed video externally, with **Enter**, the header's Open button
+or activation in the listing, pauses the preview and hands its position to the
+default player. A file opened while its preview is still loading, as the second
+click of a double-click does, stays paused once that preview lands instead of
+autoplaying beside the player; moving to another file or pressing play lifts
+the hold. The launcher inserts the player's start option into its desktop
+`Exec` line before the file placeholder (or a bare `--`), seen through `env`
+and Flatpak wrappers: `--start` for mpv, `--start-time` for VLC, `--mpv-start`
+for Celluloid and `-ss` for MPlayer. Unknown players, failed timed launches and
+positions within a second of either end open the file plainly. The launch uses
+the display's launch context, so the player gets startup notification.
+
+With **Preview autoplay** on, playback starts silent: the player scales its
+output by a fade gain on top of the saved volume, which it never changes. The
+gain rises on a slow-in, slow-out curve (a smoothstep squared, so the ear hears
+an even rise), over 1 s from the first frame for video and over 0.5 s from the
+first sample for audio, set about sixty times a second on the GStreamer
+`volume` element, so no audio is processed in the application. Files shorter
+than 10 s would lose most of themselves to the rise, so they play at full volume
+from the start; unknown durations ease in. A muted
+saved state skips the ramp, and any play, pause, seek, volume or mute input, or
+moving to another file, ends it immediately.
+
+Ambient light bleeds the frame's border colours into a 24-pixel band around the
+picture. While the poster stands in, the band takes its colours from the cached
+thumbnail (one download of a 256-pixel texture) and the live frames ease in
+from there. The player samples a 6×4 grid of a few pixels each from a decoded
+frame at most ten times a second, the view eases towards it and uploads it as a tiny
+texture that the GPU scales with linear filtering under the picture, and four
+gradients fade the band into the pane. There is no blur, no per-frame CPU work
+beyond those samples, and nothing updates while playback is paused. The light
+follows the **Element glow** preference, which also releases the band, stays off
+under reduced motion, and never runs on the Cairo software renderer.
+
+The frame area never shows a spinner. Until the first decoded frame it shows the
+listing's cached thumbnail dimmed as a poster when that rendition is already in
+memory, otherwise the picture's own surface colour, at the probed aspect once
+the header has arrived, with no outline so the edge does not change when the
+frame lands. A clip that resumes where it stopped shows the cell of its cached
+storyboard nearest that point instead, at the seek cover's strength, so the
+stand-in matches the frame about to arrive rather than the opening one.
+The lookup never queues thumbnail work. The first frame fades the stand-in out
+over 150 ms, or replaces it at once under reduced motion. Every media stream
+waits 50 ms before starting its sandbox session, so a selection that moves on
+within that window spawns no decoder.
 
 ## Wire validation and budgets
 

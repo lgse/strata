@@ -543,3 +543,207 @@ mod manual_clock {
     }
 }
 use manual_clock::ManualClock;
+
+#[test]
+fn sessions_start_after_the_dwell_and_never_for_a_replaced_selection() {
+    crate::test_support::gtk_test(
+        "ui::media::tests::sessions_start_after_the_dwell_and_never_for_a_replaced_selection",
+        || {
+            let media = DecodedMedia::new(test_source("/replaced"));
+            let calls = Rc::new(RefCell::new(Vec::new()));
+            media.imp().loader.replace(Some(fake_loader(&calls)));
+            let created = Instant::now();
+            while created.elapsed() < START_DWELL / 2 {
+                media.tick().expect("tick succeeds");
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            assert!(calls.borrow().is_empty(), "no decoder inside the dwell");
+            media.close();
+            std::thread::sleep(START_DWELL);
+            let _ = media.tick();
+            assert!(
+                calls.borrow().is_empty(),
+                "a selection replaced within the dwell never spawns a decoder"
+            );
+
+            let media = DecodedMedia::new(test_source("/kept"));
+            let calls = Rc::new(RefCell::new(Vec::new()));
+            media.imp().loader.replace(Some(fake_loader(&calls)));
+            let created = Instant::now();
+            drive_until(&media, &calls, 1);
+            assert!(created.elapsed() >= START_DWELL);
+            assert_eq!(*calls.borrow(), vec![0]);
+            media.close();
+        },
+    );
+}
+
+#[test]
+fn prepared_streams_size_the_frame_before_it_is_decoded() {
+    crate::test_support::gtk_test(
+        "ui::media::tests::prepared_streams_size_the_frame_before_it_is_decoded",
+        || {
+            let media = DecodedMedia::new(test_source("/sized"));
+            assert_eq!(media.video_size(), None);
+            assert_eq!(media.intrinsic_width(), 0);
+            let calls = Rc::new(RefCell::new(Vec::new()));
+            media.imp().loader.replace(Some(fake_loader(&calls)));
+            let deadline = Instant::now() + Duration::from_secs(15);
+            while !media.is_prepared() {
+                media.tick().expect("tick succeeds");
+                assert!(Instant::now() < deadline, "prepare deadline");
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            assert_eq!(media.video_size(), Some((16, 16)));
+            assert_eq!(
+                (media.intrinsic_width(), media.intrinsic_height()),
+                (16, 16)
+            );
+            media.close();
+        },
+    );
+}
+
+#[test]
+fn the_fade_scales_the_volume_without_replacing_it() {
+    crate::test_support::gtk_test(
+        "ui::media::tests::the_fade_scales_the_volume_without_replacing_it",
+        || {
+            let output = PcmOutput::test_sink(
+                false,
+                0.8,
+                Duration::from_secs(2),
+                "fakesink sync=false",
+                None,
+            )
+            .expect("test sink");
+            assert!((output.effective_volume() - 0.8).abs() < 1e-6);
+            output.set_fade(0.5);
+            assert!((output.effective_volume() - 0.4).abs() < 1e-6);
+            output.set_audio(false, 0.5);
+            assert!((output.effective_volume() - 0.25).abs() < 1e-6);
+            output.set_fade(1.0);
+            assert!((output.effective_volume() - 0.5).abs() < 1e-6);
+            output.set_fade(f64::NAN);
+            assert!((output.effective_volume() - 0.5).abs() < 1e-6);
+
+            let media = DecodedMedia::new(test_source("/faded"));
+            media.set_fade(0.0);
+            assert_eq!(media.fade(), 0.0);
+            assert_eq!(media.volume(), 1.0, "the stream's own volume is untouched");
+            media.close();
+        },
+    );
+}
+
+#[test]
+fn shrinking_the_pane_keeps_the_decode_and_only_real_growth_restarts_it() {
+    crate::test_support::gtk_test(
+        "ui::media::tests::shrinking_the_pane_keeps_the_decode_and_only_real_growth_restarts_it",
+        || {
+            let media = DecodedMedia::new(test_source("/resized"));
+            let calls = Rc::new(RefCell::new(Vec::new()));
+            let loader_calls = calls.clone();
+            media.imp().loader.replace(Some(Rc::new(move |_, tick| {
+                loader_calls.borrow_mut().push(tick);
+                crate::sandbox::media::tests::stream(Header {
+                    width: 320,
+                    height: 240,
+                    ..test_header(tick)
+                })
+            })));
+            media.upcast_ref::<gtk::MediaStream>().play();
+            drive_until(&media, &calls, 1);
+            let deadline = Instant::now() + Duration::from_secs(15);
+            while !media.imp().first_frame.get() {
+                media.tick().expect("tick succeeds");
+                assert!(Instant::now() < deadline, "first frame deadline");
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            let settle = |media: &DecodedMedia| {
+                let until = Instant::now() + RESIZE_DELAY * 2;
+                while Instant::now() < until {
+                    media.tick().expect("tick succeeds");
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+            };
+
+            media.resize(MediaPreviewSize::new(200, 150));
+            settle(&media);
+            assert_eq!(
+                calls.borrow().len(),
+                1,
+                "shrinking keeps the running decode"
+            );
+
+            media.resize(MediaPreviewSize::new(336, 252));
+            settle(&media);
+            assert_eq!(
+                calls.borrow().len(),
+                1,
+                "growth inside the tolerance is upscaled"
+            );
+
+            media.resize(MediaPreviewSize::new(640, 480));
+            drive_until(&media, &calls, 2);
+            let position = media.timestamp().max(0) as u64;
+            let restarted_at = media::timestamp(calls.borrow()[1]);
+            assert!(
+                restarted_at <= position && position - restarted_at < 1_000_000,
+                "a real growth restarts near the current position ({restarted_at} vs {position})"
+            );
+            media.close();
+        },
+    );
+}
+
+#[test]
+fn a_seek_the_file_cannot_serve_returns_to_where_playback_was() {
+    crate::test_support::gtk_test(
+        "ui::media::tests::a_seek_the_file_cannot_serve_returns_to_where_playback_was",
+        || {
+            let media = DecodedMedia::new(test_source("/truncated"));
+            let calls = Rc::new(RefCell::new(Vec::new()));
+            let loader_calls = calls.clone();
+            media.imp().loader.replace(Some(Rc::new(move |_, tick| {
+                loader_calls.borrow_mut().push(tick);
+                if tick >= 900 {
+                    crate::sandbox::media::tests::failing_stream()
+                } else {
+                    crate::sandbox::media::tests::stream(test_header(tick))
+                }
+            })));
+            media.upcast_ref::<gtk::MediaStream>().play();
+            drive_until(&media, &calls, 1);
+            let deadline = Instant::now() + Duration::from_secs(15);
+            while !media.imp().first_frame.get() {
+                media.tick().expect("tick succeeds");
+                assert!(Instant::now() < deadline, "first frame deadline");
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            std::thread::sleep(SEEK_DELAY);
+            media.seek(media::timestamp(900) as i64);
+            assert!(media.is_seeking());
+            drive_until(&media, &calls, 3);
+            let deadline = Instant::now() + Duration::from_secs(15);
+            while !media.imp().first_frame.get() {
+                media.tick().expect("the fallback keeps the stream alive");
+                assert!(Instant::now() < deadline, "fallback frame deadline");
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            assert_eq!(calls.borrow()[1], 900, "the seek was attempted");
+            assert!(
+                calls.borrow()[2] < 900,
+                "playback resumed where it was ({:?})",
+                calls.borrow()
+            );
+            assert!(!media.is_seeking());
+            assert!(
+                media.error().is_none(),
+                "a failed seek is not a failed preview"
+            );
+            assert!((media.timestamp() as u64) < media::timestamp(900));
+            media.close();
+        },
+    );
+}

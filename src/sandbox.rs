@@ -157,6 +157,9 @@ pub(crate) enum ParseOperation {
     PreviewMedia(MediaPreviewSize),
     PreviewAudio(MediaPreviewSize),
     AudioPeaks,
+    VideoStoryboard {
+        cell_edge: u32,
+    },
     AudioTags,
     AudioCover,
     ArchiveList {
@@ -192,6 +195,7 @@ impl ParseOperation {
             Self::PreviewMedia(_) => "preview-media",
             Self::PreviewAudio(_) => "preview-audio",
             Self::AudioPeaks => "audio-peaks",
+            Self::VideoStoryboard { .. } => "video-storyboard",
             Self::AudioTags => "audio-tags",
             Self::AudioCover => "audio-cover",
             Self::ArchiveList { .. } => "archive-list",
@@ -201,7 +205,10 @@ impl ParseOperation {
     fn is_media(&self) -> bool {
         matches!(
             self,
-            Self::PreviewMedia(_) | Self::PreviewAudio(_) | Self::AudioPeaks
+            Self::PreviewMedia(_)
+                | Self::PreviewAudio(_)
+                | Self::AudioPeaks
+                | Self::VideoStoryboard { .. }
         )
     }
 
@@ -212,6 +219,7 @@ impl ParseOperation {
                 | Self::PreviewMedia(_)
                 | Self::PreviewAudio(_)
                 | Self::AudioPeaks
+                | Self::VideoStoryboard { .. }
                 | Self::AudioTags
                 | Self::AudioCover
                 | Self::MediaMetadata
@@ -266,6 +274,7 @@ impl ParseOperation {
             | Self::InspectImage
             | Self::PreviewAudio(_)
             | Self::AudioPeaks
+            | Self::VideoStoryboard { .. }
             | Self::AudioTags
             | Self::MediaMetadata
             | Self::RawMetadata
@@ -304,6 +313,7 @@ impl ParseOperation {
             | Self::PreviewMedia(_)
             | Self::PreviewAudio(_)
             | Self::AudioPeaks
+            | Self::VideoStoryboard { .. }
             | Self::AudioTags
             | Self::AudioCover
             | Self::MediaMetadata
@@ -788,9 +798,12 @@ fn sandbox_command(
         let size = MediaPreviewSize::new(size.width, size.height);
         command.arg("/dev/stdout");
         command.arg(format!("{}x{}", size.width, size.height));
-    } else if matches!(operation, ParseOperation::AudioPeaks) {
+    } else if let ParseOperation::AudioPeaks | ParseOperation::VideoStoryboard { .. } = operation {
         command.arg("/dev/stdout");
-        command.arg("0");
+        command.arg(match operation {
+            ParseOperation::VideoStoryboard { cell_edge } => cell_edge.to_string(),
+            _ => "0".to_owned(),
+        });
     } else {
         command.arg(format!("/output/{}", operation.output_name()));
         let value = match operation {

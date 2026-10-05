@@ -4,10 +4,9 @@
 
 mod analysis;
 mod artwork;
-mod details;
+pub(in crate::ui::preview) mod details;
 mod layout;
-mod palette;
-mod scrubber;
+pub(in crate::ui::preview) mod palette;
 mod spectrum;
 
 use std::{
@@ -22,8 +21,13 @@ use crate::{
     ui::media::DecodedMedia,
 };
 
+use super::{ListingPosition, ease_in::EaseIn};
+
+const EASE_IN_RAMP: std::time::Duration = std::time::Duration::from_millis(500);
+
 pub(in crate::ui) use palette::apply_theme;
-pub(in crate::ui::preview) use scrubber::Scrubber;
+
+use super::waveform::Waveform;
 
 pub(super) fn clock(microseconds: i64) -> String {
     let seconds = microseconds.max(0) / 1_000_000;
@@ -35,30 +39,11 @@ pub(super) fn clock(microseconds: i64) -> String {
     }
 }
 
-#[derive(Clone, Copy)]
-pub(super) struct TrackPosition {
-    /// One-based, unlike the listing cursor.
-    pub(super) position: usize,
-    pub(super) count: usize,
-    pub(super) results: bool,
-}
-
-pub(super) fn track_caption(tags: &AudioTags, folder: Option<TrackPosition>) -> Option<String> {
+pub(super) fn track_caption(tags: &AudioTags, folder: Option<ListingPosition>) -> Option<String> {
     match (tags.track, tags.track_total, folder) {
         (Some(track), Some(total), _) => Some(format!("Track {track} of {total}")),
         (Some(track), None, _) => Some(format!("Track {track}")),
-        (
-            None,
-            _,
-            Some(TrackPosition {
-                position,
-                count,
-                results,
-            }),
-        ) => Some(format!(
-            "{position} of {count} in {}",
-            if results { "results" } else { "folder" }
-        )),
+        (None, _, Some(position)) => Some(position.caption()),
         (None, _, None) => None,
     }
 }
@@ -67,7 +52,7 @@ pub(super) struct Track {
     pub(super) entry: FileEntry,
     pub(super) source: SandboxedMedia,
     pub(super) media: gtk::MediaStream,
-    pub(super) folder: Option<TrackPosition>,
+    pub(super) folder: Option<ListingPosition>,
     pub(super) has_previous: bool,
     pub(super) has_next: bool,
 }
@@ -76,7 +61,7 @@ pub(super) struct AudioView {
     root: gtk::Box,
     artwork: artwork::Artwork,
     spectrum: spectrum::Spectrum,
-    scrubber: Scrubber,
+    scrubber: Waveform,
     eyebrow: gtk::Label,
     title: gtk::Label,
     artist: gtk::Label,
@@ -93,9 +78,10 @@ pub(super) struct AudioView {
     hover: Cell<Option<i64>>,
     shown_seconds: Cell<(i64, i64)>,
     stem: RefCell<String>,
-    folder: Cell<Option<TrackPosition>>,
+    folder: Cell<Option<ListingPosition>>,
     details: RefCell<Option<details::DetailsLoad>>,
     peaks: RefCell<Option<details::PeaksLoad>>,
+    ease: Rc<EaseIn>,
 }
 
 fn label(class: &str) -> gtk::Label {
@@ -180,7 +166,7 @@ impl AudioView {
 
         let artwork = artwork::Artwork::new();
         let spectrum = spectrum::Spectrum::new();
-        let scrubber = Scrubber::new();
+        let scrubber = Waveform::new();
         root.append(&artwork);
         root.append(&header);
         root.append(&spectrum);
@@ -211,7 +197,18 @@ impl AudioView {
             folder: Cell::default(),
             details: RefCell::default(),
             peaks: RefCell::default(),
+            ease: EaseIn::new(EASE_IN_RAMP),
         });
+        let weak = Rc::downgrade(&view);
+        crate::ui::preferences::PreferenceManager::shared().bind_preference(
+            &view.root,
+            |preferences| (preferences.preview_volume(), preferences.preview_muted()),
+            move |_, _| {
+                if let Some(view) = weak.upgrade() {
+                    view.ease.end();
+                }
+            },
+        );
 
         let weak = Rc::downgrade(&view);
         play.connect_clicked(move |_| {
@@ -260,11 +257,27 @@ impl AudioView {
         }
         self.details.borrow_mut().take();
         self.peaks.borrow_mut().take();
+        self.ease.stop();
         self.scrubber.set_media(None);
         self.scrubber.clear_levels();
         self.spectrum.set_media(None);
         // Preserve the record's position between tracks.
         self.set_playing_icon(false);
+    }
+
+    pub(super) fn start_silently(&self) {
+        if let Some(media) = self.media.borrow().as_ref() {
+            self.ease.arm(media);
+        }
+    }
+
+    pub(super) fn end_ease_in(&self) {
+        self.ease.end();
+    }
+
+    #[cfg(test)]
+    pub(super) fn is_easing_in(&self) -> bool {
+        self.ease.is_active()
     }
 
     pub(super) fn show(self: &Rc<Self>, track: Track) {
@@ -296,6 +309,24 @@ impl AudioView {
                 }
             }));
         }
+        let weak = Rc::downgrade(self);
+        handlers.push(media.connect_notify_local(Some("timestamp"), move |_, _| {
+            if let Some(view) = weak.upgrade()
+                && view.ease.is_armed()
+            {
+                view.ease.start();
+            }
+        }));
+        let weak = Rc::downgrade(self);
+        handlers.push(
+            media.connect_notify_local(Some("seeking"), move |media, _| {
+                if media.is_seeking()
+                    && let Some(view) = weak.upgrade()
+                {
+                    view.ease.end();
+                }
+            }),
+        );
         self.handlers.replace(handlers);
         self.media.replace(Some(media.clone()));
         self.spectrum
@@ -312,6 +343,7 @@ impl AudioView {
                 if media.is_prepared()
                     && let Some(view) = weak.upgrade()
                 {
+                    view.ease.settle();
                     view.sync_playing(media.is_playing());
                 }
             }));
@@ -353,7 +385,7 @@ impl AudioView {
     pub(super) fn prepare(
         &self,
         entry: &FileEntry,
-        folder: Option<TrackPosition>,
+        folder: Option<ListingPosition>,
         has_previous: bool,
         has_next: bool,
     ) {
@@ -394,6 +426,7 @@ impl AudioView {
     }
 
     fn toggle_playback(&self) {
+        self.ease.end();
         let media = self.media.borrow().clone();
         if let Some(media) = media {
             media.set_playing(!media.is_playing());

@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import time
+
 import pytest
 
 from harness.browser import ENTRY_ROLES
@@ -313,7 +315,11 @@ def test_starting_a_drag_cancels_a_folder_peek(strata):
     folder = strata.entry("archive")
     start = strata.pointer.drag_origin(folder)
     strata.pointer.move_to(*start)
-    strata.wait(lambda: strata.peek() is not None, "the folder peek to open on hover")
+    deadline = time.monotonic() + 0.6
+    while time.monotonic() < deadline:
+        assert strata.peek() is None, "a brief hover must not open a folder peek"
+        time.sleep(0.02)
+    strata.wait(lambda: strata.peek() is not None, "the folder peek to open after sustained hover")
 
     target = strata.entry("documents")
     strata.pointer.drag_points(start, target.screen_bounds().center, release=False)

@@ -189,6 +189,12 @@ In Icons and List, plain arrows move interface focus rather than changing direct
 | Up / Down | Move by visual rows | Move through file rows |
 | Enter | Open the current item | Open the current item |
 
+Enter on a previewed video, from the listing or inside the preview, pauses the
+preview and asks the default player to start where it stopped. mpv, VLC,
+Celluloid and MPlayer take the position on their command line; other players
+open the file from the beginning, as does a position inside the first or last
+second.
+
 Up from the first Icons row or first List item focuses the navigation header, including in empty directories. Left/Right traverse its enabled controls without triggering navigation; Enter/Space activates a control. Down returns to the item you left without changing selection. Left from the header's first control can reach the visible sidebar.
 
 From the sidebar, Right returns to the item you left (or the current file view if navigation replaced it, or if you entered the sidebar from the header rather than from a file). Up/Down move between places. Up from Home, the first sidebar row, continues into the **top navigation bar** instead of stopping. Left/Right traverse its enabled controls without activating them; Down returns to the sidebar row you left. If the sidebar is hidden from the top bar, Down returns to the files instead. Empty file views also support these round trips. If the sidebar is hidden, Left in the file view does not change directories.

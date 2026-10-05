@@ -26,20 +26,20 @@ use crate::{
 const DETAILS_CACHE: usize = 12;
 const PEAKS_CACHE: usize = 64;
 /// Fast j/k browsing must not start a full decode for every track it passes.
-const LOAD_SETTLE: Duration = Duration::from_millis(50);
+pub(in crate::ui::preview) const LOAD_SETTLE: Duration = Duration::from_millis(50);
 const PEAKS_POLL: Duration = Duration::from_millis(40);
 const FOLDER_ART_STEMS: [&str; 5] = ["cover", "folder", "front", "album", "albumart"];
 const FOLDER_ART_EXTENSIONS: [&str; 4] = ["jpg", "jpeg", "png", "webp"];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(super) struct TrackKey {
+pub(in crate::ui::preview) struct TrackKey {
     location: String,
     size: Option<u64>,
     modified: Option<i64>,
 }
 
 impl TrackKey {
-    pub(super) fn of(entry: &FileEntry) -> Self {
+    pub(in crate::ui::preview) fn of(entry: &FileEntry) -> Self {
         Self {
             location: entry.location.display_path(),
             size: known(&entry.size),
@@ -55,20 +55,20 @@ fn known<T: Copy>(value: &MetadataValue<T>) -> Option<T> {
     }
 }
 
-struct Lru<K, V> {
+pub(in crate::ui::preview) struct Lru<K, V> {
     capacity: usize,
     entries: VecDeque<(K, V)>,
 }
 
 impl<K: PartialEq, V: Clone> Lru<K, V> {
-    const fn new(capacity: usize) -> Self {
+    pub(in crate::ui::preview) const fn new(capacity: usize) -> Self {
         Self {
             capacity,
             entries: VecDeque::new(),
         }
     }
 
-    fn get(&mut self, key: &K) -> Option<V> {
+    pub(in crate::ui::preview) fn get(&mut self, key: &K) -> Option<V> {
         let index = self.entries.iter().position(|(entry, _)| entry == key)?;
         let entry = self.entries.remove(index)?;
         let value = entry.1.clone();
@@ -76,7 +76,7 @@ impl<K: PartialEq, V: Clone> Lru<K, V> {
         Some(value)
     }
 
-    fn insert(&mut self, key: K, value: V) {
+    pub(in crate::ui::preview) fn insert(&mut self, key: K, value: V) {
         self.entries.retain(|(entry, _)| *entry != key);
         if self.entries.len() >= self.capacity {
             self.entries.pop_front();
@@ -121,7 +121,11 @@ impl Drop for DetailsLoad {
     }
 }
 
-fn parse(path: &Path, operation: ParseOperation, cancellation: &Cancellation) -> Option<Vec<u8>> {
+pub(in crate::ui::preview) fn parse(
+    path: &Path,
+    operation: ParseOperation,
+    cancellation: &Cancellation,
+) -> Option<Vec<u8>> {
     crate::sandbox::parse(
         path,
         operation,
@@ -337,7 +341,7 @@ fn load_details_with(
 type Timer = Rc<RefCell<Option<glib::SourceId>>>;
 
 /// Streams a waveform overview into `on_levels`; dropping it stops the decode.
-pub(super) struct PeaksLoad(Timer);
+pub(in crate::ui::preview) struct PeaksLoad(Timer);
 
 impl Drop for PeaksLoad {
     fn drop(&mut self) {
@@ -347,7 +351,7 @@ impl Drop for PeaksLoad {
     }
 }
 
-pub(super) fn load_peaks(
+pub(in crate::ui::preview) fn load_peaks(
     entry: &FileEntry,
     source: &SandboxedMedia,
     on_levels: impl Fn(u32, &[u8]) + 'static,

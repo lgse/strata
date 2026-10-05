@@ -7,13 +7,14 @@ use gtk::{gdk, glib, prelude::*};
 use crate::ui::theme::{ThemeManager, ThemeTokens};
 
 #[derive(Clone, Copy, PartialEq)]
-pub(super) struct Palette {
-    pub(super) accent: gdk::RGBA,
-    pub(super) accent_bright: gdk::RGBA,
-    pub(super) peak: gdk::RGBA,
-    pub(super) text: gdk::RGBA,
-    pub(super) dim: gdk::RGBA,
-    pub(super) background: gdk::RGBA,
+pub(in crate::ui::preview) struct Palette {
+    pub(in crate::ui::preview) accent: gdk::RGBA,
+    pub(in crate::ui::preview) accent_bright: gdk::RGBA,
+    pub(in crate::ui::preview) peak: gdk::RGBA,
+    pub(in crate::ui::preview) text: gdk::RGBA,
+    pub(in crate::ui::preview) dim: gdk::RGBA,
+    pub(in crate::ui::preview) background: gdk::RGBA,
+    pub(in crate::ui::preview) surface: gdk::RGBA,
 }
 
 thread_local! {
@@ -31,7 +32,7 @@ pub(super) fn mix(from: gdk::RGBA, to: gdk::RGBA, amount: f32) -> gdk::RGBA {
     )
 }
 
-pub(super) fn with_alpha(color: gdk::RGBA, alpha: f32) -> gdk::RGBA {
+pub(in crate::ui::preview) fn with_alpha(color: gdk::RGBA, alpha: f32) -> gdk::RGBA {
     gdk::RGBA::new(
         color.red(),
         color.green(),
@@ -51,10 +52,11 @@ fn from_tokens(tokens: &ThemeTokens) -> Option<Palette> {
         text,
         dim: parse(&tokens.dim_text).unwrap_or(text),
         background: parse(&tokens.background)?,
+        surface: parse(&tokens.surface).or_else(|| parse(&tokens.background))?,
     })
 }
 
-pub(super) fn palette() -> Palette {
+pub(in crate::ui::preview) fn palette() -> Palette {
     if let Some(palette) = PALETTE.get() {
         return palette;
     }
@@ -65,12 +67,13 @@ pub(super) fn palette() -> Palette {
         text: gdk::RGBA::BLACK,
         dim: gdk::RGBA::BLACK,
         background: gdk::RGBA::WHITE,
+        surface: gdk::RGBA::WHITE,
     });
     PALETTE.set(Some(palette));
     palette
 }
 
-pub(super) fn follow_theme(widget: &impl IsA<gtk::Widget>) {
+pub(in crate::ui::preview) fn follow_theme(widget: &impl IsA<gtk::Widget>) {
     SURFACES.with_borrow_mut(|surfaces| {
         surfaces.retain(|surface| surface.upgrade().is_some());
         surfaces.push(widget.upcast_ref::<gtk::Widget>().downgrade());
