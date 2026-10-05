@@ -7,7 +7,6 @@ mod artwork;
 pub(in crate::ui::preview) mod details;
 mod layout;
 pub(in crate::ui::preview) mod palette;
-mod scrubber;
 mod spectrum;
 
 use std::{
@@ -28,7 +27,8 @@ use super::{ListingPosition, ease_in::EaseIn};
 const EASE_IN_RAMP: std::time::Duration = std::time::Duration::from_millis(500);
 
 pub(in crate::ui) use palette::apply_theme;
-pub(in crate::ui::preview) use scrubber::Scrubber;
+
+use super::waveform::Waveform;
 
 pub(super) fn clock(microseconds: i64) -> String {
     let seconds = microseconds.max(0) / 1_000_000;
@@ -62,7 +62,7 @@ pub(super) struct AudioView {
     root: gtk::Box,
     artwork: artwork::Artwork,
     spectrum: spectrum::Spectrum,
-    scrubber: Scrubber,
+    scrubber: Waveform,
     eyebrow: gtk::Label,
     title: gtk::Label,
     artist: gtk::Label,
@@ -167,7 +167,7 @@ impl AudioView {
 
         let artwork = artwork::Artwork::new();
         let spectrum = spectrum::Spectrum::new();
-        let scrubber = Scrubber::new();
+        let scrubber = Waveform::new();
         root.append(&artwork);
         root.append(&header);
         root.append(&spectrum);

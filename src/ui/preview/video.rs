@@ -9,7 +9,6 @@ mod badges;
 mod details;
 mod frame;
 mod layout;
-mod scrubber;
 pub(super) mod storyboard;
 
 use std::{
@@ -31,10 +30,12 @@ pub(in crate::ui::preview) use details::VideoDetails;
 
 use super::{
     ListingPosition,
-    audio::{clock, details::TrackKey},
+    audio::{
+        clock,
+        details::{PeaksLoad, TrackKey, load_peaks},
+    },
+    waveform::Waveform,
 };
-
-pub(in crate::ui::preview) use scrubber::Timeline;
 
 const BUBBLE_MARGIN: i32 = 10;
 /// Padding plus border around the bubble's cell.
@@ -68,7 +69,7 @@ pub(super) struct VideoView {
     title: gtk::Label,
     badges: gtk::Box,
     error: gtk::Box,
-    timeline: Timeline,
+    timeline: Waveform,
     bubble: gtk::Box,
     bubble_cell: gtk::Picture,
     bubble_time: gtk::Label,
@@ -83,6 +84,7 @@ pub(super) struct VideoView {
     hover: Cell<Option<i64>>,
     shown_seconds: Cell<(i64, i64)>,
     details: RefCell<Option<details::DetailsLoad>>,
+    peaks: RefCell<Option<PeaksLoad>>,
     chapters: RefCell<Vec<Chapter>>,
     clip: RefCell<Option<(FileEntry, SandboxedMedia)>>,
     storyboard: RefCell<Option<Rc<storyboard::Storyboard>>>,
@@ -176,7 +178,7 @@ impl VideoView {
         error.set_visible(false);
         header.append(&error);
 
-        let timeline = Timeline::new();
+        let timeline = Waveform::new();
 
         let elapsed = label("preview-media-time");
         elapsed.add_css_class("preview-video-time");
@@ -243,6 +245,7 @@ impl VideoView {
             hover: Cell::default(),
             shown_seconds: Cell::new((-1, -1)),
             details: RefCell::default(),
+            peaks: RefCell::default(),
             chapters: RefCell::default(),
             clip: RefCell::default(),
             storyboard: RefCell::default(),
@@ -421,6 +424,7 @@ impl VideoView {
             }
         }
         self.details.borrow_mut().take();
+        self.peaks.borrow_mut().take();
         self.ease.stop();
         self.glow.clear();
         self.storyboard_load.borrow_mut().take();
@@ -435,6 +439,7 @@ impl VideoView {
         self.hover.set(None);
         self.bubble.set_visible(false);
         self.timeline.set_media(None);
+        self.timeline.clear_levels();
         self.sync_playing(false);
     }
 
@@ -592,16 +597,46 @@ impl VideoView {
                 .as_ref()
                 .is_some_and(|board| board.is_complete())
         {
+            // No storyboard will claim the slot, so bring the waveform in now.
+            self.start_peaks();
             return;
         }
         let weak = Rc::downgrade(self);
-        let load = storyboard::load_storyboard(&entry, &source, move |board| {
-            if let Some(view) = weak.upgrade() {
-                view.storyboard.replace(Some(board));
-                view.refresh_bubble();
-            }
-        });
+        let weak_done = Rc::downgrade(self);
+        let load = storyboard::load_storyboard(
+            &entry,
+            &source,
+            move |board| {
+                if let Some(view) = weak.upgrade() {
+                    view.storyboard.replace(Some(board));
+                    view.refresh_bubble();
+                }
+            },
+            // The waveform shares the one background slot; let it decode only
+            // once the hover-critical storyboard has finished with the slot.
+            move || {
+                if let Some(view) = weak_done.upgrade() {
+                    view.start_peaks();
+                }
+            },
+        );
         self.storyboard_load.replace(Some(load));
+    }
+
+    /// The same waveform overview and grow-in as the audio slider. Deferred
+    /// behind the storyboard so a long clip's full-length audio decode does not
+    /// hold the background slot away from the scrub preview.
+    fn start_peaks(self: &Rc<Self>) {
+        let Some((entry, source)) = self.clip.borrow().clone() else {
+            return;
+        };
+        let weak = Rc::downgrade(self);
+        self.peaks
+            .replace(Some(load_peaks(&entry, &source, move |start, levels| {
+                if let Some(view) = weak.upgrade() {
+                    view.timeline.add_levels(start, levels);
+                }
+            })));
     }
 
     /// The nearest decoded cell replaces the stale frame while the seek decodes.

@@ -341,7 +341,7 @@ fn load_details_with(
 type Timer = Rc<RefCell<Option<glib::SourceId>>>;
 
 /// Streams a waveform overview into `on_levels`; dropping it stops the decode.
-pub(super) struct PeaksLoad(Timer);
+pub(in crate::ui::preview) struct PeaksLoad(Timer);
 
 impl Drop for PeaksLoad {
     fn drop(&mut self) {
@@ -351,7 +351,7 @@ impl Drop for PeaksLoad {
     }
 }
 
-pub(super) fn load_peaks(
+pub(in crate::ui::preview) fn load_peaks(
     entry: &FileEntry,
     source: &SandboxedMedia,
     on_levels: impl Fn(u32, &[u8]) + 'static,

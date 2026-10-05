@@ -36,6 +36,7 @@ mod pdf_ranges_tests;
 mod pdf_text;
 mod session;
 pub(super) mod video;
+mod waveform;
 
 pub(in crate::ui) const DEFAULT_WIDTH: i32 = 520;
 pub(in crate::ui) const MIN_WIDTH: i32 = 240;

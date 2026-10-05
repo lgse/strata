@@ -116,17 +116,22 @@ impl Drop for StoryboardLoad {
 }
 
 /// A complete cached board answers at once; a partial one is shown while its
-/// missing cells are decoded.
+/// missing cells are decoded. `on_done` fires once the decode ends, or at once
+/// for an already-complete board, so the caller can release the background slot
+/// to the waveform.
 pub(super) fn load_storyboard(
     entry: &FileEntry,
     source: &SandboxedMedia,
     on_update: impl Fn(Rc<Storyboard>) + 'static,
+    on_done: impl Fn() + 'static,
 ) -> StoryboardLoad {
+    let on_done = Rc::new(on_done);
     let key = TrackKey::of(entry);
     let cached = cached_storyboard(&key);
     if let Some(board) = &cached {
         on_update(board.clone());
         if board.is_complete() {
+            on_done();
             return StoryboardLoad(Timer::default());
         }
     }
@@ -137,6 +142,7 @@ pub(super) fn load_storyboard(
     let finished = handle.clone();
     let stop = move || {
         finished.borrow_mut().take();
+        on_done();
         glib::ControlFlow::Break
     };
     let polling = handle.clone();

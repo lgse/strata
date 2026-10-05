@@ -2722,11 +2722,11 @@ paned > separator {
   padding: 6px;
 }
 
-.preview-audio-scrubber {
+.preview-waveform {
   border-radius: 4px;
 }
 
-.preview-audio-scrubber:focus-visible {
+.preview-waveform:focus-visible {
   outline: 2px solid alpha(@theme_accent, 0.52);
   outline-offset: 2px;
 }
@@ -2784,15 +2784,6 @@ paned > separator {
   background: alpha(@theme_dim_text, 0.22);
   border-color: transparent;
   min-height: 16px;
-}
-
-.preview-video-timeline {
-  border-radius: 4px;
-}
-
-.preview-video-timeline:focus-visible {
-  outline: 2px solid alpha(@theme_accent, 0.52);
-  outline-offset: 2px;
 }
 
 .preview-video-bubble {

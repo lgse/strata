@@ -505,7 +505,10 @@ toggles playback; there is no separate centre button. Consecutive video files
 reuse one view, like audio. Previous/next step to the previous or next file of
 the same media family, so audio steps to audio and video to video, following
 visible search results like audio does. Playback errors remain visible inside the
-view without disabling navigation.
+view without disabling navigation. The timeline is the audio view's waveform
+slider: the same overview peaks, grown in from nothing the same way once the
+storyboard has finished with the shared decode slot, with the played range,
+playhead and hover line shared and chapter starts added as ticks.
 
 Badges under the title summarise the file from the same bounded `media-metadata`
 `ffprobe` operation that File Properties uses: resolution class by the long
@@ -527,8 +530,12 @@ keyframe nearest that time with its timestamp, or an empty cell until one has
 arrived. A seek covers the stale frame with the nearest cell until the new frame
 is decoded, so scrubbing never shows a frozen picture. Cells come from a
 `video-storyboard` operation that starts only after the first frame is on screen
-plus the 50 ms settle, shares the single nice-10 background slot with the audio
-waveform, and is cancelled when the selection moves on. The helper probes once,
+plus the 50 ms settle, shares the single nice-10 background slot with the
+waveform overviews, and is cancelled when the selection moves on. A video's own
+storyboard and its waveform peaks take that one slot in turn: the storyboard
+goes first, since it is short and bounded by the cell count, and the waveform's
+length-proportional audio decode follows once the storyboard has finished, so
+scrubbing is never blocked behind it. The helper probes once,
 then runs one software `ffmpeg` decode per cell of the keyframe at or before its
 time (the frame a seek there lands on), with an input seek and `-skip_frame
 nokey`, so the cost scales with the cell count rather than the file
