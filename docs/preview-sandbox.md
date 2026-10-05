@@ -555,7 +555,9 @@ output by a fade gain on top of the saved volume, which it never changes. The
 gain rises on a slow-in, slow-out curve (a smoothstep squared, so the ear hears
 an even rise), over 1 s from the first frame for video and over 0.5 s from the
 first sample for audio, set about sixty times a second on the GStreamer
-`volume` element, so no audio is processed in the application. A muted
+`volume` element, so no audio is processed in the application. Files shorter
+than 10 s would lose most of themselves to the rise, so they play at full volume
+from the start; unknown durations ease in. A muted
 saved state skips the ramp, and any play, pause, seek, volume or mute input, or
 moving to another file, ends it immediately.
 

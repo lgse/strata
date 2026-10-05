@@ -379,15 +379,22 @@ impl DecodedMedia {
     /// Like `use_test_stream`, but an audio-only track through the test sink.
     #[cfg(test)]
     pub(crate) fn use_test_audio_stream(&self) {
-        self.imp().loader.replace(Some(std::rc::Rc::new(|_, tick| {
-            crate::sandbox::media::tests::stream(Header {
-                width: 0,
-                height: 0,
-                audio: true,
-                duration_us: 60_000_000,
-                start_tick: tick,
-            })
-        })));
+        self.use_test_audio_stream_lasting(60_000_000);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn use_test_audio_stream_lasting(&self, duration_us: u64) {
+        self.imp()
+            .loader
+            .replace(Some(std::rc::Rc::new(move |_, tick| {
+                crate::sandbox::media::tests::stream(Header {
+                    width: 0,
+                    height: 0,
+                    audio: true,
+                    duration_us,
+                    start_tick: tick,
+                })
+            })));
     }
 
     #[cfg(test)]

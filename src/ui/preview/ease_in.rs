@@ -15,6 +15,9 @@ use gtk::{glib, prelude::*};
 use crate::ui::media::DecodedMedia;
 
 const STEP: Duration = Duration::from_millis(16);
+/// Shorter files would lose most of themselves to the rise; they start at full
+/// volume. Unknown durations ease in.
+const MIN_DURATION_US: i64 = 10_000_000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum State {
@@ -73,9 +76,20 @@ impl EaseIn {
         self.state.get() != State::Off
     }
 
-    /// Begins the rise, when sound actually starts flowing.
+    /// Begins the rise, when sound actually starts flowing. A short file skips
+    /// it and plays at full volume from here.
     pub(super) fn start(self: &Rc<Self>) {
         if self.state.get() != State::Armed {
+            return;
+        }
+        let duration = self
+            .media
+            .borrow()
+            .as_ref()
+            .and_then(glib::WeakRef::upgrade)
+            .map_or(0, |media| media.duration());
+        if (1..MIN_DURATION_US).contains(&duration) {
+            self.end();
             return;
         }
         self.state.set(State::Rising);

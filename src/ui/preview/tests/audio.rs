@@ -239,6 +239,15 @@ fn autoplayed_audio_fades_in_quickly_unless_the_listener_acts() {
             assert_eq!(media.fade(), 1.0, "pausing brings the sound in at once");
             assert!(!view().is_easing_in());
 
+            drawer.show(entry("c.wav"), None);
+            ready(&provider, 2);
+            let media = decoded();
+            media.use_test_audio_stream_lasting(3_000_000);
+            assert_eq!(media.fade(), 0.0);
+            pump(&|| media.fade() > 0.0, "sound on a short file");
+            assert_eq!(media.fade(), 1.0, "a file under ten seconds skips the rise");
+            assert!(!view().is_easing_in());
+
             preferences.set_preview_autoplay(false);
             drawer.close();
         },
