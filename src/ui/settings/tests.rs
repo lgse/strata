@@ -13,6 +13,7 @@ use super::{InstallCancel, InstallLauncher, InstallRequest, UpdateInstall};
 
 mod general;
 mod restart;
+mod update_dialog;
 mod updates;
 
 const GUARD_REJECTION: &str = "Another install is already running — try again shortly.";
@@ -63,6 +64,27 @@ impl FakeInstaller {
             .expect("a started install")
             .send(event)
             .expect("the dialog or row is still listening");
+    }
+
+    /// Whether the most recent install was asked to stop.
+    fn cancel_requested(&self) -> bool {
+        self.launches
+            .borrow()
+            .last()
+            .is_some_and(|(_, cancel)| cancel.is_cancelled())
+    }
+
+    /// Passes the most recent install's point of no return, as the installer
+    /// does just before it replaces the binary.
+    fn commit(&self) {
+        let launches = self.launches.borrow();
+        let (_, cancel) = launches.last().expect("a started install");
+        assert!(cancel.try_commit(), "the install was already cancelled");
+    }
+
+    /// Ends the install without a result, as a crashed installer thread would.
+    fn disconnect(&self) {
+        drop(self.progress.take().expect("a started install"));
     }
 }
 

@@ -8,7 +8,7 @@ use std::{
     process::Command,
     sync::{
         Arc,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicU8, Ordering},
         mpsc::{self, Receiver, Sender},
     },
     time::{Duration, Instant},
@@ -58,25 +58,53 @@ pub enum UpdateInstall {
     Downloading { downloaded: u64, total: Option<u64> },
     Verifying,
     Installing,
+    /// The install passed its point of no return and can no longer be
+    /// cancelled.
+    Finalizing,
     Installed,
     Cancelled,
     Failed(String),
 }
 
+const INSTALL_OPEN: u8 = 0;
+const INSTALL_CANCELLED: u8 = 1;
+const INSTALL_COMMITTED: u8 = 2;
+
+/// Shared between an install and its UI: either the UI cancels the install
+/// or the install commits to finishing, never both.
 #[derive(Clone, Debug, Default)]
-pub struct InstallCancel(Arc<AtomicBool>);
+pub struct InstallCancel(Arc<AtomicU8>);
 
 impl InstallCancel {
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub fn cancel(&self) {
-        self.0.store(true, Ordering::Relaxed);
+    /// Asks the install to stop. Returns `false` when it has already
+    /// committed to finishing and will not stop.
+    pub fn cancel(&self) -> bool {
+        self.settle(INSTALL_CANCELLED)
     }
 
-    fn is_cancelled(&self) -> bool {
-        self.0.load(Ordering::Relaxed)
+    /// Marks the point of no return. Returns `false` when the install was
+    /// cancelled first and must stop instead.
+    pub(crate) fn try_commit(&self) -> bool {
+        self.settle(INSTALL_COMMITTED)
+    }
+
+    pub(crate) fn is_cancelled(&self) -> bool {
+        self.0.load(Ordering::Acquire) == INSTALL_CANCELLED
+    }
+
+    /// Moves an open install to `state`, or reports whether it already is.
+    fn settle(&self, state: u8) -> bool {
+        match self
+            .0
+            .compare_exchange(INSTALL_OPEN, state, Ordering::AcqRel, Ordering::Acquire)
+        {
+            Ok(_) => true,
+            Err(current) => current == state,
+        }
     }
 
     fn check(&self) -> Result<(), InstallStop> {
@@ -511,17 +539,7 @@ fn try_install(
     let old_executable = fs::metadata(current_exe)
         .map_err(|error| format!("Could not inspect the installed binary: {error}"))?;
     cancel.check()?;
-    let rollback = stage_rollback(current_exe, exe_dir)?;
-    if let Err(stop) = cancel.check() {
-        let _removed = fs::remove_file(&rollback);
-        return Err(stop);
-    }
-    if let Err(error) = staged.persist(current_exe) {
-        let _removed = fs::remove_file(&rollback);
-        return Err(InstallStop::Failed(format!(
-            "Could not replace the installed binary: {error}"
-        )));
-    }
+    let rollback = commit_replacement(staged, current_exe, exe_dir, cancel, progress)?;
 
     if let Err(error) = sync_directory(exe_dir).and_then(|()| confirm_replacement(current_exe)) {
         restore_rollback(&rollback, current_exe)?;
@@ -535,6 +553,32 @@ fn try_install(
     retire_old_instances(Path::new("/proc"), current_exe, &old_executable);
 
     Ok(())
+}
+
+/// Preserves the installed binary and replaces it with `staged`, unless the
+/// install was cancelled first. Past the commit the install can no longer be
+/// cancelled, which `progress` hears as [`UpdateInstall::Finalizing`].
+/// Returns the preserved copy.
+fn commit_replacement(
+    staged: tempfile::TempPath,
+    current_exe: &Path,
+    exe_dir: &Path,
+    cancel: &InstallCancel,
+    progress: &Sender<UpdateInstall>,
+) -> Result<PathBuf, InstallStop> {
+    let rollback = stage_rollback(current_exe, exe_dir)?;
+    if !cancel.try_commit() {
+        let _removed = fs::remove_file(&rollback);
+        return Err(InstallStop::Cancelled);
+    }
+    let _sent = progress.send(UpdateInstall::Finalizing);
+    if let Err(error) = staged.persist(current_exe) {
+        let _removed = fs::remove_file(&rollback);
+        return Err(InstallStop::Failed(format!(
+            "Could not replace the installed binary: {error}"
+        )));
+    }
+    Ok(rollback)
 }
 
 fn prepare_release_binary(

@@ -110,3 +110,58 @@ fn metadata_cancellation_does_not_report_a_signature_error() {
         Err(InstallStop::Cancelled)
     ));
 }
+
+#[test]
+fn cancel_and_commit_exclude_each_other_in_either_order() {
+    let cancelled = InstallCancel::new();
+    assert!(cancelled.cancel());
+    assert!(cancelled.cancel(), "a repeated cancel still stops the install");
+    assert!(!cancelled.try_commit(), "a cancelled install must not commit");
+    assert!(cancelled.is_cancelled());
+
+    let committed = InstallCancel::new();
+    assert!(committed.try_commit());
+    assert!(!committed.cancel(), "a committed install cannot be cancelled");
+    assert!(!committed.is_cancelled());
+    assert!(committed.try_commit());
+}
+
+fn replacement_fixture(dir: &Path) -> (PathBuf, tempfile::TempPath) {
+    let installed = dir.join("strata");
+    fs::write(&installed, b"old version").expect("installed binary");
+    let staged = tempfile::NamedTempFile::new_in(dir).expect("staged binary");
+    fs::write(staged.path(), b"new version").expect("staged contents");
+    (installed, staged.into_temp_path())
+}
+
+#[test]
+fn replacement_reports_finalizing_and_refuses_a_later_cancel() {
+    let dir = tempfile::tempdir().expect("install directory");
+    let (installed, staged) = replacement_fixture(dir.path());
+    let cancel = InstallCancel::new();
+    let (progress, events) = mpsc::channel();
+
+    let rollback = commit_replacement(staged, &installed, dir.path(), &cancel, &progress)
+        .expect("replacement");
+
+    assert_eq!(fs::read(&installed).expect("installed"), b"new version");
+    assert_eq!(fs::read(rollback).expect("rollback"), b"old version");
+    assert_eq!(events.try_iter().collect::<Vec<_>>(), [UpdateInstall::Finalizing]);
+    assert!(!cancel.cancel(), "the replaced install can no longer be cancelled");
+}
+
+#[test]
+fn replacement_cancelled_before_the_commit_keeps_the_installed_binary() {
+    let dir = tempfile::tempdir().expect("install directory");
+    let (installed, staged) = replacement_fixture(dir.path());
+    let cancel = InstallCancel::new();
+    let (progress, events) = mpsc::channel();
+    assert!(cancel.cancel());
+
+    let result = commit_replacement(staged, &installed, dir.path(), &cancel, &progress);
+
+    assert!(matches!(result, Err(InstallStop::Cancelled)), "{result:?}");
+    assert_eq!(fs::read(&installed).expect("installed"), b"old version");
+    assert!(!rollback_path(dir.path()).exists());
+    assert_eq!(events.try_iter().count(), 0);
+}
