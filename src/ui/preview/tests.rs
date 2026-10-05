@@ -4,6 +4,7 @@ use super::*;
 use crate::model::{Location, MetadataValue};
 
 mod audio;
+mod video;
 
 struct Pending {
     request: PreviewRequest,

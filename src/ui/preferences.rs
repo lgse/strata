@@ -55,7 +55,7 @@ pub(in crate::ui) struct Preferences {
     theme: String,
     #[serde(default)]
     omarchy_variant: OmarchyVariant,
-    #[serde(default = "default_enabled")]
+    #[serde(default)]
     folder_peeking: bool,
     #[serde(default = "default_enabled")]
     single_click_previews: bool,
@@ -208,7 +208,7 @@ impl Default for Preferences {
             mode: "theme".to_owned(),
             theme: "tokyo-night".to_owned(),
             omarchy_variant: OmarchyVariant::default(),
-            folder_peeking: true,
+            folder_peeking: false,
             single_click_previews: true,
             columns_mirror_selection: true,
             render_documents_by_default: true,

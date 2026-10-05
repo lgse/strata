@@ -106,6 +106,15 @@ impl Dispatcher {
         if !self.preview.owns_focus(event.focused.as_ref()) {
             return None;
         }
+        if matches!(event.key, Key::Return | Key::KP_Enter)
+            && event
+                .focused
+                .as_ref()
+                .is_some_and(|focused| self.preview.surface(focused) == PreviewSurface::Media)
+        {
+            self.activate_focused(&self.view.browser());
+            return Some(Propagation::Stop);
+        }
         if event.key == Key::Left
             && self.preview.archive_at_root()
             && event.focused.as_ref().is_some_and(|focused| {

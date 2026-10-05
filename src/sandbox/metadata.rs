@@ -2,19 +2,40 @@
 
 use serde_json::Value;
 
-pub(crate) const MAX_METADATA_BYTES: u64 = 64 * 1024;
+/// Pretty-printed chapter lists and subtitle streams need far more than a plain file.
+pub(crate) const MAX_METADATA_BYTES: u64 = 256 * 1024;
 
-/// Only technical properties are exposed; arbitrary embedded tags are not UI text.
+const MAX_CHAPTERS: usize = 200;
+const MAX_SUBTITLE_TRACKS: usize = 64;
+
+/// Chapter titles and languages are sanitized; other arbitrary tags are not exposed.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct MediaMetadata {
     pub(crate) dimensions: Option<(u32, u32)>,
     pub(crate) duration: Option<f64>,
     pub(crate) bitrate: Option<f64>,
     pub(crate) video_codec: Option<String>,
+    pub(crate) pixel_format: Option<String>,
+    pub(crate) color_transfer: Option<String>,
     pub(crate) audio_codec: Option<String>,
     pub(crate) frame_rate: Option<f64>,
     pub(crate) sample_rate: Option<f64>,
     pub(crate) channels: Option<u32>,
+    pub(crate) channel_layout: Option<String>,
+    pub(crate) chapters: Vec<Chapter>,
+    pub(crate) subtitle_tracks: Vec<SubtitleTrack>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Chapter {
+    pub(crate) start: f64,
+    pub(crate) end: f64,
+    pub(crate) title: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct SubtitleTrack {
+    pub(crate) language: Option<String>,
 }
 
 fn positive(value: &Value) -> Option<f64> {
@@ -25,16 +46,47 @@ fn positive(value: &Value) -> Option<f64> {
 }
 
 fn codec(stream: &Value) -> Option<String> {
-    stream["codec_name"]
+    token(&stream["codec_name"], |byte| b"_-".contains(&byte))
+}
+
+fn token(value: &Value, extra: impl Fn(u8) -> bool) -> Option<String> {
+    value
         .as_str()
         .filter(|name| {
             !name.is_empty()
                 && name.len() <= 64
                 && name
                     .bytes()
-                    .all(|byte| byte.is_ascii_alphanumeric() || b"_-".contains(&byte))
+                    .all(|byte| byte.is_ascii_alphanumeric() || extra(byte))
         })
         .map(str::to_owned)
+}
+
+fn label_token(value: &Value) -> Option<String> {
+    token(value, |byte| b"_-.() ".contains(&byte))
+}
+
+fn language(stream: &Value) -> Option<String> {
+    stream["tags"]
+        .as_object()?
+        .iter()
+        .find(|(key, _)| key.eq_ignore_ascii_case("language"))
+        .and_then(|(_, value)| value.as_str())
+        .filter(|code| {
+            (2..=8).contains(&code.len())
+                && code
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphabetic() || byte == b'-')
+                && code != &"und"
+        })
+        .map(str::to_ascii_lowercase)
+}
+
+fn time(value: &Value) -> Option<f64> {
+    value
+        .as_f64()
+        .or_else(|| value.as_str()?.parse().ok())
+        .filter(|seconds| seconds.is_finite() && *seconds >= 0.0 && *seconds <= 315_576_000.0)
 }
 
 fn duration(value: &Value) -> Option<f64> {
@@ -48,6 +100,14 @@ fn frame_rate(value: &Value) -> Option<f64> {
 }
 
 impl MediaMetadata {
+    pub(crate) fn hdr_format(&self) -> Option<&'static str> {
+        match self.color_transfer.as_deref()? {
+            "smpte2084" => Some("HDR10"),
+            "arib-std-b67" => Some("HLG"),
+            _ => None,
+        }
+    }
+
     pub(crate) fn from_json(bytes: &[u8], image: bool) -> Result<Self, String> {
         if bytes.len() as u64 > MAX_METADATA_BYTES {
             return Err("Media metadata exceeds the size limit".into());
@@ -81,11 +141,39 @@ impl MediaMetadata {
             }
             if !image {
                 metadata.video_codec = codec(video);
+                metadata.pixel_format = token(&video["pix_fmt"], |byte| byte == b'_');
+                metadata.color_transfer = token(&video["color_transfer"], |byte| byte == b'-');
                 metadata.frame_rate = frame_rate(&video["avg_frame_rate"])
                     .or_else(|| frame_rate(&video["r_frame_rate"]));
             }
         }
         if !image {
+            metadata.chapters = value["chapters"]
+                .as_array()
+                .map(|chapters| {
+                    chapters
+                        .iter()
+                        .filter_map(|chapter| {
+                            let start = time(&chapter["start_time"])?;
+                            let end = time(&chapter["end_time"]).filter(|end| *end >= start)?;
+                            Some(Chapter {
+                                start,
+                                end,
+                                title: chapter["tags"]["title"].as_str().and_then(display_text),
+                            })
+                        })
+                        .take(MAX_CHAPTERS)
+                        .collect()
+                })
+                .unwrap_or_default();
+            metadata.subtitle_tracks = streams
+                .iter()
+                .filter(|stream| stream["codec_type"] == "subtitle")
+                .map(|stream| SubtitleTrack {
+                    language: language(stream),
+                })
+                .take(MAX_SUBTITLE_TRACKS)
+                .collect();
             metadata.duration = duration(&value["format"]["duration"]).or_else(|| {
                 streams
                     .iter()
@@ -101,6 +189,7 @@ impl MediaMetadata {
                 positive(&value["format"]["bit_rate"]).filter(|bitrate| *bitrate <= 1e12);
             if let Some(audio) = audio {
                 metadata.audio_codec = codec(audio);
+                metadata.channel_layout = label_token(&audio["channel_layout"]);
                 metadata.sample_rate =
                     positive(&audio["sample_rate"]).filter(|rate| *rate <= 10_000_000.0);
                 metadata.channels = audio["channels"]

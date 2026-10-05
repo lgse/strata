@@ -19,6 +19,8 @@ pub(super) struct PcmOutput {
     source: AppSrc,
     sink: gst::Element,
     volume: gst::Element,
+    gain: Cell<f64>,
+    fade: Cell<f64>,
     max_bytes: u64,
     max_time_ns: u64,
     frames: Cell<u64>,
@@ -110,6 +112,8 @@ impl PcmOutput {
             source,
             sink,
             volume: gain,
+            gain: Cell::new(1.0),
+            fade: Cell::new(1.0),
             max_bytes,
             max_time_ns,
             frames: Cell::new(0),
@@ -197,8 +201,28 @@ impl PcmOutput {
         } else {
             0.0
         };
+        self.gain.set(volume);
         self.volume.set_property("mute", muted);
-        self.volume.set_property("volume", volume);
+        self.apply_gain();
+    }
+
+    pub(super) fn set_fade(&self, fade: f64) {
+        self.fade.set(if fade.is_finite() {
+            fade.clamp(0.0, 1.0)
+        } else {
+            1.0
+        });
+        self.apply_gain();
+    }
+
+    fn apply_gain(&self) {
+        self.volume
+            .set_property("volume", self.gain.get() * self.fade.get());
+    }
+
+    #[cfg(test)]
+    pub(super) fn effective_volume(&self) -> f64 {
+        self.volume.property::<f64>("volume")
     }
 
     pub(super) fn finish(&self) -> Result<(), String> {

@@ -17,11 +17,11 @@ fn bindings_initialize_deduplicate_and_release_destroyed_anchors() {
                 PreferenceManager::folder_peeking,
                 move |_, value| observed.borrow_mut().push(value),
             );
-            assert_eq!(*values.borrow(), [true]);
-            manager.set_folder_peeking(false);
-            manager.set_folder_peeking(false);
+            assert_eq!(*values.borrow(), [false]);
+            manager.set_folder_peeking(true);
+            manager.set_folder_peeking(true);
             manager.set_type_to_search(false);
-            assert_eq!(*values.borrow(), [true, false]);
+            assert_eq!(*values.borrow(), [false, true]);
             let revision = manager.changes.revision.get();
             manager.set_type_to_search(false);
             assert_eq!(manager.changes.revision.get(), revision);
@@ -47,14 +47,14 @@ fn failed_saves_still_apply_and_retry_without_repeating_notifications() {
                 move |_, value| observed.borrow_mut().push(value),
             );
             fs::create_dir_all(settings_path()).expect("block settings file with a directory");
-            manager.set_folder_peeking(false);
-            assert_eq!(*values.borrow(), [true, false]);
+            manager.set_folder_peeking(true);
+            assert_eq!(*values.borrow(), [false, true]);
             assert!(manager.persistence_dirty.get());
             fs::remove_dir(settings_path()).expect("remove write failure fixture");
-            manager.set_folder_peeking(false);
+            manager.set_folder_peeking(true);
             assert!(!manager.persistence_dirty.get());
-            assert!(!read_preferences().expect("retried save").folder_peeking);
-            assert_eq!(*values.borrow(), [true, false]);
+            assert!(read_preferences().expect("retried save").folder_peeking);
+            assert_eq!(*values.borrow(), [false, true]);
         },
     );
 }

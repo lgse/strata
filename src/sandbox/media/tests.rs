@@ -44,6 +44,31 @@ pub(crate) fn stream_to(header: Header, end: u64) -> Result<Session, String> {
     })
 }
 
+/// A session whose decoder dies before producing a header, as a seek past the
+/// end of a truncated file does.
+pub(crate) fn failing_stream() -> Result<Session, String> {
+    let slot = WorkerSlot::acquire().ok_or("Media previews are busy (four active players)")?;
+    let slot = Arc::new(slot);
+    let worker_slot = slot.clone();
+    let cancellation = Cancellation::default();
+    let cancelled = cancellation.clone();
+    let (sender, receiver) = mpsc::sync_channel(QUEUED_PACKETS);
+    let worker = thread::spawn(move || {
+        let _slot = worker_slot;
+        let _sent = send(
+            &sender,
+            Event::Failed("failed to fill whole buffer".into()),
+            &cancelled,
+        );
+    });
+    Ok(Session {
+        cancellation,
+        receiver,
+        worker,
+        _slot: slot,
+    })
+}
+
 fn wait_for(condition: impl Fn() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(2);
     while !condition() {
@@ -179,4 +204,63 @@ fn waveform_streams_forward_levels_and_reject_failed_or_trailing_output() {
         assert_eq!(levels, crate::media::peaks::BUCKETS as usize);
         terminate(&mut child);
     }
+}
+
+#[test]
+fn storyboards_forward_cells_and_reject_failed_or_trailing_output() {
+    use crate::media::storyboard::{Sheet, write_cell, write_end};
+
+    let sheet = Sheet {
+        width: 2,
+        height: 2,
+        count: 8,
+        duration_us: 16_000_000,
+    };
+    let mut bytes = Vec::new();
+    sheet.write(&mut bytes).expect("sheet");
+    write_cell(&mut bytes, 4, &[7; 16]).expect("cell");
+    write_cell(&mut bytes, 2, &[9; 16]).expect("cell");
+    write_end(&mut bytes, sheet).expect("end");
+    let file = tempfile::NamedTempFile::new().expect("wire fixture");
+    fs::write(file.path(), bytes).expect("wire bytes");
+    for (suffix, succeeds) in [("", true), ("exit 1", false), ("printf garbage", false)] {
+        let mut child = spawn_renderer(
+            Command::new("sh")
+                .args(["-c", &format!("cat \"$1\"; {suffix}"), "fixture"])
+                .arg(file.path())
+                .stdout(Stdio::piped()),
+        )
+        .expect("worker");
+        let (sender, receiver) = mpsc::sync_channel(64);
+        let result = consume_storyboard(&mut child, &Cancellation::default(), &sender);
+        assert_eq!(result.is_ok(), succeeds, "{suffix:?}");
+        let events: Vec<_> = receiver.try_iter().collect();
+        assert!(matches!(events.first(), Some(StoryboardEvent::Sheet(read)) if *read == sheet));
+        let cells: Vec<u32> = events
+            .iter()
+            .filter_map(|event| match event {
+                StoryboardEvent::Cell { index, pixels } if pixels.len() == 16 => Some(*index),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(cells, [4, 2], "{suffix:?}");
+        terminate(&mut child);
+    }
+}
+
+#[test]
+fn storyboards_and_waveforms_share_one_background_slot() {
+    let source = SandboxedMedia {
+        path: "/unused".into(),
+        size: crate::services::MediaPreviewSize::new(16, 16),
+        backend: MediaPreviewBackend::Software,
+        input_owner: None,
+        audio_only: false,
+    };
+    let slot = BackgroundSlot::acquire().expect("free slot");
+    assert!(StoryboardSession::start(source.clone(), 128).is_none());
+    assert!(PeaksSession::start(source.clone()).is_none());
+    drop(slot);
+    wait_for(|| ACTIVE_BACKGROUND.load(Ordering::Acquire) == 0);
+    assert!(BackgroundSlot::acquire().is_some());
 }

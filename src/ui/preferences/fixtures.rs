@@ -10,7 +10,7 @@ pub(in crate::ui) fn non_default_preferences() -> Preferences {
         mode: "theme".into(),
         theme: "nord".into(),
         omarchy_variant: OmarchyVariant::Darker,
-        folder_peeking: false,
+        folder_peeking: true,
         single_click_previews: false,
         columns_mirror_selection: false,
         render_documents_by_default: false,

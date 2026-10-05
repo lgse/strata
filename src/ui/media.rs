@@ -16,6 +16,7 @@ use crate::{
     services::{MediaPreviewSize, SandboxedMedia},
 };
 
+pub(crate) mod ambient;
 mod audio;
 #[cfg(debug_assertions)]
 mod diagnostics;
@@ -24,7 +25,11 @@ mod tests;
 use audio::PcmOutput;
 
 const PAUSED_IDLE: Duration = Duration::from_secs(30);
+// A selection replaced within the dwell never spawns a decoder.
+pub(crate) const START_DWELL: Duration = Duration::from_millis(50);
 const RESIZE_DELAY: Duration = Duration::from_millis(250);
+// A pane that grows less than this shows a slight upscale instead of a restart.
+const RESIZE_GROWTH: f64 = 0.08;
 const SEEK_DELAY: Duration = Duration::from_millis(200);
 const PRESENTATION_QUEUE: usize = 3;
 // PCM appsrc may hold: the lead the first record carries plus slack, so the
@@ -36,9 +41,20 @@ const AUDIO_LEAD_CAP_US: u64 = 2_000_000;
 const AUDIO_STUCK_TIMEOUT: Duration = Duration::from_secs(3);
 const RESTORE_MIN_US: u64 = 1_000_000;
 const MAX_REMEMBERED_POSITIONS: usize = 128;
+const EDGE_SAMPLE_INTERVAL: Duration = Duration::from_millis(100);
 
 static MEDIA_POSITIONS: LazyLock<Mutex<HashMap<PathBuf, (u64, Instant)>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+
+#[cfg(test)]
+thread_local! {
+    static TEST_STREAMS: Cell<bool> = const { Cell::new(false) };
+}
+
+#[cfg(test)]
+pub(crate) fn use_test_streams(enabled: bool) {
+    TEST_STREAMS.with(|streams| streams.set(enabled));
+}
 
 fn remember_media_position(path: PathBuf, position: u64) {
     if let Ok(mut positions) = MEDIA_POSITIONS.lock() {
@@ -69,6 +85,10 @@ pub(crate) fn recall_media_position(path: &Path) -> Option<u64> {
     })
 }
 
+pub(crate) fn resume_position(path: &Path) -> Option<u64> {
+    recall_media_position(path).filter(|&position| position > RESTORE_MIN_US)
+}
+
 #[cfg(test)]
 type TestLoader = std::rc::Rc<dyn Fn(SandboxedMedia, u32) -> Result<Session, String>>;
 
@@ -93,11 +113,13 @@ mod imp {
         pub(super) timer: RefCell<Option<glib::SourceId>>,
         pub(super) closed: Cell<bool>,
         pub(super) restart: Cell<Option<u32>>,
+        pub(super) start_after: Cell<Option<Instant>>,
         pub(super) starting: Cell<Option<Instant>>,
         pub(super) resized: Cell<Option<Instant>>,
         pub(super) paused: Cell<Option<Instant>>,
         pub(super) dormant: Cell<bool>,
         pub(super) seek_pending: Cell<Option<(u64, Instant)>>,
+        pub(super) seek_origin: Cell<Option<u64>>,
         pub(super) first_frame: Cell<bool>,
         pub(super) clock: Cell<Option<Instant>>,
         pub(super) clock_base: Cell<u64>,
@@ -110,6 +132,9 @@ mod imp {
         pub(super) audio_chunks: Cell<u32>,
         pub(super) restore: Cell<Option<u64>>,
         pub(super) history: RefCell<Option<PcmHistory>>,
+        pub(super) edge_grid: Cell<Option<ambient::EdgeGrid>>,
+        pub(super) edge_sampled: Cell<Option<Instant>>,
+        pub(super) fade: Cell<Option<f64>>,
     }
 
     #[glib::object_subclass]
@@ -177,6 +202,10 @@ mod imp {
         fn seek(&self, timestamp: i64) {
             let position = timestamp.max(0) as u64;
             let obj = self.obj();
+            if self.first_frame.get() && self.seek_origin.get().is_none() {
+                obj.capture_position();
+                self.seek_origin.set(Some(self.position.get()));
+            }
             if self
                 .starting
                 .get()
@@ -205,23 +234,30 @@ mod imp {
         }
     }
 
+    impl DecodedMedia {
+        fn frame_size(&self) -> (i32, i32) {
+            if let Some(texture) = self.texture.borrow().as_ref() {
+                return (texture.width(), texture.height());
+            }
+            self.header
+                .get()
+                .filter(|header| header.width > 0)
+                .map_or((0, 0), |header| (header.width as i32, header.height as i32))
+        }
+    }
+
     impl gdk::subclass::prelude::PaintableImpl for DecodedMedia {
         fn intrinsic_width(&self) -> i32 {
-            self.texture
-                .borrow()
-                .as_ref()
-                .map_or(0, |texture| texture.width())
+            self.frame_size().0
         }
         fn intrinsic_height(&self) -> i32 {
-            self.texture
-                .borrow()
-                .as_ref()
-                .map_or(0, |texture| texture.height())
+            self.frame_size().1
         }
         fn intrinsic_aspect_ratio(&self) -> f64 {
-            self.texture.borrow().as_ref().map_or(0.0, |texture| {
-                f64::from(texture.width()) / f64::from(texture.height())
-            })
+            match self.frame_size() {
+                (_, 0) => 0.0,
+                (width, height) => f64::from(width) / f64::from(height),
+            }
         }
         fn snapshot(&self, snapshot: &gdk::Snapshot, width: f64, height: f64) {
             if let Some(texture) = self.texture.borrow().as_ref() {
@@ -268,15 +304,110 @@ impl DecodedMedia {
 
     pub fn new(source: SandboxedMedia) -> Self {
         let obj: Self = glib::Object::new();
-        let restore =
-            recall_media_position(&source.path).filter(|&position| position > RESTORE_MIN_US);
+        let restore = resume_position(&source.path);
         obj.imp().source.replace(Some(source));
         if let Some(position) = restore {
             obj.imp().restore.set(Some(position));
         }
+        obj.imp()
+            .start_after
+            .set(Some(Instant::now() + START_DWELL));
+        #[cfg(test)]
+        if TEST_STREAMS.with(Cell::get) {
+            obj.use_test_stream();
+        }
         obj.restart_at(0);
         obj.ensure_timer();
         obj
+    }
+
+    pub(crate) fn source(&self) -> Option<SandboxedMedia> {
+        self.imp().source.borrow().clone()
+    }
+
+    pub(crate) fn video_size(&self) -> Option<(u32, u32)> {
+        self.imp()
+            .header
+            .get()
+            .filter(|header| header.width > 0)
+            .map(|header| (header.width, header.height))
+    }
+
+    pub(crate) fn has_frame(&self) -> bool {
+        self.imp().texture.borrow().is_some()
+    }
+
+    pub(crate) fn edge_grid(&self) -> Option<ambient::EdgeGrid> {
+        self.imp().edge_grid.get()
+    }
+
+    /// Gain survives sink restarts without changing the saved volume.
+    pub(crate) fn set_fade(&self, fade: f64) {
+        let fade = fade.clamp(0.0, 1.0);
+        self.imp().fade.set(Some(fade));
+        if let Some(audio) = self.imp().audio.borrow().as_ref() {
+            audio.set_fade(fade);
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn fade(&self) -> f64 {
+        self.imp().fade.get().unwrap_or(1.0)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn use_test_stream(&self) {
+        self.imp().loader.replace(Some(std::rc::Rc::new(|_, tick| {
+            crate::sandbox::media::tests::stream(Header {
+                width: 16,
+                height: 16,
+                audio: false,
+                duration_us: 60_000_000,
+                start_tick: tick,
+            })
+        })));
+    }
+
+    #[cfg(test)]
+    pub(crate) fn use_test_audio_stream(&self) {
+        self.use_test_audio_stream_lasting(60_000_000);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn use_test_audio_stream_lasting(&self, duration_us: u64) {
+        self.imp()
+            .loader
+            .replace(Some(std::rc::Rc::new(move |_, tick| {
+                crate::sandbox::media::tests::stream(Header {
+                    width: 0,
+                    height: 0,
+                    audio: true,
+                    duration_us,
+                    start_tick: tick,
+                })
+            })));
+    }
+
+    #[cfg(test)]
+    pub(crate) fn present_test_frame(&self, width: u32, height: u32) {
+        let imp = self.imp();
+        let header = imp.header.get().unwrap_or(Header {
+            width,
+            height,
+            audio: false,
+            duration_us: 10_000_000,
+            start_tick: 0,
+        });
+        imp.header.set(Some(header));
+        if !self.is_prepared() {
+            self.stream_prepared(false, true, true, header.duration_us as i64);
+        }
+        imp.first_frame.set(true);
+        self.present(Frame {
+            tick: header.start_tick,
+            pixels: vec![0; header.video_bytes()],
+            samples: Vec::new(),
+        });
     }
 
     fn ensure_timer(&self) {
@@ -328,6 +459,7 @@ impl DecodedMedia {
         imp.frames.borrow_mut().clear();
         imp.texture.borrow_mut().take();
         imp.history.borrow_mut().take();
+        imp.edge_grid.set(None);
         imp.source.borrow_mut().take();
         imp.restart.set(None);
         imp.seek_pending.set(None);
@@ -492,16 +624,23 @@ impl DecodedMedia {
 
     fn pcm_output(&self) -> Result<PcmOutput, String> {
         #[cfg(test)]
-        if let Some(description) = self.imp().audio_sink.borrow().as_deref() {
-            return PcmOutput::test_sink(
+        let output = if let Some(description) = self.imp().audio_sink.borrow().as_deref() {
+            PcmOutput::test_sink(
                 self.is_muted(),
                 self.volume(),
                 AUDIO_LOOKAHEAD,
                 description,
                 self.imp().audio_clock.borrow().as_ref(),
-            );
+            )?
+        } else {
+            PcmOutput::new(self.is_muted(), self.volume(), AUDIO_LOOKAHEAD)?
+        };
+        #[cfg(not(test))]
+        let output = PcmOutput::new(self.is_muted(), self.volume(), AUDIO_LOOKAHEAD)?;
+        if let Some(fade) = self.imp().fade.get() {
+            output.set_fade(fade);
         }
-        PcmOutput::new(self.is_muted(), self.volume(), AUDIO_LOOKAHEAD)
+        Ok(output)
     }
 
     fn tick(&self) -> Result<(), String> {
@@ -561,6 +700,14 @@ impl DecodedMedia {
             {
                 return Ok(());
             }
+            if imp
+                .start_after
+                .get()
+                .is_some_and(|after| Instant::now() < after)
+            {
+                return Ok(());
+            }
+            imp.start_after.set(None);
             imp.session.borrow_mut().take();
             let source = imp
                 .source
@@ -603,6 +750,7 @@ impl DecodedMedia {
                         && saved < header.duration_us
                     {
                         imp.header.set(Some(header));
+                        self.invalidate_size();
                         tracing::debug!(position_us = saved, "resuming media preview");
                         self.restart_at(saved);
                         break;
@@ -610,6 +758,7 @@ impl DecodedMedia {
                     let audio = header.audio.then(|| self.pcm_output()).transpose()?;
                     imp.audio.replace(audio);
                     imp.header.set(Some(header));
+                    self.invalidate_size();
                     if imp.source.borrow().as_ref().map(|source| source.size)
                         != imp.loaded_size.get()
                     {
@@ -658,6 +807,7 @@ impl DecodedMedia {
                             .map_or(0, |time| time.elapsed().as_millis())
                             as u64;
                         imp.first_frame.set(true);
+                        imp.seek_origin.set(None);
                         imp.starting.set(None);
                         imp.last_progress.set(Some(Instant::now()));
                         if self.is_playing() {
@@ -704,6 +854,18 @@ impl DecodedMedia {
                 Some(Event::Failed(error)) => {
                     if imp.first_frame.get() {
                         self.recover(&error)?;
+                        return Ok(());
+                    }
+                    // Truncated downloads can advertise a duration beyond their data.
+                    if let Some(origin) = imp.seek_origin.take() {
+                        tracing::warn!(error, origin_us = origin, "seek failed; resuming");
+                        if self.is_seeking() {
+                            self.seek_failed();
+                        }
+                        self.restart_at(origin);
+                        if self.is_prepared() {
+                            self.update(imp.position.get() as i64);
+                        }
                         return Ok(());
                     }
                     return Err(error);
@@ -801,8 +963,10 @@ impl DecodedMedia {
         if header.width + 1 < loaded.width as u32 && header.height + 1 < loaded.height as u32 {
             scale = scale.min(1.0);
         }
-        (f64::from(header.width) * (scale - 1.0)).abs() >= 2.0
-            || (f64::from(header.height) * (scale - 1.0)).abs() >= 2.0
+        // Downsampling avoids a decoder restart and audible drop on shrink.
+        scale >= 1.0 + RESIZE_GROWTH
+            && (f64::from(header.width) * (scale - 1.0) >= 2.0
+                || f64::from(header.height) * (scale - 1.0) >= 2.0)
     }
 
     fn present(&self, frame: Frame) {
@@ -810,6 +974,15 @@ impl DecodedMedia {
         if let Some(header) = imp.header.get()
             && header.width > 0
         {
+            if imp
+                .edge_sampled
+                .get()
+                .is_none_or(|sampled| sampled.elapsed() >= EDGE_SAMPLE_INTERVAL)
+            {
+                imp.edge_sampled.set(Some(Instant::now()));
+                imp.edge_grid
+                    .set(ambient::sample(&frame.pixels, header.width, header.height));
+            }
             #[cfg(debug_assertions)]
             let pixels = diagnostics::Pixels::new(frame.pixels);
             #[cfg(not(debug_assertions))]

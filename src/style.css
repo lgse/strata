@@ -13,8 +13,8 @@
 }
 
 window {
-  background: @theme_bg;
-  color: @theme_text;
+  background: @strata_bg;
+  color: @strata_text;
   font-size: 13px;
 }
 
@@ -33,16 +33,16 @@ popover.background button {
 }
 
 .chooser-details {
-  background: @theme_surface;
-  border-top: 1px solid alpha(@theme_border, 0.6);
-  color: @theme_text;
+  background: @strata_surface;
+  border-top: 1px solid alpha(@strata_border, 0.6);
+  color: @strata_text;
   padding: 12px 16px;
 }
 
 .chooser-actions {
-  background: @theme_surface;
-  border-top: 1px solid alpha(@theme_border, 0.35);
-  color: @theme_text;
+  background: @strata_surface;
+  border-top: 1px solid alpha(@strata_border, 0.35);
+  color: @strata_text;
   padding: 10px 16px;
 }
 
@@ -57,7 +57,7 @@ popover.background button {
 
 .chooser-options > flowboxchild {
   background: transparent;
-  color: @theme_text;
+  color: @strata_text;
   padding: 0;
   margin: 0;
 }
@@ -68,7 +68,7 @@ switch:focus-visible,
 row:focus-visible,
 flowboxchild:focus-visible,
 paned > separator:focus-visible {
-  outline: 2px solid @theme_accent;
+  outline: 2px solid @strata_accent;
   outline-offset: -2px;
 }
 
@@ -82,8 +82,8 @@ paned > separator:focus-visible {
 
 headerbar,
 .mode-pane-header {
-  background: @theme_surface;
-  border-bottom: 1px solid alpha(@theme_border, 0.6);
+  background: @strata_surface;
+  border-bottom: 1px solid alpha(@strata_border, 0.6);
   box-shadow: none;
   min-height: 46px;
   padding: 0;
@@ -114,13 +114,13 @@ headerbar menubutton {
 }
 
 .global-activity-spinner {
-  color: @theme_accent;
+  color: @strata_accent;
   min-height: 16px;
   min-width: 16px;
 }
 
 headerbar .sidebar-toggle {
-  color: @theme_accent;
+  color: @strata_accent;
   margin-left: 5px;
   min-width: 36px;
 }
@@ -143,14 +143,14 @@ headerbar .sidebar-toggle:hover,
 headerbar button.header-action:hover,
 headerbar menubutton.header-action > button:hover,
 headerbar button.header-action.active {
-  background: alpha(@theme_accent, 0.15);
+  background: alpha(@strata_accent, 0.15);
 }
 
 headerbar .sidebar-toggle:active,
 headerbar button.header-action:active,
 headerbar menubutton.header-action > button:active,
 headerbar menubutton.header-action > button:checked {
-  background: alpha(@theme_accent, 0.22);
+  background: alpha(@strata_accent, 0.22);
   transform: scale(0.97);
 }
 
@@ -173,7 +173,7 @@ menubutton.icons-thumbnail-menu > button image,
 
 headerbar button.header-action,
 headerbar menubutton.header-action > button {
-  color: @theme_text;
+  color: @strata_text;
 }
 
 headerbar button.header-action:hover,
@@ -184,14 +184,14 @@ headerbar menubutton.header-action > button:hover,
 headerbar menubutton.header-action > button:active,
 headerbar menubutton.header-action > button:checked,
 headerbar menubutton.header-action > button:focus-visible {
-  color: @theme_text;
+  color: @strata_text;
 }
 
 .appearance-popover contents {
-  background: @theme_surface;
-  border: 1px solid alpha(@theme_border, 0.6);
+  background: @strata_surface;
+  border: 1px solid alpha(@strata_border, 0.6);
   border-radius: 9px;
-  box-shadow: 0 0 14px alpha(@theme_glow, 0.24);
+  box-shadow: 0 0 14px alpha(@strata_glow, 0.24);
   padding: 0;
 }
 
@@ -201,13 +201,13 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .appearance-menu separator {
-  background: alpha(@theme_border, 0.2);
+  background: alpha(@strata_border, 0.2);
   margin: 6px 0;
   min-height: 1px;
 }
 
 .menu-heading {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   font-size: 0.78em;
   font-weight: 700;
   margin: 3px 8px 2px;
@@ -218,7 +218,7 @@ headerbar menubutton.header-action > button:focus-visible {
   border: none;
   border-radius: 5px;
   box-shadow: none;
-  color: @theme_text;
+  color: @strata_text;
   font-size: inherit;
   font-weight: 400;
   letter-spacing: 0;
@@ -229,8 +229,8 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .appearance-option:hover {
-  background: alpha(@theme_accent, 0.15);
-  color: @theme_text;
+  background: alpha(@strata_accent, 0.15);
+  color: @strata_text;
 }
 
 .appearance-option:active {
@@ -246,14 +246,14 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .appearance-text-stepper {
-  background: alpha(@theme_text, 0.04);
-  border: 1px solid alpha(@theme_border, 0.6);
+  background: alpha(@strata_text, 0.04);
+  border: 1px solid alpha(@strata_border, 0.6);
   border-radius: 6px;
-  color: @theme_text;
+  color: @strata_text;
 }
 
 .appearance-text-sample {
-  color: @theme_accent;
+  color: @strata_accent;
   min-width: 17px;
   font-weight: 700;
 }
@@ -264,7 +264,7 @@ headerbar menubutton.header-action > button:focus-visible {
   border: none;
   border-radius: 0;
   box-shadow: none;
-  color: @theme_text;
+  color: @strata_text;
   font-size: inherit;
   font-weight: 400;
   min-height: 26px;
@@ -283,42 +283,42 @@ headerbar menubutton.header-action > button:focus-visible {
 
 .appearance-text-stepper button.appearance-text-value {
   padding: 0 7px;
-  border-left: 1px solid alpha(@theme_border, 0.6);
-  border-right: 1px solid alpha(@theme_border, 0.6);
+  border-left: 1px solid alpha(@strata_border, 0.6);
+  border-right: 1px solid alpha(@strata_border, 0.6);
 }
 
 .appearance-text-stepper button:hover {
-  background: alpha(@theme_accent, 0.15);
+  background: alpha(@strata_accent, 0.15);
 }
 
 .appearance-text-stepper button:active {
-  background: alpha(@theme_accent, 0.22);
+  background: alpha(@strata_accent, 0.22);
 }
 
 .appearance-text-stepper button:focus-visible {
-  outline: 2px solid @theme_accent;
+  outline: 2px solid @strata_accent;
   outline-offset: -2px;
 }
 
 .appearance-text-stepper button:disabled {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
 }
 
 .preview-panel-option:checked {
-  background: alpha(@theme_accent, 0.10);
-  color: @theme_text;
+  background: alpha(@strata_accent, 0.10);
+  color: @strata_text;
 }
 
 .preview-panel-option:checked:hover {
-  background: alpha(@theme_accent, 0.18);
+  background: alpha(@strata_accent, 0.18);
 }
 
 .preview-panel-option:checked:active {
-  background: alpha(@theme_accent, 0.22);
+  background: alpha(@strata_accent, 0.22);
 }
 
 .preview-panel-option:focus-visible {
-  outline: 2px solid alpha(@theme_accent, 0.6);
+  outline: 2px solid alpha(@strata_accent, 0.6);
   outline-offset: -2px;
 }
 
@@ -327,7 +327,7 @@ headerbar menubutton.header-action > button:focus-visible {
 .column-peek-target:active {
   background: transparent;
   background-image: none;
-  color: @theme_accent;
+  color: @strata_accent;
   border: none;
   border-radius: 0;
   box-shadow: none;
@@ -337,7 +337,7 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .column-peek-target:focus-visible {
-  outline: 2px solid @theme_accent;
+  outline: 2px solid @strata_accent;
   outline-offset: -2px;
 }
 
@@ -345,32 +345,32 @@ headerbar menubutton.header-action > button:focus-visible {
 .location-entry:focus,
 .location-entry:focus-visible,
 .location-entry:focus-within {
-  background: @theme_bg;
-  border: 1px solid alpha(@theme_border, 0.7);
+  background: @strata_bg;
+  border: 1px solid alpha(@strata_border, 0.7);
   box-shadow: none;
-  caret-color: @theme_accent;
-  color: @theme_text;
+  caret-color: @strata_accent;
+  color: @strata_text;
   min-height: 22px;
-  outline-color: @theme_accent;
+  outline-color: @strata_accent;
 }
 
 .location-entry:focus,
 .location-entry:focus-visible,
 .location-entry:focus-within {
-  border-color: @theme_accent;
-  box-shadow: 0 0 0 1px alpha(@theme_accent, 0.38);
-  outline: 2px solid @theme_accent;
+  border-color: @strata_accent;
+  box-shadow: 0 0 0 1px alpha(@strata_accent, 0.38);
+  outline: 2px solid @strata_accent;
   outline-offset: -2px;
 }
 
 .location-entry placeholder {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   opacity: 1;
 }
 
 .location-entry selection {
-  background: @theme_accent;
-  color: @theme_bg;
+  background: @strata_accent;
+  color: @strata_bg;
 }
 
 .location-action {
@@ -384,7 +384,7 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .location-action:active {
-  background: alpha(@theme_accent, 0.22);
+  background: alpha(@strata_accent, 0.22);
   transform: scale(0.97);
 }
 
@@ -399,11 +399,11 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .breadcrumb-fade-left {
-  background: linear-gradient(to right, @theme_surface, transparent);
+  background: linear-gradient(to right, @strata_surface, transparent);
 }
 
 .breadcrumb-fade-right {
-  background: linear-gradient(to left, @theme_surface, transparent);
+  background: linear-gradient(to left, @strata_surface, transparent);
 }
 
 .breadcrumb-scroller scrollbar {
@@ -437,15 +437,15 @@ headerbar menubutton.header-action > button:focus-visible {
 
 .breadcrumb {
   background: transparent;
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   min-height: 22px;
   padding: 0 5px;
   transition: transform 160ms ease-out, background 160ms ease-out, color 160ms ease-out;
 }
 
 .breadcrumb:hover {
-  background: alpha(@theme_accent, 0.15);
-  color: @theme_text;
+  background: alpha(@strata_accent, 0.15);
+  color: @strata_text;
 }
 
 .breadcrumb:not(.current):active {
@@ -454,12 +454,12 @@ headerbar menubutton.header-action > button:focus-visible {
 
 .breadcrumb.current:hover {
   background: transparent;
-  color: @theme_accent;
+  color: @strata_accent;
 }
 
 .breadcrumb.current,
 .breadcrumb.current:disabled {
-  color: @theme_accent;
+  color: @strata_accent;
   font-weight: 700;
   opacity: 1;
 }
@@ -486,12 +486,12 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .copy-path:hover {
-  background: alpha(@theme_accent, 0.15);
+  background: alpha(@strata_accent, 0.15);
 }
 
 .breadcrumb-separator,
 .breadcrumb.breadcrumb-root {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   font-size: 1.15em;
   margin: 0 2px;
 }
@@ -501,10 +501,10 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .breadcrumb-popover contents {
-  background: @theme_surface;
-  border: 1px solid alpha(@theme_border, 0.6);
+  background: @strata_surface;
+  border: 1px solid alpha(@strata_border, 0.6);
   border-radius: 9px;
-  box-shadow: 0 0 14px alpha(@theme_glow, 0.24);
+  box-shadow: 0 0 14px alpha(@strata_glow, 0.24);
   padding: 0;
 }
 
@@ -519,28 +519,28 @@ headerbar menubutton.header-action > button:focus-visible {
   border: none;
   border-radius: 5px;
   box-shadow: none;
-  color: @theme_text;
+  color: @strata_text;
   min-height: 28px;
   padding: 4px 8px;
   transition: background 120ms ease-out, color 120ms ease-out;
 }
 
 .breadcrumb-hierarchy-item:hover {
-  background: alpha(@theme_accent, 0.15);
-  color: @theme_text;
+  background: alpha(@strata_accent, 0.15);
+  color: @strata_text;
 }
 
 .breadcrumb-hierarchy-item:active {
-  background: alpha(@theme_accent, 0.25);
+  background: alpha(@strata_accent, 0.25);
 }
 
 .breadcrumb-hierarchy-item.current {
-  color: @theme_accent;
+  color: @strata_accent;
   font-weight: 700;
 }
 
 .search-backdrop {
-  background: alpha(@theme_bg, 0.58);
+  background: alpha(@strata_bg, 0.58);
   transition: opacity 200ms ease-out;
 }
 
@@ -549,16 +549,16 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .search-dialog {
-  background: @theme_surface;
-  border: 1px solid alpha(@theme_border, 0.6);
+  background: @strata_surface;
+  border: 1px solid alpha(@strata_border, 0.6);
   border-radius: 9px;
-  box-shadow: 0 0 14px alpha(@theme_glow, 0.24);
+  box-shadow: 0 0 14px alpha(@strata_glow, 0.24);
   min-height: 452px;
   min-width: 760px;
 }
 
 .search-bar {
-  border-bottom: 1px solid alpha(@theme_border, 0.55);
+  border-bottom: 1px solid alpha(@strata_border, 0.55);
   border-top-left-radius: 8px;
   border-top-right-radius: 8px;
   min-height: 58px;
@@ -571,27 +571,27 @@ headerbar menubutton.header-action > button:focus-visible {
   background: transparent;
   border: none;
   box-shadow: none;
-  color: @theme_text;
+  color: @strata_text;
   font-size: 1.08em;
   outline: none;
   padding: 0;
 }
 
 .search-field placeholder {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
 }
 
 .search-indexing-spinner {
-  color: @theme_accent;
+  color: @strata_accent;
 }
 
 .search-status {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   padding: 28px 24px;
 }
 
 .search-results-scroll {
-  background: @theme_surface;
+  background: @strata_surface;
   min-height: 360px;
 }
 
@@ -601,8 +601,8 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .search-result {
-  border-bottom: 1px solid alpha(@theme_border, 0.28);
-  color: @theme_text;
+  border-bottom: 1px solid alpha(@strata_border, 0.28);
+  color: @strata_text;
   padding: 0;
 }
 
@@ -611,14 +611,14 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .search-result:hover {
-  background: alpha(@theme_accent, 0.15);
+  background: alpha(@strata_accent, 0.15);
 }
 
 .search-result:selected,
 .search-result:focus-visible {
-  background: alpha(@theme_highlight, 0.72);
-  color: @theme_text;
-  outline: 1px solid alpha(@theme_accent, 0.72);
+  background: alpha(@strata_highlight, 0.72);
+  color: @strata_text;
+  outline: 1px solid alpha(@strata_accent, 0.72);
   outline-offset: -1px;
 }
 
@@ -628,23 +628,23 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .search-result-name {
-  color: @theme_text;
+  color: @strata_text;
   font-weight: 650;
 }
 
 .search-result-path {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   font-size: 0.84em;
 }
 
 .search-result:selected .search-result-path {
-  color: @theme_text;
+  color: @strata_text;
   opacity: 0.72;
 }
 
 .search-footer {
-  background: alpha(@theme_bg, 0.18);
-  border-top: 1px solid alpha(@theme_border, 0.5);
+  background: alpha(@strata_bg, 0.18);
+  border-top: 1px solid alpha(@strata_border, 0.5);
   border-bottom-left-radius: 8px;
   border-bottom-right-radius: 8px;
   min-height: 34px;
@@ -652,18 +652,18 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .search-hint {
-  color: @theme_text;
+  color: @strata_text;
   font-size: 0.78em;
   opacity: 0.72;
 }
 
 .search-hint-warning {
-  color: @theme_accent;
+  color: @strata_accent;
   opacity: 0.9;
 }
 
 .settings-backdrop {
-  background: alpha(@theme_bg, 0.82);
+  background: alpha(@strata_bg, 0.82);
   transition: opacity 200ms ease-out;
 }
 
@@ -675,7 +675,7 @@ headerbar menubutton.header-action > button:focus-visible {
 .modal-backdrop:focus,
 .modal-backdrop:focus-visible,
 .modal-backdrop:focus-within {
-  background: alpha(@theme_bg, 0.55);
+  background: alpha(@strata_bg, 0.55);
   outline: none;
   transition: opacity 200ms ease-out;
 }
@@ -699,12 +699,12 @@ headerbar menubutton.header-action > button:focus-visible {
 
 
 .delete-confirmation-file-metadata {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
 }
 
 
 .delete-confirmation-list {
-  background: alpha(@theme_highlight, 0.42);
+  background: alpha(@strata_highlight, 0.42);
 }
 
 .delete-confirmation-list viewport {
@@ -717,7 +717,7 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .delete-confirmation-file {
-  color: @theme_text;
+  color: @strata_text;
   min-height: 24px;
 }
 
@@ -727,16 +727,16 @@ headerbar menubutton.header-action > button:focus-visible {
 
 
 .action-dialog {
-  background: @theme_surface;
-  border: 1px solid alpha(@theme_border, 0.6);
+  background: @strata_surface;
+  border: 1px solid alpha(@strata_border, 0.6);
   border-radius: 9px;
-  box-shadow: 0 0 14px alpha(@theme_glow, 0.24);
-  color: @theme_text;
+  box-shadow: 0 0 14px alpha(@strata_glow, 0.24);
+  color: @strata_text;
   min-width: 480px;
 }
 
 .action-dialog-header {
-  border-bottom: 1px solid alpha(@theme_border, 0.22);
+  border-bottom: 1px solid alpha(@strata_border, 0.22);
   border-top-left-radius: 8px;
   border-top-right-radius: 8px;
   min-height: 40px;
@@ -744,16 +744,16 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .action-dialog-symbol {
-  background: alpha(@theme_highlight, 0.64);
-  border: 1px solid alpha(@theme_accent, 0.24);
+  background: alpha(@strata_highlight, 0.64);
+  border: 1px solid alpha(@strata_accent, 0.24);
   border-radius: 6px;
   min-height: 3.076923rem;
   min-width: 3.076923rem;
 }
 
 .action-dialog-symbol.danger {
-  background: alpha(@theme_danger, 0.14);
-  border-color: alpha(@theme_danger, 0.32);
+  background: alpha(@strata_danger, 0.14);
+  border-color: alpha(@strata_danger, 0.32);
 }
 
 .action-dialog.wide {
@@ -765,7 +765,7 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .action-dialog-title {
-  color: @theme_text;
+  color: @strata_text;
   font-size: 1.08em;
   font-weight: 700;
 }
@@ -774,7 +774,7 @@ headerbar menubutton.header-action > button:focus-visible {
 .action-dialog-field-label,
 .action-dialog-description,
 .modal-progress-status {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
 }
 
 .action-dialog-subtitle {
@@ -790,7 +790,7 @@ headerbar menubutton.header-action > button:focus-visible {
   border: none;
   border-radius: 5px;
   box-shadow: none;
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   min-height: 28px;
   min-width: 28px;
   padding: 4px;
@@ -798,18 +798,18 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .action-dialog-close:hover {
-  background: alpha(@theme_accent, 0.15);
-  color: @theme_text;
+  background: alpha(@strata_accent, 0.15);
+  color: @strata_text;
 }
 
 .action-dialog-close:active {
-  background: alpha(@theme_accent, 0.22);
-  color: @theme_accent;
+  background: alpha(@strata_accent, 0.22);
+  color: @strata_accent;
   transform: scale(0.97);
 }
 
 .action-dialog-close:focus-visible {
-  outline: 2px solid alpha(@theme_accent, 0.52);
+  outline: 2px solid alpha(@strata_accent, 0.52);
   outline-offset: 1px;
 }
 
@@ -818,7 +818,7 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .action-dialog-actions {
-  border-top: 1px solid alpha(@theme_border, 0.22);
+  border-top: 1px solid alpha(@strata_border, 0.22);
   border-bottom-left-radius: 8px;
   border-bottom-right-radius: 8px;
   padding: 10px 20px 12px;
@@ -837,10 +837,10 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .open-with-search {
-  background: alpha(@theme_bg, 0.42);
-  border: 1px solid alpha(@theme_border, 0.28);
+  background: alpha(@strata_bg, 0.42);
+  border: 1px solid alpha(@strata_border, 0.28);
   border-radius: 6px;
-  color: @theme_text;
+  color: @strata_text;
   margin-bottom: 8px;
   min-height: 32px;
   padding: 3px 8px;
@@ -848,22 +848,22 @@ headerbar menubutton.header-action > button:focus-visible {
 
 .open-with-search:focus,
 .open-with-search:focus-within {
-  border-color: @theme_accent;
-  outline: 2px solid alpha(@theme_accent, 0.3);
+  border-color: @strata_accent;
+  outline: 2px solid alpha(@strata_accent, 0.3);
 }
 
 .open-with-search image {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
 }
 
 .open-with-search image:hover,
 .open-with-search image:active {
-  color: @theme_accent;
+  color: @strata_accent;
   background: transparent;
 }
 
 .open-with-search placeholder {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
 }
 
 .open-with-heading-row {
@@ -872,20 +872,20 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .open-with-heading {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   font-size: 0.846154em;
   font-weight: 700;
 }
 
 .open-with-scroll {
-  background: alpha(@theme_bg, 0.42);
-  border: 1px solid alpha(@theme_border, 0.28);
+  background: alpha(@strata_bg, 0.42);
+  border: 1px solid alpha(@strata_border, 0.28);
   border-radius: 6px;
 }
 
 .open-with-list {
   background: transparent;
-  color: @theme_text;
+  color: @strata_text;
   padding: 3px;
 }
 
@@ -897,41 +897,41 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .open-with-row:hover {
-  background: alpha(@theme_accent, 0.12);
+  background: alpha(@strata_accent, 0.12);
 }
 
 .open-with-row:active {
-  background: alpha(@theme_accent, 0.24);
+  background: alpha(@strata_accent, 0.24);
 }
 
 .open-with-row:focus-visible {
-  outline: 2px solid @theme_accent;
+  outline: 2px solid @strata_accent;
   outline-offset: -2px;
 }
 
 .open-with-row:selected,
 .open-with-row:selected:focus {
-  background: alpha(@theme_accent, 0.2);
-  color: @theme_text;
+  background: alpha(@strata_accent, 0.2);
+  color: @strata_text;
 }
 
 .open-with-icon {
-  color: @theme_text;
+  color: @strata_text;
 }
 
 .open-with-name {
-  color: @theme_text;
+  color: @strata_text;
   font-size: 1em;
   font-weight: 600;
 }
 
 .open-with-description {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   font-size: 0.846154em;
 }
 
 .open-with-empty {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   font-size: 1em;
   padding: 24px 12px;
 }
@@ -940,10 +940,10 @@ headerbar menubutton.header-action > button:focus-visible {
 .settings-action-button,
 .settings-action-library-button > button {
   background: transparent;
-  border: 1px solid alpha(@theme_border, 0.54);
+  border: 1px solid alpha(@strata_border, 0.54);
   border-radius: 5px;
   box-shadow: none;
-  color: @theme_text;
+  color: @strata_text;
   min-height: 26px;
   padding: 2px 11px;
   transition: transform 160ms ease-out, background 160ms ease-out, border-color 160ms ease-out, color 160ms ease-out;
@@ -952,70 +952,70 @@ headerbar menubutton.header-action > button:focus-visible {
 .action-dialog-cancel:hover,
 .settings-action-button:hover,
 .settings-action-library-button > button:hover {
-  background: alpha(@theme_accent, 0.15);
-  border-color: @theme_text;
+  background: alpha(@strata_accent, 0.15);
+  border-color: @strata_text;
 }
 
 .action-dialog-cancel:active,
 .settings-action-button:active,
 .settings-action-library-button > button:active,
 .settings-action-library-button > button:checked {
-  background: alpha(@theme_accent, 0.22);
-  border-color: @theme_accent;
-  color: @theme_accent;
+  background: alpha(@strata_accent, 0.22);
+  border-color: @strata_accent;
+  color: @strata_accent;
   transform: scale(0.97);
 }
 
 .action-dialog-cancel:focus-visible,
 .settings-action-button:focus-visible,
 .settings-action-library-button > button:focus-visible {
-  border-color: @theme_accent;
-  outline: 2px solid alpha(@theme_accent, 0.5);
+  border-color: @strata_accent;
+  outline: 2px solid alpha(@strata_accent, 0.5);
   outline-offset: 1px;
 }
 
 .action-dialog-confirm {
-  background: alpha(@theme_accent, 0.1);
-  border: 1px solid @theme_accent;
+  background: alpha(@strata_accent, 0.1);
+  border: 1px solid @strata_accent;
   border-radius: 5px;
   box-shadow: none;
-  color: @theme_accent;
+  color: @strata_accent;
   min-height: 26px;
   padding: 2px 11px;
   transition: transform 160ms ease-out, background 160ms ease-out;
 }
 
 .action-dialog-confirm:hover {
-  background: alpha(@theme_accent, 0.18);
+  background: alpha(@strata_accent, 0.18);
 }
 
 .action-dialog-confirm:active {
-  background: alpha(@theme_accent, 0.28);
+  background: alpha(@strata_accent, 0.28);
   transform: scale(0.97);
 }
 
 .action-dialog-confirm:focus-visible {
-  outline: 2px solid @theme_accent;
+  outline: 2px solid @strata_accent;
   outline-offset: 1px;
 }
 
 .action-dialog-confirm.danger {
-  background: alpha(@theme_danger, 0.1);
-  border-color: @theme_danger;
-  color: @theme_danger;
+  background: alpha(@strata_danger, 0.1);
+  border-color: @strata_danger;
+  color: @strata_danger;
 }
 
 .action-dialog-confirm.danger:hover {
-  background: alpha(@theme_danger, 0.18);
+  background: alpha(@strata_danger, 0.18);
 }
 
 .action-dialog-confirm.danger:active {
-  background: alpha(@theme_danger, 0.28);
+  background: alpha(@strata_danger, 0.28);
   transform: scale(0.97);
 }
 
 .action-dialog-confirm.danger:focus-visible {
-  outline-color: @theme_danger;
+  outline-color: @strata_danger;
 }
 
 .action-dialog-cancel:disabled,
@@ -1023,42 +1023,42 @@ headerbar menubutton.header-action > button:focus-visible {
 .settings-action-library-button > button:disabled,
 .action-dialog-confirm:disabled,
 .action-dialog-close:disabled {
-  background: alpha(@theme_muted, 0.3);
-  border-color: alpha(@theme_border, 0.38);
-  color: @theme_dim_text;
+  background: alpha(@strata_muted, 0.3);
+  border-color: alpha(@strata_border, 0.38);
+  color: @strata_dim_text;
   opacity: 0.7;
 }
 
 .form-check {
-  color: @theme_text;
+  color: @strata_text;
   padding-top: 2px;
 }
 
 .form-check check {
-  background: alpha(@theme_bg, 0.72);
-  border: 1px solid alpha(@theme_border, 0.72);
+  background: alpha(@strata_bg, 0.72);
+  border: 1px solid alpha(@strata_border, 0.72);
   border-radius: 4px;
-  color: @theme_bg;
+  color: @strata_bg;
   transition: background 160ms ease-out, border-color 160ms ease-out, color 160ms ease-out;
 }
 
 .form-check:hover check {
-  border-color: @theme_accent;
+  border-color: @strata_accent;
 }
 
 .form-check:checked check {
-  background: @theme_accent;
-  border-color: @theme_accent;
-  color: @theme_bg;
+  background: @strata_accent;
+  border-color: @strata_accent;
+  color: @strata_bg;
 }
 
 .form-check:focus-visible {
-  outline: 2px solid @theme_accent;
+  outline: 2px solid @strata_accent;
   outline-offset: 2px;
 }
 
 .form-check:disabled {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   opacity: 0.7;
 }
 
@@ -1069,52 +1069,52 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .form-field-error {
-  color: @theme_danger;
+  color: @strata_danger;
   font-size: 0.82em;
 }
 
 .portal-setup-dialog .form-message:not(.error) {
   padding: 0;
-  color: @theme_text;
+  color: @strata_text;
 }
 
 .form-error {
-  color: @theme_danger;
+  color: @strata_danger;
 }
 
 .form-message.error,
 .authentication-error {
-  background: alpha(@theme_danger, 0.1);
-  border: 1px solid alpha(@theme_danger, 0.5);
-  color: @theme_danger;
+  background: alpha(@strata_danger, 0.1);
+  border: 1px solid alpha(@strata_danger, 0.5);
+  color: @strata_danger;
 }
 
 .open-argument-connecting {
-  background: @theme_surface;
-  border: 1px solid alpha(@theme_border, 0.6);
+  background: @strata_surface;
+  border: 1px solid alpha(@strata_border, 0.6);
   border-radius: 8px;
-  box-shadow: 0 2px 10px alpha(@theme_bg, 0.4);
+  box-shadow: 0 2px 10px alpha(@strata_bg, 0.4);
   margin: 12px;
   padding: 10px 12px;
 }
 
 .send-to-success {
-  background: @theme_surface;
-  border: 1px solid alpha(@theme_border, 0.6);
+  background: @strata_surface;
+  border: 1px solid alpha(@strata_border, 0.6);
   border-radius: 8px;
-  box-shadow: 0 2px 10px alpha(@theme_bg, 0.4);
+  box-shadow: 0 2px 10px alpha(@strata_bg, 0.4);
   margin: 12px;
   padding: 10px 12px;
 }
 
 .form-message.warning {
-  background: alpha(@theme_accent, 0.1);
-  border: 1px solid alpha(@theme_accent, 0.46);
-  color: @theme_accent;
+  background: alpha(@strata_accent, 0.1);
+  border: 1px solid alpha(@strata_accent, 0.46);
+  color: @strata_accent;
 }
 
 .action-dialog-loading {
-  color: @theme_accent;
+  color: @strata_accent;
   min-height: 18px;
   min-width: 18px;
 }
@@ -1128,7 +1128,7 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .transfer-progress-caption {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   font-size: 0.76em;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -1136,19 +1136,19 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .transfer-progress-bytes {
-  color: @theme_text;
+  color: @strata_text;
   font-size: 1.12em;
   font-weight: 600;
 }
 
 .transfer-progress-percent {
-  color: @theme_accent;
+  color: @strata_accent;
   font-size: 1.85em;
   font-weight: 700;
 }
 
 .transfer-progress-footer {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   font-size: 0.82em;
 }
 
@@ -1158,25 +1158,25 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .file-operation-card {
-  background: @theme_surface;
-  border: 1px solid alpha(@theme_border, 0.6);
+  background: @strata_surface;
+  border: 1px solid alpha(@strata_border, 0.6);
   border-radius: 12px;
-  box-shadow: 0 0 10px alpha(@theme_glow, 0.18);
-  color: @theme_text;
+  box-shadow: 0 0 10px alpha(@strata_glow, 0.18);
+  color: @strata_text;
   min-width: 280px;
   padding: 16px;
 }
 
 .file-operation-card:focus-within {
-  border-color: @theme_accent;
+  border-color: @strata_accent;
 }
 
 .file-operation-card .job-status {
-  color: @theme_accent;
+  color: @strata_accent;
 }
 
 .file-operation-card .job-description {
-  color: @theme_text;
+  color: @strata_text;
 }
 
 .file-operation-card .modal-progress trough,
@@ -1198,14 +1198,14 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .modal-progress trough {
-  background: alpha(@theme_bg, 0.72);
-  border: 1px solid alpha(@theme_border, 0.42);
+  background: alpha(@strata_bg, 0.72);
+  border: 1px solid alpha(@strata_border, 0.42);
   border-radius: 5px;
   min-height: 8px;
 }
 
 .modal-progress progress {
-  background: @theme_accent;
+  background: @strata_accent;
   border: none;
   border-radius: 4px;
   min-height: 8px;
@@ -1215,16 +1215,16 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 spinbutton.form-control {
-  background: @theme_bg;
-  color: @theme_text;
-  border: 1px solid @theme_border;
+  background: @strata_bg;
+  color: @strata_text;
+  border: 1px solid @strata_border;
   border-radius: 5px;
 }
 
 spinbutton.form-control text {
   background: transparent;
-  color: @theme_text;
-  caret-color: @theme_accent;
+  color: @strata_text;
+  caret-color: @strata_accent;
 }
 
 spinbutton.text-size-control text {
@@ -1234,105 +1234,105 @@ spinbutton.text-size-control text {
 
 spinbutton.text-size-control button.down {
   border-left: none;
-  border-right: 1px solid @theme_border;
+  border-right: 1px solid @strata_border;
   border-radius: 4px 0 0 4px;
 }
 
 spinbutton.form-control text selection {
-  background: @theme_accent;
-  color: @theme_bg;
+  background: @strata_accent;
+  color: @strata_bg;
 }
 
 spinbutton.form-control button {
-  background: @theme_surface;
+  background: @strata_surface;
   background-image: none;
-  color: @theme_accent;
-  border-color: @theme_border;
+  color: @strata_accent;
+  border-color: @strata_border;
   box-shadow: none;
 }
 
 spinbutton.form-control button image {
-  color: @theme_accent;
+  color: @strata_accent;
 }
 
 spinbutton.form-control:hover,
 spinbutton.form-control:focus-within {
-  border-color: @theme_accent;
+  border-color: @strata_accent;
 }
 
 spinbutton.form-control:focus-within {
-  outline: 2px solid @theme_accent;
+  outline: 2px solid @strata_accent;
   outline-offset: -2px;
 }
 
 spinbutton.form-control button:hover,
 spinbutton.form-control button:active {
-  background: @theme_highlight;
-  color: @theme_text;
+  background: @strata_highlight;
+  color: @strata_text;
 }
 
 spinbutton.form-control:disabled,
 spinbutton.form-control button:disabled {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   opacity: 0.55;
 }
 
 entry.form-control {
-  background: alpha(@theme_bg, 0.72);
-  border: 1px solid alpha(@theme_border, 0.54);
+  background: alpha(@strata_bg, 0.72);
+  border: 1px solid alpha(@strata_border, 0.54);
   border-radius: 5px;
   box-shadow: none;
-  caret-color: @theme_accent;
-  color: @theme_text;
+  caret-color: @strata_accent;
+  color: @strata_text;
   min-height: 34px;
   padding: 3px 9px;
 }
 
 entry.form-control:hover {
-  border-color: alpha(@theme_accent, 0.68);
+  border-color: alpha(@strata_accent, 0.68);
 }
 
 entry.form-control:focus,
 entry.form-control:focus-visible,
 entry.form-control:focus-within {
-  border-color: @theme_accent;
-  box-shadow: 0 0 0 1px alpha(@theme_accent, 0.42);
-  outline: 2px solid @theme_accent;
+  border-color: @strata_accent;
+  box-shadow: 0 0 0 1px alpha(@strata_accent, 0.42);
+  outline: 2px solid @strata_accent;
   outline-offset: -2px;
 }
 
 entry.form-control placeholder {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   opacity: 1;
 }
 
 entry.form-control selection {
-  background: @theme_accent;
-  color: @theme_bg;
+  background: @strata_accent;
+  color: @strata_bg;
 }
 
 entry.form-control.error,
 entry.form-control.error:focus,
 entry.form-control.error:focus-visible,
 entry.form-control.error:focus-within {
-  border-color: @theme_danger;
-  box-shadow: 0 0 0 1px alpha(@theme_danger, 0.4);
-  outline-color: @theme_danger;
+  border-color: @strata_danger;
+  box-shadow: 0 0 0 1px alpha(@strata_danger, 0.4);
+  outline-color: @strata_danger;
 }
 
 entry.form-control:disabled {
-  background: alpha(@theme_muted, 0.3);
-  border-color: alpha(@theme_border, 0.38);
-  color: @theme_dim_text;
+  background: alpha(@strata_muted, 0.3);
+  border-color: alpha(@strata_border, 0.38);
+  color: @strata_dim_text;
 }
 
 dropdown.form-control > button,
 menubutton.form-control > button {
-  background: alpha(@theme_bg, 0.72);
-  border: 1px solid alpha(@theme_border, 0.54);
+  background: alpha(@strata_bg, 0.72);
+  border: 1px solid alpha(@strata_border, 0.54);
   border-radius: 5px;
   box-shadow: none;
-  color: @theme_text;
+  color: @strata_text;
   min-height: 34px;
   padding: 3px 9px;
   transition: transform 160ms ease-out, background 160ms ease-out, border-color 160ms ease-out;
@@ -1340,13 +1340,13 @@ menubutton.form-control > button {
 
 dropdown.form-control > button:hover,
 menubutton.form-control > button:hover {
-  background: alpha(@theme_accent, 0.15);
-  border-color: alpha(@theme_accent, 0.68);
+  background: alpha(@strata_accent, 0.15);
+  border-color: alpha(@strata_accent, 0.68);
 }
 
 dropdown.form-control > button:active,
 menubutton.form-control > button:active {
-  background: alpha(@theme_accent, 0.22);
+  background: alpha(@strata_accent, 0.22);
   transform: scale(0.97);
 }
 
@@ -1356,47 +1356,47 @@ dropdown.form-control > button:focus-visible,
 menubutton.form-control:focus > button,
 menubutton.form-control:focus-visible > button,
 menubutton.form-control > button:focus-visible {
-  border-color: @theme_accent;
-  box-shadow: 0 0 0 1px alpha(@theme_accent, 0.42);
-  outline: 2px solid @theme_accent;
+  border-color: @strata_accent;
+  box-shadow: 0 0 0 1px alpha(@strata_accent, 0.42);
+  outline: 2px solid @strata_accent;
   outline-offset: -2px;
 }
 
 dropdown.form-control:disabled > button,
 menubutton.form-control:disabled > button {
-  background: alpha(@theme_muted, 0.3);
-  border-color: alpha(@theme_border, 0.38);
-  color: @theme_dim_text;
+  background: alpha(@strata_muted, 0.3);
+  border-color: alpha(@strata_border, 0.38);
+  color: @strata_dim_text;
 }
 
 .update-dialog {
-  color: @theme_text;
+  color: @strata_text;
   min-width: 500px;
 }
 
 
 .update-dialog-status {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
 }
 
 
 .update-dialog-notes {
-  background: alpha(@theme_bg, 0.55);
-  border: 1px solid alpha(@theme_border, 0.3);
+  background: alpha(@strata_bg, 0.55);
+  border: 1px solid alpha(@strata_border, 0.3);
   border-radius: 5px;
-  color: @theme_text;
+  color: @strata_text;
   padding: 10px;
 }
 
 .update-dialog-progress trough {
-  background: alpha(@theme_bg, 0.72);
-  border: 1px solid alpha(@theme_border, 0.42);
+  background: alpha(@strata_bg, 0.72);
+  border: 1px solid alpha(@strata_border, 0.42);
   border-radius: 5px;
   min-height: 9px;
 }
 
 .update-dialog-progress progress {
-  background: @theme_accent;
+  background: @strata_accent;
   border: none;
   border-radius: 4px;
   min-height: 9px;
@@ -1404,12 +1404,12 @@ menubutton.form-control:disabled > button {
 }
 
 .update-dialog-progress.error progress {
-  background: @theme_danger;
+  background: @strata_danger;
 }
 
 .update-dialog-details {
-  background: alpha(@theme_bg, 0.3);
-  border: 1px solid alpha(@theme_border, 0.24);
+  background: alpha(@strata_bg, 0.3);
+  border: 1px solid alpha(@strata_border, 0.24);
   border-radius: 6px;
   padding: 10px 12px;
 }
@@ -1419,56 +1419,56 @@ menubutton.form-control:disabled > button {
 }
 
 .update-dialog-detail-label {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   font-size: 0.88em;
 }
 
 .update-dialog-detail-value {
-  color: @theme_text;
+  color: @strata_text;
   font-weight: 700;
 }
 
 .update-dialog-actions {
-  border-top: 1px solid alpha(@theme_border, 0.28);
+  border-top: 1px solid alpha(@strata_border, 0.28);
   padding: 12px 20px;
 }
 
 .update-dialog-action {
-  background: alpha(@theme_accent, 0.12);
-  border: 1px solid alpha(@theme_accent, 0.6);
+  background: alpha(@strata_accent, 0.12);
+  border: 1px solid alpha(@strata_accent, 0.6);
   border-radius: 5px;
   box-shadow: none;
-  color: @theme_accent;
+  color: @strata_accent;
   min-height: 30px;
   padding: 4px 14px;
 }
 
 .update-dialog-action:hover {
-  background: alpha(@theme_accent, 0.22);
-  border-color: @theme_accent;
-  color: @theme_accent;
+  background: alpha(@strata_accent, 0.22);
+  border-color: @strata_accent;
+  color: @strata_accent;
 }
 
 .update-dialog-action:active {
-  background: alpha(@theme_accent, 0.32);
-  color: @theme_accent;
+  background: alpha(@strata_accent, 0.32);
+  color: @strata_accent;
 }
 
 .update-dialog-action:focus-visible {
-  outline: 2px solid alpha(@theme_accent, 0.5);
+  outline: 2px solid alpha(@strata_accent, 0.5);
   outline-offset: 1px;
 }
 
 .settings-dialog {
-  background: @theme_surface;
-  border: 1px solid alpha(@theme_border, 0.6);
+  background: @strata_surface;
+  border: 1px solid alpha(@strata_border, 0.6);
   border-radius: 9px;
-  box-shadow: 0 0 14px alpha(@theme_glow, 0.24);
+  box-shadow: 0 0 14px alpha(@strata_glow, 0.24);
 }
 
 .settings-navigation {
-  background: @theme_surface;
-  border-right: 1px solid alpha(@theme_border, 0.6);
+  background: @strata_surface;
+  border-right: 1px solid alpha(@strata_border, 0.6);
   border-radius: 8px 0 0 8px;
   min-width: 220px;
   padding: 18px 12px;
@@ -1484,7 +1484,7 @@ menubutton.form-control:disabled > button {
   border: none;
   border-radius: 6px;
   box-shadow: none;
-  color: @theme_text;
+  color: @strata_text;
   min-height: 38px;
   padding: 5px 10px;
   transition: background 160ms ease-out, color 160ms ease-out, transform 160ms ease-out;
@@ -1495,8 +1495,8 @@ menubutton.form-control:disabled > button {
 }
 
 .settings-navigation button:hover {
-  background: alpha(@theme_accent, 0.15);
-  color: @theme_text;
+  background: alpha(@strata_accent, 0.15);
+  color: @strata_text;
 }
 
 .settings-navigation button:active {
@@ -1505,8 +1505,8 @@ menubutton.form-control:disabled > button {
 
 .settings-navigation button.settings-nav-active,
 .settings-navigation button.settings-nav-active:hover {
-  background: alpha(@theme_accent, 0.18);
-  color: @theme_text;
+  background: alpha(@strata_accent, 0.18);
+  color: @strata_text;
 }
 
 .settings-page {
@@ -1515,13 +1515,13 @@ menubutton.form-control:disabled > button {
 }
 
 .settings-titlebar {
-  border-bottom: 1px solid alpha(@theme_border, 0.24);
+  border-bottom: 1px solid alpha(@strata_border, 0.24);
   min-height: 0;
   padding: 6px 6px 6px 20px;
 }
 
 .settings-title {
-  color: @theme_text;
+  color: @strata_text;
   font-size: 1.08em;
   font-weight: 700;
 }
@@ -1538,11 +1538,11 @@ menubutton.form-control:disabled > button {
 }
 
 .settings-close:hover {
-  background: alpha(@theme_accent, 0.15);
+  background: alpha(@strata_accent, 0.15);
 }
 
 .settings-close:active {
-  background: alpha(@theme_accent, 0.22);
+  background: alpha(@strata_accent, 0.22);
   transform: scale(0.97);
 }
 
@@ -1551,20 +1551,20 @@ menubutton.form-control:disabled > button {
 }
 
 .settings-option {
-  background: alpha(@theme_bg, 0.55);
-  border: 1px solid alpha(@theme_border, 0.24);
+  background: alpha(@strata_bg, 0.55);
+  border: 1px solid alpha(@strata_border, 0.24);
   border-radius: 6px;
   min-height: 60px;
   padding: 10px 14px;
 }
 
 .settings-option-title {
-  color: @theme_text;
+  color: @strata_text;
   font-weight: 700;
 }
 
 .settings-option-description {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   font-size: 0.88em;
 }
 
@@ -1572,7 +1572,7 @@ menubutton.form-control:disabled > button {
 .settings-option-description link:visited,
 .settings-option-description link:hover,
 .settings-option-description link:active {
-  color: @theme_accent;
+  color: @strata_accent;
 }
 
 .click-activation-options {
@@ -1584,49 +1584,49 @@ menubutton.form-control:disabled > button {
 }
 
 .click-activation-row + .click-activation-row {
-  border-top: 1px solid alpha(@theme_border, 0.18);
+  border-top: 1px solid alpha(@strata_border, 0.18);
   padding-top: 4px;
 }
 
 .release-notes-card {
-  background: alpha(@theme_bg, 0.55);
-  border: 1px solid alpha(@theme_border, 0.24);
+  background: alpha(@strata_bg, 0.55);
+  border: 1px solid alpha(@strata_border, 0.24);
   border-radius: 6px;
-  color: @theme_text;
+  color: @strata_text;
   padding: 14px;
 }
 
 .release-notes-card.inline {
   background: transparent;
   border: none;
-  border-top: 1px solid alpha(@theme_border, 0.24);
+  border-top: 1px solid alpha(@strata_border, 0.24);
   border-radius: 0;
   margin-top: 10px;
   padding: 12px 0 2px;
 }
 
 .release-notes-title {
-  color: @theme_text;
+  color: @strata_text;
   font-weight: 700;
 }
 
 .prerelease-badge {
-  background: alpha(@theme_danger, 0.14);
-  border: 1px solid @theme_danger;
+  background: alpha(@strata_danger, 0.14);
+  border: 1px solid @strata_danger;
   border-radius: 999px;
-  color: @theme_danger;
+  color: @strata_danger;
   font-size: 0.78em;
   font-weight: 700;
   padding: 2px 9px;
 }
 
 .release-notes-content {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   line-height: 1.3;
 }
 
 .release-notes-heading {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   font-size: 1.08em;
   font-weight: 700;
   margin-top: 2px;
@@ -1637,22 +1637,22 @@ menubutton.form-control:disabled > button {
 }
 
 .release-notes-bullet {
-  color: @theme_accent;
+  color: @strata_accent;
   font-weight: 700;
   margin-top: 3px;
 }
 
 .release-notes-code {
-  background: alpha(@theme_bg, 0.58);
-  border: 1px solid alpha(@theme_border, 0.24);
+  background: alpha(@strata_bg, 0.58);
+  border: 1px solid alpha(@strata_border, 0.24);
   border-radius: 4px;
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   padding: 8px;
 }
 
 .release-notes-rule {
-  background: alpha(@theme_border, 0.4);
-  color: @theme_border;
+  background: alpha(@strata_border, 0.4);
+  color: @strata_border;
   margin: 4px 0;
 }
 
@@ -1660,30 +1660,30 @@ menubutton.form-control:disabled > button {
 .release-notes-content link:visited,
 .release-notes-content link:hover,
 .release-notes-content link:active {
-  color: @theme_accent;
+  color: @strata_accent;
 }
 
 .release-notes-fallback {
   background: transparent;
   border: none;
   box-shadow: none;
-  color: @theme_accent;
+  color: @strata_accent;
   padding: 2px 0;
   transition: transform 160ms ease-out, color 160ms ease-out;
 }
 
 .release-notes-fallback:hover,
 .release-notes-fallback:visited {
-  color: @theme_accent;
+  color: @strata_accent;
 }
 
 .release-notes-fallback:active {
-  color: @theme_accent;
+  color: @strata_accent;
   transform: scale(0.97);
 }
 
 .release-notes-fallback:focus-visible {
-  outline: 2px solid alpha(@theme_accent, 0.5);
+  outline: 2px solid alpha(@strata_accent, 0.5);
   outline-offset: 1px;
 }
 
@@ -1692,14 +1692,14 @@ menubutton.form-control:disabled > button {
 }
 
 .settings-update-progress trough {
-  background: alpha(@theme_bg, 0.72);
-  border: 1px solid alpha(@theme_border, 0.42);
+  background: alpha(@strata_bg, 0.72);
+  border: 1px solid alpha(@strata_border, 0.42);
   border-radius: 4px;
   min-height: 7px;
 }
 
 .settings-update-progress progress {
-  background: @theme_accent;
+  background: @strata_accent;
   border: none;
   border-radius: 3px;
   min-height: 7px;
@@ -1707,88 +1707,88 @@ menubutton.form-control:disabled > button {
 }
 
 .settings-update-progress.error progress {
-  background: @theme_danger;
+  background: @strata_danger;
 }
 
 .settings-update-check {
-  background: alpha(@theme_accent, 0.14);
-  border: 1px solid @theme_accent;
+  background: alpha(@strata_accent, 0.14);
+  border: 1px solid @strata_accent;
   border-radius: 5px;
   box-shadow: none;
-  color: @theme_accent;
+  color: @strata_accent;
   min-height: 28px;
   padding: 3px 12px;
   transition: transform 160ms ease-out, background 160ms ease-out;
 }
 
 .settings-update-check:hover {
-  background: alpha(@theme_accent, 0.22);
-  border-color: @theme_accent;
-  color: @theme_accent;
+  background: alpha(@strata_accent, 0.22);
+  border-color: @strata_accent;
+  color: @strata_accent;
 }
 
 .settings-update-check:active {
-  background: alpha(@theme_accent, 0.32);
-  border-color: @theme_accent;
-  color: @theme_accent;
+  background: alpha(@strata_accent, 0.32);
+  border-color: @strata_accent;
+  color: @strata_accent;
   transform: scale(0.97);
 }
 
 .settings-update-check:focus-visible {
-  outline: 2px solid alpha(@theme_accent, 0.5);
+  outline: 2px solid alpha(@strata_accent, 0.5);
   outline-offset: 1px;
 }
 
 .settings-update-check:disabled {
-  background: alpha(@theme_muted, 0.3);
-  border-color: alpha(@theme_border, 0.54);
-  color: @theme_dim_text;
+  background: alpha(@strata_muted, 0.3);
+  border-color: alpha(@strata_border, 0.54);
+  color: @strata_dim_text;
 }
 
 .about-page {
-  color: @theme_text;
+  color: @strata_text;
 }
 
 .about-identity {
-  color: @theme_text;
+  color: @strata_text;
   margin: 8px 24px 14px;
 }
 
 .about-name {
-  color: @theme_text;
+  color: @strata_text;
   font-size: 1.55em;
   font-weight: 800;
 }
 
 .about-description {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
 }
 
 .about-details {
-  background: alpha(@theme_bg, 0.55);
-  border: 1px solid alpha(@theme_border, 0.24);
+  background: alpha(@strata_bg, 0.55);
+  border: 1px solid alpha(@strata_border, 0.24);
   border-radius: 6px;
-  color: @theme_text;
+  color: @strata_text;
 }
 
 .about-detail-row {
-  border-bottom: 1px solid alpha(@theme_border, 0.2);
+  border-bottom: 1px solid alpha(@strata_border, 0.2);
   min-height: 42px;
   padding: 4px 14px;
 }
 
 .about-detail-label {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
 }
 
 .about-detail-value {
-  color: @theme_text;
+  color: @strata_text;
   font-weight: 700;
 }
 
 .about-detail-value selection {
-  background: @theme_accent;
-  color: @theme_bg;
+  background: @strata_accent;
+  color: @strata_bg;
 }
 
 .about-repository,
@@ -1798,7 +1798,7 @@ menubutton.form-control:disabled > button {
   border: none;
   border-radius: 0;
   box-shadow: none;
-  color: @theme_accent;
+  color: @strata_accent;
   min-height: 42px;
   padding: 4px 14px;
   text-decoration: none;
@@ -1806,24 +1806,24 @@ menubutton.form-control:disabled > button {
 }
 
 .about-repository:hover {
-  background: alpha(@theme_accent, 0.15);
-  color: @theme_text;
+  background: alpha(@strata_accent, 0.15);
+  color: @strata_text;
 }
 
 .about-repository:active {
-  background: alpha(@theme_highlight, 0.72);
-  color: @theme_accent;
+  background: alpha(@strata_highlight, 0.72);
+  color: @strata_accent;
   transform: scale(0.97);
 }
 
 .about-repository:focus-visible {
-  outline: 2px solid @theme_accent;
+  outline: 2px solid @strata_accent;
   outline-offset: -2px;
 }
 
 switch {
-  background: @theme_muted;
-  border: 1px solid alpha(@theme_border, 0.72);
+  background: @strata_muted;
+  border: 1px solid alpha(@strata_border, 0.72);
   box-shadow: none;
   min-height: 22px;
   min-width: 40px;
@@ -1831,13 +1831,13 @@ switch {
 }
 
 switch:checked {
-  background: @theme_accent;
-  border-color: @theme_accent;
+  background: @strata_accent;
+  border-color: @strata_accent;
 }
 
 switch slider,
 switch:checked slider {
-  background: @theme_text;
+  background: @strata_text;
   border: none;
   box-shadow: 0 1px 3px alpha(#000000, 0.4);
   min-height: 18px;
@@ -1848,11 +1848,11 @@ switch:checked slider {
 .sidebar-shell,
 .sidebar-scroll,
 .sidebar-scroll viewport {
-  background: @theme_surface;
+  background: @strata_surface;
 }
 
 .sidebar-shell {
-  border-right: 1px solid alpha(@theme_border, 0.6);
+  border-right: 1px solid alpha(@strata_border, 0.6);
 }
 
 /* Every scrollbar is the path-bar indicator: a thin accent thumb on a faint
@@ -1881,7 +1881,7 @@ scrollbar.horizontal > range > trough > slider {
 }
 
 scrollbar > range > trough {
-  background: alpha(@theme_border, 0.25);
+  background: alpha(@strata_border, 0.25);
   border: none;
   border-radius: 2px;
 }
@@ -1889,11 +1889,11 @@ scrollbar > range > trough {
 scrollbar:hover > range > trough,
 scrollbar.hovering > range > trough,
 scrollbar.dragging > range > trough {
-  background: alpha(@theme_border, 0.45);
+  background: alpha(@strata_border, 0.45);
 }
 
 scrollbar > range > trough > slider {
-  background: @theme_accent;
+  background: @strata_accent;
   border: none;
   border-radius: 2px;
   margin: 0;
@@ -1910,34 +1910,34 @@ scrollbar.horizontal > range > trough > slider {
 /* The mode scrollers need an opaque base to conceal the sidebar paned handle.
    Layer the path bar's faint track over it instead of losing the bezel. */
 .mode-scroll scrollbar.horizontal {
-  background: @theme_bg;
+  background: @strata_bg;
 }
 
 .mode-scroll scrollbar.horizontal > range > trough {
   margin-top: 3px;
   margin-bottom: 3px;
-  background-color: @theme_bg;
-  background-image: linear-gradient(alpha(@theme_border, 0.25), alpha(@theme_border, 0.25));
-  box-shadow: inset 0 0 0 1px alpha(@theme_border, 0.45);
+  background-color: @strata_bg;
+  background-image: linear-gradient(alpha(@strata_border, 0.25), alpha(@strata_border, 0.25));
+  box-shadow: inset 0 0 0 1px alpha(@strata_border, 0.45);
 }
 
 .mode-scroll scrollbar.horizontal:hover > range > trough,
 .mode-scroll scrollbar.horizontal.hovering > range > trough,
 .mode-scroll scrollbar.horizontal.dragging > range > trough {
-  background-image: linear-gradient(alpha(@theme_border, 0.45), alpha(@theme_border, 0.45));
+  background-image: linear-gradient(alpha(@strata_border, 0.45), alpha(@strata_border, 0.45));
 }
 
 .autoscroll-anchor {
-  background: alpha(@theme_surface, 0.92);
-  border: 1px solid alpha(@theme_border, 0.9);
+  background: alpha(@strata_surface, 0.92);
+  border: 1px solid alpha(@strata_border, 0.9);
   border-radius: 50%;
-  box-shadow: 0 1px 4px alpha(@theme_border, 0.35);
+  box-shadow: 0 1px 4px alpha(@strata_border, 0.35);
   min-height: 22px;
   min-width: 22px;
 }
 
 .sidebar {
-  background: @theme_surface;
+  background: @strata_surface;
   padding: 5px;
 }
 
@@ -1946,35 +1946,35 @@ scrollbar.horizontal > range > trough > slider {
   border: none;
   border-radius: 0;
   box-shadow: none;
-  color: @theme_accent;
+  color: @strata_accent;
   min-height: 38px;
   padding: 4px 13px;
   transition: transform 160ms ease-out, background 160ms ease-out;
 }
 
 .sidebar-update:hover {
-  background: alpha(@theme_accent, 0.15);
-  color: @theme_accent;
+  background: alpha(@strata_accent, 0.15);
+  color: @strata_accent;
 }
 
 .sidebar-update:active {
-  background: alpha(@theme_accent, 0.22);
-  color: @theme_accent;
+  background: alpha(@strata_accent, 0.22);
+  color: @strata_accent;
   transform: scale(0.97);
 }
 
 .sidebar-update:focus-visible {
-  outline: 2px solid alpha(@theme_accent, 0.58);
+  outline: 2px solid alpha(@strata_accent, 0.58);
   outline-offset: -2px;
 }
 
 .sidebar-update-dot {
-  color: @theme_accent;
+  color: @strata_accent;
   font-size: 0.8em;
 }
 
 .sidebar-update-label {
-  color: @theme_accent;
+  color: @strata_accent;
   font-size: 0.88em;
   font-weight: 650;
 }
@@ -1984,7 +1984,7 @@ scrollbar.horizontal > range > trough > slider {
   border: none;
   border-radius: 6px;
   box-shadow: none;
-  color: @theme_text;
+  color: @strata_text;
   min-height: 30px;
   min-width: 0;
   outline: 1px solid transparent;
@@ -1994,7 +1994,7 @@ scrollbar.horizontal > range > trough > slider {
 }
 
 .sidebar-row:hover {
-  background: alpha(@theme_accent, 0.15);
+  background: alpha(@strata_accent, 0.15);
 }
 
 .sidebar-row:active {
@@ -2005,17 +2005,17 @@ scrollbar.horizontal > range > trough > slider {
 .sidebar-row.active:hover,
 .sidebar-device.active,
 .sidebar-device.active:hover {
-  background: alpha(@theme_accent, 0.18);
-  color: @theme_text;
+  background: alpha(@strata_accent, 0.18);
+  color: @strata_text;
 }
 
 .sidebar-row.active image,
 .sidebar-device.active .sidebar-row image {
-  color: @theme_accent;
+  color: @strata_accent;
 }
 
 .sidebar-device:hover {
-  background: alpha(@theme_accent, 0.15);
+  background: alpha(@strata_accent, 0.15);
 }
 
 .sidebar-device:hover > .sidebar-row,
@@ -2030,13 +2030,13 @@ scrollbar.horizontal > range > trough > slider {
 
 .sidebar-row.reorderable:drop(active),
 .sidebar-row:drop(active) {
-  background: alpha(@theme_highlight, 0.46);
-  outline-color: alpha(@theme_accent, 0.72);
+  background: alpha(@strata_highlight, 0.46);
+  outline-color: alpha(@strata_accent, 0.72);
   transform: scale(1.02);
 }
 
 .sidebar-row:focus {
-  outline: 1px solid @theme_accent;
+  outline: 1px solid @strata_accent;
   outline-offset: -1px;
 }
 
@@ -2046,7 +2046,7 @@ scrollbar.horizontal > range > trough > slider {
 }
 
 .sidebar-row image {
-  color: @theme_border;
+  color: @strata_border;
 }
 
 .sidebar-device {
@@ -2059,7 +2059,7 @@ scrollbar.horizontal > range > trough > slider {
 }
 
 .sidebar-device.focused {
-  outline-color: @theme_accent;
+  outline-color: @strata_accent;
 }
 
 .sidebar-device-actions {
@@ -2080,7 +2080,7 @@ scrollbar.horizontal > range > trough > slider {
 }
 
 .sidebar-device-spinner {
-  color: @theme_accent;
+  color: @strata_accent;
   -gtk-icon-size: 14px;
   min-height: 14px;
   min-width: 14px;
@@ -2089,19 +2089,19 @@ scrollbar.horizontal > range > trough > slider {
 
 .sidebar-eject:hover,
 .sidebar-device-action:hover {
-  background: alpha(@theme_accent, 0.15);
+  background: alpha(@strata_accent, 0.15);
   opacity: 1;
 }
 
 .sidebar-eject:focus,
 .sidebar-device-action:focus {
   opacity: 1;
-  outline: 1px solid @theme_accent;
+  outline: 1px solid @strata_accent;
   outline-offset: -1px;
 }
 
 .sidebar-separator {
-  background: alpha(@theme_border, 0.24);
+  background: alpha(@strata_border, 0.24);
   background-image: none;
   border: none;
   /* Offset sidebar padding; min-width keeps measurement nonnegative. */
@@ -2154,14 +2154,14 @@ scrollbar.horizontal > range > trough > slider {
 }
 
 .sidebar-heading {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   font-size: 0.78em;
   font-weight: 700;
   padding: 1px 10px 2px;
 }
 
 paned > separator {
-  background: alpha(@theme_border, 0.6);
+  background: alpha(@strata_border, 0.6);
   min-width: 1px;
 }
 
@@ -2174,14 +2174,14 @@ paned > separator {
   margin: 0;
   padding: 0;
   border: none;
-  background: alpha(@theme_border, 0.6);
+  background: alpha(@strata_border, 0.6);
   background-image: none;
   box-shadow: none;
 }
 
 /* Share the column's edge without GTK's wider default handle overhang. */
 .preview-split > separator {
-  background: mix(@theme_bg, @theme_border, 0.6);
+  background: mix(@strata_bg, @strata_border, 0.6);
   background-image: none;
   border: none;
   box-shadow: none;
@@ -2191,16 +2191,16 @@ paned > separator {
 }
 
 .preview-split > separator:hover {
-  background: @theme_accent;
+  background: @strata_accent;
 }
 
 .preview-pane {
-  background: @theme_surface;
-  color: @theme_text;
+  background: @strata_surface;
+  color: @strata_text;
 }
 
 .preview-header {
-  border-bottom: 1px solid alpha(@theme_border, 0.6);
+  border-bottom: 1px solid alpha(@strata_border, 0.6);
   min-height: 40px;
   padding: 0 6px 0 12px;
 }
@@ -2208,7 +2208,7 @@ paned > separator {
 /* The drawer, not the listing, receives keys. Matches the Miller
    column's three-pixel destination bar without shifting the header. */
 .preview-pane.preview-keyboard-owner .preview-header {
-  box-shadow: inset 0 3px 0 @theme_accent;
+  box-shadow: inset 0 3px 0 @strata_accent;
 }
 
 .preview-content:focus-visible {
@@ -2221,7 +2221,7 @@ paned > separator {
 }
 
 .preview-title {
-  color: @theme_text;
+  color: @strata_text;
   font-weight: 700;
 }
 
@@ -2231,7 +2231,7 @@ paned > separator {
   border: none;
   border-radius: 5px;
   box-shadow: none;
-  color: @theme_accent;
+  color: @strata_accent;
   min-height: 24px;
   min-width: 24px;
   padding: 4px;
@@ -2239,44 +2239,44 @@ paned > separator {
 }
 
 .preview-header-action:hover {
-  background: alpha(@theme_accent, 0.15);
-  border-color: alpha(@theme_border, 0.42);
-  color: @theme_accent;
+  background: alpha(@strata_accent, 0.15);
+  border-color: alpha(@strata_border, 0.42);
+  color: @strata_accent;
 }
 
 .preview-header-action:checked {
-  background: alpha(@theme_accent, 0.22);
-  color: @theme_accent;
+  background: alpha(@strata_accent, 0.22);
+  color: @strata_accent;
 }
 
 .preview-header-action:active {
-  background: alpha(@theme_accent, 0.22);
-  border-color: @theme_accent;
-  color: @theme_accent;
+  background: alpha(@strata_accent, 0.22);
+  border-color: @strata_accent;
+  color: @strata_accent;
   transform: scale(0.97);
 }
 
 .preview-header-action:focus-visible {
-  outline: 2px solid alpha(@theme_accent, 0.52);
+  outline: 2px solid alpha(@strata_accent, 0.52);
   outline-offset: 1px;
 }
 
 .preview-header-action:disabled {
   background: transparent;
   border-color: transparent;
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   opacity: 0.46;
 }
 
 .preview-metadata label {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   font-size: 0.65em;
 }
 
 .preview-content,
 .preview-content scrolledwindow,
 .preview-content viewport {
-  background: @theme_surface;
+  background: @strata_surface;
   transition: opacity 200ms ease-out, transform 200ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
 }
 
@@ -2290,14 +2290,14 @@ paned > separator {
 
 .preview-text,
 .preview-text text {
-  background: @theme_surface;
-  color: @theme_text;
+  background: @strata_surface;
+  color: @strata_text;
   font-family: "JetBrains Mono", "JetBrainsMono Nerd Font", monospace;
 }
 
 .preview-text border.left {
-  background: @theme_surface;
-  border-right: 1px solid mix(@theme_bg, @theme_border, 0.6);
+  background: @strata_surface;
+  border-right: 1px solid mix(@strata_bg, @strata_border, 0.6);
   box-shadow: none;
 }
 
@@ -2308,28 +2308,28 @@ paned > separator {
 
 .preview-text selection,
 .preview-text text selection {
-  background: @theme_accent;
-  color: @theme_bg;
+  background: @strata_accent;
+  color: @strata_bg;
 }
 
 .preview-document-notice {
-  background: alpha(@theme_accent, 0.1);
-  border: 1px solid alpha(@theme_accent, 0.42);
+  background: alpha(@strata_accent, 0.1);
+  border: 1px solid alpha(@strata_accent, 0.42);
   border-radius: 5px;
-  color: @theme_text;
+  color: @strata_text;
   font-size: 0.82em;
   margin: 8px 12px;
   padding: 7px 9px;
 }
 
 .preview-document-notice selection {
-  background: @theme_accent;
-  color: @theme_bg;
+  background: @strata_accent;
+  color: @strata_bg;
 }
 
 .preview-document {
-  background: @theme_surface;
-  color: @theme_text;
+  background: @strata_surface;
+  color: @strata_text;
 }
 
 .preview-virtual-list,
@@ -2338,43 +2338,43 @@ paned > separator {
 .preview-virtual-list > row:active,
 .preview-virtual-list > row:selected,
 .preview-virtual-row {
-  background: @theme_surface;
+  background: @strata_surface;
   border: none;
   box-shadow: none;
-  color: @theme_text;
+  color: @strata_text;
   margin: 0;
   outline: none;
   padding: 0;
 }
 
 .preview-source-row {
-  background: @theme_surface;
-  color: @theme_text;
+  background: @strata_surface;
+  color: @strata_text;
   padding: 0 14px;
 }
 
 .preview-source-lines,
 .preview-source-lines text {
-  background: @theme_surface;
-  color: @theme_dim_text;
+  background: @strata_surface;
+  color: @strata_dim_text;
   font-family: "JetBrains Mono", "JetBrainsMono Nerd Font", monospace;
 }
 
 .preview-virtual-source:focus-visible,
 .preview-virtual-list:focus-visible {
-  outline: 2px solid @theme_accent;
+  outline: 2px solid @strata_accent;
   outline-offset: -2px;
 }
 
 .preview-document text {
-  background: @theme_surface;
-  color: @theme_text;
+  background: @strata_surface;
+  color: @strata_text;
 }
 
 .preview-document selection,
 .preview-document text selection {
   background: transparent;
-  color: @theme_bg;
+  color: @strata_bg;
 }
 
 .preview-code-overlay {
@@ -2382,11 +2382,11 @@ paned > separator {
 }
 
 .preview-code-copy {
-  background: alpha(@theme_surface, 0.9);
-  border: 1px solid alpha(@theme_border, 0.72);
+  background: alpha(@strata_surface, 0.9);
+  border: 1px solid alpha(@strata_border, 0.72);
   border-radius: 5px;
-  box-shadow: 0 2px 8px alpha(@theme_bg, 0.22);
-  color: @theme_text;
+  box-shadow: 0 2px 8px alpha(@strata_bg, 0.22);
+  color: @strata_text;
   margin: 10px 24px 0 0;
   min-height: 27px;
   min-width: 27px;
@@ -2401,19 +2401,19 @@ paned > separator {
 }
 
 .preview-code-copy:hover {
-  background: alpha(@theme_highlight, 0.92);
-  border-color: @theme_accent;
-  color: @theme_accent;
+  background: alpha(@strata_highlight, 0.92);
+  border-color: @strata_accent;
+  color: @strata_accent;
 }
 
 .preview-code-copy:active {
-  background: alpha(@theme_muted, 0.88);
-  border-color: @theme_accent;
-  color: @theme_accent;
+  background: alpha(@strata_muted, 0.88);
+  border-color: @strata_accent;
+  color: @strata_accent;
 }
 
 .preview-code-copy:focus-visible {
-  outline: 2px solid alpha(@theme_accent, 0.58);
+  outline: 2px solid alpha(@strata_accent, 0.58);
   outline-offset: 1px;
 }
 
@@ -2421,84 +2421,84 @@ paned > separator {
 .preview-table-interactive > scrolledwindow > viewport,
 .preview-document-table,
 .preview-document-table > listview {
-  background: @theme_surface;
+  background: @strata_surface;
   border: none;
   border-radius: 0;
   box-shadow: none;
 }
 
 .preview-document-table-cell {
-  background: @theme_surface;
-  color: @theme_text;
+  background: @strata_surface;
+  color: @strata_text;
   padding: 0;
 }
 
 .preview-document-table-cell selection {
-  background: @theme_accent;
-  color: @theme_bg;
+  background: @strata_accent;
+  color: @strata_bg;
 }
 
 .preview-document-table-cell.header {
-  background: alpha(@theme_highlight, 0.64);
-  color: @theme_accent;
+  background: alpha(@strata_highlight, 0.64);
+  color: @strata_accent;
   font-weight: 700;
 }
 
 .preview-document-table-cell link {
-  color: @theme_accent;
+  color: @strata_accent;
 }
 
 .preview-document-table-cell link:hover {
-  background: alpha(@theme_highlight, 0.5);
-  color: @theme_text;
+  background: alpha(@strata_highlight, 0.5);
+  color: @strata_text;
 }
 
 .preview-document-table-cell link:active {
-  background: alpha(@theme_muted, 0.72);
-  color: @theme_accent;
+  background: alpha(@strata_muted, 0.72);
+  color: @strata_accent;
 }
 
 .preview-document-table-cell link:focus-visible {
-  outline: 2px solid alpha(@theme_accent, 0.5);
+  outline: 2px solid alpha(@strata_accent, 0.5);
   outline-offset: 1px;
 }
 
 .preview-table-interactive.selected .preview-document-table-cell,
 .preview-table-interactive.selected .preview-document-table-cell.header {
-  background: @theme_accent;
-  color: @theme_bg;
+  background: @strata_accent;
+  color: @strata_bg;
 }
 
 .preview-document:focus-visible {
-  outline: 2px solid @theme_accent;
+  outline: 2px solid @strata_accent;
   outline-offset: -2px;
 }
 
 .preview-image,
 .preview-media {
-  background: alpha(@theme_bg, 0.55);
+  background: alpha(@strata_bg, 0.55);
   border-radius: 8px;
   transition: transform 240ms cubic-bezier(0.2, 0.9, 0.3, 1.2), opacity 200ms ease-out, box-shadow 200ms ease-out;
 }
 
 .preview-image:hover,
 .preview-media:hover {
-  box-shadow: 0 4px 16px alpha(@theme_bg, 0.45);
+  box-shadow: 0 4px 16px alpha(@strata_bg, 0.45);
 }
 
 .preview-note {
-  border-top: 1px solid alpha(@theme_border, 0.24);
-  color: @theme_dim_text;
+  border-top: 1px solid alpha(@strata_border, 0.24);
+  color: @strata_dim_text;
   font-size: 0.8em;
   padding: 6px 10px;
 }
 
 .preview-archive {
-  background: @theme_surface;
+  background: @strata_surface;
 }
 
 .preview-archive-crumbs-scroll {
-  border-bottom: 1px solid alpha(@theme_border, 0.24);
+  border-bottom: 1px solid alpha(@strata_border, 0.24);
 }
 
 .preview-archive-crumbs {
@@ -2510,32 +2510,32 @@ paned > separator {
   border: 1px solid transparent;
   border-radius: 5px;
   box-shadow: none;
-  color: @theme_accent;
+  color: @strata_accent;
   font-size: 0.85em;
   min-height: 20px;
   padding: 0 7px;
 }
 
 .preview-archive-crumb:hover {
-  background: alpha(@theme_muted, 0.55);
-  border-color: alpha(@theme_border, 0.42);
+  background: alpha(@strata_muted, 0.55);
+  border-color: alpha(@strata_border, 0.42);
 }
 
 .preview-archive-crumb:active {
-  background: alpha(@theme_muted, 0.82);
+  background: alpha(@strata_muted, 0.82);
 }
 
 .preview-archive-crumb:focus-visible {
-  outline: 2px solid alpha(@theme_accent, 0.52);
+  outline: 2px solid alpha(@strata_accent, 0.52);
   outline-offset: 1px;
 }
 
 .preview-archive-crumb-current {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
 }
 
 .preview-archive-count {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   font-size: 0.85em;
   padding: 6px 12px;
 }
@@ -2551,7 +2551,7 @@ paned > separator {
 }
 
 .preview-archive-row:hover {
-  background: alpha(@theme_muted, 0.35);
+  background: alpha(@strata_muted, 0.35);
 }
 
 /* The shared selected-row fill stays visible when the pointer rests on it. */
@@ -2560,23 +2560,23 @@ paned > separator {
 }
 
 .preview-archive-name {
-  color: @theme_text;
+  color: @strata_text;
 }
 
 .preview-archive-size {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   font-size: 0.85em;
 }
 
 .preview-archive-empty {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
 }
 
 .preview-document-table > header,
 .preview-document-table > header button {
-  background: @theme_muted;
-  color: @theme_text;
-  border-color: @theme_border;
+  background: @strata_muted;
+  color: @strata_text;
+  border-color: @strata_border;
 }
 
 .preview-document-table > header {
@@ -2599,27 +2599,27 @@ paned > separator {
 }
 
 .preview-document-table > header button:hover {
-  background: @theme_highlight;
-  color: @theme_accent;
+  background: @strata_highlight;
+  color: @strata_accent;
 }
 
 .preview-document-table > header button:active {
-  background: @theme_accent;
-  color: @theme_bg;
+  background: @strata_accent;
+  color: @strata_bg;
 }
 
 .preview-document-table > header button:focus-visible,
 .preview-document-table row:focus-visible {
-  outline: 2px solid @theme_accent;
+  outline: 2px solid @strata_accent;
   outline-offset: -2px;
 }
 
 .preview-document-table listview,
 .preview-document-table row,
 .preview-document-table cell {
-  background: @theme_surface;
-  color: @theme_text;
-  border-color: @theme_border;
+  background: @strata_surface;
+  color: @strata_text;
+  border-color: @strata_border;
 }
 
 .preview-document-table row {
@@ -2633,12 +2633,12 @@ paned > separator {
 }
 
 .preview-document-table row:hover {
-  background: @theme_highlight;
+  background: @strata_highlight;
 }
 
 .preview-document-table > header separator,
 .preview-document-table > header sort-indicator {
-  color: @theme_accent;
+  color: @strata_accent;
 }
 
 .preview-document-table > header sort-indicator.ascending,
@@ -2658,11 +2658,11 @@ paned > separator {
 }
 
 .preview-volume-toggle {
-  background: alpha(@theme_bg, 0.72);
-  border: 1px solid alpha(@theme_border, 0.42);
+  background: alpha(@strata_bg, 0.72);
+  border: 1px solid alpha(@strata_border, 0.42);
   border-radius: 6px;
   box-shadow: none;
-  color: @theme_accent;
+  color: @strata_accent;
   min-height: 24px;
   min-width: 24px;
   padding: 3px;
@@ -2670,42 +2670,42 @@ paned > separator {
 }
 
 .preview-volume-toggle:hover {
-  background: alpha(@theme_muted, 0.82);
-  border-color: @theme_accent;
+  background: alpha(@strata_muted, 0.82);
+  border-color: @strata_accent;
 }
 
 .preview-volume-toggle:active {
-  background: alpha(@theme_muted, 0.96);
-  border-color: @theme_accent;
+  background: alpha(@strata_muted, 0.96);
+  border-color: @strata_accent;
   transform: scale(0.96);
 }
 
 .preview-volume-toggle:focus-visible {
-  outline: 2px solid alpha(@theme_accent, 0.52);
+  outline: 2px solid alpha(@strata_accent, 0.52);
   outline-offset: 1px;
 }
 
 .preview-audio-eyebrow {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   font-size: 0.72em;
   font-weight: 700;
   letter-spacing: 0.12em;
 }
 
 .preview-audio-title {
-  color: @theme_text;
+  color: @strata_text;
   font-size: 1.85em;
   font-weight: 800;
   letter-spacing: -0.01em;
 }
 
 .preview-audio-artist {
-  color: @theme_accent;
+  color: @strata_accent;
   font-weight: 700;
 }
 
 .preview-audio-album {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
 }
 
 .preview-audio-time {
@@ -2713,7 +2713,7 @@ paned > separator {
 }
 
 .preview-media-time.preview-audio-time-target {
-  color: @theme_accent;
+  color: @strata_accent;
 }
 
 .preview-media-center.preview-audio-play {
@@ -2722,27 +2722,100 @@ paned > separator {
   padding: 6px;
 }
 
-.preview-audio-scrubber {
+.preview-waveform {
   border-radius: 4px;
 }
 
-.preview-audio-scrubber:focus-visible {
-  outline: 2px solid alpha(@theme_accent, 0.52);
+.preview-waveform:focus-visible {
+  outline: 2px solid alpha(@strata_accent, 0.52);
   outline-offset: 2px;
 }
 
+.preview-video-eyebrow {
+  color: @strata_dim_text;
+  font-size: 0.72em;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.preview-video-title {
+  color: @strata_text;
+  font-size: 1.1em;
+  font-weight: 700;
+}
+
+.preview-video-time {
+  min-width: 3.4em;
+}
+
+.preview-media-time.preview-video-time-target {
+  color: @strata_accent;
+}
+
+.preview-media-center.preview-video-play {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 6px;
+}
+
+.preview-video-badges {
+  margin-top: 4px;
+  min-height: 18px;
+}
+
+.preview-video-badge {
+  background: alpha(@strata_muted, 0.55);
+  border: 1px solid alpha(@strata_border, 0.4);
+  border-radius: 4px;
+  color: @strata_text;
+  font-size: 0.7em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 1px 6px;
+}
+
+.preview-video-badge-hdr {
+  background: alpha(@strata_accent, 0.22);
+  border-color: alpha(@strata_accent, 0.6);
+  color: @strata_accent;
+}
+
+.preview-video-badge-skeleton {
+  background: alpha(@strata_dim_text, 0.22);
+  border-color: transparent;
+  min-height: 16px;
+}
+
+.preview-video-bubble {
+  background: alpha(@strata_bg, 0.92);
+  border: 1px solid alpha(@strata_border, 0.5);
+  border-radius: 6px;
+  padding: 3px;
+}
+
+.preview-video-bubble-cell {
+  background: alpha(@strata_dim_text, 0.14);
+  border-radius: 4px;
+}
+
+.preview-video-bubble-time {
+  color: @strata_text;
+  font-size: 0.72em;
+  font-weight: 700;
+}
+
 .preview-media-bar {
-  background: alpha(@theme_bg, 0.55);
-  border-top: 1px solid alpha(@theme_border, 0.24);
+  background: alpha(@strata_bg, 0.55);
+  border-top: 1px solid alpha(@strata_border, 0.24);
   padding: 6px 10px;
 }
 
 .preview-media-center {
-  background: alpha(@theme_bg, 0.72);
-  border: 1px solid alpha(@theme_border, 0.42);
+  background: alpha(@strata_bg, 0.72);
+  border: 1px solid alpha(@strata_border, 0.42);
   border-radius: 50%;
   box-shadow: none;
-  color: @theme_accent;
+  color: @strata_accent;
   min-height: 56px;
   min-width: 56px;
   padding: 8px;
@@ -2750,8 +2823,8 @@ paned > separator {
 }
 
 .preview-media-center:hover {
-  background: alpha(@theme_muted, 0.82);
-  border-color: @theme_accent;
+  background: alpha(@strata_muted, 0.82);
+  border-color: @strata_accent;
 }
 
 .preview-media-center:active {
@@ -2763,7 +2836,7 @@ paned > separator {
   border: 1px solid transparent;
   border-radius: 5px;
   box-shadow: none;
-  color: @theme_accent;
+  color: @strata_accent;
   min-height: 24px;
   min-width: 24px;
   padding: 2px;
@@ -2771,23 +2844,23 @@ paned > separator {
 }
 
 .preview-media-button:hover {
-  background: alpha(@theme_muted, 0.62);
-  border-color: alpha(@theme_border, 0.42);
+  background: alpha(@strata_muted, 0.62);
+  border-color: alpha(@strata_border, 0.42);
 }
 
 .preview-media-button:active {
-  background: alpha(@theme_muted, 0.82);
-  border-color: @theme_accent;
+  background: alpha(@strata_muted, 0.82);
+  border-color: @strata_accent;
   transform: scale(0.97);
 }
 
 .preview-media-button:focus-visible {
-  outline: 2px solid alpha(@theme_accent, 0.52);
+  outline: 2px solid alpha(@strata_accent, 0.52);
   outline-offset: 1px;
 }
 
 .preview-media-time {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   font-size: 0.78em;
   font-variant-numeric: tabular-nums;
 }
@@ -2801,7 +2874,7 @@ paned > separator {
 
 .preview-media-seek trough,
 .preview-media-volume trough {
-  background: alpha(@theme_border, 0.42);
+  background: alpha(@strata_border, 0.42);
   border: none;
   border-radius: 3px;
   min-height: 4px;
@@ -2811,16 +2884,16 @@ paned > separator {
 
 .preview-media-seek highlight,
 .preview-media-volume highlight {
-  background: @theme_accent;
+  background: @strata_accent;
   border-radius: 3px;
 }
 
 .preview-media-seek slider,
 .preview-media-volume slider {
-  background: @theme_accent;
+  background: @strata_accent;
   border: none;
   border-radius: 50%;
-  color: @theme_accent;
+  color: @strata_accent;
   min-height: 10px;
   min-width: 10px;
   margin: -4px;
@@ -2860,7 +2933,7 @@ paned > separator {
 
 .preview-pdf-list,
 .preview-pdf-list > row {
-  background: @theme_surface;
+  background: @strata_surface;
 }
 
 .preview-pdf-list > row {
@@ -2876,12 +2949,12 @@ paned > separator {
 }
 
 .preview-feedback-title {
-  color: @theme_text;
+  color: @strata_text;
   font-weight: 700;
 }
 
 .preview-feedback-detail {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
 }
 
 .preview-archive-password {
@@ -2893,31 +2966,31 @@ paned > separator {
 }
 
 .preview-archive-password-error {
-  color: @theme_danger;
+  color: @strata_danger;
   margin-top: 6px;
 }
 
 .preview-archive-password-row button.suggested-action {
-  background-color: @theme_accent;
+  background-color: @strata_accent;
   background-image: none;
-  color: @theme_bg;
+  color: @strata_bg;
 }
 
 .preview-archive-password-row button.suggested-action:hover {
-  background-color: shade(@theme_accent, 1.07);
+  background-color: shade(@strata_accent, 1.07);
   background-image: none;
 }
 
 .preview-archive-password-row button.suggested-action:active,
 .preview-archive-password-row button.suggested-action:checked {
-  background-color: shade(@theme_accent, 0.92);
+  background-color: shade(@strata_accent, 0.92);
   background-image: none;
 }
 
 .preview-archive-password-row button.suggested-action:disabled {
-  background-color: alpha(@theme_accent, 0.5);
+  background-color: alpha(@strata_accent, 0.5);
   background-image: none;
-  color: alpha(@theme_bg, 0.7);
+  color: alpha(@strata_bg, 0.7);
 }
 
 .preview-command {
@@ -2926,29 +2999,29 @@ paned > separator {
 }
 
 entry.preview-command-entry {
-  background: alpha(@theme_bg, 0.72);
-  border-color: alpha(@theme_border, 0.54);
-  color: @theme_text;
+  background: alpha(@strata_bg, 0.72);
+  border-color: alpha(@strata_border, 0.54);
+  color: @strata_text;
   font-family: monospace;
   padding-right: 38px;
 }
 
 entry.preview-command-entry:hover {
-  border-color: alpha(@theme_accent, 0.68);
+  border-color: alpha(@strata_accent, 0.68);
 }
 
 entry.preview-command-entry:focus,
 entry.preview-command-entry:focus-visible,
 entry.preview-command-entry:focus-within {
-  border-color: @theme_accent;
-  box-shadow: 0 0 0 1px alpha(@theme_accent, 0.42);
-  outline: 2px solid @theme_accent;
+  border-color: @strata_accent;
+  box-shadow: 0 0 0 1px alpha(@strata_accent, 0.42);
+  outline: 2px solid @strata_accent;
   outline-offset: -2px;
 }
 
 entry.preview-command-entry selection {
-  background: @theme_accent;
-  color: @theme_bg;
+  background: @strata_accent;
+  color: @strata_bg;
 }
 
 .preview-command-copy {
@@ -2963,29 +3036,29 @@ entry.preview-command-entry selection {
 }
 
 .preview-command-copy:hover {
-  background: alpha(@theme_accent, 0.15);
+  background: alpha(@strata_accent, 0.15);
 }
 
 .preview-command-copy:active {
-  background: alpha(@theme_accent, 0.22);
+  background: alpha(@strata_accent, 0.22);
   transform: scale(0.96);
 }
 
 .preview-command-copy:focus-visible {
-  outline: 2px solid @theme_accent;
+  outline: 2px solid @strata_accent;
   outline-offset: -2px;
 }
 
 .preview-spinner {
-  color: @theme_accent;
+  color: @strata_accent;
 }
 
 .tenxer-splash {
   opacity: 0;
   transform: translateY(16px) scale(0.88);
   transition: opacity 220ms ease-out, transform 360ms cubic-bezier(0.16, 1, 0.3, 1);
-  border: 1px solid alpha(@theme_accent, 0.65);
-  box-shadow: 0 0 36px alpha(@theme_glow, 0.4);
+  border: 1px solid alpha(@strata_accent, 0.65);
+  box-shadow: 0 0 36px alpha(@strata_glow, 0.4);
 }
 
 .tenxer-splash.tenxer-splash-visible {
@@ -3005,9 +3078,9 @@ entry.preview-command-entry selection {
 }
 
 .shortcut-footer {
-  background: @theme_surface;
-  color: @theme_text;
-  border-top: 1px solid @theme_border;
+  background: @strata_surface;
+  color: @strata_text;
+  border-top: 1px solid @strata_border;
   padding: 3px 10px;
   min-height: 24px;
   font-size: 0.85em;
@@ -3017,14 +3090,14 @@ entry.preview-command-entry selection {
 .tenxer-experimental,
 .shortcut-footer-chord,
 .shortcut-footer-feedback {
-  color: @theme_text;
+  color: @strata_text;
   font-weight: normal;
 }
 
 .sidebar-keycap {
-  color: @theme_text;
-  background-color: @theme_bg;
-  border: 1px solid @theme_border;
+  color: @strata_text;
+  background-color: @strata_bg;
+  border: 1px solid @strata_border;
   border-radius: 4px;
   padding: 0 5px;
   font-size: 0.85em;
@@ -3032,12 +3105,12 @@ entry.preview-command-entry selection {
 }
 
 .shortcut-footer-chord-hint {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   font-weight: normal;
 }
 
 .shortcut-footer-prompt-label {
-  color: @theme_accent;
+  color: @strata_accent;
   font-weight: bold;
 }
 
@@ -3052,7 +3125,7 @@ entry.form-control.shortcut-footer-prompt {
 entry.form-control.shortcut-footer-prompt:focus,
 entry.form-control.shortcut-footer-prompt:focus-visible,
 entry.form-control.shortcut-footer-prompt:focus-within {
-  border-color: alpha(@theme_border, 0.54);
+  border-color: alpha(@strata_border, 0.54);
   box-shadow: none;
   outline: none;
 }
@@ -3060,9 +3133,9 @@ entry.form-control.shortcut-footer-prompt:focus-within {
 .tenxer-tag,
 .shortcut-footer-chord-pill,
 .shortcut-footer-paste {
-  color: @theme_accent;
-  background-color: alpha(@theme_accent, 0.14);
-  border: 1px solid alpha(@theme_accent, 0.4);
+  color: @strata_accent;
+  background-color: alpha(@strata_accent, 0.14);
+  border: 1px solid alpha(@strata_accent, 0.4);
   border-radius: 999px;
   margin: 0;
   padding: 0 8px;
@@ -3073,7 +3146,7 @@ entry.form-control.shortcut-footer-prompt:focus-within {
 .shortcut-footer-button > button,
 button.shortcut-footer-button {
   background: transparent;
-  color: @theme_text;
+  color: @strata_text;
   border: 1px solid transparent;
   border-radius: 4px;
   box-shadow: none;
@@ -3084,40 +3157,40 @@ button.shortcut-footer-button {
 
 .shortcut-footer-button > button:hover,
 button.shortcut-footer-button:hover {
-  background: @theme_highlight;
-  color: @theme_text;
-  border-color: @theme_border;
+  background: @strata_highlight;
+  color: @strata_text;
+  border-color: @strata_border;
 }
 
 .shortcut-footer-button > button:active,
 .shortcut-footer-button > button:checked,
 button.shortcut-footer-button:active,
 button.shortcut-footer-button:checked {
-  background: @theme_highlight;
-  color: @theme_text;
-  border-color: @theme_accent;
+  background: @strata_highlight;
+  color: @strata_text;
+  border-color: @strata_accent;
 }
 
 .shortcut-footer-button > button:focus-visible,
 button.shortcut-footer-button:focus-visible {
-  outline: 2px solid @theme_accent;
+  outline: 2px solid @strata_accent;
   outline-offset: -2px;
 }
 
 .shortcut-footer-button > button:disabled,
 button.shortcut-footer-button:disabled {
-  color: @theme_dim_text;
-  background: @theme_surface;
+  color: @strata_dim_text;
+  background: @strata_surface;
 }
 
 .shortcut-popover > contents,
 .shortcut-reference-panel {
-  background: @theme_surface;
-  color: @theme_text;
-  border: 1px solid alpha(@theme_border, 0.6);
+  background: @strata_surface;
+  color: @strata_text;
+  border: 1px solid alpha(@strata_border, 0.6);
   border-radius: 9px;
   padding: 0;
-  box-shadow: 0 0 14px alpha(@theme_glow, 0.24);
+  box-shadow: 0 0 14px alpha(@strata_glow, 0.24);
 }
 
 .shortcut-chord-popover > contents {
@@ -3130,21 +3203,21 @@ button.shortcut-footer-button:disabled {
 }
 
 .shortcut-reference-header {
-  border-bottom: 1px solid @theme_border;
+  border-bottom: 1px solid @strata_border;
 }
 
 .shortcut-reference-footer {
-  border-top: 1px solid @theme_border;
+  border-top: 1px solid @strata_border;
 }
 
 .shortcut-reference-title {
-  color: @theme_text;
+  color: @strata_text;
   font-weight: 600;
 }
 
 .shortcut-reference-sidebar {
   min-width: 225px;
-  border-right: 1px solid @theme_border;
+  border-right: 1px solid @strata_border;
 }
 
 .shortcut-reference-categories {
@@ -3158,7 +3231,7 @@ button.shortcut-footer-button:disabled {
 .shortcut-reference-body.compact .shortcut-reference-sidebar {
   min-width: 0;
   border-right: 0;
-  border-bottom: 1px solid @theme_border;
+  border-bottom: 1px solid @strata_border;
 }
 
 .shortcut-reference-body.compact .shortcut-reference-results {
@@ -3167,7 +3240,7 @@ button.shortcut-footer-button:disabled {
 
 .shortcut-reference-category {
   background: transparent;
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   border: 0;
   border-left: 3px solid transparent;
   border-radius: 0;
@@ -3175,38 +3248,38 @@ button.shortcut-footer-button:disabled {
 }
 
 .shortcut-reference-category:hover {
-  background: alpha(@theme_accent, 0.1);
-  color: @theme_text;
+  background: alpha(@strata_accent, 0.1);
+  color: @strata_text;
 }
 
 .shortcut-reference-category:focus,
 .shortcut-reference-category:focus-visible {
-  outline: 2px solid @theme_accent;
+  outline: 2px solid @strata_accent;
   outline-offset: -2px;
 }
 
 .shortcut-reference-category.selected {
-  background: alpha(@theme_accent, 0.16);
-  color: @theme_text;
-  border-left: 3px solid @theme_accent;
+  background: alpha(@strata_accent, 0.16);
+  color: @strata_text;
+  border-left: 3px solid @strata_accent;
 }
 
 .shortcut-reference-body.compact .shortcut-reference-category {
-  border: 1px solid alpha(@theme_border, 0.4);
+  border: 1px solid alpha(@strata_border, 0.4);
   border-radius: 14px;
   min-height: 22px;
   padding: 0 9px;
 }
 
 .shortcut-reference-body.compact .shortcut-reference-category.selected {
-  background: alpha(@theme_accent, 0.2);
-  border-color: @theme_accent;
+  background: alpha(@strata_accent, 0.2);
+  border-color: @strata_accent;
 }
 
 .shortcut-reference-body.compact .shortcut-reference-category:focus,
 .shortcut-reference-body.compact .shortcut-reference-category:focus-visible {
-  border-color: @theme_accent;
-  box-shadow: 0 0 0 1px @theme_accent;
+  border-color: @strata_accent;
+  box-shadow: 0 0 0 1px @strata_accent;
   outline: none;
 }
 
@@ -3215,7 +3288,7 @@ button.shortcut-footer-button:disabled {
 }
 
 .shortcut-reference-results separator {
-  background: @theme_accent;
+  background: @strata_accent;
   border: 0;
   padding: 0;
   min-height: 1px;
@@ -3226,26 +3299,26 @@ button.shortcut-footer-button:disabled {
 }
 
 .shortcut-reference-heading {
-  color: @theme_accent;
+  color: @strata_accent;
   font-weight: 600;
 }
 
 .shortcut-reference-key {
-  color: @theme_text;
-  background: alpha(@theme_text, 0.06);
-  border: 1px solid @theme_border;
+  color: @strata_text;
+  background: alpha(@strata_text, 0.06);
+  border: 1px solid @strata_border;
   border-radius: 5px;
   padding: 2px 6px;
   font-size: 0.9em;
 }
 
 .shortcut-reference-description {
-  color: @theme_text;
+  color: @strata_text;
 }
 
 .shortcut-reference-note,
 .shortcut-reference-count {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   font-size: 0.9em;
 }
 
@@ -3258,7 +3331,7 @@ button.shortcut-footer-button:disabled {
 
 .shortcut-reference-scroll:focus,
 .shortcut-reference-scroll:focus-visible {
-  background: alpha(@theme_accent, 0.06);
+  background: alpha(@strata_accent, 0.06);
 }
 
 .shortcut-reference-panel.tenxer-active scrolledwindow:focus,
@@ -3267,13 +3340,13 @@ button.shortcut-footer-button:disabled {
 }
 
 .columns {
-  background: @theme_bg;
-  color: @theme_text;
+  background: @strata_bg;
+  color: @strata_text;
 }
 
 .directory-column {
-  background: @theme_bg;
-  color: @theme_text;
+  background: @strata_bg;
+  color: @strata_text;
 }
 
 @keyframes column-enter {
@@ -3286,19 +3359,19 @@ button.shortcut-footer-button:disabled {
 }
 
 .directory-column:focus-within .column-header {
-  color: @theme_text;
+  color: @strata_text;
 }
 
 .active-column .column-header {
-  background: @theme_surface;
-  color: @theme_text;
-  border-top-color: @theme_accent;
+  background: @strata_surface;
+  color: @strata_text;
+  border-top-color: @strata_accent;
 }
 
 .directory-column scrolledwindow,
 .directory-column viewport,
 .directory-column listview {
-  background: @theme_bg;
+  background: @strata_bg;
 }
 
 /* Keep the column flush; inset only its scrollbar from the resize target and header. */
@@ -3309,34 +3382,34 @@ button.shortcut-footer-button:disabled {
 
 .column-resize-handle {
   background: transparent;
-  border-right: 1px solid alpha(@theme_border, 0.6);
+  border-right: 1px solid alpha(@strata_border, 0.6);
 }
 
 .column-resize-handle:hover,
 .column-resize-handle.resize-hover {
-  border-right-color: @theme_accent;
+  border-right-color: @strata_accent;
 }
 
 .peek-popover {
-  background: @theme_surface;
-  border: 1px solid alpha(@theme_border, 0.8);
+  background: @strata_surface;
+  border: 1px solid alpha(@strata_border, 0.8);
   border-radius: 9px;
-  box-shadow: 0 0 14px alpha(@theme_glow, 0.24), 0 6px 20px alpha(@theme_bg, 0.45);
-  color: @theme_text;
+  box-shadow: 0 0 14px alpha(@strata_glow, 0.24), 0 6px 20px alpha(@strata_bg, 0.45);
+  color: @strata_text;
   padding: 0;
 }
 
 .peek-popover .column-header {
-  background: @theme_surface;
-  border-bottom: 1px solid alpha(@theme_border, 0.24);
+  background: @strata_surface;
+  border-bottom: 1px solid alpha(@strata_border, 0.24);
   border-radius: 8px 8px 0 0;
-  color: @theme_dim_text;
+  color: @strata_dim_text;
 }
 
 .peek-popover scrolledwindow,
 .peek-popover viewport,
 .peek-popover listview {
-  background: @theme_surface;
+  background: @strata_surface;
   padding: 6px 0;
 }
 
@@ -3345,23 +3418,23 @@ button.shortcut-footer-button:disabled {
 }
 
 .chooser-download {
-  color: @theme_text;
+  color: @strata_text;
 }
 
 .chooser-download-status {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   font-size: 0.85em;
 }
 
 .chooser-download-progress {
-  color: @theme_accent;
+  color: @strata_accent;
 }
 
 .column-header {
   background: transparent;
   border-top: 3px solid transparent;
-  border-bottom: 1px solid alpha(@theme_border, 0.6);
-  color: alpha(@theme_accent, 0.58);
+  border-bottom: 1px solid alpha(@strata_border, 0.6);
+  color: alpha(@strata_accent, 0.58);
   font-weight: 700;
   min-height: 31px;
   /* Balance the three-pixel top indicator against the one-pixel bottom border. */
@@ -3397,22 +3470,22 @@ button.column-header-action:hover,
 button.column-header-action:checked,
 menubutton.column-header-action > button:hover,
 menubutton.column-header-action > button:checked {
-  background: alpha(@theme_accent, 0.22);
+  background: alpha(@strata_accent, 0.22);
 }
 
 button.column-header-action:active,
 menubutton.column-header-action > button:active {
-  background: alpha(@theme_accent, 0.22);
+  background: alpha(@strata_accent, 0.22);
   transform: scale(0.97);
 }
 
 .column-header-action image {
-  color: @theme_text;
+  color: @strata_text;
 }
 
 .column-filter {
-  background: @theme_bg;
-  border-bottom: 1px solid alpha(@theme_border, 0.6);
+  background: @strata_bg;
+  border-bottom: 1px solid alpha(@strata_border, 0.6);
   min-height: 30px;
   padding: 0 11px;
 }
@@ -3424,28 +3497,28 @@ menubutton.column-header-action > button:active {
   border: none;
   border-radius: 0;
   box-shadow: none;
-  color: @theme_text;
+  color: @strata_text;
   min-height: 28px;
   outline: none;
   padding: 0;
 }
 
 .column-filter-entry selection {
-  background: @theme_accent;
-  color: @theme_bg;
+  background: @strata_accent;
+  color: @strata_bg;
 }
 
 .column-filter:focus-within {
-  border-bottom-color: @theme_accent;
-  box-shadow: inset 0 -1px alpha(@theme_accent, 0.42);
+  border-bottom-color: @strata_accent;
+  box-shadow: inset 0 -1px alpha(@strata_accent, 0.42);
 }
 
 .column-popover contents,
 dropdown.form-control popover > contents {
-  background: @theme_surface;
-  border: 1px solid alpha(@theme_border, 0.6);
+  background: @strata_surface;
+  border: 1px solid alpha(@strata_border, 0.6);
   border-radius: 9px;
-  box-shadow: 0 0 14px alpha(@theme_glow, 0.24);
+  box-shadow: 0 0 14px alpha(@strata_glow, 0.24);
   padding: 0;
 }
 
@@ -3457,12 +3530,12 @@ dropdown.form-control popover listview {
 }
 
 dropdown.form-control popover listview {
-  background: @theme_surface;
-  color: @theme_text;
+  background: @strata_surface;
+  color: @strata_text;
 }
 
 .column-menu separator {
-  background: alpha(@theme_border, 0.2);
+  background: alpha(@strata_border, 0.2);
   margin: 5px 0;
   min-height: 1px;
 }
@@ -3473,7 +3546,7 @@ dropdown.form-control popover row {
   border: none;
   border-radius: 5px;
   box-shadow: none;
-  color: @theme_text;
+  color: @strata_text;
   min-height: 30px;
   padding: 3px 7px;
   transition: transform 160ms ease-out, background 160ms ease-out, color 160ms ease-out;
@@ -3482,29 +3555,29 @@ dropdown.form-control popover row {
 .column-menu-option:hover,
 dropdown.form-control popover row:hover,
 dropdown.form-control popover row:selected {
-  background: alpha(@theme_accent, 0.15);
-  color: @theme_text;
+  background: alpha(@strata_accent, 0.15);
+  color: @strata_text;
 }
 
 .column-menu-option:active,
 dropdown.form-control popover row:active {
-  background: alpha(@theme_accent, 0.22);
+  background: alpha(@strata_accent, 0.22);
   transform: scale(0.97);
 }
 
 
 .column-menu-option:focus-visible,
 dropdown.form-control popover row:focus-visible {
-  outline: 2px solid @theme_accent;
+  outline: 2px solid @strata_accent;
   outline-offset: -2px;
 }
 
 dropdown.form-control popover row:disabled {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
 }
 
 dropdown.form-control popover row:selected check {
-  color: @theme_accent;
+  color: @strata_accent;
 }
 
 .authentication-dialog {
@@ -3513,25 +3586,25 @@ dropdown.form-control popover row:selected check {
 
 
 .authentication-body {
-  background: alpha(@theme_bg, 0.18);
+  background: alpha(@strata_bg, 0.18);
 }
 
 .authentication-explanation {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
 }
 
 .authentication-error {
-  background: alpha(@theme_danger, 0.1);
-  border: 1px solid alpha(@theme_danger, 0.5);
+  background: alpha(@strata_danger, 0.1);
+  border: 1px solid alpha(@strata_danger, 0.5);
   border-radius: 5px;
-  color: @theme_danger;
+  color: @strata_danger;
   font-size: 0.82em;
   padding: 7px 9px;
 }
 
 .segmented-control {
-  background: alpha(@theme_bg, 0.25);
-  border: 1px solid alpha(@theme_border, 0.4);
+  background: alpha(@strata_bg, 0.25);
+  border: 1px solid alpha(@strata_border, 0.4);
   border-radius: 6px;
   padding: 2px;
 }
@@ -3541,51 +3614,51 @@ dropdown.form-control popover row:selected check {
   border: none;
   border-radius: 4px;
   box-shadow: none;
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   min-height: 26px;
   padding: 2px 10px;
 }
 
 .segmented-control-option:hover {
-  background: alpha(@theme_highlight, 0.65);
-  color: @theme_text;
+  background: alpha(@strata_highlight, 0.65);
+  color: @strata_text;
 }
 
 .segmented-control-option:checked {
-  background: alpha(@theme_accent, 0.22);
-  color: @theme_accent;
+  background: alpha(@strata_accent, 0.22);
+  color: @strata_accent;
 }
 
 .segmented-control-option:checked:hover {
-  background: alpha(@theme_accent, 0.28);
+  background: alpha(@strata_accent, 0.28);
 }
 
 .segmented-control-option:active {
-  background: alpha(@theme_accent, 0.28);
+  background: alpha(@strata_accent, 0.28);
 }
 
 .segmented-control-option:focus-visible {
-  outline: 2px solid @theme_accent;
+  outline: 2px solid @strata_accent;
   outline-offset: -2px;
 }
 
 .authentication-fields .form-control:disabled {
-  background: alpha(@theme_muted, 0.3);
-  border-color: alpha(@theme_border, 0.38);
-  color: @theme_dim_text;
+  background: alpha(@strata_muted, 0.3);
+  border-color: alpha(@strata_border, 0.38);
+  color: @strata_dim_text;
 }
 
 .segmented-control-option:disabled {
   background: transparent;
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   opacity: 0.4;
 }
 
 .path-completion-popover contents {
-  background: @theme_surface;
-  border: 1px solid alpha(@theme_border, 0.55);
+  background: @strata_surface;
+  border: 1px solid alpha(@strata_border, 0.55);
   border-radius: 9px;
-  box-shadow: 0 0 14px alpha(@theme_glow, 0.16), 0 8px 24px alpha(@theme_shadow, 0.32);
+  box-shadow: 0 0 14px alpha(@strata_glow, 0.16), 0 8px 24px alpha(@strata_bg, 0.32);
   padding: 4px;
 }
 
@@ -3596,7 +3669,7 @@ dropdown.form-control popover row:selected check {
 
 .path-completion-list {
   background: transparent;
-  color: @theme_text;
+  color: @strata_text;
 }
 
 .path-completion-list row.path-completion-row {
@@ -3604,7 +3677,7 @@ dropdown.form-control popover row:selected check {
   border: none;
   border-radius: 6px;
   box-shadow: none;
-  color: @theme_text;
+  color: @strata_text;
   font-size: 0.9em;
   margin: 1px 0;
   min-height: 32px;
@@ -3617,34 +3690,34 @@ dropdown.form-control popover row:selected check {
 }
 
 .path-completion-list row.path-completion-row:hover:not(:selected) {
-  background: alpha(@theme_highlight, 0.72);
-  color: @theme_text;
+  background: alpha(@strata_highlight, 0.72);
+  color: @strata_text;
 }
 
 .path-completion-list row.path-completion-row:selected {
-  background: alpha(@theme_accent, 0.22);
-  box-shadow: inset 0 0 0 1px alpha(@theme_accent, 0.72);
-  color: @theme_text;
+  background: alpha(@strata_accent, 0.22);
+  box-shadow: inset 0 0 0 1px alpha(@strata_accent, 0.72);
+  color: @strata_text;
 }
 
 .path-completion-list row.path-completion-row:active {
-  background: alpha(@theme_accent, 0.28);
-  color: @theme_text;
+  background: alpha(@strata_accent, 0.28);
+  color: @strata_text;
 }
 
 .path-completion-parent {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   font-size: 0.82em;
 }
 
 .path-completion-list row.path-completion-row:selected .path-completion-parent {
-  color: @theme_text;
+  color: @strata_text;
   opacity: 0.72;
 }
 
 .path-completion-shortcuts {
-  border-top: 1px solid alpha(@theme_border, 0.28);
-  color: @theme_dim_text;
+  border-top: 1px solid alpha(@strata_border, 0.28);
+  color: @strata_dim_text;
   font-size: 0.76em;
   margin-top: 3px;
   padding: 6px 9px 4px;
@@ -3663,7 +3736,7 @@ dropdown.form-control popover row:selected check {
 .properties-section-title,
 .properties-permission-identity,
 .properties-mode {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
 }
 
 .properties-details {
@@ -3671,7 +3744,7 @@ dropdown.form-control popover row:selected check {
 }
 
 .properties-row {
-  border-bottom: 1px solid alpha(@theme_border, 0.18);
+  border-bottom: 1px solid alpha(@strata_border, 0.18);
   min-height: 28px;
 }
 
@@ -3686,12 +3759,12 @@ dropdown.form-control popover row:selected check {
 }
 
 .properties-row-value {
-  color: @theme_text;
+  color: @strata_text;
 }
 
 .properties-row-value selection {
-  color: @theme_bg;
-  background: @theme_accent;
+  color: @strata_bg;
+  background: @strata_accent;
 }
 
 .properties-size-value {
@@ -3699,13 +3772,13 @@ dropdown.form-control popover row:selected check {
 }
 
 .properties-size-spinner {
-  color: @theme_accent;
+  color: @strata_accent;
   min-width: 12px;
   min-height: 12px;
 }
 
 .properties-permissions {
-  border-top: 1px solid alpha(@theme_border, 0.18);
+  border-top: 1px solid alpha(@strata_border, 0.18);
   padding: 12px 20px 14px;
 }
 
@@ -3720,7 +3793,7 @@ dropdown.form-control popover row:selected check {
 }
 
 .properties-permission-title {
-  color: @theme_text;
+  color: @strata_text;
   min-width: 48px;
 }
 
@@ -3731,35 +3804,35 @@ dropdown.form-control popover row:selected check {
 
 .properties-permission-bit {
   background: transparent;
-  border: 1px solid alpha(@theme_border, 0.34);
+  border: 1px solid alpha(@strata_border, 0.34);
   border-radius: 4px;
   box-shadow: none;
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   min-height: 20px;
   min-width: 28px;
   padding: 0;
 }
 
 .properties-permission-bit:hover {
-  background: alpha(@theme_accent, 0.12);
-  border-color: @theme_accent;
-  color: @theme_text;
+  background: alpha(@strata_accent, 0.12);
+  border-color: @strata_accent;
+  color: @strata_text;
 }
 
 .properties-permission-bit:active {
-  background: alpha(@theme_accent, 0.22);
+  background: alpha(@strata_accent, 0.22);
 }
 
 .properties-permission-bit:focus-visible {
-  border-color: @theme_accent;
-  outline: 2px solid alpha(@theme_accent, 0.48);
+  border-color: @strata_accent;
+  outline: 2px solid alpha(@strata_accent, 0.48);
   outline-offset: 1px;
 }
 
 .properties-permission-bit.enabled {
-  background: alpha(@theme_highlight, 0.48);
-  border-color: @theme_accent;
-  color: @theme_accent;
+  background: alpha(@strata_highlight, 0.48);
+  border-color: @strata_accent;
+  color: @strata_accent;
 }
 
 .properties-permission-bit:disabled {
@@ -3767,26 +3840,26 @@ dropdown.form-control popover row:selected check {
 }
 
 .properties-executable {
-  color: @theme_text;
+  color: @strata_text;
   margin-top: 4px;
   padding: 0;
 }
 
 .properties-executable check {
-  background: @theme_surface;
-  border-color: @theme_border;
-  color: @theme_accent;
+  background: @strata_surface;
+  border-color: @strata_border;
+  color: @strata_accent;
 }
 
 .properties-executable:hover check,
 .properties-executable:focus-visible check {
-  border-color: @theme_accent;
+  border-color: @strata_accent;
 }
 
 .properties-executable:checked check {
-  background: @theme_accent;
-  border-color: @theme_accent;
-  color: @theme_surface;
+  background: @strata_accent;
+  border-color: @strata_accent;
+  color: @strata_surface;
 }
 
 .properties-actions {
@@ -3795,38 +3868,38 @@ dropdown.form-control popover row:selected check {
 
 .properties-action {
   background: transparent;
-  border: 1px solid alpha(@theme_border, 0.42);
+  border: 1px solid alpha(@strata_border, 0.42);
   border-radius: 5px;
   box-shadow: none;
-  color: @theme_text;
+  color: @strata_text;
   min-height: 28px;
   padding: 3px 9px;
   transition: transform 160ms ease-out, background 160ms ease-out, border-color 160ms ease-out, color 160ms ease-out;
 }
 
 .properties-action:hover {
-  background: alpha(@theme_accent, 0.15);
-  border-color: @theme_accent;
-  color: @theme_accent;
+  background: alpha(@strata_accent, 0.15);
+  border-color: @strata_accent;
+  color: @strata_accent;
 }
 
 .properties-action:active {
-  background: alpha(@theme_accent, 0.22);
-  border-color: @theme_accent;
-  color: @theme_accent;
+  background: alpha(@strata_accent, 0.22);
+  border-color: @strata_accent;
+  color: @strata_accent;
   transform: scale(0.97);
 }
 
 .properties-action:focus-visible {
-  border-color: @theme_accent;
-  outline: 2px solid alpha(@theme_accent, 0.48);
+  border-color: @strata_accent;
+  outline: 2px solid alpha(@strata_accent, 0.48);
   outline-offset: 1px;
 }
 
 .properties-action:disabled {
   background: transparent;
-  border-color: alpha(@theme_border, 0.2);
-  color: @theme_dim_text;
+  border-color: alpha(@strata_border, 0.2);
+  color: @strata_dim_text;
   opacity: 0.46;
 }
 
@@ -3842,11 +3915,11 @@ textview > popover.menu.background {
 .folder-context-popover contents,
 text > popover.menu > contents,
 textview > popover.menu > contents {
-  background: @theme_surface;
-  border: 1px solid alpha(@theme_border, 0.6);
+  background: @strata_surface;
+  border: 1px solid alpha(@strata_border, 0.6);
   border-radius: 9px;
-  box-shadow: 0 0 14px alpha(@theme_glow, 0.24);
-  color: @theme_text;
+  box-shadow: 0 0 14px alpha(@strata_glow, 0.24);
+  color: @strata_text;
   padding: 0;
 }
 
@@ -3894,12 +3967,12 @@ textview > popover.menu > contents > scrolledwindow > viewport > stack {
 }
 
 .item-context-title {
-  color: @theme_accent;
+  color: @strata_accent;
   font-weight: 700;
 }
 
 .item-context-summary {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   font-size: 0.82em;
 }
 
@@ -3908,7 +3981,7 @@ textview > popover.menu > contents > scrolledwindow > viewport > stack {
 .item-context-menu separator,
 text > popover.menu separator,
 textview > popover.menu separator {
-  background: alpha(@theme_border, 0.2);
+  background: alpha(@strata_border, 0.2);
   margin: 5px 0;
   min-height: 1px;
 }
@@ -3919,9 +3992,9 @@ textview > popover.menu separator {
 
 .folder-color-dot {
   background: transparent;
-  border: 1px solid alpha(@theme_border, 0.48);
+  border: 1px solid alpha(@strata_border, 0.48);
   border-radius: 9999px;
-  box-shadow: 0 1px 2px alpha(@theme_bg, 0.4);
+  box-shadow: 0 1px 2px alpha(@strata_bg, 0.4);
   margin: 0 2px;
   min-height: 24px;
   min-width: 24px;
@@ -3930,7 +4003,7 @@ textview > popover.menu separator {
 }
 
 .folder-color-dot:hover {
-  border-color: @theme_text;
+  border-color: @strata_text;
   transform: scale(1.08);
 }
 
@@ -3939,27 +4012,27 @@ textview > popover.menu separator {
 }
 
 .folder-color-dot:focus-visible {
-  outline: 2px solid @theme_accent;
+  outline: 2px solid @strata_accent;
   outline-offset: 2px;
 }
 
 .folder-color-dot.active {
-  outline: 2px solid @theme_accent;
+  outline: 2px solid @strata_accent;
   outline-offset: 2px;
 }
 
 .folder-color-theme {
-  background: alpha(@theme_accent, 0.12);
-  border: 1px solid alpha(@theme_accent, 0.4);
+  background: alpha(@strata_accent, 0.12);
+  border: 1px solid alpha(@strata_accent, 0.4);
 }
 
 .folder-color-theme:hover {
-  background: alpha(@theme_accent, 0.22);
+  background: alpha(@strata_accent, 0.22);
 }
 
 .folder-color-theme.active {
-  background: alpha(@theme_accent, 0.3);
-  border: 1.5px solid @theme_accent;
+  background: alpha(@strata_accent, 0.3);
+  border: 1.5px solid @strata_accent;
 }
 
 .folder-color-red {
@@ -3991,12 +4064,12 @@ textview > popover.menu separator {
 }
 
 .folder-color-custom {
-  background: alpha(@theme_accent, 0.1);
-  border: 1px dashed alpha(@theme_accent, 0.4);
+  background: alpha(@strata_accent, 0.1);
+  border: 1px dashed alpha(@strata_accent, 0.4);
 }
 
 .folder-color-custom:hover {
-  background: alpha(@theme_accent, 0.2);
+  background: alpha(@strata_accent, 0.2);
   border-style: solid;
 }
 
@@ -4024,17 +4097,17 @@ textview > popover.menu separator {
 }
 
 .customize-preview-name {
-  color: @theme_text;
+  color: @strata_text;
   font-weight: 700;
 }
 
 .customize-section.separated {
-  border-top: 1px solid alpha(@theme_border, 0.22);
+  border-top: 1px solid alpha(@strata_border, 0.22);
   padding-top: 16px;
 }
 
 .customize-section-label {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   font-size: 0.78em;
   font-weight: 700;
 }
@@ -4055,18 +4128,18 @@ textview > popover.menu separator {
 
 .customize-icon-button,
 .customize-emoji-button {
-  background: alpha(@theme_highlight, 0.34);
-  border: 1px solid alpha(@theme_border, 0.4);
+  background: alpha(@strata_highlight, 0.34);
+  border: 1px solid alpha(@strata_border, 0.4);
   border-radius: 7px;
   box-shadow: none;
-  color: @theme_text;
+  color: @strata_text;
   transition: transform 140ms cubic-bezier(0.23, 1, 0.32, 1), background 140ms ease-out, border-color 140ms ease-out;
 }
 
 .customize-icon-button:hover,
 .customize-emoji-button:hover {
-  background: alpha(@theme_accent, 0.14);
-  border-color: alpha(@theme_accent, 0.62);
+  background: alpha(@strata_accent, 0.14);
+  border-color: alpha(@strata_accent, 0.62);
 }
 
 .customize-icon-button:active,
@@ -4076,8 +4149,8 @@ textview > popover.menu separator {
 
 .customize-icon-button:focus-visible,
 .customize-emoji-button:focus-visible {
-  border-color: @theme_accent;
-  outline: 2px solid @theme_accent;
+  border-color: @strata_accent;
+  outline: 2px solid @strata_accent;
   outline-offset: 1px;
 }
 
@@ -4088,9 +4161,9 @@ textview > popover.menu separator {
 }
 
 .customize-icon-button.active {
-  background: alpha(@theme_accent, 0.2);
-  border-color: @theme_accent;
-  box-shadow: inset 0 0 0 1px alpha(@theme_accent, 0.5);
+  background: alpha(@strata_accent, 0.2);
+  border-color: @strata_accent;
+  box-shadow: inset 0 0 0 1px alpha(@strata_accent, 0.5);
 }
 
 .customize-emoji-button {
@@ -4099,48 +4172,48 @@ textview > popover.menu separator {
 }
 
 .customize-emoji-chooser contents {
-  background: @theme_surface;
-  border: 1px solid alpha(@theme_border, 0.68);
+  background: @strata_surface;
+  border: 1px solid alpha(@strata_border, 0.68);
   border-radius: 9px;
-  box-shadow: 0 0 16px alpha(@theme_glow, 0.2);
-  color: @theme_text;
+  box-shadow: 0 0 16px alpha(@strata_glow, 0.2);
+  color: @strata_text;
 }
 
 .customize-emoji-chooser entry,
 .customize-emoji-chooser entry:focus,
 .customize-emoji-chooser entry:focus-visible {
-  background: @theme_bg;
-  border: 1px solid alpha(@theme_border, 0.68);
-  caret-color: @theme_accent;
-  color: @theme_text;
-  outline-color: @theme_accent;
+  background: @strata_bg;
+  border: 1px solid alpha(@strata_border, 0.68);
+  caret-color: @strata_accent;
+  color: @strata_text;
+  outline-color: @strata_accent;
 }
 
 .customize-emoji-chooser entry:focus,
 .customize-emoji-chooser entry:focus-visible {
-  border-color: @theme_accent;
-  box-shadow: 0 0 0 1px alpha(@theme_accent, 0.38);
+  border-color: @strata_accent;
+  box-shadow: 0 0 0 1px alpha(@strata_accent, 0.38);
 }
 
 .customize-emoji-chooser entry placeholder {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
 }
 
 .customize-emoji-chooser button {
   background: transparent;
   border: none;
   box-shadow: none;
-  color: @theme_text;
+  color: @strata_text;
 }
 
 .customize-emoji-chooser button:hover,
 .customize-emoji-chooser button:checked {
-  background: alpha(@theme_accent, 0.16);
-  color: @theme_text;
+  background: alpha(@strata_accent, 0.16);
+  color: @strata_text;
 }
 
 .customize-emoji-chooser label {
-  color: @theme_text;
+  color: @strata_text;
 }
 
 colorchooser {
@@ -4152,7 +4225,7 @@ colorchooser colorswatch {
   min-width: 22px;
   min-height: 22px;
   margin: 3px;
-  box-shadow: 0 1px 2px alpha(@theme_bg, 0.3);
+  box-shadow: 0 1px 2px alpha(@strata_bg, 0.3);
 }
 
 colorchooser colorswatch,
@@ -4218,7 +4291,7 @@ textview > popover.menu button.model {
   border: none;
   border-radius: 5px;
   box-shadow: none;
-  color: @theme_text;
+  color: @strata_text;
   font-size: inherit;
   font-weight: 400;
   letter-spacing: 0;
@@ -4245,8 +4318,8 @@ text > popover.menu button.model:hover,
 text > popover.menu button.model:focus-visible,
 textview > popover.menu button.model:hover,
 textview > popover.menu button.model:focus-visible {
-  background: alpha(@theme_accent, 0.15);
-  color: @theme_text;
+  background: alpha(@strata_accent, 0.15);
+  color: @strata_text;
 }
 
 .actions-context-popover modelbutton:active,
@@ -4257,7 +4330,7 @@ text > popover.menu modelbutton:active,
 textview > popover.menu modelbutton:active,
 text > popover.menu button.model:active,
 textview > popover.menu button.model:active {
-  background: alpha(@theme_accent, 0.22);
+  background: alpha(@strata_accent, 0.22);
   transform: scale(0.97);
 }
 
@@ -4270,7 +4343,7 @@ textview > popover.menu modelbutton:disabled,
 text > popover.menu button.model:disabled,
 textview > popover.menu button.model:disabled {
   background: transparent;
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   opacity: 0.42;
 }
 
@@ -4288,7 +4361,7 @@ textview > popover.menu button.model:disabled {
 .folder-context-shortcut,
 text > popover.menu accelerator,
 textview > popover.menu accelerator {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   font-size: 0.88em;
 }
 
@@ -4300,7 +4373,7 @@ text > popover.menu button.model:focus-visible,
 textview > popover.menu button.model:focus-visible,
 .item-context-option:focus-visible,
 .folder-context-option:focus-visible {
-  outline: 1px solid @theme_accent;
+  outline: 1px solid @strata_accent;
   outline-offset: -1px;
 }
 
@@ -4308,7 +4381,7 @@ textview > popover.menu button.model:focus-visible,
 .actions-context-popover button.model.danger,
 .item-context-option.danger,
 .folder-context-option.danger {
-  color: @theme_danger;
+  color: @strata_danger;
 }
 
 .actions-context-popover modelbutton.danger:hover,
@@ -4321,27 +4394,27 @@ textview > popover.menu button.model:focus-visible,
 .item-context-option.danger:focus-visible,
 .folder-context-option.danger:hover,
 .folder-context-option.danger:focus-visible {
-  background: alpha(@theme_danger, 0.14);
-  color: @theme_danger;
+  background: alpha(@strata_danger, 0.14);
+  color: @strata_danger;
 }
 
 .actions-context-popover modelbutton.danger:active,
 .actions-context-popover button.model.danger:active,
 .item-context-option.danger:active,
 .folder-context-option.danger:active {
-  background: alpha(@theme_danger, 0.24);
-  color: @theme_danger;
+  background: alpha(@strata_danger, 0.24);
+  color: @strata_danger;
   transform: scale(0.97);
 }
 
 .item-context-option.danger:focus-visible,
 .folder-context-option.danger:focus-visible {
-  outline-color: @theme_danger;
+  outline-color: @strata_danger;
 }
 
 .file-list {
-  background: @theme_bg;
-  color: @theme_text;
+  background: @strata_bg;
+  color: @strata_text;
   padding-top: 4px;
 }
 
@@ -4355,7 +4428,7 @@ textview > popover.menu button.model:focus-visible,
 .file-list-mode row,
 .preview-archive-list row {
   background: transparent;
-  color: @theme_text;
+  color: @strata_text;
   border-radius: 6px;
   transition: color 160ms ease-out;
 }
@@ -4390,7 +4463,7 @@ textview > popover.menu button.model:focus-visible,
 }
 
 .file-row {
-  color: @theme_text;
+  color: @strata_text;
   min-height: 26px;
   padding: 0 4px;
 }
@@ -4473,7 +4546,7 @@ textview > popover.menu button.model:focus-visible,
   min-width: 22px;
   min-height: 22px;
   border-radius: 50%;
-  border: 2px solid @theme_accent;
+  border: 2px solid @strata_accent;
   animation: trash-insurrection-blast 220ms cubic-bezier(0.1, 1, 0.2, 1) forwards;
 }
 
@@ -4492,7 +4565,7 @@ textview > popover.menu button.model:focus-visible,
   min-width: 3px;
   min-height: 38px;
   border-radius: 2px;
-  background: linear-gradient(to top, @theme_accent, transparent);
+  background: linear-gradient(to top, @strata_accent, transparent);
   animation: trash-insurrection-plume 240ms cubic-bezier(0.15, 1, 0.25, 1) forwards;
 }
 
@@ -4522,7 +4595,7 @@ textview > popover.menu button.model:focus-visible,
   min-width: 3px;
   min-height: 3px;
   border-radius: 50%;
-  background: @theme_accent;
+  background: @strata_accent;
   animation: trash-insurrection-spark-left 220ms cubic-bezier(0.15, 0.8, 0.35, 1) forwards;
 }
 
@@ -4530,7 +4603,7 @@ textview > popover.menu button.model:focus-visible,
   min-width: 3px;
   min-height: 3px;
   border-radius: 50%;
-  background: @theme_accent;
+  background: @strata_accent;
   animation: trash-insurrection-spark-right 220ms cubic-bezier(0.15, 0.8, 0.35, 1) forwards;
 }
 
@@ -4548,9 +4621,9 @@ textview > popover.menu button.model:focus-visible,
 }
 
 @keyframes trash-receiving {
-  0% { box-shadow: 0 0 0 0 alpha(@theme_accent, 0); }
-  55% { box-shadow: 0 0 0 3px alpha(@theme_accent, 0.16), 0 0 14px alpha(@theme_glow, 0.18); }
-  100% { box-shadow: 0 0 0 1px alpha(@theme_accent, 0.28), 0 0 8px alpha(@theme_glow, 0.12); }
+  0% { box-shadow: 0 0 0 0 alpha(@strata_accent, 0); }
+  55% { box-shadow: 0 0 0 3px alpha(@strata_accent, 0.16), 0 0 14px alpha(@strata_glow, 0.18); }
+  100% { box-shadow: 0 0 0 1px alpha(@strata_accent, 0.28), 0 0 8px alpha(@strata_glow, 0.12); }
 }
 
 .trash-receiving {
@@ -4558,10 +4631,10 @@ textview > popover.menu button.model:focus-visible,
 }
 
 @keyframes trash-impact {
-  0% { box-shadow: 0 0 0 1px alpha(@theme_accent, 0.34); transform: scale(0.96); }
-  34% { box-shadow: 0 0 0 5px alpha(@theme_accent, 0.18), 0 0 18px alpha(@theme_glow, 0.22); transform: scale(1.14); }
-  68% { box-shadow: 0 0 0 8px alpha(@theme_accent, 0); transform: scale(0.97); }
-  100% { box-shadow: 0 0 0 10px alpha(@theme_accent, 0); transform: scale(1); }
+  0% { box-shadow: 0 0 0 1px alpha(@strata_accent, 0.34); transform: scale(0.96); }
+  34% { box-shadow: 0 0 0 5px alpha(@strata_accent, 0.18), 0 0 18px alpha(@strata_glow, 0.22); transform: scale(1.14); }
+  68% { box-shadow: 0 0 0 8px alpha(@strata_accent, 0); transform: scale(0.97); }
+  100% { box-shadow: 0 0 0 10px alpha(@strata_accent, 0); transform: scale(1); }
 }
 
 .trash-impact {
@@ -4569,8 +4642,8 @@ textview > popover.menu button.model:focus-visible,
 }
 
 @keyframes trash-release {
-  0% { box-shadow: 0 0 0 4px alpha(@theme_accent, 0.16); transform: scale(0.94); }
-  45% { box-shadow: 0 0 14px alpha(@theme_glow, 0.2); transform: scale(1.08); }
+  0% { box-shadow: 0 0 0 4px alpha(@strata_accent, 0.16); transform: scale(0.94); }
+  45% { box-shadow: 0 0 14px alpha(@strata_glow, 0.2); transform: scale(1.08); }
   100% { box-shadow: none; transform: scale(1); }
 }
 
@@ -4588,9 +4661,9 @@ textview > popover.menu button.model:focus-visible,
 
 .file-row:drop(active),
 .file-row.drop-destination {
-  background: alpha(@theme_highlight, 0.72);
-  color: @theme_accent;
-  outline-color: @theme_accent;
+  background: alpha(@strata_highlight, 0.72);
+  color: @strata_accent;
+  outline-color: @strata_accent;
 }
 
 .file-drop-zone {
@@ -4598,38 +4671,38 @@ textview > popover.menu button.model:focus-visible,
 }
 
 .file-drop-zone:drop(active) {
-  box-shadow: inset 0 0 0 1px alpha(@theme_accent, 0.72);
+  box-shadow: inset 0 0 0 1px alpha(@strata_accent, 0.72);
 }
 
 .column-peek-target.file-drop-zone:drop(active),
 .columns > .drop-destination .column-drop-veil {
-  background: alpha(@theme_accent, 0.18);
-  box-shadow: inset 0 0 0 2px @theme_accent;
+  background: alpha(@strata_accent, 0.18);
+  box-shadow: inset 0 0 0 2px @strata_accent;
 }
 
 .file-list row:hover:not(:selected),
 .file-list-mode row:hover:not(:selected) {
-  background: alpha(@theme_accent, 0.15);
-  color: @theme_text;
+  background: alpha(@strata_accent, 0.15);
+  color: @strata_text;
 }
 
 .file-list row:hover .file-row.active-path {
-  background: alpha(@theme_accent, 0.16);
-  color: @theme_text;
+  background: alpha(@strata_accent, 0.16);
+  color: @strata_text;
 }
 
 .file-list row:hover .file-row.active-path.active-parent {
-  background: alpha(@theme_accent, 0.35);
-  color: @theme_text;
+  background: alpha(@strata_accent, 0.35);
+  color: @strata_text;
 }
 
 .inline-rename {
-  background: @theme_surface;
-  border: 1px solid @theme_accent;
+  background: @strata_surface;
+  border: 1px solid @strata_accent;
   border-radius: 4px;
   box-shadow: none;
-  caret-color: @theme_accent;
-  color: @theme_text;
+  caret-color: @strata_accent;
+  color: @strata_text;
   min-height: 22px;
   padding: 0 4px;
 }
@@ -4637,26 +4710,26 @@ textview > popover.menu button.model:focus-visible,
 .inline-rename:focus,
 .inline-rename:focus-visible,
 .inline-rename:focus-within {
-  border-color: @theme_accent;
-  box-shadow: 0 0 0 1px alpha(@theme_accent, 0.45);
+  border-color: @strata_accent;
+  box-shadow: 0 0 0 1px alpha(@strata_accent, 0.45);
   outline: none;
 }
 
 .inline-rename.error {
-  border-color: @theme_danger;
-  caret-color: @theme_danger;
+  border-color: @strata_danger;
+  caret-color: @strata_danger;
 }
 
 .inline-rename.error:focus,
 .inline-rename.error:focus-visible,
 .inline-rename.error:focus-within {
-  border-color: @theme_danger;
-  box-shadow: 0 0 0 1px alpha(@theme_danger, 0.45);
+  border-color: @strata_danger;
+  box-shadow: 0 0 0 1px alpha(@strata_danger, 0.45);
 }
 
 .inline-rename selection {
-  background: @theme_accent;
-  color: @theme_bg;
+  background: @strata_accent;
+  color: @strata_bg;
 }
 
 .file-icon {
@@ -4673,19 +4746,19 @@ textview > popover.menu button.model:focus-visible,
 }
 
 .file-search-path {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   font-size: 0.85em;
 }
 
 .file-list row:selected .file-search-path,
 .file-list row:hover .file-search-path,
 .file-list .file-row.active-path .file-search-path {
-  color: @theme_text;
+  color: @strata_text;
 }
 
 .file-size {
-  background: @theme_surface;
-  color: @theme_dim_text;
+  background: @strata_surface;
+  color: @strata_dim_text;
   font-size: 0.9em;
   opacity: 0;
   padding: 0 7px;
@@ -4698,27 +4771,27 @@ textview > popover.menu button.model:focus-visible,
 }
 
 .file-list row:selected .file-size {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   opacity: 1;
 }
 
 .file-list .file-row.active-path .file-size {
-  background: @theme_highlight;
-  color: @theme_dim_text;
+  background: @strata_highlight;
+  color: @strata_dim_text;
   opacity: 1;
 }
 
 .file-list row:selected,
 .file-list-mode row:selected,
 .preview-archive-list row:selected {
-  background: alpha(@theme_accent, 0.22);
-  color: @theme_text;
+  background: alpha(@strata_accent, 0.22);
+  color: @strata_text;
   outline: none;
 }
 
 .peek-open .file-list .file-row.peek-anchor {
-  background: alpha(@theme_accent, 0.15);
-  color: @theme_text;
+  background: alpha(@strata_accent, 0.15);
+  color: @strata_text;
 }
 
 /* Archive selection already draws a cursor; suppress GTK's second focus ring. */
@@ -4731,36 +4804,36 @@ textview > popover.menu button.model:focus-visible,
 .keyboard-navigation .file-list:focus-within .file-row.keyboard-cursor:not(.filter-result),
 .file-list row:focus-within .file-row.filter-result,
 .preview-pane.preview-keyboard-owner .preview-archive-list row:selected .preview-archive-row {
-  outline: 1px solid @theme_accent;
+  outline: 1px solid @strata_accent;
   outline-offset: -1px;
 }
 
 .directory-column:not(:focus-within) .file-list:not(.context-selection) row:selected,
 .file-list-mode:not(:focus-within):not(.context-selection) row:selected {
-  background: alpha(@theme_accent, 0.08);
-  color: @theme_text;
+  background: alpha(@strata_accent, 0.08);
+  color: @strata_text;
 }
 
 .directory-column:not(:focus-within) .file-list row:selected .file-row.active-parent {
-  background: alpha(@theme_accent, 0.20);
-  color: @theme_text;
+  background: alpha(@strata_accent, 0.20);
+  color: @strata_text;
 }
 
 .file-list row:selected:hover,
 .file-list-mode row:selected:hover,
 .directory-column:not(:focus-within) .file-list:not(.context-selection) row:selected:hover,
 .file-list-mode:not(:focus-within):not(.context-selection) row:selected:hover {
-  background: alpha(@theme_accent, 0.30);
+  background: alpha(@strata_accent, 0.30);
 }
 
 .keyboard-navigation .file-list row:selected:hover,
 .keyboard-navigation .file-list-mode row:selected:hover {
-  background: alpha(@theme_accent, 0.22);
+  background: alpha(@strata_accent, 0.22);
 }
 
 .keyboard-navigation .directory-column:not(:focus-within) .file-list:not(.context-selection) row:selected:hover,
 .keyboard-navigation .file-list-mode:not(:focus-within):not(.context-selection) row:selected:hover {
-  background: alpha(@theme_accent, 0.08);
+  background: alpha(@strata_accent, 0.08);
 }
 
 .keyboard-navigation .file-list row:hover:not(:selected),
@@ -4769,7 +4842,7 @@ textview > popover.menu button.model:focus-visible,
 .keyboard-navigation .file-icons > child:not(:selected) .icons-card.content-hover .icons-card-icon-frame,
 .keyboard-navigation .file-icons > child:not(:selected) .icons-card.content-hover .icons-card-label {
   background: transparent;
-  color: @theme_text;
+  color: @strata_text;
 }
 
 .keyboard-navigation .file-list row:hover:not(:selected) .file-size {
@@ -4779,20 +4852,20 @@ textview > popover.menu button.model:focus-visible,
 .file-marquee,
 .file-icons rubberband,
 .file-list-mode rubberband {
-  background: alpha(@theme_highlight, 0.58);
-  border: 1px solid @theme_accent;
+  background: alpha(@strata_highlight, 0.58);
+  border: 1px solid @strata_accent;
   border-radius: 4px;
 }
 
 @keyframes active-path-pulse {
   0% {
-    background: alpha(@theme_accent, 0.52);
+    background: alpha(@strata_accent, 0.52);
   }
   35% {
-    background: alpha(@theme_accent, 0.38);
+    background: alpha(@strata_accent, 0.38);
   }
   100% {
-    background: alpha(@theme_accent, 0.28);
+    background: alpha(@strata_accent, 0.28);
   }
 }
 
@@ -4801,13 +4874,13 @@ textview > popover.menu button.model:focus-visible,
 }
 
 .file-list .file-row.active-path {
-  background: alpha(@theme_accent, 0.08);
-  color: @theme_text;
+  background: alpha(@strata_accent, 0.08);
+  color: @strata_text;
 }
 
 .file-list .file-row.active-path.active-parent {
-  background: alpha(@theme_accent, 0.28);
-  color: @theme_text;
+  background: alpha(@strata_accent, 0.28);
+  color: @strata_text;
 }
 
 .file-list row:selected .file-row.active-path {
@@ -4815,23 +4888,23 @@ textview > popover.menu button.model:focus-visible,
 }
 
 .file-list row:selected .file-row.active-path.active-parent {
-  background: alpha(@theme_accent, 0.20);
-  color: @theme_text;
+  background: alpha(@strata_accent, 0.20);
+  color: @strata_text;
 }
 
 .file-list .file-row.active-path .file-chevron {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   opacity: 0.45;
 }
 
 .file-list .file-row.active-path.active-parent .file-chevron,
 .file-list row:selected .file-chevron {
-  color: @theme_accent;
+  color: @strata_accent;
   opacity: 1;
 }
 
 .loading-skeleton {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
 }
 
 .loading-skeleton .skeleton-block {
@@ -4839,7 +4912,7 @@ textview > popover.menu button.model:focus-visible,
   padding: 0;
   min-width: 0;
   min-height: 0;
-  background: alpha(@theme_dim_text, 0.22);
+  background: alpha(@strata_dim_text, 0.22);
   border-radius: 4px;
 }
 
@@ -4854,7 +4927,7 @@ textview > popover.menu button.model:focus-visible,
 }
 
 .directory-feedback {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   padding: 24px;
 }
 
@@ -4863,7 +4936,7 @@ textview > popover.menu button.model:focus-visible,
 }
 
 .status-message.error {
-  color: @theme_accent;
+  color: @strata_accent;
 }
 
 .retry-button {
@@ -4871,7 +4944,7 @@ textview > popover.menu button.model:focus-visible,
 }
 
 .empty-state {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   font-size: 1.1em;
 }
 
@@ -4881,7 +4954,7 @@ textview > popover.menu button.model:focus-visible,
 }
 
 .system-theme-icon {
-  color: @theme_accent;
+  color: @strata_accent;
   margin: 0 4px;
 }
 
@@ -4910,7 +4983,7 @@ entry.theme-search {
 
 .theme-search-clear:hover,
 .theme-search-clear:active {
-  background: alpha(@theme_accent, 0.22);
+  background: alpha(@strata_accent, 0.22);
 }
 
 .theme-search-clear:active {
@@ -4918,13 +4991,13 @@ entry.theme-search {
 }
 
 .theme-search-clear:focus-visible {
-  outline: 2px solid @theme_accent;
+  outline: 2px solid @strata_accent;
   outline-offset: -2px;
 }
 
 .theme-catalog-container {
-  background: @theme_bg;
-  border: 1px solid alpha(@theme_border, 0.54);
+  background: @strata_bg;
+  border: 1px solid alpha(@strata_border, 0.54);
   border-radius: 5px;
   padding: 10px;
 }
@@ -4937,7 +5010,7 @@ entry.theme-search {
 
 .theme-catalog-scroll viewport,
 .theme-catalog-scroll .theme-icons {
-  background: @theme_bg;
+  background: @strata_bg;
 }
 
 .theme-icons > flowboxchild,
@@ -4952,7 +5025,7 @@ entry.theme-search {
   border: none;
   border-radius: 7px;
   box-shadow: none;
-  color: @theme_text;
+  color: @strata_text;
   min-height: 106px;
   min-width: 188px;
   padding: 0 0 6px;
@@ -4964,7 +5037,7 @@ entry.theme-search {
 }
 
 .theme-card:hover .theme-preview {
-  border-color: @theme_border;
+  border-color: @strata_border;
 }
 
 .theme-icons > flowboxchild:focus-visible,
@@ -4976,43 +5049,43 @@ entry.theme-search {
 
 .theme-icons > flowboxchild:focus-visible .theme-preview,
 .theme-card:focus-visible .theme-preview {
-  border-color: @theme_accent;
-  outline: 2px solid @theme_accent;
+  border-color: @strata_accent;
+  outline: 2px solid @strata_accent;
   outline-offset: -2px;
 }
 
 .theme-card.selected .theme-preview {
-  border-color: @theme_accent;
-  outline: 2px solid @theme_accent;
+  border-color: @strata_accent;
+  outline: 2px solid @strata_accent;
   outline-offset: -2px;
-  box-shadow: 0 0 13px alpha(@theme_glow, 0.32);
+  box-shadow: 0 0 13px alpha(@strata_glow, 0.32);
 }
 
 .theme-card-check {
-  background: @theme_accent;
+  background: @strata_accent;
   border: none;
   border-radius: 999px;
-  box-shadow: 0 0 5px alpha(@theme_glow, 0.32);
+  box-shadow: 0 0 5px alpha(@strata_glow, 0.32);
   min-height: 14px;
   min-width: 14px;
   padding: 0;
 }
 
 .theme-preview {
-  border: 1px solid alpha(@theme_border, 0.7);
+  border: 1px solid alpha(@strata_border, 0.7);
   border-radius: 6px;
 }
 
 .add-theme-card {
-  border: 1px dashed alpha(@theme_border, 0.75);
-  color: @theme_dim_text;
+  border: 1px dashed alpha(@strata_border, 0.75);
+  color: @strata_dim_text;
   transition: transform 160ms ease-out, background 160ms ease-out, border-color 160ms ease-out, color 160ms ease-out;
 }
 
 .add-theme-card:hover {
-  background: alpha(@theme_accent, 0.15);
-  border-color: @theme_accent;
-  color: @theme_text;
+  background: alpha(@strata_accent, 0.15);
+  border-color: @strata_accent;
+  color: @strata_text;
 }
 
 .add-theme-card:active {
@@ -5020,18 +5093,18 @@ entry.theme-search {
 }
 
 .add-theme-card:focus-visible {
-  border-color: @theme_accent;
-  outline: 2px solid @theme_accent;
+  border-color: @strata_accent;
+  outline: 2px solid @strata_accent;
   outline-offset: -2px;
 }
 
 .add-theme-card image {
-  color: @theme_accent;
+  color: @strata_accent;
 }
 
 .theme-editor {
-  background: alpha(@theme_bg, 0.5);
-  border: 1px solid alpha(@theme_border, 0.45);
+  background: alpha(@strata_bg, 0.5);
+  border: 1px solid alpha(@strata_border, 0.45);
   border-radius: 7px;
   margin-top: 4px;
   padding: 16px;
@@ -5050,7 +5123,7 @@ entry.theme-search {
 
 .theme-color-picker button {
   background: transparent;
-  border: 1px solid alpha(@theme_border, 0.7);
+  border: 1px solid alpha(@strata_border, 0.7);
   border-radius: 6px;
   box-shadow: none;
   padding: 0;
@@ -5060,14 +5133,14 @@ entry.theme-search {
 .theme-color-picker button:hover,
 .theme-color-picker button:focus {
   background: transparent;
-  border-color: @theme_accent;
+  border-color: @strata_accent;
   box-shadow: none;
   padding: 0;
 }
 
 .theme-color-picker button:active {
   background: transparent;
-  border-color: @theme_accent;
+  border-color: @strata_accent;
   box-shadow: none;
   padding: 0;
   transform: scale(0.97);
@@ -5084,7 +5157,7 @@ entry.theme-search {
 }
 
 .theme-editor-error {
-  color: @theme_accent;
+  color: @strata_accent;
 }
 
 .settings-content-scroll,
@@ -5100,32 +5173,32 @@ entry.theme-search {
 .mode-list,
 .mode-list viewport,
 .mode-list listview {
-  background: @theme_bg;
-  color: @theme_text;
+  background: @strata_bg;
+  color: @strata_text;
 }
 
 .icons-pane {
-  background: @theme_bg;
+  background: @strata_bg;
   min-width: 220px;
 }
 
 .icons-thumbnail-popover contents {
-  background: @theme_surface;
-  border: 1px solid alpha(@theme_border, 0.6);
+  background: @strata_surface;
+  border: 1px solid alpha(@strata_border, 0.6);
   border-radius: 9px;
-  box-shadow: 0 0 14px alpha(@theme_glow, 0.24);
-  color: @theme_text;
+  box-shadow: 0 0 14px alpha(@strata_glow, 0.24);
+  color: @strata_text;
   padding: 14px;
 }
 
 .icons-thumbnail-title {
-  color: @theme_text;
+  color: @strata_text;
   font-weight: 700;
 }
 
 .icons-thumbnail-value,
 .icons-thumbnail-extremes {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
 }
 
 .icons-thumbnail-value {
@@ -5142,30 +5215,30 @@ entry.theme-search {
 }
 
 .icons-thumbnail-scale trough {
-  background: alpha(@theme_muted, 0.72);
-  border: 1px solid alpha(@theme_border, 0.68);
+  background: alpha(@strata_muted, 0.72);
+  border: 1px solid alpha(@strata_border, 0.68);
   border-radius: 999px;
   min-height: 5px;
 }
 
 .icons-thumbnail-scale highlight {
-  background: @theme_accent;
+  background: @strata_accent;
   border-radius: 999px;
 }
 
 .icons-thumbnail-scale slider {
-  background: @theme_surface;
-  border: 2px solid @theme_accent;
+  background: @strata_surface;
+  border: 2px solid @strata_accent;
   border-radius: 999px;
-  box-shadow: 0 2px 7px alpha(@theme_bg, 0.7);
+  box-shadow: 0 2px 7px alpha(@strata_bg, 0.7);
   min-height: 14px;
   min-width: 14px;
 }
 
 .icons-thumbnail-scale:hover slider,
 .icons-thumbnail-scale:active slider {
-  background: @theme_highlight;
-  border-color: @theme_accent;
+  background: @strata_highlight;
+  border-color: @strata_accent;
 }
 
 menubutton.icons-thumbnail-menu > button {
@@ -5180,17 +5253,17 @@ menubutton.icons-thumbnail-menu > button {
 }
 
 menubutton.icons-thumbnail-menu > button:hover {
-  background: alpha(@theme_accent, 0.15);
+  background: alpha(@strata_accent, 0.15);
 }
 
 menubutton.icons-thumbnail-menu > button:active {
-  background: alpha(@theme_accent, 0.22);
+  background: alpha(@strata_accent, 0.22);
   transform: scale(0.97);
 }
 
 .icons-thumbnail-scale:focus-visible slider,
 menubutton.icons-thumbnail-menu > button:focus-visible {
-  outline: 2px solid @theme_accent;
+  outline: 2px solid @strata_accent;
   outline-offset: 2px;
 }
 
@@ -5201,7 +5274,7 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 }
 
 .mode-pane-header {
-  color: @theme_accent;
+  color: @strata_accent;
   font-weight: 700;
   min-height: 40px;
   padding: 0 6px;
@@ -5222,47 +5295,47 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 }
 
 .file-icons > child .icons-card.content-hover .icons-card-icon-frame {
-  background: alpha(@theme_accent, 0.15);
+  background: alpha(@strata_accent, 0.15);
 }
 
 .file-icons > child .icons-card.content-hover .icons-card-label {
-  background: alpha(@theme_accent, 0.10);
+  background: alpha(@strata_accent, 0.10);
 }
 
 .file-icons > child:hover:not(:selected) .icons-card-label,
 .file-icons > child:not(:selected) .icons-card.content-hover .icons-card-label {
-  color: @theme_text;
+  color: @strata_text;
 }
 
 .file-icons > child:hover:not(:selected) .icons-card-details,
 .file-icons > child:not(:selected) .icons-card.content-hover .icons-card-details {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
 }
 
 .file-icons > child:selected:hover .icons-card-label,
 .file-icons > child:selected .icons-card.content-hover .icons-card-label {
-  background: @theme_accent;
-  color: @theme_bg;
+  background: @strata_accent;
+  color: @strata_bg;
 }
 
 .file-icons > child:selected {
   background: transparent;
-  color: @theme_text;
+  color: @strata_text;
   outline: none;
 }
 
 .file-icons > child:selected .icons-card-icon-frame {
-  background: alpha(@theme_accent, 0.22);
-  outline: 1px solid alpha(@theme_accent, 0.6);
+  background: alpha(@strata_accent, 0.22);
+  outline: 1px solid alpha(@strata_accent, 0.6);
   outline-offset: -1px;
 }
 
 .file-icons > child:selected .icons-card.content-hover .icons-card-icon-frame {
-  background: alpha(@theme_accent, 0.30);
+  background: alpha(@strata_accent, 0.30);
 }
 
 .keyboard-navigation .file-icons > child:selected .icons-card.content-hover .icons-card-icon-frame {
-  background: alpha(@theme_accent, 0.22);
+  background: alpha(@strata_accent, 0.22);
 }
 
 .file-icons > child:focus-visible .icons-card-icon-frame {
@@ -5270,7 +5343,7 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 }
 
 .keyboard-navigation .file-icons > child:focus-visible .icons-card-icon-frame {
-  outline: 2px solid @theme_accent;
+  outline: 2px solid @strata_accent;
   outline-offset: -2px;
 }
 
@@ -5292,17 +5365,17 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 }
 
 .icons-card-icon {
-  color: @theme_accent;
+  color: @strata_accent;
 }
 
 .icons-card-label {
   border-radius: 4px;
-  color: @theme_text;
+  color: @strata_text;
   padding: 2px 4px;
 }
 
 .icons-card-details {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   font-size: 0.82em;
   padding: 0 4px 2px;
 }
@@ -5314,8 +5387,8 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 
 .file-icons > child .icons-card.drop-destination .icons-card-icon-frame,
 .file-icons > child .icons-card:drop(active) .icons-card-icon-frame {
-  background: alpha(@theme_highlight, 0.82);
-  outline: 2px solid @theme_accent;
+  background: alpha(@strata_highlight, 0.82);
+  outline: 2px solid @strata_accent;
   outline-offset: -2px;
 }
 
@@ -5326,8 +5399,8 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 .file-icons > child:selected .icons-card-label,
 .file-icons > child .icons-card.drop-destination .icons-card-label,
 .file-icons > child .icons-card:drop(active) .icons-card-label {
-  background: @theme_accent;
-  color: @theme_bg;
+  background: @strata_accent;
+  color: @strata_bg;
 }
 
 .mode-icons.density-airy .file-icons {
@@ -5343,22 +5416,22 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 }
 
 .type-group-heading {
-  border-bottom: 1px solid alpha(@theme_border, 0.45);
-  color: @theme_dim_text;
+  border-bottom: 1px solid alpha(@strata_border, 0.45);
+  color: @strata_dim_text;
   font-size: 0.82em;
   font-weight: 700;
   padding: 10px 12px 4px;
 }
 
 .list-pane {
-  background: @theme_bg;
-  color: @theme_text;
+  background: @strata_bg;
+  color: @strata_text;
 }
 
 .list-headings {
-  background: @theme_surface;
-  border-bottom: 1px solid alpha(@theme_border, 0.6);
-  color: @theme_dim_text;
+  background: @strata_surface;
+  border-bottom: 1px solid alpha(@strata_border, 0.6);
+  color: @strata_dim_text;
   font-size: 0.82em;
   font-weight: 700;
   min-height: 28px;
@@ -5366,7 +5439,7 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 }
 
 .list-heading-cell {
-  border-right: 1px solid alpha(@theme_border, 0.26);
+  border-right: 1px solid alpha(@strata_border, 0.26);
 }
 
 .list-heading-button {
@@ -5374,25 +5447,25 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   border: none;
   border-radius: 0;
   box-shadow: none;
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   min-height: 28px;
   padding: 0 12px;
   transition: background 160ms ease-out, color 160ms ease-out;
 }
 
 .list-heading-button:hover {
-  background: alpha(@theme_accent, 0.15);
-  color: @theme_text;
+  background: alpha(@strata_accent, 0.15);
+  color: @strata_text;
 }
 
 .list-heading-button:active {
-  background: alpha(@theme_accent, 0.22);
-  color: @theme_accent;
+  background: alpha(@strata_accent, 0.22);
+  color: @strata_accent;
   transform: scale(0.97);
 }
 
 .list-heading-button:focus-visible {
-  outline: 2px solid @theme_accent;
+  outline: 2px solid @strata_accent;
   outline-offset: -2px;
 }
 
@@ -5410,7 +5483,7 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   border: none;
   border-radius: 5px;
   box-shadow: none;
-  color: @theme_text;
+  color: @strata_text;
   min-height: 24px;
   min-width: 24px;
   padding: 4px;
@@ -5430,8 +5503,8 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 }
 
 .list-navigation-button:hover:not(:disabled) {
-  background: alpha(@theme_accent, 0.15);
-  color: @theme_text;
+  background: alpha(@strata_accent, 0.15);
+  color: @strata_text;
 }
 
 .list-navigation-button:hover:not(:disabled) image,
@@ -5441,21 +5514,21 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 }
 
 .list-navigation-button:active {
-  background: alpha(@theme_accent, 0.22);
-  color: @theme_accent;
+  background: alpha(@strata_accent, 0.22);
+  color: @strata_accent;
   transform: scale(0.97);
 }
 
 .list-navigation-button:focus-visible {
-  outline: 2px solid @theme_accent;
+  outline: 2px solid @strata_accent;
   outline-offset: -2px;
 }
 
 .list-row.drop-destination,
 .list-row:drop(active) {
-  background: alpha(@theme_highlight, 0.82);
-  color: @theme_accent;
-  outline-color: @theme_accent;
+  background: alpha(@strata_highlight, 0.82);
+  color: @strata_accent;
+  outline-color: @strata_accent;
 }
 
 .list-row.dragging {
@@ -5464,7 +5537,7 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 
 .file-list-mode row:focus-visible,
 .keyboard-navigation .file-list-mode row:focus-within {
-  outline: 1px solid @theme_accent;
+  outline: 1px solid @strata_accent;
   outline-offset: -1px;
 }
 
@@ -5514,17 +5587,17 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 two-column presentation. */
 .settings-dialog {
   font-size: 1.230769em;
-  background: @theme_bg;
-  border: 1px solid alpha(@theme_border, 0.65);
+  background: @strata_bg;
+  border: 1px solid alpha(@strata_border, 0.65);
   border-radius: 14px;
-  box-shadow: 0 0 28px alpha(@theme_glow, 0.08);
+  box-shadow: 0 0 28px alpha(@strata_glow, 0.08);
 }
 
 .settings-navigation {
   background: transparent;
   min-width: 258px;
   padding: 20px 15px;
-  border-right: 1px solid alpha(@theme_border, 0.55);
+  border-right: 1px solid alpha(@strata_border, 0.55);
   border-radius: 13px 0 0 13px;
 }
 
@@ -5539,12 +5612,12 @@ two-column presentation. */
   min-height: 48px;
   padding: 5px 14px;
   border-radius: 8px;
-  color: @theme_dim_text;
+  color: @strata_dim_text;
 }
 
 .settings-navigation button.settings-nav-active {
-  background: alpha(@theme_accent, 0.10);
-  color: @theme_text;
+  background: alpha(@strata_accent, 0.10);
+  color: @strata_text;
 }
 
 .settings-nav-copy {
@@ -5559,7 +5632,7 @@ two-column presentation. */
 .settings-titlebar {
   min-height: 32px;
   padding: 16px 16px 16px 30px;
-  border-bottom: 1px solid alpha(@theme_border, 0.55);
+  border-bottom: 1px solid alpha(@strata_border, 0.55);
 }
 
 .settings-title {
@@ -5568,7 +5641,7 @@ two-column presentation. */
 }
 
 .settings-close {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   min-width: 24px;
   min-height: 24px;
   padding: 4px;
@@ -5591,20 +5664,20 @@ two-column presentation. */
 }
 
 .settings-section-description {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   font-size: 0.9375em;
   margin: -6px 4px 12px;
 }
 
 .settings-group {
-  background: mix(@theme_bg, @theme_muted, 0.25);
-  border: 1px solid alpha(@theme_border, 0.55);
+  background: mix(@strata_bg, @strata_muted, 0.25);
+  border: 1px solid alpha(@strata_border, 0.55);
   border-radius: 10px;
 }
 
 .settings-option {
-  background: mix(@theme_bg, @theme_muted, 0.25);
-  border: 1px solid alpha(@theme_border, 0.55);
+  background: mix(@strata_bg, @strata_muted, 0.25);
+  border: 1px solid alpha(@strata_border, 0.55);
   border-radius: 10px;
   min-height: 42px;
   padding: 9px 18px;
@@ -5618,7 +5691,7 @@ two-column presentation. */
 
 .settings-group .settings-option + .settings-option,
 .settings-group > box + box > .settings-option:first-child {
-  border-top: 1px solid alpha(@theme_border, 0.55);
+  border-top: 1px solid alpha(@strata_border, 0.55);
 }
 
 .settings-option-title {
@@ -5627,37 +5700,37 @@ two-column presentation. */
 
 .settings-option-description {
   font-size: 0.9375em;
-  color: @theme_dim_text;
+  color: @strata_dim_text;
 }
 
 .settings-dialog button.sidebar-place-chip {
   padding: 5px 12px;
   min-height: 0;
   border-radius: 999px;
-  border: 1px solid alpha(@theme_border, 0.55);
-  background: @theme_bg;
-  color: @theme_dim_text;
+  border: 1px solid alpha(@strata_border, 0.55);
+  background: @strata_bg;
+  color: @strata_dim_text;
   box-shadow: none;
 }
 
 .settings-dialog button.sidebar-place-chip:hover {
-  background: @theme_highlight;
-  color: @theme_text;
+  background: @strata_highlight;
+  color: @strata_text;
 }
 
 .settings-dialog button.sidebar-place-chip:checked {
-  background: mix(@theme_bg, @theme_text, 0.12);
-  border-color: alpha(@theme_text, 0.4);
-  color: @theme_text;
+  background: mix(@strata_bg, @strata_text, 0.12);
+  border-color: alpha(@strata_text, 0.4);
+  color: @strata_text;
 }
 
 .settings-dialog button.sidebar-place-chip:active {
-  background: mix(@theme_bg, @theme_text, 0.2);
-  color: @theme_text;
+  background: mix(@strata_bg, @strata_text, 0.2);
+  color: @strata_text;
 }
 
 .settings-dialog button.sidebar-place-chip:focus-visible {
-  outline: 2px solid @theme_accent;
+  outline: 2px solid @strata_accent;
   outline-offset: 2px;
 }
 
@@ -5674,25 +5747,25 @@ two-column presentation. */
   min-width: 42px;
   min-height: 22px;
   border-radius: 20px;
-  background: @theme_muted;
-  border: 1px solid alpha(@theme_border, 0.8);
+  background: @strata_muted;
+  border: 1px solid alpha(@strata_border, 0.8);
 }
 
 .settings-dialog switch slider {
   min-width: 18px;
   min-height: 18px;
   margin: 1px;
-  background: @theme_dim_text;
+  background: @strata_dim_text;
   box-shadow: none;
 }
 
 .settings-dialog switch:checked {
-  background: alpha(@theme_accent, 0.25);
-  border-color: alpha(@theme_accent, 0.65);
+  background: alpha(@strata_accent, 0.25);
+  border-color: alpha(@strata_accent, 0.65);
 }
 
 .settings-dialog switch:checked slider {
-  background: @theme_accent;
+  background: @strata_accent;
 }
 
 .settings-dialog .settings-option:disabled,
@@ -5709,9 +5782,9 @@ two-column presentation. */
 .settings-dialog .form-control {
   min-height: 22px;
   padding: 8px 14px;
-  background: @theme_muted;
-  color: @theme_text;
-  border: 1px solid alpha(@theme_border, 0.9);
+  background: @strata_muted;
+  color: @strata_text;
+  border: 1px solid alpha(@strata_border, 0.9);
   border-radius: 8px;
   box-shadow: none;
 }
@@ -5724,20 +5797,20 @@ two-column presentation. */
 
 .settings-dialog menubutton > button:hover,
 .settings-dialog .settings-update-check:hover {
-  background: alpha(@theme_accent, 0.14);
-  border-color: @theme_accent;
+  background: alpha(@strata_accent, 0.14);
+  border-color: @strata_accent;
 }
 
 .settings-dialog menubutton > button:active,
 .settings-dialog .settings-update-check:active {
-  background: @theme_highlight;
-  color: @theme_accent;
+  background: @strata_highlight;
+  color: @strata_accent;
 }
 
 .settings-dialog button:focus-visible,
 .settings-dialog entry:focus-visible,
 .settings-dialog spinbutton:focus-within {
-  outline: 2px solid @theme_accent;
+  outline: 2px solid @strata_accent;
   outline-offset: -2px;
 }
 
@@ -5748,7 +5821,7 @@ two-column presentation. */
 .activation-header {
   min-height: 38px;
   padding: 0 20px;
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   font-size: 0.875em;
   letter-spacing: 1.5px;
 }
@@ -5756,7 +5829,7 @@ two-column presentation. */
 .click-activation-row {
   min-height: 56px;
   padding: 0 20px 0 18px;
-  border-top: 1px solid alpha(@theme_border, 0.55);
+  border-top: 1px solid alpha(@strata_border, 0.55);
 }
 
 .click-activation-row + .click-activation-row {
@@ -5790,8 +5863,8 @@ two-column presentation. */
 }
 
 .theme-catalog-container {
-  background: mix(@theme_bg, @theme_muted, 0.25);
-  border: 1px solid alpha(@theme_border, 0.55);
+  background: mix(@strata_bg, @strata_muted, 0.25);
+  border: 1px solid alpha(@strata_border, 0.55);
   border-radius: 10px;
   padding: 0;
 }
@@ -5803,7 +5876,7 @@ two-column presentation. */
 .theme-grid > flowboxchild {
   padding: 0;
   margin: 0;
-  border-bottom: 1px solid alpha(@theme_border, 0.45);
+  border-bottom: 1px solid alpha(@strata_border, 0.45);
 }
 
 .settings-dialog .theme-card {
@@ -5815,7 +5888,7 @@ two-column presentation. */
 
 .settings-dialog .theme-card:hover,
 .settings-dialog .theme-card.selected {
-  background: alpha(@theme_accent, 0.10);
+  background: alpha(@strata_accent, 0.10);
 }
 
 .settings-dialog .theme-preview {
@@ -5824,11 +5897,11 @@ two-column presentation. */
   border-radius: 6px;
   box-shadow: none;
   outline: none;
-  border: 1px solid alpha(@theme_border, 0.6);
+  border: 1px solid alpha(@strata_border, 0.6);
 }
 
 .theme-kind {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   font-size: 0.875em;
   letter-spacing: 1px;
   margin-right: 44px;
@@ -5836,8 +5909,8 @@ two-column presentation. */
 
 .theme-library-footer {
   padding: 10px 18px;
-  border-top: 1px solid alpha(@theme_border, 0.55);
-  color: @theme_dim_text;
+  border-top: 1px solid alpha(@strata_border, 0.55);
+  color: @strata_dim_text;
   font-size: 0.9375em;
 }
 
@@ -5845,9 +5918,9 @@ two-column presentation. */
   min-width: 0;
   min-height: 22px;
   padding: 8px 14px;
-  border: 1px solid alpha(@theme_border, 0.8);
+  border: 1px solid alpha(@strata_border, 0.8);
   border-radius: 8px;
-  background: @theme_muted;
+  background: @strata_muted;
 }
 
 .settings-dialog spinbutton.text-size-control {
@@ -5866,21 +5939,21 @@ two-column presentation. */
   border: none;
   border-radius: 0;
   background: transparent;
-  color: @theme_dim_text;
+  color: @strata_dim_text;
 }
 
 .settings-dialog spinbutton.text-size-control button.down {
-  border-right: 1px solid alpha(@theme_border, 0.8);
+  border-right: 1px solid alpha(@strata_border, 0.8);
 }
 
 .settings-dialog spinbutton.text-size-control button.up {
-  border-left: 1px solid alpha(@theme_border, 0.8);
+  border-left: 1px solid alpha(@strata_border, 0.8);
 }
 
 .settings-keycap {
-  background: @theme_muted;
-  color: @theme_text;
-  border: 1px solid alpha(@theme_border, 0.8);
+  background: @strata_muted;
+  color: @strata_text;
+  border: 1px solid alpha(@strata_border, 0.8);
   border-radius: 5px;
   padding: 3px 7px;
   font-size: 0.875em;
@@ -5888,16 +5961,16 @@ two-column presentation. */
 }
 
 .keycap-separator {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   font-size: 0.875em;
 }
 
 .settings-release-expander {
-  background: mix(@theme_bg, @theme_muted, 0.25);
-  border: 1px solid alpha(@theme_border, 0.55);
+  background: mix(@strata_bg, @strata_muted, 0.25);
+  border: 1px solid alpha(@strata_border, 0.55);
   border-radius: 10px;
   padding: 18px;
-  color: @theme_text;
+  color: @strata_text;
 }
 
 .settings-release-expander .release-notes-card {
@@ -5907,8 +5980,8 @@ two-column presentation. */
 }
 
 .about-identity {
-  background: mix(@theme_bg, @theme_muted, 0.25);
-  border: 1px solid alpha(@theme_border, 0.55);
+  background: mix(@strata_bg, @strata_muted, 0.25);
+  border: 1px solid alpha(@strata_border, 0.55);
   border-radius: 10px;
   margin: 0;
   padding: 20px;
@@ -5918,9 +5991,9 @@ two-column presentation. */
 .about-logo {
   min-width: 58px;
   min-height: 58px;
-  border: 1px solid alpha(@theme_dim_text, 0.35);
+  border: 1px solid alpha(@strata_dim_text, 0.35);
   border-radius: 14px;
-  background: shade(@theme_dim_text, 0.3);
+  background: shade(@strata_dim_text, 0.3);
 }
 
 .about-name {
@@ -5935,16 +6008,16 @@ two-column presentation. */
 }
 
 .about-detail-row + .about-detail-row {
-  border-top: 1px solid alpha(@theme_border, 0.55);
+  border-top: 1px solid alpha(@strata_border, 0.55);
 }
 
 .about-detail-label {
-  color: @theme_text;
+  color: @strata_text;
   font-weight: 600;
 }
 
 .about-detail-value {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   font-weight: 400;
 }
 
@@ -5953,11 +6026,11 @@ two-column presentation. */
 .about-repository:visited {
   min-height: 54px;
   padding: 0 18px;
-  color: @theme_text;
+  color: @strata_text;
 }
 
 .about-repository + .about-repository {
-  border-top: 1px solid alpha(@theme_border, 0.55);
+  border-top: 1px solid alpha(@strata_border, 0.55);
 }
 
 .settings-dialog.compact .settings-preferences {
@@ -6052,15 +6125,15 @@ two-column presentation. */
   box-shadow: none;
   border-radius: 10px;
   padding: 12px 18px;
-  color: @theme_text;
+  color: @strata_text;
 }
 
 .release-notes-toggle:hover {
-  background: alpha(@theme_accent, 0.08);
+  background: alpha(@strata_accent, 0.08);
 }
 
 .release-notes-toggle:active {
-  background: @theme_highlight;
+  background: @strata_highlight;
 }
 
 .release-notes-toggle image {
@@ -6077,7 +6150,7 @@ two-column presentation. */
 }
 
 .settings-backdrop {
-  background: shade(@theme_bg, 0.85);
+  background: shade(@strata_bg, 0.85);
 }
 
 .settings-dialog entry.settings-search,
@@ -6131,12 +6204,12 @@ popover.settings-search-popover.background {
 }
 
 .settings-search-popover > contents {
-  background: @theme_bg;
-  color: @theme_text;
-  border: 1px solid @theme_border;
+  background: @strata_bg;
+  color: @strata_text;
+  border: 1px solid @strata_border;
   border-radius: 8px;
   padding: 8px;
-  box-shadow: 0 4px 16px alpha(@theme_bg, 0.4);
+  box-shadow: 0 4px 16px alpha(@strata_bg, 0.4);
 }
 
 .context-menu-actions {
@@ -6157,12 +6230,12 @@ popover.settings-search-popover.background {
 }
 
 .jobs-indicator-label {
-  color: @theme_accent;
+  color: @strata_accent;
   font-weight: bold;
 }
 
 .jobs-indicator:hover .jobs-indicator-label {
-  color: @theme_text;
+  color: @strata_text;
 }
 
 popover.jobs-popover.background {
@@ -6173,33 +6246,33 @@ popover.jobs-popover.background {
 }
 
 .jobs-popover > contents {
-  background: @theme_surface;
-  color: @theme_text;
-  border: 1px solid alpha(@theme_border, 0.5);
+  background: @strata_surface;
+  color: @strata_text;
+  border: 1px solid alpha(@strata_border, 0.5);
   border-radius: 12px;
   padding: 0;
-  box-shadow: 0 6px 24px alpha(@theme_bg, 0.4);
+  box-shadow: 0 6px 24px alpha(@strata_bg, 0.4);
 }
 
 .jobs-header {
   padding: 12px 16px;
-  border-bottom: 1px solid alpha(@theme_border, 0.24);
+  border-bottom: 1px solid alpha(@strata_border, 0.24);
 }
 
 .jobs-title,
 .job-name {
-  color: @theme_text;
+  color: @strata_text;
   font-weight: 700;
 }
 
 .jobs-running-summary,
 .job-status {
-  color: @theme_accent;
+  color: @strata_accent;
   font-size: 0.85em;
 }
 
 .jobs-finished-summary {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   font-size: 0.85em;
 }
 
@@ -6210,7 +6283,7 @@ popover.jobs-popover.background {
 .job-row {
   background: transparent;
   border: none;
-  border-bottom: 1px solid alpha(@theme_border, 0.2);
+  border-bottom: 1px solid alpha(@strata_border, 0.2);
   border-radius: 0;
   margin: 0;
   padding: 14px 16px;
@@ -6221,18 +6294,18 @@ popover.jobs-popover.background {
 }
 
 .job-row.job-active {
-  background: alpha(@theme_highlight, 0.18);
+  background: alpha(@strata_highlight, 0.18);
 }
 
 .job-icon-bezel {
-  background: alpha(@theme_accent, 0.08);
-  border: 1px solid alpha(@theme_accent, 0.3);
+  background: alpha(@strata_accent, 0.08);
+  border: 1px solid alpha(@strata_accent, 0.3);
   border-radius: 8px;
   padding: 6px;
 }
 
 .job-meta {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   font-size: 0.85em;
 }
 
@@ -6242,14 +6315,14 @@ popover.jobs-popover.background {
 }
 
 .job-progress trough {
-  background: alpha(@theme_bg, 0.65);
+  background: alpha(@strata_bg, 0.65);
   border: none;
   border-radius: 4px;
   min-height: 4px;
 }
 
 .job-progress progress {
-  background: @theme_accent;
+  background: @strata_accent;
   border: none;
   border-radius: 4px;
   min-height: 4px;
@@ -6263,17 +6336,17 @@ popover.jobs-popover.background {
 }
 
 .job-log {
-  background: alpha(@theme_bg, 0.55);
-  border: 1px solid alpha(@theme_border, 0.24);
+  background: alpha(@strata_bg, 0.55);
+  border: 1px solid alpha(@strata_border, 0.24);
   border-radius: 4px;
-  color: @theme_text;
+  color: @strata_text;
   font-family: monospace;
   font-size: 0.85em;
   padding: 8px;
 }
 
 .jobs-empty {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   padding: 16px;
 }
 
@@ -6282,33 +6355,33 @@ popover.jobs-popover.background {
   border: 1px solid transparent;
   border-radius: 4px;
   box-shadow: none;
-  color: @theme_accent;
+  color: @strata_accent;
   min-height: 24px;
   min-width: 24px;
   padding: 0;
 }
 
 .job-action:hover {
-  background: @theme_highlight;
-  color: @theme_text;
+  background: @strata_highlight;
+  color: @strata_text;
 }
 
 .job-action:active {
-  background: alpha(@theme_accent, 0.22);
+  background: alpha(@strata_accent, 0.22);
 }
 
 .job-action:disabled {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   opacity: 0.45;
 }
 
 .job-action:focus-visible {
-  outline: 2px solid @theme_accent;
+  outline: 2px solid @strata_accent;
   outline-offset: -2px;
 }
 
 .job-action.jobs-clear {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   padding: 0 4px;
   font-size: 0.85em;
 }
@@ -6337,24 +6410,24 @@ popover.jobs-popover.background {
 }
 
 .settings-action-button.danger {
-  color: @theme_danger;
-  border-color: alpha(@theme_danger, 0.4);
+  color: @strata_danger;
+  border-color: alpha(@strata_danger, 0.4);
 }
 
 .settings-action-button.danger:hover,
 .settings-action-button.danger:active {
-  background: alpha(@theme_danger, 0.14);
-  border-color: @theme_danger;
-  color: @theme_danger;
+  background: alpha(@strata_danger, 0.14);
+  border-color: @strata_danger;
+  color: @strata_danger;
 }
 
 .settings-action-button.danger:focus-visible {
-  border-color: @theme_danger;
-  outline-color: @theme_danger;
+  border-color: @strata_danger;
+  outline-color: @strata_danger;
 }
 
 .settings-action-problem {
-  color: @theme_danger;
+  color: @strata_danger;
 }
 
 .settings-actions-empty {
@@ -6362,14 +6435,14 @@ popover.jobs-popover.background {
 }
 
 popover.settings-action-library {
-  background: @theme_surface;
+  background: @strata_surface;
 }
 
 popover.settings-action-library > contents {
   min-width: 440px;
-  background: @theme_surface;
-  color: @theme_text;
-  border: 1px solid alpha(@theme_border, 0.6);
+  background: @strata_surface;
+  color: @strata_text;
+  border: 1px solid alpha(@strata_border, 0.6);
   border-radius: 9px;
   padding: 0;
   box-shadow: none;
@@ -6377,7 +6450,7 @@ popover.settings-action-library > contents {
 
 .action-library-search {
   padding: 6px;
-  border-bottom: 1px solid alpha(@theme_border, 0.35);
+  border-bottom: 1px solid alpha(@strata_border, 0.35);
 }
 
 .action-library-search entry {
@@ -6387,13 +6460,13 @@ popover.settings-action-library > contents {
 
 .action-library-filters {
   padding: 10px 12px;
-  border-bottom: 1px solid alpha(@theme_border, 0.35);
+  border-bottom: 1px solid alpha(@strata_border, 0.35);
 }
 
 .action-library-category {
   background: transparent;
-  color: @theme_dim_text;
-  border: 1px solid alpha(@theme_border, 0.4);
+  color: @strata_dim_text;
+  border: 1px solid alpha(@strata_border, 0.4);
   border-radius: 14px;
   box-shadow: none;
   min-height: 22px;
@@ -6401,15 +6474,15 @@ popover.settings-action-library > contents {
 }
 
 .action-library-category:hover {
-  background: @theme_highlight;
-  color: @theme_text;
+  background: @strata_highlight;
+  color: @strata_text;
 }
 
 .action-library-category:checked,
 .action-library-category:active {
-  background: alpha(@theme_accent, 0.2);
-  color: @theme_text;
-  border-color: @theme_accent;
+  background: alpha(@strata_accent, 0.2);
+  color: @strata_text;
+  border-color: @strata_accent;
 }
 
 .action-library-list {
@@ -6425,12 +6498,12 @@ popover.settings-action-library > contents {
 }
 
 .action-library-title {
-  color: @theme_text;
+  color: @strata_text;
 }
 
 .settings-action-library .action-library-language {
-  color: @theme_dim_text;
-  border: 1px solid alpha(@theme_border, 0.4);
+  color: @strata_dim_text;
+  border: 1px solid alpha(@strata_border, 0.4);
   border-radius: 4px;
   font-size: 0.75em;
   padding: 0 5px;
@@ -6442,12 +6515,12 @@ popover.settings-action-library > contents {
 
 .action-library-footer {
   padding: 10px 12px;
-  border-top: 1px solid alpha(@theme_border, 0.35);
+  border-top: 1px solid alpha(@strata_border, 0.35);
 }
 
 .settings-action-dialog {
   min-width: 760px;
-  box-shadow: 0 12px 28px alpha(@theme_bg, 0.4);
+  box-shadow: 0 12px 28px alpha(@strata_bg, 0.4);
 }
 
 .settings-action-dialog .action-dialog-header {
@@ -6460,7 +6533,7 @@ popover.settings-action-library > contents {
 }
 
 .settings-action-dialog .action-dialog-actions {
-  background: alpha(@theme_highlight, 0.12);
+  background: alpha(@strata_highlight, 0.12);
   padding: 14px 22px;
 }
 
@@ -6469,16 +6542,16 @@ popover.settings-action-library > contents {
 }
 
 .settings-action-dialog .action-dialog-confirm {
-  background: @theme_accent;
-  color: @theme_bg;
+  background: @strata_accent;
+  color: @strata_bg;
 }
 
 .settings-action-dialog .action-dialog-confirm:hover {
-  background: mix(@theme_accent, @theme_text, 0.12);
+  background: mix(@strata_accent, @strata_text, 0.12);
 }
 
 .settings-action-dialog .action-dialog-confirm:active {
-  background: mix(@theme_accent, @theme_bg, 0.15);
+  background: mix(@strata_accent, @strata_bg, 0.15);
 }
 
 .settings-action-tabs,
@@ -6491,7 +6564,7 @@ popover.settings-action-library > contents {
 
 .settings-action-tabs > header {
   padding: 0 22px;
-  border-bottom: 1px solid alpha(@theme_border, 0.35);
+  border-bottom: 1px solid alpha(@strata_border, 0.35);
 }
 
 /* GTK's negative tab-strip margins otherwise put the indicator below the divider. */
@@ -6505,7 +6578,7 @@ popover.settings-action-library > contents {
   border-bottom: 2px solid transparent;
   border-radius: 0;
   box-shadow: none;
-  color: @theme_dim_text;
+  color: @strata_dim_text;
   margin: 0 20px 0 0;
   min-height: 36px;
   padding: 0;
@@ -6520,17 +6593,17 @@ popover.settings-action-library > contents {
 }
 
 .settings-action-tabs > header > tabs > tab:hover {
-  color: @theme_text;
-  background: alpha(@theme_highlight, 0.25);
+  color: @strata_text;
+  background: alpha(@strata_highlight, 0.25);
 }
 
 .settings-action-tabs > header > tabs > tab:checked {
-  color: @theme_text;
-  border-bottom-color: @theme_accent;
+  color: @strata_text;
+  border-bottom-color: @strata_accent;
 }
 
 .settings-action-tabs > header > tabs > tab:focus-visible {
-  outline: 2px solid alpha(@theme_accent, 0.5);
+  outline: 2px solid alpha(@strata_accent, 0.5);
 }
 
 .settings-action-page {
@@ -6546,21 +6619,21 @@ popover.settings-action-library > contents {
 }
 
 .settings-action-dialog .action-runtime-status {
-  color: @theme_dim_text;
+  color: @strata_dim_text;
 }
 
 .settings-action-dialog .action-runtime-status.available > label {
-  color: @theme_accent;
+  color: @strata_accent;
 }
 
 .settings-action-dialog .action-runtime-status.unavailable > label {
-  color: @theme_danger;
+  color: @strata_danger;
 }
 
 .settings-action-dialog .settings-action-option {
   background: transparent;
   border: none;
-  border-bottom: 1px solid alpha(@theme_border, 0.3);
+  border-bottom: 1px solid alpha(@strata_border, 0.3);
   border-radius: 0;
   min-height: 36px;
   padding: 8px 0;
@@ -6575,7 +6648,7 @@ popover.settings-action-library > contents {
 }
 
 .settings-action-dialog .settings-action-enabled {
-  border-top: 1px solid alpha(@theme_border, 0.3);
+  border-top: 1px solid alpha(@strata_border, 0.3);
 }
 
 .settings-action-dialog .settings-action-option:disabled {
@@ -6588,11 +6661,11 @@ popover.settings-action-library > contents {
 
 .settings-action-icon-choice,
 .settings-action-more-icons > button {
-  background: alpha(@theme_bg, 0.25);
-  border: 1px solid alpha(@theme_border, 0.4);
+  background: alpha(@strata_bg, 0.25);
+  border: 1px solid alpha(@strata_border, 0.4);
   border-radius: 6px;
   box-shadow: none;
-  color: @theme_text;
+  color: @strata_text;
   min-height: 34px;
   min-width: 34px;
   padding: 0;
@@ -6600,53 +6673,53 @@ popover.settings-action-library > contents {
 
 .settings-action-icon-choice:hover,
 .settings-action-more-icons > button:hover {
-  background: @theme_highlight;
-  border-color: alpha(@theme_accent, 0.6);
+  background: @strata_highlight;
+  border-color: alpha(@strata_accent, 0.6);
 }
 
 .settings-action-icon-choice:checked,
 .settings-action-more-icons.selected > button {
-  background: alpha(@theme_accent, 0.22);
-  border-color: alpha(@theme_accent, 0.7);
+  background: alpha(@strata_accent, 0.22);
+  border-color: alpha(@strata_accent, 0.7);
 }
 
 .settings-action-icon-choice:active,
 .settings-action-more-icons > button:active {
-  background: alpha(@theme_accent, 0.3);
+  background: alpha(@strata_accent, 0.3);
 }
 
 .settings-action-icon-choice:focus-visible,
 .settings-action-more-icons > button:focus-visible {
-  outline: 2px solid @theme_accent;
+  outline: 2px solid @strata_accent;
   outline-offset: -2px;
 }
 
 .settings-action-script {
-  background: alpha(@theme_bg, 0.3);
-  border: 1px solid alpha(@theme_border, 0.4);
+  background: alpha(@strata_bg, 0.3);
+  border: 1px solid alpha(@strata_border, 0.4);
   border-radius: 6px;
 }
 
 .settings-action-script:focus-within {
-  border-color: @theme_accent;
+  border-color: @strata_accent;
 }
 
 .settings-action-script textview,
 .settings-action-script textview text {
   background: transparent;
-  color: @theme_text;
-  caret-color: @theme_accent;
+  color: @strata_text;
+  caret-color: @strata_accent;
 }
 
 .settings-action-script textview border {
   background: transparent;
-  color: @theme_dim_text;
-  border-right: 1px solid alpha(@theme_border, 0.3);
+  color: @strata_dim_text;
+  border-right: 1px solid alpha(@strata_border, 0.3);
 }
 
 .settings-action-script textview text selection {
-  background: alpha(@theme_accent, 0.3);
-  color: @theme_text;
+  background: alpha(@strata_accent, 0.3);
+  color: @strata_text;
 }
 
 .action-dialog.modal-constrained,
