@@ -2163,14 +2163,12 @@ fn compare_sort_items(left: &SortItem, right: &SortItem, preferences: ViewPrefer
             let left_type = left
                 .entry_type
                 .as_ref()
-                .cloned()
-                .unwrap_or_else(|| crate::services::entry_type(&left.entry));
+                .expect("Type sorting precomputes entry types");
             let right_type = right
                 .entry_type
                 .as_ref()
-                .cloned()
-                .unwrap_or_else(|| crate::services::entry_type(&right.entry));
-            compare_entry_type_values(&left_type, &right_type)
+                .expect("Type sorting precomputes entry types");
+            compare_entry_type_values(left_type, right_type)
         }
         SortKey::Size => compare_metadata(&left.entry.size, &right.entry.size),
         SortKey::Modified => compare_metadata(
