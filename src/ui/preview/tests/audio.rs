@@ -3,45 +3,7 @@
 use super::*;
 
 fn ready(provider: &Provider, index: usize) {
-    let pending = provider.0.borrow();
-    let pending = &pending[index];
-    (pending.emit)(PreviewEvent::Ready(Preview {
-        request_id: pending.request.id,
-        entry: pending.request.entry.clone(),
-        content_type: "audio/x-wav".into(),
-        content: PreviewContent::SandboxedMedia {
-            media: crate::services::SandboxedMedia {
-                path: pending
-                    .request
-                    .entry
-                    .location
-                    .native_path()
-                    .expect("local track")
-                    .to_path_buf(),
-                size: pending.request.media_size,
-                backend: crate::sandbox::MediaPreviewBackend::Software,
-                input_owner: None,
-                audio_only: false,
-            },
-        },
-    }));
-}
-
-#[test]
-fn track_candidates_exclude_playlists_and_midi() {
-    for name in ["song.mp3", "song.flac", "song.opus", "song.ogg", "song.wav"] {
-        assert!(is_audio_entry(&entry(name)), "{name}");
-    }
-    for name in [
-        "list.m3u",
-        "list.m3u8",
-        "list.pls",
-        "song.mid",
-        "song.midi",
-        "note.txt",
-    ] {
-        assert!(!is_audio_entry(&entry(name)), "{name}");
-    }
+    super::video::ready(provider, index, "audio/x-wav");
 }
 
 #[test]
@@ -49,29 +11,8 @@ fn audio_steps_keep_playback_and_volume_but_never_reuse_an_ended_request() {
     crate::test_support::gtk_test(
         "ui::preview::tests::audio::audio_steps_keep_playback_and_volume_but_never_reuse_an_ended_request",
         || {
-            let directory = tempfile::tempdir().expect("track directory");
-            for name in ["a.wav", "b.wav", "c.wav"] {
-                std::fs::write(directory.path().join(name), []).expect("track fixture");
-            }
-            let view = crate::ui::browser::BrowserView::new(
-                Rc::new(crate::adapters::LocalFileSource),
-                crate::ui::browser::PeekBehavior::default(),
-            );
+            let (_directory, view) = super::video::sorted_listing(&["a.wav", "b.wav", "c.wav"]);
             let browser = view.browser();
-            browser.navigate(Location::local(directory.path()));
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-            while !browser
-                .column_snapshot(0)
-                .is_some_and(|column| !column.loading)
-            {
-                assert!(std::time::Instant::now() < deadline);
-                glib::MainContext::default().iteration(false);
-            }
-            browser.set_sort(
-                0,
-                crate::model::SortKey::Name,
-                crate::model::SortDirection::Ascending,
-            );
             let provider = Rc::new(Provider::default());
             let drawer = PreviewDrawer::new(provider.clone(), false);
             drawer.state.keyboard_view.replace(Some(view.downgrade()));
@@ -129,15 +70,7 @@ fn audio_steps_keep_playback_and_volume_but_never_reuse_an_ended_request() {
 
             assert!(state.step_media(-1, true));
             show_cursor();
-            {
-                let pending = provider.0.borrow();
-                let pending = &pending[4];
-                (pending.emit)(PreviewEvent::Failed {
-                    request_id: pending.request.id,
-                    entry: pending.request.entry.clone(),
-                    message: "load failed".into(),
-                });
-            }
+            super::video::failed(&provider, 4, "load failed");
             assert!(state.continue_playback.borrow().is_none());
             drawer.show(browser.entry_at(0, 0).expect("first track"), Some(0));
             ready(&provider, 5);

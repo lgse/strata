@@ -2,7 +2,7 @@
 
 use super::*;
 
-fn ready(provider: &Provider, index: usize, content_type: &str) {
+pub(super) fn ready(provider: &Provider, index: usize, content_type: &str) {
     let pending = provider.0.borrow();
     let pending = &pending[index];
     (pending.emit)(PreviewEvent::Ready(Preview {
@@ -76,8 +76,22 @@ fn media_families_split_audio_and_video_and_skip_gifs() {
             "{name}"
         );
     }
-    assert_eq!(entry_family(&entry("song.mp3")), Some(MediaFamily::Audio));
-    for name in ["anim.gif", "note.txt", "list.m3u", "song.mid"] {
+    for name in ["song.mp3", "song.flac", "song.opus", "song.ogg", "song.wav"] {
+        assert_eq!(
+            entry_family(&entry(name)),
+            Some(MediaFamily::Audio),
+            "{name}"
+        );
+    }
+    for name in [
+        "anim.gif",
+        "note.txt",
+        "list.m3u",
+        "list.m3u8",
+        "list.pls",
+        "song.mid",
+        "song.midi",
+    ] {
         assert_eq!(entry_family(&entry(name)), None, "{name}");
     }
 }
@@ -698,24 +712,4 @@ fn files_opened_externally_stay_paused_when_their_preview_lands() {
             drawer.close();
         },
     );
-}
-
-#[test]
-fn the_ease_in_curve_rises_evenly_and_lands_softly() {
-    use crate::ui::preview::ease_in::gain as ease_in_gain;
-    assert_eq!(ease_in_gain(0.0), 0.0);
-    assert_eq!(ease_in_gain(1.0), 1.0);
-    assert_eq!(ease_in_gain(-0.5), 0.0);
-    assert_eq!(ease_in_gain(1.5), 1.0);
-    assert!(ease_in_gain(0.1) < 0.01, "the start is inaudible");
-    assert!(ease_in_gain(0.9) > 0.9, "the landing is nearly complete");
-    let mut previous = 0.0;
-    for step in 1..=100 {
-        let gain = ease_in_gain(f64::from(step) / 100.0);
-        assert!(gain >= previous, "monotonic at step {step}");
-        previous = gain;
-    }
-    let early = ease_in_gain(0.1);
-    let middle = ease_in_gain(0.5) - ease_in_gain(0.4);
-    assert!(middle > early, "most of the rise happens in the middle");
 }

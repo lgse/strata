@@ -148,3 +148,6 @@ impl EaseIn {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
