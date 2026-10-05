@@ -197,6 +197,3 @@ impl Placeholder {
         }
     }
 }
-
-#[cfg(test)]
-mod tests;

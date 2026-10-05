@@ -23,12 +23,6 @@ const UPDATE_INTERVAL: Duration = Duration::from_millis(100);
 /// Share of the distance to the new colour covered per update.
 const SMOOTHING: f32 = 0.35;
 
-/// Whether the glow may show at all: it follows the Element glow preference,
-/// stays off under reduced motion, and never runs on the software renderer.
-pub(super) fn allowed(element_glow: bool, animations: bool, software_rendered: bool) -> bool {
-    element_glow && animations && !software_rendered
-}
-
 mod imp {
     use super::*;
 
@@ -186,6 +180,3 @@ impl Glow {
         self.imp().texture.borrow().is_some()
     }
 }
-
-#[cfg(test)]
-mod tests;

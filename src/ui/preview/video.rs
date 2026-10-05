@@ -365,13 +365,13 @@ impl VideoView {
             .is_some_and(|renderer| renderer.is::<gsk::CairoRenderer>())
     }
 
+    /// The glow follows the Element glow preference, stays off under reduced
+    /// motion, and never runs on the software renderer.
     fn glow_allowed(&self) -> bool {
         self.band.get() > 0
-            && ambient::allowed(
-                crate::ui::preferences::PreferenceManager::shared().element_glow(),
-                crate::ui::motion::animations_enabled(),
-                self.software_rendered(),
-            )
+            && crate::ui::preferences::PreferenceManager::shared().element_glow()
+            && crate::ui::motion::animations_enabled()
+            && !self.software_rendered()
     }
 
     /// Feeds the glow from the latest frame, or keeps it dark when disallowed.
