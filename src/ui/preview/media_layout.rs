@@ -6,7 +6,12 @@ pub(super) const MAX_CONTENT_WIDTH: i32 = 1280;
 const MAX_UPSCALE: f64 = 2.0;
 const MEDIA_MARGIN: i32 = 12;
 
-fn fitted_size(width: i32, height: i32, intrinsic_width: i32, intrinsic_height: i32) -> (i32, i32) {
+pub(super) fn fitted_size(
+    width: i32,
+    height: i32,
+    intrinsic_width: i32,
+    intrinsic_height: i32,
+) -> (i32, i32) {
     let width = width.max(0);
     let height = height.max(0);
     if intrinsic_width <= 0 || intrinsic_height <= 0 {
@@ -133,6 +138,16 @@ glib::wrapper! {
     pub struct MediaLayout(ObjectSubclass<imp::MediaLayout>) @extends gtk::LayoutManager;
 }
 
+impl MediaLayout {
+    pub(super) fn new() -> Self {
+        glib::Object::new()
+    }
+
+    pub(super) fn set_paintable(&self, paintable: Option<&gdk::Paintable>) {
+        self.imp().paintable.set(paintable);
+    }
+}
+
 pub(super) fn section(
     media: &impl IsA<gtk::Widget>,
     paintable: &impl IsA<gdk::Paintable>,
@@ -140,8 +155,8 @@ pub(super) fn section(
     let section = gtk::Box::new(gtk::Orientation::Vertical, 0);
     section.set_hexpand(true);
     section.set_vexpand(true);
-    let layout: MediaLayout = glib::Object::new();
-    layout.imp().paintable.set(Some(paintable.as_ref()));
+    let layout = MediaLayout::new();
+    layout.set_paintable(Some(paintable.as_ref()));
     section.set_layout_manager(Some(layout));
     media.set_margin_start(MEDIA_MARGIN);
     media.set_margin_end(MEDIA_MARGIN);

@@ -15,7 +15,10 @@ use std::{
 use crate::model::{EntryKind, MetadataValue};
 use unicode_normalization::UnicodeNormalization;
 
-use super::{is_hidden_name, native_hidden_names, native_kind};
+use super::{
+    is_hidden_name, native_hidden_names, native_kind,
+    path_match::{self, Frecency, PathMatcher, PathQuery, TextScore},
+};
 
 pub(crate) const RESULT_LIMIT: usize = 100;
 const PUBLISH_INTERVAL: Duration = Duration::from_millis(50);
@@ -101,8 +104,12 @@ impl SearchItem {
         }
     }
 
-    pub(super) fn fuzzy_score(&self, normalized_query: &str) -> Option<i64> {
-        fuzzy_score_normalized(self, normalized_query)
+    pub(super) fn path_score(&self, matcher: &mut PathMatcher) -> Option<TextScore> {
+        matcher.score(&self.search_path, self.search_name_start)
+    }
+
+    pub(super) fn name_is(&self, normalized_name: &str) -> bool {
+        self.search_name() == normalized_name
     }
 
     #[cfg(test)]
@@ -348,7 +355,100 @@ mod pattern;
 
 pub(crate) use pattern::{filter_name_matches, filter_query_allows_typos};
 
-type SearchScorer = fn(&SearchItem, &str) -> Option<i64>;
+type NameScorer = fn(&SearchItem, &str) -> Option<i64>;
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct RefusedFolders {
+    pub(crate) trees: Vec<PathBuf>,
+    pub(crate) folder: Option<PathBuf>,
+}
+
+impl RefusedFolders {
+    pub(crate) fn refuses(&self, path: &Path) -> bool {
+        self.folder.as_deref() == Some(path) || self.trees.iter().any(|tree| path.starts_with(tree))
+    }
+}
+
+#[derive(Clone)]
+enum SearchScorer {
+    Name(NameScorer),
+    Paths {
+        frecency: Arc<Frecency>,
+        /// `Some` restricts hits to directories and applies transfer exclusions.
+        folders: Option<Arc<RefusedFolders>>,
+    },
+}
+
+impl SearchScorer {
+    fn prepare<'a>(&'a self, normalized_query: &'a str) -> QueryScorer<'a> {
+        match self {
+            Self::Name(scorer) => QueryScorer::Name(*scorer, normalized_query),
+            Self::Paths {
+                frecency,
+                folders: Some(refused),
+            } if normalized_query.trim().is_empty() => QueryScorer::Folders(frecency, refused),
+            Self::Paths { frecency, folders } => QueryScorer::Paths {
+                matcher: PathMatcher::new(&PathQuery::parse(normalized_query)),
+                query: normalized_query,
+                frecency,
+                folders: folders.as_deref(),
+            },
+        }
+    }
+
+    fn lists_without_query(&self) -> bool {
+        matches!(
+            self,
+            Self::Paths {
+                folders: Some(_),
+                ..
+            }
+        )
+    }
+}
+
+enum QueryScorer<'a> {
+    Name(NameScorer, &'a str),
+    Paths {
+        matcher: PathMatcher,
+        query: &'a str,
+        frecency: &'a Frecency,
+        folders: Option<&'a RefusedFolders>,
+    },
+    Folders(&'a Frecency, &'a RefusedFolders),
+}
+
+impl QueryScorer<'_> {
+    fn score(&mut self, item: &SearchItem) -> Option<i64> {
+        match self {
+            Self::Name(scorer, query) => scorer(item, query),
+            Self::Folders(frecency, refused) => (item.is_directory && !refused.refuses(&item.path))
+                .then(|| {
+                    frecency.bias(&item.path, true) * (i64::from(u8::MAX) + 1)
+                        - i64::from(item.depth)
+                }),
+            Self::Paths {
+                matcher,
+                query,
+                frecency,
+                folders,
+            } => {
+                if let Some(refused) = folders
+                    && (!item.is_directory || refused.refuses(&item.path))
+                {
+                    return None;
+                }
+                let text = item.path_score(matcher)?;
+                let exact = if folders.is_some() {
+                    path_match::exact_bonus(&item.search_path, item.search_name_start, query)
+                } else {
+                    0
+                };
+                Some(path_match::rank(text, frecency.bias(&item.path, item.is_directory)) + exact)
+            }
+        }
+    }
+}
 
 type IndexRegistry = Vec<((Vec<PathBuf>, bool, bool), Weak<SharedIndex>)>;
 static SHARED_INDEXES: OnceLock<Mutex<IndexRegistry>> = OnceLock::new();
@@ -397,7 +497,41 @@ pub fn index_filter(
         vec![root],
         show_hidden,
         include_subfolders,
-        filter_score_normalized,
+        SearchScorer::Name(filter_score_normalized),
+    )
+}
+
+pub fn index_paths(
+    root: PathBuf,
+    show_hidden: bool,
+    recursive: bool,
+    frecency: Frecency,
+) -> (SearchHandle, Receiver<SearchEvent>) {
+    index_scoped(
+        vec![root],
+        show_hidden,
+        recursive,
+        SearchScorer::Paths {
+            frecency: Arc::new(frecency),
+            folders: None,
+        },
+    )
+}
+
+pub fn index_folder_paths(
+    root: PathBuf,
+    show_hidden: bool,
+    frecency: Frecency,
+    refused: RefusedFolders,
+) -> (SearchHandle, Receiver<SearchEvent>) {
+    index_scoped(
+        vec![root],
+        show_hidden,
+        true,
+        SearchScorer::Paths {
+            frecency: Arc::new(frecency),
+            folders: Some(Arc::new(refused)),
+        },
     )
 }
 
@@ -407,7 +541,12 @@ pub fn index_trees(
     roots: Vec<PathBuf>,
     show_hidden: bool,
 ) -> (SearchHandle, Receiver<SearchEvent>) {
-    index_scoped(roots, show_hidden, true, fuzzy_score_normalized)
+    index_scoped(
+        roots,
+        show_hidden,
+        true,
+        SearchScorer::Name(fuzzy_score_normalized),
+    )
 }
 
 fn index_scoped(
@@ -646,7 +785,7 @@ fn index_trees_with_scheduler_budget(
             max_pending_directories,
         },
     );
-    start_search_session(index, fuzzy_score_normalized)
+    start_search_session(index, SearchScorer::Name(fuzzy_score_normalized))
 }
 
 fn start_search_session(
@@ -667,7 +806,7 @@ fn start_search_session(
                 &worker_cancelled,
                 &command_receiver,
                 &event_sender,
-                scorer,
+                &scorer,
             );
         });
     if let Err(error) = worker {
@@ -690,7 +829,7 @@ fn run_search_session(
     cancelled: &AtomicBool,
     commands: &Receiver<SearchCommand>,
     events: &Sender<SearchEvent>,
-    scorer: SearchScorer,
+    scorer: &SearchScorer,
 ) {
     let mut progress = WalkProgress::default();
     let mut indexed_items = 0;
@@ -719,11 +858,12 @@ fn run_search_session(
             progress.query = query;
             progress.limit = limit;
         }
+        let lists = !progress.normalized_query.is_empty() || scorer.lists_without_query();
         if query_changed
             || revision != state.revision
             || (index_changed && progress.limit > RESULT_LIMIT)
         {
-            progress.matches = if progress.normalized_query.is_empty() {
+            progress.matches = if !lists {
                 Vec::new()
             } else {
                 score_index_with_limit(
@@ -733,9 +873,10 @@ fn run_search_session(
                     progress.limit,
                 )
             };
-        } else if index_changed && !progress.normalized_query.is_empty() {
+        } else if index_changed && lists {
+            let mut scorer = scorer.prepare(&progress.normalized_query);
             for item in &state.items[indexed_items..] {
-                if let Some(score) = scorer(item, &progress.normalized_query) {
+                if let Some(score) = scorer.score(item) {
                     insert_match_with_limit(&mut progress.matches, score, item, progress.limit);
                 }
             }
@@ -746,7 +887,7 @@ fn run_search_session(
         let indexing = state.indexing;
         let coverage = state.coverage;
         drop(state);
-        if query_changed || (index_changed && (!progress.query.is_empty() || !indexing)) {
+        if query_changed || (index_changed && (lists || !indexing)) {
             publish(events, &progress, indexing, coverage);
         }
     }
@@ -865,8 +1006,18 @@ fn directory_walker(
         .overrides(overrides.clone())
         .max_depth(Some(1))
         // Nested mounts are walked separately, never through both roots.
-        .filter_entry(move |entry| entry.depth() == 0 || !boundaries.contains(entry.path()));
+        .filter_entry(move |entry| {
+            entry.depth() == 0
+                || !(boundaries.contains(entry.path()) || is_kernel_filesystem(entry.path()))
+        });
     builder.build()
+}
+
+// Avoid filling a root search with kernel interfaces; explicit roots bypass this filter.
+fn is_kernel_filesystem(path: &Path) -> bool {
+    ["/proc", "/sys", "/dev"]
+        .iter()
+        .any(|mount| path == Path::new(mount))
 }
 
 struct TraversalBudget {
@@ -1155,13 +1306,13 @@ type RankedPosition = Reverse<(i64, Reverse<usize>)>;
 
 #[cfg(test)]
 fn score_index(index: &[SearchItem], query: &str, scorer: SearchScorer) -> Vec<(i64, SearchItem)> {
-    score_index_with_limit(index, query, scorer, RESULT_LIMIT)
+    score_index_with_limit(index, query, &scorer, RESULT_LIMIT)
 }
 
 fn score_index_with_limit(
     index: &[SearchItem],
     normalized_query: &str,
-    scorer: SearchScorer,
+    scorer: &SearchScorer,
     limit: usize,
 ) -> Vec<(i64, SearchItem)> {
     let worker_count = std::thread::available_parallelism()
@@ -1209,12 +1360,13 @@ fn score_range(
     index: &[SearchItem],
     normalized_query: &str,
     position_offset: usize,
-    scorer: SearchScorer,
+    scorer: &SearchScorer,
     limit: usize,
 ) -> BinaryHeap<RankedPosition> {
     let mut best = BinaryHeap::with_capacity(limit + 1);
+    let mut scorer = scorer.prepare(normalized_query);
     for (position, item) in index.iter().enumerate() {
-        let Some(score) = scorer(item, normalized_query) else {
+        let Some(score) = scorer.score(item) else {
             continue;
         };
         retain_candidate(

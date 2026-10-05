@@ -9,7 +9,7 @@ pub(in crate::ui) fn non_default_preferences() -> Preferences {
     Preferences {
         mode: "theme".into(),
         theme: "nord".into(),
-        folder_peeking: false,
+        folder_peeking: true,
         single_click_previews: false,
         columns_mirror_selection: false,
         render_documents_by_default: false,
@@ -81,6 +81,7 @@ pub(in crate::ui) fn non_default_preferences() -> Preferences {
             "/fixture/folder".into(),
             crate::assets::icons::HOME.into(),
         )]),
+        device_labels: HashMap::from([("volume:fixture-kingston".into(), "Research drive".into())]),
         send_to_recent_destinations: HashMap::from([
             (
                 "volume:fixture-kingston".into(),

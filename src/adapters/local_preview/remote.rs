@@ -34,7 +34,7 @@ struct StagingPermit;
 impl StagingPermit {
     fn acquire() -> Result<Self, String> {
         STAGED_PREVIEWS
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |active| {
                 (active < MAX_STAGED_PREVIEWS).then_some(active + 1)
             })
             .map(|_| Self)

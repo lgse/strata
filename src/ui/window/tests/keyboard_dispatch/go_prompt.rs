@@ -9,13 +9,7 @@ use crate::{
         DirectoryChange, DirectoryEvent, DirectoryRequest, FileSource, LocationValidationError,
         MetadataRequest,
     },
-    ui::{
-        go_completion::{
-            GioFolders, MAX_MATCHING_FOLDERS,
-            tests::{Controlled, folder},
-        },
-        tenxer_mode::Prompt,
-    },
+    ui::tenxer_mode::Prompt,
 };
 
 /// Local browsing, except that URI validation is recorded and refused so no
@@ -154,10 +148,6 @@ fn tenxer_go_works_after_dialog_close_and_chained_confirmation() {
     );
 }
 
-fn fixture_with(folders: Rc<dyn crate::ui::go_completion::FolderSource>) -> KeyboardFixture {
-    KeyboardFixture::with_parts(Rc::new(TextPreview), folders, browser_for_window)
-}
-
 fn enable_tenxer(fixture: &KeyboardFixture) {
     let preferences = PreferenceManager::shared();
     fixture.shortcuts.bind_preferences(&preferences);
@@ -193,8 +183,9 @@ fn tab(fixture: &KeyboardFixture) {
     assert!(fixture.press(Key::Tab, ModifierType::empty()));
 }
 
-fn shift_tab(fixture: &KeyboardFixture) {
-    assert!(fixture.press(Key::ISO_Left_Tab, ModifierType::SHIFT_MASK));
+fn listed(fixture: &KeyboardFixture, text: &str, expected: &[PathBuf]) {
+    fixture.shortcuts.prompt().set_text(text);
+    wait_until(|| fixture.shortcuts.candidates() == expected);
 }
 
 fn prompt_text(fixture: &KeyboardFixture) -> String {
@@ -225,7 +216,8 @@ fn tenxer_g_space_opens_go_and_submits_typed_paths() {
         || {
             let fixture = KeyboardFixture::new();
             enable_tenxer(&fixture);
-            let root = seed_folders(&fixture, &["nested"]);
+            let root = seed_folders(&fixture, &["nested", "ghosts"]);
+            std::fs::write(root.join("hosts"), b"hosts").expect("fixture file");
             let browser = fixture.view.browser();
             let origin = browser.active_location();
             move_to_named(&fixture, &browser, "a.txt");
@@ -243,6 +235,7 @@ fn tenxer_g_space_opens_go_and_submits_typed_paths() {
             );
             let generation = browser.navigation_generation();
             type_text(&fixture, &root.join("nested").to_string_lossy());
+            wait_until(|| fixture.shortcuts.candidates() == [root.join("nested")]);
             for key in [Key::j, Key::space, Key::h] {
                 fixture.press(key, ModifierType::empty());
             }
@@ -255,7 +248,7 @@ fn tenxer_g_space_opens_go_and_submits_typed_paths() {
             assert_eq!(browser.active_location(), origin);
 
             assert!(fixture.press(Key::Return, ModifierType::empty()));
-            assert_eq!(fixture.shortcuts.open_prompt_kind(), None);
+            wait_until(|| fixture.shortcuts.open_prompt_kind().is_none());
             assert!(
                 fixture.shortcuts.prompt().text().is_empty(),
                 "submit clears the text"
@@ -265,13 +258,43 @@ fn tenxer_g_space_opens_go_and_submits_typed_paths() {
 
             open_go(&fixture);
             fixture.shortcuts.prompt().set_text("../");
+            wait_until(|| fixture.shortcuts.candidates().first() == Some(&root));
             assert!(fixture.press(Key::Return, ModifierType::empty()));
             wait_until(|| browser.active_location() == Some(Location::local(&root)));
             wait_loaded(&browser, 0);
             open_go(&fixture);
-            fixture.shortcuts.prompt().set_text("nested");
+            type_text(&fixture, "nest");
             assert!(fixture.press(Key::Return, ModifierType::empty()));
             wait_until(|| browser.active_location() == Some(Location::local(root.join("nested"))));
+            assert_eq!(
+                fixture.shortcuts.open_prompt_kind(),
+                None,
+                "Enter before the results waits for them"
+            );
+
+            open_go(&fixture);
+            let file = root.join("b.txt");
+            fixture.shortcuts.prompt().set_text(&file.to_string_lossy());
+            wait_until(|| {
+                fixture.shortcuts.prompt_hint().as_deref() == Some("No matching folders")
+            });
+            assert!(fixture.press(Key::Return, ModifierType::empty()));
+            wait_until(|| browser.active_location() == Some(Location::local(&root)));
+            wait_until(|| focused_name(&browser) == "b.txt");
+
+            open_go(&fixture);
+            listed(
+                &fixture,
+                &root.join("hosts").to_string_lossy(),
+                &[root.join("ghosts")],
+            );
+            assert!(fixture.press(Key::Return, ModifierType::empty()));
+            wait_until(|| focused_name(&browser) == "hosts");
+            assert_eq!(
+                browser.active_location(),
+                Some(Location::local(&root)),
+                "a typed file opens rather than a folder it fuzzily matches"
+            );
 
             let before = browser.active_location();
             open_go(&fixture);
@@ -279,6 +302,9 @@ fn tenxer_g_space_opens_go_and_submits_typed_paths() {
                 .shortcuts
                 .prompt()
                 .set_text("/strata-go-missing/nowhere");
+            wait_until(|| {
+                fixture.shortcuts.prompt_hint().as_deref() == Some("No matching folders")
+            });
             assert!(fixture.press(Key::Return, ModifierType::empty()));
             wait_until(|| modal_visible(&fixture.overlay));
             pump(50);
@@ -318,7 +344,22 @@ fn tenxer_go_clears_typed_text_on_every_dismissal() {
                 "undo cannot bring the text back"
             );
 
-            type_text(&fixture, secret);
+            let target = seed_folders(&fixture, &["pending"]).join("pending");
+            let text = target.to_string_lossy();
+            fixture.shortcuts.prompt().set_text(&text);
+            assert!(fixture.press(Key::Return, ModifierType::empty()));
+            assert!(fixture.press(Key::Escape, ModifierType::empty()));
+            fixture.shortcuts.open_prompt(Prompt::Go);
+            fixture.shortcuts.prompt().set_text(&text);
+            pump(300);
+            assert_eq!(
+                browser.active_location(),
+                origin,
+                "a cancelled probe stays cancelled when the same text is reopened"
+            );
+            assert_eq!(fixture.shortcuts.open_prompt_kind(), Some(Prompt::Go));
+
+            fixture.shortcuts.prompt().set_text(secret);
             move_to_named(&fixture, &browser, "a.txt");
             assert!(press_file_row(&fixture.view.widget(), "b.txt"));
             wait_until(|| fixture.shortcuts.open_prompt_kind().is_none());
@@ -363,11 +404,9 @@ fn tenxer_go_submits_uris_unchanged_and_never_probes_them_first() {
         || {
             let source = Rc::new(InertUris::default());
             let validated = source.validated.clone();
-            let folders = Rc::new(Controlled::default());
-            let fixture =
-                KeyboardFixture::with_parts(Rc::new(TextPreview), folders.clone(), || {
-                    BrowserView::new(source, crate::ui::browser::PeekBehavior::default())
-                });
+            let fixture = KeyboardFixture::with_parts(Rc::new(TextPreview), || {
+                BrowserView::new(source, crate::ui::browser::PeekBehavior::default())
+            });
             enable_tenxer(&fixture);
             let browser = fixture.view.browser();
             let origin = browser.active_location();
@@ -376,15 +415,14 @@ fn tenxer_go_submits_uris_unchanged_and_never_probes_them_first() {
             open_go(&fixture);
             type_text(&fixture, uri);
             tab(&fixture);
-            shift_tab(&fixture);
             pump(50);
             assert_eq!(prompt_text(&fixture), uri, "Tab leaves a URI unchanged");
             assert!(fixture.shortcuts.prompt_has_focus());
-            assert_eq!(
-                fixture.shortcuts.prompt_hint().as_deref(),
-                Some("URIs are not completed")
+            assert_eq!(fixture.shortcuts.prompt_hint(), None);
+            assert!(
+                fixture.shortcuts.candidates().is_empty(),
+                "no folder was searched"
             );
-            assert!(folders.requested().is_empty(), "no folder was enumerated");
             assert!(
                 validated.borrow().is_empty(),
                 "nothing is probed before Enter"
@@ -407,190 +445,79 @@ fn tenxer_go_submits_uris_unchanged_and_never_probes_them_first() {
 }
 
 #[test]
-fn tenxer_go_tab_cycles_matching_folders_from_real_folders() {
+fn tenxer_go_lists_matching_folders_and_tab_fills_the_chosen_one() {
     crate::test_support::gtk_test(
-        "ui::window::tests::keyboard_dispatch::go_prompt::tenxer_go_tab_cycles_matching_folders_from_real_folders",
+        "ui::window::tests::keyboard_dispatch::go_prompt::tenxer_go_lists_matching_folders_and_tab_fills_the_chosen_one",
         || {
             let home = PathBuf::from(std::env::var_os("HOME").expect("isolated HOME"));
             std::fs::create_dir_all(home.join("Projects")).expect("home folder");
-            let fixture = fixture_with(Rc::new(GioFolders));
+            let fixture = KeyboardFixture::new();
             enable_tenxer(&fixture);
-            let root = seed_folders(&fixture, &["alpha", "Alder", "beta", ".alcove"]);
+            let root = seed_folders(&fixture, &["alpha", "beta", ".alcove"]);
             std::fs::create_dir(root.join("alpha/inner")).expect("nested folder");
             std::fs::write(root.join("alpine.txt"), b"file").expect("fixture file");
             let browser = fixture.view.browser();
+            let origin = browser.active_location();
+            let hint = || fixture.shortcuts.prompt_hint();
 
             open_go(&fixture);
-            type_text(&fixture, "al");
-            tab(&fixture);
-            assert_eq!(
-                prompt_text(&fixture),
-                "Alder/",
-                "the listing completes without a slash"
+            type_text(&fixture, "al in");
+            wait_until(|| fixture.shortcuts.candidates() == [root.join("alpha/inner")]);
+            assert!(fixture.shortcuts.candidates_shown());
+            assert_eq!(hint(), None);
+            assert!(
+                fixture.shortcuts.candidate_keys().contains("Tab Complete"),
+                "the strip names what Tab does"
             );
-            assert_eq!(fixture.shortcuts.prompt_hint().as_deref(), Some("1 of 2"));
+
+            listed(
+                &fixture,
+                "alp",
+                &[root.join("alpha"), root.join("alpha/inner")],
+            );
+            assert_eq!(hint().as_deref(), Some("1 of 2"), "files are never listed");
+            assert!(fixture.press(Key::Down, ModifierType::empty()));
+            assert_eq!(hint().as_deref(), Some("2 of 2"));
             tab(&fixture);
-            assert_eq!(prompt_text(&fixture), "alpha/");
-            shift_tab(&fixture);
-            assert_eq!(prompt_text(&fixture), "Alder/");
-            shift_tab(&fixture);
-            assert_eq!(prompt_text(&fixture), "alpha/", "Shift+Tab wraps");
+            assert_eq!(prompt_text(&fixture), "./alpha/inner/");
+            wait_until(|| fixture.shortcuts.candidates() == [root.join("alpha/inner")]);
+            assert_eq!(browser.active_location(), origin, "Tab never navigates");
             assert!(fixture.shortcuts.prompt_has_focus());
 
-            type_text(&fixture, "i");
+            for _ in 0..3 {
+                crate::services::NavigationHistory::shared().record(&root.join("beta"));
+            }
+            fixture.shortcuts.prompt().set_text("./");
+            wait_until(|| fixture.shortcuts.candidates().len() == 5);
+            let listing = fixture.shortcuts.candidates();
             assert_eq!(
-                fixture.shortcuts.prompt_hint(),
-                None,
-                "an edit clears the hint"
+                listing[..2],
+                [root.clone(), root.join("beta")],
+                "the typed folder, then the most visited below it"
             );
-            tab(&fixture);
-            wait_until(|| prompt_text(&fixture) == "alpha/inner/");
-
-            let absolute = format!("{}/b", root.display());
-            fixture.shortcuts.prompt().set_text(&absolute);
-            tab(&fixture);
-            wait_until(|| prompt_text(&fixture) == format!("{}/beta/", root.display()));
+            assert_eq!(listing[4], root.join("alpha/inner"), "then the shallowest");
 
             fixture.shortcuts.prompt().set_text("~/Pro");
+            wait_until(|| fixture.shortcuts.candidates().first() == Some(&home.join("Projects")));
             tab(&fixture);
-            wait_until(|| prompt_text(&fixture) == "~/Projects/");
-
-            fixture.shortcuts.prompt().set_text("zz");
-            tab(&fixture);
-            assert_eq!(prompt_text(&fixture), "zz", "no match keeps the text");
-            assert_eq!(
-                fixture.shortcuts.prompt_hint().as_deref(),
-                Some("No matching folders")
-            );
-            assert!(fixture.shortcuts.prompt_has_focus());
+            assert_eq!(prompt_text(&fixture), "~/Projects/");
 
             browser.toggle_hidden();
             assert!(!browser.preferences().show_hidden);
-            fixture.shortcuts.prompt().set_text(".al");
-            tab(&fixture);
-            assert_eq!(
-                prompt_text(&fixture),
-                ".alcove/",
-                "a dot prefix completes hidden folders the listing hides"
-            );
+            fixture.shortcuts.prompt().set_text("alc");
+            wait_until(|| hint().as_deref() == Some("No matching folders"));
+            listed(&fixture, ".alc", &[root.join(".alcove")]);
 
-            fixture.shortcuts.prompt().set_text("al");
-            tab(&fixture);
-            tab(&fixture);
+            listed(
+                &fixture,
+                "alp",
+                &[root.join("alpha"), root.join("alpha/inner")],
+            );
+            type_text(&fixture, "ha$");
+            assert!(fixture.press(Key::Down, ModifierType::empty()));
             assert!(fixture.press(Key::Return, ModifierType::empty()));
             wait_until(|| browser.active_location() == Some(Location::local(root.join("alpha"))));
-        },
-    );
-}
-
-#[test]
-fn tenxer_go_completion_stays_responsive_and_drops_stale_answers() {
-    crate::test_support::gtk_test(
-        "ui::window::tests::keyboard_dispatch::go_prompt::tenxer_go_completion_stays_responsive_and_drops_stale_answers",
-        || {
-            let folders = Rc::new(Controlled::default());
-            let fixture = fixture_with(folders.clone());
-            enable_tenxer(&fixture);
-            let browser = fixture.view.browser();
-            let origin = browser.active_location();
-            let pending = |fixture: &KeyboardFixture| {
-                fixture.shortcuts.prompt().set_text("/slow/pr");
-                tab(fixture);
-                pump(20);
-                assert_eq!(folders.requested().len(), 1);
-                assert_eq!(
-                    fixture.shortcuts.prompt_hint().as_deref(),
-                    Some("Listing folders\u{2026}")
-                );
-            };
-            let dropped = |fixture: &KeyboardFixture, route: &str| {
-                wait_until(|| folders.abandoned(0));
-                assert!(
-                    !folders.reply(0, Ok(vec![vec![folder("projects")]])),
-                    "{route}"
-                );
-                pump(20);
-                assert!(
-                    !prompt_text(fixture).contains("projects"),
-                    "{route}: a late answer replaces nothing"
-                );
-            };
-
-            open_go(&fixture);
-            pending(&fixture);
-            type_text(&fixture, "o");
-            assert_eq!(
-                prompt_text(&fixture),
-                "/slow/pro",
-                "edits are accepted while pending"
-            );
-            assert!(fixture.shortcuts.prompt_has_focus());
-            dropped(&fixture, "edit");
-
-            pending(&fixture);
-            assert!(fixture.press(Key::Escape, ModifierType::empty()));
-            dropped(&fixture, "Escape");
-            assert_eq!(
-                fixture.shortcuts.open_prompt_kind(),
-                None,
-                "nothing reopens the prompt"
-            );
-
-            open_go(&fixture);
-            pending(&fixture);
-            fixture.shortcuts.open_prompt(Prompt::Find);
-            dropped(&fixture, "replace");
-            assert_eq!(fixture.shortcuts.open_prompt_kind(), Some(Prompt::Find));
-            assert!(fixture.press(Key::Escape, ModifierType::empty()));
-
-            open_go(&fixture);
-            pending(&fixture);
-            assert!(fixture.press(Key::Return, ModifierType::empty()));
-            dropped(&fixture, "submit");
-            wait_until(|| modal_visible(&fixture.overlay));
-            assert_eq!(browser.active_location(), origin);
-            drop(fixture);
-
-            let fixture = fixture_with(folders.clone());
-            enable_tenxer(&fixture);
-            open_go(&fixture);
-            pending(&fixture);
-            PreferenceManager::shared().set_tenxer_mode(false);
-            dropped(&fixture, "mode exit");
             assert_eq!(fixture.shortcuts.open_prompt_kind(), None);
-            enable_tenxer(&fixture);
-
-            for (reply, hint) in [
-                (
-                    Err(crate::ui::go_completion::Unreadable),
-                    "Can\u{2019}t read that folder \u{2014} check the path",
-                ),
-                (
-                    Ok(vec![
-                        (0..=MAX_MATCHING_FOLDERS)
-                            .map(|index| folder(&format!("pr{index}")))
-                            .collect(),
-                    ]),
-                    "Too many entries \u{2014} refine the path",
-                ),
-            ] {
-                open_go(&fixture);
-                pending(&fixture);
-                assert!(folders.reply(0, reply));
-                wait_until(|| fixture.shortcuts.prompt_hint().as_deref() == Some(hint));
-                assert_eq!(
-                    prompt_text(&fixture),
-                    "/slow/pr",
-                    "{hint}: the text is kept"
-                );
-                assert!(fixture.shortcuts.prompt_has_focus());
-                assert!(fixture.press(Key::Escape, ModifierType::empty()));
-            }
-
-            open_go(&fixture);
-            pending(&fixture);
-            fixture.window.close();
-            dropped(&fixture, "window close");
         },
     );
 }

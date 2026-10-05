@@ -46,7 +46,7 @@ pub struct PeekBehavior {
 impl Default for PeekBehavior {
     fn default() -> Self {
         Self {
-            open_delay: Duration::from_millis(180),
+            open_delay: Duration::from_millis(1000),
             close_delay: Duration::from_millis(80),
             fade_duration: Duration::from_millis(150),
             item_limit: 8,

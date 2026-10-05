@@ -396,17 +396,18 @@ impl ThemeManager {
             });
         super::document_media::apply_theme(tokens);
         super::browser::find::apply_theme(&tokens.accent, &tokens.background);
+        super::preview::audio::apply_theme(tokens);
         let root_font_px = snapped_root_font_px(
             self.preferences.text_size().root_font_px(),
             desktop_text_scale_factor(),
         );
         let glow = if self.preferences.element_glow() {
-            "@theme_accent"
+            "@strata_accent"
         } else {
             "transparent"
         };
         self.provider.load_from_string(&format!(
-            "{}\n@define-color theme_glow {glow};\n",
+            "{}\n@define-color strata_glow {glow};\n",
             tokens_css(tokens, root_font_px)
         ));
         apply_interface_font(root_font_px);
@@ -974,10 +975,10 @@ fn tokens_css(tokens: &ThemeTokens, root_font_px: f64) -> String {
     let column_header = header - 9.0;
     let control = (24.0 * scale).round();
     let sizing = format!(
-        "headerbar, headerbar > windowhandle > box, .mode-pane-header, .preview-header {{ min-height: {header}px; }}\n.column-header {{ min-height: {column_header}px; }}\nheaderbar .sidebar-toggle, headerbar button.header-action, headerbar menubutton.header-action > button, .preview-header-action, button.column-header-action, menubutton.column-header-action > button {{ min-width: {control}px; min-height: {control}px; }}\n"
+        "headerbar, headerbar > windowhandle > box, .mode-pane-header, .preview-header {{ min-height: {header}px; }}\n.column-header {{ min-height: {column_header}px; }}\nheaderbar .sidebar-toggle, headerbar button.header-action, headerbar menubutton.header-action > button, .preview-header-action, button.column-header-action, menubutton.column-header-action > button {{ min-width: {control}px; min-height: {control}px; }}\n.file-operation-card button.progress-card-action {{ min-width: 0; min-height: 0; }}\n"
     );
     let colors = format!(
-        "@define-color theme_bg {};\n@define-color theme_surface {};\n@define-color theme_text {};\n@define-color theme_accent {};\n@define-color theme_danger {};\n@define-color theme_muted {};\n@define-color theme_highlight {};\n@define-color theme_border {};\n@define-color theme_dim_text {};\nwindow, popover, popover.background {{ font-size: {root_font_px:.6}px; }}\n",
+        "@define-color strata_bg {};\n@define-color strata_surface {};\n@define-color strata_text {};\n@define-color strata_accent {};\n@define-color strata_danger {};\n@define-color strata_muted {};\n@define-color strata_highlight {};\n@define-color strata_border {};\n@define-color strata_dim_text {};\nwindow, popover, popover.background {{ font-size: {root_font_px:.6}px; }}\n",
         tokens.background,
         tokens.surface,
         tokens.text,

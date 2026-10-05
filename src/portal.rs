@@ -257,9 +257,7 @@ pub(crate) fn run() -> glib::ExitCode {
         return glib::ExitCode::FAILURE;
     }
     crate::metrics::initialize();
-    if let Err(error) = tracing_subscriber::fmt::try_init() {
-        eprintln!("Unable to initialize logging: {error}");
-    }
+    crate::logging::initialize();
     tracing::info!(
         version = FILE_CHOOSER_VERSION,
         "starting Strata FileChooser portal backend"

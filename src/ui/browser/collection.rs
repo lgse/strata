@@ -5,6 +5,8 @@ use crate::model::Location;
 use crate::services::{filter_query_allows_typos, fold_for_search};
 use crate::ui::browser::entry::entry_matches;
 use crate::ui::entry_list_model::EntryListModel;
+use crate::ui::preferences::PreferenceManager;
+use crate::ui::search_session::SearchScope;
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::cell::{Cell, RefCell};
@@ -265,7 +267,7 @@ pub(crate) fn focus_filter_entry(entry: &gtk::Entry, query: Option<&str>) {
     }
 }
 
-pub(crate) fn debounce_filter_entry(entry: &gtk::Entry, on_settled: impl Fn(String) + 'static) {
+fn debounce_filter_entry(entry: &gtk::Entry, on_settled: impl Fn(String) + 'static) {
     let pending: Rc<RefCell<Option<glib::SourceId>>> = Rc::new(RefCell::new(None));
     let on_settled = Rc::new(on_settled);
     entry.connect_changed(move |entry| {
@@ -283,7 +285,44 @@ pub(crate) fn debounce_filter_entry(entry: &gtk::Entry, on_settled: impl Fn(Stri
     });
 }
 
-type FilterQueryCallback = dyn Fn(String, bool, bool);
+// Don't filter a replaced listing: doing so would discard its hidden selection.
+pub(crate) fn bind_listing_filter(
+    entry: &gtk::Entry,
+    filter: &gtk::CustomFilter,
+    query: &Rc<RefCell<String>>,
+    replaced: Rc<Cell<bool>>,
+    state: Option<Weak<super::ViewState>>,
+) {
+    let refresh = Rc::new(move || {
+        if let Some(state) = state.as_ref().and_then(Weak::upgrade) {
+            state.refresh_name_highlights();
+        }
+    });
+    let settled_filter = filter.clone();
+    let settled_query = query.clone();
+    let settled_refresh = refresh.clone();
+    debounce_filter_entry(entry, move |text| {
+        let text = if replaced.get() { String::new() } else { text };
+        notify_filter_query(&settled_filter, &settled_query, text);
+        settled_refresh();
+    });
+    let filter = filter.downgrade();
+    let primed = Cell::new(false);
+    PreferenceManager::shared().bind_preference(
+        entry,
+        PreferenceManager::tenxer_mode,
+        move |_, _| {
+            if primed.replace(true)
+                && let Some(filter) = filter.upgrade()
+            {
+                filter.changed(gtk::FilterChange::Different);
+                refresh();
+            }
+        },
+    );
+}
+
+type FilterQueryCallback = dyn Fn(String, SearchScope, bool);
 
 pub(in crate::ui) struct FilterQueryBinding {
     entry: glib::WeakRef<gtk::Entry>,
@@ -293,17 +332,25 @@ pub(in crate::ui) struct FilterQueryBinding {
     scope: FilterScope,
 }
 
-/// The saved **Include subfolders** preference, which a 10xer **s** search
-/// overrides without changing it.
+// 10xer overrides scope without overwriting the saved subfolder preference.
 #[derive(Clone, Default)]
 struct FilterScope {
     include_subfolders: Rc<Cell<bool>>,
+    tenxer: Rc<Cell<bool>>,
     forced: Rc<Cell<bool>>,
 }
 
 impl FilterScope {
-    fn recursive(&self) -> bool {
-        self.include_subfolders.get() || self.forced.get()
+    fn current(&self) -> SearchScope {
+        if self.forced.get() {
+            SearchScope::Paths
+        } else if self.tenxer.get() {
+            SearchScope::FolderTerms
+        } else if self.include_subfolders.get() {
+            SearchScope::Subfolders
+        } else {
+            SearchScope::Folder
+        }
     }
 }
 
@@ -320,7 +367,7 @@ impl FilterQueryBinding {
             if text.trim().is_empty() {
                 self.scope.forced.set(false);
             }
-            callback(text, self.scope.recursive(), false);
+            callback(text, self.scope.current(), false);
         }
     }
 
@@ -357,7 +404,7 @@ impl FilterQueryBinding {
     pub(in crate::ui) fn requery(&self) {
         cancel_source(&self.pending);
         if let (Some(entry), Some(callback)) = (self.entry.upgrade(), self.callback.upgrade()) {
-            callback(entry.text().to_string(), self.scope.recursive(), true);
+            callback(entry.text().to_string(), self.scope.current(), true);
         }
     }
 }
@@ -378,32 +425,44 @@ impl Drop for FilterQueryBinding {
 pub(in crate::ui) fn bind_filter_query(
     entry: &gtk::Entry,
     session: &crate::ui::search_session::SearchSession,
-    on_query: impl Fn(String, bool, bool) + 'static,
+    on_query: impl Fn(String, SearchScope, bool) + 'static,
 ) -> FilterQueryBinding {
     let pending = Rc::new(RefCell::new(None));
     let callback: Rc<FilterQueryCallback> = Rc::new(on_query);
     let scope = FilterScope {
         include_subfolders: Rc::new(Cell::new(true)),
+        tenxer: Rc::new(Cell::new(PreferenceManager::shared().tenxer_mode())),
         forced: Rc::default(),
     };
-    let weak_callback = Rc::downgrade(&callback);
-    let pending_for_binding = pending.clone();
-    let scope_for_binding = scope.clone();
-    crate::ui::preferences::PreferenceManager::shared().bind_preference(
-        entry,
-        crate::ui::preferences::PreferenceManager::filter_include_subfolders,
-        move |entry, recursive| {
-            scope_for_binding.include_subfolders.set(recursive);
-            cancel_source(&pending_for_binding);
+    let requery_on_change = |setting: fn(&FilterScope) -> &Rc<Cell<bool>>| {
+        let weak_callback = Rc::downgrade(&callback);
+        let pending = pending.clone();
+        let scope = scope.clone();
+        move |entry: &gtk::Widget, enabled: bool| {
+            setting(&scope).set(enabled);
+            cancel_source(&pending);
             if let Some(callback) = weak_callback.upgrade() {
                 let entry = entry
                     .downcast_ref::<gtk::Entry>()
                     .expect("filter entry anchor");
-                callback(
-                    entry.text().to_string(),
-                    scope_for_binding.recursive(),
-                    true,
-                );
+                callback(entry.text().to_string(), scope.current(), true);
+            }
+        }
+    };
+    let manager = PreferenceManager::shared();
+    manager.bind_preference(
+        entry,
+        PreferenceManager::filter_include_subfolders,
+        requery_on_change(|scope| &scope.include_subfolders),
+    );
+    let on_tenxer = requery_on_change(|scope| &scope.tenxer);
+    let tenxer = scope.tenxer.clone();
+    manager.bind_preference(
+        entry,
+        PreferenceManager::tenxer_mode,
+        move |entry, enabled| {
+            if tenxer.get() != enabled {
+                on_tenxer(entry, enabled);
             }
         },
     );
@@ -428,7 +487,7 @@ pub(in crate::ui) fn bind_filter_query(
                 if text.trim().is_empty() {
                     scope.forced.set(false);
                 }
-                callback(text, scope.recursive(), false);
+                callback(text, scope.current(), false);
             },
         ));
     });
@@ -592,6 +651,10 @@ impl ViewMap {
 
     pub(crate) fn has_query(&self) -> bool {
         !self.query.borrow().trim().is_empty()
+    }
+
+    pub(crate) fn query(&self) -> std::cell::Ref<'_, String> {
+        self.query.borrow()
     }
 
     pub(crate) fn source_position(&self, visible_position: u32) -> Option<usize> {

@@ -135,10 +135,6 @@ fn tenxer_sections(mode: BrowserMode, chooser: Option<ChooserScope>) -> Vec<Refe
             rows: tenxer_preview(mode, chooser.is_some()),
         },
         ReferenceSection {
-            title: "10xer mode",
-            rows: tenxer_mode_rows(chooser.is_some()),
-        },
-        ReferenceSection {
             title: "Search and tools",
             rows: tenxer_tools(mode, chooser.is_some()),
         },
@@ -147,6 +143,18 @@ fn tenxer_sections(mode: BrowserMode, chooser: Option<ChooserScope>) -> Vec<Refe
             rows: MEDIA.to_vec(),
         },
     ]);
+    let mode_rows = tenxer_mode_rows(mode, chooser.is_some(), &sections);
+    let mode_index = sections
+        .iter()
+        .position(|section| section.title == "Search and tools")
+        .expect("search section");
+    sections.insert(
+        mode_index,
+        ReferenceSection {
+            title: "10xer mode",
+            rows: mode_rows,
+        },
+    );
     sections
 }
 
@@ -268,8 +276,11 @@ fn tenxer_places(chooser: bool) -> Vec<(&'static str, &'static str)> {
         ]);
     }
     shortcuts.extend_from_slice(&[
-        ("g Space", "Go to a typed path or URI"),
-        ("Tab / Shift+Tab in go ›", "Cycle matching folders"),
+        ("g Space", "Go to a folder, typed path, or URI"),
+        (
+            "Tab in go › / move to › / copy to ›",
+            "Write the chosen folder into the prompt",
+        ),
         ("z", "Jump to a visited folder"),
         ("Z", "Jump to a recent folder"),
         ("↑ / ↓ in jump › / recent ›", "Choose a visited folder"),
@@ -284,6 +295,10 @@ fn tenxer_preview(mode: BrowserMode, chooser: bool) -> Vec<(&'static str, &'stat
         shortcuts.push(("i on a file", "Toggle the preview without taking focus"));
     }
     shortcuts.push(("J / K", "Scroll the open preview without taking focus"));
+    shortcuts.push((
+        "< / >",
+        "Previous / next file of the same type while the preview shows audio or video",
+    ));
     // Icons have no key that moves into the preview.
     if mode != BrowserMode::Icons {
         shortcuts.extend_from_slice(TENXER_PREVIEW_OWNED);
@@ -314,7 +329,10 @@ const TENXER_PREVIEW_OWNED: &[(&str, &str)] = &[
         "h in an archive",
         "Archive parent; at the root, back to the listing",
     ),
-    ("Space / ← → / ↑ ↓ / m in media", "Play, seek, volume, mute"),
+    (
+        "Space / ← → / ↑ ↓ / m / < > in media",
+        "Play, seek, volume, mute, previous / next file of the same type",
+    ),
     (
         "h / ← in a document, h in media",
         "Return to the listing; the preview stays open",
@@ -439,7 +457,11 @@ fn chooser_files(chooser: ChooserScope) -> Vec<(&'static str, &'static str)> {
     shortcuts
 }
 
-fn tenxer_mode_rows(chooser: bool) -> Vec<(&'static str, &'static str)> {
+fn tenxer_mode_rows(
+    mode: BrowserMode,
+    chooser: bool,
+    sections: &[ReferenceSection],
+) -> Vec<(&'static str, &'static str)> {
     let mut shortcuts = Vec::new();
     if !chooser {
         shortcuts.push(("Q", "Close the current window"));
@@ -448,6 +470,28 @@ fn tenxer_mode_rows(chooser: bool) -> Vec<(&'static str, &'static str)> {
         ("Ctrl+Shift+M", "Toggle 10xer mode"),
         ("F1 / ~", "Show or hide this reference"),
     ]);
+    let default = default_sections(mode);
+    for &row in sections.iter().flat_map(|section| &section.rows) {
+        let keys = row.0;
+        // Keep grouped aliases together when they include a 10xer binding.
+        // Space is shared, but its selection action replaces ordinary preview.
+        let shared = keys != "Space"
+            && (default
+                .iter()
+                .flat_map(|section| &section.rows)
+                .any(|&(default_keys, _)| default_keys == keys)
+                || matches!(
+                    keys,
+                    "Home"
+                        | "Esc"
+                        | "Ctrl+Enter"
+                        | "Shift+Tab in any preview"
+                        | "Space / ← → / ↑ ↓ / m in media"
+                ));
+        if !shared && !shortcuts.contains(&row) {
+            shortcuts.push(row);
+        }
+    }
     shortcuts
 }
 
@@ -552,6 +596,11 @@ const MEDIA: &[(&str, &str)] = &[
     ("Ctrl+Alt+← / →", "Seek −5 / +5 seconds"),
     ("Ctrl+Alt+↑ / ↓", "Volume up / down"),
     ("Ctrl+Alt+M", "Mute / unmute"),
+    ("Ctrl+Alt+< / >", "Previous / next file of the same type"),
+    (
+        "Enter on a video",
+        "Open it in the default app where the preview stopped",
+    ),
 ];
 
 fn default_hint(hint: ContextHint, type_to_search: bool) -> &'static str {

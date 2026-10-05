@@ -12,6 +12,7 @@ use super::super::*;
 use crate::services::{
     LoadHandle, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
 };
+mod audio_tracks;
 mod context_menus;
 mod escape_precedence;
 mod file_commands;
@@ -22,6 +23,7 @@ mod go_prompt;
 mod mode_exit;
 mod place_chords;
 mod preview_ownership;
+mod video_clips;
 
 use crate::ui::{
     preview::{DocumentScroll, PreviewDrawer},
@@ -68,17 +70,12 @@ impl KeyboardFixture {
     }
 
     fn with_provider(provider: Rc<dyn crate::services::PreviewProvider>) -> Self {
-        Self::with_parts(
-            provider,
-            Rc::new(crate::ui::go_completion::GioFolders),
-            browser_for_window,
-        )
+        Self::with_parts(provider, browser_for_window)
     }
 
     /// `view` runs after the preferences are seeded, which it reads on creation.
     fn with_parts(
         provider: Rc<dyn crate::services::PreviewProvider>,
-        folders: Rc<dyn crate::ui::go_completion::FolderSource>,
         view: impl FnOnce() -> BrowserView,
     ) -> Self {
         PreferenceManager::seed_saved_preferences_for_test();
@@ -129,7 +126,6 @@ impl KeyboardFixture {
                     preferences,
                 },
                 shortcuts: shortcuts.clone(),
-                folders,
                 history: history.clone(),
             },
         );
@@ -2402,6 +2398,7 @@ fn tenxer_icons_move_spatially_open_explicitly_and_peek() {
             preferences.set_tenxer_mode(true);
             let start_name = start.display_name.clone();
             let start_path = start.location.native_path().expect("search hit path");
+            wait_until(|| fixture.view.focus_search_result(start_path));
             let mut search_landed = Vec::new();
             for key in [Key::j, Key::Down, Key::KP_Down] {
                 assert!(fixture.view.focus_search_result(start_path), "{key:?}");

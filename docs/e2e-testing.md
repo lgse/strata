@@ -403,7 +403,9 @@ may use `@pytest.mark.usefixtures("unreserved_columns")`. This fixture switches
 **Appearance → Preview panel** off through the UI and returns keyboard focus to
 the listing; it does not change saved preferences. Do not apply it to preview
 lifecycle scenarios or use it as a suite-wide default. Their reserved-space
-behavior and the default overflow baseline must remain covered.
+behavior and the default overflow baseline must remain covered. The layout
+rules those scenarios own are listed in
+[Preview panel and column layout](preview-panel-layout.md).
 
 ### Inline new-entry focus regressions
 

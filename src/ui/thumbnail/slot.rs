@@ -4,12 +4,16 @@ use std::cell::{Cell, RefCell};
 
 use gtk::{gdk, gdk::prelude::*, glib, graphene, prelude::*, subclass::prelude::*};
 
+#[cfg(test)]
+mod tests;
+
 mod imp {
     use super::*;
 
     #[derive(Default)]
     pub struct ThumbnailSlot {
         pub slot: Cell<i32>,
+        pub(crate) icon_context: Cell<crate::assets::IconContext>,
         pub content_inset: Cell<i32>,
         pub limit_fallback_height: Cell<bool>,
         pub fallback_scale: Cell<f64>,
@@ -63,7 +67,15 @@ mod imp {
             let marked = mark_icon.is_some();
 
             let texture = mark_icon
-                .and_then(crate::assets::primary_icon_paintable)
+                .and_then(|name| {
+                    crate::assets::sized_icon_paintable(
+                        name,
+                        &crate::assets::primary_icon_color(),
+                        obj.icon_pixel_size(),
+                        obj.scale_factor(),
+                        obj.icon_context(),
+                    )
+                })
                 .or_else(|| self.texture.borrow().clone())
                 .or_else(|| self.fallback.borrow().clone());
 
@@ -150,6 +162,7 @@ impl ThumbnailSlot {
                 glib::ControlFlow::Break
             });
         });
+        widget.connect_scale_factor_notify(super::refresh_slot_icon);
         widget.set_overflow(gtk::Overflow::Hidden);
         widget.imp().fallback_scale.set(1.0);
         widget.imp().base_opacity.set(1.0);
@@ -163,12 +176,33 @@ impl ThumbnailSlot {
             return;
         }
         self.imp().slot.set(size);
+        super::refresh_slot_icon(self);
         self.queue_resize();
+    }
+
+    pub(crate) fn icon_context(&self) -> crate::assets::IconContext {
+        self.imp().icon_context.get()
+    }
+
+    pub(crate) fn set_icon_context(&self, context: crate::assets::IconContext) {
+        if self.imp().icon_context.replace(context) != context {
+            super::refresh_slot_icon(self);
+            self.queue_draw();
+        }
+    }
+
+    pub(crate) fn icon_pixel_size(&self) -> i32 {
+        (self.imp().slot.get() - 2 * self.imp().content_inset.get()).max(1)
+    }
+
+    pub(crate) fn fallback_icon(&self) -> Option<String> {
+        self.imp().fallback_icon.borrow().clone()
     }
 
     pub(crate) fn set_content_inset(&self, inset: i32) {
         let inset = inset.max(0);
         if self.imp().content_inset.replace(inset) != inset {
+            super::refresh_slot_icon(self);
             self.queue_draw();
         }
     }

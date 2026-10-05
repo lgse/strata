@@ -106,9 +106,11 @@ class Strata:
         return pane.find(description=ENTRY_CONTAINER_DESCRIPTION)
 
     def view_mode(self) -> str:
-        containers = self.containers()
-        if not containers:
-            raise AssertionError("no browser pane is on screen")
+        # Resizes can transiently remove panes from the accessibility tree.
+        containers = self.wait(
+            lambda: self.containers() or None,
+            "a browser pane to be on screen",
+        )
         return VIEW_DESCRIPTIONS[containers[0].description]
 
     def wait_for_view(self, mode: str) -> None:
@@ -167,6 +169,10 @@ class Strata:
             lambda: self.current_directory() == name,
             f"the browser to be working in {name!r}",
         )
+        # Column navigation may still be scrolling after the location changes.
+        pane = self._pane_or_none(name) or self._pane_or_none(None)
+        if pane is not None:
+            self.settle(pane)
 
     # ---------------------------------------------------------------- entries
 

@@ -38,7 +38,9 @@ fn held(fixture: &KeyboardFixture) -> Held {
         },
         filter,
         search,
-        highlights: !highlighted_names(&fixture.view.widget()).is_empty(),
+        // Search hits keep their own highlights; only find's are dismissed.
+        highlights: fixture.view.find_highlighted()
+            && !highlighted_names(&fixture.view.widget()).is_empty(),
         visual: fixture.shortcuts.visual_text().is_some(),
         preview: fixture.preview.is_enabled(),
         fill: if search {

@@ -20,31 +20,48 @@ fn seed_report_names(fixture: &KeyboardFixture) {
     wait_until(|| entry_count(&browser) == 7);
 }
 
-/// Bound name labels (Columns and List) or inscriptions (Icons) that carry
-/// find highlight attributes, including views not currently shown.
-pub(super) fn highlighted_names(widget: &gtk::Widget) -> Vec<String> {
-    fn collect(widget: &gtk::Widget, names: &mut Vec<String>) {
+fn highlighted_labels(widget: &gtk::Widget) -> Vec<(String, gtk::pango::AttrList)> {
+    fn collect(widget: &gtk::Widget, labels: &mut Vec<(String, gtk::pango::AttrList)>) {
         if let Some(label) = widget.downcast_ref::<gtk::Label>()
-            && label.attributes().is_some()
+            && let Some(attributes) = label.attributes()
         {
-            names.push(label.text().to_string());
+            labels.push((label.text().to_string(), attributes));
         }
         if let Some(label) = widget.downcast_ref::<gtk::Inscription>()
-            && label.attributes().is_some()
+            && let Some(attributes) = label.attributes()
         {
-            names.push(label.text().unwrap_or_default().to_string());
+            labels.push((label.text().unwrap_or_default().to_string(), attributes));
         }
         let mut child = widget.first_child();
         while let Some(current) = child {
-            collect(&current, names);
+            collect(&current, labels);
             child = current.next_sibling();
         }
     }
-    let mut names = Vec::new();
-    collect(widget, &mut names);
+    let mut labels = Vec::new();
+    collect(widget, &mut labels);
+    labels
+}
+
+pub(super) fn highlighted_names(widget: &gtk::Widget) -> Vec<String> {
+    let mut names: Vec<_> = highlighted_labels(widget)
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect();
     names.sort();
     names.dedup();
     names
+}
+
+fn highlight_colors(widget: &gtk::Widget) -> Vec<String> {
+    highlighted_labels(widget)
+        .into_iter()
+        .flat_map(|(_, attributes)| attributes.attributes())
+        .filter_map(|attribute| {
+            let color = attribute.downcast_ref::<gtk::pango::AttrColor>()?;
+            Some(color.color().to_str().to_string())
+        })
+        .collect()
 }
 
 pub(super) fn type_and_submit(fixture: &KeyboardFixture, prompt: Key, text: &str) {
@@ -61,6 +78,71 @@ pub(super) fn enable_tenxer(fixture: &KeyboardFixture) -> Rc<PreferenceManager> 
     preferences.set_tenxer_mode(true);
     pump(50);
     preferences
+}
+
+#[test]
+fn tenxer_routes_listing_shortcuts_from_non_text_controls() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::footer_prompt::tenxer_routes_listing_shortcuts_from_non_text_controls",
+        || {
+            let fixture = KeyboardFixture::new();
+            enable_tenxer(&fixture);
+            let container = fixture.overlay.child().expect("content container");
+            container.set_focusable(true);
+            let other = gtk::Window::new();
+            let refocus = |stranded: Option<&gtk::Widget>| {
+                other.present();
+                wait_until(|| other.is_active() && !fixture.window.is_active());
+                fixture.window.set_default_size(820, 540);
+                gtk::prelude::RootExt::set_focus(&fixture.window, stranded);
+                fixture.window.present();
+                wait_until(|| fixture.window.is_active() && !other.is_active());
+            };
+            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
+                fixture.view.set_view_mode(mode);
+                focus_files(&fixture);
+                for stranded in [
+                    None,
+                    Some(&container),
+                    Some(fixture.sidebar_toggle.upcast_ref()),
+                ] {
+                    refocus(stranded);
+                    assert_eq!(
+                        gtk::prelude::RootExt::focus(&fixture.window).as_ref(),
+                        stranded
+                    );
+                    assert!(fixture.press(Key::g, ModifierType::empty()));
+                    assert_eq!(
+                        fixture.shortcuts.armed_chord(),
+                        Some(crate::ui::tenxer_mode::Chord::Go),
+                        "{mode:?}"
+                    );
+                    fixture.press(Key::Escape, ModifierType::empty());
+                    for (key, kind) in [(Key::f, Prompt::Filter), (Key::s, Prompt::Search)] {
+                        refocus(stranded);
+                        assert!(
+                            fixture.press(key, ModifierType::empty()),
+                            "{mode:?} {key:?}"
+                        );
+                        assert_eq!(fixture.shortcuts.open_prompt_kind(), Some(kind));
+                        assert!(fixture.shortcuts.prompt_has_focus());
+                        fixture.press(Key::Escape, ModifierType::empty());
+                    }
+                }
+                fixture.press(Key::l, ModifierType::CONTROL_MASK);
+                assert!(fixture.view.location_has_focus());
+                other.present();
+                wait_until(|| other.is_active());
+                fixture.window.present();
+                wait_until(|| fixture.window.is_active());
+                fixture.press(Key::f, ModifierType::empty());
+                assert!(fixture.view.location_has_focus());
+                assert_eq!(fixture.shortcuts.open_prompt_kind(), None);
+                fixture.press(Key::Escape, ModifierType::empty());
+            }
+            other.destroy();
+        },
+    );
 }
 
 #[test]
@@ -424,6 +506,7 @@ fn tenxer_filter_commits_results_without_touching_the_hidden_directory() {
                 assert_eq!(fixture.shortcuts.prompt_label().as_deref(), Some("filter:"));
                 fixture.shortcuts.prompt().set_text("report");
                 wait_results(&fixture, &IMMEDIATE_REPORTS);
+                wait_until(|| highlighted_names(&fixture.view.widget()) == IMMEDIATE_REPORTS);
                 assert!(
                     fixture.shortcuts.prompt_has_focus(),
                     "{mode:?}: typing filters live and stays in the prompt"
@@ -532,6 +615,13 @@ fn tenxer_filter_commits_results_without_touching_the_hidden_directory() {
                 assert!(fixture.press(Key::Escape, none));
                 wait_until(|| fixture.view.listing_filter().is_none());
 
+                commit_filter(&fixture, "md rep");
+                wait_results(&fixture, &["gamma-report.md"]);
+                wait_until(|| highlighted_names(&fixture.view.widget()) == ["gamma-report.md"]);
+                assert!(fixture.press(Key::Escape, none));
+                wait_until(|| fixture.view.listing_filter().is_none());
+                wait_until(|| highlighted_names(&fixture.view.widget()).is_empty());
+
                 commit_filter(&fixture, "reports");
                 wait_until(|| {
                     fixture
@@ -566,15 +656,15 @@ fn fixture_name(fixture: &KeyboardFixture) -> &str {
 }
 
 #[test]
-fn tenxer_filter_follows_live_scope_and_survives_view_rebuilds() {
+fn tenxer_filter_ignores_include_subfolders_and_survives_view_rebuilds() {
     crate::test_support::gtk_test(
-        "ui::window::tests::keyboard_dispatch::footer_prompt::tenxer_filter_follows_live_scope_and_survives_view_rebuilds",
+        "ui::window::tests::keyboard_dispatch::footer_prompt::tenxer_filter_ignores_include_subfolders_and_survives_view_rebuilds",
         || {
             let first = KeyboardFixture::new();
             let second = KeyboardFixture::new();
             let preferences = enable_tenxer(&first);
             second.shortcuts.bind_preferences(&preferences);
-            preferences.set_filter_include_subfolders(false);
+            preferences.set_filter_include_subfolders(true);
             for fixture in [&first, &second] {
                 seed_filter_tree(fixture);
                 focus_files(fixture);
@@ -582,21 +672,23 @@ fn tenxer_filter_follows_live_scope_and_survives_view_rebuilds() {
                 wait_results(fixture, &IMMEDIATE_REPORTS);
             }
 
-            preferences.set_filter_include_subfolders(true);
-            for fixture in [&first, &second] {
-                wait_results(fixture, &ALL_REPORTS);
-                wait_until(|| fixture.shortcuts.count_text().0 == "4 items");
-            }
-            preferences.set_filter_include_subfolders(false);
-            for fixture in [&first, &second] {
-                wait_results(fixture, &IMMEDIATE_REPORTS);
-                wait_until(|| fixture.view.item_view_has_focus());
+            for include_subfolders in [false, true] {
+                preferences.set_filter_include_subfolders(include_subfolders);
+                pump(200);
+                for fixture in [&first, &second] {
+                    wait_results(fixture, &IMMEDIATE_REPORTS);
+                    wait_until(|| fixture.shortcuts.count_text().0 == "3 items");
+                }
             }
 
             assert!(first.press(Key::f, ModifierType::empty()));
             first.shortcuts.prompt().set_text("gamma");
             assert!(first.press(Key::Return, ModifierType::empty()));
-            for mode in [BrowserMode::List, BrowserMode::Icons, BrowserMode::Columns] {
+            for (mode, accent, drawn) in [
+                (BrowserMode::List, "#aa0000", "#aaaa00000000"),
+                (BrowserMode::Icons, "#00aa00", "#0000aaaa0000"),
+                (BrowserMode::Columns, "#0000aa", "#00000000aaaa"),
+            ] {
                 first.view.set_view_mode(mode);
                 wait_results(&first, &["gamma-report.md"]);
                 assert_eq!(
@@ -604,6 +696,8 @@ fn tenxer_filter_follows_live_scope_and_survives_view_rebuilds() {
                     Some("gamma"),
                     "{mode:?}"
                 );
+                crate::ui::browser::find::apply_theme(accent, "#000000");
+                wait_until(|| highlight_colors(&first.view.widget()).contains(&drawn.to_owned()));
                 wait_until(|| first.shortcuts.filter_mark().as_deref() == Some("filter: gamma"));
                 assert_eq!(
                     revealed_filter_funnels(&first.view.widget()),
@@ -720,10 +814,7 @@ fn tenxer_search_covers_the_current_tree_and_restores_the_filter() {
                     location_ends_with(browser.active_location(), fixture_name(&fixture)),
                     "{mode:?}: applying the search opens nothing"
                 );
-                assert_eq!(
-                    highlighted_names(&fixture.view.widget()),
-                    Vec::<String>::new()
-                );
+                wait_until(|| highlighted_names(&fixture.view.widget()) == ALL_REPORTS);
 
                 type_and_submit(&fixture, Key::slash, "deep-report");
                 assert_eq!(
@@ -737,7 +828,7 @@ fn tenxer_search_covers_the_current_tree_and_restores_the_filter() {
                 );
                 wait_until(|| highlighted_names(&fixture.view.widget()) == ["deep-report.txt"]);
                 assert!(fixture.press(Key::Escape, none));
-                wait_until(|| highlighted_names(&fixture.view.widget()).is_empty());
+                wait_until(|| highlighted_names(&fixture.view.widget()) == ALL_REPORTS);
 
                 let selected = selected_result_names(&fixture);
                 assert!(fixture.press(Key::r, ModifierType::CONTROL_MASK));
@@ -771,6 +862,14 @@ fn tenxer_search_covers_the_current_tree_and_restores_the_filter() {
                 type_search(&fixture, "report");
                 wait_results(&fixture, &ALL_REPORTS);
                 fixture.shortcuts.prompt().set_text("");
+                assert!(fixture.press(Key::Escape, none));
+                wait_filter_restored(&fixture, "gamma", &["gamma-report.md"]);
+
+                type_search(&fixture, "deep reports");
+                wait_results(&fixture, &["deep-report.txt"]);
+                wait_until(|| highlighted_names(&fixture.view.widget()) == ["deep-report.txt"]);
+                assert!(fixture.press(Key::Escape, none));
+                wait_until(|| fixture.view.item_view_has_focus());
                 assert!(fixture.press(Key::Escape, none));
                 wait_filter_restored(&fixture, "gamma", &["gamma-report.md"]);
 
