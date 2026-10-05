@@ -4,15 +4,34 @@
 
 use std::io::{self, Read, Write};
 
-const MAGIC: &[u8; 8] = b"STRRAR01";
+const MAGIC: &[u8; 8] = b"STRRAR02";
 /// Generous enough for any real archive member name or error message, small
 /// enough that a malformed/compromised child cannot force a huge allocation.
 const MAX_TEXT_BYTES: u32 = 8192;
+const HEADER_BYTES: usize = 32;
+/// Wire encoding of an absent mode.
+const NO_MODE: u32 = u32::MAX;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum WireTime {
+    /// Windows FILETIME (UTC), as RAR 5 headers store it.
+    FileTime(u64),
+    /// MS-DOS date (high 16 bits) and time in the archiver's local zone, as
+    /// RAR 1.5–4 headers store it. Only the parent knows the user's zone.
+    DosLocal(u32),
+}
+
+/// Member mode and modification time as UnRAR reports them.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct WireMetadata {
+    pub(crate) mode: Option<u32>,
+    pub(crate) modified: Option<WireTime>,
+}
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Record {
-    Directory(String),
-    File(String, u64),
+    Directory(String, WireMetadata),
+    File(String, u64, WireMetadata),
     End,
     Error(String),
 }
@@ -30,27 +49,50 @@ pub(crate) fn read_magic(reader: &mut impl Read) -> io::Result<()> {
     Ok(())
 }
 
-pub(crate) fn write_directory(writer: &mut impl Write, name: &str) -> io::Result<()> {
-    write_header(writer, 0, name, 0)
+pub(crate) fn write_directory(
+    writer: &mut impl Write,
+    name: &str,
+    metadata: WireMetadata,
+) -> io::Result<()> {
+    write_header(writer, 0, name, 0, metadata)
 }
 
-pub(crate) fn write_file_header(writer: &mut impl Write, name: &str, size: u64) -> io::Result<()> {
-    write_header(writer, 1, name, size)
+pub(crate) fn write_file_header(
+    writer: &mut impl Write,
+    name: &str,
+    size: u64,
+    metadata: WireMetadata,
+) -> io::Result<()> {
+    write_header(writer, 1, name, size, metadata)
 }
 
 pub(crate) fn write_end(writer: &mut impl Write) -> io::Result<()> {
-    write_header(writer, 2, "", 0)
+    write_header(writer, 2, "", 0, WireMetadata::default())
 }
 
 pub(crate) fn write_error(writer: &mut impl Write, message: &str) -> io::Result<()> {
-    write_header(writer, 3, message, 0)
+    write_header(writer, 3, message, 0, WireMetadata::default())
 }
 
-fn write_header(writer: &mut impl Write, kind: u32, text: &str, size: u64) -> io::Result<()> {
+fn write_header(
+    writer: &mut impl Write,
+    kind: u32,
+    text: &str,
+    size: u64,
+    metadata: WireMetadata,
+) -> io::Result<()> {
     let bytes = text.as_bytes();
     writer.write_all(&kind.to_le_bytes())?;
     writer.write_all(&(bytes.len() as u32).to_le_bytes())?;
     writer.write_all(&size.to_le_bytes())?;
+    let (time_kind, time) = match metadata.modified {
+        None => (0u32, 0),
+        Some(WireTime::FileTime(value)) => (1, value),
+        Some(WireTime::DosLocal(value)) => (2, u64::from(value)),
+    };
+    writer.write_all(&metadata.mode.unwrap_or(NO_MODE).to_le_bytes())?;
+    writer.write_all(&time_kind.to_le_bytes())?;
+    writer.write_all(&time.to_le_bytes())?;
     writer.write_all(bytes)
 }
 
@@ -132,11 +174,23 @@ fn write_trailer(writer: &mut impl Write, status: u32, message: &str) -> io::Res
 }
 
 pub(crate) fn read_record(reader: &mut impl Read) -> io::Result<Record> {
-    let mut header = [0; 16];
+    let mut header = [0; HEADER_BYTES];
     reader.read_exact(&mut header)?;
     let kind = u32_at(&header, 0);
     let text_len = u32_at(&header, 4);
     let size = u64_at(&header, 8);
+    let time = u64_at(&header, 24);
+    let modified = match (u32_at(&header, 20), u32::try_from(time)) {
+        (0, _) if time == 0 => None,
+        (1, _) => Some(WireTime::FileTime(time)),
+        (2, Ok(dos)) => Some(WireTime::DosLocal(dos)),
+        _ => return Err(invalid("Unknown RAR extraction stream time")),
+    };
+    let metadata = WireMetadata {
+        mode: Some(u32_at(&header, 16)).filter(|mode| *mode != NO_MODE),
+        modified,
+    };
+    let no_metadata = metadata == WireMetadata::default();
     if text_len > MAX_TEXT_BYTES {
         return Err(invalid("RAR extraction stream record is too large"));
     }
@@ -145,10 +199,10 @@ pub(crate) fn read_record(reader: &mut impl Read) -> io::Result<Record> {
     let text = String::from_utf8(text)
         .map_err(|_| invalid("RAR extraction stream text is not valid UTF-8"))?;
     match kind {
-        0 if size == 0 => Ok(Record::Directory(text)),
-        1 => Ok(Record::File(text, size)),
-        2 if text.is_empty() && size == 0 => Ok(Record::End),
-        3 if size == 0 => Ok(Record::Error(text)),
+        0 if size == 0 => Ok(Record::Directory(text, metadata)),
+        1 => Ok(Record::File(text, size, metadata)),
+        2 if text.is_empty() && size == 0 && no_metadata => Ok(Record::End),
+        3 if size == 0 && no_metadata => Ok(Record::Error(text)),
         _ => Err(invalid("Unknown RAR extraction stream record")),
     }
 }

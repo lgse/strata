@@ -19,6 +19,19 @@ mod tests;
 // UnRAR 7.01 defines these in dll.hpp, but unrar_sys 0.5.8 omits them.
 const UCM_LARGEDICT: native::UINT = 5;
 const ERAR_LARGE_DICT: i32 = 25;
+// UnRAR reports every non-Windows host as HOST_UNIX (headers.hpp).
+const HOST_UNIX: native::UINT = 3;
+const S_IFMT: native::UINT = 0o170_000;
+// RAR 5 headers report unpack version 50 or 70 (headers.hpp VER_PACK5/VER_PACK7).
+const RAR5_UNPACK_VERSION: native::UINT = 50;
+// unrar_sys 0.5.8 omits dll.hpp's `#pragma pack(1)`, so every field after
+// `comment_buffer` sits 4 bytes later than UnRAR writes it: UnRAR's MtimeLow
+// lands in `dir_target` and its MtimeHigh in `mtime_low`. Fail the build if
+// that layout changes.
+const _: () = assert!(
+    std::mem::offset_of!(native::HeaderDataEx, comment_buffer)
+        == std::mem::offset_of!(native::HeaderDataEx, file_attr) + 8
+);
 const LARGE_DICTIONARY: &str = "RAR dictionary exceeds the decoder's memory limit";
 const INVALID_ARCHIVE: &str = "This file is not a valid archive or is damaged.";
 const MAYBE_BAD_PASSWORD: &str = "The password may be incorrect.";
@@ -242,6 +255,7 @@ fn extract(
             .collect();
         let directory = header.flags & native::RHDF_DIRECTORY != 0;
         let size = u64::from(header.unp_size) | (u64::from(header.unp_size_high) << 32);
+        let metadata = member_metadata(&header);
         let process = |sink: &mut MemberSink<'_>| {
             let code = call(password, Some(sink), |user| {
                 // SAFETY: The handle and exclusive callback state remain live throughout this call.
@@ -270,10 +284,11 @@ fn extract(
             decode_result(code, password)
         };
         if directory {
-            wire::write_directory(writer, &name).map_err(|error| error.to_string())?;
+            wire::write_directory(writer, &name, metadata).map_err(|error| error.to_string())?;
             process(&mut |_| Ok(()))?;
         } else {
-            wire::write_file_header(writer, &name, size).map_err(|error| error.to_string())?;
+            wire::write_file_header(writer, &name, size, metadata)
+                .map_err(|error| error.to_string())?;
             let mut written = 0u64;
             let outcome = process(&mut |bytes| {
                 let length = bytes.len() as u64;
@@ -304,6 +319,23 @@ fn extract(
                 }
             }
         }
+    }
+}
+
+/// Unknown hosts are also reported as Unix, so a mode without file-type bits
+/// is not trusted. Older formats store DOS local time, which UnRAR would
+/// convert with this sandbox's zone (UTC), so it is passed on unconverted.
+fn member_metadata(header: &native::HeaderDataEx) -> wire::WireMetadata {
+    let modified = if header.unp_ver >= RAR5_UNPACK_VERSION {
+        let filetime = (u64::from(header.mtime_low) << 32) | u64::from(header.dir_target);
+        (filetime != 0).then_some(wire::WireTime::FileTime(filetime))
+    } else {
+        (header.file_time != 0).then_some(wire::WireTime::DosLocal(header.file_time))
+    };
+    wire::WireMetadata {
+        mode: (header.host_os == HOST_UNIX && header.file_attr & S_IFMT != 0)
+            .then_some(header.file_attr),
+        modified,
     }
 }
 
