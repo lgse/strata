@@ -2951,6 +2951,8 @@ impl PreviewState {
         let Some(audio) = self.audio.take() else {
             return;
         };
+        // The stream keeps playing, so an armed ease-in must not leave it silent.
+        audio.view.end_ease_in();
         audio.view.detach();
         clear_box(&self.content);
         let (Some(entry), Some(source)) = (

@@ -165,14 +165,22 @@ fn probed_video_replaces_the_audio_view_without_stopping_playback() {
         || {
             let provider = Rc::new(Provider::default());
             let drawer = PreviewDrawer::new(provider.clone(), false);
+            let preferences = crate::ui::preferences::PreferenceManager::shared();
+            preferences.set_preview_autoplay(true);
             drawer.show(entry("movie.ogg"), None);
             ready(&provider, 0);
             let media = drawer.state.media.borrow().clone().expect("rendered media");
-            media.play();
+            let decoded = media
+                .downcast_ref::<crate::ui::media::DecodedMedia>()
+                .expect("decoded stream");
+            assert!(media.is_playing());
+            assert_eq!(decoded.fade(), 0.0, "autoplay starts silent");
             media.stream_prepared(true, true, true, 10_000_000);
             assert!(drawer.state.audio.borrow().is_none());
             assert_eq!(drawer.state.media.borrow().as_ref(), Some(&media));
             assert!(media.is_playing());
+            assert_eq!(decoded.fade(), 1.0, "the video view takes over with sound");
+            preferences.set_preview_autoplay(false);
             drawer.close();
         },
     );
