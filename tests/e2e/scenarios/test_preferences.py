@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Saved preferences and live controls share one application-wide state."""
 
 import subprocess
@@ -27,7 +27,9 @@ def _open_settings(strata, window):
 
 
 @pytest.mark.preferences(
-    folder_peeking=False, type_to_search=False, single_click_previews=False
+    folder_peeking=False, type_to_search=False, single_click_previews=False,
+    columns_mirror_selection=False,
+    filter_include_subfolders=False, open_folder_after_drop=False,
 )
 def test_preferences_sync_across_windows_and_restart(strata):
     variables = process_environment()
@@ -57,6 +59,9 @@ def test_preferences_sync_across_windows_and_restart(strata):
         ("Folder peeking", "folder_peeking"),
         ("Type to search", "type_to_search"),
         ("Single-click file previews", "single_click_previews"),
+        ("Mirror columns selection", "columns_mirror_selection"),
+        ("Include subfolders", "filter_include_subfolders"),
+        ("Open folder after dropping files", "open_folder_after_drop"),
     ]:
         switches = [_switch(window, label) for window in windows]
         assert all(not toggle.has_state("checked") for toggle in switches)
@@ -77,5 +82,27 @@ def test_preferences_sync_across_windows_and_restart(strata):
     strata.application.stop()
     strata.application.start()
     _open_settings(strata, strata.window)
-    for label in ["Folder peeking", "Type to search", "Single-click file previews"]:
+    for label in [
+        "Folder peeking", "Type to search", "Single-click file previews",
+        "Include subfolders", "Open folder after dropping files",
+    ]:
         assert not _switch(strata.window, label).has_state("checked")
+
+
+def _search_button(window):
+    return window.find(role="button", name="Search (Ctrl+K)")
+
+
+def _close_button(window):
+    return window.find(role="button", name="Close window")
+
+
+@pytest.mark.preferences(tenxer_mode=True)
+def test_enabled_tenxer_applies_before_settings_and_survives_restart(strata):
+    assert _search_button(strata.window) is None
+    assert _close_button(strata.window) is not None
+    strata.application.stop()
+    strata.application.start()
+    assert _search_button(strata.window) is None
+    assert _close_button(strata.window) is not None
+    assert strata.environment.read_preferences().get("tenxer_mode") == "true"

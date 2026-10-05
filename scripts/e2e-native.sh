@@ -37,6 +37,8 @@ if [[ -z "${STRATA_BINARY:-}" ]]; then
   export STRATA_BINARY
 fi
 
+python3 -c 'import gi; gi.require_version("Gtk", "4.0"); from gi.repository import Gtk; print(f"GTK: {Gtk.get_major_version()}.{Gtk.get_minor_version()}.{Gtk.get_micro_version()}")'
+
 cd "$repository"
 exec "$venv/bin/python" -m pytest -c "$suite/pytest.ini" --rootdir "$repository" \
   -n auto --dist=loadgroup --max-worker-restart=0 "$@"

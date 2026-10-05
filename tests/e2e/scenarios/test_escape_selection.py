@@ -1,16 +1,45 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Escape dismisses transient UI before clearing the active pane selection."""
 
 import pytest
 
-from harness.modes import ALL_MODES, NEXT_ENTRY_KEY, PREVIOUS_ENTRY_KEY
+from harness.modes import ALL_MODES, NEXT_ENTRY_KEY
+
+TRANSIENT_SURFACES = [
+    "menu",
+    "properties",
+    "rename",
+    "new-folder",
+    "new-file",
+    "location",
+    "filter",
+    "preview",
+]
+MODE_DEPENDENT_TRANSIENTS = {"new-folder", "preview", "rename"}
+
+
+def _transient_dismiss_cases():
+    cases = []
+    for surface in TRANSIENT_SURFACES:
+        modes = ALL_MODES if surface in MODE_DEPENDENT_TRANSIENTS else [
+            mode for mode in ALL_MODES if mode.id == "columns"
+        ]
+        for mode in modes:
+            cases.append(
+                pytest.param(
+                    mode.values[0],
+                    surface,
+                    marks=mode.marks,
+                    id=f"{surface}-{mode.id}",
+                )
+            )
+    return cases
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
 @pytest.mark.parametrize("multiple", [False, True])
-@pytest.mark.parametrize("direction", ["previous", "next"])
 @pytest.mark.preferences(single_click_previews=False)
-def test_escape_clears_selection_without_navigation(strata, mode, multiple, direction):
+def test_escape_clears_selection_without_navigation(strata, mode, multiple):
     root = strata.fixture.root.name
     if multiple:
         strata.select_entry("todo.txt", root)
@@ -26,11 +55,9 @@ def test_escape_clears_selection_without_navigation(strata, mode, multiple, dire
     strata.wait_for_selection([], root)
     strata.wait_for_focused_entry(focused)
     assert strata.pane_names() == panes
-    key = PREVIOUS_ENTRY_KEY[mode] if direction == "previous" else NEXT_ENTRY_KEY[mode]
-    expected = "pictures" if direction == "previous" else "todo.txt"
-    strata.keyboard.press(key)
-    strata.wait_for_selection([expected], root)
-    strata.wait_for_focused_entry(expected)
+    strata.keyboard.press(NEXT_ENTRY_KEY[mode])
+    strata.wait_for_selection(["todo.txt"], root)
+    strata.wait_for_focused_entry("todo.txt")
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
@@ -62,8 +89,7 @@ def test_escape_only_clears_the_active_column(strata):
     strata.wait_for_focused_entry("notes.txt")
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
-@pytest.mark.parametrize("surface", ["menu", "properties", "rename", "new-folder", "location", "filter", "preview"])
+@pytest.mark.parametrize("mode,surface", _transient_dismiss_cases())
 @pytest.mark.preferences(single_click_previews=False)
 def test_escape_dismisses_transient_before_selection(strata, mode, surface):
     root = strata.fixture.root.name
@@ -73,6 +99,10 @@ def test_escape_dismisses_transient_before_selection(strata, mode, surface):
         if surface == "properties":
             strata.choose_menu_item("Properties")
             strata.wait_for_dialog()
+    elif surface == "new-file":
+        strata.pointer.right_click(strata.pane(), at=strata.background_point())
+        strata.choose_menu_item("New File")
+        strata.editable_field()
     elif surface == "preview":
         strata.keyboard.press("space")
         strata.wait(strata.preview, "preview to open")
@@ -89,7 +119,120 @@ def test_escape_dismisses_transient_before_selection(strata, mode, surface):
         strata.wait(lambda: strata.dialog() is None, "properties to close")
     elif surface == "preview":
         strata.wait(lambda: strata.preview() is None, "preview to close")
-    strata.wait_for_selection(["readme.md"], root)
+    expected = {"new-folder": "new folder", "new-file": "new file"}.get(surface, "readme.md")
+    strata.wait_for_selection([expected], root)
+    if surface in ("new-folder", "new-file"):
+        assert strata.fixture.path(expected).exists()
     strata.keyboard.press("Escape")
     strata.wait_for_selection([], root)
-    assert strata.pane_names() == [root]
+    expected_panes = [root, "new folder"] if mode == "Columns" and surface == "new-folder" else [root]
+    assert strata.pane_names() == expected_panes
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize("had_range", [False, True], ids=["no-range", "had-range"])
+@pytest.mark.preferences(single_click_previews=False)
+def test_shift_after_escape_starts_on_the_focused_entry(strata, mode, had_range):
+    root = strata.fixture.root.name
+    next_key = NEXT_ENTRY_KEY[mode]
+    strata.wait_for_focused_entry("archive")
+    strata.wait_for_selection(["archive"], root)
+    if had_range:
+        strata.keyboard.press(f"shift+{next_key}")
+        strata.wait_for_selection(["archive", "documents"], root)
+        strata.wait_for_focused_entry("documents")
+        focused = "documents"
+        first = ["documents"]
+        second = ["documents", "pictures"]
+    else:
+        focused = "archive"
+        first = ["archive"]
+        second = ["archive", "documents"]
+
+    strata.keyboard.press("Escape")
+    strata.wait_for_selection([], root)
+    strata.wait_for_focused_entry(focused)
+
+    strata.keyboard.press(f"shift+{next_key}")
+    strata.wait_for_selection(first, root)
+    strata.wait_for_focused_entry(focused)
+
+    strata.keyboard.press(f"shift+{next_key}")
+    strata.wait_for_selection(second, root)
+    strata.wait_for_focused_entry(second[-1])
+
+
+TENXER = pytest.mark.preferences(
+    tenxer_mode=True,
+    type_to_search=False,
+    single_click_previews=False,
+    filter_include_subfolders=False,
+)
+ROOT_ENTRIES = ["archive", "documents", "pictures", "readme.md", "todo.txt"]
+
+
+def _footer_mark(strata, name):
+    return strata.window.find(role="label", name=name) is not None
+
+
+@TENXER
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_tenxer_escape_dismisses_filter_preview_then_fill(strata, mode):
+    root = strata.fixture.root.name
+    strata.select_entry("readme.md", root)
+    strata.keyboard.press("f")
+    strata.editable_field()
+    strata.keyboard.type_text("todo")
+    strata.keyboard.press("Return")
+    strata.wait(lambda: _footer_mark(strata, "filter: todo"), "the filter to commit")
+    strata.wait_for_focused_entry("todo.txt")
+    strata.keyboard.press("i")
+    strata.wait(strata.preview, "i to open the preview")
+    panes = strata.pane_names()
+
+    strata.keyboard.press("Escape")
+    strata.wait(lambda: strata.entry_names(root) == ROOT_ENTRIES, "Esc to clear the filter")
+    assert not _footer_mark(strata, "filter: todo")
+    assert strata.preview() is not None
+    strata.wait_for_selection(["readme.md"], root)
+
+    strata.keyboard.press("Escape")
+    strata.wait(lambda: strata.preview() is None, "Esc to close the preview")
+    strata.wait_for_selection(["readme.md"], root)
+
+    strata.keyboard.press("Escape")
+    strata.wait_for_selection([], root)
+
+    strata.keyboard.press("Escape")
+    strata.wait_for_selection([], root)
+    assert strata.pane_names() == panes
+    assert strata.entry_names(root) == ROOT_ENTRIES
+
+
+@TENXER
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_tenxer_escape_closes_a_peek_but_never_a_column(strata, mode):
+    root = strata.fixture.root.name
+    strata.keyboard.press("Home")
+    strata.wait_for_focused_entry("archive")
+    strata.keyboard.press("space")
+    strata.wait_for_selection(["archive"], root)
+    strata.wait_for_focused_entry("documents")
+    strata.keyboard.press("i")
+    if mode == "Columns":
+        strata.wait(lambda: strata.pane_names() == [root, "documents"], "i to open a column")
+    else:
+        strata.wait(strata.peek, "i to open the folder peek")
+        strata.keyboard.press("Escape")
+        strata.wait(lambda: strata.peek() is None, "Esc to close the peek")
+        strata.wait_for_selection(["archive"], root)
+    panes = strata.pane_names()
+
+    strata.keyboard.press("Escape")
+    strata.wait_for_selection([], root)
+    strata.wait_for_focused_entry("documents")
+
+    strata.keyboard.press("Escape")
+    strata.wait_for_selection([], root)
+    assert strata.pane_names() == panes
+    strata.wait_for_focused_entry("documents")

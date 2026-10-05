@@ -1,25 +1,56 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use crate::adapters::gio_file_for_location;
 use crate::model::Location;
 use crate::services::{
-    LocationValidationError, UriCredentials, backend_unavailable_message, sanitize_uri_credentials,
+    LocationValidationError, UriCredentials, backend_unavailable_message, sanitize_failure_message,
+    sanitize_uri_credentials,
 };
 use crate::ui::blur::BlurBin;
 use crate::ui::browser::clipboard::copy_path_text;
 use crate::ui::browser::{BrowserView, ViewState};
 use crate::ui::controls::{
-    form_entry, form_label, form_password_entry, modal_layout, segmented_control, wrap_dialog_text,
+    ModalTone, focus_button, form_entry, form_label, form_password_entry,
+    message_dialog_description, message_dialog_layout, modal_layout, segmented_control,
+    wrap_dialog_text,
 };
 use crate::ui::modal::{
     ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog, submit_on_enter,
 };
+use crate::ui::window::{crypto_password_uuid_for_volume, gio_volume_is_encrypted};
+use futures_channel::oneshot;
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::cell::{Cell, RefCell};
 use std::path::Path;
 use std::rc::Rc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+const UNLOCK_PROGRESS_DELAY: Duration = Duration::from_millis(350);
+
+// Long crumbs middle-elide past this cap; the scroller handles deeper paths.
+const BREADCRUMB_LABEL_MAX_CHARS: i32 = 32;
+
+fn ellipsize_crumb_label(label: &gtk::Label) {
+    label.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
+    label.set_max_width_chars(BREADCRUMB_LABEL_MAX_CHARS);
+}
+
+pub(super) struct UnlockProgressView {
+    layer: gtk::Box,
+    overlay: gtk::Overlay,
+    blurred_root: Option<BlurBin>,
+}
+
+pub(super) struct UnlockProgressSlot {
+    keys: DeviceKeys,
+    view: Option<UnlockProgressView>,
+    pending: Option<glib::SourceId>,
+    dismissed: bool,
+    in_flight: bool,
+}
+
+pub(super) mod completion;
 
 pub(super) fn is_breadcrumb_button_target(mut target: gtk::Widget) -> bool {
     loop {
@@ -56,19 +87,181 @@ struct MountPromptDetails {
 impl MountPromptDetails {
     fn fallback(location: &Location) -> Self {
         Self {
-            message: format!("Enter user and password for “{}”.", location.display_path()),
+            message: format!("Enter your credentials for “{}”.", location.display_path()),
             default_user: String::new(),
             default_domain: String::new(),
-            flags: gio::AskPasswordFlags::NEED_USERNAME
-                | gio::AskPasswordFlags::NEED_DOMAIN
-                | gio::AskPasswordFlags::NEED_PASSWORD
-                | gio::AskPasswordFlags::SAVING_SUPPORTED
-                | gio::AskPasswordFlags::ANONYMOUS_SUPPORTED,
+            flags: fallback_ask_password_flags(location),
         }
     }
 }
 
+fn fallback_ask_password_flags(location: &Location) -> gio::AskPasswordFlags {
+    let flags = gio::AskPasswordFlags::NEED_USERNAME
+        | gio::AskPasswordFlags::NEED_PASSWORD
+        | gio::AskPasswordFlags::SAVING_SUPPORTED;
+    if location
+        .uri_value()
+        .is_some_and(|uri| uri.starts_with("smb://"))
+    {
+        flags | gio::AskPasswordFlags::NEED_DOMAIN | gio::AskPasswordFlags::ANONYMOUS_SUPPORTED
+    } else {
+        flags
+    }
+}
+
+fn password_field_label(message: &str) -> &'static str {
+    if message.to_ascii_lowercase().contains("passphrase") {
+        "Passphrase"
+    } else {
+        "Password"
+    }
+}
+
+fn authentication_retry_message(flags: gio::AskPasswordFlags, message: &str) -> String {
+    let mut fields = Vec::new();
+    if flags.contains(gio::AskPasswordFlags::NEED_USERNAME) {
+        fields.push("username");
+    }
+    if flags.contains(gio::AskPasswordFlags::NEED_DOMAIN) {
+        fields.push("domain");
+    }
+    if flags.contains(gio::AskPasswordFlags::NEED_PASSWORD) {
+        fields.push(if password_field_label(message) == "Passphrase" {
+            "passphrase"
+        } else {
+            "password"
+        });
+    }
+    if fields.is_empty() {
+        "That attempt wasn’t accepted. Try again.".to_owned()
+    } else {
+        format!(
+            "Those credentials weren’t accepted. Check {} and try again.",
+            fields.join(", ")
+        )
+    }
+}
+
 const AUTHENTICATION_TEXT_WIDTH_CHARS: i32 = 64;
+
+fn is_rejection_choice(choice: &str) -> bool {
+    let choice = choice.to_ascii_lowercase();
+    [
+        "cancel",
+        "reject",
+        "deny",
+        "disconnect",
+        "abort",
+        "do not",
+        "don't",
+        "no",
+    ]
+    .iter()
+    .any(|word| choice == *word || choice.starts_with(&format!("{word} ")))
+}
+
+fn show_trust_question_dialog(
+    browser_overlay: &gtk::Overlay,
+    operation: &gio::MountOperation,
+    message: &str,
+    choices: &[String],
+    declined: Rc<Cell<bool>>,
+) -> Option<gtk::Box> {
+    if choices.is_empty() {
+        operation.reply(gio::MountOperationResult::Unhandled);
+        return None;
+    }
+    let Some(ModalHost {
+        overlay: window_overlay,
+        blurred_root,
+    }) = ModalHost::blurred_for(browser_overlay)
+    else {
+        operation.reply(gio::MountOperationResult::Unhandled);
+        return None;
+    };
+
+    let layout = message_dialog_layout(
+        crate::assets::icons::TRIANGLE_ALERT,
+        "Verify server identity",
+        "Only continue after verifying the SSH host key through a trusted source.",
+        "Continue anyway",
+        ModalTone::Danger,
+    );
+    let backend_message = message_dialog_description(&sanitize_failure_message(message));
+    layout.body.append(&backend_message);
+    let warning = message_dialog_description(
+        "If the server did not provide a fingerprint, verify it outside Strata before continuing.",
+    );
+    layout.body.append(&warning);
+    layout.actions.remove(&layout.cancel);
+    layout.actions.remove(&layout.confirm);
+
+    let layer = modal_layer(
+        &layout.content,
+        &window_overlay,
+        blurred_root.clone(),
+        Some(Rc::new(|| true)),
+    );
+    window_overlay.add_overlay(&layer);
+
+    let close_layer = layer.clone();
+    let close_overlay = window_overlay.clone();
+    let close_root = blurred_root.clone();
+    let close_operation = operation.clone();
+    let close_declined = declined.clone();
+    layout.close.connect_clicked(move |_| {
+        close_declined.set(true);
+        dismiss_modal_layer(&close_layer, &close_overlay, close_root.as_ref());
+        close_operation.reply(gio::MountOperationResult::Aborted);
+    });
+
+    let mut rejection = None;
+    let mut ordered_choices: Vec<_> = choices.iter().enumerate().collect();
+    ordered_choices.sort_by_key(|(_, choice)| !is_rejection_choice(choice));
+    for (index, choice) in ordered_choices {
+        let button = gtk::Button::with_label(choice);
+        if is_rejection_choice(choice) {
+            button.add_css_class("action-dialog-cancel");
+            rejection.get_or_insert_with(|| button.clone());
+        } else {
+            button.add_css_class("action-dialog-confirm");
+            button.add_css_class("danger");
+        }
+        let answer_layer = layer.clone();
+        let answer_overlay = window_overlay.clone();
+        let answer_root = blurred_root.clone();
+        let answer_operation = operation.clone();
+        let answer_declined = declined.clone();
+        let rejects_trust = is_rejection_choice(choice);
+        button.connect_clicked(move |_| {
+            if rejects_trust {
+                answer_declined.set(true);
+            }
+            dismiss_modal_layer(&answer_layer, &answer_overlay, answer_root.as_ref());
+            answer_operation.set_choice(index as i32);
+            answer_operation.reply(gio::MountOperationResult::Handled);
+        });
+        layout.actions.append(&button);
+    }
+    focus_button(rejection.as_ref().unwrap_or(&layout.close));
+
+    let escape = gtk::EventControllerKey::new();
+    let escape_operation = operation.clone();
+    let escape_layer = layer.clone();
+    let escape_overlay = window_overlay.clone();
+    let escape_root = blurred_root;
+    escape.connect_key_pressed(move |_, key, _, _| {
+        if key != gtk::gdk::Key::Escape {
+            return glib::Propagation::Proceed;
+        }
+        declined.set(true);
+        dismiss_modal_layer(&escape_layer, &escape_overlay, escape_root.as_ref());
+        escape_operation.reply(gio::MountOperationResult::Aborted);
+        glib::Propagation::Stop
+    });
+    layer.add_controller(escape);
+    Some(layer)
+}
 
 fn show_authentication_dialog(
     browser_overlay: &gtk::Overlay,
@@ -94,9 +287,14 @@ fn show_authentication_dialog(
         return None;
     };
 
+    let secret_label = password_field_label(message);
     let layout = modal_layout(
         crate::assets::icons::KEY,
-        "Authentication required",
+        if secret_label == "Passphrase" {
+            "Passphrase required"
+        } else {
+            "Authentication required"
+        },
         "Authenticate to access this volume or location",
         "Connect",
     );
@@ -112,7 +310,7 @@ fn show_authentication_dialog(
     layout.body.append(&explanation);
     if authentication_failed {
         let error_text = wrap_dialog_text(
-            "Those credentials weren’t accepted. Check the username, domain, and password, then try again.",
+            &authentication_retry_message(flags, message),
             AUTHENTICATION_TEXT_WIDTH_CHARS as usize,
         );
         let error = gtk::Label::new(Some(&error_text));
@@ -141,7 +339,7 @@ fn show_authentication_dialog(
     let password = form_password_entry();
     password.set_show_peek_icon(true);
     if flags.contains(gio::AskPasswordFlags::NEED_PASSWORD) {
-        append_authentication_field(&credentials, "Password", &password);
+        append_authentication_field(&credentials, secret_label, &password);
     }
 
     let (connect_as_control, connect_as_buttons) =
@@ -331,6 +529,11 @@ fn credentials_from_location_input(
     Ok((sanitized, credentials))
 }
 
+pub(super) enum TypedLocation {
+    Navigating,
+    Mounting { sanitized: String },
+}
+
 #[derive(Clone)]
 pub(super) struct MountCredentials {
     anonymous: bool,
@@ -341,11 +544,15 @@ pub(super) struct MountCredentials {
 }
 
 impl MountCredentials {
-    fn default_for_prompt() -> Self {
+    fn default_for_prompt(flags: gio::AskPasswordFlags) -> Self {
         Self {
             anonymous: false,
             username: glib::user_name().to_string_lossy().into_owned(),
-            domain: "WORKGROUP".to_owned(),
+            domain: if flags.contains(gio::AskPasswordFlags::NEED_DOMAIN) {
+                "WORKGROUP".to_owned()
+            } else {
+                String::new()
+            },
             password: String::new(),
             save: gio::PasswordSave::Never,
         }
@@ -374,6 +581,49 @@ pub(super) enum MountStrategy {
     Mountable,
 }
 
+impl MountStrategy {
+    fn name(self) -> &'static str {
+        match self {
+            Self::EnclosingVolume => "enclosing-volume",
+            Self::Mountable => "mountable",
+        }
+    }
+}
+
+fn log_mount_started(location: &Location, strategy: MountStrategy) {
+    tracing::info!(backend = %location.backend_name(), strategy = strategy.name(), "mount requested");
+    tracing::debug!(location = %location.diagnostic_path(), "mount location");
+}
+
+fn log_mount_finished(location: &Location, result: &Result<(), glib::Error>) {
+    match result {
+        Ok(()) => tracing::info!(backend = %location.backend_name(), "mount finished"),
+        Err(error) if mount_error_is_cancelled(error) => {
+            tracing::info!(backend = %location.backend_name(), "mount cancelled")
+        }
+        Err(error) => tracing::info!(
+            backend = %location.backend_name(),
+            error_domain = ?error.domain(),
+            error_code = error.code(),
+            "mount failed"
+        ),
+    }
+}
+
+fn trust_question_result(
+    result: Result<(), glib::Error>,
+    user_declined: bool,
+) -> Result<(), glib::Error> {
+    if user_declined {
+        Err(glib::Error::new(
+            gio::IOErrorEnum::Cancelled,
+            "Trust question dismissed",
+        ))
+    } else {
+        result
+    }
+}
+
 fn mount_result_is_ok(result: &Result<(), glib::Error>) -> bool {
     match result {
         Ok(()) => true,
@@ -383,6 +633,9 @@ fn mount_result_is_ok(result: &Result<(), glib::Error>) -> bool {
 
 fn mount_error_is_authentication_failure(location: &Location, error: &glib::Error) -> bool {
     if location.uri_value().is_none() {
+        return false;
+    }
+    if mount_error_is_host_key_rejection(error) {
         return false;
     }
     if error.matches(gio::IOErrorEnum::PermissionDenied) {
@@ -395,8 +648,23 @@ fn mount_error_is_authentication_failure(location: &Location, error: &glib::Erro
     [
         "permission denied",
         "authentication failed",
+        "authentication required",
+        "auth fail",
+        "too many authentication failures",
         "logon failure",
         "invalid credentials",
+    ]
+    .iter()
+    .any(|reason| message.contains(reason))
+}
+
+fn mount_error_is_host_key_rejection(error: &glib::Error) -> bool {
+    let message = error.message().to_ascii_lowercase();
+    [
+        "host key",
+        "host identification",
+        "fingerprint",
+        "known_hosts",
     ]
     .iter()
     .any(|reason| message.contains(reason))
@@ -417,7 +685,39 @@ fn mount_failure_message(location: &Location, error: &glib::Error) -> Option<Str
     {
         return Some(backend_unavailable_message(uri));
     }
-    Some(error.to_string())
+    if mount_error_is_host_key_rejection(error) {
+        return Some("The remote computer’s host key could not be verified. Confirm its fingerprint with the server administrator before trying again.".to_owned());
+    }
+    if let Some(message) = transport_failure_message(error) {
+        return Some(message);
+    }
+    Some(sanitize_failure_message(&error.to_string()))
+}
+
+fn transport_failure_message(error: &glib::Error) -> Option<String> {
+    let (kind, advice) = if error.matches(gio::IOErrorEnum::HostNotFound) {
+        (
+            "That host couldn’t be found.",
+            "Check the address and DNS settings.",
+        )
+    } else if error.matches(gio::IOErrorEnum::ConnectionRefused) {
+        (
+            "The host refused the connection.",
+            "Check the service and port.",
+        )
+    } else if error.matches(gio::IOErrorEnum::TimedOut) {
+        ("The connection timed out.", "Check the host and firewall.")
+    } else if error.matches(gio::IOErrorEnum::HostUnreachable)
+        || error.matches(gio::IOErrorEnum::NetworkUnreachable)
+    {
+        (
+            "That host is unreachable.",
+            "Check your network connection.",
+        )
+    } else {
+        return None;
+    };
+    Some(format!("{kind} {advice}"))
 }
 
 fn mount_error_is_cancelled(error: &glib::Error) -> bool {
@@ -427,6 +727,7 @@ fn mount_error_is_cancelled(error: &glib::Error) -> bool {
 enum MountTarget {
     Location(Location, MountStrategy),
     Volume(gio::Volume),
+    Drive(gio::Drive),
 }
 
 fn volume_error_is_authentication_failure(error: &glib::Error) -> bool {
@@ -441,35 +742,547 @@ fn volume_error_is_authentication_failure(error: &glib::Error) -> bool {
     .any(|reason| message.contains(reason))
 }
 
+fn device_volume_mount_is_ready(result: &Result<(), glib::Error>, mount_present: bool) -> bool {
+    mount_present || mount_result_is_ok(result)
+}
+
+fn volume_error_is_in_flight_mount(error: &glib::Error) -> bool {
+    if error.matches(gio::IOErrorEnum::Pending) || error.matches(gio::IOErrorEnum::Busy) {
+        return true;
+    }
+    let message = error.message().to_ascii_lowercase();
+    ["already unlocking", "already in progress"]
+        .iter()
+        .any(|reason| message.contains(reason))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ForeignVolumeWaitOutcome {
+    Mounted,
+    StillLocked,
+    Gone,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum VolumeSuccessorKind {
+    Mounted,
+    Locked,
+    Absent,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ForeignVolumeWaitFollowUp {
+    Navigate,
+    StartOwnedMount,
+    Quiet,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UnlockViewFollowUp {
+    Reload,
+    Navigate,
+    None,
+}
+
+fn unlock_view_follow_up(
+    active: Option<&Location>,
+    mount_location: &Location,
+    user_asked_to_open: bool,
+    progress_dismissed: bool,
+) -> UnlockViewFollowUp {
+    if active.is_some_and(|active| active == mount_location || active.is_within(mount_location)) {
+        UnlockViewFollowUp::Reload
+    } else if user_asked_to_open && !progress_dismissed {
+        UnlockViewFollowUp::Navigate
+    } else {
+        UnlockViewFollowUp::None
+    }
+}
+
+fn foreign_volume_wait_follow_up(
+    outcome: ForeignVolumeWaitOutcome,
+    already_waited: bool,
+    successor: VolumeSuccessorKind,
+) -> ForeignVolumeWaitFollowUp {
+    match outcome {
+        ForeignVolumeWaitOutcome::Mounted => ForeignVolumeWaitFollowUp::Navigate,
+        ForeignVolumeWaitOutcome::Gone => match successor {
+            VolumeSuccessorKind::Mounted => ForeignVolumeWaitFollowUp::Navigate,
+            VolumeSuccessorKind::Locked => ForeignVolumeWaitFollowUp::StartOwnedMount,
+            VolumeSuccessorKind::Absent => ForeignVolumeWaitFollowUp::Quiet,
+        },
+        ForeignVolumeWaitOutcome::StillLocked if already_waited => ForeignVolumeWaitFollowUp::Quiet,
+        ForeignVolumeWaitOutcome::StillLocked => ForeignVolumeWaitFollowUp::StartOwnedMount,
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct DeviceKeys {
+    volume_tokens: Vec<String>,
+    drive_tokens: Vec<String>,
+    volume_object: Option<glib::Object>,
+    drive_object: Option<glib::Object>,
+}
+
+impl DeviceKeys {
+    fn new(
+        volume: impl IntoIterator<Item = Option<String>>,
+        drive: impl IntoIterator<Item = Option<String>>,
+    ) -> Self {
+        Self {
+            volume_tokens: collect_device_tokens(volume),
+            drive_tokens: collect_device_tokens(drive),
+            volume_object: None,
+            drive_object: None,
+        }
+    }
+
+    fn has_volume_identity(&self) -> bool {
+        !self.volume_tokens.is_empty() || self.volume_object.is_some()
+    }
+
+    fn is_empty(&self) -> bool {
+        !self.has_volume_identity() && self.drive_tokens.is_empty() && self.drive_object.is_none()
+    }
+}
+
+fn collect_device_tokens(parts: impl IntoIterator<Item = Option<String>>) -> Vec<String> {
+    parts
+        .into_iter()
+        .filter_map(|value| {
+            let value = value?.trim().to_owned();
+            (!value.is_empty()).then_some(value)
+        })
+        .collect()
+}
+
+fn tokens_overlap(left: &[String], right: &[String]) -> bool {
+    left.iter().any(|token| right.contains(token))
+}
+
+fn same_volume(left: &DeviceKeys, right: &DeviceKeys) -> bool {
+    tokens_overlap(&left.volume_tokens, &right.volume_tokens)
+        || left
+            .volume_object
+            .as_ref()
+            .is_some_and(|object| Some(object) == right.volume_object.as_ref())
+}
+
+fn same_drive(left: &DeviceKeys, right: &DeviceKeys) -> bool {
+    tokens_overlap(&left.drive_tokens, &right.drive_tokens)
+        || left
+            .drive_object
+            .as_ref()
+            .is_some_and(|object| Some(object) == right.drive_object.as_ref())
+}
+
+fn unlock_target_matches(left: &DeviceKeys, right: &DeviceKeys) -> bool {
+    if left.has_volume_identity() && right.has_volume_identity() {
+        same_volume(left, right)
+    } else {
+        same_drive(left, right)
+    }
+}
+
+fn unix_device_is_partition_of(volume_unix: &str, drive_unix: &str) -> bool {
+    let Some(rest) = volume_unix.strip_prefix(drive_unix) else {
+        return false;
+    };
+    if rest.is_empty() {
+        return false;
+    }
+    rest.starts_with(|ch: char| ch.is_ascii_digit())
+        || rest
+            .strip_prefix('p')
+            .is_some_and(|digits| digits.starts_with(|ch: char| ch.is_ascii_digit()))
+}
+
+fn unix_device_is_sibling_partition(waited: &DeviceKeys, candidate: &DeviceKeys) -> bool {
+    candidate.volume_tokens.iter().any(|volume_unix| {
+        waited
+            .drive_tokens
+            .iter()
+            .any(|drive_unix| unix_device_is_partition_of(volume_unix, drive_unix))
+    })
+}
+
+fn identity_matches_volume(waited: &DeviceKeys, candidate: &DeviceKeys) -> bool {
+    same_volume(waited, candidate)
+        || (!waited.has_volume_identity()
+            && same_drive(waited, candidate)
+            && !unix_device_is_sibling_partition(waited, candidate))
+}
+
+fn begin_unlock_slot(slots: &mut Vec<UnlockProgressSlot>, keys: &DeviceKeys) -> bool {
+    if let Some(slot) = slots
+        .iter_mut()
+        .find(|slot| unlock_target_matches(&slot.keys, keys))
+    {
+        if slot.in_flight {
+            return false;
+        }
+        slot.in_flight = true;
+        slot.dismissed = false;
+        return true;
+    }
+    slots.push(UnlockProgressSlot {
+        keys: keys.clone(),
+        view: None,
+        pending: None,
+        dismissed: false,
+        in_flight: true,
+    });
+    true
+}
+
+fn unlock_progress_dismissed_for(slots: &[UnlockProgressSlot], keys: &DeviceKeys) -> bool {
+    slots
+        .iter()
+        .find(|slot| unlock_target_matches(&slot.keys, keys))
+        .is_some_and(|slot| slot.dismissed)
+}
+
+fn gio_identifier(value: Option<glib::GString>) -> Option<String> {
+    value.map(|value| value.to_string())
+}
+
+fn device_keys(volume: Option<&gio::Volume>, drive: Option<&gio::Drive>) -> DeviceKeys {
+    let mut keys = DeviceKeys::new(
+        [
+            volume.and_then(|volume| {
+                gio_identifier(volume.identifier(gio::VOLUME_IDENTIFIER_KIND_UNIX_DEVICE.as_str()))
+            }),
+            volume.and_then(|volume| gio_identifier(volume.uuid())),
+            volume.and_then(crypto_password_uuid_for_volume),
+        ],
+        [
+            drive.and_then(|drive| {
+                gio_identifier(drive.identifier(gio::VOLUME_IDENTIFIER_KIND_UNIX_DEVICE.as_str()))
+            }),
+            drive.and_then(|drive| {
+                gio_identifier(drive.identifier(gio::VOLUME_IDENTIFIER_KIND_UUID.as_str()))
+            }),
+        ],
+    );
+    keys.volume_object = volume.map(|volume| volume.clone().upcast());
+    keys.drive_object = drive.map(|drive| drive.clone().upcast());
+    keys
+}
+
+#[derive(Clone)]
+struct DeviceMatch {
+    keys: DeviceKeys,
+}
+
+impl DeviceMatch {
+    fn from_volume(volume: &gio::Volume) -> Self {
+        let drive = volume.drive();
+        Self {
+            keys: device_keys(Some(volume), drive.as_ref()),
+        }
+    }
+
+    fn from_drive(drive: &gio::Drive) -> Self {
+        Self {
+            keys: device_keys(None, Some(drive)),
+        }
+    }
+
+    fn is_absent(&self) -> bool {
+        self.keys.is_empty()
+    }
+
+    fn matches_mount(&self, mount: &gio::Mount) -> bool {
+        identity_matches_volume(
+            &self.keys,
+            &device_keys(mount.volume().as_ref(), mount.drive().as_ref()),
+        )
+    }
+
+    fn matches_volume(&self, volume: &gio::Volume) -> bool {
+        identity_matches_volume(
+            &self.keys,
+            &device_keys(Some(volume), volume.drive().as_ref()),
+        )
+    }
+
+    fn matches_password_drive(&self, drive: &gio::Drive) -> bool {
+        drive.start_stop_type() == gio::DriveStartStopType::Password
+            && same_drive(&self.keys, &device_keys(None, Some(drive)))
+    }
+}
+
+fn successor_kind(waited: &DeviceMatch) -> VolumeSuccessorKind {
+    if waited.is_absent() {
+        return VolumeSuccessorKind::Absent;
+    }
+    let monitor = gio::VolumeMonitor::get();
+    let volumes = monitor.volumes();
+    if monitor
+        .mounts()
+        .iter()
+        .any(|mount| waited.matches_mount(mount))
+    {
+        return VolumeSuccessorKind::Mounted;
+    }
+    if volumes.iter().any(|volume| waited.matches_volume(volume)) {
+        return VolumeSuccessorKind::Locked;
+    }
+    if monitor
+        .connected_drives()
+        .iter()
+        .any(|drive| waited.matches_password_drive(drive))
+    {
+        return VolumeSuccessorKind::Locked;
+    }
+    VolumeSuccessorKind::Absent
+}
+
+fn successor_mount_location(waited: &DeviceMatch) -> Option<Location> {
+    let monitor = gio::VolumeMonitor::get();
+    monitor
+        .mounts()
+        .into_iter()
+        .find(|mount| waited.matches_mount(mount))
+        .and_then(|mount| crate::adapters::location_for_file(&mount.root()))
+}
+
+fn successor_volume(waited: &DeviceMatch) -> Option<gio::Volume> {
+    gio::VolumeMonitor::get()
+        .volumes()
+        .into_iter()
+        .find(|volume| waited.matches_volume(volume))
+}
+
+fn successor_password_drive(waited: &DeviceMatch) -> Option<gio::Drive> {
+    gio::VolumeMonitor::get()
+        .connected_drives()
+        .into_iter()
+        .find(|drive| waited.matches_password_drive(drive))
+}
+
+const FOREIGN_VOLUME_MOUNT_WAIT: Duration = Duration::from_secs(8);
+
+async fn wait_for_mount_change(
+    signal: oneshot::Receiver<()>,
+    mounted: impl Fn() -> bool,
+    timeout: Duration,
+) {
+    futures_lite::future::race(
+        async {
+            let _ = signal.await;
+        },
+        async {
+            let deadline = Instant::now() + timeout;
+            loop {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() || mounted() {
+                    break;
+                }
+                glib::timeout_future(remaining.min(Duration::from_millis(200))).await;
+            }
+        },
+    )
+    .await;
+}
+
+async fn wait_for_foreign_volume_mount(volume: &gio::Volume) -> ForeignVolumeWaitOutcome {
+    if volume.get_mount().is_some() {
+        return ForeignVolumeWaitOutcome::Mounted;
+    }
+
+    let (tx, rx) = oneshot::channel();
+    let tx = Rc::new(RefCell::new(Some(tx)));
+    let complete = Rc::new({
+        let tx = tx.clone();
+        move || {
+            if let Some(tx) = tx.borrow_mut().take() {
+                let _ = tx.send(());
+            }
+        }
+    });
+    let removed = Rc::new(Cell::new(false));
+
+    let changed_complete = complete.clone();
+    let changed_volume = volume.clone();
+    let changed_id = volume.connect_changed(move |_| {
+        if changed_volume.get_mount().is_some() {
+            changed_complete();
+        }
+    });
+    let removed_flag = removed.clone();
+    let removed_complete = complete.clone();
+    let removed_id = volume.connect_removed(move |_| {
+        removed_flag.set(true);
+        removed_complete();
+    });
+    wait_for_mount_change(
+        rx,
+        || volume.get_mount().is_some(),
+        FOREIGN_VOLUME_MOUNT_WAIT,
+    )
+    .await;
+    volume.disconnect(changed_id);
+    volume.disconnect(removed_id);
+
+    if volume.get_mount().is_some() {
+        ForeignVolumeWaitOutcome::Mounted
+    } else if removed.get() {
+        ForeignVolumeWaitOutcome::Gone
+    } else {
+        ForeignVolumeWaitOutcome::StillLocked
+    }
+}
+
+async fn wait_for_foreign_drive_start(
+    drive: &gio::Drive,
+    waited: &DeviceMatch,
+) -> ForeignVolumeWaitOutcome {
+    if successor_kind(waited) == VolumeSuccessorKind::Mounted {
+        return ForeignVolumeWaitOutcome::Mounted;
+    }
+
+    let (tx, rx) = oneshot::channel();
+    let tx = Rc::new(RefCell::new(Some(tx)));
+    let complete = Rc::new({
+        let tx = tx.clone();
+        move || {
+            if let Some(tx) = tx.borrow_mut().take() {
+                let _ = tx.send(());
+            }
+        }
+    });
+    let removed = Rc::new(Cell::new(false));
+
+    let changed_complete = complete.clone();
+    let changed_waited = waited.clone();
+    let changed_id = drive.connect_changed(move |_| {
+        if successor_kind(&changed_waited) == VolumeSuccessorKind::Mounted {
+            changed_complete();
+        }
+    });
+    let removed_flag = removed.clone();
+    let removed_complete = complete.clone();
+    let disconnected_id = drive.connect_disconnected(move |_| {
+        removed_flag.set(true);
+        removed_complete();
+    });
+    wait_for_mount_change(
+        rx,
+        || successor_kind(waited) == VolumeSuccessorKind::Mounted,
+        FOREIGN_VOLUME_MOUNT_WAIT,
+    )
+    .await;
+    drive.disconnect(changed_id);
+    drive.disconnect(disconnected_id);
+
+    if successor_kind(waited) == VolumeSuccessorKind::Mounted {
+        ForeignVolumeWaitOutcome::Mounted
+    } else if removed.get() {
+        ForeignVolumeWaitOutcome::Gone
+    } else {
+        ForeignVolumeWaitOutcome::StillLocked
+    }
+}
+
 impl BrowserView {
     pub(crate) fn mount_volume(&self, volume: gio::Volume) {
-        self.state.mount_device_volume(volume, None);
+        self.state.mount_device_volume(volume, None, false, true);
+    }
+
+    pub(crate) fn unlock_volume(&self, volume: gio::Volume) {
+        self.state.mount_device_volume(volume, None, false, true);
+    }
+
+    pub(crate) fn start_password_drive(&self, drive: gio::Drive, user_asked_to_open: bool) {
+        self.state
+            .start_password_drive(drive, None, false, user_asked_to_open);
     }
 }
 
 impl ViewState {
+    fn apply_unlock_view_follow_up(
+        &self,
+        keys: &DeviceKeys,
+        mount_location: &Location,
+        user_asked_to_open: bool,
+    ) {
+        match unlock_view_follow_up(
+            self.browser.active_location().as_ref(),
+            mount_location,
+            user_asked_to_open,
+            unlock_progress_dismissed_for(&self.unlock_slots.borrow(), keys),
+        ) {
+            UnlockViewFollowUp::Reload => self.browser.reload_active(),
+            UnlockViewFollowUp::Navigate => self.browser.navigate(mount_location.clone()),
+            UnlockViewFollowUp::None => {}
+        }
+    }
+
+    fn open_unlocked_identity(
+        &self,
+        volume: Option<&gio::Volume>,
+        waited: &DeviceMatch,
+        user_asked_to_open: bool,
+    ) {
+        let location = volume
+            .and_then(|volume| volume.get_mount())
+            .and_then(|mount| crate::adapters::location_for_file(&mount.root()))
+            .or_else(|| successor_mount_location(waited));
+        if let Some(location) = location {
+            self.apply_unlock_view_follow_up(&waited.keys, &location, user_asked_to_open);
+        }
+        self.finish_unlock_slot(&waited.keys);
+    }
+
+    fn start_owned_successor(self: &Rc<Self>, waited: &DeviceMatch, user_asked_to_open: bool) {
+        let user_asked_to_open = user_asked_to_open
+            && !unlock_progress_dismissed_for(&self.unlock_slots.borrow(), &waited.keys);
+        self.finish_unlock_slot(&waited.keys);
+        if waited.is_absent() {
+            return;
+        }
+        if let Some(volume) = successor_volume(waited) {
+            self.mount_device_volume(volume, None, false, user_asked_to_open);
+            return;
+        }
+        if let Some(drive) = successor_password_drive(waited) {
+            self.start_password_drive(drive, None, false, user_asked_to_open);
+        }
+    }
+
     fn mount_device_volume(
         self: &Rc<Self>,
         volume: gio::Volume,
         credentials: Option<MountCredentials>,
+        already_waited: bool,
+        user_asked_to_open: bool,
     ) {
+        let waited = DeviceMatch::from_volume(&volume);
+        if credentials.is_none() && !already_waited && !self.begin_unlock_progress(&waited.keys) {
+            return;
+        }
         self.mount_target(
             MountTarget::Volume(volume.clone()),
             credentials,
             move |state, result, attempted, details| {
-                if mount_result_is_ok(&result) {
-                    if let Some(mount) = volume.get_mount()
-                        && let Some(location) = crate::adapters::location_for_file(&mount.root())
-                    {
-                        state.browser.navigate(location);
-                    }
+                if !result
+                    .as_ref()
+                    .err()
+                    .is_some_and(volume_error_is_in_flight_mount)
+                {
+                    state.dismiss_unlock_progress(&waited.keys);
+                }
+                if device_volume_mount_is_ready(&result, volume.get_mount().is_some()) {
+                    state.open_unlocked_identity(Some(&volume), &waited, user_asked_to_open);
                 } else if let Err(error) = result {
                     if volume_error_is_authentication_failure(&error)
                         && let Some(details) = details
                     {
                         let weak = Rc::downgrade(state);
                         let retry_volume = volume.clone();
-                        state.show_mount_retry_prompt(
+                        state.show_unlock_retry_prompt(
+                            waited.keys.clone(),
                             attempted,
                             details,
                             move |credentials| {
@@ -477,17 +1290,220 @@ impl ViewState {
                                     state.mount_device_volume(
                                         retry_volume.clone(),
                                         Some(credentials),
+                                        false,
+                                        user_asked_to_open,
                                     );
                                 }
                             },
-                            || {},
                         );
-                    } else if !mount_error_is_cancelled(&error) {
-                        show_error_dialog(
-                            &state.overlay,
-                            "Unable to mount volume",
-                            &error.to_string(),
+                    } else if volume_error_is_in_flight_mount(&error) {
+                        // A competing automounter may own this job; do not cancel it.
+                        tracing::debug!(
+                            volume = %volume.name(),
+                            already_waited,
+                            "waiting for in-flight volume mount"
                         );
+                        let weak = Rc::downgrade(state);
+                        let wait_volume = volume.clone();
+                        let wait_match = waited.clone();
+                        glib::MainContext::default().spawn_local(async move {
+                            let Some(state) = weak.upgrade() else {
+                                return;
+                            };
+                            let _activity = BrowserView {
+                                state: state.clone(),
+                            }
+                            .begin_global_activity("Connecting…");
+                            let outcome = wait_for_foreign_volume_mount(&wait_volume).await;
+                            drop(_activity);
+                            let successor = match outcome {
+                                ForeignVolumeWaitOutcome::Mounted => VolumeSuccessorKind::Mounted,
+                                ForeignVolumeWaitOutcome::StillLocked => {
+                                    VolumeSuccessorKind::Locked
+                                }
+                                ForeignVolumeWaitOutcome::Gone => successor_kind(&wait_match),
+                            };
+                            match foreign_volume_wait_follow_up(outcome, already_waited, successor)
+                            {
+                                ForeignVolumeWaitFollowUp::Navigate => {
+                                    state.open_unlocked_identity(
+                                        Some(&wait_volume),
+                                        &wait_match,
+                                        user_asked_to_open,
+                                    );
+                                }
+                                ForeignVolumeWaitFollowUp::StartOwnedMount
+                                    if outcome == ForeignVolumeWaitOutcome::Gone =>
+                                {
+                                    state.start_owned_successor(&wait_match, user_asked_to_open);
+                                }
+                                ForeignVolumeWaitFollowUp::StartOwnedMount => {
+                                    state.mount_device_volume(
+                                        wait_volume,
+                                        None,
+                                        true,
+                                        user_asked_to_open,
+                                    );
+                                }
+                                ForeignVolumeWaitFollowUp::Quiet => {
+                                    state.finish_unlock_slot(&wait_match.keys);
+                                }
+                            }
+                        });
+                    } else {
+                        state.finish_unlock_slot(&waited.keys);
+                        if !mount_error_is_cancelled(&error) {
+                            show_error_dialog(
+                                &state.overlay,
+                                "Unable to mount volume",
+                                &error.to_string(),
+                            );
+                        }
+                    }
+                }
+            },
+        );
+    }
+
+    fn start_password_drive(
+        self: &Rc<Self>,
+        drive: gio::Drive,
+        credentials: Option<MountCredentials>,
+        already_waited: bool,
+        user_asked_to_open: bool,
+    ) {
+        let waited = DeviceMatch::from_drive(&drive);
+        if credentials.is_none() && !already_waited && !self.begin_unlock_progress(&waited.keys) {
+            return;
+        }
+        self.mount_target(
+            MountTarget::Drive(drive.clone()),
+            credentials,
+            move |state, result, attempted, details| {
+                if !result
+                    .as_ref()
+                    .err()
+                    .is_some_and(volume_error_is_in_flight_mount)
+                {
+                    state.dismiss_unlock_progress(&waited.keys);
+                }
+                let this_mounted = successor_kind(&waited) == VolumeSuccessorKind::Mounted;
+                if this_mounted {
+                    state.open_unlocked_identity(None, &waited, user_asked_to_open);
+                } else if mount_result_is_ok(&result) {
+                    let weak = Rc::downgrade(state);
+                    let waited = waited.clone();
+                    glib::MainContext::default().spawn_local(async move {
+                        let (_send, receive) = oneshot::channel();
+                        wait_for_mount_change(
+                            receive,
+                            || {
+                                successor_volume(&waited).is_some()
+                                    || successor_mount_location(&waited).is_some()
+                            },
+                            FOREIGN_VOLUME_MOUNT_WAIT,
+                        )
+                        .await;
+                        let Some(state) = weak.upgrade() else {
+                            return;
+                        };
+                        if successor_mount_location(&waited).is_some() {
+                            state.open_unlocked_identity(None, &waited, user_asked_to_open);
+                        } else if successor_volume(&waited).is_some() {
+                            state.start_owned_successor(&waited, user_asked_to_open);
+                        } else {
+                            state.finish_unlock_slot(&waited.keys);
+                            show_error_dialog(
+                                &state.overlay,
+                                "Unable to mount volume",
+                                "The device started, but no mountable volume appeared.",
+                            );
+                        }
+                    });
+                } else if let Err(error) = result {
+                    if volume_error_is_authentication_failure(&error)
+                        && let Some(details) = details
+                    {
+                        let weak = Rc::downgrade(state);
+                        let retry_drive = drive.clone();
+                        state.show_unlock_retry_prompt(
+                            waited.keys.clone(),
+                            attempted,
+                            details,
+                            move |credentials| {
+                                if let Some(state) = weak.upgrade() {
+                                    state.start_password_drive(
+                                        retry_drive.clone(),
+                                        Some(credentials),
+                                        false,
+                                        user_asked_to_open,
+                                    );
+                                }
+                            },
+                        );
+                    } else if volume_error_is_in_flight_mount(&error) {
+                        tracing::debug!(
+                            drive = %drive.name(),
+                            already_waited,
+                            "waiting for in-flight drive start"
+                        );
+                        let weak = Rc::downgrade(state);
+                        let wait_drive = drive.clone();
+                        let wait_match = waited.clone();
+                        glib::MainContext::default().spawn_local(async move {
+                            let Some(state) = weak.upgrade() else {
+                                return;
+                            };
+                            let _activity = BrowserView {
+                                state: state.clone(),
+                            }
+                            .begin_global_activity("Connecting…");
+                            let outcome =
+                                wait_for_foreign_drive_start(&wait_drive, &wait_match).await;
+                            drop(_activity);
+                            let successor = match outcome {
+                                ForeignVolumeWaitOutcome::Mounted => VolumeSuccessorKind::Mounted,
+                                ForeignVolumeWaitOutcome::StillLocked => {
+                                    VolumeSuccessorKind::Locked
+                                }
+                                ForeignVolumeWaitOutcome::Gone => successor_kind(&wait_match),
+                            };
+                            match foreign_volume_wait_follow_up(outcome, already_waited, successor)
+                            {
+                                ForeignVolumeWaitFollowUp::Navigate => {
+                                    state.open_unlocked_identity(
+                                        None,
+                                        &wait_match,
+                                        user_asked_to_open,
+                                    );
+                                }
+                                ForeignVolumeWaitFollowUp::StartOwnedMount
+                                    if outcome == ForeignVolumeWaitOutcome::Gone =>
+                                {
+                                    state.start_owned_successor(&wait_match, user_asked_to_open);
+                                }
+                                ForeignVolumeWaitFollowUp::StartOwnedMount => {
+                                    state.start_password_drive(
+                                        wait_drive,
+                                        None,
+                                        true,
+                                        user_asked_to_open,
+                                    );
+                                }
+                                ForeignVolumeWaitFollowUp::Quiet => {
+                                    state.finish_unlock_slot(&wait_match.keys);
+                                }
+                            }
+                        });
+                    } else {
+                        state.finish_unlock_slot(&waited.keys);
+                        if !mount_error_is_cancelled(&error) {
+                            show_error_dialog(
+                                &state.overlay,
+                                "Unable to mount volume",
+                                &error.to_string(),
+                            );
+                        }
                     }
                 }
             },
@@ -498,34 +1514,51 @@ impl ViewState {
         self.location_stack.set_visible_child_name("entry");
         self.location_entry.grab_focus();
         self.location_entry.select_region(0, -1);
+        self.path_completion
+            .refresh(&self.location_entry, &self.browser);
     }
 
     pub(super) fn cancel_location_edit(&self) {
-        self.restore_location_text();
+        self.path_completion.dismiss();
+        // Resetting a visible entry emits changed and reopens its completion popover.
         self.location_stack.set_visible_child_name("breadcrumbs");
+        self.restore_location_text();
         self.browser.focus_active();
     }
 
     pub(super) fn submit_location(self: &Rc<Self>) {
+        self.path_completion.dismiss();
         let input = self.location_entry.text();
-        let (input, credentials) = match credentials_from_location_input(input.as_str()) {
-            Ok(parsed) => parsed,
-            Err(error) => {
-                self.restore_location_text();
-                self.location_stack.set_visible_child_name("breadcrumbs");
-                show_error_dialog(&self.overlay, "Unable to open location", &error.to_string());
-                return;
-            }
-        };
-        if credentials.is_some() {
-            self.location_entry.set_text(&input);
-        }
-        self.pending_location_credentials.replace(credentials);
-        match self.browser.navigate_input(&input) {
-            Ok(()) => {
+        match self.open_typed_location(input.as_str(), None) {
+            Ok(TypedLocation::Navigating) => {
                 self.location_stack.set_visible_child_name("breadcrumbs");
                 self.browser.focus_active();
             }
+            Ok(TypedLocation::Mounting { sanitized }) => {
+                if sanitized != input.as_str() {
+                    self.location_entry.set_text(&sanitized);
+                }
+            }
+            Err(error) => {
+                self.location_stack.set_visible_child_name("breadcrumbs");
+                self.restore_location_text();
+                show_error_dialog(&self.overlay, "Unable to open location", &error.to_string());
+            }
+        }
+    }
+
+    /// Navigates to typed `input`, mounting first when the location needs it.
+    /// Credentials embedded in a URI move into the mount operation and are
+    /// never kept with the text. A relative path resolves against `base`.
+    pub(super) fn open_typed_location(
+        self: &Rc<Self>,
+        input: &str,
+        base: Option<&Path>,
+    ) -> Result<TypedLocation, LocationValidationError> {
+        let (input, credentials) = credentials_from_location_input(input)?;
+        self.pending_location_credentials.replace(credentials);
+        match self.browser.navigate_input_from(&input, base) {
+            Ok(()) => Ok(TypedLocation::Navigating),
             Err(LocationValidationError::NotMounted(location)) => {
                 let credentials = self.pending_location_credentials.take();
                 self.mount_then_navigate_with_credentials(
@@ -533,6 +1566,7 @@ impl ViewState {
                     MountStrategy::EnclosingVolume,
                     credentials,
                 );
+                Ok(TypedLocation::Mounting { sanitized: input })
             }
             Err(LocationValidationError::Mountable(location)) => {
                 let credentials = self.pending_location_credentials.take();
@@ -541,12 +1575,11 @@ impl ViewState {
                     MountStrategy::Mountable,
                     credentials,
                 );
+                Ok(TypedLocation::Mounting { sanitized: input })
             }
             Err(error) => {
                 self.pending_location_credentials.take();
-                self.restore_location_text();
-                self.location_stack.set_visible_child_name("breadcrumbs");
-                show_error_dialog(&self.overlay, "Unable to open location", &error.to_string());
+                Err(error)
             }
         }
     }
@@ -597,8 +1630,8 @@ impl ViewState {
                             prompt_details,
                         );
                     } else {
-                        state.restore_location_text();
                         state.location_stack.set_visible_child_name("breadcrumbs");
+                        state.restore_location_text();
                         if let Some(message) = mount_failure_message(&location, &error) {
                             show_error_dialog(&state.overlay, "Unable to connect", &message);
                         }
@@ -672,8 +1705,8 @@ impl ViewState {
             },
             move || {
                 if let Some(state) = cancel_weak.upgrade() {
-                    state.restore_location_text();
                     state.location_stack.set_visible_child_name("breadcrumbs");
+                    state.restore_location_text();
                     state.browser.focus_active();
                 }
             },
@@ -707,6 +1740,21 @@ impl ViewState {
         );
     }
 
+    fn show_unlock_retry_prompt(
+        self: &Rc<Self>,
+        keys: DeviceKeys,
+        previous_credentials: Option<MountCredentials>,
+        details: MountPromptDetails,
+        retry: impl Fn(MountCredentials) + 'static,
+    ) {
+        let weak = Rc::downgrade(self);
+        self.show_mount_retry_prompt(previous_credentials, details, retry, move || {
+            if let Some(state) = weak.upgrade() {
+                state.finish_unlock_slot(&keys);
+            }
+        });
+    }
+
     fn show_mount_retry_prompt(
         &self,
         previous_credentials: Option<MountCredentials>,
@@ -716,7 +1764,7 @@ impl ViewState {
     ) {
         let authentication_failed = previous_credentials.is_some();
         let defaults = previous_credentials.unwrap_or_else(|| {
-            let mut defaults = MountCredentials::default_for_prompt();
+            let mut defaults = MountCredentials::default_for_prompt(details.flags);
             if !details.default_user.is_empty() {
                 defaults.username.clone_from(&details.default_user);
             }
@@ -758,6 +1806,204 @@ impl ViewState {
         );
     }
 
+    fn begin_unlock_progress(&self, keys: &DeviceKeys) -> bool {
+        begin_unlock_slot(&mut self.unlock_slots.borrow_mut(), keys)
+    }
+
+    fn schedule_device_mount_chrome(
+        self: &Rc<Self>,
+        keys: &DeviceKeys,
+        volume_name: &str,
+        encrypted: bool,
+    ) {
+        if !encrypted {
+            return;
+        }
+        self.schedule_unlock_progress(keys, volume_name);
+    }
+
+    fn schedule_unlock_progress(self: &Rc<Self>, keys: &DeviceKeys, volume_name: &str) {
+        self.dismiss_unlock_progress(keys);
+        if unlock_progress_dismissed_for(&self.unlock_slots.borrow(), keys) {
+            return;
+        }
+        let weak = Rc::downgrade(self);
+        let volume_name = volume_name.to_owned();
+        let keys = keys.clone();
+        let source = glib::timeout_add_local_once(UNLOCK_PROGRESS_DELAY, {
+            let keys = keys.clone();
+            move || {
+                if let Some(state) = weak.upgrade() {
+                    if let Some(slot) = state
+                        .unlock_slots
+                        .borrow_mut()
+                        .iter_mut()
+                        .find(|slot| unlock_target_matches(&slot.keys, &keys))
+                    {
+                        slot.pending = None;
+                    }
+                    state.present_unlock_progress(&keys, &volume_name);
+                }
+            }
+        });
+        if let Some(slot) = self
+            .unlock_slots
+            .borrow_mut()
+            .iter_mut()
+            .find(|slot| unlock_target_matches(&slot.keys, &keys))
+        {
+            if let Some(previous) = slot.pending.take() {
+                previous.remove();
+            }
+            slot.pending = Some(source);
+        } else {
+            source.remove();
+        }
+    }
+
+    fn present_unlock_progress(self: &Rc<Self>, keys: &DeviceKeys, volume_name: &str) {
+        self.dismiss_other_unlock_views(keys);
+        self.dismiss_unlock_progress(keys);
+        if unlock_progress_dismissed_for(&self.unlock_slots.borrow(), keys) {
+            return;
+        }
+        let Some(ModalHost {
+            overlay: window_overlay,
+            blurred_root,
+        }) = ModalHost::blurred_for(&self.overlay)
+        else {
+            return;
+        };
+
+        let layout = modal_layout(
+            crate::assets::icons::LOCK,
+            "Unlocking volume",
+            volume_name,
+            "Hide",
+        );
+        layout.content.add_css_class("compact");
+        layout.set_loading(true, Some("Unlocking volume"));
+        layout.cancel.set_visible(false);
+        layout.body.append(&message_dialog_description(
+            "You can hide this and keep working. Unlocking will continue in the background.",
+        ));
+        let content = layout.content;
+        let close = layout.close;
+        let hide = layout.confirm;
+
+        let layer = modal_layer(
+            &content,
+            &window_overlay,
+            blurred_root.clone(),
+            Some(Rc::new(|| true)),
+        );
+        window_overlay.add_overlay(&layer);
+        let view = UnlockProgressView {
+            layer,
+            overlay: window_overlay,
+            blurred_root,
+        };
+
+        let weak = Rc::downgrade(self);
+        let hide_keys = keys.clone();
+        hide.connect_clicked({
+            let weak = weak.clone();
+            let hide_keys = hide_keys.clone();
+            move |_| {
+                if let Some(state) = weak.upgrade() {
+                    state.hide_unlock_progress(&hide_keys);
+                }
+            }
+        });
+        close.connect_clicked({
+            let weak = weak.clone();
+            let hide_keys = hide_keys.clone();
+            move |_| {
+                if let Some(state) = weak.upgrade() {
+                    state.hide_unlock_progress(&hide_keys);
+                }
+            }
+        });
+        let escape = gtk::EventControllerKey::new();
+        escape.connect_key_pressed({
+            let hide_keys = hide_keys.clone();
+            move |_, key, _, _| {
+                if key == gtk::gdk::Key::Escape {
+                    if let Some(state) = weak.upgrade() {
+                        state.hide_unlock_progress(&hide_keys);
+                    }
+                    glib::Propagation::Stop
+                } else {
+                    glib::Propagation::Proceed
+                }
+            }
+        });
+        view.layer.add_controller(escape);
+        hide.grab_focus();
+        if let Some(slot) = self
+            .unlock_slots
+            .borrow_mut()
+            .iter_mut()
+            .find(|slot| unlock_target_matches(&slot.keys, keys))
+        {
+            slot.view = Some(view);
+        } else {
+            dismiss_modal_layer(&view.layer, &view.overlay, view.blurred_root.as_ref());
+        }
+    }
+
+    fn hide_unlock_progress(&self, keys: &DeviceKeys) {
+        if let Some(slot) = self
+            .unlock_slots
+            .borrow_mut()
+            .iter_mut()
+            .find(|slot| unlock_target_matches(&slot.keys, keys))
+        {
+            slot.dismissed = true;
+        }
+        self.dismiss_unlock_progress(keys);
+    }
+
+    fn dismiss_other_unlock_views(&self, keys: &DeviceKeys) {
+        let others: Vec<DeviceKeys> = self
+            .unlock_slots
+            .borrow()
+            .iter()
+            .filter(|slot| !unlock_target_matches(&slot.keys, keys))
+            .map(|slot| slot.keys.clone())
+            .collect();
+        for other in others {
+            self.dismiss_unlock_progress(&other);
+        }
+    }
+
+    fn dismiss_unlock_progress(&self, keys: &DeviceKeys) {
+        let view = {
+            let mut slots = self.unlock_slots.borrow_mut();
+            let Some(slot) = slots
+                .iter_mut()
+                .find(|slot| unlock_target_matches(&slot.keys, keys))
+            else {
+                return;
+            };
+            if let Some(source) = slot.pending.take() {
+                source.remove();
+            }
+            slot.view.take()
+        };
+        let Some(view) = view else {
+            return;
+        };
+        dismiss_modal_layer(&view.layer, &view.overlay, view.blurred_root.as_ref());
+    }
+
+    fn finish_unlock_slot(&self, keys: &DeviceKeys) {
+        self.dismiss_unlock_progress(keys);
+        self.unlock_slots
+            .borrow_mut()
+            .retain(|slot| !unlock_target_matches(&slot.keys, keys));
+    }
+
     fn mount_target(
         self: &Rc<Self>,
         target: MountTarget,
@@ -772,18 +2018,77 @@ impl ViewState {
         let Some(window) = self.overlay.root().and_downcast::<gtk::Window>() else {
             return;
         };
+        let log_location = match &target {
+            MountTarget::Location(location, strategy) => {
+                log_mount_started(location, *strategy);
+                Some(location.clone())
+            }
+            _ => None,
+        };
+        let (unlock_name, unlock_keys, encrypted) = match &target {
+            MountTarget::Volume(volume) => (
+                Some(volume.name().to_string()),
+                DeviceMatch::from_volume(volume).keys,
+                gio_volume_is_encrypted(volume),
+            ),
+            MountTarget::Drive(drive) => (
+                Some(drive.name().to_string()),
+                DeviceMatch::from_drive(drive).keys,
+                true,
+            ),
+            MountTarget::Location(_, _) => (None, DeviceKeys::new([], []), false),
+        };
+        if let Some(name) = unlock_name.as_deref() {
+            self.schedule_device_mount_chrome(&unlock_keys, name, encrypted);
+        }
         let activity = BrowserView {
             state: self.clone(),
         }
         .begin_global_activity("Connecting…");
-        // A native gtk::MountOperation (rather than a bare gio::MountOperation)
-        // is required so GTK's own "ask-question" dialog handles host-key and
-        // certificate trust decisions for us; we only override "ask-password"
-        // below with Strata's own dialog, stopping that one signal's default
-        // handler so the two don't both try to reply.
+        // Keep GTK's native question handler for other schemes and devices;
+        // SFTP host-key choices are rendered by Strata without answering automatically.
+        let sftp_question = matches!(
+            &target,
+            MountTarget::Location(location, _) if location.backend_name() == "sftp"
+        );
         let operation = gtk::MountOperation::new(Some(&window));
         let prompt_overlay = self.overlay.clone();
         let active_prompt = Rc::new(RefCell::new(None::<gtk::Box>));
+        let active_question = Rc::new(RefCell::new(None::<gtk::Box>));
+        let question_declined = Rc::new(Cell::new(false));
+        if sftp_question {
+            let question_operation = operation.clone();
+            let question_overlay = self.overlay.clone();
+            let question_for_signal = active_question.clone();
+            let declined_for_signal = question_declined.clone();
+            operation.connect_local("ask-question", false, move |values| {
+                let (Some(message), Some(choices)) = (
+                    values.get(1).and_then(|value| value.get::<String>().ok()),
+                    values
+                        .get(2)
+                        .and_then(|value| value.get::<glib::StrV>().ok()),
+                ) else {
+                    return None;
+                };
+                if choices.is_empty() {
+                    return None;
+                }
+                question_operation.stop_signal_emission_by_name("ask-question");
+                if let Some(previous) = question_for_signal.borrow_mut().take() {
+                    dismiss_authentication_prompt(&question_overlay, &previous);
+                }
+                let choices: Vec<String> = choices.iter().map(ToString::to_string).collect();
+                let prompt = show_trust_question_dialog(
+                    &question_overlay,
+                    question_operation.upcast_ref(),
+                    &message,
+                    &choices,
+                    declined_for_signal.clone(),
+                );
+                question_for_signal.replace(prompt);
+                None
+            });
+        }
         let prompt_for_signal = active_prompt.clone();
         let prompt_details = Rc::new(RefCell::new(None::<MountPromptDetails>));
         let details_for_signal = prompt_details.clone();
@@ -792,13 +2097,14 @@ impl ViewState {
         let supplied_credentials = Rc::new(RefCell::new(credentials));
         let credentials_for_signal = supplied_credentials.clone();
         let already_prompted = Cell::new(credentials_for_signal.borrow().is_some());
+        let progress_state = Rc::downgrade(self);
+        let progress_name = unlock_name;
+        let progress_keys = unlock_keys;
+        let progress_encrypted = encrypted;
         operation.connect_ask_password(
             move |operation, message, default_user, default_domain, flags| {
-                // Suppress GtkMountOperation's own native password dialog: we
-                // reply ourselves (immediately or via our custom prompt)
-                // below. "ask-question" is deliberately left unconnected so
-                // its native default handler still runs for host-key/cert
-                // trust prompts.
+                // Suppress GtkMountOperation's native password dialog: we reply
+                // ourselves so it cannot race the Strata authentication prompt.
                 operation.stop_signal_emission_by_name("ask-password");
                 details_for_signal.replace(Some(MountPromptDetails {
                     message: message.to_owned(),
@@ -810,6 +2116,9 @@ impl ViewState {
                     apply_mount_credentials(operation.upcast_ref(), &credentials);
                     operation.reply(gio::MountOperationResult::Handled);
                     return;
+                }
+                if let Some(state) = progress_state.upgrade() {
+                    state.dismiss_unlock_progress(&progress_keys);
                 }
                 if let Some(previous) = prompt_for_signal.borrow_mut().take() {
                     dismiss_authentication_prompt(&prompt_overlay, &previous);
@@ -825,8 +2134,17 @@ impl ViewState {
                     MountDialogHandlers {
                         submitted: Some(Rc::new({
                             let attempts_for_signal = attempts_for_signal.clone();
+                            let progress_state = progress_state.clone();
+                            let progress_name = progress_name.clone();
+                            let progress_keys = progress_keys.clone();
                             move |credentials| {
                                 attempts_for_signal.replace(Some(credentials));
+                                if let (Some(state), Some(name)) =
+                                    (progress_state.upgrade(), progress_name.as_ref())
+                                    && progress_encrypted
+                                {
+                                    state.present_unlock_progress(&progress_keys, name);
+                                }
                             }
                         })),
                         cancelled: None,
@@ -843,6 +2161,11 @@ impl ViewState {
                 MountTarget::Volume(volume) => {
                     volume
                         .mount_future(gio::MountMountFlags::NONE, Some(&operation))
+                        .await
+                }
+                MountTarget::Drive(drive) => {
+                    drive
+                        .start_future(gio::DriveStartFlags::NONE, Some(&operation))
                         .await
                 }
                 MountTarget::Location(location, strategy) => {
@@ -862,7 +2185,14 @@ impl ViewState {
                     }
                 }
             };
+            let result = trust_question_result(result, question_declined.get());
+            if let Some(location) = log_location.as_ref() {
+                log_mount_finished(location, &result);
+            }
             if let Some(prompt) = active_prompt.borrow_mut().take() {
+                dismiss_authentication_prompt(&result_overlay, &prompt);
+            }
+            if let Some(prompt) = active_question.borrow_mut().take() {
                 dismiss_authentication_prompt(&result_overlay, &prompt);
             }
             if let Some(state) = weak.upgrade() {
@@ -889,7 +2219,6 @@ impl ViewState {
     }
 
     pub(super) fn set_location(self: &Rc<Self>, location: &Location) {
-        self.location_entry.set_text(&location.display_path());
         while let Some(child) = self.breadcrumbs.first_child() {
             self.breadcrumbs.remove(&child);
         }
@@ -922,7 +2251,11 @@ impl ViewState {
                 let current_label = gtk::Label::new(Some(&label));
                 current_label.add_css_class("breadcrumb");
                 current_label.add_css_class("current");
-                current_label.set_tooltip_text(Some(&crumb.display_path()));
+                ellipsize_crumb_label(&current_label);
+                crate::ui::accessibility::set_description(
+                    &current_label,
+                    Some(&crumb.display_path()),
+                );
                 let copy = gtk::Button::builder().tooltip_text("Copy path").build();
                 let copy_icon = crate::assets::primary_icon(crate::assets::icons::COPY, 16);
                 copy.set_child(Some(&copy_icon));
@@ -954,6 +2287,9 @@ impl ViewState {
                 self.breadcrumbs.append(&current);
             } else {
                 let button = gtk::Button::with_label(&label);
+                if let Some(label) = button.child().and_downcast::<gtk::Label>() {
+                    ellipsize_crumb_label(&label);
+                }
                 button.add_css_class("breadcrumb");
                 if crumb
                     .native_path()
@@ -962,7 +2298,7 @@ impl ViewState {
                     button.add_css_class("breadcrumb-root");
                 }
                 button.set_has_frame(false);
-                button.set_tooltip_text(Some(&crumb.display_path()));
+                crate::ui::accessibility::set_description(&button, Some(&crumb.display_path()));
                 button.set_cursor_from_name(Some("pointer"));
                 let weak = Rc::downgrade(self);
                 button.connect_clicked(move |_| {
@@ -974,6 +2310,121 @@ impl ViewState {
             }
         }
         self.location_stack.set_visible_child_name("breadcrumbs");
+        self.location_entry.set_text(&location.display_path());
+        let Some(last) = self.breadcrumbs.last_child() else {
+            return;
+        };
+        let last = last.downgrade();
+        let _tick = self
+            .breadcrumb_scroller
+            .add_tick_callback(move |scroller, _| {
+                let Some(last) = last.upgrade() else {
+                    return glib::ControlFlow::Break;
+                };
+                // The adjustment's upper bound is stale until the new crumbs are allocated.
+                if last.width() <= 0 {
+                    return glib::ControlFlow::Continue;
+                }
+                let adjustment = scroller.hadjustment();
+                adjustment.set_value(adjustment.upper() - adjustment.page_size());
+                glib::ControlFlow::Break
+            });
+    }
+
+    pub(super) fn show_breadcrumb_hierarchy_menu(
+        self: &Rc<Self>,
+        anchor: &gtk::Widget,
+        x: f64,
+        y: f64,
+    ) {
+        let Some(active_location) = self.browser.active_location() else {
+            return;
+        };
+        let mut locations = active_location.breadcrumbs();
+        if locations.is_empty() {
+            return;
+        }
+        let home = Location::local(glib::home_dir());
+        if let Some(home_index) = locations.iter().position(|crumb| crumb == &home) {
+            locations.drain(..home_index);
+        }
+
+        locations.reverse();
+
+        let menu_box = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        menu_box.add_css_class("breadcrumb-hierarchy-menu");
+
+        let popover = gtk::Popover::builder()
+            .child(&menu_box)
+            .has_arrow(true)
+            .position(gtk::PositionType::Bottom)
+            .pointing_to(&gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1))
+            .build();
+        popover.add_css_class("breadcrumb-popover");
+        popover.set_parent(anchor);
+
+        for (i, crumb) in locations.iter().enumerate() {
+            let item_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+            let icon_name = if *crumb == home {
+                crate::assets::icons::HOME
+            } else if crumb
+                .native_path()
+                .is_some_and(|path| path == Path::new("/"))
+            {
+                crate::assets::icons::HARD_DRIVE
+            } else if crumb.uri_value().is_some_and(|u| u.starts_with("trash://")) {
+                crate::assets::icons::TRASH
+            } else if crumb.uri_value().is_some() {
+                crate::assets::icons::NETWORK
+            } else {
+                crate::assets::icons::FOLDER
+            };
+
+            let icon = crate::assets::primary_icon(icon_name, 16);
+            let display_name = if *crumb == home {
+                "~".to_owned()
+            } else {
+                crumb.display_name()
+            };
+
+            let label = gtk::Label::new(Some(&display_name));
+            label.set_xalign(0.0);
+            label.set_hexpand(true);
+            ellipsize_crumb_label(&label);
+
+            item_row.append(&icon);
+            item_row.append(&label);
+
+            let button = gtk::Button::builder()
+                .child(&item_row)
+                .has_frame(false)
+                .build();
+            button.set_cursor_from_name(Some("pointer"));
+            button.add_css_class("breadcrumb-hierarchy-item");
+            if i == 0 {
+                button.add_css_class("current");
+            }
+
+            let weak_self = Rc::downgrade(self);
+            let weak_popover = popover.downgrade();
+            let target_crumb = crumb.clone();
+            button.connect_clicked(move |_| {
+                if let Some(popover) = weak_popover.upgrade() {
+                    popover.popdown();
+                }
+                if let Some(state) = weak_self.upgrade() {
+                    state.browser.navigate(target_crumb.clone());
+                }
+            });
+
+            menu_box.append(&button);
+        }
+
+        popover.connect_closed(move |popover| {
+            popover.unparent();
+        });
+
+        popover.popup();
     }
 }
 

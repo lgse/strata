@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{cell::RefCell, rc::Rc};
 
@@ -61,6 +61,48 @@ pub(super) fn hits_item_content(surface: &gtk::Widget, x: f64, y: f64) -> bool {
     false
 }
 
+/// Unlike hover, focus, and drag, marquee must treat frame padding as gutter.
+pub(super) fn hits_icon_card_content(card: &gtk::Widget, x: f64, y: f64) -> bool {
+    hits_item_content(card, x, y)
+        || card
+            .pick(x, y, gtk::PickFlags::DEFAULT)
+            .is_some_and(|widget| widget.has_css_class("icons-card-icon-frame"))
+}
+
+pub(super) fn hits_name_label(surface: &gtk::Widget, label: &gtk::Widget, x: f64, y: f64) -> bool {
+    let Some(point) = surface.compute_point(label, &gtk::graphene::Point::new(x as f32, y as f32))
+    else {
+        return false;
+    };
+    if !label.is_visible()
+        || point.x() < 0.0
+        || point.y() < 0.0
+        || point.x() >= label.width() as f32
+        || point.y() >= label.height() as f32
+    {
+        return false;
+    }
+    if let Some(text) = label.downcast_ref::<gtk::Label>() {
+        let (offset, _) = text.layout_offsets();
+        let (_, logical) = text.layout().pixel_extents();
+        let left = offset + logical.x();
+        return point.x() >= left as f32 && point.x() < (left + logical.width()) as f32;
+    }
+    true
+}
+
+/// The full Name column, including row padding, uses content-only hit testing.
+pub(super) fn hits_list_item_content(row: &gtk::Widget, x: f64, y: f64) -> bool {
+    let in_name = row
+        .first_child()
+        .filter(|cell| cell.has_css_class("list-name-cell"))
+        .and_then(|cell| cell.compute_bounds(row))
+        .is_some_and(|bounds| {
+            x >= f64::from(bounds.x()) && x < f64::from(bounds.x() + bounds.width())
+        });
+    !in_name || hits_item_content(row, x, y)
+}
+
 pub(super) fn is_background(surface: &gtk::Widget, x: f64, y: f64) -> bool {
     let mut current = surface.pick(x, y, gtk::PickFlags::DEFAULT);
     while let Some(widget) = current {
@@ -94,7 +136,7 @@ struct PendingClick {
 pub(super) fn connect_click_release(
     click: &gtk::GestureClick,
     item: &gtk::ListItem,
-    released: impl Fn(&gtk::GestureClick, i32) + 'static,
+    released: impl Fn(&gtk::GestureClick, i32, f64, f64) + 'static,
 ) {
     let pending = Rc::new(RefCell::new(None::<PendingClick>));
     let item_for_press = item.downgrade();
@@ -147,7 +189,7 @@ pub(super) fn connect_click_release(
             && item.position() == pending.position
             && item.item().as_ref() == Some(&pending.item)
         {
-            released(gesture, count);
+            released(gesture, count, pending.press.0, pending.press.1);
         }
     });
 }

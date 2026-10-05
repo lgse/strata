@@ -1,0 +1,321 @@
+// SPDX-License-Identifier: MIT
+
+use std::rc::Rc;
+
+use gtk::{
+    gdk::{Key, ModifierType as Modifiers},
+    glib::{self, Propagation},
+    prelude::*,
+};
+
+use super::{Dispatcher, KeyEvent, KeyResult};
+use crate::{
+    app::Browser,
+    ui::{
+        browser::BrowserView,
+        window::{
+            apply_browser_mode, browser_mode_for_digit, is_browser_navigation_key,
+            is_context_menu_shortcut, is_native_editing_shortcut, is_open_terminal_shortcut,
+            is_redo_shortcut, is_refresh_shortcut, is_rename_shortcut, is_sidebar_focus_shortcut,
+            is_toggle_hidden_shortcut, is_undo_shortcut, type_to_search_query,
+        },
+    },
+};
+
+fn entry_for(widget: &gtk::Widget) -> Option<gtk::Entry> {
+    widget.clone().downcast().ok().or_else(|| {
+        widget
+            .ancestor(gtk::Entry::static_type())
+            .and_then(|entry| entry.downcast().ok())
+    })
+}
+
+impl Dispatcher {
+    pub(super) fn window_commands(&self, event: &KeyEvent) -> KeyResult {
+        if event.control()
+            && (!event.text_has_focus() || self.view.filter_has_focus())
+            && event.without(Modifiers::SHIFT_MASK | Modifiers::ALT_MASK)
+            && let Some(mode) = browser_mode_for_digit(event.key)
+        {
+            apply_browser_mode(
+                &self.view,
+                &crate::ui::preferences::PreferenceManager::shared(),
+                mode,
+            );
+            return Some(Propagation::Stop);
+        }
+        if event.text_has_focus() {
+            return None;
+        }
+        if event.control()
+            && event.without(Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
+            && matches!(event.key, Key::k | Key::K)
+        {
+            let (action, label) = if event.shift() {
+                ("win.jump-folder", "folder jump")
+            } else {
+                ("win.search", "global search")
+            };
+            if let Err(error) = gtk::prelude::WidgetExt::activate_action(&self.window, action, None)
+            {
+                tracing::warn!(%error, "unable to activate {label} shortcut");
+            }
+            return Some(Propagation::Stop);
+        }
+        None
+    }
+
+    pub(super) fn inline_editing(&self, event: &KeyEvent) -> KeyResult {
+        if is_rename_shortcut(event.key, event.modifiers)
+            && (self.view.filter_has_focus()
+                || !event
+                    .focused
+                    .as_ref()
+                    .is_some_and(crate::ui::focus_navigation::editable))
+            && self.view.begin_rename()
+        {
+            return Some(Propagation::Stop);
+        }
+        if event.key == Key::Escape && (self.view.cancel_new_entry() || self.view.cancel_rename()) {
+            return Some(Propagation::Stop);
+        }
+        if !self.inline_editing_active() {
+            return None;
+        }
+        // Stop Ctrl+A before the collection view also applies its select-all binding.
+        if event.control()
+            && event.without(Modifiers::SHIFT_MASK | Modifiers::ALT_MASK)
+            && event.key == Key::a
+            && let Some(field) = self.view.active_rename_field()
+        {
+            field.select_region(0, -1);
+            return Some(Propagation::Stop);
+        }
+        Some(Propagation::Proceed)
+    }
+
+    pub(super) fn filter_and_location_commands(&self, event: &KeyEvent) -> KeyResult {
+        if event.key == Key::space
+            && event.without(
+                Modifiers::CONTROL_MASK
+                    | Modifiers::ALT_MASK
+                    | Modifiers::SUPER_MASK
+                    | Modifiers::SHIFT_MASK,
+            )
+            && let Some(entry) = self.view.selected_search_result()
+        {
+            if self.view.activate_directory_on_space() {
+                return Some(Propagation::Stop);
+            }
+            self.preview.toggle(
+                crate::ui::preview::preview_target(Some(entry)),
+                self.view.browser().active_depth(),
+            );
+            return Some(Propagation::Stop);
+        }
+        if event.key == Key::Escape && self.view.dismiss_focused_filter() {
+            return Some(Propagation::Stop);
+        }
+        if event.control()
+            && event.without(Modifiers::SHIFT_MASK | Modifiers::ALT_MASK)
+            && matches!(event.key, Key::f | Key::F)
+            && self.view.show_filter()
+        {
+            return Some(Propagation::Stop);
+        }
+        if event.control() && event.key == Key::l {
+            self.view.begin_location_edit();
+            return Some(Propagation::Stop);
+        }
+        None
+    }
+
+    pub(super) fn video_controls(&self, event: &KeyEvent) -> KeyResult {
+        if !self.sidebar.contains(&event.focused)
+            && !self.top_bar.has_focus()
+            && !event.text_has_focus()
+            && self.preview.handle_video_key(event.key, event.modifiers)
+        {
+            return Some(Propagation::Stop);
+        }
+        None
+    }
+
+    pub(super) fn sidebar_commands(&self, browser: &Browser, event: &KeyEvent) -> KeyResult {
+        let toggle = self.top_bar.sidebar_toggle();
+        if is_sidebar_focus_shortcut(event.key, event.modifiers) {
+            if self.type_to_search.preferences.tenxer_mode() {
+                if !toggle.is_active() {
+                    return Some(Propagation::Stop);
+                }
+                if self.sidebar.contains(&event.focused) {
+                    self.sidebar.restore(browser, true);
+                } else {
+                    self.sidebar.previous.replace(event.focused.clone());
+                    self.sidebar.state.focus_active_place();
+                }
+                return Some(Propagation::Stop);
+            }
+            self.view.keyboard_navigation();
+            if self.sidebar.contains(&event.focused) {
+                self.sidebar.restore(browser, false);
+            } else {
+                self.sidebar.previous.replace(event.focused.clone());
+                if !toggle.is_active() {
+                    toggle.set_active(true);
+                }
+                let sidebar = self.sidebar.state.clone();
+                glib::idle_add_local_once(move || {
+                    sidebar.focus_active_place();
+                });
+            }
+            return Some(Propagation::Stop);
+        }
+        let toggles_sidebar = if self.type_to_search.preferences.tenxer_mode() {
+            matches!(event.key, Key::n | Key::N)
+        } else {
+            matches!(event.key, Key::b | Key::B)
+        };
+        if event.control()
+            && !event.shift()
+            && event.without(Modifiers::ALT_MASK)
+            && toggles_sidebar
+        {
+            toggle.set_active(!toggle.is_active());
+            return Some(Propagation::Stop);
+        }
+        None
+    }
+
+    pub(super) fn text_input(&self, event: &KeyEvent) -> KeyResult {
+        if self.view.location_has_focus() {
+            if event.key == Key::Escape {
+                self.view.cancel_location_edit();
+                return Some(Propagation::Stop);
+            }
+            if event.control()
+                && event
+                    .without(Modifiers::SHIFT_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
+                && event.key == Key::a
+                && let Some(entry) = event.focused.as_ref().and_then(entry_for)
+            {
+                entry.select_region(0, -1);
+                return Some(Propagation::Stop);
+            }
+            return Some(Propagation::Proceed);
+        }
+        if !event.text_has_focus()
+            && is_undo_shortcut(event.key, event.modifiers)
+            && self.view.undo_last_operation()
+        {
+            return Some(Propagation::Stop);
+        }
+        if !event.text_has_focus()
+            && is_redo_shortcut(event.key, event.modifiers)
+            && self.view.redo_last_operation()
+        {
+            return Some(Propagation::Stop);
+        }
+        if self.view.item_view_has_focus()
+            && let Some(query) = type_to_search_query(event.key, event.modifiers)
+            && self.type_to_search.show(query)
+        {
+            return Some(Propagation::Stop);
+        }
+        if !event.text_has_focus() && is_browser_navigation_key(event.key, event.modifiers) {
+            self.view.keyboard_navigation();
+        }
+        None
+    }
+
+    pub(super) fn properties_command(&self, event: &KeyEvent) -> KeyResult {
+        if !event.text_has_focus()
+            && event.alt()
+            && event.without(Modifiers::CONTROL_MASK | Modifiers::SHIFT_MASK)
+            && matches!(event.key, Key::Return | Key::KP_Enter)
+            && self.view.show_focused_properties()
+        {
+            return Some(Propagation::Stop);
+        }
+        None
+    }
+
+    pub(super) fn file_commands(&self, browser: &Rc<Browser>, event: &KeyEvent) -> KeyResult {
+        if event.control() && event.shift() && matches!(event.key, Key::n | Key::N) {
+            self.view.create_new_folder();
+            return Some(Propagation::Stop);
+        }
+        if event.control()
+            && event.alt()
+            && event.without(Modifiers::SHIFT_MASK | Modifiers::SUPER_MASK)
+            && matches!(event.key, Key::n | Key::N)
+        {
+            if !self.view.create_new_folder_for_selection() {
+                self.view.create_new_folder();
+            }
+            return Some(Propagation::Stop);
+        }
+        self.clipboard_command(event)
+            .or_else(|| self.browser_commands(browser, event))
+    }
+
+    pub(super) fn clipboard_command(&self, event: &KeyEvent) -> KeyResult {
+        if !event.control() || event.shift() {
+            return None;
+        }
+        let action: fn(&BrowserView) -> bool = match event.key {
+            Key::v => |view| {
+                view.paste();
+                true
+            },
+            Key::c => BrowserView::copy_selection,
+            Key::d | Key::D => BrowserView::duplicate_selection,
+            Key::x => BrowserView::cut_selection,
+            Key::a => |view| {
+                view.select_all();
+                true
+            },
+            _ => return None,
+        };
+        if self.view.filter_has_focus()
+            || event.text_has_focus()
+            || (self.preview_has_focus(event)
+                && is_native_editing_shortcut(event.key, event.modifiers))
+        {
+            return Some(Propagation::Proceed);
+        }
+        action(&self.view).then_some(Propagation::Stop)
+    }
+
+    fn preview_has_focus(&self, event: &KeyEvent) -> bool {
+        let preview = self.preview.widget();
+        event
+            .focused
+            .as_ref()
+            .is_some_and(|focused| focused == &preview || focused.is_ancestor(&preview))
+    }
+
+    pub(super) fn context_menu_command(&self, event: &KeyEvent) -> KeyResult {
+        if is_context_menu_shortcut(event.key, event.modifiers)
+            && !event.text_has_focus()
+            && (super::sidebar::open_sidebar_context_menu(&self.sidebar.widget)
+                || self.view.open_focused_context_menu())
+        {
+            return Some(Propagation::Stop);
+        }
+        None
+    }
+
+    fn browser_commands(&self, browser: &Rc<Browser>, event: &KeyEvent) -> KeyResult {
+        if is_toggle_hidden_shortcut(event.key, event.modifiers) {
+            browser.toggle_hidden();
+        } else if is_open_terminal_shortcut(event.key, event.modifiers) {
+            self.view.open_terminal();
+        } else if is_refresh_shortcut(event.key) {
+            self.view.refresh();
+        } else {
+            return None;
+        }
+        Some(Propagation::Stop)
+    }
+}

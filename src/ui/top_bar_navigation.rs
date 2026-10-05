@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{cell::RefCell, rc::Rc};
 
@@ -24,6 +24,10 @@ impl TopBarNavigation {
 
     pub fn sidebar_toggle(&self) -> &gtk::ToggleButton {
         &self.toggle
+    }
+
+    pub fn focus_first(&self) -> bool {
+        self.header.child_focus(gtk::DirectionType::TabForward)
     }
 
     pub fn has_focus(&self) -> bool {

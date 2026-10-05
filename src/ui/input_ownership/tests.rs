@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::*;
 
@@ -11,8 +11,27 @@ fn parked_pointer_cannot_override_keyboard_navigation() {
     assert_eq!(input.destination(Some(0), Some(2), Some(2), 3), Some(2));
     assert!(!input.pointer_motion((50.0, 100.0)));
     assert_eq!(input.destination(Some(1), Some(2), Some(2), 3), Some(2));
+    input.keyboard_navigation();
+    assert_eq!(
+        input.destination(Some(1), Some(2), Some(2), 3),
+        Some(2),
+        "the next keyboard command still targets the focused column"
+    );
     assert!(input.pointer_motion((51.0, 100.0)));
     assert_eq!(input.destination(Some(1), Some(2), Some(2), 3), Some(1));
+}
+
+#[test]
+fn resynced_pointer_after_a_grab_does_not_override_newer_keys() {
+    let mut input = InputOwnership::default();
+    input.pointer_motion((50.0, 100.0));
+    input.keyboard_navigation();
+    input.pointer_resynced((300.0, 100.0));
+    assert_eq!(input.destination(Some(0), Some(2), Some(2), 3), Some(2));
+    assert!(!input.pointer_motion((300.0, 100.0)));
+    assert_eq!(input.destination(Some(0), Some(2), Some(2), 3), Some(2));
+    assert!(input.pointer_motion((301.0, 100.0)));
+    assert_eq!(input.destination(Some(0), Some(2), Some(2), 3), Some(0));
 }
 
 #[test]

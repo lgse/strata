@@ -1,7 +1,7 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
-//! Fast scrolling shared by the browser's collection views: middle-click
-//! autoscroll and the geometry behind page-sized keyboard navigation.
+//! Scrolling shared by collection views: middle-click autoscroll, page-sized
+//! keyboard navigation, and wheel routing for transient browser panels.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -9,6 +9,8 @@ use std::time::Duration;
 
 use gtk::glib;
 use gtk::prelude::*;
+
+pub(super) mod popover;
 
 /// Pointer travel from the anchor that is treated as "not moving yet".
 const DEAD_ZONE: f64 = 12.0;
@@ -25,8 +27,8 @@ thread_local! {
 }
 
 struct AutoScroll {
-    scroll: gtk::ScrolledWindow,
-    overlay: gtk::Overlay,
+    scroll: glib::WeakRef<gtk::ScrolledWindow>,
+    overlay: glib::WeakRef<gtk::Overlay>,
     marker: gtk::Box,
     /// Anchor and pointer in the scrolled window's coordinates, which do not move
     /// while the content scrolls underneath.
@@ -47,8 +49,8 @@ pub(super) fn install_autoscroll(scroll: &gtk::ScrolledWindow, overlay: &gtk::Ov
     overlay.add_overlay(&marker);
 
     let state = Rc::new(AutoScroll {
-        scroll: scroll.clone(),
-        overlay: overlay.clone(),
+        scroll: scroll.downgrade(),
+        overlay: overlay.downgrade(),
         marker,
         anchor: Cell::new((0.0, 0.0)),
         pointer: Cell::new((0.0, 0.0)),
@@ -87,6 +89,11 @@ pub(super) fn install_autoscroll(scroll: &gtk::ScrolledWindow, overlay: &gtk::Ov
             stop_autoscroll();
         }
     });
+    scroll.connect_destroy(move |_| {
+        if state.is_active() {
+            stop_autoscroll();
+        }
+    });
 }
 
 /// Lets any press anywhere under `root` end a running autoscroll, without
@@ -103,6 +110,39 @@ pub(super) fn install_autoscroll_stop(root: &impl IsA<gtk::Widget>) {
     root.as_ref().add_controller(press);
 }
 
+#[cfg(test)]
+pub(super) fn autoscroll_is_running() -> bool {
+    ACTIVE.with_borrow(|active| active.is_some())
+}
+
+/// Starts autoscroll on `scroll` through the same `AutoScroll::start` path a
+/// middle-click uses, so Escape can be tested without synthesizing a button event.
+#[cfg(test)]
+pub(super) fn begin_autoscroll_for_test(scroll: &gtk::ScrolledWindow) -> bool {
+    let overlay = scroll
+        .ancestor(gtk::Overlay::static_type())
+        .and_downcast::<gtk::Overlay>()
+        .unwrap_or_else(gtk::Overlay::new);
+    let marker = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    marker.add_css_class("autoscroll-anchor");
+    marker.set_can_target(false);
+    marker.set_visible(false);
+    overlay.add_overlay(&marker);
+    let vertical = scroll.vadjustment();
+    if !scrollable(&vertical) && !scrollable(&scroll.hadjustment()) {
+        vertical.set_upper(vertical.lower() + vertical.page_size() + 200.0);
+    }
+    let state = Rc::new(AutoScroll {
+        scroll: scroll.downgrade(),
+        overlay: overlay.downgrade(),
+        marker,
+        anchor: Cell::new((0.0, 0.0)),
+        pointer: Cell::new((0.0, 0.0)),
+        frames: RefCell::new(None),
+    });
+    state.start((10.0, 10.0))
+}
+
 /// Stops a running autoscroll, reporting whether one was running.
 pub(super) fn stop_autoscroll() -> bool {
     let Some(state) = ACTIVE.with_borrow_mut(std::option::Option::take) else {
@@ -110,6 +150,17 @@ pub(super) fn stop_autoscroll() -> bool {
     };
     state.stop();
     true
+}
+
+impl Drop for AutoScroll {
+    fn drop(&mut self) {
+        self.stop();
+        if let Some(overlay) = self.overlay.upgrade()
+            && self.marker.parent().as_ref() == Some(overlay.upcast_ref())
+        {
+            overlay.remove_overlay(&self.marker);
+        }
+    }
 }
 
 impl AutoScroll {
@@ -124,13 +175,16 @@ impl AutoScroll {
     /// Begins autoscrolling from `anchor`, reporting whether the view can scroll at
     /// all — a view that fits its viewport keeps the press for other handlers.
     fn start(self: &Rc<Self>, anchor: (f64, f64)) -> bool {
-        if !scrollable(&self.scroll.hadjustment()) && !scrollable(&self.scroll.vadjustment()) {
+        let Some(scroll) = self.scroll.upgrade() else {
+            return false;
+        };
+        if !scrollable(&scroll.hadjustment()) && !scrollable(&scroll.vadjustment()) {
             return false;
         }
         self.anchor.set(anchor);
         self.pointer.set(anchor);
         self.place_marker();
-        self.scroll.set_cursor_from_name(Some("all-scroll"));
+        scroll.set_cursor_from_name(Some("all-scroll"));
         let state = self.clone();
         let source = glib::timeout_add_local(FRAME_INTERVAL, move || {
             state.frame();
@@ -146,7 +200,9 @@ impl AutoScroll {
             source.remove();
         }
         self.marker.set_visible(false);
-        self.scroll.set_cursor(None);
+        if let Some(scroll) = self.scroll.upgrade() {
+            scroll.set_cursor(None);
+        }
     }
 
     fn track(self: &Rc<Self>, pointer: (f64, f64)) {
@@ -156,20 +212,20 @@ impl AutoScroll {
     }
 
     fn frame(&self) {
+        let Some(scroll) = self.scroll.upgrade() else {
+            return;
+        };
         let (anchor_x, anchor_y) = self.anchor.get();
         let (pointer_x, pointer_y) = self.pointer.get();
-        advance(
-            &self.scroll.hadjustment(),
-            autoscroll_step(pointer_x - anchor_x),
-        );
-        advance(
-            &self.scroll.vadjustment(),
-            autoscroll_step(pointer_y - anchor_y),
-        );
+        advance(&scroll.hadjustment(), autoscroll_step(pointer_x - anchor_x));
+        advance(&scroll.vadjustment(), autoscroll_step(pointer_y - anchor_y));
     }
 
     fn place_marker(&self) {
-        let Some(bounds) = self.scroll.compute_bounds(&self.overlay) else {
+        let (Some(scroll), Some(overlay)) = (self.scroll.upgrade(), self.overlay.upgrade()) else {
+            return;
+        };
+        let Some(bounds) = scroll.compute_bounds(&overlay) else {
             return;
         };
         let (x, y) = self.anchor.get();
@@ -199,7 +255,7 @@ fn scrollable(adjustment: &gtk::Adjustment) -> bool {
     adjustment.upper() - adjustment.lower() > adjustment.page_size()
 }
 
-fn advance(adjustment: &gtk::Adjustment, step: f64) {
+pub(super) fn advance(adjustment: &gtk::Adjustment, step: f64) {
     if step == 0.0 {
         return;
     }
@@ -267,6 +323,49 @@ pub(super) fn reveal_selection(
         return;
     }
     advance(&scroll.vadjustment(), f64::from(direction) * page.distance);
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum CursorMotion {
+    /// One entry. Focus-follow scrolling already keeps the cursor in sight.
+    Step,
+    Page,
+    Jump,
+}
+
+/// Grid pages scroll by pixels; list rows and jumps follow the cursor, not the fill.
+pub(super) fn reveal_cursor(
+    view: &gtk::Widget,
+    scroll: &gtk::ScrolledWindow,
+    direction: i32,
+    motion: CursorMotion,
+    position: Option<u32>,
+) {
+    let grid = view.is::<gtk::GridView>();
+    if motion == CursorMotion::Page && grid {
+        advance(
+            &scroll.vadjustment(),
+            f64::from(direction) * page(view, scroll).distance,
+        );
+        return;
+    }
+    // GridView `scroll_to` relies on stale cell estimates; the pane's own focus
+    // follow brings a single grid step into view.
+    if motion == CursorMotion::Step && grid {
+        return;
+    }
+    if scroll.child().is_some_and(|child| &child == view)
+        && let Some(position) = position.or_else(|| selected_position(view))
+    {
+        scroll_to_item(view, position);
+        return;
+    }
+    let distance = match motion {
+        CursorMotion::Step => return,
+        CursorMotion::Page => page(view, scroll).distance,
+        CursorMotion::Jump => f64::MAX,
+    };
+    advance(&scroll.vadjustment(), f64::from(direction) * distance);
 }
 
 /// Brings the newly selected item into sight after jumping to the first or last
@@ -412,6 +511,3 @@ fn rows_per_page(page_size: f64, item_height: f64) -> usize {
     let rows = (page_size / item_height).floor().max(1.0) as usize;
     rows.saturating_sub(1).max(1)
 }
-
-#[cfg(test)]
-mod tests;

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Session and per-scenario fixtures for the end-to-end suite."""
 
 from __future__ import annotations
@@ -25,6 +25,8 @@ from harness.xtest import XTestConnection  # noqa: E402
 # Retry infrastructure startup only, never interaction assertions.
 DISPLAY_START_ATTEMPTS = 2
 
+pytest_plugins = ["harness.ci_plugin", "harness.warnings_plugin"]
+
 
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption(
@@ -36,16 +38,26 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 def pytest_xdist_auto_num_workers(config: pytest.Config) -> int:
     cpus, memory = resources.available_resources()
+    tasks = resources.available_tasks()
     try:
-        workers = resources.worker_count(cpus, memory, os.environ.get("STRATA_E2E_WORKERS", "auto"))
+        workers = resources.worker_count(
+            cpus,
+            memory,
+            os.environ.get("STRATA_E2E_WORKERS", "auto"),
+            tasks,
+        )
     except ValueError as error:
         raise pytest.UsageError(str(error)) from error
-    print(f"E2E resources: {cpus:g} CPUs, {memory / resources.GIB:.1f} GiB available; {workers} workers")
+    task_text = f", {tasks} task slots" if tasks else ""
+    print(
+        f"E2E resources: {cpus:g} CPUs, {memory / resources.GIB:.1f} GiB available"
+        f"{task_text}; {workers} workers"
+    )
     return workers
 
 
 @pytest.hookimpl(tryfirst=True)
-def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     for item in items:
         if item.get_closest_marker("baseline"):
             item.add_marker(pytest.mark.xdist_group("visual-baselines"))
@@ -172,6 +184,28 @@ def strata(
                 _collect_artifacts(request, window)
         finally:
             application.stop()
+
+
+@pytest.fixture
+def unreserved_columns(strata: Strata) -> None:
+    """Explicitly reclaim preview space for workflows needing visible parent panes."""
+    strata.open_appearance_menu()
+    option = strata.wait(
+        lambda: strata.window.find(role="toggle button", name="Preview panel"),
+        "the preview panel toggle",
+    )
+    if option.has_state("pressed"):
+        strata.pointer.click(option)
+        strata.wait_for_menu_closed()
+    else:
+        strata.dismiss_menu()
+    strata.keyboard.press("ctrl+l")
+    strata.wait(
+        lambda: strata.window.find(role="text", states={"editable", "focused"}),
+        "the location editor to take focus",
+    )
+    strata.keyboard.press("Escape")
+    strata.wait(lambda: strata.focused_pane(), "focus to return to the file listing")
 
 
 _REPORT_KEY = pytest.StashKey[bool]()

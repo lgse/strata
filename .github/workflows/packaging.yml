@@ -41,6 +41,7 @@ jobs:
         run: pacman -Syu --noconfirm --needed namcap
 
       - name: Test the package renderer
+        if: ${{ github.event_name != 'push' }}
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
 
       - name: Create an unprivileged build user

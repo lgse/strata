@@ -1,17 +1,20 @@
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
 
+from e2e_bundle import image_key
+
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 
 
 class ContainerRunnerTests(unittest.TestCase):
-    def run_runner(self, engine_name="docker", binary=None, uid=None, workers="auto"):
+    def run_runner(self, engine_name="docker", binary=None, uid=None, workers="auto", extra_env=None):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             engine = root / engine_name
@@ -24,12 +27,18 @@ class ContainerRunnerTests(unittest.TestCase):
                 "'display': os.environ.get('DISPLAY'), "
                 "'wayland': os.environ.get('WAYLAND_DISPLAY'), "
                 "'notify': os.environ.get('NOTIFY_SOCKET')}) + '\\n')\n"
+                "if sys.argv[1:3] == ['image', 'inspect']:\n"
+                "    if '--format' in sys.argv: print(os.environ.get('MOCK_IMAGE_KEY', ''))\n"
+                "    else: print(json.dumps([{'Id':'sha256:'+'a'*64, 'Os':'linux', 'Architecture':'amd64',\n"
+                "         'Config':{'Labels':{'org.strata.e2e.inputs':os.environ['MOCK_IMAGE_KEY']},\n"
+                "                   'Env':['RUSTUP_HOME=/opt/rustup']}}]))\n"
             )
             engine.chmod(0o755)
             environment = {
                 **os.environ,
                 "STRATA_CONTAINER_ENGINE": str(engine),
                 "ENGINE_LOG": str(log),
+                "MOCK_IMAGE_KEY": image_key(),
                 "DISPLAY": ":0",
                 "WAYLAND_DISPLAY": "wayland-0",
                 "NOTIFY_SOCKET": "/run/user/1000/systemd/notify",
@@ -41,9 +50,11 @@ class ContainerRunnerTests(unittest.TestCase):
                 identity.write_text(f"#!/bin/sh\necho {uid}\n")
                 identity.chmod(0o755)
                 environment["PATH"] = f"{root}:{os.environ.get('PATH', os.defpath)}"
-            environment.pop("STRATA_BINARY", None)
+            for name in ("STRATA_BINARY", "STRATA_E2E_IMAGE", "STRATA_E2E_BUNDLE"):
+                environment.pop(name, None)
             if binary:
                 environment["STRATA_BINARY"] = binary
+            environment.update(extra_env or {})
             result = subprocess.run(
                 [str(REPOSITORY / "scripts/e2e.sh"), "-k", "columns and baseline"],
                 env=environment,
@@ -54,13 +65,13 @@ class ContainerRunnerTests(unittest.TestCase):
             calls = [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
             return result, calls
 
-    def test_build_and_run_share_image_and_forward_arguments(self):
+    def test_cached_base_is_verified_and_run_without_building_or_pulling(self):
         result, calls = self.run_runner()
         self.assertEqual(result.returncode, 0, result.stderr)
-        build, run = [call["args"] for call in calls]
-        self.assertEqual(build[0], "build")
-        image = build[build.index("--tag") + 1]
-        self.assertIn(image, run)
+        inspect, run = [call["args"] for call in calls]
+        self.assertEqual(inspect[:2], ["image", "inspect"])
+        self.assertIn("sha256:" + "a" * 64, run)
+        self.assertFalse(any(call["args"][0] in ("build", "pull") for call in calls))
         self.assertEqual(run[-2:], ["-k", "columns and baseline"])
         self.assertIn(f"type=bind,source={REPOSITORY},target=/workspace", run)
         self.assertIn("STRATA_E2E_UPDATE_BASELINES=1", run)
@@ -71,6 +82,16 @@ class ContainerRunnerTests(unittest.TestCase):
             self.assertIsNone(call["display"])
             self.assertIsNone(call["wayland"])
             self.assertIsNone(call["notify"])
+
+    def test_ci_explicitly_runs_the_engine_that_loaded_its_runtime(self):
+        workflow = (REPOSITORY / ".github/workflows/ci.yml").read_text()
+        loader = re.search(r"zstd -dc target/e2e-runtime/runtime.tar.zst \| (\w+) load", workflow)
+        step = workflow.split("- name: Run the assigned scenarios without rebuilding or installing", 1)[1]
+        step = step.split("- name:", 1)[0]
+        runner = re.search(r"STRATA_CONTAINER_ENGINE: (\w+)", step)
+        self.assertIsNotNone(loader)
+        self.assertIsNotNone(runner)
+        self.assertEqual(loader.group(1), runner.group(1))
 
     def test_worker_budget_is_forwarded_into_container(self):
         for workers in ("auto", "1", "8"):
@@ -88,11 +109,11 @@ class ContainerRunnerTests(unittest.TestCase):
     def test_non_default_uid_has_a_matching_image_account(self):
         result, calls = self.run_runner(uid=1001)
         self.assertEqual(result.returncode, 0, result.stderr)
-        build, run = [call["args"] for call in calls]
-        self.assertIn("E2E_UID=1001", build)
-        self.assertIn("E2E_GID=1001", build)
-        self.assertTrue(build[build.index("--tag") + 1].endswith("-1001-1001"))
+        _, run = [call["args"] for call in calls]
         self.assertEqual(run[run.index("--user") + 1], "1001:1001")
+        account = REPOSITORY / "target/e2e-container/accounts-1001-1001/passwd"
+        self.assertIn("strata-e2e:x:1001:1001:", account.read_text())
+        self.assertIn(f"type=bind,source={account},target=/etc/passwd,readonly", run)
 
     def test_failed_container_build_cannot_run_stale_binary(self):
         _, calls = self.run_runner()
@@ -126,6 +147,58 @@ class ContainerRunnerTests(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 42)
             self.assertFalse((root / "stale-binary-ran").exists())
+
+    def test_preloaded_image_skips_the_container_build(self):
+        result, calls = self.run_runner(extra_env={"STRATA_E2E_IMAGE": "pinned-runtime"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0]["args"][:2], ["image", "inspect"])
+        self.assertEqual(calls[1]["args"][0], "run")
+        self.assertIn("sha256:" + "a" * 64, calls[1]["args"])
+
+    def test_ci_bundle_is_verified_before_the_engine_can_execute_it(self):
+        from e2e_bundle import create, image_key
+
+        with tempfile.TemporaryDirectory(dir=REPOSITORY) as directory:
+            bundle = Path(directory)
+            (bundle / "strata").write_bytes(b"container binary")
+            (bundle / "plan.json").write_text("{}")
+            # Bundle verification only needs a stable identity; this harness test
+            # must also work from CI's archive checkout, which has no .git tree.
+            create(bundle, "synthetic-test-commit")
+            git = bundle / "git"
+            git.write_text(
+                "#!/bin/sh\n"
+                "[ \"$1\" = rev-parse ] && [ \"$2\" = HEAD ] || exit 2\n"
+                "printf '%s\\n' synthetic-test-commit\n"
+            )
+            git.chmod(0o755)
+            env = {"STRATA_E2E_BUNDLE": str(bundle), "STRATA_E2E_IMAGE": "runtime",
+                   "PATH": f"{bundle}:{os.environ.get('PATH', os.defpath)}",
+                   "MOCK_IMAGE_KEY": image_key()}
+            result, calls = self.run_runner(extra_env=env)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(len(calls), 2)
+            self.assertEqual(calls[0]["args"][:2], ["image", "inspect"])
+            self.assertIn(f"STRATA_E2E_BUNDLE=/workspace/{bundle.name}", calls[1]["args"])
+            result, calls = self.run_runner(extra_env={**env, "MOCK_IMAGE_KEY": "wrong-toolkit"})
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("pinned E2E inputs", result.stderr)
+            self.assertEqual(len(calls), 1)
+            (bundle / "strata").write_bytes(b"stale binary")
+            result, calls = self.run_runner(extra_env=env)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("checksum mismatch", result.stderr)
+            self.assertEqual(calls, [])
+
+    def test_bundle_requires_an_image_and_cannot_escape_the_checkout(self):
+        for env, message in [({"STRATA_E2E_BUNDLE": "/tmp"}, "runtime image"),
+                             ({"STRATA_E2E_BUNDLE": "/tmp", "STRATA_E2E_IMAGE": "runtime"},
+                              "inside the checkout")]:
+            result, calls = self.run_runner(extra_env=env)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(message, result.stderr)
+            self.assertEqual(calls, [])
 
     def test_host_binary_is_rejected_before_build(self):
         result, calls = self.run_runner(binary="/tmp/host-strata")

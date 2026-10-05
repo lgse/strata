@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
@@ -8,6 +8,27 @@ use std::time::Duration;
 use gtk::glib;
 use gtk::graphene;
 use gtk::prelude::*;
+
+thread_local! {
+    static UPDATING_SELECTION: Cell<bool> = const { Cell::new(false) };
+}
+
+pub(super) fn is_updating_selection() -> bool {
+    UPDATING_SELECTION.get()
+}
+
+fn with_selection_update(update: impl FnOnce()) {
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            UPDATING_SELECTION.set(self.0);
+        }
+    }
+    // GTK selection signals and their browser observers run synchronously on
+    // this thread. Keep their origin through nested grouped-selection updates.
+    let _restore = Restore(UPDATING_SELECTION.replace(true));
+    update();
+}
 
 /// Distance from a viewport edge at which a marquee drag starts scrolling.
 const AUTO_SCROLL_MARGIN: f64 = 28.0;
@@ -31,6 +52,72 @@ pub(super) struct MarqueeTarget {
 /// them without reinstalling the drag.
 pub(super) type MarqueeTargets = Rc<RefCell<Vec<MarqueeTarget>>>;
 
+/// An item-origin policy that treats the whole allocated row as item space.
+pub(super) fn item_bounds_predicate(targets: MarqueeTargets) -> ItemPredicate {
+    Rc::new(move |surface, x, y| {
+        for target in targets.borrow().iter() {
+            let mut hit = false;
+            (target.visit_items)(&mut |_, widget| {
+                if widget.is_mapped()
+                    && let Some(bounds) = widget.compute_bounds(surface)
+                {
+                    hit |= x >= f64::from(bounds.x())
+                        && x < f64::from(bounds.x() + bounds.width())
+                        && y >= f64::from(bounds.y())
+                        && y < f64::from(bounds.y() + bounds.height());
+                }
+            });
+            if hit {
+                return true;
+            }
+        }
+        false
+    })
+}
+
+/// Selected rows claim their whole allocation for file drag; unselected rows
+/// claim only rendered content, leaving their blank space for marquee selection.
+pub(super) fn item_content_predicate(
+    targets: MarqueeTargets,
+    content: ItemPredicate,
+) -> ItemPredicate {
+    Rc::new(move |surface, x, y| hits_item_bounds(surface, x, y, &targets, &content))
+}
+
+fn hits_item_bounds(
+    surface: &gtk::Widget,
+    x: f64,
+    y: f64,
+    targets: &MarqueeTargets,
+    content: &ItemPredicate,
+) -> bool {
+    for target in targets.borrow().iter() {
+        let mut hit = false;
+        (target.visit_items)(&mut |position, widget| {
+            if !widget.is_mapped() {
+                return;
+            }
+            if let Some(bounds) = widget.compute_bounds(surface)
+                && x >= f64::from(bounds.x())
+                && x < f64::from(bounds.x() + bounds.width())
+                && y >= f64::from(bounds.y())
+                && y < f64::from(bounds.y() + bounds.height())
+            {
+                hit |= target.selection.is_selected(position)
+                    || surface
+                        .compute_point(widget, &graphene::Point::new(x as f32, y as f32))
+                        .is_some_and(|point| {
+                            content(widget, f64::from(point.x()), f64::from(point.y()))
+                        });
+            }
+        });
+        if hit {
+            return true;
+        }
+    }
+    false
+}
+
 pub(super) struct MarqueeSetup {
     pub view: gtk::Widget,
     /// Includes the viewport's unused area and, in Columns, its empty-state surface.
@@ -40,6 +127,7 @@ pub(super) struct MarqueeSetup {
     pub targets: MarqueeTargets,
     pub is_item: ItemPredicate,
     pub clear_selection: Rc<dyn Fn()>,
+    pub allow_drag: Rc<Cell<bool>>,
 }
 
 #[derive(Clone)]
@@ -61,6 +149,7 @@ struct MarqueeState {
     dragging: Cell<bool>,
     clear_on_click: Cell<bool>,
     clear_selection: Rc<dyn Fn()>,
+    allow_drag: Rc<Cell<bool>>,
     /// Anchor in scroll-content coordinates. Native GtkScrollable views move their
     /// rows internally, whereas GtkViewport moves its child; neither may move the anchor.
     anchor: Cell<(f64, f64)>,
@@ -103,6 +192,7 @@ pub(super) fn install(setup: MarqueeSetup) -> Marquee {
         dragging: Cell::new(false),
         clear_on_click: Cell::new(false),
         clear_selection: setup.clear_selection,
+        allow_drag: setup.allow_drag,
         anchor: Cell::new((0.0, 0.0)),
         pointer: Cell::new((0.0, 0.0)),
         initial: RefCell::new(Vec::new()),
@@ -150,9 +240,9 @@ pub(super) fn install(setup: MarqueeSetup) -> Marquee {
             return;
         };
         state_for_begin.begin(anchor, gesture.current_event_state());
-        state_for_begin
-            .clear_on_click
-            .set(super::pointer::is_background(&origin, x, y));
+        let clearable = !starts_on_item && super::pointer::is_background(&origin, x, y);
+        state_for_begin.clear_on_click.set(clearable);
+        state_for_begin.clear_at_press();
     });
     connect_drag_progress(&gesture, &state);
     surface.add_controller(gesture.clone());
@@ -178,7 +268,6 @@ impl Marquee {
         gesture.set_button(1);
         let state_for_begin = self.state.clone();
         gesture.connect_drag_begin(move |gesture, x, y| {
-            state_for_begin.end();
             let Some(surface) = gesture.widget() else {
                 return;
             };
@@ -199,6 +288,7 @@ impl Marquee {
             };
             gesture.set_state(gtk::EventSequenceState::Claimed);
             state_for_begin.begin(anchor, gesture.current_event_state());
+            state_for_begin.clear_at_press();
         });
         connect_drag_progress(&gesture, &self.state);
         surface.add_controller(gesture.clone());
@@ -217,6 +307,8 @@ impl Marquee {
 
 /// Chrome such as a pane header can begin a marquee drag, but only where the press
 /// lands on the container itself rather than on a button, entry, or other control.
+/// Item containers count as controls: the preview pane hosts lists of its own whose
+/// presses must not be claimed.
 fn is_inert_chrome(surface: &gtk::Widget, picked: &gtk::Widget) -> bool {
     let mut current = Some(picked.clone());
     while let Some(widget) = current {
@@ -227,6 +319,20 @@ fn is_inert_chrome(surface: &gtk::Widget, picked: &gtk::Widget) -> bool {
             || widget.is::<gtk::Editable>()
             || widget.is::<gtk::Range>()
             || widget.is::<gtk::Scrollbar>()
+            || widget.is::<gtk::TextView>()
+            || widget.is::<gtk::Picture>()
+            || widget.is::<gtk::Image>()
+            || widget.is::<gtk::Label>()
+            || widget.is::<gtk::ListView>()
+            || widget.is::<gtk::GridView>()
+            || widget.is::<gtk::ColumnView>()
+            || widget.is::<gtk::ListBox>()
+            || widget.is::<gtk::FlowBox>()
+            // Custom-drawn controls and artwork, such as the audio preview's scrubber.
+            || matches!(
+                widget.accessible_role(),
+                gtk::AccessibleRole::Slider | gtk::AccessibleRole::Img
+            )
         {
             return false;
         }
@@ -276,6 +382,7 @@ pub(super) fn install_shared_origin_surface(
         };
         gesture.set_state(gtk::EventSequenceState::Claimed);
         state.begin(anchor, gesture.current_event_state());
+        state.clear_at_press();
         target_for_begin.replace(Some(state));
     });
     let target_for_update = target.clone();
@@ -286,19 +393,10 @@ pub(super) fn install_shared_origin_surface(
         };
         let state = target_for_update.borrow().clone();
         if let Some(state) = state {
-            if !state.dragging.get()
-                && !super::pointer::exceeds_drag_threshold(
-                    (0.0, 0.0),
-                    (offset_x, offset_y),
-                    surface_for_update.settings().gtk_dnd_drag_threshold(),
-                )
-            {
-                return;
-            }
-            state.dragging.set(true);
-            state.drag_to(
+            state.update_drag(
                 &surface_for_update,
-                (start_x + offset_x, start_y + offset_y),
+                (start_x, start_y),
+                (offset_x, offset_y),
             );
         }
     });
@@ -329,21 +427,9 @@ fn connect_drag_progress(gesture: &gtk::GestureDrag, state: &Rc<MarqueeState>) {
         let Some(origin) = gesture.widget() else {
             return;
         };
-        if !state_for_update.active.get() {
-            return;
-        }
-        if !state_for_update.dragging.get() {
-            if !super::pointer::exceeds_drag_threshold(
-                (0.0, 0.0),
-                (offset_x, offset_y),
-                origin.settings().gtk_dnd_drag_threshold(),
-            ) {
-                return;
-            }
-            state_for_update.dragging.set(true);
+        if state_for_update.update_drag(&origin, (start_x, start_y), (offset_x, offset_y)) {
             gesture.set_state(gtk::EventSequenceState::Claimed);
         }
-        state_for_update.drag_to(&origin, (start_x + offset_x, start_y + offset_y));
     });
     let state_for_end = state.clone();
     gesture.connect_drag_end(move |_, _, _| state_for_end.finish());
@@ -402,6 +488,111 @@ impl MarqueeState {
             modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK),
             modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK),
         ));
+    }
+
+    fn update_drag(
+        self: &Rc<Self>,
+        origin: &gtk::Widget,
+        start: (f64, f64),
+        offset: (f64, f64),
+    ) -> bool {
+        if !self.active.get() {
+            return false;
+        }
+        if !self.dragging.get() {
+            if !self.allow_drag.get()
+                || !super::pointer::exceeds_drag_threshold(
+                    (0.0, 0.0),
+                    offset,
+                    origin.settings().gtk_dnd_drag_threshold(),
+                )
+            {
+                return false;
+            }
+            self.start_drag();
+        }
+        self.drag_to(origin, (start.0 + offset.0, start.1 + offset.1));
+        true
+    }
+
+    fn start_drag(&self) {
+        if !self.active.get() || self.dragging.replace(true) {
+            return;
+        }
+        if let Some(view) = self.view() {
+            if let Some(window) = view.root().and_downcast::<gtk::Window>() {
+                window.set_focus_visible(false);
+            }
+            let has_focus = view
+                .root()
+                .and_then(|root| root.focus())
+                .is_some_and(|focus| focus == view || focus.is_ancestor(&view));
+            if has_focus {
+                return;
+            }
+            // Focusing an old off-screen cursor can scroll away from the marquee anchor.
+            if let Some(item) = self.nearest_visible_item()
+                && item.parent().unwrap_or(item).grab_focus()
+            {
+                return;
+            }
+            if !view.grab_focus() {
+                view.child_focus(gtk::DirectionType::TabForward);
+            }
+        }
+    }
+
+    fn nearest_visible_item(&self) -> Option<gtk::Widget> {
+        let scroll = self.scroll()?;
+        let width = f64::from(scroll.width());
+        let height = f64::from(scroll.height());
+        let (x, y) = self.pointer.get();
+        let mut nearest: Option<(bool, f64, gtk::Widget)> = None;
+        for target in self.targets.borrow().iter() {
+            (target.visit_items)(&mut |position, widget| {
+                if position >= target.selection.n_items() || !widget.is_mapped() {
+                    return;
+                }
+                let Some(bounds) = widget.compute_bounds(&scroll) else {
+                    return;
+                };
+                let left = f64::from(bounds.x());
+                let top = f64::from(bounds.y());
+                let right = left + f64::from(bounds.width());
+                let bottom = top + f64::from(bounds.height());
+                if right <= left
+                    || bottom <= top
+                    || right <= 0.0
+                    || left >= width
+                    || bottom <= 0.0
+                    || top >= height
+                {
+                    return;
+                }
+                let clipped = top < 0.0 || bottom > height;
+                let dx = (left - x).max(0.0).max(x - right);
+                let dy = (top - y).max(0.0).max(y - bottom);
+                let distance = dx * dx + dy * dy;
+                if nearest
+                    .as_ref()
+                    .is_none_or(|(old_clipped, old_distance, _)| {
+                        (!clipped && *old_clipped)
+                            || (clipped == *old_clipped && distance < *old_distance)
+                    })
+                {
+                    nearest = Some((clipped, distance, widget.clone()));
+                }
+            });
+        }
+        nearest.map(|(_, _, widget)| widget)
+    }
+
+    /// A plain press on clearable background deselects immediately; Ctrl/Shift presses
+    /// keep the selection until release so marquee can still union or range from it.
+    fn clear_at_press(&self) {
+        if self.modifiers.get() == (false, false) && self.clear_on_click.replace(false) {
+            (self.clear_selection)();
+        }
     }
 
     fn finish(&self) {
@@ -571,9 +762,11 @@ impl MarqueeState {
         drop(all_bounds);
         drop(targets);
         drop(initials);
-        for (selection, selected, mask) in changes {
-            selection.set_selection(&selected, &mask);
-        }
+        with_selection_update(|| {
+            for (selection, selected, mask) in changes {
+                selection.set_selection(&selected, &mask);
+            }
+        });
     }
 
     fn stop_auto_scroll(&self) {

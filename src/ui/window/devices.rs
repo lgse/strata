@@ -1,6 +1,7 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
+    collections::HashMap,
     os::unix::ffi::OsStringExt,
     path::{Path, PathBuf},
 };
@@ -36,6 +37,40 @@ fn mounted_devices_from_table(table: &[u8]) -> Vec<PathBuf> {
         .collect()
 }
 
+fn mount_entries(table: &[u8]) -> impl Iterator<Item = (PathBuf, PathBuf)> {
+    table.split(|byte| *byte == b'\n').filter_map(|line| {
+        let fields: Vec<_> = line.split(|byte| *byte == b' ').collect();
+        let separator = fields.iter().position(|field| *field == b"-")?;
+        if separator < 6 {
+            return None;
+        }
+        let root = mount_path(fields[4])?;
+        let source = mount_path(fields.get(separator + 2)?)?;
+        root.is_absolute().then_some((root, source))
+    })
+}
+
+pub(super) fn block_device_from_mount_table(table: &[u8], path: &Path) -> Option<PathBuf> {
+    mount_entries(table)
+        .filter(|(root, _)| path.starts_with(root))
+        .max_by_key(|(root, _)| root.as_os_str().len())
+        .map(|(_, source)| source)
+        .filter(|source| source.starts_with("/dev"))
+}
+
+pub(super) fn mounted_path_from_table(table: &[u8], device: &Path) -> Option<PathBuf> {
+    let device = device
+        .canonicalize()
+        .unwrap_or_else(|_| device.to_path_buf());
+    mount_entries(table).find_map(|(root, source)| {
+        if !source.starts_with("/dev") {
+            return None;
+        }
+        let source = source.canonicalize().unwrap_or(source);
+        (source == device).then_some(root)
+    })
+}
+
 fn mount_path(encoded: &[u8]) -> Option<PathBuf> {
     let mut decoded = Vec::with_capacity(encoded.len());
     let mut bytes = encoded.iter().copied();
@@ -54,6 +89,471 @@ fn mount_path(encoded: &[u8]) -> Option<PathBuf> {
         }
     }
     Some(std::ffi::OsString::from_vec(decoded).into())
+}
+
+pub(super) fn label_identity(uuid: Option<&str>, root_uri: Option<&str>) -> Option<String> {
+    [("volume", uuid), ("root", root_uri)]
+        .into_iter()
+        .find_map(|(namespace, value)| {
+            value
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| format!("{namespace}:{value}"))
+        })
+}
+
+pub(super) fn device_identity(
+    unix_device: Option<&str>,
+    uuid: Option<&str>,
+    drive_identifier: Option<&str>,
+) -> Option<String> {
+    [unix_device, uuid, drive_identifier]
+        .into_iter()
+        .find_map(|value| {
+            value
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned)
+        })
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(in crate::ui) struct RemovableDestination {
+    pub id: String,
+    pub name: String,
+    pub root: PathBuf,
+}
+
+#[derive(Clone, Copy)]
+struct RemovableMountFacts {
+    shadowed: bool,
+    native_root: bool,
+    removable: bool,
+    writable: bool,
+    existing_directory: bool,
+}
+
+fn removable_mount_is_eligible(facts: RemovableMountFacts) -> bool {
+    !facts.shadowed
+        && facts.native_root
+        && facts.removable
+        && facts.writable
+        && facts.existing_directory
+}
+
+fn send_to_device_identity(
+    volume_uuid: Option<&str>,
+    drive_uuid: Option<&str>,
+    volume_unix_device: Option<&str>,
+    drive_unix_device: Option<&str>,
+    root_uri: Option<&str>,
+) -> Option<String> {
+    let unix_device = volume_unix_device
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            drive_unix_device
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+        });
+    [
+        ("volume", volume_uuid),
+        ("drive", drive_uuid),
+        ("unix", unix_device),
+        ("root", root_uri),
+    ]
+    .into_iter()
+    .find_map(|(namespace, value)| {
+        value
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| format!("{namespace}:{value}"))
+    })
+}
+
+fn send_to_mount_identity(mount: &gio::Mount) -> Option<String> {
+    let volume = mount.volume();
+    let drive = mount
+        .drive()
+        .or_else(|| volume.as_ref().and_then(|volume| volume.drive()));
+    let root = mount.root();
+    let root_uri = root.uri();
+    let volume_uuid = volume.as_ref().and_then(|volume| volume.uuid());
+    let drive_uuid = drive
+        .as_ref()
+        .and_then(|drive| drive.identifier(gio::VOLUME_IDENTIFIER_KIND_UUID.as_str()));
+    let volume_unix_device = volume
+        .as_ref()
+        .and_then(|volume| volume.identifier(gio::VOLUME_IDENTIFIER_KIND_UNIX_DEVICE.as_str()));
+    let drive_unix_device = drive
+        .as_ref()
+        .and_then(|drive| drive.identifier(gio::VOLUME_IDENTIFIER_KIND_UNIX_DEVICE.as_str()));
+    send_to_device_identity(
+        volume_uuid.as_deref(),
+        drive_uuid.as_deref(),
+        volume_unix_device.as_deref(),
+        drive_unix_device.as_deref(),
+        Some(root_uri.as_str()),
+    )
+}
+
+fn root_is_writable_directory(root: &gio::File) -> bool {
+    root.query_info(
+        "standard::type,access::can-write",
+        gio::FileQueryInfoFlags::NONE,
+        None::<&gio::Cancellable>,
+    )
+    .is_ok_and(|info| {
+        info.file_type() == gio::FileType::Directory && info.boolean("access::can-write")
+    })
+}
+
+fn destination_for_mount(mount: &gio::Mount) -> Option<RemovableDestination> {
+    let root_file = mount.root();
+    let root = root_file.path()?;
+    let volume = mount.volume();
+    let removable =
+        super::mount_can_unplug(mount) || volume.as_ref().is_some_and(super::volume_can_unplug);
+    let facts = RemovableMountFacts {
+        shadowed: mount.is_shadowed(),
+        native_root: true,
+        removable,
+        writable: root_is_writable_directory(&root_file),
+        existing_directory: root.is_dir(),
+    };
+    if !removable_mount_is_eligible(facts) {
+        return None;
+    }
+    Some(RemovableDestination {
+        id: send_to_mount_identity(mount)?,
+        name: mount.name().to_string(),
+        root,
+    })
+}
+
+fn without_ambiguous_destinations(
+    destinations: Vec<RemovableDestination>,
+) -> Vec<RemovableDestination> {
+    let mut counts = HashMap::new();
+    for destination in &destinations {
+        *counts.entry(destination.id.clone()).or_insert(0usize) += 1;
+    }
+    destinations
+        .into_iter()
+        .filter(|destination| counts.get(&destination.id) == Some(&1))
+        .collect()
+}
+
+fn sort_removable_destinations(destinations: &mut [RemovableDestination]) {
+    destinations.sort_by(|left, right| {
+        left.name
+            .to_lowercase()
+            .cmp(&right.name.to_lowercase())
+            .then_with(|| left.id.cmp(&right.id))
+    });
+}
+
+pub(in crate::ui) fn removable_destinations() -> Vec<RemovableDestination> {
+    let monitor = gio::VolumeMonitor::get();
+    let mut destinations = without_ambiguous_destinations(
+        monitor
+            .mounts()
+            .iter()
+            .filter_map(destination_for_mount)
+            .collect(),
+    );
+    sort_removable_destinations(&mut destinations);
+    destinations
+}
+
+pub(in crate::ui) fn resolve_removable_destination(id: &str) -> Option<PathBuf> {
+    let destination = removable_destinations()
+        .into_iter()
+        .find(|destination| destination.id == id)?;
+    let root = std::fs::canonicalize(destination.root).ok()?;
+    root_is_writable_directory(&gio::File::for_path(&root)).then_some(root)
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(super) struct BlockCryptoHint {
+    pub dm_uuid: Option<String>,
+    pub id_fs_usage: Option<String>,
+    pub id_fs_type: Option<String>,
+    pub crypto_uuid: Option<String>,
+}
+
+impl BlockCryptoHint {
+    pub(super) fn as_ref(&self) -> BlockCryptoRef<'_> {
+        BlockCryptoRef {
+            dm_uuid: self.dm_uuid.as_deref(),
+            id_fs_usage: self.id_fs_usage.as_deref(),
+            id_fs_type: self.id_fs_type.as_deref(),
+            crypto_uuid: self.crypto_uuid.as_deref(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) struct BlockCryptoRef<'a> {
+    pub dm_uuid: Option<&'a str>,
+    pub id_fs_usage: Option<&'a str>,
+    pub id_fs_type: Option<&'a str>,
+    pub crypto_uuid: Option<&'a str>,
+}
+
+// GVfs marks crypto volumes with changes-prevent/changes-allow emblems, not encrypted icon names.
+pub(super) fn is_encrypted_device(
+    icon_names: &[&str],
+    start_stop: Option<gio::DriveStartStopType>,
+    block: BlockCryptoRef<'_>,
+) -> bool {
+    icon_names
+        .iter()
+        .copied()
+        .any(icon_name_indicates_encrypted)
+        || start_stop == Some(gio::DriveStartStopType::Password)
+        || block_indicates_crypto(block)
+}
+
+pub(super) fn encrypted_device_is_locked(icon_names: &[&str], has_mount: bool) -> bool {
+    let mut padlock_locked = false;
+    let mut padlock_unlocked = false;
+    for name in icon_names {
+        match icon_name_stem(name).as_str() {
+            "changes-prevent" => padlock_locked = true,
+            "changes-allow" => padlock_unlocked = true,
+            _ => {}
+        }
+    }
+    if padlock_locked {
+        true
+    } else if padlock_unlocked {
+        false
+    } else {
+        !has_mount
+    }
+}
+
+pub(super) fn probe_block_crypto(unix_device: &str) -> BlockCryptoHint {
+    let unix_device = unix_device.trim();
+    if unix_device.is_empty() {
+        return BlockCryptoHint::default();
+    }
+    let Some(sysfs) = sysfs_block_path(unix_device) else {
+        return BlockCryptoHint::default();
+    };
+    let udev = read_trimmed(sysfs.join("dev"))
+        .and_then(|dev| std::fs::read_to_string(format!("/run/udev/data/b{dev}")).ok());
+    let dm_uuid = read_trimmed(sysfs.join("dm/uuid")).or_else(|| {
+        udev.as_deref()
+            .and_then(|data| udev_property(data, "DM_UUID"))
+    });
+    let (id_fs_usage, id_fs_type) = udev
+        .as_deref()
+        .map(udev_crypto_properties)
+        .unwrap_or((None, None));
+    let crypto_uuid = dm_uuid
+        .as_deref()
+        .and_then(luks_uuid_from_dm_uuid)
+        .or_else(|| luks_uuid_from_unix_device(unix_device))
+        .or_else(|| udev.as_deref().and_then(udev_crypto_uuid))
+        .or_else(|| slave_crypto_uuid(&sysfs));
+    BlockCryptoHint {
+        dm_uuid,
+        id_fs_usage,
+        id_fs_type,
+        crypto_uuid,
+    }
+}
+
+// An unlocked volume exposes the filesystem UUID, not the saved passphrase's LUKS UUID.
+pub(super) fn crypto_password_uuid(
+    volume_uuid: Option<&str>,
+    unix_device: Option<&str>,
+    block: BlockCryptoRef<'_>,
+    locked: bool,
+) -> Option<String> {
+    if let Some(uuid) = block.crypto_uuid.and_then(normalize_luks_uuid) {
+        return Some(uuid);
+    }
+    if let Some(uuid) = block.dm_uuid.and_then(luks_uuid_from_dm_uuid) {
+        return Some(uuid);
+    }
+    if let Some(uuid) = unix_device.and_then(luks_uuid_from_unix_device) {
+        return Some(uuid);
+    }
+    if locked {
+        volume_uuid.and_then(normalize_luks_uuid)
+    } else {
+        None
+    }
+}
+
+pub(super) fn luks_uuid_from_dm_uuid(dm_uuid: &str) -> Option<String> {
+    let rest = strip_prefix_ignore_ascii_case(dm_uuid.trim(), "CRYPT-")?;
+    let (kind, remainder) = rest.split_once('-')?;
+    if !kind.eq_ignore_ascii_case("LUKS1") && !kind.eq_ignore_ascii_case("LUKS2") {
+        return None;
+    }
+    take_uuid_hex(remainder)
+}
+
+pub(super) fn luks_uuid_from_unix_device(unix_device: &str) -> Option<String> {
+    let name = Path::new(unix_device.trim()).file_name()?.to_str()?;
+    let rest = strip_prefix_ignore_ascii_case(name, "luks-")?;
+    normalize_luks_uuid(rest)
+}
+
+pub(super) fn normalize_luks_uuid(uuid: &str) -> Option<String> {
+    let trimmed = uuid.trim();
+    if trimmed
+        .chars()
+        .any(|ch| ch != '-' && !ch.is_ascii_hexdigit())
+    {
+        return None;
+    }
+    take_uuid_hex(trimmed).filter(|_| trimmed.chars().filter(|ch| *ch != '-').count() == 32)
+}
+
+fn take_uuid_hex(input: &str) -> Option<String> {
+    let mut hex = String::new();
+    for ch in input.chars() {
+        if ch == '-' {
+            continue;
+        }
+        if !ch.is_ascii_hexdigit() {
+            break;
+        }
+        hex.push(ch.to_ascii_lowercase());
+        if hex.len() == 32 {
+            return Some(hyphenate_uuid_hex(&hex));
+        }
+    }
+    None
+}
+
+fn hyphenate_uuid_hex(hex32: &str) -> String {
+    format!(
+        "{}-{}-{}-{}-{}",
+        &hex32[..8],
+        &hex32[8..12],
+        &hex32[12..16],
+        &hex32[16..20],
+        &hex32[20..32]
+    )
+}
+
+fn strip_prefix_ignore_ascii_case<'a>(value: &'a str, prefix: &str) -> Option<&'a str> {
+    let (head, tail) = value.split_at_checked(prefix.len())?;
+    head.eq_ignore_ascii_case(prefix).then_some(tail)
+}
+
+fn icon_name_indicates_encrypted(name: &str) -> bool {
+    let stem = icon_name_stem(name);
+    stem.contains("encrypted") || stem == "changes-prevent" || stem == "changes-allow"
+}
+
+fn icon_name_stem(name: &str) -> String {
+    let lower = name.to_ascii_lowercase();
+    lower
+        .strip_suffix("-symbolic")
+        .unwrap_or(&lower)
+        .to_string()
+}
+
+fn block_indicates_crypto(block: BlockCryptoRef<'_>) -> bool {
+    block.dm_uuid.is_some_and(dm_uuid_is_crypt)
+        || block
+            .id_fs_usage
+            .is_some_and(|usage| usage.eq_ignore_ascii_case("crypto"))
+        || block
+            .id_fs_type
+            .is_some_and(|kind| kind.to_ascii_lowercase().starts_with("crypto"))
+}
+
+fn dm_uuid_is_crypt(uuid: &str) -> bool {
+    uuid.trim()
+        .get(..6)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("CRYPT-"))
+}
+
+fn sysfs_block_path(unix_device: &str) -> Option<PathBuf> {
+    let given = Path::new(unix_device);
+    let resolved = std::fs::canonicalize(given).unwrap_or_else(|_| given.to_owned());
+    let name = resolved.file_name()?;
+    let path = Path::new("/sys/class/block").join(name);
+    path.is_dir().then_some(path)
+}
+
+fn read_trimmed(path: PathBuf) -> Option<String> {
+    let value = std::fs::read_to_string(path).ok()?;
+    let trimmed = value.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_owned())
+}
+
+fn udev_crypto_properties(data: &str) -> (Option<String>, Option<String>) {
+    (
+        udev_property(data, "ID_FS_USAGE"),
+        udev_property(data, "ID_FS_TYPE"),
+    )
+}
+
+fn udev_crypto_uuid(data: &str) -> Option<String> {
+    let usage = udev_property(data, "ID_FS_USAGE")?;
+    if !usage.eq_ignore_ascii_case("crypto") {
+        return None;
+    }
+    udev_property(data, "ID_FS_UUID").and_then(|uuid| normalize_luks_uuid(&uuid))
+}
+
+fn slave_crypto_uuid(sysfs: &Path) -> Option<String> {
+    let entries = std::fs::read_dir(sysfs.join("slaves")).ok()?;
+    for entry in entries.flatten() {
+        let slave = Path::new("/sys/class/block").join(entry.file_name());
+        let Some(dev) = read_trimmed(slave.join("dev")) else {
+            continue;
+        };
+        let Ok(data) = std::fs::read_to_string(format!("/run/udev/data/b{dev}")) else {
+            continue;
+        };
+        if let Some(uuid) = udev_crypto_uuid(&data) {
+            return Some(uuid);
+        }
+    }
+    None
+}
+
+fn udev_property(data: &str, key: &str) -> Option<String> {
+    let mut prefix = String::from("E:");
+    prefix.push_str(key);
+    prefix.push('=');
+    data.lines()
+        .find_map(|line| line.strip_prefix(prefix.as_str()))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+pub(super) fn should_list_orphaned_password_drive(
+    start_stop: gio::DriveStartStopType,
+    volume_covers_identity: bool,
+) -> bool {
+    start_stop == gio::DriveStartStopType::Password && !volume_covers_identity
+}
+
+pub(super) fn password_drive_is_orphaned(
+    start_stop: gio::DriveStartStopType,
+    drive_identity: Option<&str>,
+    volume_identities: &[String],
+    volume_claims_drive: bool,
+) -> bool {
+    let covered = volume_claims_drive
+        || drive_identity.is_some_and(|identity| {
+            volume_identities
+                .iter()
+                .any(|volume_identity| volume_identity == identity)
+        });
+    should_list_orphaned_password_drive(start_stop, covered)
 }
 
 pub(super) fn global_search_roots() -> Vec<PathBuf> {

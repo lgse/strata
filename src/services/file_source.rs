@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 #[cfg(test)]
 mod tests;
@@ -22,6 +22,8 @@ pub struct DirectoryRequest {
     /// memory on an adversarially large or unbounded directory.
     pub max_entries: usize,
     /// Caps how long a single load may run before it is reported as truncated.
+    /// Complete camera Photos scans use `Duration::MAX` to disable the deadline;
+    /// their `max_entries` is `usize::MAX`. Bounded peeks retain finite limits.
     pub time_budget: Duration,
 }
 
@@ -70,27 +72,25 @@ impl fmt::Display for LocationValidationError {
     }
 }
 
-/// Maps a location's URI scheme to the distribution package that provides its
-/// GVfs backend, for the schemes we currently support connecting to.
 fn backend_package_hint(scheme: &str) -> Option<&'static str> {
     match scheme.to_ascii_lowercase().as_str() {
-        "smb" => Some("gvfs-smb"),
+        "smb" => Some("gvfs-smb or gvfs-backends"),
+        "sftp" | "ftp" | "ftps" | "dav" | "davs" => Some("gvfs or gvfs-backends"),
         _ => None,
     }
 }
 
-/// Builds a "this backend isn't installed" message naming the scheme and, when
-/// known, the package that provides it, without repeating the host/share/path.
 pub fn backend_unavailable_message(uri: &str) -> String {
     let scheme = uri.split("://").next().unwrap_or(uri);
     match backend_package_hint(scheme) {
-        Some(package) => format!(
-            "The {scheme}:// backend isn't installed. Install the {package} package to \
-             connect to {scheme}:// locations."
+        Some(packages) => format!(
+            "The {scheme}:// backend isn't installed. Install your distribution's GVfs \
+             {scheme} backend, commonly packaged as {packages}, then try again."
         ),
         None => format!(
             "The {scheme}:// backend isn't installed on this system, so {scheme}:// \
-             locations can't be opened."
+             locations can't be opened. Install the matching GVfs backend from your \
+             distribution, then try again."
         ),
     }
 }
@@ -156,6 +156,25 @@ pub fn sanitize_uri_credentials(
         password: password.unwrap_or_default(),
     };
     Ok((sanitized, Some(credentials)))
+}
+
+/// Removes URI user-info, query and fragment from backend failure text before display or logging.
+pub(crate) fn sanitize_failure_message(message: &str) -> String {
+    message
+        .split_inclusive(char::is_whitespace)
+        .map(|token| {
+            let Some((scheme, rest)) = token.split_once("://") else {
+                return token.to_owned();
+            };
+            let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+            let clean_rest = match rest[..authority_end].rfind('@') {
+                Some(userinfo_end) => &rest[userinfo_end + 1..],
+                None => rest,
+            };
+            let end = clean_rest.find(['?', '#']).unwrap_or(clean_rest.len());
+            format!("{scheme}://{}", &clean_rest[..end])
+        })
+        .collect()
 }
 
 /// Rejects URI password and authentication-parameter fields, including encoded delimiters.
@@ -239,6 +258,9 @@ pub struct MetadataUpdate {
     pub size: MetadataValue<u64>,
     pub modified_unix_seconds: MetadataValue<i64>,
     pub mode: MetadataValue<u32>,
+    pub image_dimensions: MetadataValue<(u32, u32)>,
+    pub child_count: MetadataValue<u64>,
+    pub duration_seconds: MetadataValue<u64>,
 }
 
 #[derive(Clone, Debug)]
@@ -248,6 +270,8 @@ pub struct MetadataRequest {
     pub entries: Vec<Location>,
     /// When true, stat the whole list (a sort's full pass); otherwise a viewport window.
     pub full: bool,
+    /// Keep false for full sort passes to avoid probing off-screen media.
+    pub include_icon_details: bool,
     pub time_budget: Duration,
 }
 
@@ -273,6 +297,18 @@ impl Drop for LoadHandle {
 }
 
 pub trait FileSource {
+    /// Enforces a source's navigation boundary even on trusted internal/history routes.
+    /// This does not replace normal asynchronous location validation.
+    fn allows_navigation(&self, _location: &Location) -> bool {
+        true
+    }
+
+    /// Applies source-specific visibility to entries found outside directory enumeration.
+    /// This runs on the caller's thread, including for indexed search results.
+    fn allows_entry(&self, _entry: &FileEntry) -> bool {
+        true
+    }
+
     fn validate_location(&self, location: &Location) -> Result<(), LocationValidationError>;
 
     /// Validates a location without blocking the caller. Providers should override this when

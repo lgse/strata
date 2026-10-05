@@ -1,8 +1,11 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::cell::{Cell, RefCell};
 
 use gtk::{gdk, gdk::prelude::*, glib, graphene, prelude::*, subclass::prelude::*};
+
+#[cfg(test)]
+mod tests;
 
 mod imp {
     use super::*;
@@ -10,11 +13,16 @@ mod imp {
     #[derive(Default)]
     pub struct ThumbnailSlot {
         pub slot: Cell<i32>,
+        pub(crate) icon_context: Cell<crate::assets::IconContext>,
+        pub content_inset: Cell<i32>,
+        pub limit_fallback_height: Cell<bool>,
+        pub fallback_scale: Cell<f64>,
         pub texture: RefCell<Option<gdk::Texture>>,
         pub fallback: RefCell<Option<gdk::Texture>>,
         pub fallback_icon: RefCell<Option<String>>,
-        #[cfg(test)]
-        pub resize_calls: Cell<u32>,
+        pub(crate) mark: Cell<crate::ui::browser::ClipboardMark>,
+        pub hidden: Cell<bool>,
+        pub base_opacity: Cell<f64>,
     }
 
     #[glib::object_subclass]
@@ -28,7 +36,11 @@ mod imp {
         }
     }
 
-    impl ObjectImpl for ThumbnailSlot {}
+    impl ObjectImpl for ThumbnailSlot {
+        fn dispose(&self) {
+            super::super::forget_slot(self.obj().as_ptr() as usize);
+        }
+    }
 
     impl WidgetImpl for ThumbnailSlot {
         fn request_mode(&self) -> gtk::SizeRequestMode {
@@ -47,15 +59,49 @@ mod imp {
             if width <= 0.0 || height <= 0.0 {
                 return;
             }
-            let texture = self
-                .texture
-                .borrow()
-                .clone()
+            let mark_icon = match self.mark.get() {
+                crate::ui::browser::ClipboardMark::None => None,
+                crate::ui::browser::ClipboardMark::Copy => Some(crate::assets::icons::COPY),
+                crate::ui::browser::ClipboardMark::Cut => Some(crate::assets::icons::SCISSORS),
+            };
+            let marked = mark_icon.is_some();
+
+            let texture = mark_icon
+                .and_then(|name| {
+                    crate::assets::sized_icon_paintable(
+                        name,
+                        &crate::assets::primary_icon_color(),
+                        obj.icon_pixel_size(),
+                        obj.scale_factor(),
+                        obj.icon_context(),
+                    )
+                })
+                .or_else(|| self.texture.borrow().clone())
                 .or_else(|| self.fallback.borrow().clone());
+
             let Some(texture) = texture else {
                 return;
             };
-            snapshot_texture(snapshot, &texture, width, height);
+
+            let scale = if self.texture.borrow().is_some() || marked {
+                1.0
+            } else {
+                self.fallback_scale.get()
+            };
+
+            let inset = f64::from(self.content_inset.get())
+                .min((width - 1.0) / 2.0)
+                .min((height - 1.0) / 2.0);
+
+            snapshot.save();
+            let draw_width = (width - 2.0 * inset) * scale;
+            let draw_height = (height - 2.0 * inset) * scale;
+            snapshot.translate(&graphene::Point::new(
+                ((width - draw_width) / 2.0) as f32,
+                ((height - draw_height) / 2.0) as f32,
+            ));
+            snapshot_texture(snapshot, &texture, draw_width, draw_height);
+            snapshot.restore();
         }
     }
 }
@@ -77,6 +123,21 @@ fn snapshot_texture(snapshot: &gtk::Snapshot, texture: &gdk::Texture, width: f64
     );
 }
 
+fn folder_height_scale(texture: &gdk::Texture) -> f64 {
+    let mut downloader = gdk::TextureDownloader::new(texture);
+    downloader.set_format(gdk::MemoryFormat::R8g8b8a8);
+    let (pixels, stride) = downloader.download_bytes();
+    let width = texture.width() as usize;
+    let visible = |row: usize| (0..width).any(|column| pixels[row * stride + column * 4 + 3] > 0);
+    let height = texture.height() as usize;
+    let Some(first) = (0..height).find(|row| visible(*row)) else {
+        return 1.0;
+    };
+    let last = (first..height).rfind(|row| visible(*row)).unwrap_or(first);
+    // Lucide's folder ink spans y=2..21, including its stroke, in a 24-unit viewBox.
+    (19.0 / 24.0 * height as f64 / (last - first + 1) as f64).min(1.0)
+}
+
 fn same_texture(left: Option<&gdk::Texture>, right: Option<&gdk::Texture>) -> bool {
     match (left, right) {
         (None, None) => true,
@@ -94,13 +155,19 @@ glib::wrapper! {
 impl ThumbnailSlot {
     pub(crate) fn new(slot: i32) -> Self {
         let widget: Self = glib::Object::new();
+        widget.connect_map(|slot| {
+            // Mapping can precede allocation and leave visible requests deferred.
+            slot.add_tick_callback(|_, _| {
+                super::viewport::schedule_refresh();
+                glib::ControlFlow::Break
+            });
+        });
+        widget.connect_scale_factor_notify(super::refresh_slot_icon);
         widget.set_overflow(gtk::Overflow::Hidden);
+        widget.imp().fallback_scale.set(1.0);
+        widget.imp().base_opacity.set(1.0);
         widget.set_slot(slot);
         widget
-    }
-
-    pub(crate) fn slot_size(&self) -> i32 {
-        self.imp().slot.get().max(1)
     }
 
     pub(crate) fn set_slot(&self, size: i32) {
@@ -109,11 +176,39 @@ impl ThumbnailSlot {
             return;
         }
         self.imp().slot.set(size);
-        #[cfg(test)]
-        self.imp()
-            .resize_calls
-            .set(self.imp().resize_calls.get() + 1);
+        super::refresh_slot_icon(self);
         self.queue_resize();
+    }
+
+    pub(crate) fn icon_context(&self) -> crate::assets::IconContext {
+        self.imp().icon_context.get()
+    }
+
+    pub(crate) fn set_icon_context(&self, context: crate::assets::IconContext) {
+        if self.imp().icon_context.replace(context) != context {
+            super::refresh_slot_icon(self);
+            self.queue_draw();
+        }
+    }
+
+    pub(crate) fn icon_pixel_size(&self) -> i32 {
+        (self.imp().slot.get() - 2 * self.imp().content_inset.get()).max(1)
+    }
+
+    pub(crate) fn fallback_icon(&self) -> Option<String> {
+        self.imp().fallback_icon.borrow().clone()
+    }
+
+    pub(crate) fn set_content_inset(&self, inset: i32) {
+        let inset = inset.max(0);
+        if self.imp().content_inset.replace(inset) != inset {
+            super::refresh_slot_icon(self);
+            self.queue_draw();
+        }
+    }
+
+    pub(crate) fn limit_fallback_height_to_folder(&self) {
+        self.imp().limit_fallback_height.set(true);
     }
 
     pub(crate) fn set_texture(&self, texture: &gdk::Texture) {
@@ -121,6 +216,7 @@ impl ThumbnailSlot {
             return;
         }
         self.imp().texture.replace(Some(texture.clone()));
+        self.update_state_opacity();
         self.queue_draw();
     }
 
@@ -132,8 +228,16 @@ impl ThumbnailSlot {
             return;
         }
         self.imp().texture.replace(None);
+        let scale =
+            if self.imp().limit_fallback_height.get() && icon != crate::assets::icons::FOLDER {
+                texture.map_or(1.0, folder_height_scale)
+            } else {
+                1.0
+            };
+        self.imp().fallback_scale.set(scale);
         self.imp().fallback_icon.replace(Some(icon.to_owned()));
         self.imp().fallback.replace(texture.cloned());
+        self.update_state_opacity();
         self.queue_draw();
     }
 
@@ -141,8 +245,38 @@ impl ThumbnailSlot {
         self.imp().texture.borrow().clone()
     }
 
-    #[cfg(test)]
-    pub(crate) fn resize_calls(&self) -> u32 {
-        self.imp().resize_calls.get()
+    pub(crate) fn set_mark(&self, mark: crate::ui::browser::ClipboardMark) {
+        if self.imp().mark.replace(mark) != mark {
+            self.update_state_opacity();
+            self.queue_draw();
+        }
+    }
+
+    pub(crate) fn set_hidden(&self, hidden: bool) {
+        if self.imp().hidden.replace(hidden) != hidden {
+            self.update_state_opacity();
+        }
+    }
+
+    pub(crate) fn set_base_opacity(&self, opacity: f64) {
+        let opacity = opacity.clamp(0.0, 1.0);
+        let current = self.imp().base_opacity.get();
+        if (current - opacity).abs() > 1e-4 {
+            self.imp().base_opacity.set(opacity);
+            self.update_state_opacity();
+        }
+    }
+
+    fn update_state_opacity(&self) {
+        let opacity = if self.imp().hidden.get() {
+            0.65
+        } else if self.imp().mark.get() != crate::ui::browser::ClipboardMark::None
+            || self.imp().texture.borrow().is_some()
+        {
+            1.0
+        } else {
+            self.imp().base_opacity.get()
+        };
+        self.set_opacity(opacity);
     }
 }

@@ -1,5 +1,8 @@
 use gtk::prelude::*;
 
+mod delay;
+pub(crate) use delay::DelayedLoading;
+
 pub(super) const ROW_COUNT: u32 = 18;
 
 pub(super) fn block(width: i32, height: i32) -> gtk::Box {

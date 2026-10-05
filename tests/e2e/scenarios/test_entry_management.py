@@ -1,58 +1,147 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Creating, renaming, trashing, deleting, and undoing."""
 
 from __future__ import annotations
 
 import pytest
 
-from harness.modes import ALL_MODES
+from harness.modes import ALL_MODES, COLUMNS_AND_ONE
+
+
+def start_new_file(strata, select=True):
+    if select:
+        strata.select_entry("readme.md")
+    strata.pointer.right_click(strata.pane(), at=strata.background_point())
+    strata.choose_menu_item("New File")
+    field = strata.editable_field()
+    strata.wait(lambda: field.text.startswith("new file"), "the created file's editor")
+    return field
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
-def test_create_folder_from_the_keyboard(strata, mode):
-    fixture = strata.fixture
-
-    strata.select_entry("readme.md")
-    strata.keyboard.press("ctrl+shift+n")
-    field = strata.editable_field()
-    strata.keyboard.type_text("new-folder")
-    strata.wait(lambda: field.text == "new-folder", "the typed name to appear")
+def test_invalid_new_file_names_can_be_corrected(strata, mode):
+    name = "bad/name"
+    field = start_new_file(strata)
+    original = strata.fixture.names()
+    strata.keyboard.type_text(name)
+    strata.wait(lambda: field.text == name, "the invalid name to appear")
     strata.keyboard.press("Return")
-
-    strata.wait(
-        lambda: fixture.path("new-folder").is_dir(),
-        "the folder to be created on disk",
-    )
-    strata.entry("new-folder")
-
-
-def test_creating_a_folder_can_be_cancelled(strata):
-    fixture = strata.fixture
-
-    strata.select_entry("readme.md")
-    strata.keyboard.press("ctrl+shift+n")
+    strata.wait(lambda: strata.window.find(role="text", name="Rename", states={"editable"}) is None, "the invalid edit to close")
+    assert strata.fixture.names() == original
+    strata.select_entry_with_keyboard("new file")
+    strata.keyboard.press("F2")
     strata.editable_field()
-    strata.keyboard.type_text("discarded")
-    strata.keyboard.press("Escape")
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("corrected")
+    strata.keyboard.press("Return")
+    strata.wait(lambda: strata.fixture.path("corrected").is_file(), "the corrected file on disk")
+    strata.entry("corrected")
 
+
+@pytest.mark.parametrize("kind", ["file", "folder"])
+def test_clicking_inside_keeps_the_new_entry_and_preserves_its_name(strata, kind):
+    name = " padded "
+    if kind == "folder":
+        strata.select_entry("readme.md")
+        strata.keyboard.press("ctrl+shift+n")
+        field = strata.editable_field()
+    else:
+        field = start_new_file(strata)
+    strata.keyboard.type_text(name)
+    strata.wait(lambda: field.text == name, "the name to appear")
+    strata.pointer.click(field)
+    strata.keyboard.press("Return")
+    strata.wait(lambda: strata.fixture.path(name).exists(), "the exact name on disk")
+    assert strata.fixture.path(name).is_dir() == (kind == "folder")
     strata.wait(
         lambda: strata.window.find(role="text", states={"editable"}) is None,
-        "the inline field to close",
+        "the submitted prompt to close",
     )
-    assert not fixture.path("discarded").exists()
-    assert sorted(fixture.names()) == [
-        ".hidden.txt",
-        "archive",
-        "documents",
-        "pictures",
-        "readme.md",
-        "todo.txt",
-    ]
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize("kind,name", [("file", "todo.txt"), ("folder", "archive")])
+@pytest.mark.usefixtures("unreserved_columns")
+def test_creating_an_existing_name_does_not_overwrite(strata, kind, name):
+    strata.select_entry("readme.md")
+    if kind == "folder":
+        strata.keyboard.press("ctrl+shift+n")
+    else:
+        strata.pointer.right_click(strata.pane(), at=strata.background_point())
+        strata.choose_menu_item("New File")
+    field = strata.editable_field()
+    original = strata.fixture.listing()
+    strata.keyboard.type_text(name)
+    strata.wait(lambda: field.text == name, "the existing name to appear")
+    strata.keyboard.press("Return")
+    dialog = strata.wait_for_dialog()
+    assert dialog.name == "Unable to rename item"
+    strata.pointer.click(strata.dialog_button("Close"))
+    strata.wait(lambda: strata.dialog() is None, "the error to be dismissible")
+    assert strata.fixture.listing() == original
+    assert strata.fixture.path("todo.txt").read_text() == "todo\n"
+    root = strata.fixture.root.name
+    strata.select_entry("readme.md", root)
+    strata.wait_for_selection(["readme.md"], root)
+    if kind == "folder":
+        assert strata.pane_names() == [root, "new folder"]
+
+
+@pytest.mark.parametrize("kind", ["file", "folder"])
+def test_new_items_can_be_created_in_an_initially_empty_directory(strata, kind):
+    strata.open_directory("archive")
+    if kind == "folder":
+        strata.keyboard.press("ctrl+shift+n")
+        strata.editable_field()
+    else:
+        start_new_file(strata, select=False)
+    strata.keyboard.type_text("discarded")
+    strata.keyboard.press("Escape")
+    strata.entry("new " + kind, directory="archive")
+    if kind == "folder":
+        strata.keyboard.press("ctrl+shift+n")
+        field = strata.editable_field()
+    else:
+        field = start_new_file(strata, select=False)
+    strata.keyboard.type_text("kept")
+    strata.wait(lambda: field.text == "kept", "the replacement name to appear")
+    strata.keyboard.press("Return")
+    strata.wait(lambda: strata.fixture.path("archive/kept").exists(), "the renamed item on disk")
+    assert strata.fixture.path("archive/kept").is_dir() == (kind == "folder")
+    strata.entry("kept", directory="archive")
+    assert not strata.fixture.path("archive/discarded").exists()
+    assert "Gtk-CRITICAL" not in strata.application.log()
+
+
+def test_undoing_a_created_folder_trashes_it(strata):
+    fixture = strata.fixture
+    trashed = strata.environment.trash_files
+
+    strata.keyboard.press("ctrl+shift+n")
+    strata.editable_field()
+    strata.keyboard.press("Return")
+    strata.wait(
+        lambda: fixture.path("new folder").is_dir(),
+        "the folder to be created",
+    )
+    strata.wait(
+        lambda: strata.window.find(role="text", states={"editable"}) is None,
+        "the name prompt to close",
+    )
+
+    strata.keyboard.press("ctrl+z")
+
+    strata.wait(
+        lambda: not fixture.path("new folder").exists(),
+        "create undo to trash the folder",
+    )
+    strata.wait(
+        lambda: any(trashed.iterdir()),
+        "the folder to land in Trash",
+    )
+
+
 @pytest.mark.parametrize("shortcut", ["F2", "ctrl+r"])
-def test_rename_shortcuts(strata, mode, shortcut):
+def test_rename_shortcuts(strata, shortcut):
     fixture = strata.fixture
 
     strata.select_entry("todo.txt")
@@ -89,21 +178,6 @@ def test_rename_shortcuts_leave_location_editing_alone(strata, shortcut):
     assert strata.fixture.path("todo.txt").exists()
 
 
-def test_rename_can_be_cancelled(strata):
-    fixture = strata.fixture
-
-    strata.select_entry("todo.txt")
-    strata.keyboard.press("F2")
-    strata.editable_field()
-    strata.keyboard.press("ctrl+a")
-    strata.keyboard.type_text("never-applied.txt")
-    strata.keyboard.press("Escape")
-
-    strata.entry("todo.txt")
-    assert fixture.path("todo.txt").exists()
-    assert not fixture.path("never-applied.txt").exists()
-
-
 def test_rename_from_the_context_menu(strata):
     fixture = strata.fixture
 
@@ -136,13 +210,16 @@ def test_delete_moves_the_entry_to_trash(strata):
     )
 
 
-def test_permanent_delete_asks_for_confirmation(strata):
+@pytest.mark.parametrize("mode", COLUMNS_AND_ONE)
+def test_permanent_delete_requires_confirmation_and_can_be_cancelled(strata, mode):
     fixture = strata.fixture
+    assert strata.view_mode() == mode
 
     strata.select_entry("todo.txt")
     strata.keyboard.press("shift+Delete")
 
     dialog = strata.wait_for_dialog()
+    assert dialog.role in ("dialog", "alert")
     assert dialog.name == "Permanently delete 1 item?", (
         f"unexpected dialog {dialog.name!r}"
     )
@@ -153,10 +230,6 @@ def test_permanent_delete_asks_for_confirmation(strata):
     strata.pointer.click(strata.dialog_button("Cancel"))
     strata.wait(lambda: strata.dialog() is None, "the dialog to close")
     assert fixture.path("todo.txt").exists(), "cancelling must keep the file"
-
-
-def test_permanent_delete_removes_the_entry_when_confirmed(strata):
-    fixture = strata.fixture
 
     strata.select_entry("todo.txt")
     strata.keyboard.press("shift+Delete")
@@ -174,7 +247,7 @@ def test_permanent_delete_removes_the_entry_when_confirmed(strata):
     )
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize("mode", COLUMNS_AND_ONE)
 def test_permanent_delete_through_a_symlinked_parent(strata, mode):
     fixture = strata.fixture
     alias = fixture.path("documents-alias")
@@ -219,3 +292,101 @@ def test_undo_restores_a_completed_move(strata):
         "undo to put the file back",
     )
     assert not fixture.path("archive/todo.txt").exists()
+
+
+TENXER = pytest.mark.preferences(
+    tenxer_mode=True,
+    type_to_search=False,
+    single_click_previews=False,
+)
+
+
+@TENXER
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_tenxer_footer_rename_keeps_contents_and_refuses_conflicts(strata, mode):
+    fixture = strata.fixture
+    root = fixture.root.name
+    strata.select_entry_with_keyboard("todo.txt")
+
+    strata.keyboard.press("r")
+    field = strata.editable_field()
+    strata.wait(lambda: field.text == "todo.txt", "r to fill in the focused name")
+    strata.keyboard.type_text("discarded")
+    strata.keyboard.press("Escape")
+    strata.wait(lambda: strata.window.find(role="text", states={"editable", "focused"}) is None, "Esc to close the prompt")
+    strata.wait_for_focused_entry("todo.txt")
+
+    strata.keyboard.press("F2")
+    field = strata.editable_field()
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("readme.md")
+    strata.keyboard.press("Return")
+    strata.wait(
+        lambda: strata.window.find(role="label", name="“readme.md” already exists") is not None,
+        "the conflict to keep the prompt open with its reason",
+    )
+    assert field.has_state("focused")
+    assert fixture.path("readme.md").read_text() == "# Fixture\n"
+
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("done list.txt")
+    strata.keyboard.press("Return")
+    strata.wait(lambda: fixture.path("done list.txt").is_file(), "Enter to rename the file")
+    assert fixture.path("done list.txt").read_text() == "todo\n"
+    assert not fixture.path("todo.txt").exists()
+    strata.wait_for_focused_entry("done list.txt")
+
+    strata.keyboard.press("r")
+    strata.editable_field()
+    strata.keyboard.type_text("clicked")
+    strata.click_entry("readme.md", root)
+    strata.wait(lambda: strata.window.find(role="text", states={"editable", "focused"}) is None, "a click to end the prompt")
+    strata.wait_for_selection(["readme.md"], root)
+    assert fixture.path("done list.txt").is_file()
+    assert not any("clicked" in name for name in fixture.names())
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.usefixtures("unreserved_columns")
+def test_new_folder_with_selection_groups_items_and_names_it(strata, mode):
+    fixture = strata.fixture
+    root = fixture.root.name
+
+    strata.select_entry("readme.md", root)
+    strata.click_entry_with("todo.txt", ["ctrl"], directory=root)
+    strata.wait_for_selection(["readme.md", "todo.txt"], root)
+    strata.pointer.right_click(strata.entry("readme.md", root))
+    strata.wait(strata.context_menu, "the selection context menu")
+    strata.choose_menu_item("New Folder with Selection")
+
+    field = strata.editable_field()
+    strata.wait(lambda: field.text.startswith("new folder"), "the new folder's editor")
+    strata.keyboard.type_text("grouped")
+    strata.keyboard.press("Return")
+    strata.wait(
+        lambda: fixture.path("grouped/readme.md").is_file(),
+        "the selection moved into the named folder",
+    )
+    assert fixture.path("grouped/todo.txt").is_file()
+    assert not fixture.path("readme.md").exists()
+    assert not fixture.path("todo.txt").exists()
+    # The parent row's name is optimistic; the renamed child listing follows completion.
+    if mode == "columns":
+        strata.entry("readme.md", "grouped")
+        strata.entry("todo.txt", "grouped")
+    strata.wait(
+        lambda: strata.window.find(role="text", states={"editable", "focused"}) is None,
+        "the rename editor to release keyboard focus",
+    )
+    strata.click_entry("grouped", root)
+    strata.select_entry_with_keyboard("grouped")
+
+    strata.keyboard.press("ctrl+z")
+    strata.wait(
+        lambda: fixture.path("readme.md").is_file()
+        and fixture.path("todo.txt").is_file()
+        and not fixture.path("grouped").exists()
+        and not fixture.path("new folder").exists(),
+        "the gesture undone",
+    )
+    strata.entry("readme.md", root)

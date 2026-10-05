@@ -1,7 +1,9 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Single-click and double-click activation, and switching between them."""
 
 from __future__ import annotations
+
+import time
 
 import pytest
 
@@ -29,6 +31,36 @@ def test_single_click_opens_a_directory(strata, mode):
         "one click to open the directory in single-click mode",
     )
     strata.entry("notes.txt")
+    strata.wait_for_selection([], "documents")
+
+
+@SINGLE_CLICK
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_keyboard_open_selects_the_first_child(strata, mode):
+    strata.select_entry_with_keyboard("documents")
+    strata.keyboard.press("Return")
+    strata.wait_for_directory("documents")
+    strata.wait_for_selection(["notes.txt"], "documents")
+
+
+@SINGLE_CLICK
+@pytest.mark.parametrize("activation", ["mouse", "keyboard"])
+def test_sidebar_selection_depends_on_activation(strata, activation):
+    home = strata.environment.home
+    (home / "child").mkdir()
+    if activation == "mouse":
+        strata.pointer.click(strata.sidebar_button("Home"))
+    else:
+        strata.keyboard.press("Home")
+        strata.keyboard.press("Left")
+        strata.wait(
+            lambda: strata.sidebar_button("Home").has_state("focused"),
+            "keyboard focus on the Home sidebar button",
+        )
+        strata.keyboard.press("Return")
+    strata.wait_for_directory(home.name)
+    strata.entry("child", home.name)
+    strata.wait_for_selection(["child"] if activation == "keyboard" else [], home.name)
 
 
 @SINGLE_CLICK
@@ -38,11 +70,12 @@ def test_keyboard_selection_still_works_in_single_click_mode(strata, mode):
     strata.wait(lambda: strata.focused_name() is not None, "keyboard focus")
     focused = strata.focused_name()
 
+    root = strata.fixture.root.name
     strata.wait(
-        lambda: strata.selected_names() == [focused],
+        lambda: strata.selected_names(root) == [focused],
         "the keyboard to select without opening anything",
     )
-    assert strata.pane().name == strata.fixture.root.name, (
+    assert strata.current_directory() == root, (
         "moving the keyboard cursor must not navigate in single-click mode"
     )
 
@@ -70,6 +103,8 @@ def test_two_clicks_open_in_double_click_mode(strata, mode):
         lambda: strata.pane().name == "documents",
         "two clicks to open the directory",
     )
+    strata.entry("notes.txt")
+    strata.wait_for_selection([], "documents")
 
 
 @DOUBLE_CLICK
@@ -86,6 +121,29 @@ def test_two_slow_clicks_do_not_open(strata, mode):
         "the entry to stay selected",
     )
     assert strata.pane().name == root
+
+
+@DOUBLE_CLICK
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_click_then_double_click_opens_without_renaming(strata, mode):
+    strata.pointer.click(strata.entry("documents"))
+    strata.wait(
+        lambda: strata.selected_names() == ["documents"],
+        "the first click to select the folder",
+    )
+    # Outlast GTK's double-click interval so the pair is a fresh sequence.
+    time.sleep(0.6)
+
+    strata.pointer.double_click(strata.entry("documents"))
+
+    strata.wait(
+        lambda: strata.pane().name == "documents",
+        "the double-click to open the folder",
+    )
+    time.sleep(0.6)
+    assert strata.window.find(role="text", name="Rename", states={"editable"}) is None, (
+        "a double-click must not leave a rename editor behind"
+    )
 
 
 @DOUBLE_CLICK
@@ -114,7 +172,7 @@ def _choose_single_click(strata) -> None:
     strata.pointer.click(strata.header_button("Settings"))
     option = strata.wait(
         lambda: strata.window.find(
-            role="toggle button", name="List Folders 1 click", rendered=False
+            role="toggle button", name="List view Folders Single", rendered=False
         ),
         "the List single-click option in Settings",
     )
@@ -127,7 +185,7 @@ def _choose_single_click(strata) -> None:
     strata.keyboard.press("Escape")
     strata.wait(
         lambda: strata.window.find(
-            role="toggle button", name="List Folders 1 click"
+            role="toggle button", name="List view Folders Single"
         )
         is None,
         "Settings to close",

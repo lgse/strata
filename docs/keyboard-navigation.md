@@ -6,9 +6,7 @@ Columns have three independent signals:
 - **Keyboard cursor:** a text-contrast outline identifies the current item in the keyboard-focused list. Only that list shows a cursor; range selections can contain several filled rows.
 - **Open path:** the chevron identifies the folder whose child column is open, without an extra border. This is navigation context, not another keyboard cursor.
 
-The destination column has an accent rule across its header and a **Keyboard · Paste here** or **Pointer · Paste here** footer. The indication remains useful in an empty directory, where there is no row to highlight. When panes overflow, the horizontal scrollbar gets its own track below these labels rather than covering them. No track is reserved when the panes fit.
-
-[Before: scrollbar overlap](screenshots/291/destination-scrollbar-before.png) · [After: separate scrollbar track](screenshots/291/destination-scrollbar-after.png)
+The destination column has an accent rule across its header, including when the directory is empty. Columns no longer reserve a separate bottom margin for the horizontal scrollbar.
 
 ## Input precedence
 
@@ -27,21 +25,158 @@ Keyboard navigation suppresses stale row-hover effects and pending folder peeks 
 
 Pressing blank column content focuses that directory, including empty directories, without closing descendants. Releasing a plain click on empty space clears file selections across columns. When returning to an inactive column, it also selects that column's first visible entry as the range anchor. Holding or dragging does not clear selections before marquee intent is resolved. Row clicks, controls, scrollbars, context menus, and marquee selection keep their own interactions. Returning to a column by keyboard preserves a multi-selection; Ctrl+A selects the focused column, not the deepest open column.
 
+**Shift+Up/Down** extends the selection from the range anchor by one item, **Shift+Page Up/Page Down** by one page. After Escape clears the selection, the range starts at the cursor.
+
 Copy/cut use the selection in the focused column, never a hovered row. In Columns, Delete/Shift+Delete with no selected items does nothing: an open parent-path marker is not an implicit deletion target. The separate List/Icons parent-deletion fallback is tracked in #300.
 
 Background selection updates from directory loading must not move keyboard focus to an inactive column.
 
+## Returning to an Icons or List directory
+
+Icons and List remember the selection, keyboard cursor, and scroll position of the
+last 128 directories left in that browser. Back, Forward, and Up restore each
+visited directory after its entries load, including nested parents. Arrow-key
+navigation continues from the restored row. Entries are matched by location,
+not their previous row numbers; deleted entries are not selected accidentally.
+This is temporary browsing state, not a saved preference. New input in the file view
+cancels an in-progress restoration.
+
+## Creating files and folders
+
+In Columns, List, and Icons, **Ctrl+Shift+N** or background menu → **New Folder**
+immediately creates `new folder`. Background menu → **New File** immediately
+creates an empty `new file`. If the default name is occupied by any item, creation
+tries `new folder (1)` / `new file (1)`, then `(2)`, and so on without overwriting
+anything. The pane filter is cleared and the entire allocated default name is
+selected: one Backspace clears it, and typing replaces it.
+
+Item menu → **New Folder with Selection** (or **Ctrl+Alt+N**) creates `new folder`
+in the same directory, moves the selected items into it, and names it in place.
+With nothing selected **Ctrl+Alt+N** falls back to a plain `new folder`. The item
+is hidden in Trash, Recent, and while a recursive search is open.
+
+For **any file or folder rename**, Enter, clicking outside the field (even empty
+pane space), or moving keyboard focus away commits a valid name. Escape keeps
+the original name. Finishing with an empty or invalid name also keeps the
+original. Cancelling the initial rename does **not** delete the new item: it
+remains under its allocated default name. File contents are preserved.
+
+Clicking inside the field continues editing. Existing files retain extension-aware
+selection (the stem is selected); folder names containing dots are selected in full.
+
+Names containing `/` or NUL, `.`/`..`, and whitespace-only names (including
+Unicode whitespace) are invalid. Valid names are used exactly as typed,
+including spaces around a nonblank name, hidden-file prefixes, and Unicode.
+Name conflicts, filesystem-specific limits, and permission errors retain the
+original item and report an error.
+
+## Filename patterns while filtering
+
+Use **Ctrl+F** to filter a pane. Plain text matches a substring of the filename,
+ignoring case. Queries of at least four letters or digits also allow one inserted,
+missing, substituted, or adjacent swapped character within a whole filename word.
+Words are separated by punctuation or spaces. For example, `trahs` finds
+`strata-trash.svg`, but `trash` does not find `strata-search.svg`. Shorter queries
+and queries containing punctuation remain literal. Indexed results rank literal
+matches ahead of typo matches; parent paths do not qualify a result.
+
+Add `*` for a whole-filename pattern without typo tolerance:
+
+- `*.MOV` matches `clip.MOV`, but not `clip.MOV.bak`.
+- `IMG*` matches names beginning with `IMG`.
+- `IMG*.MOV` combines a prefix and an extension.
+- `*holiday*` matches names containing `holiday`; `*` matches any name.
+
+Each `*` stands for zero or more characters. Other punctuation (including `?`,
+`[]`, and regex syntax) is literal. Patterns match file and folder names, not
+parent paths, in Columns, Icons, List, and the file chooser. Hidden-file visibility
+and [Include subfolders](preferences.md#filter-scope) still control the scope;
+a wildcard does not enable recursive search. Existing result limits still apply.
+Clear the input or press Escape to restore the directory listing. **Ctrl+K**
+global fuzzy search is unchanged.
+
+## Preview while filtering
+
+In the browser and file chooser, **Down** from the Ctrl+F input focuses the selected result, or the first result if none is selected. **Up/Down** then navigate the results; **Up** from the first result returns to the input without clearing the query. **Ctrl+F** also returns to the input. With no matches, Down leaves focus in the input.
+
+**Menu/Shift+F10** on a focused result opens its file menu. While the input itself is focused, its text-editing menu remains available. **Space** toggles quick preview for a selected file result in Columns, Icons, and List, including after returning to the query. Previewing a file keeps the query, selection, and current directory intact; on a selected folder result, Space navigates into the folder instead.
+
+While the input is focused, Space types into the query if no result is selected. **Shift+Space** inserts a space there even with a result selected. Space opens a selected folder in every view without opening or loading the preview pane; unsupported files do not open a preview.
+
+## Navigating an archive preview
+
+Quick Look on a local ZIP, 7z, TAR, or TAR.GZ opens the archive's member tree
+instead of extracting it. In Columns (**Ctrl+1**), automatically previewing an
+archive shows its contents on the right without selecting a member or taking
+keyboard focus. **Up/Down** continue through the current column. **Right**,
+**Enter**, or **Space** explicitly enter the archive preview and highlight its
+first member. Enter opens the preview even when automatic previews are disabled;
+double-click and the archive's context menu still offer extraction. In Icons
+and List, Enter retains its archive extraction behavior.
+
+Other archive previews start at the archive root with the first member
+highlighted. In List and Columns modes, arrow keys act on the focused pane,
+not merely on an open preview. From the listing, **Right** enters the open
+preview. While the preview owns focus, its header shows the accent top border
+instead of the Miller column. Returning to the listing restores its cursor
+and column header indicator without changing the listing's selection.
+
+Inside the preview, **Up/Down** (or **k/j**) move the highlight, **Right/l/Enter**
+opens the highlighted folder, and **Left/h** returns to the parent. **Left** at the
+archive root returns focus to the listing without closing the preview. Up/Down
+then move through listing items; Right enters the preview again. In Columns
+mode, another Left from the listing moves to the parent column. Right/Enter on a
+member file does nothing. Navigating never extracts anything or touches the
+filesystem; **Space** and **Escape** still
+close the preview. In [10xer mode](10xer-mode.md#preview-keyboard-ownership),
+**h** at the archive root returns to the listing, **Space** is swallowed, and
+**Shift+Tab** / **Esc** return or close.
+
 ## Shortcut footer
 
-Every mode has a compact, single-line footer with its navigation hints and common file shortcuts. **Settings → Keybindings → Show keybinding hints** controls its visibility (on by default). The preference is saved and updates all open windows immediately. F1 still opens the reference with hints disabled; closing it hides the footer again. The summary truncates rather than wrapping in narrow windows; **F1 · Shortcuts** always remains available to open the complete, mode-specific reference. F1 or Escape closes it. The reference blocks file-operation shortcuts while it is open.
+Every mode has a compact footer with **F1 · Shortcuts** on the left and clipboard status and the item count on the right. **Settings → General → Browsing → Show F1 Shortcuts button** controls the button's visibility (on by default). The preference is saved and updates all open windows immediately. Item counts and clipboard status remain visible when the button is hidden. F1 always opens the complete, mode-specific reference; closing it restores the button's configured visibility. F1, Escape, or a click outside it closes the reference, which blocks file-operation shortcuts while open. It stays open when the window loses focus. The reference is the only in-app keybinding list; it shows only the currently active map and live-updates when 10xer mode changes.
 
-After copying or cutting files, a highlighted **Ctrl+V · Paste available** hint appears beside the reference button. It reflects the file clipboard, including compatible copies from other applications, rather than assuming every clipboard contains files. It stays available after copying/pasting, and disappears when a completed cut consumes the clipboard or it is cleared/replaced with text. With hints disabled, the paste shortcut still works, but the footer stays hidden.
+## 10xer mode
 
-[Keybindings setting](screenshots/291/hints-settings.png) · [Paste available](screenshots/291/paste-available.png) · [Hints disabled](screenshots/291/hints-hidden.png)
+**Settings → General → Browsing → 10xer mode** (off by default,
+toggle with **Ctrl+Shift+M**) hides window Search and
+pane Close/filter/refresh/sort chrome and installs Yazi-style keys.
+**Ctrl+Shift+M** is the only key that leaves the mode. While the mode is on, the footer shows
+**10X** at the right, immediately before the item count.
+Typed input uses the footer prompt, never the pane filter revealer or the
+global search dialog. See [10xer mode](10xer-mode.md) for the keymap.
+
+**Ctrl+Shift+M** also works while a browser text field has focus. Modal dialogs
+retain their own input handling. Leaving 10xer mode clears retained footer
+filters/search and forced recursion in all windows, so default **Ctrl+F** obeys
+**Include subfolders** again. It ends visual/preview keyboard ownership without
+clearing the ordinary listing's fill or closing the preview. **Esc** dismisses
+one interaction at a time, including an open preview; recursive results have a
+separate order described in [Escape precedence](10xer-mode.md#escape-precedence).
+
+The F1 / `~` reference panel lists the active map and live-updates when the mode
+changes. Its navigation section is specific to the current view, and in the
+portal file chooser it lists only the keys that request allows.
+Context-menu hints use `x`, `y`, `p`, `d` / `D`, `r`, `i`, and `M` / `C` / `R`
+(Move to, Copy to, Restore) only when those commands perform the action. `i` toggles a file's preview without taking focus, or is the next column or folder peek for a directory.
+Until those verbs run, the menu keeps the shortcuts that still work and hides
+the unbound defaults (`Y` for copy path, `Space` for preview, and `Ctrl+R` for
+rename). Planned commands are not shown as working. In the default map, the
+`Y` (copy path) and `P` (pin) hints show only while **Type to search** is off,
+because type-to-search claims those letters otherwise.
+
+While a pane shows its search-results page (including filtered results), the footer
+shows the displayed result total in both default and 10xer mode, including
+**0 items** on a miss.
+Selecting results does not replace that total with the hidden directory's selection;
+its accessible description gives the result file/folder breakdown. Dismissing results restores the
+ordinary directory count or selection summary.
+
+With no selection in the ordinary listing, the footer shows the directory's item count. Selections show a folder/file breakdown, such as **1 folder, 2 files selected (64 MB)**. Sizes sum available metadata for selected files only; folder contents are not scanned or included. Missing file sizes are marked incomplete or unavailable.
+
+After copying or cutting files, a highlighted **Files on clipboard** pill appears to the left of the item count. It reflects the file clipboard, including compatible copies from other applications, rather than assuming every clipboard contains files. It stays available after copying/pasting, and disappears when a completed cut consumes the clipboard or it is cleared/replaced with text. The clipboard status and paste shortcut remain available when the F1 Shortcuts button is hidden. Copied listing items show the Lucide copy icon in place of their thumbnail; cut items keep scissors, which wins if both would apply. Clearing the clipboard or unyank removes the copy overlay.
 
 The hints describe file-view controls; text fields, dialogs, and media previews retain their own keyboard behavior. Mode changes update both the footer and the reference immediately. Closing keyboard-opened help restores the previous focus.
-
-[Columns footer](screenshots/291/footer-columns.png) · [Icons header focus](screenshots/291/footer-grid-header.png) · [List header, light theme](screenshots/291/footer-explorer-header.png) · [Narrow window](screenshots/291/footer-narrow.png) · [Shortcut reference](screenshots/291/shortcut-reference.png)
 
 ## Arrows, the header, and the sidebar
 
@@ -54,22 +189,50 @@ In Icons and List, plain arrows move interface focus rather than changing direct
 | Up / Down | Move by visual rows | Move through file rows |
 | Enter | Open the current item | Open the current item |
 
+Enter on a previewed video, from the listing or inside the preview, pauses the
+preview and asks the default player to start where it stopped. mpv, VLC,
+Celluloid and MPlayer take the position on their command line; other players
+open the file from the beginning, as does a position inside the first or last
+second.
+
 Up from the first Icons row or first List item focuses the navigation header, including in empty directories. Left/Right traverse its enabled controls without triggering navigation; Enter/Space activates a control. Down returns to the item you left without changing selection. Left from the header's first control can reach the visible sidebar.
 
-From the sidebar, Right returns to the item you left (or the current file view if navigation replaced it). Up/Down move between places. Up from Home, the first sidebar row, continues into the **top navigation bar** instead of stopping. Left/Right traverse its enabled controls without activating them; Down returns to the sidebar row you left. If the sidebar is hidden from the top bar, Down returns to the files instead. Empty file views also support these round trips. If the sidebar is hidden, Left in the file view does not change directories.
+From the sidebar, Right returns to the item you left (or the current file view if navigation replaced it, or if you entered the sidebar from the header rather than from a file). Up/Down move between places. Up from Home, the first sidebar row, continues into the **top navigation bar** instead of stopping. Left/Right traverse its enabled controls without activating them; Down returns to the sidebar row you left. If the sidebar is hidden from the top bar, Down returns to the files instead. Empty file views also support these round trips. If the sidebar is hidden, Left in the file view does not change directories.
 
-[Before: sidebar Home](screenshots/291/sidebar-top-bar-before.png) · [After Up: top navigation bar](screenshots/291/sidebar-top-bar.png)
+**Settings → General → Browsing → Keep arrows in file list** (off by default) stops arrow keys from leaving the file list. Use **Ctrl+Shift+B** to focus the sidebar, or use the mouse. **Ctrl+\\** toggles it live. The file chooser respects the same preference.
 
-**Alt+Left / Alt+Right / Alt+Up** remain Back / Forward / Parent in every mode. List/Columns retain Miller-column navigation: **Right enters folders or moves into an existing pane to the right**. On a focused file with no pane to the right, Right does nothing; it never opens or previews the file. **Enter** opens files; the existing Vim `l` activation shortcut is unchanged. Backspace and the existing Vim directory shortcuts remain available.
+**Alt+Left / Alt+Right / Alt+Up** remain Back / Forward / Parent in every mode. In the default map, List/Columns retain Miller-column navigation: **Right enters folders or moves into an existing pane to the right**. On a focused file with no pane to the right, Right does nothing; it never opens or previews the file. **Enter** opens files. With **Type to search** off, `h` / `j` / `k` / `l` act as the arrow keys in every view, and Backspace still goes up a level. In [10xer mode](10xer-mode.md), arrows stay in the Columns, List, and Icons panes. **Tab** moves from the file list to the window header, where **Enter** / **Space** activate the focused control and **h** / **j** return to the files. **Ctrl+Shift+B** focuses a visible sidebar; a hidden sidebar stays hidden until the header toggle shows it. In the sidebar, **j** / **k** and **Up** / **Down** move between places and device controls, **l** / **Enter** / **Space** activate the focused one, and **h** / **Left** / **Backspace** return to the files without changing the selection. A **Tab** or arrow key from the footer still returns to the file list. List and Columns **l** / **→** open a directory or enter a file's preview when possible. Icons **h** / **j** / **k** / **l** and arrows always move to the next icon in that direction, including across search-result icons; they never preview or change location. On a file, **i** toggles the preview without moving focus. On a directory it opens the next Miller column without focusing it, or toggles the folder-peek popover in List and Icons.
 
-[Right-arrow demo: files stay selected; folders open in a child column](screenshots/291/right-folder-only.mp4).
+Columns reserves preview space from startup, even before a file is previewed. **Space**, **i**, and the preview's close button dismiss the content without reclaiming that space, so opening or closing a preview does not move the columns under the pointer. Switch **Appearance → Preview panel** off to explicitly reclaim it. This reservation is window-local and does not enable automatic previews on its own. In narrow windows the preview content hides, but the reserved slot keeps the remaining width beside the focused column, down to zero. The complete sizing, reservation, and dismissal rules are in [Preview panel and column layout](preview-panel-layout.md).
+
+In Columns, the pane to the right mirrors keyboard selection like Finder: **Up/Down** onto a folder shows its contents in a child column that takes the reserved preview space, onto a previewable file closes that child column and opens Quick Preview in the same space, and onto any other file closes the child pane. The focused column stays where it is throughout. A preview closed with **Space**, **i**, **Esc**, the close button, or **Appearance → Preview panel** stays closed while mirroring until it is opened explicitly again. Pointer selection keeps the configured click behavior. **Settings → General → Browsing → Mirror columns selection** (on by default) toggles the mirroring. 10xer mode follows the same preference for its cursor in Columns; see [10xer mode](10xer-mode.md). **l** / **→** enters a directory or a file preview, and **i** toggles a file's preview or opens the next column / toggles folder peek for a directory.
+
+## Opening and navigating the context menu
+
+**Menu** (the hardware context-menu key) and **Shift+F10** open the selection-aware
+context menu without the pointer. With an item keyboard-focused, the menu opens for
+that item — or the full multi-selection, if the focused item is part of one. With no
+selection, it opens the active pane's background menu. The menu is anchored to the
+focused item or pane, never to the pointer.
+
+Right-clicking an item also makes it the keyboard cursor, without opening it.
+An already-selected item keeps the existing multi-selection; an unselected item
+becomes the only selected item. Escape returns keyboard focus to that clicked item.
+
+Once open: **Up/Down** move between enabled actions, wrapping past the first/last;
+**Home/End** jump to the first/last enabled action; separators and disabled actions
+are skipped. **Enter/Space** activates the focused action immediately on key press.
+**Escape** closes the menu without changing the selection and returns keyboard
+focus to the item or pane that opened it. This applies in Columns, Icons, List,
+Trash, and the file chooser. Closing Properties returns focus to its originating
+control; choosing Rename hands focus to the editor instead.
 
 ## Review fixture
 
 Create `Fonts/` (empty), `Scripts/example.txt`, and `LICENSE` under a temporary directory.
 
 - Select LICENSE with the pointer, copy, leave the pointer there, then navigate to Fonts with the keyboard and paste. LICENSE should appear only in Fonts.
-- Select a file in Scripts, copy, and move the pointer onto blank space in the parent column. The parent must visibly become the paste destination before Ctrl+V.
+- Select a file in Scripts, copy, and move the pointer onto blank space in the parent column. The parent header must gain the destination accent before Ctrl+V.
 - Focus the parent, select several items, then click blank child and parent content. The open child and parent selection must remain intact. Ctrl+A must affect the parent only.
 - Enter an empty directory and try Delete/Shift+Delete. No confirmation targeting its parent should appear.
 - Repeat with a light theme, with filters, and with enough files to scroll. The cursor must remain distinguishable from selection and path markers.

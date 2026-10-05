@@ -1,37 +1,59 @@
 [package]
 name = "strata"
-version = "0.12.0"
+version = "0.21.0"
 edition = "2024"
 description = "A fast, keyboard-first file manager for Linux"
 authors = ["LGSE Ltd."]
-license = "GPL-3.0-or-later"
+license = "MIT"
 repository = "https://github.com/LGSE/strata"
 keywords = ["file-manager", "gtk4", "linux", "wayland"]
 categories = ["filesystem", "gui"]
+
+[features]
+default = ["rar"]
+rar = ["dep:unrar", "dep:unrar_sys"]
 
 [dependencies]
 ashpd = { version = "=0.13.13", default-features = false, features = ["backend", "file_chooser", "async-io", "tracing"] }
 async-io = "2.6.0"
 cairo-rs = { version = "0.22.9", features = ["pdf", "png"] }
+calamine = "0.36.1"
+csv = "1.4.0"
+docx-rs = { version = "0.4.22", default-features = false }
 flate2 = "1.1.10"
 fontconfig-sys = { package = "yeslogic-fontconfig-sys", version = "6.0.1" }
 futures-channel = "0.3.31"
 futures-lite = "2.6.1"
 gdk-pixbuf = "0.22.0"
 gdk4-wayland = { version = "0.11.4", features = ["v4_12"] }
+gdk4-x11 = { version = "0.11.4", features = ["v4_10"] }
 gio = { version = "0.22.9", features = ["v2_72"] }
 gio-unix = "0.22.8"
 glib = "0.22.9"
+gstreamer = { version = "0.25.3", features = ["v1_20"] }
+gstreamer-app = { version = "0.25.2", features = ["v1_20"] }
 gtk = { package = "gtk4", version = "0.11.4", features = ["v4_12"] }
 hex = "0.4.3"
+html5gum = { version = "0.8", default-features = false }
 ignore = "0.4.23"
+image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "jpeg", "png", "webp"] }
+kamadak-exif = "0.6.1"
+landlock = "0.4.7"
+libc = "0.2"
+mermaid-svg = "0.7.0"
+rquickjs = "0.13.0"
+quick-xml = "0.41.0"
 pangocairo = "0.22.0"
 poppler = { package = "poppler-rs", version = "0.26.0" }
 pulldown-cmark = { version = "0.13", default-features = false }
 ring = "0.17.14"
-rustix = { version = "1.1.4", features = ["fs", "process", "event"] }
+resvg = { version = "0.48.1", default-features = false, features = ["text", "system-fonts"] }
+rustix = { version = "1.1.4", features = ["fs", "process", "event", "net", "mount", "thread", "stdio", "pipe", "runtime"] }
+seccompiler = "0.5.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+serde_norway = "0.9"
+sha2 = "0.11.0"
 sevenz-rust2 = "0.22.2"
 sourceview5 = { version = "0.11.2", features = ["gtk_v4_12"] }
 tar = "0.4.46"
@@ -39,10 +61,14 @@ tempfile = "3.27.0"
 toml = "1.1"
 tracing = "0.1.41"
 tracing-subscriber = "0.3.20"
+unicode-normalization = "0.1.25"
 ureq = { version = "3.4", features = ["json"] }
 zbus = { version = "5.19.0", default-features = false, features = ["async-io"] }
-zstd = "0.13.3"
+zstd = "0.14.0"
 zip = "8.6.0"
+unrar = { version = "0.5.8", optional = true }
+unrar_sys = { version = "0.5.8", optional = true }
+frizbee = "0.13"
 
 [build-dependencies]
 glib-build-tools = "0.22.8"

@@ -1,0 +1,102 @@
+# SPDX-License-Identifier: MIT
+import io
+import shutil
+import tarfile
+import zipfile
+from pathlib import Path
+
+import pytest
+
+def extract_archive(strata, archive_name, activation):
+    if activation == "keyboard":
+        strata.select_entry("todo.txt")
+        strata.select_entry_with_keyboard(archive_name)
+        strata.keyboard.press("Return")
+    elif activation == "double-click":
+        strata.double_click_entry(archive_name)
+    else:
+        strata.open_context_menu(archive_name)
+        strata.choose_menu_item(activation)
+        if activation == "Extract to…":
+            chooser = strata.destination_chooser("Extract to")
+            strata.confirm_destination(chooser, "Extract here")
+
+
+@pytest.mark.preferences(
+    list_file_clicks=2, grid_file_clicks=2, explorer_file_clicks=2,
+)
+@pytest.mark.parametrize("format,activation", [
+    pytest.param("zip", "keyboard", marks=pytest.mark.preferences(browser_mode="list")),
+    pytest.param("zip", "keyboard", marks=pytest.mark.preferences(browser_mode="icons")),
+    ("zip", "double-click"),
+    pytest.param("tar.gz", "keyboard", marks=pytest.mark.preferences(browser_mode="list")),
+    ("tar.gz", "double-click"),
+    ("zip", "Extract here"), ("zip", "Extract to…"),
+])
+def test_archive_activation_extracts_to_subfolder(strata, activation, format):
+    strata.wait_for_focused_entry("archive")
+    fixture = strata.fixture
+    archive_name = f"activation.{format}"
+    contents = "extracted by activation\n"
+    members = [("activated.txt", contents.encode()), ("nested/second.txt", b"second member\n")]
+    if format == "zip":
+        with zipfile.ZipFile(fixture.path(archive_name), "w") as archive:
+            for member, data in members:
+                archive.writestr(member, data)
+    else:
+        with tarfile.open(fixture.path(archive_name), "w:gz") as archive:
+            for member, data in members:
+                info = tarfile.TarInfo(member)
+                info.size = len(data)
+                archive.addfile(info, io.BytesIO(data))
+    strata.entry(archive_name)
+
+    extract_archive(strata, archive_name, activation)
+
+    subfolder = fixture.path("activation")
+    extracted = subfolder / "activated.txt"
+    strata.wait(lambda: extracted.exists(), "archive activation to bundle spilled members")
+    strata.wait(lambda: strata.dialog() is None, "extraction progress dismissal")
+    assert extracted.read_text() == contents
+    assert (subfolder / "nested/second.txt").read_bytes() == b"second member\n"
+    assert not fixture.path("activated.txt").exists()
+    assert not fixture.path("nested").exists()
+    assert fixture.path(archive_name).exists()
+    assert strata.pane().name == fixture.root.name
+    strata.entry("activation")
+    if activation != "Extract to…":
+        strata.wait_for_selection(["activation"], fixture.root.name)
+        strata.wait_for_focused_entry("activation")
+    extracted.write_text("keep existing edits\n")
+    for suffix in [1, 2]:
+        extract_archive(strata, archive_name, activation)
+        fresh = fixture.path(f"activation ({suffix})") / "activated.txt"
+        strata.wait(lambda: fresh.exists(), "repeated activation to use a fresh folder")
+        strata.wait(lambda: strata.dialog() is None, "extraction progress dismissal")
+        assert fresh.read_text() == contents
+        assert extracted.read_text() == "keep existing edits\n"
+        strata.entry(f"activation ({suffix})")
+        if activation != "Extract to…":
+            strata.wait_for_selection([f"activation ({suffix})"], fixture.root.name)
+            strata.wait_for_focused_entry(f"activation ({suffix})")
+
+
+@pytest.mark.preferences(
+    list_file_clicks=2, grid_file_clicks=2, explorer_file_clicks=2,
+)
+@pytest.mark.parametrize("activation", ["keyboard", "double-click"])
+def test_archive_activation_extracts_a_single_root_archive_verbatim(strata, activation):
+    strata.wait_for_focused_entry("archive")
+    fixture = strata.fixture
+    archive_name = "activation.rar"
+    shutil.copyfile(Path(__file__).parents[2] / "fixtures/rar/version.rar", fixture.path(archive_name))
+    strata.entry(archive_name)
+
+    extract_archive(strata, archive_name, activation)
+
+    extracted = fixture.path("VERSION")
+    strata.wait(lambda: extracted.exists(), "single-root archive to extract verbatim")
+    strata.wait(lambda: strata.dialog() is None, "extraction progress dismissal")
+    assert extracted.read_text() == "unrar-0.4.0"
+    assert not fixture.path("activation").exists()
+    assert fixture.path(archive_name).exists()

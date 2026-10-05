@@ -1,9 +1,9 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
     cell::{Cell, RefCell},
     process::Command,
-    rc::Rc,
+    rc::{Rc, Weak},
     sync::{OnceLock, mpsc::TryRecvError},
     time::{Duration, Instant},
 };
@@ -12,31 +12,39 @@ use gtk::{gdk, gio, glib, prelude::*, subclass::prelude::*};
 
 use crate::{
     assets::icons,
-    sandbox::MediaPreviewBackend,
     services::{
-        self, BuildKind, Channel, InstallCancel, InstallRequest, InstallSource, ManagedInstall,
-        ReleaseMetadata, ReleaseNoteBlock, ReleaseNotes, UpdateCheck, UpdateInstall, UpdateMethod,
-        Version,
+        self, BuildKind, Channel, DocumentBlock, InstallCancel, InstallRequest, InstallSource, ManagedInstall,
+        ReleaseMetadata, ReleaseNotes, UpdateCheck, UpdateInstall, UpdateMethod, Version,
     },
 };
-
-mod bindings;
-use bindings::{bind_choice, bind_switch};
 
 #[cfg(test)]
 mod tests;
 
+mod about;
+mod actions;
+mod bindings;
+mod general;
+mod search;
+mod theme;
+mod wrap;
+use about::about_page;
+use bindings::bind_switch;
+use general::general_page;
+use theme::theme_page;
+
 use super::{
     blur::BlurBin,
     browser::{dismiss_modal_layer, modal_layer},
-    browser_modes::{BrowserMode, ClickActivation, ClickCount},
-    controls::{form_entry, menu_option, modal_layout, segmented_control},
+    controls::modal_layout,
+    preferences::PreferenceManager,
     terminal,
-    theme::{TextSize, Theme, ThemeManager, ThemeTokens},
 };
 
-pub(super) type UpdateNoticeHandler =
-    Rc<dyn Fn(Option<(ReleaseMetadata, InstallRequest, UpdateMethod)>)>;
+type AvailableUpdate = (ReleaseMetadata, InstallRequest, UpdateMethod);
+type CachedUpdate = Option<AvailableUpdate>;
+pub(super) type UpdateNoticeHandler = Rc<dyn Fn(CachedUpdate)>;
+type WeakUpdateNoticeHandler = Weak<dyn Fn(CachedUpdate)>;
 
 struct UpdateCheckRow {
     row: gtk::Box,
@@ -108,7 +116,7 @@ thread_local! {
 ///
 /// A `thread_local` `Rc` (rather than a `Mutex`) is the whole story here
 /// because every window is built on the single GTK main thread, from
-/// `connect_activate`; this mirrors [`ThemeManager::shared`]. It is
+/// `connect_activate`; this mirrors [`PreferenceManager::shared`]. It is
 /// deliberately never released: it is one `bool`, and the guard's
 /// correctness should not depend on some window or in-flight install
 /// happening to still hold a strong reference.
@@ -120,6 +128,16 @@ thread_local! {
     /// Shared by the due scheduler so every window uses one TTL.
     static LAST_COMPLETED_CHECK: Cell<Option<Instant>> = const { Cell::new(None) };
     static CHECK_IN_FLIGHT: Cell<bool> = const { Cell::new(false) };
+    static CHECK_GENERATION: Cell<u64> = const { Cell::new(0) };
+    static LAST_UPDATE_RESULT: RefCell<CachedUpdate> = const { RefCell::new(None) };
+    static UPDATE_NOTICE_HANDLERS: RefCell<Vec<WeakUpdateNoticeHandler>> = const { RefCell::new(Vec::new()) };
+}
+
+fn next_check_generation() -> u64 {
+    CHECK_IN_FLIGHT.set(true);
+    let next = CHECK_GENERATION.get().saturating_add(1);
+    CHECK_GENERATION.set(next);
+    next
 }
 
 /// Detection spawns a package-manager child, so it resolves asynchronously
@@ -174,7 +192,7 @@ fn force_due_update_check(last: Option<Instant>) -> bool {
     last.is_none()
 }
 
-pub(super) fn maybe_run_due_update_check(manager: &Rc<ThemeManager>, notice: &UpdateNoticeHandler) {
+pub(super) fn maybe_run_due_update_check(manager: &Rc<PreferenceManager>) {
     if !manager.checks_for_updates() || CHECK_IN_FLIGHT.get() {
         return;
     }
@@ -183,11 +201,13 @@ pub(super) fn maybe_run_due_update_check(manager: &Rc<ThemeManager>, notice: &Up
         return;
     }
     let force = force_due_update_check(last_completed);
-    CHECK_IN_FLIGHT.set(true);
+    let generation = next_check_generation();
     let channel = manager.release_channel();
     let weak_manager = Rc::downgrade(manager);
-    let notice = notice.clone();
     resolve_update_method_async(move |method| {
+        if is_stale_check(generation, CHECK_GENERATION.get()) {
+            return;
+        }
         let receiver = services::check_for_updates(
             channel,
             crate::build_info::installed_version(),
@@ -195,26 +215,17 @@ pub(super) fn maybe_run_due_update_check(manager: &Rc<ThemeManager>, notice: &Up
             force,
         );
         glib::timeout_add_local(Duration::from_millis(100), move || {
+            if is_stale_check(generation, CHECK_GENERATION.get()) {
+                return glib::ControlFlow::Break;
+            }
             match receiver.try_recv() {
                 Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
                 Err(TryRecvError::Disconnected) => {
                     CHECK_IN_FLIGHT.set(false);
                     glib::ControlFlow::Break
                 }
-                Ok(UpdateCheck::Available { release, install }) => {
-                    CHECK_IN_FLIGHT.set(false);
-                    LAST_COMPLETED_CHECK.set(Some(Instant::now()));
-                    if weak_manager.upgrade().is_some_and(|manager| {
-                        manager.checks_for_updates() && manager.release_channel() == channel
-                    }) {
-                        notice(Some((release, install, method)));
-                    }
-                    glib::ControlFlow::Break
-                }
-                Ok(_) => {
-                    // Failed stays uncached so the next launch retries on transient errors.
-                    CHECK_IN_FLIGHT.set(false);
-                    LAST_COMPLETED_CHECK.set(Some(Instant::now()));
+                Ok(result) => {
+                    complete_due_update_check(&weak_manager, channel, result, method, generation);
                     glib::ControlFlow::Break
                 }
             }
@@ -222,10 +233,70 @@ pub(super) fn maybe_run_due_update_check(manager: &Rc<ThemeManager>, notice: &Up
     });
 }
 
-const DIALOG_WIDTH: i32 = 920;
-const DIALOG_HEIGHT: i32 = 680;
+fn complete_due_update_check(
+    manager: &Weak<PreferenceManager>,
+    channel: Channel,
+    result: UpdateCheck,
+    method: UpdateMethod,
+    generation: u64,
+) {
+    if is_stale_check(generation, CHECK_GENERATION.get()) {
+        return;
+    }
+    CHECK_IN_FLIGHT.set(false);
+    if !manager
+        .upgrade()
+        .is_some_and(|manager| manager.checks_for_updates() && manager.release_channel() == channel)
+    {
+        return;
+    }
+    LAST_COMPLETED_CHECK.set(Some(Instant::now()));
+    if let UpdateCheck::Available {
+        release,
+        install,
+    } = result
+    {
+        publish_update_notice(Some((release, install, method)));
+    }
+}
+
+pub(super) fn register_update_notice(notice: &UpdateNoticeHandler) {
+    UPDATE_NOTICE_HANDLERS.with(|handlers| {
+        handlers.borrow_mut().push(Rc::downgrade(notice));
+    });
+    LAST_UPDATE_RESULT.with(|cache| {
+        if let Some(result) = cache.borrow().clone() {
+            notice(Some(result));
+        }
+    });
+}
+
+fn publish_update_notice(result: CachedUpdate) {
+    LAST_UPDATE_RESULT.with(|cache| *cache.borrow_mut() = result.clone());
+    UPDATE_NOTICE_HANDLERS.with(|handlers| {
+        handlers.borrow_mut().retain(|notice| {
+            let Some(notice) = notice.upgrade() else {
+                return false;
+            };
+            notice(result.clone());
+            true
+        });
+    });
+}
+
+pub(super) fn clear_cached_update_notice() {
+    LAST_UPDATE_RESULT.with(|cache| *cache.borrow_mut() = None);
+}
+
+const DIALOG_WIDTH: i32 = 1400;
+const DIALOG_HEIGHT: i32 = 1024;
 const DIALOG_MARGIN: i32 = 24;
-const COMPACT_NAVIGATION_BREAKPOINT: i32 = 700;
+const COMPACT_NAVIGATION_BREAKPOINT: i32 = 900;
+// Reflow the content before collapsing navigation: desktop toolbars need more room.
+const COMPACT_CONTENT_BREAKPOINT: i32 = 1250;
+const MIN_SIDE_BY_SIDE_ACTIVATION_WIDTH: i32 = 620;
+const STACK_ACTIVATION_OPTIONS_BREAKPOINT: i32 = 350;
+const STACK_TEXT_SIZE_BREAKPOINT: i32 = 600;
 
 mod responsive_bin {
     use super::*;
@@ -233,6 +304,8 @@ mod responsive_bin {
     #[derive(Default)]
     pub struct ResponsiveBin {
         pub compact_navigation: Cell<bool>,
+        pub compact_content: Cell<bool>,
+        pub typography_scale: Cell<f64>,
         pub navigation: RefCell<Option<gtk::Box>>,
         pub navigation_heading: RefCell<Option<gtk::Label>>,
         pub navigation_labels: RefCell<Vec<gtk::Label>>,
@@ -273,9 +346,14 @@ mod responsive_bin {
                 return;
             };
             let (child_width, child_height) = responsive_dialog_size(width, height);
-            let compact = uses_compact_navigation(child_width);
+            let logical_width = f64::from(child_width) / self.typography_scale.get().max(0.1);
+            let compact_content = logical_width < f64::from(COMPACT_CONTENT_BREAKPOINT);
+            let compact = uses_compact_navigation(
+                (f64::from(child_width) / self.typography_scale.get().max(0.1)) as i32,
+            );
             if self.compact_navigation.replace(compact) != compact {
                 if let Some(navigation) = self.navigation.borrow().as_ref() {
+                    search::set_compact(navigation, compact);
                     if compact {
                         navigation.add_css_class("compact");
                     } else {
@@ -295,6 +373,9 @@ mod responsive_bin {
                         gtk::Align::Fill
                     });
                 }
+            }
+            if self.compact_content.replace(compact_content) != compact_content {
+                let compact = compact_content;
                 for (flow, expanded_columns) in self.responsive_flows.borrow().iter() {
                     flow.set_max_children_per_line(if compact { 1 } else { *expanded_columns });
                 }
@@ -314,28 +395,48 @@ mod responsive_bin {
                     });
                     row.set_spacing(if compact { 8 } else { 16 });
                 }
-                for responsive_row in self.responsive_activation_rows.borrow().iter() {
-                    responsive_row.row.set_orientation(if compact {
+            }
+            let available_activation_width = child_width - if compact { 100 } else { 330 };
+            let scaled_activation_width = MIN_SIDE_BY_SIDE_ACTIVATION_WIDTH as f64
+                + (self.typography_scale.get() - 1.0).max(0.0) * 320.0;
+            let activation_compact =
+                f64::from(available_activation_width) < scaled_activation_width;
+            let stack_activation_options =
+                available_activation_width < STACK_ACTIVATION_OPTIONS_BREAKPOINT;
+            for responsive_row in self.responsive_activation_rows.borrow().iter() {
+                responsive_row.row.set_orientation(if activation_compact {
+                    gtk::Orientation::Vertical
+                } else {
+                    gtk::Orientation::Horizontal
+                });
+                responsive_row
+                    .row
+                    .set_spacing(if activation_compact { 4 } else { 24 });
+                for option in &responsive_row.options {
+                    option.set_orientation(if stack_activation_options {
                         gtk::Orientation::Vertical
                     } else {
                         gtk::Orientation::Horizontal
                     });
-                    responsive_row.row.set_spacing(if compact { 4 } else { 12 });
-                    for option in &responsive_row.options {
-                        option.set_orientation(if compact {
-                            gtk::Orientation::Vertical
-                        } else {
-                            gtk::Orientation::Horizontal
-                        });
-                        option.set_spacing(if compact { 2 } else { 6 });
-                    }
-                    if compact {
-                        responsive_row.row.add_css_class("compact");
+                    option.set_spacing(if stack_activation_options { 2 } else { 6 });
+                    option.set_halign(if activation_compact && !stack_activation_options {
+                        gtk::Align::End
                     } else {
-                        responsive_row.row.remove_css_class("compact");
-                    }
+                        gtk::Align::Fill
+                    });
+                }
+                if activation_compact {
+                    responsive_row.row.add_css_class("compact");
+                } else {
+                    responsive_row.row.remove_css_class("compact");
                 }
             }
+            reflow_settings(
+                &child,
+                compact_content,
+                activation_compact,
+                logical_width < f64::from(STACK_TEXT_SIZE_BREAKPOINT),
+            );
             let x = ((width - child_width) / 2) as f32;
             let y = ((height - child_height) / 2) as f32;
             let transform = gtk::gsk::Transform::new().translate(&gtk::graphene::Point::new(x, y));
@@ -372,6 +473,13 @@ impl ResponsiveBin {
         imp.responsive_activation_rows
             .replace(responsive.activation_rows);
         child.set_parent(&bin);
+        PreferenceManager::shared().bind_interface_scale(&bin, |widget, scale| {
+            let bin = widget
+                .downcast_ref::<ResponsiveBin>()
+                .expect("settings bin");
+            bin.imp().typography_scale.set(scale);
+            bin.queue_allocate();
+        });
         bin
     }
 
@@ -382,6 +490,11 @@ impl ResponsiveBin {
     }
 
     fn add_flow(&self, flow: gtk::FlowBox, columns: u32) {
+        flow.set_max_children_per_line(if self.imp().compact_content.get() {
+            1
+        } else {
+            columns
+        });
         self.imp()
             .responsive_flows
             .borrow_mut()
@@ -389,10 +502,114 @@ impl ResponsiveBin {
     }
 
     fn add_action(&self, row: gtk::Box, button: gtk::Button) {
+        row.set_orientation(if self.imp().compact_content.get() {
+            gtk::Orientation::Vertical
+        } else {
+            gtk::Orientation::Horizontal
+        });
+        button.set_halign(gtk::Align::Fill);
         self.imp()
             .responsive_actions
             .borrow_mut()
             .push((row, button));
+    }
+}
+
+fn reflow_settings(
+    widget: &gtk::Widget,
+    compact: bool,
+    activation_compact: bool,
+    stack_text_size: bool,
+) {
+    if widget.has_css_class("settings-dialog") {
+        if compact {
+            widget.add_css_class("compact");
+        } else {
+            widget.remove_css_class("compact");
+        }
+    }
+    if let Some(row) = widget.downcast_ref::<gtk::Box>()
+        && [
+            "settings-option",
+            "settings-library-toolbar",
+            "about-identity",
+            "theme-library-footer",
+            "settings-inline-description",
+            "settings-update-summary",
+        ]
+        .iter()
+        .any(|class| row.has_css_class(class))
+    {
+        let switch_row = row
+            .last_child()
+            .is_some_and(|child| child.is::<gtk::Switch>());
+        // Short numeric controls can stay beside wrapping copy after other rows stack.
+        let stack_row = if row.has_css_class("settings-renderer-row") {
+            true
+        } else if row.has_css_class("settings-text-size-row") {
+            stack_text_size
+        } else {
+            compact
+        };
+        let orientation = if stack_row && !switch_row {
+            gtk::Orientation::Vertical
+        } else {
+            gtk::Orientation::Horizontal
+        };
+        // Release notes and sidebar chips always stay below their row's copy.
+        if !row.has_css_class("settings-update-status")
+            && !row.has_css_class("settings-sidebar-places")
+            && row.orientation() != orientation
+        {
+            row.set_orientation(orientation);
+        }
+    }
+    if widget.has_css_class("settings-integration-actions")
+        && let Some(actions) = widget.downcast_ref::<gtk::Box>()
+    {
+        actions.set_orientation(if compact {
+            gtk::Orientation::Vertical
+        } else {
+            gtk::Orientation::Horizontal
+        });
+    }
+    if widget.has_css_class("theme-appearance-filter")
+        || widget.has_css_class("settings-integration-actions")
+    {
+        widget.set_halign(if compact {
+            gtk::Align::Fill
+        } else {
+            gtk::Align::End
+        });
+        widget.set_hexpand(compact);
+        let mut child = widget.first_child();
+        while let Some(button) = child {
+            child = button.next_sibling();
+            button.set_hexpand(compact);
+        }
+    }
+    if let Some(label) = widget.downcast_ref::<gtk::Label>()
+        && (label.has_css_class("settings-nowrap") || label.has_css_class("menu-heading"))
+    {
+        label.set_wrap(compact && !label.has_css_class("settings-keycap"));
+    }
+    if let Some(button) = widget.downcast_ref::<gtk::Button>()
+        && !widget.is::<gtk::ToggleButton>()
+        && let Some(label) = button.child().and_downcast::<gtk::Label>()
+    {
+        label.set_wrap(compact);
+        label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    }
+    if widget.has_css_class("activation-header") {
+        widget.set_visible(!activation_compact);
+    }
+    if widget.has_css_class("activation-inline-label") {
+        widget.set_visible(activation_compact);
+    }
+    let mut child = widget.first_child();
+    while let Some(next) = child {
+        child = next.next_sibling();
+        reflow_settings(&next, compact, activation_compact, stack_text_size);
     }
 }
 
@@ -414,7 +631,7 @@ fn uses_compact_navigation(dialog_width: i32) -> bool {
 pub fn build_layer(
     settings_button: &gtk::Button,
     root: &BlurBin,
-    themes: Rc<ThemeManager>,
+    preferences: Rc<PreferenceManager>,
     update_notice: UpdateNoticeHandler,
     install_guard: InstallGuard,
 ) -> gtk::Box {
@@ -432,9 +649,10 @@ pub fn build_layer(
     panel.add_css_class("settings-dialog");
     panel.set_overflow(gtk::Overflow::Hidden);
 
-    let navigation = gtk::Box::new(gtk::Orientation::Vertical, 5);
+    let navigation = gtk::Box::new(gtk::Orientation::Vertical, 2);
     navigation.add_css_class("settings-navigation");
     let navigation_heading = append_heading(&navigation, "SETTINGS");
+    let settings_search = search::append(&navigation);
 
     let page = gtk::Box::new(gtk::Orientation::Vertical, 0);
     page.add_css_class("settings-page");
@@ -445,6 +663,8 @@ pub fn build_layer(
     title.set_xalign(0.0);
     title.set_hexpand(true);
     title.add_css_class("settings-title");
+    title.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    title.set_max_width_chars(1);
     let close = gtk::Button::builder()
         .tooltip_text("Close settings")
         .build();
@@ -464,9 +684,8 @@ pub fn build_layer(
         .vexpand(true)
         .build();
     let (general, responsive_setting_rows, responsive_activation_rows) =
-        general_page(themes.clone());
+        general_page(preferences.clone());
     stack.add_named(&general, Some("general"));
-    stack.add_named(&keybindings_page(themes.clone()), Some("keybindings"));
     stack.add_named(&about_page(), Some("about"));
     // Heavy pages build on first selection, never during startup: the
     // Updates page spawns package-manager detection plus release-note
@@ -501,14 +720,13 @@ pub fn build_layer(
     // Navigation entries register as their buttons are created, so the
     // responsive panel compacts correctly even with lazy pages.
     let responsive_for_nav = responsive_panel.clone();
-    let built: Rc<RefCell<std::collections::HashSet<&'static str>>> = Rc::new(RefCell::new(
-        ["general", "keybindings", "about"].into_iter().collect(),
-    ));
+    let built: Rc<RefCell<std::collections::HashSet<&'static str>>> =
+        Rc::new(RefCell::new(["general", "about"].into_iter().collect()));
     let nav_buttons: Rc<RefCell<Vec<gtk::Button>>> = Rc::new(RefCell::new(Vec::new()));
     for (label, icon, name) in [
         ("General", icons::SLIDERS, "general"),
-        ("Keybindings", icons::KEYBOARD, "keybindings"),
-        ("Theme & appearance", icons::PALETTE, "theme"),
+        ("Appearance", icons::PALETTE, "theme"),
+        ("Actions", icons::PLAY, "actions"),
         ("Updates", icons::DOWNLOADS, "updates"),
         ("About", icons::INFO, "about"),
     ] {
@@ -524,11 +742,12 @@ pub fn build_layer(
         let title = title.clone();
         let page_title = label.to_owned();
         let built = built.clone();
-        let themes = themes.clone();
+        let preferences = preferences.clone();
         let update_notice = update_notice.clone();
         let install_guard = install_guard.clone();
         let updates_container = updates_container.clone();
         let responsive_panel = responsive_panel.clone();
+        let search_state = settings_search.state.clone();
         button.connect_clicked(move |clicked| {
             for candidate in buttons.borrow().iter() {
                 if candidate == clicked {
@@ -540,25 +759,35 @@ pub fn build_layer(
             if built.borrow_mut().insert(name) {
                 match name {
                     "theme" => {
-                        let (theme_widget, flows) = theme_page(themes.clone());
-                        stack.add_named(&theme_widget, Some("theme"));
-                        for (flow, columns) in flows {
+                        let page =
+                            theme_page(preferences.clone(), super::theme::ThemeManager::shared());
+                        search::apply(&page.widget, &search_state);
+                        stack.add_named(&page.widget, Some("theme"));
+                        for (flow, columns) in page.flows {
                             responsive_panel.add_flow(flow, columns);
                         }
+                    }
+                    "actions" => {
+                        let page = actions::actions_page();
+                        search::apply(&page, &search_state);
+                        stack.add_named(&page, Some("actions"));
                     }
                     "updates" => {
                         let container = updates_container.clone();
                         let panel = responsive_panel.clone();
-                        let themes = themes.clone();
+                        let preferences = preferences.clone();
                         let update_notice = update_notice.clone();
                         let install_guard = install_guard.clone();
                         let _ = stack;
+                        let search_state = search_state.clone();
                         resolve_update_method_async(move |method| {
+                            maybe_run_due_update_check(&preferences);
                             let (updates, actions) =
-                                updates_page(themes, update_notice, install_guard, method);
+                                updates_page(preferences, update_notice, install_guard, method);
                             while let Some(child) = container.first_child() {
                                 container.remove(&child);
                             }
+                            search::apply(&updates, &search_state);
                             container.append(&updates);
                             for (row, button) in actions {
                                 panel.add_action(row, button);
@@ -574,7 +803,18 @@ pub fn build_layer(
         navigation.append(&button);
     }
 
-    panel.append(&navigation);
+    settings_search.install(&stack, &title, &nav_buttons);
+    let spacer = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    spacer.set_vexpand(true);
+    navigation.append(&spacer);
+
+    let navigation_scroll = gtk::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .vscrollbar_policy(gtk::PolicyType::Automatic)
+        .propagate_natural_width(true)
+        .child(&navigation)
+        .build();
+    panel.append(&navigation_scroll);
     panel.append(&page);
     responsive_panel.set_hexpand(false);
     responsive_panel.set_vexpand(false);
@@ -654,204 +894,15 @@ fn hide(layer: &gtk::Box, button: &gtk::Button, root: &BlurBin) {
     });
 }
 
-fn general_page(
-    manager: Rc<ThemeManager>,
-) -> (gtk::Widget, Vec<gtk::Box>, Vec<ResponsiveActivationRow>) {
-    let preferences = page_content();
-    append_heading(&preferences, "BROWSING");
-    let peeking_enabled = manager.folder_peeking();
-    let (peeking_row, peeking) = settings_option(
-        "Folder peeking",
-        "Preview folders automatically while moving through a pane.",
-        peeking_enabled,
-    );
-    bind_switch(
-        &manager,
-        &peeking,
-        ThemeManager::folder_peeking,
-        ThemeManager::set_folder_peeking,
-    );
-    preferences.append(&peeking_row);
-
-    let single_click_enabled = manager.single_click_previews();
-    let (preview_row, single_click_previews) = settings_option(
-        "Single-click file previews",
-        "Show a quick preview when selecting a supported file.",
-        single_click_enabled,
-    );
-    bind_switch(
-        &manager,
-        &single_click_previews,
-        ThemeManager::single_click_previews,
-        ThemeManager::set_single_click_previews,
-    );
-    preferences.append(&preview_row);
-
-    let direct_open_enabled = manager.search_open_files_directly();
-    let (search_open_row, search_open_files) = settings_option(
-        "Open search results directly",
-        "Launch files from search instead of opening Strata's quick preview.",
-        direct_open_enabled,
-    );
-    bind_switch(
-        &manager,
-        &search_open_files,
-        ThemeManager::search_open_files_directly,
-        ThemeManager::set_search_open_files_directly,
-    );
-    preferences.append(&search_open_row);
-
-    let type_to_search_enabled = manager.type_to_search();
-    let (type_to_search_row, type_to_search) = settings_option(
-        "Type to search",
-        "Start filtering the active pane when you type in the file browser.",
-        type_to_search_enabled,
-    );
-    bind_switch(
-        &manager,
-        &type_to_search,
-        ThemeManager::type_to_search,
-        ThemeManager::set_type_to_search,
-    );
-    preferences.append(&type_to_search_row);
-
-    append_heading(&preferences, "REFRESH");
-    let interval = manager.auto_refresh_interval();
-    let options = ["Off", "1 min", "5 min", "10 min"];
-    let secs = [0, 60, 300, 600];
-    let active = secs.iter().position(|&s| s == interval).unwrap_or(0);
-    let (control, buttons) = segmented_control(&options, active);
-    let refresh_row = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    refresh_row.add_css_class("settings-option");
-    let refresh_copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
-    refresh_copy.set_hexpand(true);
-    let refresh_title = gtk::Label::new(Some("Auto-refresh interval"));
-    refresh_title.set_xalign(0.0);
-    refresh_title.add_css_class("settings-option-title");
-    let refresh_desc = gtk::Label::new(Some(
-        "Automatically reload the current folder. Useful for network shares where file monitors may miss changes.",
-    ));
-    refresh_desc.set_xalign(0.0);
-    refresh_desc.set_wrap(true);
-    refresh_desc.add_css_class("settings-option-description");
-    refresh_copy.append(&refresh_title);
-    refresh_copy.append(&refresh_desc);
-    refresh_row.append(&refresh_copy);
-    refresh_row.append(&control);
-    preferences.append(&refresh_row);
-    for (idx, button) in buttons.iter().enumerate() {
-        bind_choice(
-            &manager,
-            button,
-            secs[idx],
-            ThemeManager::auto_refresh_interval,
-            ThemeManager::set_auto_refresh_interval,
-        );
-    }
-
-    append_heading(&preferences, "VIDEO PREVIEWS");
-    let (acceleration_active, acceleration_sensitive, backend_sensitive) =
-        video_preview_control_state(manager.hardware_accelerated_video_previews());
-    let description = "Choose a hardware backend.";
-    let selected_backend = manager.video_preview_backend();
-    let (video_row, acceleration, backend) = video_preview_option(
-        description,
-        acceleration_active,
-        acceleration_sensitive,
-        backend_sensitive,
-        selected_backend,
-        &manager,
-    );
-    bind_switch(
-        &manager,
-        &acceleration,
-        ThemeManager::hardware_accelerated_video_previews,
-        ThemeManager::set_hardware_accelerated_video_previews,
-    );
-    manager.bind_preference(
-        &backend,
-        ThemeManager::hardware_accelerated_video_previews,
-        |widget, enabled| widget.set_sensitive(video_preview_control_state(enabled).2),
-    );
-    preferences.append(&video_row);
-
-    append_heading(&preferences, "MOTION");
-    let (motion_row, reduce_motion) = settings_option(
-        "Reduce motion",
-        "Disable nonessential interface animations.",
-        manager.reduce_motion(),
-    );
-    bind_switch(
-        &manager,
-        &reduce_motion,
-        ThemeManager::reduce_motion,
-        ThemeManager::set_reduce_motion,
-    );
-    preferences.append(&motion_row);
-
-    append_heading(&preferences, "CLICK ACTIVATION");
-    let activation_options = gtk::Box::new(gtk::Orientation::Vertical, 4);
-    let mut responsive_activation_rows = Vec::new();
-    activation_options.add_css_class("settings-option");
-    activation_options.add_css_class("click-activation-options");
-    for (label, mode) in [
-        ("Columns", BrowserMode::Columns),
-        ("Icons", BrowserMode::Icons),
-        ("List", BrowserMode::List),
-    ] {
-        let activation = manager.click_activation(mode);
-        let (row, options, file_buttons, folder_buttons) =
-            click_activation_option(label, activation);
-        for (buttons, files) in [(&file_buttons, true), (&folder_buttons, false)] {
-            for (button, count) in buttons.iter().zip([ClickCount::One, ClickCount::Two]) {
-                bind_choice(
-                    &manager,
-                    button,
-                    count,
-                    move |manager| {
-                        let activation = manager.click_activation(mode);
-                        if files {
-                            activation.files
-                        } else {
-                            activation.folders
-                        }
-                    },
-                    move |manager, count| {
-                        let mut activation = manager.click_activation(mode);
-                        if files {
-                            activation.files = count;
-                        } else {
-                            activation.folders = count;
-                        }
-                        manager.set_click_activation(mode, activation);
-                    },
-                );
-            }
-        }
-        activation_options.append(&row);
-        responsive_activation_rows.push(ResponsiveActivationRow { row, options });
-    }
-    preferences.append(&activation_options);
-
-    append_heading(&preferences, "DESKTOP INTEGRATION");
-    let portal_row = super::portal_preferences::settings_row();
-    preferences.append(&portal_row);
-
-    (
-        scrollable_page(&preferences, None),
-        vec![video_row, portal_row],
-        responsive_activation_rows,
-    )
-}
-
 fn updates_page(
-    manager: Rc<ThemeManager>,
+    manager: Rc<PreferenceManager>,
     update_notice: UpdateNoticeHandler,
     install_guard: InstallGuard,
     update_method: UpdateMethod,
 ) -> (gtk::Widget, Vec<(gtk::Box, gtk::Button)>) {
     let preferences = page_content();
-    append_heading(&preferences, "UPDATE PREFERENCES");
+    preferences.add_css_class("settings-updates-page");
+    append_heading(&preferences, "STATUS");
     let managed = InstallSource::detect().managed();
     if let Some(managed) = managed {
         preferences.append(&managed_install_row(managed));
@@ -868,75 +919,138 @@ fn updates_page(
         install_underway,
     } = update_check_row(
         manager.clone(),
-        update_notice.clone(),
         available_notes.clone(),
         install_guard.clone(),
         update_method,
     );
 
-    let auto_check_enabled = manager.checks_for_updates();
-    let auto_check_row = automatic_updates_option(&manager, update_method);
-    preferences.append(&auto_check_row);
-
-    let (channel_row, sync_channel_selection) = channel_option(manager.clone(), managed);
-    channel_row.set_sensitive(auto_check_enabled);
-    channel_row.set_visible(managed.is_some() || !update_method.is_package_managed());
-    preferences.append(&channel_row);
     preferences.append(&update_row);
+    let options = settings_group(&preferences, "PREFERENCES");
+    options.append(&automatic_updates_option(&manager, update_method));
+    let channel_row = append_channel_option(&options, manager.clone(), managed, update_method);
+    append_current_release_notes(&preferences);
+    bind_updates_auto_check(
+        &manager,
+        &channel_row,
+        &preferences,
+        run_check.clone(),
+        update_notice,
+    );
 
-    append_heading(&preferences, "RELEASE NOTES");
+    let page = scrollable_page(&preferences, None);
+    wire_channel_change_check(&manager, &page, run_check, install_underway);
+    (page, vec![responsive_action])
+}
+
+fn append_channel_option(
+    preferences: &gtk::Box,
+    manager: Rc<PreferenceManager>,
+    managed: Option<&ManagedInstall>,
+    update_method: UpdateMethod,
+) -> gtk::Box {
+    let channel_row = channel_option(manager.clone(), managed);
+    channel_row.set_sensitive(manager.checks_for_updates());
+    search::set_available(
+        &channel_row,
+        managed.is_some() || !update_method.is_package_managed(),
+    );
+    preferences.append(&channel_row);
+    channel_row
+}
+
+fn append_current_release_notes(preferences: &gtk::Box) {
+    append_heading(preferences, "RELEASE NOTES");
     let current_notes = release_notes_card(
-        &format!(
-            "Current release · v{}",
-            crate::build_info::installed_version()
-        ),
+        &format!("What's new in v{}", crate::build_info::installed_version()),
         "Loading release notes…",
     );
-    preferences.append(&current_notes.container);
+    current_notes.container.remove(&current_notes.title);
+    current_notes.container.remove(&current_notes.summary);
+    let header = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    header.append(&current_notes.title);
+    header.append(&current_notes.summary);
+    header.set_hexpand(true);
+    let heading = gtk::Box::new(gtk::Orientation::Horizontal, 16);
+    heading.append(&header);
+    heading.append(&crate::assets::primary_icon(icons::CHEVRON_RIGHT, 16));
+    let toggle = gtk::Button::builder().child(&heading).build();
+    toggle.add_css_class("release-notes-toggle");
+    let details = gtk::Revealer::builder()
+        .child(&current_notes.container)
+        .transition_duration(0)
+        .reveal_child(false)
+        .build();
+    let expander = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    expander.add_css_class("settings-release-expander");
+    search::tag(&expander, "Release notes");
+    expander.append(&toggle);
+    expander.append(&details);
+    toggle.update_state(&[gtk::accessible::State::Expanded(Some(false))]);
+    toggle.connect_clicked(move |button| {
+        let expanded = !details.reveals_child();
+        details.set_reveal_child(expanded);
+        button.update_state(&[gtk::accessible::State::Expanded(Some(expanded))]);
+        if expanded {
+            button.add_css_class("expanded");
+        } else {
+            button.remove_css_class("expanded");
+        }
+    });
+    preferences.append(&expander);
     load_current_release_notes(&current_notes);
+}
 
+fn bind_updates_auto_check(
+    manager: &Rc<PreferenceManager>,
+    channel_row: &gtk::Box,
+    preferences: &gtk::Box,
+    run_check: Rc<dyn Fn(bool)>,
+    update_notice: UpdateNoticeHandler,
+) {
     manager.bind_preference(
-        &channel_row,
-        ThemeManager::checks_for_updates,
+        channel_row,
+        PreferenceManager::checks_for_updates,
         |widget, enabled| widget.set_sensitive(enabled),
     );
-    let toggled_check = run_check.clone();
     let initial = Cell::new(true);
     manager.bind_preference(
-        &preferences,
-        ThemeManager::checks_for_updates,
+        preferences,
+        PreferenceManager::checks_for_updates,
         move |_, enabled| {
             if initial.replace(false) {
                 return;
             }
             if enabled {
-                toggled_check(false);
+                run_check(false);
             } else {
                 update_notice(None);
             }
         },
     );
-    // No automatic check here: the due scheduler owns background checks process-wide.
+}
 
-    let page = scrollable_page(&preferences, None);
-    let broadcast_check = run_check.clone();
+fn wire_channel_change_check(
+    manager: &Rc<PreferenceManager>,
+    page: &impl IsA<gtk::Widget>,
+    run_check: Rc<dyn Fn(bool)>,
+    install_underway: Rc<dyn Fn() -> bool>,
+) {
+    // No automatic check here: the due scheduler owns background checks process-wide.
     manager.on_release_channel_changed(
-        &page,
+        page,
         Rc::new(move || {
-            sync_channel_selection();
             if !install_underway() {
-                broadcast_check(false);
+                run_check(false);
             }
         }),
     );
-    (page, vec![responsive_action])
 }
 
-fn automatic_updates_option(manager: &Rc<ThemeManager>, method: UpdateMethod) -> gtk::Box {
+fn automatic_updates_option(manager: &Rc<PreferenceManager>, method: UpdateMethod) -> gtk::Box {
     let (row, toggle) = settings_option(
-        "Automatically check for updates",
+        "Check for updates automatically",
         match method {
-            UpdateMethod::InPlace => "Check GitHub for a newer release when Strata starts.",
+            UpdateMethod::InPlace => "Look for a new release on GitHub when Strata starts.",
             UpdateMethod::Aur => "Check the AUR for a newer packaged release when Strata starts.",
             UpdateMethod::Omarchy => {
                 "Check the Omarchy package repository for a newer release when Strata starts."
@@ -950,80 +1064,58 @@ fn automatic_updates_option(manager: &Rc<ThemeManager>, method: UpdateMethod) ->
     bind_switch(
         manager,
         &toggle,
-        ThemeManager::checks_for_updates,
-        ThemeManager::set_checks_for_updates,
+        PreferenceManager::checks_for_updates,
+        PreferenceManager::set_checks_for_updates,
     );
     row
 }
 
 const RELEASE_CHANNEL_TITLE: &str = "Release channel";
-const RELEASE_CHANNEL_DESCRIPTION: &str = "Preview receives alpha, beta, and release-candidate builds. Nightly also receives daily development builds.";
 
-fn channel_option(
-    manager: Rc<ThemeManager>,
-    managed: Option<&ManagedInstall>,
-) -> (gtk::Box, Rc<dyn Fn()>) {
-    let row = gtk::Box::new(gtk::Orientation::Vertical, 12);
-    row.add_css_class("settings-option");
-
-    let copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
-    let title = gtk::Label::new(Some(RELEASE_CHANNEL_TITLE));
-    title.set_xalign(0.0);
-    title.add_css_class("settings-option-title");
-    let description = gtk::Label::new(Some(&match managed {
-        Some(managed) => managed_channel_description(managed),
-        None => RELEASE_CHANNEL_DESCRIPTION.to_owned(),
-    }));
-    description.set_xalign(0.0);
-    description.set_wrap(true);
-    description.add_css_class("settings-option-description");
-    copy.append(&title);
-    copy.append(&description);
-    row.append(&copy);
-
-    let (control, buttons) = segmented_control(
-        &["Stable", "Preview", "Nightly"],
-        channel_index(manager.release_channel()),
+fn channel_option(manager: Rc<PreferenceManager>, managed: Option<&ManagedInstall>) -> gtk::Box {
+    let control = bindings::choice_menu(
+        &manager,
+        RELEASE_CHANNEL_TITLE,
+        &[
+            ("Stable", Channel::Stable),
+            ("Preview", Channel::Preview),
+            ("Nightly", Channel::Nightly),
+        ],
+        PreferenceManager::release_channel,
+        PreferenceManager::set_release_channel,
     );
-    let weak_buttons: Vec<glib::WeakRef<gtk::ToggleButton>> =
-        buttons.iter().map(|button| button.downgrade()).collect();
-    for (button, channel) in buttons.into_iter().zip(CHANNEL_ORDER) {
-        bind_choice(
-            &manager,
-            &button,
-            channel,
-            ThemeManager::release_channel,
-            ThemeManager::set_release_channel,
+    control.set_sensitive(managed.is_none());
+    let description = managed
+        .map(managed_channel_description)
+        .unwrap_or_else(|| channel_description(manager.release_channel()).to_owned());
+    let row = control_row(RELEASE_CHANNEL_TITLE, &description, &control);
+    if managed.is_none() {
+        let label = row
+            .first_child()
+            .and_downcast::<gtk::Box>()
+            .expect("channel row copy")
+            .last_child()
+            .and_downcast::<gtk::Label>()
+            .expect("channel description");
+        manager.bind_preference(
+            &label,
+            PreferenceManager::release_channel,
+            |widget, channel| {
+                widget
+                    .downcast_ref::<gtk::Label>()
+                    .expect("channel description binding")
+                    .set_text(channel_description(channel));
+            },
         );
     }
-    control.set_sensitive(managed.is_none());
-    row.append(&control);
-
-    let sync = {
-        let manager = manager.clone();
-        Rc::new(move || {
-            let Some(button) = weak_buttons
-                .get(channel_index(manager.release_channel()))
-                .and_then(glib::WeakRef::upgrade)
-            else {
-                return;
-            };
-            if !button.is_active() {
-                button.set_active(true);
-            }
-        }) as Rc<dyn Fn()>
-    };
-
-    (row, sync)
+    row
 }
 
-const CHANNEL_ORDER: [Channel; 3] = [Channel::Stable, Channel::Preview, Channel::Nightly];
-
-fn channel_index(channel: Channel) -> usize {
+fn channel_description(channel: Channel) -> &'static str {
     match channel {
-        Channel::Stable => 0,
-        Channel::Preview => 1,
-        Channel::Nightly => 2,
+        Channel::Stable => "Tested releases recommended for everyday use.",
+        Channel::Preview => "Try upcoming releases with alpha, beta, and release-candidate builds.",
+        Channel::Nightly => "Everything in Preview, plus daily development builds. May break.",
     }
 }
 
@@ -1064,23 +1156,23 @@ fn set_release_notes_message(notes: &gtk::Box, message: &str) {
     notes.append(&label);
 }
 
-fn set_release_note_blocks(notes: &gtk::Box, blocks: &[ReleaseNoteBlock]) {
+fn set_release_note_blocks(notes: &gtk::Box, blocks: &[DocumentBlock]) {
     clear_release_notes(notes);
     for block in blocks {
         match block {
-            ReleaseNoteBlock::Heading { level, markup } => {
+            DocumentBlock::Heading { level, markup } => {
                 let label = release_notes_label();
                 label.add_css_class("release-notes-heading");
                 label.add_css_class(&format!("level-{level}"));
                 label.set_markup(markup);
                 notes.append(&label);
             }
-            ReleaseNoteBlock::Paragraph(markup) => {
+            DocumentBlock::Paragraph(markup) => {
                 let label = release_notes_label();
                 label.set_markup(markup);
                 notes.append(&label);
             }
-            ReleaseNoteBlock::ListItem {
+            DocumentBlock::ListItem {
                 marker,
                 depth,
                 markup,
@@ -1097,17 +1189,54 @@ fn set_release_note_blocks(notes: &gtk::Box, blocks: &[ReleaseNoteBlock]) {
                 row.append(&copy);
                 notes.append(&row);
             }
-            ReleaseNoteBlock::Code(markup) => {
+            DocumentBlock::ListChild {
+                depth,
+                kind,
+                markup,
+            } => {
+                let copy = release_notes_label();
+                copy.set_margin_start(
+                    i32::try_from(depth.saturating_add(1).saturating_mul(18)).unwrap_or(i32::MAX),
+                );
+                match kind {
+                    services::DocumentListChildKind::Heading(level) => {
+                        copy.add_css_class("release-notes-heading");
+                        copy.add_css_class(&format!("level-{level}"));
+                        copy.set_markup(markup);
+                    }
+                    services::DocumentListChildKind::Code(_) => {
+                        copy.add_css_class("release-notes-code");
+                        copy.set_markup(&format!("<tt>{markup}</tt>"));
+                    }
+                    services::DocumentListChildKind::Paragraph
+                    | services::DocumentListChildKind::Quote => copy.set_markup(markup),
+                }
+                notes.append(&copy);
+            }
+            DocumentBlock::Code { markup, .. } => {
                 let label = release_notes_label();
                 label.add_css_class("release-notes-code");
                 label.set_markup(&format!("<tt>{markup}</tt>"));
                 notes.append(&label);
             }
-            ReleaseNoteBlock::Rule => {
+            DocumentBlock::Rule => {
                 let separator = gtk::Separator::new(gtk::Orientation::Horizontal);
                 separator.add_css_class("release-notes-rule");
                 notes.append(&separator);
             }
+            DocumentBlock::ListRule { depth } => {
+                let separator = gtk::Separator::new(gtk::Orientation::Horizontal);
+                separator.add_css_class("release-notes-rule");
+                separator.set_margin_start(
+                    i32::try_from(depth.saturating_add(1).saturating_mul(18)).unwrap_or(i32::MAX),
+                );
+                notes.append(&separator);
+            }
+            DocumentBlock::Quote(_)
+            | DocumentBlock::TableRow { .. }
+            | DocumentBlock::ListTableRow { .. }
+            | DocumentBlock::ContainerBoundary
+            | DocumentBlock::Image { .. } => {}
         }
     }
 }
@@ -1116,6 +1245,7 @@ fn set_release_note_blocks(notes: &gtk::Box, blocks: &[ReleaseNoteBlock]) {
 struct ReleaseNotesCard {
     container: gtk::Box,
     title: gtk::Label,
+    summary: gtk::Label,
     badge: gtk::Label,
     notes: gtk::Box,
     fallback: gtk::LinkButton,
@@ -1128,6 +1258,7 @@ fn release_notes_card(title: &str, initial: &str) -> ReleaseNotesCard {
     title_label.add_css_class("release-notes-title");
     title_label.set_xalign(0.0);
     title_label.set_wrap(true);
+    title_label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     let badge = gtk::Label::new(None);
     badge.add_css_class("prerelease-badge");
     badge.set_xalign(0.0);
@@ -1137,16 +1268,24 @@ fn release_notes_card(title: &str, initial: &str) -> ReleaseNotesCard {
     set_release_notes_message(&notes, initial);
     let fallback =
         gtk::LinkButton::with_label("https://github.com/lgse/strata/releases", "View on GitHub");
+    fallback.set_has_tooltip(false);
     fallback.add_css_class("release-notes-fallback");
     fallback.set_halign(gtk::Align::Start);
     fallback.set_visible(false);
+    let summary = gtk::Label::new(Some(initial));
+    summary.set_xalign(0.0);
+    summary.set_wrap(true);
+    summary.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    summary.add_css_class("settings-option-description");
     container.append(&title_label);
+    container.append(&summary);
     container.append(&badge);
     container.append(&notes);
     container.append(&fallback);
     ReleaseNotesCard {
         container,
         title: title_label,
+        summary,
         badge,
         notes,
         fallback,
@@ -1158,6 +1297,7 @@ fn release_notes_card(title: &str, initial: &str) -> ReleaseNotesCard {
 /// release notes and update surfaces must visibly label prerelease software.
 fn show_release_notes(card: &ReleaseNotesCard, release: &ReleaseMetadata) {
     card.container.set_visible(true);
+    let current_release = card.title.text().starts_with("What's new in");
     card.title.set_text(&format!(
         "{} · v{}",
         card.title
@@ -1168,6 +1308,25 @@ fn show_release_notes(card: &ReleaseNotesCard, release: &ReleaseMetadata) {
             .trim(),
         release.version
     ));
+    if current_release {
+        card.title
+            .set_text(&format!("What's new in v{}", release.version));
+    }
+    let changes = release
+        .note_blocks
+        .iter()
+        .filter(|block| matches!(block, DocumentBlock::ListItem { .. }))
+        .count();
+    let published = release
+        .published_at
+        .as_deref()
+        .and_then(|date| date.split('T').next());
+    card.summary.set_text(&match (changes, published) {
+        (0, None) => "Release notes".to_owned(),
+        (0, Some(date)) => format!("Published {date}"),
+        (count, None) => format!("{count} changes"),
+        (count, Some(date)) => format!("{count} changes · published {date}"),
+    });
     if release.kind == BuildKind::Stable {
         card.badge.set_visible(false);
     } else {
@@ -1196,6 +1355,8 @@ fn load_current_release_notes(card: &ReleaseNotesCard) {
                 glib::ControlFlow::Break
             }
             Ok(ReleaseNotes::Unavailable { url }) => {
+                card.summary
+                    .set_text("Release notes unavailable for this build");
                 set_release_notes_message(
                     &card.notes,
                     "Release notes are unavailable because this version’s tag was not found.",
@@ -1205,6 +1366,7 @@ fn load_current_release_notes(card: &ReleaseNotesCard) {
                 glib::ControlFlow::Break
             }
             Ok(ReleaseNotes::Failed { message, url }) => {
+                card.summary.set_text("Couldn’t load release notes");
                 set_release_notes_message(
                     &card.notes,
                     &format!("Couldn’t load release notes: {message}"),
@@ -1215,6 +1377,7 @@ fn load_current_release_notes(card: &ReleaseNotesCard) {
             }
             Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
             Err(TryRecvError::Disconnected) => {
+                card.summary.set_text("Couldn’t load release notes");
                 set_release_notes_message(
                     &card.notes,
                     "Couldn’t load release notes because the request ended unexpectedly.",
@@ -1279,7 +1442,7 @@ struct PendingInstall {
 /// and only within the one row that started it. This covers the other half:
 /// an offer that already landed and is sitting in a window's "Install
 /// update" button or an open update dialog. The channel preference is
-/// process-wide ([`ThemeManager::shared`]), so switching back to Stable in
+/// process-wide ([`PreferenceManager::shared`]), so switching back to Stable in
 /// one window leaves every other window holding a cached RC offer it would
 /// otherwise happily install. Re-testing at the moment of the click is what
 /// makes the preference authoritative regardless of how many views cached
@@ -1300,20 +1463,23 @@ fn offer_still_eligible(channel: Channel, kind: BuildKind) -> bool {
 }
 
 fn update_check_row(
-    manager: Rc<ThemeManager>,
-    update_notice: UpdateNoticeHandler,
+    manager: Rc<PreferenceManager>,
     available_notes: ReleaseNotesCard,
     install_guard: InstallGuard,
     update_method: UpdateMethod,
 ) -> UpdateCheckRow {
     let row = gtk::Box::new(gtk::Orientation::Vertical, 0);
     row.add_css_class("settings-option");
+    row.add_css_class("settings-update-status");
+    search::tag(&row, "Check for updates");
     let summary = gtk::Box::new(gtk::Orientation::Horizontal, 16);
+    summary.add_css_class("settings-update-summary");
     summary.set_vexpand(true);
+    row.set_vexpand(false);
     let copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
     copy.set_hexpand(true);
     copy.set_valign(gtk::Align::Center);
-    let title = gtk::Label::new(Some("Updates"));
+    let title = gtk::Label::new(Some("Check for updates"));
     title.set_xalign(0.0);
     title.add_css_class("settings-option-title");
     let status = gtk::Label::new(Some(&installed_version_status(
@@ -1325,7 +1491,13 @@ fn update_check_row(
     status.set_wrap(true);
     status.set_use_markup(true);
     status.add_css_class("settings-option-description");
-    copy.append(&title);
+    let heading = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    let status_icon = crate::assets::primary_icon(icons::INFO, 18);
+    status_icon.set_valign(gtk::Align::Center);
+    title.set_valign(gtk::Align::Center);
+    heading.append(&status_icon);
+    heading.append(&title);
+    copy.append(&heading);
     copy.append(&status);
     let progress = gtk::ProgressBar::new();
     progress.add_css_class("settings-update-progress");
@@ -1343,6 +1515,7 @@ fn update_check_row(
     row.append(&available_notes.container);
 
     let checking = Rc::new(Cell::new(false));
+    let row_generation = Rc::new(Cell::new(0u64));
     // Set once a check finds an update this platform can install; consumed by the
     // button's next click instead of re-running a check.
     let pending_download = Rc::new(RefCell::new(None::<PendingInstall>));
@@ -1356,35 +1529,28 @@ fn update_check_row(
         move || installed.get() || installing.get()
     });
     let managed_update_available = Rc::new(Cell::new(false));
-    // The generation of the most recently started check. Each call to
-    // `run_check` captures the next value and compares against this when its
-    // result arrives; a mismatch means a newer check (e.g. from a channel
-    // toggle mid-flight) has since superseded it. Without this, a Preview
-    // fetch still in flight when the user flips back to Stable could land
-    // after the flip and offer an RC to a Stable user -- exactly the bug
-    // `is_stale_check` exists to prevent. See its doc comment.
-    let generation = Rc::new(Cell::new(0_u64));
-
     let run_check: Rc<dyn Fn(bool)> = Rc::new({
+        let title = title.clone();
+        let status_icon = status_icon.clone();
         let checking = checking.clone();
-        let generation = generation.clone();
         let status = status.clone();
         let button = button.clone();
-        let update_notice = update_notice.clone();
         let pending_download = pending_download.clone();
         let installed = installed.clone();
         let managed_update_available = managed_update_available.clone();
         let progress = progress.clone();
         let available_notes = available_notes.clone();
         let manager = manager.clone();
+        let row_generation = row_generation.clone();
         move |force: bool| {
             // Always start a fresh check rather than dropping it: a channel
             // toggle must never be silently ignored just because a previous
             // check (for the old channel) is still in flight. The stale
             // check's own result is discarded below instead, once its
             // generation no longer matches.
-            let my_generation = generation.get().saturating_add(1);
-            generation.set(my_generation);
+            let my_generation = next_check_generation();
+            let my_row_generation = row_generation.get().saturating_add(1);
+            row_generation.set(my_row_generation);
             checking.set(true);
             *pending_download.borrow_mut() = None;
             installed.set(false);
@@ -1393,6 +1559,7 @@ fn update_check_row(
             progress.set_fraction(0.0);
             progress.set_visible(false);
             progress.remove_css_class("error");
+            title.set_text("Checking for updates…");
             status.set_text("Checking for updates…");
             available_notes.container.set_visible(false);
             available_notes.fallback.set_visible(false);
@@ -1400,7 +1567,7 @@ fn update_check_row(
             // this check's own result lands: otherwise the sidebar keeps
             // showing a (possibly prerelease) offer from before the channel
             // was switched for the whole duration of this check.
-            update_notice(None);
+            publish_update_notice(None);
             button.set_sensitive(false);
             // Read the channel now, not once when the row was built: a
             // mid-session channel toggle must be reflected by the very next
@@ -1412,24 +1579,42 @@ fn update_check_row(
                 update_method,
                 force,
             );
+            let title = title.clone();
+            let status_icon = status_icon.clone();
             let checking = checking.clone();
-            let generation = generation.clone();
             let status = status.clone();
             let button = button.clone();
-            let update_notice = update_notice.clone();
             let pending_download = pending_download.clone();
             let managed_update_available = managed_update_available.clone();
             let available_notes = available_notes.clone();
+            let row_generation = row_generation.clone();
             glib::timeout_add_local(Duration::from_millis(100), move || {
-                if is_stale_check(my_generation, generation.get()) {
-                    // A newer check has since started; that one owns
-                    // `checking`, `status`, and every other piece of shared
-                    // state this closure would otherwise touch. Stop polling
-                    // without applying this result.
+                if is_stale_check(my_generation, CHECK_GENERATION.get()) {
+                    // Only a newer check on this row owns its disabled button.
+                    if is_stale_check(my_row_generation, row_generation.get()) {
+                        return glib::ControlFlow::Break;
+                    }
+                    button.set_sensitive(true);
+                    checking.set(false);
                     return glib::ControlFlow::Break;
                 }
                 match receiver.try_recv() {
                     Ok(result) => {
+                        CHECK_IN_FLIGHT.set(false);
+                        LAST_COMPLETED_CHECK.set(Some(Instant::now()));
+                        crate::assets::set_primary_icon(
+                            &status_icon,
+                            match &result {
+                                UpdateCheck::UpToDate => icons::CIRCLE_CHECK,
+                                UpdateCheck::Available { .. } => icons::DOWNLOADS,
+                                UpdateCheck::Failed(_) => icons::TRIANGLE_ALERT,
+                            },
+                        );
+                        title.set_text(match &result {
+                            UpdateCheck::UpToDate => "Strata is up to date",
+                            UpdateCheck::Available { .. } => "An update is available",
+                            UpdateCheck::Failed(_) => "Couldn’t check for updates",
+                        });
                         let returns_to_stable = matches!(
                             &result,
                             UpdateCheck::Available { release, .. }
@@ -1460,12 +1645,14 @@ fn update_check_row(
                             .container
                             .set_visible(shows_available_release_notes(&result));
                         match &result {
-                            UpdateCheck::Available { release, install } => update_notice(Some((
+                            UpdateCheck::Available { release, install } => publish_update_notice(Some((
                                 release.clone(),
                                 install.clone(),
                                 update_method,
                             ))),
-                            UpdateCheck::UpToDate | UpdateCheck::Failed(_) => update_notice(None),
+                            UpdateCheck::UpToDate | UpdateCheck::Failed(_) => {
+                                publish_update_notice(None)
+                            }
                         }
                         match &result {
                             UpdateCheck::Available { release, install } => {
@@ -1499,6 +1686,9 @@ fn update_check_row(
                     }
                     Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
                     Err(TryRecvError::Disconnected) => {
+                        CHECK_IN_FLIGHT.set(false);
+                        title.set_text("Couldn’t check for updates");
+                        crate::assets::set_primary_icon(&status_icon, icons::TRIANGLE_ALERT);
                         status.set_markup(
                             "Couldn't check for updates · <a href=\"https://github.com/lgse/strata/releases/latest\">View releases on GitHub</a>",
                         );
@@ -1603,6 +1793,7 @@ fn update_check_row(
                     button_for_installed.set_sensitive(true);
                     installed_for_installed.set(true);
                     checking_for_installed.set(false);
+                    restart_application(&button_for_installed);
                 },
                 move || {
                     let _taken = cancel_for_cancelled.borrow_mut().take();
@@ -1813,23 +2004,59 @@ fn restart_application(button: &gtk::Button) {
     restart(application.as_ref());
 }
 
-fn restart(application: Option<&gtk::Application>) {
+fn process_start_time(pid: u32) -> Option<String> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    // comm (field 2) may contain spaces or parentheses; the remaining fields
+    // begin after its final closing parenthesis. starttime is field 22.
+    stat.rsplit_once(") ")?
+        .1
+        .split_whitespace()
+        .nth(19)
+        .map(str::to_owned)
+}
+
+fn restart_waiter(current_exe: &std::path::Path, parent_pid: u32) -> Option<Command> {
     use std::{os::unix::process::CommandExt, process::Stdio};
 
-    let Ok(mut current_exe) = std::env::current_exe() else {
+    let mut command = crate::trusted_command::command("sh").ok()?;
+    let sleep = crate::trusted_command::resolve("sleep").ok()?;
+    let start_time = process_start_time(parent_pid).unwrap_or_default();
+    let date = crate::trusted_command::resolve("date").ok()?;
+    let mv = crate::trusted_command::resolve("mv").ok()?;
+    let rollback = current_exe.parent().map(services::rollback_path)?;
+    command
+        .args([
+            "-c",
+            "pid=$1; binary=$2; sleeper=$3; born=$4; rollback=$5; clock=$6; mover=$7; grace=$8; while kill -0 \"$pid\" 2>/dev/null && [ -r \"/proc/$pid/stat\" ]; do IFS= read -r stat < \"/proc/$pid/stat\" || break; rest=${stat##*) }; set -- $rest; shift 19; [ \"${1:-}\" = \"$born\" ] || break; \"$sleeper\" 0.1; done; \"$sleeper\" 0.5; started=$(\"$clock\" +%s); \"$binary\" && exit 0; status=$?; [ $(($(\"$clock\" +%s) - started)) -lt \"$grace\" ] || exit \"$status\"; [ -f \"$rollback\" ] || exit \"$status\"; \"$mover\" -f -- \"$rollback\" \"$binary\" && exec \"$binary\"; exit \"$status\"",
+            "strata-restart",
+        ])
+        .arg(parent_pid.to_string())
+        .arg(current_exe)
+        .arg(sleep)
+        .arg(start_time)
+        .arg(rollback)
+        .arg(date)
+        .arg(mv)
+        .arg(RESTART_GRACE_SECONDS.to_string())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .process_group(0);
+    if std::env::var_os(crate::CAIRO_SELECTED_BY_STRATA).as_deref()
+        == Some(std::ffi::OsStr::new("1"))
+        && std::env::var_os("GSK_RENDERER").as_deref() == Some(std::ffi::OsStr::new("cairo"))
+    {
+        // The next process must read the saved renderer, not inherit our default.
+        command.env_remove("GSK_RENDERER");
+        command.env_remove(crate::CAIRO_SELECTED_BY_STRATA);
+    }
+    Some(command)
+}
+
+fn restart(application: Option<&gtk::Application>) {
+    let Ok(current_exe) = crate::services::installed_executable() else {
         return;
     };
-    // On Linux, replacing the running executable makes /proc/self/exe resolve to
-    // the old path with " (deleted)" appended. Relaunch the replacement at the
-    // original path instead of treating that suffix as part of the filename.
-    if !current_exe.exists()
-        && let Some(path) = current_exe
-            .to_str()
-            .and_then(|path| path.strip_suffix(" (deleted)"))
-        && std::path::Path::new(path).is_file()
-    {
-        current_exe = path.into();
-    }
     // Wait for this process to exit completely before relaunching. A fixed
     // delay could overlap the old and new GTK/Wayland clients and rapidly hand
     // keyboard focus through an underlying terminal. Besides re-activating the
@@ -1837,34 +2064,10 @@ fn restart(application: Option<&gtk::Application>) {
     // affected systems. Detach the waiter from inherited terminal streams and
     // put it in its own process group so applying an update cannot disturb the
     // terminal that launched Strata.
-    // Only early failures trigger rollback; later crashes do not invalidate an update.
-    let parent_pid = std::process::id().to_string();
-    let rollback = current_exe
-        .parent()
-        .map(services::rollback_path)
-        .unwrap_or_default();
-    if std::process::Command::new("sh")
-        .args([
-            "-c",
-            "while kill -0 \"$1\" 2>/dev/null; do sleep 0.1; done; sleep 0.5; \
-             started=$(date +%s); \"$2\" && exit 0; status=$?; \
-             [ $(($(date +%s) - started)) -lt $4 ] || exit \"$status\"; \
-             [ -f \"$3\" ] || exit \"$status\"; \
-             mv -f -- \"$3\" \"$2\" && exec \"$2\"; \
-             exit \"$status\"",
-            "strata-restart",
-        ])
-        .arg(parent_pid)
-        .arg(current_exe)
-        .arg(rollback)
-        .arg(RESTART_GRACE_SECONDS.to_string())
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .process_group(0)
-        .spawn()
-        .is_err()
-    {
+    let Some(mut waiter) = restart_waiter(&current_exe, std::process::id()) else {
+        return;
+    };
+    if waiter.spawn().is_err() {
         return;
     }
     match application {
@@ -1940,6 +2143,7 @@ pub(super) fn show_update_dialog(
         .build();
     notes_scroll.add_css_class("update-dialog-notes");
     let fallback = gtk::LinkButton::with_label(&release.url, "View release on GitHub");
+    fallback.set_has_tooltip(false);
     fallback.add_css_class("release-notes-fallback");
     fallback.set_halign(gtk::Align::Start);
     let status_message = match update_method {
@@ -2041,7 +2245,7 @@ pub(super) fn show_update_dialog(
             action.set_label("Close");
         }
     });
-    ThemeManager::shared().on_release_channel_changed(&layer, {
+    PreferenceManager::shared().on_release_channel_changed(&layer, {
         let withdraw = withdraw.clone();
         let withdrawn = withdrawn.clone();
         let started = started.clone();
@@ -2050,7 +2254,7 @@ pub(super) fn show_update_dialog(
             if started.get() || installed.get() || withdrawn.get() {
                 return;
             }
-            if !offer_still_eligible(ThemeManager::shared().release_channel(), offered_kind) {
+            if !offer_still_eligible(PreferenceManager::shared().release_channel(), offered_kind) {
                 withdraw();
             }
         })
@@ -2106,7 +2310,7 @@ pub(super) fn show_update_dialog(
         // a channel switch made anywhere in the process -- including in
         // another window. `withdrawn` rather than `started` so Cancel and
         // Escape keep dismissing normally.
-        if !offer_still_eligible(ThemeManager::shared().release_channel(), offered_kind) {
+        if !offer_still_eligible(PreferenceManager::shared().release_channel(), offered_kind) {
             withdraw();
             return;
         }
@@ -2179,6 +2383,7 @@ pub(super) fn show_update_dialog(
                 action_for_installed.add_css_class("suggested-action");
                 action_for_installed.set_sensitive(true);
                 installed_for_installed.set(true);
+                restart_application(&action_for_installed);
             },
             move || {
                 let _taken = cancel_for_cancelled.borrow_mut().take();
@@ -2228,10 +2433,8 @@ fn aur_update_action_label() -> &'static str {
     }
 }
 
-fn aur_update_command(helper: &str, package: &str) -> Command {
-    let mut command = terminal::command();
-    command.args(["--", helper, "-Syu", package]);
-    command
+fn aur_update_command(terminal: &terminal::Terminal, helper: &str, package: &str) -> Command {
+    terminal.exec_command(&[helper, "-Syu", package])
 }
 
 fn launch_aur_update() -> Result<&'static str, String> {
@@ -2239,10 +2442,13 @@ fn launch_aur_update() -> Result<&'static str, String> {
         .managed()
         .ok_or_else(|| "missing package metadata".to_owned())?;
     if let Some((helper, package)) = managed.aur_update_target() {
-        return aur_update_command(helper, package)
+        let Some(terminal) = terminal::Terminal::resolve() else {
+            return Err(terminal::no_terminal_message());
+        };
+        return aur_update_command(&terminal, helper, package)
             .spawn()
             .map(|_child| "AUR update opened in your terminal.")
-            .map_err(|error| terminal::launch_failure(&error));
+            .map_err(|error| terminal.launch_failure(&error));
     }
     let package = managed
         .package()
@@ -2253,17 +2459,31 @@ fn launch_aur_update() -> Result<&'static str, String> {
         .map_err(|error| error.to_string())
 }
 
-fn omarchy_update_command() -> Command {
-    let mut command = terminal::command();
-    command.args(["--", "omarchy", "update"]);
-    command
+fn omarchy_update_command(terminal: &terminal::Terminal) -> Command {
+    terminal.exec_command(&["omarchy", "update"])
 }
 
 fn launch_omarchy_update() -> Result<(), String> {
-    omarchy_update_command()
+    let Some(terminal) = terminal::Terminal::resolve() else {
+        return Err(terminal::no_terminal_message());
+    };
+    omarchy_update_command(&terminal)
         .spawn()
         .map(|_child| ())
-        .map_err(|error| terminal::launch_failure(&error))
+        .map_err(|error| terminal.launch_failure(&error))
+}
+
+fn or_unknown(value: Option<String>) -> String {
+    value.unwrap_or_else(|| "Unknown".to_owned())
+}
+
+fn release_detail_rows(release: &ReleaseMetadata) -> [(&'static str, String); 4] {
+    [
+        ("Channel", release.kind.label().to_owned()),
+        ("Tag", release.tag.clone()),
+        ("Commit", or_unknown(release.commit.clone())),
+        ("Published", or_unknown(release.published_at.clone())),
+    ]
 }
 
 /// Renders `release`'s channel, tag, source commit, and publication date as
@@ -2273,24 +2493,7 @@ fn launch_omarchy_update() -> Result<(), String> {
 fn update_dialog_details(release: &ReleaseMetadata) -> gtk::Box {
     let details = gtk::Box::new(gtk::Orientation::Vertical, 2);
     details.add_css_class("update-dialog-details");
-    for (label, value) in [
-        ("Channel", release.kind.label().to_owned()),
-        ("Tag", release.tag.clone()),
-        (
-            "Commit",
-            release
-                .commit
-                .clone()
-                .unwrap_or_else(|| "Unknown".to_owned()),
-        ),
-        (
-            "Published",
-            release
-                .published_at
-                .clone()
-                .unwrap_or_else(|| "Unknown".to_owned()),
-        ),
-    ] {
+    for (label, value) in release_detail_rows(release) {
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         row.add_css_class("update-dialog-detail-row");
         let label_widget = gtk::Label::new(Some(label));
@@ -2389,707 +2592,52 @@ fn update_check_message(result: &UpdateCheck, update_method: UpdateMethod) -> St
     }
 }
 
-fn keybindings_page(manager: Rc<ThemeManager>) -> gtk::Widget {
-    let content = page_content();
-    append_heading(&content, "KEYBINDING HINTS");
-    let (row, toggle) = settings_option(
-        "Show keybinding hints",
-        "Show navigation hints and paste availability at the bottom of every view. F1 opens the full reference even when hints are hidden.",
-        manager.show_keybinding_hints(),
-    );
-    bind_switch(
-        &manager,
-        &toggle,
-        ThemeManager::show_keybinding_hints,
-        ThemeManager::set_show_keybinding_hints,
-    );
-    content.append(&row);
-    append_heading(&content, "NAVIGATION");
-    for (label, keys) in [
-        ("Move through items", "↑ / ↓ (← / → in Icons)"),
-        ("Jump to top / bottom", "Ctrl + ↑ / Ctrl + ↓"),
-        ("Open item", "Enter"),
-        ("Go to parent", "Alt + ↑"),
-        ("Back / forward", "Alt + ← / →"),
-        ("Move between column panes", "← / → (Columns)"),
-        ("Focus pane navigation header", "↑ at top"),
-        ("Sidebar to top navigation bar", "↑ from sidebar top"),
-        ("Return from header to files", "↓"),
-        ("Edit location", "Ctrl + L"),
-        ("Filter items", "Ctrl + F"),
-        ("Toggle sidebar", "Ctrl + B"),
-    ] {
-        append_keybinding(&content, label, keys);
-    }
-
-    append_heading(&content, "VIEW");
-    append_keybinding(&content, "Toggle hidden files", "Ctrl + H  or  Ctrl + .");
-
-    append_heading(&content, "FILE OPERATIONS");
-    for (label, keys) in [
-        ("Create new folder", "Ctrl + Shift + N"),
-        ("Cut", "Ctrl + X"),
-        ("Copy", "Ctrl + C"),
-        ("Paste", "Ctrl + V"),
-        ("Rename", "F2 / Ctrl + R"),
-    ] {
-        append_keybinding(&content, label, keys);
-    }
-
-    append_heading(&content, "APPLICATION");
-    for (label, keys) in [
-        ("Search", "Ctrl + K"),
-        ("Open terminal", "Ctrl + T"),
-        ("Refresh", "F5"),
-        ("Open settings", "Ctrl + ,"),
-        ("Shortcut reference", "F1"),
-    ] {
-        append_keybinding(&content, label, keys);
-    }
-
-    scrollable_page(&content, Some("settings-keybindings-scroll"))
-}
-
-fn about_page() -> gtk::Widget {
-    let content = page_content();
-    content.add_css_class("about-page");
-
-    let identity = gtk::Box::new(gtk::Orientation::Vertical, 7);
-    identity.add_css_class("about-identity");
-    identity.set_halign(gtk::Align::Center);
-
-    let name = gtk::Label::new(Some("Strata"));
-    name.add_css_class("about-name");
-    let description = gtk::Label::new(Some(crate::build_info::DESCRIPTION));
-    description.add_css_class("about-description");
-    description.set_justify(gtk::Justification::Center);
-    description.set_wrap(true);
-    identity.append(&name);
-    identity.append(&description);
-    content.append(&identity);
-
-    append_heading(&content, "BUILD INFORMATION");
-    let build = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    build.add_css_class("about-details");
-    let version = crate::build_info::installed_version().to_string();
-    append_about_detail(&build, "Version", &version, false);
-    let build_kind = crate::build_info::build_kind();
-    if build_kind != services::BuildKind::Stable {
-        append_about_detail(&build, "Build", build_kind.label(), false);
-    }
-    append_about_detail(&build, "Commit", crate::build_info::COMMIT, true);
-    content.append(&build);
-
-    append_heading(&content, "PROJECT");
-    let project = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    project.add_css_class("about-details");
-    append_about_detail(&project, "Author", crate::build_info::AUTHOR, false);
-
-    let repository = gtk::LinkButton::builder()
-        .uri(crate::build_info::REPOSITORY)
-        .tooltip_text("Open the Strata repository")
-        .build();
-    repository.add_css_class("about-repository");
-    let repository_content = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    let repository_label = gtk::Label::new(Some("GitHub repository"));
-    repository_label.set_xalign(0.0);
-    repository_label.set_hexpand(true);
-    repository_content.append(&repository_label);
-    repository_content.append(&crate::assets::primary_icon(icons::EXTERNAL_LINK, 16));
-    repository.set_child(Some(&repository_content));
-    project.append(&repository);
-    content.append(&project);
-
-    scrollable_page(&content, None)
-}
-
-fn append_about_detail(container: &gtk::Box, label: &str, value: &str, monospace: bool) {
-    let row = gtk::Box::new(gtk::Orientation::Horizontal, 16);
-    row.add_css_class("about-detail-row");
-    let label = gtk::Label::new(Some(label));
-    label.add_css_class("about-detail-label");
-    label.set_xalign(0.0);
-    label.set_hexpand(true);
-    let value = gtk::Label::new(Some(value));
-    value.add_css_class("about-detail-value");
-    value.set_selectable(true);
-    if monospace {
-        value.add_css_class("monospace");
-    }
-    row.append(&label);
-    row.append(&value);
-    container.append(&row);
-}
-
-fn append_keybinding(content: &gtk::Box, label: &str, keys: &str) {
-    let row = gtk::Box::new(gtk::Orientation::Horizontal, 16);
-    row.add_css_class("keybinding-row");
-    let label = gtk::Label::new(Some(label));
-    label.set_xalign(0.0);
-    label.set_hexpand(true);
-    let keys = gtk::Label::new(Some(keys));
-    keys.add_css_class("keybinding-keys");
-    row.append(&label);
-    row.append(&keys);
-    content.append(&row);
-}
-
-fn theme_page(manager: Rc<ThemeManager>) -> (gtk::Widget, Vec<(gtk::FlowBox, u32)>) {
-    let content = page_content();
-    content.add_css_class("theme-page");
-
-    let follow = gtk::Switch::builder()
-        .active(manager.follows_omarchy())
-        .valign(gtk::Align::Center)
-        .build();
-    if manager.is_omarchy_available() {
-        append_heading(&content, "SYSTEM");
-        let system = gtk::Box::new(gtk::Orientation::Horizontal, 14);
-        system.add_css_class("settings-option");
-        let icon = crate::assets::primary_icon(icons::MONITOR, 22);
-        icon.add_css_class("system-theme-icon");
-        let copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
-        copy.set_hexpand(true);
-        copy.set_valign(gtk::Align::Center);
-        let system_title = gtk::Label::new(Some("Follow Omarchy"));
-        system_title.set_xalign(0.0);
-        system_title.add_css_class("settings-option-title");
-        let system_description = gtk::Label::new(Some(
-            "Use the active Omarchy Quattro theme and follow system theme changes.",
-        ));
-        system_description.set_xalign(0.0);
-        system_description.set_wrap(true);
-        system_description.add_css_class("settings-option-description");
-        copy.append(&system_title);
-        copy.append(&system_description);
-        system.append(&icon);
-        system.append(&copy);
-        system.append(&follow);
-        content.append(&system);
-    }
-
-    append_heading(&content, "TYPOGRAPHY");
-    let text_sizes = [TextSize::Small, TextSize::Medium, TextSize::Large];
-    let active_text_size = text_sizes
-        .iter()
-        .position(|&size| size == manager.text_size())
-        .unwrap_or(1);
-    let (text_size_control, text_size_buttons) =
-        segmented_control(&["Small", "Medium", "Large"], active_text_size);
-    let text_size_row = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    text_size_row.add_css_class("settings-option");
-    let text_size_copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
-    text_size_copy.set_hexpand(true);
-    let text_size_title = gtk::Label::new(Some("Text size"));
-    text_size_title.set_xalign(0.0);
-    text_size_title.add_css_class("settings-option-title");
-    let text_size_description = gtk::Label::new(Some(
-        "Scale interface text across menus, labels, and lists.",
-    ));
-    text_size_description.set_xalign(0.0);
-    text_size_description.set_wrap(true);
-    text_size_description.add_css_class("settings-option-description");
-    text_size_copy.append(&text_size_title);
-    text_size_copy.append(&text_size_description);
-    text_size_row.append(&text_size_copy);
-    text_size_row.append(&text_size_control);
-    content.append(&text_size_row);
-    for (button, size) in text_size_buttons.into_iter().zip(text_sizes) {
-        bind_choice(
-            &manager,
-            &button,
-            size,
-            ThemeManager::text_size,
-            ThemeManager::set_text_size,
-        );
-    }
-
-    append_heading(&content, "THEMES");
-    let packaged = gtk::FlowBox::builder()
-        .column_spacing(12)
-        .row_spacing(12)
-        .max_children_per_line(3)
-        .min_children_per_line(1)
-        .selection_mode(gtk::SelectionMode::None)
-        .homogeneous(true)
-        .build();
-    packaged.add_css_class("theme-grid");
-    let theme_search = gtk::Entry::new();
-    theme_search.add_css_class("form-control");
-    theme_search.add_css_class("theme-search");
-    theme_search.set_placeholder_text(Some("Search themes"));
-    let search_keys = gtk::EventControllerKey::new();
-    search_keys.set_propagation_phase(gtk::PropagationPhase::Capture);
-    let selected_search = theme_search.downgrade();
-    search_keys.connect_key_pressed(move |_, key, _, modifiers| {
-        if modifiers.contains(gdk::ModifierType::CONTROL_MASK)
-            && matches!(key, gdk::Key::a | gdk::Key::A)
-            && let Some(search) = selected_search.upgrade()
-        {
-            search.select_region(0, -1);
-            return glib::Propagation::Stop;
-        }
-        glib::Propagation::Proceed
-    });
-    theme_search.add_controller(search_keys);
-    let clear_search = gtk::Button::builder()
-        .child(&crate::assets::primary_icon(icons::X, 15))
-        .tooltip_text("Clear theme search")
-        .halign(gtk::Align::End)
-        .valign(gtk::Align::Center)
-        .margin_end(6)
-        .visible(false)
-        .build();
-    clear_search.add_css_class("theme-search-clear");
-    clear_search.set_has_frame(false);
-    let search_overlay = gtk::Overlay::new();
-    search_overlay.set_child(Some(&theme_search));
-    search_overlay.add_overlay(&clear_search);
-    content.append(&search_overlay);
-    let cleared_search = theme_search.clone();
-    clear_search.connect_clicked(move |_| {
-        cleared_search.set_text("");
-        cleared_search.grab_focus();
-    });
-    let (appearance_filter, appearance_buttons) = segmented_control(&["All", "Light", "Dark"], 0);
-    appearance_filter.add_css_class("theme-appearance-filter");
-    content.append(&appearance_filter);
-    let catalog_scroll = gtk::ScrolledWindow::builder()
-        .child(&packaged)
-        .hscrollbar_policy(gtk::PolicyType::Never)
-        .vscrollbar_policy(gtk::PolicyType::Automatic)
-        .min_content_height(240)
-        .max_content_height(330)
-        .propagate_natural_height(true)
-        .build();
-    catalog_scroll.add_css_class("theme-catalog-scroll");
-    let catalog_container = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    catalog_container.add_css_class("theme-catalog-container");
-    catalog_container.append(&catalog_scroll);
-    content.append(&catalog_container);
-
-    append_heading(&content, "YOUR THEMES");
-    let custom = gtk::FlowBox::builder()
-        .column_spacing(12)
-        .row_spacing(12)
-        .max_children_per_line(3)
-        .min_children_per_line(1)
-        .selection_mode(gtk::SelectionMode::None)
-        .homogeneous(true)
-        .build();
-    custom.add_css_class("theme-grid");
-    content.append(&custom);
-
-    let mut catalog_cards = Vec::new();
-    for theme in manager.themes() {
-        let custom_theme = theme.custom;
-        let name = theme.tokens.name.clone();
-        let light = theme_is_light(&theme.tokens);
-        let flow = if custom_theme { &custom } else { &packaged };
-        let child = append_theme_card(flow, theme, &manager);
-        if !custom_theme {
-            catalog_cards.push((child, name, light));
-        }
-    }
-    let catalog_cards = Rc::new(catalog_cards);
-    let appearance = Rc::new(Cell::new(ThemeAppearance::All));
-    let filtered_cards = catalog_cards.clone();
-    let filtered_appearance = appearance.clone();
-    let filter_search = theme_search.clone();
-    let apply_catalog_filter: Rc<dyn Fn()> = Rc::new(move || {
-        let query = filter_search.text();
-        let appearance = filtered_appearance.get();
-        for (child, name, light) in filtered_cards.iter() {
-            let appearance_matches = match appearance {
-                ThemeAppearance::All => true,
-                ThemeAppearance::Dark => !light,
-                ThemeAppearance::Light => *light,
-            };
-            child.set_visible(appearance_matches && theme_name_matches(name, &query));
-        }
-    });
-    let search_filter = apply_catalog_filter.clone();
-    theme_search.connect_changed(move |search| {
-        clear_search.set_visible(!search.text().is_empty());
-        search_filter();
-    });
-    for (button, value) in appearance_buttons.into_iter().zip([
-        ThemeAppearance::All,
-        ThemeAppearance::Light,
-        ThemeAppearance::Dark,
-    ]) {
-        let appearance = appearance.clone();
-        let apply_filter = apply_catalog_filter.clone();
-        button.connect_toggled(move |button| {
-            if button.is_active() {
-                appearance.set(value);
-                apply_filter();
-            }
-        });
-    }
-
-    let add = gtk::Button::new();
-    add.add_css_class("add-theme-card");
-    add.set_has_frame(false);
-    let add_content = gtk::Box::new(gtk::Orientation::Vertical, 7);
-    add_content.set_halign(gtk::Align::Center);
-    add_content.set_valign(gtk::Align::Center);
-    let plus = crate::assets::primary_icon(icons::PLUS, 22);
-    let add_label = gtk::Label::new(Some("Add a theme"));
-    add_content.append(&plus);
-    add_content.append(&add_label);
-    add.set_child(Some(&add_content));
-    custom.insert(&add, -1);
-
-    let known_custom = RefCell::new(
-        manager
-            .themes()
-            .into_iter()
-            .filter(|theme| theme.custom)
-            .map(|theme| theme.id)
-            .collect::<std::collections::HashSet<_>>(),
-    );
-    let weak_manager = Rc::downgrade(&manager);
-    manager.bind_preference(
-        &custom,
-        |manager| {
-            manager
-                .themes()
-                .into_iter()
-                .filter(|theme| theme.custom)
-                .map(|theme| theme.id)
-                .collect::<Vec<_>>()
-        },
-        move |widget, _| {
-            let Some(flow) = widget.downcast_ref::<gtk::FlowBox>() else {
-                return;
-            };
-            if let Some(manager) = weak_manager.upgrade() {
-                for theme in manager.themes().into_iter().filter(|theme| theme.custom) {
-                    if known_custom.borrow_mut().insert(theme.id.clone()) {
-                        append_theme_card(flow, theme, &manager);
-                    }
-                }
-            }
-        },
-    );
-    let (editor, editor_fields) = theme_editor(manager.clone());
-    editor.set_reveal_child(false);
-    content.append(&editor);
-    let shown_editor = editor.clone();
-    add.connect_clicked(move |_| shown_editor.set_reveal_child(true));
-
-    let scroller = scrollable_page(&content, None);
-    bind_switch(
-        &manager,
-        &follow,
-        ThemeManager::follows_omarchy,
-        ThemeManager::set_follow_omarchy,
-    );
-    (
-        scroller,
-        vec![(packaged, 3), (custom, 3), (editor_fields, 4)],
-    )
-}
-
-#[derive(Clone, Copy)]
-enum ThemeAppearance {
-    All,
-    Dark,
-    Light,
-}
-
-fn theme_name_matches(name: &str, query: &str) -> bool {
-    let query = query.trim().to_lowercase();
-    query.is_empty() || name.to_lowercase().contains(&query)
-}
-
-fn theme_is_light(tokens: &ThemeTokens) -> bool {
-    theme_background_is_light(&tokens.background)
-}
-
-fn theme_background_is_light(background: &str) -> bool {
-    let value = background.strip_prefix('#').unwrap_or_default();
-    let Ok(color) = u32::from_str_radix(value, 16) else {
-        return false;
-    };
-    let channel = |shift| {
-        let value = f64::from((color >> shift) & 0xff_u32) / 255.0;
-        if value <= 0.04045 {
-            value / 12.92
-        } else {
-            ((value + 0.055) / 1.055).powf(2.4)
-        }
-    };
-    let luminance = 0.2126 * channel(16) + 0.7152 * channel(8) + 0.0722 * channel(0);
-    luminance > 0.4
-}
-
-fn append_theme_card(
-    flow: &gtk::FlowBox,
-    theme: Theme,
-    manager: &Rc<ThemeManager>,
-) -> gtk::FlowBoxChild {
-    let card = gtk::Button::new();
-    card.add_css_class("theme-card");
-    card.set_has_frame(false);
-    card.set_overflow(gtk::Overflow::Visible);
-    let content = gtk::Box::new(gtk::Orientation::Vertical, 6);
-    let preview = gtk::Overlay::new();
-    preview.set_child(Some(&theme_preview(&theme.tokens)));
-    let check = gtk::Image::from_icon_name(icons::CHECK_ON_PRIMARY);
-    check.add_css_class("theme-card-check");
-    check.set_halign(gtk::Align::End);
-    check.set_valign(gtk::Align::Start);
-    check.set_margin_top(8);
-    check.set_margin_end(8);
-    check.set_pixel_size(10);
-    preview.add_overlay(&check);
-    content.append(&preview);
-    let label_row = gtk::Box::new(gtk::Orientation::Horizontal, 7);
-    let selected = !manager.follows_omarchy() && manager.selected_id() == theme.id;
-    check.set_visible(selected);
-    if selected {
-        card.add_css_class("selected");
-    }
-    let label = gtk::Label::new(Some(&theme.tokens.name));
-    label.set_xalign(0.0);
-    label.set_ellipsize(gtk::pango::EllipsizeMode::End);
-    label_row.append(&label);
-    content.append(&label_row);
-    card.set_child(Some(&content));
-    let theme_id = theme.id;
-    let selected_theme = theme_id.clone();
-    let check = check.downgrade();
-    manager.bind_preference(
-        &card,
-        move |manager| !manager.follows_omarchy() && manager.selected_id() == selected_theme,
-        move |card, selected| {
-            if selected {
-                card.add_css_class("selected");
-            } else {
-                card.remove_css_class("selected");
-            }
-            if let Some(check) = check.upgrade() {
-                check.set_visible(selected);
-            }
-        },
-    );
-    let manager = manager.clone();
-    card.connect_clicked(move |_| {
-        manager.select_theme(&theme_id);
-    });
-    flow.insert(&card, -1);
-    card.parent()
-        .and_downcast::<gtk::FlowBoxChild>()
-        .expect("FlowBox must wrap inserted theme cards")
-}
-
-fn theme_preview(tokens: &ThemeTokens) -> gtk::DrawingArea {
-    let area = gtk::DrawingArea::new();
-    area.add_css_class("theme-preview");
-    area.set_content_width(190);
-    area.set_content_height(72);
-    let tokens = tokens.clone();
-    area.set_draw_func(move |_, context, width, height| {
-        let color = |value: &str| gdk::RGBA::parse(value).unwrap_or(gdk::RGBA::BLACK);
-        let paint = |context: &gtk::cairo::Context, value: &str| {
-            let value = color(value);
-            context.set_source_rgba(
-                f64::from(value.red()),
-                f64::from(value.green()),
-                f64::from(value.blue()),
-                1.0,
-            );
-        };
-        context.rounded_rectangle(0.0, 0.0, f64::from(width), f64::from(height), 6.0);
-        context.clip();
-        paint(context, &tokens.background);
-        context.rectangle(0.0, 0.0, f64::from(width), f64::from(height));
-        let _ = context.fill();
-        paint(context, &tokens.surface);
-        context.rectangle(0.0, 0.0, f64::from(width) * 0.40, f64::from(height));
-        let _ = context.fill();
-        for (x, y, w, value) in [
-            (10.0, 23.0, 45.0, &tokens.dim_text),
-            (10.0, 36.0, 59.0, &tokens.accent),
-            (10.0, 51.0, 39.0, &tokens.dim_text),
-            (f64::from(width) * 0.45, 23.0, 47.0, &tokens.accent),
-            (f64::from(width) * 0.45, 37.0, 83.0, &tokens.dim_text),
-            (f64::from(width) * 0.45, 51.0, 66.0, &tokens.dim_text),
-        ] {
-            paint(context, value);
-            context.rounded_rectangle(x, y, w, 5.0, 2.5);
-            let _ = context.fill();
-        }
-    });
-    area
-}
-
-fn theme_editor(manager: Rc<ThemeManager>) -> (gtk::Revealer, gtk::FlowBox) {
-    let panel = gtk::Box::new(gtk::Orientation::Vertical, 12);
-    panel.add_css_class("theme-editor");
-    let header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    let title = gtk::Label::new(Some("Add a theme"));
-    title.add_css_class("settings-option-title");
-    title.set_xalign(0.0);
-    title.set_hexpand(true);
-    header.append(&title);
-    panel.append(&header);
-    let name = form_entry();
-    name.set_placeholder_text(Some("Theme name"));
-    panel.append(&name);
-
-    let values = Rc::new(RefCell::new(manager.starter_tokens()));
-    let fields = gtk::FlowBox::builder()
-        .column_spacing(18)
-        .row_spacing(10)
-        .max_children_per_line(4)
-        .min_children_per_line(1)
-        .selection_mode(gtk::SelectionMode::None)
-        .homogeneous(true)
-        .build();
-    fields.add_css_class("theme-color-fields");
-    for (label_text, field) in [
-        ("Background", ColorField::Background),
-        ("Surface", ColorField::Surface),
-        ("Text", ColorField::Text),
-        ("Accent", ColorField::Accent),
-        ("Danger", ColorField::Danger),
-        ("Muted", ColorField::Muted),
-        ("Highlight", ColorField::Highlight),
-        ("Border", ColorField::Border),
-        ("Dim text", ColorField::DimText),
-    ] {
-        let field_row = gtk::Box::new(gtk::Orientation::Horizontal, 7);
-        let label = gtk::Label::new(Some(label_text));
-        label.set_xalign(0.0);
-        let dialog = gtk::ColorDialog::builder()
-            .title(format!("Choose {label_text}"))
-            .with_alpha(false)
-            .build();
-        let picker = gtk::ColorDialogButton::new(Some(dialog));
-        picker.add_css_class("theme-color-picker");
-        if let Ok(color) = gdk::RGBA::parse(field.get(&values.borrow())) {
-            picker.set_rgba(&color);
-        }
-        let values_for_color = values.clone();
-        let manager_for_color = manager.clone();
-        picker.connect_rgba_notify(move |picker| {
-            field.set(
-                &mut values_for_color.borrow_mut(),
-                picker.rgba().to_string(),
-            );
-            manager_for_color.preview(&values_for_color.borrow());
-        });
-        field_row.append(&picker);
-        field_row.append(&label);
-        fields.insert(&field_row, -1);
-    }
-    panel.append(&fields);
-    let error = gtk::Label::new(None);
-    error.add_css_class("theme-editor-error");
-    error.set_xalign(0.0);
-    error.set_visible(false);
-    panel.append(&error);
-    let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    actions.set_halign(gtk::Align::End);
-    let cancel = gtk::Button::with_label("Cancel");
-    cancel.add_css_class("action-dialog-cancel");
-    let save = gtk::Button::with_label("Add theme");
-    save.add_css_class("action-dialog-confirm");
-    actions.append(&cancel);
-    actions.append(&save);
-    panel.append(&actions);
-    let revealer = gtk::Revealer::builder()
-        .transition_type(gtk::RevealerTransitionType::SlideDown)
-        .child(&panel)
-        .build();
-    let hidden = revealer.clone();
-    let manager_for_cancel = manager.clone();
-    cancel.connect_clicked(move |_| {
-        manager_for_cancel.cancel_preview();
-        hidden.set_reveal_child(false);
-    });
-    let hidden = revealer.clone();
-    save.connect_clicked(move |_| {
-        let mut tokens = values.borrow().clone();
-        tokens.name = name.text().trim().to_owned();
-        match manager.save_custom_theme(tokens) {
-            Ok(_) => {
-                error.set_visible(false);
-                hidden.set_reveal_child(false);
-            }
-            Err(message) => {
-                error.set_text(&message.to_string());
-                error.set_visible(true);
-            }
-        }
-    });
-    (revealer, fields)
-}
-
-#[derive(Clone, Copy)]
-enum ColorField {
-    Background,
-    Surface,
-    Text,
-    Accent,
-    Danger,
-    Muted,
-    Highlight,
-    Border,
-    DimText,
-}
-impl ColorField {
-    fn get(self, tokens: &ThemeTokens) -> &str {
-        match self {
-            Self::Background => &tokens.background,
-            Self::Surface => &tokens.surface,
-            Self::Text => &tokens.text,
-            Self::Accent => &tokens.accent,
-            Self::Danger => &tokens.danger,
-            Self::Muted => &tokens.muted,
-            Self::Highlight => &tokens.highlight,
-            Self::Border => &tokens.border,
-            Self::DimText => &tokens.dim_text,
-        }
-    }
-    fn set(self, tokens: &mut ThemeTokens, value: String) {
-        *match self {
-            Self::Background => &mut tokens.background,
-            Self::Surface => &mut tokens.surface,
-            Self::Text => &mut tokens.text,
-            Self::Accent => &mut tokens.accent,
-            Self::Danger => &mut tokens.danger,
-            Self::Muted => &mut tokens.muted,
-            Self::Highlight => &mut tokens.highlight,
-            Self::Border => &mut tokens.border,
-            Self::DimText => &mut tokens.dim_text,
-        } = value;
-    }
-}
-
 fn navigation_button(icon: &str, label: &str) -> (gtk::Button, gtk::Label, gtk::Box) {
     let content = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     let icon_image = crate::assets::primary_icon(icon, 18);
-    let text = gtk::Label::new(Some(label));
+    let subtitle = match label {
+        "General" => "Browsing, search, files",
+        "Appearance" => "Theme, text, motion",
+        "Updates" => "Channel, release notes",
+        _ => "Version and links",
+    };
+    let text = gtk::Label::new(None);
+    text.set_markup(&format!(
+        "{}\n<span size=\"small\" weight=\"normal\">{subtitle}</span>",
+        glib::markup_escape_text(label)
+    ));
     text.set_xalign(0.0);
+    text.add_css_class("settings-nav-copy");
     content.append(&icon_image);
     content.append(&text);
-    let button = gtk::Button::builder()
-        .child(&content)
-        .tooltip_text(label)
-        .build();
+    let button = gtk::Button::builder().child(&content).build();
+    button.set_widget_name(label);
     button.set_has_frame(false);
+    button.set_cursor_from_name(Some("pointer"));
+    super::accessibility::set_label(
+        &button,
+        if label == "Appearance" {
+            "Appearance settings"
+        } else {
+            label
+        },
+    );
     (button, text, content)
 }
 
 fn scrollable_page(content: &gtk::Box, class: Option<&str>) -> gtk::Widget {
+    let empty = gtk::Label::new(Some(
+        "No matching settings are available on this installation.",
+    ));
+    empty.add_css_class("settings-search-page-empty");
+    empty.add_css_class("settings-option-description");
+    empty.set_visible(false);
+    content.append(&empty);
+    constrain_page_text(content.upcast_ref());
     content.set_hexpand(true);
     let scroller = gtk::ScrolledWindow::builder()
         .child(content)
-        .hscrollbar_policy(gtk::PolicyType::Never)
+        .hscrollbar_policy(gtk::PolicyType::External)
         .vscrollbar_policy(gtk::PolicyType::Automatic)
         .hexpand(true)
         .vexpand(true)
@@ -3101,67 +2649,42 @@ fn scrollable_page(content: &gtk::Box, class: Option<&str>) -> gtk::Widget {
     scroller.upcast()
 }
 
+// Prose wraps to the viewport; long editable values scroll inside their entry,
+// rather than making the whole settings page wider.
+fn constrain_page_text(widget: &gtk::Widget) {
+    // Action buttons keep native label sizing; segmented choices may wrap.
+    if widget.is::<gtk::Button>() && !widget.is::<gtk::ToggleButton>() {
+        return;
+    }
+    if let Some(label) = widget.downcast_ref::<gtk::Label>()
+        && label.ellipsize() == gtk::pango::EllipsizeMode::None
+    {
+        label.set_wrap(
+            !label.has_css_class("settings-nowrap")
+                && !label.has_css_class("menu-heading")
+                && !label.has_css_class("settings-control-label"),
+        );
+        label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    }
+    if let Some(entry) = widget.downcast_ref::<gtk::Entry>() {
+        entry.set_width_chars(1);
+    }
+    let mut child = widget.first_child();
+    while let Some(widget) = child {
+        child = widget.next_sibling();
+        constrain_page_text(&widget);
+    }
+}
+
 fn page_content() -> gtk::Box {
-    let content = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
     content.add_css_class("settings-preferences");
     content
 }
 
-fn click_activation_option(
-    mode: &str,
-    activation: ClickActivation,
-) -> (
-    gtk::Box,
-    Vec<gtk::Box>,
-    Vec<gtk::ToggleButton>,
-    Vec<gtk::ToggleButton>,
-) {
-    let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-    row.add_css_class("click-activation-row");
-    let title = gtk::Label::new(Some(mode));
-    title.set_xalign(0.0);
-    title.set_width_chars(8);
-    title.add_css_class("settings-option-title");
-    row.append(&title);
-
-    let selected = |count| usize::from(count == ClickCount::Two);
-    let (file_control, file_buttons) =
-        segmented_control(&["1 click", "2 clicks"], selected(activation.files));
-    let (folder_control, folder_buttons) =
-        segmented_control(&["1 click", "2 clicks"], selected(activation.folders));
-    let mut options = Vec::new();
-    for (label, control, buttons) in [
-        ("Files", &file_control, &file_buttons),
-        ("Folders", &folder_control, &folder_buttons),
-    ] {
-        let option = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-        option.set_hexpand(true);
-        let label = gtk::Label::new(Some(label));
-        label.set_xalign(0.0);
-        label.set_width_chars(7);
-        label.add_css_class("settings-option-description");
-        control.set_hexpand(true);
-        control.add_css_class("click-activation-control");
-        // Twelve buttons on this page read "1 click" or "2 clicks". Naming each
-        // one after its row and its column turns them into distinguishable
-        // choices such as "List Folders 1 click".
-        for button in buttons {
-            button.update_relation(&[gtk::accessible::Relation::LabelledBy(&[
-                title.upcast_ref(),
-                label.upcast_ref(),
-                button.upcast_ref(),
-            ])]);
-        }
-        option.append(&label);
-        option.append(control);
-        row.append(&option);
-        options.push(option);
-    }
-    (row, options, file_buttons, folder_buttons)
-}
-
 fn settings_option(title: &str, description: &str, active: bool) -> (gtk::Box, gtk::Switch) {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 16);
+    search::tag(&row, title);
     row.add_css_class("settings-option");
     let copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
     copy.set_hexpand(true);
@@ -3175,10 +2698,12 @@ fn settings_option(title: &str, description: &str, active: bool) -> (gtk::Box, g
     description_label.set_xalign(0.0);
     description_label.set_wrap(true);
     description_label.add_css_class("settings-option-description");
+    description_label.set_visible(!description.is_empty());
     copy.append(&title_label);
     copy.append(&description_label);
     let toggle = gtk::Switch::builder()
         .active(active)
+        .halign(gtk::Align::End)
         .valign(gtk::Align::Center)
         .build();
     toggle.update_property(&[
@@ -3190,95 +2715,93 @@ fn settings_option(title: &str, description: &str, active: bool) -> (gtk::Box, g
     (row, toggle)
 }
 
-fn video_preview_option(
-    description: &str,
-    active: bool,
-    toggle_sensitive: bool,
-    backend_sensitive: bool,
-    selected_backend: MediaPreviewBackend,
-    manager: &Rc<ThemeManager>,
-) -> (gtk::Box, gtk::Switch, gtk::MenuButton) {
-    let (row, toggle) = settings_option(
-        "Use hardware acceleration for video previews.",
-        description,
-        active,
-    );
-    row.remove(&toggle);
+fn selects_all_in_settings_search(key: gdk::Key, modifiers: gdk::ModifierType) -> bool {
+    modifiers.contains(gdk::ModifierType::CONTROL_MASK) && matches!(key, gdk::Key::a | gdk::Key::A)
+}
 
-    let content = gtk::Box::new(gtk::Orientation::Vertical, 2);
-    content.add_css_class("column-menu");
-    let options = [
-        ("Automatic", MediaPreviewBackend::Automatic),
-        ("VA-API", MediaPreviewBackend::VaApi),
-        ("Vulkan", MediaPreviewBackend::Vulkan),
-    ]
-    .map(|(label, value)| {
-        let (option, check) = menu_option(label, selected_backend == value);
-        content.append(&option);
-        (label, value, option, check)
+fn search_field(placeholder: &str) -> (gtk::Overlay, gtk::Entry, gtk::Button) {
+    let theme_search = gtk::Entry::new();
+    theme_search.add_css_class("form-control");
+    theme_search.add_css_class("settings-search");
+    theme_search.set_placeholder_text(Some(placeholder));
+    super::accessibility::set_label(&theme_search, placeholder);
+    let search_keys = gtk::EventControllerKey::new();
+    search_keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let selected_search = theme_search.downgrade();
+    search_keys.connect_key_pressed(move |_, key, _, modifiers| {
+        if !selects_all_in_settings_search(key, modifiers) {
+            return glib::Propagation::Proceed;
+        }
+        let Some(search) = selected_search.upgrade() else {
+            return glib::Propagation::Proceed;
+        };
+        search.select_region(0, -1);
+        glib::Propagation::Stop
     });
-    let popover = gtk::Popover::builder()
-        .child(&content)
-        .has_arrow(false)
+    theme_search.add_controller(search_keys);
+    let clear_search = gtk::Button::builder()
+        .child(&crate::assets::primary_icon(icons::X, 15))
+        .tooltip_text("Clear search")
         .halign(gtk::Align::End)
-        .position(gtk::PositionType::Bottom)
+        .valign(gtk::Align::Center)
+        .margin_end(6)
+        .visible(false)
         .build();
-    popover.add_css_class("column-popover");
-    let backend = gtk::MenuButton::builder()
-        .label(video_preview_backend_label(selected_backend))
-        .always_show_arrow(true)
-        .popover(&popover)
-        .build();
-    backend.add_css_class("form-control");
-    backend.set_sensitive(backend_sensitive);
-    backend.set_valign(gtk::Align::Center);
-    backend.update_property(&[
-        gtk::accessible::Property::Label("Video preview hardware backend"),
-        gtk::accessible::Property::Description(description),
-    ]);
-    manager.bind_preference(
-        &backend,
-        ThemeManager::video_preview_backend,
-        |widget, selected| {
-            if let Some(button) = widget.downcast_ref::<gtk::MenuButton>() {
-                button.set_label(video_preview_backend_label(selected));
-            }
-        },
-    );
-    for (_, value, option, check) in options {
-        manager.bind_preference(
-            &check,
-            ThemeManager::video_preview_backend,
-            move |widget, selected| widget.set_visible(selected == value),
-        );
-        let backend = backend.downgrade();
-        let manager = manager.clone();
-        option.connect_clicked(move |_| {
-            manager.set_video_preview_backend(value);
-            if let Some(backend) = backend.upgrade() {
-                backend.popdown();
-            }
-        });
-    }
-    toggle.set_sensitive(toggle_sensitive);
-    let controls = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-    controls.set_valign(gtk::Align::Center);
-    controls.append(&backend);
-    controls.append(&toggle);
-    row.append(&controls);
-    (row, toggle, backend)
+    clear_search.add_css_class("theme-search-clear");
+    clear_search.set_has_frame(false);
+    let search_overlay = gtk::Overlay::new();
+    search_overlay.set_child(Some(&theme_search));
+    let icon = crate::assets::primary_icon(icons::SEARCH, 16);
+    icon.set_halign(gtk::Align::Start);
+    icon.set_valign(gtk::Align::Center);
+    icon.set_margin_start(12);
+    icon.add_css_class("settings-search-icon");
+    icon.set_can_target(false);
+    search_overlay.add_overlay(&icon);
+    search_overlay.add_overlay(&clear_search);
+    let search = theme_search.downgrade();
+    clear_search.connect_clicked(move |_| {
+        if let Some(search) = search.upgrade() {
+            search.set_text("");
+            search.grab_focus();
+        }
+    });
+    (search_overlay, theme_search, clear_search)
 }
 
-fn video_preview_backend_label(backend: MediaPreviewBackend) -> &'static str {
-    match backend {
-        MediaPreviewBackend::Automatic | MediaPreviewBackend::Software => "Automatic",
-        MediaPreviewBackend::VaApi => "VA-API",
-        MediaPreviewBackend::Vulkan => "Vulkan",
+fn settings_group(content: &gtk::Box, heading: &str) -> gtk::Box {
+    if !heading.is_empty() {
+        append_heading(content, heading);
     }
+    let group = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    group.add_css_class("settings-group");
+    group.set_overflow(gtk::Overflow::Hidden);
+    content.append(&group);
+    group
 }
 
-fn video_preview_control_state(enabled: bool) -> (bool, bool, bool) {
-    (enabled, true, enabled)
+fn control_row(title: &str, description: &str, control: &impl IsA<gtk::Widget>) -> gtk::Box {
+    let (row, placeholder) = settings_option(title, description, false);
+    row.remove(&placeholder);
+    row.append(control);
+    row
+}
+
+fn indent_row(row: &gtk::Box) {
+    let arrow = crate::assets::primary_icon(icons::CORNER_DOWN_RIGHT, 18);
+    arrow.add_css_class("settings-indent");
+    arrow.set_valign(gtk::Align::Center);
+    // Keep the dependency marker with its heading when the control stacks below.
+    if let Some(copy) = row.first_child().and_downcast::<gtk::Box>()
+        && let Some(title) = copy.first_child()
+    {
+        copy.remove(&title);
+        let heading = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+        heading.append(&arrow);
+        heading.append(&title);
+        copy.prepend(&heading);
+    }
+    row.add_css_class("settings-dependent");
 }
 
 fn append_heading(container: &gtk::Box, text: &str) -> gtk::Label {
@@ -3287,37 +2810,4 @@ fn append_heading(container: &gtk::Box, text: &str) -> gtk::Label {
     heading.add_css_class("menu-heading");
     container.append(&heading);
     heading
-}
-
-trait RoundedRectangle {
-    fn rounded_rectangle(&self, x: f64, y: f64, width: f64, height: f64, radius: f64);
-}
-impl RoundedRectangle for gtk::cairo::Context {
-    fn rounded_rectangle(&self, x: f64, y: f64, width: f64, height: f64, radius: f64) {
-        let degrees = std::f64::consts::PI / 180.0;
-        self.new_sub_path();
-        self.arc(x + width - radius, y + radius, radius, -90.0 * degrees, 0.0);
-        self.arc(
-            x + width - radius,
-            y + height - radius,
-            radius,
-            0.0,
-            90.0 * degrees,
-        );
-        self.arc(
-            x + radius,
-            y + height - radius,
-            radius,
-            90.0 * degrees,
-            180.0 * degrees,
-        );
-        self.arc(
-            x + radius,
-            y + radius,
-            radius,
-            180.0 * degrees,
-            270.0 * degrees,
-        );
-        self.close_path();
-    }
 }

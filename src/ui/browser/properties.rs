@@ -1,21 +1,145 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
+use crate::adapters::directory_summary::{DirectorySummary, summarize_directory_with_progress};
 use crate::adapters::gio_file_for_location;
-use crate::adapters::trash::summarize_trash;
 use crate::model::{FileEntry, Location};
 use crate::ui::browser::clipboard::copy_path_text;
 use crate::ui::browser::desktop::open_location;
-use crate::ui::browser::entry::{entry_icon, format_file_size, item_count_label};
+use crate::ui::browser::entry::{entry_icon, format_file_size};
 use crate::ui::browser::paths::{PinAction, compact_display_path, is_trash_root, pin_action_for};
 use crate::ui::browser::{PinStatus, ViewState};
-use crate::ui::controls::{form_check_button, modal_layout};
-use crate::ui::modal::{ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog};
+use crate::ui::controls::{ModalTone, form_check_button, modal_layout, properties_action};
+use crate::ui::modal::{
+    ModalHost, dismiss_modal_layer, modal_layer, remember_modal_focus, show_error_dialog,
+};
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::cell::Cell;
 use std::rc::Rc;
+use std::time::{Duration, Instant};
+
+mod media;
+
+const SIZE_PROGRESS_INTERVAL: Duration = Duration::from_millis(150);
+
+#[derive(Default)]
+struct SizeProgressThrottle {
+    last_update: Cell<Option<Instant>>,
+}
+
+impl SizeProgressThrottle {
+    fn should_update(&self, now: Instant) -> bool {
+        if self
+            .last_update
+            .get()
+            .is_some_and(|last| now.duration_since(last) < SIZE_PROGRESS_INTERVAL)
+        {
+            return false;
+        }
+        self.last_update.set(Some(now));
+        true
+    }
+}
+
+struct PropertiesMeasurement {
+    size: glib::WeakRef<gtk::Label>,
+    spinner: glib::WeakRef<gtk::Spinner>,
+    items: Option<glib::WeakRef<gtk::Label>>,
+    warning: glib::WeakRef<gtk::Image>,
+    throttle: SizeProgressThrottle,
+}
+
+impl PropertiesMeasurement {
+    fn new(
+        size: &gtk::Label,
+        spinner: &gtk::Spinner,
+        items: Option<&gtk::Label>,
+        warning: &gtk::Image,
+    ) -> Rc<Self> {
+        Rc::new(Self {
+            size: size.downgrade(),
+            spinner: spinner.downgrade(),
+            items: items.map(|items| items.downgrade()),
+            warning: warning.downgrade(),
+            throttle: SizeProgressThrottle::default(),
+        })
+    }
+
+    fn update(&self, summary: DirectorySummary) {
+        if let Some(size) = self.size.upgrade() {
+            let prefix = if summary.truncated() { "≥ " } else { "" };
+            size.set_text(&format!("{prefix}{}", format_file_size(summary.total_size)));
+        }
+        if let Some(items) = self.items.as_ref().and_then(|items| items.upgrade()) {
+            items.set_text(&directory_counts_label(&summary));
+        }
+        if let Some(warning) = self.warning.upgrade() {
+            set_measurement_warning(&warning, measurement_warning_text(&summary).as_deref());
+        }
+    }
+
+    async fn measure(
+        self: &Rc<Self>,
+        directory: &gio::File,
+        completed: DirectorySummary,
+    ) -> Result<DirectorySummary, glib::Error> {
+        let measurement = self.clone();
+        summarize_directory_with_progress(directory, move |partial| {
+            if partial.item_count > 0 && measurement.throttle.should_update(Instant::now()) {
+                let mut total = completed;
+                total.include(partial);
+                measurement.update(total);
+            }
+        })
+        .await
+    }
+
+    fn finish(&self, result: Result<DirectorySummary, glib::Error>) {
+        if let Some(spinner) = self.spinner.upgrade() {
+            spinner.stop();
+            spinner.set_visible(false);
+        }
+        match result {
+            Ok(summary) => self.update(summary),
+            Err(_) => {
+                if let Some(size) = self.size.upgrade() {
+                    size.set_text("Unavailable");
+                }
+                if let Some(items) = self.items.as_ref().and_then(|items| items.upgrade()) {
+                    items.set_text("Unavailable");
+                }
+                if let Some(warning) = self.warning.upgrade() {
+                    set_measurement_warning(&warning, Some("Folder contents couldn't be read."));
+                }
+            }
+        }
+    }
+}
+
+fn spawn_properties_measurement(
+    layer: &gtk::Box,
+    future: impl std::future::Future<Output = ()> + 'static,
+) {
+    let task = Rc::new(glib::MainContext::default().spawn_local(future));
+    let closing_task = task.clone();
+    layer.connect_sensitive_notify(move |layer| {
+        if !layer.is_sensitive() {
+            closing_task.abort();
+        }
+    });
+    layer.connect_unrealize(move |_| task.abort());
+}
 
 fn properties_row(parent: &gtk::Box, label: &str, value: &str) -> gtk::Label {
+    properties_row_with_suffix(parent, label, value, None)
+}
+
+fn properties_row_with_suffix(
+    parent: &gtk::Box,
+    label: &str,
+    value: &str,
+    suffix: Option<&gtk::Widget>,
+) -> gtk::Label {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     row.add_css_class("properties-row");
     let label = gtk::Label::new(Some(label));
@@ -29,8 +153,20 @@ fn properties_row(parent: &gtk::Box, label: &str, value: &str) -> gtk::Label {
     value.set_xalign(0.0);
     row.append(&label);
     row.append(&value);
+    if let Some(suffix) = suffix {
+        row.append(suffix);
+    }
     parent.append(&row);
     value
+}
+
+fn properties_size_row(parent: &gtk::Box, value: &str, spinner: &gtk::Spinner) -> gtk::Label {
+    spinner.set_halign(gtk::Align::End);
+    let size = properties_row_with_suffix(parent, "SIZE", value, Some(spinner.upcast_ref()));
+    size.add_css_class("properties-size-value");
+    size.set_width_chars(16);
+    size.set_max_width_chars(16);
+    size
 }
 
 #[derive(Clone)]
@@ -188,25 +324,56 @@ pub fn format_permissions(mode: u32) -> String {
     format!("{symbolic}  {:03o}", mode & 0o777)
 }
 
-fn properties_action(icon: &str, label: &str) -> gtk::Button {
-    let content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    content.append(&crate::assets::primary_icon(icon, 14));
-    content.append(&gtk::Label::new(Some(label)));
-    let button = gtk::Button::builder().child(&content).build();
-    button.add_css_class("properties-action");
-    button
+fn directory_counts_label(summary: &DirectorySummary) -> String {
+    let prefix = if summary.truncated() { "≥ " } else { "" };
+    let files = summary.visible_file_count;
+    let folders = summary.visible_folder_count;
+    let file_noun = if files == 1 { "file" } else { "files" };
+    let folder_noun = if folders == 1 { "folder" } else { "folders" };
+    format!("{prefix}{files} {file_noun}, {prefix}{folders} {folder_noun}")
+}
+
+fn measurement_warning_text(summary: &DirectorySummary) -> Option<String> {
+    let mut reasons = Vec::new();
+    if summary.issues.unreadable {
+        reasons.push("Some folders or entries couldn't be read.");
+    }
+    if summary.issues.timed_out {
+        reasons.push("The five-minute calculation limit was reached.");
+    }
+    if summary.issues.depth_limited {
+        reasons.push("Some folders exceeded the 64-level nesting limit.");
+    }
+    (!reasons.is_empty()).then(|| format!("Totals are incomplete.\n{}", reasons.join("\n")))
+}
+
+fn set_measurement_warning(warning: &gtk::Image, message: Option<&str>) {
+    warning.update_property(&[gtk::accessible::Property::Label(message.unwrap_or(""))]);
+    warning.set_visible(message.is_some());
 }
 
 impl ViewState {
     pub(super) fn show_folder_properties(self: &Rc<Self>, location: &Location) {
-        self.show_properties(location.clone(), None);
+        if location.is_recent_location() {
+            return;
+        }
+        self.show_properties(location.clone(), None, None);
     }
 
     pub(super) fn show_entry_properties(self: &Rc<Self>, entry: FileEntry) {
-        self.show_properties(entry.location.clone(), Some(entry));
+        self.show_properties(entry.location.clone(), Some(entry), None);
     }
 
-    fn show_properties(self: &Rc<Self>, location: Location, entry: Option<FileEntry>) {
+    pub(super) fn show_entry_properties_at(self: &Rc<Self>, entry: FileEntry, depth: usize) {
+        self.show_properties(entry.location.clone(), Some(entry), Some(depth));
+    }
+
+    fn show_properties(
+        self: &Rc<Self>,
+        location: Location,
+        entry: Option<FileEntry>,
+        rename_depth: Option<usize>,
+    ) {
         let Some(ModalHost {
             overlay: window_overlay,
             blurred_root,
@@ -243,16 +410,23 @@ impl ViewState {
             .set_ellipsize(gtk::pango::EllipsizeMode::Middle);
         layout.cancel.set_visible(false);
         layout.confirm.set_visible(false);
+        while let Some(child) = layout.actions.first_child() {
+            layout.actions.remove(&child);
+        }
+        layout.actions.set_orientation(gtk::Orientation::Horizontal);
+        layout.actions.set_homogeneous(true);
+        layout.actions.set_spacing(8);
         let kind = layout.subtitle.clone();
         let close = layout.close.clone();
 
         let details = gtk::Box::new(gtk::Orientation::Vertical, 0);
         details.add_css_class("properties-details");
         let location_value = properties_row(&details, "LOCATION", &compact_display_path(&location));
-        location_value.set_tooltip_text(Some(&location.display_path()));
+        crate::ui::accessibility::set_description(&location_value, Some(&location.display_path()));
         let trash_root = is_trash_root(&location);
-        let initial_size = if trash_root {
-            "Calculating…".to_owned()
+        let measuring_directory = is_directory || trash_root;
+        let initial_size = if measuring_directory {
+            format_file_size(0)
         } else {
             entry
                 .as_ref()
@@ -263,9 +437,37 @@ impl ViewState {
                 })
                 .unwrap_or_else(|| "—".to_owned())
         };
-        let size = properties_row(&details, "SIZE", &initial_size);
+        let size_spinner = gtk::Spinner::new();
+        size_spinner.add_css_class("properties-size-spinner");
+        size_spinner.set_valign(gtk::Align::Center);
+        crate::ui::accessibility::set_label(&size_spinner, "Calculating folder size");
+        size_spinner.set_spinning(measuring_directory);
+        size_spinner.set_visible(measuring_directory);
+        let size = properties_size_row(&details, &initial_size, &size_spinner);
+        let measurement_warning =
+            crate::assets::primary_icon(crate::assets::icons::TRIANGLE_ALERT, 16);
+        measurement_warning.set_halign(gtk::Align::End);
+        measurement_warning.set_valign(gtk::Align::Center);
+        measurement_warning.set_focusable(true);
+        measurement_warning.set_visible(false);
+        let items = measuring_directory.then(|| {
+            properties_row_with_suffix(
+                &details,
+                "CONTAINS",
+                "0 files, 0 folders",
+                Some(measurement_warning.upcast_ref()),
+            )
+        });
         let modified = properties_row(&details, "MODIFIED", "—");
-        crate::util::set_modified_date(&modified, entry.as_ref(), "—");
+        crate::util::set_full_modified_date(
+            &modified,
+            entry
+                .as_ref()
+                .and_then(|entry| match entry.modified_unix_seconds {
+                    crate::model::MetadataValue::Known(seconds) => Some(seconds),
+                    _ => None,
+                }),
+        );
         let opens_with = properties_row(&details, "OPENS WITH", "—");
         let hidden = properties_row(
             &details,
@@ -288,6 +490,37 @@ impl ViewState {
         );
         layout.body.append(&details);
 
+        let media_section = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        media_section.add_css_class("properties-details");
+        media_section.set_visible(false);
+        layout.body.append(&media_section);
+
+        // Keep permissions and actions reachable when media adds several rows.
+        layout.content.remove(&layout.body);
+        let scroll = gtk::ScrolledWindow::builder()
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .vscrollbar_policy(gtk::PolicyType::Automatic)
+            .propagate_natural_height(true)
+            .max_content_height(400)
+            .child(&layout.body)
+            .build();
+        scroll.add_css_class("media-details-scroll");
+        layout
+            .content
+            .insert_child_after(&scroll, layout.content.first_child().as_ref());
+        let weak_overlay = window_overlay.downgrade();
+        scroll.add_tick_callback(move |scroll, _| {
+            let Some(overlay) = weak_overlay.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+            let height = (overlay.height() - 220).max(100);
+            if scroll.max_content_height() != height {
+                scroll.set_max_content_height(height);
+            }
+            glib::ControlFlow::Continue
+        });
+        scroll.set_max_content_height((window_overlay.height() - 220).max(100));
+
         let permissions = gtk::Box::new(gtk::Orientation::Vertical, 8);
         permissions.add_css_class("properties-permissions");
         let permissions_header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
@@ -303,16 +536,45 @@ impl ViewState {
         let owner = permission_row(&permissions, "Owner");
         let group = permission_row(&permissions, "Group");
         let others = permission_row(&permissions, "Others");
-        let executable = form_check_button("Allow executing file as a program (+x)");
+        let executable_label = "Allow executing file as a program (+x)";
+        let executable = form_check_button(executable_label);
         executable.add_css_class("properties-executable");
+        let responsive_actions = layout.actions.clone();
+        let responsive_executable = executable.clone();
+        layout.content.add_tick_callback(move |content, _| {
+            let compact = content.has_css_class("modal-constrained");
+            let orientation = if compact {
+                gtk::Orientation::Vertical
+            } else {
+                gtk::Orientation::Horizontal
+            };
+            if responsive_actions.orientation() != orientation {
+                responsive_actions.set_orientation(orientation);
+                responsive_actions.set_homogeneous(!compact);
+            }
+            let visible_label = if compact {
+                "Executable (+x)"
+            } else {
+                executable_label
+            };
+            if responsive_executable.label().as_deref() != Some(visible_label) {
+                responsive_executable.set_label(Some(visible_label));
+                crate::ui::accessibility::set_label(&responsive_executable, executable_label);
+            }
+            glib::ControlFlow::Continue
+        });
         executable.set_sensitive(false);
         executable.set_visible(!is_directory);
         permissions.append(&executable);
         layout.body.append(&permissions);
 
         layout.actions.add_css_class("properties-actions");
-        let open = properties_action(crate::assets::icons::EXTERNAL_LINK, "Open");
-        let rename = properties_action(crate::assets::icons::PENCIL, "Rename");
+        let open = properties_action(
+            crate::assets::icons::EXTERNAL_LINK,
+            "Open",
+            ModalTone::Accent,
+        );
+        let rename = properties_action(crate::assets::icons::PENCIL, "Rename", ModalTone::Accent);
         rename.set_visible(!super::paths::is_trash_location(&location));
         rename.set_sensitive(
             entry.is_some() && (self.interactive || self.browser.selected_entries().len() == 1),
@@ -325,17 +587,42 @@ impl ViewState {
         let pin = properties_action(
             crate::assets::icons::PIN,
             pin_action.unwrap_or(PinAction::Pin).label(),
+            ModalTone::Accent,
         );
         pin.set_visible(self.interactive && pin_action.is_some());
-        let copy_path = properties_action(crate::assets::icons::COPY, "Copy path");
-        layout.actions.prepend(&copy_path);
-        layout.actions.prepend(&pin);
-        layout.actions.prepend(&rename);
-        layout.actions.prepend(&open);
+        let copy_path =
+            properties_action(crate::assets::icons::COPY, "Copy path", ModalTone::Accent);
+        layout.actions.append(&open);
+        layout.actions.append(&rename);
+        layout.actions.append(&pin);
+        layout.actions.append(&copy_path);
         let content = layout.content;
 
         let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
+        let restore_focus = remember_modal_focus(&layer, &window_overlay);
         window_overlay.add_overlay(&layer);
+        let metadata_load = entry.as_ref().filter(|_| !is_directory).and_then(|entry| {
+            if crate::ui::raw_details::supports(entry) {
+                Some(crate::ui::raw_details::load(
+                    &media_section,
+                    entry.local_thumbnail_path().map(ToOwned::to_owned),
+                ))
+            } else {
+                entry
+                    .local_thumbnail_path()
+                    .map(|path| media::load(&media_section, path.to_path_buf()))
+            }
+        });
+        if let Some(load) = metadata_load {
+            let load = Rc::new(load);
+            let closing = load.clone();
+            layer.connect_sensitive_notify(move |layer| {
+                if !layer.is_sensitive() {
+                    closing.cancel();
+                }
+            });
+            layer.connect_unrealize(move |_| load.cancel());
+        }
 
         let permission_editor = PermissionEditor {
             mode: Rc::new(Cell::new(None)),
@@ -353,7 +640,10 @@ impl ViewState {
             for ((button, mask), permission) in
                 row.bits.iter().zip(masks).zip(["read", "write", "execute"])
             {
-                button.set_tooltip_text(Some(&format!("Toggle {subject} {permission} permission")));
+                crate::ui::accessibility::set_description(
+                    button,
+                    Some(&format!("Toggle {subject} {permission} permission")),
+                );
                 let edited_file = gio_file_for_location(&location);
                 let editor = permission_editor.clone();
                 let parent = layer.clone();
@@ -397,20 +687,28 @@ impl ViewState {
         let opening_overlay = window_overlay.clone();
         let opening_root = blurred_root.clone();
         let opening_location = location.clone();
+        let opening_parent = self.overlay.clone();
+        let opening_browser = self.browser.clone();
         open.connect_clicked(move |_| {
-            open_location(&opening_location, &opening_layer);
+            open_location(&opening_location, &opening_parent, &opening_browser);
             dismiss_modal_layer(&opening_layer, &opening_overlay, opening_root.as_ref());
         });
         let renamed_layer = layer.clone();
         let renamed_overlay = window_overlay.clone();
         let renamed_root = blurred_root.clone();
+        let renamed_entry = entry.clone();
+        let renamed_depth = rename_depth
+            .or_else(|| self.destination_depth())
+            .unwrap_or(0);
         let weak = Rc::downgrade(self);
         rename.connect_clicked(move |_| {
+            restore_focus.set(false);
             dismiss_modal_layer(&renamed_layer, &renamed_overlay, renamed_root.as_ref());
             let weak = weak.clone();
+            let renamed_entry = renamed_entry.clone();
             glib::idle_add_local_once(move || {
-                if let Some(state) = weak.upgrade() {
-                    state.begin_rename();
+                if let (Some(state), Some(entry)) = (weak.upgrade(), renamed_entry) {
+                    state.begin_entry_rename(renamed_depth, &entry);
                 }
             });
         });
@@ -459,24 +757,19 @@ impl ViewState {
         layer.add_controller(escape);
         layer.grab_focus();
 
-        if trash_root {
-            let weak_size = size.downgrade();
-            glib::MainContext::default().spawn_local(async move {
-                let summary = summarize_trash(&gio::File::for_uri("trash:///")).await;
-                let Some(size) = weak_size.upgrade() else {
-                    return;
-                };
-                match summary {
-                    Ok(summary) => {
-                        let prefix = if summary.truncated { "≥ " } else { "" };
-                        size.set_text(&format!("{prefix}{}", format_file_size(summary.total_size)));
-                        size.set_tooltip_text(Some(&format!(
-                            "{prefix}{}",
-                            item_count_label(summary.item_count)
-                        )));
-                    }
-                    Err(_) => size.set_text("Unavailable"),
-                }
+        if measuring_directory {
+            let measurement = PropertiesMeasurement::new(
+                &size,
+                &size_spinner,
+                items.as_ref(),
+                &measurement_warning,
+            );
+            let directory = gio_file_for_location(&location);
+            spawn_properties_measurement(&layer, async move {
+                let summary = measurement
+                    .measure(&directory, DirectorySummary::default())
+                    .await;
+                measurement.finish(summary);
             });
         }
 
@@ -496,12 +789,7 @@ impl ViewState {
                 size.set_text(&format_file_size(info.size().max(0) as u64));
             }
             if let Some(time) = info.modification_date_time() {
-                modified.set_text(
-                    &time
-                        .format("%Y-%m-%d %H:%M")
-                        .map(|value| value.to_string())
-                        .unwrap_or_else(|_| "—".to_owned()),
-                );
+                crate::util::set_full_modified_date(&modified, Some(time.to_unix()));
             }
             hidden.set_text(if info.is_hidden() { "Yes" } else { "No" });
             if let Some(content_type) = info.content_type() {
@@ -526,5 +814,101 @@ impl ViewState {
     }
 }
 
-#[cfg(test)]
-mod tests;
+impl ViewState {
+    pub(super) fn show_selection_properties(self: &Rc<Self>, entries: Vec<FileEntry>) {
+        if entries.len() < 2 {
+            if let Some(entry) = entries.into_iter().next() {
+                self.show_entry_properties(entry);
+            }
+            return;
+        }
+        let Some(ModalHost {
+            overlay: window_overlay,
+            blurred_root,
+        }) = ModalHost::blurred_for(&self.overlay)
+        else {
+            return;
+        };
+
+        let title = format!("{} items selected", entries.len());
+        let layout = modal_layout(crate::assets::icons::INFO, &title, "Selection", "Close");
+        layout.cancel.set_visible(false);
+        layout.confirm.set_visible(false);
+        layout.actions.set_visible(false);
+
+        let details = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        details.add_css_class("properties-details");
+        let size_spinner = gtk::Spinner::new();
+        size_spinner.add_css_class("properties-size-spinner");
+        size_spinner.set_valign(gtk::Align::Center);
+        crate::ui::accessibility::set_label(&size_spinner, "Calculating selection size");
+        size_spinner.set_spinning(true);
+        let size = properties_size_row(&details, &format_file_size(0), &size_spinner);
+        let measurement_warning =
+            crate::assets::primary_icon(crate::assets::icons::TRIANGLE_ALERT, 16);
+        measurement_warning.set_halign(gtk::Align::End);
+        measurement_warning.set_valign(gtk::Align::Center);
+        measurement_warning.set_focusable(true);
+        measurement_warning.set_visible(false);
+        let items = properties_row_with_suffix(
+            &details,
+            "CONTAINS",
+            "Calculating…",
+            Some(measurement_warning.upcast_ref()),
+        );
+        layout.body.append(&details);
+        let content = layout.content;
+
+        let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
+        remember_modal_focus(&layer, &window_overlay);
+        window_overlay.add_overlay(&layer);
+
+        let close = layout.close.clone();
+        let closing_layer = layer.clone();
+        let closing_overlay = window_overlay.clone();
+        let closing_root = blurred_root.clone();
+        close.connect_clicked(move |_| {
+            dismiss_modal_layer(&closing_layer, &closing_overlay, closing_root.as_ref());
+        });
+        let escape = gtk::EventControllerKey::new();
+        let escaped_layer = layer.clone();
+        let escaped_overlay = window_overlay.clone();
+        let escaped_root = blurred_root.clone();
+        escape.connect_key_pressed(move |_, key, _, _| {
+            if key == gtk::gdk::Key::Escape {
+                dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
+                glib::Propagation::Stop
+            } else {
+                glib::Propagation::Proceed
+            }
+        });
+        layer.add_controller(escape);
+        layer.grab_focus();
+
+        let measurement =
+            PropertiesMeasurement::new(&size, &size_spinner, Some(&items), &measurement_warning);
+        spawn_properties_measurement(&layer, async move {
+            let mut total = DirectorySummary::default();
+            for entry in entries.iter().filter(|entry| !entry.is_directory()) {
+                total.item_count = total.item_count.saturating_add(1);
+                total.visible_file_count = total.visible_file_count.saturating_add(1);
+                if let crate::model::MetadataValue::Known(size) = entry.size {
+                    total.total_size = total.total_size.saturating_add(size);
+                } else {
+                    total.issues.unreadable = true;
+                }
+            }
+            measurement.update(total);
+            for entry in entries.iter().filter(|entry| entry.is_directory()) {
+                let directory = gio_file_for_location(&entry.location);
+                let summary = measurement.measure(&directory, total).await;
+                match summary {
+                    Ok(summary) => total.include(summary),
+                    Err(_) => total.issues.unreadable = true,
+                }
+                measurement.update(total);
+            }
+            measurement.finish(Ok(total));
+        });
+    }
+}

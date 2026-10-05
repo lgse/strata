@@ -1,0 +1,12 @@
+{
+  "name": "strata-math-renderer",
+  "private": true,
+  "scripts": {
+    "build": "esbuild entry.js --bundle --minify --format=iife --platform=neutral --target=es2020 --outfile=../../data/math-renderer.js"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "@mathjax/src": "4.1.3",
+    "@mathjax/mathjax-tex-font": "4.1.3"
+  }
+}

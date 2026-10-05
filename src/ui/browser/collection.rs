@@ -1,9 +1,12 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use crate::app::Browser;
 use crate::model::Location;
+use crate::services::{filter_query_allows_typos, fold_for_search};
 use crate::ui::browser::entry::entry_matches;
 use crate::ui::entry_list_model::EntryListModel;
+use crate::ui::preferences::PreferenceManager;
+use crate::ui::search_session::SearchScope;
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::cell::{Cell, RefCell};
@@ -14,6 +17,7 @@ pub(crate) const FILTER_DEBOUNCE_DELAY: Duration = Duration::from_millis(40);
 
 thread_local! {
     static PENDING_SCROLLS: RefCell<Vec<(glib::WeakRef<gtk::Widget>, gtk::TickCallbackId)>> = const { RefCell::new(Vec::new()) };
+    static PENDING_REVEALS: RefCell<Vec<(glib::WeakRef<gtk::Widget>, gtk::TickCallbackId)>> = const { RefCell::new(Vec::new()) };
 }
 
 fn take_pending_scroll(view: &gtk::Widget) -> Option<gtk::TickCallbackId> {
@@ -24,6 +28,17 @@ fn take_pending_scroll(view: &gtk::Widget) -> Option<gtk::TickCallbackId> {
             .position(|(candidate, _)| candidate.upgrade().as_ref() == Some(view))?;
         Some(pending.swap_remove(index).1)
     })
+}
+
+pub(crate) fn prepare_collection_inline_edit(view: &gtk::Widget, position: u32) {
+    if let Some(pending) = take_pending_reveal(view) {
+        pending.remove();
+    }
+    if let Some(pending) = take_pending_scroll(view) {
+        pending.remove();
+    }
+    // Replace deferred row focus before moving focus into its editor.
+    apply_collection_scroll(view, position, gtk::ListScrollFlags::NONE);
 }
 
 /// `scroll_to` before the view has a real height leaves ListView/GridView with a
@@ -73,6 +88,107 @@ fn scroll_collection_when_allocated_with(
     PENDING_SCROLLS.with_borrow_mut(|pending| pending.push((view.downgrade(), callback)));
 }
 
+fn take_pending_reveal(view: &gtk::Widget) -> Option<gtk::TickCallbackId> {
+    PENDING_REVEALS.with_borrow_mut(|pending| {
+        pending.retain(|(view, _)| view.upgrade().is_some());
+        let index = pending
+            .iter()
+            .position(|(candidate, _)| candidate.upgrade().as_ref() == Some(view))?;
+        Some(pending.swap_remove(index).1)
+    })
+}
+
+pub(crate) fn reveal_collection_after_layout(
+    view: &gtk::Widget,
+    position: u32,
+    visit_items: crate::ui::marquee::ItemVisitor,
+) {
+    if view.is::<gtk::GridView>() {
+        focus_collection_item_when_allocated(view, position);
+        return;
+    }
+    if let Some(pending) = take_pending_reveal(view) {
+        pending.remove();
+    }
+    let frames = Cell::new(0u8);
+    let visible_frames = Cell::new(0u8);
+    let callback = view.add_tick_callback(move |view, _| {
+        let frame = frames.get() + 1;
+        frames.set(frame);
+        let selection = view
+            .downcast_ref::<gtk::ListView>()
+            .and_then(|list| list.model())
+            .or_else(|| {
+                view.downcast_ref::<gtk::GridView>()
+                    .and_then(|grid| grid.model())
+            });
+        let Some(selection) = selection.filter(|model| model.is_selected(position)) else {
+            take_pending_reveal(view);
+            return glib::ControlFlow::Break;
+        };
+        if frame >= 30 || !view.is_mapped() {
+            take_pending_reveal(view);
+            return glib::ControlFlow::Break;
+        }
+        if frame < 2 || view.height() <= 1 {
+            return glib::ControlFlow::Continue;
+        }
+        let Some(scroll) = view
+            .ancestor(gtk::ScrolledWindow::static_type())
+            .and_downcast::<gtk::ScrolledWindow>()
+        else {
+            take_pending_reveal(view);
+            return glib::ControlFlow::Break;
+        };
+        let adjustment = scroll.vadjustment();
+        let mut bounds = None;
+        visit_items(&mut |candidate, item| {
+            if candidate == position && item.is_mapped() && item.height() > 0 {
+                bounds = item.compute_bounds(&scroll);
+            }
+        });
+        if let Some(bounds) = bounds {
+            let top = f64::from(bounds.y());
+            let bottom = top + f64::from(bounds.height());
+            let page = adjustment.page_size();
+            let delta = if top < 0.0 {
+                top
+            } else if bottom > page {
+                bottom - page
+            } else {
+                0.0
+            };
+            if delta.abs() < 1.0 {
+                visible_frames.set(visible_frames.get() + 1);
+                if visible_frames.get() >= 2 {
+                    take_pending_reveal(view);
+                    return glib::ControlFlow::Break;
+                }
+            } else {
+                visible_frames.set(0);
+                adjustment.set_value((adjustment.value() + delta).clamp(
+                    adjustment.lower(),
+                    (adjustment.upper() - page).max(adjustment.lower()),
+                ));
+            }
+        } else {
+            visible_frames.set(0);
+            // Materialize the virtualized target before measuring its real row bounds.
+            apply_collection_scroll(view, position, gtk::ListScrollFlags::NONE);
+            if view.is::<gtk::ListView>() && frame > 2 {
+                let row_height = (adjustment.upper() - adjustment.lower())
+                    / f64::from(selection.n_items().max(1));
+                adjustment.set_value((row_height * f64::from(position)).clamp(
+                    adjustment.lower(),
+                    (adjustment.upper() - adjustment.page_size()).max(adjustment.lower()),
+                ));
+            }
+        }
+        glib::ControlFlow::Continue
+    });
+    PENDING_REVEALS.with_borrow_mut(|pending| pending.push((view.downgrade(), callback)));
+}
+
 fn collection_view_holds_focus(view: &gtk::Widget) -> bool {
     let Some(focused) = view.root().and_then(|root| root.focus()) else {
         return false;
@@ -80,7 +196,11 @@ fn collection_view_holds_focus(view: &gtk::Widget) -> bool {
     view.has_focus() || focused == *view || view.is_ancestor(&focused) || focused.is_ancestor(view)
 }
 
-fn apply_collection_scroll(view: &gtk::Widget, position: u32, flags: gtk::ListScrollFlags) {
+pub(super) fn apply_collection_scroll(
+    view: &gtk::Widget,
+    position: u32,
+    flags: gtk::ListScrollFlags,
+) {
     if let Ok(list) = view.clone().downcast::<gtk::ListView>() {
         if position < list.model().map_or(0, |model| model.n_items()) {
             list.scroll_to(position, flags, None);
@@ -96,6 +216,9 @@ fn apply_collection_scroll(view: &gtk::Widget, position: u32, flags: gtk::ListSc
 
 pub(crate) fn detach_collection_view(view: &impl IsA<gtk::Widget>) {
     let view = view.as_ref();
+    if let Some(pending) = take_pending_reveal(view) {
+        pending.remove();
+    }
     if let Ok(list) = view.clone().downcast::<gtk::ListView>() {
         list.set_factory(None::<&gtk::ListItemFactory>);
         list.set_model(None::<&gtk::SelectionModel>);
@@ -103,6 +226,34 @@ pub(crate) fn detach_collection_view(view: &impl IsA<gtk::Widget>) {
         grid.set_factory(None::<&gtk::ListItemFactory>);
         grid.set_model(None::<&gtk::SelectionModel>);
     }
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(crate) struct ActivePaneFilter {
+    pub query: String,
+    pub revealed: bool,
+}
+
+impl ActivePaneFilter {
+    pub fn should_restore(&self) -> bool {
+        self.revealed || !self.query.is_empty()
+    }
+}
+
+pub(crate) fn restore_filter_controls(
+    button: &gtk::ToggleButton,
+    entry: &gtk::Entry,
+    filter: &ActivePaneFilter,
+) {
+    if !filter.should_restore() {
+        // Icons/List panes are reused, so empty+off must dismiss leftover query/toggle.
+        button.set_active(false);
+        entry.set_text("");
+        return;
+    }
+    // A 10xer footer filter never revealed the funnel, so a rebuild keeps it hidden.
+    button.set_active(filter.revealed);
+    entry.set_text(&filter.query);
 }
 
 pub(crate) fn focus_filter_entry(entry: &gtk::Entry, query: Option<&str>) {
@@ -116,7 +267,7 @@ pub(crate) fn focus_filter_entry(entry: &gtk::Entry, query: Option<&str>) {
     }
 }
 
-pub(crate) fn debounce_filter_entry(entry: &gtk::Entry, on_settled: impl Fn(String) + 'static) {
+fn debounce_filter_entry(entry: &gtk::Entry, on_settled: impl Fn(String) + 'static) {
     let pending: Rc<RefCell<Option<glib::SourceId>>> = Rc::new(RefCell::new(None));
     let on_settled = Rc::new(on_settled);
     entry.connect_changed(move |entry| {
@@ -134,8 +285,230 @@ pub(crate) fn debounce_filter_entry(entry: &gtk::Entry, on_settled: impl Fn(Stri
     });
 }
 
+// Don't filter a replaced listing: doing so would discard its hidden selection.
+pub(crate) fn bind_listing_filter(
+    entry: &gtk::Entry,
+    filter: &gtk::CustomFilter,
+    query: &Rc<RefCell<String>>,
+    replaced: Rc<Cell<bool>>,
+    state: Option<Weak<super::ViewState>>,
+) {
+    let refresh = Rc::new(move || {
+        if let Some(state) = state.as_ref().and_then(Weak::upgrade) {
+            state.refresh_name_highlights();
+        }
+    });
+    let settled_filter = filter.clone();
+    let settled_query = query.clone();
+    let settled_refresh = refresh.clone();
+    debounce_filter_entry(entry, move |text| {
+        let text = if replaced.get() { String::new() } else { text };
+        notify_filter_query(&settled_filter, &settled_query, text);
+        settled_refresh();
+    });
+    let filter = filter.downgrade();
+    let primed = Cell::new(false);
+    PreferenceManager::shared().bind_preference(
+        entry,
+        PreferenceManager::tenxer_mode,
+        move |_, _| {
+            if primed.replace(true)
+                && let Some(filter) = filter.upgrade()
+            {
+                filter.changed(gtk::FilterChange::Different);
+                refresh();
+            }
+        },
+    );
+}
+
+type FilterQueryCallback = dyn Fn(String, SearchScope, bool);
+
+pub(in crate::ui) struct FilterQueryBinding {
+    entry: glib::WeakRef<gtk::Entry>,
+    changed: Option<glib::SignalHandlerId>,
+    pending: Rc<RefCell<Option<glib::SourceId>>>,
+    callback: Weak<FilterQueryCallback>,
+    scope: FilterScope,
+}
+
+// 10xer overrides scope without overwriting the saved subfolder preference.
+#[derive(Clone, Default)]
+struct FilterScope {
+    include_subfolders: Rc<Cell<bool>>,
+    tenxer: Rc<Cell<bool>>,
+    forced: Rc<Cell<bool>>,
+}
+
+impl FilterScope {
+    fn current(&self) -> SearchScope {
+        if self.forced.get() {
+            SearchScope::Paths
+        } else if self.tenxer.get() {
+            SearchScope::FolderTerms
+        } else if self.include_subfolders.get() {
+            SearchScope::Subfolders
+        } else {
+            SearchScope::Folder
+        }
+    }
+}
+
+impl FilterQueryBinding {
+    /// Applies typed text still waiting on the debounce now, so a committed
+    /// footer filter shows its results before focus returns to the listing.
+    pub(in crate::ui) fn flush(&self) {
+        let Some(source) = self.pending.borrow_mut().take() else {
+            return;
+        };
+        source.remove();
+        if let (Some(entry), Some(callback)) = (self.entry.upgrade(), self.callback.upgrade()) {
+            let text = entry.text().to_string();
+            if text.trim().is_empty() {
+                self.scope.forced.set(false);
+            }
+            callback(text, self.scope.current(), false);
+        }
+    }
+
+    /// Searches subfolders regardless of **Include subfolders** until the
+    /// field is emptied. Returns whether the scope changed; text typed from
+    /// then on uses it, and [`Self::requery`] applies it to the current text.
+    pub(in crate::ui) fn force_recursive(&self, forced: bool) -> bool {
+        self.scope.forced.replace(forced) != forced
+    }
+
+    pub(in crate::ui) fn forced_recursive(&self) -> bool {
+        self.scope.forced.get()
+    }
+
+    pub(in crate::ui) fn release_forced_recursion(&self) {
+        if self.force_recursive(false)
+            && self
+                .entry
+                .upgrade()
+                .is_some_and(|entry| !entry.text().trim().is_empty())
+        {
+            self.requery();
+        }
+    }
+
+    /// Like [`Self::flush`], but restarts the query so the previous query's
+    /// rows are dropped rather than shown until the new ones arrive.
+    pub(in crate::ui) fn settle(&self) {
+        if self.pending.borrow().is_some() {
+            self.requery();
+        }
+    }
+
+    pub(in crate::ui) fn requery(&self) {
+        cancel_source(&self.pending);
+        if let (Some(entry), Some(callback)) = (self.entry.upgrade(), self.callback.upgrade()) {
+            callback(entry.text().to_string(), self.scope.current(), true);
+        }
+    }
+}
+
+impl Drop for FilterQueryBinding {
+    fn drop(&mut self) {
+        cancel_source(&self.pending);
+        if let Some(entry) = self.entry.upgrade()
+            && let Some(changed) = self.changed.take()
+        {
+            entry.disconnect(changed);
+        }
+    }
+}
+
+/// Scope changes bypass typing's debounce. Intent changes reject old worker events immediately;
+/// dropping the binding disconnects the entry and cancels queued work before a view is detached.
+pub(in crate::ui) fn bind_filter_query(
+    entry: &gtk::Entry,
+    session: &crate::ui::search_session::SearchSession,
+    on_query: impl Fn(String, SearchScope, bool) + 'static,
+) -> FilterQueryBinding {
+    let pending = Rc::new(RefCell::new(None));
+    let callback: Rc<FilterQueryCallback> = Rc::new(on_query);
+    let scope = FilterScope {
+        include_subfolders: Rc::new(Cell::new(true)),
+        tenxer: Rc::new(Cell::new(PreferenceManager::shared().tenxer_mode())),
+        forced: Rc::default(),
+    };
+    let requery_on_change = |setting: fn(&FilterScope) -> &Rc<Cell<bool>>| {
+        let weak_callback = Rc::downgrade(&callback);
+        let pending = pending.clone();
+        let scope = scope.clone();
+        move |entry: &gtk::Widget, enabled: bool| {
+            setting(&scope).set(enabled);
+            cancel_source(&pending);
+            if let Some(callback) = weak_callback.upgrade() {
+                let entry = entry
+                    .downcast_ref::<gtk::Entry>()
+                    .expect("filter entry anchor");
+                callback(entry.text().to_string(), scope.current(), true);
+            }
+        }
+    };
+    let manager = PreferenceManager::shared();
+    manager.bind_preference(
+        entry,
+        PreferenceManager::filter_include_subfolders,
+        requery_on_change(|scope| &scope.include_subfolders),
+    );
+    let on_tenxer = requery_on_change(|scope| &scope.tenxer);
+    let tenxer = scope.tenxer.clone();
+    manager.bind_preference(
+        entry,
+        PreferenceManager::tenxer_mode,
+        move |entry, enabled| {
+            if tenxer.get() != enabled {
+                on_tenxer(entry, enabled);
+            }
+        },
+    );
+    let pending_for_drop = pending.clone();
+    let callback_for_flush = Rc::downgrade(&callback);
+    let scope_for_flush = scope.clone();
+    let session = session.clone();
+    let changed = entry.connect_changed(move |entry| {
+        session.expect_query(entry.text().as_str());
+        cancel_source(&pending);
+        let slot = pending.clone();
+        let callback = callback.clone();
+        let text = entry.text().to_string();
+        let scope = scope.clone();
+        *pending.borrow_mut() = Some(glib::timeout_add_local_once(
+            FILTER_DEBOUNCE_DELAY,
+            move || {
+                slot.borrow_mut().take();
+                // Clearing the field, including by navigation, ends a forced
+                // search. Replacing text passes through empty, so only settled
+                // text counts.
+                if text.trim().is_empty() {
+                    scope.forced.set(false);
+                }
+                callback(text, scope.current(), false);
+            },
+        ));
+    });
+    FilterQueryBinding {
+        entry: entry.downgrade(),
+        changed: Some(changed),
+        pending: pending_for_drop,
+        callback: callback_for_flush,
+        scope: scope_for_flush,
+    }
+}
+
 pub(crate) fn filter_change_for(previous: &str, settled: &str) -> gtk::FilterChange {
-    if settled.starts_with(previous) && settled.len() > previous.len() {
+    // Wildcard and typo edits can add and remove matches in the same update.
+    if previous.contains('*')
+        || settled.contains('*')
+        || filter_query_allows_typos(previous)
+        || filter_query_allows_typos(settled)
+    {
+        gtk::FilterChange::Different
+    } else if settled.starts_with(previous) && settled.len() > previous.len() {
         gtk::FilterChange::MoreStrict
     } else if previous.starts_with(settled) && previous.len() > settled.len() {
         gtk::FilterChange::LessStrict
@@ -144,12 +517,17 @@ pub(crate) fn filter_change_for(previous: &str, settled: &str) -> gtk::FilterCha
     }
 }
 
+pub(crate) fn filter_placeholder(count: usize) -> String {
+    let noun = if count == 1 { "item" } else { "items" };
+    format!("Filter {count} {noun}…")
+}
+
 pub(crate) fn notify_filter_query(
     filter: &gtk::CustomFilter,
     query: &RefCell<String>,
     text: String,
 ) {
-    let settled = text.to_lowercase();
+    let settled = fold_for_search(&text);
     let previous = query.borrow().clone();
     if previous == settled {
         return;
@@ -271,6 +649,14 @@ impl ViewMap {
             .map_or(0, |placeholder| placeholder.n_items())
     }
 
+    pub(crate) fn has_query(&self) -> bool {
+        !self.query.borrow().trim().is_empty()
+    }
+
+    pub(crate) fn query(&self) -> std::cell::Ref<'_, String> {
+        self.query.borrow()
+    }
+
     pub(crate) fn source_position(&self, visible_position: u32) -> Option<usize> {
         let filter_position = visible_position.checked_sub(self.placeholder_count())?;
         let query = self.query.borrow();
@@ -317,6 +703,25 @@ impl ViewMap {
     }
 }
 
+pub(crate) fn search_result_entry(item: &crate::services::SearchItem) -> crate::model::FileEntry {
+    use crate::model::{FileEntry, MetadataValue};
+    FileEntry {
+        location: Location::local(item.path.clone()),
+        native_name: item.path.file_name().unwrap_or_default().to_os_string(),
+        thumbnail_path: None,
+        display_name: item.name.clone(),
+        kind: item.kind,
+        size: MetadataValue::Unknown,
+        modified_unix_seconds: MetadataValue::Unknown,
+        recent_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
+        mode: item.mode.clone(),
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
+    }
+}
+
 pub(crate) fn recursive_search_activation_key(key: gtk::gdk::Key) -> bool {
     matches!(
         key,
@@ -337,10 +742,8 @@ pub(crate) fn activate_recursive_search_result(
     };
     if item.is_directory {
         browser.navigate(Location::local(item.path));
-    } else if let Some(parent) = item.path.parent() {
-        browser.navigate(Location::local(parent));
     } else {
-        return false;
+        browser.open_location(Location::local(item.path));
     }
     true
 }
@@ -393,10 +796,11 @@ pub(crate) fn apply_selection_plan(
             selection.select_range(position, count, true);
         }
         SelectionPlan::Items(items) => {
-            selection.unselect_all();
+            let selected = gtk::Bitset::new_empty();
             for position in items {
-                selection.select_item(*position, false);
+                selected.add(*position);
             }
+            selection.set_selection(&selected, &gtk::Bitset::new_range(0, n_items));
         }
     }
 }
@@ -408,11 +812,8 @@ pub(super) fn bitset_positions(bitset: &gtk::Bitset) -> Vec<u32> {
     std::iter::once(first).chain(iterator).collect()
 }
 
-pub(super) fn cancel_source(source: &RefCell<Option<glib::SourceId>>) {
+pub(crate) fn cancel_source(source: &RefCell<Option<glib::SourceId>>) {
     if let Some(source) = source.take() {
         source.remove();
     }
 }
-
-#[cfg(test)]
-mod tests;

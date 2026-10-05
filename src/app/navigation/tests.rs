@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::ffi::OsString;
 
@@ -25,9 +25,38 @@ fn named_entry(path: &str, name: &str) -> FileEntry {
         kind: EntryKind::Directory,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        recent_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }
+}
+
+fn listing_without_a_load_cursor(state: &mut NavigationState) {
+    state.navigate(location("/fixture"), RequestId(1));
+    state.apply_batch(
+        RequestId(1),
+        vec![
+            named_entry("/fixture/alpha", "alpha"),
+            named_entry("/fixture/bravo", "bravo"),
+            named_entry("/fixture/charlie", "charlie"),
+        ],
+    );
+}
+
+fn listing_with_the_first_entry_selected(state: &mut NavigationState) {
+    state.navigate(location("/fixture"), RequestId(1));
+    state.select_first_on_load(0);
+    state.apply_batch(
+        RequestId(1),
+        vec![
+            named_entry("/fixture/alpha", "alpha"),
+            named_entry("/fixture/bravo", "bravo"),
+            named_entry("/fixture/charlie", "charlie"),
+        ],
+    );
 }
 
 #[test]
@@ -169,6 +198,82 @@ fn keyboard_range_selection_extends_and_contracts_from_its_anchor() {
 }
 
 #[test]
+fn extending_from_no_selection_starts_at_a_single_edge_entry() {
+    let mut state = NavigationState::default();
+    listing_without_a_load_cursor(&mut state);
+
+    assert_eq!(
+        state.extend_selection(1).map(|(_, _, range)| range),
+        Some(vec![0])
+    );
+    assert_eq!(
+        state.extend_selection(1).map(|(_, _, range)| range),
+        Some(vec![0, 1])
+    );
+
+    let mut state = NavigationState::default();
+    listing_without_a_load_cursor(&mut state);
+    assert_eq!(
+        state.extend_selection(-1).map(|(_, _, range)| range),
+        Some(vec![2])
+    );
+    assert_eq!(
+        state.extend_selection(-1).map(|(_, _, range)| range),
+        Some(vec![1, 2])
+    );
+}
+
+#[test]
+fn extending_from_an_escape_cleared_cursor_starts_on_that_entry() {
+    let mut state = NavigationState::default();
+    listing_with_the_first_entry_selected(&mut state);
+    assert_eq!(state.active_focus(), Some((0, Some(0))));
+    assert_eq!(state.selected_positions(0), [0]);
+
+    assert_eq!(state.clear_active_selection(), Some((0, 0)));
+    assert!(state.selected_positions(0).is_empty());
+    assert_eq!(state.active_focus(), Some((0, Some(0))));
+    assert_eq!(state.selection_anchor_position(0), Some(0));
+
+    assert_eq!(
+        state.extend_selection(1).map(|(_, _, range)| range),
+        Some(vec![0])
+    );
+    assert_eq!(state.selection_anchor_position(0), Some(0));
+    assert_eq!(
+        state.extend_selection(1).map(|(_, _, range)| range),
+        Some(vec![0, 1])
+    );
+}
+
+#[test]
+fn extending_from_an_escape_cleared_range_starts_on_the_cursor() {
+    let mut state = NavigationState::default();
+    listing_with_the_first_entry_selected(&mut state);
+    assert_eq!(
+        state.extend_selection(1).map(|(_, _, range)| range),
+        Some(vec![0, 1])
+    );
+    assert_eq!(state.active_focus(), Some((0, Some(1))));
+    assert_eq!(state.selection_anchor_position(0), Some(0));
+
+    assert_eq!(state.clear_active_selection(), Some((0, 1)));
+    assert!(state.selected_positions(0).is_empty());
+    assert_eq!(state.active_focus(), Some((0, Some(1))));
+    assert_eq!(state.selection_anchor_position(0), Some(0));
+
+    assert_eq!(
+        state.extend_selection(1).map(|(_, _, range)| range),
+        Some(vec![1])
+    );
+    assert_eq!(state.selection_anchor_position(0), Some(1));
+    assert_eq!(
+        state.extend_selection(1).map(|(_, _, range)| range),
+        Some(vec![1, 2])
+    );
+}
+
+#[test]
 fn visual_ranges_cross_type_groups_and_contract_without_selecting_filtered_entries() {
     let mut state = NavigationState::default();
     state.navigate(location("/fixture"), RequestId(1));
@@ -245,6 +350,49 @@ fn active_path_is_independent_from_the_parent_highlight() {
 }
 
 #[test]
+fn camera_device_order_monitor_changes_preserve_existing_positions() {
+    let mut state = NavigationState::default();
+    let watched = Location::uri("gphoto2://camera/");
+    state.navigate(watched.clone(), RequestId(1));
+    let photo = |name: &str| FileEntry {
+        location: Location::uri(format!("gphoto2://camera/202609_a/{name}")),
+        kind: EntryKind::File,
+        ..named_entry("/unused", name)
+    };
+    state.apply_batch(RequestId(1), vec![photo("z.jpg"), photo("m.jpg")]);
+    state.set_selection(0, &[1], Some(1));
+    let (splices, _) = state
+        .apply_directory_change(0, &watched, DirectoryChange::Upsert(photo("a.jpg")))
+        .expect("new photo appended");
+    assert_eq!(splices[0].position, 2);
+    let mut updated = photo("m.jpg");
+    updated.display_name = "b.jpg".into();
+    updated.size = MetadataValue::Known(99);
+    let (splices, _) = state
+        .apply_directory_change(0, &watched, DirectoryChange::Upsert(updated))
+        .expect("existing photo updated");
+    assert_eq!(splices.len(), 1);
+    assert_eq!(splices[0].position, 1);
+    assert_eq!(splices[0].removed, 1);
+    assert_eq!(state.selected_positions(0), [1]);
+    assert_eq!(
+        state.columns[0]
+            .entries
+            .iter()
+            .map(|entry| entry.display_name.as_str())
+            .collect::<Vec<_>>(),
+        ["z.jpg", "b.jpg", "a.jpg"]
+    );
+    state.apply_directory_change(
+        0,
+        &watched,
+        DirectoryChange::Remove(photo("z.jpg").location),
+    );
+    assert_eq!(state.selected_positions(0), [0]);
+    assert_eq!(state.columns[0].entries[0].size, MetadataValue::Known(99));
+}
+
+#[test]
 fn monitor_insertions_follow_the_active_sort_order() {
     let mut state = NavigationState::default();
     let watched = location("/home");
@@ -300,6 +448,35 @@ fn monitor_updates_reposition_only_the_changed_entry() {
 }
 
 #[test]
+fn monitor_updates_to_existing_entry_at_same_position_uses_single_splice() {
+    let mut state = NavigationState::default();
+    let watched = location("/home");
+    state.navigate(watched.clone(), RequestId(1));
+    state.apply_batch(
+        RequestId(1),
+        vec![
+            named_entry("/home/alpha", "alpha"),
+            named_entry("/home/bravo", "bravo"),
+            named_entry("/home/charlie", "charlie"),
+        ],
+    );
+
+    let mut updated = named_entry("/home/bravo", "bravo");
+    updated.size = MetadataValue::Known(9999);
+
+    let (splices, _) = state
+        .apply_directory_change(0, &watched, DirectoryChange::Upsert(updated))
+        .expect("updating an existing entry's metadata should change the column");
+
+    assert_eq!(splices.len(), 1);
+    assert_eq!(splices[0].position, 1);
+    assert_eq!(splices[0].removed, 1);
+    assert_eq!(splices[0].entries.len(), 1);
+    assert_eq!(splices[0].entries[0].size, MetadataValue::Known(9999));
+    assert_eq!(state.columns[0].entries[1].size, MetadataValue::Known(9999));
+}
+
+#[test]
 fn monitor_removals_preserve_selection_by_native_location() {
     let mut state = NavigationState::default();
     let watched = location("/home");
@@ -327,29 +504,38 @@ fn monitor_removals_preserve_selection_by_native_location() {
 
 #[test]
 fn removing_the_selected_entry_focuses_its_nearest_neighbor() {
-    let mut state = NavigationState::default();
-    let watched = location("/home");
-    state.navigate(watched.clone(), RequestId(1));
-    state.apply_batch(
-        RequestId(1),
-        vec![
-            named_entry("/home/alpha", "alpha"),
-            named_entry("/home/bravo", "bravo"),
-            named_entry("/home/charlie", "charlie"),
-        ],
-    );
-    assert!(state.select(0, 1));
+    for preserve_fill in [false, true] {
+        let mut state = NavigationState::default();
+        state.set_preserve_fill_on_removal(preserve_fill);
+        let watched = location("/home");
+        state.navigate(watched.clone(), RequestId(1));
+        state.apply_batch(
+            RequestId(1),
+            vec![
+                named_entry("/home/alpha", "alpha"),
+                named_entry("/home/bravo", "bravo"),
+                named_entry("/home/charlie", "charlie"),
+            ],
+        );
+        assert!(state.select(0, 1));
 
-    let (_, selected) = state
-        .apply_directory_change(
-            0,
-            &watched,
-            DirectoryChange::Remove(location("/home/bravo")),
-        )
-        .expect("removing the selected entry should change the column");
+        let (_, selected) = state
+            .apply_directory_change(
+                0,
+                &watched,
+                DirectoryChange::Remove(location("/home/bravo")),
+            )
+            .expect("removing the selected entry should change the column");
 
-    assert_eq!(selected, Some(1));
-    assert_eq!(state.columns[0].entries[1].display_name, "charlie");
+        assert_eq!(selected, Some(1));
+        assert_eq!(state.columns[0].entries[1].display_name, "charlie");
+        assert_eq!(
+            state.columns[0]
+                .selected_locations
+                .contains(&location("/home/charlie")),
+            !preserve_fill
+        );
+    }
 }
 
 #[test]
@@ -373,6 +559,146 @@ fn monitor_moves_follow_the_selected_entry() {
 
     assert_eq!(selected, Some(0));
     assert_eq!(state.columns[0].entries[0].location, location("/home/new"));
+}
+
+#[test]
+fn monitor_moves_preserve_loaded_details_only_for_unchanged_files() {
+    for change in [
+        "name",
+        "size",
+        "mtime",
+        "unknown",
+        "extension",
+        "fresh details",
+    ] {
+        let mut state = NavigationState::default();
+        let watched = location("/home");
+        state.navigate(watched.clone(), RequestId(1));
+        let mut old = named_entry("/home/old.png", "old.png");
+        old.size = MetadataValue::Known(100);
+        old.modified_unix_seconds = MetadataValue::Known(10);
+        old.image_dimensions = MetadataValue::Known((20, 30));
+        old.duration_seconds = MetadataValue::Unavailable;
+        old.child_count = MetadataValue::Unavailable;
+        state.apply_batch(RequestId(1), vec![old]);
+        let mut renamed = named_entry("/home/new.png", "new.png");
+        renamed.size = MetadataValue::Known(100);
+        renamed.modified_unix_seconds = MetadataValue::Known(10);
+        match change {
+            "size" => renamed.size = MetadataValue::Known(200),
+            "mtime" => renamed.modified_unix_seconds = MetadataValue::Known(11),
+            "unknown" => renamed.modified_unix_seconds = MetadataValue::Unknown,
+            "extension" => {
+                renamed.native_name = "new.mp4".into();
+                renamed.display_name = "new.mp4".into();
+                renamed.location = location("/home/new.mp4");
+            }
+            "fresh details" => renamed.image_dimensions = MetadataValue::Known((40, 50)),
+            _ => {}
+        }
+        let (splices, _) = state
+            .apply_directory_change(
+                0,
+                &watched,
+                DirectoryChange::Move {
+                    from: location("/home/old.png"),
+                    entry: renamed,
+                },
+            )
+            .expect("move");
+        let expected = match change {
+            "name" => MetadataValue::Known((20, 30)),
+            "fresh details" => MetadataValue::Known((40, 50)),
+            _ => MetadataValue::Unknown,
+        };
+        let entry = &state.columns[0].entries[0];
+        assert_eq!(entry.image_dimensions, expected, "{change}");
+        assert_eq!(
+            splices.last().expect("insertion").entries[0].image_dimensions,
+            expected,
+            "{change}"
+        );
+        if change == "name" {
+            assert_eq!(entry.duration_seconds, MetadataValue::Unavailable);
+            assert_eq!(entry.child_count, MetadataValue::Unavailable);
+        }
+    }
+}
+
+#[test]
+fn relocating_a_column_preserves_selection_preferences_and_active_depth() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/home"), RequestId(1));
+    state.apply_batch(RequestId(1), vec![named_entry("/home/old", "old")]);
+    state.select(0, 0);
+    state.descend(0, location("/home/old"), RequestId(2));
+    state.apply_batch(
+        RequestId(2),
+        vec![
+            named_entry("/home/old/one", "one"),
+            named_entry("/home/old/two", "two"),
+        ],
+    );
+    state.set_selection(1, &[0, 1], Some(1));
+    let preferences = ViewPreferences {
+        sort_direction: SortDirection::Descending,
+        ..ViewPreferences::default()
+    };
+    state.apply_sort_preferences(1, preferences);
+    state.focus_column(0);
+
+    state.relocate_column(1, location("/home/renamed"), RequestId(3));
+    assert_eq!(state.active_depth(), Some(0));
+    assert_eq!(state.selected_positions(0), [0]);
+    assert_eq!(state.column_preferences(1), Some(preferences));
+    assert!(
+        state
+            .apply_batch(RequestId(2), vec![named_entry("/home/old/stale", "stale")])
+            .is_none()
+    );
+    state.apply_batch(
+        RequestId(3),
+        vec![
+            named_entry("/home/renamed/one", "one"),
+            named_entry("/home/renamed/two", "two"),
+        ],
+    );
+    assert_eq!(state.selected_positions(1), [0, 1]);
+    let column = &state.columns[1];
+    assert_eq!(
+        column.entries[column.selected.expect("keyboard cursor")].display_name,
+        "two"
+    );
+    assert!(
+        column
+            .selection_anchor
+            .as_ref()
+            .expect("selection anchor")
+            .is_within(&location("/home/renamed"))
+    );
+}
+
+#[test]
+fn a_rename_rebases_the_pending_selection_during_a_refresh() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/home"), RequestId(1));
+    state.apply_batch(RequestId(1), vec![named_entry("/home/old", "old")]);
+    state.select(0, 0);
+    state.reload_column(0, RequestId(2));
+    state.apply_directory_change(
+        0,
+        &location("/home"),
+        DirectoryChange::Move {
+            from: location("/home/old"),
+            entry: named_entry("/home/new", "new"),
+        },
+    );
+    state.install_snapshot(RequestId(2), vec![named_entry("/home/new", "new")]);
+    assert_eq!(state.selected_positions(0), [0]);
+    assert_eq!(
+        state.focused_entry().expect("focused entry").2.location,
+        location("/home/new")
+    );
 }
 
 #[test]
@@ -495,6 +821,93 @@ fn reload_clears_the_resolved_delete_capability() {
 }
 
 #[test]
+fn reload_restores_a_multi_selection_after_snapshot() {
+    let mut state = NavigationState::default();
+    listing_without_a_load_cursor(&mut state);
+    assert!(state.set_selection(0, &[0, 2], Some(2)));
+
+    state.reload_column(0, RequestId(2));
+    assert!(state.selected_positions(0).is_empty());
+    assert_eq!(
+        state.install_snapshot(
+            RequestId(2),
+            vec![
+                named_entry("/fixture/alpha", "alpha"),
+                named_entry("/fixture/bravo", "bravo"),
+                named_entry("/fixture/charlie", "charlie"),
+            ],
+        ),
+        Some(0)
+    );
+
+    assert_eq!(state.selected_positions(0), [0, 2]);
+    assert_eq!(state.active_focus(), Some((0, Some(2))));
+}
+
+#[test]
+fn reload_does_not_select_an_unselected_focus() {
+    for positions in [vec![], vec![0], vec![0, 1]] {
+        let mut state = NavigationState::default();
+        listing_without_a_load_cursor(&mut state);
+        assert!(state.set_selection(0, &positions, Some(2)));
+        let expected = positions
+            .iter()
+            .map(|&position| state.columns[0].entries[position].location.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(state.selected_positions(0), positions);
+        assert_eq!(
+            state
+                .selected_entries()
+                .into_iter()
+                .map(|entry| entry.location)
+                .collect::<Vec<_>>(),
+            expected
+        );
+        state.reload_column(0, RequestId(2));
+        state.install_snapshot(
+            RequestId(2),
+            vec![
+                named_entry("/fixture/alpha", "alpha"),
+                named_entry("/fixture/bravo", "bravo"),
+                named_entry("/fixture/charlie", "charlie"),
+            ],
+        );
+        assert_eq!(state.selected_positions(0), positions);
+        assert_eq!(state.active_focus(), Some((0, Some(2))));
+        assert_eq!(
+            state
+                .selected_entries()
+                .into_iter()
+                .map(|entry| entry.location)
+                .collect::<Vec<_>>(),
+            expected
+        );
+    }
+}
+
+#[test]
+fn reload_drops_selection_members_that_left_the_listing() {
+    let mut state = NavigationState::default();
+    listing_without_a_load_cursor(&mut state);
+    assert!(state.set_selection(0, &[0, 2], Some(2)));
+
+    state.reload_column(0, RequestId(2));
+    assert_eq!(
+        state.install_snapshot(
+            RequestId(2),
+            vec![
+                named_entry("/fixture/alpha", "alpha"),
+                named_entry("/fixture/bravo", "bravo"),
+            ],
+        ),
+        Some(0)
+    );
+
+    assert_eq!(state.selected_positions(0), [0]);
+    assert_eq!(state.active_focus(), Some((0, Some(0))));
+}
+
+#[test]
 fn navigation_availability_tracks_history_and_parent() {
     let mut state = NavigationState::default();
     assert!(!state.can_go_back());
@@ -554,8 +967,12 @@ fn hidden_entry(path: &str, name: &str) -> FileEntry {
         kind: EntryKind::Directory,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        recent_unix_seconds: MetadataValue::Unknown,
         is_hidden: true,
         mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }
 }
 
@@ -639,6 +1056,58 @@ fn staged_keyboard_descent_selects_the_first_visible_entry() {
 }
 
 #[test]
+fn a_cleared_cursor_report_selects_and_a_filled_one_does_not() {
+    let mut state = NavigationState::default();
+    listing_without_a_load_cursor(&mut state);
+    assert!(state.set_selection(0, &[0, 2], Some(2)));
+    assert_eq!(state.clear_active_selection(), Some((0, 2)));
+    assert!(state.selected_positions(0).is_empty());
+
+    assert!(state.set_selection(0, &[2], Some(2)));
+    assert_eq!(
+        state.selected_positions(0),
+        [2],
+        "clicking the still-focused file after a clear selects it"
+    );
+    assert!(state.set_selection(0, &[2], Some(2)));
+    assert_eq!(
+        state.selected_positions(0),
+        [2],
+        "repeating the current locations does not rewrite the fill"
+    );
+
+    assert!(state.set_selection(0, &[0, 1], Some(0)));
+    assert!(state.place_cursor(0, 2).is_some());
+    assert_eq!(state.selected_positions(0), [0, 1]);
+    assert!(state.set_selection(0, &[2], Some(2)));
+    assert_eq!(
+        state.selected_positions(0),
+        [0, 1],
+        "an uncommitted cursor-only report must not replace a different fill"
+    );
+    state.commit_selection();
+    assert!(state.set_selection(0, &[2], Some(2)));
+    assert_eq!(
+        state.selected_positions(0),
+        [2],
+        "an explicit commit of the focused file selects it"
+    );
+
+    assert!(state.set_selection(0, &[0, 1], Some(0)));
+    assert!(state.place_cursor(0, 2).is_some());
+    assert!(state.set_selection(0, &[0, 1], Some(2)));
+    assert_eq!(
+        state.selected_positions(0),
+        [0, 1],
+        "repeating an unchanged fill while the cursor is outside it is an echo"
+    );
+    assert_eq!(
+        state.focused_entry().map(|(_, position, _)| position),
+        Some(2)
+    );
+}
+
+#[test]
 fn keyboard_selection_extension_skips_hidden_entries() {
     let mut state = NavigationState::default();
     state.navigate(location("/home"), RequestId(1));
@@ -690,6 +1159,64 @@ fn paging_moves_by_a_page_and_stops_at_the_ends() {
     assert_eq!(state.page_along(-1, 5, None), Some((0, 1)));
     assert_eq!(state.page_along(-1, 5, None), Some((0, 0)));
     assert_eq!(state.selected_entries().len(), 1);
+}
+
+#[test]
+fn shift_paging_extends_from_the_anchor_and_contracts_back() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/home"), RequestId(1));
+    let entries = (0..12)
+        .map(|index| entry(&format!("/home/item-{index:02}")))
+        .collect();
+    state.apply_batch(RequestId(1), entries);
+    assert!(state.select(0, 4));
+
+    let range = |state: &mut NavigationState, direction| {
+        state
+            .extend_page_selection(direction, 5, None)
+            .map(|(_, focused, positions)| (focused, positions))
+    };
+    assert_eq!(range(&mut state, 1), Some((9, (4..=9).collect())));
+    assert_eq!(range(&mut state, 1), Some((11, (4..=11).collect())));
+    assert_eq!(range(&mut state, -1), Some((6, (4..=6).collect())));
+    assert_eq!(
+        range(&mut state, -1),
+        Some((1, (1..=4).collect())),
+        "crossing the anchor flips the range"
+    );
+    assert_eq!(state.selected_entries().len(), 4);
+
+    assert!(state.clear_active_selection().is_some());
+    assert_eq!(
+        range(&mut state, 1),
+        Some((6, (1..=6).collect())),
+        "a cleared fill restarts the range at the cursor"
+    );
+}
+
+#[test]
+fn shift_paging_follows_display_order_and_skips_hidden_entries() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/home"), RequestId(1));
+    state.apply_batch(
+        RequestId(1),
+        vec![
+            named_entry("/home/a.txt", "a.txt"),
+            hidden_entry("/home/b.txt", "b.txt"),
+            named_entry("/home/c.json", "c.json"),
+            named_entry("/home/d.txt", "d.txt"),
+        ],
+    );
+    assert!(state.select(0, 0));
+    assert_eq!(
+        state.extend_page_selection(1, 1, None),
+        Some((0, 2, vec![0, 2]))
+    );
+    assert!(state.select(0, 0));
+    assert_eq!(
+        state.extend_page_selection(1, 1, Some(&[0, 3, 2])),
+        Some((0, 3, vec![0, 3]))
+    );
 }
 
 #[test]
@@ -866,6 +1393,34 @@ fn names_that_differ_only_by_case_have_a_deterministic_order() {
 }
 
 #[test]
+fn numeric_suffixes_sort_naturally() {
+    for (left, right) in [
+        ("File 1", "File 2"),
+        ("File 2", "File 10"),
+        ("File 1", "File 10"),
+        ("File 99999999999999999999", "File 100000000000000000000"),
+        ("File 0002", "File 10"),
+        ("File 02", "File 2"),
+        ("File 0", "File 00"),
+        ("file 2 part 9", "File 2 part 10"),
+        ("Straße 2", "STRASSE 10"),
+        ("File 2", "File 2a"),
+    ] {
+        assert_eq!(
+            compare_display_names(left, right),
+            Ordering::Less,
+            "{left} < {right}"
+        );
+        assert_eq!(
+            compare_display_names(right, left),
+            Ordering::Greater,
+            "{right} > {left}"
+        );
+        assert_eq!(compare_display_names(left, left), Ordering::Equal);
+    }
+}
+
+#[test]
 fn changing_sort_preferences_preserves_the_selected_entry() {
     let mut state = NavigationState::default();
     state.navigate(location("/fixture"), RequestId(1));
@@ -953,6 +1508,39 @@ fn changing_sort_preferences_only_reorders_the_target_column() {
     assert_eq!(state.columns[1].entries[0].display_name, "z");
 }
 
+#[test]
+fn recency_sort_uses_existing_metadata_availability_order() {
+    let mut newest = file_entry("/fixture/newest", "newest");
+    newest.recent_unix_seconds = MetadataValue::Known(20);
+    let mut older = file_entry("/fixture/older", "older");
+    older.recent_unix_seconds = MetadataValue::Known(10);
+    let mut unavailable = file_entry("/fixture/unavailable", "unavailable");
+    unavailable.recent_unix_seconds = MetadataValue::Unavailable;
+    let unknown = file_entry("/fixture/unknown", "unknown");
+    let mut entries = [unknown, unavailable, older, newest];
+
+    entries.sort_by(|left, right| {
+        compare_entries(
+            left,
+            right,
+            ViewPreferences {
+                sort_key: SortKey::Recency,
+                sort_direction: SortDirection::Descending,
+                folders_first: false,
+                show_hidden: false,
+            },
+        )
+    });
+
+    assert_eq!(
+        entries
+            .iter()
+            .map(|entry| entry.display_name.as_str())
+            .collect::<Vec<_>>(),
+        ["unavailable", "unknown", "newest", "older"]
+    );
+}
+
 fn file_entry(path: &str, name: &str) -> FileEntry {
     FileEntry {
         location: location(path),
@@ -963,7 +1551,11 @@ fn file_entry(path: &str, name: &str) -> FileEntry {
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
         mode: MetadataValue::Unknown,
+        recent_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }
 }
 
@@ -973,6 +1565,9 @@ fn metadata_update(path: &str, size: u64, modified: i64) -> MetadataUpdate {
         size: MetadataValue::Known(size),
         modified_unix_seconds: MetadataValue::Known(modified),
         mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }
 }
 
@@ -1104,6 +1699,9 @@ fn fill_updates_never_clobber_known_fields() {
             size: MetadataValue::Unknown,
             modified_unix_seconds: MetadataValue::Known(300),
             mode: MetadataValue::Known(0o100640),
+            image_dimensions: MetadataValue::Known((1920, 1080)),
+            child_count: MetadataValue::Known(4),
+            duration_seconds: MetadataValue::Known(83),
         }],
     );
     assert!(matches!(applied, Some((0, ref positions)) if positions == &[0]));
@@ -1116,6 +1714,18 @@ fn fill_updates_never_clobber_known_fields() {
         state.columns[0].entries[0].mode,
         MetadataValue::Known(0o100640)
     );
+    assert_eq!(
+        state.columns[0].entries[0].image_dimensions,
+        MetadataValue::Known((1920, 1080))
+    );
+    assert_eq!(
+        state.columns[0].entries[0].child_count,
+        MetadataValue::Known(4)
+    );
+    assert_eq!(
+        state.columns[0].entries[0].duration_seconds,
+        MetadataValue::Known(83)
+    );
 
     let applied = state.apply_metadata(
         RequestId(1),
@@ -1124,9 +1734,24 @@ fn fill_updates_never_clobber_known_fields() {
             size: MetadataValue::Unknown,
             modified_unix_seconds: MetadataValue::Unknown,
             mode: MetadataValue::Unknown,
+            image_dimensions: MetadataValue::Unknown,
+            child_count: MetadataValue::Unknown,
+            duration_seconds: MetadataValue::Unknown,
         }],
     );
     assert_eq!(applied, None);
+    assert_eq!(
+        state.columns[0].entries[0].image_dimensions,
+        MetadataValue::Known((1920, 1080))
+    );
+    assert_eq!(
+        state.columns[0].entries[0].child_count,
+        MetadataValue::Known(4)
+    );
+    assert_eq!(
+        state.columns[0].entries[0].duration_seconds,
+        MetadataValue::Known(83)
+    );
 }
 
 #[test]
@@ -1197,4 +1822,579 @@ fn the_range_anchor_is_readable_and_replaceable_by_position() {
         state.extend_visual_selection(0, 1, &[0, 1, 2]),
         Some(vec![1, 2])
     );
+}
+
+fn typed_entry(name: &str, kind: EntryKind) -> FileEntry {
+    FileEntry {
+        thumbnail_path: None,
+        location: location(&format!("/fixture/{name}")),
+        native_name: OsString::from(name),
+        display_name: name.into(),
+        kind,
+        size: MetadataValue::Unknown,
+        modified_unix_seconds: MetadataValue::Unknown,
+        recent_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
+        mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
+    }
+}
+
+#[test]
+fn type_sorting_orders_by_mime_descriptions_with_folders_first() {
+    let mut entries = [
+        typed_entry("z_other.qqqqq", EntryKind::File),
+        typed_entry("b_notes.json", EntryKind::File),
+        typed_entry("a_notes.json", EntryKind::File),
+        typed_entry("folder_z", EntryKind::Directory),
+        typed_entry("folder_a", EntryKind::Directory),
+        typed_entry("a_other.qqqqq", EntryKind::File),
+        typed_entry("doc.pdf", EntryKind::File),
+        typed_entry("script.py", EntryKind::File),
+    ];
+
+    let preferences_asc = ViewPreferences {
+        folders_first: true,
+        sort_key: SortKey::Type,
+        sort_direction: SortDirection::Ascending,
+        show_hidden: false,
+    };
+    entries.sort_by(|left, right| compare_entries(left, right, preferences_asc));
+    let names_asc: Vec<&str> = entries
+        .iter()
+        .map(|entry| entry.display_name.as_str())
+        .collect();
+    assert_eq!(
+        names_asc,
+        [
+            "folder_a",
+            "folder_z",
+            "a_notes.json",
+            "b_notes.json",
+            "doc.pdf",
+            "script.py",
+            "a_other.qqqqq",
+            "z_other.qqqqq",
+        ]
+    );
+
+    let preferences_desc = ViewPreferences {
+        folders_first: true,
+        sort_key: SortKey::Type,
+        sort_direction: SortDirection::Descending,
+        show_hidden: false,
+    };
+    entries.sort_by(|left, right| compare_entries(left, right, preferences_desc));
+    let names_desc: Vec<&str> = entries
+        .iter()
+        .map(|entry| entry.display_name.as_str())
+        .collect();
+    assert_eq!(
+        names_desc,
+        [
+            "folder_a",
+            "folder_z",
+            "a_other.qqqqq",
+            "z_other.qqqqq",
+            "script.py",
+            "doc.pdf",
+            "a_notes.json",
+            "b_notes.json",
+        ]
+    );
+}
+
+#[test]
+fn type_sorting_orders_by_mime_descriptions_without_folders_first() {
+    let mut entries = [
+        typed_entry("z_other.qqqqq", EntryKind::File),
+        typed_entry("b_notes.json", EntryKind::File),
+        typed_entry("a_notes.json", EntryKind::File),
+        typed_entry("folder_z", EntryKind::Directory),
+        typed_entry("folder_a", EntryKind::Directory),
+        typed_entry("a_other.qqqqq", EntryKind::File),
+        typed_entry("doc.pdf", EntryKind::File),
+        typed_entry("script.py", EntryKind::File),
+    ];
+
+    let preferences_asc = ViewPreferences {
+        folders_first: false,
+        sort_key: SortKey::Type,
+        sort_direction: SortDirection::Ascending,
+        show_hidden: false,
+    };
+    entries.sort_by(|left, right| compare_entries(left, right, preferences_asc));
+    let names_asc: Vec<&str> = entries
+        .iter()
+        .map(|entry| entry.display_name.as_str())
+        .collect();
+    assert_eq!(
+        names_asc,
+        [
+            "folder_a",
+            "folder_z",
+            "a_notes.json",
+            "b_notes.json",
+            "doc.pdf",
+            "script.py",
+            "a_other.qqqqq",
+            "z_other.qqqqq",
+        ]
+    );
+
+    let preferences_desc = ViewPreferences {
+        folders_first: false,
+        sort_key: SortKey::Type,
+        sort_direction: SortDirection::Descending,
+        show_hidden: false,
+    };
+    entries.sort_by(|left, right| compare_entries(left, right, preferences_desc));
+    let names_desc: Vec<&str> = entries
+        .iter()
+        .map(|entry| entry.display_name.as_str())
+        .collect();
+    assert_eq!(
+        names_desc,
+        [
+            "a_other.qqqqq",
+            "z_other.qqqqq",
+            "script.py",
+            "doc.pdf",
+            "a_notes.json",
+            "b_notes.json",
+            "folder_a",
+            "folder_z",
+        ]
+    );
+}
+
+#[test]
+fn column_entry_counts_breakdown_and_hidden() {
+    let mut state = NavigationState::default();
+    assert_eq!(state.column_entry_counts(0), None);
+
+    state.navigate(location("/fixture"), RequestId(1));
+    assert_eq!(
+        state.column_entry_counts(0),
+        Some(ColumnEntryCounts {
+            total: 0,
+            files: 0,
+            folders: 0,
+        })
+    );
+
+    let mut folder = named_entry("/fixture/folder1", "folder1");
+    folder.kind = EntryKind::Directory;
+
+    let mut file1 = named_entry("/fixture/file1.txt", "file1.txt");
+    file1.kind = EntryKind::File;
+
+    let mut file2 = named_entry("/fixture/file2.txt", "file2.txt");
+    file2.kind = EntryKind::File;
+
+    let mut hidden_file = named_entry("/fixture/.hidden", ".hidden");
+    hidden_file.kind = EntryKind::File;
+    hidden_file.is_hidden = true;
+
+    state.apply_batch(RequestId(1), vec![folder, file1, file2, hidden_file]);
+
+    assert_eq!(
+        state.column_entry_counts(0),
+        Some(ColumnEntryCounts {
+            total: 3,
+            files: 2,
+            folders: 1,
+        })
+    );
+
+    state.set_show_hidden(true);
+    assert_eq!(
+        state.column_entry_counts(0),
+        Some(ColumnEntryCounts {
+            total: 4,
+            files: 3,
+            folders: 1,
+        })
+    );
+}
+
+#[test]
+fn space_adds_a_load_cursor_then_moves_without_rewriting_the_fill() {
+    let mut state = NavigationState::default();
+    listing_with_the_first_entry_selected(&mut state);
+    assert!(state.selection_is_load_cursor());
+    assert_eq!(state.selected_positions(0), [0]);
+
+    assert_eq!(state.toggle_cursor_fill(), CursorToggle::Added);
+    assert!(!state.selection_is_load_cursor());
+    assert_eq!(state.selected_positions(0), [0]);
+    assert_eq!(
+        state.focused_entry().map(|(_, position, _)| position),
+        Some(0)
+    );
+
+    let moved = state.page_cursor(1, 1, None).expect("next item");
+    assert_eq!((moved.0, moved.1), (0, 1));
+    assert!(!moved.2, "leaving a committed fill does not clear it");
+    assert_eq!(state.selected_positions(0), [0]);
+    assert_eq!(
+        state.focused_entry().map(|(_, position, _)| position),
+        Some(1)
+    );
+    assert!(
+        state
+            .selected_entries()
+            .iter()
+            .all(|entry| entry.display_name == "alpha")
+    );
+    assert_eq!(
+        state
+            .focused_entry()
+            .map(|(_, _, entry)| entry.display_name),
+        Some("bravo".to_owned())
+    );
+
+    assert_eq!(state.toggle_cursor_fill(), CursorToggle::Added);
+    assert_eq!(state.selected_positions(0), [0, 1]);
+    assert_eq!(
+        state
+            .page_cursor(1, 1, None)
+            .map(|(_, position, _)| position),
+        Some(2)
+    );
+    assert_eq!(state.selected_positions(0), [0, 1]);
+
+    assert_eq!(state.toggle_cursor_fill(), CursorToggle::Added);
+    assert_eq!(state.selected_positions(0), [0, 1, 2]);
+    assert_eq!(
+        state
+            .page_cursor(1, 1, None)
+            .map(|(_, position, _)| position),
+        Some(2),
+        "the last item does not move past the listing"
+    );
+    assert_eq!(state.toggle_cursor_fill(), CursorToggle::Removed);
+    assert_eq!(state.selected_positions(0), [0, 1]);
+    assert_eq!(
+        state.focused_entry().map(|(_, position, _)| position),
+        Some(2)
+    );
+    assert!(
+        state
+            .selected_entries()
+            .iter()
+            .all(|entry| entry.display_name != "charlie")
+    );
+}
+
+#[test]
+fn select_all_and_invert_keep_the_cursor_and_other_columns() {
+    let mut state = NavigationState::default();
+    listing_with_the_first_entry_selected(&mut state);
+    state.descend(0, location("/fixture/alpha"), RequestId(2));
+    state.select_first_on_load(1);
+    state.apply_batch(
+        RequestId(2),
+        vec![
+            named_entry("/fixture/alpha/one", "one"),
+            named_entry("/fixture/alpha/two", "two"),
+        ],
+    );
+    state.focus_column(0);
+    let (focused, positions) = state.select_visible(0).expect("parent entries");
+    assert_eq!(focused, 0);
+    assert_eq!(positions, [0, 1, 2]);
+    assert_eq!(
+        state.selected_positions(1).len(),
+        1,
+        "the child load cursor stays"
+    );
+    assert_eq!(state.active_child_position(0), Some(0));
+
+    assert_eq!(
+        state
+            .page_cursor(1, 2, None)
+            .map(|(_, position, _)| position),
+        Some(2)
+    );
+    assert_eq!(state.selected_positions(0), [0, 1, 2]);
+    assert_eq!(
+        state.focused_entry().map(|(_, position, _)| position),
+        Some(2)
+    );
+
+    let (focused, inverted) = state.invert_visible(0).expect("invert parent");
+    assert_eq!(focused, 2);
+    assert!(inverted.is_empty());
+    assert_eq!(state.selected_positions(1).len(), 1);
+    assert_eq!(
+        state
+            .page_cursor(1, 1, None)
+            .map(|(_, position, _)| position),
+        Some(2)
+    );
+    assert!(state.selected_positions(0).is_empty());
+    assert!(state.focused_entry().is_some());
+
+    state.focus_column(1);
+    let child_before = state.selected_positions(1);
+    let (focused, child_all) = state.select_visible(1).expect("child entries");
+    assert_eq!(focused, 0);
+    assert_eq!(child_all, [0, 1]);
+    assert!(state.selected_positions(0).is_empty());
+    assert_ne!(state.selected_positions(1), child_before);
+    let parent_marker = state.active_child_position(0);
+    assert_eq!(parent_marker, Some(0));
+    assert!(state.selected_positions(0).is_empty());
+}
+
+#[test]
+fn empty_pane_space_does_not_select_the_open_path() {
+    let mut state = NavigationState::default();
+    listing_without_a_load_cursor(&mut state);
+    assert!(state.select(0, 0));
+    state.descend(0, location("/fixture/alpha"), RequestId(2));
+    state.apply_batch(RequestId(2), Vec::new());
+    state.focus_column(1);
+
+    assert_eq!(state.toggle_cursor_fill(), CursorToggle::Empty);
+    assert_eq!(state.selected_positions(1), Vec::<usize>::new());
+    assert_eq!(state.selected_positions(0), [0]);
+    assert_eq!(state.active_child_position(0), Some(0));
+    assert!(state.focused_entry().is_none());
+}
+
+#[test]
+fn invert_skips_hidden_entries_and_treats_a_load_cursor_as_empty() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/fixture"), RequestId(1));
+    state.select_first_on_load(0);
+    state.apply_batch(
+        RequestId(1),
+        vec![
+            named_entry("/fixture/alpha", "alpha"),
+            hidden_entry("/fixture/.secret", ".secret"),
+            named_entry("/fixture/bravo", "bravo"),
+        ],
+    );
+    assert!(state.selection_is_load_cursor());
+    let (focused, positions) = state.invert_visible(0).expect("invert");
+    let name = |position: usize| state.columns[0].entries[position].display_name.clone();
+    assert_eq!(name(focused), "alpha");
+    let mut selected: Vec<_> = positions.iter().copied().map(name).collect();
+    selected.sort();
+    assert_eq!(selected, ["alpha", "bravo"]);
+    assert!(!state.selection_is_load_cursor());
+
+    state.set_show_hidden(true);
+    let (_, positions) = state.invert_visible(0).expect("invert including hidden");
+    let mut selected: Vec<_> = positions
+        .iter()
+        .map(|position| state.columns[0].entries[*position].display_name.clone())
+        .collect();
+    selected.sort();
+    assert_eq!(selected, [".secret"]);
+}
+
+fn five_entry_listing(state: &mut NavigationState) {
+    state.navigate(location("/fixture"), RequestId(1));
+    state.apply_batch(
+        RequestId(1),
+        ["alpha", "bravo", "charlie", "delta", "echo"]
+            .into_iter()
+            .map(|name| named_entry(&format!("/fixture/{name}"), name))
+            .collect(),
+    );
+}
+
+fn fill(state: &NavigationState, depth: usize) -> Vec<String> {
+    let mut names: Vec<_> = state
+        .selected_positions(depth)
+        .into_iter()
+        .map(|position| state.columns[depth].entries[position].display_name.clone())
+        .collect();
+    names.sort();
+    names
+}
+
+fn walk_to(state: &mut NavigationState, position: usize, order: &[usize]) {
+    state.place_cursor(0, position).expect("listed position");
+    state.refresh_visual(Some(order));
+}
+
+#[test]
+fn visual_ranges_add_and_subtract_the_walked_span_in_displayed_order() {
+    let mut state = NavigationState::default();
+    five_entry_listing(&mut state);
+    // Grouped display: delta, echo, then alpha, bravo, charlie.
+    let order = [3, 4, 0, 1, 2];
+    assert!(state.install_pane_fill(0, &[4], 3));
+    assert_eq!(fill(&state, 0), ["echo"]);
+
+    let (_, cursor, _) = state
+        .start_visual(VisualKind::Select, Some(&order))
+        .expect("range at the cursor");
+    assert_eq!(cursor, 3);
+    assert_eq!(state.visual_kind(), Some(VisualKind::Select));
+    assert_eq!(fill(&state, 0), ["delta", "echo"]);
+    walk_to(&mut state, 0, &order);
+    assert_eq!(fill(&state, 0), ["alpha", "delta", "echo"]);
+    walk_to(&mut state, 1, &order);
+    assert_eq!(fill(&state, 0), ["alpha", "bravo", "delta", "echo"]);
+    walk_to(&mut state, 4, &order);
+    assert_eq!(
+        fill(&state, 0),
+        ["delta", "echo"],
+        "walking back contracts to the base fill"
+    );
+    walk_to(&mut state, 1, &order);
+
+    let (_, cursor, _) = state
+        .toggle_visual_cursor(Some(&order))
+        .expect("toggle in the range");
+    assert_eq!(cursor, 1, "Space does not advance in visual mode");
+    assert_eq!(fill(&state, 0), ["alpha", "delta", "echo"]);
+    walk_to(&mut state, 2, &order);
+    assert_eq!(
+        fill(&state, 0),
+        ["alpha", "charlie", "delta", "echo"],
+        "a toggled item stays flipped as the range grows"
+    );
+
+    assert!(state.leave_visual());
+    assert_eq!(state.visual_kind(), None);
+    walk_to(&mut state, 3, &order);
+    assert_eq!(
+        fill(&state, 0),
+        ["alpha", "charlie", "delta", "echo"],
+        "ordinary motion after leaving keeps the fill"
+    );
+
+    walk_to(&mut state, 0, &order);
+    state
+        .start_visual(VisualKind::Unset, Some(&order))
+        .expect("unset range at the new cursor");
+    assert_eq!(fill(&state, 0), ["charlie", "delta", "echo"]);
+    walk_to(&mut state, 2, &order);
+    assert_eq!(fill(&state, 0), ["delta", "echo"]);
+    walk_to(&mut state, 4, &order);
+    assert_eq!(
+        fill(&state, 0),
+        ["charlie", "delta"],
+        "unset walks backward across the displayed groups"
+    );
+    assert!(state.leave_visual());
+
+    state
+        .start_visual(VisualKind::Select, Some(&order))
+        .expect("new range at the cursor");
+    walk_to(&mut state, 0, &order);
+    assert_eq!(
+        fill(&state, 0),
+        ["alpha", "charlie", "delta", "echo"],
+        "another v anchors at the new cursor, not the old range"
+    );
+}
+
+#[test]
+fn visual_ranges_start_on_a_load_cursor_and_leave_other_columns_alone() {
+    let mut state = NavigationState::default();
+    listing_with_the_first_entry_selected(&mut state);
+    state.descend(0, location("/fixture/alpha"), RequestId(2));
+    state.apply_batch(
+        RequestId(2),
+        vec![
+            named_entry("/fixture/alpha/one", "one"),
+            named_entry("/fixture/alpha/two", "two"),
+            named_entry("/fixture/alpha/three", "three"),
+        ],
+    );
+    assert!(state.select(1, 0));
+    assert!(state.install_pane_fill(1, &[0, 2], 1));
+    state.focus_column(0);
+    assert!(state.selection_is_load_cursor());
+
+    state
+        .start_visual(VisualKind::Select, None)
+        .expect("range on the load cursor");
+    assert!(!state.selection_is_load_cursor());
+    assert_eq!(fill(&state, 0), ["alpha"]);
+    state.page_cursor(1, 1, None);
+    state.refresh_visual(None);
+    assert_eq!(fill(&state, 0), ["alpha", "bravo"]);
+    assert_eq!(
+        fill(&state, 1),
+        ["one", "two"],
+        "the child fill is untouched"
+    );
+    assert_eq!(state.active_child_position(0), Some(0));
+
+    state.focus_column(1);
+    assert_eq!(
+        state.visual_kind(),
+        None,
+        "another pane does not continue the range"
+    );
+    state.focus_column(0);
+    assert_eq!(
+        state.visual_kind(),
+        None,
+        "returning to the pane does not resume the range"
+    );
+    assert_eq!(state.refresh_visual(None), None);
+    assert_eq!(fill(&state, 0), ["alpha", "bravo"]);
+    assert_eq!(fill(&state, 1), ["one", "two"]);
+}
+
+#[test]
+fn visual_ranges_end_without_an_anchor_listing_or_pointer_commit() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/empty"), RequestId(1));
+    state.apply_batch(RequestId(1), Vec::new());
+    assert_eq!(state.start_visual(VisualKind::Select, None), None);
+    assert_eq!(state.visual_kind(), None);
+
+    five_entry_listing(&mut state);
+    assert!(state.install_pane_fill(0, &[], 1));
+    state
+        .start_visual(VisualKind::Select, None)
+        .expect("range at bravo");
+    state.reload_column(0, RequestId(3));
+    state.apply_batch(
+        RequestId(3),
+        ["alpha", "charlie", "delta"]
+            .into_iter()
+            .map(|name| named_entry(&format!("/fixture/{name}"), name))
+            .collect(),
+    );
+    assert_eq!(
+        state.visual_kind(),
+        None,
+        "a rebuilt listing without the anchor"
+    );
+    state.place_cursor(0, 2);
+    assert_eq!(state.refresh_visual(None), None);
+
+    state
+        .start_visual(VisualKind::Unset, None)
+        .expect("range at delta");
+    state.commit_selection();
+    assert!(state.set_selection(0, &[0], Some(0)));
+    assert_eq!(
+        state.visual_kind(),
+        None,
+        "a pointer selection ends the range"
+    );
+    state.place_cursor(0, 2);
+    assert_eq!(state.refresh_visual(None), None);
+    assert_eq!(fill(&state, 0), ["alpha"]);
+
+    state
+        .start_visual(VisualKind::Select, None)
+        .expect("range at delta");
+    state.navigate(location("/elsewhere"), RequestId(4));
+    assert_eq!(state.visual_kind(), None);
+    assert_eq!(state.refresh_visual(None), None);
 }

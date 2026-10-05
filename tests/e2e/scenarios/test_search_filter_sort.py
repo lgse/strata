@@ -1,15 +1,44 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Type-to-search, pane filtering, sorting, and hidden files."""
 
 from __future__ import annotations
 
 import pytest
 
-from harness.modes import ALL_MODES
+from harness.modes import ALL_MODES, COLUMNS_AND_ONE
 
 ROOT_ENTRIES = ["archive", "documents", "pictures", "readme.md", "todo.txt"]
 # Folders stay grouped first, so descending is not simply the reverse.
 ROOT_ENTRIES_DESCENDING = ["pictures", "documents", "archive", "todo.txt", "readme.md"]
+DOUBLE_CLICK_PREFERENCES = {
+    "list_folder_clicks": 2,
+    "list_file_clicks": 2,
+    "grid_folder_clicks": 2,
+    "grid_file_clicks": 2,
+    "explorer_folder_clicks": 2,
+    "explorer_file_clicks": 2,
+    "single_click_previews": True,
+}
+DOUBLE_CLICK = pytest.mark.preferences(**DOUBLE_CLICK_PREFERENCES)
+
+
+@pytest.fixture
+def launch_counter(test_environment):
+    applications = test_environment.data_home / "applications"
+    applications.mkdir()
+    launches = test_environment.root / "filtered-launches"
+    launcher = test_environment.root / "record-filtered-launch"
+    launcher.write_text(f'#!/bin/sh\nprintf "%s\\n" "$@" >> "{launches}"\n')
+    launcher.chmod(0o755)
+    (applications / "strata-filtered.desktop").write_text(
+        "[Desktop Entry]\nType=Application\nName=Filtered Result Viewer\n"
+        f"Exec={launcher} %U\nMimeType=text/csv;\nNoDisplay=true\n"
+    )
+    (test_environment.config_home / "mimeapps.list").write_text(
+        "[Default Applications]\ntext/csv=strata-filtered.desktop;\n"
+        "[Added Associations]\ntext/csv=strata-filtered.desktop;\n"
+    )
+    return launches
 
 
 @pytest.fixture
@@ -56,6 +85,162 @@ def test_filtering_a_pane_narrows_the_listing(strata, mode, root):
         lambda: strata.entry_names(root) == ROOT_ENTRIES,
         "Escape to restore the full listing",
     )
+
+
+@pytest.fixture
+def pattern_files(fixture_tree):
+    photos = fixture_tree.path("Photos")
+    photos.mkdir()
+    (photos / "album.MOV").mkdir()
+    for name in [
+        "clip.MOV", "IMG_001.MOV", "IMG_001.jpg", "clip.MOV.bak", ".hidden.MOV",
+        "album.MOV/deep.MOV", "album.MOV/unrelated.txt",
+    ]:
+        (photos / name).write_text("fixture\n")
+
+
+@pytest.mark.parametrize("preferences", [
+    {"filter_include_subfolders": False},
+    {"filter_include_subfolders": True},
+], ids=["directory", "subfolders"])
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_wildcard_filter_patterns_preserve_scope_and_clear(
+    pattern_files, strata, mode, preferences,
+):
+    strata.open_directory("Photos")
+    strata.select_entry("clip.MOV.bak", directory="Photos")
+    original = {"album.MOV", "clip.MOV", "IMG_001.MOV", "IMG_001.jpg", "clip.MOV.bak"}
+    strata.keyboard.press("ctrl+f")
+    field = strata.editable_field()
+    recursive = preferences["filter_include_subfolders"]
+    for query, expected in [
+        ("*.MOV", {"album.MOV", "clip.MOV", "IMG_001.MOV"} | ({"deep.MOV"} if recursive else set())),
+        ("IMG*", {"IMG_001.MOV", "IMG_001.jpg"}),
+        ("IMG*.MOV", {"IMG_001.MOV"}),
+        ("IMG*_001*.mov", {"IMG_001.MOV"}),
+        ("*.MOV.b", set()),
+        ("*.MOV.b*", {"clip.MOV.bak"}),
+        ("*.MOV.b", set()),
+        (".MOV.b", {"clip.MOV.bak"}),
+        ("*", original | ({"deep.MOV", "unrelated.txt"} if recursive else set())),
+    ]:
+        strata.keyboard.press("ctrl+a")
+        strata.keyboard.type_text(query)
+        strata.wait(lambda: field.text == query, "the wildcard query to be typed")
+        strata.wait(
+            lambda: set(strata.matches("Photos")) == expected,
+            f"wildcard results for {query} (subfolders={recursive})",
+        )
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.press("BackSpace")
+    strata.wait(lambda: field.text == "", "the query to clear")
+    strata.wait(
+        lambda: set(strata.entry_names("Photos")) == original,
+        "clearing the wildcard to restore the listing without hidden or nested entries",
+    )
+
+
+def assert_filtered_result_opens(strata):
+    strata.select_entry("documents")
+    strata.keyboard.press("ctrl+f")
+    field = strata.editable_field()
+    strata.keyboard.type_text("doc*ments")
+    strata.wait(lambda: field.text == "doc*ments", "the filter query")
+    result = strata.wait(
+        lambda: strata.search_result("documents"),
+        "the filtered folder result",
+    )
+    strata.pointer.click(result)
+    strata.wait_for_directory("documents")
+
+
+@pytest.mark.preferences(
+    **DOUBLE_CLICK_PREFERENCES, filter_include_subfolders=False
+)
+@pytest.mark.parametrize("mode", COLUMNS_AND_ONE)
+def test_local_filtered_results_open_with_one_activation(strata, mode):
+    assert_filtered_result_opens(strata)
+
+
+@DOUBLE_CLICK
+@pytest.mark.parametrize("mode", COLUMNS_AND_ONE)
+def test_recursive_filtered_results_open_with_one_activation(strata, mode):
+    assert_filtered_result_opens(strata)
+
+
+@DOUBLE_CLICK
+@pytest.mark.preferences(browser_mode="list")
+def test_recursive_file_double_click_launches_once(launch_counter, strata):
+    strata.keyboard.press("ctrl+f")
+    field = strata.editable_field()
+    strata.keyboard.type_text("spreadsheet")
+    result = strata.wait(
+        lambda: strata.search_result("spreadsheet.csv"),
+        "the recursive file result",
+    )
+
+    strata.pointer.double_click(result)
+    strata.wait(
+        lambda: launch_counter.exists() and len(launch_counter.read_text().splitlines()) >= 1,
+        "the file launch",
+    )
+    strata.keyboard.press("ctrl+f")
+    strata.wait(lambda: field.has_state("focused"), "focus to return to the filter")
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("photo")
+    strata.wait(lambda: field.text == "photo", "the follow-up query")
+    strata.wait(
+        lambda: strata.search_result("photo.txt") is not None,
+        "the follow-up results",
+    )
+    assert len(launch_counter.read_text().splitlines()) == 1
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_filtered_result_waits_for_release_before_launching(launch_counter, strata, mode):
+    strata.keyboard.press("ctrl+f")
+    field = strata.editable_field()
+    strata.keyboard.type_text("spreadsheet")
+    strata.wait(lambda: field.text == "spreadsheet", "the filter query")
+    result = strata.wait(
+        lambda: strata.search_result("spreadsheet.csv"),
+        "the filtered file result",
+    )
+
+    def assert_not_launched_on_press():
+        assert not launch_counter.exists(), "a held press must not launch the file"
+
+    start = strata.pointer.drag_origin(result)
+    end = (start[0] + 40, start[1] + 40)
+    strata.pointer.drag_points(
+        start, end, release=False, after_press=assert_not_launched_on_press
+    )
+    try:
+        assert not launch_counter.exists(), "crossing the drag threshold must not launch the file"
+    finally:
+        strata.pointer.connection.button(1, False)
+
+
+@pytest.mark.preferences(filter_include_subfolders=False)
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_directory_only_filter_matches_immediate_files_and_folders(strata, mode, root):
+    strata.select_entry("readme.md", directory=root)
+    strata.keyboard.press("ctrl+f")
+    field = strata.editable_field()
+    for query, expected in [
+        ("txt", ["todo.txt"]),
+        ("photo", []),
+        ("archive", ["archive"]),
+    ]:
+        strata.keyboard.press("ctrl+a")
+        strata.keyboard.type_text(query)
+        strata.wait(lambda: field.text == query, "the filter query to be typed")
+        strata.wait(
+            lambda: strata.matches(root) == expected,
+            f"directory-only matches for {query}",
+        )
+    strata.keyboard.press("Escape")
+    strata.wait(lambda: strata.entry_names(root) == ROOT_ENTRIES, "the listing to return")
 
 
 def test_dismissing_a_filter_keeps_hidden_files_hidden(strata, root):
@@ -128,6 +313,96 @@ def test_sorting_by_size_reorders_the_files(strata, root):
     )
 
 
+def test_global_search_arrows_keep_typing_in_the_query_and_enter_opens_selection(strata):
+    names = [
+        "navigation-alpha",
+        "navigation-beta",
+        "navigation-final",
+        "navigation-gamma",
+    ]
+    for name in names:
+        (strata.environment.home / name).mkdir()
+
+    strata.keyboard.press("ctrl+k")
+    field = strata.editable_field()
+    strata.keyboard.type_text("nav")
+    strata.wait(lambda: field.text == "nav", "the initial global-search query")
+    strata.wait(
+        lambda: all(
+            strata.window.find(role="label", name=name) is not None for name in names
+        ),
+        "all navigation results to be indexed",
+    )
+
+    results = [
+        node
+        for node in strata.window.find_all(role="list item")
+        if any(node.name.endswith(f"/{name}") for name in names)
+    ]
+    assert len(results) == len(names)
+    assert results[0].has_state("selected")
+    strata.keyboard.press("Down")
+    strata.wait(
+        lambda: results[1].has_state("selected"),
+        "the first Down press to advance past the preselected result",
+    )
+    for _ in range(2):
+        strata.keyboard.press("Down")
+    strata.keyboard.type_text("igation-final")
+    strata.wait(
+        lambda: field.text == "navigation-final",
+        "typing after arrow navigation to extend the query",
+    )
+    result = strata.wait(
+        lambda: next(
+            (
+                node
+                for node in strata.window.find_all(role="list item")
+                if node.name.endswith("/navigation-final")
+            ),
+            None,
+        ),
+        "the refined selected result",
+    )
+    strata.wait(
+        lambda: result.has_state("selected"),
+        "the refined result to be selected",
+    )
+    strata.keyboard.press("Return")
+    strata.wait_for_directory("navigation-final")
+
+
+@pytest.mark.preferences(search_open_files_directly=False)
+def test_global_search_preview_follows_neighbor_when_same_folder_result_is_deleted(strata):
+    folder = strata.environment.home / "preview-deletion"
+    folder.mkdir()
+    previewed = folder / "preview-deletion-fixture.txt"
+    previewed.write_text("search preview deletion fixture\n")
+    (folder / "remaining.txt").write_text("remaining file\n")
+    strata.keyboard.press("ctrl+l")
+    strata.keyboard.type_text(str(folder))
+    strata.keyboard.press("Return")
+    strata.wait_for_directory(folder.name)
+    strata.wait(lambda: "remaining.txt" in strata.entry_names(), "loaded folder")
+    strata.keyboard.press("ctrl+k")
+    strata.keyboard.type_text("preview-deletion-fixture")
+    strata.wait(
+        lambda: strata.window.find(role="label", name=previewed.name) is not None,
+        "indexed search result",
+    )
+    strata.keyboard.press("Return")
+    strata.wait(
+        lambda: strata.preview_shows("search preview deletion fixture"),
+        "search result preview",
+    )
+    previewed.unlink()
+    strata.wait(
+        lambda: strata.preview_shows("remaining file"),
+        "deleted result preview to follow the remaining file",
+    )
+    assert "remaining.txt" in strata.entry_names()
+
+
 def test_global_search_finds_a_file_under_home(strata, root):
     """Ctrl+K searches the home directory, not the browsed location."""
 
@@ -153,3 +428,230 @@ def test_global_search_finds_a_file_under_home(strata, root):
         lambda: strata.window.find(role="text", states={"editable"}) is None,
         "Escape to close the search palette",
     )
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize("directory", [False, True], ids=["file", "directory"])
+@pytest.mark.parametrize("route", ["menu", "shortcut"])
+def test_global_search_reveal(strata, mode, directory, route):
+    parent = strata.environment.home / "reveal-parent"
+    parent.mkdir()
+    target = parent / "reveal-target"
+    if directory:
+        target.mkdir()
+    else:
+        target.write_text("reveal without opening\n")
+    strata.keyboard.press("ctrl+k")
+    field = strata.editable_field()
+    strata.keyboard.type_text(target.name)
+    result = strata.wait(
+        lambda: next(
+            (node for node in strata.window.find_all(role="list item")
+             if node.name.endswith(f"/{target.name}")),
+            None,
+        ),
+        "global search result",
+    )
+    if route == "shortcut":
+        strata.keyboard.press("alt+Return")
+    else:
+        strata.pointer.right_click(result)
+        strata.wait(
+            lambda: strata.window.find(role="menu item", name="Open containing folder"),
+            "reveal context menu",
+        )
+        assert field.text == target.name
+        assert strata.window.find(role="text", states={"editable"}) is not None
+        strata.keyboard.press("Escape")
+        strata.wait(
+            lambda: strata.window.find(role="menu item", name="Open containing folder") is None,
+            "dismissed menu",
+        )
+        assert field.text == target.name
+        strata.pointer.right_click(result)
+        reveal = strata.wait(
+            lambda: strata.window.find(role="menu item", name="Open containing folder"),
+            "reopened reveal menu",
+        )
+        strata.pointer.click(reveal)
+    strata.wait_for_directory(parent.name)
+    strata.wait_for_selection([target.name], directory=parent.name)
+    strata.wait_for_focused_entry(target.name)
+    assert strata.window.find(role="text", states={"editable"}) is None
+
+
+@pytest.mark.preferences(tenxer_mode=True, type_to_search=False, single_click_previews=False)
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_tenxer_footer_find_moves_the_cursor_without_hiding_rows(strata, mode, root):
+    strata.keyboard.press("Home")
+    strata.wait_for_focused_entry("archive")
+
+    strata.keyboard.press("/")
+    field = strata.editable_field()
+    strata.keyboard.type_text("do")
+    strata.wait(lambda: field.text == "do", "the find query to stay in the footer prompt")
+    assert strata.entry_names(root) == ROOT_ENTRIES
+    strata.keyboard.press("Return")
+    strata.wait_for_focused_entry("documents")
+
+    for key, expected in (("n", "todo.txt"), ("n", "documents"), ("N", "todo.txt")):
+        strata.keyboard.press(key)
+        strata.wait_for_focused_entry(expected)
+    assert strata.entry_names(root) == ROOT_ENTRIES
+
+    strata.keyboard.press("?")
+    strata.keyboard.type_text("zzz")
+    strata.keyboard.press("Return")
+    strata.wait(
+        lambda: strata.window.find(role="label", name="No matches for “zzz”")
+        is not None,
+        "a miss to be reported",
+    )
+    strata.wait_for_focused_entry("todo.txt")
+
+    strata.keyboard.press("/")
+    strata.editable_field()
+    strata.keyboard.type_text("j")
+    strata.click_entry("readme.md", root)
+    strata.wait_for_selection(["readme.md"], root)
+    strata.wait(
+        lambda: strata.window.find(role="text", states={"editable", "focused"}) is None,
+        "clicking a row to close the prompt",
+    )
+    strata.wait_for_focused_entry("readme.md")
+    assert strata.entry_names(root) == ROOT_ENTRIES
+
+
+@pytest.mark.preferences(
+    tenxer_mode=True,
+    type_to_search=False,
+    single_click_previews=False,
+    filter_include_subfolders=False,
+)
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_tenxer_footer_filter_commits_reopens_and_clears(strata, mode, root):
+    strata.select_entry("readme.md", directory=root)
+
+    strata.keyboard.press("f")
+    field = strata.editable_field()
+    strata.keyboard.type_text("do")
+    strata.wait(lambda: field.text == "do", "the filter query to stay in the footer prompt")
+    strata.wait(
+        lambda: strata.matches(root) == ["documents", "todo.txt"],
+        "the filter to hide non-matches while typing",
+    )
+    strata.keyboard.press("Return")
+    strata.wait(
+        lambda: strata.window.find(role="text", states={"editable", "focused"}) is None
+        and strata.window.find(role="label", name="filter: do") is not None,
+        "Enter to commit the filter into the footer",
+    )
+    strata.wait(
+        lambda: strata.focused_name() in ("documents", "todo.txt"),
+        "focus to return to the filtered results",
+    )
+
+    strata.keyboard.press("f")
+    field = strata.editable_field()
+    strata.wait(lambda: field.text == "do", "f to pre-fill the committed query")
+    strata.keyboard.press("Escape")
+    strata.wait(
+        lambda: strata.entry_names(root) == ROOT_ENTRIES,
+        "Escape in the prompt to clear the filter",
+    )
+    strata.wait(
+        lambda: strata.window.find(role="label", name="filter: do") is None,
+        "the footer to drop the filter mark",
+    )
+    strata.wait_for_selection(["readme.md"], root)
+
+
+@pytest.mark.preferences(
+    tenxer_mode=True,
+    type_to_search=False,
+    single_click_previews=False,
+    filter_include_subfolders=False,
+)
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_tenxer_footer_search_covers_subfolders_and_restores_the_filter(strata, mode, root):
+    strata.select_entry("readme.md", directory=root)
+    strata.keyboard.press("f")
+    strata.editable_field()
+    strata.keyboard.type_text("do")
+    strata.keyboard.press("Return")
+    strata.wait(
+        lambda: strata.window.find(role="label", name="filter: do") is not None,
+        "the filter to commit",
+    )
+
+    strata.keyboard.press("s")
+    field = strata.editable_field()
+    strata.keyboard.type_text("photo")
+    strata.wait(lambda: field.text == "photo", "the search query to stay in the prompt")
+    strata.wait(
+        lambda: strata.matches(root) == ["photo.txt"],
+        "the search to list the nested match with Include subfolders off",
+    )
+    strata.keyboard.press("Return")
+    strata.wait(
+        lambda: strata.window.find(role="text", states={"editable", "focused"}) is None
+        and strata.window.find(role="label", name="search: photo") is not None,
+        "Enter to apply the search into the footer",
+    )
+    strata.wait_for_focused_entry("photo.txt")
+
+    strata.keyboard.press("Escape")
+    strata.wait(
+        lambda: strata.matches(root) == ["documents", "todo.txt"],
+        "listing Escape to restore the earlier filter",
+    )
+    strata.wait(
+        lambda: strata.window.find(role="label", name="filter: do") is not None
+        and strata.window.find(role="label", name="search: photo") is None,
+        "the footer to show the restored filter",
+    )
+
+
+@pytest.mark.preferences(
+    tenxer_mode=True,
+    type_to_search=False,
+    single_click_previews=False,
+    filter_include_subfolders=False,
+)
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_tenxer_sort_chords_and_dot_keep_the_cursor(strata, mode, root):
+    strata.select_entry_with_keyboard("readme.md")
+
+    strata.keyboard.press(",")
+    strata.wait(lambda: strata.window.find(role="label", name=",-") is not None, "the armed sort chord")
+    strata.keyboard.press("s")
+    strata.wait(
+        lambda: strata.entry_names(root)[-2:] == ["todo.txt", "readme.md"],
+        ", s to sort by size",
+    )
+    strata.keyboard.press(",")
+    strata.keyboard.press("S")
+    strata.wait(
+        lambda: strata.entry_names(root)[-2:] == ["readme.md", "todo.txt"],
+        ", S to reverse the size sort",
+    )
+    strata.wait_for_focused_entry("readme.md")
+
+    before = strata.entry_names(root)
+    strata.keyboard.press(",")
+    strata.keyboard.press("n")
+    strata.wait(lambda: strata.window.find(role="label", name="Unknown chord") is not None, ", n to cancel")
+    assert strata.entry_names(root) == before
+    assert strata.window.find(role="text", states={"editable", "focused"}) is None
+
+    strata.keyboard.press(",")
+    strata.keyboard.press("a")
+    strata.wait(lambda: strata.entry_names(root) == ROOT_ENTRIES, ", a to sort by name")
+    assert strata.window.find(role="text", states={"editable", "focused"}) is None, ", a creates nothing"
+    strata.wait_for_focused_entry("readme.md")
+
+    strata.keyboard.press(".")
+    strata.wait(lambda: ".hidden.txt" in strata.entry_names(root), ". to show hidden files")
+    strata.keyboard.press(".")
+    strata.wait(lambda: ".hidden.txt" not in strata.entry_names(root), ". to hide them again")
+    strata.wait_for_focused_entry("readme.md")

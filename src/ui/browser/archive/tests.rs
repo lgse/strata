@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::*;
 use crate::model::Location;
@@ -16,6 +16,10 @@ fn archive_names_strip_only_the_selected_dotted_extension() {
     );
     assert_eq!(
         normalized_archive_name("backup.tar.gz", ArchiveFormat::TarGz),
+        "backup"
+    );
+    assert_eq!(
+        normalized_archive_name("backup.rar", ArchiveFormat::Rar),
         "backup"
     );
     assert!(

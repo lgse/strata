@@ -1,9 +1,68 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::*;
 use crate::model::Location;
 use gtk::gio;
 use std::path::Path;
+
+#[test]
+fn pasted_images_preserve_collisions_and_dangling_symlinks() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let target = dir.path().join("missing.png");
+    std::os::unix::fs::symlink(&target, dir.path().join("image.png")).expect("dangling symlink");
+    std::fs::create_dir(dir.path().join("image (1).png")).expect("existing directory");
+    std::fs::write(dir.path().join("image (2).png"), b"original").expect("existing image");
+
+    let path = write_pasted_image(dir.path(), b"pasted").expect("paste image");
+
+    assert_eq!(path, dir.path().join("image (3).png"));
+    assert_eq!(std::fs::read(path).expect("pasted image"), b"pasted");
+    assert!(!target.exists());
+    assert_eq!(
+        std::fs::read(dir.path().join("image (2).png")).expect("original image"),
+        b"original"
+    );
+}
+
+#[test]
+fn concurrent_image_pastes_keep_every_payload() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let barrier = std::sync::Barrier::new(8);
+    std::thread::scope(|scope| {
+        let handles = (0u8..8)
+            .map(|value| {
+                let dir = dir.path();
+                let barrier = &barrier;
+                scope.spawn(move || {
+                    barrier.wait();
+                    let path = write_pasted_image(dir, &[value]).expect("concurrent paste");
+                    (path, value)
+                })
+            })
+            .collect::<Vec<_>>();
+        for handle in handles {
+            let (path, value) = handle.join().expect("paste thread");
+            assert_eq!(std::fs::read(path).expect("pasted payload"), [value]);
+        }
+    });
+    assert_eq!(
+        std::fs::read_dir(dir.path())
+            .expect("image directory")
+            .count(),
+        8
+    );
+}
+
+#[test]
+fn image_paste_reports_missing_destination() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    assert_eq!(
+        write_pasted_image(&dir.path().join("missing"), b"image")
+            .expect_err("missing destination must fail")
+            .kind(),
+        std::io::ErrorKind::NotFound
+    );
+}
 
 #[test]
 fn incoming_file_lists_preserve_local_and_remote_locations() {
@@ -52,20 +111,368 @@ fn incoming_file_lists_sanitize_remote_credentials() {
 }
 
 #[test]
-fn local_file_drops_prefer_move_while_external_drops_prefer_copy() {
+fn multi_file_badge_grows_for_multi_digit_counts() {
+    let single_digit = badge_dimensions(7.0, 10.0);
+    let four_digits = badge_dimensions(28.0, 10.0);
+
+    assert!(four_digits.0 > single_digit.0);
+    assert_eq!(single_digit.1, four_digits.1);
+    assert!(single_digit.0 >= single_digit.1);
+}
+
+#[test]
+fn badge_text_uses_the_more_contrasting_semantic_color() {
+    let accent = gtk::gdk::RGBA::new(0.1, 0.2, 0.8, 1.0);
+    let light_text = gtk::gdk::RGBA::WHITE;
+    let dark_surface = gtk::gdk::RGBA::BLACK;
+
+    assert_eq!(
+        contrasting_badge_text(&accent, &light_text, &dark_surface),
+        light_text
+    );
+}
+
+#[test]
+fn drag_actions_follow_copy_and_move_modifiers() {
     let both = gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE;
 
     assert_eq!(
-        preferred_file_drop_action(both, true),
-        gtk::gdk::DragAction::MOVE
+        drag_actions_for_modifiers(gtk::gdk::ModifierType::empty()),
+        both
     );
     assert_eq!(
-        preferred_file_drop_action(both, false),
+        drag_actions_for_modifiers(gtk::gdk::ModifierType::CONTROL_MASK),
         gtk::gdk::DragAction::COPY
     );
     assert_eq!(
-        preferred_file_drop_action(gtk::gdk::DragAction::MOVE, false),
+        drag_actions_for_modifiers(gtk::gdk::ModifierType::SHIFT_MASK),
         gtk::gdk::DragAction::MOVE
+    );
+}
+
+#[test]
+fn file_drop_action_follows_volume_relation_not_local_vs_external() {
+    let both = gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE;
+    let ask = crate::services::CrossVolumeDropStrategy::Ask;
+
+    assert_eq!(
+        drop_commit_action(preferred_file_drop_commit(
+            both,
+            crate::services::DropOverride::None,
+            crate::services::VolumeRelation::Same,
+            false,
+            ask,
+        )),
+        gtk::gdk::DragAction::MOVE
+    );
+    assert_eq!(
+        drop_commit_action(preferred_file_drop_commit(
+            both,
+            crate::services::DropOverride::None,
+            crate::services::VolumeRelation::Different,
+            false,
+            ask,
+        )),
+        gtk::gdk::DragAction::COPY
+    );
+    assert_eq!(
+        drop_commit_action(preferred_file_drop_commit(
+            both,
+            crate::services::DropOverride::None,
+            crate::services::VolumeRelation::Unknown,
+            false,
+            ask,
+        )),
+        gtk::gdk::DragAction::COPY
+    );
+    assert_eq!(
+        drop_commit_action(preferred_file_drop_commit(
+            gtk::gdk::DragAction::MOVE,
+            crate::services::DropOverride::None,
+            crate::services::VolumeRelation::Different,
+            false,
+            ask,
+        )),
+        gtk::gdk::DragAction::MOVE
+    );
+    assert_eq!(
+        drop_commit_action(preferred_file_drop_commit(
+            both,
+            crate::services::DropOverride::ForceCopy,
+            crate::services::VolumeRelation::Same,
+            false,
+            ask,
+        )),
+        gtk::gdk::DragAction::COPY
+    );
+    assert_eq!(
+        drop_commit_action(preferred_file_drop_commit(
+            both,
+            crate::services::DropOverride::ForceMove,
+            crate::services::VolumeRelation::Different,
+            false,
+            ask,
+        )),
+        gtk::gdk::DragAction::MOVE
+    );
+    assert_eq!(
+        drop_commit_action(preferred_file_drop_commit(
+            both,
+            crate::services::DropOverride::None,
+            crate::services::VolumeRelation::Same,
+            true,
+            ask,
+        )),
+        gtk::gdk::DragAction::empty()
+    );
+}
+
+#[test]
+fn file_drop_action_hover_matches_cross_volume_strategy() {
+    let both = gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE;
+    let none = crate::services::DropOverride::None;
+    let different = crate::services::VolumeRelation::Different;
+
+    assert_eq!(
+        drop_commit_action(preferred_file_drop_commit(
+            both,
+            none,
+            different,
+            false,
+            crate::services::CrossVolumeDropStrategy::Move,
+        )),
+        gtk::gdk::DragAction::MOVE
+    );
+    assert_eq!(
+        drop_commit_action(preferred_file_drop_commit(
+            both,
+            none,
+            different,
+            false,
+            crate::services::CrossVolumeDropStrategy::Copy,
+        )),
+        gtk::gdk::DragAction::COPY
+    );
+    assert_eq!(
+        preferred_file_drop_commit(
+            both,
+            none,
+            different,
+            false,
+            crate::services::CrossVolumeDropStrategy::Ask,
+        ),
+        crate::services::DropCommit::Ask {
+            default: crate::services::TransferKind::Copy,
+            volume: different,
+        }
+    );
+    assert_eq!(
+        preferred_file_drop_commit(
+            both,
+            none,
+            crate::services::VolumeRelation::Same,
+            false,
+            crate::services::CrossVolumeDropStrategy::Ask,
+        ),
+        crate::services::DropCommit::Move
+    );
+}
+
+#[test]
+fn file_drop_commit_rejects_the_recent_collection() {
+    crate::test_support::gtk_test(
+        "ui::browser::clipboard::tests::file_drop_commit_rejects_the_recent_collection",
+        || {
+            let recent = Location::uri("recent:///");
+            let prepared = prepare_file_drop_target({
+                let recent = recent.clone();
+                move || Some(recent.clone())
+            });
+
+            assert_eq!(
+                file_drop_commit(
+                    &prepared.target,
+                    &recent,
+                    &[Location::local("/fixture/source.txt")],
+                    &prepared.state,
+                ),
+                crate::services::DropCommit::Forbidden
+            );
+        },
+    );
+}
+
+#[test]
+fn paste_into_rejects_the_recent_collection_at_the_action_boundary() {
+    crate::test_support::gtk_test(
+        "ui::browser::clipboard::tests::paste_into_rejects_the_recent_collection_at_the_action_boundary",
+        || {
+            let view = crate::ui::browser::BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            let events = Rc::new(RefCell::new(Vec::new()));
+            let observed = events.clone();
+            view.browser()
+                .observe(move |event| observed.borrow_mut().push(event.clone()));
+
+            view.state.paste_into(Location::uri("recent:///"));
+
+            assert!(
+                !events
+                    .borrow()
+                    .iter()
+                    .any(|event| matches!(event, crate::app::BrowserEvent::TransferStarted { .. }))
+            );
+        },
+    );
+}
+
+#[test]
+fn completing_a_plain_move_keeps_unrelated_clipboard_text() {
+    crate::test_support::gtk_test(
+        "ui::browser::clipboard::tests::completing_a_plain_move_keeps_unrelated_clipboard_text",
+        || {
+            let view = crate::ui::browser::BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            let clipboard = gtk::gdk::Display::default().expect("display").clipboard();
+            clipboard.set_text("copied-name.txt");
+
+            view.state
+                .complete_cut_transfer(&[Location::local("/fixture/moved.txt")]);
+
+            assert!(
+                clipboard.formats().contains_type(glib::types::Type::STRING),
+                "a move with no pending cut must not clear the clipboard"
+            );
+        },
+    );
+}
+
+#[test]
+fn completing_a_cut_paste_consumes_the_clipboard_file_list() {
+    crate::test_support::gtk_test(
+        "ui::browser::clipboard::tests::completing_a_cut_paste_consumes_the_clipboard_file_list",
+        || {
+            let view = crate::ui::browser::BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            let cut = Location::local("/fixture/cut.txt");
+            set_shared_cut(std::slice::from_ref(&cut));
+            let clipboard = gtk::gdk::Display::default().expect("display").clipboard();
+            assert!(set_location_files_clipboard(std::slice::from_ref(&cut)));
+
+            view.state.complete_cut_transfer(std::slice::from_ref(&cut));
+
+            assert!(shared_cut_locations().is_empty());
+            assert!(
+                !clipboard
+                    .formats()
+                    .contains_type(gtk::gdk::FileList::static_type()),
+                "a consumed cut must release the clipboard file list"
+            );
+        },
+    );
+}
+
+#[test]
+fn completing_a_cut_keeps_a_newer_file_list() {
+    crate::test_support::gtk_test(
+        "ui::browser::clipboard::tests::completing_a_cut_keeps_a_newer_file_list",
+        || {
+            let view = crate::ui::browser::BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            let cut = Location::local("/fixture/cut.txt");
+            set_shared_cut(std::slice::from_ref(&cut));
+            assert!(set_location_files_clipboard(std::slice::from_ref(&cut)));
+            let clipboard = gtk::gdk::Display::default().expect("display").clipboard();
+            let newer = gtk::gdk::ContentProvider::for_value(
+                &gtk::gdk::FileList::from_array(&[gio::File::for_path("/fixture/new.txt")])
+                    .to_value(),
+            );
+            clipboard
+                .set_content(Some(&newer))
+                .expect("replace clipboard");
+
+            view.state.complete_cut_transfer(std::slice::from_ref(&cut));
+
+            assert!(shared_cut_locations().is_empty());
+            assert_eq!(clipboard.content(), Some(newer));
+        },
+    );
+}
+
+#[test]
+fn completing_a_cut_keeps_text_copied_afterward() {
+    crate::test_support::gtk_test(
+        "ui::browser::clipboard::tests::completing_a_cut_keeps_text_copied_afterward",
+        || {
+            let view = crate::ui::browser::BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            let cut = Location::local("/fixture/cut.txt");
+            set_shared_cut(std::slice::from_ref(&cut));
+            let clipboard = gtk::gdk::Display::default().expect("display").clipboard();
+            assert!(set_location_files_clipboard(std::slice::from_ref(&cut)));
+            clipboard.set_text("copied-name.txt");
+
+            view.state.complete_cut_transfer(std::slice::from_ref(&cut));
+
+            assert!(shared_cut_locations().is_empty());
+            assert!(
+                clipboard.formats().contains_type(glib::types::Type::STRING),
+                "consuming a cut must not clobber newer clipboard contents"
+            );
+        },
+    );
+}
+
+#[test]
+fn move_only_protocol_still_copies_across_volumes() {
+    let dest = gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE;
+    let offered = offered_file_actions(dest, gtk::gdk::DragAction::MOVE);
+    assert!(offered.contains(gtk::gdk::DragAction::COPY));
+    assert_eq!(
+        drop_commit_action(preferred_file_drop_commit(
+            offered,
+            crate::services::DropOverride::None,
+            crate::services::VolumeRelation::Different,
+            false,
+            crate::services::CrossVolumeDropStrategy::Ask,
+        )),
+        gtk::gdk::DragAction::COPY
+    );
+    assert_eq!(
+        drop_commit_action(preferred_file_drop_commit(
+            offered,
+            crate::services::DropOverride::None,
+            crate::services::VolumeRelation::Same,
+            false,
+            crate::services::CrossVolumeDropStrategy::Ask,
+        )),
+        gtk::gdk::DragAction::MOVE
+    );
+}
+
+#[test]
+fn copy_only_source_does_not_move_on_the_same_volume() {
+    let dest = gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE;
+    let offered = offered_file_actions(dest, gtk::gdk::DragAction::COPY);
+    assert_eq!(
+        drop_commit_action(preferred_file_drop_commit(
+            offered,
+            crate::services::DropOverride::None,
+            crate::services::VolumeRelation::Same,
+            false,
+            crate::services::CrossVolumeDropStrategy::Ask,
+        )),
+        gtk::gdk::DragAction::COPY
     );
 }
 
@@ -111,6 +518,123 @@ fn cut_matches_gio_equivalent_representations() {
     ));
 }
 
+fn result_row(widget: &gtk::Widget, name: &str) -> Option<gtk::Widget> {
+    let matches = widget
+        .downcast_ref::<gtk::Label>()
+        .is_some_and(|label| label.text() == name)
+        || widget
+            .downcast_ref::<gtk::Inscription>()
+            .is_some_and(|label| label.text().as_deref() == Some(name));
+    if matches && widget.is_mapped() {
+        let mut parent = widget.parent();
+        while let Some(widget) = parent {
+            if widget.has_css_class("file-row") || widget.has_css_class("icons-card") {
+                return Some(widget);
+            }
+            parent = widget.parent();
+        }
+    }
+    let mut child = widget.first_child();
+    while let Some(widget) = child {
+        if let Some(row) = result_row(&widget, name) {
+            return Some(row);
+        }
+        child = widget.next_sibling();
+    }
+    None
+}
+
+fn wait_for_result(condition: impl Fn() -> bool) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !condition() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "filtered result did not settle"
+        );
+        glib::MainContext::default().iteration(false);
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+}
+
+#[test]
+fn filtered_cut_feedback_follows_results_across_windows_and_rebuilds() {
+    crate::test_support::gtk_test(
+        "ui::browser::clipboard::tests::filtered_cut_feedback_follows_results_across_windows_and_rebuilds",
+        || {
+            use crate::ui::browser::{BrowserView, PeekBehavior};
+            use crate::ui::browser_modes::BrowserMode;
+            let fixture = tempfile::tempdir().expect("fixture");
+            std::fs::create_dir(fixture.path().join("nested")).expect("nested");
+            let cut = Location::local(fixture.path().join("nested/needle.txt"));
+            std::fs::write(cut.native_path().expect("path"), "cut").expect("file");
+            std::fs::write(fixture.path().join("needle-decoy.txt"), "uncut").expect("decoy");
+            let views: Vec<_> = (0..2)
+                .map(|_| {
+                    let view = BrowserView::new(
+                        Rc::new(crate::adapters::LocalFileSource),
+                        PeekBehavior::default(),
+                    );
+                    let window = gtk::Window::builder()
+                        .child(&view.widget())
+                        .default_width(900)
+                        .default_height(500)
+                        .build();
+                    window.present();
+                    view.browser().navigate(Location::local(fixture.path()));
+                    wait_for_result(|| {
+                        view.browser()
+                            .column_snapshot(0)
+                            .is_some_and(|s| !s.loading)
+                    });
+                    (view, window)
+                })
+                .collect();
+            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
+                clear_shared_marks();
+                for (view, _) in &views {
+                    view.set_view_mode(mode);
+                    assert!(view.show_filter_with_query("needle"));
+                    wait_for_result(|| result_row(&view.widget(), "needle.txt").is_some());
+                }
+                set_shared_cut(std::slice::from_ref(&cut));
+                for (view, _) in &views {
+                    assert!(
+                        result_row(&view.widget(), "needle.txt")
+                            .expect("cut result")
+                            .has_css_class("cut")
+                    );
+                    assert!(
+                        !result_row(&view.widget(), "needle-decoy.txt")
+                            .expect("decoy")
+                            .has_css_class("cut")
+                    );
+                    assert!(view.show_filter_with_query(""));
+                    wait_for_result(|| result_row(&view.widget(), "needle.txt").is_none());
+                    assert!(view.show_filter_with_query("needle"));
+                    wait_for_result(|| result_row(&view.widget(), "needle.txt").is_some());
+                    assert!(
+                        result_row(&view.widget(), "needle.txt")
+                            .expect("retained cut")
+                            .has_css_class("cut")
+                    );
+                }
+                clear_shared_marks();
+                for (view, _) in &views {
+                    assert!(
+                        !result_row(&view.widget(), "needle.txt")
+                            .expect("restored result")
+                            .has_css_class("cut")
+                    );
+                }
+            }
+            for (view, window) in views {
+                view.browser().clear_observer();
+                window.close();
+            }
+        },
+    );
+}
+
 #[test]
 fn cleared_shared_cut_is_not_revived_by_stale_view_state() {
     let native = Location::local("/fixture/first");
@@ -119,7 +643,7 @@ fn cleared_shared_cut_is_not_revived_by_stale_view_state() {
     set_shared_cut(std::slice::from_ref(&native));
     assert!(is_cut_match(std::slice::from_ref(&uri)));
 
-    clear_shared_cut();
+    clear_shared_marks();
     assert!(!is_cut_match(std::slice::from_ref(&native)));
 }
 

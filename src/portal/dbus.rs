@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 #[cfg(test)]
 mod tests;
@@ -21,10 +21,8 @@ pub(super) struct FileChooserInterface {
 }
 
 impl FileChooserInterface {
-    pub(super) fn new() -> Self {
-        Self {
-            backend: FileChooserBackend::default(),
-        }
+    pub(super) fn new(backend: FileChooserBackend) -> Self {
+        Self { backend }
     }
 
     async fn begin(

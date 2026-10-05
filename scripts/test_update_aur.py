@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import pathlib
 import unittest
 
 from update_aur import (
@@ -107,6 +108,18 @@ class ChecksumTests(unittest.TestCase):
 
 
 class RenderTests(unittest.TestCase):
+    def test_bundled_unrar_license_is_distributed_and_installed(self):
+        root = pathlib.Path(__file__).resolve().parent.parent
+        license_text = (root / "data/licenses/UnRAR.txt").read_text()
+        self.assertIn("Alexander Roshal", license_text)
+        self.assertIn("re-create RAR compression algorithm", license_text)
+        workflow = (root / ".github/workflows/release.yml").read_text()
+        self.assertIn('data/licenses/UnRAR.txt "dist/$package/"', workflow)
+        for path in ["PKGBUILD.in", "strata-bin/PKGBUILD", "strata-rc-bin/PKGBUILD"]:
+            template = (root / "packaging/aur" / path).read_text()
+            self.assertIn("LicenseRef-UnRAR", template)
+            self.assertIn('${pkgdir}/usr/share/licenses/${pkgname}/UnRAR.txt', template)
+
     def test_every_placeholder_is_substituted(self):
         self.assertEqual(render("@A@/@B@", {"A": "one", "B": "two"}), "one/two")
 

@@ -1,11 +1,33 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
-use gtk::prelude::TextureExt;
+use super::{icons, recolor_icon_source};
 
-use super::{
-    CHROME_ICON_PX, contrasting_foreground, folder_decoration_texture, icons, primary_icon_texture,
-    primary_icon_texture_at, recolor_icon_source, svg_body, texture_px_for_pixel_size,
-};
+pub(crate) fn primary_icon_paintable(name: &str) -> Option<gtk::gdk::Texture> {
+    custom_colored_icon_paintable(name, &super::primary_icon_color())
+}
+
+pub(crate) fn custom_colored_icon_paintable(name: &str, color: &str) -> Option<gtk::gdk::Texture> {
+    super::primary_icon_texture_at(
+        name,
+        color,
+        super::ICON_TEXTURE_PX,
+        24,
+        super::IconContext::Interface,
+    )
+}
+
+pub(crate) fn folder_decoration_paintable(
+    decoration: &str,
+    color: &str,
+) -> Option<gtk::gdk::Texture> {
+    super::sized_folder_decoration_paintable(
+        decoration,
+        color,
+        24,
+        1,
+        super::IconContext::Interface,
+    )
+}
 
 #[test]
 fn themed_icons_replace_every_legacy_fallback_color() {
@@ -45,6 +67,58 @@ fn customization_choices_are_unique_and_whitelisted() {
 }
 
 #[test]
+fn icon_cache_distinguishes_logical_size_from_display_resolution() {
+    crate::test_support::gtk_test(
+        "assets::tests::icon_cache_distinguishes_logical_size_from_display_resolution",
+        || {
+            let render = |name, color, size, scale| {
+                super::sized_icon_paintable(name, color, size, scale, super::IconContext::Grid)
+                    .expect("render icon")
+            };
+            for name in [icons::FOLDER, icons::FILE_CODE, icons::FILE_SPREADSHEET] {
+                let small = render(name, "#123456", 64, 2);
+                let large = render(name, "#123456", 128, 1);
+                let interface = super::primary_icon_texture_at(
+                    name,
+                    "#123456",
+                    128,
+                    64,
+                    super::IconContext::Interface,
+                )
+                .expect("interface icon");
+                assert_ne!(
+                    small, interface,
+                    "grid weight must not leak into interface icons"
+                );
+                assert_ne!(
+                    small, large,
+                    "equal raster resolution must not share stroke weight"
+                );
+                assert_eq!(small, render(name, "#123456", 64, 2));
+                assert_eq!(large, render(name, "#123456", 128, 1));
+                assert_ne!(large, render(name, "#abcdef", 128, 1));
+            }
+            let render_decoration = |decoration, size, scale| {
+                super::sized_folder_decoration_paintable(
+                    decoration,
+                    "#123456",
+                    size,
+                    scale,
+                    super::IconContext::Grid,
+                )
+                .expect("render decorated folder")
+            };
+            for decoration in [icons::PICTURES, "emoji:🚀"] {
+                let small = render_decoration(decoration, 64, 2);
+                let large = render_decoration(decoration, 128, 1);
+                assert_ne!(small, large);
+                assert_eq!(small, render_decoration(decoration, 64, 2));
+            }
+        },
+    );
+}
+
+#[test]
 fn custom_emoji_preferences_are_bounded_and_safe_to_render() {
     assert_eq!(icons::custom_emoji("emoji:🚀"), Some("🚀"));
     assert_eq!(icons::custom_emoji("emoji:👨‍👩‍👧‍👦"), Some("👨‍👩‍👧‍👦"));
@@ -54,67 +128,78 @@ fn custom_emoji_preferences_are_bounded_and_safe_to_render() {
         icons::custom_emoji(&format!("emoji:{}", "x".repeat(65))),
         None
     );
-    assert_eq!(contrasting_foreground("#e5a50a"), "#172033");
-    assert_eq!(contrasting_foreground("#8e4ec6"), "#f8fafc");
 }
 
 #[test]
-fn svg_body_preserves_bundled_icon_geometry() {
-    assert_eq!(
-        svg_body(r#"<svg viewBox="0 0 24 24"><path d="M1 2" /></svg>"#),
-        Some(r#"<path d="M1 2" />"#)
-    );
-}
-
-#[test]
-fn folder_emoji_renders_at_high_resolution() {
-    gio::resources_register_include!("strata.gresource").expect("resources register");
-    let texture = folder_decoration_texture("emoji:🚀", "#e5484d").expect("emoji renders");
-    assert_eq!(texture.width(), 96);
-    assert_eq!(texture.height(), 96);
-}
-
-#[test]
-fn primary_icons_rasterize_at_high_resolution() {
-    gio::resources_register_include!("strata.gresource").expect("resources register");
-    let texture = primary_icon_texture(icons::DOCUMENTS, "#8bc9eb").expect("icon renders");
-    assert_eq!(texture.width(), 96);
-    assert_eq!(texture.height(), 96);
-}
-
-#[test]
-fn chrome_icon_textures_are_twice_the_toolbar_size() {
-    assert_eq!(texture_px_for_pixel_size(CHROME_ICON_PX), 32);
-    assert_eq!(texture_px_for_pixel_size(48), 96);
-    assert_eq!(texture_px_for_pixel_size(-1), 96);
-    assert_eq!(texture_px_for_pixel_size(i32::MAX), 96);
-    gio::resources_register_include!("strata.gresource").expect("resources register");
-    let texture = primary_icon_texture_at(icons::SEARCH, "#8bc9eb", 32).expect("icon renders");
-    assert_eq!(texture.width(), 32);
-    assert_eq!(texture.height(), 32);
-}
-
-#[test]
-fn chrome_icons_use_header_bar_pixel_size() {
+fn cold_interface_icons_render_when_decoder_workers_cannot_start() {
     crate::test_support::gtk_test(
-        "assets::tests::chrome_icons_use_header_bar_pixel_size",
+        "assets::tests::cold_interface_icons_render_when_decoder_workers_cannot_start",
         || {
             use gtk::prelude::*;
-            let icon = crate::assets::chrome_icon(icons::SEARCH);
-            assert_eq!(icon.pixel_size(), CHROME_ICON_PX);
-            assert_eq!(icon.halign(), gtk::Align::Center);
-            assert_eq!(icon.valign(), gtk::Align::Center);
-            let texture_width =
-                |image: &gtk::Image| image.paintable().expect("icon texture").intrinsic_width();
-            assert_eq!(texture_width(&icon), 32);
-            crate::assets::set_primary_icon(&icon, icons::X);
-            assert_eq!(texture_width(&icon), 32);
-            crate::assets::apply_primary_icon(&icon, icons::X, "#ffffff");
-            assert_eq!(texture_width(&icon), 32);
-            for size in [16, 20, 48] {
-                let ordinary = crate::assets::primary_icon(icons::SEARCH, size);
-                assert_eq!(texture_width(&ordinary), 96);
+            use rustix::process::{Resource, Rlimit, getrlimit, setrlimit};
+            struct RestoreLimit(Rlimit);
+            impl Drop for RestoreLimit {
+                fn drop(&mut self) {
+                    setrlimit(Resource::Nproc, self.0).expect("restore process limit");
+                }
             }
+            let saved = getrlimit(Resource::Nproc);
+            let _restore = RestoreLimit(saved);
+            setrlimit(
+                Resource::Nproc,
+                Rlimit {
+                    current: Some(0),
+                    ..saved
+                },
+            )
+            .expect("disable new decoder workers in this isolated process");
+            super::ICON_TEXTURES.with(|cache| cache.borrow_mut().clear());
+            let names = gio::resources_enumerate_children(
+                "/io/github/lgse/Strata/icons/scalable/actions/",
+                gio::ResourceLookupFlags::NONE,
+            )
+            .expect("bundled icon resources");
+            assert!(!names.is_empty());
+            for resource in names {
+                let name = resource.strip_suffix(".svg").expect("bundled SVG icon");
+                let image = super::primary_icon(name, 18);
+                let first = image
+                    .paintable()
+                    .expect("cold icon renders without a decoder process");
+                assert!(
+                    first.is::<gtk::gdk::MemoryTexture>(),
+                    "raw pixels, not a loader-backed icon"
+                );
+                assert_eq!(
+                    first
+                        .clone()
+                        .downcast::<gtk::gdk::Texture>()
+                        .expect("interface texture"),
+                    primary_icon_paintable(name).expect("default interface weight"),
+                );
+                super::set_custom_colored_icon(&image, name, "#d46b31");
+                let recolored = image.paintable().expect("live color update renders");
+                assert!(recolored.is::<gtk::gdk::MemoryTexture>());
+                assert_ne!(
+                    first, recolored,
+                    "recoloring must request the new color variant"
+                );
+                let texture = recolored.downcast::<gtk::gdk::Texture>().expect("texture");
+                let stride = texture.width() as usize * 4;
+                let mut pixels = vec![0; stride * texture.height() as usize];
+                texture.download(&mut pixels, stride);
+                assert!(
+                    pixels
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
+                        .any(|pixel| u32::from_ne_bytes(*pixel) >> 24 != 0),
+                    "bundled icon must render visible geometry: {name}"
+                );
+            }
+            assert!(folder_decoration_paintable(icons::PICTURES, "#d46b31").is_some());
+            assert!(super::emoji_icon_paintable("🚀").is_some());
+            assert!(folder_decoration_paintable("emoji:🚀", "#d46b31").is_some());
         },
     );
 }

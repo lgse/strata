@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 //! `org.freedesktop.FileManager1`, the interface browsers and GTK/GNOME apps
 //! call for "Open file location". Those callers talk to the well-known bus

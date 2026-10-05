@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 #[cfg(test)]
 mod tests;
@@ -33,7 +33,7 @@ pub(super) async fn parent_size_hint(
     query_size(&hyprland_socket()?, &app_id, QUERY_TIMEOUT).await
 }
 
-pub(super) async fn prepare_chooser_placement() {
+pub(crate) async fn prepare_chooser_placement() {
     let Some(socket) = hyprland_socket() else {
         return;
     };

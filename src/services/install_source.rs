@@ -1,7 +1,9 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
-    os::unix::fs::PermissionsExt,
+    ffi::OsStr,
+    io,
+    os::unix::{ffi::OsStrExt as _, fs::PermissionsExt},
     path::{Path, PathBuf},
     sync::OnceLock,
 };
@@ -163,8 +165,27 @@ impl ManagedInstall {
     }
 }
 
+pub(crate) fn installed_executable() -> io::Result<PathBuf> {
+    std::env::current_exe().map(|path| replaced_executable_path(&path))
+}
+
+// Linux appends " (deleted)" to /proc/self/exe after the installed binary is replaced.
+fn replaced_executable_path(executable: &Path) -> PathBuf {
+    if !executable.exists()
+        && let Some(original) = executable
+            .as_os_str()
+            .as_bytes()
+            .strip_suffix(b" (deleted)")
+            .map(|original| Path::new(OsStr::from_bytes(original)))
+        && original.is_file()
+    {
+        return original.to_path_buf();
+    }
+    executable.to_path_buf()
+}
+
 fn marker_path() -> Option<PathBuf> {
-    std::env::current_exe()
+    installed_executable()
         .ok()
         .as_deref()
         .and_then(marker_path_for_executable)

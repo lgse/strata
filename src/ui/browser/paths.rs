@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use crate::model::{FileEntry, Location};
 use crate::ui::browser::PinStatus;
@@ -77,6 +77,3 @@ pub(super) fn compact_native_path(path: &Path) -> String {
         .map(|suffix| format!("~/{}", suffix.to_string_lossy()))
         .unwrap_or_else(|| path.to_string_lossy().into_owned())
 }
-
-#[cfg(test)]
-mod tests;

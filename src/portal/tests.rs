@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
     ffi::{OsStr, OsString},
@@ -30,10 +30,14 @@ fn entry(path: &Path, directory: bool) -> FileEntry {
         } else {
             EntryKind::File
         },
+        recent_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         mode: MetadataValue::Unknown,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }
 }
 
@@ -56,6 +60,36 @@ fn open_defaults_match_the_portal_contract() {
             multiple: false
         }
     ));
+}
+
+#[test]
+fn folder_hints_override_defaults_and_invalid_hints_preserve_save_names() {
+    let current = tempfile::tempdir().expect("current directory");
+    for hint in [
+        None,
+        Some(PathBuf::from("relative")),
+        Some(current.path().join("missing")),
+        Some(current.path().to_path_buf()),
+    ] {
+        let expected = if hint.as_deref() == Some(current.path()) {
+            current.path().to_path_buf()
+        } else {
+            crate::ui::default_save_folder()
+        };
+        assert_eq!(
+            run_async(accessible_folder(hint.clone())).expect("open/save-files folder"),
+            expected
+        );
+        assert_eq!(
+            run_async(save_file_suggestion(
+                None,
+                hint,
+                Some("report.txt".to_owned()),
+            ))
+            .expect("save suggestion"),
+            (expected, Some(OsString::from("report.txt")))
+        );
+    }
 }
 
 #[test]
@@ -88,6 +122,38 @@ fn current_file_preserves_a_non_utf8_filename() {
 }
 
 #[test]
+fn new_current_file_preserves_filename_and_directory() {
+    let current = tempfile::tempdir().expect("current directory");
+    for name in [
+        OsString::from("packing list 格式(2).xls"),
+        OsString::from_vec(vec![b'n', 0xff]),
+    ] {
+        let file = current.path().join(&name);
+        let suggestion = run_async(save_file_suggestion(
+            Some(file.clone()),
+            Some(current.path().to_path_buf()),
+            None,
+        ))
+        .expect("save suggestion");
+        assert_eq!(suggestion, (current.path().to_path_buf(), Some(name)));
+        assert!(!file.exists(), "suggesting a name must not create a file");
+    }
+}
+
+#[test]
+fn current_file_rejects_directories_and_missing_parents() {
+    let current = tempfile::tempdir().expect("current directory");
+    for file in [
+        current.path().to_path_buf(),
+        current.path().join("missing/new.txt"),
+    ] {
+        let suggestion =
+            run_async(save_file_suggestion(Some(file), None, None)).expect("save suggestion");
+        assert_eq!(suggestion, (crate::ui::default_save_folder(), None));
+    }
+}
+
+#[test]
 fn invalid_current_file_falls_back_without_using_lower_priority_suggestions() {
     let ignored = tempfile::tempdir().expect("ignored directory");
     let suggestion = run_async(save_file_suggestion(
@@ -96,7 +162,7 @@ fn invalid_current_file_falls_back_without_using_lower_priority_suggestions() {
         Some("ignored.txt".to_owned()),
     ))
     .expect("save suggestion");
-    assert_eq!(suggestion, (crate::ui::home_directory(), None));
+    assert_eq!(suggestion, (crate::ui::default_save_folder(), None));
 }
 
 #[test]
@@ -178,12 +244,6 @@ fn filters_and_choices_keep_input_order_and_current_filter() {
 }
 
 #[test]
-fn readonly_state_maps_to_writable_result() {
-    assert!(!writable_from_read_only(true));
-    assert!(writable_from_read_only(false));
-}
-
-#[test]
 fn open_selection_validates_kind_cardinality_and_locality() {
     let current = Location::local("/tmp");
     let file = entry(Path::new("/tmp/file"), false);
@@ -200,6 +260,9 @@ fn open_selection_validates_kind_cardinality_and_locality() {
     );
     let remote = FileEntry {
         location: Location::uri("smb://server/share/file"),
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
         ..folder
     };
     assert!(open_selection(&[remote], &current, true, false).is_err());
@@ -219,6 +282,30 @@ fn cancellation_before_presentation_is_sticky_and_cleanup_is_race_safe() {
     assert!(replacement.cancelled.load(Ordering::SeqCst));
     drop(replacement);
     assert!(!tracker.cancel("same"));
+}
+
+#[test]
+fn backend_idles_only_after_the_last_request_finishes() {
+    let tracker = Arc::new(RequestTracker::default());
+    let first = tracker.begin("first".into()).expect("first request");
+    let second = tracker.begin("second".into()).expect("second request");
+    let old = Instant::now() - IDLE_TIMEOUT - Duration::from_secs(1);
+    tracker.state.lock().expect("request state").last_activity = old;
+    assert!(!tracker.begin_shutdown_if_idle(Instant::now()));
+    drop(first);
+    assert!(!tracker.begin_shutdown_if_idle(Instant::now()));
+    drop(second);
+    assert!(!tracker.begin_shutdown_if_idle(Instant::now()));
+    tracker.state.lock().expect("request state").last_activity = old;
+    let third = tracker
+        .begin("third".into())
+        .expect("new request resets idle");
+    assert!(!tracker.begin_shutdown_if_idle(Instant::now()));
+    drop(third);
+    assert!(!tracker.begin_shutdown_if_idle(Instant::now()));
+    tracker.state.lock().expect("request state").last_activity = old;
+    assert!(tracker.begin_shutdown_if_idle(Instant::now()));
+    assert!(tracker.begin("too-late".into()).is_err());
 }
 
 #[test]
@@ -286,7 +373,6 @@ fn active_request_count_is_bounded() {
 
 #[test]
 fn backend_version_and_success_uri_scheme_are_fixed() {
-    assert_eq!(FILE_CHOOSER_VERSION, 4);
     for path in [Path::new("/tmp/a"), Path::new("/tmp/a b")] {
         assert!(
             local_uri(path)

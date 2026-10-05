@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 
 import ctypes
 
@@ -13,6 +13,7 @@ class NativeSurfaces:
         self.children = (ctypes.c_ulong * len(windows))(*range(len(windows)))
         self.handler = None
         self.freed = False
+        self.resized = []
 
     def XSync(self, *_):
         pass
@@ -38,6 +39,9 @@ class NativeSurfaces:
 
     def XFree(self, _children):
         self.freed = True
+
+    def XResizeWindow(self, _display, window, width, height):
+        self.resized.append((window, width, height))
 
 
 def connection_for(windows):
@@ -71,6 +75,22 @@ def test_disappearing_surfaces_do_not_abort_the_runner():
     connection = connection_for([3, surface()])
     assert connection.surface_origin(258, 475) == (500, 200)
     assert connection._x11.handler is None
+
+
+def test_resize_targets_only_the_matching_visible_surface():
+    connection = connection_for([surface(map_state=0), surface(width=1200), surface()])
+    connection.resize_surface(258, 475, 420, 300)
+    assert connection._x11.resized == [(2, 420, 300)]
+    assert connection._x11.freed
+    assert connection._x11.handler is None
+
+
+@pytest.mark.parametrize("windows", [[], [surface(), surface()]])
+def test_resize_refuses_missing_or_ambiguous_surfaces(windows):
+    connection = connection_for(windows)
+    with pytest.raises(XTestError):
+        connection.resize_surface(258, 475, 420, 300)
+    assert connection._x11.resized == []
 
 
 def test_other_native_errors_fail_the_test():

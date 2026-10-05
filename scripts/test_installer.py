@@ -2,6 +2,7 @@
 
 import os
 import pathlib
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -9,6 +10,7 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 INSTALLER = ROOT / "install.sh"
+BASH = shutil.which("bash")
 
 
 def bash(script: str, *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -16,13 +18,20 @@ def bash(script: str, *, env: dict[str, str] | None = None) -> subprocess.Comple
     test_env["STRATA_INSTALLER_TESTING"] = "1"
     if env:
         test_env.update(env)
-    return subprocess.run(
-        ["bash", "-c", f'source "$1"; {script}', "bash", str(INSTALLER)],
-        check=False,
-        capture_output=True,
-        text=True,
-        env=test_env,
-    )
+    with tempfile.TemporaryDirectory() as directory:
+        installer = pathlib.Path(directory) / "install.sh"
+        installer.write_text(
+            INSTALLER.read_text().replace(
+                "/usr/share/omarchy/version", f"{directory}/system-version"
+            )
+        )
+        return subprocess.run(
+            [BASH, "-c", f'source "$2"; {script}', "bash", str(INSTALLER), str(installer)],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=test_env,
+        )
 
 
 class InstallerTests(unittest.TestCase):
@@ -37,6 +46,7 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("gvfs", result.stdout.splitlines())
         self.assertNotIn("gvfs-smb", result.stdout.splitlines())
+        self.assertNotIn("github-cli", result.stdout.splitlines())
 
     def test_banner_remains_readable_without_terminal_color(self) -> None:
         result = bash("show_banner", env={"NO_COLOR": "1"})
@@ -45,6 +55,56 @@ class InstallerTests(unittest.TestCase):
         self.assertIn("Navigate every layer.", result.stdout)
         self.assertIn("Interactive installer", result.stdout)
         self.assertNotIn("\033", result.stdout)
+
+    def test_provenance_verification_is_optional_without_github_cli(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            result = bash(
+                'PATH="$EMPTY_PATH"; verify_provenance /tmp/strata.tar.gz',
+                env={"EMPTY_PATH": directory},
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("GitHub CLI is unavailable", result.stderr)
+
+    def test_provenance_verification_is_optional_without_github_authentication(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fake_gh = pathlib.Path(directory) / "gh"
+            fake_gh.write_text(
+                '#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALLS"\nexit 1\n', encoding="utf-8"
+            )
+            fake_gh.chmod(0o755)
+            calls = pathlib.Path(directory) / "calls"
+            result = bash(
+                'PATH="$FAKE_PATH"; verify_provenance /tmp/strata.tar.gz',
+                env={"FAKE_PATH": directory, "CALLS": str(calls)},
+            )
+            recorded_calls = calls.read_text().splitlines()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(recorded_calls, ["auth status --hostname github.com"])
+        self.assertIn("GitHub CLI is not authenticated", result.stderr)
+
+    def test_authenticated_provenance_verification_remains_mandatory(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fake_gh = pathlib.Path(directory) / "gh"
+            fake_gh.write_text(
+                '#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALLS"\n'
+                'case "$*" in "auth status"*) exit 0;; *) exit "$VERIFY_RESULT";; esac\n',
+                encoding="utf-8",
+            )
+            fake_gh.chmod(0o755)
+            calls = pathlib.Path(directory) / "calls"
+            result = bash(
+                'PATH="$FAKE_PATH"; verify_provenance /tmp/strata.tar.gz',
+                env={"FAKE_PATH": directory, "CALLS": str(calls), "VERIFY_RESULT": "9"},
+            )
+            recorded_calls = calls.read_text().splitlines()
+        self.assertEqual(result.returncode, 9, result.stderr)
+        self.assertEqual(
+            recorded_calls,
+            [
+                "auth status --hostname github.com",
+                "attestation verify /tmp/strata.tar.gz --repo lgse/strata",
+            ],
+        )
 
     def test_unattended_flags_select_only_requested_integrations(self) -> None:
         result = bash(
@@ -170,6 +230,40 @@ class InstallerTests(unittest.TestCase):
             ["-n", "pacman", "-S", "--needed", "--noconfirm", "--", "gvfs-smb"],
         )
 
+    def test_interactive_pacman_reads_from_the_terminal_not_stdin(self) -> None:
+        source = INSTALLER.read_text(encoding="utf-8")
+        self.assertIn('sudo pacman -S --needed -- "$@" </dev/tty', source)
+
+    def test_github_cli_requirement_is_skipped_when_gh_is_already_on_path(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fake_pacman = pathlib.Path(directory) / "pacman"
+            fake_pacman.write_text('#!/bin/sh\n[ "$1" = "-Q" ] && exit 1\nexit 0\n')
+            fake_pacman.chmod(0o755)
+            result = bash(
+                "REQUIRED_PACKAGES=(github-cli); NON_INTERACTIVE=yes; "
+                "gh() { :; }; "
+                'run_pacman() { printf "run_pacman called: %s\\n" "$*" >&2; }; '
+                "install_arch_dependencies",
+                env={"PATH": directory},
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("already installed", result.stdout)
+        self.assertNotIn("run_pacman called", result.stderr)
+
+    def test_github_cli_requirement_still_installs_when_gh_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fake_pacman = pathlib.Path(directory) / "pacman"
+            fake_pacman.write_text('#!/bin/sh\n[ "$1" = "-Q" ] && exit 1\nexit 0\n')
+            fake_pacman.chmod(0o755)
+            result = bash(
+                "REQUIRED_PACKAGES=(github-cli); NON_INTERACTIVE=yes; "
+                'run_pacman() { printf "run_pacman called: %s\\n" "$*" >&2; }; '
+                "install_arch_dependencies",
+                env={"PATH": directory},
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("run_pacman called: github-cli", result.stderr)
+
     def test_unknown_installer_option_is_rejected(self) -> None:
         result = bash("parse_args --definitely-unknown")
         self.assertNotEqual(result.returncode, 0)
@@ -199,13 +293,97 @@ class InstallerTests(unittest.TestCase):
             )
             self.assertEqual(result.stdout.strip(), "4")
 
+    def test_omarchy_major_from_requires_a_whole_version_token(self) -> None:
+        cases = [
+            ("3.8.5", "3"),
+            ("1:4.0.0-1", "4"),
+            ("4.0.0-1", "4"),
+            ("4.0.0.alpha", "4"),
+            ("Omarchy 2.3.1", ""),
+            ("5.4.0", ""),
+            ("dev (b280f130)", ""),
+        ]
+        for output, expected in cases:
+            with self.subTest(output=output):
+                result = bash(f'omarchy_major_from "{output}"')
+                self.assertEqual(result.stdout.strip(), expected)
+                if expected:
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                else:
+                    self.assertEqual(result.returncode, 1, result.stderr)
+
+    def test_omarchy_dev_hash_is_not_a_major(self) -> None:
+        with tempfile.TemporaryDirectory() as home:
+            result = bash(
+                "detect_omarchy_major",
+                env={
+                    "HOME": home,
+                    "PATH": f"{ROOT / 'scripts' / 'testdata' / 'omarchy-dev'}:{os.environ['PATH']}",
+                },
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.strip(), "")
+
+    def test_omarchy_2_3_1_command_is_not_major_3(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = pathlib.Path(directory) / "home"
+            home.mkdir()
+            fake = pathlib.Path(directory) / "omarchy"
+            fake.write_text("#!/bin/sh\nprintf '%s\\n' 'Omarchy 2.3.1'\n", encoding="utf-8")
+            fake.chmod(0o755)
+            result = bash(
+                "detect_omarchy_major",
+                env={"HOME": str(home), "PATH": f"{directory}:{os.environ['PATH']}"},
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.strip(), "")
+
+    def test_omarchy_dev_command_falls_back_to_version_file(self) -> None:
+        with tempfile.TemporaryDirectory() as home:
+            version = pathlib.Path(home) / ".local" / "share" / "omarchy" / "version"
+            version.parent.mkdir(parents=True)
+            version.write_text("4.0.0.alpha\n", encoding="utf-8")
+            result = bash(
+                "detect_omarchy_major",
+                env={
+                    "HOME": home,
+                    "PATH": f"{ROOT / 'scripts' / 'testdata' / 'omarchy-dev'}:{os.environ['PATH']}",
+                },
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.strip(), "4")
+
+    def test_detected_omarchy_4_from_version_file_writes_lua_bindings(self) -> None:
+        with tempfile.TemporaryDirectory() as home:
+            version = pathlib.Path(home) / ".local" / "share" / "omarchy" / "version"
+            version.parent.mkdir(parents=True)
+            version.write_text("4.0.0.alpha\n", encoding="utf-8")
+            result = bash(
+                'BIN_PATH="$HOME/.local/bin/strata"; '
+                "major=$(detect_omarchy_major); "
+                'configure_omarchy_bindings "$major"',
+                env={
+                    "HOME": home,
+                    "HYPRLAND_INSTANCE_SIGNATURE": "",
+                    "PATH": f"{ROOT / 'scripts' / 'testdata' / 'omarchy-dev'}:{os.environ['PATH']}",
+                },
+            )
+            lua = pathlib.Path(home) / ".config" / "hypr" / "bindings.lua"
+            conf = pathlib.Path(home) / ".config" / "hypr" / "bindings.conf"
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue(lua.is_file())
+            self.assertFalse(conf.exists())
+            self.assertIn("strata-installer: file-manager start", lua.read_text())
+            self.assertIn("Omarchy 4 file-manager shortcuts now open Strata.", result.stdout)
+
     def test_omarchy_detection_without_command_is_not_an_error(self) -> None:
         with tempfile.TemporaryDirectory() as home:
             result = bash(
-                'PATH=/usr/bin:/bin; value=$(detect_omarchy_major); printf "%s" "$value"',
+                'PATH="$HOME"; value=$(detect_omarchy_major); printf "%s" "$value"',
                 env={"HOME": home},
             )
             self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, "")
 
     def test_generated_omarchy_bindings_are_idempotent(self) -> None:
         for major, suffix in (("3", "conf"), ("4", "lua")):
@@ -227,6 +405,252 @@ class InstallerTests(unittest.TestCase):
                         '\\"$(omarchy-cmd-terminal-cwd)\\""',
                         contents,
                     )
+
+    def test_udiskie_unlock_flag_implies_non_interactive_and_leaves_other_options_ask(
+        self,
+    ) -> None:
+        result = bash(
+            "parse_args --with-udiskie-unlock; "
+            'printf "%s %s %s %s %s %s %s %s %s" "$NON_INTERACTIVE" "$WITH_UDISKIE_UNLOCK" '
+            '"$WITH_SMB" "$WITH_RAW" "$WITH_DESKTOP_ENTRY" "$WITH_FOLDER_ASSOCIATION" '
+            '"$WITH_FILE_MANAGER" "$WITH_FILE_CHOOSER" "$WITH_OMARCHY_KEYBINDS"'
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "yes yes ask ask ask ask ask ask ask")
+
+    def test_non_interactive_alone_leaves_udiskie_unlock_ask(self) -> None:
+        result = bash(
+            "parse_args --non-interactive; "
+            'printf "%s %s" "$NON_INTERACTIVE" "$WITH_UDISKIE_UNLOCK"'
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "yes ask")
+
+    def _configure_udiskie_unlock(
+        self,
+        setup: str,
+        *,
+        omarchy_major: str = "",
+        arch_based: str = "no",
+        udiskie: bool = False,
+        marker: bool = True,
+        host_udiskie: bool = False,
+        binary_rc: int = 0,
+        binary_contains_flag: bool = False,
+        repeat: int = 1,
+        extra_script: str = "",
+    ) -> tuple[subprocess.CompletedProcess[str], list[str], str, str, bool]:
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            path_dir = root / "path"
+            path_dir.mkdir()
+            if udiskie:
+                stub = path_dir / "udiskie"
+                stub.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+                stub.chmod(0o755)
+            if host_udiskie:
+                host_dir = root / "host-bin"
+                host_dir.mkdir()
+                host = host_dir / "udiskie"
+                host.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+                host.chmod(0o755)
+            extracted = root / "archive"
+            extracted.mkdir()
+            if marker:
+                unlock_dir = extracted / "udiskie"
+                unlock_dir.mkdir()
+                (unlock_dir / "unlock").write_text(
+                    "This release's strata binary supports --install-udiskie-unlock.\n",
+                    encoding="utf-8",
+                )
+            decoy = extracted / "strata"
+            decoy.write_text(
+                '#!/bin/sh\nprintf "EXTRACTED %s\\n" "$*" >> "$CALLS"\n',
+                encoding="utf-8",
+            )
+            decoy.chmod(0o755)
+            binary = root / "permanent" / "strata"
+            binary.parent.mkdir()
+            flag_comment = "# --install-udiskie-unlock\n" if binary_contains_flag else ""
+            binary.write_text(
+                "#!/bin/bash\n"
+                f"{flag_comment}"
+                'printf "%s %s\\n" "$0" "$*" >> "$CALLS"\n'
+                f'if [ "{binary_rc}" -ne 0 ]; then\n'
+                "  printf '%s\\n' "
+                "'Refusing to change udiskie configuration: "
+                "program_options must be a mapping' >&2\n"
+                "fi\n"
+                f"exit {binary_rc}\n",
+                encoding="utf-8",
+            )
+            binary.chmod(0o755)
+            calls = root / "calls"
+            home = root / "home"
+            home.mkdir()
+            config_home = home / ".config"
+            invoke = "; ".join(
+                ['configure_udiskie_unlock "$EXTRACTED" "$OMARCHY_MAJOR" "$ARCH_BASED"']
+                * repeat
+            )
+            parts = [
+                part
+                for part in (
+                    setup,
+                    'BIN_PATH="$PERMANENT_BINARY"',
+                    invoke,
+                    extra_script,
+                )
+                if part
+            ]
+            result = bash(
+                "; ".join(parts),
+                env={
+                    "PATH": str(path_dir),
+                    "HOME": str(home),
+                    "XDG_CONFIG_HOME": str(config_home),
+                    "XDG_DATA_HOME": str(home / ".local/share"),
+                    "PERMANENT_BINARY": str(binary),
+                    "EXTRACTED": str(extracted),
+                    "CALLS": str(calls),
+                    "OMARCHY_MAJOR": omarchy_major,
+                    "ARCH_BASED": arch_based,
+                },
+            )
+            recorded = calls.read_text(encoding="utf-8").splitlines() if calls.exists() else []
+            return (
+                result,
+                recorded,
+                str(binary),
+                binary.read_text(encoding="utf-8"),
+                (config_home / "udiskie").exists(),
+            )
+
+    def test_udiskie_unlock_runs_only_the_permanently_installed_binary_after_consent(
+        self,
+    ) -> None:
+        cases = [
+            {
+                "name": "consent_uses_permanent_binary",
+                "setup": "prompt() { return 0; }",
+                "omarchy_major": "4",
+                "arch_based": "yes",
+                "udiskie": True,
+                "expected_rc": 0,
+                "expected_args": ["--install-udiskie-unlock"],
+            },
+            {
+                "name": "declined",
+                "setup": "prompt() { return 1; }",
+                "omarchy_major": "4",
+                "arch_based": "yes",
+                "udiskie": True,
+                "expected_rc": 0,
+                "expected_args": [],
+            },
+            {
+                "name": "ineligible_ask",
+                "setup": "",
+                "omarchy_major": "",
+                "arch_based": "no",
+                "udiskie": True,
+                "expected_rc": 0,
+                "expected_args": [],
+            },
+            {
+                "name": "ineligible_flag",
+                "setup": "parse_args --with-udiskie-unlock",
+                "omarchy_major": "",
+                "arch_based": "no",
+                "udiskie": True,
+                "expected_rc": 1,
+                "expected_args": [],
+            },
+            {
+                "name": "missing_marker_ask",
+                "setup": "",
+                "omarchy_major": "4",
+                "arch_based": "yes",
+                "udiskie": True,
+                "marker": False,
+                "expected_rc": 0,
+                "expected_args": [],
+            },
+            {
+                "name": "missing_marker_flag",
+                "setup": "parse_args --with-udiskie-unlock",
+                "omarchy_major": "4",
+                "arch_based": "yes",
+                "udiskie": True,
+                "marker": False,
+                "expected_rc": 1,
+                "expected_args": [],
+            },
+            {
+                "name": "missing_udiskie_flag",
+                "setup": "parse_args --with-udiskie-unlock",
+                "omarchy_major": "4",
+                "arch_based": "yes",
+                "udiskie": False,
+                "expected_rc": 1,
+                "expected_args": [],
+            },
+            {
+                "name": "twice_uses_permanent_binary",
+                "setup": "prompt() { return 0; }",
+                "omarchy_major": "4",
+                "arch_based": "yes",
+                "udiskie": True,
+                "repeat": 2,
+                "expected_rc": 0,
+                "expected_args": ["--install-udiskie-unlock", "--install-udiskie-unlock"],
+            },
+        ]
+        for case in cases:
+            with self.subTest(case["name"]):
+                result, recorded, binary, _, wrote_udiskie_config = self._configure_udiskie_unlock(
+                    case["setup"],
+                    omarchy_major=case["omarchy_major"],
+                    arch_based=case["arch_based"],
+                    udiskie=case["udiskie"],
+                    marker=case.get("marker", True),
+                    host_udiskie=case.get("host_udiskie", False),
+                    repeat=case.get("repeat", 1),
+                )
+                self.assertEqual(result.returncode, case["expected_rc"], result.stderr)
+                expected = [f"{binary} {arg}" for arg in case["expected_args"]]
+                self.assertEqual(recorded, expected)
+                self.assertFalse(
+                    any(line.startswith("EXTRACTED") for line in recorded),
+                    recorded,
+                )
+                self.assertFalse(wrote_udiskie_config)
+                if case["expected_args"]:
+                    self.assertTrue(
+                        all(line.startswith(f"{binary} ") for line in recorded),
+                        recorded,
+                    )
+
+    def test_udiskie_unlock_capability_is_the_archive_marker_not_the_binary_string(
+        self,
+    ) -> None:
+        result, recorded, _, binary_source, _ = self._configure_udiskie_unlock(
+            "prompt() { return 0; }",
+            omarchy_major="4",
+            arch_based="yes",
+            udiskie=True,
+            marker=False,
+            binary_contains_flag=True,
+            extra_script=(
+                'if release_supports_udiskie_unlock "$EXTRACTED"; then '
+                'printf yes; else printf no; fi'
+            ),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(recorded, [])
+        self.assertIn("--install-udiskie-unlock", binary_source)
+        self.assertEqual(result.stdout, "no")
+        self.assertNotIn("--install-udiskie-unlock", result.stderr)
 
 
 if __name__ == "__main__":

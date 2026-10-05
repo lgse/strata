@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use crate::model::{FileEntry, Location};
 use crate::ui::browser::ViewState;
@@ -15,6 +15,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 const PEEK_WIDTH: i32 = 256;
+pub(super) const PEEK_LABEL: &str = "Folder peek";
 
 const PEEK_GAP: f32 = 8.0;
 
@@ -45,7 +46,7 @@ pub struct PeekBehavior {
 impl Default for PeekBehavior {
     fn default() -> Self {
         Self {
-            open_delay: Duration::from_millis(180),
+            open_delay: Duration::from_millis(1000),
             close_delay: Duration::from_millis(80),
             fade_duration: Duration::from_millis(150),
             item_limit: 8,
@@ -66,7 +67,7 @@ fn peek_label_factory(entries: Rc<RefCell<Vec<FileEntry>>>) -> gtk::SignalListIt
         let label = gtk::Label::builder()
             .halign(gtk::Align::Start)
             .hexpand(true)
-            .ellipsize(gtk::pango::EllipsizeMode::End)
+            .ellipsize(gtk::pango::EllipsizeMode::Middle)
             .build();
         let chevron = crate::assets::primary_icon(crate::assets::icons::CHEVRON_RIGHT, 15);
         chevron.add_css_class("file-chevron");
@@ -172,9 +173,18 @@ fn peek_horizontal_placement(
     }
 
     let left = source_x - PEEK_GAP - PEEK_WIDTH as f32;
-    (left >= 0.0).then_some(PeekPlacement {
-        x: left,
-        side: PeekSide::Left,
+    if left >= 0.0 {
+        return Some(PeekPlacement {
+            x: left,
+            side: PeekSide::Left,
+        });
+    }
+
+    // No free side: first column or a full-width row in a narrow window.
+    // Overlay the viewport's trailing edge instead of dropping the peek.
+    (viewport_width >= PEEK_WIDTH as f32).then_some(PeekPlacement {
+        x: (viewport_width - PEEK_WIDTH as f32).max(0.0),
+        side: PeekSide::Right,
     })
 }
 
@@ -226,14 +236,23 @@ impl ViewState {
         let source = glib::timeout_add_local_once(self.peek_behavior.open_delay, move || {
             if let Some(state) = weak_state.upgrade() {
                 state.pending_peek.take();
-                state.browser.begin_peek(origin_depth, location);
+                let still_hovered = state.peek_anchor.borrow().as_ref().is_some_and(|anchor| {
+                    anchor
+                        .widget
+                        .state_flags()
+                        .contains(gtk::StateFlags::PRELIGHT)
+                });
+                if still_hovered {
+                    state.browser.begin_peek(origin_depth, location);
+                } else {
+                    state.peek_anchor.take();
+                }
             }
         });
         self.pending_peek.replace(Some(source));
     }
 
     pub(in crate::ui) fn schedule_close_peek(self: &Rc<Self>) {
-        cancel_source(&self.pending_peek);
         cancel_source(&self.pending_close);
 
         let weak_state = Rc::downgrade(self);
@@ -281,9 +300,13 @@ impl ViewState {
             return;
         };
 
-        let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let content = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .accessible_role(gtk::AccessibleRole::Group)
+            .build();
         content.set_size_request(PEEK_WIDTH, -1);
         content.set_overflow(gtk::Overflow::Hidden);
+        crate::ui::accessibility::set_label(&content, PEEK_LABEL);
 
         let header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         header.add_css_class("column-header");
@@ -365,6 +388,8 @@ impl ViewState {
             .margin_end(margin_end)
             .margin_top(row_bounds.y().round().max(0.0) as i32)
             .build();
+        revealer.set_can_focus(false);
+        content.set_can_focus(false);
         self.overlay.add_overlay(&revealer);
         self.overlay.add_css_class("peek-open");
         anchor.widget.add_css_class("peek-anchor");
@@ -381,11 +406,24 @@ impl ViewState {
         glib::idle_add_local_once(move || revealer.set_reveal_child(true));
     }
 
+    pub(in crate::ui) fn open_keyboard_peek(&self) {
+        let Some((widget, depth, location)) = self.mode_views.borrow().keyboard_peek_target()
+        else {
+            return;
+        };
+        self.peek_anchor.replace(Some(PeekAnchor {
+            widget,
+            origin_depth: depth,
+        }));
+        self.browser.begin_peek(depth, location);
+        if self.peek.borrow().is_none() {
+            self.peek_anchor.take();
+        }
+    }
+
     pub(super) fn close_peek_visual(&self) {
-        cancel_source(&self.pending_peek);
         cancel_source(&self.pending_close);
         self.overlay.remove_css_class("peek-open");
-        self.peek_anchor.take();
         if let Some(peek) = self.peek.take() {
             peek.anchor.remove_css_class("peek-anchor");
             peek.revealer.set_can_target(false);
@@ -397,6 +435,3 @@ impl ViewState {
         }
     }
 }
-
-#[cfg(test)]
-mod tests;

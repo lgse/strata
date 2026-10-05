@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::*;
 use gtk::subclass::prelude::ObjectSubclassIsExt;
@@ -48,6 +48,27 @@ fn modal_hosts_preserve_nested_blur_and_support_plain_overlays() {
 }
 
 #[test]
+fn repeated_dismissal_does_not_repeat_the_confirmed_operation() {
+    crate::test_support::gtk_test(
+        "ui::modal::tests::repeated_dismissal_does_not_repeat_the_confirmed_operation",
+        || {
+            let overlay = gtk::Overlay::new();
+            let layer = modal_layer(&gtk::Label::new(None), &overlay, None, None);
+            overlay.add_overlay(&layer);
+            let calls = Rc::new(Cell::new(0));
+            for _ in 0..2 {
+                let calls = calls.clone();
+                dismiss_modal_layer_then(&layer, &overlay, None, move || {
+                    calls.set(calls.get() + 1);
+                });
+            }
+            wait_until(|| layer.parent().is_none());
+            assert_eq!(calls.get(), 1);
+        },
+    );
+}
+
+#[test]
 fn enter_in_a_single_line_field_invokes_the_primary_action() {
     crate::test_support::gtk_test(
         "ui::modal::tests::enter_in_a_single_line_field_invokes_the_primary_action",
@@ -75,6 +96,51 @@ fn enter_in_a_single_line_field_invokes_the_primary_action() {
             confirm.set_sensitive(false);
             name.emit_by_name::<()>("activate", &[]);
             assert_eq!(clicks.get(), 2, "a disabled primary action stays inert");
+        },
+    );
+}
+
+#[test]
+fn modal_focus_restoration_preserves_explicit_action_focus() {
+    crate::test_support::gtk_test(
+        "ui::modal::tests::modal_focus_restoration_preserves_explicit_action_focus",
+        || {
+            let body = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            let origin = gtk::Button::with_label("Origin");
+            let action_target = gtk::Entry::new();
+            body.append(&origin);
+            body.append(&action_target);
+            let overlay = gtk::Overlay::new();
+            overlay.set_child(Some(&body));
+            let window = gtk::Window::builder().child(&overlay).build();
+            window.present();
+            origin.grab_focus();
+            let modal_field = gtk::Entry::new();
+            let layer = modal_layer(&modal_field, &overlay, None, None);
+            let restore = remember_modal_focus(&layer, &overlay);
+            overlay.add_overlay(&layer);
+            modal_field.grab_focus();
+            let unwanted_restores = Rc::new(Cell::new(0));
+            let restored = unwanted_restores.clone();
+            origin.connect_has_focus_notify(move |origin| {
+                if origin.has_focus() {
+                    restored.set(restored.get() + 1);
+                }
+            });
+            restore.set(false);
+            let target = action_target.clone();
+            dismiss_modal_layer_then(&layer, &overlay, None, move || {
+                target.grab_focus();
+            });
+            wait_until(|| layer.parent().is_none());
+            let focus = gtk::prelude::RootExt::focus(&window).expect("action focus");
+            assert!(
+                focus == action_target.clone().upcast::<gtk::Widget>()
+                    || focus.is_ancestor(&action_target)
+            );
+            assert!(!origin.has_focus());
+            assert_eq!(unwanted_restores.get(), 0);
+            window.destroy();
         },
     );
 }

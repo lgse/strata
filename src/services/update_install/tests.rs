@@ -1,7 +1,8 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
     fs,
+    os::unix::fs::symlink,
     path::{Path, PathBuf},
 };
 
@@ -9,9 +10,77 @@ use super::{
     APPLICATION_ICON, DESKTOP_ENTRY, InstallCancel, InstallRequest, InstallStop, UpdateMethod,
     aur_repository_version_from_response, desktop_entry_with_exec, download_to_file_bounded,
     package_repository_version_for, parse_aur_package_version, parse_package_version,
-    refresh_desktop_metadata, repository_database_version, restore_rollback, stage_binary_path,
+    is_old_instance, retire_old_instances, refresh_desktop_metadata, repository_database_version, restore_rollback, stage_binary_path,
     stage_rollback, stage_workdir, update_method_for, verified_download_url, verify_staged_binary,
 };
+
+#[test]
+fn old_instance_selection_retires_chooser_and_file_manager_not_helpers_or_other_binaries() {
+    let root = tempfile::tempdir().expect("process fixture");
+    let binary = root.path().join("old-strata");
+    let other = root.path().join("other-strata");
+    fs::write(&binary, b"old").expect("old binary");
+    fs::write(&other, b"other").expect("unrelated binary");
+    let old = fs::metadata(&binary).expect("old metadata");
+    let proc_entry = root.path().join("12345");
+    fs::create_dir(&proc_entry).expect("process directory");
+    symlink(&binary, proc_entry.join("exe")).expect("process executable");
+    for arguments in [
+        b"strata\0".as_slice(),
+        b"strata\0/home/user\0".as_slice(),
+        b"strata\0--portal\0".as_slice(),
+    ] {
+        fs::write(proc_entry.join("cmdline"), arguments).expect("process arguments");
+        assert!(is_old_instance(&proc_entry, &binary, &old));
+    }
+    for arguments in [
+        b"strata\0--browser-worker\0".as_slice(),
+        b"strata\0--preview-helper\0".as_slice(),
+        b"strata\0--install-portal\0".as_slice(),
+    ] {
+        fs::write(proc_entry.join("cmdline"), arguments).expect("helper arguments");
+        assert!(!is_old_instance(&proc_entry, &binary, &old));
+    }
+    fs::write(proc_entry.join("cmdline"), b"strata\0--portal\0").expect("chooser arguments");
+    fs::remove_file(proc_entry.join("exe")).expect("remove old executable link");
+    symlink(&other, proc_entry.join("exe")).expect("unrelated executable link");
+    assert!(!is_old_instance(&proc_entry, &binary, &old));
+    fs::remove_file(proc_entry.join("exe")).expect("remove unrelated link");
+    let deleted = root.path().join("old-strata (deleted)");
+    fs::write(&deleted, b"older").expect("earlier binary");
+    symlink(&deleted, proc_entry.join("exe")).expect("earlier executable link");
+    assert!(is_old_instance(&proc_entry, &binary, &old));
+}
+
+#[test]
+fn in_place_retirement_signals_and_waits_for_an_owned_process() {
+    let sleep = crate::trusted_command::resolve("sleep").expect("trusted sleep");
+    let root = tempfile::tempdir().expect("private proc fixture");
+    let mut child = std::process::Command::new(&sleep)
+        .arg("30")
+        .spawn()
+        .expect("start owned process");
+    let pid = child.id();
+    symlink(format!("/proc/{pid}"), root.path().join(pid.to_string()))
+        .expect("fixture process link");
+    let old = fs::metadata(&sleep).expect("old executable metadata");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while !is_old_instance(&root.path().join(pid.to_string()), &sleep, &old)
+        && std::time::Instant::now() < deadline
+    {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    retire_old_instances(root.path(), &sleep, &old);
+    let status = child.try_wait().expect("inspect retired process");
+    if status.is_none() {
+        child.kill().expect("clean up process after failure");
+        child.wait().expect("reap process after failure");
+    }
+    assert!(
+        status.is_some(),
+        "retirement must wait until the old process exits"
+    );
+}
 
 const PACKAGED_ENTRY: &str =
     "[Desktop Entry]\nType=Application\nName=Strata\nExec=strata %U\nIcon=io.github.lgse.Strata\n";
@@ -230,6 +299,86 @@ fn desktop_entry_exec_quotes_paths_containing_spaces() {
     let entry = desktop_entry_with_exec(PACKAGED_ENTRY, Path::new("/opt/my apps/strata"));
 
     assert!(entry.contains("Exec=\"/opt/my apps/strata\" %U\n"));
+}
+
+#[test]
+fn desktop_entry_exec_escapes_reserved_characters_and_percent_signs() {
+    for (path, encoded) in [
+        ("/opt/50%/strata", "/opt/50%%/strata"),
+        ("/opt/%U%f%%/strata", "/opt/%%U%%f%%%%/strata"),
+        (
+            "/opt/it's \"quoted\" `$HOME\\strata",
+            r#""/opt/it's \\"quoted\\" \\`\\$HOME\\\\strata""#,
+        ),
+        (
+            "/opt/line\nbreak\tand\rreturn/strata",
+            r#""/opt/line\nbreak\tand\rreturn/strata""#,
+        ),
+    ] {
+        let entry = desktop_entry_with_exec(PACKAGED_ENTRY, Path::new(path));
+        assert!(entry.contains(&format!("Exec={encoded} %U\n")), "{entry}");
+    }
+}
+
+#[test]
+fn desktop_entry_exec_round_trips_string_and_argument_escaping() {
+    for character in [
+        ' ', '\t', '\n', '\r', '"', '\'', '\\', '>', '<', '~', '|', '&', ';', '$', '*', '?', '#',
+        '(', ')', '`',
+    ] {
+        let path = format!("/opt/before{character}after/strata");
+        let entry = desktop_entry_with_exec(PACKAGED_ENTRY, Path::new(&path));
+        assert!(entry.contains("Exec=\""), "{entry}");
+        let key_file = glib::KeyFile::new();
+        key_file
+            .load_from_data(&entry, glib::KeyFileFlags::NONE)
+            .expect("valid desktop entry");
+        let command = key_file
+            .string("Desktop Entry", "Exec")
+            .expect("Exec string");
+        let arguments = glib::shell_parse_argv(command).expect("valid quoted arguments");
+        assert_eq!(arguments, [path.as_str(), "%U"], "{entry}");
+    }
+}
+
+#[test]
+fn desktop_entry_exec_launches_reserved_characters_and_preserves_uri_arguments() {
+    use gio::prelude::AppInfoExt;
+    use std::{os::unix::fs::PermissionsExt, time::Duration};
+
+    let dir = scratch_dir("exec-launch", line!());
+    let executable = dir.join("strata ' \" `$\\");
+    fs::write(
+        &executable,
+        "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"${0%/*}/arguments\"\n",
+    )
+    .expect("write argument recorder");
+    fs::set_permissions(&executable, fs::Permissions::from_mode(0o755))
+        .expect("make recorder executable");
+    let key_file = glib::KeyFile::new();
+    key_file
+        .load_from_data(
+            &desktop_entry_with_exec(PACKAGED_ENTRY, &executable),
+            glib::KeyFileFlags::NONE,
+        )
+        .expect("load desktop entry");
+    let app = gio_unix::DesktopAppInfo::from_keyfile(&key_file).expect("valid launcher");
+    let uris = ["https://example.org/one%20two", "https://example.org/%25U"];
+    app.launch_uris(&uris, None::<&gio::AppLaunchContext>)
+        .expect("launch recorder");
+    let expected = format!("{}\n", uris.join("\n"));
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        if fs::read_to_string(dir.join("arguments")).ok().as_deref() == Some(&expected) {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "arguments not received"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    fs::remove_dir_all(dir).expect("cleanup");
 }
 
 #[test]

@@ -1,45 +1,6 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::*;
-
-#[test]
-fn navigation_reference_matches_each_mode() {
-    for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
-        let navigation = navigation_shortcuts(mode);
-        assert!(navigation.contains(&("Alt+↑", "Go to the parent folder")));
-        assert!(navigation.contains(&("Ctrl+↑ / Ctrl+↓", "First / last item")));
-        assert!(navigation.contains(&("↑ at top", "Focus the navigation header")));
-        assert!(navigation.contains(&("↓ in header", "Return to the files")));
-        assert!(navigation.contains(&("↑ at sidebar top", "Focus the top navigation bar")));
-        assert!(!navigation.iter().any(|(key, _)| *key == "Ctrl+Left"));
-        assert!(summary_shortcuts(mode).contains(&("Enter", "Open")));
-    }
-    assert!(
-        navigation_shortcuts(BrowserMode::Icons)
-            .contains(&("← at left edge", "Focus the visible sidebar"))
-    );
-    assert!(navigation_shortcuts(BrowserMode::List).contains(&("←", "Focus the visible sidebar")));
-    assert_ne!(
-        summary_shortcuts(BrowserMode::Columns),
-        summary_shortcuts(BrowserMode::Icons)
-    );
-    assert_ne!(
-        summary_shortcuts(BrowserMode::Icons),
-        summary_shortcuts(BrowserMode::List)
-    );
-    assert!(
-        navigation_shortcuts(BrowserMode::Columns)
-            .contains(&("← / →", "Parent pane / enter folder"))
-    );
-    assert!(TOOLS.contains(&("F1", "Show or hide this reference")));
-}
-
-#[test]
-fn reference_lists_rename_and_refresh_bindings_without_overlap() {
-    assert!(FILES.contains(&("F2 / Ctrl+R", "Rename")));
-    assert!(TOOLS.contains(&("F5", "Refresh")));
-    assert!(!TOOLS.iter().any(|(keys, _)| keys.contains("Ctrl+R")));
-}
 
 #[test]
 #[ignore = "requires a mapped GTK window; run this test alone"]
@@ -64,6 +25,10 @@ fn footer_tracks_modes_and_shields_files_while_open() {
         return;
     }
     if gtk::init().is_err() {
+        assert!(
+            std::env::var_os("STRATA_REQUIRE_GTK_TESTS").is_none(),
+            "GTK required"
+        );
         return;
     }
     crate::assets::prepare().expect("assets");
@@ -72,8 +37,26 @@ fn footer_tracks_modes_and_shields_files_while_open() {
         super::super::browser::PeekBehavior::default(),
     );
     let footer = ShortcutFooter::new(view.view_mode());
-    // Other test windows must not compete for the display's global popup grab.
-    footer.popover.set_autohide(false);
+    footer.observe_browser(&view.browser());
+    let directory = tempfile::tempdir().expect("count fixture");
+    std::fs::write(directory.path().join("one.txt"), "one").expect("first file");
+    std::fs::write(directory.path().join("two.txt"), "two").expect("second file");
+    std::fs::create_dir(directory.path().join("folder")).expect("empty folder");
+    view.browser()
+        .navigate(crate::model::Location::local(directory.path()));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while view
+        .browser()
+        .column_entry_counts(0)
+        .map(|counts| counts.total)
+        != Some(3)
+        && std::time::Instant::now() < deadline
+    {
+        settle();
+    }
+    view.browser().set_selection(0, &[], None);
+    assert_eq!(footer.count.text(), "3 items");
+    assert!(footer.count.tooltip_text().is_none());
     let updated = footer.clone();
     view.connect_view_mode_changed(move |mode| updated.set_mode(mode));
     let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -81,7 +64,7 @@ fn footer_tracks_modes_and_shields_files_while_open() {
     root.append(&entry);
     root.append(footer.widget());
     let window = gtk::Window::builder()
-        .child(&root)
+        .child(&gtk::Overlay::builder().child(&root).build())
         .default_width(600)
         .default_height(500)
         .build();
@@ -90,16 +73,93 @@ fn footer_tracks_modes_and_shields_files_while_open() {
     settle();
     for mode in [BrowserMode::Icons, BrowserMode::List, BrowserMode::Columns] {
         view.set_view_mode(mode);
-        assert!(
-            footer
-                .summary
-                .text()
-                .starts_with(summary_shortcuts(mode)[0].0)
+        let heading = footer
+            .reference
+            .first_child()
+            .and_then(|section| section.first_child())
+            .and_then(|heading| heading.first_child())
+            .and_downcast::<gtk::Label>()
+            .expect("navigation reference heading");
+        assert_eq!(
+            heading.text(),
+            match mode {
+                BrowserMode::Columns => "COLUMNS NAVIGATION",
+                BrowserMode::Icons => "ICONS NAVIGATION",
+                BrowserMode::List => "LIST NAVIGATION",
+            }
         );
-        assert_eq!(footer.summary.ellipsize(), gtk::pango::EllipsizeMode::End);
-        assert!(footer.summary.is_single_line_mode());
         assert!(footer.widget().is_visible());
+        let depth = view.browser().active_depth().expect("active directory");
+        view.browser().set_selection(depth, &[0, 1, 2], Some(2));
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while footer.count.text() != "1 folder, 2 files selected (6 B)"
+            && std::time::Instant::now() < deadline
+        {
+            settle();
+        }
+        assert_eq!(footer.count.text(), "1 folder, 2 files selected (6 B)");
+        assert!(footer.count.tooltip_text().is_none());
+        let folder = (0..3)
+            .find(|position| {
+                view.browser()
+                    .entry_at(depth, *position)
+                    .is_some_and(|entry| entry.is_directory())
+            })
+            .expect("folder position");
+        let file = (0..3)
+            .find(|position| *position != folder)
+            .expect("file position");
+        view.browser().set_selection(depth, &[folder], Some(folder));
+        assert_eq!(footer.count.text(), "1 folder selected");
+        view.browser().set_selection(depth, &[file], Some(file));
+        assert_eq!(footer.count.text(), "1 file selected (3 B)");
+        view.browser().set_selection(depth, &[], None);
+        assert_eq!(footer.count.text(), "3 items");
     }
+    let mut files = (0..3)
+        .filter_map(|position| view.browser().entry_at(0, position))
+        .filter(|entry| !entry.is_directory())
+        .collect::<Vec<_>>();
+    for (sizes, expected) in [
+        (
+            [
+                crate::model::MetadataValue::Known(0),
+                crate::model::MetadataValue::Known(0),
+            ],
+            "2 files selected (0 B)",
+        ),
+        (
+            [
+                crate::model::MetadataValue::Known(64_000_000),
+                crate::model::MetadataValue::Known(0),
+            ],
+            "2 files selected (64 MB)",
+        ),
+        (
+            [
+                crate::model::MetadataValue::Known(3),
+                crate::model::MetadataValue::Unknown,
+            ],
+            "2 files selected (3 B known; size incomplete)",
+        ),
+        (
+            [
+                crate::model::MetadataValue::Unavailable,
+                crate::model::MetadataValue::Unknown,
+            ],
+            "2 files selected (size unavailable)",
+        ),
+    ] {
+        for (entry, size) in files.iter_mut().zip(sizes) {
+            entry.size = size;
+        }
+        assert_eq!(selection_details(&files), expected);
+    }
+    view.browser().navigate(crate::model::Location::local(
+        directory.path().join("folder"),
+    ));
+    settle();
+    assert_eq!(footer.count.text(), "0 items");
     let none = gdk::ModifierType::empty();
     assert_eq!(footer.handle_key(gdk::Key::Delete, none), None);
     assert_eq!(
@@ -110,25 +170,36 @@ fn footer_tracks_modes_and_shields_files_while_open() {
         footer.handle_key(gdk::Key::F1, none),
         Some(glib::Propagation::Stop)
     );
-    assert!(footer.popover.is_visible());
-    assert!(footer.popover.child_focus(gtk::DirectionType::TabForward));
+    assert!(footer.session.is_open());
+    assert!(footer.panel.child_focus(gtk::DirectionType::TabForward));
+    footer.search.grab_focus();
+    assert_eq!(
+        footer.handle_key(gdk::Key::Delete, none),
+        Some(glib::Propagation::Proceed)
+    );
+    assert_eq!(
+        footer.handle_key(gdk::Key::v, gdk::ModifierType::CONTROL_MASK),
+        Some(glib::Propagation::Proceed)
+    );
+    footer.scroll.grab_focus();
     assert_eq!(
         footer.handle_key(gdk::Key::Delete, none),
         Some(glib::Propagation::Stop)
     );
     assert_eq!(
-        footer.handle_key(gdk::Key::v, gdk::ModifierType::CONTROL_MASK),
+        footer.handle_key(gdk::Key::Tab, none),
         Some(glib::Propagation::Stop)
     );
-    assert_eq!(
-        footer.handle_key(gdk::Key::Tab, none),
-        Some(glib::Propagation::Proceed)
+    assert!(
+        gtk::prelude::RootExt::focus(&window)
+            .is_some_and(|focus| focus == *footer.search.upcast_ref::<gtk::Widget>()
+                || focus.is_ancestor(&footer.search))
     );
     assert_eq!(
         footer.handle_key(gdk::Key::Escape, none),
         Some(glib::Propagation::Stop)
     );
-    assert!(!footer.popover.is_visible());
+    assert!(!footer.session.is_open());
     while glib::MainContext::default().iteration(false) {}
     assert!(
         gtk::prelude::RootExt::focus(&window).is_some_and(|focus| {
@@ -137,14 +208,14 @@ fn footer_tracks_modes_and_shields_files_while_open() {
         "closing keyboard help must restore the previous editing or browsing focus"
     );
     assert_eq!(footer.handle_key(gdk::Key::Delete, none), None);
-    let manager = super::super::theme::ThemeManager::shared();
+    let manager = super::super::preferences::PreferenceManager::shared();
     footer.bind_preferences(&manager);
     let other = ShortcutFooter::new(BrowserMode::Icons);
     other.bind_preferences(&manager);
     for enabled in [false, true, false] {
         manager.set_show_keybinding_hints(enabled);
-        assert_eq!(footer.widget().is_visible(), enabled);
-        assert_eq!(other.widget().is_visible(), enabled);
+        footer.assert_hints_visible(enabled);
+        other.assert_hints_visible(enabled);
     }
     let settings =
         std::path::PathBuf::from(std::env::var_os("XDG_CONFIG_HOME").expect("isolated config"))
@@ -155,21 +226,465 @@ fn footer_tracks_modes_and_shields_files_while_open() {
     assert_eq!(saved["show_keybinding_hints"].as_bool(), Some(false));
     footer.handle_key(gdk::Key::F1, none);
     settle();
-    assert!(footer.popover.is_visible());
+    assert!(footer.session.is_open());
     footer.handle_key(gdk::Key::F1, none);
     footer.handle_key(gdk::Key::F1, none);
     settle();
-    assert!(footer.popover.is_visible());
+    assert!(footer.session.is_open());
     footer.handle_key(gdk::Key::F1, none);
     settle();
-    assert!(!footer.popover.is_visible());
-    assert!(!footer.widget().is_visible());
+    assert!(!footer.session.is_open());
+    footer.assert_hints_visible(false);
     assert!(!manager.show_keybinding_hints());
     assert!(gtk::prelude::RootExt::focus(&window).is_some_and(|focus| {
         focus == *entry.upcast_ref::<gtk::Widget>() || focus.is_ancestor(&entry)
     }));
     window.destroy();
     view.browser().clear_observer();
+}
+
+impl ShortcutFooter {
+    pub(crate) fn assert_hints_visible(&self, visible: bool) {
+        assert_eq!(
+            self.widget().is_visible(),
+            visible || self.paste.is_visible() || self.count.is_visible()
+        );
+        assert_eq!(self.more.is_visible(), visible);
+    }
+}
+
+#[test]
+fn tenxer_reference_follows_the_active_map() {
+    crate::test_support::gtk_test(
+        "ui::shortcut_footer::tests::tenxer_reference_follows_the_active_map",
+        || {
+            let manager = super::super::preferences::PreferenceManager::shared();
+            manager.set_tenxer_mode(false);
+            manager.set_show_keybinding_hints(true);
+            let footer = ShortcutFooter::new(BrowserMode::Columns);
+            footer.bind_preferences(&manager);
+            let entry = gtk::Entry::new();
+            let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            root.append(&entry);
+            root.append(footer.widget());
+            let overlay = gtk::Overlay::new();
+            overlay.set_child(Some(&root));
+            let window = gtk::Window::builder()
+                .child(&overlay)
+                .default_width(640)
+                .default_height(480)
+                .build();
+            window.present();
+            entry.grab_focus();
+            settle();
+            let phrase = crate::ui::shortcut_reference::EXPERIMENTAL_LABEL;
+            let none = gdk::ModifierType::empty();
+            assert!(!footer.tag.is_visible());
+            assert!(
+                reference_labels(&footer)
+                    .iter()
+                    .any(|label| label == "Preview a file, or open a folder")
+            );
+            assert_eq!(footer.handle_key(gdk::Key::asciitilde, none), None);
+            assert!(!footer.session.is_open());
+
+            manager.set_tenxer_mode(true);
+            settle();
+            assert!(footer.tag.is_visible());
+            assert_eq!(footer.tag.text(), crate::ui::tenxer_mode::TAG_TEXT);
+            assert!(
+                footer
+                    .status
+                    .observe_children()
+                    .into_iter()
+                    .flatten()
+                    .all(|child| {
+                        child
+                            .downcast_ref::<gtk::Label>()
+                            .is_none_or(|label| !label.is_visible() || label.text() != phrase)
+                    }),
+                "the footer shows only the pill"
+            );
+            assert!(footer.tag.tooltip_text().is_none());
+            let columns = reference_labels(&footer);
+            assert!(columns.iter().any(|label| label == "Toggle 10xer mode"));
+            assert!(
+                columns
+                    .iter()
+                    .any(|label| label == "Open the focused directory")
+            );
+            assert!(
+                columns
+                    .iter()
+                    .any(|label| label == "Open the next column for the focused directory")
+            );
+            assert!(columns.iter().any(|label| label == "Move half a page"));
+            assert!(
+                !columns
+                    .iter()
+                    .any(|label| label == "Preview a file, or open a folder")
+            );
+            assert!(
+                !columns
+                    .iter()
+                    .any(|label| label == "Move spatially between tiles")
+            );
+            let mode_category = footer
+                .category_buttons()
+                .into_iter()
+                .find(|button| {
+                    let mut labels = Vec::new();
+                    collect_label_text(button.upcast_ref(), &mut labels);
+                    labels.iter().any(|label| label == "10xer mode")
+                })
+                .expect("10xer category");
+            mode_category.emit_clicked();
+            let mode_shortcuts = reference_labels(&footer);
+            for (keys, action) in [
+                ("v / V", "Visual select / visual unset"),
+                ("g g", "First item"),
+                ("g Space", "Go to a folder, typed path, or URI"),
+                ("s", "Search this folder and its subfolders"),
+                ("f", "Filter this listing"),
+                ("c c / c n", "Copy path / name"),
+                ("M / C", "Move / copy to a typed folder"),
+                ("Ctrl+R", "Invert the selection"),
+                ("Space", "Toggle the focused item and move down"),
+                ("i", "Open the next column for the focused directory"),
+            ] {
+                assert!(reference_pairs(&mode_shortcuts, keys, action), "{keys}");
+            }
+            assert!(
+                !mode_shortcuts
+                    .iter()
+                    .any(|label| label == "Ctrl+C / Ctrl+X")
+            );
+            footer.category_buttons()[0].emit_clicked();
+            footer.set_mode(BrowserMode::Icons);
+            let icons = reference_labels(&footer);
+            assert!(
+                icons
+                    .iter()
+                    .any(|label| label == "Move spatially between tiles")
+            );
+            assert!(
+                icons
+                    .iter()
+                    .any(|label| label == "Toggle folder peek for the focused directory")
+            );
+            assert!(
+                !icons
+                    .iter()
+                    .any(|label| label == "Open the focused directory")
+            );
+            assert!(
+                !icons
+                    .iter()
+                    .any(|label| label == "Open the next column for the focused directory")
+            );
+
+            footer.handle_key(gdk::Key::F1, none);
+            settle();
+            assert!(footer.session.is_open());
+            assert!(
+                overlay
+                    .observe_children()
+                    .into_iter()
+                    .flatten()
+                    .any(|child| child
+                        .downcast_ref::<gtk::Widget>()
+                        .is_some_and(|widget| widget.has_css_class("search-backdrop")))
+            );
+            assert!(
+                gtk::prelude::RootExt::focus(&window).is_some_and(|focus| {
+                    focus == *footer.search.upcast_ref::<gtk::Widget>()
+                        || focus.is_ancestor(&footer.search)
+                }),
+                "the open reference takes keyboard focus"
+            );
+            for _ in 0..4 {
+                press_reference(&footer, gdk::Key::Tab);
+                settle();
+                assert!(footer.category_buttons()[0].has_focus());
+                press_reference(&footer, gdk::Key::Tab);
+                settle();
+                assert!(footer.scroll.has_focus());
+                press_reference(&footer, gdk::Key::Tab);
+                settle();
+                assert!(
+                    gtk::prelude::RootExt::focus(&window)
+                        .is_some_and(|focus| focus == *footer.search.upcast_ref::<gtk::Widget>()
+                            || focus.is_ancestor(&footer.search))
+                );
+            }
+            footer.search.set_text("half a page");
+            settle();
+            let matches = reference_labels(&footer);
+            assert!(matches.iter().any(|label| label == "Move half a page"));
+            assert!(!matches.iter().any(|label| label == "Toggle 10xer mode"));
+            footer.search.set_text("");
+            settle();
+            let places = footer.category_buttons()[2].clone();
+            places.emit_clicked();
+            let matches = reference_labels(&footer);
+            assert!(matches.iter().any(|label| label == "Home / ~/.config"));
+            assert!(!matches.iter().any(|label| label == "Move half a page"));
+            footer.search.grab_focus();
+            for _ in 0..2 {
+                press_reference(&footer, gdk::Key::Tab);
+                settle();
+                assert!(places.has_focus());
+                press_reference(&footer, gdk::Key::Tab);
+                settle();
+                assert!(footer.scroll.has_focus());
+                press_reference(&footer, gdk::Key::Tab);
+                settle();
+            }
+            footer.category_buttons()[0].emit_clicked();
+            let ctrl = gdk::ModifierType::CONTROL_MASK;
+            assert_eq!(
+                footer.handle_key(gdk::Key::b, ctrl),
+                Some(glib::Propagation::Stop)
+            );
+            assert!(footer.category_buttons()[0].has_focus());
+            assert_eq!(
+                footer.handle_key(gdk::Key::j, none),
+                Some(glib::Propagation::Stop)
+            );
+            assert!(
+                reference_labels(&footer)
+                    .iter()
+                    .any(|label| label == "Move half a page")
+            );
+            assert!(
+                !reference_labels(&footer)
+                    .iter()
+                    .any(|label| label == "Toggle 10xer mode")
+            );
+            assert_eq!(
+                footer.handle_key(gdk::Key::k, none),
+                Some(glib::Propagation::Stop)
+            );
+            assert!(
+                reference_labels(&footer)
+                    .iter()
+                    .any(|label| label == "Toggle 10xer mode")
+            );
+            assert_eq!(
+                footer.handle_key(gdk::Key::Right, none),
+                Some(glib::Propagation::Stop)
+            );
+            assert!(footer.category_buttons()[1].has_focus());
+            assert_eq!(
+                footer.handle_key(gdk::Key::h, none),
+                Some(glib::Propagation::Stop)
+            );
+            assert!(footer.category_buttons()[0].has_focus());
+            assert_eq!(
+                footer.handle_key(gdk::Key::Tab, none),
+                Some(glib::Propagation::Stop)
+            );
+            assert!(footer.scroll.has_focus());
+            let before = footer.scroll.vadjustment().value();
+            assert_eq!(
+                footer.handle_key(gdk::Key::j, none),
+                Some(glib::Propagation::Stop)
+            );
+            assert!(footer.scroll.vadjustment().value() > before);
+            assert_eq!(
+                footer.handle_key(gdk::Key::f, ctrl),
+                Some(glib::Propagation::Stop)
+            );
+            assert!(
+                gtk::prelude::RootExt::focus(&window)
+                    .is_some_and(|focus| focus == *footer.search.upcast_ref::<gtk::Widget>()
+                        || focus.is_ancestor(&footer.search))
+            );
+            assert_eq!(
+                footer.handle_key(gdk::Key::l, ctrl),
+                Some(glib::Propagation::Stop)
+            );
+            assert!(footer.scroll.has_focus());
+            assert_eq!(
+                footer.handle_key(gdk::Key::f, ctrl),
+                Some(glib::Propagation::Stop)
+            );
+            assert_eq!(
+                footer.handle_key(gdk::Key::Tab, gdk::ModifierType::SHIFT_MASK),
+                Some(glib::Propagation::Stop)
+            );
+            assert!(footer.scroll.has_focus());
+            entry.grab_focus();
+            assert!(
+                gtk::prelude::RootExt::focus(&window)
+                    .is_some_and(|focus| focus == *footer.search.upcast_ref::<gtk::Widget>()
+                        || focus.is_ancestor(&footer.search))
+            );
+            press_reference(&footer, gdk::Key::F1);
+            settle();
+            assert!(
+                !footer.session.is_open(),
+                "F1 from the open reference closes it"
+            );
+            assert!(
+                !overlay
+                    .observe_children()
+                    .into_iter()
+                    .flatten()
+                    .any(|child| child
+                        .downcast_ref::<gtk::Widget>()
+                        .is_some_and(|widget| widget.has_css_class("search-backdrop")))
+            );
+            assert!(gtk::prelude::RootExt::focus(&window).is_some_and(|focus| {
+                focus == *entry.upcast_ref::<gtk::Widget>() || focus.is_ancestor(&entry)
+            }));
+            footer.handle_key(gdk::Key::asciitilde, none);
+            settle();
+            assert!(footer.session.is_open());
+            footer.search.grab_focus();
+            settle();
+            assert_eq!(
+                footer.handle_key(gdk::Key::Delete, none),
+                Some(glib::Propagation::Proceed)
+            );
+            footer.handle_key(gdk::Key::Escape, none);
+            settle();
+            assert!(!footer.session.is_open());
+
+            let other = ShortcutFooter::new(BrowserMode::List);
+            other.bind_preferences(&manager);
+            let list = reference_labels(&other);
+            assert!(list.iter().any(|label| label == "Toggle 10xer mode"));
+            assert!(
+                list.iter()
+                    .any(|label| label == "Open the focused directory")
+            );
+            assert!(
+                reference_pairs(&list, "Space", "Toggle the focused item and move down"),
+                "the List reference lists Space for the toggle action"
+            );
+            assert!(
+                reference_pairs(&list, "Ctrl+R", "Invert the selection"),
+                "the List reference lists Ctrl+R for invert"
+            );
+            assert!(
+                reference_pairs(&list, "v / V", "Visual select / visual unset"),
+                "the List reference lists v and V for visual ranges"
+            );
+            assert!(
+                !list
+                    .iter()
+                    .any(|label| label == "Open the next column for the focused directory")
+            );
+            assert!(reference_pairs(
+                &list,
+                "i",
+                "Toggle folder peek for the focused directory"
+            ));
+
+            let chooser = ShortcutFooter::new(BrowserMode::List);
+            chooser.bind_preferences(&manager);
+            chooser.set_chooser(crate::ui::shortcut_reference::ChooserScope {
+                request: crate::ui::shortcut_reference::ChooserRequest::Files,
+                multiple: false,
+            });
+            let refused = reference_labels(&chooser);
+            assert!(reference_pairs(
+                &refused,
+                "Enter / o on a file",
+                "Choose the file"
+            ));
+            assert!(refused.iter().any(|label| label == "Toggle 10xer mode"));
+            for unavailable in [
+                "Yank / cut the selection, or the focused item",
+                "Close the current window",
+                "Toggle folder peek for the focused directory",
+                "Toggle the focused item and move down",
+                "Open global search",
+            ] {
+                assert!(
+                    !refused.iter().any(|label| label == unavailable),
+                    "the chooser refuses {unavailable:?}"
+                );
+            }
+            chooser
+                .category_buttons()
+                .into_iter()
+                .find(|button| {
+                    let mut labels = Vec::new();
+                    collect_label_text(button.upcast_ref(), &mut labels);
+                    labels.iter().any(|label| label == "10xer mode")
+                })
+                .expect("chooser 10xer category")
+                .emit_clicked();
+            let chooser_mode = reference_labels(&chooser);
+            assert!(reference_pairs(
+                &chooser_mode,
+                "s",
+                "Search this folder and its subfolders"
+            ));
+            assert!(!chooser_mode.iter().any(|label| label == "v / V"));
+            assert!(!chooser_mode.iter().any(|label| label == "M / C"));
+            manager.set_tenxer_mode(false);
+            settle();
+            assert!(!footer.tag.is_visible());
+            assert!(footer.tag.tooltip_text().is_none());
+            for shown in [&footer, &other] {
+                let labels = reference_labels(shown);
+                assert!(reference_pairs(
+                    &labels,
+                    "Space",
+                    "Preview a file, or open a folder"
+                ));
+                assert!(
+                    !labels
+                        .iter()
+                        .any(|label| label == "Toggle the focused item and move down")
+                );
+                assert!(!labels.iter().any(|label| label == "Toggle 10xer mode"));
+            }
+            window.destroy();
+        },
+    );
+}
+
+fn press_reference(footer: &ShortcutFooter, key: gdk::Key) {
+    let controllers = footer.panel.observe_controllers();
+    let controller = (0..controllers.n_items())
+        .filter_map(|index| {
+            controllers
+                .item(index)
+                .and_downcast::<gtk::EventControllerKey>()
+        })
+        .next()
+        .expect("reference key controller");
+    assert!(
+        controller.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &gdk::ModifierType::empty()]),
+        "{key:?} should be handled by the open reference"
+    );
+}
+
+fn reference_pairs(labels: &[String], key: &str, action: &str) -> bool {
+    labels
+        .windows(2)
+        .any(|pair| pair[0] == action && pair[1] == key)
+}
+
+fn reference_labels(footer: &ShortcutFooter) -> Vec<String> {
+    let mut labels = Vec::new();
+    collect_label_text(footer.reference.upcast_ref(), &mut labels);
+    labels
+}
+
+fn collect_label_text(widget: &gtk::Widget, labels: &mut Vec<String>) {
+    if let Some(label) = widget.downcast_ref::<gtk::Label>() {
+        labels.push(label.text().to_string());
+    }
+    let mut child = widget.first_child();
+    while let Some(current) = child {
+        collect_label_text(&current, labels);
+        child = current.next_sibling();
+    }
 }
 
 fn settle() {
@@ -181,65 +696,75 @@ fn settle() {
 }
 
 #[test]
-#[ignore = "writes clipboard; requires STRATA_TEST_CLIPBOARD=1 and an isolated display"]
 fn paste_availability_tracks_file_clipboard() {
-    assert_eq!(std::env::var("STRATA_TEST_CLIPBOARD").as_deref(), Ok("1"));
-    gtk::init().expect("isolated GTK display");
-    let clipboard = gdk::Display::default().expect("test display").clipboard();
-    let files = gdk::FileList::from_array(&[gtk::gio::File::for_path(
-        "/tmp/strata-clipboard-fixture.txt",
-    )]);
-    let provider = gdk::ContentProvider::for_value(&files.to_value());
-    clipboard
-        .set_content(Some(&provider))
-        .expect("file clipboard");
-    let footer = ShortcutFooter::new(BrowserMode::Columns);
-    let handler = footer.connect_clipboard(&clipboard);
-    settle();
-    assert!(
-        footer.paste.is_visible(),
-        "existing files on the clipboard enable paste"
+    crate::test_support::gtk_test(
+        "ui::shortcut_footer::tests::paste_availability_tracks_file_clipboard",
+        || {
+            let clipboard = gdk::Display::default().expect("test display").clipboard();
+            let files = gdk::FileList::from_array(&[gtk::gio::File::for_path(
+                "/tmp/strata-clipboard-fixture.txt",
+            )]);
+            let provider = gdk::ContentProvider::for_value(&files.to_value());
+            clipboard
+                .set_content(Some(&provider))
+                .expect("file clipboard");
+            let footer = ShortcutFooter::new(BrowserMode::Columns);
+            let handler = footer.connect_clipboard(&clipboard);
+            let manager = super::super::preferences::PreferenceManager::shared();
+            manager.set_show_keybinding_hints(false);
+            footer.bind_preferences(&manager);
+            footer.assert_hints_visible(false);
+            settle();
+            assert!(
+                footer.paste.is_visible(),
+                "existing files on the clipboard enable paste"
+            );
+            assert!(footer.widget().is_visible());
+            clipboard.set_text("plain text is not a file clipboard");
+            settle();
+            assert!(!footer.paste.is_visible());
+            assert!(!footer.widget().is_visible());
+            let uri = gdk::ContentProvider::for_bytes(
+                "text/uri-list",
+                &glib::Bytes::from_static(b"file:///tmp/strata-clipboard-fixture.txt\r\n"),
+            );
+            clipboard.set_content(Some(&uri)).expect("URI clipboard");
+            settle();
+            assert!(
+                footer.paste.is_visible(),
+                "external URI lists also enable paste"
+            );
+            assert!(footer.widget().is_visible());
+            clipboard
+                .set_content(Some(&provider))
+                .expect("pending file clipboard");
+            clipboard.set_text("newer clipboard replaces a pending file read");
+            settle();
+            assert!(!footer.paste.is_visible());
+            clipboard
+                .set_content(Some(&provider))
+                .expect("cut clipboard");
+            settle();
+            assert!(footer.paste.is_visible());
+            clipboard
+                .set_content(None::<&gdk::ContentProvider>)
+                .expect("cleared clipboard");
+            settle();
+            assert!(
+                !footer.paste.is_visible(),
+                "consuming a cut clears paste availability"
+            );
+            assert!(!footer.widget().is_visible());
+            let empty: Option<gdk::FileList> = None;
+            clipboard
+                .set_content(Some(&gdk::ContentProvider::for_value(&empty.to_value())))
+                .expect("empty file clipboard");
+            settle();
+            assert!(!footer.paste.is_visible());
+            clipboard.disconnect(handler);
+            clipboard
+                .set_content(None::<&gdk::ContentProvider>)
+                .expect("fixture cleanup");
+        },
     );
-    clipboard.set_text("plain text is not a file clipboard");
-    settle();
-    assert!(!footer.paste.is_visible());
-    let uri = gdk::ContentProvider::for_bytes(
-        "text/uri-list",
-        &glib::Bytes::from_static(b"file:///tmp/strata-clipboard-fixture.txt\r\n"),
-    );
-    clipboard.set_content(Some(&uri)).expect("URI clipboard");
-    settle();
-    assert!(
-        footer.paste.is_visible(),
-        "external URI lists also enable paste"
-    );
-    clipboard
-        .set_content(Some(&provider))
-        .expect("pending file clipboard");
-    clipboard.set_text("newer clipboard replaces a pending file read");
-    settle();
-    assert!(!footer.paste.is_visible());
-    clipboard
-        .set_content(Some(&provider))
-        .expect("cut clipboard");
-    settle();
-    assert!(footer.paste.is_visible());
-    clipboard
-        .set_content(None::<&gdk::ContentProvider>)
-        .expect("cleared clipboard");
-    settle();
-    assert!(
-        !footer.paste.is_visible(),
-        "consuming a cut clears paste availability"
-    );
-    let empty: Option<gdk::FileList> = None;
-    clipboard
-        .set_content(Some(&gdk::ContentProvider::for_value(&empty.to_value())))
-        .expect("empty file clipboard");
-    settle();
-    assert!(!footer.paste.is_visible());
-    clipboard.disconnect(handler);
-    clipboard
-        .set_content(None::<&gdk::ContentProvider>)
-        .expect("fixture cleanup");
 }
