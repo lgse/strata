@@ -68,6 +68,7 @@ impl EaseIn {
         self.state.get() == State::Armed
     }
 
+    #[cfg(test)]
     pub(super) fn is_active(&self) -> bool {
         self.state.get() != State::Off
     }
