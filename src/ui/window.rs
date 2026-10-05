@@ -1117,6 +1117,118 @@ pub(super) struct SidebarState {
     keycaps: RefCell<Vec<gtk::Label>>,
     keycaps_shown: Cell<bool>,
     visible_pins: RefCell<Vec<Location>>,
+    pinned_section: RefCell<Option<PinnedSection>>,
+    devices_section: RefCell<Option<CollapsibleSection>>,
+    /// Discord-style: the selected pin stays visible under a collapsed header.
+    detached_pin: RefCell<Option<(Location, gtk::Button)>>,
+}
+
+/// A sidebar section for pinned places with split revealers (upper and lower),
+/// so when collapsed while an item is active (first, middle, or last), the
+/// active item remains in place while the revealers fold smoothly around it.
+struct PinnedSection {
+    toggle: gtk::Button,
+    upper_revealer: gtk::Revealer,
+    upper_box: gtk::Box,
+    lower_revealer: gtk::Revealer,
+    lower_box: gtk::Box,
+    badge: gtk::Label,
+    item_count: Cell<usize>,
+}
+
+impl PinnedSection {
+    fn apply_state(&self, collapsed: bool) {
+        let duration = section_transition_duration();
+        self.upper_revealer.set_transition_duration(duration);
+        self.lower_revealer.set_transition_duration(duration);
+        self.upper_revealer.set_reveal_child(!collapsed);
+        self.lower_revealer.set_reveal_child(!collapsed);
+        if collapsed {
+            self.toggle.remove_css_class("expanded");
+        } else {
+            self.toggle.add_css_class("expanded");
+        }
+        self.badge.set_visible(collapsed);
+        let tip = SidebarSection::Pinned.toggle_tip(collapsed);
+        self.toggle.set_tooltip_text(Some(&tip));
+        let count = self.item_count.get();
+        let label = SidebarSection::Pinned.a11y_label(count, collapsed);
+        self.toggle
+            .update_property(&[gtk::accessible::Property::Label(&label)]);
+        self.toggle
+            .update_state(&[gtk::accessible::State::Expanded(Some(!collapsed))]);
+    }
+}
+
+/// A sidebar section (DEVICES) whose rows live in a revealer under a
+/// toggle header, so collapsing animates in place instead of rebuilding.
+struct CollapsibleSection {
+    toggle: gtk::Button,
+    revealer: gtk::Revealer,
+    badge: gtk::Label,
+    item_count: Cell<usize>,
+}
+
+impl CollapsibleSection {
+    fn apply_state(&self, collapsed: bool) {
+        let duration = section_transition_duration();
+        self.revealer.set_transition_duration(duration);
+        self.revealer.set_reveal_child(!collapsed);
+        if collapsed {
+            self.toggle.remove_css_class("expanded");
+        } else {
+            self.toggle.add_css_class("expanded");
+        }
+        self.badge.set_visible(collapsed);
+        let tip = SidebarSection::Devices.toggle_tip(collapsed);
+        self.toggle.set_tooltip_text(Some(&tip));
+        let count = self.item_count.get();
+        let label = SidebarSection::Devices.a11y_label(count, collapsed);
+        self.toggle
+            .update_property(&[gtk::accessible::Property::Label(&label)]);
+        self.toggle
+            .update_state(&[gtk::accessible::State::Expanded(Some(!collapsed))]);
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SidebarSection {
+    Pinned,
+    Devices,
+}
+
+impl SidebarSection {
+    fn title(self) -> &'static str {
+        match self {
+            SidebarSection::Pinned => "PINNED",
+            SidebarSection::Devices => "DEVICES",
+        }
+    }
+
+    fn is_collapsed(self, manager: &super::preferences::PreferenceManager) -> bool {
+        match self {
+            SidebarSection::Pinned => manager.sidebar_pinned_collapsed(),
+            SidebarSection::Devices => manager.sidebar_devices_collapsed(),
+        }
+    }
+
+    fn toggle_tip(self, collapsed: bool) -> String {
+        let verb = if collapsed { "Expand" } else { "Collapse" };
+        match self {
+            SidebarSection::Pinned => format!("{verb} pinned places"),
+            SidebarSection::Devices => format!("{verb} devices"),
+        }
+    }
+
+    fn a11y_label(self, count: usize, collapsed: bool) -> String {
+        let tip = self.toggle_tip(collapsed);
+        let items = if count == 1 { "item" } else { "items" };
+        format!("{tip}, {count} {items}")
+    }
+}
+
+fn section_transition_duration() -> u32 {
+    if animations_enabled() { 200 } else { 0 }
 }
 
 /// Rows of the Trash sidebar context menu that only make sense while Trash holds items.
@@ -1277,6 +1389,7 @@ impl SidebarState {
         self.place_rows.borrow_mut().clear();
         self.keycaps.borrow_mut().clear();
         self.visible_pins.borrow_mut().clear();
+        self.detached_pin.borrow_mut().take();
 
         self.append_static_places();
         self.append_devices();
@@ -1350,23 +1463,41 @@ impl SidebarState {
         let mut widget_child = self.widget.first_child();
         while let Some(child) = widget_child {
             widget_child = child.next_sibling();
-            if let Ok(heading) = child.clone().downcast::<gtk::Label>() {
-                heading.set_visible(!rail);
-            } else if let Ok(button) = child.clone().downcast::<gtk::Button>() {
+            self.sync_rail_child(&child);
+        }
+        self.sync_keycaps();
+    }
+
+    fn sync_rail_child(&self, child: &gtk::Widget) {
+        let rail = self.rail.get();
+        if let Ok(heading) = child.clone().downcast::<gtk::Label>() {
+            heading.set_visible(!rail);
+        } else if let Ok(button) = child.clone().downcast::<gtk::Button>() {
+            if button.has_css_class("sidebar-heading-toggle") {
+                button.set_visible(!rail);
+            } else {
                 sync_sidebar_button(&button, rail);
-            } else if child.has_css_class("sidebar-device") {
-                let mut dev_child = child.first_child();
-                while let Some(w) = dev_child {
-                    dev_child = w.next_sibling();
-                    if let Ok(button) = w.clone().downcast::<gtk::Button>() {
-                        sync_sidebar_button(&button, rail);
-                    } else if w.has_css_class("sidebar-device-actions") {
-                        w.set_visible(!rail);
-                    }
+            }
+        } else if let Ok(revealer) = child.clone().downcast::<gtk::Revealer>() {
+            // Collapsible section rows moved one level deeper.
+            if let Some(inner) = revealer.child() {
+                let mut row_child = inner.first_child();
+                while let Some(row) = row_child {
+                    row_child = row.next_sibling();
+                    self.sync_rail_child(&row);
+                }
+            }
+        } else if child.has_css_class("sidebar-device") {
+            let mut dev_child = child.first_child();
+            while let Some(w) = dev_child {
+                dev_child = w.next_sibling();
+                if let Ok(button) = w.clone().downcast::<gtk::Button>() {
+                    sync_sidebar_button(&button, rail);
+                } else if w.has_css_class("sidebar-device-actions") {
+                    w.set_visible(!rail);
                 }
             }
         }
-        self.sync_keycaps();
     }
 }
 
@@ -1526,35 +1657,45 @@ impl SidebarState {
         }
     }
 
-    fn append_pinned_places(self: &Rc<Self>) {
-        let pinned = self
-            .pinned_places
+    fn visible_pinned_entries(&self) -> Vec<(usize, Location, String)> {
+        self.pinned_places
             .borrow()
             .iter()
             .enumerate()
             .filter(|(_, (location, _))| !is_standard_place_location(location))
             .filter(|(_, (location, _))| !self.local_only || location.native_path().is_some())
             .map(|(index, (location, name))| (index, location.clone(), name.clone()))
-            .collect::<Vec<_>>();
-        if !pinned.is_empty() {
-            if self.widget.first_child().is_some() {
-                self.append_separator();
-            }
-            self.append_heading("PINNED");
-            for (ordinal, (index, location, name)) in pinned.into_iter().enumerate() {
-                self.visible_pins.borrow_mut().push(location.clone());
-                let row = if self.local_only {
-                    let row = self.append_place(crate::assets::icons::FOLDER, &name, location);
-                    row.add_css_class("sidebar-pinned-row");
-                    row
-                } else {
-                    self.append_pinned_place(index, &name, location)
-                };
-                if let Some(key) = PIN_CHORD_KEYS.get(ordinal) {
-                    self.add_keycap(&row, key);
-                }
+            .collect()
+    }
+
+    fn append_pinned_places(self: &Rc<Self>) {
+        let pinned = self.visible_pinned_entries();
+        if pinned.is_empty() {
+            self.pinned_section.borrow_mut().take();
+            self.detached_pin.borrow_mut().take();
+            return;
+        }
+        if self.widget.first_child().is_some() {
+            self.append_separator();
+        }
+        let collapsed = self.preference_manager.sidebar_pinned_collapsed();
+        let section = self.append_pinned_section(pinned.len(), collapsed);
+        for (ordinal, (index, location, name)) in pinned.into_iter().enumerate() {
+            let row = if self.local_only {
+                let row = self.append_place(crate::assets::icons::FOLDER, &name, location);
+                row.add_css_class("sidebar-pinned-row");
+                row
+            } else {
+                self.append_pinned_place(index, &name, location)
+            };
+            if let Some(key) = PIN_CHORD_KEYS.get(ordinal) {
+                self.add_keycap(&row, key);
             }
         }
+        self.collect_pinned_rows(&section);
+        self.pinned_section.borrow_mut().replace(section);
+        self.sync_pinned_section_partition();
+        self.sync_visible_pins(!collapsed);
     }
 
     fn append_devices(self: &Rc<Self>) {
@@ -1567,12 +1708,14 @@ impl SidebarState {
             && password_drives.is_empty()
             && !device_release::any_pending()
         {
+            self.devices_section.borrow_mut().take();
             return;
         }
         if self.widget.first_child().is_some() {
             self.append_separator();
         }
-        self.append_heading("DEVICES");
+        let collapsed = self.preference_manager.sidebar_devices_collapsed();
+        let section = self.append_collapsible_section(SidebarSection::Devices, 0, collapsed);
         let mut shown = Vec::new();
         for volume in volumes {
             if let Some(ids) = self.append_volume(volume) {
@@ -1592,6 +1735,10 @@ impl SidebarState {
         for key in device_release::unmatched_pending(&shown) {
             self.append_release_ghost(&key);
         }
+        let count = self.collect_section_rows(&section.revealer);
+        section.item_count.set(count);
+        section.apply_state(collapsed);
+        self.devices_section.borrow_mut().replace(section);
     }
 
     fn mounts_without_volumes(
@@ -1741,7 +1888,7 @@ impl SidebarState {
         )
     }
 
-    fn sync_active_place(&self) {
+    fn sync_active_place(self: &Rc<Self>) {
         let active = self.browser.active_location();
         let rows = self.place_rows.borrow();
         let selected = rows
@@ -1756,6 +1903,9 @@ impl SidebarState {
         for (index, (_, row)) in rows.iter().enumerate() {
             set_sidebar_row_active(row, selected == Some(index));
         }
+        drop(rows);
+        self.sync_pinned_section_partition();
+        self.sync_visible_pins(!self.preference_manager.sidebar_pinned_collapsed());
     }
 
     #[cfg(test)]
@@ -2069,11 +2219,295 @@ impl SidebarState {
         self.widget.append(&separator);
     }
 
-    fn append_heading(&self, text: &str) {
-        let heading = gtk::Label::new(Some(text));
-        heading.add_css_class("sidebar-heading");
-        heading.set_xalign(0.0);
-        self.widget.append(&heading);
+    fn append_pinned_section(self: &Rc<Self>, item_count: usize, collapsed: bool) -> PinnedSection {
+        let chevron = crate::assets::primary_icon(crate::assets::icons::CHEVRON_RIGHT, 14);
+        let title = gtk::Label::new(Some(SidebarSection::Pinned.title()));
+        title.add_css_class("sidebar-heading");
+        title.set_xalign(0.0);
+        title.set_hexpand(true);
+        let badge = gtk::Label::new(Some(&item_count.to_string()));
+        badge.add_css_class("sidebar-heading-count");
+        let content = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+        content.append(&chevron);
+        content.append(&title);
+        content.append(&badge);
+        let toggle = gtk::Button::builder().child(&content).build();
+        toggle.add_css_class("sidebar-heading-toggle");
+        toggle.set_has_frame(false);
+        toggle.set_halign(gtk::Align::Fill);
+        toggle.set_cursor_from_name(Some("pointer"));
+        toggle.set_visible(!self.rail.get());
+
+        let duration = section_transition_duration();
+        let upper_box = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        let upper_revealer = gtk::Revealer::builder()
+            .transition_type(gtk::RevealerTransitionType::SlideDown)
+            .transition_duration(duration)
+            .reveal_child(!collapsed)
+            .child(&upper_box)
+            .build();
+        upper_revealer.add_css_class("sidebar-section-revealer");
+
+        let lower_box = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        let lower_revealer = gtk::Revealer::builder()
+            .transition_type(gtk::RevealerTransitionType::SlideDown)
+            .transition_duration(duration)
+            .reveal_child(!collapsed)
+            .child(&lower_box)
+            .build();
+        lower_revealer.add_css_class("sidebar-section-revealer");
+
+        let section = PinnedSection {
+            toggle: toggle.clone(),
+            upper_revealer: upper_revealer.clone(),
+            upper_box,
+            lower_revealer: lower_revealer.clone(),
+            lower_box,
+            badge: badge.clone(),
+            item_count: Cell::new(item_count),
+        };
+        section.apply_state(collapsed);
+
+        let weak = Rc::downgrade(self);
+        toggle.connect_clicked(move |_| {
+            if let Some(state) = weak.upgrade() {
+                state.toggle_section(SidebarSection::Pinned);
+            }
+        });
+
+        self.widget.append(&toggle);
+        self.widget.append(&upper_revealer);
+        self.widget.append(&lower_revealer);
+        section
+    }
+
+    fn collect_pinned_rows(&self, section: &PinnedSection) {
+        let mut next = section.lower_revealer.next_sibling();
+        while let Some(child) = next {
+            next = child.next_sibling();
+            self.widget.remove(&child);
+            section.upper_box.append(&child);
+        }
+    }
+
+    fn append_collapsible_section(
+        self: &Rc<Self>,
+        section: SidebarSection,
+        item_count: usize,
+        collapsed: bool,
+    ) -> CollapsibleSection {
+        let chevron = crate::assets::primary_icon(crate::assets::icons::CHEVRON_RIGHT, 14);
+        let title = gtk::Label::new(Some(section.title()));
+        title.add_css_class("sidebar-heading");
+        title.set_xalign(0.0);
+        title.set_hexpand(true);
+        let badge = gtk::Label::new(Some(&item_count.to_string()));
+        badge.add_css_class("sidebar-heading-count");
+        let content = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+        content.append(&chevron);
+        content.append(&title);
+        content.append(&badge);
+        let toggle = gtk::Button::builder().child(&content).build();
+        toggle.add_css_class("sidebar-heading-toggle");
+        toggle.set_has_frame(false);
+        toggle.set_halign(gtk::Align::Fill);
+        toggle.set_cursor_from_name(Some("pointer"));
+        toggle.set_visible(!self.rail.get());
+        let revealer = gtk::Revealer::builder()
+            .transition_type(gtk::RevealerTransitionType::SlideDown)
+            .transition_duration(section_transition_duration())
+            .reveal_child(!collapsed)
+            .build();
+        revealer.add_css_class("sidebar-section-revealer");
+        revealer.set_child(Some(&gtk::Box::new(gtk::Orientation::Vertical, 2)));
+        let widgets = CollapsibleSection {
+            toggle: toggle.clone(),
+            revealer: revealer.clone(),
+            badge: badge.clone(),
+            item_count: Cell::new(item_count),
+        };
+        widgets.apply_state(collapsed);
+        let weak = Rc::downgrade(self);
+        toggle.connect_clicked(move |_| {
+            if let Some(state) = weak.upgrade() {
+                state.toggle_section(section);
+            }
+        });
+        self.widget.append(&toggle);
+        self.widget.append(&revealer);
+        widgets
+    }
+
+    /// Moves every row appended after the section revealer into it, so the
+    /// section can collapse in place. Returns the relocated row count.
+    fn collect_section_rows(&self, revealer: &gtk::Revealer) -> usize {
+        let Some(inner) = revealer.child().and_downcast::<gtk::Box>() else {
+            return 0;
+        };
+        let mut count = 0;
+        let mut next = revealer.next_sibling();
+        while let Some(child) = next {
+            next = child.next_sibling();
+            self.widget.remove(&child);
+            inner.append(&child);
+            count += 1;
+        }
+        count
+    }
+
+    fn toggle_section(self: &Rc<Self>, section: SidebarSection) {
+        let collapsed = !section.is_collapsed(&self.preference_manager);
+        match section {
+            SidebarSection::Pinned => self.set_pinned_collapsed(collapsed),
+            SidebarSection::Devices => self.set_devices_collapsed(collapsed),
+        }
+    }
+
+    fn set_pinned_collapsed(self: &Rc<Self>, collapsed: bool) {
+        self.preference_manager
+            .set_sidebar_pinned_collapsed(collapsed);
+        if let Some(section) = self.pinned_section.borrow().as_ref() {
+            self.sync_pinned_section_partition();
+            section.apply_state(collapsed);
+        }
+        self.sync_visible_pins(!collapsed);
+    }
+
+    fn set_devices_collapsed(self: &Rc<Self>, collapsed: bool) {
+        self.preference_manager
+            .set_sidebar_devices_collapsed(collapsed);
+        if let Some(section) = self.devices_section.borrow().as_ref() {
+            section.apply_state(collapsed);
+        }
+    }
+
+    /// Collapsed pins stay visible to screen-reader-free keyboard chords as
+    /// missing, so `g 1..9` reports `No pin N` instead of jumping nowhere.
+    /// The detached (still-visible) active pin keeps its chord.
+    fn sync_visible_pins(&self, expanded: bool) {
+        let mut visible = self.visible_pins.borrow_mut();
+        visible.clear();
+        if expanded {
+            visible.extend(
+                self.visible_pinned_entries()
+                    .into_iter()
+                    .map(|(_, location, _)| location),
+            );
+        } else if let Some((location, _)) = self.detached_pin.borrow().as_ref() {
+            visible.push(location.clone());
+        }
+    }
+
+    /// Distributes pinned rows into upper_revealer, active row (in self.widget),
+    /// and lower_revealer around the active pinned item. During collapse or expand,
+    /// the revealers slide while the active row glides smoothly without jumping or popping.
+    fn sync_pinned_section_partition(&self) {
+        let guard = self.pinned_section.borrow();
+        let Some(section) = guard.as_ref() else {
+            self.detached_pin.borrow_mut().take();
+            return;
+        };
+        let collapsed = self.preference_manager.sidebar_pinned_collapsed();
+        let entries = self.visible_pinned_entries();
+        let active = self.browser.active_location();
+        let active_idx = active
+            .as_ref()
+            .and_then(|active_loc| entries.iter().position(|(_, loc, _)| loc == active_loc));
+
+        let place_rows = self.place_rows.borrow();
+        let rows: Vec<(Location, gtk::Button)> = entries
+            .iter()
+            .filter_map(|(_, loc, _)| {
+                place_rows
+                    .iter()
+                    .find_map(|(entry, row)| (entry == loc).then(|| (loc.clone(), row.clone())))
+            })
+            .collect();
+        drop(place_rows);
+
+        if rows.is_empty() {
+            self.detached_pin.borrow_mut().take();
+            return;
+        }
+
+        match active_idx {
+            Some(i) => {
+                let (active_loc, active_row) = &rows[i];
+                for (_, row) in &rows[..i] {
+                    if row.parent().as_ref() != Some(section.upper_box.upcast_ref()) {
+                        if let Some(parent) = row.parent() {
+                            parent.downcast::<gtk::Box>().expect("box").remove(row);
+                        }
+                        section.upper_box.append(row);
+                    }
+                }
+                for (_, row) in &rows[i + 1..] {
+                    if row.parent().as_ref() != Some(section.lower_box.upcast_ref()) {
+                        if let Some(parent) = row.parent() {
+                            parent.downcast::<gtk::Box>().expect("box").remove(row);
+                        }
+                        section.lower_box.append(row);
+                    }
+                }
+                if active_row.parent().as_ref() != Some(self.widget.upcast_ref()) {
+                    if let Some(parent) = active_row.parent() {
+                        parent
+                            .downcast::<gtk::Box>()
+                            .expect("box")
+                            .remove(active_row);
+                    }
+                    self.widget
+                        .insert_child_after(active_row, Some(&section.upper_revealer));
+                }
+                self.ensure_box_children_order(&section.upper_box, &rows[..i]);
+                self.ensure_box_children_order(&section.lower_box, &rows[i + 1..]);
+
+                if collapsed {
+                    self.detached_pin
+                        .borrow_mut()
+                        .replace((active_loc.clone(), active_row.clone()));
+                } else {
+                    self.detached_pin.borrow_mut().take();
+                }
+            }
+            None => {
+                for (_, row) in &rows {
+                    if row.parent().as_ref() != Some(section.upper_box.upcast_ref()) {
+                        if let Some(parent) = row.parent() {
+                            parent.downcast::<gtk::Box>().expect("box").remove(row);
+                        }
+                        section.upper_box.append(row);
+                    }
+                }
+                self.ensure_box_children_order(&section.upper_box, &rows);
+                self.detached_pin.borrow_mut().take();
+            }
+        }
+    }
+
+    fn ensure_box_children_order(
+        &self,
+        container: &gtk::Box,
+        expected: &[(Location, gtk::Button)],
+    ) {
+        let mut current = container.first_child();
+        let mut in_order = true;
+        for (_, row) in expected {
+            if current.as_ref() != Some(row.upcast_ref()) {
+                in_order = false;
+                break;
+            }
+            current = current.and_then(|c| c.next_sibling());
+        }
+        if in_order && current.is_none() {
+            return;
+        }
+        for (_, row) in expected {
+            if row.parent().as_ref() == Some(container.upcast_ref()) {
+                container.remove(row);
+            }
+            container.append(row);
+        }
     }
 
     fn append_volume(self: &Rc<Self>, volume: gio::Volume) -> Option<device_release::DeviceIds> {
@@ -2605,14 +3039,23 @@ fn install_sidebar_trash_drop(view: &BrowserView, row: &impl IsA<gtk::Widget>) {
 }
 
 fn select_sidebar_row(sidebar: &gtk::Box, selected: &gtk::Button) {
-    let mut child = sidebar.first_child();
+    deselect_sidebar_rows(sidebar.upcast_ref());
+    set_sidebar_row_active(selected, true);
+}
+
+fn deselect_sidebar_rows(container: &gtk::Widget) {
+    let mut child = container.first_child();
     while let Some(widget) = child {
-        if let Some(row) = sidebar_row_button(&widget) {
+        child = widget.next_sibling();
+        if let Ok(revealer) = widget.clone().downcast::<gtk::Revealer>() {
+            // Collapsible section rows moved one level deeper.
+            if let Some(inner) = revealer.child() {
+                deselect_sidebar_rows(&inner);
+            }
+        } else if let Some(row) = sidebar_row_button(&widget) {
             set_sidebar_row_active(&row, false);
         }
-        child = widget.next_sibling();
     }
-    set_sidebar_row_active(selected, true);
 }
 
 fn set_sidebar_row_active(row: &gtk::Button, active: bool) {
@@ -2640,11 +3083,16 @@ fn sidebar_device_shell(row: &gtk::Button) -> Option<gtk::Box> {
 /// their button with an eject sibling, so look one level down when the child
 /// itself is a container.
 fn sidebar_row_button(widget: &gtk::Widget) -> Option<gtk::Button> {
-    widget.clone().downcast::<gtk::Button>().ok().or_else(|| {
-        widget
-            .first_child()
-            .and_then(|child| child.downcast::<gtk::Button>().ok())
-    })
+    widget
+        .clone()
+        .downcast::<gtk::Button>()
+        .ok()
+        .filter(|button| !button.has_css_class("sidebar-heading-toggle"))
+        .or_else(|| {
+            widget
+                .first_child()
+                .and_then(|child| child.downcast::<gtk::Button>().ok())
+        })
 }
 
 fn reorder_places(order: &mut Vec<&'static str>, source: &str, target: &str, after: bool) -> bool {

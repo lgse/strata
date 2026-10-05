@@ -2160,6 +2160,48 @@ scrollbar.horizontal > range > trough > slider {
   padding: 1px 10px 2px;
 }
 
+.sidebar-heading-toggle {
+  background: none;
+  border: none;
+  border-radius: 6px;
+  box-shadow: none;
+  min-height: 30px;
+  padding: 3px 8px;
+}
+
+.sidebar-heading-toggle:hover {
+  background: alpha(@theme_accent, 0.12);
+}
+
+.sidebar-heading-toggle:active {
+  background: @theme_highlight;
+}
+
+.sidebar-heading-toggle:focus {
+  outline: 1px solid @theme_accent;
+  outline-offset: -1px;
+}
+
+.sidebar-heading-toggle image {
+  color: @theme_dim_text;
+  -gtk-icon-size: 14px;
+  transition: transform 150ms ease-out;
+}
+
+.sidebar-heading-toggle.expanded image {
+  transform: rotate(90deg);
+}
+
+.sidebar-heading-toggle .sidebar-heading {
+  padding: 0;
+}
+
+.sidebar-heading-count {
+  color: @theme_dim_text;
+  font-size: 0.78em;
+  font-weight: 700;
+}
+
 paned > separator {
   background: alpha(@theme_border, 0.6);
   min-width: 1px;
