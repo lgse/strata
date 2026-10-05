@@ -25,12 +25,15 @@ pub(crate) enum Member<'a> {
     File { size: u64, body: &'a mut dyn Read },
 }
 
+/// Streams the members of a RAR archive from the sandboxed decoder. A
+/// decoder failure keeps its [`wire::FailureKind`]; other failures, including
+/// those returned by `on_member`, are [`wire::FailureKind::Other`].
 pub(crate) fn stream_rar(
     archive_path: &Path,
     password: Option<&str>,
     cancelled: &AtomicBool,
     on_member: impl FnMut(&str, Member<'_>, wire::WireMetadata) -> Result<(), String>,
-) -> Result<(), String> {
+) -> Result<(), wire::Failure> {
     let mut child = spawn(archive_path, password)?;
     let stdout = child
         .stdout
@@ -53,13 +56,13 @@ pub(crate) fn stream_rar(
 fn drive(
     mut reader: impl Read,
     mut on_member: impl FnMut(&str, Member<'_>, wire::WireMetadata) -> Result<(), String>,
-) -> Result<(), String> {
+) -> Result<(), wire::Failure> {
     wire::read_magic(&mut reader).map_err(|error| error.to_string())?;
     loop {
         let record = wire::read_record(&mut reader).map_err(|error| error.to_string())?;
         match record {
             wire::Record::End => return Ok(()),
-            wire::Record::Error(message) => return Err(message),
+            wire::Record::Error(failure) => return Err(failure),
             wire::Record::Directory(name, metadata) => {
                 on_member(&name, Member::Directory, metadata)?;
             }
@@ -73,8 +76,7 @@ fn drive(
                     },
                     metadata,
                 )?;
-                std::io::copy(&mut body, &mut std::io::sink())
-                    .map_err(|error| error.to_string())?;
+                std::io::copy(&mut body, &mut std::io::sink()).map_err(wire::Failure::from_io)?;
             }
         }
     }

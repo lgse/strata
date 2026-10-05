@@ -491,6 +491,23 @@ fn publication_without_rename_noreplace_never_replaces_entries() -> Result<(), B
 }
 
 #[test]
+fn removing_staging_never_follows_a_symlink_out_of_it() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let outside = tempfile::tempdir()?;
+    fs::write(outside.path().join("keep.txt"), b"keep")?;
+    let destination = ExtractionDestination::open(root.path())?;
+    let (name, staging) = stage(&destination, &["a/b/deep.txt", "top.txt"])?;
+    staging.create_symlink(Path::new("a/link"), outside.path().as_os_str(), None)?;
+
+    destination.remove_staging(&name)?;
+
+    assert!(root.path().read_dir()?.next().is_none());
+    assert_eq!(fs::read(outside.path().join("keep.txt"))?, b"keep");
+    assert_eq!(outside.path().read_dir()?.count(), 1);
+    Ok(())
+}
+
+#[test]
 fn directory_only_staging_is_removed_but_files_keep_it() -> Result<(), Box<dyn Error>> {
     let root = tempfile::tempdir()?;
     let destination = ExtractionDestination::open(root.path())?;

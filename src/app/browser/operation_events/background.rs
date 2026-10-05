@@ -274,14 +274,28 @@ impl Browser {
                             affected_locations,
                         });
                     }
-                    OperationEvent::Failed { message, .. }
-                    | OperationEvent::TransferFailed { message, .. } => {
+                    OperationEvent::Failed {
+                        message,
+                        password_failure,
+                        ..
+                    } => {
                         self.refresh_columns_at_many(&context.refresh_locations);
-                        emit(BrowserEvent::OperationFailed { message });
+                        emit(BrowserEvent::OperationFailed {
+                            message,
+                            password_failure,
+                        });
+                    }
+                    OperationEvent::TransferFailed { message, .. } => {
+                        self.refresh_columns_at_many(&context.refresh_locations);
+                        emit(BrowserEvent::OperationFailed {
+                            message,
+                            password_failure: None,
+                        });
                     }
                     _ => emit(BrowserEvent::OperationFailed {
                         message: "The background operation returned an unexpected result."
                             .to_owned(),
+                        password_failure: None,
                     }),
                 }
                 let load = job.load.take();

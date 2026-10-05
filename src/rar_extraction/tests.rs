@@ -72,23 +72,43 @@ fn file_record_and_ok_trailer_round_trip() {
 #[test]
 fn file_trailer_failure_carries_the_message() {
     let mut buffer = Vec::new();
-    write_file_failed(&mut buffer, "CRC mismatch").expect("wire protocol round trip");
+    write_file_failed(&mut buffer, &Failure::from("CRC mismatch"))
+        .expect("wire protocol round trip");
     let mut reader = Cursor::new(buffer);
     assert!(FileBody::new(&mut reader, 4).read(&mut [0u8; 4]).is_err());
 }
 
 #[test]
 fn failed_member_with_no_body_reports_error_before_any_file_bytes() {
-    let mut buffer = Vec::new();
-    write_file_failed(&mut buffer, "A password is required").expect("fixture stream");
-    let mut reader = Cursor::new(buffer);
-    let mut body = FileBody::new(&mut reader, 18);
-    let mut contents = Vec::new();
-    let error = body
-        .read_to_end(&mut contents)
-        .expect_err("member must fail");
-    assert!(error.to_string().contains("password"));
-    assert!(contents.is_empty());
+    for kind in [
+        FailureKind::Other,
+        FailureKind::PasswordRequired,
+        FailureKind::IncorrectPassword,
+    ] {
+        let failure = Failure::new(kind, "member failed");
+        let mut buffer = Vec::new();
+        write_file_failed(&mut buffer, &failure).expect("fixture stream");
+        let mut reader = Cursor::new(buffer);
+        let mut body = FileBody::new(&mut reader, 18);
+        let mut contents = Vec::new();
+        let error = body
+            .read_to_end(&mut contents)
+            .expect_err("member must fail");
+        assert_eq!(error.to_string(), "member failed");
+        assert_eq!(Failure::from_io(error), failure);
+        assert!(contents.is_empty());
+    }
+}
+
+#[test]
+fn unknown_trailer_statuses_are_rejected() {
+    for (status, message) in [(0u32, b"x".as_slice()), (4, b"".as_slice())] {
+        let mut buffer = Vec::new();
+        buffer.extend_from_slice(&status.to_le_bytes());
+        buffer.extend_from_slice(&(message.len() as u32).to_le_bytes());
+        buffer.extend_from_slice(message);
+        assert!(read_file_trailer(&mut Cursor::new(buffer)).is_err(), "{status}");
+    }
 }
 
 #[test]
@@ -104,19 +124,26 @@ fn truncated_member_cannot_report_success() {
 }
 
 #[test]
-fn error_record_round_trips_the_message() {
-    let mut buffer = Vec::new();
-    write_error(&mut buffer, "Unable to open RAR archive").expect("wire protocol round trip");
-    let mut reader = Cursor::new(buffer);
-    assert_eq!(
-        read_record(&mut reader).expect("wire protocol round trip"),
-        Record::Error("Unable to open RAR archive".to_owned())
-    );
+fn error_record_round_trips_the_message_and_kind() {
+    for kind in [
+        FailureKind::Other,
+        FailureKind::PasswordRequired,
+        FailureKind::IncorrectPassword,
+    ] {
+        let failure = Failure::new(kind, "Unable to open RAR archive");
+        let mut buffer = Vec::new();
+        write_error(&mut buffer, &failure).expect("wire protocol round trip");
+        let mut reader = Cursor::new(buffer);
+        assert_eq!(
+            read_record(&mut reader).expect("wire protocol round trip"),
+            Record::Error(failure)
+        );
+    }
 }
 
 #[test]
 fn magic_rejects_a_mismatched_stream() {
-    for stale in [b"NOTRARXX", b"STRRAR01"] {
+    for stale in [b"NOTRARXX", b"STRRAR01", b"STRRAR02"] {
         assert!(read_magic(&mut Cursor::new(stale.to_vec())).is_err());
     }
     let mut buffer = Vec::new();
@@ -140,6 +167,8 @@ fn records_reject_malformed_names_sizes_metadata_or_times() {
         raw_record(2, b"", 1, NO_MODE, (0, 0)),
         raw_record(2, b"", 0, 0o644, (0, 0)),
         raw_record(3, b"failed", 0, NO_MODE, (1, 1)),
+        raw_record(4, b"failed", 1, NO_MODE, (0, 0)),
+        raw_record(5, b"failed", 0, 0o644, (0, 0)),
         raw_record(0, b"dir", 0, NO_MODE, (0, 1)),
         raw_record(0, b"dir", 0, NO_MODE, (2, u64::from(u32::MAX) + 1)),
         raw_record(0, b"dir", 0, NO_MODE, (3, 0)),
@@ -150,8 +179,10 @@ fn records_reject_malformed_names_sizes_metadata_or_times() {
 
 #[test]
 fn unknown_record_kind_is_rejected() {
-    let buffer = raw_record(9, b"", 0, NO_MODE, (0, 0));
-    assert!(read_record(&mut Cursor::new(buffer)).is_err());
+    for kind in [6, 9] {
+        let buffer = raw_record(kind, b"", 0, NO_MODE, (0, 0));
+        assert!(read_record(&mut Cursor::new(buffer)).is_err(), "{kind}");
+    }
 }
 
 #[test]

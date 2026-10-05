@@ -41,16 +41,24 @@ Strata publishes the folder:
   cancellation summary lists completed and pending entries inside that folder.
   If no file was written, any folders created along the way are removed and
   nothing is left behind.
+- If extraction stops because a password is missing or incorrect, everything
+  written so far is discarded, including members that were not encrypted.
+  The password prompt extracts the whole archive again, so the retry lands
+  under the archive's own name instead of `photos (1)/`. Damage in a member
+  that is not encrypted is reported as damage, even when a password was
+  given. If the output cannot be removed, the failure is reported like any
+  other, with the reason and the folder that keeps the output, and no password
+  prompt opens.
 
 Publication never replaces an existing entry. If the filesystem lacks atomic
 no-replace directory renames, folder publication fails and the error names the
 hidden staging folder holding the output. Single files can use a no-clobber
 hard-link/unlink fallback when supported.
 
-Partial output from a failed attempt stays in its own folder, so a retry, such
-as after a wrong password, never merges into it. An archive with several
-top-level entries is extracted into the next numbered folder; a single entry
-lands in the destination under its own name, as usual.
+Partial output from any other failed attempt stays in its own folder, so a
+retry never merges into it. An archive with several top-level entries is
+extracted into the next numbered folder; a single entry lands in the
+destination under its own name, as usual.
 
 `.tar.gz` archives are read to the end of the gzip stream, including every
 gzip member that parallel compressors such as pigz write, so each member's
@@ -102,8 +110,12 @@ chords report "Not an archive".
 If the item changes between opening the menu and running the action, the
 operation layer checks the path again. A path that exists but is not a regular
 file fails with ``Not an archive: `<name>` `` before any destination folder is
-created. The name is quoted so that a name containing "password" does not open
-the password prompt.
+created.
+
+Only a failure that the decoder reports as a missing or incorrect password
+opens the password prompt, with "Invalid password" for an incorrect one. The
+wording of an error message never decides it, so a member or archive name
+containing "password" cannot open the prompt.
 
 ## Archive creation
 

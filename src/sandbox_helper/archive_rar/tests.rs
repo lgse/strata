@@ -21,11 +21,11 @@ fn excessive_native_dictionary_is_rejected() {
     });
     assert_eq!(
         result.expect_err("large dictionary callback must fail"),
-        LARGE_DICTIONARY
+        Failure::from(LARGE_DICTIONARY)
     );
     assert_eq!(
-        decode_result(ERAR_LARGE_DICT, None).expect_err("large dictionary code must fail"),
-        LARGE_DICTIONARY
+        decode_result(ERAR_LARGE_DICT, false).expect_err("large dictionary code must fail"),
+        Failure::from(LARGE_DICTIONARY)
     );
 }
 
@@ -120,8 +120,8 @@ fn run_reports_a_missing_password_as_a_file_trailer_failure() {
     let error = std::io::Read::read_to_end(&mut wire::FileBody::new(&mut reader, 18), &mut body)
         .expect_err("missing password must fail before yielding contents");
     assert_eq!(
-        error.to_string(),
-        "A password is required to extract this archive."
+        Failure::from_io(error),
+        Failure::new(FailureKind::PasswordRequired, PASSWORD_REQUIRED)
     );
     assert!(body.is_empty());
 }
@@ -142,7 +142,10 @@ fn run_reports_a_wrong_password_as_a_file_trailer_failure() {
     let mut body = Vec::new();
     let error = std::io::Read::read_to_end(&mut wire::FileBody::new(&mut reader, 18), &mut body)
         .expect_err("wrong password must fail before yielding contents");
-    assert_eq!(error.to_string(), MAYBE_BAD_PASSWORD);
+    assert_eq!(
+        Failure::from_io(error),
+        Failure::new(FailureKind::IncorrectPassword, MAYBE_BAD_PASSWORD)
+    );
     assert!(body.is_empty());
 }
 
@@ -172,8 +175,14 @@ fn run_streams_an_encrypted_archive_with_the_correct_password() {
 fn run_handles_encrypted_headers() {
     let (_dir, archive) = write_fixture(RAR_ENCRYPTED_HEADERS_FIXTURE);
     for (password, expected) in [
-        (None, "A password is required to extract this archive."),
-        (Some("wrong-password"), MAYBE_BAD_PASSWORD),
+        (
+            None,
+            Failure::new(FailureKind::PasswordRequired, PASSWORD_REQUIRED),
+        ),
+        (
+            Some("wrong-password"),
+            Failure::new(FailureKind::IncorrectPassword, MAYBE_BAD_PASSWORD),
+        ),
     ] {
         let mut buffer = Vec::new();
         run(&archive, password, &mut buffer).expect_err("encrypted headers require a password");
@@ -181,7 +190,7 @@ fn run_handles_encrypted_headers() {
         wire::read_magic(&mut reader).expect("stream magic");
         assert_eq!(
             wire::read_record(&mut reader).expect("error record"),
-            Record::Error(expected.to_owned())
+            Record::Error(expected)
         );
     }
     let mut buffer = Vec::new();
@@ -244,28 +253,21 @@ fn unrar_decode_error_mapping() {
         when: When::Process,
     };
 
-    assert_eq!(
-        unrar_decode_error(make_err(Code::MissingPassword), false),
-        "A password is required to extract this archive."
-    );
-    assert_eq!(
-        unrar_decode_error(make_err(Code::BadPassword), true),
-        MAYBE_BAD_PASSWORD
-    );
-    assert_eq!(
-        unrar_decode_error(make_err(Code::BadData), true),
-        MAYBE_BAD_PASSWORD
-    );
-    assert_eq!(
-        unrar_decode_error(make_err(Code::BadData), false),
-        INVALID_ARCHIVE
-    );
-    assert_eq!(
-        unrar_decode_error(make_err(Code::BadArchive), false),
-        INVALID_ARCHIVE
-    );
-    assert_eq!(
-        unrar_decode_error(make_err(Code::UnknownFormat), false),
-        INVALID_ARCHIVE
-    );
+    let required = Failure::new(FailureKind::PasswordRequired, PASSWORD_REQUIRED);
+    let incorrect = Failure::new(FailureKind::IncorrectPassword, MAYBE_BAD_PASSWORD);
+    let invalid = Failure::from(INVALID_ARCHIVE);
+    for (code, password_supplied, expected) in [
+        (Code::MissingPassword, false, &required),
+        (Code::BadPassword, true, &incorrect),
+        (Code::BadData, true, &incorrect),
+        (Code::BadData, false, &invalid),
+        (Code::BadArchive, false, &invalid),
+        (Code::UnknownFormat, false, &invalid),
+    ] {
+        assert_eq!(
+            &unrar_decode_error(make_err(code), password_supplied),
+            expected,
+            "{code:?}"
+        );
+    }
 }

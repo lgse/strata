@@ -250,7 +250,14 @@ API dependencies; decoders lend it member streams and the archive name, and prov
 already-known pending names on cancellation. The session writes members into a hidden staging
 folder under the destination and publishes it in `finish` for every outcome: a single root moves
 up verbatim, several roots are renamed to the archive stem, and failed or cancelled output stays
-in the archive-named folder unless it holds only directories. Member identity tracking stays
+in the archive-named folder unless it holds only directories.
+A password failure instead discards the staging folder, since the retry extracts everything
+again. Decoders report it as `ArchiveError::PasswordRequired` or `IncorrectPassword`, and its kind
+travels as `PasswordFailure` on `OperationEvent::Failed` and `BrowserEvent::OperationFailed`;
+that kind alone decides the password retry, never the message text. Only a member that is
+encrypted and was given a password reports malformed data as a possible wrong password. Staging
+that cannot be discarded turns the failure into an ordinary one.
+Member identity tracking stays
 inside each decoder rather than assuming unique names or matching header/callback order. The
 session validates pending names and applies established root renames without filesystem probes
 or name reservations; final leaf conflicts remain unknown until a member is attempted. Sequential formats do not scan unread content to complete that list.
@@ -271,9 +278,11 @@ Decoders pass symlinks, TAR hard links and each member's mode and modification t
 best effort: `EPERM`, `EOPNOTSUPP` and `EINVAL` from filesystems without Unix permissions or times
 are ignored behind the `MetadataCalls` seam in `destination.rs`. TAR extraction preserves
 native path bytes, including hard-link target identity. The sandboxed RAR helper streams
-`STRRAR02` records carrying each member's mode and
+`STRRAR03` records carrying each member's mode and
 time (a RAR 5 FILETIME, or the DOS local time of older formats, which only the parent can
-convert in the user's zone); RAR links are not yet extracted as links. Format
+convert in the user's zone); RAR links are not yet extracted as links. Error records and failed
+member trailers carry a failure kind, so a missing or incorrect password reaches the parent
+without parsing text. Format
 libraries remain behind the adapter boundary. See [archive creation](archives.md) for
 container-specific encoding, classification and cancellation behavior. Archive unit tests sit in each module's
 adjacent `tests.rs`; provider-level tests remain in `archive/tests.rs`, with shared test-only builders

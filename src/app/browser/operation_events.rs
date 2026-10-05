@@ -392,12 +392,20 @@ impl Browser {
                     message,
                 });
             }
-            OperationEvent::Failed { message, .. } => {
-                self.emit(BrowserEvent::OperationFailed { message })
-            }
+            OperationEvent::Failed {
+                message,
+                password_failure,
+                ..
+            } => self.emit(BrowserEvent::OperationFailed {
+                message,
+                password_failure,
+            }),
             OperationEvent::TransferFailed { message, .. } => {
                 self.refresh_columns_at_many(&context.refresh_locations);
-                self.emit(BrowserEvent::OperationFailed { message });
+                self.emit(BrowserEvent::OperationFailed {
+                    message,
+                    password_failure: None,
+                });
             }
             OperationEvent::CompletedWithErrors {
                 deleted_locations,

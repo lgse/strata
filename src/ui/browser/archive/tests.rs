@@ -41,46 +41,95 @@ fn archive_collisions_use_the_final_name() -> Result<(), Box<dyn std::error::Err
     Ok(())
 }
 
-#[test]
-fn quoted_names_never_drive_the_password_retry() {
-    for (message, needs_password, wrong_password) in [
-        ("The password may be incorrect.", true, true),
-        (
-            "A password is required to extract this archive.",
-            true,
-            false,
-        ),
-        (
-            "The password may be incorrect. Extracted entries remain in `photos`.",
-            true,
-            true,
-        ),
-        ("Not an archive: `passwords.zip`", false, false),
-        (
-            "This file is not a valid archive or is damaged. Extracted entries remain in `encrypted-incorrect`.",
-            false,
-            false,
-        ),
-        (
-            "Archive member `a`b.txt` uses unsupported encryption",
-            true,
-            false,
-        ),
-        (
-            "Could not link `.password-store/incorrect` to `encrypted`: Operation not permitted",
-            false,
-            false,
-        ),
-    ] {
-        assert_eq!(
-            extract_error_needs_password(message),
-            needs_password,
-            "{message}"
-        );
-        assert_eq!(
-            extract_error_reports_wrong_password(message),
-            wrong_password,
-            "{message}"
-        );
+/// Text of every visible label and button in the browser overlay.
+fn visible_texts(overlay: &gtk::Overlay) -> Vec<String> {
+    let mut texts = Vec::new();
+    let mut stack = Vec::new();
+    let mut child = overlay.first_child();
+    while let Some(widget) = child {
+        stack.push(widget.clone());
+        child = widget.next_sibling();
     }
+    while let Some(widget) = stack.pop() {
+        if !widget.is_visible() {
+            continue;
+        }
+        if let Some(label) = widget.downcast_ref::<gtk::Label>() {
+            texts.push(label.label().to_string());
+        }
+        if let Some(button) = widget.downcast_ref::<gtk::Button>()
+            && let Some(label) = button.label()
+        {
+            texts.push(label.to_string());
+        }
+        let mut descendant = widget.first_child();
+        while let Some(next) = descendant {
+            stack.push(next.clone());
+            descendant = next.next_sibling();
+        }
+    }
+    texts
+}
+
+#[test]
+fn only_a_password_failure_kind_opens_the_extract_password_dialog() {
+    crate::test_support::gtk_test(
+        "ui::browser::archive::tests::only_a_password_failure_kind_opens_the_extract_password_dialog",
+        || {
+            // The same wording for every kind: only the kind may decide.
+            let message = "The password may be incorrect. Could not open `passwords.zip`.";
+            for (password_failure, password_dialog, invalid_password) in [
+                (None, false, false),
+                (Some(PasswordFailure::Required), true, false),
+                (Some(PasswordFailure::Incorrect), true, true),
+            ] {
+                let fixture = tempfile::tempdir().expect("archive fixture");
+                let view = crate::ui::browser::BrowserView::new(
+                    std::rc::Rc::new(crate::adapters::LocalFileSource),
+                    crate::ui::browser::PeekBehavior::default(),
+                );
+                let overlay = view.overlay();
+                let window = gtk::Window::builder().child(&overlay).build();
+                window.present();
+                let archive = Location::local(fixture.path().join("passwords.zip"));
+                view.state.pending_extract_retry.replace(Some((
+                    crate::test_support::operations::entry(archive),
+                    Location::local(fixture.path()),
+                )));
+
+                view.state.handle(&crate::app::BrowserEvent::OperationFailed {
+                    message: message.to_owned(),
+                    password_failure,
+                });
+                let context = glib::MainContext::default();
+                while context.pending() {
+                    context.iteration(false);
+                }
+
+                let texts = visible_texts(&overlay);
+                let label = format!("{password_failure:?}: {texts:?}");
+                assert_eq!(
+                    texts.iter().any(|text| text == "Password"),
+                    password_dialog,
+                    "{label}"
+                );
+                assert_eq!(
+                    texts.iter().any(|text| text == "Invalid password"),
+                    invalid_password,
+                    "{label}"
+                );
+                assert_eq!(
+                    texts.iter().any(|text| text == "Unable to complete operation"),
+                    !password_dialog,
+                    "{label}"
+                );
+                assert_eq!(
+                    texts.iter().any(|text| text == message),
+                    !password_dialog,
+                    "{label}"
+                );
+                window.destroy();
+            }
+        },
+    );
 }

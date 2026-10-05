@@ -6,8 +6,9 @@
 //! names only on cancellation. The session validates and maps destination reports
 //! without scanning ahead, probing the filesystem or reserving pending names.
 //!
-//! Staging isolates conflict naming from the user's files. Unfinished sessions
-//! retain partial output even during decoder panic unwinding.
+//! Staging isolates conflict naming from the user's files. A password failure
+//! discards it, because the retry extracts the whole archive again. Unfinished
+//! sessions retain partial output even during decoder panic unwinding.
 use std::{
     collections::{HashMap, HashSet},
     ffi::{OsStr, OsString},
@@ -21,7 +22,7 @@ use std::{
 use crate::model::Location;
 
 use super::{
-    ArchiveError, COPY_BUF, archive_failed, check_archive_cancelled,
+    ArchiveError, COPY_BUF, archive_failed, archive_read_failed, check_archive_cancelled,
     destination::{
         ExtractNameResolver, ExtractionDestination, process_umask, sanitized_archive_path,
     },
@@ -348,6 +349,9 @@ impl<'a> ExtractionSession<'a> {
         Ok(())
     }
 
+    /// A password failure discards everything written, even unencrypted
+    /// members, because the retry extracts the whole archive again.
+    ///
     /// Pending names exclude members already passed to `extract_member`.
     /// Reports apply established top-level renames, but cannot predict final leaf
     /// conflicts for unattempted members. Invalid names are omitted, not errors.
@@ -445,6 +449,20 @@ impl<'a> ExtractionSession<'a> {
                     failed,
                     not_attempted,
                 })
+            }
+            Err(error @ (ArchiveError::PasswordRequired(_) | ArchiveError::IncorrectPassword(_))) => {
+                let discarded = staging.as_ref().map_or(Ok(()), |staging| {
+                    directory.remove_staging(&staging.name)
+                });
+                // Output that cannot be discarded would make the retry take a
+                // numbered name, so report an ordinary failure instead.
+                match discarded {
+                    Ok(()) => Err(error),
+                    Err(removal) => Err(ArchiveError::Failed(failure_message(
+                        append_sentence(&error.to_string(), &removal),
+                        keep_or_remove(directory, staging.as_ref(), archive_name, self.has_content),
+                    ))),
+                }
             }
             Err(ArchiveError::Failed(message)) => Err(ArchiveError::Failed(failure_message(
                 message,
@@ -552,7 +570,6 @@ fn staging_kept_message(error: &str, staging: &Staging) -> String {
     )
 }
 
-/// Backticks around filenames keep them out of the UI's password-retry heuristic.
 fn append_sentence(message: &str, sentence: &str) -> String {
     let separator = if message.ends_with(['.', '!', '?']) {
         " "
@@ -606,7 +623,7 @@ fn copy_member(
         };
         if allowed == 0 {
             let mut probe = [0u8; 1];
-            if reader.read(&mut probe).map_err(archive_failed)? == 0 {
+            if reader.read(&mut probe).map_err(archive_read_failed)? == 0 {
                 break;
             }
             return Err(match declared_size {
@@ -623,7 +640,7 @@ fn copy_member(
         let cap = buf
             .len()
             .min(usize::try_from(allowed).unwrap_or(usize::MAX));
-        let n = reader.read(&mut buf[..cap]).map_err(archive_failed)?;
+        let n = reader.read(&mut buf[..cap]).map_err(archive_read_failed)?;
         if n == 0 {
             break;
         }

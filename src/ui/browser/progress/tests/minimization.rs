@@ -398,6 +398,7 @@ fn docked_deletion_keeps_its_animation_until_its_own_terminal_event() {
                     copy,
                     &crate::app::BrowserEvent::OperationFailed {
                         message: "Unrelated copy failure".into(),
+                        password_failure: None,
                     },
                 );
                 assert!(state.pending_delete_dissolve.borrow().is_some());
@@ -427,6 +428,7 @@ fn docked_deletion_keeps_its_animation_until_its_own_terminal_event() {
                     }
                     "failed" => crate::app::BrowserEvent::OperationFailed {
                         message: "Delete failed".into(),
+                        password_failure: None,
                     },
                     "cancelled" => crate::app::BrowserEvent::OperationCancelled {
                         completed: 0,

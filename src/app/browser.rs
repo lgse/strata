@@ -15,8 +15,8 @@ use crate::{
         ArchiveFormat, CompressRequest, CreateDirectoryRequest, CreateFileRequest, DeleteRequest,
         DirectoryChange, DirectoryRequest, ExtractRequest, FileSource, LoadHandle,
         LocationValidationError, MetadataOutcome, MetadataRequest, MoveRecord, OperationEvent,
-        OperationProvider, OperationRequestId, PasteItem, PasteRequest, RenameRecord,
-        RenameRequest, RequestId, RestoreRequest, RestoreSource, RestoreTrashItem,
+        OperationProvider, OperationRequestId, PasswordFailure, PasteItem, PasteRequest,
+        RenameRecord, RenameRequest, RequestId, RestoreRequest, RestoreSource, RestoreTrashItem,
         TransferConflict, TrashedOriginal, UndoCopyRequest, UndoMergeRequest, UndoMoveItem,
         UndoMoveRequest, UndoRenameRequest, validate_basename, validate_uri_credentials,
     },
@@ -232,6 +232,8 @@ pub enum BrowserEvent {
     },
     OperationFailed {
         message: String,
+        /// Set only when an extraction failed for want of the right password.
+        password_failure: Option<PasswordFailure>,
     },
     OperationCompletedWithErrors {
         message: String,
@@ -2155,12 +2157,14 @@ impl Browser {
         if let Err(message) = validate_basename(&name) {
             self.emit(BrowserEvent::OperationFailed {
                 message: message.to_owned(),
+                password_failure: None,
             });
             return;
         }
         let Some(provider) = self.operation_provider.borrow().clone() else {
             self.emit(BrowserEvent::OperationFailed {
                 message: "File operations are unavailable".to_owned(),
+                password_failure: None,
             });
             return;
         };
@@ -2199,12 +2203,14 @@ impl Browser {
         if let Err(message) = validate_basename(&name) {
             self.emit(BrowserEvent::OperationFailed {
                 message: message.to_owned(),
+                password_failure: None,
             });
             return;
         }
         let Some(provider) = self.operation_provider.borrow().clone() else {
             self.emit(BrowserEvent::OperationFailed {
                 message: "File operations are unavailable".to_owned(),
+                password_failure: None,
             });
             return;
         };
@@ -2258,6 +2264,7 @@ impl Browser {
         let Some(provider) = self.operation_provider.borrow().clone() else {
             self.emit(BrowserEvent::OperationFailed {
                 message: "File operations are unavailable".to_owned(),
+                password_failure: None,
             });
             return;
         };
@@ -2311,6 +2318,7 @@ impl Browser {
         let Some(provider) = self.operation_provider.borrow().clone() else {
             self.emit(BrowserEvent::OperationFailed {
                 message: "File operations are unavailable".to_owned(),
+                password_failure: None,
             });
             return;
         };
@@ -2352,6 +2360,7 @@ impl Browser {
         let Some(provider) = self.operation_provider.borrow().clone() else {
             self.emit(BrowserEvent::OperationFailed {
                 message: "File operations are unavailable".to_owned(),
+                password_failure: None,
             });
             return;
         };
@@ -2984,6 +2993,7 @@ impl Browser {
         let Some(provider) = self.operation_provider.borrow().clone() else {
             self.emit(BrowserEvent::OperationFailed {
                 message: "File operations are unavailable".to_owned(),
+                password_failure: None,
             });
             return;
         };
@@ -3021,6 +3031,7 @@ impl Browser {
         let Some(provider) = self.operation_provider.borrow().clone() else {
             self.emit(BrowserEvent::OperationFailed {
                 message: "File operations are unavailable".to_owned(),
+                password_failure: None,
             });
             return;
         };

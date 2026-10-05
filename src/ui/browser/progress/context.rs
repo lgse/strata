@@ -298,7 +298,7 @@ impl ViewState {
                 }
                 true
             }
-            BrowserEvent::OperationFailed { message } => {
+            BrowserEvent::OperationFailed { message, .. } => {
                 if self.delete_dissolve_request.get() == Some(request_id) {
                     self.settle_pending_delete_dissolve();
                 }

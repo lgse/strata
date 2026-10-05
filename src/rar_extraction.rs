@@ -4,7 +4,7 @@
 
 use std::io::{self, Read, Write};
 
-const MAGIC: &[u8; 8] = b"STRRAR02";
+const MAGIC: &[u8; 8] = b"STRRAR03";
 /// Generous enough for any real archive member name or error message, small
 /// enough that a malformed/compromised child cannot force a huge allocation.
 const MAX_TEXT_BYTES: u32 = 8192;
@@ -26,12 +26,98 @@ pub(crate) struct WireMetadata {
     pub(crate) modified: Option<WireTime>,
 }
 
+/// Why the decoder failed, so the parent can offer a password retry without
+/// reading the message.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum FailureKind {
+    Other,
+    PasswordRequired,
+    IncorrectPassword,
+}
+
+impl FailureKind {
+    fn code(self) -> u32 {
+        match self {
+            Self::Other => 0,
+            Self::PasswordRequired => 1,
+            Self::IncorrectPassword => 2,
+        }
+    }
+
+    fn from_code(code: u32) -> Option<Self> {
+        match code {
+            0 => Some(Self::Other),
+            1 => Some(Self::PasswordRequired),
+            2 => Some(Self::IncorrectPassword),
+            _ => None,
+        }
+    }
+}
+
+/// A decoder failure as an error record or a failed member trailer carries it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Failure {
+    pub(crate) kind: FailureKind,
+    pub(crate) message: String,
+}
+
+impl Failure {
+    pub(crate) fn new(kind: FailureKind, message: impl Into<String>) -> Self {
+        Self {
+            kind,
+            message: message.into(),
+        }
+    }
+
+    /// Recovers the failure a [`FileBody`] read reported from its trailer.
+    pub(crate) fn from_io(error: io::Error) -> Self {
+        match error
+            .get_ref()
+            .and_then(|inner| inner.downcast_ref::<Self>())
+        {
+            Some(failure) => failure.clone(),
+            None => Self::from(error.to_string()),
+        }
+    }
+}
+
+impl From<String> for Failure {
+    fn from(message: String) -> Self {
+        Self::new(FailureKind::Other, message)
+    }
+}
+
+impl From<&str> for Failure {
+    fn from(message: &str) -> Self {
+        Self::new(FailureKind::Other, message)
+    }
+}
+
+impl From<Failure> for String {
+    fn from(failure: Failure) -> Self {
+        failure.message
+    }
+}
+
+impl std::fmt::Display for Failure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for Failure {}
+
+/// Error records use kinds from this value up, one per [`FailureKind`].
+const ERROR_RECORD: u32 = 3;
+/// Failed member trailers use statuses from this value up, one per [`FailureKind`].
+const FAILED_TRAILER: u32 = 1;
+
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Record {
     Directory(String, WireMetadata),
     File(String, u64, WireMetadata),
     End,
-    Error(String),
+    Error(Failure),
 }
 
 pub(crate) fn write_magic(writer: &mut impl Write) -> io::Result<()> {
@@ -68,8 +154,14 @@ pub(crate) fn write_end(writer: &mut impl Write) -> io::Result<()> {
     write_header(writer, 2, "", 0, WireMetadata::default())
 }
 
-pub(crate) fn write_error(writer: &mut impl Write, message: &str) -> io::Result<()> {
-    write_header(writer, 3, message, 0, WireMetadata::default())
+pub(crate) fn write_error(writer: &mut impl Write, failure: &Failure) -> io::Result<()> {
+    write_header(
+        writer,
+        ERROR_RECORD + failure.kind.code(),
+        &failure.message,
+        0,
+        WireMetadata::default(),
+    )
 }
 
 fn write_header(
@@ -107,13 +199,18 @@ pub(crate) fn write_file_ok(writer: &mut impl Write) -> io::Result<()> {
     write_trailer(writer, 0, "")
 }
 
-pub(crate) fn write_file_failed(writer: &mut impl Write, message: &str) -> io::Result<()> {
+pub(crate) fn write_file_failed(writer: &mut impl Write, failure: &Failure) -> io::Result<()> {
     writer.write_all(&0u32.to_le_bytes())?;
-    write_trailer(writer, 1, message)
+    write_trailer(
+        writer,
+        FAILED_TRAILER + failure.kind.code(),
+        &failure.message,
+    )
 }
 
 /// The framed member reader validates the trailer before reporting EOF to the
 /// destination, so failed or truncated members are removed by ExtractionSession.
+/// A failed trailer's [`Failure`] is the reported error's inner error.
 pub(crate) struct FileBody<'a, R> {
     reader: &'a mut R,
     remaining: u64,
@@ -142,7 +239,8 @@ impl<R: Read> Read for FileBody<'_, R> {
             self.reader.read_exact(&mut length)?;
             self.chunk_remaining = u32::from_le_bytes(length);
             if self.chunk_remaining == 0 {
-                read_file_trailer(self.reader)?.map_err(|error| invalid(&error))?;
+                read_file_trailer(self.reader)?
+                    .map_err(|failure| io::Error::new(io::ErrorKind::InvalidData, failure))?;
                 if self.remaining != 0 {
                     return Err(invalid("RAR member produced fewer bytes than declared"));
                 }
@@ -200,12 +298,16 @@ pub(crate) fn read_record(reader: &mut impl Read) -> io::Result<Record> {
         0 if size == 0 => Ok(Record::Directory(text, metadata)),
         1 => Ok(Record::File(text, size, metadata)),
         2 if text.is_empty() && size == 0 && no_metadata => Ok(Record::End),
-        3 if size == 0 && no_metadata => Ok(Record::Error(text)),
+        kind if size == 0 && no_metadata => kind
+            .checked_sub(ERROR_RECORD)
+            .and_then(FailureKind::from_code)
+            .map(|kind| Record::Error(Failure::new(kind, text)))
+            .ok_or_else(|| invalid("Unknown RAR extraction stream record")),
         _ => Err(invalid("Unknown RAR extraction stream record")),
     }
 }
 
-pub(crate) fn read_file_trailer(reader: &mut impl Read) -> io::Result<Result<(), String>> {
+pub(crate) fn read_file_trailer(reader: &mut impl Read) -> io::Result<Result<(), Failure>> {
     let mut trailer = [0; 8];
     reader.read_exact(&mut trailer)?;
     let status = u32_at(&trailer, 0);
@@ -219,8 +321,11 @@ pub(crate) fn read_file_trailer(reader: &mut impl Read) -> io::Result<Result<(),
         .map_err(|_| invalid("RAR extraction stream trailer is not valid UTF-8"))?;
     match status {
         0 if message.is_empty() => Ok(Ok(())),
-        1 => Ok(Err(message)),
-        _ => Err(invalid("Unknown RAR extraction stream trailer")),
+        status => status
+            .checked_sub(FAILED_TRAILER)
+            .and_then(FailureKind::from_code)
+            .map(|kind| Err(Failure::new(kind, message)))
+            .ok_or_else(|| invalid("Unknown RAR extraction stream trailer")),
     }
 }
 

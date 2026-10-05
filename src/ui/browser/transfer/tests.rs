@@ -389,7 +389,7 @@ fn start_transfer_skips_noops_before_emitting_progress() {
                     crate::app::BrowserEvent::TransferFinished { .. } => {
                         observed_finished.set(true);
                     }
-                    crate::app::BrowserEvent::OperationFailed { message } => {
+                    crate::app::BrowserEvent::OperationFailed { message, .. } => {
                         panic!("transfer failed: {message}");
                     }
                     _ => {}

@@ -1129,3 +1129,42 @@ fn a_failed_directory_restore_leaves_restored_directories_writable() -> Result<(
     assert!(root.path().read_dir()?.next().is_none());
     Ok(())
 }
+
+#[test]
+fn a_password_failure_that_cannot_discard_its_output_offers_no_retry() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let progress = AtomicUsize::new(0);
+    let cancelled = AtomicBool::new(false);
+    let mut session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
+    session.extract_member(
+        "locked/file.txt",
+        MemberContent::File(&mut &b"file"[..], Some(4)),
+        MemberMetadata::NONE,
+    )?;
+    let staging = fs::read_dir(root.path())?
+        .next()
+        .ok_or("no staging folder")??
+        .path();
+    fs::set_permissions(staging.join("locked"), fs::Permissions::from_mode(0o500))?;
+
+    let outcome = session.finish(
+        Err(ArchiveError::PasswordRequired(
+            crate::adapters::PASSWORD_REQUIRED.to_owned(),
+        )),
+        Vec::new,
+    );
+
+    let kept = root.path().join("archive/locked");
+    let _ = fs::set_permissions(&kept, fs::Permissions::from_mode(0o700));
+    let _ = fs::set_permissions(staging.join("locked"), fs::Permissions::from_mode(0o700));
+    assert!(
+        matches!(&outcome, Err(ArchiveError::Failed(message))
+            if message.starts_with(&format!(
+                "{} Could not remove the extraction staging folder: Permission denied",
+                crate::adapters::PASSWORD_REQUIRED
+            )) && message.ends_with(" Extracted entries remain in `archive`.")),
+        "{outcome:?}"
+    );
+    assert_eq!(fs::read(kept.join("file.txt"))?, b"file");
+    Ok(())
+}

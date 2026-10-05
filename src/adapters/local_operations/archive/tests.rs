@@ -15,7 +15,7 @@ use crate::{
     model::Location,
     services::{
         ArchiveFormat, CompressRequest, ExtractRequest, LoadHandle, OperationEvent,
-        OperationProvider, OperationRequestId, TransferConflict,
+        OperationProvider, OperationRequestId, PasswordFailure, TransferConflict,
     },
     test_support::ASYNC_MAIN_CONTEXT_DEFAULT,
 };
@@ -622,7 +622,7 @@ fn extraction_failures_stop_progress_and_preserve_error_distinctions() -> Result
             std::thread::yield_now();
         }
         assert!(
-            matches!(events.borrow().last(), Some(OperationEvent::Failed { message, .. }) if message.contains(expected)),
+            matches!(events.borrow().last(), Some(OperationEvent::Failed { message, password_failure: None, .. }) if message.contains(expected)),
             "{name}: {:?}",
             events.borrow()
         );
@@ -1101,7 +1101,12 @@ fn gzip_trailer_failure_is_reported_through_the_provider() -> Result<(), Box<dyn
         password: None,
     });
 
-    let Some(OperationEvent::Failed { message, .. }) = events.last() else {
+    let Some(OperationEvent::Failed {
+        message,
+        password_failure: None,
+        ..
+    }) = events.last()
+    else {
         panic!("a damaged gzip trailer was accepted: {events:?}");
     };
     assert_eq!(
@@ -1113,5 +1118,50 @@ fn gzip_trailer_failure_is_reported_through_the_provider() -> Result<(), Box<dyn
         fs::metadata(destination.path().join("content/a.txt"))?.len(),
         50_000
     );
+    Ok(())
+}
+
+#[test]
+fn password_failures_reach_the_event_as_their_kind_and_leave_nothing_behind()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    for format in [ArchiveFormat::Zip, ArchiveFormat::SevenZ] {
+        let root = tempfile::tempdir()?;
+        let sources = ["first.txt", "second.txt"].map(|name| root.path().join(name));
+        for source in &sources {
+            fs::write(source, b"contents")?;
+        }
+        let archive = root.path().join(format!("secret.{}", format.extension()));
+        super::write_compression_fixture(&archive, &sources, format, Some("test-password"))?;
+        for (password, expected) in [
+            (None, PasswordFailure::Required),
+            (Some("wrong-password"), PasswordFailure::Incorrect),
+        ] {
+            let destination = tempfile::tempdir()?;
+
+            let events = run_extraction(ExtractRequest {
+                id: OperationRequestId(8),
+                entry: test_file_entry(&archive),
+                destination: Location::local(destination.path()),
+                created_destination: false,
+                password: password.map(str::to_owned),
+            });
+
+            assert!(
+                matches!(
+                    events.last(),
+                    Some(OperationEvent::Failed { message, password_failure: Some(kind), .. })
+                        if *kind == expected && !message.contains("remain")
+                ),
+                "{format:?} {password:?}: {events:?}"
+            );
+            assert!(
+                entry_names(destination.path())?.is_empty(),
+                "{format:?} {password:?}"
+            );
+        }
+    }
     Ok(())
 }

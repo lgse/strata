@@ -7,9 +7,7 @@ use crate::app::{BrowserEvent, SelectionUpdate};
 use crate::model::FileEntry;
 use crate::services::LocationValidationError;
 use crate::ui::browser::ViewState;
-use crate::ui::browser::archive::{
-    extract_error_needs_password, extract_error_reports_wrong_password,
-};
+use crate::ui::browser::archive::extract_password_retry;
 use crate::ui::browser::columns::{
     column_size_text, prune_missing_search_results, restore_column_cursor, scroll_column_to,
     select_all_in_column, set_column_busy, set_column_selections, set_filter_placeholder,
@@ -818,7 +816,10 @@ impl ViewState {
                     });
                 });
             }
-            BrowserEvent::OperationFailed { message } => {
+            BrowserEvent::OperationFailed {
+                message,
+                password_failure,
+            } => {
                 self.suppress_scroll_after_drop.set(false);
                 self.drop_active_depths.set(None);
                 self.pending_new_entry.take();
@@ -827,6 +828,7 @@ impl ViewState {
                 self.pending_archive_destination.take();
                 let retry = self.pending_extract_retry.take();
                 let message = message.clone();
+                let password_failure = *password_failure;
                 let weak = Rc::downgrade(self);
                 self.dismiss_file_operation_progress_then(move || {
                     let Some(state) = weak.upgrade() else {
@@ -834,9 +836,8 @@ impl ViewState {
                     };
                     state.clear_delete_animation();
                     if let Some((entry, destination)) = retry
-                        && extract_error_needs_password(&message)
+                        && let Some(invalid_password) = extract_password_retry(password_failure)
                     {
-                        let invalid_password = extract_error_reports_wrong_password(&message);
                         let navigate_after_extract = state.pending_navigate.take();
                         state.show_extract_password_dialog(
                             entry,

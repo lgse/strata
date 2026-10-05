@@ -844,6 +844,7 @@ fn failed_rename_undo_releases_its_claim_and_remains_retryable() {
     emit(OperationEvent::Failed {
         request_id,
         message: "occupied".to_owned(),
+        password_failure: None,
     });
 
     assert_eq!(pending_undo_entry(), Some(expected));
@@ -1570,6 +1571,7 @@ fn a_failed_undo_offers_no_redo() {
     emit(OperationEvent::Failed {
         request_id,
         message: "restore failed".into(),
+        password_failure: None,
     });
 
     assert_eq!(pending_redo_entry(), None);
@@ -1618,6 +1620,7 @@ fn a_failed_rename_undo_offers_no_redo() {
     emit(OperationEvent::Failed {
         request_id,
         message: "rename failed".into(),
+        password_failure: None,
     });
 
     assert_eq!(pending_redo_entry(), None);

@@ -16,7 +16,7 @@
 
 use crate::adapters::gio_file_for_location;
 use crate::model::{FileEntry, Location};
-use crate::services::{ArchiveFormat, TransferConflict, validate_basename};
+use crate::services::{ArchiveFormat, PasswordFailure, TransferConflict, validate_basename};
 use crate::ui::browser::ViewState;
 use crate::ui::browser::entry::{entry_kind_summary, item_count_label};
 use crate::ui::browser::paths::compact_display_path;
@@ -35,23 +35,11 @@ use std::cell::Cell;
 use std::path::Path;
 use std::rc::Rc;
 
-/// Unescaped names may contain backticks or "password"; exclude their entire span.
-fn unquoted_extract_error(message: &str) -> String {
-    match (message.find('`'), message.rfind('`')) {
-        (Some(start), Some(end)) if start < end => {
-            format!("{} {}", &message[..start], &message[end + 1..]).to_lowercase()
-        }
-        _ => message.to_lowercase(),
-    }
-}
-
-pub(super) fn extract_error_needs_password(message: &str) -> bool {
-    let text = unquoted_extract_error(message);
-    text.contains("password") || text.contains("encrypt")
-}
-
-pub(super) fn extract_error_reports_wrong_password(message: &str) -> bool {
-    unquoted_extract_error(message).contains("incorrect")
+/// Whether a failed extract reopens the password dialog and, if so, whether
+/// it reports an invalid password. Only the failure's structured kind decides:
+/// messages quote member and folder names, which can contain any word.
+pub(super) fn extract_password_retry(password_failure: Option<PasswordFailure>) -> Option<bool> {
+    password_failure.map(|failure| failure == PasswordFailure::Incorrect)
 }
 
 /// Basename used when creating the archive, with `format`'s extension removed.
@@ -532,9 +520,9 @@ impl ViewState {
 
     /// Prompts for a password after a password-capable extract failed.
     ///
-    /// Shown from operation-failure handling when the error mentions a password
-    /// or encryption. Empty submissions remain in the dialog, while a rejected
-    /// password reopens it with inline error feedback.
+    /// Shown from operation-failure handling when the failure is a missing or
+    /// incorrect password. Empty submissions remain in the dialog, while a
+    /// rejected password reopens it with inline error feedback.
     pub(super) fn show_extract_password_dialog(
         self: &Rc<Self>,
         entry: FileEntry,

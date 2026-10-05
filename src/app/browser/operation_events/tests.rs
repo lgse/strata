@@ -148,17 +148,19 @@ fn progress_observer_can_supersede_an_operation_before_its_terminal() {
     callback(OperationEvent::Failed {
         request_id,
         message: "stale failure".to_owned(),
+        password_failure: None,
     });
     let replacement_id = replacement.get().expect("replacement operation");
     browser.operation_callback(replacement_id, false, HashSet::new())(OperationEvent::Failed {
         request_id: replacement_id,
         message: "current failure".to_owned(),
+        password_failure: None,
     });
     let messages: Vec<_> = events
         .borrow()
         .iter()
         .filter_map(|event| match event {
-            BrowserEvent::OperationFailed { message } => Some(message.clone()),
+            BrowserEvent::OperationFailed { message, .. } => Some(message.clone()),
             _ => None,
         })
         .collect();
@@ -217,6 +219,7 @@ fn held_operation_callback_does_not_keep_the_browser_alive() {
     callback(OperationEvent::Failed {
         request_id,
         message: "late failure".to_owned(),
+        password_failure: None,
     });
     assert!(events.borrow().is_empty());
 }

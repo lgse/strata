@@ -10,8 +10,9 @@ mod create_entry;
 pub(crate) use archive::ArchiveListing;
 pub(crate) use archive::{
     ARCHIVE_PREVIEW_FAILED_MESSAGE, ARCHIVE_TOO_LARGE_MESSAGE, ARCHIVE_UNSUPPORTED_MESSAGE,
-    ArchiveListingStatus, INVALID_ARCHIVE, MAX_ARCHIVE_PASSWORD_BYTES, archive_payload_valid,
-    decode_archive_listing, encode_archive_result, list_archive_entries_direct,
+    ArchiveListingStatus, INVALID_ARCHIVE, MAX_ARCHIVE_PASSWORD_BYTES, MAYBE_BAD_PASSWORD,
+    PASSWORD_REQUIRED, archive_payload_valid, decode_archive_listing, encode_archive_result,
+    list_archive_entries_direct,
 };
 
 #[cfg(test)]
@@ -4714,6 +4715,7 @@ impl OperationProvider for LocalOperationProvider {
                 emit(OperationEvent::Failed {
                     request_id: request.id,
                     message: message.to_owned(),
+                    password_failure: None,
                 });
                 return;
             }
@@ -4766,6 +4768,7 @@ impl OperationProvider for LocalOperationProvider {
                 Err(error) => emit(OperationEvent::Failed {
                     request_id: request.id,
                     message: error.to_string(),
+                    password_failure: None,
                 }),
             }
         });
@@ -4970,6 +4973,7 @@ impl OperationProvider for LocalOperationProvider {
                             Some(error) => format!("A clipboard item has no file name. {error}"),
                             None => "A clipboard item has no file name".to_owned(),
                         },
+                        password_failure: None,
                     });
                     return;
                 };
@@ -5427,6 +5431,7 @@ impl OperationProvider for LocalOperationProvider {
                 Err(error) => emit(OperationEvent::Failed {
                     request_id: request.id,
                     message: error.to_string(),
+                    password_failure: None,
                 }),
             }
         });
@@ -5528,6 +5533,7 @@ impl OperationProvider for LocalOperationProvider {
                         emit(OperationEvent::Failed {
                             request_id: request.id,
                             message: format!("Unable to find items in Trash: {error}"),
+                            password_failure: None,
                         });
                         return;
                     }

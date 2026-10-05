@@ -53,36 +53,52 @@ fn drive_dispatches_directory_and_file_members_in_archive_order() {
 
 #[test]
 fn drive_propagates_a_top_level_error_record_and_stops() {
-    let reader = fixture_stream(|bytes| {
-        wire::write_error(bytes, "Unable to open RAR archive").expect("fixture stream");
-    });
-    let mut calls = 0;
-    let error = drive(reader, |_, _, _| {
-        calls += 1;
-        Ok(())
-    })
-    .expect_err("an error record must fail the stream");
-    assert_eq!(error, "Unable to open RAR archive");
-    assert_eq!(calls, 0, "no member callback runs after a top-level error");
+    for failure in [
+        wire::Failure::from("Unable to open RAR archive"),
+        wire::Failure::new(
+            wire::FailureKind::IncorrectPassword,
+            "The password may be incorrect.",
+        ),
+    ] {
+        let reader = fixture_stream(|bytes| {
+            wire::write_error(bytes, &failure).expect("fixture stream");
+        });
+        let mut calls = 0;
+        let error = drive(reader, |_, _, _| {
+            calls += 1;
+            Ok(())
+        })
+        .expect_err("an error record must fail the stream");
+        assert_eq!(error, failure);
+        assert_eq!(calls, 0, "no member callback runs after a top-level error");
+    }
 }
 
 #[test]
 fn drive_propagates_a_file_trailer_failure_and_stops_before_end() {
-    let reader = fixture_stream(|bytes| {
-        wire::write_file_header(bytes, "broken.bin", 3, wire::WireMetadata::default())
-            .expect("fixture stream");
-        wire::write_chunk(bytes, b"abc").expect("fixture stream");
-        wire::write_file_failed(bytes, "CRC mismatch").expect("fixture stream");
-        wire::write_end(bytes).expect("fixture stream");
-    });
-    let mut calls = 0;
-    let error = drive(reader, |_, _, _| {
-        calls += 1;
-        Ok(())
-    })
-    .expect_err("a failed trailer must fail the stream");
-    assert_eq!(error, "CRC mismatch");
-    assert_eq!(calls, 1, "the file member callback still runs once");
+    for failure in [
+        wire::Failure::from("CRC mismatch"),
+        wire::Failure::new(
+            wire::FailureKind::PasswordRequired,
+            "A password is required to extract this archive.",
+        ),
+    ] {
+        let reader = fixture_stream(|bytes| {
+            wire::write_file_header(bytes, "broken.bin", 3, wire::WireMetadata::default())
+                .expect("fixture stream");
+            wire::write_chunk(bytes, b"abc").expect("fixture stream");
+            wire::write_file_failed(bytes, &failure).expect("fixture stream");
+            wire::write_end(bytes).expect("fixture stream");
+        });
+        let mut calls = 0;
+        let error = drive(reader, |_, _, _| {
+            calls += 1;
+            Ok(())
+        })
+        .expect_err("a failed trailer must fail the stream");
+        assert_eq!(error, failure);
+        assert_eq!(calls, 1, "the file member callback still runs once");
+    }
 }
 
 #[test]
@@ -100,7 +116,7 @@ fn drive_stops_immediately_when_on_member_fails() {
         Err(format!("rejected {name}"))
     })
     .expect_err("an on_member failure must stop the stream");
-    assert_eq!(error, "rejected first");
+    assert_eq!(error, wire::Failure::from("rejected first"));
     assert_eq!(calls, 1, "drive must not continue to the next record");
 }
 
