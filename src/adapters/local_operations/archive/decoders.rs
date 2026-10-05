@@ -19,11 +19,17 @@ use std::{
         Arc,
         atomic::{AtomicBool, AtomicUsize},
     },
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
+
+use gtk::glib;
 
 use super::{
     ARCHIVE_CANCELLED, ArchiveError, archive_failed, copy_with_big_buf,
-    extraction::{ArchiveOutcome, ExtractionSession, MAX_SYMLINK_TARGET_BYTES, MemberContent},
+    extraction::{
+        ArchiveOutcome, ExtractionSession, MAX_SYMLINK_TARGET_BYTES, MemberContent,
+        MemberMetadata,
+    },
 };
 
 #[cfg(feature = "rar")]
@@ -116,7 +122,64 @@ fn archive_read_error(error: std::io::Error, password_supplied: bool) -> std::io
 /// 7z attribute bit with which p7zip marks `st_mode` stored in the upper 16 bits.
 pub(super) const FILE_ATTRIBUTE_UNIX_EXTENSION: u32 = 0x8000;
 const S_IFMT: u32 = 0o170_000;
+const S_IFDIR: u32 = 0o040_000;
+const S_IFREG: u32 = 0o100_000;
 const S_IFLNK: u32 = 0o120_000;
+
+/// A stored `st_mode` is trusted only when its file type matches the member,
+/// so a zero or garbage value cannot make the owner lose access.
+fn member_mode(mode: Option<u32>, directory: bool) -> Option<u32> {
+    let kind = if directory { S_IFDIR } else { S_IFREG };
+    mode.filter(|mode| mode & S_IFMT == kind)
+}
+
+fn unix_seconds(seconds: impl TryInto<u64>) -> Option<SystemTime> {
+    UNIX_EPOCH.checked_add(Duration::from_secs(seconds.try_into().ok()?))
+}
+
+/// Windows FILETIME; zero means no time, and times before 1970 are skipped.
+fn filetime(value: u64) -> Option<SystemTime> {
+    (value != 0)
+        .then(|| SystemTime::from(sevenz_rust2::NtTime::from(value)))
+        .filter(|time| *time >= UNIX_EPOCH)
+}
+
+/// DOS times carry no zone and are read as local time, like `unzip`.
+fn dos_local_time(time: zip::DateTime) -> Option<SystemTime> {
+    let local = glib::DateTime::from_local(
+        time.year().into(),
+        time.month().into(),
+        time.day().into(),
+        time.hour().into(),
+        time.minute().into(),
+        time.second().into(),
+    )
+    .ok()?;
+    unix_seconds(local.to_unix())
+}
+
+/// Prefers the Info-ZIP `UT` field, then the NTFS field, then the DOS time.
+fn zip_member_modified(entry: &zip::read::ZipFile<'_, std::fs::File>) -> Option<SystemTime> {
+    let extended = entry.extra_data_fields().find_map(|field| match field {
+        // The field is signed; times before 1970 are skipped.
+        zip::ExtraField::ExtendedTimestamp(stamp) => stamp
+            .mod_time()
+            .and_then(|seconds| unix_seconds(seconds as i32)),
+        zip::ExtraField::Ntfs(_) => None,
+    });
+    let ntfs = || {
+        entry.extra_data_fields().find_map(|field| match field {
+            zip::ExtraField::Ntfs(ntfs) => filetime(ntfs.mtime()),
+            zip::ExtraField::ExtendedTimestamp(_) => None,
+        })
+    };
+    extended.or_else(ntfs).or_else(|| {
+        entry
+            .last_modified()
+            .filter(zip::DateTime::is_valid)
+            .and_then(dos_local_time)
+    })
+}
 
 /// Reads at most one byte past the limit; the session refuses longer targets.
 fn read_link_target(reader: &mut impl Read) -> Result<Vec<u8>, ArchiveError> {
@@ -190,6 +253,10 @@ pub(super) fn extract_zip_from_archive(
             let declared_size = entry.size();
             let directory = entry.is_dir();
             let symlink = !directory && entry.is_symlink();
+            let metadata = MemberMetadata {
+                mode: member_mode(entry.unix_mode(), directory),
+                modified: zip_member_modified(&entry),
+            };
             let mut reader = ArchiveReader {
                 inner: &mut entry,
                 password_supplied,
@@ -204,7 +271,7 @@ pub(super) fn extract_zip_from_archive(
                 MemberContent::File(&mut reader, Some(declared_size))
             };
             next_index = index + 1;
-            session.extract_member(&name, content)?;
+            session.extract_member(&name, content, metadata)?;
         }
         Ok(())
     })();
@@ -270,6 +337,11 @@ pub(super) fn extract_tar(
             }
             let declared_size = entry.size();
             let name = name.to_string_lossy().into_owned();
+            let header = entry.header();
+            let metadata = MemberMetadata {
+                mode: header.mode().ok(),
+                modified: header.mtime().ok().and_then(unix_seconds),
+            };
             let stored_link = entry.link_name_bytes().map(Cow::into_owned);
             let link_name = || {
                 stored_link.as_deref().ok_or_else(|| {
@@ -298,7 +370,7 @@ pub(super) fn extract_tar(
                 }
                 _ => MemberContent::File(&mut reader, Some(declared_size)),
             };
-            session.extract_member(&name, content)?;
+            session.extract_member(&name, content, metadata)?;
         }
         Ok(())
     })();
@@ -360,6 +432,13 @@ pub(super) fn extract_7z_from_reader(
             && entry.windows_attributes & FILE_ATTRIBUTE_UNIX_EXTENSION != 0)
             .then_some(entry.windows_attributes >> 16);
         let symlink = !entry.is_directory && unix_mode.is_some_and(|mode| mode & S_IFMT == S_IFLNK);
+        let metadata = MemberMetadata {
+            mode: member_mode(unix_mode, entry.is_directory),
+            modified: entry
+                .has_last_modified_date
+                .then(|| filetime(entry.last_modified_date.into()))
+                .flatten(),
+        };
         let target;
         let content = if entry.is_directory {
             MemberContent::Directory
@@ -371,7 +450,7 @@ pub(super) fn extract_7z_from_reader(
         };
         submitted[index] = true;
         session
-            .extract_member(&entry.name, content)
+            .extract_member(&entry.name, content, metadata)
             .map_err(sevenz_error)?;
         Ok(true)
     });

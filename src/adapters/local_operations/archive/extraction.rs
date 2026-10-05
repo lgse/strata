@@ -18,13 +18,16 @@ use std::{
     os::unix::ffi::OsStrExt,
     path::{Path, PathBuf},
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+    time::SystemTime,
 };
 
 use crate::model::Location;
 
 use super::{
     ArchiveError, COPY_BUF, archive_failed, check_archive_cancelled,
-    destination::{ExtractNameResolver, ExtractionDestination, sanitized_archive_path},
+    destination::{
+        ExtractNameResolver, ExtractionDestination, process_umask, sanitized_archive_path,
+    },
 };
 
 #[cfg(test)]
@@ -41,6 +44,20 @@ pub(super) enum MemberContent<'a> {
     /// Archive path of an earlier member. Resolved through the members this
     /// session created, never against the filesystem.
     HardLink(&'a str),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct MemberMetadata {
+    /// Raw header mode; only the permission bits are applied.
+    pub(super) mode: Option<u32>,
+    pub(super) modified: Option<SystemTime>,
+}
+
+impl MemberMetadata {
+    pub(super) const NONE: Self = Self {
+        mode: None,
+        modified: None,
+    };
 }
 
 /// Result of an extract that may stop after writing some members.
@@ -90,6 +107,8 @@ pub(super) struct ExtractionSession<'a> {
     /// Kept for the whole session so a hard link in any later position can
     /// resolve its target.
     created_names: HashMap<PathBuf, PathBuf>,
+    /// Explicit directory members with metadata, applied only on completion.
+    directories: Vec<(PathBuf, MemberMetadata)>,
 }
 
 impl<'a> ExtractionSession<'a> {
@@ -136,7 +155,26 @@ impl<'a> ExtractionSession<'a> {
             available_bytes,
             records_hard_link_targets: false,
             created_names: HashMap::new(),
+            directories: Vec::new(),
         }
+    }
+
+    #[cfg(test)]
+    pub(super) fn open_with_metadata_calls(
+        destination: &'a Path,
+        archive_name: &'a str,
+        progress: &'a AtomicUsize,
+        cancelled: &'a AtomicBool,
+        calls: super::destination::MetadataCalls,
+    ) -> Result<Self, ArchiveError> {
+        Ok(Self::from_open(
+            destination,
+            archive_name,
+            ExtractionDestination::open(destination)?.with_metadata_calls(calls),
+            progress,
+            cancelled,
+            None,
+        ))
     }
 
     /// Keeps the created path of every member so later hard links can
@@ -221,6 +259,7 @@ impl<'a> ExtractionSession<'a> {
         &mut self,
         name: &str,
         content: MemberContent<'_>,
+        metadata: MemberMetadata,
     ) -> Result<(), ArchiveError> {
         let path = sanitized_archive_path(name)?;
         if let Err(error) = self.check_cancelled() {
@@ -252,17 +291,20 @@ impl<'a> ExtractionSession<'a> {
         let created = match content {
             MemberContent::Directory => {
                 staging.create_directories(&outpath)?;
+                if metadata != MemberMetadata::NONE {
+                    self.directories.push((outpath.clone(), metadata));
+                }
                 outpath
             }
             MemberContent::Symlink(target) => {
-                staging.create_symlink(&outpath, OsStr::from_bytes(target))?
+                staging.create_symlink(&outpath, OsStr::from_bytes(target), metadata.modified)?
             }
             MemberContent::HardLink(_) => staging.create_hard_link(
                 &outpath,
                 &hard_link_target.expect("hard links are resolved before staging"),
             )?,
             MemberContent::File(reader, declared_size) => {
-                let (mut file, created) = staging.create_file(&outpath)?;
+                let (mut file, created) = staging.create_file(&outpath, metadata.mode)?;
                 let result = copy_member(
                     name,
                     reader,
@@ -270,7 +312,18 @@ impl<'a> ExtractionSession<'a> {
                     self.cancelled,
                     declared_size,
                     self.remaining(),
-                );
+                )
+                .and_then(|copied| match metadata.modified {
+                    Some(modified) => staging
+                        .set_file_times(&file, modified)
+                        .map(|()| copied)
+                        .map_err(|error| {
+                            archive_failed(format!(
+                                "Could not restore the modification time of `{name}`: {error}"
+                            ))
+                        }),
+                    None => Ok(copied),
+                });
                 match result {
                     Ok(copied) => {
                         self.written = self.written.saturating_add(copied);
@@ -338,24 +391,56 @@ impl<'a> ExtractionSession<'a> {
                 let Some(staging) = staging else {
                     return Ok(ArchiveOutcome::Completed(None));
                 };
-                let first_name = match self.roots.as_slice() {
-                    [] => None,
-                    [root] => Some(
-                        directory
+                let (top_level, nested): (Vec<_>, Vec<_>) = std::mem::take(&mut self.directories)
+                    .into_iter()
+                    .partition(|(path, _)| path.components().count() == 1);
+                // Nested directories never move on their own during publication.
+                if let Err(error) = restore_directory_metadata(&staging.directory, nested) {
+                    let kept =
+                        keep_or_remove(directory, Some(&staging), archive_name, self.has_content);
+                    return Err(ArchiveError::Failed(failure_message(error, kept)));
+                }
+                let (name, is_folder) = match self.roots.as_slice() {
+                    [] => {
+                        remove_empty(directory, &staging)?;
+                        return Ok(ArchiveOutcome::Completed(None));
+                    }
+                    [root] => {
+                        let leaf = directory
                             .publish_single_root(&staging.directory, root)
-                            .map_err(|error| staging_kept(&error, &staging))?
-                            .to_string_lossy()
-                            .into_owned(),
-                    ),
+                            .map_err(|error| staging_kept(&error, &staging))?;
+                        remove_empty(directory, &staging)?;
+                        (leaf, false)
+                    }
                     _ => {
-                        return directory
+                        let folder = directory
                             .publish_staging_as_folder(&staging.name, archive_name)
-                            .map(|name| ArchiveOutcome::Completed(Some(name)))
-                            .map_err(|error| staging_kept(&error, &staging));
+                            .map_err(|error| staging_kept(&error, &staging))?;
+                        (OsString::from(folder), true)
                     }
                 };
-                remove_empty(directory, &staging)?;
-                Ok(ArchiveOutcome::Completed(first_name))
+                // Top-level directories are stamped only after they move: a
+                // directory without owner write permission cannot be renamed
+                // into another parent (`EACCES` on its `..` entry).
+                let published = top_level
+                    .into_iter()
+                    .map(|(path, metadata)| {
+                        let path = if is_folder {
+                            Path::new(&name).join(path)
+                        } else {
+                            PathBuf::from(&name)
+                        };
+                        (path, metadata)
+                    })
+                    .collect();
+                let name = name.to_string_lossy().into_owned();
+                restore_directory_metadata(directory, published).map_err(|error| {
+                    ArchiveError::Failed(append_sentence(
+                        &error,
+                        &format!("Extracted entries remain in `{name}`."),
+                    ))
+                })?;
+                Ok(ArchiveOutcome::Completed(Some(name)))
             }
             Err(ArchiveError::Cancelled) => {
                 let kept = keep_or_remove(directory, staging.as_ref(), archive_name, self.has_content)
@@ -420,6 +505,27 @@ fn failure_message(message: String, kept: Result<Option<String>, String>) -> Str
         Ok(None) => message,
         Err(error) => append_sentence(&message, &error),
     }
+}
+
+/// Deepest first, so no directory's restored mode blocks reaching another;
+/// the stable sort lets a repeated member's later entry win. After a failure
+/// the directories already restored get the default mode back, shallowest
+/// first, so the kept output stays writable and removable.
+fn restore_directory_metadata(
+    destination: &ExtractionDestination,
+    mut directories: Vec<(PathBuf, MemberMetadata)>,
+) -> Result<(), String> {
+    directories.sort_by_key(|(path, _)| std::cmp::Reverse(path.components().count()));
+    let umask = process_umask();
+    for (index, (path, metadata)) in directories.iter().enumerate() {
+        if let Err(error) = destination.apply_directory_metadata(path, *metadata, umask) {
+            for (path, _) in directories[..=index].iter().rev() {
+                destination.reset_directory_mode(path, umask);
+            }
+            return Err(error);
+        }
+    }
+    Ok(())
 }
 
 fn validate_link_target(name: &str, target: &[u8]) -> Result<(), ArchiveError> {

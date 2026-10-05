@@ -1,21 +1,23 @@
 // SPDX-License-Identifier: MIT
 
 use super::super::fixtures::{
-    FixtureMember, always_cancelled, completed_extract, corrupt_gzip_trailer, extract_zip,
-    never_cancelled, patch_zip_uncompressed_size, write_7z, write_7z_entries,
-    write_compression_fixture, write_members, write_tar, write_tar_entries, write_zip,
+    FixtureMember, always_cancelled, completed_extract, corrupt_gzip_trailer, expected_mode,
+    extract_zip, never_cancelled, patch_zip_external_attributes, patch_zip_uncompressed_size,
+    write_7z, write_7z_entries, write_compression_fixture, write_members, write_tar,
+    write_tar_entries, write_zip, zip_extended_timestamp,
 };
 use super::{
     ArchiveError, ArchiveOutcome, extract_7z_from_reader, extract_tar,
     extract_zip_from_archive,
 };
 use crate::{model::Location, services::ArchiveFormat};
+use gtk::glib;
 use std::{
     error::Error,
     ffi::OsStr,
     fs,
     io::{self, Cursor, Read, Seek, SeekFrom, Write},
-    os::unix::fs::MetadataExt,
+    os::unix::fs::{MetadataExt, PermissionsExt},
     path::Path,
     sync::{
         Arc,
@@ -1575,6 +1577,8 @@ fn tar_extraction_skips_pax_global_headers() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+const STORED_TIME: u64 = 1_000_000_000;
+
 fn names_in(directory: &Path) -> Result<Vec<String>, Box<dyn Error>> {
     let mut names = fs::read_dir(directory)?
         .map(|entry| Ok(entry?.file_name().to_string_lossy().into_owned()))
@@ -1600,6 +1604,28 @@ fn assert_symlink(path: &Path, target: &str, context: &str) -> Result<(), Box<dy
         kind_of(path)
     );
     assert_eq!(fs::read_link(path)?, Path::new(target), "{context}");
+    Ok(())
+}
+
+fn assert_mode_and_time(
+    path: &Path,
+    stored_mode: u32,
+    modified: i64,
+    context: &str,
+) -> Result<(), Box<dyn Error>> {
+    let metadata = fs::metadata(path)?;
+    assert_eq!(
+        format!("{:o}", metadata.permissions().mode() & 0o7777),
+        format!("{:o}", expected_mode(stored_mode)),
+        "{context}: mode of `{}` (stored {stored_mode:o})",
+        path.display()
+    );
+    assert_eq!(
+        metadata.mtime(),
+        modified,
+        "{context}: mtime of `{}`",
+        path.display()
+    );
     Ok(())
 }
 
@@ -1798,6 +1824,202 @@ fn a_member_cannot_be_written_through_an_extracted_symlink() -> Result<(), Box<d
         );
         assert!(!external.join("escape.txt").exists(), "{context}");
         assert_symlink(&destination.join("escape/lnk"), target, &context)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn member_modes_and_times_are_restored_in_every_format() -> Result<(), Box<dyn Error>> {
+    let stored = Some(STORED_TIME);
+    let members = [
+        FixtureMember::File {
+            name: "bin/run.sh",
+            contents: b"#!/bin/sh\necho ok\n",
+            mode: Some(0o755),
+            modified: stored,
+        },
+        FixtureMember::File {
+            name: "data.txt",
+            contents: b"private",
+            mode: Some(0o600),
+            modified: stored,
+        },
+        FixtureMember::File {
+            name: "suid",
+            contents: b"setuid",
+            mode: Some(0o4755),
+            modified: stored,
+        },
+        FixtureMember::File {
+            name: "readonly.txt",
+            contents: b"read only",
+            mode: Some(0o444),
+            modified: stored,
+        },
+        FixtureMember::Directory {
+            name: "ro",
+            mode: Some(0o555),
+            modified: stored,
+        },
+        FixtureMember::File {
+            name: "ro/child.txt",
+            contents: b"child",
+            mode: Some(0o644),
+            modified: stored,
+        },
+    ];
+    for format in [
+        ArchiveFormat::Zip,
+        ArchiveFormat::SevenZ,
+        ArchiveFormat::Tar,
+        ArchiveFormat::TarGz,
+    ] {
+        let context = format!("{format:?}");
+        let root = tempfile::tempdir()?;
+        let archive = root.path().join(format!("modes.{}", format.extension()));
+        write_members(&archive, format, &members)?;
+        let destination = root.path().join("destination");
+        fs::create_dir(&destination)?;
+        let progress = Arc::new(AtomicUsize::new(0));
+
+        let first_name = completed_extract(decode_fixture(
+            &archive,
+            &destination,
+            format,
+            None,
+            &progress,
+        )?)?;
+
+        assert_eq!(first_name.as_deref(), Some("modes"), "{context}");
+        assert_eq!(progress.load(Ordering::Relaxed), members.len(), "{context}");
+        let output = destination.join("modes");
+        let time = i64::try_from(STORED_TIME)?;
+        for (name, mode) in [
+            ("bin/run.sh", 0o755),
+            ("data.txt", 0o600),
+            ("suid", 0o4755),
+            ("readonly.txt", 0o444),
+            ("ro/child.txt", 0o644),
+            ("ro", 0o555),
+        ] {
+            assert_mode_and_time(&output.join(name), mode, time, &context)?;
+        }
+        fs::set_permissions(output.join("ro"), fs::Permissions::from_mode(0o755))?;
+    }
+    Ok(())
+}
+
+#[test]
+fn members_without_a_usable_mode_keep_the_default_permissions() -> Result<(), Box<dyn Error>> {
+    // ZIP external attributes `0x20` carry only the DOS archive bit, so a
+    // Unix creator reports mode 0. The 7z junk mode has no regular-file type.
+    for (format, mode, zip_attributes) in [
+        (ArchiveFormat::Zip, None, Some(0)),
+        (ArchiveFormat::Zip, None, Some(0x20)),
+        (ArchiveFormat::SevenZ, None, None),
+        (ArchiveFormat::SevenZ, Some(0o070_644), None),
+    ] {
+        let context = format!("{format:?} {mode:?} {zip_attributes:?}");
+        let root = tempfile::tempdir()?;
+        let archive = root.path().join(format!("plain.{}", format.extension()));
+        write_members(
+            &archive,
+            format,
+            &[FixtureMember::File {
+                name: "plain.txt",
+                contents: b"plain",
+                mode,
+                modified: None,
+            }],
+        )?;
+        if let Some(attributes) = zip_attributes {
+            patch_zip_external_attributes(&archive, attributes)?;
+        }
+        let destination = root.path().join("destination");
+        fs::create_dir(&destination)?;
+        let before = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_secs();
+
+        completed_extract(decode_fixture(
+            &archive,
+            &destination,
+            format,
+            None,
+            &Arc::new(AtomicUsize::new(0)),
+        )?)?;
+
+        let after = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_secs();
+        let extracted = destination.join("plain.txt");
+        if format == ArchiveFormat::Zip {
+            // The DOS default (1980-01-01 local) is a stored time.
+            let dos_default = glib::DateTime::from_local(1980, 1, 1, 0, 0, 0.0)?.to_unix();
+            assert_mode_and_time(&extracted, 0o666, dos_default, &context)?;
+        } else {
+            let modified = u64::try_from(fs::metadata(&extracted)?.mtime())?;
+            assert!((before..=after).contains(&modified), "{context}");
+            assert_eq!(
+                fs::metadata(&extracted)?.permissions().mode() & 0o7777,
+                expected_mode(0o666),
+                "{context}"
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn zip_prefers_the_extended_timestamp_over_the_dos_time() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let archive = root.path().join("times.zip");
+    let dos = zip::DateTime::from_date_and_time(2000, 1, 1, 0, 0, 0)?;
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Stored)
+        .last_modified_time(dos);
+    let mut extended = options.into_full_options();
+    extended.add_extra_data(0x5455, zip_extended_timestamp(STORED_TIME)?, false)?;
+    let mut writer = zip::ZipWriter::new(fs::File::create(&archive)?);
+    writer.start_file("extended.txt", extended)?;
+    writer.write_all(b"extended")?;
+    writer.start_file("dos.txt", options)?;
+    writer.write_all(b"dos")?;
+    // A signed UT time of -1 is before 1970, so the DOS time applies.
+    let mut negative = options.into_full_options();
+    negative.add_extra_data(0x5455, [1, 0xff, 0xff, 0xff, 0xff], false)?;
+    writer.start_file("negative.txt", negative)?;
+    writer.write_all(b"negative")?;
+    writer.finish()?;
+    let mut reader = zip::ZipArchive::new(fs::File::open(&archive)?)?;
+    assert!(
+        reader.by_name("extended.txt")?.extra_data_fields().any(|field| matches!(
+            field,
+            zip::ExtraField::ExtendedTimestamp(stamp)
+                if stamp.mod_time().map(u64::from) == Some(STORED_TIME)
+        )),
+        "fixture lacks the UT field"
+    );
+    let destination = root.path().join("destination");
+    fs::create_dir(&destination)?;
+
+    let first_name = completed_extract(decode_fixture(
+        &archive,
+        &destination,
+        ArchiveFormat::Zip,
+        None,
+        &Arc::new(AtomicUsize::new(0)),
+    )?)?;
+
+    assert_eq!(first_name.as_deref(), Some("times"));
+    assert_eq!(
+        fs::metadata(destination.join("times/extended.txt"))?.mtime(),
+        i64::try_from(STORED_TIME)?
+    );
+    let dos_local = glib::DateTime::from_local(2000, 1, 1, 0, 0, 0.0)?.to_unix();
+    for name in ["dos.txt", "negative.txt"] {
+        let mtime = fs::metadata(destination.join("times").join(name))?.mtime();
+        assert_eq!(mtime, dos_local, "{name}");
     }
     Ok(())
 }

@@ -4,14 +4,16 @@ use std::{
     error::Error,
     fs,
     io::{self, Read},
-    os::unix::fs::MetadataExt,
+    os::unix::fs::{MetadataExt, PermissionsExt},
     path::Path,
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+    time::{Duration, UNIX_EPOCH},
 };
 
-use super::{ArchiveError, ArchiveOutcome, ExtractionSession, MemberContent};
+use super::{ArchiveError, ArchiveOutcome, ExtractionSession, MemberContent, MemberMetadata};
+use crate::adapters::local_operations::archive::destination::MetadataCalls;
 use crate::{
-    adapters::local_operations::archive::fixtures::{EXTRACTION_STAGE, stages},
+    adapters::local_operations::archive::fixtures::{EXTRACTION_STAGE, expected_mode, stages},
     model::Location,
 };
 
@@ -35,13 +37,18 @@ fn multi_root_members_keep_their_names_beside_existing_entries() -> Result<(), B
     let cancelled = AtomicBool::new(false);
     let mut session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
 
-    session.extract_member("folder", MemberContent::Directory)?;
+    session.extract_member("folder", MemberContent::Directory, MemberMetadata::NONE)?;
     session.extract_member(
         "folder/nested/file.txt",
         MemberContent::File(&mut &b"contents"[..], Some(8)),
+        MemberMetadata::NONE,
     )?;
-    session.extract_member("folder/empty", MemberContent::Directory)?;
-    session.extract_member("report.txt", MemberContent::File(&mut io::empty(), Some(0)))?;
+    session.extract_member("folder/empty", MemberContent::Directory, MemberMetadata::NONE)?;
+    session.extract_member(
+        "report.txt",
+        MemberContent::File(&mut io::empty(), Some(0)),
+        MemberMetadata::NONE,
+    )?;
 
     assert!(matches!(
         session.finish(Ok(()), || panic!("completion must not enumerate remaining members"))?,
@@ -73,14 +80,17 @@ fn unsafe_member_paths_are_sanitized_without_stopping_extraction() -> Result<(),
     session.extract_member(
         "../escaped.txt",
         MemberContent::File(&mut &b"escaped"[..], Some(7)),
+        MemberMetadata::NONE,
     )?;
     session.extract_member(
         "escaped.txt",
         MemberContent::File(&mut &b"duplicate"[..], Some(9)),
+        MemberMetadata::NONE,
     )?;
     session.extract_member(
         "after.txt",
         MemberContent::File(&mut &b"after"[..], Some(5)),
+        MemberMetadata::NONE,
     )?;
 
     assert!(matches!(
@@ -117,8 +127,16 @@ fn cancellation_reports_actual_destinations_for_duplicate_members() -> Result<()
         let progress = AtomicUsize::new(0);
         let cancelled = AtomicBool::new(false);
         let mut session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
-        session.extract_member(name, MemberContent::File(&mut &b"one"[..], Some(3)))?;
-        session.extract_member(name, MemberContent::File(&mut &b"two"[..], Some(3)))?;
+        session.extract_member(
+            name,
+            MemberContent::File(&mut &b"one"[..], Some(3)),
+            MemberMetadata::NONE,
+        )?;
+        session.extract_member(
+            name,
+            MemberContent::File(&mut &b"two"[..], Some(3)),
+            MemberMetadata::NONE,
+        )?;
         cancelled.store(true, Ordering::Relaxed);
         let result = session.check_cancelled();
         let ArchiveOutcome::Cancelled {
@@ -179,7 +197,7 @@ fn cancellation_before_member_processing_never_reads_or_creates_it() -> Result<(
         } else {
             MemberContent::File(&mut reader, None)
         };
-        let result = session.extract_member("folder/member", content);
+        let result = session.extract_member("folder/member", content, MemberMetadata::NONE);
         assert_eq!(result, Err(ArchiveError::Cancelled));
         assert!(matches!(
             session.finish(result, Vec::new)?,
@@ -201,13 +219,21 @@ fn mid_copy_cancellation_removes_only_the_partial_file_and_preserves_results()
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(false);
     let mut session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
-    session.extract_member("done.txt", MemberContent::File(&mut &b"done"[..], Some(4)))?;
+    session.extract_member(
+        "done.txt",
+        MemberContent::File(&mut &b"done"[..], Some(4)),
+        MemberMetadata::NONE,
+    )?;
     let mut reader = TestReader(|buffer: &mut [u8]| {
         buffer[..7].copy_from_slice(b"partial");
         cancelled.store(true, Ordering::Relaxed);
         Ok(7)
     });
-    let result = session.extract_member("partial.txt", MemberContent::File(&mut reader, None));
+    let result = session.extract_member(
+        "partial.txt",
+        MemberContent::File(&mut reader, None),
+        MemberMetadata::NONE,
+    );
     assert_eq!(result, Err(ArchiveError::Cancelled));
     let kept = |name: &str| Location::local(root.path().join("archive").join(name));
     assert!(matches!(
@@ -245,7 +271,11 @@ fn cleanup_failure_marks_the_interrupted_location_failed() -> Result<(), Box<dyn
         cancelled.store(true, Ordering::Relaxed);
         Ok(1)
     });
-    let result = session.extract_member("partial.txt", MemberContent::File(&mut reader, None));
+    let result = session.extract_member(
+        "partial.txt",
+        MemberContent::File(&mut reader, None),
+        MemberMetadata::NONE,
+    );
     assert_eq!(result, Err(ArchiveError::Cancelled));
     let path = root.path().join("archive/partial.txt");
     let later = Location::local(root.path().join("archive/later.txt"));
@@ -267,7 +297,11 @@ fn read_failure_removes_partial_output_without_reporting_cancellation() -> Resul
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(false);
     let mut session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
-    session.extract_member("done.txt", MemberContent::File(&mut &b"done"[..], Some(4)))?;
+    session.extract_member(
+        "done.txt",
+        MemberContent::File(&mut &b"done"[..], Some(4)),
+        MemberMetadata::NONE,
+    )?;
     let mut first_read = true;
     let mut reader = TestReader(|buffer: &mut [u8]| {
         if !first_read {
@@ -277,7 +311,11 @@ fn read_failure_removes_partial_output_without_reporting_cancellation() -> Resul
         buffer[..7].copy_from_slice(b"partial");
         Ok(7)
     });
-    let result = session.extract_member("partial.txt", MemberContent::File(&mut reader, None));
+    let result = session.extract_member(
+        "partial.txt",
+        MemberContent::File(&mut reader, None),
+        MemberMetadata::NONE,
+    );
     assert!(matches!(
         session.finish(result, || panic!("failure must not enumerate remaining members")),
         Err(ArchiveError::Failed(message))
@@ -296,7 +334,11 @@ fn completed_worker_is_not_reclassified_by_late_cancellation() -> Result<(), Box
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(false);
     let mut session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
-    session.extract_member("empty.txt", MemberContent::File(&mut io::empty(), Some(0)))?;
+    session.extract_member(
+        "empty.txt",
+        MemberContent::File(&mut io::empty(), Some(0)),
+        MemberMetadata::NONE,
+    )?;
     cancelled.store(true, Ordering::Relaxed);
     assert!(
         matches!(session.finish(Ok(()), Vec::new)?, ArchiveOutcome::Completed(Some(name)) if name == "empty.txt")
@@ -317,6 +359,7 @@ fn pending_names_are_sanitized_and_kept_under_the_archive_folder() -> Result<(),
     session.extract_member(
         "folder/first.txt",
         MemberContent::File(&mut &b"done"[..], Some(4)),
+        MemberMetadata::NONE,
     )?;
     cancelled.store(true, Ordering::Relaxed);
     let result = session.check_cancelled();
@@ -381,10 +424,15 @@ fn member_cancelled_before_creation_is_reported_inside_the_archive_folder()
     session.extract_member(
         "folder/first.txt",
         MemberContent::File(&mut io::empty(), Some(0)),
+        MemberMetadata::NONE,
     )?;
     cancelled.store(true, Ordering::Relaxed);
     let mut reader = TestReader(|_: &mut [u8]| panic!("cancelled member must not be read"));
-    let result = session.extract_member("folder/next.txt", MemberContent::File(&mut reader, None));
+    let result = session.extract_member(
+        "folder/next.txt",
+        MemberContent::File(&mut reader, None),
+        MemberMetadata::NONE,
+    );
     assert!(matches!(session.finish(result, Vec::new)?,
         ArchiveOutcome::Cancelled { not_attempted, .. }
             if not_attempted == [Location::local(root.path().join("archive/folder/next.txt"))]
@@ -438,6 +486,7 @@ fn declared_size_overflow_removes_partial_output() -> Result<(), Box<dyn Error>>
     let result = session.extract_member(
         "overflow.txt",
         MemberContent::File(&mut &b"abcdefgh"[..], Some(4)),
+        MemberMetadata::NONE,
     );
     let message = failed_extract(session, result);
 
@@ -458,7 +507,11 @@ fn declared_size_shortfall_removes_partial_output() -> Result<(), Box<dyn Error>
     let mut session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
 
     let result =
-        session.extract_member("short.txt", MemberContent::File(&mut &b"four"[..], Some(8)));
+        session.extract_member(
+            "short.txt",
+            MemberContent::File(&mut &b"four"[..], Some(8)),
+            MemberMetadata::NONE,
+        );
     let message = failed_extract(session, result);
 
     assert_eq!(
@@ -484,7 +537,11 @@ fn member_preflight_refuses_when_destination_lacks_space() -> Result<(), Box<dyn
     )?;
     let mut reader = TestReader(|_: &mut [u8]| panic!("member that cannot fit must not be read"));
 
-    let result = session.extract_member("huge.txt", MemberContent::File(&mut reader, Some(8)));
+    let result = session.extract_member(
+        "huge.txt",
+        MemberContent::File(&mut reader, Some(8)),
+        MemberMetadata::NONE,
+    );
     let message = failed_extract(session, result);
 
     assert!(
@@ -513,6 +570,7 @@ fn copy_without_declared_size_stops_at_free_space() -> Result<(), Box<dyn Error>
     let result = session.extract_member(
         "payload.txt",
         MemberContent::File(&mut &b"12345678"[..], None),
+        MemberMetadata::NONE,
     );
     let message = failed_extract(session, result);
 
@@ -565,11 +623,16 @@ fn second_member_preflight_uses_remaining_space() -> Result<(), Box<dyn Error>> 
     session.extract_member(
         "first.txt",
         MemberContent::File(&mut &b"12345678"[..], Some(8)),
+        MemberMetadata::NONE,
     )?;
     let mut reader =
         TestReader(|_: &mut [u8]| panic!("second member that cannot fit must not be read"));
 
-    let result = session.extract_member("second.txt", MemberContent::File(&mut reader, Some(4)));
+    let result = session.extract_member(
+        "second.txt",
+        MemberContent::File(&mut reader, Some(4)),
+        MemberMetadata::NONE,
+    );
     let message = failed_extract(session, result);
 
     assert!(
@@ -602,6 +665,7 @@ fn matching_declared_size_completes_under_an_injected_quota() -> Result<(), Box<
     session.extract_member(
         "ok.txt",
         MemberContent::File(&mut &b"contents"[..], Some(8)),
+        MemberMetadata::NONE,
     )?;
     assert!(matches!(
         session.finish(Ok(()), Vec::new)?,
@@ -629,10 +693,12 @@ fn unreported_free_space_skips_capacity_checks() -> Result<(), Box<dyn Error>> {
     session.extract_member(
         "declared.txt",
         MemberContent::File(&mut &b"12345678"[..], Some(8)),
+        MemberMetadata::NONE,
     )?;
     session.extract_member(
         "undeclared.txt",
         MemberContent::File(&mut &b"12345678"[..], None),
+        MemberMetadata::NONE,
     )?;
 
     assert!(matches!(
@@ -661,6 +727,7 @@ fn unreported_free_space_still_enforces_declared_size() -> Result<(), Box<dyn Er
     let result = session.extract_member(
         "overflow.txt",
         MemberContent::File(&mut &b"abcdefgh"[..], Some(4)),
+        MemberMetadata::NONE,
     );
     let message = failed_extract(session, result);
 
@@ -730,6 +797,7 @@ fn finish_publishes_every_outcome_shape() -> Result<(), Box<dyn Error>> {
             session.extract_member(
                 member,
                 MemberContent::File(&mut member.as_bytes(), Some(member.len() as u64)),
+                MemberMetadata::NONE,
             )?;
         }
 
@@ -785,6 +853,7 @@ fn single_root_colliding_with_a_destination_entry_is_suffixed_at_publish()
     session.extract_member(
         "readme.txt",
         MemberContent::File(&mut &b"archived"[..], Some(8)),
+        MemberMetadata::NONE,
     )?;
 
     assert!(matches!(
@@ -804,7 +873,7 @@ fn a_failure_that_left_only_directories_leaves_nothing_behind() -> Result<(), Bo
         let progress = AtomicUsize::new(0);
         let cancelled = AtomicBool::new(false);
         let mut session = ExtractionSession::open(root.path(), "secret.7z", &progress, &cancelled)?;
-        session.extract_member("secret", MemberContent::Directory)?;
+        session.extract_member("secret", MemberContent::Directory, MemberMetadata::NONE)?;
         let mut reader = TestReader(|buffer: &mut [u8]| {
             if cancel {
                 buffer[0] = b'x';
@@ -817,6 +886,7 @@ fn a_failure_that_left_only_directories_leaves_nothing_behind() -> Result<(), Bo
         let result = session.extract_member(
             "secret/protected.txt",
             MemberContent::File(&mut reader, None),
+            MemberMetadata::NONE,
         );
 
         let outcome = session.finish(result, Vec::new);
@@ -847,7 +917,11 @@ fn a_session_dropped_before_finish_publishes_its_output() -> Result<(), Box<dyn 
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(false);
     let mut session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
-    session.extract_member("done.txt", MemberContent::File(&mut &b"done"[..], Some(4)))?;
+    session.extract_member(
+        "done.txt",
+        MemberContent::File(&mut &b"done"[..], Some(4)),
+        MemberMetadata::NONE,
+    )?;
 
     drop(session);
 
@@ -871,10 +945,14 @@ fn links_consume_no_space_and_hard_links_follow_renamed_targets() -> Result<(), 
     )?;
     session.record_hard_link_targets();
     for contents in [b"first!", b"second"] {
-        session.extract_member("data.txt", MemberContent::File(&mut &contents[..], Some(6)))?;
+        session.extract_member(
+            "data.txt",
+            MemberContent::File(&mut &contents[..], Some(6)),
+            MemberMetadata::NONE,
+        )?;
     }
-    session.extract_member("lnk", MemberContent::Symlink(b"data.txt"))?;
-    session.extract_member("hard", MemberContent::HardLink("data.txt"))?;
+    session.extract_member("lnk", MemberContent::Symlink(b"data.txt"), MemberMetadata::NONE)?;
+    session.extract_member("hard", MemberContent::HardLink("data.txt"), MemberMetadata::NONE)?;
 
     assert!(matches!(
         session.finish(Ok(()), Vec::new)?,
@@ -916,7 +994,7 @@ fn refused_link_members_leave_no_staging_behind() -> Result<(), Box<dyn Error>> 
         let mut session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
         session.record_hard_link_targets();
 
-        let result = session.extract_member("link", content);
+        let result = session.extract_member("link", content, MemberMetadata::NONE);
 
         assert!(root.path().read_dir()?.next().is_none(), "case {index}");
         let message = failed_extract(session, result);
@@ -924,5 +1002,99 @@ fn refused_link_members_leave_no_staging_behind() -> Result<(), Box<dyn Error>> 
         assert!(root.path().read_dir()?.next().is_none(), "case {index}");
         assert_eq!(progress.load(Ordering::Relaxed), 0);
     }
+    Ok(())
+}
+
+#[test]
+fn directory_metadata_is_restored_deepest_first_only_on_completion() -> Result<(), Box<dyn Error>>
+{
+    let read_only = MemberMetadata {
+        mode: Some(0o555),
+        modified: Some(UNIX_EPOCH + Duration::from_secs(1_000_000_000)),
+    };
+    for complete in [false, true] {
+        let root = tempfile::tempdir()?;
+        let progress = AtomicUsize::new(0);
+        let cancelled = AtomicBool::new(false);
+        let mut session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
+        session.extract_member("ro", MemberContent::Directory, read_only)?;
+        session.extract_member("ro/sub", MemberContent::Directory, read_only)?;
+        session.extract_member(
+            "ro/sub/child.txt",
+            MemberContent::File(&mut &b"child"[..], Some(5)),
+            MemberMetadata::NONE,
+        )?;
+
+        let (output, mode) = if complete {
+            // The single root moves before it is stamped: a directory without
+            // owner write permission cannot be renamed into another parent.
+            assert!(matches!(
+                session.finish(Ok(()), Vec::new)?,
+                ArchiveOutcome::Completed(Some(name)) if name == "ro"
+            ));
+            (root.path().join("ro"), 0o555)
+        } else {
+            cancelled.store(true, Ordering::Relaxed);
+            let result = session.extract_member(
+                "ro/later.txt",
+                MemberContent::File(&mut io::empty(), Some(0)),
+                MemberMetadata::NONE,
+            );
+            assert!(matches!(
+                session.finish(result, Vec::new)?,
+                ArchiveOutcome::Cancelled { .. }
+            ));
+            (root.path().join("archive/ro"), 0o777)
+        };
+
+        assert_eq!(fs::read(output.join("sub/child.txt"))?, b"child");
+        for directory in [output.join("sub"), output.clone()] {
+            let metadata = fs::metadata(&directory)?;
+            assert_eq!(metadata.permissions().mode() & 0o7777, expected_mode(mode));
+            assert_eq!(metadata.mtime() == 1_000_000_000, complete);
+            fs::set_permissions(&directory, fs::Permissions::from_mode(0o755))?;
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn a_failed_directory_restore_leaves_restored_directories_writable() -> Result<(), Box<dyn Error>> {
+    let calls = MetadataCalls {
+        set_times: |_, _| Err(rustix::io::Errno::IO),
+        ..MetadataCalls::SYSTEM
+    };
+    let root = tempfile::tempdir()?;
+    let progress = AtomicUsize::new(0);
+    let cancelled = AtomicBool::new(false);
+    let mut session = ExtractionSession::open_with_metadata_calls(
+        root.path(),
+        ARCHIVE,
+        &progress,
+        &cancelled,
+        calls,
+    )?;
+    let read_only = MemberMetadata {
+        mode: Some(0o555),
+        modified: Some(UNIX_EPOCH + Duration::from_secs(1_000_000_000)),
+    };
+    session.extract_member("top/ro", MemberContent::Directory, read_only)?;
+    session.extract_member("top/ro/child", MemberContent::Directory, MemberMetadata::NONE)?;
+
+    // `top/ro` is made read-only before its time fails. Unless it is made
+    // writable again, its child cannot be removed with the directory-only output.
+    let message = match session.finish(Ok(()), Vec::new) {
+        Err(ArchiveError::Failed(message)) => message,
+        other => panic!("expected a failed restore, got {other:?}"),
+    };
+
+    assert_eq!(
+        message,
+        format!(
+            "Could not restore the modification time of `top/ro`: {}",
+            rustix::io::Errno::IO
+        )
+    );
+    assert!(root.path().read_dir()?.next().is_none());
     Ok(())
 }

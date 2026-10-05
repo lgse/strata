@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-use super::{ExtractNameResolver, ExtractionDestination, archive_stem, sanitized_archive_path};
+use super::{
+    ExtractNameResolver, ExtractionDestination, MemberMetadata, MetadataCalls, archive_stem,
+    sanitized_archive_path,
+};
 use std::os::fd::BorrowedFd;
 use std::{
     error::Error,
@@ -12,6 +15,7 @@ use std::{
         fs::{MetadataExt, symlink},
     },
     path::{Path, PathBuf},
+    time::{Duration, UNIX_EPOCH},
 };
 
 #[test]
@@ -56,7 +60,7 @@ fn stage(
 ) -> Result<(OsString, ExtractionDestination), Box<dyn Error>> {
     let (name, staging) = destination.create_staging()?;
     for file in files {
-        let (mut created, _) = staging.create_file(Path::new(file))?;
+        let (mut created, _) = staging.create_file(Path::new(file), None)?;
         created.write_all(file.as_bytes())?;
     }
     Ok((name, staging))
@@ -97,14 +101,14 @@ fn pinned_destination_survives_path_replacement() -> Result<(), Box<dyn Error>> 
     symlink(&external, &target)?;
 
     let (name, staging) = destination.create_staging()?;
-    let (mut file, created) = staging.create_file(Path::new("nested/file.txt"))?;
+    let (mut file, created) = staging.create_file(Path::new("nested/file.txt"), None)?;
     file.write_all(b"contents")?;
     drop(file);
     assert_eq!(fs::read(moved.join(&name).join(&created))?, b"contents");
     assert!(external.read_dir()?.next().is_none());
     staging.remove_file(&created)?;
     assert!(!moved.join(&name).join(&created).exists());
-    let (mut second, _) = staging.create_file(Path::new("second.txt"))?;
+    let (mut second, _) = staging.create_file(Path::new("second.txt"), None)?;
     second.write_all(b"second")?;
     drop(second);
     assert_eq!(
@@ -131,7 +135,7 @@ fn destination_resolves_a_symlinked_directory_and_pins_it() -> Result<(), Box<dy
     fs::remove_file(&alias)?;
     symlink(&other, &alias)?;
 
-    let (mut file, created) = destination.create_file(Path::new("file.txt"))?;
+    let (mut file, created) = destination.create_file(Path::new("file.txt"), None)?;
     file.write_all(b"contents")?;
     drop(file);
     assert_eq!(fs::read(real.join(&created))?, b"contents");
@@ -152,14 +156,13 @@ fn destination_never_writes_through_symlinks() -> Result<(), Box<dyn Error>> {
         external.path().join("missing"),
         root.path().join("dangling"),
     )?;
-
-    destination.create_file(Path::new("file.txt"))?;
+    destination.create_file(Path::new("file.txt"), None)?;
 
     let nested = Path::new("redirect/new.txt");
-    assert!(destination.create_file(nested).is_err());
+    assert!(destination.create_file(nested, None).is_err());
     assert!(
         destination
-            .create_symlink(nested, OsStr::new("file.txt"))
+            .create_symlink(nested, OsStr::new("file.txt"), None)
             .is_err()
     );
     assert!(
@@ -172,9 +175,18 @@ fn destination_never_writes_through_symlinks() -> Result<(), Box<dyn Error>> {
             .create_hard_link(Path::new("linked"), Path::new("redirect/keep.txt"))
             .is_err()
     );
+    let metadata = MemberMetadata {
+        mode: Some(0o700),
+        modified: None,
+    };
+    assert!(
+        destination
+            .apply_directory_metadata(Path::new("redirect"), metadata, 0o022)
+            .is_err()
+    );
     // An existing leaf symlink is skipped like a file, never written through.
     for name in ["leaf", "dangling"] {
-        let (_, created) = destination.create_file(Path::new(name))?;
+        let (_, created) = destination.create_file(Path::new(name), None)?;
         assert_eq!(created, PathBuf::from(format!("{name} (2)")));
     }
     assert_eq!(fs::read(external.path().join("keep.txt"))?, b"original");
@@ -186,10 +198,12 @@ fn destination_never_writes_through_symlinks() -> Result<(), Box<dyn Error>> {
 fn links_are_created_as_stored_and_renamed_on_conflict() -> Result<(), Box<dyn Error>> {
     let root = tempfile::tempdir()?;
     let destination = ExtractionDestination::open(root.path())?;
-    destination.create_file(Path::new("file.txt"))?.0.write_all(b"data")?;
+    destination.create_file(Path::new("file.txt"), None)?.0.write_all(b"data")?;
+    let modified = UNIX_EPOCH + Duration::from_secs(1_000_000_000);
 
-    let first = destination.create_symlink(Path::new("lnk"), OsStr::new("/etc/passwd"))?;
-    let second = destination.create_symlink(Path::new("lnk"), OsStr::new("file.txt"))?;
+    let first = destination.create_symlink(Path::new("lnk"), OsStr::new("/etc/passwd"), None)?;
+    let second =
+        destination.create_symlink(Path::new("lnk"), OsStr::new("file.txt"), Some(modified))?;
     let hard = destination.create_hard_link(Path::new("nested/hard"), Path::new("file.txt"))?;
 
     assert_eq!(
@@ -199,6 +213,7 @@ fn links_are_created_as_stored_and_renamed_on_conflict() -> Result<(), Box<dyn E
     let path = |name: &str| root.path().join(name);
     assert_eq!(fs::read_link(path("lnk"))?, Path::new("/etc/passwd"));
     assert_eq!(fs::read_link(path("lnk (2)"))?, Path::new("file.txt"));
+    assert_eq!(fs::symlink_metadata(path("lnk (2)"))?.mtime(), 1_000_000_000);
     assert_eq!(
         fs::metadata(path("nested/hard"))?.ino(),
         fs::metadata(path("file.txt"))?.ino()
@@ -221,7 +236,7 @@ fn resolver_keeps_nested_members_under_the_same_renamed_root() -> Result<(), Box
     let mut resolver = ExtractNameResolver::new();
     let first = resolver.resolve(&destination, Path::new("folder/one.txt"))?;
     assert_eq!(first, Path::new("folder (3)/one.txt"));
-    destination.create_file(&first)?;
+    destination.create_file(&first, None)?;
     assert_eq!(
         resolver.resolve(&destination, Path::new("folder/nested/two.txt"))?,
         Path::new("folder (3)/nested/two.txt")
@@ -237,7 +252,7 @@ fn leaf_conflicts_preserve_native_filename_bytes() -> Result<(), Box<dyn Error>>
     let renamed = PathBuf::from(OsString::from_vec(b"report-\xff (2).txt".to_vec()));
     fs::write(root.path().join(&name), b"original")?;
     let destination = ExtractionDestination::open(root.path())?;
-    let (mut file, created) = destination.create_file(&name)?;
+    let (mut file, created) = destination.create_file(&name, None)?;
     file.write_all(b"new")?;
     drop(file);
     assert_eq!(created, renamed);
@@ -456,5 +471,53 @@ fn directory_only_staging_is_removed_but_files_keep_it() -> Result<(), Box<dyn E
         fs::read(root.path().join(&with_file).join("a/b/deep.txt"))?,
         b"a/b/deep.txt"
     );
+    Ok(())
+}
+
+fn refusing<const ERRNO: i32>() -> MetadataCalls {
+    MetadataCalls {
+        chmod: |_, _| Err(rustix::io::Errno::from_raw_os_error(ERRNO)),
+        set_times: |_, _| Err(rustix::io::Errno::from_raw_os_error(ERRNO)),
+        set_link_times: |_, _, _| Err(rustix::io::Errno::from_raw_os_error(ERRNO)),
+    }
+}
+
+#[test]
+fn metadata_the_filesystem_cannot_store_is_skipped() -> Result<(), Box<dyn Error>> {
+    use rustix::io::Errno;
+    let modified = UNIX_EPOCH + Duration::from_secs(1_000_000_000);
+    let metadata = MemberMetadata {
+        mode: Some(0o555),
+        modified: Some(modified),
+    };
+    for (errno, calls, skipped) in [
+        (Errno::PERM, refusing::<{ Errno::PERM.raw_os_error() }>(), true),
+        (Errno::OPNOTSUPP, refusing::<{ Errno::OPNOTSUPP.raw_os_error() }>(), true),
+        (Errno::INVAL, refusing::<{ Errno::INVAL.raw_os_error() }>(), true),
+        (Errno::IO, refusing::<{ Errno::IO.raw_os_error() }>(), false),
+    ] {
+        let root = tempfile::tempdir()?;
+        let destination = ExtractionDestination::open(root.path())?.with_metadata_calls(calls);
+        destination.create_directories(Path::new("folder"))?;
+        let (file, _) = destination.create_file(Path::new("file.txt"), None)?;
+
+        let applied = [
+            destination
+                .apply_directory_metadata(Path::new("folder"), metadata, 0o022)
+                .is_ok(),
+            destination.set_file_times(&file, modified).is_ok(),
+            destination
+                .create_symlink(Path::new("lnk"), OsStr::new("file.txt"), Some(modified))
+                .is_ok(),
+        ];
+
+        assert_eq!(applied, [skipped; 3], "{errno:?}");
+        // A link whose time was refused for another reason is not left behind.
+        assert_eq!(
+            fs::symlink_metadata(root.path().join("lnk")).is_ok(),
+            skipped,
+            "{errno:?}"
+        );
+    }
     Ok(())
 }

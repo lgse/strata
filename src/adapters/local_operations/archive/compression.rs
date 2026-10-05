@@ -8,7 +8,10 @@ mod tests;
 use super::super::{
     local_directory_children, open_local_child_directory, open_local_parent_directory,
 };
-use super::{ArchiveError, COPY_BUF, archive_failed, check_archive_cancelled, copy_with_big_buf};
+use super::{
+    ArchiveError, COPY_BUF, archive_failed, check_archive_cancelled, copy_with_big_buf,
+    destination::process_umask,
+};
 use crate::services::{TransferConflict, TrashedOriginal};
 use gtk::{gio, prelude::*};
 use std::{
@@ -151,23 +154,6 @@ where
 /// Returns `0o666` masked by the process umask from [`process_umask`].
 fn umask_adjusted_file_permissions() -> std::fs::Permissions {
     std::fs::Permissions::from_mode(0o666 & !process_umask())
-}
-
-/// Reads the process umask from `/proc/self/status`.
-///
-/// Avoids the process-global `umask(2)` set-and-restore race that would
-/// otherwise be unsafe in a multi-threaded GUI. Returns `0o022` when `/proc`
-/// is unavailable or the `Umask:` line cannot be parsed.
-fn process_umask() -> u32 {
-    std::fs::read_to_string("/proc/self/status")
-        .ok()
-        .and_then(|status| {
-            status.lines().find_map(|line| {
-                line.strip_prefix("Umask:")
-                    .and_then(|value| u32::from_str_radix(value.trim(), 8).ok())
-            })
-        })
-        .unwrap_or(0o022)
 }
 
 /// An opened compression source, re-read from disk relative to its parent

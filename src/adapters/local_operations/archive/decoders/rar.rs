@@ -4,7 +4,7 @@
 
 use super::super::{
     ArchiveError, archive_failed,
-    extraction::{ArchiveOutcome, ExtractionSession, MemberContent},
+    extraction::{ArchiveOutcome, ExtractionSession, MemberContent, MemberMetadata},
 };
 use crate::sandbox::archive::{Member, stream_rar};
 use std::{
@@ -33,7 +33,7 @@ pub(in crate::adapters::local_operations::archive) fn extract_rar(
             Member::File { size, body } => MemberContent::File(body, Some(size)),
         };
         session
-            .extract_member(name, content)
+            .extract_member(name, content, MemberMetadata::NONE)
             .map_err(|error| error.to_string())
     });
     let result = outcome.map_err(|message| stream_error(message, cancelled));

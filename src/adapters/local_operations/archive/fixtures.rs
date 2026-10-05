@@ -192,7 +192,7 @@ fn append_raw_tar_entry<W: Write>(
 ) -> Result<(), Box<dyn Error>> {
     let mut header = tar::Header::new_gnu();
     header.as_old_mut().name[..name.len()].copy_from_slice(name.as_bytes());
-    header.set_mode(0o644);
+    header.set_mode(if entry_type.is_dir() { 0o755 } else { 0o644 });
     header.set_size(contents.len() as u64);
     header.set_entry_type(entry_type);
     header.set_cksum();
@@ -582,4 +582,32 @@ fn write_7z_members(path: &Path, members: &[FixtureMember<'_>]) -> Result<(), Bo
     }
     writer.finish()?;
     Ok(())
+}
+
+/// Overwrites the external attributes of every central-directory record;
+/// `0` makes `ZipFile::unix_mode()` report no mode.
+pub(super) fn patch_zip_external_attributes(path: &Path, value: u32) -> Result<(), Box<dyn Error>> {
+    const CENTRAL_DIRECTORY_SIGNATURE: [u8; 4] = [0x50, 0x4b, 0x01, 0x02];
+    const EXTERNAL_ATTRIBUTES_OFFSET: usize = 38;
+    let mut bytes = fs::read(path)?;
+    let records = bytes
+        .windows(CENTRAL_DIRECTORY_SIGNATURE.len())
+        .enumerate()
+        .filter(|(_, window)| *window == CENTRAL_DIRECTORY_SIGNATURE)
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    if records.is_empty() {
+        return Err("zip fixture has no central directory record".into());
+    }
+    for record in records {
+        let field = record + EXTERNAL_ATTRIBUTES_OFFSET;
+        bytes[field..field + 4].copy_from_slice(&value.to_le_bytes());
+    }
+    fs::write(path, bytes)?;
+    Ok(())
+}
+
+/// The permission bits extraction should produce for a stored `mode`.
+pub(super) fn expected_mode(mode: u32) -> u32 {
+    mode & 0o777 & !super::destination::process_umask()
 }

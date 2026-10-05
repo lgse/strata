@@ -13,7 +13,80 @@ use std::{
         unix::ffi::{OsStrExt, OsStringExt},
     },
     path::{Component, Path, PathBuf},
+    time::{SystemTime, UNIX_EPOCH},
 };
+
+use super::extraction::MemberMetadata;
+
+/// Reads the process umask from `/proc/self/status`.
+///
+/// Avoids the process-global `umask(2)` set-and-restore race that would
+/// otherwise be unsafe in a multi-threaded GUI. Returns `0o022` when `/proc`
+/// is unavailable or the `Umask:` line cannot be parsed.
+pub(super) fn process_umask() -> u32 {
+    std::fs::read_to_string("/proc/self/status")
+        .ok()
+        .and_then(|status| {
+            status.lines().find_map(|line| {
+                line.strip_prefix("Umask:")
+                    .and_then(|value| u32::from_str_radix(value.trim(), 8).ok())
+            })
+        })
+        .unwrap_or(0o022)
+}
+
+/// Permission bits of a stored member mode, without setuid, setgid, sticky
+/// or file-type bits.
+pub(super) fn permission_bits(mode: u32) -> u32 {
+    mode & 0o777
+}
+
+/// Sets only the modification time; times before 1970 are not applied.
+fn timestamps(modified: SystemTime) -> Option<rustix::fs::Timestamps> {
+    let since_epoch = modified.duration_since(UNIX_EPOCH).ok()?;
+    Some(rustix::fs::Timestamps {
+        last_access: rustix::fs::Timespec {
+            tv_sec: 0,
+            tv_nsec: rustix::fs::UTIME_OMIT,
+        },
+        last_modification: rustix::fs::Timespec {
+            tv_sec: i64::try_from(since_epoch.as_secs()).ok()?,
+            tv_nsec: since_epoch.subsec_nanos().into(),
+        },
+    })
+}
+
+/// Filesystems without Unix permissions or times (vfat, exFAT, some network
+/// and FUSE mounts) refuse them; like tar and unzip, extraction carries on.
+/// `ENOTSUP` has the value of `EOPNOTSUPP` on Linux.
+fn best_effort(result: rustix::io::Result<()>) -> rustix::io::Result<()> {
+    match result {
+        Err(rustix::io::Errno::PERM | rustix::io::Errno::OPNOTSUPP | rustix::io::Errno::INVAL) => {
+            Ok(())
+        }
+        result => result,
+    }
+}
+
+/// The calls that restore member metadata. Tests replace them to simulate
+/// filesystems that refuse Unix permissions or times.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct MetadataCalls {
+    pub(super) chmod: fn(BorrowedFd<'_>, rustix::fs::Mode) -> rustix::io::Result<()>,
+    pub(super) set_times: fn(BorrowedFd<'_>, &rustix::fs::Timestamps) -> rustix::io::Result<()>,
+    pub(super) set_link_times:
+        fn(BorrowedFd<'_>, &OsStr, &rustix::fs::Timestamps) -> rustix::io::Result<()>,
+}
+
+impl MetadataCalls {
+    pub(super) const SYSTEM: Self = Self {
+        chmod: |directory, mode| rustix::fs::fchmod(directory, mode),
+        set_times: |file, times| rustix::fs::futimens(file, times),
+        set_link_times: |parent, name, times| {
+            rustix::fs::utimensat(parent, name, times, rustix::fs::AtFlags::SYMLINK_NOFOLLOW)
+        },
+    };
+}
 
 /// Clamp parent traversal at the extraction root so one such member does not abort the archive.
 pub(super) fn sanitized_archive_path(name: &str) -> Result<PathBuf, String> {
@@ -85,6 +158,7 @@ pub(super) fn archive_stem(archive_name: &str) -> &str {
 #[derive(Debug)]
 pub(super) struct ExtractionDestination {
     root: OwnedFd,
+    calls: MetadataCalls,
 }
 
 impl ExtractionDestination {
@@ -121,7 +195,15 @@ impl ExtractionDestination {
             rustix::fs::ResolveFlags::IN_ROOT | rustix::fs::ResolveFlags::NO_MAGICLINKS,
         )
         .map_err(|error| format!("Could not open extraction destination: {error}"))?;
-        Ok(Self { root })
+        Ok(Self {
+            root,
+            calls: MetadataCalls::SYSTEM,
+        })
+    }
+
+    #[cfg(test)]
+    pub(super) fn with_metadata_calls(self, calls: MetadataCalls) -> Self {
+        Self { calls, ..self }
     }
 
     /// Creates an empty hidden `.strata-extraction-<uuid>` folder under the
@@ -157,7 +239,8 @@ impl ExtractionDestination {
                 let _ = rustix::fs::unlinkat(&self.root, &name, rustix::fs::AtFlags::REMOVEDIR);
                 format!("Could not open the extraction staging folder: {error}")
             })?;
-            return Ok((OsString::from(name), Self { root }));
+            let calls = self.calls;
+            return Ok((OsString::from(name), Self { root, calls }));
         }
         Err("Could not create the extraction staging folder: no unused name".to_owned())
     }
@@ -440,9 +523,10 @@ impl ExtractionDestination {
     ///
     /// Parent directories are created with [`Self::create_directories`]. The
     /// leaf is opened with [`CREATE`], [`EXCL`], and [`NOFOLLOW`] so an existing
-    /// file or symlink is never overwritten. Returns the open file and the
-    /// relative path actually created, which may differ from `path` after a
-    /// rename.
+    /// file or symlink is never overwritten. The file gets the permission bits
+    /// of `mode` (`0o666` when absent), masked by the umask. Returns the open
+    /// file and the relative path actually created, which may differ from
+    /// `path` after a rename.
     ///
     /// # Errors
     ///
@@ -452,7 +536,11 @@ impl ExtractionDestination {
     /// [`CREATE`]: rustix::fs::OFlags::CREATE
     /// [`EXCL`]: rustix::fs::OFlags::EXCL
     /// [`NOFOLLOW`]: rustix::fs::OFlags::NOFOLLOW
-    pub(super) fn create_file(&self, path: &Path) -> Result<(std::fs::File, PathBuf), String> {
+    pub(super) fn create_file(
+        &self,
+        path: &Path,
+        mode: Option<u32>,
+    ) -> Result<(std::fs::File, PathBuf), String> {
         let (parent, name, created) = self.prepare_leaf(path)?;
         let file = rustix::fs::openat(
             parent,
@@ -462,7 +550,7 @@ impl ExtractionDestination {
                 | rustix::fs::OFlags::EXCL
                 | rustix::fs::OFlags::NOFOLLOW
                 | rustix::fs::OFlags::CLOEXEC,
-            rustix::fs::Mode::from_raw_mode(0o666),
+            rustix::fs::Mode::from_raw_mode(mode.map_or(0o666, permission_bits)),
         )
         .map(std::fs::File::from)
         .map_err(|error| error.to_string())?;
@@ -471,12 +559,17 @@ impl ExtractionDestination {
 
     /// Creates a symlink at `path` pointing at `target` exactly as stored,
     /// renaming the leaf like [`Self::create_file`]. The link is never
-    /// followed.
+    /// followed, and its own modification time is set when known.
     ///
     /// # Errors
     ///
-    /// Returns an error if the link cannot be created.
-    pub(super) fn create_symlink(&self, path: &Path, target: &OsStr) -> Result<PathBuf, String> {
+    /// Returns an error if the link cannot be created or stamped.
+    pub(super) fn create_symlink(
+        &self,
+        path: &Path,
+        target: &OsStr,
+        modified: Option<SystemTime>,
+    ) -> Result<PathBuf, String> {
         let (parent, name, created) = self.prepare_leaf(path)?;
         rustix::fs::symlinkat(target, &parent, &name).map_err(|error| {
             format!(
@@ -484,7 +577,37 @@ impl ExtractionDestination {
                 created.display()
             )
         })?;
+        if let Some(times) = modified.and_then(timestamps)
+            && let Err(error) = best_effort((self.calls.set_link_times)(
+                parent.as_fd(),
+                &name,
+                &times,
+            ))
+        {
+            let _ = rustix::fs::unlinkat(&parent, &name, rustix::fs::AtFlags::empty());
+            return Err(format!(
+                "Could not restore the modification time of `{}`: {error}",
+                created.display()
+            ));
+        }
         Ok(created)
+    }
+
+    /// Sets the modification time of an open file, ignoring filesystems that
+    /// do not store one.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the filesystem refuses the time for another reason.
+    pub(super) fn set_file_times(
+        &self,
+        file: &std::fs::File,
+        modified: SystemTime,
+    ) -> rustix::io::Result<()> {
+        match timestamps(modified) {
+            Some(times) => best_effort((self.calls.set_times)(file.as_fd(), &times)),
+            None => Ok(()),
+        }
     }
 
     /// Creates `path` as a hard link to `target`, an entry this destination
@@ -523,6 +646,51 @@ impl ExtractionDestination {
             )
         })?;
         Ok(created)
+    }
+
+    /// Restores a directory's mode, masked by `umask`, and modification time.
+    /// Filesystems that store neither are ignored.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the directory cannot be opened without following a
+    /// symlink, or its mode or time cannot be set for another reason.
+    pub(super) fn apply_directory_metadata(
+        &self,
+        path: &Path,
+        metadata: MemberMetadata,
+        umask: u32,
+    ) -> Result<(), String> {
+        let directory = self
+            .open_directory(path)
+            .map_err(|error| format!("Could not open `{}`: {error}", path.display()))?;
+        if let Some(mode) = metadata.mode {
+            let mode = rustix::fs::Mode::from_raw_mode(permission_bits(mode) & !umask);
+            best_effort((self.calls.chmod)(directory.as_fd(), mode)).map_err(|error| {
+                format!(
+                    "Could not restore permissions on `{}`: {error}",
+                    path.display()
+                )
+            })?;
+        }
+        if let Some(times) = metadata.modified.and_then(timestamps) {
+            best_effort((self.calls.set_times)(directory.as_fd(), &times)).map_err(|error| {
+                format!(
+                    "Could not restore the modification time of `{}`: {error}",
+                    path.display()
+                )
+            })?;
+        }
+        Ok(())
+    }
+
+    /// Gives a directory back the default mode, so a failed extraction's
+    /// output stays writable. Best effort: the failure is already reported.
+    pub(super) fn reset_directory_mode(&self, path: &Path, umask: u32) {
+        if let Ok(directory) = self.open_directory(path) {
+            let mode = rustix::fs::Mode::from_raw_mode(0o777 & !umask);
+            let _ = (self.calls.chmod)(directory.as_fd(), mode);
+        }
     }
 
     /// Unlinks the leaf of `path` under the destination root.
