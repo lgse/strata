@@ -8,7 +8,10 @@ use crate::{
     app::{Browser, BrowserEvent},
     model::{EntryKind, FileEntry, Location, MetadataValue},
     services::{NavigationHistory, SearchItem},
-    ui::{preferences::PreferenceManager, preview::PreviewDrawer, search::SearchDialog},
+    ui::{
+        browser::BrowserView, preferences::PreferenceManager, preview::PreviewDrawer,
+        search::SearchDialog,
+    },
 };
 
 use super::WindowContent;
@@ -19,10 +22,10 @@ pub(super) fn install(content: &WindowContent, preferences: &Rc<PreferenceManage
     install_history_recorder(&controller, &history);
     let preview = content.preview.clone();
     let search_preferences = preferences.clone();
-    let controller = Rc::downgrade(&controller);
+    let activated_browser = content.browser.downgrade();
     let activate = Rc::new(move |item| {
-        if let Some(controller) = controller.upgrade() {
-            activate_result(&controller, &preview, &search_preferences, item);
+        if let Some(browser) = activated_browser.upgrade() {
+            activate_result(&browser, &preview, &search_preferences, item);
         }
     });
     let dismissed_root = content.blurred_root.downgrade();
@@ -148,26 +151,25 @@ fn folder_jump_handler(
 }
 
 fn activate_result(
-    controller: &Rc<Browser>,
+    browser: &BrowserView,
     preview: &PreviewDrawer,
     preferences: &PreferenceManager,
     item: SearchItem,
 ) {
+    let controller = browser.browser();
     let location = Location::local(item.path.clone());
     if item.is_directory {
         preview.clear_target();
         controller.navigate(location);
         return;
     }
-    if let Some(parent) = item.path.parent() {
-        controller.navigate(Location::local(parent));
-    }
+    // The drawer turns on before the reveal, so the revealed selection re-targets it.
     if preferences.search_open_files_directly() {
-        controller.open_location(location);
+        controller.open_location(location.clone());
     } else {
         preview.show(
             FileEntry {
-                location,
+                location: location.clone(),
                 native_name: item.path.file_name().unwrap_or_default().to_os_string(),
                 thumbnail_path: None,
                 display_name: item.name,
@@ -184,4 +186,5 @@ fn activate_result(
             controller.active_depth(),
         );
     }
+    browser.reveal_location(location);
 }

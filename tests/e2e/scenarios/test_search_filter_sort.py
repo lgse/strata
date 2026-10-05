@@ -403,6 +403,95 @@ def test_global_search_preview_follows_neighbor_when_same_folder_result_is_delet
     assert "remaining.txt" in strata.entry_names()
 
 
+def create_activation_folder(strata, name):
+    parent = strata.environment.home / name
+    parent.mkdir()
+    for sibling in ("alpha.txt", "zeta.txt"):
+        (parent / sibling).write_text(f"{sibling}\n")
+    target = parent / "omega-target.txt"
+    target.write_text("activation target preview\n")
+    return parent, target
+
+
+def open_typed_folder(strata, folder):
+    strata.keyboard.press("ctrl+l")
+    field = strata.editable_field()
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text(str(folder))
+    strata.wait(lambda: field.text == str(folder), "the typed folder path")
+    strata.keyboard.press("Return")
+    strata.wait_for_directory(folder.name)
+
+
+def search_for(strata, target):
+    strata.keyboard.press("ctrl+k")
+    strata.editable_field()
+    strata.keyboard.type_text(target.stem)
+    return strata.wait(
+        lambda: next(
+            (node for node in strata.window.find_all(role="list item")
+             if node.name.endswith(f"/{target.name}")),
+            None,
+        ),
+        "global search result",
+    )
+
+
+@pytest.mark.preferences(search_open_files_directly=False)
+@pytest.mark.parametrize("mode,visited", [
+    pytest.param("Columns", False, marks=pytest.mark.preferences(browser_mode="columns"), id="columns"),
+    pytest.param("Icons", False, marks=pytest.mark.preferences(browser_mode="icons"), id="icons"),
+    pytest.param("List", False, marks=pytest.mark.preferences(browser_mode="list"), id="list"),
+    pytest.param("List", True, marks=pytest.mark.preferences(browser_mode="list"), id="list-visited"),
+])
+def test_global_search_activation_selects_and_previews_the_file_result(strata, mode, visited):
+    parent, target = create_activation_folder(strata, "activation-parent")
+    if visited:
+        open_typed_folder(strata, parent)
+        strata.wait_for_focused_entry("alpha.txt")
+        strata.keyboard.press("alt+Left")
+        strata.wait_for_directory(strata.fixture.root.name)
+    search_for(strata, target)
+    strata.keyboard.press("Return")
+    strata.wait_for_directory(parent.name)
+    strata.wait_for_selection([target.name], directory=parent.name)
+    strata.wait_for_focused_entry(target.name)
+    strata.wait(
+        lambda: strata.preview_shows("activation target preview"),
+        "the activated file's preview",
+    )
+
+
+@pytest.mark.preferences(search_open_files_directly=False)
+def test_global_search_activation_in_the_open_folder_moves_the_selection(strata):
+    parent, target = create_activation_folder(strata, "activation-same-folder")
+    open_typed_folder(strata, parent)
+    strata.wait_for_selection(["alpha.txt"])
+    search_for(strata, target)
+    strata.keyboard.press("Return")
+    strata.wait_for_selection([target.name], directory=parent.name)
+    strata.wait(
+        lambda: strata.preview_shows("activation target preview"),
+        "the activated file's preview",
+    )
+
+
+@pytest.mark.preferences(browser_mode="list")
+def test_global_search_reveal_into_a_visited_list_folder_keeps_the_target(strata):
+    parent, target = create_activation_folder(strata, "reveal-visited-parent")
+    open_typed_folder(strata, parent)
+    strata.wait_for_focused_entry("alpha.txt")
+    strata.keyboard.press("End")
+    strata.wait_for_focused_entry("zeta.txt")
+    strata.keyboard.press("alt+Left")
+    strata.wait_for_directory(strata.fixture.root.name)
+    search_for(strata, target)
+    strata.keyboard.press("alt+Return")
+    strata.wait_for_directory(parent.name)
+    strata.wait_for_selection([target.name], directory=parent.name)
+    strata.wait_for_focused_entry(target.name)
+
+
 def test_global_search_finds_a_file_under_home(strata, root):
     """Ctrl+K searches the home directory, not the browsed location."""
 
