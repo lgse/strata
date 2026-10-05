@@ -3,6 +3,7 @@ import io
 import shutil
 import tarfile
 import zipfile
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -42,12 +43,19 @@ def test_archive_activation_extracts_to_subfolder(strata, activation, format):
     if format == "zip":
         with zipfile.ZipFile(fixture.path(archive_name), "w") as archive:
             for member, data in members:
-                archive.writestr(member, data)
+                info = zipfile.ZipInfo(member, date_time=(2001, 9, 9, 1, 46, 40))
+                info.external_attr = 0o100755 << 16
+                archive.writestr(info, data)
+        # A DOS time without an extended timestamp is local time.
+        modified = int(datetime(2001, 9, 9, 1, 46, 40).timestamp())
     else:
+        modified = 1_000_000_000
         with tarfile.open(fixture.path(archive_name), "w:gz") as archive:
             for member, data in members:
                 info = tarfile.TarInfo(member)
                 info.size = len(data)
+                info.mode = 0o755
+                info.mtime = modified
                 archive.addfile(info, io.BytesIO(data))
     fixture.path("activated.txt").write_text("pre-existing\n")
     strata.entry("activated.txt")
@@ -60,6 +68,8 @@ def test_archive_activation_extracts_to_subfolder(strata, activation, format):
     strata.wait(lambda: extracted.exists(), "archive activation to bundle spilled members")
     strata.wait(lambda: strata.dialog() is None, "extraction progress dismissal")
     assert extracted.read_text() == contents
+    assert extracted.stat().st_mode & 0o111 == 0o111
+    assert int(extracted.stat().st_mtime) == modified
     assert (subfolder / "nested/second.txt").read_bytes() == b"second member\n"
     assert fixture.path("activated.txt").read_text() == "pre-existing\n"
     assert not (subfolder / "activated (2).txt").exists()
@@ -101,5 +111,7 @@ def test_archive_activation_extracts_a_single_root_archive_verbatim(strata, acti
     strata.wait(lambda: extracted.exists(), "single-root archive to extract verbatim")
     strata.wait(lambda: strata.dialog() is None, "extraction progress dismissal")
     assert extracted.read_text() == "unrar-0.4.0"
+    # RAR 2.9 stores DOS local time.
+    assert int(extracted.stat().st_mtime) == int(datetime(2015, 8, 7, 17, 21, 8).timestamp())
     assert not fixture.path("activation").exists()
     assert fixture.path(archive_name).exists()
