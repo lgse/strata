@@ -366,8 +366,9 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
 /// Shared with the sandboxed RAR helper so every format words a missing
 /// password alike.
 pub(crate) const PASSWORD_REQUIRED: &str = "A password is required to extract this archive.";
-/// A rejected password, or decrypted data that fails its checks: plain-header
-/// 7z, ZipCrypto and RAR cannot tell a wrong password from damage.
+/// Decrypted data that fails its checks, or a password 7z or RAR rejects:
+/// those cannot tell a wrong password from damage. ZIP's definite rejection
+/// uses `INCORRECT_ARCHIVE_PASSWORD` instead.
 pub(crate) const MAYBE_BAD_PASSWORD: &str = "The password may be incorrect.";
 
 /// Byte size of the reusable read/write buffer used by [`copy_with_big_buf`].

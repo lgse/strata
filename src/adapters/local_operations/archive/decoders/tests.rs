@@ -1253,7 +1253,7 @@ fn error_translation_preserves_passwords_unsupported_formats_and_io_failures() {
     }
     assert_eq!(
         super::zip_error(ZipError::InvalidPassword),
-        ArchiveError::IncorrectPassword(super::MAYBE_BAD_PASSWORD.to_owned())
+        ArchiveError::IncorrectPassword(crate::services::INCORRECT_ARCHIVE_PASSWORD.to_owned())
     );
     assert_eq!(
         super::zip_error(ZipError::UnsupportedArchive(ZipError::PASSWORD_REQUIRED)),
@@ -1441,7 +1441,7 @@ fn zipcrypto_wrong_password_stays_invalid_password() -> Result<(), Box<dyn Error
     };
     assert_eq!(
         error,
-        ArchiveError::IncorrectPassword(super::MAYBE_BAD_PASSWORD.to_owned())
+        ArchiveError::IncorrectPassword(crate::services::INCORRECT_ARCHIVE_PASSWORD.to_owned())
     );
     assert!(destination.path().read_dir()?.next().is_none());
     Ok(())
@@ -1494,7 +1494,7 @@ fn aes_zip_wrong_password_stays_invalid_password() -> Result<(), Box<dyn Error>>
     };
     assert_eq!(
         error,
-        ArchiveError::IncorrectPassword(super::MAYBE_BAD_PASSWORD.to_owned())
+        ArchiveError::IncorrectPassword(crate::services::INCORRECT_ARCHIVE_PASSWORD.to_owned())
     );
     assert!(destination.path().read_dir()?.next().is_none());
 
@@ -2274,7 +2274,7 @@ fn a_password_failure_discards_unencrypted_members_so_the_retry_keeps_the_name()
 -> Result<(), Box<dyn Error>> {
     for (attempt, expected) in [
         (None, super::PASSWORD_REQUIRED),
-        (Some("wrong-password"), super::MAYBE_BAD_PASSWORD),
+        (Some("wrong-password"), crate::services::INCORRECT_ARCHIVE_PASSWORD),
     ] {
         let root = tempfile::tempdir()?;
         let archive = root.path().join("mixed.zip");

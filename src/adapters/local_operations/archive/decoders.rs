@@ -20,6 +20,8 @@ use std::{
 
 use gtk::glib;
 
+use crate::services::INCORRECT_ARCHIVE_PASSWORD;
+
 use super::{
     ArchiveError, MAYBE_BAD_PASSWORD, PASSWORD_REQUIRED, archive_failed, archive_read_failed,
     check_archive_cancelled, copy_with_big_buf,
@@ -43,7 +45,10 @@ pub(super) fn zip_error(error: zip::result::ZipError) -> ArchiveError {
     match error {
         ZipError::InvalidArchive(_) => archive_failed(INVALID_ARCHIVE),
         ZipError::Io(error) => archive_failed(archive_read_error(error, false)),
-        ZipError::InvalidPassword => ArchiveError::IncorrectPassword(MAYBE_BAD_PASSWORD.to_owned()),
+        // ZIP's password check is a definite rejection, unlike a failed CRC or HMAC.
+        ZipError::InvalidPassword => {
+            ArchiveError::IncorrectPassword(INCORRECT_ARCHIVE_PASSWORD.to_owned())
+        }
         ZipError::UnsupportedArchive(ZipError::PASSWORD_REQUIRED) => {
             ArchiveError::PasswordRequired(PASSWORD_REQUIRED.to_owned())
         }
