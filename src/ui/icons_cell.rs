@@ -24,6 +24,7 @@ pub(super) fn new_card(slot: i32) -> gtk::Box {
     card.set_valign(gtk::Align::Start);
 
     let icon = super::thumbnail::ThumbnailSlot::new(slot);
+    icon.set_icon_context(crate::assets::IconContext::Grid);
     icon.set_content_inset(0);
     icon.set_margin_top(ICONS_CARD_ICON_PADDING);
     icon.set_margin_bottom(ICONS_CARD_ICON_PADDING);

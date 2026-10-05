@@ -170,8 +170,8 @@ impl Selection {
                     reason = "GTK exposes named theme colors through StyleContext"
                 )]
                 for color in [
-                    context.lookup_color("theme_accent"),
-                    context.lookup_color("theme_bg"),
+                    context.lookup_color("strata_accent"),
+                    context.lookup_color("strata_bg"),
                 ]
                 .into_iter()
                 .flatten()

@@ -52,11 +52,11 @@ pub(in crate::ui) fn drag_icon_with_count(
     let paintable = gtk::WidgetPaintable::new(Some(base));
 
     let style = base.style_context();
-    let accent = style.lookup_color("theme_accent")?;
+    let accent = style.lookup_color("strata_accent")?;
     let surface = style
-        .lookup_color("theme_surface")
-        .or_else(|| style.lookup_color("theme_bg"))?;
-    let text = style.lookup_color("theme_text")?;
+        .lookup_color("strata_surface")
+        .or_else(|| style.lookup_color("strata_bg"))?;
+    let text = style.lookup_color("strata_text")?;
     let badge_text = contrasting_badge_text(&accent, &text, &surface);
 
     let label = count.to_string();

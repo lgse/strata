@@ -208,7 +208,7 @@ fn resolved_dialog_surface(overlay: &gtk::Overlay) -> String {
     let dialog = find_widget_with_class(overlay, "action-dialog").expect("conflict dialog");
     let color = dialog
         .style_context()
-        .lookup_color("theme_surface")
+        .lookup_color("strata_surface")
         .unwrap_or_else(|| {
             panic!("the dialog style context must resolve the active theme surface")
         });

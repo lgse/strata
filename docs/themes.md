@@ -4,6 +4,18 @@ Strata styles the interface with nine semantic color tokens. Bundled themes are 
 
 Tinted Base16 entries map colors to Strata tokens as follows: `base00` to background, `base01` to surface, `base05` to text, `base0D` to accent, `base08` to danger, `base02` to muted and highlight, `base03` to border, and `base04` to dim text. Source revision and licensing details are recorded in [`THIRD_PARTY_LICENSES.md`](../THIRD_PARTY_LICENSES.md).
 
+## GTK CSS precedence
+
+Strata defines its named colors as `@strata_bg`, `@strata_surface`,
+`@strata_accent`, and other `@strata_*` tokens. These replace the former
+`@theme_*` names; user stylesheets referencing those names must be updated.
+Custom theme TOML keys are unchanged.
+
+Strata's token provider takes precedence over GTK theme defaults, but user
+`~/.config/gtk-4.0/gtk.css` retains GTK's higher user priority. The namespace
+prevents accidental collisions with other stylesheets' `@theme_*` colors;
+it does not override deliberate user selectors or `@strata_*` definitions.
+
 ## Custom theme files
 
 Custom themes are TOML files in:
