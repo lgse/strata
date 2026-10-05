@@ -18,6 +18,22 @@ writer, which refuses symlink traversal. Normal conflict renaming also applies,
 so two members that sanitize to `report.txt` become `report.txt` and
 `report (2).txt` rather than overwriting one another.
 
+## Extraction targets
+
+**Extract here** and **Extract to…** in the item context menu, the 10xer `; e`
+and `; E` chords, and extraction on Enter or double-click apply only to a
+regular file, or a symlink to one, with a local path and a recognised archive
+extension. A folder named `photos.zip` opens like any other folder and offers
+no Extract actions. FIFOs, sockets, devices, and broken links named like
+archives are not extracted either; activation opens them externally and the
+chords report "Not an archive".
+
+If the item changes between opening the menu and running the action, the
+operation layer checks the path again. A path that exists but is not a regular
+file fails with ``Not an archive: `<name>` `` before any destination folder is
+created. The name is quoted so that a name containing "password" does not open
+the password prompt.
+
 ## Archive creation
 
 Strata chooses compression according to the output container, not just the
