@@ -4,7 +4,7 @@
 //! presentations consume the event; preserve that order when adding a feature handler.
 
 use crate::app::{BrowserEvent, SelectionUpdate};
-use crate::model::FileEntry;
+use crate::model::{FileEntry, Location};
 use crate::services::LocationValidationError;
 use crate::ui::browser::ViewState;
 use crate::ui::browser::archive::extract_password_retry;
@@ -66,8 +66,14 @@ impl ViewState {
             BrowserEvent::Reset => {
                 self.suppress_scroll_after_drop.set(false);
                 self.pending_new_entry.take();
+                if self.pending_properties.borrow().as_ref()
+                    != self.browser.location_at(0).as_ref()
+                {
+                    self.pending_properties.take();
+                }
                 self.pending_location_credentials.take();
                 self.pending_archive_destination.take();
+                self.pending_location_selection.take();
                 let mut child = self.overlay.first_child();
                 while let Some(widget) = child {
                     child = widget.next_sibling();
@@ -406,6 +412,7 @@ impl ViewState {
                     set_column_busy(column, false);
                     update_empty_trash_sensitivity(column, count);
                 }
+                self.reveal_pending_transfer_at(*depth);
                 if archive_destination_loaded {
                     let names = self.pending_select.take();
                     if !names.is_empty() {
@@ -428,26 +435,6 @@ impl ViewState {
                         });
                     }
                 } else {
-                    let selection_target_loaded = self
-                        .pending_location_selection
-                        .borrow()
-                        .as_ref()
-                        .is_some_and(|(target, _)| {
-                            self.browser.location_at(*depth).as_ref() == Some(target)
-                        });
-                    if selection_target_loaded
-                        && self.mode_views.borrow().mode() == BrowserMode::Columns
-                    {
-                        self.browser.set_active_column(*depth);
-                    }
-                    let locations = if selection_target_loaded {
-                        self.pending_location_selection
-                            .take()
-                            .map(|(_, locations)| locations)
-                            .unwrap_or_default()
-                    } else {
-                        Vec::new()
-                    };
                     let names = if self.browser.active_depth() == Some(*depth)
                         && (self.mode_views.borrow().mode() != BrowserMode::Columns
                             || self.pending_archive_destination.borrow().is_none())
@@ -456,9 +443,12 @@ impl ViewState {
                     } else {
                         Vec::new()
                     };
-                    let properties =
-                        !names.is_empty() && self.pending_select_properties.replace(false);
-                    if !names.is_empty() || !locations.is_empty() {
+                    let properties = self.pending_properties.borrow().is_some()
+                        && *self.pending_properties.borrow() == self.browser.location_at(*depth);
+                    if properties {
+                        self.pending_properties.take();
+                    }
+                    if !names.is_empty() || properties {
                         let weak = Rc::downgrade(self);
                         let depth = *depth;
                         let destination = self.browser.location_at(depth);
@@ -466,15 +456,14 @@ impl ViewState {
                             if let Some(state) = weak.upgrade()
                                 && state.browser.location_at(depth) == destination
                             {
-                                if !locations.is_empty() {
-                                    state.select_transfer_locations(depth, &locations);
-                                } else if !names.is_empty() {
+                                if !names.is_empty() {
                                     let reveal_names = if names.len() > MAX_BULK_REVEAL_SELECTION {
                                         &names[..1]
                                     } else {
                                         &names[..]
                                     };
                                     state.browser.select_entries_by_name_at(depth, reveal_names);
+                                    state.reveal_focused_entry();
                                 }
                                 if state
                                     .pending_archive_destination
@@ -487,7 +476,6 @@ impl ViewState {
                                 {
                                     state.pending_archive_destination.take();
                                 }
-                                state.reveal_focused_entry();
                                 if properties && let Some(entry) = state.browser.focused_entry() {
                                     state.show_entry_properties_at(entry, depth);
                                 }
@@ -950,11 +938,10 @@ impl ViewState {
                             credentials,
                         );
                     }
-                    error => show_error_dialog(
-                        &self.overlay,
-                        "Unable to open location",
-                        &error.to_string(),
-                    ),
+                    error => {
+                        self.abandon_deferred_reveal();
+                        show_error_dialog(&self.overlay, "Unable to open location", &error.to_string());
+                    }
                 }
             }
             BrowserEvent::LocationRevealFailed { location } => show_error_dialog(
@@ -1141,41 +1128,43 @@ impl ViewState {
         }
     }
 
-    fn apply_transfer_reveal(
-        self: &Rc<Self>,
-        destination: crate::model::Location,
-        locations: Vec<crate::model::Location>,
-    ) {
-        self.pending_archive_destination.take();
-        self.pending_navigate.take();
-        self.pending_select.take();
-        self.pending_select_properties.set(false);
-        self.pending_location_selection
-            .replace(Some((destination.clone(), locations)));
-        if self.mode_views.borrow().mode() == BrowserMode::Columns {
-            let open_depth = (0..self.columns.borrow().len())
-                .find(|depth| self.browser.location_at(*depth).as_ref() == Some(&destination));
-            let parent_depth = (0..self.columns.borrow().len())
-                .find(|depth| self.browser.location_at(*depth) == destination.parent());
-            if let Some(depth) = open_depth {
-                self.browser.set_active_column(depth);
-                let revealed = self.reveal_pending_transfer_at(depth);
-                if !revealed && !self.browser.column_has_monitor(depth) {
-                    self.browser.reload_active();
-                }
-            } else if let Some(parent_depth) = parent_depth {
-                self.browser.descend(parent_depth, destination);
-            } else {
-                self.browser.navigate(destination);
+    fn apply_transfer_reveal(self: &Rc<Self>, destination: Location, mut locations: Vec<Location>) {
+        if locations.len() > MAX_BULK_REVEAL_SELECTION {
+            locations.truncate(1);
+        }
+        if let Some(depth) = self.browser.open_depth(&destination)
+            && self.browser.column_has_monitor(depth)
+        {
+            // The live monitor splices in targets it has not delivered yet, so select the
+            // listed ones now and the rest as they arrive instead of reloading the folder.
+            self.prepare_reveal(&destination);
+            if self
+                .browser
+                .reveal_monitored_locations(destination.clone(), &locations)
+            {
+                self.reveal_focused_entry();
             }
-        } else if self.browser.active_location().as_ref() == Some(&destination) {
-            let depth = self.browser.active_depth().unwrap_or(0);
-            let revealed = self.reveal_pending_transfer_at(depth);
-            if !revealed && !self.browser.column_has_monitor(depth) {
-                self.browser.reload_active();
+            if !self.browser.lists_every_target(depth, &locations) {
+                self.pending_location_selection
+                    .replace(Some((destination, locations)));
             }
-        } else {
-            self.browser.navigate(destination);
+            return;
+        }
+        let parent_depth = (self.mode_views.borrow().mode() == BrowserMode::Columns
+            && self.browser.open_depth(&destination).is_none())
+        .then(|| {
+            destination
+                .parent()
+                .and_then(|parent| self.browser.open_depth(&parent))
+        })
+        .flatten();
+        match parent_depth {
+            Some(parent_depth) => {
+                self.clear_pending_reveal_requests();
+                self.browser
+                    .descend_revealing(parent_depth, destination, locations);
+            }
+            None => self.reveal_locations(destination, locations, false),
         }
     }
 
@@ -1225,20 +1214,58 @@ impl ViewState {
         }
     }
 
-    fn select_transfer_locations(
-        &self,
-        depth: usize,
-        locations: &[crate::model::Location],
-    ) -> bool {
-        let reveal_slice = if locations.len() > MAX_BULK_REVEAL_SELECTION {
-            &locations[..1]
-        } else {
-            locations
-        };
-        self.browser
-            .select_entries_by_location_at(depth, reveal_slice)
+    fn clear_pending_reveal_requests(&self) {
+        self.pending_archive_destination.take();
+        self.pending_navigate.take();
+        self.pending_select.take();
+        self.pending_properties.take();
+        self.pending_location_selection.take();
     }
 
+    /// Drops stale reveal requests and clears any pane filter that would hide `directory`'s
+    /// targets.
+    fn prepare_reveal(&self, directory: &Location) {
+        self.clear_pending_reveal_requests();
+        if let Some(depth) = self.browser.open_depth(directory) {
+            if let Some(column) = self.columns.borrow().get(depth) {
+                column.filter_entry.set_text("");
+            }
+            self.mode_views.borrow().clear_filter(depth);
+        }
+    }
+
+    /// Opens `directory` with `targets` selected through the browser's reveal entry point,
+    /// after dropping stale archive/transfer selections and any pane filter hiding them.
+    pub(super) fn reveal_locations(
+        self: &Rc<Self>,
+        directory: Location,
+        targets: Vec<Location>,
+        properties: bool,
+    ) {
+        self.prepare_reveal(&directory);
+        if properties {
+            self.pending_properties.replace(Some(directory.clone()));
+        }
+        if !self.browser.reveal_locations(directory, targets) {
+            return;
+        }
+        // Selected in place, so no load follows to scroll the column strip or open the dialog.
+        self.reveal_focused_entry();
+        if self.pending_properties.take().is_some()
+            && let Some((depth, _, entry)) = self.browser.focused_item()
+        {
+            self.show_entry_properties_at(entry, depth);
+        }
+    }
+
+    /// A reveal waiting for a mount that failed or was cancelled must not fire on a later visit.
+    pub(super) fn abandon_deferred_reveal(&self) {
+        self.browser.cancel_deferred_reveal();
+        self.pending_properties.take();
+    }
+
+    /// Selects the targets of a transfer into a monitored folder once the monitor has
+    /// spliced in the ones it had not delivered when the transfer was revealed.
     fn reveal_pending_transfer_at(self: &Rc<Self>, depth: usize) -> bool {
         let selected = {
             let pending = self.pending_location_selection.borrow();
@@ -1248,7 +1275,7 @@ impl ViewState {
             if self.browser.location_at(depth).as_ref() != Some(destination) {
                 return false;
             }
-            self.select_transfer_locations(depth, locations)
+            self.browser.select_entries_by_location_at(depth, locations)
         };
         if selected {
             self.pending_location_selection.take();

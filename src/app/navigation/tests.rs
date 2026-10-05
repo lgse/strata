@@ -702,6 +702,28 @@ fn a_rename_rebases_the_pending_selection_during_a_refresh() {
 }
 
 #[test]
+fn a_rename_rebases_every_pending_reveal_target() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/home/old"), RequestId(1));
+    state.select_locations_on_load(0, vec![location("/home/old/b"), location("/home/old/a")]);
+
+    state.relocate_column(0, location("/home/new"), RequestId(2));
+    state.install_snapshot(
+        RequestId(2),
+        vec![
+            named_entry("/home/new/a", "a"),
+            named_entry("/home/new/b", "b"),
+        ],
+    );
+
+    assert_eq!(state.selected_positions(0), [0, 1]);
+    assert_eq!(
+        state.focused_entry().expect("focused entry").2.location,
+        location("/home/new/b")
+    );
+}
+
+#[test]
 fn external_moves_rebase_open_descendant_locations() {
     let mut state = NavigationState::default();
     state.navigate(location("/home"), RequestId(1));

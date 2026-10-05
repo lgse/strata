@@ -26,6 +26,7 @@ mod operations;
 mod preferences;
 mod recent;
 mod relocation;
+mod reveal;
 mod selection;
 #[path = "sorting/tests.rs"]
 mod staged_sort;

@@ -1125,24 +1125,8 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         let Some(parent) = entry.location.parent() else {
             return;
         };
-        let Some(state) = open_file_location_state.upgrade() else {
-            return;
-        };
-        if state.browser.location_at(depth).as_ref() == Some(&parent) {
-            if let Some(column) = state.columns.borrow().get(depth) {
-                column.filter_entry.set_text("");
-            }
-            state.mode_views.borrow().clear_filter(depth);
-            state
-                .browser
-                .select_entries_by_name_at(depth, &[entry.display_name]);
-            state.reveal_focused_entry();
-        } else {
-            state
-                .pending_select
-                .borrow_mut()
-                .push(entry.display_name.clone());
-            state.browser.navigate_location(parent, false);
+        if let Some(state) = open_file_location_state.upgrade() {
+            state.reveal_locations(parent, vec![entry.location], false);
         }
     });
     let run_target = target.clone();

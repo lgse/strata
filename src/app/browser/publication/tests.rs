@@ -55,6 +55,7 @@ impl Fixture {
             total: state.columns[0].entries.len(),
             focused: state.columns[0].selected,
             positions: state.selected_positions(0),
+            take_focus: false,
             terminal,
         }
     }
@@ -137,6 +138,7 @@ fn chunks_are_bounded_by_budget_snapshot_and_current_model() {
                 total,
                 focused: None,
                 positions: vec![],
+                take_focus: false,
                 terminal: PublishTerminal::SortingFinished,
             },
         };

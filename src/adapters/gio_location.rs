@@ -28,5 +28,16 @@ pub(crate) fn location_for_file(file: &gio::File) -> Option<Location> {
     Some(Location::uri(sanitized))
 }
 
+/// The directory that lists `file`, and `file` spelled the way that listing spells its
+/// entries, so a reveal can match it by `Location` equality.
+pub(crate) fn reveal_target_for_file(file: &gio::File) -> Option<(Location, Location)> {
+    let parent = file.parent()?;
+    let name = file.basename()?;
+    Some((
+        location_for_file(&parent)?,
+        location_for_file(&parent.child(name))?,
+    ))
+}
+
 #[cfg(test)]
 mod tests;

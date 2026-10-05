@@ -31,6 +31,8 @@ pub(super) struct PublicationPlan {
     pub(super) total: usize,
     pub(super) focused: Option<usize>,
     pub(super) positions: Vec<usize>,
+    /// The selection came from reveal targets, so the view moves focus to it.
+    pub(super) take_focus: bool,
     pub(super) terminal: PublishTerminal,
 }
 
@@ -119,7 +121,7 @@ impl Browser {
                 depth,
                 selection: SelectionUpdate::Positions(plan.positions),
                 focused,
-                take_focus: false,
+                take_focus: plan.take_focus,
             });
         }
         match plan.terminal {

@@ -5,11 +5,11 @@
 //! name directly instead of going through `xdg-open` and `mimeapps.list`, so
 //! without this Strata is skipped even when it owns `inode/directory`.
 
-use gtk::{gio, glib, prelude::*};
+use gtk::{gio, glib};
 
 use crate::model::Location;
 
-use super::location_for_file;
+use super::{location_for_file, reveal_target_for_file};
 
 const BUS_NAME: &str = "org.freedesktop.FileManager1";
 const OBJECT_PATH: &str = "/org/freedesktop/FileManager1";
@@ -35,7 +35,7 @@ const INTERFACE_XML: &str = r#"<node>
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct RevealRequest {
     pub directory: Location,
-    pub selection: Vec<String>,
+    pub selection: Vec<Location>,
     pub properties: bool,
 }
 
@@ -108,23 +108,24 @@ fn reveal_requests(method: Method, uris: &[String]) -> Vec<RevealRequest> {
     let mut requests: Vec<RevealRequest> = Vec::new();
     for uri in uris {
         let target = gio::File::for_uri(uri);
-        let (directory, name) = match method.reveals_parent().then(|| target.parent()).flatten() {
-            Some(parent) => (parent, target.basename()),
-            // A filesystem root has no parent to reveal it in.
-            None => (target, None),
-        };
-        let Some(directory) = location_for_file(&directory) else {
+        // A filesystem root has no parent to reveal it in.
+        let Some((directory, item)) = method
+            .reveals_parent()
+            .then(|| reveal_target_for_file(&target))
+            .flatten()
+            .map(|(directory, item)| (directory, Some(item)))
+            .or_else(|| location_for_file(&target).map(|directory| (directory, None)))
+        else {
             continue;
         };
-        let name = name.map(|name| name.to_string_lossy().into_owned());
         match requests
             .iter_mut()
             .find(|request| request.directory == directory)
         {
-            Some(request) => request.selection.extend(name),
+            Some(request) => request.selection.extend(item),
             None => requests.push(RevealRequest {
                 directory,
-                selection: name.into_iter().collect(),
+                selection: item.into_iter().collect(),
                 properties: method.wants_properties(),
             }),
         }

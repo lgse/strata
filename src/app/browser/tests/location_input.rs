@@ -354,14 +354,14 @@ fn invalid_location_text_is_rejected_before_the_provider() {
     assert_eq!(browser.active_location(), Some(Location::local("/fixture")));
 }
 
-struct TypedPathSource {
+pub(super) struct TypedPathSource {
     files: HashSet<Location>,
     errors: HashMap<Location, LocationValidationError>,
     listing: Vec<FileEntry>,
 }
 
 impl TypedPathSource {
-    fn containing(file: Location, listing: Vec<FileEntry>) -> Self {
+    pub(super) fn containing(file: Location, listing: Vec<FileEntry>) -> Self {
         Self {
             files: HashSet::from([file]),
             errors: HashMap::new(),
@@ -477,7 +477,7 @@ impl FileSource for RefreshingTypedPathSource {
     }
 }
 
-fn listing_file(location: Location, name: &str, is_hidden: bool) -> FileEntry {
+pub(super) fn listing_file(location: Location, name: &str, is_hidden: bool) -> FileEntry {
     FileEntry {
         location,
         native_name: OsString::from(name),
@@ -495,7 +495,21 @@ fn listing_file(location: Location, name: &str, is_hidden: bool) -> FileEntry {
     }
 }
 
-fn selected_locations(browser: &Browser) -> Vec<Location> {
+/// What a view preparing the new column sees: whether a reveal target is pending.
+pub(super) fn record_reveal_pending_on_column_added(browser: &Rc<Browser>) -> Rc<RefCell<Vec<bool>>> {
+    let recorded = Rc::new(RefCell::new(Vec::new()));
+    let observed = recorded.clone();
+    let weak = Rc::downgrade(browser);
+    browser.observe(move |event| {
+        if let (BrowserEvent::ColumnAdded { depth, .. }, Some(browser)) = (event, weak.upgrade()) {
+            let snapshot = browser.column_snapshot(*depth).expect("added column");
+            observed.borrow_mut().push(snapshot.reveal_pending);
+        }
+    });
+    recorded
+}
+
+pub(super) fn selected_locations(browser: &Browser) -> Vec<Location> {
     browser
         .selected_entries()
         .iter()
@@ -514,11 +528,14 @@ fn location_input_naming_a_file_reveals_it_inside_its_parent() {
         ],
     )));
     browser.navigate(Location::local("/start"));
+    let reveal_pending_on_add = record_reveal_pending_on_column_added(&browser);
 
     assert_eq!(browser.navigate_input("/fixture/report.pdf"), Ok(()));
 
     assert_eq!(browser.active_location(), Some(Location::local("/fixture")));
     assert_eq!(selected_locations(&browser), vec![file]);
+    assert_eq!(*reveal_pending_on_add.borrow(), [true]);
+    assert!(!browser.column_snapshot(0).expect("column").reveal_pending);
 }
 
 #[test]
@@ -570,36 +587,44 @@ fn synchronous_file_validation_keeps_async_parent_validation_alive() {
 }
 
 #[test]
-fn location_input_naming_a_file_inside_the_open_directory_selects_it_in_place() {
-    let file = Location::local("/fixture/report.pdf");
-    let browser = Browser::new(Rc::new(TypedPathSource::containing(
-        file.clone(),
-        vec![
-            listing_file(Location::local("/fixture/notes.txt"), "notes.txt", false),
-            listing_file(file.clone(), "report.pdf", false),
-        ],
-    )));
-    let events = Rc::new(RefCell::new(Vec::new()));
-    let observed = events.clone();
-    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
-    browser.navigate(Location::local("/fixture"));
-    events.borrow_mut().clear();
-
-    assert_eq!(browser.navigate_input("/fixture/report.pdf"), Ok(()));
-
-    assert_eq!(browser.active_location(), Some(Location::local("/fixture")));
-    assert_eq!(selected_locations(&browser), vec![file]);
-    assert!(events.borrow().iter().any(|event| matches!(
-        event,
-        BrowserEvent::SelectionSetChanged {
-            take_focus: true,
-            ..
+fn location_input_naming_a_file_inside_an_open_directory_selects_it_in_place() {
+    // Revealing into an open ancestor closes the deeper column it would otherwise leave open.
+    for open_child in [false, true] {
+        let file = Location::local("/fixture/report.pdf");
+        let browser = Browser::new(Rc::new(TypedPathSource::containing(
+            file.clone(),
+            vec![
+                listing_file(Location::local("/fixture/notes.txt"), "notes.txt", false),
+                listing_file(file.clone(), "report.pdf", false),
+            ],
+        )));
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let observed = events.clone();
+        browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+        browser.navigate(Location::local("/fixture"));
+        if open_child {
+            browser.descend(0, Location::local("/fixture/child"));
+            assert_eq!(browser.active_depth(), Some(1));
         }
-    )));
-    assert!(!events.borrow().iter().any(|event| matches!(
-        event,
-        BrowserEvent::Reset | BrowserEvent::ColumnAdded { .. }
-    )));
+        events.borrow_mut().clear();
+
+        assert_eq!(browser.navigate_input("/fixture/report.pdf"), Ok(()));
+
+        assert_eq!(browser.active_location(), Some(Location::local("/fixture")));
+        assert_eq!(browser.location_at(1), None);
+        assert_eq!(selected_locations(&browser), vec![file]);
+        assert!(events.borrow().iter().any(|event| matches!(
+            event,
+            BrowserEvent::SelectionSetChanged {
+                take_focus: true,
+                ..
+            }
+        )));
+        assert!(!events.borrow().iter().any(|event| matches!(
+            event,
+            BrowserEvent::Reset | BrowserEvent::ColumnAdded { .. }
+        )));
+    }
 }
 
 #[test]

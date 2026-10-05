@@ -184,13 +184,15 @@ impl Browser {
 
     fn publish_sorted_snapshot(self: &Rc<Self>, task: SortTask) {
         let plan = {
-            let state = self.state.borrow();
+            let mut state = self.state.borrow_mut();
+            let take_focus = state.take_selection_from_reveal(task.depth);
             let column = state.columns.get(task.depth);
             PublicationPlan {
                 request_id: task.request_id,
                 total: column.map_or(0, |column| column.entries.len()),
                 focused: column.and_then(|column| column.selected),
                 positions: state.selected_positions(task.depth),
+                take_focus,
                 terminal: PublishTerminal::LoadFinished {
                     truncated: task.plan.completion.truncated,
                     retry_metadata: task.plan.retry_metadata,

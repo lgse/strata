@@ -54,10 +54,27 @@ const REMOTE_DIRECTORY_BATCH_SIZE: usize = 128;
 const PEEK_MAX_ENTRIES: usize = 64;
 const PEEK_TIME_BUDGET: Duration = Duration::from_secs(3);
 
+#[derive(Clone)]
 enum LoadSelection {
     Nothing,
     FirstEntry,
-    Target(Location),
+    Target(Vec<Location>),
+}
+
+fn load_selection(select_first: bool) -> LoadSelection {
+    if select_first {
+        LoadSelection::FirstEntry
+    } else {
+        LoadSelection::Nothing
+    }
+}
+
+fn select_on_load(state: &mut NavigationState, depth: usize, selection: LoadSelection) {
+    match selection {
+        LoadSelection::FirstEntry => state.select_first_on_load(depth),
+        LoadSelection::Target(targets) => state.select_locations_on_load(depth, targets),
+        LoadSelection::Nothing => {}
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -68,6 +85,8 @@ pub struct BrowserColumnSnapshot {
     pub loading: bool,
     pub error: Option<String>,
     pub truncated: bool,
+    /// Explicit reveal targets are waiting for this column's listing.
+    pub reveal_pending: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -871,6 +890,8 @@ pub struct Browser {
     last_batch_selection: RefCell<BatchSelectionState>,
     peek_load: RefCell<Option<LoadHandle>>,
     validation_load: RefCell<Option<LoadHandle>>,
+    /// Reveal targets kept while the UI mounts their directory, then navigates to it.
+    deferred_reveal: RefCell<Option<(Location, Vec<Location>)>>,
     validation_generation: Cell<u64>,
     navigation_cleanup: RefCell<Option<Box<dyn FnOnce()>>>,
     operation_provider: RefCell<Option<Rc<dyn OperationProvider>>>,
@@ -937,6 +958,7 @@ impl Browser {
             last_batch_selection: RefCell::new(HashMap::new()),
             peek_load: RefCell::new(None),
             validation_load: RefCell::new(None),
+            deferred_reveal: RefCell::new(None),
             validation_generation: Cell::new(0),
             navigation_cleanup: RefCell::new(None),
             operation_provider: RefCell::new(None),
@@ -1054,7 +1076,7 @@ impl Browser {
             match self.source.validate_location(&location) {
                 Ok(()) => self.navigate(location),
                 Err(LocationValidationError::NotDirectory) => match location.parent() {
-                    Some(parent) => self.navigate_validated_revealing(parent, location),
+                    Some(parent) => self.navigate_validated_inner(parent, false, vec![location]),
                     None => return Err(LocationValidationError::NotDirectory),
                 },
                 Err(error) => return Err(error),
@@ -1066,18 +1088,14 @@ impl Browser {
     }
 
     fn navigate_validated(self: &Rc<Self>, location: Location, select_first: bool) {
-        self.navigate_validated_inner(location, select_first, None);
-    }
-
-    fn navigate_validated_revealing(self: &Rc<Self>, parent: Location, target: Location) {
-        self.navigate_validated_inner(parent, false, Some(target));
+        self.navigate_validated_inner(location, select_first, Vec::new());
     }
 
     fn navigate_validated_inner(
         self: &Rc<Self>,
         location: Location,
         select_first: bool,
-        reveal: Option<Location>,
+        reveal: Vec<Location>,
     ) {
         let generation = self.bump_navigation_generation();
         let weak = Rc::downgrade(self);
@@ -1090,23 +1108,38 @@ impl Browser {
                 return;
             }
             match result {
-                Ok(()) => match reveal.clone() {
-                    Some(target) => {
-                        browser.navigate_revealing(pending_location.clone(), target);
-                    }
-                    None => {
-                        browser.navigate_with_selection(pending_location.clone(), select_first);
-                    }
-                },
+                Ok(()) if reveal.is_empty() => {
+                    browser.navigate_with_selection(pending_location.clone(), select_first);
+                }
+                Ok(()) => {
+                    browser.reveal_validated(pending_location.clone(), reveal.clone());
+                }
                 Err(LocationValidationError::NotDirectory) => match pending_location.parent() {
                     Some(parent) => {
-                        browser.navigate_validated_revealing(parent, pending_location.clone());
+                        browser.navigate_validated_inner(
+                            parent,
+                            false,
+                            vec![pending_location.clone()],
+                        );
                     }
                     None => browser.emit(BrowserEvent::LocationNavigationRejected {
                         error: LocationValidationError::NotDirectory,
                     }),
                 },
-                Err(error) => browser.emit(BrowserEvent::LocationNavigationRejected { error }),
+                Err(error) => {
+                    if !reveal.is_empty()
+                        && matches!(
+                            error,
+                            LocationValidationError::NotMounted(_)
+                                | LocationValidationError::Mountable(_)
+                        )
+                    {
+                        browser
+                            .deferred_reveal
+                            .replace(Some((pending_location.clone(), reveal.clone())));
+                    }
+                    browser.emit(BrowserEvent::LocationNavigationRejected { error });
+                }
             }
         });
         let load = self.source.validate_location_async(location, emit);
@@ -1205,27 +1238,104 @@ impl Browser {
     }
 
     pub(crate) fn navigate_with_selection(self: &Rc<Self>, location: Location, select_first: bool) {
-        self.navigate_for_selection(
-            location,
-            if select_first {
-                LoadSelection::FirstEntry
-            } else {
-                LoadSelection::Nothing
-            },
-        );
+        self.navigate_for_selection(location, load_selection(select_first));
     }
 
-    fn navigate_revealing(self: &Rc<Self>, parent: Location, target: Location) {
-        if self.active_location().as_ref() == Some(&parent) {
-            self.bump_navigation_generation();
-            if let Some(depth) = self.active_depth()
-                && !self.select_entries_by_location_at(depth, std::slice::from_ref(&target))
-            {
-                self.refresh_column_revealing(depth, target);
-            }
-            return;
+    /// The one entry point for "open `directory` with `targets` selected": targets are
+    /// matched by location, the first listed one takes the cursor, and they win over the
+    /// first-entry default and any remembered view position.
+    ///
+    /// Returns whether the targets were selected in place in an already listed column.
+    pub fn reveal_locations(self: &Rc<Self>, directory: Location, targets: Vec<Location>) -> bool {
+        if targets.is_empty() {
+            self.navigate_location(directory, true);
+            return false;
         }
-        self.navigate_for_selection(parent, LoadSelection::Target(target));
+        if directory.native_path().is_some() || self.open_depth(&directory).is_some() {
+            self.reveal_validated(directory, targets)
+        } else {
+            self.navigate_validated_inner(directory, false, targets);
+            false
+        }
+    }
+
+    pub(crate) fn open_depth(&self, directory: &Location) -> Option<usize> {
+        let state = self.state.borrow();
+        state
+            .columns
+            .iter()
+            .position(|column| &column.location == directory)
+    }
+
+    fn reveal_validated(self: &Rc<Self>, directory: Location, targets: Vec<Location>) -> bool {
+        let Some(depth) = self.open_depth(&directory) else {
+            self.navigate_for_selection(directory, LoadSelection::Target(targets));
+            return false;
+        };
+        self.activate_reveal_depth(depth);
+        // A partly listed target set (a transfer the monitor has not fully delivered yet)
+        // reloads so the late targets are selected too.
+        if self.state.borrow().lists_every_target(depth, &targets)
+            && self.select_entries_by_location_at(depth, &targets)
+        {
+            return true;
+        }
+        self.refresh_column_revealing(depth, targets);
+        false
+    }
+
+    /// Reveals `targets` in the open, monitored `directory` without reloading it: the
+    /// listed targets are selected now and the monitor splices in the rest.
+    ///
+    /// Returns whether any target was selected.
+    pub fn reveal_monitored_locations(
+        self: &Rc<Self>,
+        directory: Location,
+        targets: &[Location],
+    ) -> bool {
+        let Some(depth) = self.open_depth(&directory) else {
+            return false;
+        };
+        self.activate_reveal_depth(depth);
+        self.select_entries_by_location_at(depth, targets)
+    }
+
+    pub(crate) fn lists_every_target(&self, depth: usize, targets: &[Location]) -> bool {
+        self.state.borrow().lists_every_target(depth, targets)
+    }
+
+    fn activate_reveal_depth(self: &Rc<Self>, depth: usize) {
+        self.bump_navigation_generation();
+        // Deeper columns would keep showing (and acting on) a folder the reveal left.
+        if self.active_depth().is_some_and(|active| active > depth) {
+            self.close_column(depth + 1);
+        }
+        if self.active_depth() != Some(depth) {
+            self.set_active_column(depth);
+        }
+    }
+
+    /// Like [`Self::descend`], with `targets` selected in the new column once listed.
+    pub fn descend_revealing(
+        self: &Rc<Self>,
+        parent_depth: usize,
+        directory: Location,
+        targets: Vec<Location>,
+    ) {
+        if self.is_open_child(parent_depth, &directory) {
+            self.reveal_locations(directory, targets);
+        } else {
+            self.descend_with_selection(
+                parent_depth,
+                directory,
+                LoadSelection::Target(targets),
+                false,
+            );
+        }
+    }
+
+    pub(crate) fn cancel_deferred_reveal(&self) {
+        self.deferred_reveal.take();
     }
 
     fn apply_resolved_location_reveal(self: &Rc<Self>, depth: usize, request_id: RequestId) {
@@ -1253,6 +1363,14 @@ impl Browser {
         if !self.source.allows_navigation(&location) {
             return;
         }
+        let selection = match (self.deferred_reveal.take(), selection) {
+            (Some((directory, targets)), LoadSelection::FirstEntry | LoadSelection::Nothing)
+                if directory == location =>
+            {
+                LoadSelection::Target(targets)
+            }
+            (_, selection) => selection,
+        };
         self.bump_navigation_generation();
         if self.active_location().as_ref() == Some(&location) {
             return;
@@ -1268,13 +1386,7 @@ impl Browser {
         self.state
             .borrow_mut()
             .navigate(location.clone(), request_id);
-        match selection {
-            LoadSelection::FirstEntry => self.select_first_on_load(0),
-            LoadSelection::Target(target) => {
-                self.state.borrow_mut().select_location_on_load(0, target);
-            }
-            LoadSelection::Nothing => {}
-        }
+        select_on_load(&mut self.state.borrow_mut(), 0, selection);
         self.emit(BrowserEvent::Reset);
         self.emit(BrowserEvent::ColumnAdded {
             depth: 0,
@@ -1288,20 +1400,21 @@ impl Browser {
     }
 
     pub fn descend(self: &Rc<Self>, parent_depth: usize, location: Location) {
-        self.descend_with_selection(parent_depth, location, false, false);
+        self.descend_with_selection(parent_depth, location, LoadSelection::Nothing, false);
     }
 
     pub fn show_child(self: &Rc<Self>, parent_depth: usize, location: Location) {
-        self.descend_with_selection(parent_depth, location, false, true);
+        self.descend_with_selection(parent_depth, location, LoadSelection::Nothing, true);
     }
 
     fn descend_with_selection(
         self: &Rc<Self>,
         parent_depth: usize,
         location: Location,
-        select_first_on_load: bool,
+        selection: LoadSelection,
         keep_parent_active: bool,
     ) {
+        self.deferred_reveal.take();
         self.bump_navigation_generation();
         if self.is_open_child(parent_depth, &location) {
             return;
@@ -1319,7 +1432,7 @@ impl Browser {
                 _ => self.descend_validated(
                     parent_depth,
                     location,
-                    select_first_on_load,
+                    selection,
                     keep_parent_active,
                 ),
             }
@@ -1350,7 +1463,7 @@ impl Browser {
                 _ => browser.descend_validated(
                     parent_depth,
                     pending_location.clone(),
-                    select_first_on_load,
+                    selection.clone(),
                     keep_parent_active,
                 ),
             }
@@ -1363,7 +1476,7 @@ impl Browser {
         self: &Rc<Self>,
         parent_depth: usize,
         location: Location,
-        select_first_on_load: bool,
+        selection: LoadSelection,
         keep_parent_active: bool,
     ) {
         if !self.source.allows_navigation(&location) || self.location_at(parent_depth).is_none() {
@@ -1378,9 +1491,7 @@ impl Browser {
         if keep_parent_active {
             state.focus_column(parent_depth);
         }
-        if select_first_on_load {
-            state.select_first_on_load(parent_depth + 1);
-        }
+        select_on_load(&mut state, parent_depth + 1, selection);
         drop(state);
 
         let retained = parent_depth + 1;
@@ -1672,12 +1783,14 @@ impl Browser {
             }
             let request_id = state.request_id_for_depth(depth);
             let total = state.columns.get(depth).map(|column| column.entries.len());
+            let take_focus = state.take_selection_from_reveal(depth);
             result.and_then(|(focused, positions)| {
                 Some(PublicationPlan {
                     request_id: request_id?,
                     total: total?,
                     focused,
                     positions,
+                    take_focus,
                     terminal: PublishTerminal::SortingFinished,
                 })
             })
@@ -1947,6 +2060,7 @@ impl Browser {
                 _ => None,
             },
             truncated: column.truncated,
+            reveal_pending: state.reveal_pending(depth),
         })
     }
 
@@ -3204,7 +3318,7 @@ impl Browser {
             // Do not start another asynchronous validation that can outlive inline rename.
             self.bump_navigation_generation();
             self.close_peek();
-            self.descend_validated(depth, entry.location, false, false);
+            self.descend_validated(depth, entry.location, LoadSelection::Nothing, false);
             self.select(depth, position);
         } else {
             self.close_column(depth + 1);
@@ -3352,7 +3466,12 @@ impl Browser {
             if self.is_open_child(depth, &entry.location) {
                 self.focus_child();
             } else {
-                self.descend_with_selection(depth, entry.location, select_first, false);
+                self.descend_with_selection(
+                    depth,
+                    entry.location,
+                    load_selection(select_first),
+                    false,
+                );
             }
         } else if self.should_extract_on_activate(&entry) {
             self.emit(BrowserEvent::ExtractRequested { entry });
@@ -3364,6 +3483,7 @@ impl Browser {
     }
 
     fn restore_path(self: &Rc<Self>, path: NavigationPath) {
+        self.deferred_reveal.take();
         if path
             .locations()
             .iter()
@@ -3509,6 +3629,7 @@ impl Browser {
             "directory batch accepted"
         );
         let selected = state.columns[depth].selected;
+        let take_focus = selected.is_some() && state.take_selection_from_reveal(depth);
         drop(state);
         self.apply_resolved_location_reveal(depth, request_id);
         crate::metrics::record_stage(
@@ -3528,7 +3649,7 @@ impl Browser {
                     depth,
                     selection: SelectionUpdate::Positions(positions),
                     focused,
-                    take_focus: false,
+                    take_focus,
                 });
             }
         }
@@ -3724,12 +3845,14 @@ impl Browser {
                 self.preferences.set(preferences);
             }
             self.pending_sort.set(None);
+            let take_focus = state.take_selection_from_reveal(depth);
             outcome.and_then(|(focused, positions)| {
                 Some(PublicationPlan {
                     request_id: state.request_id_for_depth(depth)?,
                     total: state.columns.get(depth)?.entries.len(),
                     focused,
                     positions,
+                    take_focus,
                     terminal: PublishTerminal::SortingFinished,
                 })
             })
@@ -4082,19 +4205,19 @@ impl Browser {
         self.metadata_loads.borrow_mut().remove(&depth);
     }
 
-    fn refresh_column_revealing(self: &Rc<Self>, depth: usize, target: Location) {
-        self.refresh_column_with_reveal(depth, Some(target));
+    fn refresh_column_revealing(self: &Rc<Self>, depth: usize, targets: Vec<Location>) {
+        self.refresh_column_with_reveal(depth, Some(targets));
     }
 
-    fn refresh_column_with_reveal(self: &Rc<Self>, depth: usize, target: Option<Location>) {
+    fn refresh_column_with_reveal(self: &Rc<Self>, depth: usize, targets: Option<Vec<Location>>) {
         let request_id = self.new_request_id();
         let location = {
             let mut state = self.state.borrow_mut();
             let location = state.reload_column(depth, request_id);
             if location.is_some()
-                && let Some(target) = target
+                && let Some(targets) = targets
             {
-                state.select_location_on_load(depth, target);
+                state.select_locations_on_load(depth, targets);
             }
             location
         };
@@ -4150,23 +4273,28 @@ impl Browser {
     pub fn select_entries_by_name_at(self: &Rc<Self>, depth: usize, names: &[String]) -> bool {
         let requested: HashSet<&str> = names.iter().map(String::as_str).collect();
         self.select_entries_matching_at(depth, |entry| {
-            requested.contains(entry.display_name.as_str())
+            requested.contains(entry.display_name.as_str()).then_some(0)
         })
     }
 
+    /// Selects the listed `locations`; the cursor goes to the first one requested.
     pub fn select_entries_by_location_at(
         self: &Rc<Self>,
         depth: usize,
         locations: &[Location],
     ) -> bool {
-        let requested: HashSet<_> = locations.iter().collect();
-        self.select_entries_matching_at(depth, |entry| requested.contains(&entry.location))
+        let mut requested = HashMap::new();
+        for (rank, location) in locations.iter().enumerate() {
+            requested.entry(location).or_insert(rank);
+        }
+        self.select_entries_matching_at(depth, |entry| requested.get(&entry.location).copied())
     }
 
+    /// `rank` is `None` for entries to leave unselected; the lowest rank takes the cursor.
     fn select_entries_matching_at(
         self: &Rc<Self>,
         depth: usize,
-        matches: impl Fn(&FileEntry) -> bool,
+        rank: impl Fn(&FileEntry) -> Option<usize>,
     ) -> bool {
         let has_hidden_match = self
             .state
@@ -4177,7 +4305,7 @@ impl Browser {
                 column
                     .entries
                     .iter()
-                    .any(|entry| matches(entry) && entry.is_hidden)
+                    .any(|entry| entry.is_hidden && rank(entry).is_some())
             });
         if has_hidden_match && !self.preferences.get().show_hidden {
             self.toggle_hidden();
@@ -4186,16 +4314,17 @@ impl Browser {
         let Some(column) = state.columns.get(depth) else {
             return false;
         };
-        let positions: Vec<usize> = column
+        let ranked: Vec<(usize, usize)> = column
             .entries
             .iter()
             .enumerate()
-            .filter_map(|(position, entry)| matches(entry).then_some(position))
+            .filter_map(|(position, entry)| rank(entry).map(|rank| (rank, position)))
             .collect();
         drop(state);
-        let Some(&focused) = positions.first() else {
+        let Some(&(_, focused)) = ranked.iter().min() else {
             return false;
         };
+        let positions: Vec<usize> = ranked.into_iter().map(|(_, position)| position).collect();
         self.commit_selection();
         self.set_selection(depth, &positions, Some(focused));
         self.emit(BrowserEvent::SelectionSetChanged {

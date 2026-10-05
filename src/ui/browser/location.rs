@@ -1632,6 +1632,7 @@ impl ViewState {
                             prompt_details,
                         );
                     } else {
+                        state.abandon_deferred_reveal();
                         state.location_stack.set_visible_child_name("breadcrumbs");
                         state.restore_location_text();
                         if let Some(message) = mount_failure_message(&location, &error) {
@@ -1707,6 +1708,7 @@ impl ViewState {
             },
             move || {
                 if let Some(state) = cancel_weak.upgrade() {
+                    state.abandon_deferred_reveal();
                     state.location_stack.set_visible_child_name("breadcrumbs");
                     state.restore_location_text();
                     state.browser.focus_active();

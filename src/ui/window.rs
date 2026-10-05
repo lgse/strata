@@ -223,7 +223,7 @@ fn browser_for_window() -> BrowserView {
 pub(super) fn present_target(
     application: &gtk::Application,
     location: Option<Location>,
-    selection: Vec<String>,
+    selection: Vec<Location>,
     properties: bool,
     auto_navigate: bool,
 ) -> BrowserView {
@@ -250,13 +250,14 @@ pub(super) fn present_target(
     crate::metrics::mark_window_presented();
     if auto_navigate {
         let pending_location = location.unwrap_or_else(|| startup_location(&preference_manager));
-        if !selection.is_empty() {
-            browser.select_after_load(selection, properties);
-        }
         let idle_browser = browser.clone();
         glib::idle_add_local_once(move || {
             let started = std::time::Instant::now();
-            idle_browser.navigate_location(pending_location);
+            if selection.is_empty() {
+                idle_browser.navigate_location(pending_location);
+            } else {
+                idle_browser.reveal_locations(pending_location, selection, properties);
+            }
             tracing::debug!(
                 elapsed_ms = started.elapsed().as_millis() as u64,
                 "present navigation started"

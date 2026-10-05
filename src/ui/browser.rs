@@ -239,10 +239,11 @@ pub(super) struct ViewState {
     print_handler: RefCell<Option<PrintHandler>>,
     search_selection_handlers: RefCell<Vec<Rc<dyn Fn()>>>,
     pending_select: RefCell<Vec<String>>,
+    /// The directory of a reveal that asked for properties, so the dialog opens
+    /// once the revealed entry it describes is actually loaded.
+    pending_properties: RefCell<Option<Location>>,
+    /// Transfer targets a monitored destination had not listed when they were revealed.
     pending_location_selection: RefCell<Option<(Location, Vec<Location>)>>,
-    /// Set when the pending selection came from a properties request, so the
-    /// dialog opens once the entry it describes is actually loaded.
-    pending_select_properties: Cell<bool>,
     pending_extract_retry: RefCell<Option<(FileEntry, Location)>>,
     extract_destination: RefCell<Option<Location>>,
     pending_archive_destination: RefCell<Option<Location>>,
@@ -622,8 +623,8 @@ impl BrowserView {
             print_handler: RefCell::new(None),
             search_selection_handlers: RefCell::new(Vec::new()),
             pending_select: RefCell::new(Vec::new()),
+            pending_properties: RefCell::new(None),
             pending_location_selection: RefCell::new(None),
-            pending_select_properties: Cell::new(false),
             pending_extract_retry: RefCell::new(None),
             extract_destination: RefCell::new(None),
             pending_archive_destination: RefCell::new(None),
@@ -870,35 +871,21 @@ impl BrowserView {
         self.state.commit_file_drop(destination, sources, commit);
     }
 
-    /// Selects `names` in the active column once it finishes loading,
-    /// optionally opening the properties dialog for the focused one.
-    pub fn select_after_load(&self, names: Vec<String>, properties: bool) {
-        self.state.pending_select.borrow_mut().extend(names);
-        self.state.pending_select_properties.set(properties);
+    pub(crate) fn reveal_location(&self, location: Location) {
+        if let Some(parent) = location.parent() {
+            self.state.reveal_locations(parent, vec![location], false);
+        }
     }
 
-    pub(super) fn reveal_location(&self, location: Location) {
-        let Some(parent) = location.parent() else {
-            return;
-        };
-        self.state.pending_archive_destination.take();
-        self.state.pending_navigate.take();
-        self.state.pending_select.take();
-        self.state.pending_select_properties.set(false);
-        self.state
-            .pending_location_selection
-            .replace(Some((parent.clone(), vec![location])));
-        if self.state.browser.active_location().as_ref() == Some(&parent) {
-            if let Some(depth) = self.state.browser.active_depth() {
-                if let Some(column) = self.state.columns.borrow().get(depth) {
-                    column.filter_entry.set_text("");
-                }
-                self.state.mode_views.borrow().clear_filter(depth);
-            }
-            self.state.browser.reload_active();
-        } else {
-            self.state.browser.navigate_location(parent, false);
-        }
+    /// Opens `directory` with `targets` selected, optionally opening the properties
+    /// dialog for the focused target once it is listed.
+    pub(crate) fn reveal_locations(
+        &self,
+        directory: Location,
+        targets: Vec<Location>,
+        properties: bool,
+    ) {
+        self.state.reveal_locations(directory, targets, properties);
     }
 
     pub(super) fn refresh_source_filter(&self) {

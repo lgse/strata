@@ -209,7 +209,10 @@ pub struct ColumnState {
     selection_anchor: Option<Location>,
     selection_target: Option<Location>,
     pending_selection: HashSet<Location>,
-    pending_reveal: Option<Location>,
+    /// Explicit reveal targets to select once listed; the first listed one takes the cursor.
+    pending_reveal: Vec<Location>,
+    /// The current selection came from `pending_reveal` and has not been published yet.
+    selection_from_reveal: bool,
     pub load_state: LoadState,
     pub truncated: bool,
     /// Whether entries here can be moved to Trash, resolved from a listed entry
@@ -377,7 +380,8 @@ impl NavigationState {
                 selection_anchor: None,
                 selection_target: None,
                 pending_selection: HashSet::new(),
-                pending_reveal: None,
+                pending_reveal: Vec::new(),
+                selection_from_reveal: false,
                 load_state: LoadState::Loading,
                 truncated: false,
                 can_trash: None,
@@ -452,7 +456,8 @@ impl NavigationState {
             selection_anchor: None,
             selection_target: None,
             pending_selection: HashSet::new(),
-            pending_reveal: None,
+            pending_reveal: Vec::new(),
+            selection_from_reveal: false,
             load_state: LoadState::Loading,
             truncated: false,
             can_trash: None,
@@ -469,17 +474,32 @@ impl NavigationState {
         }
     }
 
-    pub fn select_location_on_load(&mut self, depth: usize, location: Location) {
+    pub fn select_locations_on_load(&mut self, depth: usize, targets: Vec<Location>) {
         if let Some(column) = self.columns.get_mut(depth) {
             column.selected = None;
             column.selected_locations.clear();
             column.selection_anchor = None;
             column.selection_target = None;
             column.pending_selection.clear();
-            column.pending_reveal = Some(location);
+            column.pending_reveal = targets;
+            column.selection_from_reveal = false;
             column.select_first_on_load = false;
             column.load_cursor = None;
         }
+    }
+
+    pub fn reveal_pending(&self, depth: usize) -> bool {
+        self.columns
+            .get(depth)
+            .is_some_and(|column| !column.pending_reveal.is_empty())
+    }
+
+    /// Whether the selection about to be published came from reveal targets; the first
+    /// publication after the reveal resolves takes focus, later ones do not.
+    pub fn take_selection_from_reveal(&mut self, depth: usize) -> bool {
+        self.columns
+            .get_mut(depth)
+            .is_some_and(|column| std::mem::take(&mut column.selection_from_reveal))
     }
 
     pub fn take_resolved_location_reveal(
@@ -491,14 +511,35 @@ impl NavigationState {
         if column.request_id != request_id {
             return None;
         }
-        let target = column.pending_reveal.as_ref()?;
-        let is_hidden = column
+        let requested: HashSet<&Location> = column.pending_reveal.iter().collect();
+        let (mut listed, mut any_hidden) = (0, false);
+        for entry in column
             .entries
             .iter()
-            .find(|entry| &entry.location == target)?
-            .is_hidden;
-        column.pending_reveal = None;
-        Some(is_hidden)
+            .filter(|entry| requested.contains(&entry.location))
+        {
+            listed += 1;
+            any_hidden |= entry.is_hidden;
+        }
+        if listed == 0 {
+            return None;
+        }
+        if listed == requested.len() {
+            column.pending_reveal.clear();
+        }
+        Some(any_hidden)
+    }
+
+    pub fn lists_every_target(&self, depth: usize, targets: &[Location]) -> bool {
+        let requested: HashSet<&Location> = targets.iter().collect();
+        self.columns.get(depth).is_some_and(|column| {
+            column
+                .entries
+                .iter()
+                .filter(|entry| requested.contains(&entry.location))
+                .count()
+                == requested.len()
+        })
     }
 
     pub fn take_unresolved_location_reveal(
@@ -510,7 +551,16 @@ impl NavigationState {
         if column.request_id != request_id {
             return None;
         }
-        column.pending_reveal.take()
+        let targets = std::mem::take(&mut column.pending_reveal);
+        let requested: HashSet<&Location> = targets.iter().collect();
+        if column
+            .entries
+            .iter()
+            .any(|entry| requested.contains(&entry.location))
+        {
+            return None;
+        }
+        targets.into_iter().next()
     }
 
     pub fn apply_batch(
@@ -1045,12 +1095,16 @@ impl NavigationState {
             &mut column.selection_target,
             &mut column.selection_anchor,
             &mut column.load_cursor,
-            &mut column.pending_reveal,
         ] {
             *target = target
                 .as_ref()
                 .and_then(|target| target.rebase(&previous, &location));
         }
+        column.pending_reveal = column
+            .pending_reveal
+            .iter()
+            .filter_map(|target| target.rebase(&previous, &location))
+            .collect();
         column.location = location;
     }
 
@@ -1196,7 +1250,8 @@ impl NavigationState {
 
     pub fn fail(&mut self, request_id: RequestId, message: String) -> Option<usize> {
         let (depth, column) = self.column_for_request_mut(request_id)?;
-        column.pending_reveal = None;
+        column.pending_reveal.clear();
+        column.selection_from_reveal = false;
         column.load_state = LoadState::Error(message);
         Some(depth)
     }
@@ -1284,10 +1339,11 @@ impl NavigationState {
         };
         let location = column.entries[position].location.clone();
         let filled = column.load_cursor.is_none() && column.selected_locations.contains(&location);
+        column.pending_reveal.clear();
+        column.selection_from_reveal = false;
         if column.load_cursor.is_some() {
             column.selected_locations.clear();
             column.load_cursor = None;
-            column.pending_reveal = None;
         }
         if filled {
             column.selected_locations.remove(&location);
@@ -1315,7 +1371,8 @@ impl NavigationState {
         column.selected = Some(focused);
         column.selection_anchor = Some(column.entries[focused].location.clone());
         column.load_cursor = None;
-        column.pending_reveal = None;
+        column.pending_reveal.clear();
+        column.selection_from_reveal = false;
         self.active_column = Some(depth);
         Some(focused)
     }
@@ -1398,10 +1455,11 @@ impl NavigationState {
         let cursor = column
             .selected
             .filter(|position| order.contains(position))?;
+        column.pending_reveal.clear();
+        column.selection_from_reveal = false;
         if column.load_cursor.is_some() {
             column.selected_locations.clear();
             column.load_cursor = None;
-            column.pending_reveal = None;
         }
         self.visual = Some(VisualRange {
             depth,
@@ -2166,10 +2224,14 @@ fn focus_only(column: &mut ColumnState, position: usize) {
 fn place_cursor(column: &mut ColumnState, position: usize) -> bool {
     let moved = column.selected != Some(position);
     let mut cleared = false;
+    if moved {
+        // A resolved reveal still waiting for more batches must not pull the cursor back.
+        column.pending_reveal.clear();
+        column.selection_from_reveal = false;
+    }
     if moved && column.load_cursor.is_some() {
         column.selected_locations.clear();
         column.load_cursor = None;
-        column.pending_reveal = None;
         cleared = true;
     }
     column.selected = Some(position);
@@ -2248,22 +2310,31 @@ impl ColumnState {
     }
 
     fn resolve_pending_reveal(&mut self) {
-        let Some(target) = self.pending_reveal.as_ref() else {
+        if self.pending_reveal.is_empty() {
             return;
-        };
-        let Some(position) = self
+        }
+        let requested: HashSet<&Location> = self.pending_reveal.iter().collect();
+        let listed: HashMap<&Location, usize> = self
             .entries
             .iter()
-            .position(|entry| &entry.location == target)
+            .enumerate()
+            .filter(|(_, entry)| requested.contains(&entry.location))
+            .map(|(position, entry)| (&entry.location, position))
+            .collect();
+        let Some((position, first)) = self
+            .pending_reveal
+            .iter()
+            .find_map(|target| Some((*listed.get(target)?, target.clone())))
         else {
             return;
         };
-        let target = target.clone();
+        let selected: HashSet<Location> = listed.into_keys().cloned().collect();
         self.selected = Some(position);
-        self.selected_locations = HashSet::from([target.clone()]).into();
-        self.selection_anchor = Some(target);
+        self.selected_locations = selected.into();
+        self.selection_anchor = Some(first);
         self.selection_target = None;
         self.load_cursor = None;
+        self.selection_from_reveal = true;
     }
 
     fn restore_pending_selection(&mut self) {
@@ -2292,7 +2363,8 @@ impl ColumnState {
 fn adopt_selected_locations(column: &mut ColumnState, locations: HashSet<Location>, commit: bool) {
     if commit {
         column.load_cursor = None;
-        column.pending_reveal = None;
+        column.pending_reveal.clear();
+        column.selection_from_reveal = false;
     }
     column.selected_locations = locations.into();
 }

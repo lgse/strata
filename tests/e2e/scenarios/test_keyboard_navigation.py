@@ -308,6 +308,30 @@ def test_list_return_restores_nested_scroll_selection_and_keyboard_cursor(
         strata.wait_for_selection([next_name])
 
 
+@pytest.mark.preferences(browser_mode="list")
+def test_list_typed_file_path_beats_the_restored_position(strata):
+    root = strata.fixture.root.name
+    target = strata.fixture.path("documents") / "zz-typed-target.txt"
+    target.write_text("typed target\n")
+
+    strata.open_directory("documents")
+    strata.wait_for_focused_entry("notes.txt")
+    strata.keyboard.press("Down")
+    strata.wait_for_focused_entry("report.md")
+    strata.keyboard.press("alt+Left")
+    strata.wait_for_directory(root)
+
+    strata.keyboard.press("ctrl+l")
+    field = strata.editable_field()
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text(str(target))
+    strata.wait(lambda: field.text == str(target), "the typed file path")
+    strata.keyboard.press("Return")
+    strata.wait_for_directory("documents")
+    strata.wait_for_selection([target.name])
+    strata.wait_for_focused_entry(target.name)
+
+
 @pytest.mark.parametrize("mode", ALL_MODES)
 def test_shift_arrow_extends_the_selection(strata, mode):
     strata.select_entry("readme.md")

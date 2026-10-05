@@ -506,3 +506,22 @@ def test_floating_destination_chooser_transfers_files(strata, action, accept_lab
     strata.confirm_destination(chooser, accept_label)
     strata.wait(lambda: (destination / "todo.txt").exists(), "transfer into the chosen destination")
     assert source.exists() == (action == "Copy to…")
+
+
+@pytest.mark.preferences(browser_mode="list")
+def test_list_transfer_reveal_into_a_visited_folder_selects_the_copy(strata):
+    destination = strata.fixture.path("documents")
+    strata.open_directory("documents")
+    strata.wait_for_focused_entry("notes.txt")
+    strata.keyboard.press("Down")
+    strata.wait_for_focused_entry("report.md")
+    strata.keyboard.press("alt+Left")
+    strata.wait_for_directory(strata.fixture.root.name)
+    strata.open_context_menu("todo.txt")
+    strata.choose_menu_item("Copy to…")
+    chooser = strata.destination_chooser("Copy to")
+    strata.navigate_destination(chooser, destination)
+    strata.confirm_destination(chooser, "Copy here")
+    strata.wait(lambda: (destination / "todo.txt").exists(), "transfer into the chosen destination")
+    strata.wait_for_directory("documents")
+    strata.wait_for_selection(["todo.txt"])
