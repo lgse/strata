@@ -83,6 +83,16 @@ def test_invalid_archive_reports_damage_and_allows_another_extraction(strata, na
     strata.wait(lambda: strata.dialog() is None, "extraction progress dismissal")
 
 
+def test_folder_named_like_an_archive_offers_no_extract_actions(strata):
+    strata.fixture.path("photos.zip").mkdir()
+    strata.keyboard.press("ctrl+r")
+    strata.open_context_menu("photos.zip")
+    items = strata.menu_items()
+    assert "Extract here" not in items and "Extract to…" not in items, items
+    assert "Open in Terminal" in items or "Pin to sidebar" in items, items
+    strata.dismiss_menu()
+
+
 @pytest.mark.parametrize("source,password,member,contents", [
     (ARCHIVE_FIXTURES / "content-encrypted.7z", "secret", "protected.txt", "password retry works\n"),
     (Path(__file__).parents[2] / "fixtures/rar/encrypted.rar", "unrar", ".gitignore", "target\nCargo.lock\n"),
