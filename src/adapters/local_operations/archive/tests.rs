@@ -5,9 +5,8 @@ use super::{
     decoders::{extract_7z_from_reader, extract_tar},
     fixtures::{
         COMPRESSION_STAGE, EXTRACTION_STAGE, HomeTrashGuard, corrupt_gzip_trailer, expected_mode,
-        extract_zip, stages, never_cancelled, set_times_without_following,
-        tempdir_on_home_device, test_file_entry, write_7z_entries, write_tar_entries,
-        write_zip_stored,
+        extract_zip, never_cancelled, set_times_without_following, stages, tempdir_on_home_device,
+        test_file_entry, write_7z_entries, write_tar_entries, write_zip_stored,
     },
     listing::INVALID_ARCHIVE,
 };
@@ -370,7 +369,11 @@ fn strata_archives_round_trip_links_modes_and_times() -> Result<(), Box<dyn Erro
             assert!(
                 metadata.file_type().is_symlink(),
                 "{context}: `source/link` extracted as a {} of {} bytes, not as a symlink",
-                if metadata.is_dir() { "directory" } else { "regular file" },
+                if metadata.is_dir() {
+                    "directory"
+                } else {
+                    "regular file"
+                },
                 metadata.len()
             );
             assert_eq!(fs::read_link(&link)?, Path::new("run.sh"), "{context}");
@@ -909,7 +912,10 @@ fn failed_multi_root_extraction_keeps_partial_output_in_the_archive_folder()
             ),
             "{name}"
         );
-        assert!(stages(destination.path(), EXTRACTION_STAGE)?.is_empty(), "{name}");
+        assert!(
+            stages(destination.path(), EXTRACTION_STAGE)?.is_empty(),
+            "{name}"
+        );
         assert_eq!(
             fs::read(destination.path().join(stem).join("ok.txt"))?,
             b"ok"

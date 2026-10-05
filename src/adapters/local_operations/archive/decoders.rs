@@ -27,8 +27,7 @@ use gtk::glib;
 use super::{
     ARCHIVE_CANCELLED, ArchiveError, archive_failed, copy_with_big_buf,
     extraction::{
-        ArchiveOutcome, ExtractionSession, MAX_SYMLINK_TARGET_BYTES, MemberContent,
-        MemberMetadata,
+        ArchiveOutcome, ExtractionSession, MAX_SYMLINK_TARGET_BYTES, MemberContent, MemberMetadata,
     },
 };
 

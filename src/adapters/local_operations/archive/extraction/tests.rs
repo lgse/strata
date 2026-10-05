@@ -43,7 +43,11 @@ fn multi_root_members_keep_their_names_beside_existing_entries() -> Result<(), B
         MemberContent::File(&mut &b"contents"[..], Some(8)),
         MemberMetadata::NONE,
     )?;
-    session.extract_member("folder/empty", MemberContent::Directory, MemberMetadata::NONE)?;
+    session.extract_member(
+        "folder/empty",
+        MemberContent::Directory,
+        MemberMetadata::NONE,
+    )?;
     session.extract_member(
         "report.txt",
         MemberContent::File(&mut io::empty(), Some(0)),
@@ -409,7 +413,10 @@ fn pending_names_are_sanitized_and_kept_under_the_archive_folder() -> Result<(),
     assert_eq!(root.path().read_dir()?.count(), 4);
     assert_eq!(root.path().join("archive/folder").read_dir()?.count(), 1);
     assert!(root.path().join("folder").read_dir()?.next().is_none());
-    assert_eq!(fs::read_link(root.path().join("redirect"))?, Path::new("missing"));
+    assert_eq!(
+        fs::read_link(root.path().join("redirect"))?,
+        Path::new("missing")
+    );
     Ok(())
 }
 
@@ -464,7 +471,9 @@ fn failed_extract(session: ExtractionSession<'_>, result: Result<(), ArchiveErro
         matches!(result, Err(ArchiveError::Failed(_))),
         "expected a failed member, got {result:?}"
     );
-    match session.finish(result, || panic!("failure must not enumerate remaining members")) {
+    match session.finish(result, || {
+        panic!("failure must not enumerate remaining members")
+    }) {
         Err(ArchiveError::Failed(message)) => message,
         other => panic!("expected a failed extraction, got {other:?}"),
     }
@@ -506,12 +515,11 @@ fn declared_size_shortfall_removes_partial_output() -> Result<(), Box<dyn Error>
     let cancelled = AtomicBool::new(false);
     let mut session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
 
-    let result =
-        session.extract_member(
-            "short.txt",
-            MemberContent::File(&mut &b"four"[..], Some(8)),
-            MemberMetadata::NONE,
-        );
+    let result = session.extract_member(
+        "short.txt",
+        MemberContent::File(&mut &b"four"[..], Some(8)),
+        MemberMetadata::NONE,
+    );
     let message = failed_extract(session, result);
 
     assert_eq!(
@@ -643,7 +651,10 @@ fn second_member_preflight_uses_remaining_space() -> Result<(), Box<dyn Error>> 
         message.ends_with("free at the destination. Extracted entries remain in `archive`."),
         "{message}"
     );
-    assert_eq!(fs::read(root.path().join("archive/first.txt"))?, b"12345678");
+    assert_eq!(
+        fs::read(root.path().join("archive/first.txt"))?,
+        b"12345678"
+    );
     assert!(!root.path().join("archive/second.txt").exists());
     assert_eq!(root.path().read_dir()?.count(), 1);
     assert_eq!(progress.load(Ordering::Relaxed), 1);
@@ -705,8 +716,14 @@ fn unreported_free_space_skips_capacity_checks() -> Result<(), Box<dyn Error>> {
         session.finish(Ok(()), Vec::new)?,
         ArchiveOutcome::Completed(Some(name)) if name == "archive"
     ));
-    assert_eq!(fs::read(root.path().join("archive/declared.txt"))?, b"12345678");
-    assert_eq!(fs::read(root.path().join("archive/undeclared.txt"))?, b"12345678");
+    assert_eq!(
+        fs::read(root.path().join("archive/declared.txt"))?,
+        b"12345678"
+    );
+    assert_eq!(
+        fs::read(root.path().join("archive/undeclared.txt"))?,
+        b"12345678"
+    );
     assert_eq!(progress.load(Ordering::Relaxed), 2);
     Ok(())
 }
@@ -747,9 +764,17 @@ enum Expected {
     Cancelled(&'static [&'static str]),
 }
 
+/// Members written, finish result, expected outcome, files left in the destination.
+type OutcomeCase = (
+    &'static [&'static str],
+    Result<(), ArchiveError>,
+    Expected,
+    &'static [&'static str],
+);
+
 #[test]
 fn finish_publishes_every_outcome_shape() -> Result<(), Box<dyn Error>> {
-    let cases: [(&[&str], Result<(), ArchiveError>, Expected, &[&str]); 7] = [
+    let cases: [OutcomeCase; 7] = [
         (&[], Ok(()), Expected::Completed(None), &[]),
         (
             &["only.txt"],
@@ -826,7 +851,9 @@ fn finish_publishes_every_outcome_shape() -> Result<(), Box<dyn Error>> {
             }
         }
         for file in files {
-            let member = Path::new(file).strip_prefix("archive").unwrap_or(Path::new(file));
+            let member = Path::new(file)
+                .strip_prefix("archive")
+                .unwrap_or(Path::new(file));
             assert_eq!(
                 fs::read(root.path().join(file))?,
                 member.as_os_str().as_encoded_bytes(),
@@ -951,8 +978,16 @@ fn links_consume_no_space_and_hard_links_follow_renamed_targets() -> Result<(), 
             MemberMetadata::NONE,
         )?;
     }
-    session.extract_member("lnk", MemberContent::Symlink(b"data.txt"), MemberMetadata::NONE)?;
-    session.extract_member("hard", MemberContent::HardLink("data.txt"), MemberMetadata::NONE)?;
+    session.extract_member(
+        "lnk",
+        MemberContent::Symlink(b"data.txt"),
+        MemberMetadata::NONE,
+    )?;
+    session.extract_member(
+        "hard",
+        MemberContent::HardLink("data.txt"),
+        MemberMetadata::NONE,
+    )?;
 
     assert!(matches!(
         session.finish(Ok(()), Vec::new)?,
@@ -1006,8 +1041,7 @@ fn refused_link_members_leave_no_staging_behind() -> Result<(), Box<dyn Error>> 
 }
 
 #[test]
-fn directory_metadata_is_restored_deepest_first_only_on_completion() -> Result<(), Box<dyn Error>>
-{
+fn directory_metadata_is_restored_deepest_first_only_on_completion() -> Result<(), Box<dyn Error>> {
     let read_only = MemberMetadata {
         mode: Some(0o555),
         modified: Some(UNIX_EPOCH + Duration::from_secs(1_000_000_000)),
@@ -1079,7 +1113,11 @@ fn a_failed_directory_restore_leaves_restored_directories_writable() -> Result<(
         modified: Some(UNIX_EPOCH + Duration::from_secs(1_000_000_000)),
     };
     session.extract_member("top/ro", MemberContent::Directory, read_only)?;
-    session.extract_member("top/ro/child", MemberContent::Directory, MemberMetadata::NONE)?;
+    session.extract_member(
+        "top/ro/child",
+        MemberContent::Directory,
+        MemberMetadata::NONE,
+    )?;
 
     // `top/ro` is made read-only before its time fails. Unless it is made
     // writable again, its child cannot be removed with the directory-only output.

@@ -31,16 +31,21 @@ pub(in crate::adapters::local_operations::archive) fn extract_rar(
     cancelled: &AtomicBool,
 ) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
     let mut session = ExtractionSession::open(dest_dir, archive_name, progress, cancelled)?;
-    let outcome = stream_rar(archive_path, password, cancelled, |name, member, metadata| {
-        let directory = matches!(member, Member::Directory);
-        let content = match member {
-            Member::Directory => MemberContent::Directory,
-            Member::File { size, body } => MemberContent::File(body, Some(size)),
-        };
-        session
-            .extract_member(name, content, member_metadata(metadata, directory))
-            .map_err(|error| error.to_string())
-    });
+    let outcome = stream_rar(
+        archive_path,
+        password,
+        cancelled,
+        |name, member, metadata| {
+            let directory = matches!(member, Member::Directory);
+            let content = match member {
+                Member::Directory => MemberContent::Directory,
+                Member::File { size, body } => MemberContent::File(body, Some(size)),
+            };
+            session
+                .extract_member(name, content, member_metadata(metadata, directory))
+                .map_err(|error| error.to_string())
+        },
+    );
     let result = outcome.map_err(|message| stream_error(message, cancelled));
     session.finish(result, Vec::new)
 }

@@ -80,13 +80,21 @@ fn extractable_entries_require_a_local_regular_file() {
     let remote = Location::uri("sftp://example.com/photos.zip");
     for (location, kind, expected) in [
         (&local, EntryKind::File, Some(ArchiveFormat::Zip)),
-        (&local, EntryKind::FileSymbolicLink, Some(ArchiveFormat::Zip)),
+        (
+            &local,
+            EntryKind::FileSymbolicLink,
+            Some(ArchiveFormat::Zip),
+        ),
         (&local, EntryKind::Directory, None),
         (&local, EntryKind::DirectorySymbolicLink, None),
         (&local, EntryKind::Other, None),
         (&local, EntryKind::SymbolicLink, None),
         (&remote, EntryKind::File, None),
-        (&Location::local("/fixture/notes.txt"), EntryKind::File, None),
+        (
+            &Location::local("/fixture/notes.txt"),
+            EntryKind::File,
+            None,
+        ),
     ] {
         let mut candidate = entry(location.clone());
         candidate.kind = kind;

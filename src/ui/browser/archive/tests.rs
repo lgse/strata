@@ -45,7 +45,11 @@ fn archive_collisions_use_the_final_name() -> Result<(), Box<dyn std::error::Err
 fn quoted_names_never_drive_the_password_retry() {
     for (message, needs_password, wrong_password) in [
         ("The password may be incorrect.", true, true),
-        ("A password is required to extract this archive.", true, false),
+        (
+            "A password is required to extract this archive.",
+            true,
+            false,
+        ),
         (
             "The password may be incorrect. Extracted entries remain in `photos`.",
             true,
@@ -57,7 +61,11 @@ fn quoted_names_never_drive_the_password_retry() {
             false,
             false,
         ),
-        ("Archive member `a`b.txt` uses unsupported encryption", true, false),
+        (
+            "Archive member `a`b.txt` uses unsupported encryption",
+            true,
+            false,
+        ),
         (
             "Could not link `.password-store/incorrect` to `encrypted`: Operation not permitted",
             false,

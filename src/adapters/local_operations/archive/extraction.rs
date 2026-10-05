@@ -443,8 +443,9 @@ impl<'a> ExtractionSession<'a> {
                 Ok(ArchiveOutcome::Completed(Some(name)))
             }
             Err(ArchiveError::Cancelled) => {
-                let kept = keep_or_remove(directory, staging.as_ref(), archive_name, self.has_content)
-                    .map_err(ArchiveError::Failed)?;
+                let kept =
+                    keep_or_remove(directory, staging.as_ref(), archive_name, self.has_content)
+                        .map_err(ArchiveError::Failed)?;
                 let base = |relative: &Path| match &kept {
                     Some(folder) => Location::local(destination.join(folder).join(relative)),
                     None => Location::local(destination.join(relative)),
@@ -529,8 +530,7 @@ fn restore_directory_metadata(
 }
 
 fn validate_link_target(name: &str, target: &[u8]) -> Result<(), ArchiveError> {
-    if target.is_empty() || target.len() as u64 > MAX_SYMLINK_TARGET_BYTES || target.contains(&0)
-    {
+    if target.is_empty() || target.len() as u64 > MAX_SYMLINK_TARGET_BYTES || target.contains(&0) {
         return Err(archive_failed(format!(
             "Archive member `{name}` has an invalid symbolic link target"
         )));
@@ -542,7 +542,10 @@ fn validate_link_target(name: &str, target: &[u8]) -> Result<(), ArchiveError> {
 fn remove_empty(parent: &ExtractionDestination, staging: &Staging) -> Result<(), ArchiveError> {
     match parent.remove_empty_staging(&staging.name) {
         Ok(true) => Ok(()),
-        Ok(false) => Err(staging_kept("Some extracted entries were not published", staging)),
+        Ok(false) => Err(staging_kept(
+            "Some extracted entries were not published",
+            staging,
+        )),
         Err(error) => Err(archive_failed(error)),
     }
 }

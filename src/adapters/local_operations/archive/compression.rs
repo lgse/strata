@@ -178,7 +178,10 @@ fn source_metadata(source: &ArchiveSource) -> Result<(Option<SystemTime>, Option
     match source {
         ArchiveSource::File(file) | ArchiveSource::Directory(file) => {
             let metadata = file.metadata().map_err(|error| error.to_string())?;
-            Ok((metadata.modified().ok(), Some(metadata.permissions().mode())))
+            Ok((
+                metadata.modified().ok(),
+                Some(metadata.permissions().mode()),
+            ))
         }
         ArchiveSource::Symlink { modified, .. } => Ok((*modified, None)),
     }
@@ -265,9 +268,7 @@ fn open_archive_source<Fd: AsFd>(parent: &Fd, name: &OsStr) -> Result<ArchiveSou
             let modified = u64::try_from(stat.st_mtime)
                 .ok()
                 .zip(u32::try_from(stat.st_mtime_nsec).ok())
-                .and_then(|(seconds, nanos)| {
-                    UNIX_EPOCH.checked_add(Duration::new(seconds, nanos))
-                });
+                .and_then(|(seconds, nanos)| UNIX_EPOCH.checked_add(Duration::new(seconds, nanos)));
             Ok(ArchiveSource::Symlink {
                 target: PathBuf::from(OsString::from_vec(target.into_bytes())),
                 modified,

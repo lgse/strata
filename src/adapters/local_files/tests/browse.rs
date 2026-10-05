@@ -181,7 +181,11 @@ fn recent_symlink_targets_and_broken_links_are_distinguished() -> Result<(), Box
         .expect("the async test lock should not be poisoned");
     for (link, target, expected) in [
         ("file-link.zip", "archive.zip", EntryKind::FileSymbolicLink),
-        ("directory-link", "directory", EntryKind::DirectorySymbolicLink),
+        (
+            "directory-link",
+            "directory",
+            EntryKind::DirectorySymbolicLink,
+        ),
         ("broken-link.zip", "missing.zip", EntryKind::SymbolicLink),
     ] {
         let path = directory.path().join(link);

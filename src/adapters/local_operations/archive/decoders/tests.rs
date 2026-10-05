@@ -3,12 +3,11 @@
 use super::super::fixtures::{
     FixtureMember, always_cancelled, completed_extract, corrupt_gzip_trailer, expected_mode,
     extract_zip, never_cancelled, patch_zip_external_attributes, patch_zip_uncompressed_size,
-    split_into_gzip_members, write_7z, write_7z_entries, write_compression_fixture,
-    write_members, write_tar, write_tar_entries, write_zip, zip_extended_timestamp,
+    split_into_gzip_members, write_7z, write_7z_entries, write_compression_fixture, write_members,
+    write_tar, write_tar_entries, write_zip, zip_extended_timestamp,
 };
 use super::{
-    ArchiveError, ArchiveOutcome, extract_7z_from_reader, extract_tar,
-    extract_zip_from_archive,
+    ArchiveError, ArchiveOutcome, extract_7z_from_reader, extract_tar, extract_zip_from_archive,
 };
 use crate::{model::Location, services::ArchiveFormat};
 use gtk::glib;
@@ -41,7 +40,14 @@ fn decode_fixture(
         ArchiveFormat::Zip => {
             let file = fs::File::open(archive).map_err(super::archive_failed)?;
             let mut archive = zip::ZipArchive::new(file).map_err(super::zip_error)?;
-            extract_zip_from_archive(&mut archive, destination, name, password, progress, &cancelled)
+            extract_zip_from_archive(
+                &mut archive,
+                destination,
+                name,
+                password,
+                progress,
+                &cancelled,
+            )
         }
         ArchiveFormat::SevenZ => extract_7z_from_reader(
             fs::File::open(archive).map_err(super::archive_failed)?,
@@ -298,7 +304,10 @@ fn tar_extraction_skips_root_directories_and_preserves_contents() -> Result<(), 
                 b"contents"
             );
             assert_eq!(fs::read(destination.join("folder/keep.txt"))?, b"keep");
-            assert_eq!(fs::metadata(destination.join("content/empty.txt"))?.len(), 0);
+            assert_eq!(
+                fs::metadata(destination.join("content/empty.txt"))?.len(),
+                0
+            );
             assert_eq!(fs::read_dir(&destination)?.count(), 2);
         }
     }
@@ -356,7 +365,14 @@ fn tar_extraction_rejects_empty_paths_and_root_file_entries() -> Result<(), Box<
             let progress = Arc::new(AtomicUsize::new(0));
             assert!(
                 matches!(
-                    extract_tar(&archive, &destination, "archive", gzip, &progress, &never_cancelled()),
+                    extract_tar(
+                        &archive,
+                        &destination,
+                        "archive",
+                        gzip,
+                        &progress,
+                        &never_cancelled()
+                    ),
                     Err(ArchiveError::Failed(_))
                 ),
                 "accepted {entry_type:?} {name:?}, gzip={gzip}"
@@ -504,7 +520,10 @@ fn multi_root_zip_keeps_member_names_inside_the_fresh_folder() -> Result<(), Box
         fs::read(destination.join("content/report.txt"))?,
         b"replacement"
     );
-    assert_eq!(fs::read(destination.join("content/existing/new.txt"))?, b"new");
+    assert_eq!(
+        fs::read(destination.join("content/existing/new.txt"))?,
+        b"new"
+    );
     assert_eq!(fs::read(destination.join("report.txt"))?, b"original");
     assert_eq!(fs::read(destination.join("existing/old.txt"))?, b"old");
     assert_eq!(destination.join("existing").read_dir()?.count(), 1);
@@ -1058,7 +1077,10 @@ fn gzip_trailer_mismatch_fails_after_the_last_member() -> Result<(), Box<dyn Err
             &never_cancelled(),
         );
 
-        let kept = format!("{} Extracted entries remain in `content`.", super::INVALID_ARCHIVE);
+        let kept = format!(
+            "{} Extracted entries remain in `content`.",
+            super::INVALID_ARCHIVE
+        );
         assert!(
             matches!(&result, Err(ArchiveError::Failed(message)) if *message == kept),
             "{label}: {result:?}"
@@ -1109,7 +1131,10 @@ fn truncated_gzip_trailer_is_damaged() -> Result<(), Box<dyn Error>> {
         &never_cancelled(),
     );
 
-    let kept = format!("{} Extracted entries remain in `content`.", super::INVALID_ARCHIVE);
+    let kept = format!(
+        "{} Extracted entries remain in `content`.",
+        super::INVALID_ARCHIVE
+    );
     assert!(
         matches!(&result, Err(ArchiveError::Failed(message)) if *message == kept),
         "{result:?}"
@@ -1188,7 +1213,10 @@ fn corrupt_members_are_removed_without_losing_completed_or_existing_files()
         fs::write(destination.path().join("broken.txt"), b"original")?;
         let progress = Arc::new(AtomicUsize::new(0));
         let result = decode_fixture(&archive, destination.path(), format, None, &progress);
-        let kept = format!("{} Extracted entries remain in `archive`.", super::INVALID_ARCHIVE);
+        let kept = format!(
+            "{} Extracted entries remain in `archive`.",
+            super::INVALID_ARCHIVE
+        );
         assert!(
             matches!(&result, Err(ArchiveError::Failed(message)) if *message == kept),
             "{format:?}: {result:?}"
@@ -1768,7 +1796,10 @@ fn unsupported_tar_members_are_refused_with_their_name() -> Result<(), Box<dyn E
                 ),
             };
             assert!(message.contains(name), "{context}: {message}");
-            assert!(message.contains("remain in `special`"), "{context}: {message}");
+            assert!(
+                message.contains("remain in `special`"),
+                "{context}: {message}"
+            );
             assert_eq!(fs::read(output.join("ok.txt"))?, b"ok", "{context}");
             assert!(
                 fs::symlink_metadata(output.join(name)).is_err(),
@@ -1783,7 +1814,11 @@ fn unsupported_tar_members_are_refused_with_their_name() -> Result<(), Box<dyn E
 
 #[test]
 fn a_member_cannot_be_written_through_an_extracted_symlink() -> Result<(), Box<dyn Error>> {
-    for format in [ArchiveFormat::Zip, ArchiveFormat::SevenZ, ArchiveFormat::Tar] {
+    for format in [
+        ArchiveFormat::Zip,
+        ArchiveFormat::SevenZ,
+        ArchiveFormat::Tar,
+    ] {
         let context = format!("{format:?}");
         let root = tempfile::tempdir()?;
         let external = root.path().join("external");
@@ -1993,11 +2028,14 @@ fn zip_prefers_the_extended_timestamp_over_the_dos_time() -> Result<(), Box<dyn 
     writer.finish()?;
     let mut reader = zip::ZipArchive::new(fs::File::open(&archive)?)?;
     assert!(
-        reader.by_name("extended.txt")?.extra_data_fields().any(|field| matches!(
-            field,
-            zip::ExtraField::ExtendedTimestamp(stamp)
-                if stamp.mod_time().map(u64::from) == Some(STORED_TIME)
-        )),
+        reader
+            .by_name("extended.txt")?
+            .extra_data_fields()
+            .any(|field| matches!(
+                field,
+                zip::ExtraField::ExtendedTimestamp(stamp)
+                    if stamp.mod_time().map(u64::from) == Some(STORED_TIME)
+            )),
         "fixture lacks the UT field"
     );
     let destination = root.path().join("destination");
@@ -2056,7 +2094,10 @@ fn every_gzip_member_of_a_tar_gz_is_read_and_verified() -> Result<(), Box<dyn Er
         );
 
         if corrupt_second_member {
-            let kept = format!("{} Extracted entries remain in `content`.", super::INVALID_ARCHIVE);
+            let kept = format!(
+                "{} Extracted entries remain in `content`.",
+                super::INVALID_ARCHIVE
+            );
             assert!(
                 matches!(&result, Err(ArchiveError::Failed(message)) if *message == kept),
                 "{result:?}"

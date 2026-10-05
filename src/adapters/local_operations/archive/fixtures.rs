@@ -240,8 +240,7 @@ pub(super) fn split_into_gzip_members(path: &Path, split_at: usize) -> Result<()
     let tar = fs::read(path)?;
     let mut members = Vec::new();
     for part in [&tar[..split_at], &tar[split_at..]] {
-        let mut encoder =
-            flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
         encoder.write_all(part)?;
         members.extend(encoder.finish()?);
     }
@@ -473,12 +472,22 @@ fn tar_member_header(member: &FixtureMember<'_>) -> Result<tar::Header, Box<dyn 
             mode,
             modified,
             ..
-        } => (*name, tar::EntryType::Regular, mode.unwrap_or(0o644), *modified),
+        } => (
+            *name,
+            tar::EntryType::Regular,
+            mode.unwrap_or(0o644),
+            *modified,
+        ),
         FixtureMember::Directory {
             name,
             mode,
             modified,
-        } => (*name, tar::EntryType::Directory, mode.unwrap_or(0o755), *modified),
+        } => (
+            *name,
+            tar::EntryType::Directory,
+            mode.unwrap_or(0o755),
+            *modified,
+        ),
         FixtureMember::Symlink { name, target } => {
             header.set_link_name_literal(target)?;
             (*name, tar::EntryType::Symlink, 0o777, None)

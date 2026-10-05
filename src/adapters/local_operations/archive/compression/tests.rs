@@ -708,7 +708,11 @@ fn read_compressed_metadata(
                     mode: Some(entry.header().mode()? & 0o7777),
                     modified: Some(i64::try_from(entry.header().mtime()?)?),
                 };
-                assert!(result.insert(entry.path()?.into_owned(), metadata).is_none());
+                assert!(
+                    result
+                        .insert(entry.path()?.into_owned(), metadata)
+                        .is_none()
+                );
             }
         }
         ArchiveFormat::SevenZ => {
@@ -730,7 +734,11 @@ fn read_compressed_metadata(
                     None
                 };
                 let metadata = CompressedMetadata { mode, modified };
-                assert!(result.insert(PathBuf::from(entry.name()), metadata).is_none());
+                assert!(
+                    result
+                        .insert(PathBuf::from(entry.name()), metadata)
+                        .is_none()
+                );
             }
         }
         ArchiveFormat::Rar => return Err("RAR compression is not supported".into()),

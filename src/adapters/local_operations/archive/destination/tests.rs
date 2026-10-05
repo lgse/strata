@@ -78,12 +78,18 @@ fn publishing_reports_failures_without_discarding_staged_files() -> Result<(), B
         .expect_err("overlong folder name must fail");
 
     assert!(error.contains("Could not publish"), "{error}");
-    assert_eq!(fs::read(root.path().join(&staging).join("first.txt"))?, b"first.txt");
+    assert_eq!(
+        fs::read(root.path().join(&staging).join("first.txt"))?,
+        b"first.txt"
+    );
     assert_eq!(
         destination.publish_staging_as_folder(&staging, "bundle.zip")?,
         "bundle"
     );
-    assert_eq!(fs::read(root.path().join("bundle/first.txt"))?, b"first.txt");
+    assert_eq!(
+        fs::read(root.path().join("bundle/first.txt"))?,
+        b"first.txt"
+    );
     assert!(!root.path().join(&staging).exists());
     Ok(())
 }
@@ -198,7 +204,10 @@ fn destination_never_writes_through_symlinks() -> Result<(), Box<dyn Error>> {
 fn links_are_created_as_stored_and_renamed_on_conflict() -> Result<(), Box<dyn Error>> {
     let root = tempfile::tempdir()?;
     let destination = ExtractionDestination::open(root.path())?;
-    destination.create_file(Path::new("file.txt"), None)?.0.write_all(b"data")?;
+    destination
+        .create_file(Path::new("file.txt"), None)?
+        .0
+        .write_all(b"data")?;
     let modified = UNIX_EPOCH + Duration::from_secs(1_000_000_000);
 
     let first = destination.create_symlink(Path::new("lnk"), OsStr::new("/etc/passwd"), None)?;
@@ -213,7 +222,10 @@ fn links_are_created_as_stored_and_renamed_on_conflict() -> Result<(), Box<dyn E
     let path = |name: &str| root.path().join(name);
     assert_eq!(fs::read_link(path("lnk"))?, Path::new("/etc/passwd"));
     assert_eq!(fs::read_link(path("lnk (2)"))?, Path::new("file.txt"));
-    assert_eq!(fs::symlink_metadata(path("lnk (2)"))?.mtime(), 1_000_000_000);
+    assert_eq!(
+        fs::symlink_metadata(path("lnk (2)"))?.mtime(),
+        1_000_000_000
+    );
     assert_eq!(
         fs::metadata(path("nested/hard"))?.ino(),
         fs::metadata(path("file.txt"))?.ino()
@@ -285,11 +297,17 @@ fn fingerprint(path: &Path) -> Option<String> {
     })
 }
 
+type Setup = fn(&Path) -> std::io::Result<()>;
+
 #[test]
 fn publish_single_root_suffixes_only_on_a_real_collision() -> Result<(), Box<dyn Error>> {
-    let cases: [(&str, fn(&Path) -> std::io::Result<()>, &str); 4] = [
+    let cases: [(&str, Setup, &str); 4] = [
         ("none", |_| Ok(()), "readme.txt"),
-        ("file", |path| fs::write(path, b"existing"), "readme (2).txt"),
+        (
+            "file",
+            |path| fs::write(path, b"existing"),
+            "readme (2).txt",
+        ),
         ("directory", |path| fs::create_dir(path), "readme (2).txt"),
         (
             "dangling symlink",
@@ -308,8 +326,15 @@ fn publish_single_root_suffixes_only_on_a_real_collision() -> Result<(), Box<dyn
         let published = destination.publish_single_root(&staging, Path::new("readme.txt"))?;
 
         assert_eq!(published, OsString::from(expected), "{label}");
-        assert_eq!(fs::read(root.path().join(expected))?, b"readme.txt", "{label}");
-        assert!(root.path().join(&name).read_dir()?.next().is_none(), "{label}");
+        assert_eq!(
+            fs::read(root.path().join(expected))?,
+            b"readme.txt",
+            "{label}"
+        );
+        assert!(
+            root.path().join(&name).read_dir()?.next().is_none(),
+            "{label}"
+        );
         if before.is_some() {
             assert_eq!(fingerprint(&occupied), before, "{label}");
         }
@@ -351,7 +376,10 @@ fn remove_empty_staging_reports_non_empty() -> Result<(), Box<dyn Error>> {
     assert!(!destination.remove_empty_staging(&full)?);
 
     assert!(!root.path().join(&empty).exists());
-    assert_eq!(fs::read(root.path().join(&full).join("kept.txt"))?, b"kept.txt");
+    assert_eq!(
+        fs::read(root.path().join(&full).join("kept.txt"))?,
+        b"kept.txt"
+    );
     Ok(())
 }
 
@@ -383,7 +411,7 @@ fn no_replace_unsupported(
 
 #[test]
 fn publication_without_rename_noreplace_never_replaces_entries() -> Result<(), Box<dyn Error>> {
-    let cases: [(&str, &str, &str, fn(&Path) -> std::io::Result<()>, &str); 4] = [
+    let cases: [(&str, &str, &str, Setup, &str); 4] = [
         ("file", "readme.txt", "readme.txt", |_| Ok(()), "readme.txt"),
         (
             "file collision",
@@ -424,14 +452,24 @@ fn publication_without_rename_noreplace_never_replaces_entries() -> Result<(), B
         } else {
             Path::new(expected).join(inside)
         };
-        assert_eq!(fs::read(root.path().join(moved))?, member.as_bytes(), "{label}");
+        assert_eq!(
+            fs::read(root.path().join(moved))?,
+            member.as_bytes(),
+            "{label}"
+        );
         if before.is_some() {
             assert_eq!(fingerprint(&root.path().join(root_name)), before, "{label}");
         }
-        assert!(root.path().join(&name).read_dir()?.next().is_none(), "{label}");
+        assert!(
+            root.path().join(&name).read_dir()?.next().is_none(),
+            "{label}"
+        );
     }
 
-    for (label, taken, expected) in [("folder", false, "bundle"), ("folder collision", true, "bundle (1)")] {
+    for (label, taken, expected) in [
+        ("folder", false, "bundle"),
+        ("folder collision", true, "bundle (1)"),
+    ] {
         let root = tempfile::tempdir()?;
         if taken {
             fs::create_dir(root.path().join("bundle"))?;
@@ -440,14 +478,25 @@ fn publication_without_rename_noreplace_never_replaces_entries() -> Result<(), B
         let destination = ExtractionDestination::open(root.path())?;
         let (name, _) = stage(&destination, &["a.txt", "b.txt"])?;
 
-        let published =
-            destination.publish_staging_as_folder_with(&name, "bundle.zip", no_replace_unsupported)?;
+        let published = destination.publish_staging_as_folder_with(
+            &name,
+            "bundle.zip",
+            no_replace_unsupported,
+        )?;
 
         assert_eq!(published, expected, "{label}");
-        assert_eq!(fs::read(root.path().join(expected).join("a.txt"))?, b"a.txt", "{label}");
+        assert_eq!(
+            fs::read(root.path().join(expected).join("a.txt"))?,
+            b"a.txt",
+            "{label}"
+        );
         assert!(!root.path().join(&name).exists(), "{label}");
         if taken {
-            assert_eq!(fs::read(root.path().join("bundle/keep.txt"))?, b"keep", "{label}");
+            assert_eq!(
+                fs::read(root.path().join("bundle/keep.txt"))?,
+                b"keep",
+                "{label}"
+            );
             assert_eq!(root.path().join("bundle").read_dir()?.count(), 1, "{label}");
         }
     }
@@ -491,9 +540,21 @@ fn metadata_the_filesystem_cannot_store_is_skipped() -> Result<(), Box<dyn Error
         modified: Some(modified),
     };
     for (errno, calls, skipped) in [
-        (Errno::PERM, refusing::<{ Errno::PERM.raw_os_error() }>(), true),
-        (Errno::OPNOTSUPP, refusing::<{ Errno::OPNOTSUPP.raw_os_error() }>(), true),
-        (Errno::INVAL, refusing::<{ Errno::INVAL.raw_os_error() }>(), true),
+        (
+            Errno::PERM,
+            refusing::<{ Errno::PERM.raw_os_error() }>(),
+            true,
+        ),
+        (
+            Errno::OPNOTSUPP,
+            refusing::<{ Errno::OPNOTSUPP.raw_os_error() }>(),
+            true,
+        ),
+        (
+            Errno::INVAL,
+            refusing::<{ Errno::INVAL.raw_os_error() }>(),
+            true,
+        ),
         (Errno::IO, refusing::<{ Errno::IO.raw_os_error() }>(), false),
     ] {
         let root = tempfile::tempdir()?;

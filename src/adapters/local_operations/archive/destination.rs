@@ -578,11 +578,8 @@ impl ExtractionDestination {
             )
         })?;
         if let Some(times) = modified.and_then(timestamps)
-            && let Err(error) = best_effort((self.calls.set_link_times)(
-                parent.as_fd(),
-                &name,
-                &times,
-            ))
+            && let Err(error) =
+                best_effort((self.calls.set_link_times)(parent.as_fd(), &name, &times))
         {
             let _ = rustix::fs::unlinkat(&parent, &name, rustix::fs::AtFlags::empty());
             return Err(format!(

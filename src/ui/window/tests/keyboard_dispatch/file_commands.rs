@@ -910,7 +910,8 @@ fn tenxer_action_chord_compresses_and_extracts_archives() {
             .expect("fixture archive");
             let destination = directory.join("dest");
             std::fs::create_dir(&destination).expect("destination");
-            std::fs::create_dir(directory.join("nested.zip")).expect("folder named like an archive");
+            std::fs::create_dir(directory.join("nested.zip"))
+                .expect("folder named like an archive");
             fixture.view.refresh();
             wait_until(|| {
                 rendered_name(&fixture.view.widget(), "bundle.tar")

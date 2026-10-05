@@ -277,69 +277,67 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
             archive_progress_timer(request.id, &progress, &total, &task_cancelled, &emit);
         let work_progress = progress.clone();
         let work_total = total.clone();
-        let result = gio::spawn_blocking(move || {
-            match format {
-                Some(ArchiveFormat::Zip) => {
-                    let file = std::fs::File::open(&archive_path).map_err(|e| e.to_string())?;
-                    let mut archive = zip::ZipArchive::new(file).map_err(decoders::zip_error)?;
-                    work_total.store(archive.len(), Ordering::Relaxed);
-                    extract_zip_from_archive(
-                        &mut archive,
-                        &dest_dir,
-                        &display_name,
-                        password.as_deref(),
-                        &work_progress,
-                        &work_cancelled,
-                    )
-                }
-                Some(ArchiveFormat::SevenZ) => {
-                    let pw = password
-                        .as_deref()
-                        .map(sevenz_rust2::Password::from)
-                        .unwrap_or_default();
-                    let file = std::fs::File::open(&archive_path).map_err(|e| e.to_string())?;
-                    extract_7z_from_reader(
-                        file,
-                        &dest_dir,
-                        &display_name,
-                        pw,
-                        &work_progress,
-                        &work_cancelled,
-                    )
-                }
-                Some(ArchiveFormat::TarGz) => extract_tar(
-                    &archive_path,
-                    &dest_dir,
-                    &display_name,
-                    true,
-                    &work_progress,
-                    &work_cancelled,
-                ),
-                Some(ArchiveFormat::Tar) => extract_tar(
-                    &archive_path,
-                    &dest_dir,
-                    &display_name,
-                    false,
-                    &work_progress,
-                    &work_cancelled,
-                ),
-                #[cfg(not(feature = "rar"))]
-                Some(ArchiveFormat::Rar) => Err(archive_failed(
-                    "RAR support is disabled in this build.".to_owned(),
-                )),
-                #[cfg(feature = "rar")]
-                Some(ArchiveFormat::Rar) => extract_rar(
-                    &archive_path,
+        let result = gio::spawn_blocking(move || match format {
+            Some(ArchiveFormat::Zip) => {
+                let file = std::fs::File::open(&archive_path).map_err(|e| e.to_string())?;
+                let mut archive = zip::ZipArchive::new(file).map_err(decoders::zip_error)?;
+                work_total.store(archive.len(), Ordering::Relaxed);
+                extract_zip_from_archive(
+                    &mut archive,
                     &dest_dir,
                     &display_name,
                     password.as_deref(),
                     &work_progress,
                     &work_cancelled,
-                ),
-                None => Err(archive_failed(format!(
-                    "Unsupported archive format: {display_name}"
-                ))),
+                )
             }
+            Some(ArchiveFormat::SevenZ) => {
+                let pw = password
+                    .as_deref()
+                    .map(sevenz_rust2::Password::from)
+                    .unwrap_or_default();
+                let file = std::fs::File::open(&archive_path).map_err(|e| e.to_string())?;
+                extract_7z_from_reader(
+                    file,
+                    &dest_dir,
+                    &display_name,
+                    pw,
+                    &work_progress,
+                    &work_cancelled,
+                )
+            }
+            Some(ArchiveFormat::TarGz) => extract_tar(
+                &archive_path,
+                &dest_dir,
+                &display_name,
+                true,
+                &work_progress,
+                &work_cancelled,
+            ),
+            Some(ArchiveFormat::Tar) => extract_tar(
+                &archive_path,
+                &dest_dir,
+                &display_name,
+                false,
+                &work_progress,
+                &work_cancelled,
+            ),
+            #[cfg(not(feature = "rar"))]
+            Some(ArchiveFormat::Rar) => Err(archive_failed(
+                "RAR support is disabled in this build.".to_owned(),
+            )),
+            #[cfg(feature = "rar")]
+            Some(ArchiveFormat::Rar) => extract_rar(
+                &archive_path,
+                &dest_dir,
+                &display_name,
+                password.as_deref(),
+                &work_progress,
+                &work_cancelled,
+            ),
+            None => Err(archive_failed(format!(
+                "Unsupported archive format: {display_name}"
+            ))),
         })
         .await;
         timer_id.remove();
