@@ -58,6 +58,11 @@ fn quoted_names_never_drive_the_password_retry() {
             false,
         ),
         ("Archive member `a`b.txt` uses unsupported encryption", true, false),
+        (
+            "Could not link `.password-store/incorrect` to `encrypted`: Operation not permitted",
+            false,
+            false,
+        ),
     ] {
         assert_eq!(
             extract_error_needs_password(message),

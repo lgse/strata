@@ -384,14 +384,31 @@ impl ExtractionDestination {
     /// [`DIRECTORY`]: rustix::fs::OFlags::DIRECTORY
     /// [`NOFOLLOW`]: rustix::fs::OFlags::NOFOLLOW
     pub(super) fn create_directories(&self, path: &Path) -> Result<OwnedFd, String> {
+        self.descend(path, true)
+    }
+
+    /// Opens the existing directory `path` with the same confinement as
+    /// [`Self::create_directories`], creating nothing.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a component is missing, a symlink or not a directory.
+    pub(super) fn open_directory(&self, path: &Path) -> Result<OwnedFd, String> {
+        self.descend(path, false)
+    }
+
+    fn descend(&self, path: &Path, create: bool) -> Result<OwnedFd, String> {
         let mut directory = self.root.try_clone().map_err(|error| error.to_string())?;
         for component in path.components() {
             let Component::Normal(name) = component else {
                 return Err("Invalid internal extraction path".to_owned());
             };
-            match rustix::fs::mkdirat(&directory, name, rustix::fs::Mode::from_raw_mode(0o777)) {
-                Ok(()) | Err(rustix::io::Errno::EXIST) => {}
-                Err(error) => return Err(error.to_string()),
+            if create {
+                match rustix::fs::mkdirat(&directory, name, rustix::fs::Mode::from_raw_mode(0o777))
+                {
+                    Ok(()) | Err(rustix::io::Errno::EXIST) => {}
+                    Err(error) => return Err(error.to_string()),
+                }
             }
             directory = rustix::fs::openat(
                 &directory,
@@ -405,6 +422,18 @@ impl ExtractionDestination {
             .map_err(|error| error.to_string())?;
         }
         Ok(directory)
+    }
+
+    /// Creates the parents of `path` and picks an unused leaf name. Returns
+    /// the parent, the leaf and the relative path that leaf will have.
+    fn prepare_leaf(&self, path: &Path) -> Result<(OwnedFd, OsString, PathBuf), String> {
+        let parent = self.create_directories(path.parent().unwrap_or_else(|| Path::new("")))?;
+        let name = path
+            .file_name()
+            .ok_or_else(|| "Archive entry has no file name".to_owned())?;
+        let name = self.available_name(&parent, name)?;
+        let created = path.with_file_name(&name);
+        Ok((parent, name, created))
     }
 
     /// Creates the file at `path`, renaming the leaf if that name is already taken.
@@ -424,19 +453,7 @@ impl ExtractionDestination {
     /// [`EXCL`]: rustix::fs::OFlags::EXCL
     /// [`NOFOLLOW`]: rustix::fs::OFlags::NOFOLLOW
     pub(super) fn create_file(&self, path: &Path) -> Result<(std::fs::File, PathBuf), String> {
-        let parent = self.create_directories(path.parent().unwrap_or_else(|| Path::new("")))?;
-        let name = path
-            .file_name()
-            .ok_or_else(|| "Archive entry has no file name".to_owned())?;
-        let name = self.available_name(&parent, name)?;
-        let mut created = PathBuf::new();
-        if let Some(parent_path) = path
-            .parent()
-            .filter(|parent| !parent.as_os_str().is_empty())
-        {
-            created.push(parent_path);
-        }
-        created.push(&name);
+        let (parent, name, created) = self.prepare_leaf(path)?;
         let file = rustix::fs::openat(
             parent,
             name,
@@ -450,6 +467,62 @@ impl ExtractionDestination {
         .map(std::fs::File::from)
         .map_err(|error| error.to_string())?;
         Ok((file, created))
+    }
+
+    /// Creates a symlink at `path` pointing at `target` exactly as stored,
+    /// renaming the leaf like [`Self::create_file`]. The link is never
+    /// followed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the link cannot be created.
+    pub(super) fn create_symlink(&self, path: &Path, target: &OsStr) -> Result<PathBuf, String> {
+        let (parent, name, created) = self.prepare_leaf(path)?;
+        rustix::fs::symlinkat(target, &parent, &name).map_err(|error| {
+            format!(
+                "Could not create symbolic link `{}`: {error}",
+                created.display()
+            )
+        })?;
+        Ok(created)
+    }
+
+    /// Creates `path` as a hard link to `target`, an entry this destination
+    /// already holds. A symlink target is linked itself, never followed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `target` is not available here or the link fails.
+    pub(super) fn create_hard_link(&self, path: &Path, target: &Path) -> Result<PathBuf, String> {
+        let unavailable = |error: String| {
+            format!(
+                "Hard link `{}` refers to `{}`, which is not available in this extraction: {error}",
+                path.display(),
+                target.display()
+            )
+        };
+        let target_name = target
+            .file_name()
+            .ok_or_else(|| unavailable("no file name".to_owned()))?;
+        let target_parent = self
+            .open_directory(target.parent().unwrap_or_else(|| Path::new("")))
+            .map_err(unavailable)?;
+        let (parent, name, created) = self.prepare_leaf(path)?;
+        rustix::fs::linkat(
+            &target_parent,
+            target_name,
+            &parent,
+            &name,
+            rustix::fs::AtFlags::empty(),
+        )
+        .map_err(|error| {
+            format!(
+                "Could not link `{}` to `{}`: {error}",
+                created.display(),
+                target.display()
+            )
+        })?;
+        Ok(created)
     }
 
     /// Unlinks the leaf of `path` under the destination root.

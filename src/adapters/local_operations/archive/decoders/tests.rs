@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 
 use super::super::fixtures::{
-    always_cancelled, completed_extract, corrupt_gzip_trailer, extract_zip, never_cancelled,
-    patch_zip_uncompressed_size, write_7z, write_7z_entries, write_compression_fixture, write_tar,
-    write_tar_entries, write_zip,
+    FixtureMember, always_cancelled, completed_extract, corrupt_gzip_trailer, extract_zip,
+    never_cancelled, patch_zip_uncompressed_size, write_7z, write_7z_entries,
+    write_compression_fixture, write_members, write_tar, write_tar_entries, write_zip,
 };
 use super::{
     ArchiveError, ArchiveOutcome, extract_7z_from_reader, extract_tar,
@@ -15,6 +15,7 @@ use std::{
     ffi::OsStr,
     fs,
     io::{self, Cursor, Read, Seek, SeekFrom, Write},
+    os::unix::fs::MetadataExt,
     path::Path,
     sync::{
         Arc,
@@ -1570,6 +1571,233 @@ fn tar_extraction_skips_pax_global_headers() -> Result<(), Box<dyn Error>> {
         assert!(!destination.join("pax_global_header").exists());
         assert_eq!(fs::read(destination.join("project/README"))?, b"hello");
         assert_eq!(fs::read_dir(&destination)?.count(), 1);
+    }
+    Ok(())
+}
+
+fn names_in(directory: &Path) -> Result<Vec<String>, Box<dyn Error>> {
+    let mut names = fs::read_dir(directory)?
+        .map(|entry| Ok(entry?.file_name().to_string_lossy().into_owned()))
+        .collect::<Result<Vec<_>, io::Error>>()?;
+    names.sort();
+    Ok(names)
+}
+
+fn kind_of(path: &Path) -> String {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => "a symlink".to_owned(),
+        Ok(metadata) if metadata.is_dir() => "a directory".to_owned(),
+        Ok(metadata) => format!("a regular file of {} bytes", metadata.len()),
+        Err(error) => format!("missing ({error})"),
+    }
+}
+
+fn assert_symlink(path: &Path, target: &str, context: &str) -> Result<(), Box<dyn Error>> {
+    assert!(
+        fs::symlink_metadata(path)?.file_type().is_symlink(),
+        "{context}: `{}` extracted as {}, not as a symlink to `{target}`",
+        path.display(),
+        kind_of(path)
+    );
+    assert_eq!(fs::read_link(path)?, Path::new(target), "{context}");
+    Ok(())
+}
+
+#[test]
+fn links_extract_as_links_in_every_format() -> Result<(), Box<dyn Error>> {
+    for format in [
+        ArchiveFormat::Zip,
+        ArchiveFormat::SevenZ,
+        ArchiveFormat::Tar,
+        ArchiveFormat::TarGz,
+    ] {
+        let context = format!("{format:?}");
+        let root = tempfile::tempdir()?;
+        let archive = root.path().join(format!("links.{}", format.extension()));
+        let tar = matches!(format, ArchiveFormat::Tar | ArchiveFormat::TarGz);
+        // The ZIP writer refuses duplicate member names.
+        let duplicate = format != ArchiveFormat::Zip;
+        let mut members = vec![
+            FixtureMember::File {
+                name: "data.txt",
+                contents: b"payload",
+                mode: None,
+                modified: None,
+            },
+            FixtureMember::Symlink {
+                name: "lnk",
+                target: b"data.txt",
+            },
+            FixtureMember::Symlink {
+                name: "abs",
+                target: b"/etc/hostname",
+            },
+            FixtureMember::Symlink {
+                name: "nested/up",
+                target: b"../data.txt",
+            },
+        ];
+        if duplicate {
+            members.push(FixtureMember::Symlink {
+                name: "lnk",
+                target: b"abs",
+            });
+        }
+        if tar {
+            members.push(FixtureMember::HardLink {
+                name: "hard",
+                target: "data.txt",
+            });
+        }
+        write_members(&archive, format, &members)?;
+        let destination = root.path().join("destination");
+        fs::create_dir(&destination)?;
+        let progress = Arc::new(AtomicUsize::new(0));
+
+        let first_name = completed_extract(decode_fixture(
+            &archive,
+            &destination,
+            format,
+            None,
+            &progress,
+        )?)?;
+
+        assert_eq!(first_name.as_deref(), Some("links"), "{context}");
+        assert_eq!(progress.load(Ordering::Relaxed), members.len(), "{context}");
+        let output = destination.join("links");
+        assert_symlink(&output.join("lnk"), "data.txt", &context)?;
+        assert_symlink(&output.join("abs"), "/etc/hostname", &context)?;
+        assert_symlink(&output.join("nested/up"), "../data.txt", &context)?;
+        assert_eq!(fs::read(output.join("lnk"))?, b"payload", "{context}");
+        assert_eq!(fs::read(output.join("nested/up"))?, b"payload", "{context}");
+        if duplicate {
+            assert_symlink(&output.join("lnk (2)"), "abs", &context)?;
+        }
+        if tar {
+            assert_eq!(
+                fs::metadata(output.join("hard"))?.ino(),
+                fs::metadata(output.join("data.txt"))?.ino(),
+                "{context}: `hard` extracted as {}, not as a hard link to `data.txt`",
+                kind_of(&output.join("hard"))
+            );
+            assert_eq!(fs::read(output.join("hard"))?, b"payload", "{context}");
+        }
+        assert_eq!(names_in(&destination)?, ["links"], "{context}");
+    }
+    Ok(())
+}
+
+#[test]
+fn unsupported_tar_members_are_refused_with_their_name() -> Result<(), Box<dyn Error>> {
+    for format in [ArchiveFormat::Tar, ArchiveFormat::TarGz] {
+        for (name, entry_type) in [
+            ("pipe", Some(tar::EntryType::Fifo)),
+            ("char-device", Some(tar::EntryType::Char)),
+            ("block-device", Some(tar::EntryType::Block)),
+            ("dangling", None),
+        ] {
+            let context = format!("{format:?} {name}");
+            let root = tempfile::tempdir()?;
+            let archive = root.path().join(format!("special.{}", format.extension()));
+            let gzip = format == ArchiveFormat::TarGz;
+            match entry_type {
+                Some(entry_type) => write_tar_entries(
+                    &archive,
+                    &[
+                        (tar::EntryType::Regular, "ok.txt", b"ok"),
+                        (entry_type, name, b""),
+                    ],
+                    gzip,
+                )?,
+                None => write_members(
+                    &archive,
+                    format,
+                    &[
+                        FixtureMember::File {
+                            name: "ok.txt",
+                            contents: b"ok",
+                            mode: None,
+                            modified: None,
+                        },
+                        FixtureMember::HardLink {
+                            name,
+                            target: "missing.txt",
+                        },
+                    ],
+                )?,
+            }
+            let destination = root.path().join("destination");
+            fs::create_dir(&destination)?;
+            let progress = Arc::new(AtomicUsize::new(0));
+
+            let result = decode_fixture(&archive, &destination, format, None, &progress);
+
+            let output = destination.join("special");
+            let message = match result {
+                Err(ArchiveError::Failed(message)) => message,
+                other => panic!(
+                    "{context}: expected a failure naming `{name}`, got {other:?}; \
+                     `special/{name}` is {}",
+                    kind_of(&output.join(name))
+                ),
+            };
+            assert!(message.contains(name), "{context}: {message}");
+            assert!(message.contains("remain in `special`"), "{context}: {message}");
+            assert_eq!(fs::read(output.join("ok.txt"))?, b"ok", "{context}");
+            assert!(
+                fs::symlink_metadata(output.join(name)).is_err(),
+                "{context}"
+            );
+            assert!(!destination.join("ok.txt").exists(), "{context}");
+            assert_eq!(progress.load(Ordering::Relaxed), 1, "{context}");
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn a_member_cannot_be_written_through_an_extracted_symlink() -> Result<(), Box<dyn Error>> {
+    for format in [ArchiveFormat::Zip, ArchiveFormat::SevenZ, ArchiveFormat::Tar] {
+        let context = format!("{format:?}");
+        let root = tempfile::tempdir()?;
+        let external = root.path().join("external");
+        fs::create_dir(&external)?;
+        let target = external.to_str().ok_or("non-UTF-8 temporary path")?;
+        let archive = root.path().join(format!("escape.{}", format.extension()));
+        write_members(
+            &archive,
+            format,
+            &[
+                FixtureMember::Symlink {
+                    name: "lnk",
+                    target: target.as_bytes(),
+                },
+                FixtureMember::File {
+                    name: "lnk/escape.txt",
+                    contents: b"escaped",
+                    mode: None,
+                    modified: None,
+                },
+            ],
+        )?;
+        let destination = root.path().join("destination");
+        fs::create_dir(&destination)?;
+
+        let result = decode_fixture(
+            &archive,
+            &destination,
+            format,
+            None,
+            &Arc::new(AtomicUsize::new(0)),
+        );
+
+        assert!(
+            matches!(result, Err(ArchiveError::Failed(_))),
+            "{context}: {result:?}; destination holds {:?}",
+            names_in(&destination)?
+        );
+        assert!(!external.join("escape.txt").exists(), "{context}");
+        assert_symlink(&destination.join("escape/lnk"), target, &context)?;
     }
     Ok(())
 }

@@ -12,9 +12,10 @@
 //! outcome; dropping a session without `finish`, as a decoder panic does,
 //! publishes it as a failed extraction.
 use std::{
-    collections::HashSet,
-    ffi::OsString,
+    collections::{HashMap, HashSet},
+    ffi::{OsStr, OsString},
     io::{Read, Write},
+    os::unix::ffi::OsStrExt,
     path::{Path, PathBuf},
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
 };
@@ -29,9 +30,17 @@ use super::{
 #[cfg(test)]
 mod tests;
 
+/// Linux `PATH_MAX` less its terminating NUL; longer symlink targets are refused.
+pub(super) const MAX_SYMLINK_TARGET_BYTES: u64 = 4095;
+
 pub(super) enum MemberContent<'a> {
     Directory,
     File(&'a mut dyn Read, Option<u64>),
+    /// Target bytes exactly as stored; created with `symlinkat`, never followed.
+    Symlink(&'a [u8]),
+    /// Archive path of an earlier member. Resolved through the members this
+    /// session created, never against the filesystem.
+    HardLink(&'a str),
 }
 
 /// Result of an extract that may stop after writing some members.
@@ -74,6 +83,13 @@ pub(super) struct ExtractionSession<'a> {
     interrupted: Option<InterruptedMember>,
     written: u64,
     available_bytes: Option<u64>,
+    /// Set by decoders whose format has hard links.
+    records_hard_link_targets: bool,
+    /// Sanitized archive path of every non-directory member, mapped to the
+    /// staging-relative path created for it, when hard links are possible.
+    /// Kept for the whole session so a hard link in any later position can
+    /// resolve its target.
+    created_names: HashMap<PathBuf, PathBuf>,
 }
 
 impl<'a> ExtractionSession<'a> {
@@ -118,7 +134,15 @@ impl<'a> ExtractionSession<'a> {
             interrupted: None,
             written: 0,
             available_bytes,
+            records_hard_link_targets: false,
+            created_names: HashMap::new(),
         }
+    }
+
+    /// Keeps the created path of every member so later hard links can
+    /// resolve to it. Only formats with hard links need the memory.
+    pub(super) fn record_hard_link_targets(&mut self) {
+        self.records_hard_link_targets = true;
     }
 
     #[cfg(test)]
@@ -176,8 +200,23 @@ impl<'a> ExtractionSession<'a> {
         Ok(())
     }
 
+    /// A hard link may only name a member this session already created.
+    fn hard_link_target(&self, name: &str, target: &str) -> Result<PathBuf, ArchiveError> {
+        sanitized_archive_path(target)
+            .ok()
+            .and_then(|path| self.created_names.get(&path))
+            .cloned()
+            .ok_or_else(|| {
+                archive_failed(format!(
+                    "Archive member `{name}` is a hard link to `{target}`, which was not extracted"
+                ))
+            })
+    }
+
     /// Processes one member. On error the decoder must stop and call `finish`.
     /// Names retain the adapters' legacy string conversion until decoder evaluation.
+    /// Links are created without following; hard links resolve only to members
+    /// this session created.
     pub(super) fn extract_member(
         &mut self,
         name: &str,
@@ -193,6 +232,15 @@ impl<'a> ExtractionSession<'a> {
         if let MemberContent::File(_, Some(declared)) = &content {
             self.ensure_member_fits(name, *declared)?;
         }
+        // Checked before staging exists, so a refused first member leaves nothing behind.
+        let hard_link_target = match &content {
+            MemberContent::Symlink(target) => {
+                validate_link_target(name, target)?;
+                None
+            }
+            MemberContent::HardLink(target) => Some(self.hard_link_target(name, target)?),
+            _ => None,
+        };
         self.ensure_staging()?;
         let staging = &self
             .staging
@@ -200,28 +248,32 @@ impl<'a> ExtractionSession<'a> {
             .expect("staging exists after ensure_staging")
             .directory;
         let outpath = self.resolver.resolve(staging, &path)?;
+        let is_directory = matches!(content, MemberContent::Directory);
         let created = match content {
             MemberContent::Directory => {
                 staging.create_directories(&outpath)?;
                 outpath
             }
-            content => {
+            MemberContent::Symlink(target) => {
+                staging.create_symlink(&outpath, OsStr::from_bytes(target))?
+            }
+            MemberContent::HardLink(_) => staging.create_hard_link(
+                &outpath,
+                &hard_link_target.expect("hard links are resolved before staging"),
+            )?,
+            MemberContent::File(reader, declared_size) => {
                 let (mut file, created) = staging.create_file(&outpath)?;
-                let result = match content {
-                    MemberContent::File(reader, declared_size) => copy_member(
-                        name,
-                        reader,
-                        &mut file,
-                        self.cancelled,
-                        declared_size,
-                        self.remaining(),
-                    ),
-                    MemberContent::Directory => unreachable!(),
-                };
+                let result = copy_member(
+                    name,
+                    reader,
+                    &mut file,
+                    self.cancelled,
+                    declared_size,
+                    self.remaining(),
+                );
                 match result {
                     Ok(copied) => {
                         self.written = self.written.saturating_add(copied);
-                        self.has_content = true;
                         created
                     }
                     Err(error) => {
@@ -242,6 +294,12 @@ impl<'a> ExtractionSession<'a> {
                 }
             }
         };
+        if !is_directory {
+            self.has_content = true;
+            if self.records_hard_link_targets {
+                self.created_names.insert(path, created.clone());
+            }
+        }
         if let Some(root) = created.components().next() {
             let root = PathBuf::from(root.as_os_str());
             if self.seen_roots.insert(root.clone()) {
@@ -362,6 +420,16 @@ fn failure_message(message: String, kept: Result<Option<String>, String>) -> Str
         Ok(None) => message,
         Err(error) => append_sentence(&message, &error),
     }
+}
+
+fn validate_link_target(name: &str, target: &[u8]) -> Result<(), ArchiveError> {
+    if target.is_empty() || target.len() as u64 > MAX_SYMLINK_TARGET_BYTES || target.contains(&0)
+    {
+        return Err(archive_failed(format!(
+            "Archive member `{name}` has an invalid symbolic link target"
+        )));
+    }
+    Ok(())
 }
 
 /// After a completed publish the staging folder must be empty.

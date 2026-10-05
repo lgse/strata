@@ -352,3 +352,234 @@ pub(super) fn write_zip_stored(
     writer.finish()?;
     Ok(())
 }
+
+/// One archive member with optional stored mode and modification time.
+pub(super) enum FixtureMember<'a> {
+    File {
+        name: &'a str,
+        contents: &'a [u8],
+        mode: Option<u32>,
+        modified: Option<u64>,
+    },
+    Directory {
+        name: &'a str,
+        mode: Option<u32>,
+        modified: Option<u64>,
+    },
+    Symlink {
+        name: &'a str,
+        target: &'a [u8],
+    },
+    HardLink {
+        name: &'a str,
+        target: &'a str,
+    },
+}
+
+const S_IFREG: u32 = 0o100_000;
+const S_IFDIR: u32 = 0o040_000;
+const S_IFLNK: u32 = 0o120_000;
+
+/// Info-ZIP extended timestamp (`UT`, `0x5455`) carrying only the modification time.
+pub(super) fn zip_extended_timestamp(seconds: u64) -> Result<Vec<u8>, Box<dyn Error>> {
+    let mut field = vec![1];
+    field.extend_from_slice(&i32::try_from(seconds)?.to_le_bytes());
+    Ok(field)
+}
+
+/// Builds `path` from `members` in archive order. ZIP members carry the DOS
+/// default time and, when `modified` is set, a `UT` field; 7z members carry the
+/// p7zip Unix-mode attribute (`0x8000 | st_mode << 16`).
+pub(super) fn write_members(
+    path: &Path,
+    format: ArchiveFormat,
+    members: &[FixtureMember<'_>],
+) -> Result<(), Box<dyn Error>> {
+    match format {
+        ArchiveFormat::Zip => write_zip_members(path, members),
+        ArchiveFormat::Tar => write_tar_members(path, members, false),
+        ArchiveFormat::TarGz => write_tar_members(path, members, true),
+        ArchiveFormat::SevenZ => write_7z_members(path, members),
+        ArchiveFormat::Rar => Err("RAR fixtures cannot be written".into()),
+    }
+}
+
+fn write_zip_members(path: &Path, members: &[FixtureMember<'_>]) -> Result<(), Box<dyn Error>> {
+    let mut writer = zip::ZipWriter::new(fs::File::create(path)?);
+    for member in members {
+        let mut options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored)
+            .last_modified_time(zip::DateTime::DEFAULT)
+            .into_full_options();
+        match member {
+            FixtureMember::File {
+                name,
+                contents,
+                mode,
+                modified,
+            } => {
+                if let Some(mode) = mode {
+                    options = options.unix_permissions(*mode);
+                }
+                if let Some(seconds) = modified {
+                    options.add_extra_data(0x5455, zip_extended_timestamp(*seconds)?, false)?;
+                }
+                writer.start_file(*name, options)?;
+                writer.write_all(contents)?;
+            }
+            FixtureMember::Directory {
+                name,
+                mode,
+                modified,
+            } => {
+                if let Some(mode) = mode {
+                    options = options.unix_permissions(*mode);
+                }
+                if let Some(seconds) = modified {
+                    options.add_extra_data(0x5455, zip_extended_timestamp(*seconds)?, false)?;
+                }
+                writer.add_directory(*name, options)?;
+            }
+            FixtureMember::Symlink { name, target } => {
+                writer.add_symlink(*name, std::str::from_utf8(target)?, options)?;
+            }
+            FixtureMember::HardLink { .. } => return Err("ZIP fixtures have no hard links".into()),
+        }
+    }
+    writer.finish()?;
+    Ok(())
+}
+
+fn tar_member_header(member: &FixtureMember<'_>) -> Result<tar::Header, Box<dyn Error>> {
+    let mut header = tar::Header::new_gnu();
+    let (name, entry_type, mode, modified) = match member {
+        FixtureMember::File {
+            name,
+            mode,
+            modified,
+            ..
+        } => (*name, tar::EntryType::Regular, mode.unwrap_or(0o644), *modified),
+        FixtureMember::Directory {
+            name,
+            mode,
+            modified,
+        } => (*name, tar::EntryType::Directory, mode.unwrap_or(0o755), *modified),
+        FixtureMember::Symlink { name, target } => {
+            header.set_link_name_literal(target)?;
+            (*name, tar::EntryType::Symlink, 0o777, None)
+        }
+        FixtureMember::HardLink { name, target } => {
+            header.set_link_name_literal(target.as_bytes())?;
+            (*name, tar::EntryType::Link, 0o644, None)
+        }
+    };
+    header.set_path(name)?;
+    header.set_entry_type(entry_type);
+    header.set_mode(mode);
+    header.set_mtime(modified.unwrap_or(0));
+    Ok(header)
+}
+
+fn append_tar_members<W: Write>(
+    builder: &mut tar::Builder<W>,
+    members: &[FixtureMember<'_>],
+) -> Result<(), Box<dyn Error>> {
+    for member in members {
+        let mut header = tar_member_header(member)?;
+        let contents: &[u8] = match member {
+            FixtureMember::File { contents, .. } => contents,
+            _ => &[],
+        };
+        header.set_size(contents.len() as u64);
+        header.set_cksum();
+        builder.append(&header, contents)?;
+    }
+    Ok(())
+}
+
+fn write_tar_members(
+    path: &Path,
+    members: &[FixtureMember<'_>],
+    gzip: bool,
+) -> Result<(), Box<dyn Error>> {
+    let file = fs::File::create(path)?;
+    if gzip {
+        let mut builder = tar::Builder::new(flate2::write::GzEncoder::new(
+            file,
+            flate2::Compression::default(),
+        ));
+        append_tar_members(&mut builder, members)?;
+        builder.into_inner()?.finish()?;
+    } else {
+        let mut builder = tar::Builder::new(file);
+        append_tar_members(&mut builder, members)?;
+        builder.finish()?;
+    }
+    Ok(())
+}
+
+fn seven_z_attributes(entry: &mut sevenz_rust2::ArchiveEntry, st_mode: u32) {
+    entry.has_windows_attributes = true;
+    entry.windows_attributes = 0x8000 | (st_mode << 16);
+}
+
+fn seven_z_modified(
+    entry: &mut sevenz_rust2::ArchiveEntry,
+    modified: Option<u64>,
+) -> Result<(), Box<dyn Error>> {
+    if let Some(seconds) = modified {
+        entry.has_last_modified_date = true;
+        entry.last_modified_date = sevenz_rust2::NtTime::try_from(
+            std::time::UNIX_EPOCH + std::time::Duration::from_secs(seconds),
+        )
+        .map_err(|error| format!("{error:?}"))?;
+    } else {
+        entry.has_last_modified_date = false;
+    }
+    Ok(())
+}
+
+fn write_7z_members(path: &Path, members: &[FixtureMember<'_>]) -> Result<(), Box<dyn Error>> {
+    let mut writer = sevenz_rust2::ArchiveWriter::create(path)?;
+    writer.set_content_methods(vec![sevenz_rust2::EncoderConfiguration::new(
+        sevenz_rust2::EncoderMethod::COPY,
+    )]);
+    for member in members {
+        match member {
+            FixtureMember::File {
+                name,
+                contents,
+                mode,
+                modified,
+            } => {
+                let mut entry = sevenz_rust2::ArchiveEntry::new_file(name);
+                if let Some(mode) = mode {
+                    seven_z_attributes(&mut entry, S_IFREG | mode);
+                }
+                seven_z_modified(&mut entry, *modified)?;
+                writer.push_archive_entry(entry, Some(Cursor::new(*contents)))?;
+            }
+            FixtureMember::Directory {
+                name,
+                mode,
+                modified,
+            } => {
+                let mut entry = sevenz_rust2::ArchiveEntry::new_directory(name);
+                if let Some(mode) = mode {
+                    seven_z_attributes(&mut entry, S_IFDIR | mode);
+                }
+                seven_z_modified(&mut entry, *modified)?;
+                writer.push_archive_entry::<&[u8]>(entry, None)?;
+            }
+            FixtureMember::Symlink { name, target } => {
+                let mut entry = sevenz_rust2::ArchiveEntry::new_file(name);
+                seven_z_attributes(&mut entry, S_IFLNK | 0o777);
+                seven_z_modified(&mut entry, None)?;
+                writer.push_archive_entry(entry, Some(Cursor::new(*target)))?;
+            }
+            FixtureMember::HardLink { .. } => return Err("7z fixtures have no hard links".into()),
+        }
+    }
+    writer.finish()?;
+    Ok(())
+}

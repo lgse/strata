@@ -11,6 +11,7 @@
 //! length trailer is verified.
 
 use std::{
+    borrow::Cow,
     collections::HashMap,
     io::{Read, Seek},
     path::Path,
@@ -22,7 +23,7 @@ use std::{
 
 use super::{
     ARCHIVE_CANCELLED, ArchiveError, archive_failed, copy_with_big_buf,
-    extraction::{ArchiveOutcome, ExtractionSession, MemberContent},
+    extraction::{ArchiveOutcome, ExtractionSession, MAX_SYMLINK_TARGET_BYTES, MemberContent},
 };
 
 #[cfg(feature = "rar")]
@@ -112,6 +113,21 @@ fn archive_read_error(error: std::io::Error, password_supplied: bool) -> std::io
     }
 }
 
+/// 7z attribute bit with which p7zip marks `st_mode` stored in the upper 16 bits.
+pub(super) const FILE_ATTRIBUTE_UNIX_EXTENSION: u32 = 0x8000;
+const S_IFMT: u32 = 0o170_000;
+const S_IFLNK: u32 = 0o120_000;
+
+/// Reads at most one byte past the limit; the session refuses longer targets.
+fn read_link_target(reader: &mut impl Read) -> Result<Vec<u8>, ArchiveError> {
+    let mut target = Vec::new();
+    reader
+        .take(MAX_SYMLINK_TARGET_BYTES + 1)
+        .read_to_end(&mut target)
+        .map_err(archive_failed)?;
+    Ok(target)
+}
+
 // Translate only decoder reads; destination writes retain their own errors.
 struct ArchiveReader<R> {
     inner: R,
@@ -173,12 +189,17 @@ pub(super) fn extract_zip_from_archive(
             let name = entry.name().to_owned();
             let declared_size = entry.size();
             let directory = entry.is_dir();
+            let symlink = !directory && entry.is_symlink();
             let mut reader = ArchiveReader {
                 inner: &mut entry,
                 password_supplied,
             };
+            let target;
             let content = if directory {
                 MemberContent::Directory
+            } else if symlink {
+                target = read_link_target(&mut reader)?;
+                MemberContent::Symlink(&target)
             } else {
                 MemberContent::File(&mut reader, Some(declared_size))
             };
@@ -205,6 +226,7 @@ pub(super) fn extract_tar(
     cancelled: &AtomicBool,
 ) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
     let mut session = ExtractionSession::open(dest_dir, archive_name, progress, cancelled)?;
+    session.record_hard_link_targets();
     let file = std::fs::File::open(archive_path).map_err(archive_failed)?;
     let reader: Box<dyn std::io::Read> = if gzip {
         Box::new(flate2::read::GzDecoder::new(file))
@@ -242,17 +264,39 @@ pub(super) fn extract_tar(
                 continue;
             }
             let name = entry.path().map_err(archive_failed)?;
-            let directory = entry.header().entry_type().is_dir();
-            if directory && name == Path::new(".") {
+            let entry_type = entry.header().entry_type();
+            if entry_type.is_dir() && name == Path::new(".") {
                 continue;
             }
             let declared_size = entry.size();
             let name = name.to_string_lossy().into_owned();
+            let stored_link = entry.link_name_bytes().map(Cow::into_owned);
+            let link_name = || {
+                stored_link.as_deref().ok_or_else(|| {
+                    archive_failed(format!("Archive member `{name}` has no link target"))
+                })
+            };
+            let hard_link_target;
             let mut reader = ArchiveReader::new(&mut entry);
-            let content = if directory {
-                MemberContent::Directory
-            } else {
-                MemberContent::File(&mut reader, Some(declared_size))
+            let content = match entry_type {
+                entry_type if entry_type.is_dir() => MemberContent::Directory,
+                tar::EntryType::Symlink => MemberContent::Symlink(link_name()?),
+                // A hard link that carries data is written as that data.
+                tar::EntryType::Link if declared_size == 0 => {
+                    hard_link_target = String::from_utf8_lossy(link_name()?).into_owned();
+                    MemberContent::HardLink(&hard_link_target)
+                }
+                tar::EntryType::Fifo => {
+                    return Err(archive_failed(format!(
+                        "Archive member `{name}` is a FIFO and cannot be extracted"
+                    )));
+                }
+                tar::EntryType::Char | tar::EntryType::Block => {
+                    return Err(archive_failed(format!(
+                        "Archive member `{name}` is a device and cannot be extracted"
+                    )));
+                }
+                _ => MemberContent::File(&mut reader, Some(declared_size)),
             };
             session.extract_member(&name, content)?;
         }
@@ -312,8 +356,16 @@ pub(super) fn extract_7z_from_reader(
             inner: reader,
             password_supplied,
         };
+        let unix_mode = (entry.has_windows_attributes
+            && entry.windows_attributes & FILE_ATTRIBUTE_UNIX_EXTENSION != 0)
+            .then_some(entry.windows_attributes >> 16);
+        let symlink = !entry.is_directory && unix_mode.is_some_and(|mode| mode & S_IFMT == S_IFLNK);
+        let target;
         let content = if entry.is_directory {
             MemberContent::Directory
+        } else if symlink {
+            target = read_link_target(&mut reader).map_err(sevenz_error)?;
+            MemberContent::Symlink(&target)
         } else {
             MemberContent::File(&mut reader, Some(entry.size))
         };

@@ -7,7 +7,10 @@ use std::{
     ffi::{OsStr, OsString},
     fs,
     io::Write,
-    os::unix::{ffi::OsStringExt, fs::symlink},
+    os::unix::{
+        ffi::OsStringExt,
+        fs::{MetadataExt, symlink},
+    },
     path::{Path, PathBuf},
 };
 
@@ -150,7 +153,25 @@ fn destination_never_writes_through_symlinks() -> Result<(), Box<dyn Error>> {
         root.path().join("dangling"),
     )?;
 
-    assert!(destination.create_file(Path::new("redirect/new.txt")).is_err());
+    destination.create_file(Path::new("file.txt"))?;
+
+    let nested = Path::new("redirect/new.txt");
+    assert!(destination.create_file(nested).is_err());
+    assert!(
+        destination
+            .create_symlink(nested, OsStr::new("file.txt"))
+            .is_err()
+    );
+    assert!(
+        destination
+            .create_hard_link(nested, Path::new("file.txt"))
+            .is_err()
+    );
+    assert!(
+        destination
+            .create_hard_link(Path::new("linked"), Path::new("redirect/keep.txt"))
+            .is_err()
+    );
     // An existing leaf symlink is skipped like a file, never written through.
     for name in ["leaf", "dangling"] {
         let (_, created) = destination.create_file(Path::new(name))?;
@@ -158,6 +179,36 @@ fn destination_never_writes_through_symlinks() -> Result<(), Box<dyn Error>> {
     }
     assert_eq!(fs::read(external.path().join("keep.txt"))?, b"original");
     assert_eq!(external.path().read_dir()?.count(), 1);
+    Ok(())
+}
+
+#[test]
+fn links_are_created_as_stored_and_renamed_on_conflict() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let destination = ExtractionDestination::open(root.path())?;
+    destination.create_file(Path::new("file.txt"))?.0.write_all(b"data")?;
+
+    let first = destination.create_symlink(Path::new("lnk"), OsStr::new("/etc/passwd"))?;
+    let second = destination.create_symlink(Path::new("lnk"), OsStr::new("file.txt"))?;
+    let hard = destination.create_hard_link(Path::new("nested/hard"), Path::new("file.txt"))?;
+
+    assert_eq!(
+        [first, second, hard],
+        ["lnk", "lnk (2)", "nested/hard"].map(PathBuf::from)
+    );
+    let path = |name: &str| root.path().join(name);
+    assert_eq!(fs::read_link(path("lnk"))?, Path::new("/etc/passwd"));
+    assert_eq!(fs::read_link(path("lnk (2)"))?, Path::new("file.txt"));
+    assert_eq!(
+        fs::metadata(path("nested/hard"))?.ino(),
+        fs::metadata(path("file.txt"))?.ino()
+    );
+    assert!(
+        destination
+            .create_hard_link(Path::new("missing-link"), Path::new("missing"))
+            .is_err()
+    );
+    assert!(fs::symlink_metadata(path("missing-link")).is_err());
     Ok(())
 }
 

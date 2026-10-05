@@ -4,6 +4,7 @@ use std::{
     error::Error,
     fs,
     io::{self, Read},
+    os::unix::fs::MetadataExt,
     path::Path,
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
 };
@@ -853,5 +854,75 @@ fn a_session_dropped_before_finish_publishes_its_output() -> Result<(), Box<dyn 
     assert_eq!(fs::read(root.path().join("archive/done.txt"))?, b"done");
     assert!(stages(root.path(), EXTRACTION_STAGE)?.is_empty());
     assert_eq!(root.path().read_dir()?.count(), 1);
+    Ok(())
+}
+
+#[test]
+fn links_consume_no_space_and_hard_links_follow_renamed_targets() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let progress = AtomicUsize::new(0);
+    let cancelled = AtomicBool::new(false);
+    let mut session = ExtractionSession::open_with_available_bytes(
+        root.path(),
+        ARCHIVE,
+        &progress,
+        &cancelled,
+        Some(12),
+    )?;
+    session.record_hard_link_targets();
+    for contents in [b"first!", b"second"] {
+        session.extract_member("data.txt", MemberContent::File(&mut &contents[..], Some(6)))?;
+    }
+    session.extract_member("lnk", MemberContent::Symlink(b"data.txt"))?;
+    session.extract_member("hard", MemberContent::HardLink("data.txt"))?;
+
+    assert!(matches!(
+        session.finish(Ok(()), Vec::new)?,
+        ArchiveOutcome::Completed(Some(name)) if name == "archive"
+    ));
+    assert_eq!(progress.load(Ordering::Relaxed), 4);
+    let output = root.path().join("archive");
+    assert_eq!(fs::read_link(output.join("lnk"))?, Path::new("data.txt"));
+    assert_eq!(fs::read(output.join("lnk"))?, b"first!");
+    // The duplicate became `data (2).txt`; the link follows the latest member of that name.
+    assert_eq!(
+        fs::metadata(output.join("hard"))?.ino(),
+        fs::metadata(output.join("data (2).txt"))?.ino()
+    );
+    Ok(())
+}
+
+#[test]
+fn refused_link_members_leave_no_staging_behind() -> Result<(), Box<dyn Error>> {
+    let too_long = [b'a'; 4096];
+    for (index, expected) in [
+        "is a hard link to `later.txt`, which was not extracted",
+        "has an invalid symbolic link target",
+        "has an invalid symbolic link target",
+        "has an invalid symbolic link target",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let content = match index {
+            0 => MemberContent::HardLink("later.txt"),
+            1 => MemberContent::Symlink(b""),
+            2 => MemberContent::Symlink(b"a\0b"),
+            _ => MemberContent::Symlink(&too_long),
+        };
+        let root = tempfile::tempdir()?;
+        let progress = AtomicUsize::new(0);
+        let cancelled = AtomicBool::new(false);
+        let mut session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
+        session.record_hard_link_targets();
+
+        let result = session.extract_member("link", content);
+
+        assert!(root.path().read_dir()?.next().is_none(), "case {index}");
+        let message = failed_extract(session, result);
+        assert_eq!(message, format!("Archive member `link` {expected}"));
+        assert!(root.path().read_dir()?.next().is_none(), "case {index}");
+        assert_eq!(progress.load(Ordering::Relaxed), 0);
+    }
     Ok(())
 }
