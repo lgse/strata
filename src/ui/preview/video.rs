@@ -303,19 +303,17 @@ impl VideoView {
                 }
             },
         );
-        // The decode rectangle follows the pane; `resize` ignores unchanged sizes.
+        // The decode rectangle follows the pane's allocation; `resize` ignores
+        // unchanged sizes, and nothing runs between layouts.
         let weak = Rc::downgrade(&view);
-        view.picture.add_tick_callback(move |_, _| {
-            let Some(view) = weak.upgrade() else {
-                return glib::ControlFlow::Break;
-            };
-            if let Some(size) = decode_size()
+        view.layout.set_on_allocate(move || {
+            if let Some(view) = weak.upgrade()
+                && let Some(size) = decode_size()
                 && let Some(media) = view.media.borrow().as_ref()
                 && let Some(media) = media.downcast_ref::<DecodedMedia>()
             {
                 media.resize(size);
             }
-            glib::ControlFlow::Continue
         });
         view
     }

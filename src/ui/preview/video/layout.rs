@@ -4,7 +4,7 @@
 //! header sits right under it, then the timeline and transport, and the whole
 //! group is centred in the pane.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 
 use gtk::{gdk, glib, graphene, gsk, prelude::*, subclass::prelude::*};
 
@@ -69,6 +69,7 @@ mod imp {
         pub(super) paintable: glib::WeakRef<gdk::Paintable>,
         pub(super) aspect: Cell<Option<f64>>,
         pub(super) margin: Cell<i32>,
+        pub(super) on_allocate: RefCell<Option<Box<dyn Fn()>>>,
     }
 
     impl Default for PlayerLayout {
@@ -77,6 +78,7 @@ mod imp {
                 paintable: glib::WeakRef::default(),
                 aspect: Cell::new(None),
                 margin: Cell::new(0),
+                on_allocate: RefCell::new(None),
             }
         }
     }
@@ -162,6 +164,9 @@ mod imp {
                 allocate_at(part, x, y, panel_width, part_height);
                 y += part_height + gap;
             }
+            if let Some(on_allocate) = self.on_allocate.borrow().as_ref() {
+                on_allocate();
+            }
         }
     }
 
@@ -230,5 +235,11 @@ impl PlayerLayout {
         if self.imp().margin.replace(margin) != margin {
             self.layout_changed();
         }
+    }
+
+    /// Runs after each allocation, so followers of the pane's size need no
+    /// frame-clock tick.
+    pub(super) fn set_on_allocate(&self, callback: impl Fn() + 'static) {
+        self.imp().on_allocate.replace(Some(Box::new(callback)));
     }
 }
