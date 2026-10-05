@@ -432,6 +432,7 @@ impl VideoView {
         self.picture.set_paintable(None::<&gtk::gdk::Paintable>);
         self.layout.set_paintable(None);
         self.placeholder.reveal();
+        self.hover.set(None);
         self.bubble.set_visible(false);
         self.timeline.set_media(None);
         self.sync_playing(false);
@@ -722,6 +723,7 @@ impl VideoView {
 
     pub(super) fn show_error(&self, title: &str, detail: &str, command: Option<&str>) {
         self.detach();
+        super::clear_box(&self.badges);
         self.play.set_sensitive(false);
         super::clear_box(&self.error);
         let heading = gtk::Label::new(Some(title));

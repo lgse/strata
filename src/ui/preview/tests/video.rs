@@ -27,8 +27,20 @@ fn ready(provider: &Provider, index: usize, content_type: &str) {
     }));
 }
 
+pub(super) fn failed(provider: &Provider, index: usize, message: &str) {
+    let pending = provider.0.borrow();
+    let pending = &pending[index];
+    (pending.emit)(PreviewEvent::Failed {
+        request_id: pending.request.id,
+        entry: pending.request.entry.clone(),
+        message: message.into(),
+    });
+}
+
 /// A loaded folder of empty files sorted by name.
-fn sorted_listing(names: &[&str]) -> (tempfile::TempDir, crate::ui::browser::BrowserView) {
+pub(super) fn sorted_listing(
+    names: &[&str],
+) -> (tempfile::TempDir, crate::ui::browser::BrowserView) {
     let directory = tempfile::tempdir().expect("media directory");
     for name in names {
         std::fs::write(directory.path().join(name), []).expect("media fixture");
@@ -141,6 +153,14 @@ fn video_steps_reuse_one_view_and_keep_playback() {
             ready(&provider, 2, "video/mp4");
             assert!(!stream().is_playing(), "an error clears the play intent");
             assert!(!state.step_media(1, true), "no clip after the last one");
+            assert!(state.step_media(-1, true));
+            show_cursor();
+            failed(&provider, 3, "load failed");
+            assert!(
+                state.video.borrow().is_some(),
+                "a failed load shows its error inside the view"
+            );
+            assert!(state.step_media(1, true), "and keeps navigation");
             drawer.close();
             assert!(state.video.borrow().is_none());
         },

@@ -1318,7 +1318,9 @@ impl PreviewState {
                     self.render_archive_password_prompt(entry, Some(&message));
                 } else {
                     self.current_request.set(None);
-                    if !self.show_audio_error("Preview unavailable", &message, None) {
+                    if !self.show_audio_error("Preview unavailable", &message, None)
+                        && !self.show_video_error("Preview unavailable", &message, None)
+                    {
                         self.show_message("Preview unavailable", &message);
                     }
                 }
