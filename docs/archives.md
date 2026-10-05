@@ -18,6 +18,40 @@ writer, which refuses symlink traversal. Normal conflict renaming also applies,
 so two members that sanitize to `report.txt` become `report.txt` and
 `report (2).txt` rather than overwriting one another.
 
+## Extraction output
+
+Strata writes members into a hidden `.strata-extraction-<id>` folder inside the
+destination, created when the first member is written. It is visible during
+extraction only when hidden files are shown. When the archive has been read,
+Strata publishes the folder:
+
+- A single top-level entry is moved up into the destination under its own
+  name. It is renamed to `name (2)`, `name (3)` and so on only if the
+  destination already has an entry with that name, including a symlink or
+  special file, which is never followed or replaced.
+- Several top-level entries stay together in a folder named after the archive
+  without its extension, such as `photos/` for `photos.zip`. If that name is
+  taken, the folder becomes `photos (1)/`, `photos (2)/` and so on. Entries
+  inside the folder keep the archive's names, even when the destination
+  already has an entry with the same name; only duplicates within the archive
+  are renamed.
+- If extraction fails or is cancelled after writing a file, everything written
+  so far stays in the archive-named folder, even if it is a single entry. The
+  error message ends with ``Extracted entries remain in `<folder>`.``, and the
+  cancellation summary lists completed and pending entries inside that folder.
+  If no file was written, any folders created along the way are removed and
+  nothing is left behind.
+
+Partial output from a failed attempt stays in its own folder, so a retry, such
+as after a wrong password, never merges into it. An archive with several
+top-level entries is extracted into the next numbered folder; a single entry
+lands in the destination under its own name, as usual.
+
+`.tar.gz` archives are read to the end of the gzip stream, so the CRC32 and
+length trailer is verified after the last member. A mismatch or a truncated
+trailer is reported as a damaged archive. Members already written are kept as
+described above, but their contents are unverified.
+
 ## Extraction targets
 
 **Extract here** and **Extract to…** in the item context menu, the 10xer `; e`
@@ -131,7 +165,9 @@ Cancellation is cooperative. Encoded output and TAR's input-to-encoder writes
 check cancellation, as do 7Z source reads and existing ZIP copy chunks. Errors
 from these checks become cancellation results, not corruption/password errors.
 The UI waits for the worker to return before removing progress and showing the
-cancellation summary. Staging is discarded rather than published, and replacing
-an existing archive leaves that archive intact on cancellation. Individual
-blocking filesystem calls and codec calls still have to return; cancellation
-is not an immediate thread kill.
+cancellation summary. Compression staging is discarded rather than published,
+and replacing an existing archive leaves that archive intact on cancellation.
+Cancelled extraction keeps the members already written inside the
+archive-named folder described in [Extraction output](#extraction-output).
+Individual blocking filesystem calls and codec calls still have to return;
+cancellation is not an immediate thread kill.
