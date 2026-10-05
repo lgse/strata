@@ -51,7 +51,8 @@ Strata combines spatial Miller-column navigation with familiar Icons and List vi
 - **Three browser modes:** navigable Columns, an Icons grid, and a sortable List table.
 - **Keyboard-first control:** directional-key movement, navigation history, location entry, pane filtering, fuzzy search, file operations, and quick previews. An optional footer and F1 shortcut reference help you learn each mode; the footer also shows clipboard status. See [keyboard navigation and paste destinations](docs/keyboard-navigation.md). Optional [10xer mode](docs/10xer-mode.md) hides window and pane chrome and uses Yazi-style keys.
 - **Fast recursive search:** press <kbd>Ctrl</kbd>+<kbd>K</kbd> to find files and directories by name or path while the tree is still being indexed. Global search covers Home and all mounted local drives, regardless of the current folder. Hover the search field to see the included locations. The dialog warns when results are incomplete; folder-scoped filtering/search remains separate. URI-native remote shares are not yet included.
-- **Rich previews and thumbnails:** native rendered Markdown and static HTML, plus bounded previews for text, source code, images, camera RAW, PDF, audio, and video, with native parser-backed formats isolated from the application. File Properties shows available media resolution, duration, bitrate, codecs, and audio/video rates. RAW previews and Properties also show dimensions, camera, lens, focal length, shutter speed, ISO, and GPS coordinates, with `N/A` for unavailable values.
+- **Rich previews and thumbnails:** native rendered Markdown and static HTML, plus bounded previews for text, source code, images, camera RAW, PDF, audio, and video, with native parser-backed formats isolated from the application. Audio opens in a now-playing view with artwork and a live spectrum; video gets technical badges, a keyframe storyboard while scrubbing, ambient light around the frame, silent autoplay that eases its sound in, and <kbd>Enter</kbd> hands the position to your default player. File Properties shows available media resolution, duration, bitrate, codecs, HDR, subtitle and chapter counts, and audio/video rates. RAW previews and Properties also show dimensions, camera, lens, focal length, shutter speed, ISO, and GPS coordinates, with `N/A` for unavailable values.
+- **Shared storage properties:** volumes and mounted storage entries in Devices use the same Properties dialog for name, device, filesystem, mount status, and available capacity/usage. **Set label…** saves a display label only in Strata; it never changes the filesystem label, mounts/unmounts a drive, or alters system configuration. Labels update the sidebar and Properties live and can be cleared to restore the normal device name. Formatting remains restricted to eligible removable drives; release actions follow the device's reported capabilities.
 - **Responsive filesystem work:** cancellable directory loading, bounded streaming, incremental monitoring, stable selection, and virtualized large directories.
 - **Everyday file operations:** create folders, rename, cut, copy, paste, trash, permanent delete, sorting, hidden files, pins, and history.
 - **Remote locations:** browse GIO/GVfs locations such as authenticated SMB shares and SFTP servers from the location field, with explicit host-key decisions.
@@ -227,6 +228,8 @@ If `command -v` fails, add `$HOME/.local/bin` to your shell's `PATH`. Every arch
 Download the matching `strata-<version>-<target>.debug` asset from the same release and place it beside the installed `strata` binary, keeping its filename unchanged. Then run `coredumpctl debug strata`; GDB will load its Rust function names and source lines.
 
 #### 3. Update or uninstall
+
+In-app updates verify [signed release manifests](docs/signed-updates.md) inside Strata, without `gh`, a GitHub account, or a token. Releases published before signed manifests were introduced require manual installation; the updater never falls back to checksum-only verification.
 
 For a manual installation, use **Settings → Updates** for verified in-app updates, or repeat the download, verification, and `install` steps for a newer release. An in-app update also refreshes an already installed desktop entry and application icon from the new archive; it never creates desktop metadata that was not installed before. If the user opted into Strata's system file chooser, the update restarts the portal frontend so subsequent dialogs use the newly installed build. Package-managed installations are updated only by their system package manager. To remove a per-user installation, run `strata --uninstall-udiskie-unlock` before deleting the binary if you opted into encrypted-volume unlock, then:
 
@@ -692,7 +695,7 @@ Plain-text and source previews are different: they stay in process because they 
 | Optional preview tools | `ffmpegthumbnailer`/`ffmpeg` for video; ImageMagick, classic `dcraw`, and LibRaw `simple_dcraw` expand camera RAW support; `squashfs-tools` (`unsquashfs`) extracts icons embedded in AppImages |
 | Hardware acceleration | Media-only VA-API or Vulkan decoding with software fallback; GPU and codec support depend on host drivers |
 | Scale targets | Virtualized browser models and bounded asynchronous updates are tested with deterministic directories up to 100,000 entries |
-| Packaging | Dynamically linked release archive with SHA-256 digest, GitHub build-provenance attestation, and `SOURCE_COMMIT` |
+| Packaging | Dynamically linked release archive with a signed update manifest, SHA-256 digest, GitHub build-provenance attestation, and `SOURCE_COMMIT` |
 
 ## Development and documentation
 
@@ -727,6 +730,7 @@ feature-disabled binary. See [third-party notices](THIRD_PARTY_LICENSES.md#unrar
 Start with [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Deeper references:
 
 - [Keyboard navigation](docs/keyboard-navigation.md)
+- [Preview panel and column layout](docs/preview-panel-layout.md)
 - [10xer mode](docs/10xer-mode.md)
 - [Architecture principles](docs/architecture.md)
 - [Preview sandbox](docs/preview-sandbox.md)

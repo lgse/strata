@@ -3,6 +3,7 @@
 use std::cell::{Cell, RefCell};
 use std::marker::PhantomData;
 use std::rc::Rc;
+use std::time::Duration;
 
 use gst::prelude::*;
 use gstreamer as gst;
@@ -11,8 +12,6 @@ use gstreamer_app::AppSrc;
 const SAMPLE_RATE: u64 = 48_000;
 const FRAME_BYTES: usize = 4;
 const MAX_CHUNK_BYTES: usize = 6_400;
-const MAX_BYTES: u64 = 38_400;
-const MAX_TIME_NS: u64 = 200_000_000;
 const MAX_CHUNK_NS: u64 = 33_333_334;
 
 pub(super) struct PcmOutput {
@@ -20,6 +19,10 @@ pub(super) struct PcmOutput {
     source: AppSrc,
     sink: gst::Element,
     volume: gst::Element,
+    gain: Cell<f64>,
+    fade: Cell<f64>,
+    max_bytes: u64,
+    max_time_ns: u64,
     frames: Cell<u64>,
     finished: Cell<bool>,
     failure: RefCell<Option<String>>,
@@ -27,7 +30,8 @@ pub(super) struct PcmOutput {
 }
 
 impl PcmOutput {
-    pub(super) fn new(muted: bool, volume: f64) -> Result<Self, String> {
+    /// `lookahead` bounds the PCM queued in appsrc beyond what the sink holds.
+    pub(super) fn new(muted: bool, volume: f64, lookahead: Duration) -> Result<Self, String> {
         gst::init().map_err(|error| error.to_string())?;
         #[cfg(test)]
         let sink = gst::ElementFactory::make("fakesink")
@@ -35,11 +39,46 @@ impl PcmOutput {
             .build();
         #[cfg(not(test))]
         let sink = gst::ElementFactory::make("autoaudiosink").build();
-        Self::with_sink(sink.map_err(|error| error.to_string())?, muted, volume)
+        Self::with_sink(
+            sink.map_err(|error| error.to_string())?,
+            muted,
+            volume,
+            lookahead,
+            None,
+        )
     }
 
-    fn with_sink(sink: gst::Element, muted: bool, volume: f64) -> Result<Self, String> {
+    /// A sink bin driven by `clock`, or without a pipeline clock so that its
+    /// position follows rendered data like an audio ring buffer.
+    #[cfg(test)]
+    pub(super) fn test_sink(
+        muted: bool,
+        volume: f64,
+        lookahead: Duration,
+        description: &str,
+        clock: Option<&gst::Clock>,
+    ) -> Result<Self, String> {
+        gst::init().map_err(|error| error.to_string())?;
+        let sink = gst::parse::bin_from_description(description, true)
+            .map_err(|error| error.to_string())?;
+        Self::with_sink(sink.upcast(), muted, volume, lookahead, Some(clock))
+    }
+
+    fn with_sink(
+        sink: gst::Element,
+        muted: bool,
+        volume: f64,
+        lookahead: Duration,
+        clock: Option<Option<&gst::Clock>>,
+    ) -> Result<Self, String> {
         let pipeline = gst::Pipeline::new();
+        if let Some(clock) = clock {
+            pipeline.use_clock(clock);
+        }
+        let max_time_ns = u64::try_from(lookahead.as_nanos())
+            .map_err(|_| "PCM lookahead exceeds the clock range".to_owned())?;
+        let max_bytes = (u128::from(max_time_ns) * u128::from(SAMPLE_RATE * FRAME_BYTES as u64)
+            / 1_000_000_000) as u64;
         let source = AppSrc::builder().build();
         source.set_caps(Some(
             &gst::Caps::builder("audio/x-raw")
@@ -51,8 +90,8 @@ impl PcmOutput {
         ));
         source.set_format(gst::Format::Time);
         source.set_block(false);
-        source.set_max_bytes(MAX_BYTES);
-        source.set_max_time(gst::ClockTime::from_nseconds(MAX_TIME_NS));
+        source.set_max_bytes(max_bytes);
+        source.set_max_time(gst::ClockTime::from_nseconds(max_time_ns));
         source.set_property("do-timestamp", false);
         let convert = gst::ElementFactory::make("audioconvert")
             .build()
@@ -73,6 +112,10 @@ impl PcmOutput {
             source,
             sink,
             volume: gain,
+            gain: Cell::new(1.0),
+            fade: Cell::new(1.0),
+            max_bytes,
+            max_time_ns,
             frames: Cell::new(0),
             finished: Cell::new(false),
             failure: RefCell::new(None),
@@ -127,8 +170,8 @@ impl PcmOutput {
     pub(super) fn has_capacity(&self) -> bool {
         !self.finished.get()
             && self.failure.borrow().is_none()
-            && self.source.current_level_bytes() <= MAX_BYTES - MAX_CHUNK_BYTES as u64
-            && self.source.current_level_time().nseconds() <= MAX_TIME_NS - MAX_CHUNK_NS
+            && self.source.current_level_bytes() + MAX_CHUNK_BYTES as u64 <= self.max_bytes
+            && self.source.current_level_time().nseconds() + MAX_CHUNK_NS <= self.max_time_ns
     }
 
     pub(super) fn play(&self) -> Result<(), String> {
@@ -158,8 +201,28 @@ impl PcmOutput {
         } else {
             0.0
         };
+        self.gain.set(volume);
         self.volume.set_property("mute", muted);
-        self.volume.set_property("volume", volume);
+        self.apply_gain();
+    }
+
+    pub(super) fn set_fade(&self, fade: f64) {
+        self.fade.set(if fade.is_finite() {
+            fade.clamp(0.0, 1.0)
+        } else {
+            1.0
+        });
+        self.apply_gain();
+    }
+
+    fn apply_gain(&self) {
+        self.volume
+            .set_property("volume", self.gain.get() * self.fade.get());
+    }
+
+    #[cfg(test)]
+    pub(super) fn effective_volume(&self) -> f64 {
+        self.volume.property::<f64>("volume")
     }
 
     pub(super) fn finish(&self) -> Result<(), String> {

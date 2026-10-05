@@ -35,6 +35,12 @@ impl PreviewDrawer {
     /// while the drawer owns the keys.
     pub(in crate::ui) fn bind_keyboard_view(&self, view: &BrowserView) {
         self.state.keyboard_view.replace(Some(view.downgrade()));
+        let weak = Rc::downgrade(&self.state);
+        view.set_playback_handoff(Rc::new(move |location| {
+            weak.upgrade()
+                .map(|state| PreviewDrawer { state })
+                .and_then(|drawer| drawer.prepare_handoff(location))
+        }));
     }
 
     /// Whether keyboard focus is anywhere inside the drawer.
@@ -57,7 +63,8 @@ impl PreviewDrawer {
         self.state.scroll_document(motion)
     }
 
-    /// Plain media keys for a keyboard-owned media preview.
+    /// Plain media keys for a keyboard-owned media preview, plus `<` / `>` from
+    /// the 10xer listing while an audio preview is open.
     pub(in crate::ui) fn media_key(&self, key: gtk::gdk::Key) -> bool {
         self.has_video() && self.state.media_command(key)
     }
@@ -281,9 +288,10 @@ impl PreviewState {
         if accepts_typing(focused) {
             return PreviewSurface::Text;
         }
-        let media_view = self.media.borrow().is_some()
+        let media_view = self.has_media_view()
             && (focused == self.content.upcast_ref::<gtk::Widget>()
-                || focused.is::<gtk::Overlay>());
+                || focused.is::<gtk::Overlay>()
+                || focused.is::<super::waveform::Waveform>());
         if media_view {
             return PreviewSurface::Media;
         }

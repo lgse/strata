@@ -9,6 +9,7 @@ use std::{
 
 use gtk::{gdk, glib, prelude::*};
 
+pub(in crate::ui) use candidates::CandidateKeys;
 use candidates::Candidates;
 use chord_panel::ChordPanel;
 
@@ -1180,6 +1181,12 @@ impl ShortcutFooter {
         self.prompt.entry.text().to_string()
     }
 
+    /// Unlike `PromptSink`, this notifies edit listeners.
+    pub(in crate::ui) fn type_prompt_text(&self, text: &str) {
+        self.prompt.entry.set_text(text);
+        self.prompt.entry.set_position(-1);
+    }
+
     #[cfg(test)]
     pub(in crate::ui) fn prompt_label(&self) -> Option<String> {
         (self.root.visible_child().as_ref() == Some(self.prompt.bar.upcast_ref()))
@@ -1190,14 +1197,22 @@ impl ShortcutFooter {
         self.prompt.close();
     }
 
-    pub(in crate::ui) fn show_candidates(&self, paths: Vec<PathBuf>) {
+    pub(in crate::ui) fn show_candidates(&self, paths: Vec<PathBuf>, keys: CandidateKeys) {
         if self.prompt.bar.is_visible() {
-            self.prompt.candidates.set(paths);
+            self.prompt.candidates.set(paths, keys);
         }
     }
 
     pub(in crate::ui) fn step_candidate(&self, delta: i32) {
         self.prompt.candidates.step(delta);
+    }
+
+    pub(in crate::ui) fn forget_candidate_step(&self) {
+        self.prompt.candidates.forget_step();
+    }
+
+    pub(in crate::ui) fn candidate_stepped(&self) -> bool {
+        self.prompt.candidates.stepped()
     }
 
     pub(in crate::ui) fn chosen_candidate(&self) -> Option<PathBuf> {
@@ -1215,6 +1230,11 @@ impl ShortcutFooter {
     #[cfg(test)]
     pub(in crate::ui) fn candidates(&self) -> Vec<PathBuf> {
         self.prompt.candidates.paths()
+    }
+
+    #[cfg(test)]
+    pub(in crate::ui) fn candidate_keys(&self) -> String {
+        self.prompt.candidates.keys_text()
     }
 
     #[cfg(test)]

@@ -223,7 +223,9 @@ impl Dispatcher {
     }
 
     fn preview_media_key(&self, browser: &Browser, key: Key, mods: Modifiers) -> bool {
-        if !mods.is_empty() {
+        // `<` and `>` need Shift on most layouts.
+        let track_key = matches!(key, Key::less | Key::greater);
+        if !(mods.is_empty() || track_key && mods == Modifiers::SHIFT_MASK) {
             return false;
         }
         let media_key = match key {
@@ -240,7 +242,14 @@ impl Dispatcher {
         self.preview.media_key(media_key);
         matches!(
             media_key,
-            Key::space | Key::Left | Key::Right | Key::Up | Key::Down | Key::m
+            Key::space
+                | Key::Left
+                | Key::Right
+                | Key::Up
+                | Key::Down
+                | Key::m
+                | Key::less
+                | Key::greater
         )
     }
 

@@ -161,7 +161,7 @@ pub(super) fn descendants(widget: &gtk::Widget) -> Vec<gtk::Widget> {
 }
 
 #[track_caller]
-pub(super) fn wait_until(condition: impl Fn() -> bool) {
+pub(in crate::ui::browser::context_menu) fn wait_until(condition: impl Fn() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(5);
     while !condition() {
         assert!(Instant::now() < deadline, "menu fixture did not settle");

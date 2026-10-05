@@ -4,6 +4,14 @@ use super::*;
 use crate::media::{Decoder, Packet};
 use std::{io::Cursor, os::unix::net::UnixStream, thread};
 
+fn probe(path: &Path, size: MediaPreviewSize, start_tick: u32) -> io::Result<Input> {
+    super::probe(path, size, start_tick, ProbeMode::Playback)
+}
+
+fn metadata(bytes: &[u8], size: MediaPreviewSize, start_tick: u32) -> io::Result<Input> {
+    super::metadata(bytes, size, start_tick, ProbeMode::Playback)
+}
+
 fn success(command: &mut Command) -> Vec<u8> {
     let output = bounded_output_with_timeout(command, 32 * 1024 * 1024, Duration::from_secs(30))
         .expect("FFmpeg tools are required")
@@ -66,6 +74,7 @@ fn decoded(input: &Path, size: &str, start: u32) -> (Header, Vec<Frame>, u64) {
         size,
         MediaPreviewBackend::Software,
         start,
+        false,
         &mut bytes,
     )
     .expect("raw media stream");
@@ -82,6 +91,17 @@ fn decoded(input: &Path, size: &str, start: u32) -> (Header, Vec<Frame>, u64) {
                 return (header, frames, end);
             }
         }
+    }
+}
+
+/// The PCM block for the audio tick `offset` ticks after the first frame; the
+/// lead places it in the first record or ahead of its own frame.
+fn audio_block(frames: &[Frame], offset: usize) -> &[u8] {
+    let lead = media::AUDIO_LEAD_TICKS as usize;
+    if offset <= lead {
+        &frames[0].samples[offset * AUDIO_BYTES..(offset + 1) * AUDIO_BYTES]
+    } else {
+        &frames[offset - lead].samples
     }
 }
 
@@ -144,6 +164,7 @@ fn full_sources_and_hour_long_seeks_reach_the_original_file_end() {
                 "520x800",
                 MediaPreviewBackend::Software,
                 seconds * 30,
+                false,
                 &mut Vec::new()
             )
             .is_err()
@@ -175,7 +196,7 @@ fn audio_only_and_attached_cover_art_do_not_require_a_hardware_video_decoder() {
         MediaPreviewBackend::Software,
     ] {
         let mut bytes = Vec::new();
-        stream(&audio, "520x800", policy, 0, &mut bytes).expect("audio under every policy");
+        stream(&audio, "520x800", policy, 0, false, &mut bytes).expect("audio under every policy");
         let h = Header::read(&mut Cursor::new(bytes), MediaPreviewSize::new(520, 800), 0)
             .expect("audio header");
         assert!(h.audio);
@@ -291,6 +312,7 @@ fn first_frames_arrive_before_completion_and_closed_consumers_cancel_backpressur
             "520x800",
             MediaPreviewBackend::Software,
             0,
+            false,
             &mut write,
         )
     });
@@ -352,7 +374,24 @@ fn hardware_order_and_commands_decode_only_and_bound_all_outputs() {
         assert!(!args.contains("h264"));
         assert!(!args.contains("libvpx"));
         assert!(!args.contains(" copy"));
+        assert_eq!(
+            args.contains("--as=2147483648"),
+            backend == Backend::Software
+        );
+        assert!(args.contains("-max_pixels 50000000"));
+        assert!(args.contains("-max_alloc 536870912"));
+        assert!(args.contains("-filter_threads 1 -filter_complex_threads 1"));
     }
+    let background = ffmpeg_command(&Backend::Software, true);
+    assert_eq!(background.get_program(), "nice");
+    let args = background
+        .get_args()
+        .map(|arg| arg.to_string_lossy())
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(args.starts_with("-n 10 prlimit --core=0 --fsize=536870912 --as=2147483648"));
+    assert!(args.contains("-max_pixels 50000000"));
+    assert!(args.contains("-filter_threads 1 -filter_complex_threads 1"));
     let positive = command_args(
         Path::new("/input"),
         &ordinary,
@@ -458,6 +497,7 @@ fn assert_elementary_playback(path: &Path) {
             "520x800",
             MediaPreviewBackend::Software,
             90,
+            false,
             &mut past
         )
         .is_err(),
@@ -602,19 +642,20 @@ fn variable_frame_rate_and_offset_audio_keep_their_original_timeline() {
     let (_, frames, end) = decoded(&input, "160x90", 0);
     assert_eq!(end, 3_000_000);
     assert_eq!(frames.len(), 90);
+    assert!((0..8).all(|tick| audio_block(&frames, tick).iter().all(|sample| *sample == 0)));
+    assert!(audio_block(&frames, 10).iter().any(|sample| *sample != 0));
     assert!(
-        frames[..8]
-            .iter()
-            .all(|frame| frame.samples.iter().all(|sample| *sample == 0))
+        audio_block(&frames, 89).iter().any(|sample| *sample != 0)
+            && frames[89].samples.iter().all(|sample| *sample == 0),
+        "audio keeps its timeline while running a lead ahead of the frames"
     );
-    assert!(frames[10].samples.iter().any(|sample| *sample != 0));
     assert!(
         frames[34].pixels == frames[35].pixels,
         "VFR frames must hold until their next presentation time"
     );
     let (_, sought, _) = decoded(&input, "160x90", 45);
     assert_eq!(sought[0].tick, 45);
-    assert!(sought[0].samples.iter().any(|sample| *sample != 0));
+    assert!(audio_block(&sought, 0).iter().any(|sample| *sample != 0));
     assert!(
         frames[44..=46]
             .iter()
@@ -702,6 +743,33 @@ fn metadata_and_size_parsing_fail_closed_on_bad_sources_and_protocol_values() {
         });
         assert!(metadata(&serde_json::to_vec(&value).expect("metadata"), size, 0).is_err());
     }
+    for (width, height) in [(0, 0), (10_000, 6_000)] {
+        for attached in [true, false] {
+            let value = serde_json::json!({
+                "streams": [
+                    {"index": 0, "codec_type": "audio"},
+                    {"index": 1, "codec_type": "video", "width": width, "height": height,
+                     "disposition": {"attached_pic": u8::from(attached)}}
+                ],
+                "format": {"duration": "2"}
+            });
+            let bytes = serde_json::to_vec(&value).expect("metadata");
+            assert!(metadata(&bytes, size, 0).is_err());
+            let audio = super::metadata(&bytes, size, 0, ProbeMode::Audio)
+                .expect("peaks ignore every video stream");
+            assert_eq!(audio.audio, Some(0));
+            assert_eq!(audio.video, None);
+            assert_eq!((audio.header.width, audio.header.height), (0, 0));
+            let playback = super::metadata(&bytes, size, 0, ProbeMode::SkipArtwork);
+            if attached {
+                let playback = playback.expect("bad artwork cannot block audio");
+                assert_eq!(playback.video, None);
+                assert!(playback.header.audio);
+            } else {
+                assert!(playback.is_err(), "real video dimensions remain validated");
+            }
+        }
+    }
     let unknown = metadata(
         br#"{"streams":[{"index":0,"codec_type":"audio"}]}"#,
         size,
@@ -755,4 +823,235 @@ fn metadata_and_size_parsing_fail_closed_on_bad_sources_and_protocol_values() {
         Track::Video,
     ));
     assert!(probe(Path::new("/nonexistent-strata-media"), size, 0).is_err());
+}
+
+#[test]
+fn audio_previews_play_without_artwork_and_extract_tags_cover_and_peaks() {
+    let directory = tempfile::tempdir().expect("fixtures");
+    let art = directory.path().join("cover.png");
+    success(
+        Command::new("ffmpeg")
+            .args(["-nostdin", "-v", "error", "-f", "lavfi", "-i"])
+            .arg("color=c=blue:size=1000x600")
+            .args(["-frames:v", "1"])
+            .arg(&art),
+    );
+    let tagged = directory.path().join("tagged.mp3");
+    success(
+        Command::new("ffmpeg")
+            .args(["-nostdin", "-v", "error", "-f", "lavfi", "-i"])
+            .arg("sine=frequency=440:duration=2")
+            .arg("-i")
+            .arg(&art)
+            .args([
+                "-map",
+                "0:a",
+                "-map",
+                "1:v",
+                "-c:a",
+                "libmp3lame",
+                "-c:v",
+                "png",
+            ])
+            .args(["-disposition:v", "attached_pic"])
+            .args([
+                "-metadata",
+                "title=Night Drive",
+                "-metadata",
+                "artist=Layers",
+            ])
+            .args(["-metadata", "track=3/12"])
+            .arg(&tagged),
+    );
+    let plain = directory.path().join("plain.ogg");
+    success(
+        Command::new("ffmpeg")
+            .args(["-nostdin", "-v", "error", "-f", "lavfi", "-i"])
+            .arg("sine=frequency=440:duration=1")
+            .args(["-c:a", "libvorbis"])
+            .arg(&plain),
+    );
+
+    let mut bytes = Vec::new();
+    stream(
+        &tagged,
+        "520x800",
+        MediaPreviewBackend::Software,
+        0,
+        true,
+        &mut bytes,
+    )
+    .expect("audio-only playback");
+    let mut reader = Cursor::new(bytes);
+    let header = Header::read(&mut reader, MediaPreviewSize::new(520, 800), 0).expect("header");
+    assert!(header.audio);
+    assert_eq!(
+        (header.width, header.height),
+        (0, 0),
+        "artwork is not decoded"
+    );
+    let Packet::Frame(frame) = Decoder::new(header).read(&mut reader).expect("frame") else {
+        panic!("expected a frame");
+    };
+    assert!(frame.pixels.is_empty());
+
+    let video = directory.path().join("silent.mkv");
+    fixture(&video, "64x48", 30, 1, false);
+    let mut video_bytes = Vec::new();
+    stream(
+        &video,
+        "520x800",
+        MediaPreviewBackend::Software,
+        0,
+        true,
+        &mut video_bytes,
+    )
+    .expect("real video survives an audio-classified request");
+    let header = Header::read(
+        &mut Cursor::new(video_bytes),
+        MediaPreviewSize::new(520, 800),
+        0,
+    )
+    .expect("video header");
+    assert_eq!((header.width, header.height), (64, 48));
+    assert!(!header.audio);
+    assert!(cover(&video, 800).expect("no attached picture").is_empty());
+
+    let png = cover(&tagged, 800).expect("embedded artwork");
+    assert_eq!(crate::sandbox::png_dimensions(&png), Some((800, 480)));
+    let back = directory.path().join("back.png");
+    success(
+        Command::new("ffmpeg")
+            .args(["-nostdin", "-v", "error", "-f", "lavfi", "-i"])
+            .arg("color=c=red:size=64x48")
+            .args(["-frames:v", "1", "-threads", "1"])
+            .arg(&back),
+    );
+    for front_tag in [true, false] {
+        let multiple = directory.path().join(format!("multiple-{front_tag}.mp3"));
+        success(
+            Command::new("ffmpeg")
+                .args(["-nostdin", "-v", "error", "-i"])
+                .arg(&plain)
+                .arg("-i")
+                .arg(&back)
+                .arg("-i")
+                .arg(&art)
+                .args([
+                    "-map",
+                    "0:a",
+                    "-map",
+                    "1:v",
+                    "-map",
+                    "2:v",
+                    "-c:a",
+                    "libmp3lame",
+                    "-c:v",
+                    "copy",
+                    "-disposition:v",
+                    "attached_pic",
+                    "-metadata:s:v:0",
+                    "comment=Cover (back)",
+                    "-metadata:s:v:1",
+                ])
+                .arg(if front_tag {
+                    "comment=Cover (front)"
+                } else {
+                    "comment=Other"
+                })
+                .arg(&multiple),
+        );
+        let selected = cover(&multiple, 800).expect("exactly one of two attached pictures");
+        if front_tag {
+            assert_eq!(selected, png, "front artwork wins over the first picture");
+        } else {
+            assert_eq!(crate::sandbox::png_dimensions(&selected), Some((64, 48)));
+        }
+    }
+    assert!(cover(&plain, 800).expect("no artwork").is_empty());
+    assert!(cover(&directory.path().join("missing"), 800).is_err());
+
+    let tags = crate::sandbox::metadata::AudioTags::from_json(&audio_tags(&tagged).expect("tags"))
+        .expect("tag JSON");
+    assert_eq!(tags.title.as_deref(), Some("Night Drive"));
+    assert_eq!(tags.artist.as_deref(), Some("Layers"));
+    assert_eq!((tags.track, tags.track_total), (Some(3), Some(12)));
+
+    let output = directory.path().join("peaks");
+    run_peaks(&tagged, &output).expect("waveform overview");
+    let bytes = std::fs::read(&output).expect("peaks output");
+    let mut reader = bytes.as_slice();
+    let duration = crate::media::peaks::read_header(&mut reader).expect("peaks header");
+    assert!((1_900_000..2_200_000).contains(&duration), "{duration}");
+    let mut runs = crate::media::peaks::RunReader::default();
+    let mut levels = Vec::new();
+    while let Some((_, run)) = runs.read(&mut reader).expect("peaks run") {
+        levels.extend(run);
+    }
+    assert!(reader.is_empty());
+    assert!(levels.len() > 1000, "{} buckets", levels.len());
+    let middle = crate::media::peaks::rms(levels[levels.len() / 2]);
+    assert!(middle > 0.02, "a steady tone has a visible level: {middle}");
+}
+
+#[test]
+fn storyboards_sample_keyframes_in_subdivision_order_and_skip_unsuitable_inputs() {
+    use crate::media::storyboard::{CellReader, Sheet, subdivision_order};
+
+    let directory = tempfile::tempdir().expect("storyboard fixtures");
+    let video = directory.path().join("clip.mkv");
+    fixture(&video, "64x48", 10, 12, false);
+    let output = directory.path().join("board");
+    run_storyboard(&video, &output, 128).expect("storyboard");
+    let mut reader = Cursor::new(std::fs::read(&output).expect("board bytes"));
+    let sheet = Sheet::read(&mut reader).expect("sheet");
+    assert_eq!(
+        sheet,
+        Sheet {
+            width: 64,
+            height: 48,
+            count: 8,
+            duration_us: 12_000_000,
+        },
+        "cells are never enlarged beyond the source"
+    );
+    let mut cells = CellReader::new(sheet);
+    let mut indices = Vec::new();
+    let mut distinct = std::collections::HashSet::new();
+    while let Some((index, pixels)) = cells.read(&mut reader).expect("cell") {
+        indices.push(index);
+        distinct.insert(pixels);
+    }
+    assert_eq!(indices, subdivision_order(8));
+    assert!(distinct.len() > 1, "cells sample different moments");
+    assert_eq!(reader.position() as usize, reader.get_ref().len());
+
+    let short = directory.path().join("short.mkv");
+    fixture(&short, "64x48", 10, 2, false);
+    assert!(run_storyboard(&short, &output, 128).is_err());
+    let animation = directory.path().join("loop.gif");
+    success(
+        Command::new("ffmpeg")
+            .args([
+                "-nostdin",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc2=size=64x48:rate=10:duration=1",
+                "-threads",
+                "1",
+            ])
+            .arg(&animation),
+    );
+    assert!(run_storyboard(&animation, &output, 128).is_err());
+    let audio = directory.path().join("tone.wav");
+    success(
+        Command::new("ffmpeg")
+            .args(["-nostdin", "-v", "error", "-f", "lavfi", "-i"])
+            .arg("sine=frequency=440:duration=6")
+            .arg(&audio),
+    );
+    assert!(run_storyboard(&audio, &output, 128).is_err());
 }

@@ -1692,19 +1692,6 @@ impl NavigationState {
         self.columns.get(depth)?.entries.get(position).cloned()
     }
 
-    pub fn folder_names(&self, depth: usize, include_hidden: bool) -> Vec<std::ffi::OsString> {
-        let Some(column) = self.columns.get(depth) else {
-            return Vec::new();
-        };
-        let show_hidden = include_hidden || column.preferences.show_hidden;
-        column
-            .entries
-            .iter()
-            .filter(|entry| entry.is_directory() && (show_hidden || !entry.is_hidden))
-            .map(|entry| entry.native_name.clone())
-            .collect()
-    }
-
     pub fn column_entry_counts(&self, depth: usize) -> Option<ColumnEntryCounts> {
         let column = self.columns.get(depth)?;
         let show_hidden = column.preferences.show_hidden;

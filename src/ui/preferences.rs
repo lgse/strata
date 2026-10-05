@@ -40,11 +40,22 @@ pub(crate) enum InterfaceRenderer {
     System,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum OmarchyVariant {
+    #[default]
+    Original,
+    Darker,
+    HighContrast,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub(in crate::ui) struct Preferences {
     mode: String,
     theme: String,
-    #[serde(default = "default_enabled")]
+    #[serde(default)]
+    omarchy_variant: OmarchyVariant,
+    #[serde(default)]
     folder_peeking: bool,
     #[serde(default = "default_enabled")]
     single_click_previews: bool,
@@ -162,6 +173,8 @@ pub(in crate::ui) struct Preferences {
     custom_icons: HashMap<String, String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     send_to_recent_destinations: HashMap<String, Vec<PathBuf>>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    device_labels: HashMap<String, String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     chooser_list_columns: Option<ListColumns>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -194,7 +207,8 @@ impl Default for Preferences {
         Self {
             mode: "theme".to_owned(),
             theme: "tokyo-night".to_owned(),
-            folder_peeking: true,
+            omarchy_variant: OmarchyVariant::default(),
+            folder_peeking: false,
             single_click_previews: true,
             columns_mirror_selection: true,
             render_documents_by_default: true,
@@ -253,6 +267,7 @@ impl Default for Preferences {
             folder_colors: HashMap::new(),
             custom_icons: HashMap::new(),
             send_to_recent_destinations: HashMap::new(),
+            device_labels: HashMap::new(),
             chooser_list_columns: None,
             browser_list_columns: None,
         }
@@ -709,6 +724,18 @@ impl PreferenceManager {
         self.bind_preference(anchor, Self::show_keybinding_hints, refresh);
     }
 
+    pub fn omarchy_variant(&self) -> OmarchyVariant {
+        self.preferences.borrow().omarchy_variant
+    }
+
+    pub fn set_omarchy_variant(&self, variant: OmarchyVariant) {
+        if self.omarchy_variant() == variant {
+            return;
+        }
+        self.preferences.borrow_mut().omarchy_variant = variant;
+        self.save_preferences();
+    }
+
     pub fn element_glow(&self) -> bool {
         self.preferences.borrow().element_glow
     }
@@ -856,6 +883,40 @@ impl PreferenceManager {
 
     pub fn set_default_directory(&self, path: Option<PathBuf>) {
         self.preferences.borrow_mut().default_directory = path;
+        self.save_preferences();
+    }
+
+    pub(in crate::ui) fn device_label(&self, device_id: &str) -> Option<String> {
+        self.preferences
+            .borrow()
+            .device_labels
+            .get(device_id)
+            .filter(|label| {
+                !label.trim().is_empty()
+                    && label.chars().count() <= 255
+                    && !label.chars().any(char::is_control)
+            })
+            .cloned()
+    }
+
+    pub(in crate::ui) fn set_device_label(&self, device_id: &str, label: &str) {
+        let label = label.trim();
+        if device_id.is_empty()
+            || label.chars().count() > 255
+            || label.chars().any(char::is_control)
+        {
+            return;
+        }
+        {
+            let mut preferences = self.preferences.borrow_mut();
+            if label.is_empty() {
+                preferences.device_labels.remove(device_id);
+            } else {
+                preferences
+                    .device_labels
+                    .insert(device_id.to_owned(), label.to_owned());
+            }
+        }
         self.save_preferences();
     }
 

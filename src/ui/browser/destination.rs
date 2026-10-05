@@ -2,22 +2,6 @@
 
 use std::path::{Path, PathBuf};
 
-pub(super) fn resolve_destination_path(input: &str, base: &Path, home: &Path) -> PathBuf {
-    let input = input.trim();
-    if input == "~" {
-        home.to_path_buf()
-    } else if let Some(relative) = input.strip_prefix("~/") {
-        home.join(relative)
-    } else {
-        let path = Path::new(input);
-        if path.is_absolute() {
-            path.to_path_buf()
-        } else {
-            base.join(path)
-        }
-    }
-}
-
 pub(super) fn canonical_existing_directory(path: &Path) -> Option<PathBuf> {
     let canonical = std::fs::canonicalize(path).ok()?;
     canonical.is_dir().then_some(canonical)

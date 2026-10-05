@@ -3,6 +3,9 @@
 use super::*;
 use crate::model::{Location, MetadataValue};
 
+mod audio;
+mod video;
+
 struct Pending {
     request: PreviewRequest,
     emit: Rc<dyn Fn(PreviewEvent)>,
@@ -18,7 +21,7 @@ impl PreviewProvider for Provider {
     }
 }
 
-fn entry(name: &str) -> FileEntry {
+pub(super) fn entry(name: &str) -> FileEntry {
     FileEntry {
         location: Location::local(name),
         thumbnail_path: None,
@@ -120,6 +123,167 @@ fn model_progress_and_theme_reloads_follow_the_current_request_in_each_drawer() 
                 "closed drawer must not reload"
             );
             second.close();
+        },
+    );
+}
+
+struct EmptySource;
+
+impl crate::services::FileSource for EmptySource {
+    fn validate_location(
+        &self,
+        _location: &Location,
+    ) -> Result<(), crate::services::LocationValidationError> {
+        Ok(())
+    }
+
+    fn enumerate(
+        &self,
+        request: crate::services::DirectoryRequest,
+        emit: Rc<dyn Fn(crate::services::DirectoryEvent)>,
+    ) -> LoadHandle {
+        emit(crate::services::DirectoryEvent::Finished {
+            request_id: request.id,
+            truncated: false,
+            can_trash: None,
+            can_delete: None,
+        });
+        LoadHandle::new(|| {})
+    }
+}
+
+#[test]
+fn an_explicit_close_blocks_automatic_previews_until_reopened() {
+    crate::test_support::gtk_test(
+        "ui::preview::tests::an_explicit_close_blocks_automatic_previews_until_reopened",
+        || {
+            let provider = Rc::new(Provider::default());
+            let drawer = PreviewDrawer::new(provider.clone(), false);
+            let browser = Browser::new(Rc::new(EmptySource));
+            let automatic = BrowserEvent::PreviewRequested {
+                entry: entry("mirrored.txt"),
+                automatic: true,
+            };
+
+            drawer.handle_browser_event(&browser, &automatic);
+            assert!(
+                drawer.is_enabled(),
+                "a drawer never closed follows the first mirror"
+            );
+            assert_eq!(provider.0.borrow().len(), 1);
+
+            drawer.close();
+            drawer.handle_browser_event(&browser, &automatic);
+            assert!(
+                !drawer.is_enabled(),
+                "mirroring must not reopen a dismissed drawer"
+            );
+            assert_eq!(provider.0.borrow().len(), 1);
+
+            drawer.handle_browser_event(
+                &browser,
+                &BrowserEvent::PreviewRequested {
+                    entry: entry("clicked.txt"),
+                    automatic: false,
+                },
+            );
+            assert!(
+                drawer.is_enabled(),
+                "an explicit request reopens the drawer"
+            );
+            drawer.handle_browser_event(&browser, &automatic);
+            assert_eq!(
+                provider.0.borrow().len(),
+                3,
+                "mirroring follows again after an explicit reopen"
+            );
+            drawer.close();
+
+            crate::ui::preferences::PreferenceManager::shared()
+                .set_browser_mode(crate::ui::browser_modes::BrowserMode::Columns);
+            let view = crate::ui::browser::BrowserView::new(
+                Rc::new(EmptySource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            let released = PreviewDrawer::new(provider.clone(), false);
+            let split = gtk::Paned::new(gtk::Orientation::Horizontal);
+            let content = gtk::Paned::new(gtk::Orientation::Horizontal);
+            released.attach_split(&split, &content, &view, None);
+            assert!(!released.is_enabled());
+            assert!(released.state.reserves_column_space());
+            released.state.toggle_panel(None, None);
+            released.handle_browser_event(&browser, &automatic);
+            assert!(
+                !released.is_enabled(),
+                "releasing the panel before any preview also blocks mirroring"
+            );
+            assert_eq!(provider.0.borrow().len(), 3);
+        },
+    );
+}
+
+#[test]
+fn preview_loads_on_first_show_when_sidebar_rails_in_narrow_split() {
+    crate::test_support::gtk_test(
+        "ui::preview::tests::preview_loads_on_first_show_when_sidebar_rails_in_narrow_split",
+        || {
+            let provider = Rc::new(Provider::default());
+            let preview = PreviewDrawer::new(provider.clone(), false);
+            let preferences = crate::ui::preferences::PreferenceManager::shared();
+            preferences.set_browser_mode(crate::ui::browser_modes::BrowserMode::List);
+            let browser = crate::ui::browser::BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            let sidebar =
+                crate::ui::window::build_sidebar(browser.clone(), preferences.clone(), false);
+
+            let window = gtk::Window::builder()
+                .default_width(700)
+                .default_height(500)
+                .build();
+            let split = gtk::Paned::new(gtk::Orientation::Horizontal);
+            let content = gtk::Paned::new(gtk::Orientation::Horizontal);
+            content.set_start_child(Some(&sidebar.widget));
+            content.set_end_child(Some(&browser.widget()));
+            content.set_position(crate::ui::window::preferred_sidebar_width());
+            split.set_start_child(Some(&content));
+            split.set_end_child(Some(&preview.widget()));
+            window.set_child(Some(&split));
+
+            preview.attach_split(&split, &content, &browser, Some(&sidebar));
+            window.present();
+
+            while glib::MainContext::default().iteration(false) {}
+
+            assert!(!sidebar.state.rail.get(), "sidebar should start unrailed");
+            assert!(!preview.is_open(), "preview should start closed");
+
+            preview.show(entry("sample.txt"), None);
+
+            while glib::MainContext::default().iteration(false) {}
+
+            assert!(preview.is_open(), "preview drawer should be open");
+            assert!(
+                sidebar.state.rail.get(),
+                "sidebar should be railed to fit preview"
+            );
+            assert_eq!(
+                preview.state.title.text(),
+                "sample.txt",
+                "preview header title must be populated on first view in narrow window"
+            );
+            assert_eq!(
+                provider.0.borrow().len(),
+                1,
+                "preview content must be loaded on first view in narrow window"
+            );
+            assert_eq!(
+                provider.0.borrow()[0].request.entry.display_name,
+                "sample.txt"
+            );
+
+            window.destroy();
         },
     );
 }

@@ -1,6 +1,6 @@
 [package]
 name = "strata"
-version = "0.20.1"
+version = "0.21.0"
 edition = "2024"
 description = "A fast, keyboard-first file manager for Linux"
 authors = ["LGSE Ltd."]
@@ -33,8 +33,10 @@ glib = "0.22.9"
 gstreamer = { version = "0.25.3", features = ["v1_20"] }
 gstreamer-app = { version = "0.25.2", features = ["v1_20"] }
 gtk = { package = "gtk4", version = "0.11.4", features = ["v4_12"] }
+hex = "0.4.3"
 html5gum = { version = "0.8", default-features = false }
 ignore = "0.4.23"
+image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "jpeg", "png", "webp"] }
 kamadak-exif = "0.6.1"
 landlock = "0.4.7"
 libc = "0.2"
@@ -44,6 +46,7 @@ quick-xml = "0.41.0"
 pangocairo = "0.22.0"
 poppler = { package = "poppler-rs", version = "0.26.0" }
 pulldown-cmark = { version = "0.13", default-features = false }
+ring = "0.17.14"
 resvg = { version = "0.48.1", default-features = false, features = ["text", "system-fonts"] }
 rustix = { version = "1.1.4", features = ["fs", "process", "event", "net", "mount", "thread", "stdio", "pipe", "runtime"] }
 seccompiler = "0.5.0"
@@ -65,6 +68,7 @@ zstd = "0.14.0"
 zip = "8.6.0"
 unrar = { version = "0.5.8", optional = true }
 unrar_sys = { version = "0.5.8", optional = true }
+frizbee = "0.13"
 
 [build-dependencies]
 glib-build-tools = "0.22.8"

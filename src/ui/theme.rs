@@ -13,8 +13,11 @@ use serde::{Deserialize, Serialize};
 use sourceview5::prelude::BufferExt as _;
 
 use super::preferences::{
-    PreferenceManager, TextSize, desktop_text_scale_factor, notify_live, snapped_root_font_px,
+    OmarchyVariant, PreferenceManager, TextSize, desktop_text_scale_factor, notify_live,
+    snapped_root_font_px,
 };
+
+mod omarchy;
 
 thread_local! {
     static SHARED_MANAGER: RefCell<Option<Rc<ThemeManager>>> = const { RefCell::new(None) };
@@ -87,6 +90,7 @@ struct CatalogTheme {
 struct AppearancePreferences {
     mode: String,
     theme: String,
+    omarchy_variant: OmarchyVariant,
     text_size: TextSize,
     element_glow: bool,
 }
@@ -188,7 +192,7 @@ impl ThemeManager {
     fn load() -> Rc<Self> {
         let preferences = PreferenceManager::shared();
         let themes = merge_builtin_and_custom_themes(builtins(), load_custom_themes());
-        let omarchy_available = load_omarchy_theme().is_some();
+        let omarchy_available = load_omarchy_theme(OmarchyVariant::Original).is_some();
         preferences.normalize_loaded_theme_selection(
             |id| themes.iter().any(|theme| theme.id == id),
             omarchy_available,
@@ -196,6 +200,7 @@ impl ThemeManager {
         let appearance = AppearancePreferences {
             mode: preferences.theme_mode(),
             theme: preferences.selected_theme_id(),
+            omarchy_variant: preferences.omarchy_variant(),
             text_size: preferences.text_size(),
             element_glow: preferences.element_glow(),
         };
@@ -340,7 +345,7 @@ impl ThemeManager {
 
     pub fn appearance_tokens(&self) -> ThemeTokens {
         if self.follows_omarchy()
-            && let Some(tokens) = load_omarchy_theme()
+            && let Some(tokens) = load_omarchy_theme(self.preferences.omarchy_variant())
         {
             return tokens;
         }
@@ -363,7 +368,7 @@ impl ThemeManager {
 
     fn apply_selected(&self) {
         if self.follows_omarchy() {
-            if let Some(tokens) = load_omarchy_theme() {
+            if let Some(tokens) = load_omarchy_theme(self.preferences.omarchy_variant()) {
                 let palette = load_omarchy_source_palette();
                 self.apply_tokens(&tokens, palette.as_ref());
             }
@@ -396,17 +401,18 @@ impl ThemeManager {
             });
         super::document_media::apply_theme(tokens);
         super::browser::find::apply_theme(&tokens.accent, &tokens.background);
+        super::preview::audio::apply_theme(tokens);
         let root_font_px = snapped_root_font_px(
             self.preferences.text_size().root_font_px(),
             desktop_text_scale_factor(),
         );
         let glow = if self.preferences.element_glow() {
-            "@theme_accent"
+            "@strata_accent"
         } else {
             "transparent"
         };
         self.provider.load_from_string(&format!(
-            "{}\n@define-color theme_glow {glow};\n",
+            "{}\n@define-color strata_glow {glow};\n",
             tokens_css(tokens, root_font_px)
         ));
         apply_interface_font(root_font_px);
@@ -425,6 +431,7 @@ impl ThemeManager {
         let appearance = AppearancePreferences {
             mode: self.preferences.theme_mode(),
             theme: self.preferences.selected_theme_id(),
+            omarchy_variant: self.preferences.omarchy_variant(),
             text_size: self.preferences.text_size(),
             element_glow: self.preferences.element_glow(),
         };
@@ -457,7 +464,10 @@ impl ThemeManager {
         let state = omarchy_state_dir();
         let home = glib::home_dir();
         // Ancestor watches survive moving away or replacing the current state tree.
-        for path in state.ancestors().take_while(|path| path.starts_with(&home)) {
+        let theme = state.join("theme");
+        for path in std::iter::once(theme.as_path())
+            .chain(state.ancestors().take_while(|path| path.starts_with(&home)))
+        {
             if !path.is_dir() {
                 continue;
             }
@@ -489,7 +499,7 @@ impl ThemeManager {
                     };
                     manager.pending_omarchy_refresh.borrow_mut().take();
                     manager.monitor_omarchy();
-                    let available = load_omarchy_theme().is_some()
+                    let available = load_omarchy_theme(OmarchyVariant::Original).is_some()
                         || (manager.is_omarchy_available()
                             && omarchy_state_dir().join("theme.name").is_file());
                     let availability_changed =
@@ -518,7 +528,10 @@ impl ThemeManager {
 fn is_omarchy_theme_event(file: &gio::File) -> bool {
     file.path().is_some_and(|path| {
         let state = omarchy_state_dir();
-        state.starts_with(&path) || path == state.join("theme") || path == state.join("theme.name")
+        state.starts_with(&path)
+            || path == state.join("theme")
+            || path == state.join("theme.name")
+            || path == state.join("theme/colors.toml")
     })
 }
 
@@ -598,11 +611,11 @@ fn load_custom_themes() -> Vec<Theme> {
     themes
 }
 
-fn load_omarchy_theme() -> Option<ThemeTokens> {
+fn load_omarchy_theme(variant: OmarchyVariant) -> Option<ThemeTokens> {
     let state = omarchy_state_dir();
     let name = fs::read_to_string(state.join("theme.name")).ok()?;
     let colors = fs::read_to_string(state.join("theme/colors.toml")).ok()?;
-    tokens_from_quattro(name.trim(), &colors)
+    tokens_from_quattro(name.trim(), &colors, variant)
 }
 
 fn load_omarchy_source_palette() -> Option<SourcePalette> {
@@ -610,12 +623,13 @@ fn load_omarchy_source_palette() -> Option<SourcePalette> {
     source_palette_from_quattro(&colors)
 }
 
-fn tokens_from_quattro(name: &str, source: &str) -> Option<ThemeTokens> {
+fn tokens_from_quattro(name: &str, source: &str, variant: OmarchyVariant) -> Option<ThemeTokens> {
     let values: toml::Value = toml::from_str(source).ok()?;
     let get = |key: &str| {
         values
             .get(key)
             .and_then(toml::Value::as_str)
+            .filter(|value| gdk::RGBA::parse(*value).is_ok())
             .map(str::to_owned)
     };
     let source_background = get("background")?;
@@ -623,7 +637,7 @@ fn tokens_from_quattro(name: &str, source: &str) -> Option<ThemeTokens> {
     let accent = get("accent")?;
     let selection = get("selection").unwrap_or_else(|| accent.clone());
     let shadow = get("color8").unwrap_or_else(|| source_background.clone());
-    Some(ThemeTokens {
+    let mut tokens = ThemeTokens {
         name: title_case_slug(name),
         background: blend(&source_background, &shadow, 0.35),
         surface: blend(&source_background, &shadow, 0.65),
@@ -639,7 +653,12 @@ fn tokens_from_quattro(name: &str, source: &str) -> Option<ThemeTokens> {
         syntax_constant: get("orange").or_else(|| get("color9")),
         syntax_type: get("cyan").or_else(|| get("color3")),
         syntax_preprocessor: get("yellow"),
-    })
+    };
+    if variant != OmarchyVariant::Original {
+        let palette = source_palette_from_quattro(source);
+        omarchy::apply_variant(&mut tokens, &source_background, variant, palette.as_ref());
+    }
+    Some(tokens)
 }
 
 fn source_palette_from_quattro(source: &str) -> Option<SourcePalette> {
@@ -709,13 +728,7 @@ pub(super) fn register_source_buffer(buffer: &sourceview5::Buffer) {
 }
 
 pub(super) fn register_document_buffer(buffer: &gtk::TextBuffer) {
-    let manager = ThemeManager::shared();
-    let tokens = if manager.follows_omarchy() {
-        load_omarchy_theme()
-    } else {
-        manager.current_tokens()
-    }
-    .unwrap_or_else(azure_tokens);
+    let tokens = ThemeManager::shared().appearance_tokens();
     style_document_buffer(buffer, &tokens);
     DOCUMENT_BUFFERS.with(|buffers| {
         let mut buffers = buffers.borrow_mut();
@@ -727,13 +740,7 @@ pub(super) fn register_document_buffer(buffer: &gtk::TextBuffer) {
 }
 
 pub(super) fn register_document_view(view: &super::document_view::DocumentTextView) {
-    let manager = ThemeManager::shared();
-    let tokens = if manager.follows_omarchy() {
-        load_omarchy_theme()
-    } else {
-        manager.current_tokens()
-    }
-    .unwrap_or_else(azure_tokens);
+    let tokens = ThemeManager::shared().appearance_tokens();
     style_document_view(view, &tokens);
     DOCUMENT_VIEWS.with(|views| {
         let mut views = views.borrow_mut();
@@ -974,10 +981,10 @@ fn tokens_css(tokens: &ThemeTokens, root_font_px: f64) -> String {
     let column_header = header - 9.0;
     let control = (24.0 * scale).round();
     let sizing = format!(
-        "headerbar, headerbar > windowhandle > box, .mode-pane-header, .preview-header {{ min-height: {header}px; }}\n.column-header {{ min-height: {column_header}px; }}\nheaderbar .sidebar-toggle, headerbar button.header-action, headerbar menubutton.header-action > button, .preview-header-action, button.column-header-action, menubutton.column-header-action > button {{ min-width: {control}px; min-height: {control}px; }}\n"
+        "headerbar, headerbar > windowhandle > box, .mode-pane-header, .preview-header {{ min-height: {header}px; }}\n.column-header {{ min-height: {column_header}px; }}\nheaderbar .sidebar-toggle, headerbar button.header-action, headerbar menubutton.header-action > button, .preview-header-action, button.column-header-action, menubutton.column-header-action > button {{ min-width: {control}px; min-height: {control}px; }}\n.file-operation-card button.progress-card-action {{ min-width: 0; min-height: 0; }}\n"
     );
     let colors = format!(
-        "@define-color theme_bg {};\n@define-color theme_surface {};\n@define-color theme_text {};\n@define-color theme_accent {};\n@define-color theme_danger {};\n@define-color theme_muted {};\n@define-color theme_highlight {};\n@define-color theme_border {};\n@define-color theme_dim_text {};\nwindow, popover, popover.background {{ font-size: {root_font_px:.6}px; }}\n",
+        "@define-color strata_bg {};\n@define-color strata_surface {};\n@define-color strata_text {};\n@define-color strata_accent {};\n@define-color strata_danger {};\n@define-color strata_muted {};\n@define-color strata_highlight {};\n@define-color strata_border {};\n@define-color strata_dim_text {};\nwindow, popover, popover.background {{ font-size: {root_font_px:.6}px; }}\n",
         tokens.background,
         tokens.surface,
         tokens.text,

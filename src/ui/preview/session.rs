@@ -44,6 +44,7 @@ impl PreviewState {
         let enabled = self.is_enabled() || self.reserves_column_space();
         self.reserve_columns.set(!enabled);
         if enabled {
+            self.dismissed.set(true);
             self.close();
         } else {
             self.toggle(entry, depth);
@@ -55,17 +56,21 @@ impl PreviewState {
             self.close();
         } else {
             self.reserve_columns.set(true);
+            self.dismissed.set(false);
             self.set_enabled(true);
             self.focus_archive_on_ready.set(true);
+            let folder = entry.as_ref().is_some_and(FileEntry::is_directory);
             if let Some(entry) = entry.and_then(|entry| preview_target(Some(entry))) {
                 self.show(entry, depth);
             } else {
+                self.child_pane.set(folder && self.browsing_columns());
                 self.clear_target();
             }
         }
     }
 
     pub(super) fn clear_target(&self) {
+        self.continue_playback.take();
         self.cancel_pending_show();
         self.claim_on_resume.set(false);
         self.focus_archive_on_ready.set(false);

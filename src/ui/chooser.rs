@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 mod download;
+mod image_conversion;
 
 #[cfg(test)]
 mod tests;
@@ -485,6 +486,7 @@ struct ChooserState {
     accept_button: gtk::Button,
     completion: RefCell<Option<Completion>>,
     download_cancel: RefCell<Option<Arc<AtomicBool>>>,
+    downloaded_file: RefCell<Option<(String, PathBuf)>>,
     download_holder: gtk::Box,
     download_progress: RefCell<Option<download::DownloadProgress>>,
 }
@@ -527,11 +529,23 @@ impl ChooserState {
             .set(self.accept_generation.get().wrapping_add(1));
         self.cancel_download();
         self.clear_error();
+        let cached = self
+            .downloaded_file
+            .borrow()
+            .as_ref()
+            .filter(|(previous, path)| previous == url && path.is_file())
+            .map(|(_, path)| path.clone());
+        if let Some(path) = cached {
+            self.complete_download(path);
+            return;
+        }
+        self.downloaded_file.take();
+        let url = url.to_owned();
         let cancelled = Arc::new(AtomicBool::new(false));
         *self.download_cancel.borrow_mut() = Some(cancelled.clone());
         let state = Rc::downgrade(self);
         self.show_download_progress(
-            url,
+            &url,
             Rc::new(move || {
                 if let Some(state) = state.upgrade() {
                     state.cancel_download();
@@ -570,9 +584,11 @@ impl ChooserState {
                     }
                     Ok(RemoteDownload::Finished(path)) => {
                         state.dismiss_download_progress();
-                        if state.download_cancel.borrow_mut().take().is_some() {
-                            state.complete_remote(path);
-                        }
+                        state.download_cancel.borrow_mut().take();
+                        state
+                            .downloaded_file
+                            .replace(Some((url.clone(), path.clone())));
+                        state.complete_download(path);
                         break glib::ControlFlow::Break;
                     }
                     Ok(RemoteDownload::Failed(message)) => {
@@ -593,7 +609,8 @@ impl ChooserState {
                     }
                 }
             };
-            if let Some((downloaded, total)) = latest_progress
+            if current()
+                && let Some((downloaded, total)) = latest_progress
                 && let Some(progress) = state.download_progress.borrow().as_ref()
             {
                 progress.update(downloaded, total);
@@ -617,7 +634,7 @@ impl ChooserState {
         self.download_holder.set_visible(false);
     }
 
-    fn complete_remote(&self, path: PathBuf) {
+    fn finish_remote(&self, path: PathBuf) {
         let name = path
             .file_name()
             .map(|name| name.to_os_string())
@@ -946,7 +963,7 @@ impl ChooserState {
                 }
                 Ok(entry) if state.view.browser().allows_entry(&entry) => {
                     match entry.location.native_path() {
-                        Some(path) => state.complete_remote(path.to_path_buf()),
+                        Some(path) => state.finish_remote(path.to_path_buf()),
                         None => state.show_error("Choose an existing, accessible file"),
                     }
                 }
@@ -1721,6 +1738,7 @@ fn build_chooser_hosted(
         accept_button: accept.clone(),
         completion: RefCell::new(Some(Box::new(completion))),
         download_cancel: RefCell::new(None),
+        downloaded_file: RefCell::new(None),
         download_holder,
         download_progress: RefCell::new(None),
     });

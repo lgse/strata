@@ -170,6 +170,7 @@ accent = "#00aaff"
 selection = "#a8dfff"
 color8 = "#123247"
 "##,
+        super::OmarchyVariant::Original,
     )
     .expect("valid Quattro colors should map");
 
@@ -186,7 +187,8 @@ color8 = "#123247"
         let source = format!(
             "background = \"#0a0f1a\"\nforeground = \"#a8dfff\"\naccent = \"#00aaff\"\nselection = \"#a8dfff\"\ncolor8 = \"#123247\"\n{source}"
         );
-        let tokens = tokens_from_quattro("azure-glow", &source).expect("partial Quattro palette");
+        let tokens = tokens_from_quattro("azure-glow", &source, super::OmarchyVariant::Original)
+            .expect("partial Quattro palette");
         let palette = super::resolved_source_palette(&tokens, None);
         assert_eq!(palette.string, expected);
         assert_eq!(palette.statement, derived.statement);
@@ -216,7 +218,14 @@ magenta = "#666666"
 
 #[test]
 fn legacy_palette_without_quattro_semantics_is_not_detected() {
-    assert!(tokens_from_quattro("legacy", "color4 = \"#00aaff\"").is_none());
+    assert!(
+        tokens_from_quattro(
+            "legacy",
+            "color4 = \"#00aaff\"",
+            super::OmarchyVariant::Original
+        )
+        .is_none()
+    );
 }
 
 #[test]
@@ -226,6 +235,7 @@ fn omarchy_monitor_ignores_unrelated_state_changes() {
         state.clone(),
         state.join("theme"),
         state.join("theme.name"),
+        state.join("theme/colors.toml"),
         state.parent().expect("Omarchy state parent").to_path_buf(),
     ] {
         assert!(is_omarchy_theme_event(&gtk::gio::File::for_path(path)));
