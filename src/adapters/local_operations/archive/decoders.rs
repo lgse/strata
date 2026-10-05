@@ -8,7 +8,7 @@ use std::{
     borrow::Cow,
     collections::HashMap,
     ffi::OsStr,
-    io::{Read, Seek},
+    io::{BufRead, BufReader, Read, Seek},
     os::unix::ffi::OsStrExt,
     path::Path,
     sync::{
@@ -21,7 +21,7 @@ use std::{
 use gtk::glib;
 
 use super::{
-    ARCHIVE_CANCELLED, ArchiveError, archive_failed, copy_with_big_buf,
+    ARCHIVE_CANCELLED, ArchiveError, archive_failed, check_archive_cancelled, copy_with_big_buf,
     extraction::{
         ArchiveOutcome, ExtractionSession, MAX_SYMLINK_TARGET_BYTES, MemberContent, MemberMetadata,
     },
@@ -207,9 +207,104 @@ impl<R: Read> Read for ArchiveReader<R> {
     }
 }
 
-/// tar-rs stops before gzip's CRC32/ISIZE trailer; EOF is needed to verify it.
-fn verify_gzip_trailer(reader: impl Read, cancelled: &AtomicBool) -> Result<(), ArchiveError> {
-    copy_with_big_buf(ArchiveReader::new(reader), &mut std::io::sink(), cancelled).map(|_| ())
+const GZIP_MAGIC: u8 = 0x1f;
+
+/// Decodes concatenated gzip members, as parallel compressors such as pigz and
+/// bgzip write them, one at a time; flate2 verifies each member's CRC32 and
+/// ISIZE trailer. Reading ends after a member that is followed by end of file
+/// or by anything other than another gzip header, which
+/// [`Self::verify_padding`] then checks.
+struct GzipMembers<R> {
+    /// Always `Some` outside a transition in [`Read::read`].
+    state: Option<GzipState<R>>,
+}
+
+enum GzipState<R> {
+    Member(flate2::bufread::GzDecoder<R>),
+    /// A member has ended and the next bytes have not been looked at yet. A
+    /// failed look stays here, so the next read looks again instead of
+    /// reporting the end of the stream.
+    Boundary(R),
+    /// Everything after the last member.
+    Rest(R),
+}
+
+impl<R: BufRead> GzipMembers<R> {
+    fn new(reader: R) -> Self {
+        Self {
+            state: Some(GzipState::Member(flate2::bufread::GzDecoder::new(reader))),
+        }
+    }
+
+    /// Accepts only zero bytes after the last member, as tape blocking and
+    /// `dd` leave them; cancellable per buffered chunk.
+    fn verify_padding(self, cancelled: &AtomicBool) -> Result<(), ArchiveError> {
+        let Some(GzipState::Rest(mut rest)) = self.state else {
+            return Ok(());
+        };
+        loop {
+            check_archive_cancelled(cancelled)?;
+            let chunk = rest
+                .fill_buf()
+                .map_err(|error| archive_failed(archive_read_error(error, false)))?;
+            if chunk.is_empty() {
+                return Ok(());
+            }
+            if chunk.iter().any(|byte| *byte != 0) {
+                return Err(archive_failed(INVALID_ARCHIVE));
+            }
+            let length = chunk.len();
+            rest.consume(length);
+        }
+    }
+}
+
+impl<R: BufRead> Read for GzipMembers<R> {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        if buffer.is_empty() {
+            return Ok(0);
+        }
+        loop {
+            // Fallible work happens while the state stays in place.
+            let next_member = match self.state.as_mut().expect("gzip state is present") {
+                GzipState::Member(decoder) => {
+                    let count = decoder.read(buffer)?;
+                    if count > 0 {
+                        return Ok(count);
+                    }
+                    false
+                }
+                GzipState::Boundary(inner) => inner.fill_buf()?.first() == Some(&GZIP_MAGIC),
+                GzipState::Rest(_) => return Ok(0),
+            };
+            let state = match self.state.take().expect("gzip state is present") {
+                GzipState::Member(decoder) => GzipState::Boundary(decoder.into_inner()),
+                GzipState::Boundary(inner) if next_member => {
+                    GzipState::Member(flate2::bufread::GzDecoder::new(inner))
+                }
+                GzipState::Boundary(inner) | GzipState::Rest(inner) => GzipState::Rest(inner),
+            };
+            let ended = matches!(state, GzipState::Rest(_));
+            self.state = Some(state);
+            if ended {
+                return Ok(0);
+            }
+        }
+    }
+}
+
+/// Reads the rest of a gzip stream so every member's trailer is verified,
+/// then checks what follows the last member; cancellable per chunk.
+fn verify_gzip_trailer<R: BufRead>(
+    mut members: GzipMembers<R>,
+    cancelled: &AtomicBool,
+) -> Result<(), ArchiveError> {
+    copy_with_big_buf(
+        ArchiveReader::new(&mut members),
+        &mut std::io::sink(),
+        cancelled,
+    )?;
+    members.verify_padding(cancelled)
 }
 
 fn sevenz_error(error: ArchiveError) -> sevenz_rust2::Error {
@@ -276,6 +371,20 @@ pub(super) fn extract_zip_from_archive(
     })
 }
 
+enum TarInput {
+    Plain(std::fs::File),
+    Gzip(GzipMembers<BufReader<std::fs::File>>),
+}
+
+impl Read for TarInput {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        match self {
+            Self::Plain(file) => file.read(buffer),
+            Self::Gzip(members) => members.read(buffer),
+        }
+    }
+}
+
 /// TAR cancellation reports at most the current member, never scans unread ones.
 pub(super) fn extract_tar(
     archive_path: &Path,
@@ -288,11 +397,10 @@ pub(super) fn extract_tar(
     let mut session = ExtractionSession::open(dest_dir, archive_name, progress, cancelled)?;
     session.record_hard_link_targets();
     let file = std::fs::File::open(archive_path).map_err(archive_failed)?;
-    // Parallel compressors such as pigz and bgzip write several gzip members.
-    let reader: Box<dyn std::io::Read> = if gzip {
-        Box::new(flate2::read::MultiGzDecoder::new(file))
+    let reader = if gzip {
+        TarInput::Gzip(GzipMembers::new(BufReader::with_capacity(32 * 1024, file)))
     } else {
-        Box::new(file)
+        TarInput::Plain(file)
     };
     let mut archive = tar::Archive::new(reader);
     let mut remaining = None;
@@ -366,12 +474,9 @@ pub(super) fn extract_tar(
         }
         Ok(())
     })();
-    let result = result.and_then(|()| {
-        if gzip {
-            verify_gzip_trailer(archive.into_inner(), cancelled)
-        } else {
-            Ok(())
-        }
+    let result = result.and_then(|()| match archive.into_inner() {
+        TarInput::Gzip(members) => verify_gzip_trailer(members, cancelled),
+        TarInput::Plain(_) => Ok(()),
     });
     session.finish(result, || remaining.into_iter().collect())
 }

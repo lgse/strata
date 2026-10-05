@@ -1167,9 +1167,9 @@ fn gzip_trailer_check_is_cancellable() -> Result<(), Box<dyn Error>> {
             Err(ArchiveError::Failed(super::INVALID_ARCHIVE.to_owned())),
         ),
     ] {
-        let decoder = flate2::read::GzDecoder::new(Cursor::new(stream));
+        let members = super::GzipMembers::new(Cursor::new(stream));
         assert_eq!(
-            super::verify_gzip_trailer(decoder, &cancelled),
+            super::verify_gzip_trailer(members, &cancelled),
             expected,
             "{label}"
         );
@@ -2156,5 +2156,138 @@ fn every_gzip_member_of_a_tar_gz_is_read_and_verified() -> Result<(), Box<dyn Er
         assert_eq!(fs::read(destination.join("content/a.txt"))?, b"a");
         assert_eq!(fs::read(destination.join("content/b.txt"))?, b"b");
     }
+    Ok(())
+}
+
+#[test]
+fn zero_padding_after_the_last_gzip_member_is_not_damage() -> Result<(), Box<dyn Error>> {
+    // A short tail, and a full tape/`dd` block; zeros followed by data are not padding.
+    for (padding, padded) in [
+        (vec![0, 0, b'x'], false),
+        (vec![0; 10_240], true),
+        (vec![0; 1], true),
+    ] {
+        let root = tempfile::tempdir()?;
+        let archive = root.path().join("content.tar.gz");
+        write_tar_entries(
+            &archive,
+            &[
+                (tar::EntryType::Regular, "a.txt", b"a"),
+                (tar::EntryType::Regular, "b.txt", b"b"),
+            ],
+            true,
+        )?;
+        let mut bytes = fs::read(&archive)?;
+        bytes.extend_from_slice(&padding);
+        fs::write(&archive, bytes)?;
+        let destination = root.path().join("destination");
+        fs::create_dir(&destination)?;
+
+        let result = extract_tar(
+            &archive,
+            &destination,
+            "content.tar.gz",
+            true,
+            &Arc::new(AtomicUsize::new(0)),
+            &never_cancelled(),
+        );
+
+        let label = format!(
+            "{} trailing bytes ending in {:?}",
+            padding.len(),
+            padding.last()
+        );
+        if padded {
+            assert!(
+                matches!(&result, Ok(ArchiveOutcome::Completed(Some(name))) if name == "content"),
+                "{label}: {result:?}"
+            );
+        } else {
+            let kept = format!(
+                "{} Extracted entries remain in `content`.",
+                super::INVALID_ARCHIVE
+            );
+            assert!(
+                matches!(&result, Err(ArchiveError::Failed(message)) if *message == kept),
+                "{label}: {result:?}"
+            );
+        }
+        assert_eq!(fs::read(destination.join("content/a.txt"))?, b"a", "{label}");
+        assert_eq!(fs::read(destination.join("content/b.txt"))?, b"b", "{label}");
+    }
+    Ok(())
+}
+
+/// Serves `data` through `BufRead`, failing once with `Interrupted` when the
+/// position reaches `fail_at`.
+struct FailsOnceAt {
+    data: Vec<u8>,
+    position: usize,
+    fail_at: usize,
+    failed: bool,
+}
+
+impl Read for FailsOnceAt {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        let available = io::BufRead::fill_buf(self)?;
+        let count = available.len().min(buffer.len());
+        buffer[..count].copy_from_slice(&available[..count]);
+        io::BufRead::consume(self, count);
+        Ok(count)
+    }
+}
+
+impl io::BufRead for FailsOnceAt {
+    fn fill_buf(&mut self) -> io::Result<&[u8]> {
+        if self.position == self.fail_at && !self.failed {
+            self.failed = true;
+            return Err(io::ErrorKind::Interrupted.into());
+        }
+        let end = if self.position < self.fail_at {
+            self.fail_at
+        } else {
+            self.data.len()
+        };
+        Ok(&self.data[self.position..end])
+    }
+
+    fn consume(&mut self, amount: usize) {
+        self.position += amount;
+    }
+}
+
+#[test]
+fn a_failed_read_between_gzip_members_does_not_end_the_stream() -> Result<(), Box<dyn Error>> {
+    let gzip = |contents: &[u8]| -> io::Result<Vec<u8>> {
+        let mut encoder =
+            flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        encoder.write_all(contents)?;
+        encoder.finish()
+    };
+    let first = gzip(b"first member, ")?;
+    let mut data = first.clone();
+    data.extend(gzip(b"second member")?);
+    let mut members = super::GzipMembers::new(FailsOnceAt {
+        data,
+        position: 0,
+        fail_at: first.len(),
+        failed: false,
+    });
+
+    let mut decoded = Vec::new();
+    let mut interruptions = 0;
+    let mut buffer = [0; 64];
+    loop {
+        match members.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(count) => decoded.extend_from_slice(&buffer[..count]),
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => interruptions += 1,
+            Err(error) => return Err(error.into()),
+        }
+    }
+
+    assert_eq!(interruptions, 1);
+    assert_eq!(decoded, b"first member, second member");
+    assert_eq!(members.verify_padding(&never_cancelled()), Ok(()));
     Ok(())
 }

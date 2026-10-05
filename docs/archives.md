@@ -55,8 +55,10 @@ lands in the destination under its own name, as usual.
 `.tar.gz` archives are read to the end of the gzip stream, including every
 gzip member that parallel compressors such as pigz write, so each member's
 CRC32 and length trailer is verified. A mismatch or a truncated trailer is
-reported as a damaged archive. Members already written are kept as described
-above, but their contents are unverified.
+reported as a damaged archive. Zero bytes after the last member, as tape
+blocking or `dd` leave them, are padding rather than damage; any other
+trailing bytes are reported as a damaged archive. Members already written are
+kept as described above, but their contents are unverified.
 
 ## Links, permissions and times
 
