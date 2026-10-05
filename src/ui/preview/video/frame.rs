@@ -22,11 +22,20 @@ pub(super) const POSTER_OPACITY: f64 = 0.55;
 /// The largest rectangle of `aspect` inside `width` × `height`, centred.
 pub(super) fn fitted(width: f32, height: f32, aspect: f64) -> graphene::Rect {
     let aspect = aspect as f32;
-    let (fit_width, fit_height) = if width / height > aspect {
+    let (mut fit_width, mut fit_height) = if width / height > aspect {
         (height * aspect, height)
     } else {
         (width, width / aspect)
     };
+    // An allocation already shaped by the layout differs by rounding only
+    // (under two pixels once the aspect scales a rounded height); fill it
+    // rather than leave a seam.
+    if (width - fit_width).abs() < 2.0 {
+        fit_width = width;
+    }
+    if (height - fit_height).abs() < 2.0 {
+        fit_height = height;
+    }
     graphene::Rect::new(
         ((width - fit_width) / 2.0).floor(),
         ((height - fit_height) / 2.0).floor(),

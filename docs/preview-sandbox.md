@@ -560,8 +560,10 @@ saved state skips the ramp, and any play, pause, seek, volume or mute input, or
 moving to another file, ends it immediately.
 
 Ambient light bleeds the frame's border colours into a 24-pixel band around the
-picture. The player samples a 6×4 grid of a few pixels each from a decoded frame
-at most ten times a second, the view eases towards it and uploads it as a tiny
+picture. While the poster stands in, the band takes its colours from the cached
+thumbnail (one download of a 256-pixel texture) and the live frames ease in
+from there. The player samples a 6×4 grid of a few pixels each from a decoded
+frame at most ten times a second, the view eases towards it and uploads it as a tiny
 texture that the GPU scales with linear filtering under the picture, and four
 gradients fade the band into the pane. There is no blur, no per-frame CPU work
 beyond those samples, and nothing updates while playback is paused. The light

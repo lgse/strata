@@ -18,7 +18,7 @@ use std::{
     time::Duration,
 };
 
-use gtk::{glib, gsk, prelude::*};
+use gtk::{gdk, glib, gsk, prelude::*};
 
 use crate::{
     model::FileEntry,
@@ -388,21 +388,51 @@ impl VideoView {
             .is_some_and(|renderer| renderer.is::<gsk::CairoRenderer>())
     }
 
-    /// Feeds the glow from the latest frame, or keeps it dark when disallowed.
-    fn light(&self, media: &DecodedMedia) {
-        let allowed = self.band.get() > 0
+    fn glow_allowed(&self) -> bool {
+        self.band.get() > 0
             && ambient::allowed(
                 crate::ui::preferences::PreferenceManager::shared().element_glow(),
                 crate::ui::motion::animations_enabled(),
                 self.software_rendered(),
-            );
-        if !allowed {
+            )
+    }
+
+    /// Feeds the glow from the latest frame, or keeps it dark when disallowed.
+    fn light(&self, media: &DecodedMedia) {
+        if !self.glow_allowed() {
             if self.glow.is_lit() {
                 self.glow.clear();
             }
             return;
         }
         if let Some(grid) = media.edge_grid() {
+            self.glow.update(&grid);
+        }
+    }
+
+    /// Lights the band from the poster, so it does not wait for the first
+    /// frame; the live colours then ease in from there. One small download.
+    fn light_from_poster(&self, poster: &gdk::Texture) {
+        if !self.glow_allowed() || poster.width() <= 0 || poster.height() <= 0 {
+            return;
+        }
+        let (width, height) = (poster.width() as usize, poster.height() as usize);
+        let mut downloader = gdk::TextureDownloader::new(poster);
+        downloader.set_format(gdk::MemoryFormat::R8g8b8a8);
+        let (bytes, stride) = downloader.download_bytes();
+        let row = width * 4;
+        let packed: Vec<u8>;
+        let pixels: &[u8] = if stride == row {
+            &bytes
+        } else {
+            packed = bytes
+                .chunks(stride)
+                .take(height)
+                .flat_map(|line| line[..row.min(line.len())].iter().copied())
+                .collect();
+            &packed
+        };
+        if let Some(grid) = crate::ui::media::ambient::sample(pixels, width as u32, height as u32) {
             self.glow.update(&grid);
         }
     }
@@ -748,6 +778,9 @@ impl VideoView {
                 .as_ref()
                 .map(|poster| poster.intrinsic_aspect_ratio()),
         );
+        if let Some(poster) = &poster {
+            self.light_from_poster(poster);
+        }
         self.placeholder.set_poster(poster);
         self.placeholder.set_aspect(None);
         self.placeholder.reveal();
