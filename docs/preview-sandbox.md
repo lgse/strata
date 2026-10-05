@@ -529,8 +529,9 @@ is decoded, so scrubbing never shows a frozen picture. Cells come from a
 `video-storyboard` operation that starts only after the first frame is on screen
 plus the 50 ms settle, shares the single nice-10 background slot with the audio
 waveform, and is cancelled when the selection moves on. The helper probes once,
-then runs one software `ffmpeg` keyframe decode per cell with an input seek and
-`-skip_frame nokey`, so the cost scales with the cell count rather than the file
+then runs one software `ffmpeg` decode per cell of the keyframe at or before its
+time (the frame a seek there lands on), with an input seek and `-skip_frame
+nokey`, so the cost scales with the cell count rather than the file
 length: 8 to 48 cells at one per two seconds, 128 pixels on the long edge,
 never enlarged, in binary-subdivision order so the middle, quarters and eighths
 arrive first. The `STRSTB01` stream carries a sheet header and raw RGBA cells
@@ -539,7 +540,8 @@ could not produce are absent and the nearest neighbour stands in. Clips under
 four seconds, animations, attached pictures, raw elementary streams and unknown
 durations have no storyboard. A 90-second limit bounds the decode, and finished
 or partial boards are cached in memory for the last 8 clips (at most about 14
-MB); the next visit to a partial board decodes only its missing cells.
+MB); a partial board keeps its decoded cells while the next visit decodes the
+board again.
 
 Opening a previewed video externally, with **Enter**, the header's Open button
 or activation in the listing, pauses the preview and hands its position to the
