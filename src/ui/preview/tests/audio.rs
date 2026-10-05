@@ -183,10 +183,15 @@ fn autoplayed_audio_fades_in_quickly_unless_the_listener_acts() {
             drawer.show(entry("c.wav"), None);
             ready(&provider, 2);
             let media = decoded();
-            media.use_test_audio_stream_lasting(3_000_000);
-            assert_eq!(media.fade(), 0.0);
-            pump(&|| media.fade() > 0.0, "sound on a short file");
-            assert_eq!(media.fade(), 1.0, "a file under ten seconds skips the rise");
+            assert_eq!(media.fade(), 0.0, "a short track still arms silent");
+            // The duration is known at prepared, before any sample flows, so a
+            // short clip drops the silence then rather than after its opening.
+            media.stream_prepared(true, false, true, 3_000_000);
+            assert_eq!(
+                media.fade(),
+                1.0,
+                "a file under ten seconds plays at full volume from the first sample"
+            );
             assert!(!view().is_easing_in());
 
             preferences.set_preview_autoplay(false);

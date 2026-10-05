@@ -348,6 +348,8 @@ impl AudioView {
                 if media.is_prepared()
                     && let Some(view) = weak.upgrade()
                 {
+                    // The duration is known here, before any sample flows.
+                    view.ease.settle();
                     view.sync_playing(media.is_playing());
                 }
             }));

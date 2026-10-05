@@ -76,19 +76,31 @@ impl EaseIn {
         self.state.get() != State::Off
     }
 
-    /// Begins the rise, when sound actually starts flowing. A short file skips
-    /// it and plays at full volume from here.
+    /// The remembered duration, known once the stream is prepared.
+    fn duration(&self) -> i64 {
+        self.media
+            .borrow()
+            .as_ref()
+            .and_then(glib::WeakRef::upgrade)
+            .map_or(0, |media| media.duration())
+    }
+
+    /// Drops the silence the moment the duration is known to be too short to
+    /// ease in, before the first sample flows, so a short clip is never muted.
+    /// Longer or still-unknown durations stay armed and rise when sound starts.
+    pub(super) fn settle(&self) {
+        if self.state.get() == State::Armed && (1..MIN_DURATION_US).contains(&self.duration()) {
+            self.end();
+        }
+    }
+
+    /// Begins the rise, when sound actually starts flowing. A short file that
+    /// `settle` has not already caught skips it and plays at full volume.
     pub(super) fn start(self: &Rc<Self>) {
         if self.state.get() != State::Armed {
             return;
         }
-        let duration = self
-            .media
-            .borrow()
-            .as_ref()
-            .and_then(glib::WeakRef::upgrade)
-            .map_or(0, |media| media.duration());
-        if (1..MIN_DURATION_US).contains(&duration) {
+        if (1..MIN_DURATION_US).contains(&self.duration()) {
             self.end();
             return;
         }

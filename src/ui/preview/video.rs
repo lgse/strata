@@ -491,6 +491,10 @@ impl VideoView {
             handlers.push(decoded.connect_prepared_notify(move |media| {
                 if let Some(view) = weak.upgrade() {
                     view.sync_frame_size(media);
+                    if media.is_prepared() {
+                        // The duration is known here, before the first frame.
+                        view.ease.settle();
+                    }
                 }
             }));
             // Every presented frame invalidates the paintable; the first one
