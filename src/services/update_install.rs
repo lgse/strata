@@ -57,7 +57,10 @@ impl UpdateMethod {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum UpdateInstall {
-    Downloading { downloaded: u64, total: Option<u64> },
+    Downloading {
+        downloaded: u64,
+        total: Option<u64>,
+    },
     Verifying,
     Installing,
     /// The install passed its point of no return and can no longer be

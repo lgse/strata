@@ -449,10 +449,12 @@ impl<'a> ExtractionSession<'a> {
                     not_attempted,
                 })
             }
-            Err(error @ (ArchiveError::PasswordRequired(_) | ArchiveError::IncorrectPassword(_))) => {
-                let discarded = staging.as_ref().map_or(Ok(()), |staging| {
-                    directory.remove_staging(&staging.name)
-                });
+            Err(
+                error @ (ArchiveError::PasswordRequired(_) | ArchiveError::IncorrectPassword(_)),
+            ) => {
+                let discarded = staging
+                    .as_ref()
+                    .map_or(Ok(()), |staging| directory.remove_staging(&staging.name));
                 // Output that cannot be discarded would make the retry take a
                 // numbered name, so report an ordinary failure instead.
                 match discarded {

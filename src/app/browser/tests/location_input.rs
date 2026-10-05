@@ -496,7 +496,9 @@ pub(super) fn listing_file(location: Location, name: &str, is_hidden: bool) -> F
 }
 
 /// What a view preparing the new column sees: whether a reveal target is pending.
-pub(super) fn record_reveal_pending_on_column_added(browser: &Rc<Browser>) -> Rc<RefCell<Vec<bool>>> {
+pub(super) fn record_reveal_pending_on_column_added(
+    browser: &Rc<Browser>,
+) -> Rc<RefCell<Vec<bool>>> {
     let recorded = Rc::new(RefCell::new(Vec::new()));
     let observed = recorded.clone();
     let weak = Rc::downgrade(browser);

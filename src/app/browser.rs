@@ -1429,12 +1429,7 @@ impl Browser {
                     });
                     self.focus_active();
                 }
-                _ => self.descend_validated(
-                    parent_depth,
-                    location,
-                    selection,
-                    keep_parent_active,
-                ),
+                _ => self.descend_validated(parent_depth, location, selection, keep_parent_active),
             }
             return;
         }

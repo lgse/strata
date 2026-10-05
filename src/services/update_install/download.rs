@@ -73,8 +73,7 @@ pub(super) fn describe_download_error(error: &ureq::Error) -> String {
     match error {
         ureq::Error::Timeout(
             ureq::Timeout::Resolve | ureq::Timeout::Connect | ureq::Timeout::SendRequest,
-        ) => "Could not reach the download server — check your connection and try again"
-            .to_owned(),
+        ) => "Could not reach the download server — check your connection and try again".to_owned(),
         ureq::Error::Timeout(_) => {
             "The download stalled — check your connection and try again".to_owned()
         }

@@ -61,9 +61,18 @@ fn is_dismissing(dialog: &UpdateDialog) -> bool {
 
 fn assert_finalizing(dialog: &UpdateDialog, dismisser: Dismisser) {
     assert_eq!(dialog.status.text(), FINALIZING_STATUS, "{dismisser:?}");
-    assert!(!dialog.cancel.is_sensitive(), "{dismisser:?}: Cancel while finalizing");
-    assert!(!dialog.close.is_sensitive(), "{dismisser:?}: X while finalizing");
-    assert!(!is_dismissing(dialog), "{dismisser:?}: the dialog stays open");
+    assert!(
+        !dialog.cancel.is_sensitive(),
+        "{dismisser:?}: Cancel while finalizing"
+    );
+    assert!(
+        !dialog.close.is_sensitive(),
+        "{dismisser:?}: X while finalizing"
+    );
+    assert!(
+        !is_dismissing(dialog),
+        "{dismisser:?}: the dialog stays open"
+    );
 }
 
 fn wait_until_dismissed(dialog: &UpdateDialog) {
@@ -169,10 +178,16 @@ fn guard_rejection_leaves_every_dismisser_working() {
 
                 assert_eq!(dialog.status.text(), GUARD_REJECTION, "{dismisser:?}");
                 assert!(installer.requests().is_empty(), "{dismisser:?}");
-                assert!(dialog.action.is_sensitive(), "{dismisser:?}: action retries");
+                assert!(
+                    dialog.action.is_sensitive(),
+                    "{dismisser:?}: action retries"
+                );
                 dismiss_with(&dialog, dismisser);
                 wait_until_dismissed(&dialog);
-                assert!(guard.get(), "{dismisser:?}: the other install keeps the guard");
+                assert!(
+                    guard.get(),
+                    "{dismisser:?}: the other install keeps the guard"
+                );
 
                 guard.set(false);
                 window.destroy();
@@ -199,12 +214,22 @@ fn failed_download_leaves_every_dismisser_working() {
                     "Couldn’t install update: checksum",
                     "{dismisser:?}"
                 );
-                assert!(!guard.get(), "{dismisser:?}: a failed install releases the guard");
-                assert_eq!(dialog.action.label().as_deref(), Some("Close"), "{dismisser:?}");
+                assert!(
+                    !guard.get(),
+                    "{dismisser:?}: a failed install releases the guard"
+                );
+                assert_eq!(
+                    dialog.action.label().as_deref(),
+                    Some("Close"),
+                    "{dismisser:?}"
+                );
                 assert!(dialog.action.is_sensitive(), "{dismisser:?}");
                 dismiss_with(&dialog, dismisser);
                 wait_until_dismissed(&dialog);
-                assert!(!installer.cancel_requested(), "{dismisser:?}: nothing to cancel");
+                assert!(
+                    !installer.cancel_requested(),
+                    "{dismisser:?}: nothing to cancel"
+                );
 
                 window.destroy();
             }
@@ -226,7 +251,11 @@ fn close_action_after_a_failure_dismisses_instead_of_retrying() {
             dialog.action.emit_clicked();
 
             wait_until_dismissed(&dialog);
-            assert_eq!(installer.requests(), [offered_request()], "no second install");
+            assert_eq!(
+                installer.requests(),
+                [offered_request()],
+                "no second install"
+            );
             assert!(!guard.get());
             window.destroy();
         },
@@ -280,7 +309,11 @@ fn finalizing_blocks_every_dismisser_until_the_install_ends() {
                 wait_until("the install to fail", || {
                     dialog.status.text().contains("disk full")
                 });
-                assert_eq!(dialog.action.label().as_deref(), Some("Close"), "{dismisser:?}");
+                assert_eq!(
+                    dialog.action.label().as_deref(),
+                    Some("Close"),
+                    "{dismisser:?}"
+                );
                 dismiss_with(&dialog, dismisser);
                 wait_until_dismissed(&dialog);
                 window.destroy();
@@ -336,7 +369,10 @@ fn installed_update_leaves_every_dismisser_working() {
                     dialog.action.label().as_deref() == Some("Restart now")
                 });
 
-                assert!(!guard.get(), "{dismisser:?}: an installed update releases the guard");
+                assert!(
+                    !guard.get(),
+                    "{dismisser:?}: an installed update releases the guard"
+                );
                 dismiss_with(&dialog, dismisser);
                 wait_until_dismissed(&dialog);
                 window.destroy();

@@ -35,12 +35,8 @@ use general::general_page;
 use theme::theme_page;
 
 use super::{
-    blur::BlurBin,
-    browser::dismiss_modal_layer,
-    modal::modal_layer_with_backdrop,
-    controls::modal_layout,
-    preferences::PreferenceManager,
-    terminal,
+    blur::BlurBin, browser::dismiss_modal_layer, controls::modal_layout,
+    modal::modal_layer_with_backdrop, preferences::PreferenceManager, terminal,
 };
 
 type AvailableUpdate = (ReleaseMetadata, InstallRequest, UpdateMethod);
@@ -1912,7 +1908,10 @@ fn update_check_row_with(
 /// those terminal states are always reported through the driver's other two
 /// callbacks instead.
 enum InstallProgress {
-    Downloading { downloaded: u64, total: Option<u64> },
+    Downloading {
+        downloaded: u64,
+        total: Option<u64>,
+    },
     Verifying,
     Installing,
     /// Past the point of no return: the install can no longer be cancelled.

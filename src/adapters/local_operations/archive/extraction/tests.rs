@@ -1149,9 +1149,21 @@ fn a_repeated_directory_member_merges_its_stored_metadata() -> Result<(), Box<dy
     // A top-level directory is restored after publication, a nested one in staging.
     for (directory, published, earlier, later, mtime) in [
         ("dir", "dir", unreadable, full(earlier_time), earlier_time),
-        ("top/dir", "top", unreadable, full(earlier_time), earlier_time),
+        (
+            "top/dir",
+            "top",
+            unreadable,
+            full(earlier_time),
+            earlier_time,
+        ),
         // A later entry overrides only the fields it stores.
-        ("dir", "dir", full(earlier_time), MemberMetadata::NONE, earlier_time),
+        (
+            "dir",
+            "dir",
+            full(earlier_time),
+            MemberMetadata::NONE,
+            earlier_time,
+        ),
         ("dir", "dir", full(earlier_time), time_only, later_time),
     ] {
         let label = format!("{directory}: {earlier:?} then {later:?}");
@@ -1161,7 +1173,7 @@ fn a_repeated_directory_member_merges_its_stored_metadata() -> Result<(), Box<dy
         let mut session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
         session.extract_member(directory, MemberContent::Directory, earlier)?;
         session.extract_member(
-            &format!("{directory}/file.txt"),
+            format!("{directory}/file.txt"),
             MemberContent::File(&mut &b"file"[..], Some(4)),
             MemberMetadata::NONE,
         )?;
@@ -1187,7 +1199,8 @@ fn a_repeated_directory_member_merges_its_stored_metadata() -> Result<(), Box<dy
 }
 
 #[test]
-fn a_password_failure_that_cannot_discard_its_output_offers_no_retry() -> Result<(), Box<dyn Error>> {
+fn a_password_failure_that_cannot_discard_its_output_offers_no_retry() -> Result<(), Box<dyn Error>>
+{
     let root = tempfile::tempdir()?;
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(false);

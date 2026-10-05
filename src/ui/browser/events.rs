@@ -66,8 +66,7 @@ impl ViewState {
             BrowserEvent::Reset => {
                 self.suppress_scroll_after_drop.set(false);
                 self.pending_new_entry.take();
-                if self.pending_properties.borrow().as_ref()
-                    != self.browser.location_at(0).as_ref()
+                if self.pending_properties.borrow().as_ref() != self.browser.location_at(0).as_ref()
                 {
                     self.pending_properties.take();
                 }
@@ -940,7 +939,11 @@ impl ViewState {
                     }
                     error => {
                         self.abandon_deferred_reveal();
-                        show_error_dialog(&self.overlay, "Unable to open location", &error.to_string());
+                        show_error_dialog(
+                            &self.overlay,
+                            "Unable to open location",
+                            &error.to_string(),
+                        );
                     }
                 }
             }

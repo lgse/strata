@@ -97,10 +97,11 @@ fn only_a_password_failure_kind_opens_the_extract_password_dialog() {
                     Location::local(fixture.path()),
                 )));
 
-                view.state.handle(&crate::app::BrowserEvent::OperationFailed {
-                    message: message.to_owned(),
-                    password_failure,
-                });
+                view.state
+                    .handle(&crate::app::BrowserEvent::OperationFailed {
+                        message: message.to_owned(),
+                        password_failure,
+                    });
                 let context = glib::MainContext::default();
                 while context.pending() {
                     context.iteration(false);
@@ -119,7 +120,9 @@ fn only_a_password_failure_kind_opens_the_extract_password_dialog() {
                     "{label}"
                 );
                 assert_eq!(
-                    texts.iter().any(|text| text == "Unable to complete operation"),
+                    texts
+                        .iter()
+                        .any(|text| text == "Unable to complete operation"),
                     !password_dialog,
                     "{label}"
                 );

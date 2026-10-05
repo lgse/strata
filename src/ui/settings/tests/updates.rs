@@ -39,7 +39,10 @@ fn install_click_rejected_by_the_guard_keeps_the_row_usable() {
 
             assert_eq!(row.status.text(), GUARD_REJECTION);
             assert_eq!(button.label().as_deref(), Some("Install update"));
-            assert!(button.is_sensitive(), "a rejected install must stay re-triable");
+            assert!(
+                button.is_sensitive(),
+                "a rejected install must stay re-triable"
+            );
             assert!(row.pending_download.borrow().is_some(), "the offer is kept");
             assert!(installer.requests().is_empty());
             assert!(guard.get(), "the running install keeps the guard");

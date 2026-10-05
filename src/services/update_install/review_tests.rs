@@ -115,13 +115,22 @@ fn metadata_cancellation_does_not_report_a_signature_error() {
 fn cancel_and_commit_exclude_each_other_in_either_order() {
     let cancelled = InstallCancel::new();
     assert!(cancelled.cancel());
-    assert!(cancelled.cancel(), "a repeated cancel still stops the install");
-    assert!(!cancelled.try_commit(), "a cancelled install must not commit");
+    assert!(
+        cancelled.cancel(),
+        "a repeated cancel still stops the install"
+    );
+    assert!(
+        !cancelled.try_commit(),
+        "a cancelled install must not commit"
+    );
     assert!(cancelled.is_cancelled());
 
     let committed = InstallCancel::new();
     assert!(committed.try_commit());
-    assert!(!committed.cancel(), "a committed install cannot be cancelled");
+    assert!(
+        !committed.cancel(),
+        "a committed install cannot be cancelled"
+    );
     assert!(!committed.is_cancelled());
     assert!(committed.try_commit());
 }
@@ -146,8 +155,14 @@ fn replacement_reports_finalizing_and_refuses_a_later_cancel() {
 
     assert_eq!(fs::read(&installed).expect("installed"), b"new version");
     assert_eq!(fs::read(rollback).expect("rollback"), b"old version");
-    assert_eq!(events.try_iter().collect::<Vec<_>>(), [UpdateInstall::Finalizing]);
-    assert!(!cancel.cancel(), "the replaced install can no longer be cancelled");
+    assert_eq!(
+        events.try_iter().collect::<Vec<_>>(),
+        [UpdateInstall::Finalizing]
+    );
+    assert!(
+        !cancel.cancel(),
+        "the replaced install can no longer be cancelled"
+    );
 }
 
 #[test]

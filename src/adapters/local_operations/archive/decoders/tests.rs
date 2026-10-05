@@ -1265,7 +1265,9 @@ fn error_translation_preserves_passwords_unsupported_formats_and_io_failures() {
     ));
     assert_eq!(
         super::sevenz_decode_error(SevenZError::PasswordRequired),
-        ArchiveError::PasswordRequired("A password is required to extract this archive.".to_owned())
+        ArchiveError::PasswordRequired(
+            "A password is required to extract this archive.".to_owned()
+        )
     );
     assert_eq!(
         super::sevenz_decode_error(SevenZError::MaybeBadPassword(
@@ -2249,8 +2251,16 @@ fn zero_padding_after_the_last_gzip_member_is_not_damage() -> Result<(), Box<dyn
                 "{label}: {result:?}"
             );
         }
-        assert_eq!(fs::read(destination.join("content/a.txt"))?, b"a", "{label}");
-        assert_eq!(fs::read(destination.join("content/b.txt"))?, b"b", "{label}");
+        assert_eq!(
+            fs::read(destination.join("content/a.txt"))?,
+            b"a",
+            "{label}"
+        );
+        assert_eq!(
+            fs::read(destination.join("content/b.txt"))?,
+            b"b",
+            "{label}"
+        );
     }
     Ok(())
 }
@@ -2274,7 +2284,10 @@ fn a_password_failure_discards_unencrypted_members_so_the_retry_keeps_the_name()
 -> Result<(), Box<dyn Error>> {
     for (attempt, expected) in [
         (None, super::PASSWORD_REQUIRED),
-        (Some("wrong-password"), crate::services::INCORRECT_ARCHIVE_PASSWORD),
+        (
+            Some("wrong-password"),
+            crate::services::INCORRECT_ARCHIVE_PASSWORD,
+        ),
     ] {
         let root = tempfile::tempdir()?;
         let archive = root.path().join("mixed.zip");
@@ -2326,8 +2339,7 @@ fn damage_in_an_unencrypted_member_is_not_a_password_failure() -> Result<(), Box
     writer.write_all(b"secret")?;
     writer.start_file(
         "README",
-        zip::write::SimpleFileOptions::default()
-            .compression_method(zip::CompressionMethod::Stored),
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored),
     )?;
     writer.write_all(plain)?;
     writer.finish()?;
@@ -2402,8 +2414,7 @@ impl io::BufRead for FailsOnceAt {
 #[test]
 fn a_failed_read_between_gzip_members_does_not_end_the_stream() -> Result<(), Box<dyn Error>> {
     let gzip = |contents: &[u8]| -> io::Result<Vec<u8>> {
-        let mut encoder =
-            flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
         encoder.write_all(contents)?;
         encoder.finish()
     };

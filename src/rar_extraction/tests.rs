@@ -107,7 +107,10 @@ fn unknown_trailer_statuses_are_rejected() {
         buffer.extend_from_slice(&status.to_le_bytes());
         buffer.extend_from_slice(&(message.len() as u32).to_le_bytes());
         buffer.extend_from_slice(message);
-        assert!(read_file_trailer(&mut Cursor::new(buffer)).is_err(), "{status}");
+        assert!(
+            read_file_trailer(&mut Cursor::new(buffer)).is_err(),
+            "{status}"
+        );
     }
 }
 

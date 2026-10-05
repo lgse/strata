@@ -67,7 +67,11 @@ fn listings(listings: Vec<(&str, Vec<FileEntry>)>) -> ListingSource {
 
 fn reveal_browser(
     source: ListingSource,
-) -> (Rc<Browser>, Rc<RefCell<Vec<BrowserEvent>>>, Rc<ListingSource>) {
+) -> (
+    Rc<Browser>,
+    Rc<RefCell<Vec<BrowserEvent>>>,
+    Rc<ListingSource>,
+) {
     let source = Rc::new(source);
     let browser = Browser::new(source.clone());
     let events = Rc::new(RefCell::new(Vec::new()));
@@ -145,7 +149,11 @@ fn reveal_locations_into_an_open_parent_column_selects_in_place_and_closes_deepe
     let (browser, events, _) = reveal_browser(listings(vec![
         (
             "/fixture",
-            vec![file("/fixture/a.txt"), file("/fixture/b.txt"), file("/fixture/sub")],
+            vec![
+                file("/fixture/a.txt"),
+                file("/fixture/b.txt"),
+                file("/fixture/sub"),
+            ],
         ),
         ("/fixture/sub", vec![file("/fixture/sub/x")]),
     ]));
@@ -209,7 +217,10 @@ fn reveal_locations_selects_the_listed_targets_without_reporting_the_missing_one
         vec![location("/fixture/missing.txt"), location("/fixture/a.txt")],
     );
 
-    assert_eq!(selected_locations(&browser), vec![location("/fixture/a.txt")]);
+    assert_eq!(
+        selected_locations(&browser),
+        vec![location("/fixture/a.txt")]
+    );
     assert!(
         !events
             .borrow()
@@ -226,7 +237,10 @@ fn reveal_locations_survives_a_mount_round_trip() {
         ..listings(vec![(share, vec![file("sftp://host/share/report.pdf")])])
     });
 
-    browser.reveal_locations(location(share), vec![location("sftp://host/share/report.pdf")]);
+    browser.reveal_locations(
+        location(share),
+        vec![location("sftp://host/share/report.pdf")],
+    );
     assert!(events.borrow().iter().any(|event| matches!(
         event,
         BrowserEvent::LocationNavigationRejected {
@@ -252,7 +266,10 @@ fn descend_revealing_selects_the_target_in_a_new_column_after_the_parent() {
             (root, vec![file(&format!("{root}/sub"))]),
             (
                 &format!("{root}/sub"),
-                vec![file(&format!("{root}/sub/w")), file(&format!("{root}/sub/x"))],
+                vec![
+                    file(&format!("{root}/sub/w")),
+                    file(&format!("{root}/sub/x")),
+                ],
             ),
         ]));
         browser.navigate(location(root));
@@ -264,7 +281,10 @@ fn descend_revealing_selects_the_target_in_a_new_column_after_the_parent() {
         );
 
         assert_eq!(browser.location_at(0), Some(location(root)));
-        assert_eq!(browser.location_at(1), Some(location(&format!("{root}/sub"))));
+        assert_eq!(
+            browser.location_at(1),
+            Some(location(&format!("{root}/sub")))
+        );
         assert_eq!(
             selected_locations(&browser),
             vec![location(&format!("{root}/sub/x"))]
@@ -281,11 +301,17 @@ fn moving_the_cursor_ends_a_reveal_still_waiting_for_remote_batches() {
     source.uri_base = Some("sftp://host/share");
     let (browser, events, source) = scripted_browser(source);
     let [a, b, c] = ["a", "b", "c"].map(|name| source.entry_location(name));
-    browser.reveal_locations(Location::uri("sftp://host/share"), vec![c.clone(), a.clone()]);
+    browser.reveal_locations(
+        Location::uri("sftp://host/share"),
+        vec![c.clone(), a.clone()],
+    );
     let (request_id, emit) = source.enumerate_calls.borrow()[0].clone();
     emit(DirectoryEvent::Batch {
         request_id,
-        entries: vec![source.listed_entry("a", false), source.listed_entry("b", false)],
+        entries: vec![
+            source.listed_entry("a", false),
+            source.listed_entry("b", false),
+        ],
     });
     assert_eq!(selected_locations(&browser), vec![a]);
 

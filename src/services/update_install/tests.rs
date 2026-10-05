@@ -14,11 +14,11 @@ use super::{
     APPLICATION_ICON, DESKTOP_ENTRY, InstallCancel, InstallRequest, InstallStop, UpdateInstall,
     UpdateMethod, aur_repository_version_from_response, desktop_entry_with_exec,
     download::{DownloadTimeouts, describe_download_error, describe_read_error},
-    download_to_file_bounded, download_to_file_with,
-    is_old_instance, package_repository_version_for, parse_aur_package_version,
-    parse_package_version, refresh_desktop_metadata, repository_database_version, restore_rollback,
-    retire_old_instances, stage_binary_path, stage_rollback, stage_workdir, update_method_for,
-    verified_download_url, verify_staged_binary,
+    download_to_file_bounded, download_to_file_with, is_old_instance,
+    package_repository_version_for, parse_aur_package_version, parse_package_version,
+    refresh_desktop_metadata, repository_database_version, restore_rollback, retire_old_instances,
+    stage_binary_path, stage_rollback, stage_workdir, update_method_for, verified_download_url,
+    verify_staged_binary,
 };
 
 #[test]
@@ -735,7 +735,11 @@ struct TrickleServer {
 /// until the server is dropped, so a short body reads as a stall rather than
 /// an early close. It closes after 10 s regardless, so a client that never
 /// times out fails its test instead of hanging it.
-fn serve_trickle(content_length: Option<usize>, chunks: Vec<Vec<u8>>, gap: Duration) -> TrickleServer {
+fn serve_trickle(
+    content_length: Option<usize>,
+    chunks: Vec<Vec<u8>>,
+    gap: Duration,
+) -> TrickleServer {
     let listener = TcpListener::bind(("127.0.0.1", 0)).expect("loopback listener");
     let port = listener.local_addr().expect("listener address").port();
     let (release, released) = mpsc::channel::<()>();
@@ -752,9 +756,8 @@ fn serve_trickle(content_length: Option<usize>, chunks: Vec<Vec<u8>>, gap: Durat
             }
         }
         if let Some(length) = content_length {
-            let head = format!(
-                "HTTP/1.1 200 OK\r\ncontent-length: {length}\r\nconnection: close\r\n\r\n"
-            );
+            let head =
+                format!("HTTP/1.1 200 OK\r\ncontent-length: {length}\r\nconnection: close\r\n\r\n");
             if stream.write_all(head.as_bytes()).is_err() {
                 return;
             }
@@ -855,7 +858,11 @@ fn download_fails_when_the_body_stalls() {
         "The download stalled — check your connection and try again"
     );
     assert!(download.elapsed >= idle, "{:?}", download.elapsed);
-    assert!(download.elapsed < Duration::from_secs(5), "{:?}", download.elapsed);
+    assert!(
+        download.elapsed < Duration::from_secs(5),
+        "{:?}",
+        download.elapsed
+    );
 }
 
 #[test]
@@ -874,7 +881,11 @@ fn download_fails_when_headers_never_arrive() {
         error,
         "The download stalled — check your connection and try again"
     );
-    assert!(download.elapsed < Duration::from_secs(5), "{:?}", download.elapsed);
+    assert!(
+        download.elapsed < Duration::from_secs(5),
+        "{:?}",
+        download.elapsed
+    );
 }
 
 #[test]

@@ -68,7 +68,9 @@ fn sevenz_decode_error(error: sevenz_rust2::Error) -> ArchiveError {
         | Error::BadTerminatedSubStreamsInfo
         | Error::BadTerminatedHeader(_) => archive_failed(INVALID_ARCHIVE),
         Error::PasswordRequired => ArchiveError::PasswordRequired(PASSWORD_REQUIRED.to_owned()),
-        Error::MaybeBadPassword(_) => ArchiveError::IncorrectPassword(MAYBE_BAD_PASSWORD.to_owned()),
+        Error::MaybeBadPassword(_) => {
+            ArchiveError::IncorrectPassword(MAYBE_BAD_PASSWORD.to_owned())
+        }
         Error::Io(error, _) => archive_failed(archive_read_error(error, false)),
         error => archive_failed(error),
     }
@@ -233,7 +235,7 @@ struct GzipMembers<R> {
 }
 
 enum GzipState<R> {
-    Member(flate2::bufread::GzDecoder<R>),
+    Member(Box<flate2::bufread::GzDecoder<R>>),
     /// A member has ended and the next bytes have not been looked at yet. A
     /// failed look stays here, so the next read looks again instead of
     /// reporting the end of the stream.
@@ -245,7 +247,9 @@ enum GzipState<R> {
 impl<R: BufRead> GzipMembers<R> {
     fn new(reader: R) -> Self {
         Self {
-            state: Some(GzipState::Member(flate2::bufread::GzDecoder::new(reader))),
+            state: Some(GzipState::Member(Box::new(
+                flate2::bufread::GzDecoder::new(reader),
+            ))),
         }
     }
 
@@ -291,9 +295,9 @@ impl<R: BufRead> Read for GzipMembers<R> {
                 GzipState::Rest(_) => return Ok(0),
             };
             let state = match self.state.take().expect("gzip state is present") {
-                GzipState::Member(decoder) => GzipState::Boundary(decoder.into_inner()),
+                GzipState::Member(decoder) => GzipState::Boundary((*decoder).into_inner()),
                 GzipState::Boundary(inner) if next_member => {
-                    GzipState::Member(flate2::bufread::GzDecoder::new(inner))
+                    GzipState::Member(Box::new(flate2::bufread::GzDecoder::new(inner)))
                 }
                 GzipState::Boundary(inner) | GzipState::Rest(inner) => GzipState::Rest(inner),
             };
