@@ -413,6 +413,44 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
                     }
                 }
             }
+            let display = gtk::gdk::Display::default().expect("test display");
+            let user_css = gtk::CssProvider::new();
+            user_css.load_from_string(
+                "@define-color theme_bg #ff00ff; @define-color theme_accent #00ff00;",
+            );
+            gtk::style_context_add_provider_for_display(
+                &display,
+                &user_css,
+                gtk::STYLE_PROVIDER_PRIORITY_USER,
+            );
+            for theme in ["nord", "azure-glow", "nord"] {
+                themes.select_theme(theme);
+                let tokens = themes.current_tokens().expect("active theme");
+                for window in &windows {
+                    #[expect(
+                        deprecated,
+                        reason = "GTK has no replacement API for resolving named CSS colors"
+                    )]
+                    let style = window.style_context();
+                    #[expect(
+                        deprecated,
+                        reason = "GTK has no replacement API for resolving named CSS colors"
+                    )]
+                    for (name, expected) in [
+                        ("strata_bg", tokens.background.as_str()),
+                        ("strata_accent", tokens.accent.as_str()),
+                        ("theme_bg", "#ff00ff"),
+                        ("theme_accent", "#00ff00"),
+                    ] {
+                        assert_eq!(
+                            style.lookup_color(name).expect("named color"),
+                            gtk::gdk::RGBA::parse(expected).expect("token color"),
+                            "{theme}: {name}",
+                        );
+                    }
+                }
+            }
+            gtk::style_context_remove_provider_for_display(&display, &user_css);
             for window in windows {
                 window.close();
             }
