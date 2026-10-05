@@ -570,7 +570,9 @@ under reduced motion, and never runs on the Cairo software renderer.
 
 The frame area never shows a spinner. Until the first decoded frame it shows the
 listing's cached thumbnail dimmed as a poster when that rendition is already in
-memory, otherwise an outline, at the probed aspect once the header has arrived.
+memory, otherwise the picture's own surface colour, at the probed aspect once
+the header has arrived, with no outline so the edge does not change when the
+frame lands.
 The lookup never queues thumbnail work. The first frame fades the stand-in out
 over 150 ms, or replaces it at once under reduced motion. Every media stream
 waits 50 ms before starting its sandbox session, so a selection that moves on

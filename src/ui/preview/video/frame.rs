@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 
 //! The frame area's stand-in until a decoded frame exists: the listing's
-//! thumbnail dimmed as a poster, or an outline at the video's aspect.
+//! thumbnail dimmed as a poster, or the picture's own surface colour at the
+//! video's aspect. It has no edge of its own, so nothing changes at the
+//! border when the first frame replaces it.
 
 use std::{
     cell::{Cell, RefCell},
@@ -95,7 +97,6 @@ mod imp {
                 .unwrap_or(DEFAULT_ASPECT);
             let rect = fitted(width, height, aspect);
             let rounded = gsk::RoundedRect::from_rect(rect, RADIUS);
-            let palette = palette();
             snapshot.push_rounded_clip(&rounded);
             match poster {
                 Some(poster) => {
@@ -103,10 +104,10 @@ mod imp {
                     snapshot.append_texture(&poster, &rect);
                     snapshot.pop();
                 }
-                None => snapshot.append_color(&with_alpha(palette.dim, 0.08), &rect),
+                // The same surface the picture draws behind its frames.
+                None => snapshot.append_color(&with_alpha(palette().background, 0.55), &rect),
             }
             snapshot.pop();
-            snapshot.append_border(&rounded, &[1.0; 4], &[with_alpha(palette.dim, 0.45); 4]);
         }
     }
 }

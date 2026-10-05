@@ -190,9 +190,9 @@ fn steps_stay_within_the_same_media_type() {
 }
 
 #[test]
-fn the_frame_shows_a_poster_or_outline_until_the_first_frame() {
+fn the_frame_shows_a_poster_or_surface_until_the_first_frame() {
     crate::test_support::gtk_test(
-        "ui::preview::tests::video::the_frame_shows_a_poster_or_outline_until_the_first_frame",
+        "ui::preview::tests::video::the_frame_shows_a_poster_or_surface_until_the_first_frame",
         || {
             let provider = Rc::new(Provider::default());
             let drawer = PreviewDrawer::new(provider.clone(), false);
@@ -240,7 +240,7 @@ fn the_frame_shows_a_poster_or_outline_until_the_first_frame() {
             assert!(view.placeholder().is_visible(), "a new clip starts covered");
             assert!(
                 view.placeholder().poster().is_none(),
-                "no listing thumbnail means an outline"
+                "no listing thumbnail means the plain surface"
             );
             ready(&provider, 1, "video/mp4");
             assert!(view.placeholder().is_visible());
