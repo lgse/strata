@@ -88,6 +88,11 @@ pub(crate) fn recall_media_position(path: &Path) -> Option<u64> {
     })
 }
 
+/// Where a new stream for `path` resumes, when it does not start from the top.
+pub(crate) fn resume_position(path: &Path) -> Option<u64> {
+    recall_media_position(path).filter(|&position| position > RESTORE_MIN_US)
+}
+
 #[cfg(test)]
 type TestLoader = std::rc::Rc<dyn Fn(SandboxedMedia, u32) -> Result<Session, String>>;
 
@@ -305,8 +310,7 @@ impl DecodedMedia {
 
     pub fn new(source: SandboxedMedia) -> Self {
         let obj: Self = glib::Object::new();
-        let restore =
-            recall_media_position(&source.path).filter(|&position| position > RESTORE_MIN_US);
+        let restore = resume_position(&source.path);
         obj.imp().source.replace(Some(source));
         if let Some(position) = restore {
             obj.imp().restore.set(Some(position));

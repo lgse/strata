@@ -246,7 +246,7 @@ fn the_frame_shows_a_poster_or_surface_until_the_first_frame() {
             clip.modified_unix_seconds = MetadataValue::Known(1);
             crate::ui::thumbnail::remember_thumbnail_for_test(&clip, poster.clone());
 
-            drawer.show(clip, None);
+            drawer.show(clip.clone(), None);
             ready(&provider, 0, "video/mp4");
             let state = &drawer.state;
             let view = state
@@ -269,6 +269,22 @@ fn the_frame_shows_a_poster_or_surface_until_the_first_frame() {
                 !view.placeholder().is_visible(),
                 "reduced motion retires the placeholder with the first frame"
             );
+            media.use_test_stream();
+            media.play();
+            wait_until("playback past the first second", || {
+                media.timestamp() > 1_500_000
+            });
+            let board = crate::ui::preview::video::storyboard::adopt(
+                &crate::ui::preview::audio::details::TrackKey::of(&clip),
+                crate::media::storyboard::Sheet {
+                    width: 2,
+                    height: 1,
+                    count: 8,
+                    duration_us: 8_000_000,
+                },
+            );
+            board.set_cell(7, vec![0; 8]);
+            let cell = board.nearest(0).expect("the only cell");
 
             drawer.show(entry("other.mp4"), None);
             assert!(view.placeholder().is_visible(), "a new clip starts covered");
@@ -278,6 +294,13 @@ fn the_frame_shows_a_poster_or_surface_until_the_first_frame() {
             );
             ready(&provider, 1, "video/mp4");
             assert!(view.placeholder().is_visible());
+
+            drawer.show(clip, None);
+            assert_eq!(
+                view.placeholder().poster().as_ref(),
+                Some(&cell),
+                "a clip left mid-way is covered by its storyboard, not the opening thumbnail"
+            );
             preferences.set_reduce_motion(false);
             drawer.close();
         },

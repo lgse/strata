@@ -91,7 +91,7 @@ pub(super) fn cached_storyboard(key: &TrackKey) -> Option<Rc<Storyboard>> {
 
 /// The cached board cut from the same sheet, so a partial board keeps the
 /// cells it has; any other sheet starts a fresh board in its place.
-fn adopt(key: &TrackKey, sheet: Sheet) -> Rc<Storyboard> {
+pub(in crate::ui::preview) fn adopt(key: &TrackKey, sheet: Sheet) -> Rc<Storyboard> {
     STORYBOARDS.with_borrow_mut(|cache| {
         if let Some(board) = cache.get(key).filter(|board| board.sheet == sheet) {
             return board;

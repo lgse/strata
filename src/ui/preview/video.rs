@@ -692,7 +692,23 @@ impl VideoView {
         self.play.set_sensitive(false);
         self.previous.set_sensitive(has_previous);
         self.next.set_sensitive(has_next);
-        let poster = crate::ui::thumbnail::cached_thumbnail(entry);
+        // A clip that resumes where it stopped shows the storyboard cell nearest
+        // that point when its board is cached; otherwise the listing's thumbnail
+        // of the opening frame stands in.
+        let resume_cell = entry
+            .location
+            .native_path()
+            .and_then(crate::ui::media::resume_position)
+            .and_then(|position| {
+                storyboard::cached_storyboard(&TrackKey::of(entry))?.nearest(position)
+            });
+        let (poster, opacity) = match resume_cell {
+            Some(cell) => (Some(cell), SEEK_COVER_OPACITY),
+            None => (
+                crate::ui::thumbnail::cached_thumbnail(entry),
+                frame::POSTER_OPACITY,
+            ),
+        };
         // The frame keeps its place from the first paint: the poster's aspect
         // stands in until the probe answers.
         self.layout.set_aspect(
@@ -703,7 +719,7 @@ impl VideoView {
         if let Some(poster) = &poster {
             self.light_from_poster(poster);
         }
-        self.placeholder.set_poster(poster);
+        self.placeholder.set_poster_with_opacity(poster, opacity);
         self.placeholder.set_aspect(None);
         self.placeholder.reveal();
         self.chapters.borrow_mut().clear();

@@ -132,11 +132,7 @@ impl Placeholder {
         glib::Object::new()
     }
 
-    pub(super) fn set_poster(&self, poster: Option<gdk::Texture>) {
-        self.set_poster_with_opacity(poster, POSTER_OPACITY);
-    }
-
-    /// A storyboard cell stands in at nearly full strength during a seek.
+    /// A storyboard cell stands in at nearly full strength; a thumbnail is dimmed.
     pub(super) fn set_poster_with_opacity(&self, poster: Option<gdk::Texture>, opacity: f64) {
         self.imp().poster.replace(poster);
         self.imp().poster_opacity.set(opacity);

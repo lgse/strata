@@ -581,7 +581,9 @@ The frame area never shows a spinner. Until the first decoded frame it shows the
 listing's cached thumbnail dimmed as a poster when that rendition is already in
 memory, otherwise the picture's own surface colour, at the probed aspect once
 the header has arrived, with no outline so the edge does not change when the
-frame lands.
+frame lands. A clip that resumes where it stopped shows the cell of its cached
+storyboard nearest that point instead, at the seek cover's strength, so the
+stand-in matches the frame about to arrive rather than the opening one.
 The lookup never queues thumbnail work. The first frame fades the stand-in out
 over 150 ms, or replaces it at once under reduced motion. Every media stream
 waits 50 ms before starting its sandbox session, so a selection that moves on
