@@ -521,7 +521,11 @@ fn autoplay_starts_silent_and_eases_in_unless_the_viewer_acts_or_is_muted() {
             assert!(view().is_easing_in());
             media.present_test_frame(64, 36);
             pump(std::time::Duration::from_millis(300));
-            assert_eq!(media.fade(), 0.0, "the dwell has not passed");
+            let early = media.fade();
+            assert!(
+                early > 0.0 && early < 0.1,
+                "the fade starts at the first frame and rises gently ({early})"
+            );
             wait_until("the ease-in", || media.fade() == 1.0);
             assert!(!view().is_easing_in());
             assert_eq!(media.volume(), 0.8, "the saved volume is untouched");

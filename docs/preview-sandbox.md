@@ -551,11 +551,11 @@ positions within a second of either end open the file plainly. The launch uses
 the display's launch context, so the player gets startup notification.
 
 With **Preview autoplay** on, a video starts silent: the player scales its
-output by a fade gain on top of the saved volume, which it never changes. One
-second after the first frame the gain rises over 1.5 s on a slow-in, slow-out
-curve (a smoothstep squared, so the ear hears an even rise), set about sixty
-times a second on the GStreamer `volume` element, so no audio is processed in
-the application. A muted
+output by a fade gain on top of the saved volume, which it never changes. From
+the first frame the gain rises over 2 s on a slow-in, slow-out curve (a
+smoothstep squared, so the ear hears an even rise), set about sixty times a
+second on the GStreamer `volume` element, so no audio is processed in the
+application. A muted
 saved state skips the ramp, and any play, pause, seek, volume or mute input, or
 moving to another file, ends it immediately.
 

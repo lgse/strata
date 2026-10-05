@@ -41,9 +41,8 @@ const BUBBLE_MARGIN: i32 = 10;
 const BUBBLE_CHROME: i32 = 8;
 /// A storyboard cell stands in at this strength while a seek decodes.
 const SEEK_COVER_OPACITY: f64 = 0.9;
-/// Autoplay stays silent this long after the first frame before sound eases in.
-const EASE_IN_DWELL: Duration = Duration::from_secs(1);
-const EASE_IN_RAMP: Duration = Duration::from_millis(1500);
+/// Autoplayed sound rises from silence over this long, from the first frame.
+const EASE_IN_RAMP: Duration = Duration::from_secs(2);
 const EASE_IN_STEP: Duration = Duration::from_millis(16);
 
 /// Slow in, slow out, on a loudness-friendly curve: a smoothstep squared, so
@@ -108,7 +107,7 @@ pub(super) struct VideoView {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum EaseIn {
     Off,
-    /// Silent until the first frame has been on screen for the dwell.
+    /// Silent until the first frame arrives and the ramp starts.
     Armed,
     Ramping,
 }
@@ -544,19 +543,10 @@ impl VideoView {
         }
         self.placeholder.conceal();
         self.start_storyboard();
-        if self.ease_in.get() == EaseIn::Armed {
-            let weak = Rc::downgrade(self);
-            let timer = glib::timeout_add_local_once(EASE_IN_DWELL, move || {
-                if let Some(view) = weak.upgrade() {
-                    view.ease_timer.borrow_mut().take();
-                    view.ramp_audio();
-                }
-            });
-            self.ease_timer.replace(Some(timer));
-        }
+        self.ramp_audio();
     }
 
-    /// Autoplay starts silent; sound eases in once the viewer has stayed a second.
+    /// Autoplay starts silent; the sound fades in from the first frame.
     pub(super) fn start_silently(&self) {
         let Some(media) = self.media.borrow().clone() else {
             return;
