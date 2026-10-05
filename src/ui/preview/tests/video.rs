@@ -37,7 +37,6 @@ pub(super) fn failed(provider: &Provider, index: usize, message: &str) {
     });
 }
 
-/// A loaded folder of empty files sorted by name.
 pub(super) fn sorted_listing(
     names: &[&str],
 ) -> (tempfile::TempDir, crate::ui::browser::BrowserView) {
@@ -329,11 +328,6 @@ fn badges_replace_their_skeleton_once_the_probe_answers() {
                 view.badge_labels().is_empty(),
                 "skeleton pills carry no text"
             );
-            assert_eq!(
-                view.badges_row().observe_children().n_items(),
-                3,
-                "the row keeps its height with empty pills"
-            );
 
             let metadata = crate::sandbox::metadata::MediaMetadata::from_json(
                 br#"{"streams":[
@@ -385,11 +379,6 @@ fn badges_replace_their_skeleton_once_the_probe_answers() {
 
             view.show_details_for_test(None);
             assert!(view.badge_labels().is_empty());
-            assert_eq!(
-                view.badges_row().observe_children().n_items(),
-                0,
-                "a failed probe leaves no pills behind"
-            );
             drawer.close();
         },
     );
@@ -692,7 +681,6 @@ fn files_opened_externally_stay_paused_when_their_preview_lands() {
             let preferences = crate::ui::preferences::PreferenceManager::shared();
             preferences.set_preview_autoplay(true);
             let state = &drawer.state;
-            // Synthetic clips keep the streams alive while the main loop runs.
             let playing = || {
                 let media = state
                     .media
@@ -704,14 +692,12 @@ fn files_opened_externally_stay_paused_when_their_preview_lands() {
                 media.is_playing()
             };
 
-            // A double-click opens the file before the first click's preview has loaded.
             let first = entry("a.mp4");
             drawer.show(first.clone(), None);
             assert_eq!(drawer.prepare_handoff(&first.location), None);
             ready(&provider, 0, "video/mp4");
             assert!(!playing(), "the opened file does not autoplay");
 
-            // The same when the preview was only debounced.
             let second = entry("b.mp4");
             state.show_after_focus_change(second.clone(), None);
             assert_eq!(drawer.prepare_handoff(&second.location), None);

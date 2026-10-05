@@ -49,7 +49,6 @@ const PREVIEW_SPINNER_DELAY: Duration = Duration::from_millis(120);
 const PRINT_TEXT_BYTE_LIMIT: usize = 16 * 1024 * 1024;
 const TRANSITION: Duration = Duration::from_millis(260);
 const PDF_PAGE_GAP: i32 = 6;
-/// A handoff within this much of either end opens the file from the start.
 const HANDOFF_MARGIN_US: u64 = 1_000_000;
 const PDF_MIN_ZOOM: f64 = 1.0;
 const PDF_MAX_ZOOM: f64 = 4.0;
@@ -174,7 +173,6 @@ struct PreviewState {
     media_toggle_mute: RefCell<Option<Rc<dyn Fn()>>>,
     audio: RefCell<Option<AudioPreview>>,
     video: RefCell<Option<VideoPreview>>,
-    /// The file last handed to an external player; its preview stays paused.
     handed_off: RefCell<Option<crate::model::Location>>,
     continue_playback: RefCell<Option<PlaybackContinuation>>,
     split: RefCell<Option<gtk::Paned>>,
@@ -497,11 +495,8 @@ impl PreviewDrawer {
         Self { state }
     }
 
-    /// Pauses the previewed video and reports where it stopped, for opening it
-    /// externally at that point. Other previews and the first or last second
-    /// yield nothing. The file is remembered either way, so a preview of it
-    /// that is still loading (a double-click opens before the first click's
-    /// preview lands) does not autoplay beside the player.
+    /// Remember opens even before render: double-click activation can outrun
+    /// the first click's preview load and otherwise autoplay beside the player.
     pub(in crate::ui) fn prepare_handoff(
         &self,
         location: &crate::model::Location,
@@ -634,7 +629,6 @@ impl PreviewDrawer {
         self.state.revealer.reveals_child()
     }
 
-    /// Media keys apply to a playing stream, or to an audio or video view between files.
     pub fn has_video(&self) -> bool {
         self.is_open() && !self.state.sizing.is_suspended() && self.state.has_media_view()
     }
@@ -1509,7 +1503,6 @@ impl PreviewState {
                 let media =
                     super::media::DecodedMedia::new(source.clone()).upcast::<gtk::MediaStream>();
                 self.media.replace(Some(media.clone()));
-                // Playing by hand lifts the hold an external open placed on this file.
                 let weak = Rc::downgrade(self);
                 media.connect_playing_notify(move |media| {
                     if media.is_playing()
@@ -1576,7 +1569,6 @@ impl PreviewState {
                 if !handed_off
                     && (preferences.preview_autoplay() || (continue_playback && family.is_some()))
                 {
-                    // Unasked-for playback starts silent; a continued one keeps its sound.
                     if preferences.preview_autoplay() && !continue_playback {
                         match family {
                             Some(MediaFamily::Video) => {
@@ -2664,7 +2656,6 @@ impl PreviewState {
             || self.video.borrow().is_some()
     }
 
-    /// The family `<` and `>` step through: the one whose view is showing.
     fn stepping_family(&self) -> Option<MediaFamily> {
         if self.audio.borrow().is_some() {
             Some(MediaFamily::Audio)
@@ -2720,7 +2711,6 @@ impl PreviewState {
         Some((files, index))
     }
 
-    /// Moves to the previous or next file of the showing view's media family.
     fn step_media(self: &Rc<Self>, step: i32, keyboard: bool) -> bool {
         let Some(family) = self.stepping_family() else {
             return false;
@@ -2795,8 +2785,6 @@ impl PreviewState {
         self.reset_content(None);
     }
 
-    /// Keeps the audio or video view of `keep` across consecutive files of that
-    /// family, preserving artwork transitions and the frame area.
     fn reset_content(&self, keep: Option<MediaFamily>) {
         let owned = self.content_owns_keys();
         self.source_preview.cancel();
@@ -2951,7 +2939,6 @@ impl PreviewState {
         true
     }
 
-    /// A file typed as audio whose stream header carries video moves to the video view.
     fn replace_audio_with_video(self: &Rc<Self>, media: &gtk::MediaStream) {
         let Some(audio) = self.audio.take() else {
             return;
@@ -3123,7 +3110,6 @@ struct VideoPreview {
     volume: VolumeControls,
 }
 
-/// Where a file sits among the displayed files of its media family.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct ListingPosition {
     /// One-based, unlike the listing cursor.
@@ -3143,7 +3129,6 @@ impl ListingPosition {
     }
 }
 
-/// The media families that get a retained now-playing view and `<` / `>` stepping.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum MediaFamily {
     Audio,

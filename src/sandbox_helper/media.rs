@@ -390,9 +390,7 @@ pub(super) fn run_storyboard(input: &Path, output: &Path, cell_edge: u32) -> Res
     sheet
         .write(&mut writer)
         .map_err(|error| error.to_string())?;
-    // Each cell is the keyframe at or before its time, the frame a seek there
-    // lands on; relative to the seek its timestamp is negative, which the
-    // rawvideo muxer's frame-rate sync would drop without the reset.
+    // Preroll timestamps can be negative; reset them so rawvideo sync keeps the frame.
     let filter = format!(
         "setpts=PTS-STARTPTS,scale={}:{}:flags=fast_bilinear,setsar=1,format=rgba",
         sheet.width, sheet.height
@@ -423,7 +421,6 @@ pub(super) fn run_storyboard(input: &Path, output: &Path, cell_edge: u32) -> Res
             let read = read_chunk(&pipe, &mut pixels, Instant::now() + FRAME_TIMEOUT)?;
             drop(pipe);
             let exited = child.wait()?.success();
-            // A seek the file cannot serve yields nothing; that cell stays empty.
             if exited && read == pixels.len() {
                 storyboard::write_cell(&mut writer, index, &pixels)?;
                 writer.flush()?;

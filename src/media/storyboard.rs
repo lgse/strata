@@ -45,7 +45,6 @@ impl Sheet {
         Ok(self)
     }
 
-    /// The source time a cell samples: the middle of its slice of the timeline.
     pub fn cell_time_us(self, index: u32) -> u64 {
         (u64::from(index) * 2 + 1) * self.duration_us / (u64::from(self.count) * 2)
     }
@@ -126,7 +125,6 @@ impl CellReader {
         }
     }
 
-    /// The next cell, or `None` at the end record.
     pub fn read(&mut self, reader: &mut impl Read) -> io::Result<Option<(u32, Vec<u8>)>> {
         if self.ended {
             return Err(invalid("Storyboard data after its end"));

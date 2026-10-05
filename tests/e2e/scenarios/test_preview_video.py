@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: MIT
-"""The video now-playing view: badges, the timeline, and stepping between videos."""
 import subprocess
 
 import pytest

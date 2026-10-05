@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The waveform slider shared by the audio and video now-playing views: decoded
-//! peaks grown in from nothing, the played range, a playhead and a hover line,
-//! with optional chapter ticks for video and hover/drag positions reported for
-//! the video storyboard bubble.
-
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
@@ -144,7 +139,6 @@ impl Waveform {
         self.sync_position();
     }
 
-    /// Chapter starts as fractions of the duration; empty for audio.
     pub(in crate::ui::preview) fn set_chapters(&self, chapters: Vec<f64>) {
         self.imp().chapters.replace(chapters);
         self.queue_draw();
@@ -155,7 +149,6 @@ impl Waveform {
         self.imp().chapters.borrow().clone()
     }
 
-    /// The pointer's position along the track, as a fraction of the duration.
     pub(in crate::ui::preview) fn pointer_fraction(&self) -> Option<f64> {
         let imp = self.imp();
         imp.drag.get().or(imp.hover.get())
@@ -451,7 +444,6 @@ impl Waveform {
             );
         }
 
-        // Chapter starts as baseline ticks, under the playhead and hover lines.
         for chapter in imp.chapters.borrow().iter() {
             let x = (*chapter as f32 * width).clamp(0.5, width - 0.5);
             snapshot.append_color(

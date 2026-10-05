@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The video stack, laid out like the audio view: the frame is the hero, the
-//! header sits right under it, then the timeline and transport, and the whole
-//! group is centred in the pane.
-
 use std::cell::{Cell, RefCell};
 
 use gtk::{gdk, glib, graphene, gsk, prelude::*, subclass::prelude::*};
@@ -14,7 +10,6 @@ const PADDING: i32 = 16;
 const GAP: i32 = 12;
 const CONTROLS_GAP: i32 = 4;
 const PANEL_MIN: i32 = 200;
-/// A frame shorter than this is not worth showing beside the controls.
 const FRAME_MIN: i32 = 48;
 const DEFAULT_ASPECT: f64 = 16.0 / 9.0;
 
@@ -171,8 +166,6 @@ mod imp {
     }
 
     impl PlayerLayout {
-        /// The picture's size inside `width` × `height`: the paintable's aspect
-        /// (enlarged at most twice) once known, otherwise the announced aspect.
         fn frame_size(&self, width: i32, height: i32) -> (i32, i32) {
             let (width, height) = (width.max(0), height.max(0));
             if let Some(paintable) = self.paintable.upgrade()
@@ -216,13 +209,11 @@ impl PlayerLayout {
         glib::Object::new()
     }
 
-    /// The frame follows this paintable's size once it has one.
     pub(super) fn set_paintable(&self, paintable: Option<&gdk::Paintable>) {
         self.imp().paintable.set(paintable);
         self.layout_changed();
     }
 
-    /// The aspect to reserve before a frame exists, from the poster or probe.
     pub(super) fn set_aspect(&self, aspect: Option<f64>) {
         let aspect = aspect.filter(|aspect| aspect.is_finite() && *aspect > 0.0);
         if self.imp().aspect.replace(aspect) != aspect {
@@ -230,15 +221,12 @@ impl PlayerLayout {
         }
     }
 
-    /// Space kept around the picture on every side, inside the frame.
     pub(super) fn set_margin(&self, margin: i32) {
         if self.imp().margin.replace(margin) != margin {
             self.layout_changed();
         }
     }
 
-    /// Runs after each allocation, so followers of the pane's size need no
-    /// frame-clock tick.
     pub(super) fn set_on_allocate(&self, callback: impl Fn() + 'static) {
         self.imp().on_allocate.replace(Some(Box::new(callback)));
     }

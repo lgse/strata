@@ -4,7 +4,6 @@ use super::audio_tracks::settle;
 use super::*;
 use crate::services::SandboxedMedia;
 
-/// Types files by extension so one folder can mix audio and video.
 struct MediaPreview;
 
 impl PreviewProvider for MediaPreview {
@@ -114,7 +113,6 @@ fn tenxer_angle_brackets_step_through_videos_and_skip_other_media() {
     );
 }
 
-/// A default video player named `mpv` that records its arguments.
 fn player_recorder(mime_type: &str, output: &std::path::Path) {
     let id = "strata-mpv-recorder";
     let applications = glib::user_data_dir().join("applications");

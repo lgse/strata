@@ -6,8 +6,6 @@ pub(super) const MAX_CONTENT_WIDTH: i32 = 1280;
 const MAX_UPSCALE: f64 = 2.0;
 const MEDIA_MARGIN: i32 = 12;
 
-/// The largest size inside `width` × `height` with the paintable's aspect,
-/// enlarged at most twice; an unknown aspect fills the area.
 pub(super) fn fitted_size(
     width: i32,
     height: i32,
@@ -145,7 +143,6 @@ impl MediaLayout {
         glib::Object::new()
     }
 
-    /// The media child is fitted to this paintable's aspect; `None` lets it fill.
     pub(super) fn set_paintable(&self, paintable: Option<&gdk::Paintable>) {
         self.imp().paintable.set(paintable);
     }

@@ -1,12 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-//! Coarse colour samples from the borders of a decoded frame, for the glow
-//! that bleeds around the video. A few dozen pixel reads per sample.
-
 pub(crate) const GRID_WIDTH: usize = 6;
 pub(crate) const GRID_HEIGHT: usize = 4;
 pub(crate) const CELLS: usize = GRID_WIDTH * GRID_HEIGHT;
-/// Samples per cell along each axis, at the cell's quarter points.
 const TAPS: usize = 2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -15,7 +11,6 @@ pub(crate) struct EdgeGrid {
     pub(crate) cells: [[u8; 3]; CELLS],
 }
 
-/// Averages a handful of pixels per grid cell of an RGBA frame.
 pub(crate) fn sample(pixels: &[u8], width: u32, height: u32) -> Option<EdgeGrid> {
     let (width, height) = (width as usize, height as usize);
     if width == 0 || height == 0 || pixels.len() < width * height * 4 {

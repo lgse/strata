@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Autoplayed sound starts silent and rises on a slow-in, slow-out curve. The
-//! gain is a multiplier on the player's volume element, so the saved volume is
-//! never touched and no audio is processed in the application.
-
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
@@ -15,14 +11,12 @@ use gtk::{glib, prelude::*};
 use crate::ui::media::DecodedMedia;
 
 const STEP: Duration = Duration::from_millis(16);
-/// Shorter files would lose most of themselves to the rise; they start at full
-/// volume. Unknown durations ease in.
+// Short clips must not lose their opening to the fade.
 const MIN_DURATION_US: i64 = 10_000_000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum State {
     Off,
-    /// Silent until sound starts flowing and the rise begins.
     Armed,
     Rising,
 }
@@ -34,9 +28,7 @@ pub(super) struct EaseIn {
     media: RefCell<Option<glib::WeakRef<DecodedMedia>>>,
 }
 
-/// Slow in, slow out, on a loudness-friendly curve: a smoothstep squared, so
-/// the gain leaves zero and reaches one with no slope, and the ear hears an
-/// even rise rather than a late jump.
+// Squaring smoothstep softens the perceived onset without a late jump.
 pub(super) fn gain(progress: f64) -> f64 {
     let progress = progress.clamp(0.0, 1.0);
     let smooth = progress * progress * (3.0 - 2.0 * progress);
@@ -53,7 +45,6 @@ impl EaseIn {
         })
     }
 
-    /// Silences `media` until `start`; a muted stream is left alone.
     pub(super) fn arm(&self, media: &gtk::MediaStream) {
         let Some(decoded) = media.downcast_ref::<DecodedMedia>() else {
             return;
@@ -76,7 +67,6 @@ impl EaseIn {
         self.state.get() != State::Off
     }
 
-    /// The remembered duration, known once the stream is prepared.
     fn duration(&self) -> i64 {
         self.media
             .borrow()
@@ -85,17 +75,13 @@ impl EaseIn {
             .map_or(0, |media| media.duration())
     }
 
-    /// Drops the silence the moment the duration is known to be too short to
-    /// ease in, before the first sample flows, so a short clip is never muted.
-    /// Longer or still-unknown durations stay armed and rise when sound starts.
+    /// Called at prepared, before samples can pass through the muted sink.
     pub(super) fn settle(&self) {
         if self.state.get() == State::Armed && (1..MIN_DURATION_US).contains(&self.duration()) {
             self.end();
         }
     }
 
-    /// Begins the rise, when sound actually starts flowing. A short file that
-    /// `settle` has not already caught skips it and plays at full volume.
     pub(super) fn start(self: &Rc<Self>) {
         if self.state.get() != State::Armed {
             return;
@@ -127,7 +113,6 @@ impl EaseIn {
         self.timer.replace(Some(timer));
     }
 
-    /// Any deliberate playback input brings the sound in at once.
     pub(super) fn end(&self) {
         if self.state.get() == State::Off {
             return;
@@ -136,7 +121,6 @@ impl EaseIn {
         self.set_fade(1.0);
     }
 
-    /// Forgets the stream without touching it, as it is being replaced.
     pub(super) fn stop(&self) {
         self.cancel();
         self.media.borrow_mut().take();

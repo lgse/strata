@@ -106,7 +106,6 @@ impl Dispatcher {
         if !self.preview.owns_focus(event.focused.as_ref()) {
             return None;
         }
-        // Enter on the video itself opens it externally where it stopped.
         if matches!(event.key, Key::Return | Key::KP_Enter)
             && event
                 .focused

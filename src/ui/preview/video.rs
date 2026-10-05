@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! One view survives consecutive videos, so stepping through a folder never
-//! rebuilds the frame area or its controls. Like the audio view, the frame is
-//! the hero with the header right under it, then the timeline and transport.
-
 mod ambient;
 mod badges;
 mod details;
@@ -38,11 +34,8 @@ use super::{
 };
 
 const BUBBLE_MARGIN: i32 = 10;
-/// Padding plus border around the bubble's cell.
 const BUBBLE_CHROME: i32 = 8;
-/// A storyboard cell stands in at this strength while a seek decodes.
 const SEEK_COVER_OPACITY: f64 = 0.9;
-/// Autoplayed sound rises from silence over this long, from the first frame.
 const EASE_IN_RAMP: Duration = Duration::from_secs(1);
 const BADGE_FADE: Duration = Duration::from_millis(140);
 const BADGE_STAGGER: Duration = Duration::from_millis(40);
@@ -112,9 +105,7 @@ fn transport_button(icon: &str, name: &str, tooltip: &str) -> gtk::Button {
 }
 
 impl VideoView {
-    /// `navigate(-1 | 1)` moves the listing to the previous or next video.
-    /// `decode_size` is the frame size to decode at, or `None` while the pane
-    /// is still animating open.
+    /// `decode_size` returns `None` while the pane animates open.
     pub(super) fn new(
         volume: &gtk::Widget,
         navigate: Rc<dyn Fn(i32)>,
@@ -136,7 +127,6 @@ impl VideoView {
         picture.set_cursor_from_name(Some("grab"));
         let glow = ambient::Glow::new();
         let frame = gtk::Overlay::new();
-        // The glow is the base layer; the picture sits over it, inset by the band.
         frame.set_child(Some(&glow));
         frame.add_overlay(&picture);
         frame.set_focusable(true);
@@ -295,7 +285,6 @@ impl VideoView {
                 }
             },
         );
-        // Touching the volume or mute is a choice about sound: bring it in at once.
         let weak = Rc::downgrade(&view);
         preferences.bind_preference(
             &view.root,
@@ -306,8 +295,6 @@ impl VideoView {
                 }
             },
         );
-        // The decode rectangle follows the pane's allocation; `resize` ignores
-        // unchanged sizes, and nothing runs between layouts.
         let weak = Rc::downgrade(&view);
         view.layout.set_on_allocate(move || {
             if let Some(view) = weak.upgrade()
@@ -325,7 +312,6 @@ impl VideoView {
         &self.root
     }
 
-    /// The frame picture, which the drawer makes a drag source for the file.
     pub(super) fn picture(&self) -> &gtk::Picture {
         &self.picture
     }
@@ -340,7 +326,6 @@ impl VideoView {
         &self.glow
     }
 
-    /// Reserves `band` pixels around the picture for the glow.
     fn set_band(&self, band: i32) {
         if self.band.replace(band) == band {
             return;
@@ -368,8 +353,6 @@ impl VideoView {
             .is_some_and(|renderer| renderer.is::<gsk::CairoRenderer>())
     }
 
-    /// The glow follows the Element glow preference, stays off under reduced
-    /// motion, and never runs on the software renderer.
     fn glow_allowed(&self) -> bool {
         self.band.get() > 0
             && crate::ui::preferences::PreferenceManager::shared().element_glow()
@@ -377,7 +360,6 @@ impl VideoView {
             && !self.software_rendered()
     }
 
-    /// Feeds the glow from the latest frame, or keeps it dark when disallowed.
     fn light(&self, media: &DecodedMedia) {
         if !self.glow_allowed() {
             if self.glow.is_lit() {
@@ -390,8 +372,6 @@ impl VideoView {
         }
     }
 
-    /// Lights the band from the poster, so it does not wait for the first
-    /// frame; the live colours then ease in from there. One small download.
     fn light_from_poster(&self, poster: &gdk::Texture) {
         if !self.glow_allowed() || poster.width() <= 0 || poster.height() <= 0 {
             return;
@@ -497,13 +477,10 @@ impl VideoView {
                 if let Some(view) = weak.upgrade() {
                     view.sync_frame_size(media);
                     if media.is_prepared() {
-                        // The duration is known here, before the first frame.
                         view.ease.settle();
                     }
                 }
             }));
-            // Every presented frame invalidates the paintable; the first one
-            // retires the placeholder and starts the storyboard.
             let weak = Rc::downgrade(self);
             handlers.push(decoded.connect_invalidate_contents(move |media| {
                 if media.has_frame()
@@ -563,14 +540,12 @@ impl VideoView {
         self.ease.start();
     }
 
-    /// Autoplay starts silent; the sound fades in from the first frame.
     pub(super) fn start_silently(&self) {
         if let Some(media) = self.media.borrow().as_ref() {
             self.ease.arm(media);
         }
     }
 
-    /// Any deliberate playback input brings the sound in immediately.
     pub(super) fn end_ease_in(&self) {
         self.ease.end();
     }
@@ -580,7 +555,6 @@ impl VideoView {
         self.ease.is_active()
     }
 
-    /// Runs once the first frame is on screen, so it never delays playback.
     fn start_storyboard(self: &Rc<Self>) {
         let Some((entry, source)) = self.clip.borrow().clone() else {
             return;
@@ -597,7 +571,6 @@ impl VideoView {
                 .as_ref()
                 .is_some_and(|board| board.is_complete())
         {
-            // No storyboard will claim the slot, so bring the waveform in now.
             self.start_peaks();
             return;
         }
@@ -623,9 +596,6 @@ impl VideoView {
         self.storyboard_load.replace(Some(load));
     }
 
-    /// The same waveform overview and grow-in as the audio slider. Deferred
-    /// behind the storyboard so a long clip's full-length audio decode does not
-    /// hold the background slot away from the scrub preview.
     fn start_peaks(self: &Rc<Self>) {
         let Some((entry, source)) = self.clip.borrow().clone() else {
             return;
@@ -639,7 +609,6 @@ impl VideoView {
             })));
     }
 
-    /// The nearest decoded cell replaces the stale frame while the seek decodes.
     fn cover_seek(&self, target_us: u64) {
         let cell = self
             .storyboard
@@ -669,7 +638,6 @@ impl VideoView {
         }
     }
 
-    /// The bubble follows the pointer along the frame's width.
     fn refresh_bubble(&self) {
         let Some(time) = self.hover.get().filter(|time| *time >= 0) else {
             self.bubble.set_visible(false);
@@ -731,9 +699,7 @@ impl VideoView {
         self.play.set_sensitive(false);
         self.previous.set_sensitive(has_previous);
         self.next.set_sensitive(has_next);
-        // A clip that resumes where it stopped shows the storyboard cell nearest
-        // that point when its board is cached; otherwise the listing's thumbnail
-        // of the opening frame stands in.
+        // The opening thumbnail would misrepresent a resumed clip.
         let resume_cell = entry
             .location
             .native_path()
@@ -748,8 +714,6 @@ impl VideoView {
                 frame::POSTER_OPACITY,
             ),
         };
-        // The frame keeps its place from the first paint: the poster's aspect
-        // stands in until the probe answers.
         self.layout.set_aspect(
             poster
                 .as_ref()
@@ -796,7 +760,6 @@ impl VideoView {
         self.error.set_visible(true);
     }
 
-    /// Empty pills hold the row's height until the probe answers.
     fn show_badge_skeleton(&self) {
         super::clear_box(&self.badges);
         for width in SKELETON_BADGE_WIDTHS {
@@ -808,7 +771,6 @@ impl VideoView {
         }
     }
 
-    /// Badges enter with a short stagger once; a failed probe leaves the row empty.
     fn show_badges(&self, details: Option<Rc<VideoDetails>>) {
         super::clear_box(&self.badges);
         let Some(details) = details else {
@@ -865,7 +827,6 @@ impl VideoView {
         labels
     }
 
-    /// Chapter starts become ticks on the timeline and titles in the bubble.
     fn show_chapters(&self, details: &VideoDetails) {
         let duration = details.metadata.duration.filter(|seconds| *seconds > 0.0);
         self.chapters.replace(details.metadata.chapters.clone());
@@ -898,11 +859,6 @@ impl VideoView {
     #[cfg(test)]
     pub(super) fn chapter_ticks(&self) -> Vec<f64> {
         self.timeline.chapters()
-    }
-
-    #[cfg(test)]
-    pub(super) fn badges_row(&self) -> &gtk::Box {
-        &self.badges
     }
 
     fn toggle_playback(&self) {

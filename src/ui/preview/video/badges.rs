@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-//! Short technical facts about a video, derived from the sandboxed probe.
-
 use crate::sandbox::metadata::MediaMetadata;
 
-/// In display order; only HDR is styled apart from the others.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Kind {
     Resolution,
@@ -29,7 +26,6 @@ fn badge(kind: Kind, label: impl Into<String>) -> Badge {
     }
 }
 
-/// `sidecar_captions` counts subtitle files found next to the video.
 pub(super) fn badges(metadata: &MediaMetadata, sidecar_captions: usize) -> Vec<Badge> {
     let mut badges = Vec::new();
     if let Some((width, height)) = metadata.dimensions {

@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Ambient light: the frame's border colours bleed into a band around it. A
-//! 6×4 texture scaled with linear filtering does the blending on the GPU; no
-//! blur is involved, and nothing updates while playback is paused.
-
 use std::{
     cell::{Cell, RefCell},
     time::{Duration, Instant},
@@ -16,11 +12,9 @@ use crate::ui::{
     preview::audio::palette::{follow_theme, palette, with_alpha},
 };
 
-/// How far the light reaches beyond the frame, on every side.
 pub(super) const BAND: i32 = 24;
 const OPACITY: f64 = 0.6;
 const UPDATE_INTERVAL: Duration = Duration::from_millis(100);
-/// Share of the distance to the new colour covered per update.
 const SMOOTHING: f32 = 0.35;
 
 mod imp {
@@ -80,7 +74,6 @@ mod imp {
             snapshot.push_opacity(OPACITY);
             snapshot.append_scaled_texture(&texture, gsk::ScalingFilter::Linear, &bounds);
             snapshot.pop();
-            // Fade the band into the pane instead of cutting it off.
             let surface = palette().surface;
             let solid = with_alpha(surface, 1.0);
             let clear = with_alpha(surface, 0.0);
@@ -132,7 +125,6 @@ impl Glow {
         glib::Object::new()
     }
 
-    /// Eases towards `grid`; calls inside the update interval are ignored.
     pub(super) fn update(&self, grid: &EdgeGrid) {
         let imp = self.imp();
         if imp

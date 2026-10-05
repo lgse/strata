@@ -184,8 +184,6 @@ fn autoplayed_audio_fades_in_quickly_unless_the_listener_acts() {
             ready(&provider, 2);
             let media = decoded();
             assert_eq!(media.fade(), 0.0, "a short track still arms silent");
-            // The duration is known at prepared, before any sample flows, so a
-            // short clip drops the silence then rather than after its opening.
             media.stream_prepared(true, false, true, 3_000_000);
             assert_eq!(
                 media.fade(),

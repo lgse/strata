@@ -286,8 +286,7 @@ impl CachedThumbnail {
     }
 }
 
-/// The listing's in-memory rendition of `entry`, for an instant placeholder.
-/// Misses are not rendered: the preview never queues thumbnail work.
+/// Cache-only lookup: a placeholder must not queue thumbnail work.
 pub(in crate::ui) fn cached_thumbnail(entry: &FileEntry) -> Option<gdk::Texture> {
     let key = ThumbnailKey {
         path: entry.local_thumbnail_path()?.to_path_buf(),

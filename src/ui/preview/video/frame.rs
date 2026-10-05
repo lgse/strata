@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The frame area's stand-in until a decoded frame exists: the listing's
-//! thumbnail dimmed as a poster, or the picture's own surface colour at the
-//! video's aspect. It has no edge of its own, so nothing changes at the
-//! border when the first frame replaces it.
-
 use std::{
     cell::{Cell, RefCell},
     time::{Duration, Instant},
@@ -19,7 +14,6 @@ const RADIUS: f32 = 8.0;
 const DEFAULT_ASPECT: f64 = 16.0 / 9.0;
 pub(super) const POSTER_OPACITY: f64 = 0.55;
 
-/// The largest rectangle of `aspect` inside `width` × `height`, centred.
 pub(super) fn fitted(width: f32, height: f32, aspect: f64) -> graphene::Rect {
     let aspect = aspect as f32;
     let (mut fit_width, mut fit_height) = if width / height > aspect {
@@ -27,9 +21,7 @@ pub(super) fn fitted(width: f32, height: f32, aspect: f64) -> graphene::Rect {
     } else {
         (width, width / aspect)
     };
-    // An allocation already shaped by the layout differs by rounding only
-    // (under two pixels once the aspect scales a rounded height); fill it
-    // rather than leave a seam.
+    // Absorb allocation rounding so the poster does not leave a seam.
     if (width - fit_width).abs() < 2.0 {
         fit_width = width;
     }
@@ -113,7 +105,6 @@ mod imp {
                     snapshot.append_texture(&poster, &rect);
                     snapshot.pop();
                 }
-                // The same surface the picture draws behind its frames.
                 None => snapshot.append_color(&with_alpha(palette().background, 0.55), &rect),
             }
             snapshot.pop();
@@ -132,7 +123,6 @@ impl Placeholder {
         glib::Object::new()
     }
 
-    /// A storyboard cell stands in at nearly full strength; a thumbnail is dimmed.
     pub(super) fn set_poster_with_opacity(&self, poster: Option<gdk::Texture>, opacity: f64) {
         self.imp().poster.replace(poster);
         self.imp().poster_opacity.set(opacity);
@@ -144,7 +134,6 @@ impl Placeholder {
         self.imp().poster.borrow().clone()
     }
 
-    /// The video's aspect once probed; `None` falls back to the poster or 16:9.
     pub(super) fn set_aspect(&self, aspect: Option<f64>) {
         if self.imp().aspect.replace(aspect) != aspect {
             self.queue_draw();
@@ -157,8 +146,6 @@ impl Placeholder {
         self.set_visible(true);
     }
 
-    /// Fades out over the frame that replaced it, or hides at once without
-    /// animations or while unmapped.
     pub(super) fn conceal(&self) {
         if !self.is_visible() || self.imp().fade.get().is_some() {
             return;

@@ -23,8 +23,6 @@ pub(in crate::ui) fn open_location(
     open_location_at(location, None, parent, browser);
 }
 
-/// Opens `location` in its default application; a known media player starts
-/// at `position`, where the preview left off.
 pub(in crate::ui) fn open_location_at(
     location: &Location,
     position: Option<std::time::Duration>,

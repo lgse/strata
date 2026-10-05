@@ -41,7 +41,6 @@ const AUDIO_LEAD_CAP_US: u64 = 2_000_000;
 const AUDIO_STUCK_TIMEOUT: Duration = Duration::from_secs(3);
 const RESTORE_MIN_US: u64 = 1_000_000;
 const MAX_REMEMBERED_POSITIONS: usize = 128;
-// Edge colours for the glow are refreshed at most this often.
 const EDGE_SAMPLE_INTERVAL: Duration = Duration::from_millis(100);
 
 static MEDIA_POSITIONS: LazyLock<Mutex<HashMap<PathBuf, (u64, Instant)>>> =
@@ -52,8 +51,6 @@ thread_local! {
     static TEST_STREAMS: Cell<bool> = const { Cell::new(false) };
 }
 
-/// Every stream created afterwards on this thread decodes the synthetic test
-/// clip, for tests that reach the player only through the window.
 #[cfg(test)]
 pub(crate) fn use_test_streams(enabled: bool) {
     TEST_STREAMS.with(|streams| streams.set(enabled));
@@ -88,7 +85,6 @@ pub(crate) fn recall_media_position(path: &Path) -> Option<u64> {
     })
 }
 
-/// Where a new stream for `path` resumes, when it does not start from the top.
 pub(crate) fn resume_position(path: &Path) -> Option<u64> {
     recall_media_position(path).filter(|&position| position > RESTORE_MIN_US)
 }
@@ -123,7 +119,6 @@ mod imp {
         pub(super) paused: Cell<Option<Instant>>,
         pub(super) dormant: Cell<bool>,
         pub(super) seek_pending: Cell<Option<(u64, Instant)>>,
-        /// Where playback was before a seek, until the seek shows a frame.
         pub(super) seek_origin: Cell<Option<u64>>,
         pub(super) first_frame: Cell<bool>,
         pub(super) clock: Cell<Option<Instant>>,
@@ -240,7 +235,6 @@ mod imp {
     }
 
     impl DecodedMedia {
-        // The probed frame size, so the layout settles before the first frame.
         fn frame_size(&self) -> (i32, i32) {
             if let Some(texture) = self.texture.borrow().as_ref() {
                 return (texture.width(), texture.height());
@@ -331,7 +325,6 @@ impl DecodedMedia {
         self.imp().source.borrow().clone()
     }
 
-    /// The probed video frame size, known once the stream is prepared.
     pub(crate) fn video_size(&self) -> Option<(u32, u32)> {
         self.imp()
             .header
@@ -340,18 +333,15 @@ impl DecodedMedia {
             .map(|header| (header.width, header.height))
     }
 
-    /// Whether a decoded frame is on screen.
     pub(crate) fn has_frame(&self) -> bool {
         self.imp().texture.borrow().is_some()
     }
 
-    /// Border colours of a recent frame, refreshed at most ten times a second.
     pub(crate) fn edge_grid(&self) -> Option<ambient::EdgeGrid> {
         self.imp().edge_grid.get()
     }
 
-    /// Scales the audio output by `fade` on top of the user's volume, across
-    /// restarts of the sink. It never touches the stream's volume property.
+    /// Gain survives sink restarts without changing the saved volume.
     pub(crate) fn set_fade(&self, fade: f64) {
         let fade = fade.clamp(0.0, 1.0);
         self.imp().fade.set(Some(fade));
@@ -365,8 +355,6 @@ impl DecodedMedia {
         self.imp().fade.get().unwrap_or(1.0)
     }
 
-    /// Decodes a synthetic minute-long clip instead of the sandbox, so a
-    /// test's stream survives without a real file.
     #[cfg(test)]
     pub(crate) fn use_test_stream(&self) {
         self.imp().loader.replace(Some(std::rc::Rc::new(|_, tick| {
@@ -380,7 +368,6 @@ impl DecodedMedia {
         })));
     }
 
-    /// Like `use_test_stream`, but an audio-only track through the test sink.
     #[cfg(test)]
     pub(crate) fn use_test_audio_stream(&self) {
         self.use_test_audio_stream_lasting(60_000_000);
@@ -869,9 +856,7 @@ impl DecodedMedia {
                         self.recover(&error)?;
                         return Ok(());
                     }
-                    // A seek into data the file does not have (a truncated
-                    // download, a duration the header overstates) goes back to
-                    // where playback was instead of ending the preview.
+                    // Truncated downloads can advertise a duration beyond their data.
                     if let Some(origin) = imp.seek_origin.take() {
                         tracing::warn!(error, origin_us = origin, "seek failed; resuming");
                         if self.is_seeking() {
@@ -978,10 +963,7 @@ impl DecodedMedia {
         if header.width + 1 < loaded.width as u32 && header.height + 1 < loaded.height as u32 {
             scale = scale.min(1.0);
         }
-        // Shrinking never restarts: the larger frames downsample well and the
-        // next seek or restart adopts the smaller size. Growing restarts only
-        // once the upscale would show, so a resize costs at most one restart
-        // and only when the frame gets meaningfully bigger.
+        // Downsampling avoids a decoder restart and audible drop on shrink.
         scale >= 1.0 + RESIZE_GROWTH
             && (f64::from(header.width) * (scale - 1.0) >= 2.0
                 || f64::from(header.height) * (scale - 1.0) >= 2.0)

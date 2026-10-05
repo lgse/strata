@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The sandboxed probe behind the badges, settled and cached like audio tags,
-//! plus a count of subtitle files sitting next to the video.
-
 use std::{cell::RefCell, path::Path, rc::Rc};
 
 use gtk::{gio, glib};
@@ -16,7 +13,6 @@ use crate::{
 
 const DETAILS_CACHE: usize = 12;
 const SIDECAR_EXTENSIONS: [&str; 5] = ["srt", "vtt", "ass", "ssa", "sub"];
-/// Folder scans for sidecars stop here; huge folders cost nothing more.
 const SIDECAR_SCAN_LIMIT: usize = 5_000;
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -34,7 +30,6 @@ pub(super) fn cached_details(key: &TrackKey) -> Option<Rc<VideoDetails>> {
     DETAILS.with_borrow_mut(|cache| cache.get(key))
 }
 
-/// Subtitle files named after the video, like `clip.srt` or `clip.en.vtt`.
 pub(super) fn sidecar_captions(video: &Path) -> usize {
     let (Some(directory), Some(stem)) = (
         video.parent(),
@@ -60,7 +55,6 @@ pub(super) fn sidecar_captions(video: &Path) -> usize {
         .count()
 }
 
-/// Cancels its sandbox job when dropped.
 pub(super) struct DetailsLoad(Cancellation);
 
 impl Drop for DetailsLoad {
@@ -69,7 +63,6 @@ impl Drop for DetailsLoad {
     }
 }
 
-/// `on_details` receives `None` when the probe fails, so the skeleton clears.
 pub(super) fn load_details(
     entry: &FileEntry,
     source: &SandboxedMedia,
@@ -110,7 +103,6 @@ fn load_details_with(
         .ok()
         .flatten()
         .map(Rc::new);
-        // A reused view may already show another clip.
         if cancelled.is_cancelled() {
             return;
         }

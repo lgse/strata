@@ -8,8 +8,7 @@ pub(crate) const MAX_METADATA_BYTES: u64 = 256 * 1024;
 const MAX_CHAPTERS: usize = 200;
 const MAX_SUBTITLE_TRACKS: usize = 64;
 
-/// Only technical properties are exposed; arbitrary embedded tags are not UI
-/// text, except chapter titles and languages, which are sanitized like tags.
+/// Chapter titles and languages are sanitized; other arbitrary tags are not exposed.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct MediaMetadata {
     pub(crate) dimensions: Option<(u32, u32)>,
@@ -50,7 +49,6 @@ fn codec(stream: &Value) -> Option<String> {
     token(&stream["codec_name"], |byte| b"_-".contains(&byte))
 }
 
-/// A short ASCII identifier such as a codec, layout or pixel format name.
 fn token(value: &Value, extra: impl Fn(u8) -> bool) -> Option<String> {
     value
         .as_str()
@@ -102,7 +100,6 @@ fn frame_rate(value: &Value) -> Option<f64> {
 }
 
 impl MediaMetadata {
-    /// The HDR system named by the video's transfer characteristics.
     pub(crate) fn hdr_format(&self) -> Option<&'static str> {
         match self.color_transfer.as_deref()? {
             "smpte2084" => Some("HDR10"),

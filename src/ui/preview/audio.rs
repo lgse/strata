@@ -23,7 +23,6 @@ use crate::{
 
 use super::{ListingPosition, ease_in::EaseIn};
 
-/// Autoplayed sound rises from silence over this long, from the first sample.
 const EASE_IN_RAMP: std::time::Duration = std::time::Duration::from_millis(500);
 
 pub(in crate::ui) use palette::apply_theme;
@@ -200,7 +199,6 @@ impl AudioView {
             peaks: RefCell::default(),
             ease: EaseIn::new(EASE_IN_RAMP),
         });
-        // Touching the volume or mute is a choice about sound: bring it in at once.
         let weak = Rc::downgrade(&view);
         crate::ui::preferences::PreferenceManager::shared().bind_preference(
             &view.root,
@@ -267,14 +265,12 @@ impl AudioView {
         self.set_playing_icon(false);
     }
 
-    /// Autoplay starts silent; the sound fades in once it starts flowing.
     pub(super) fn start_silently(&self) {
         if let Some(media) = self.media.borrow().as_ref() {
             self.ease.arm(media);
         }
     }
 
-    /// Any deliberate playback input brings the sound in immediately.
     pub(super) fn end_ease_in(&self) {
         self.ease.end();
     }
@@ -313,7 +309,6 @@ impl AudioView {
                 }
             }));
         }
-        // The playhead first moves when sound starts flowing; the rise begins there.
         let weak = Rc::downgrade(self);
         handlers.push(media.connect_notify_local(Some("timestamp"), move |_, _| {
             if let Some(view) = weak.upgrade()
@@ -348,7 +343,6 @@ impl AudioView {
                 if media.is_prepared()
                     && let Some(view) = weak.upgrade()
                 {
-                    // The duration is known here, before any sample flows.
                     view.ease.settle();
                     view.sync_playing(media.is_playing());
                 }

@@ -189,7 +189,6 @@ pub(super) struct ViewState {
     hovered_column: Cell<Option<usize>>,
     // The preview drawer holds the keys, so no column is the keyboard destination.
     preview_owns_keys: Cell<bool>,
-    /// Asks the preview where the file being opened stopped playing.
     playback_handoff: RefCell<Option<PlaybackHandoff>>,
     context_menu_column: Cell<Option<usize>>,
     context_menu_generation: Cell<u64>,
@@ -1446,7 +1445,6 @@ impl BrowserView {
         }
     }
 
-    /// Opening a file consults this for the position its preview reached.
     pub(in crate::ui) fn set_playback_handoff(&self, handoff: PlaybackHandoff) {
         self.state.playback_handoff.replace(Some(handoff));
     }

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Keyframe cells behind the timeline bubble and seek feedback, decoded in the
-//! background after the first frame and cached for the last few clips.
-
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
@@ -38,7 +35,6 @@ impl Storyboard {
         })
     }
 
-    /// Fills an empty cell; a cell decoded on an earlier visit is kept.
     pub(in crate::ui::preview) fn set_cell(&self, index: u32, pixels: Vec<u8>) -> bool {
         if index >= self.sheet.count || pixels.len() != self.sheet.cell_bytes() {
             return false;
@@ -67,7 +63,6 @@ impl Storyboard {
         self.cells.borrow().iter().flatten().count()
     }
 
-    /// The closest decoded cell to `time_us`, so a partial board still answers.
     pub(in crate::ui::preview) fn nearest(&self, time_us: u64) -> Option<gdk::Texture> {
         let cells = self.cells.borrow();
         let wanted = self.sheet.cell_at(time_us) as usize;
@@ -89,8 +84,6 @@ pub(super) fn cached_storyboard(key: &TrackKey) -> Option<Rc<Storyboard>> {
     STORYBOARDS.with_borrow_mut(|cache| cache.get(key))
 }
 
-/// The cached board cut from the same sheet, so a partial board keeps the
-/// cells it has; any other sheet starts a fresh board in its place.
 pub(in crate::ui::preview) fn adopt(key: &TrackKey, sheet: Sheet) -> Rc<Storyboard> {
     STORYBOARDS.with_borrow_mut(|cache| {
         if let Some(board) = cache.get(key).filter(|board| board.sheet == sheet) {
@@ -104,7 +97,6 @@ pub(in crate::ui::preview) fn adopt(key: &TrackKey, sheet: Sheet) -> Rc<Storyboa
 
 type Timer = Rc<RefCell<Option<glib::SourceId>>>;
 
-/// Streams cells into `on_update`; dropping it stops the decode.
 pub(super) struct StoryboardLoad(Timer);
 
 impl Drop for StoryboardLoad {
@@ -115,10 +107,8 @@ impl Drop for StoryboardLoad {
     }
 }
 
-/// A complete cached board answers at once; a partial one is shown while its
-/// missing cells are decoded. `on_done` fires once the decode ends, or at once
-/// for an already-complete board, so the caller can release the background slot
-/// to the waveform.
+/// `on_done` lets the waveform claim the shared decode slot. Partial boards
+/// retain their cells, but the helper decodes the whole sheet again.
 pub(super) fn load_storyboard(
     entry: &FileEntry,
     source: &SandboxedMedia,
@@ -150,7 +140,6 @@ pub(super) fn load_storyboard(
         *session.borrow_mut() = StoryboardSession::start(source.clone(), CELL_EDGE);
         let timer = glib::timeout_add_local(POLL, move || {
             let mut session = session.borrow_mut();
-            // The waveform or another board holds the slot; wait while this clip is shown.
             if session.is_none() {
                 *session = StoryboardSession::start(source.clone(), CELL_EDGE);
                 return glib::ControlFlow::Continue;

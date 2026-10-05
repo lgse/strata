@@ -238,8 +238,6 @@ pub(super) fn launch(
     )
 }
 
-/// Opens `file` in `app`, telling a known media player to start at `position`.
-/// Players without a known start option, or whose timed launch fails, open plainly.
 pub(in crate::ui) fn launch_at(
     app: &gio::AppInfo,
     file: &gio::File,
@@ -298,8 +296,6 @@ fn basename(token: &str) -> &str {
     token.rsplit('/').next().unwrap_or(token)
 }
 
-/// The program a desktop `Exec` line really runs, seen through `env`
-/// assignments and Flatpak wrappers.
 fn player_name(tokens: &[String]) -> Option<String> {
     let mut command = tokens.iter().peekable();
     let mut program = command.next()?;
@@ -327,7 +323,6 @@ fn player_name(tokens: &[String]) -> Option<String> {
     Some(basename(program).to_owned())
 }
 
-/// How a known player takes a start time on its command line.
 fn start_arguments(player: &str, seconds: f64) -> Option<Vec<String>> {
     let seconds = format!("{seconds:.3}");
     Some(match player {
@@ -343,8 +338,6 @@ fn start_arguments(player: &str, seconds: f64) -> Option<Vec<String>> {
     })
 }
 
-/// `exec` with the player's start option inserted before its file arguments,
-/// or `None` when the player is not known to take one.
 pub(super) fn command_line_at(exec: &str, seconds: f64) -> Option<String> {
     let tokens: Vec<String> = glib::shell_parse_argv(exec)
         .ok()?
@@ -352,8 +345,6 @@ pub(super) fn command_line_at(exec: &str, seconds: f64) -> Option<String> {
         .map(|token| token.to_string_lossy().into_owned())
         .collect();
     let arguments = start_arguments(&player_name(&tokens)?, seconds)?;
-    // Options go before the first file placeholder, or before a bare `--`
-    // that already separates options from files.
     let insert_at = tokens
         .iter()
         .enumerate()

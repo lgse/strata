@@ -206,7 +206,6 @@ impl PcmOutput {
         self.apply_gain();
     }
 
-    /// A temporary multiplier on the user's volume, for easing sound in.
     pub(super) fn set_fade(&self, fade: f64) {
         self.fade.set(if fade.is_finite() {
             fade.clamp(0.0, 1.0)
