@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-use super::{ExtractNameResolver, ExtractionDestination, sanitized_archive_path};
+use super::{ExtractNameResolver, ExtractionDestination, archive_stem, sanitized_archive_path};
+use std::os::fd::BorrowedFd;
 use std::{
     error::Error,
-    ffi::OsString,
+    ffi::{OsStr, OsString},
     fs,
     io::Write,
     os::unix::{ffi::OsStringExt, fs::symlink},
@@ -46,25 +47,37 @@ fn archive_paths_are_sanitized_to_confined_relative_paths() -> Result<(), Box<dy
     Ok(())
 }
 
+fn stage(
+    destination: &ExtractionDestination,
+    files: &[&str],
+) -> Result<(OsString, ExtractionDestination), Box<dyn Error>> {
+    let (name, staging) = destination.create_staging()?;
+    for file in files {
+        let (mut created, _) = staging.create_file(Path::new(file))?;
+        created.write_all(file.as_bytes())?;
+    }
+    Ok((name, staging))
+}
+
 #[test]
-fn bundling_reports_failures_without_discarding_extracted_files() -> Result<(), Box<dyn Error>> {
+fn publishing_reports_failures_without_discarding_staged_files() -> Result<(), Box<dyn Error>> {
     let root = tempfile::tempdir()?;
     let destination = ExtractionDestination::open(root.path())?;
-    fs::write(root.path().join("first.txt"), b"first")?;
-    let roots = [PathBuf::from("first.txt"), PathBuf::from("missing.txt")];
+    let (staging, _) = stage(&destination, &["first.txt"])?;
+    assert!(staging.to_string_lossy().starts_with(".strata-extraction-"));
+
     let error = destination
-        .bundle_roots(&format!("{}.zip", "a".repeat(256)), &roots)
-        .expect_err("overlong bundle name must fail");
-    assert!(
-        error.contains("Could not create extraction folder"),
-        "{error}"
+        .publish_staging_as_folder(&staging, &format!("{}.zip", "a".repeat(256)))
+        .expect_err("overlong folder name must fail");
+
+    assert!(error.contains("Could not publish"), "{error}");
+    assert_eq!(fs::read(root.path().join(&staging).join("first.txt"))?, b"first.txt");
+    assert_eq!(
+        destination.publish_staging_as_folder(&staging, "bundle.zip")?,
+        "bundle"
     );
-    assert_eq!(fs::read(root.path().join("first.txt"))?, b"first");
-    let error = destination
-        .bundle_roots("bundle.zip", &roots)
-        .expect_err("missing extracted root must fail");
-    assert!(error.contains("Could not bundle `missing.txt`"), "{error}");
-    assert_eq!(fs::read(root.path().join("bundle/first.txt"))?, b"first");
+    assert_eq!(fs::read(root.path().join("bundle/first.txt"))?, b"first.txt");
+    assert!(!root.path().join(&staging).exists());
     Ok(())
 }
 
@@ -80,22 +93,20 @@ fn pinned_destination_survives_path_replacement() -> Result<(), Box<dyn Error>> 
     fs::rename(&target, &moved)?;
     symlink(&external, &target)?;
 
-    let (mut file, created) = destination.create_file(Path::new("nested/file.txt"))?;
+    let (name, staging) = destination.create_staging()?;
+    let (mut file, created) = staging.create_file(Path::new("nested/file.txt"))?;
     file.write_all(b"contents")?;
     drop(file);
-    assert_eq!(fs::read(moved.join(&created))?, b"contents");
+    assert_eq!(fs::read(moved.join(&name).join(&created))?, b"contents");
     assert!(external.read_dir()?.next().is_none());
-    destination.remove_file(&created)?;
-    assert!(!moved.join(&created).exists());
-    let (mut second, _) = destination.create_file(Path::new("second.txt"))?;
+    staging.remove_file(&created)?;
+    assert!(!moved.join(&name).join(&created).exists());
+    let (mut second, _) = staging.create_file(Path::new("second.txt"))?;
     second.write_all(b"second")?;
     drop(second);
     assert_eq!(
-        destination.bundle_roots(
-            "bundle.zip",
-            &[PathBuf::from("nested"), PathBuf::from("second.txt")]
-        )?,
-        Some("bundle".to_owned())
+        destination.publish_staging_as_folder(&name, "bundle.zip")?,
+        "bundle"
     );
     assert!(moved.join("bundle/nested").is_dir());
     assert_eq!(fs::read(moved.join("bundle/second.txt"))?, b"second");
@@ -193,6 +204,206 @@ fn available_bytes_reports_unprivileged_free_space() -> Result<(), Box<dyn Error
     assert!(
         matches!(destination.available_bytes()?, Some(bytes) if bytes > 0),
         "tempdir should report some free space"
+    );
+    Ok(())
+}
+
+fn fingerprint(path: &Path) -> Option<String> {
+    let metadata = fs::symlink_metadata(path).ok()?;
+    Some(if metadata.is_symlink() {
+        format!("link to {}", fs::read_link(path).ok()?.display())
+    } else if metadata.is_dir() {
+        format!("directory of {}", fs::read_dir(path).ok()?.count())
+    } else {
+        format!("file {:?}", fs::read(path).ok()?)
+    })
+}
+
+#[test]
+fn publish_single_root_suffixes_only_on_a_real_collision() -> Result<(), Box<dyn Error>> {
+    let cases: [(&str, fn(&Path) -> std::io::Result<()>, &str); 4] = [
+        ("none", |_| Ok(()), "readme.txt"),
+        ("file", |path| fs::write(path, b"existing"), "readme (2).txt"),
+        ("directory", |path| fs::create_dir(path), "readme (2).txt"),
+        (
+            "dangling symlink",
+            |path| symlink("missing-target", path),
+            "readme (2).txt",
+        ),
+    ];
+    for (label, create_existing, expected) in cases {
+        let root = tempfile::tempdir()?;
+        let occupied = root.path().join("readme.txt");
+        create_existing(&occupied)?;
+        let before = fingerprint(&occupied);
+        let destination = ExtractionDestination::open(root.path())?;
+        let (name, staging) = stage(&destination, &["readme.txt"])?;
+
+        let published = destination.publish_single_root(&staging, Path::new("readme.txt"))?;
+
+        assert_eq!(published, OsString::from(expected), "{label}");
+        assert_eq!(fs::read(root.path().join(expected))?, b"readme.txt", "{label}");
+        assert!(root.path().join(&name).read_dir()?.next().is_none(), "{label}");
+        if before.is_some() {
+            assert_eq!(fingerprint(&occupied), before, "{label}");
+        }
+        assert!(!root.path().join("missing-target").exists(), "{label}");
+    }
+    Ok(())
+}
+
+#[test]
+fn publish_staging_as_folder_skips_taken_names() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    fs::write(root.path().join("bundle"), b"file")?;
+    symlink("elsewhere", root.path().join("bundle (1)"))?;
+    let destination = ExtractionDestination::open(root.path())?;
+    let (name, _) = stage(&destination, &["a.txt"])?;
+
+    assert_eq!(
+        destination.publish_staging_as_folder(&name, "bundle.zip")?,
+        "bundle (2)"
+    );
+
+    assert_eq!(fs::read(root.path().join("bundle (2)/a.txt"))?, b"a.txt");
+    assert_eq!(fs::read(root.path().join("bundle"))?, b"file");
+    assert_eq!(
+        fs::read_link(root.path().join("bundle (1)"))?,
+        Path::new("elsewhere")
+    );
+    Ok(())
+}
+
+#[test]
+fn remove_empty_staging_reports_non_empty() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let destination = ExtractionDestination::open(root.path())?;
+    let (empty, _) = stage(&destination, &[])?;
+    let (full, _) = stage(&destination, &["kept.txt"])?;
+
+    assert!(destination.remove_empty_staging(&empty)?);
+    assert!(!destination.remove_empty_staging(&full)?);
+
+    assert!(!root.path().join(&empty).exists());
+    assert_eq!(fs::read(root.path().join(&full).join("kept.txt"))?, b"kept.txt");
+    Ok(())
+}
+
+#[test]
+fn archive_stem_strips_known_extensions() {
+    for (name, expected) in [
+        ("a.tar.gz", "a"),
+        ("a.TGZ", "a"),
+        ("a.tar", "a"),
+        ("a.zip", "a"),
+        ("a.7z", "a"),
+        ("a.rar", "a"),
+        ("archive", "archive"),
+        (".zip", ".zip"),
+        ("..tar.gz", "..tar.gz"),
+    ] {
+        assert_eq!(archive_stem(name), expected, "{name}");
+    }
+}
+
+fn no_replace_unsupported(
+    _: BorrowedFd<'_>,
+    _: &OsStr,
+    _: BorrowedFd<'_>,
+    _: &OsStr,
+) -> rustix::io::Result<()> {
+    Err(rustix::io::Errno::INVAL)
+}
+
+#[test]
+fn publication_without_rename_noreplace_never_replaces_entries() -> Result<(), Box<dyn Error>> {
+    let cases: [(&str, &str, &str, fn(&Path) -> std::io::Result<()>, &str); 4] = [
+        ("file", "readme.txt", "readme.txt", |_| Ok(()), "readme.txt"),
+        (
+            "file collision",
+            "readme.txt",
+            "readme.txt",
+            |root| fs::write(root.join("readme.txt"), b"existing"),
+            "readme (2).txt",
+        ),
+        ("directory", "docs/readme.txt", "docs", |_| Ok(()), "docs"),
+        (
+            "directory collision",
+            "docs/readme.txt",
+            "docs",
+            |root| {
+                fs::create_dir(root.join("docs"))?;
+                fs::write(root.join("docs/readme.txt"), b"existing")
+            },
+            "docs (2)",
+        ),
+    ];
+    for (label, member, root_name, create_existing, expected) in cases {
+        let root = tempfile::tempdir()?;
+        create_existing(root.path())?;
+        let before = fingerprint(&root.path().join(root_name));
+        let destination = ExtractionDestination::open(root.path())?;
+        let (name, staging) = stage(&destination, &[member])?;
+
+        let published = destination.publish_single_root_with(
+            &staging,
+            Path::new(root_name),
+            no_replace_unsupported,
+        )?;
+
+        assert_eq!(published, OsString::from(expected), "{label}");
+        let inside = Path::new(member).strip_prefix(root_name)?;
+        let moved = if inside.as_os_str().is_empty() {
+            Path::new(expected).to_path_buf()
+        } else {
+            Path::new(expected).join(inside)
+        };
+        assert_eq!(fs::read(root.path().join(moved))?, member.as_bytes(), "{label}");
+        if before.is_some() {
+            assert_eq!(fingerprint(&root.path().join(root_name)), before, "{label}");
+        }
+        assert!(root.path().join(&name).read_dir()?.next().is_none(), "{label}");
+    }
+
+    for (label, taken, expected) in [("folder", false, "bundle"), ("folder collision", true, "bundle (1)")] {
+        let root = tempfile::tempdir()?;
+        if taken {
+            fs::create_dir(root.path().join("bundle"))?;
+            fs::write(root.path().join("bundle/keep.txt"), b"keep")?;
+        }
+        let destination = ExtractionDestination::open(root.path())?;
+        let (name, _) = stage(&destination, &["a.txt", "b.txt"])?;
+
+        let published =
+            destination.publish_staging_as_folder_with(&name, "bundle.zip", no_replace_unsupported)?;
+
+        assert_eq!(published, expected, "{label}");
+        assert_eq!(fs::read(root.path().join(expected).join("a.txt"))?, b"a.txt", "{label}");
+        assert!(!root.path().join(&name).exists(), "{label}");
+        if taken {
+            assert_eq!(fs::read(root.path().join("bundle/keep.txt"))?, b"keep", "{label}");
+            assert_eq!(root.path().join("bundle").read_dir()?.count(), 1, "{label}");
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn directory_only_staging_is_removed_but_files_keep_it() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let destination = ExtractionDestination::open(root.path())?;
+    let (directories, staged_directories) = destination.create_staging()?;
+    staged_directories.create_directories(Path::new("a/b/c"))?;
+    staged_directories.create_directories(Path::new("d"))?;
+    let (with_file, _) = stage(&destination, &["a/b/deep.txt"])?;
+
+    assert!(destination.remove_directory_only_staging(&directories)?);
+    assert!(!destination.remove_directory_only_staging(&with_file)?);
+
+    assert!(!root.path().join(&directories).exists());
+    assert_eq!(
+        fs::read(root.path().join(&with_file).join("a/b/deep.txt"))?,
+        b"a/b/deep.txt"
     );
     Ok(())
 }

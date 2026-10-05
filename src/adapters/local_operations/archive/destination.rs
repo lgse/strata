@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-//! Confined destination writes and extraction conflict naming.
+//! Confined destination writes, the extraction staging folder lifecycle,
+//! publication and conflict naming.
 
 #[cfg(test)]
 mod tests;
@@ -8,7 +9,7 @@ mod tests;
 use std::{
     ffi::{OsStr, OsString},
     os::{
-        fd::{AsFd, OwnedFd},
+        fd::{AsFd, BorrowedFd, OwnedFd},
         unix::ffi::{OsStrExt, OsStringExt},
     },
     path::{Component, Path, PathBuf},
@@ -55,10 +56,32 @@ fn suffixed_name(name: &OsStr, index: u64) -> OsString {
     OsString::from_vec(candidate)
 }
 
-/// Pinned destination directory for extraction.
+/// Archive name without a known archive extension, used to name the folder
+/// that holds several extracted entries. Falls back to the full name when
+/// nothing would remain, such as for an archive called `.zip`.
+pub(super) fn archive_stem(archive_name: &str) -> &str {
+    let lower = archive_name.to_ascii_lowercase();
+    let stem = [".tar.gz", ".tgz", ".tar", ".zip", ".7z", ".rar"]
+        .iter()
+        .find_map(|suffix| {
+            lower
+                .ends_with(suffix)
+                .then(|| &archive_name[..archive_name.len() - suffix.len()])
+        })
+        .unwrap_or(archive_name);
+    if stem.trim_matches('.').is_empty() {
+        archive_name
+    } else {
+        stem
+    }
+}
+
+/// Pinned directory for extraction.
 ///
-/// All member creates go through this root with `NOFOLLOW`, so a symlink
-/// swapped into the destination tree cannot redirect writes outside it.
+/// One instance pins the user's destination and a second one pins the hidden
+/// staging folder created under it, which receives every member. All member
+/// creates go through the staging root with `NOFOLLOW`, so a symlink swapped
+/// into the destination tree cannot redirect writes outside it.
 #[derive(Debug)]
 pub(super) struct ExtractionDestination {
     root: OwnedFd,
@@ -101,32 +124,97 @@ impl ExtractionDestination {
         Ok(Self { root })
     }
 
-    /// Bundles multiple roots without reopening the destination by pathname.
-    /// On failure, leave completed moves intact and report where the output remains.
-    pub(super) fn bundle_roots(
-        &self,
-        archive_name: &str,
-        roots: &[PathBuf],
-    ) -> Result<Option<String>, String> {
-        let first = || {
-            roots
-                .first()
-                .map(|root| root.to_string_lossy().into_owned())
-        };
-        if roots.len() <= 1 {
-            return Ok(first());
+    /// Creates an empty hidden `.strata-extraction-<uuid>` folder under the
+    /// pinned root and pins it as a second destination. Members are written
+    /// there and published by name once the outcome is known.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if no fresh name can be created or the folder cannot
+    /// be opened without following a symlink.
+    pub(super) fn create_staging(&self) -> Result<(OsString, Self), String> {
+        for _ in 0..8 {
+            let name = format!(".strata-extraction-{}", gtk::glib::uuid_string_random());
+            match rustix::fs::mkdirat(&self.root, &name, rustix::fs::Mode::from_raw_mode(0o777)) {
+                Ok(()) => {}
+                Err(rustix::io::Errno::EXIST) => continue,
+                Err(error) => {
+                    return Err(format!(
+                        "Could not create the extraction staging folder: {error}"
+                    ));
+                }
+            }
+            let root = rustix::fs::openat(
+                &self.root,
+                &name,
+                rustix::fs::OFlags::RDONLY
+                    | rustix::fs::OFlags::DIRECTORY
+                    | rustix::fs::OFlags::NOFOLLOW
+                    | rustix::fs::OFlags::CLOEXEC,
+                rustix::fs::Mode::empty(),
+            )
+            .map_err(|error| {
+                let _ = rustix::fs::unlinkat(&self.root, &name, rustix::fs::AtFlags::REMOVEDIR);
+                format!("Could not open the extraction staging folder: {error}")
+            })?;
+            return Ok((OsString::from(name), Self { root }));
         }
-        let lower = archive_name.to_ascii_lowercase();
-        let stem = [".tar.gz", ".tgz", ".tar", ".zip", ".7z", ".rar"]
-            .iter()
-            .find_map(|suffix| {
-                lower
-                    .ends_with(suffix)
-                    .then(|| &archive_name[..archive_name.len() - suffix.len()])
-            })
-            .unwrap_or(archive_name);
-        if stem.trim_matches('.').is_empty() || stem.contains('/') {
-            return Ok(first());
+        Err("Could not create the extraction staging folder: no unused name".to_owned())
+    }
+
+    /// Removes `staging` if it is empty. Returns `Ok(false)` when it still
+    /// holds entries.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the folder cannot be removed for another reason.
+    pub(super) fn remove_empty_staging(&self, staging: &OsStr) -> Result<bool, String> {
+        match rustix::fs::unlinkat(&self.root, staging, rustix::fs::AtFlags::REMOVEDIR) {
+            Ok(()) => Ok(true),
+            // Some filesystems report a non-empty directory as EEXIST.
+            Err(rustix::io::Errno::NOTEMPTY | rustix::io::Errno::EXIST) => Ok(false),
+            Err(error) => Err(format!(
+                "Could not remove the extraction staging folder: {error}"
+            )),
+        }
+    }
+
+    /// Removes `staging` when it holds nothing but directories, deepest first.
+    /// Returns `Ok(false)`, leaving everything in place, as soon as a file or
+    /// other non-directory entry is found.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a directory cannot be read or removed.
+    pub(super) fn remove_directory_only_staging(&self, staging: &OsStr) -> Result<bool, String> {
+        remove_directory_only_tree(self.root.as_fd(), staging)
+            .map_err(|error| format!("Could not remove the extraction staging folder: {error}"))
+    }
+
+    /// Renames `staging` to the archive stem, or `stem (n)` when that name is
+    /// taken, without replacing anything. Returns the published name.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the rename fails for a reason other than a taken
+    /// name; `staging` is then left in place.
+    pub(super) fn publish_staging_as_folder(
+        &self,
+        staging: &OsStr,
+        archive_name: &str,
+    ) -> Result<String, String> {
+        self.publish_staging_as_folder_with(staging, archive_name, rename_no_replace)
+    }
+
+    fn publish_staging_as_folder_with(
+        &self,
+        staging: &OsStr,
+        archive_name: &str,
+        rename: RenameNoReplace,
+    ) -> Result<String, String> {
+        let stem = archive_stem(archive_name);
+        if stem.contains('/') {
+            return Err(format!("Invalid extraction folder name `{stem}`"));
         }
         for suffix in 0_u64.. {
             let name = if suffix == 0 {
@@ -134,28 +222,88 @@ impl ExtractionDestination {
             } else {
                 format!("{stem} ({suffix})")
             };
-            match rustix::fs::mkdirat(&self.root, &name, rustix::fs::Mode::from_raw_mode(0o777)) {
-                Ok(()) => {}
-                Err(rustix::io::Errno::EXIST) => continue,
+            match move_without_replacing(
+                self.root.as_fd(),
+                staging,
+                self.root.as_fd(),
+                OsStr::new(&name),
+                rename,
+            ) {
+                Ok(()) => return Ok(name),
+                Err(
+                    rustix::io::Errno::EXIST
+                    | rustix::io::Errno::NOTEMPTY
+                    | rustix::io::Errno::ISDIR
+                    | rustix::io::Errno::NOTDIR,
+                ) => {}
                 Err(error) => {
                     return Err(format!(
-                        "Could not create extraction folder `{name}`: {error}. Extracted entries remain in the destination."
+                        "Could not publish the extracted entries as `{name}`: {error}"
                     ));
                 }
             }
-            let wrapper = rustix::fs::openat(
-                &self.root,
-                &name,
-                rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::DIRECTORY | rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::CLOEXEC,
-                rustix::fs::Mode::empty(),
-            ).map_err(|error| format!("Could not open extraction folder `{name}`: {error}. Extracted entries remain in the destination."))?;
-            for root in roots {
-                rustix::fs::renameat_with(&self.root, root, &wrapper, root, rustix::fs::RenameFlags::NOREPLACE)
-                    .map_err(|error| format!("Could not bundle `{}` into `{name}`: {error}. Extracted entries remain in the destination or `{name}`.", root.display()))?;
-            }
-            return Ok(Some(name));
         }
         Err("No available extraction folder name".to_owned())
+    }
+
+    /// Moves the single top-level `root` out of `staging` into this
+    /// destination under its own name, or `name (n)` when something already
+    /// uses it. Existing entries, including symlinks and special files, are
+    /// never replaced or followed. Returns the published name.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the rename fails for a reason other than a taken
+    /// name; `root` is then left in `staging`.
+    pub(super) fn publish_single_root(
+        &self,
+        staging: &Self,
+        root: &Path,
+    ) -> Result<OsString, String> {
+        self.publish_single_root_with(staging, root, rename_no_replace)
+    }
+
+    fn publish_single_root_with(
+        &self,
+        staging: &Self,
+        root: &Path,
+        rename: RenameNoReplace,
+    ) -> Result<OsString, String> {
+        let leaf = root
+            .file_name()
+            .ok_or_else(|| "Archive entry has no file name".to_owned())?;
+        for index in 1.. {
+            let candidate = if index == 1 {
+                leaf.to_owned()
+            } else {
+                suffixed_name(leaf, index)
+            };
+            match move_without_replacing(
+                staging.root.as_fd(),
+                root.as_os_str(),
+                self.root.as_fd(),
+                &candidate,
+                rename,
+            ) {
+                Ok(()) => return Ok(candidate),
+                Err(
+                    rustix::io::Errno::EXIST
+                    | rustix::io::Errno::NOTEMPTY
+                    | rustix::io::Errno::ISDIR
+                    | rustix::io::Errno::NOTDIR,
+                ) => {}
+                Err(error) => {
+                    return Err(format!(
+                        "Could not publish `{}`: {error}",
+                        candidate.to_string_lossy()
+                    ));
+                }
+            }
+        }
+        Err(format!(
+            "Could not find an available extraction name for {}",
+            leaf.to_string_lossy()
+        ))
     }
 
     /// Uses [`fstatvfs`] on the pinned root so a swapped path cannot redirect
@@ -325,10 +473,116 @@ impl ExtractionDestination {
     }
 }
 
+/// `renameat2(RENAME_NOREPLACE)` between two pinned directories.
+type RenameNoReplace = fn(BorrowedFd<'_>, &OsStr, BorrowedFd<'_>, &OsStr) -> rustix::io::Result<()>;
+
+fn rename_no_replace(
+    from_directory: BorrowedFd<'_>,
+    from: &OsStr,
+    to_directory: BorrowedFd<'_>,
+    to: &OsStr,
+) -> rustix::io::Result<()> {
+    rustix::fs::renameat_with(
+        from_directory,
+        from,
+        to_directory,
+        to,
+        rustix::fs::RenameFlags::NOREPLACE,
+    )
+}
+
+/// Moves `from` to `to` without ever replacing an existing entry.
+///
+/// Filesystems without `RENAME_NOREPLACE` (some NFS and FUSE mounts) get a
+/// fallback that keeps the no-clobber guarantee: a file is hard-linked (which
+/// fails with `EEXIST`) and then unlinked; a directory first reserves `to` with
+/// `mkdirat` and then replaces only that empty reservation. A plain rename is
+/// never aimed at a name this function did not just create.
+fn move_without_replacing(
+    from_directory: BorrowedFd<'_>,
+    from: &OsStr,
+    to_directory: BorrowedFd<'_>,
+    to: &OsStr,
+    rename: RenameNoReplace,
+) -> rustix::io::Result<()> {
+    match rename(from_directory, from, to_directory, to) {
+        Err(rustix::io::Errno::INVAL | rustix::io::Errno::NOSYS | rustix::io::Errno::OPNOTSUPP) => {
+            move_by_reservation(from_directory, from, to_directory, to)
+        }
+        result => result,
+    }
+}
+
+fn move_by_reservation(
+    from_directory: BorrowedFd<'_>,
+    from: &OsStr,
+    to_directory: BorrowedFd<'_>,
+    to: &OsStr,
+) -> rustix::io::Result<()> {
+    let stat = rustix::fs::statat(from_directory, from, rustix::fs::AtFlags::SYMLINK_NOFOLLOW)?;
+    if rustix::fs::FileType::from_raw_mode(stat.st_mode) != rustix::fs::FileType::Directory {
+        rustix::fs::linkat(
+            from_directory,
+            from,
+            to_directory,
+            to,
+            rustix::fs::AtFlags::empty(),
+        )?;
+        // A leftover source link is reported later as unpublished staging content.
+        let _ = rustix::fs::unlinkat(from_directory, from, rustix::fs::AtFlags::empty());
+        return Ok(());
+    }
+    rustix::fs::mkdirat(to_directory, to, rustix::fs::Mode::from_raw_mode(0o700))?;
+    rustix::fs::renameat(from_directory, from, to_directory, to).inspect_err(|_| {
+        // Only succeeds while the reservation is still an empty directory.
+        let _ = rustix::fs::unlinkat(to_directory, to, rustix::fs::AtFlags::REMOVEDIR);
+    })
+}
+
+fn remove_directory_only_tree(parent: BorrowedFd<'_>, name: &OsStr) -> rustix::io::Result<bool> {
+    let directory = rustix::fs::openat(
+        parent,
+        name,
+        rustix::fs::OFlags::RDONLY
+            | rustix::fs::OFlags::DIRECTORY
+            | rustix::fs::OFlags::NOFOLLOW
+            | rustix::fs::OFlags::CLOEXEC,
+        rustix::fs::Mode::empty(),
+    )?;
+    let mut children = Vec::new();
+    for entry in rustix::fs::Dir::read_from(&directory)? {
+        let entry = entry?;
+        let child = OsStr::from_bytes(entry.file_name().to_bytes());
+        if child == "." || child == ".." {
+            continue;
+        }
+        let file_type = match entry.file_type() {
+            rustix::fs::FileType::Unknown => rustix::fs::FileType::from_raw_mode(
+                rustix::fs::statat(&directory, child, rustix::fs::AtFlags::SYMLINK_NOFOLLOW)?
+                    .st_mode,
+            ),
+            file_type => file_type,
+        };
+        if file_type != rustix::fs::FileType::Directory {
+            return Ok(false);
+        }
+        children.push(child.to_os_string());
+    }
+    for child in children {
+        if !remove_directory_only_tree(directory.as_fd(), &child)? {
+            return Ok(false);
+        }
+    }
+    rustix::fs::unlinkat(parent, name, rustix::fs::AtFlags::REMOVEDIR)?;
+    Ok(true)
+}
+
 /// Tracks renamed top-level entries so nested members follow the same rename.
 ///
-/// If `docs` already exists in the destination, a member `docs/readme.txt`
-/// is extracted under `docs (2)/readme.txt` rather than merging into `docs`.
+/// Extraction resolves names inside a fresh staging folder, so the leaf
+/// conflict naming in [`ExtractionDestination::create_file`] only renames
+/// duplicates within the archive (`same.txt`, then `same (2).txt`). A top-level
+/// name is resolved once and reused for every later member under it.
 pub(super) struct ExtractNameResolver {
     renames: std::collections::HashMap<OsString, OsString>,
 }

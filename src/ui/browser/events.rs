@@ -7,6 +7,9 @@ use crate::app::BrowserEvent;
 use crate::model::FileEntry;
 use crate::services::LocationValidationError;
 use crate::ui::browser::ViewState;
+use crate::ui::browser::archive::{
+    extract_error_needs_password, extract_error_reports_wrong_password,
+};
 use crate::ui::browser::columns::{
     column_size_text, prune_missing_search_results, restore_column_cursor, scroll_column_to,
     set_column_busy, set_column_selections, set_filter_placeholder, stop_column_spinner,
@@ -775,7 +778,7 @@ impl ViewState {
                 if let Some((entry, dest)) = retry
                     && extract_error_needs_password(message)
                 {
-                    let invalid_password = message.to_lowercase().contains("incorrect");
+                    let invalid_password = extract_error_reports_wrong_password(message);
                     let navigate_after_extract = self.pending_navigate.take();
                     self.show_extract_password_dialog(
                         entry,
@@ -1256,16 +1259,4 @@ impl ViewState {
                 | BrowserEvent::EntriesReplaced { .. }
         )
     }
-}
-
-fn extract_error_needs_password(message: &str) -> bool {
-    // Member diagnostics quote one unescaped filename, which can itself contain backticks.
-    let (prefix, suffix) = match (message.find('`'), message.rfind('`')) {
-        (Some(start), Some(end)) if start < end => (&message[..start], &message[end + 1..]),
-        _ => (message, ""),
-    };
-    [prefix, suffix].iter().any(|text| {
-        let lower = text.to_lowercase();
-        lower.contains("password") || lower.contains("encrypt")
-    })
 }

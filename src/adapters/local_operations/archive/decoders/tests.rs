@@ -1,19 +1,21 @@
 // SPDX-License-Identifier: MIT
 
 use super::super::fixtures::{
-    always_cancelled, completed_extract, extract_zip, never_cancelled, patch_zip_uncompressed_size,
-    write_7z, write_7z_entries, write_compression_fixture, write_tar, write_tar_entries, write_zip,
+    always_cancelled, completed_extract, extract_zip, never_cancelled,
+    patch_zip_uncompressed_size, write_7z, write_7z_entries, write_compression_fixture, write_tar,
+    write_tar_entries, write_zip,
 };
 use super::{
-    ArchiveError, ArchiveOutcome, ExtractedRoots, extract_7z_from_reader, extract_tar,
+    ArchiveError, ArchiveOutcome, extract_7z_from_reader, extract_tar,
     extract_zip_from_archive,
 };
 use crate::{model::Location, services::ArchiveFormat};
 use std::{
     error::Error,
+    ffi::OsStr,
     fs,
     io::{self, Cursor, Read, Seek, SeekFrom, Write},
-    path::{Path, PathBuf},
+    path::Path,
     sync::{
         Arc,
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -26,17 +28,22 @@ fn decode_fixture(
     format: ArchiveFormat,
     password: Option<&str>,
     progress: &Arc<AtomicUsize>,
-) -> Result<ArchiveOutcome<ExtractedRoots>, ArchiveError> {
+) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
     let cancelled = never_cancelled();
+    let name = archive
+        .file_name()
+        .and_then(OsStr::to_str)
+        .unwrap_or("archive");
     match format {
         ArchiveFormat::Zip => {
             let file = fs::File::open(archive).map_err(super::archive_failed)?;
             let mut archive = zip::ZipArchive::new(file).map_err(super::zip_error)?;
-            extract_zip_from_archive(&mut archive, destination, password, progress, &cancelled)
+            extract_zip_from_archive(&mut archive, destination, name, password, progress, &cancelled)
         }
         ArchiveFormat::SevenZ => extract_7z_from_reader(
             fs::File::open(archive).map_err(super::archive_failed)?,
             destination,
+            name,
             password
                 .map(sevenz_rust2::Password::from)
                 .unwrap_or_default(),
@@ -46,6 +53,7 @@ fn decode_fixture(
         ArchiveFormat::Tar | ArchiveFormat::TarGz => extract_tar(
             archive,
             destination,
+            name,
             format == ArchiveFormat::TarGz,
             progress,
             &cancelled,
@@ -85,7 +93,7 @@ fn every_decoder_shares_nesting_conflicts_and_progress() -> Result<(), Box<dyn E
                 password,
                 &progress
             )?)?,
-            vec![PathBuf::from("folder (2)")],
+            Some("folder (2)".to_owned()),
             "{format:?}"
         );
         assert_eq!(progress.load(Ordering::Relaxed), 5, "{format:?}");
@@ -198,11 +206,12 @@ fn seven_z_extraction_preserves_all_file_contents() -> Result<(), Box<dyn Error>
             completed_extract(extract_7z_from_reader(
                 fs::File::open(&archive_path)?,
                 &destination,
+                "archive",
                 sevenz_rust2::Password::empty(),
                 &progress,
                 &never_cancelled(),
             )?)?,
-            vec![PathBuf::from("folder")]
+            Some("folder".to_owned())
         );
         for (name, contents) in &entries {
             assert_eq!(fs::read(destination.join(name))?, *contents);
@@ -234,11 +243,12 @@ fn seven_z_extraction_preserves_all_empty_files_and_directories() -> Result<(), 
         completed_extract(extract_7z_from_reader(
             fs::File::open(&archive_path)?,
             &destination,
+            "archive",
             sevenz_rust2::Password::empty(),
             &progress,
             &never_cancelled(),
         )?)?,
-        vec![PathBuf::from("folder")]
+        Some("folder".to_owned())
     );
     assert!(destination.join("folder/empty").is_dir());
     for name in ["folder/one.txt", "folder/two.txt"] {
@@ -272,20 +282,21 @@ fn tar_extraction_skips_root_directories_and_preserves_contents() -> Result<(), 
                 completed_extract(extract_tar(
                     &archive,
                     &destination,
+                    "content.tar",
                     gzip,
                     &progress,
                     &never_cancelled(),
                 )?)?,
-                vec![PathBuf::from("folder (2)"), PathBuf::from("empty.txt")],
+                Some("content".to_owned()),
             );
             assert_eq!(progress.load(Ordering::Relaxed), 3);
             assert_eq!(
-                fs::read(destination.join("folder (2)/item.txt"))?,
+                fs::read(destination.join("content/folder/item.txt"))?,
                 b"contents"
             );
             assert_eq!(fs::read(destination.join("folder/keep.txt"))?, b"keep");
-            assert_eq!(fs::metadata(destination.join("empty.txt"))?.len(), 0);
-            assert_eq!(fs::read_dir(&destination)?.count(), 3);
+            assert_eq!(fs::metadata(destination.join("content/empty.txt"))?.len(), 0);
+            assert_eq!(fs::read_dir(&destination)?.count(), 2);
         }
     }
     Ok(())
@@ -305,14 +316,15 @@ fn tar_extraction_root_only_completes_without_a_name_and_respects_cancellation()
             completed_extract(extract_tar(
                 &archive,
                 &destination,
+                "archive",
                 gzip,
                 &progress,
                 &never_cancelled(),
             )?)?,
-            Vec::<PathBuf>::new(),
+            None,
         );
         assert!(matches!(
-            extract_tar(&archive, &destination, gzip, &progress, &always_cancelled())?,
+            extract_tar(&archive, &destination, "archive", gzip, &progress, &always_cancelled())?,
             ArchiveOutcome::Cancelled { completed, failed, not_attempted }
                 if completed.is_empty() && failed.is_empty() && not_attempted.is_empty()
         ));
@@ -341,7 +353,7 @@ fn tar_extraction_rejects_empty_paths_and_root_file_entries() -> Result<(), Box<
             let progress = Arc::new(AtomicUsize::new(0));
             assert!(
                 matches!(
-                    extract_tar(&archive, &destination, gzip, &progress, &never_cancelled()),
+                    extract_tar(&archive, &destination, "archive", gzip, &progress, &never_cancelled()),
                     Err(ArchiveError::Failed(_))
                 ),
                 "accepted {entry_type:?} {name:?}, gzip={gzip}"
@@ -389,14 +401,17 @@ fn every_archive_format_sanitizes_parent_traversal_without_stopping() -> Result<
                 None,
                 &progress,
             )?)?,
-            vec![PathBuf::from("escaped.txt"), PathBuf::from("after.txt")],
+            Some("archive".to_owned()),
             "{format:?}"
         );
         assert_eq!(
-            fs::read(destination.path().join("escaped.txt"))?,
+            fs::read(destination.path().join("archive/escaped.txt"))?,
             b"escaped"
         );
-        assert_eq!(fs::read(destination.path().join("after.txt"))?, b"after");
+        assert_eq!(
+            fs::read(destination.path().join("archive/after.txt"))?,
+            b"after"
+        );
         assert!(!root.path().join("escaped.txt").exists());
         assert_eq!(progress.load(Ordering::Relaxed), 2);
     }
@@ -404,14 +419,18 @@ fn every_archive_format_sanitizes_parent_traversal_without_stopping() -> Result<
 }
 
 #[test]
-fn extraction_rejects_final_and_intermediate_symlinks() -> Result<(), Box<dyn Error>> {
+fn destination_symlinks_are_never_followed_and_colliding_roots_are_suffixed()
+-> Result<(), Box<dyn Error>> {
     for format in [
         ArchiveFormat::Zip,
         ArchiveFormat::SevenZ,
         ArchiveFormat::Tar,
         ArchiveFormat::TarGz,
     ] {
-        for name in ["dangling", "redirect/marker"] {
+        for (name, published, written) in [
+            ("dangling", "dangling (2)", "dangling (2)"),
+            ("redirect/marker", "redirect (2)", "redirect (2)/marker"),
+        ] {
             let root = tempfile::tempdir()?;
             let destination = root.path().join("destination");
             let external = root.path().join("external");
@@ -428,26 +447,32 @@ fn extraction_rejects_final_and_intermediate_symlinks() -> Result<(), Box<dyn Er
                 }
                 ArchiveFormat::Rar => unreachable!("RAR compression is not supported"),
             }
-            assert!(
-                decode_fixture(
+            assert_eq!(
+                completed_extract(decode_fixture(
                     &archive,
                     &destination,
                     format,
                     None,
                     &Arc::new(AtomicUsize::new(0))
-                )
-                .is_err(),
-                "{format:?} accepted {name}"
+                )?)?,
+                Some(published.to_owned()),
+                "{format:?} {name}"
             );
+            assert_eq!(fs::read(destination.join(written))?, b"escaped");
             assert!(!root.path().join("missing").exists());
             assert!(!external.join("marker").exists());
+            assert_eq!(
+                fs::read_link(destination.join("dangling"))?,
+                root.path().join("missing")
+            );
+            assert_eq!(fs::read_link(destination.join("redirect"))?, external);
         }
     }
     Ok(())
 }
 
 #[test]
-fn extraction_supports_nesting_and_regular_conflicts() -> Result<(), Box<dyn Error>> {
+fn multi_root_zip_keeps_member_names_inside_the_fresh_folder() -> Result<(), Box<dyn Error>> {
     let root = tempfile::tempdir()?;
     let destination = root.path().join("destination");
     fs::create_dir(&destination)?;
@@ -466,23 +491,21 @@ fn extraction_supports_nesting_and_regular_conflicts() -> Result<(), Box<dyn Err
 
     assert_eq!(
         extract_zip(&archive_path, &destination)?,
-        [
-            PathBuf::from("folder"),
-            PathBuf::from("report (2).txt"),
-            PathBuf::from("existing (2)"),
-        ]
+        Some("content".to_owned())
     );
     assert_eq!(
-        fs::read(destination.join("folder/nested/item.txt"))?,
+        fs::read(destination.join("content/folder/nested/item.txt"))?,
         b"nested"
     );
-    assert_eq!(fs::read(destination.join("report.txt"))?, b"original");
     assert_eq!(
-        fs::read(destination.join("report (2).txt"))?,
+        fs::read(destination.join("content/report.txt"))?,
         b"replacement"
     );
+    assert_eq!(fs::read(destination.join("content/existing/new.txt"))?, b"new");
+    assert_eq!(fs::read(destination.join("report.txt"))?, b"original");
     assert_eq!(fs::read(destination.join("existing/old.txt"))?, b"old");
-    assert_eq!(fs::read(destination.join("existing (2)/new.txt"))?, b"new");
+    assert_eq!(destination.join("existing").read_dir()?.count(), 1);
+    assert_eq!(fs::read_dir(&destination)?.count(), 3);
     Ok(())
 }
 
@@ -502,6 +525,7 @@ fn zip_extraction_stops_and_drops_incomplete_output_when_cancelled() -> Result<(
     let outcome = extract_zip_from_archive(
         &mut archive,
         &destination,
+        "archive",
         None,
         &Arc::new(AtomicUsize::new(0)),
         &Arc::new(AtomicBool::new(true)),
@@ -541,6 +565,7 @@ fn tar_extraction_stops_without_scanning_remaining_entries() -> Result<(), Box<d
     let outcome = extract_tar(
         &archive_path,
         &destination,
+        "archive",
         false,
         &Arc::new(AtomicUsize::new(0)),
         &always_cancelled(),
@@ -644,6 +669,7 @@ fn sevenz_cancellation_keeps_streamless_and_duplicate_members_pending() -> Resul
         let outcome = extract_7z_from_reader(
             fs::File::open(&archive)?,
             destination.path(),
+            "archive",
             sevenz_rust2::Password::empty(),
             &progress,
             &always_cancelled(),
@@ -700,6 +726,7 @@ fn sevenz_mid_copy_cancellation_tracks_header_identity_and_destination_renames()
             let outcome = extract_7z_from_reader(
                 reader,
                 destination.path(),
+                "mixed.7z",
                 sevenz_rust2::Password::empty(),
                 &progress,
                 &cancelled,
@@ -713,7 +740,7 @@ fn sevenz_mid_copy_cancellation_tracks_header_identity_and_destination_renames()
                 panic!("expected cancellation after {after} members, solid={solid}");
             };
             let location = |name| Location::local(destination.path().join(name));
-            let completed_names = ["folder (2)/same.txt", "folder (2)/same (2).txt"];
+            let completed_names = ["mixed/folder/same.txt", "mixed/folder/same (2).txt"];
             assert_eq!(
                 completed,
                 completed_names[..after]
@@ -723,15 +750,15 @@ fn sevenz_mid_copy_cancellation_tracks_header_identity_and_destination_renames()
             );
             assert!(failed.is_empty());
             let interrupted = if after == 1 {
-                "folder (2)/same (2).txt"
+                "mixed/folder/same (2).txt"
             } else {
-                "folder (2)/later.txt"
+                "mixed/folder/later.txt"
             };
-            let mut pending_names = vec![interrupted, "folder (2)", "folder (2)/same.txt"];
+            let mut pending_names = vec![interrupted, "mixed/folder", "mixed/folder/same.txt"];
             if after == 1 {
-                pending_names.push("folder (2)/later.txt");
+                pending_names.push("mixed/folder/later.txt");
             }
-            pending_names.extend(["folder (2)/empty", "folder (2)/zero.txt"]);
+            pending_names.extend(["mixed/folder/empty", "mixed/folder/zero.txt"]);
             assert_eq!(
                 not_attempted,
                 pending_names.iter().map(location).collect::<Vec<_>>(),
@@ -754,9 +781,10 @@ fn sevenz_mid_copy_cancellation_tracks_header_identity_and_destination_renames()
                 );
             }
             assert_eq!(
-                destination.path().join("folder (2)").read_dir()?.count(),
+                destination.path().join("mixed/folder").read_dir()?.count(),
                 after
             );
+            assert_eq!(destination.path().join("folder").read_dir()?.count(), 1);
             assert!(!destination.path().join(interrupted).exists());
         }
     }
@@ -793,6 +821,7 @@ fn pending_unsafe_names_are_sanitized_by_every_decoder() -> Result<(), Box<dyn E
                 extract_zip_from_archive(
                     &mut archive,
                     destination.path(),
+                    "archive",
                     None,
                     &progress,
                     &cancelled,
@@ -801,6 +830,7 @@ fn pending_unsafe_names_are_sanitized_by_every_decoder() -> Result<(), Box<dyn E
             ArchiveFormat::SevenZ => extract_7z_from_reader(
                 fs::File::open(&archive)?,
                 destination.path(),
+                "archive",
                 sevenz_rust2::Password::empty(),
                 &progress,
                 &cancelled,
@@ -808,6 +838,7 @@ fn pending_unsafe_names_are_sanitized_by_every_decoder() -> Result<(), Box<dyn E
             ArchiveFormat::Tar | ArchiveFormat::TarGz => extract_tar(
                 &archive,
                 destination.path(),
+                "archive",
                 format == ArchiveFormat::TarGz,
                 &progress,
                 &cancelled,
@@ -840,6 +871,7 @@ fn sevenz_extraction_reports_remaining_entries_when_cancelled() -> Result<(), Bo
     let outcome = extract_7z_from_reader(
         fs::File::open(&archive_path)?,
         &destination,
+        "archive",
         sevenz_rust2::Password::empty(),
         &Arc::new(AtomicUsize::new(0)),
         &always_cancelled(),
@@ -942,7 +974,7 @@ fn highly_compressible_archives_extract_in_every_format() -> Result<(), Box<dyn 
         let destination = tempfile::tempdir()?;
         let progress = Arc::new(AtomicUsize::new(0));
 
-        let roots = completed_extract(decode_fixture(
+        let first_name = completed_extract(decode_fixture(
             &archive,
             destination.path(),
             format,
@@ -950,7 +982,7 @@ fn highly_compressible_archives_extract_in_every_format() -> Result<(), Box<dyn 
             &progress,
         )?)?;
 
-        assert_eq!(roots, [PathBuf::from("zeros.bin")], "{format:?}");
+        assert_eq!(first_name.as_deref(), Some("zeros.bin"), "{format:?}");
         assert_eq!(
             fs::metadata(destination.path().join("zeros.bin"))?.len(),
             SIZE,
@@ -1031,11 +1063,17 @@ fn corrupt_members_are_removed_without_losing_completed_or_existing_files()
         fs::write(destination.path().join("broken.txt"), b"original")?;
         let progress = Arc::new(AtomicUsize::new(0));
         let result = decode_fixture(&archive, destination.path(), format, None, &progress);
+        let kept = format!("{} Extracted entries remain in `archive`.", super::INVALID_ARCHIVE);
         assert!(
-            matches!(result, Err(ArchiveError::Failed(message)) if message == super::INVALID_ARCHIVE)
+            matches!(&result, Err(ArchiveError::Failed(message)) if *message == kept),
+            "{format:?}: {result:?}"
         );
         assert_eq!(progress.load(Ordering::Relaxed), 1);
-        assert_eq!(fs::read(destination.path().join("done.txt"))?, b"done");
+        assert_eq!(
+            fs::read(destination.path().join("archive/done.txt"))?,
+            b"done"
+        );
+        assert!(!destination.path().join("archive/broken.txt").exists());
         assert_eq!(
             fs::read(destination.path().join("broken.txt"))?,
             b"original"
@@ -1321,6 +1359,7 @@ fn wrong_password_for_content_encrypted_7z_is_retryable() -> Result<(), Box<dyn 
     let Err(error) = extract_7z_from_reader(
         Cursor::new(archive),
         wrong_destination.path(),
+        "archive",
         "wrong".into(),
         &Arc::new(AtomicUsize::new(0)),
         &never_cancelled(),
@@ -1334,6 +1373,7 @@ fn wrong_password_for_content_encrypted_7z_is_retryable() -> Result<(), Box<dyn 
     completed_extract(extract_7z_from_reader(
         Cursor::new(archive),
         correct_destination.path(),
+        "archive",
         "secret".into(),
         &Arc::new(AtomicUsize::new(0)),
         &never_cancelled(),
@@ -1397,11 +1437,12 @@ fn tar_extraction_skips_pax_global_headers() -> Result<(), Box<dyn Error>> {
             completed_extract(extract_tar(
                 &archive,
                 &destination,
+                "archive",
                 gzip,
                 &progress,
                 &never_cancelled(),
             )?)?,
-            vec![PathBuf::from("project")],
+            Some("project".to_owned()),
         );
         assert_eq!(progress.load(Ordering::Relaxed), 2);
         assert!(!destination.join("pax_global_header").exists());

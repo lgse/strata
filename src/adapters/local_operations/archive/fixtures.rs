@@ -3,7 +3,7 @@
 use super::{
     compression::{compress_7z, compress_tar, compress_zip, inspect_archive_sources},
     decoders::extract_zip_from_archive,
-    extraction::{ArchiveOutcome, ExtractedRoots},
+    extraction::ArchiveOutcome,
 };
 use crate::{
     model::{EntryKind, FileEntry, Location, MetadataValue},
@@ -11,7 +11,7 @@ use crate::{
 };
 use std::{
     error::Error,
-    ffi::OsString,
+    ffi::{OsStr, OsString},
     fs,
     io::{Cursor, Write},
     os::unix::fs::{MetadataExt, PermissionsExt},
@@ -106,18 +106,22 @@ pub(super) fn test_file_entry(path: &Path) -> FileEntry {
     }
 }
 
-pub(super) fn compression_stages(destination: &Path) -> Result<Vec<OsString>, Box<dyn Error>> {
+pub(super) const COMPRESSION_STAGE: &str = ".strata-compression-";
+pub(super) const EXTRACTION_STAGE: &str = ".strata-extraction-";
+
+/// Names in `destination` starting with `prefix`, such as `.strata-compression-`.
+pub(super) fn stages(destination: &Path, prefix: &str) -> Result<Vec<OsString>, Box<dyn Error>> {
     Ok(fs::read_dir(destination)?
         .filter_map(Result::ok)
         .map(|entry| entry.file_name())
-        .filter(|name| name.to_string_lossy().starts_with(".strata-compression-"))
+        .filter(|name| name.to_string_lossy().starts_with(prefix))
         .collect())
 }
 
 pub(super) fn compression_stage_mode(destination: &Path) -> Result<u32, Box<dyn Error>> {
-    let mut stages = compression_stages(destination)?;
-    let name = stages.pop().ok_or("no compression staging file")?;
-    if !stages.is_empty() {
+    let mut found = stages(destination, COMPRESSION_STAGE)?;
+    let name = found.pop().ok_or("no compression staging file")?;
+    if !found.is_empty() {
         return Err("expected a single compression staging file".into());
     }
     Ok(fs::metadata(destination.join(name))?.permissions().mode() & 0o777)
@@ -293,21 +297,24 @@ pub(super) fn always_cancelled() -> Arc<AtomicBool> {
 }
 
 pub(super) fn completed_extract(
-    outcome: ArchiveOutcome<ExtractedRoots>,
-) -> Result<Vec<PathBuf>, String> {
+    outcome: ArchiveOutcome<Option<String>>,
+) -> Result<Option<String>, String> {
     match outcome {
-        ArchiveOutcome::Completed(value) => Ok(value.roots),
+        ArchiveOutcome::Completed(first_name) => Ok(first_name),
         ArchiveOutcome::Cancelled { .. } => Err("unexpected cancellation".to_owned()),
     }
 }
 
-pub(super) fn extract_zip(path: &Path, destination: &Path) -> Result<Vec<PathBuf>, String> {
+pub(super) fn extract_zip(path: &Path, destination: &Path) -> Result<Option<String>, String> {
     let file = fs::File::open(path).map_err(|error| error.to_string())?;
     let mut archive = zip::ZipArchive::new(file).map_err(|error| error.to_string())?;
     completed_extract(
         extract_zip_from_archive(
             &mut archive,
             destination,
+            path.file_name()
+                .and_then(OsStr::to_str)
+                .unwrap_or("archive.zip"),
             None,
             &Arc::new(AtomicUsize::new(0)),
             &never_cancelled(),

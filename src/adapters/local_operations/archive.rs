@@ -200,9 +200,14 @@ pub(super) fn compress(request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)
 /// Emits [`ArchiveStarted`] immediately, [`ArchiveProgress`] while running,
 /// then [`Extracted`], [`Failed`], or [`Cancelled`]. A cancel after some
 /// members have been written reports completed, failed, and not-attempted
-/// locations through [`CancelledOperation`]. Completed extractions spilling
-/// more than one top-level entry are bundled into a folder named after the
-/// archive stem; [`Extracted::first_name`] then selects that folder.
+/// locations through [`CancelledOperation`].
+///
+/// Members are staged in a hidden folder inside the destination. A single
+/// top-level entry lands under its own name, suffixed only if the destination
+/// already uses it; several entries are published as a folder named after the
+/// archive stem, which [`Extracted::first_name`] then selects. A failed or
+/// cancelled extraction keeps what it wrote in that stem folder, and the
+/// [`Failed`] message names it.
 /// Refuses a path that exists but is not a regular file with [`Failed`]
 /// before touching the destination.
 ///
@@ -273,7 +278,7 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
         let work_progress = progress.clone();
         let work_total = total.clone();
         let result = gio::spawn_blocking(move || {
-            let outcome = match format {
+            match format {
                 Some(ArchiveFormat::Zip) => {
                     let file = std::fs::File::open(&archive_path).map_err(|e| e.to_string())?;
                     let mut archive = zip::ZipArchive::new(file).map_err(decoders::zip_error)?;
@@ -281,6 +286,7 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
                     extract_zip_from_archive(
                         &mut archive,
                         &dest_dir,
+                        &display_name,
                         password.as_deref(),
                         &work_progress,
                         &work_cancelled,
@@ -292,11 +298,19 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
                         .map(sevenz_rust2::Password::from)
                         .unwrap_or_default();
                     let file = std::fs::File::open(&archive_path).map_err(|e| e.to_string())?;
-                    extract_7z_from_reader(file, &dest_dir, pw, &work_progress, &work_cancelled)
+                    extract_7z_from_reader(
+                        file,
+                        &dest_dir,
+                        &display_name,
+                        pw,
+                        &work_progress,
+                        &work_cancelled,
+                    )
                 }
                 Some(ArchiveFormat::TarGz) => extract_tar(
                     &archive_path,
                     &dest_dir,
+                    &display_name,
                     true,
                     &work_progress,
                     &work_cancelled,
@@ -304,6 +318,7 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
                 Some(ArchiveFormat::Tar) => extract_tar(
                     &archive_path,
                     &dest_dir,
+                    &display_name,
                     false,
                     &work_progress,
                     &work_cancelled,
@@ -316,6 +331,7 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
                 Some(ArchiveFormat::Rar) => extract_rar(
                     &archive_path,
                     &dest_dir,
+                    &display_name,
                     password.as_deref(),
                     &work_progress,
                     &work_cancelled,
@@ -323,20 +339,6 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
                 None => Err(archive_failed(format!(
                     "Unsupported archive format: {display_name}"
                 ))),
-            };
-            match outcome? {
-                ArchiveOutcome::Completed(roots) => {
-                    Ok(ArchiveOutcome::Completed(roots.bundle(&display_name)?))
-                }
-                ArchiveOutcome::Cancelled {
-                    completed,
-                    failed,
-                    not_attempted,
-                } => Ok(ArchiveOutcome::Cancelled {
-                    completed,
-                    failed,
-                    not_attempted,
-                }),
             }
         })
         .await;

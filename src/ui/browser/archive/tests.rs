@@ -40,3 +40,34 @@ fn archive_collisions_use_the_final_name() -> Result<(), Box<dyn std::error::Err
     assert!(archive_has_collision(&destination, "archive.zip"));
     Ok(())
 }
+
+#[test]
+fn quoted_names_never_drive_the_password_retry() {
+    for (message, needs_password, wrong_password) in [
+        ("The password may be incorrect.", true, true),
+        ("A password is required to extract this archive.", true, false),
+        (
+            "The password may be incorrect. Extracted entries remain in `photos`.",
+            true,
+            true,
+        ),
+        ("Not an archive: `passwords.zip`", false, false),
+        (
+            "This file is not a valid archive or is damaged. Extracted entries remain in `encrypted-incorrect`.",
+            false,
+            false,
+        ),
+        ("Archive member `a`b.txt` uses unsupported encryption", true, false),
+    ] {
+        assert_eq!(
+            extract_error_needs_password(message),
+            needs_password,
+            "{message}"
+        );
+        assert_eq!(
+            extract_error_reports_wrong_password(message),
+            wrong_password,
+            "{message}"
+        );
+    }
+}

@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
 import os
+import re
 import shutil
 import struct
 import zipfile
@@ -53,10 +54,40 @@ def test_cancel_compression_stops_before_publishing_and_allows_another_operation
         assert archive.read("todo.txt") == fixture.path("todo.txt").read_bytes()
 
 
-@pytest.mark.parametrize("name", ["fake.zip", "fake.7z", "fake.tar", "fake.tar.gz", "fake.rar"])
-def test_invalid_archive_reports_damage_and_allows_another_extraction(strata, name):
+INVALID_ARCHIVE = "This file is not a valid archive or is damaged."
+
+
+def _write_text(path):
+    path.write_bytes(b"This is harmless text, not an archive.\n")
+
+
+def _write_zip_with_absolute_member(path):
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("ok.txt", "ok")
+        archive.writestr("second.txt", "2")
+        archive.writestr(zipfile.ZipInfo("/etc/evil.txt"), "evil")
+
+
+@pytest.mark.parametrize("name,write_fixture,detail,kept,members", [
+    *(
+        pytest.param(name, _write_text, INVALID_ARCHIVE, None, [], id=name)
+        for name in ["fake.zip", "fake.7z", "fake.tar", "fake.tar.gz", "fake.rar"]
+    ),
+    pytest.param(
+        "scatter.zip",
+        _write_zip_with_absolute_member,
+        "Refusing unsafe archive path: /etc/evil.txt. Extracted entries remain in `scatter`.",
+        "scatter",
+        ["ok.txt", "second.txt"],
+        id="scatter.zip",
+    ),
+])
+def test_invalid_archive_reports_damage_and_allows_another_extraction(
+    strata, name, write_fixture, detail, kept, members
+):
     fixture = strata.fixture
-    fixture.path(name).write_bytes(b"This is harmless text, not an archive.\n")
+    write_fixture(fixture.path(name))
+    original = fixture.path(name).read_bytes()
     with zipfile.ZipFile(fixture.path("valid.zip"), "w") as archive:
         archive.writestr("extracted.txt", "harmless contents")
     strata.keyboard.press("ctrl+r")
@@ -71,9 +102,15 @@ def test_invalid_archive_reports_damage_and_allows_another_extraction(strata, na
         ),
         "the archive error dialog to replace the progress dialog",
     )
-    assert dialog.find(role="label", name="This file is not a valid archive or is damaged.")
+    # The dialog wraps long messages, so the label may contain line breaks.
+    detail_pattern = r"\s+".join(re.escape(word) for word in detail.split())
+    assert dialog.find(role="label", name_matches=f"^{detail_pattern}$")
     assert not strata.window.find(role="progress bar")
-    assert fixture.path(name).read_bytes() == b"This is harmless text, not an archive.\n"
+    assert fixture.path(name).read_bytes() == original
+    for member in members:
+        assert (fixture.path(kept) / member).is_file()
+        assert not fixture.path(member).exists()
+    assert not list(fixture.root.glob(".strata-extraction-*"))
     strata.pointer.click(strata.dialog_button("Close"))
     strata.wait(lambda: strata.dialog() is None, "error dismissal")
     strata.pointer.right_click(strata.entry("valid.zip"))

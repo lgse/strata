@@ -4,7 +4,7 @@ mod cancellation;
 mod policy;
 
 use super::super::fixtures::{
-    HomeTrashGuard, compression_stage_mode, compression_stages, never_cancelled,
+    COMPRESSION_STAGE, HomeTrashGuard, compression_stage_mode, never_cancelled, stages,
     tempdir_on_home_device, write_compression_fixture,
 };
 use super::{ArchiveError, inspect_archive_sources, process_umask, write_staged_archive};
@@ -78,7 +78,7 @@ fn compression_staging_stays_private_while_encoding() -> Result<(), Box<dyn Erro
     );
     assert_eq!(fs::read(&archive)?, b"replacement");
     assert_eq!(fs::metadata(&archive)?.permissions().mode() & 0o777, 0o640);
-    assert!(compression_stages(&destination)?.is_empty());
+    assert!(stages(&destination, COMPRESSION_STAGE)?.is_empty());
     Ok(())
 }
 
@@ -131,7 +131,7 @@ fn compression_new_archive_staging_stays_private_until_publish() -> Result<(), B
         fs::metadata(&archive)?.permissions().mode() & 0o777,
         0o666 & !process_umask()
     );
-    assert!(compression_stages(&destination)?.is_empty());
+    assert!(stages(&destination, COMPRESSION_STAGE)?.is_empty());
     Ok(())
 }
 
@@ -164,7 +164,7 @@ fn compression_replacement_preserves_directory_destinations() -> Result<(), Box<
         if populated {
             assert_eq!(fs::read(archive.join("contents"))?, b"original");
         }
-        assert!(compression_stages(root.path())?.is_empty());
+        assert!(stages(root.path(), COMPRESSION_STAGE)?.is_empty());
     }
     Ok(())
 }
@@ -210,7 +210,7 @@ fn keep_both_retries_publication_collisions_without_encoding_again() -> Result<(
         assert_eq!(fs::read(&first)?, b"late numbered");
         assert!(directory.is_dir());
         assert_eq!(fs::read_link(symlink)?, Path::new("missing"));
-        assert!(compression_stages(&destination)?.is_empty());
+        assert!(stages(&destination, COMPRESSION_STAGE)?.is_empty());
     }
     Ok(())
 }
@@ -484,16 +484,16 @@ fn cancelling_staged_compression_waits_for_worker_exit_before_cleanup() -> Resul
         context.iteration(false);
         std::thread::yield_now();
     }
-    assert_eq!(compression_stages(&destination)?.len(), 1);
+    assert_eq!(stages(&destination, COMPRESSION_STAGE)?.len(), 1);
 
     cancelled.store(true, Ordering::Release);
     assert!(!finished.load(Ordering::Acquire));
-    assert_eq!(compression_stages(&destination)?.len(), 1);
+    assert_eq!(stages(&destination, COMPRESSION_STAGE)?.len(), 1);
     release.store(true, Ordering::Release);
     let result = context.block_on(task)?;
     assert!(matches!(result, Err(ArchiveError::Cancelled)));
     assert!(finished.load(Ordering::Acquire));
-    assert!(compression_stages(&destination)?.is_empty());
+    assert!(stages(&destination, COMPRESSION_STAGE)?.is_empty());
     assert_eq!(fs::read(&archive)?, b"original");
     Ok(())
 }
@@ -531,7 +531,7 @@ fn write_staged_archive_does_not_publish_when_cancelled_after_write() -> Result<
     let result = glib::MainContext::default().block_on(task)?;
     assert!(matches!(result, Err(ArchiveError::Cancelled)));
     assert_eq!(fs::read(&archive)?, b"original");
-    assert!(compression_stages(&destination)?.is_empty());
+    assert!(stages(&destination, COMPRESSION_STAGE)?.is_empty());
     Ok(())
 }
 

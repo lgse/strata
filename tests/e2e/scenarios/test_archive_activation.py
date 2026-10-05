@@ -49,6 +49,8 @@ def test_archive_activation_extracts_to_subfolder(strata, activation, format):
                 info = tarfile.TarInfo(member)
                 info.size = len(data)
                 archive.addfile(info, io.BytesIO(data))
+    fixture.path("activated.txt").write_text("pre-existing\n")
+    strata.entry("activated.txt")
     strata.entry(archive_name)
 
     extract_archive(strata, archive_name, activation)
@@ -59,7 +61,8 @@ def test_archive_activation_extracts_to_subfolder(strata, activation, format):
     strata.wait(lambda: strata.dialog() is None, "extraction progress dismissal")
     assert extracted.read_text() == contents
     assert (subfolder / "nested/second.txt").read_bytes() == b"second member\n"
-    assert not fixture.path("activated.txt").exists()
+    assert fixture.path("activated.txt").read_text() == "pre-existing\n"
+    assert not (subfolder / "activated (2).txt").exists()
     assert not fixture.path("nested").exists()
     assert fixture.path(archive_name).exists()
     assert strata.pane().name == fixture.root.name

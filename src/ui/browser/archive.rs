@@ -40,6 +40,29 @@ use std::rc::Rc;
 /// Typing `backup.zip` while [`ArchiveFormat::Zip`] is selected yields `backup`,
 /// so the committed file is `backup.zip` rather than `backup.zip.zip`. Suffixes
 /// that do not match [`ArchiveFormat::extension`] are left intact.
+/// Lowercased text of an extraction error outside its quoted span.
+///
+/// Diagnostics quote one unescaped member or folder name between the first and
+/// last backtick. That name can contain backticks or words such as "password",
+/// so it must not drive the password retry.
+fn unquoted_extract_error(message: &str) -> String {
+    match (message.find('`'), message.rfind('`')) {
+        (Some(start), Some(end)) if start < end => {
+            format!("{} {}", &message[..start], &message[end + 1..]).to_lowercase()
+        }
+        _ => message.to_lowercase(),
+    }
+}
+
+pub(super) fn extract_error_needs_password(message: &str) -> bool {
+    let text = unquoted_extract_error(message);
+    text.contains("password") || text.contains("encrypt")
+}
+
+pub(super) fn extract_error_reports_wrong_password(message: &str) -> bool {
+    unquoted_extract_error(message).contains("incorrect")
+}
+
 fn normalized_archive_name(name: &str, format: ArchiveFormat) -> String {
     name.strip_suffix(&format!(".{}", format.extension()))
         .unwrap_or(name)

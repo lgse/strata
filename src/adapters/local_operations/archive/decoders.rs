@@ -19,7 +19,7 @@ use std::{
 
 use super::{
     ARCHIVE_CANCELLED, ArchiveError, archive_failed,
-    extraction::{ArchiveOutcome, ExtractedRoots, ExtractionSession, MemberContent},
+    extraction::{ArchiveOutcome, ExtractionSession, MemberContent},
 };
 
 #[cfg(feature = "rar")]
@@ -143,11 +143,12 @@ fn sevenz_is_cancelled(error: &sevenz_rust2::Error) -> bool {
 pub(super) fn extract_zip_from_archive(
     archive: &mut zip::ZipArchive<std::fs::File>,
     dest_dir: &Path,
+    archive_name: &str,
     password: Option<&str>,
     progress: &Arc<AtomicUsize>,
     cancelled: &AtomicBool,
-) -> Result<ArchiveOutcome<ExtractedRoots>, ArchiveError> {
-    let mut session = ExtractionSession::open(dest_dir, progress, cancelled)?;
+) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
+    let mut session = ExtractionSession::open(dest_dir, archive_name, progress, cancelled)?;
     if let Some(claimed) = archive.decompressed_size() {
         session.preflight_claimed_size(claimed)?;
     }
@@ -190,11 +191,12 @@ pub(super) fn extract_zip_from_archive(
 pub(super) fn extract_tar(
     archive_path: &Path,
     dest_dir: &Path,
+    archive_name: &str,
     gzip: bool,
     progress: &Arc<AtomicUsize>,
     cancelled: &AtomicBool,
-) -> Result<ArchiveOutcome<ExtractedRoots>, ArchiveError> {
-    let mut session = ExtractionSession::open(dest_dir, progress, cancelled)?;
+) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
+    let mut session = ExtractionSession::open(dest_dir, archive_name, progress, cancelled)?;
     let file = std::fs::File::open(archive_path).map_err(archive_failed)?;
     let reader: Box<dyn std::io::Read> = if gzip {
         Box::new(flate2::read::GzDecoder::new(file))
@@ -254,11 +256,12 @@ pub(super) fn extract_tar(
 pub(super) fn extract_7z_from_reader(
     reader: impl Read + Seek,
     dest_dir: &Path,
+    archive_name: &str,
     password: sevenz_rust2::Password,
     progress: &Arc<AtomicUsize>,
     cancelled: &AtomicBool,
-) -> Result<ArchiveOutcome<ExtractedRoots>, ArchiveError> {
-    let mut session = ExtractionSession::open(dest_dir, progress, cancelled)?;
+) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
+    let mut session = ExtractionSession::open(dest_dir, archive_name, progress, cancelled)?;
     let password_supplied = !password.is_empty();
     let mut archive =
         sevenz_rust2::ArchiveReader::new(reader, password).map_err(sevenz_decode_error)?;

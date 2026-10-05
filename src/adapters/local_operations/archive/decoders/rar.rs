@@ -4,7 +4,7 @@
 
 use super::super::{
     ArchiveError, archive_failed,
-    extraction::{ArchiveOutcome, ExtractedRoots, ExtractionSession, MemberContent},
+    extraction::{ArchiveOutcome, ExtractionSession, MemberContent},
 };
 use crate::sandbox::archive::{Member, stream_rar};
 use std::{
@@ -21,11 +21,12 @@ mod tests;
 pub(in crate::adapters::local_operations::archive) fn extract_rar(
     archive_path: &Path,
     dest_dir: &Path,
+    archive_name: &str,
     password: Option<&str>,
     progress: &Arc<AtomicUsize>,
     cancelled: &AtomicBool,
-) -> Result<ArchiveOutcome<ExtractedRoots>, ArchiveError> {
-    let mut session = ExtractionSession::open(dest_dir, progress, cancelled)?;
+) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
+    let mut session = ExtractionSession::open(dest_dir, archive_name, progress, cancelled)?;
     let outcome = stream_rar(archive_path, password, cancelled, |name, member| {
         let content = match member {
             Member::Directory => MemberContent::Directory,

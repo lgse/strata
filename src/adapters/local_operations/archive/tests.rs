@@ -4,8 +4,10 @@ use super::{
     ArchiveError, copy_with_big_buf,
     decoders::{extract_7z_from_reader, extract_tar},
     fixtures::{
-        HomeTrashGuard, compression_stages, extract_zip, never_cancelled, tempdir_on_home_device,
-        test_file_entry, write_7z_entries, write_tar_entries, write_zip_stored,
+        COMPRESSION_STAGE, EXTRACTION_STAGE, HomeTrashGuard, extract_zip, stages,
+        never_cancelled,
+        tempdir_on_home_device, test_file_entry, write_7z_entries, write_tar_entries,
+        write_zip_stored,
     },
 };
 use crate::{
@@ -23,7 +25,7 @@ use std::{
     error::Error,
     fs,
     os::unix::fs::PermissionsExt,
-    path::{Path, PathBuf},
+    path::Path,
     rc::Rc,
     sync::{
         Arc,
@@ -48,6 +50,14 @@ fn run_compression(request: CompressRequest) -> Vec<OperationEvent> {
     }
     drop(operation);
     events.borrow().clone()
+}
+
+fn entry_names(directory: &Path) -> Result<Vec<String>, Box<dyn Error>> {
+    let mut names = fs::read_dir(directory)?
+        .map(|entry| Ok(entry?.file_name().to_string_lossy().into_owned()))
+        .collect::<Result<Vec<_>, std::io::Error>>()?;
+    names.sort();
+    Ok(names)
 }
 
 fn run_extraction(request: ExtractRequest) -> Vec<OperationEvent> {
@@ -92,7 +102,7 @@ fn compression_provider_rejects_escaping_archive_names() -> Result<(), Box<dyn E
 
     assert!(matches!(events.as_slice(), [OperationEvent::Failed { .. }]));
     assert!(!root.path().join("outside.zip").exists());
-    assert!(compression_stages(&destination)?.is_empty());
+    assert!(stages(&destination, COMPRESSION_STAGE)?.is_empty());
     Ok(())
 }
 
@@ -158,10 +168,10 @@ fn compression_conflict_choices_preserve_or_replace_the_destination() -> Result<
     fs::create_dir(&extracted)?;
     assert_eq!(
         extract_zip(&archive, &extracted)?,
-        vec![PathBuf::from("source.txt")]
+        Some("source.txt".to_owned())
     );
     assert_eq!(fs::metadata(&archive)?.permissions().mode() & 0o777, 0o640);
-    assert!(compression_stages(&destination)?.is_empty());
+    assert!(stages(&destination, COMPRESSION_STAGE)?.is_empty());
     Ok(())
 }
 
@@ -193,7 +203,7 @@ fn compression_failure_preserves_an_existing_archive() -> Result<(), Box<dyn Err
             .any(|event| matches!(event, OperationEvent::Failed { .. }))
     );
     assert_eq!(fs::read(&archive)?, b"original");
-    assert!(compression_stages(&destination)?.is_empty());
+    assert!(stages(&destination, COMPRESSION_STAGE)?.is_empty());
     Ok(())
 }
 
@@ -243,6 +253,7 @@ fn every_compression_format_commits_a_readable_archive() -> Result<(), Box<dyn E
                 extract_7z_from_reader(
                     fs::File::open(&archive)?,
                     &extracted,
+                    "archive",
                     sevenz_rust2::Password::empty(),
                     &Arc::new(AtomicUsize::new(0)),
                     &never_cancelled(),
@@ -252,6 +263,7 @@ fn every_compression_format_commits_a_readable_archive() -> Result<(), Box<dyn E
                 extract_tar(
                     &archive,
                     &extracted,
+                    "archive",
                     true,
                     &Arc::new(AtomicUsize::new(0)),
                     &never_cancelled(),
@@ -261,6 +273,7 @@ fn every_compression_format_commits_a_readable_archive() -> Result<(), Box<dyn E
                 extract_tar(
                     &archive,
                     &extracted,
+                    "archive",
                     false,
                     &Arc::new(AtomicUsize::new(0)),
                     &never_cancelled(),
@@ -274,7 +287,7 @@ fn every_compression_format_commits_a_readable_archive() -> Result<(), Box<dyn E
             expected_mode
         );
     }
-    assert!(compression_stages(&destination)?.is_empty());
+    assert!(stages(&destination, COMPRESSION_STAGE)?.is_empty());
     Ok(())
 }
 
@@ -319,7 +332,7 @@ fn compression_reports_unsupported_7z_links_without_committing() -> Result<(), B
             } else {
                 assert!(!archive.exists());
             }
-            assert!(compression_stages(destination.path())?.is_empty());
+            assert!(stages(destination.path(), COMPRESSION_STAGE)?.is_empty());
         }
     }
     Ok(())
@@ -623,6 +636,7 @@ fn failed_extraction_preserves_a_pre_existing_destination() -> Result<(), Box<dy
         destination.join("kept.txt").exists(),
         "user content was lost"
     );
+    assert_eq!(destination.read_dir()?.count(), 1);
     Ok(())
 }
 
@@ -682,6 +696,9 @@ fn spilled_members_bundle_under_the_archive_stem() -> Result<(), Box<dyn Error>>
 
     for archive in &archives {
         let destination = tempfile::tempdir()?;
+        fs::write(destination.path().join("a.txt"), b"EXISTING")?;
+        fs::create_dir(destination.path().join("dir"))?;
+        fs::write(destination.path().join("dir/keep.txt"), b"keep")?;
         let events = run_extraction(ExtractRequest {
             id: OperationRequestId(1),
             entry: test_file_entry(archive),
@@ -702,6 +719,11 @@ fn spilled_members_bundle_under_the_archive_stem() -> Result<(), Box<dyn Error>>
             events
         );
         assert_eq!(
+            entry_names(&destination.path().join("bundle"))?,
+            ["a.txt", "dir"],
+            "{archive:?}"
+        );
+        assert_eq!(
             fs::read(destination.path().join("bundle/a.txt"))?,
             b"a",
             "{archive:?}"
@@ -711,8 +733,90 @@ fn spilled_members_bundle_under_the_archive_stem() -> Result<(), Box<dyn Error>>
             b"b",
             "{archive:?}"
         );
-        assert!(!destination.path().join("a.txt").exists(), "{archive:?}");
-        assert!(!destination.path().join("dir").exists(), "{archive:?}");
+        assert_eq!(
+            fs::read(destination.path().join("a.txt"))?,
+            b"EXISTING",
+            "{archive:?}"
+        );
+        assert_eq!(
+            entry_names(&destination.path().join("dir"))?,
+            ["keep.txt"],
+            "{archive:?}"
+        );
+        assert_eq!(
+            entry_names(destination.path())?,
+            ["a.txt", "bundle", "dir"],
+            "{archive:?}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn failed_multi_root_extraction_keeps_partial_output_in_the_archive_folder()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let cases = [
+        ("abs.zip", "abs", "/etc/evil.txt"),
+        ("drive.zip", "drive", "C:/evil.txt"),
+        ("abs.tar", "abs", "/etc/evil.txt"),
+        ("abs.tar.gz", "abs", "/etc/evil.txt"),
+    ];
+    for (name, stem, unsafe_member) in cases {
+        let archive = root.path().join(name);
+        let members: [(&str, &[u8]); 3] = [
+            ("ok.txt", b"ok"),
+            ("second.txt", b"2"),
+            (unsafe_member, b"evil"),
+        ];
+        if name.ends_with(".zip") {
+            write_zip_stored(&archive, &members)?;
+        } else {
+            let entries =
+                members.map(|(member, contents)| (tar::EntryType::Regular, member, contents));
+            write_tar_entries(&archive, &entries, name.ends_with(".gz"))?;
+        }
+        let destination = tempfile::tempdir()?;
+        fs::write(destination.path().join("keep.txt"), b"keep")?;
+
+        let events = run_extraction(ExtractRequest {
+            id: OperationRequestId(6),
+            entry: test_file_entry(&archive),
+            destination: Location::local(destination.path()),
+            created_destination: false,
+            password: None,
+        });
+
+        let Some(OperationEvent::Failed { message, .. }) = events.last() else {
+            panic!("{name}: expected a failure, got {events:?}");
+        };
+        let mut expected = [stem, "keep.txt"];
+        expected.sort_unstable();
+        assert_eq!(
+            entry_names(destination.path())?,
+            expected,
+            "{name}: {message}"
+        );
+        assert_eq!(
+            *message,
+            format!(
+                "Refusing unsafe archive path: {unsafe_member}. Extracted entries remain in `{stem}`."
+            ),
+            "{name}"
+        );
+        assert!(stages(destination.path(), EXTRACTION_STAGE)?.is_empty(), "{name}");
+        assert_eq!(
+            fs::read(destination.path().join(stem).join("ok.txt"))?,
+            b"ok"
+        );
+        assert_eq!(
+            fs::read(destination.path().join(stem).join("second.txt"))?,
+            b"2"
+        );
+        assert_eq!(fs::read(destination.path().join("keep.txt"))?, b"keep");
     }
     Ok(())
 }
@@ -763,11 +867,31 @@ fn single_root_extraction_lands_verbatim() -> Result<(), Box<dyn Error>> {
     ));
     assert_eq!(fs::read(destination.join("folder/a.txt"))?, b"a");
     assert!(!destination.join("foldered").exists());
+
+    let archive = root.path().join("note.zip");
+    let events = run_extraction(ExtractRequest {
+        id: OperationRequestId(4),
+        entry: test_file_entry(&archive),
+        destination: Location::local(&destination),
+        created_destination: false,
+        password: None,
+    });
+    assert!(matches!(
+        events.last(),
+        Some(OperationEvent::Extracted {
+            first_name: Some(name),
+            ..
+        }) if name == "readme (2).txt"
+    ));
+    assert_eq!(fs::read(destination.join("readme.txt"))?, b"hi");
+    assert_eq!(fs::read(destination.join("readme (2).txt"))?, b"hi");
+    assert!(!destination.join("note").exists());
+    assert_eq!(destination.read_dir()?.count(), 3);
     Ok(())
 }
 
 #[test]
-fn a_bundle_name_colliding_with_an_extracted_root_is_suffixed() -> Result<(), Box<dyn Error>> {
+fn a_bundle_may_share_its_name_with_an_extracted_root() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
         .map_err(|error| error.to_string())?;
@@ -793,16 +917,14 @@ fn a_bundle_name_colliding_with_an_extracted_root_is_suffixed() -> Result<(), Bo
         Some(OperationEvent::Extracted {
             first_name: Some(name),
             ..
-        }) if name == "photos (1)"
+        }) if name == "photos"
     ));
     assert_eq!(
-        fs::read(destination.join("photos (1)/photos/inner.txt"))?,
+        fs::read(destination.join("photos/photos/inner.txt"))?,
         b"inner"
     );
-    assert_eq!(
-        fs::read(destination.join("photos (1)/extra.txt"))?,
-        b"extra"
-    );
+    assert_eq!(fs::read(destination.join("photos/extra.txt"))?, b"extra");
+    assert_eq!(destination.read_dir()?.count(), 1);
     Ok(())
 }
 
