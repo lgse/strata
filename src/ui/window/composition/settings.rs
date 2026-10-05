@@ -5,7 +5,9 @@ use std::{cell::RefCell, rc::Rc};
 use gtk::{glib, prelude::*};
 
 use crate::{
-    services::{BuildKind, InstallSource, ManagedInstall, ReleaseMetadata, UpdateMethod},
+    services::{
+        BuildKind, InstallRequest, InstallSource, ManagedInstall, ReleaseMetadata, UpdateMethod,
+    },
     ui::{
         blur::BlurBin,
         preferences::PreferenceManager,
@@ -21,7 +23,7 @@ use super::{
 #[cfg(test)]
 mod tests;
 
-type AvailableUpdate = Rc<RefCell<Option<(ReleaseMetadata, crate::services::InstallRequest, UpdateMethod)>>>;
+type AvailableUpdate = Rc<RefCell<Option<(ReleaseMetadata, InstallRequest, UpdateMethod)>>>;
 
 pub(super) fn install(
     window: &gtk::ApplicationWindow,
@@ -118,20 +120,13 @@ fn bind_update_notice(
     let parent = window.upcast_ref::<gtk::Window>().downgrade();
     let guard = guard.clone();
     sidebar.update_notice.connect_clicked(move |_| {
-        let Some((release, install, update_method)) = available_for_click.borrow().clone()
-        else {
+        let Some((release, install, update_method)) = available_for_click.borrow().clone() else {
             return;
         };
         let Some(parent) = parent.upgrade() else {
             return;
         };
-        settings::show_update_dialog(
-            &parent,
-            &release,
-            install,
-            guard.clone(),
-            update_method,
-        );
+        settings::show_update_dialog(&parent, &release, install, guard.clone(), update_method);
     });
     notice_handler(sidebar, available)
 }

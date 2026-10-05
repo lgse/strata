@@ -13,8 +13,9 @@ use gtk::{gdk, gio, glib, prelude::*, subclass::prelude::*};
 use crate::{
     assets::icons,
     services::{
-        self, BuildKind, Channel, DocumentBlock, InstallCancel, InstallRequest, InstallSource, ManagedInstall,
-        ReleaseMetadata, ReleaseNotes, UpdateCheck, UpdateInstall, UpdateMethod, Version,
+        self, BuildKind, Channel, DocumentBlock, InstallCancel, InstallRequest, InstallSource,
+        ManagedInstall, ReleaseMetadata, ReleaseNotes, UpdateCheck, UpdateInstall, UpdateMethod,
+        Version,
     },
 };
 
@@ -76,7 +77,7 @@ const RESTART_GRACE_SECONDS: u64 = 20;
 const ROLLBACK_RETENTION: Duration = Duration::from_secs(60);
 
 pub(crate) fn schedule_rollback_cleanup() {
-    let Ok(current_exe) = std::env::current_exe() else {
+    let Ok(current_exe) = services::installed_executable() else {
         return;
     };
     let Some(rollback) = current_exe.parent().map(services::rollback_path) else {
@@ -251,11 +252,7 @@ fn complete_due_update_check(
         return;
     }
     LAST_COMPLETED_CHECK.set(Some(Instant::now()));
-    if let UpdateCheck::Available {
-        release,
-        install,
-    } = result
-    {
+    if let UpdateCheck::Available { release, install } = result {
         publish_update_notice(Some((release, install, method)));
     }
 }
@@ -1428,7 +1425,6 @@ fn is_stale_check(result_generation: u64, current_generation: u64) -> bool {
     result_generation != current_generation
 }
 
-// Retain the offered kind to recheck eligibility after a channel change.
 struct PendingInstall {
     kind: BuildKind,
     returns_to_stable: bool,
@@ -1645,11 +1641,9 @@ fn update_check_row(
                             .container
                             .set_visible(shows_available_release_notes(&result));
                         match &result {
-                            UpdateCheck::Available { release, install } => publish_update_notice(Some((
-                                release.clone(),
-                                install.clone(),
-                                update_method,
-                            ))),
+                            UpdateCheck::Available { release, install } => publish_update_notice(
+                                Some((release.clone(), install.clone(), update_method)),
+                            ),
                             UpdateCheck::UpToDate | UpdateCheck::Failed(_) => {
                                 publish_update_notice(None)
                             }

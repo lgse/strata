@@ -9,9 +9,10 @@ use std::{
 use super::{
     APPLICATION_ICON, DESKTOP_ENTRY, InstallCancel, InstallRequest, InstallStop, UpdateMethod,
     aur_repository_version_from_response, desktop_entry_with_exec, download_to_file_bounded,
-    package_repository_version_for, parse_aur_package_version, parse_package_version,
-    is_old_instance, retire_old_instances, refresh_desktop_metadata, repository_database_version, restore_rollback, stage_binary_path,
-    stage_rollback, stage_workdir, update_method_for, verified_download_url, verify_staged_binary,
+    is_old_instance, package_repository_version_for, parse_aur_package_version,
+    parse_package_version, refresh_desktop_metadata, repository_database_version, restore_rollback,
+    retire_old_instances, stage_binary_path, stage_rollback, stage_workdir, update_method_for,
+    verified_download_url, verify_staged_binary,
 };
 
 #[test]
@@ -464,7 +465,6 @@ fn request(tag: &str, asset: &str, advertised: &str) -> InstallRequest {
 }
 
 const TAG: &str = "v0.11.2";
-const ASSET: &str = "strata-0.11.2-x86_64-unknown-linux-gnu.tar.gz";
 
 fn release_url(tag: &str, asset: &str) -> String {
     format!("https://github.com/lgse/strata/releases/download/{tag}/{asset}")
@@ -481,61 +481,31 @@ fn download_url_is_derived_from_the_release_tag_and_asset() {
 }
 
 #[test]
-fn download_url_rejects_another_host() {
-    let advertised = format!("https://example.invalid/lgse/strata/releases/download/{TAG}/{ASSET}");
-
-    assert!(verified_download_url(&request(TAG, ASSET, &advertised)).is_err());
-}
-
-#[test]
-fn download_url_rejects_another_repository() {
-    let advertised = format!("https://github.com/attacker/strata/releases/download/{TAG}/{ASSET}");
-
-    assert!(verified_download_url(&request(TAG, ASSET, &advertised)).is_err());
-}
-
-#[test]
-fn download_url_rejects_a_plaintext_scheme() {
-    let advertised = release_url(TAG, ASSET).replace("https://", "http://");
-
-    assert!(verified_download_url(&request(TAG, ASSET, &advertised)).is_err());
-}
-
-#[test]
-fn download_url_rejects_an_asset_from_another_tag() {
-    let advertised = release_url("v0.11.1", ASSET);
-
-    assert!(verified_download_url(&request(TAG, ASSET, &advertised)).is_err());
-}
-
-#[test]
-fn download_url_rejects_an_unexpected_asset_name() {
-    let advertised = release_url(TAG, "strata-0.11.2-x86_64-unknown-linux-gnu.debug");
-
-    assert!(verified_download_url(&request(TAG, ASSET, &advertised)).is_err());
-}
-
-#[test]
-fn download_url_rejects_embedded_credentials() {
-    let advertised = release_url(TAG, ASSET).replace("https://", "https://user:token@");
-
-    assert!(verified_download_url(&request(TAG, ASSET, &advertised)).is_err());
-}
-
-#[test]
-fn download_url_rejects_a_tag_that_escapes_the_release_path() {
-    let tag = "v0.11.2/../../../attacker/strata/releases/download/v1";
-    let advertised = release_url(tag, ASSET);
-
-    assert!(verified_download_url(&request(tag, ASSET, &advertised)).is_err());
-}
-
-#[test]
-fn download_url_rejects_an_asset_name_containing_a_path_segment() {
-    let asset = "../../../attacker.tar.gz";
-    let advertised = release_url(TAG, asset);
-
-    assert!(verified_download_url(&request(TAG, asset, &advertised)).is_err());
+fn download_url_rejects_untrusted_locations_and_escaping_identities() {
+    let asset = super::super::update_check::archive_name("0.11.2");
+    let expected = release_url(TAG, &asset);
+    for advertised in [
+        expected.replace("github.com", "example.invalid"),
+        expected.replace("lgse/strata", "attacker/strata"),
+        expected.replace("https://", "http://"),
+        release_url("v0.11.1", &asset),
+        release_url(TAG, "unexpected.debug"),
+        expected.replace("https://", "https://user:token@"),
+    ] {
+        assert!(
+            verified_download_url(&request(TAG, &asset, &advertised)).is_err(),
+            "accepted {advertised}"
+        );
+    }
+    for (tag, asset) in [
+        (
+            "v0.11.2/../../../attacker/strata/releases/download/v1",
+            asset.as_str(),
+        ),
+        (TAG, "../../../attacker.tar.gz"),
+    ] {
+        assert!(verified_download_url(&request(tag, asset, &release_url(tag, asset))).is_err());
+    }
 }
 
 struct StubServer {
