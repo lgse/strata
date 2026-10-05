@@ -123,11 +123,13 @@ pub(super) fn column_rows(
         content.append(&path);
         middle.set_child(Some(&content));
         middle.add_overlay(&size);
+        let badge = crate::ui::browser::git_badge::create_git_badge();
         let chevron = crate::assets::primary_icon(crate::assets::icons::CHEVRON_RIGHT, 15);
         chevron.add_css_class("file-chevron");
         chevron.set_valign(gtk::Align::Center);
         row.append(&icon);
         row.append(&middle);
+        row.append(&badge);
         row.append(&chevron);
         let motion = gtk::EventControllerMotion::new();
         let list_item = item.downgrade();
@@ -714,6 +716,7 @@ pub(super) fn column_rows(
             edit: crate::ui::collection_edit::EditWidgets::new(&rename, &label),
             spacer,
             size,
+            badge,
         });
     });
     let map_for_bind = map.clone();
@@ -762,7 +765,10 @@ pub(super) fn column_rows(
         let Some(size) = middle.last_child().and_downcast::<gtk::Label>() else {
             return;
         };
-        let Some(chevron) = middle.next_sibling().and_downcast::<gtk::Image>() else {
+        let Some(badge) = middle.next_sibling().and_downcast::<gtk::Label>() else {
+            return;
+        };
+        let Some(chevron) = badge.next_sibling().and_downcast::<gtk::Image>() else {
             return;
         };
         row.remove_css_class("keyboard-cursor");
@@ -913,6 +919,19 @@ pub(super) fn column_rows(
             icon.set_base_opacity(0.72);
             chevron.set_visible(false);
         }
+        if let Some(entry) = entry.as_ref() {
+            if editing {
+                crate::ui::browser::git_badge::suspend_git_badge(&badge);
+            } else {
+                crate::ui::browser::git_badge::track_git_badge(
+                    &badge,
+                    &entry.location,
+                    entry.is_directory(),
+                );
+            }
+        } else {
+            crate::ui::browser::git_badge::suspend_git_badge(&badge);
+        }
         let size_text = column_size_text(entry.as_ref());
         size.set_label(&size_text);
         size.set_visible(!editing && !size_text.is_empty());
@@ -920,7 +939,7 @@ pub(super) fn column_rows(
     });
     let rows_for_unbind = bound_rows.clone();
     factory.connect_unbind(move |_, object| {
-        let edit = rows_for_unbind
+        let bound = rows_for_unbind
             .borrow()
             .iter()
             .find(|bound| {
@@ -931,9 +950,10 @@ pub(super) fn column_rows(
                     .map(|item| item.upcast_ref::<glib::Object>())
                     == Some(object)
             })
-            .map(|bound| bound.edit.clone());
-        if let Some(edit) = edit {
-            edit.unbind();
+            .cloned();
+        if let Some(bound) = bound {
+            bound.edit.unbind();
+            crate::ui::browser::git_badge::suspend_git_badge(&bound.badge);
         }
         crate::ui::thumbnail::cancel_list_item_thumbnails(object);
     });

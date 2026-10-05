@@ -866,6 +866,34 @@ impl ModeViews {
             return false;
         };
         let mut target = super::collection_edit::EditTarget::from(widgets);
+        let badge_opt = if self.mode == BrowserMode::List
+            && let Some(row_box) = row.downcast_ref::<gtk::Box>()
+            && let Some((_, _, badge, ..)) = list_row_parts(row_box)
+        {
+            Some(badge)
+        } else if self.mode == BrowserMode::Icons
+            && let Some(row_box) = row.downcast_ref::<gtk::Box>()
+            && let Some(badge) = super::icons_cell::badge_label(row_box)
+        {
+            Some(badge)
+        } else {
+            None
+        };
+        if let Some(badge) = badge_opt {
+            crate::ui::browser::git_badge::suspend_git_badge(&badge);
+            let weak_badge = badge.downgrade();
+            let location = entry.location.clone();
+            let is_directory = entry.is_directory();
+            let prev_finish = target.finish.take();
+            target.finish = Some(Rc::new(move || {
+                if let Some(prev) = &prev_finish {
+                    prev();
+                }
+                if let Some(badge) = weak_badge.upgrade() {
+                    crate::ui::browser::git_badge::track_git_badge(&badge, &location, is_directory);
+                }
+            }));
+        }
         self.bind_rename_cancellation(&mut target, &entry.location);
         if self.mode == BrowserMode::List {
             let state = self.context_state.borrow().clone().unwrap_or_default();
@@ -2499,6 +2527,11 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
             if let Some(edit) = &edit {
                 edit.display.set_visible(!edit.is_editing());
                 edit.field.set_visible(edit.is_editing());
+                if edit.is_editing()
+                    && let Some(badge) = super::icons_cell::badge_label(&card)
+                {
+                    crate::ui::browser::git_badge::suspend_git_badge(&badge);
+                }
             }
             if let Some(position) = metadata_fill_position(source_position, &entry, false, true)
                 && let Some(browser) = browser.as_ref()
@@ -3529,10 +3562,15 @@ fn install_edit_unbind(
 ) {
     let unbind = items.clone();
     factory.connect_unbind(move |_, object| {
-        if let Some(item) = object.downcast_ref::<gtk::ListItem>()
-            && let Some(edit) = bound_edit(&unbind, item)
-        {
-            edit.unbind();
+        if let Some(item) = object.downcast_ref::<gtk::ListItem>() {
+            if let Some(edit) = bound_edit(&unbind, item) {
+                edit.unbind();
+            }
+            if let Some(card) = item.child().and_downcast::<gtk::Box>()
+                && let Some(badge) = super::icons_cell::badge_label(&card)
+            {
+                crate::ui::browser::git_badge::suspend_git_badge(&badge);
+            }
         }
         super::thumbnail::cancel_list_item_thumbnails(object);
     });
@@ -4619,6 +4657,7 @@ fn assemble_list_row() -> gtk::Box {
     name.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
     // Keep the label's natural width from widening this fixed-width table cell.
     name.set_max_width_chars(1);
+    let badge = crate::ui::browser::git_badge::create_git_badge();
     let field = gtk::Entry::new();
     field.add_css_class("inline-rename");
     super::accessibility::set_label(&field, "Rename");
@@ -4626,6 +4665,7 @@ fn assemble_list_row() -> gtk::Box {
     field.set_visible(false);
     name_cell.append(&icon);
     name_cell.append(&name);
+    name_cell.append(&badge);
     name_cell.append(&field);
     row.append(&name_cell);
     row.append(&list_metadata_label());
@@ -4635,29 +4675,31 @@ fn assemble_list_row() -> gtk::Box {
     row
 }
 
-fn list_row_parts(
-    row: &gtk::Box,
-) -> Option<(
+type ListRowParts = (
     super::thumbnail::ThumbnailSlot,
+    gtk::Label,
     gtk::Label,
     gtk::Entry,
     gtk::Label,
     gtk::Label,
     gtk::Label,
     gtk::Label,
-)> {
+);
+
+fn list_row_parts(row: &gtk::Box) -> Option<ListRowParts> {
     let name_cell = row.first_child()?.downcast::<gtk::Box>().ok()?;
     let icon = name_cell
         .first_child()?
         .downcast::<super::thumbnail::ThumbnailSlot>()
         .ok()?;
     let name = icon.next_sibling()?.downcast::<gtk::Label>().ok()?;
-    let field = name.next_sibling()?.downcast::<gtk::Entry>().ok()?;
+    let badge = name.next_sibling()?.downcast::<gtk::Label>().ok()?;
+    let field = badge.next_sibling()?.downcast::<gtk::Entry>().ok()?;
     let mode = name_cell.next_sibling()?.downcast::<gtk::Label>().ok()?;
     let size = mode.next_sibling()?.downcast::<gtk::Label>().ok()?;
     let kind = size.next_sibling()?.downcast::<gtk::Label>().ok()?;
     let modified = kind.next_sibling()?.downcast::<gtk::Label>().ok()?;
-    Some((icon, name, field, mode, size, kind, modified))
+    Some((icon, name, badge, field, mode, size, kind, modified))
 }
 
 fn set_label_if_changed(label: &gtk::Label, text: &str) {
@@ -4691,6 +4733,20 @@ fn apply_icons_entry(
         thumbnail_size,
         thumbnail_size,
     );
+    if let Some(badge) = super::icons_cell::badge_label(card) {
+        let is_editing = super::icons_cell::rename_field(card)
+            .is_some_and(|f| gtk::prelude::WidgetExt::is_visible(&f));
+        if is_editing {
+            crate::ui::browser::git_badge::suspend_git_badge(&badge);
+        } else {
+            crate::ui::browser::git_badge::track_git_badge(
+                &badge,
+                &entry.location,
+                entry.is_directory(),
+            );
+        }
+        badge.set_opacity(if entry.is_hidden { 0.65 } else { 1.0 });
+    }
     if scrolling {
         icon.set_hidden(entry.is_hidden);
         icon.set_base_opacity(if entry.is_directory() { 1.0 } else { 0.72 });
@@ -4725,6 +4781,20 @@ fn refresh_icons_card_chrome(
     label.set_opacity(if entry.is_hidden { 0.65 } else { 1.0 });
     if let Some(details) = super::icons_cell::details_label(card) {
         details.set_opacity(if entry.is_hidden { 0.65 } else { 1.0 });
+    }
+    if let Some(badge) = super::icons_cell::badge_label(card) {
+        badge.set_opacity(if entry.is_hidden { 0.65 } else { 1.0 });
+        let is_editing = super::icons_cell::rename_field(card)
+            .is_some_and(|f| gtk::prelude::WidgetExt::is_visible(&f));
+        if is_editing {
+            crate::ui::browser::git_badge::suspend_git_badge(&badge);
+        } else {
+            crate::ui::browser::git_badge::track_git_badge(
+                &badge,
+                &entry.location,
+                entry.is_directory(),
+            );
+        }
     }
 }
 
@@ -4811,7 +4881,7 @@ fn update_bound_list_metadata(pane: &Pane, updates: &[(usize, FileEntry)]) {
             let Some(row) = row.downcast::<gtk::Box>().ok() else {
                 return true;
             };
-            let Some((_, _, _, mode, size, _, modified)) = list_row_parts(&row) else {
+            let Some((_, _, _, _, mode, size, _, modified)) = list_row_parts(&row) else {
                 return true;
             };
             mode.set_label(&entry_mode(entry));

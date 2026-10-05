@@ -60,6 +60,8 @@ pub(in crate::ui) struct Preferences {
     #[serde(default = "default_enabled")]
     single_click_previews: bool,
     #[serde(default = "default_enabled")]
+    git_status_badges: bool,
+    #[serde(default = "default_enabled")]
     columns_mirror_selection: bool,
     #[serde(default = "default_enabled")]
     render_documents_by_default: bool,
@@ -210,6 +212,7 @@ impl Default for Preferences {
             omarchy_variant: OmarchyVariant::default(),
             folder_peeking: false,
             single_click_previews: true,
+            git_status_badges: true,
             columns_mirror_selection: true,
             render_documents_by_default: true,
             hardware_accelerated_video_previews: None,
@@ -596,6 +599,15 @@ impl PreferenceManager {
 
     pub fn set_single_click_previews(&self, enabled: bool) {
         self.preferences.borrow_mut().single_click_previews = enabled;
+        self.save_preferences();
+    }
+
+    pub fn git_status_badges(&self) -> bool {
+        self.preferences.borrow().git_status_badges
+    }
+
+    pub fn set_git_status_badges(&self, enabled: bool) {
+        self.preferences.borrow_mut().git_status_badges = enabled;
         self.save_preferences();
     }
 

@@ -27,6 +27,7 @@ use gtk::glib;
 use gtk::prelude::*;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
@@ -49,6 +50,7 @@ mod events;
 mod file_commands;
 pub(in crate::ui) mod find;
 pub(super) mod fly_to_trash;
+pub(in crate::ui) mod git_badge;
 mod inline_edit;
 mod listing_filter;
 mod listing_search;
@@ -179,6 +181,7 @@ pub(super) struct ViewState {
     global_activity: RefCell<GlobalActivityState>,
     breadcrumbs: gtk::Box,
     breadcrumb_scroller: gtk::ScrolledWindow,
+    git_branch_indicator: gtk::Box,
     location_entry: gtk::Entry,
     path_completion: Rc<location::completion::PathCompletion>,
     columns_widget: gtk::Box,
@@ -422,10 +425,15 @@ impl BrowserView {
         breadcrumb_scrollbar.add_css_class("breadcrumb-scrollbar");
         breadcrumb_scrollbar.set_visible(false);
 
-        let breadcrumb_container = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let breadcrumb_path = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        breadcrumb_path.append(&breadcrumb_overlay);
+        breadcrumb_path.append(&breadcrumb_scrollbar);
+        breadcrumb_path.set_hexpand(true);
+
+        let git_branch_indicator = git_badge::create_git_branch_indicator();
+        let breadcrumb_container = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         breadcrumb_container.add_css_class("breadcrumb-container");
-        breadcrumb_container.append(&breadcrumb_overlay);
-        breadcrumb_container.append(&breadcrumb_scrollbar);
+        breadcrumb_container.append(&breadcrumb_path);
         breadcrumb_container.set_hexpand(true);
 
         let motion_controller = gtk::EventControllerMotion::new();
@@ -565,6 +573,7 @@ impl BrowserView {
             global_activity: RefCell::new(GlobalActivityState::default()),
             breadcrumbs,
             breadcrumb_scroller: breadcrumb_scroller.clone(),
+            git_branch_indicator,
             location_entry,
             path_completion,
             columns_widget,
@@ -1325,6 +1334,10 @@ impl BrowserView {
         self.state.location_control.clone().upcast()
     }
 
+    pub(in crate::ui) fn git_branch_indicator(&self) -> gtk::Box {
+        self.state.git_branch_indicator.clone()
+    }
+
     /// Shows the shared header spinner until the returned activity guard is dropped.
     pub fn begin_global_activity(&self, label: impl Into<String>) -> GlobalActivity {
         self.state.begin_global_activity(label)
@@ -1824,6 +1837,15 @@ impl BrowserView {
     }
 
     pub fn refresh(&self) {
+        if let Some(path) = self
+            .state
+            .browser
+            .active_location()
+            .and_then(|location| location.native_path().map(Path::to_path_buf))
+        {
+            crate::services::GitService::refresh_path(&path);
+        }
+        git_badge::refresh_all_git_indicators();
         if self.view_mode() == BrowserMode::Columns {
             self.state.browser.refresh_all();
         } else {
@@ -2501,6 +2523,14 @@ impl ViewState {
     }
 
     fn refresh_browser(&self) {
+        if let Some(path) = self
+            .browser
+            .active_location()
+            .and_then(|location| location.native_path().map(Path::to_path_buf))
+        {
+            crate::services::GitService::refresh_path(&path);
+        }
+        git_badge::refresh_all_git_indicators();
         if self.mode.get() == BrowserMode::Columns {
             self.browser.refresh_all();
         } else {

@@ -34,9 +34,11 @@ pub(super) fn new_card(slot: i32) -> gtk::Box {
     icon.add_css_class("icons-card-icon");
     icon.set_halign(gtk::Align::Center);
     icon.set_valign(gtk::Align::Center);
-    let icon_frame = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    let icon_frame = gtk::Box::new(gtk::Orientation::Vertical, 0);
     icon_frame.add_css_class("icons-card-icon-frame");
     icon_frame.append(&icon);
+
+    let badge = crate::ui::browser::git_badge::create_git_badge();
 
     let label = gtk::Inscription::new(None);
     label.add_css_class("icons-card-label");
@@ -45,16 +47,15 @@ pub(super) fn new_card(slot: i32) -> gtk::Box {
 
     let details = gtk::Label::new(None);
     details.add_css_class("icons-card-details");
-    details.set_halign(gtk::Align::Fill);
     details.set_single_line_mode(true);
     details.set_ellipsize(gtk::pango::EllipsizeMode::End);
 
-    // GtkOverlay requires its own layout-child type; this caption has a custom layout.
     let labels = gtk::Box::new(gtk::Orientation::Vertical, 0);
     labels.add_css_class("icons-card-caption");
     labels.set_hexpand(true);
     labels.append(&label);
     labels.append(&details);
+    labels.append(&badge);
 
     card.append(&icon_frame);
     card.append(&labels);
@@ -66,8 +67,8 @@ pub(super) fn new_card(slot: i32) -> gtk::Box {
 pub(super) fn parts(
     card: &impl IsA<gtk::Widget>,
 ) -> Option<(super::thumbnail::ThumbnailSlot, gtk::Inscription)> {
-    let icon = card
-        .first_child()?
+    let frame = card.first_child()?;
+    let icon = frame
         .first_child()?
         .downcast::<super::thumbnail::ThumbnailSlot>()
         .ok()?;
@@ -80,8 +81,20 @@ pub(super) fn details_label(card: &impl IsA<gtk::Widget>) -> Option<gtk::Label> 
     let labels = card.last_child()?.downcast::<gtk::Box>().ok()?;
     let mut sibling = labels.first_child();
     while let Some(widget) = sibling {
-        if let Ok(label) = widget.clone().downcast::<gtk::Label>() {
-            return Some(label);
+        if widget.has_css_class("icons-card-details") {
+            return widget.downcast::<gtk::Label>().ok();
+        }
+        sibling = widget.next_sibling();
+    }
+    None
+}
+
+pub(super) fn badge_label(card: &impl IsA<gtk::Widget>) -> Option<gtk::Label> {
+    let labels = card.last_child()?.downcast::<gtk::Box>().ok()?;
+    let mut sibling = labels.first_child();
+    while let Some(widget) = sibling {
+        if widget.has_css_class("git-badge") {
+            return widget.downcast::<gtk::Label>().ok();
         }
         sibling = widget.next_sibling();
     }

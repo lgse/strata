@@ -63,6 +63,7 @@ pub mod icons {
     pub const SCALE: &str = "strata-scale";
     pub const CORNER_DOWN_RIGHT: &str = "strata-corner-down-right";
     pub const FUNNEL: &str = "strata-funnel";
+    pub const GIT_BRANCH: &str = "strata-git-branch";
     pub const COLUMNS: &str = "strata-columns";
     pub const ICONS: &str = "strata-icons";
     pub const HOME: &str = "strata-house";

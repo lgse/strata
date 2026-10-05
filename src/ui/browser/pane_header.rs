@@ -54,6 +54,13 @@ pub(in crate::ui) fn pane_refresh_button(browser: &Rc<Browser>, depth: usize) ->
             return;
         }
         if let Some(browser) = weak_browser.upgrade() {
+            if let Some(path) = browser
+                .location_at(depth)
+                .and_then(|location| location.native_path().map(std::path::Path::to_path_buf))
+            {
+                crate::services::GitService::refresh_path(&path);
+            }
+            crate::ui::browser::git_badge::refresh_all_git_indicators();
             browser.retry_column(depth);
         }
     });

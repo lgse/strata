@@ -13,6 +13,7 @@ struct ColumnsRenameTarget {
     edit: crate::ui::collection_edit::EditWidgets,
     spacer: gtk::Box,
     size: gtk::Label,
+    badge: gtk::Label,
     scroll: gtk::ScrolledWindow,
 }
 
@@ -1215,6 +1216,7 @@ impl ViewState {
             edit: bound.edit.clone(),
             spacer: bound.spacer.clone(),
             size: bound.size.clone(),
+            badge: bound.badge.clone(),
             scroll: column.listing_scroll.clone(),
         })
     }
@@ -1225,10 +1227,12 @@ impl ViewState {
             edit,
             spacer,
             size,
+            badge,
             scroll,
         } = target;
         spacer.set_visible(false);
         size.set_visible(false);
+        crate::ui::browser::git_badge::suspend_git_badge(&badge);
         constrain_rename_to_viewport(&edit.field, &self.scroller);
         let viewport = self.scroller.downgrade();
         let row = row.downgrade();
@@ -1258,6 +1262,9 @@ impl ViewState {
             }
         }));
         let field = edit.field.downgrade();
+        let badge = badge.downgrade();
+        let badge_location = entry.location.clone();
+        let badge_is_directory = entry.is_directory();
         target.finish = Some(Rc::new(move || {
             if let Some(field) = field.upgrade() {
                 field.set_margin_start(0);
@@ -1265,6 +1272,13 @@ impl ViewState {
             }
             spacer.set_visible(true);
             size.set_visible(!size.label().is_empty());
+            if let Some(badge) = badge.upgrade() {
+                crate::ui::browser::git_badge::track_git_badge(
+                    &badge,
+                    &badge_location,
+                    badge_is_directory,
+                );
+            }
         }));
         let state = Rc::downgrade(self);
         crate::ui::collection_edit::begin(

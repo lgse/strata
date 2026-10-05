@@ -196,6 +196,7 @@ pub(super) fn install_resize_edges(state: &Rc<ViewState>) {
     state.scroller.add_controller(resize);
 }
 
+#[derive(Clone)]
 pub(super) struct BoundRow {
     pub(super) item: glib::WeakRef<gtk::ListItem>,
     pub(super) row: glib::WeakRef<gtk::Box>,
@@ -203,6 +204,7 @@ pub(super) struct BoundRow {
     pub(super) edit: crate::ui::collection_edit::EditWidgets,
     pub(super) spacer: gtk::Box,
     pub(super) size: gtk::Label,
+    pub(super) badge: gtk::Label,
 }
 
 #[derive(Clone, Copy)]

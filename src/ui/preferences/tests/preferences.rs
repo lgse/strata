@@ -724,6 +724,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
             let preference_setters: &[fn(&PreferenceManager)] = &[
                 |m| m.set_folder_peeking(false),
                 |m| m.set_single_click_previews(true),
+                |m| m.set_git_status_badges(true),
                 |m| m.set_columns_mirror_selection(true),
                 |m| m.set_render_documents_by_default(true),
                 |m| m.set_hardware_accelerated_video_previews(true),

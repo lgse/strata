@@ -232,6 +232,12 @@ fn append_browsing_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) 
             write: PreferenceManager::set_single_click_previews,
         },
         PreferenceSwitch {
+            title: "Git indicators",
+            description: "Show the current branch and status badges for items in Git repositories.",
+            read: PreferenceManager::git_status_badges,
+            write: PreferenceManager::set_git_status_badges,
+        },
+        PreferenceSwitch {
             title: "Autoplay media previews",
             description: "Start playing video, audio, and GIF previews as soon as they open.",
             read: PreferenceManager::preview_autoplay,

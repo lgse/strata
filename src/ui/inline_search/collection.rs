@@ -652,6 +652,14 @@ pub(super) fn build_collection(
         if let Some(edit) = edit {
             edit.unbind();
         }
+        if let Some(card) = object
+            .downcast_ref::<gtk::ListItem>()
+            .and_then(|item| item.child())
+            .and_downcast::<gtk::Box>()
+            && let Some(badge) = crate::ui::icons_cell::badge_label(&card)
+        {
+            crate::ui::browser::git_badge::suspend_git_badge(&badge);
+        }
         crate::ui::thumbnail::cancel_list_item_thumbnails(object);
     });
     let bound_for_teardown = bound.clone();

@@ -392,6 +392,23 @@ headerbar menubutton.header-action > button:focus-visible {
   min-height: 22px;
 }
 
+.git-branch-indicator {
+  color: @strata_text;
+}
+
+.git-branch-indicator.detached {
+  color: @strata_dim_text;
+}
+
+.git-branch-indicator.detached image {
+  opacity: 0.7;
+}
+
+.git-branch-label {
+  font-size: 1em;
+  font-weight: 600;
+}
+
 .breadcrumb-fade {
   min-width: 24px;
   min-height: 22px;
@@ -4779,6 +4796,29 @@ textview > popover.menu button.model:focus-visible,
   background: @strata_highlight;
   color: @strata_dim_text;
   opacity: 1;
+}
+
+.git-badge {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  font-family: monospace;
+  font-size: 1em;
+  font-weight: 700;
+  margin: 0 2px;
+  padding: 0;
+}
+
+.git-badge-modified {
+  color: @strata_accent;
+}
+
+.git-badge-untracked {
+  color: @strata_text;
+}
+
+.git-badge-ignored {
+  color: alpha(@strata_text, 0.75);
 }
 
 .file-list row:selected,

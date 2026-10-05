@@ -6,6 +6,7 @@ mod document;
 pub(crate) mod document_media;
 pub(crate) mod docx;
 mod file_source;
+pub(crate) mod git;
 pub(crate) mod image_conversion;
 mod install_source;
 pub(crate) mod jobs;
@@ -43,6 +44,7 @@ pub use file_source::{
     UriCredentials, backend_unavailable_message, sanitize_uri_credentials,
     validate_uri_credentials,
 };
+pub use git::{GitHead, GitService, GitStatus};
 pub use install_source::{InstallSource, ManagedInstall};
 pub(crate) use install_source::{ensure_self_managed, installed_executable};
 pub use jobs::{

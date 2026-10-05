@@ -339,6 +339,7 @@ impl FooterBinding {
         preferences: &PreferenceManager,
     ) -> Self {
         let shortcuts = ShortcutFooter::new(browser.view_mode());
+        shortcuts.set_git_branch(&browser.git_branch_indicator());
         shortcuts.bind_preferences(preferences);
         shortcuts.observe_browser(&browser.browser());
         let jobs = crate::ui::jobs::JobsIndicator::new();

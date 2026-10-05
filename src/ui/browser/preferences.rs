@@ -56,6 +56,9 @@ impl BrowserView {
             PreferenceManager::single_click_previews,
             Self::set_single_click_previews,
         );
+        self.bind_view_preference(manager, PreferenceManager::git_status_badges, |_, _| {
+            crate::ui::browser::git_badge::refresh_all_git_indicators();
+        });
         let primed = Cell::new(false);
         self.bind_view_preference(
             manager,

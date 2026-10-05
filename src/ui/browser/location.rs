@@ -2309,6 +2309,7 @@ impl ViewState {
                 self.breadcrumbs.append(&button);
             }
         }
+        crate::ui::browser::git_badge::track_git_branch(&self.git_branch_indicator, location);
         self.location_stack.set_visible_child_name("breadcrumbs");
         self.location_entry.set_text(&location.display_path());
         let Some(last) = self.breadcrumbs.last_child() else {

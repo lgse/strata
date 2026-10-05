@@ -11,15 +11,49 @@ fn caption_label(widget: &gtk::Widget) -> Option<gtk::Inscription> {
     widget.first_child()?.downcast().ok()
 }
 
-fn caption_details(widget: &gtk::Widget) -> Option<gtk::Label> {
+fn caption_details(widget: &gtk::Widget) -> Option<gtk::Widget> {
     let mut sibling = widget.first_child();
     while let Some(child) = sibling {
-        if let Ok(label) = child.clone().downcast::<gtk::Label>() {
-            return Some(label);
+        if child.has_css_class("icons-card-details") {
+            return Some(child);
         }
         sibling = child.next_sibling();
     }
     None
+}
+
+fn caption_badge(widget: &gtk::Widget) -> Option<gtk::Widget> {
+    let mut sibling = widget.first_child();
+    while let Some(child) = sibling {
+        if child.has_css_class("git-badge") && child.is_visible() {
+            return Some(child);
+        }
+        sibling = child.next_sibling();
+    }
+    None
+}
+
+fn ink_center_from_baseline(label: &gtk::Label) -> i32 {
+    let layout = label.layout();
+    let (ink, _) = layout.extents();
+    ink.y() + ink.height() / 2 - layout.baseline()
+}
+
+fn aligned_line(details: Option<(i32, i32)>, badge: Option<(i32, i32)>) -> (i32, Option<i32>) {
+    let details_height = details.map_or(0, |(height, _)| height);
+    let badge_height = badge.map_or(0, |(height, _)| height);
+    match (details, badge) {
+        (Some((details_height, details_baseline)), Some((badge_height, badge_baseline)))
+            if details_baseline >= 0 && badge_baseline >= 0 =>
+        {
+            let baseline = details_baseline.max(badge_baseline);
+            (
+                baseline + (details_height - details_baseline).max(badge_height - badge_baseline),
+                Some(baseline),
+            )
+        }
+        _ => (details_height.max(badge_height), None),
+    }
 }
 
 fn caption_editor(widget: &gtk::Widget) -> Option<gtk::Widget> {
@@ -193,11 +227,17 @@ mod imp {
                 for_size
             };
             // The single-line label reserves its font height even before details arrive.
-            let details_height =
-                caption_details(widget).map_or(0, |details| details.measure(orientation, width).1);
+            let details = caption_details(widget).map(|details| {
+                let (_, height, _, baseline) = details.measure(orientation, width);
+                (height, baseline)
+            });
+            let badge = caption_badge(widget).map(|badge| {
+                let (_, height, _, baseline) = badge.measure(orientation, -1);
+                (height, baseline)
+            });
             let content_height = reserved_caption_height(&label, width)
                 .max(caption_editor(widget).map_or(0, |field| field.measure(orientation, width).1));
-            let height = content_height + details_height;
+            let height = content_height + aligned_line(details, badge).0;
             (height, height, -1, -1)
         }
 
@@ -229,19 +269,74 @@ mod imp {
                 field.allocate(width, field_height, -1, None);
                 current_y = current_y.max(field_height);
             }
-            if let Some(details) = caption_details(widget).filter(|details| details.is_visible()) {
-                let details_width = width;
-                let details_height = details
-                    .measure(gtk::Orientation::Vertical, details_width)
+            let details = caption_details(widget).filter(|details| details.is_visible());
+            let badge = caption_badge(widget);
+            let badge_width = badge.as_ref().map_or(0, |badge| {
+                badge.measure(gtk::Orientation::Horizontal, -1).1.min(width)
+            });
+            let details_width = details.as_ref().map_or(0, |details| {
+                details
+                    .measure(gtk::Orientation::Horizontal, -1)
                     .1
-                    .min((height - current_y).max(0));
+                    .min((width - badge_width - 4).max(0))
+            });
+            let gap = if details_width > 0 && badge_width > 0 {
+                4
+            } else {
+                0
+            };
+            let start_x = (width - details_width - gap - badge_width).max(0) / 2;
+            let remaining_height = (height - current_y).max(0);
+            let details_size = details.as_ref().map(|details| {
+                let (_, height, _, baseline) =
+                    details.measure(gtk::Orientation::Vertical, details_width);
+                (height.min(remaining_height), baseline)
+            });
+            let badge_size = badge.as_ref().map(|badge| {
+                let (_, height, _, baseline) =
+                    badge.measure(gtk::Orientation::Vertical, badge_width);
+                (height.min(remaining_height), baseline)
+            });
+            let (line_height, line_baseline) = aligned_line(details_size, badge_size);
+            // Different font sizes share a baseline but not an optical center.
+            let badge_ink_shift = match (
+                line_baseline,
+                details
+                    .as_ref()
+                    .and_then(|widget| widget.downcast_ref::<gtk::Label>()),
+                badge
+                    .as_ref()
+                    .and_then(|widget| widget.downcast_ref::<gtk::Label>()),
+            ) {
+                (Some(_), Some(details), Some(badge)) if !details.text().is_empty() => {
+                    let delta = ink_center_from_baseline(details) - ink_center_from_baseline(badge);
+                    (f64::from(delta) / f64::from(gtk::pango::SCALE)).round() as i32
+                }
+                _ => 0,
+            };
+            let offset_y = |size: Option<(i32, i32)>| {
+                let (height, baseline) = size.unwrap_or((0, -1));
+                line_baseline.map_or((line_height - height) / 2, |line| line - baseline)
+            };
+            if let Some(details) = details {
                 details.allocate(
                     details_width,
-                    details_height,
+                    details_size.map_or(0, |(height, _)| height),
                     -1,
                     Some(gsk::Transform::new().translate(&graphene::Point::new(
-                        ((width - details_width) / 2) as f32,
-                        current_y as f32,
+                        start_x as f32,
+                        (current_y + offset_y(details_size)) as f32,
+                    ))),
+                );
+            }
+            if let Some(badge) = badge {
+                badge.allocate(
+                    badge_width,
+                    badge_size.map_or(0, |(height, _)| height),
+                    -1,
+                    Some(gsk::Transform::new().translate(&graphene::Point::new(
+                        (start_x + details_width + gap) as f32,
+                        (current_y + offset_y(badge_size) + badge_ink_shift) as f32,
                     ))),
                 );
             }

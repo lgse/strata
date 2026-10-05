@@ -12,6 +12,7 @@ pub(in crate::ui) fn non_default_preferences() -> Preferences {
         omarchy_variant: OmarchyVariant::Darker,
         folder_peeking: true,
         single_click_previews: false,
+        git_status_badges: false,
         columns_mirror_selection: false,
         render_documents_by_default: false,
         hardware_accelerated_video_previews: Some(false),

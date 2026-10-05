@@ -863,6 +863,15 @@ impl ShortcutFooter {
         watch_status_widget(&widget, &self.status_widgets, &self.root);
     }
 
+    pub fn set_git_branch(&self, indicator: &gtk::Box) {
+        self.status
+            .insert_child_after(indicator, Some(&self.feedback));
+        self.status_widgets
+            .borrow_mut()
+            .push(indicator.clone().upcast());
+        watch_status_widget(indicator.upcast_ref(), &self.status_widgets, &self.root);
+    }
+
     pub fn bind_preferences(&self, manager: &super::preferences::PreferenceManager) {
         let tag = self.tag.downgrade();
         let reference = self.reference.downgrade();

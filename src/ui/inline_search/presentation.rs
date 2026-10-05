@@ -129,6 +129,17 @@ impl ResultWidgets {
                 origin.set_visible(recursive);
             }
         }
+        if let Some(badge) = icons_cell::badge_label(&self.widget) {
+            if self.edit.is_editing() {
+                crate::ui::browser::git_badge::suspend_git_badge(&badge);
+            } else {
+                crate::ui::browser::git_badge::track_git_badge(
+                    &badge,
+                    &entry.location,
+                    result.is_directory,
+                );
+            }
+        }
         highlights.apply(&self.rename_label(), &result.path);
         if result.is_directory {
             thumbnail::show_customized_icon(

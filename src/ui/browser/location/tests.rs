@@ -849,9 +849,10 @@ fn breadcrumb_adjustment_does_not_retain_widgets() {
                 .find_map(|widget| widget.downcast::<gtk::Scrollbar>().ok())
                 .expect("external scrollbar");
             let weak_scrollbar = scrollbar.downgrade();
-            container
-                .downcast::<gtk::Box>()
-                .expect("vertical breadcrumb container")
+            scrollbar
+                .parent()
+                .and_downcast::<gtk::Box>()
+                .expect("scrollbar container")
                 .remove(&scrollbar);
             drop(scrollbar);
             assert!(weak_scrollbar.upgrade().is_none());

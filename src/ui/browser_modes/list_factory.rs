@@ -47,9 +47,26 @@ impl ListFactory {
         let factory = gtk::SignalListItemFactory::new();
         let setup = context.clone();
         factory.connect_setup(move |_, item| setup.setup(item));
-        factory.connect_bind(move |_, item| context.bind(item));
+        let bind = context.clone();
+        factory.connect_bind(move |_, item| bind.bind(item));
+        let unbind = context.clone();
+        factory.connect_unbind(move |_, item| unbind.unbind(item));
         super::install_edit_unbind(&factory, &setup_items);
         factory
+    }
+
+    fn unbind(&self, object: &glib::Object) {
+        let Some(item) = object.downcast_ref::<gtk::ListItem>() else {
+            return;
+        };
+        let Some(row) = item
+            .child()
+            .and_downcast::<gtk::Box>()
+            .and_then(ListRow::from_widget)
+        else {
+            return;
+        };
+        row.clear();
     }
 
     fn setup(&self, object: &glib::Object) {
@@ -156,9 +173,19 @@ impl ListFactory {
                 .as_deref(),
             &self.filter_query.borrow(),
         );
+        let is_editing = edit.as_ref().is_some_and(|edit| edit.is_editing());
         if let Some(edit) = &edit {
-            edit.display.set_visible(!edit.is_editing());
-            edit.field.set_visible(edit.is_editing());
+            edit.display.set_visible(!is_editing);
+            edit.field.set_visible(is_editing);
+        }
+        if is_editing {
+            crate::ui::browser::git_badge::suspend_git_badge(&row.badge);
+        } else {
+            crate::ui::browser::git_badge::track_git_badge(
+                &row.badge,
+                &binding.entry.location,
+                binding.entry.is_directory(),
+            );
         }
         if self.scrolling.get() {
             binding.request_thumbnail_and_metadata(&row);
@@ -178,6 +205,7 @@ struct ListRow {
     name_cell: gtk::Widget,
     icon: thumbnail::ThumbnailSlot,
     name: gtk::Label,
+    badge: gtk::Label,
     field: gtk::Entry,
     mode: gtk::Label,
     size: gtk::Label,
@@ -187,13 +215,14 @@ struct ListRow {
 
 impl ListRow {
     fn from_widget(widget: gtk::Box) -> Option<Self> {
-        let (icon, name, field, mode, size, kind, modified) = list_row_parts(&widget)?;
+        let (icon, name, badge, field, mode, size, kind, modified) = list_row_parts(&widget)?;
         let name_cell = widget.first_child()?;
         Some(Self {
             widget,
             name_cell,
             icon,
             name,
+            badge,
             field,
             mode,
             size,
@@ -239,6 +268,7 @@ impl ListRow {
         self.name.set_label("");
         self.name.set_opacity(1.0);
         self.name.set_visible(true);
+        crate::ui::browser::git_badge::suspend_git_badge(&self.badge);
         self.field.set_visible(false);
         self.mode.set_label("");
         self.size.set_label("");

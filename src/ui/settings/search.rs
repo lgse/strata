@@ -54,6 +54,12 @@ const TARGETS: &[Target] = &[
         aliases: "browsing quick preview selecting supported files",
     },
     Target {
+        id: "git-badges",
+        page: "general",
+        title: "Git indicators",
+        aliases: "browsing git branch status badges repo repository modified untracked ignored version control vcs",
+    },
+    Target {
         id: "preview-autoplay",
         page: "general",
         title: "Autoplay media previews",
