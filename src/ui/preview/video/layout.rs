@@ -117,7 +117,7 @@ mod imp {
             let Some(parts) = Parts::of(widget) else {
                 return;
             };
-            let content_width = (width - 2 * PADDING).min(MAX_CONTENT_WIDTH).max(0);
+            let content_width = (width - 2 * PADDING).clamp(0, MAX_CONTENT_WIDTH);
             let panel_min = parts.panel_minimum();
             let fixed = parts.fixed_height(content_width.max(panel_min));
             let free = height - 2 * PADDING - fixed - GAP;
