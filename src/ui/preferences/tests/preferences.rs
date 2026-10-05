@@ -54,6 +54,7 @@ fn older_preferences_keep_backward_compatible_behavior_defaults() {
     saved.remove("date_format");
     saved.remove("send_to_recent_destinations");
     saved.remove("tenxer_mode");
+    saved.remove("folder_peeking");
     let restored: Preferences = saved.try_into().expect("backward-compatible preferences");
     assert_eq!(
         restored,
@@ -63,6 +64,7 @@ fn older_preferences_keep_backward_compatible_behavior_defaults() {
             date_format: "relative".into(),
             send_to_recent_destinations: HashMap::new(),
             tenxer_mode: false,
+            folder_peeking: false,
             ..non_default_preferences()
         }
     );
@@ -183,8 +185,8 @@ fn assert_recovered_preferences_survive_save(
         fs::read_to_string(settings_path()).expect("unchanged settings file"),
         malformed
     );
-    expected.folder_peeking = true;
-    manager.set_folder_peeking(true);
+    expected.folder_peeking = false;
+    manager.set_folder_peeking(false);
 
     let persisted: Preferences =
         toml::from_str(&fs::read_to_string(settings_path()).expect("saved file"))
@@ -221,17 +223,17 @@ fn unreadable_preferences_are_preserved_while_live_changes_still_apply() {
                     );
                     values
                 });
-                manager.set_folder_peeking(false);
-                manager.set_folder_peeking(false);
+                manager.set_folder_peeking(true);
+                manager.set_folder_peeking(true);
                 for values in observations {
-                    assert_eq!(*values.borrow(), [true, false]);
+                    assert_eq!(*values.borrow(), [false, true]);
                 }
                 assert_eq!(
                     fs::read(settings_path()).expect("preserved settings"),
                     broken
                 );
                 fs::write(settings_path(), &valid).expect("repair settings");
-                manager.set_folder_peeking(true);
+                manager.set_folder_peeking(false);
                 assert_eq!(
                     fs::read(settings_path()).expect("repair left untouched"),
                     valid
@@ -240,9 +242,9 @@ fn unreadable_preferences_are_preserved_while_live_changes_still_apply() {
             }
             let manager = PreferenceManager::load();
             assert_eq!(*manager.preferences.borrow(), non_default_preferences());
-            manager.set_folder_peeking(true);
+            manager.set_folder_peeking(false);
             assert!(
-                read_preferences()
+                !read_preferences()
                     .expect("saving resumes after reload")
                     .folder_peeking
             );
@@ -257,8 +259,12 @@ fn missing_settings_allow_first_run_saves() {
         || {
             assert!(!settings_path().exists());
             let manager = PreferenceManager::load();
+            assert!(!manager.folder_peeking());
+            manager.set_folder_peeking(true);
+            assert!(read_preferences().expect("first run save").folder_peeking);
+            assert!(PreferenceManager::load().folder_peeking());
             manager.set_folder_peeking(false);
-            assert!(!read_preferences().expect("first run save").folder_peeking);
+            assert!(!PreferenceManager::load().folder_peeking());
         },
     );
 }
@@ -371,7 +377,7 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
             assert_eq!(*manager.preferences.borrow(), non_default_preferences());
             assert!(!themes.follows_omarchy());
             assert_eq!(themes.selected_id(), "nord");
-            assert!(!manager.folder_peeking());
+            assert!(manager.folder_peeking());
             assert!(!manager.single_click_previews());
             assert!(!manager.columns_mirror_selection());
             assert!(!manager.hardware_accelerated_video_previews());
@@ -557,7 +563,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 move |_, value| observed.borrow_mut().push(value),
             );
             let preference_setters: &[fn(&PreferenceManager)] = &[
-                |m| m.set_folder_peeking(true),
+                |m| m.set_folder_peeking(false),
                 |m| m.set_single_click_previews(true),
                 |m| m.set_columns_mirror_selection(true),
                 |m| m.set_render_documents_by_default(true),

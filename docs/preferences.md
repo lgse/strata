@@ -10,7 +10,8 @@ the theme catalog, shared CSS application, custom themes, and Omarchy following;
 it reads preferences through the `PreferenceManager` and reapplies shared CSS when
 appearance preferences change. Fresh installations select Tokyo Night, unless an
 available Omarchy theme is followed automatically. Saved theme choices remain
-unchanged.
+unchanged. Folder peeking is off by default when no value is saved; explicitly
+saved choices are preserved. Enable it under **Settings → General → Browsing**.
 
 Settings-wide search is transient, panel-local UI state, not a saved preference.
 It filters the existing bound controls rather than creating copies. Register new
