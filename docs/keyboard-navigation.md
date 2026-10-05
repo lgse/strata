@@ -66,6 +66,10 @@ not their previous row numbers; deleted entries are not selected accidentally.
 This is temporary browsing state, not a saved preference. New input in the file view
 cancels an in-progress restoration.
 
+A navigation that names a target — a typed file path, a Ctrl+K result opened with
+Enter or Alt+Enter, Open file location, or an `org.freedesktop.FileManager1`
+request — selects that target instead of restoring the remembered position.
+
 ## Creating files and folders
 
 In Columns, List, and Icons, **Ctrl+Shift+N** or background menu → **New Folder**
