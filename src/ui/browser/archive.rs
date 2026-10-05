@@ -35,11 +35,7 @@ use std::cell::Cell;
 use std::path::Path;
 use std::rc::Rc;
 
-/// Lowercased text of an extraction error outside its quoted span.
-///
-/// Diagnostics quote one unescaped member or folder name between the first and
-/// last backtick. That name can contain backticks or words such as "password",
-/// so it must not drive the password retry.
+/// Unescaped names may contain backticks or "password"; exclude their entire span.
 fn unquoted_extract_error(message: &str) -> String {
     match (message.find('`'), message.rfind('`')) {
         (Some(start), Some(end)) if start < end => {

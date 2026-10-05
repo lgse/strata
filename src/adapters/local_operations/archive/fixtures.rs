@@ -109,7 +109,6 @@ pub(super) fn test_file_entry(path: &Path) -> FileEntry {
 pub(super) const COMPRESSION_STAGE: &str = ".strata-compression-";
 pub(super) const EXTRACTION_STAGE: &str = ".strata-extraction-";
 
-/// Names in `destination` starting with `prefix`, such as `.strata-compression-`.
 pub(super) fn stages(destination: &Path, prefix: &str) -> Result<Vec<OsString>, Box<dyn Error>> {
     Ok(fs::read_dir(destination)?
         .filter_map(Result::ok)
@@ -234,8 +233,6 @@ pub(super) fn write_tar_entries(
     Ok(())
 }
 
-/// Rewrites the plain TAR at `path` as two concatenated gzip members split at
-/// byte `split_at`, as parallel compressors such as pigz produce.
 pub(super) fn split_into_gzip_members(path: &Path, split_at: usize) -> Result<(), Box<dyn Error>> {
     let tar = fs::read(path)?;
     let mut members = Vec::new();
@@ -248,7 +245,7 @@ pub(super) fn split_into_gzip_members(path: &Path, split_at: usize) -> Result<()
     Ok(())
 }
 
-/// Flips one byte of the gzip trailer: `8` is the first CRC32 byte, `4` the first ISIZE byte.
+/// Trailer offsets: 8 is CRC32, 4 is ISIZE.
 pub(super) fn corrupt_gzip_trailer(
     path: &Path,
     offset_from_end: usize,
@@ -367,7 +364,6 @@ pub(super) fn write_zip_stored(
     Ok(())
 }
 
-/// One archive member with optional stored mode and modification time.
 pub(super) enum FixtureMember<'a> {
     File {
         name: &'a str,
@@ -401,9 +397,6 @@ pub(super) fn zip_extended_timestamp(seconds: u64) -> Result<Vec<u8>, Box<dyn Er
     Ok(field)
 }
 
-/// Builds `path` from `members` in archive order. ZIP members carry the DOS
-/// default time and, when `modified` is set, a `UT` field; 7z members carry the
-/// p7zip Unix-mode attribute (`0x8000 | st_mode << 16`).
 pub(super) fn write_members(
     path: &Path,
     format: ArchiveFormat,
@@ -631,12 +624,10 @@ pub(super) fn patch_zip_external_attributes(path: &Path, value: u32) -> Result<(
     Ok(())
 }
 
-/// The permission bits extraction should produce for a stored `mode`.
 pub(super) fn expected_mode(mode: u32) -> u32 {
     mode & 0o777 & !super::destination::process_umask()
 }
 
-/// Sets the access and modification times of `path` itself, not a link target.
 pub(super) fn set_times_without_following(path: &Path, seconds: i64) -> Result<(), Box<dyn Error>> {
     let time = rustix::fs::Timespec {
         tv_sec: seconds,

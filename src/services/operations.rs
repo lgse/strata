@@ -207,9 +207,6 @@ impl ArchiveFormat {
         }
     }
 
-    /// The format of an entry that can actually be extracted: a regular file (or a
-    /// symlink to one) with a local path and a recognised archive extension.
-    /// Folders, FIFOs, devices, and broken links named like archives return `None`.
     pub fn for_entry(entry: &FileEntry) -> Option<Self> {
         if !entry.is_file() || entry.location.native_path().is_none() {
             return None;

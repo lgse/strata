@@ -3,17 +3,13 @@
 //! ZIP, TAR/gzip and 7z decoding adapters feeding the same extraction session.
 //! Format-specific member enumeration, passwords and error translation stay here.
 //!
-//! TAR names use lossy UTF-8 conversion. Symlinks, hard links (TAR) and member
-//! modes and times pass through `MemberContent`/`MemberMetadata`; FIFOs and
-//! device nodes are refused.
-//!
-//! Gzip streams are read to the end after the last TAR entry so the CRC32 and
-//! length trailer of every gzip member is verified.
 
 use std::{
     borrow::Cow,
     collections::HashMap,
+    ffi::OsStr,
     io::{Read, Seek},
+    os::unix::ffi::OsStrExt,
     path::Path,
     sync::{
         Arc,
@@ -125,8 +121,7 @@ const S_IFDIR: u32 = 0o040_000;
 const S_IFREG: u32 = 0o100_000;
 const S_IFLNK: u32 = 0o120_000;
 
-/// A stored `st_mode` is trusted only when its file type matches the member,
-/// so a zero or garbage value cannot make the owner lose access.
+/// ZIP/7z may report zero or junk modes; don't revoke access based on them.
 fn member_mode(mode: Option<u32>, directory: bool) -> Option<u32> {
     let kind = if directory { S_IFDIR } else { S_IFREG };
     mode.filter(|mode| mode & S_IFMT == kind)
@@ -136,7 +131,7 @@ fn unix_seconds(seconds: impl TryInto<u64>) -> Option<SystemTime> {
     UNIX_EPOCH.checked_add(Duration::from_secs(seconds.try_into().ok()?))
 }
 
-/// Windows FILETIME; zero means no time, and times before 1970 are skipped.
+/// FILETIME zero denotes an absent timestamp.
 fn filetime(value: u64) -> Option<SystemTime> {
     (value != 0)
         .then(|| SystemTime::from(sevenz_rust2::NtTime::from(value)))
@@ -157,7 +152,6 @@ fn dos_local_time(time: zip::DateTime) -> Option<SystemTime> {
     unix_seconds(local.to_unix())
 }
 
-/// Prefers the Info-ZIP `UT` field, then the NTFS field, then the DOS time.
 fn zip_member_modified(entry: &zip::read::ZipFile<'_, std::fs::File>) -> Option<SystemTime> {
     let extended = entry.extra_data_fields().find_map(|field| match field {
         // The field is signed; times before 1970 are skipped.
@@ -180,7 +174,7 @@ fn zip_member_modified(entry: &zip::read::ZipFile<'_, std::fs::File>) -> Option<
     })
 }
 
-/// Reads at most one byte past the limit; the session refuses longer targets.
+/// Read one extra byte so overlong targets cannot be silently truncated.
 fn read_link_target(reader: &mut impl Read) -> Result<Vec<u8>, ArchiveError> {
     let mut target = Vec::new();
     reader
@@ -213,7 +207,7 @@ impl<R: Read> Read for ArchiveReader<R> {
     }
 }
 
-/// Reads the rest of a gzip stream so flate2 verifies CRC32/ISIZE; cancellable per chunk.
+/// tar-rs stops before gzip's CRC32/ISIZE trailer; EOF is needed to verify it.
 fn verify_gzip_trailer(reader: impl Read, cancelled: &AtomicBool) -> Result<(), ArchiveError> {
     copy_with_big_buf(ArchiveReader::new(reader), &mut std::io::sink(), cancelled).map(|_| ())
 }
@@ -336,7 +330,8 @@ pub(super) fn extract_tar(
                 continue;
             }
             let declared_size = entry.size();
-            let name = name.to_string_lossy().into_owned();
+            let path = name.into_owned();
+            let name = path.display();
             let header = entry.header();
             let metadata = MemberMetadata {
                 mode: header.mode().ok(),
@@ -348,15 +343,12 @@ pub(super) fn extract_tar(
                     archive_failed(format!("Archive member `{name}` has no link target"))
                 })
             };
-            let hard_link_target;
             let mut reader = ArchiveReader::new(&mut entry);
             let content = match entry_type {
                 entry_type if entry_type.is_dir() => MemberContent::Directory,
                 tar::EntryType::Symlink => MemberContent::Symlink(link_name()?),
-                // A hard link that carries data is written as that data.
                 tar::EntryType::Link if declared_size == 0 => {
-                    hard_link_target = String::from_utf8_lossy(link_name()?).into_owned();
-                    MemberContent::HardLink(&hard_link_target)
+                    MemberContent::HardLink(Path::new(OsStr::from_bytes(link_name()?)))
                 }
                 tar::EntryType::Fifo => {
                     return Err(archive_failed(format!(
@@ -370,7 +362,7 @@ pub(super) fn extract_tar(
                 }
                 _ => MemberContent::File(&mut reader, Some(declared_size)),
             };
-            session.extract_member(&name, content, metadata)?;
+            session.extract_member(&path, content, metadata)?;
         }
         Ok(())
     })();

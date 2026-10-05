@@ -6,11 +6,8 @@
 //! names only on cancellation. The session validates and maps destination reports
 //! without scanning ahead, probing the filesystem or reserving pending names.
 //!
-//! Members are written into a hidden `.strata-extraction-<uuid>` folder created
-//! under the destination on the first member, so names are resolved against an
-//! empty folder. [`ExtractionSession::finish`] publishes that folder for every
-//! outcome; dropping a session without `finish`, as a decoder panic does,
-//! publishes it as a failed extraction.
+//! Staging isolates conflict naming from the user's files. Unfinished sessions
+//! retain partial output even during decoder panic unwinding.
 use std::{
     collections::{HashMap, HashSet},
     ffi::{OsStr, OsString},
@@ -39,16 +36,13 @@ pub(super) const MAX_SYMLINK_TARGET_BYTES: u64 = 4095;
 pub(super) enum MemberContent<'a> {
     Directory,
     File(&'a mut dyn Read, Option<u64>),
-    /// Target bytes exactly as stored; created with `symlinkat`, never followed.
     Symlink(&'a [u8]),
-    /// Archive path of an earlier member. Resolved through the members this
-    /// session created, never against the filesystem.
-    HardLink(&'a str),
+    /// Only earlier extracted members may be link targets.
+    HardLink(&'a Path),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct MemberMetadata {
-    /// Raw header mode; only the permission bits are applied.
     pub(super) mode: Option<u32>,
     pub(super) modified: Option<SystemTime>,
 }
@@ -93,21 +87,14 @@ pub(super) struct ExtractionSession<'a> {
     roots: Vec<PathBuf>,
     seen_roots: HashSet<PathBuf>,
     completed: Vec<PathBuf>,
-    /// Whether a file member completed or a partial file could not be removed.
-    /// Staging that holds only directories is not worth keeping after a
-    /// failure or cancellation.
+    /// Directory-only leftovers can be discarded after a failed password attempt.
     has_content: bool,
     interrupted: Option<InterruptedMember>,
     written: u64,
     available_bytes: Option<u64>,
-    /// Set by decoders whose format has hard links.
     records_hard_link_targets: bool,
-    /// Sanitized archive path of every non-directory member, mapped to the
-    /// staging-relative path created for it, when hard links are possible.
-    /// Kept for the whole session so a hard link in any later position can
-    /// resolve its target.
+    /// Native archive identity must survive conflict renames for later hard links.
     created_names: HashMap<PathBuf, PathBuf>,
-    /// Explicit directory members with metadata, applied only on completion.
     directories: Vec<(PathBuf, MemberMetadata)>,
 }
 
@@ -177,8 +164,7 @@ impl<'a> ExtractionSession<'a> {
         ))
     }
 
-    /// Keeps the created path of every member so later hard links can
-    /// resolve to it. Only formats with hard links need the memory.
+    /// Avoid retaining every member name in formats without hard links.
     pub(super) fn record_hard_link_targets(&mut self) {
         self.records_hard_link_targets = true;
     }
@@ -238,30 +224,28 @@ impl<'a> ExtractionSession<'a> {
         Ok(())
     }
 
-    /// A hard link may only name a member this session already created.
-    fn hard_link_target(&self, name: &str, target: &str) -> Result<PathBuf, ArchiveError> {
+    fn hard_link_target(&self, name: &str, target: &Path) -> Result<PathBuf, ArchiveError> {
         sanitized_archive_path(target)
             .ok()
             .and_then(|path| self.created_names.get(&path))
             .cloned()
             .ok_or_else(|| {
                 archive_failed(format!(
-                    "Archive member `{name}` is a hard link to `{target}`, which was not extracted"
+                    "Archive member `{name}` is a hard link to `{}`, which was not extracted",
+                    target.display()
                 ))
             })
     }
 
-    /// Processes one member. On error the decoder must stop and call `finish`.
-    /// Names retain the adapters' legacy string conversion until decoder evaluation.
-    /// Links are created without following; hard links resolve only to members
-    /// this session created.
+    /// On error the decoder must stop and call `finish`.
     pub(super) fn extract_member(
         &mut self,
-        name: &str,
+        name: impl AsRef<OsStr>,
         content: MemberContent<'_>,
         metadata: MemberMetadata,
     ) -> Result<(), ArchiveError> {
-        let path = sanitized_archive_path(name)?;
+        let path = sanitized_archive_path(&name)?;
+        let name = name.as_ref().to_string_lossy();
         if let Err(error) = self.check_cancelled() {
             self.interrupted = Some(InterruptedMember::NotAttempted(
                 self.resolver.apply_known_rename(&path),
@@ -269,15 +253,15 @@ impl<'a> ExtractionSession<'a> {
             return Err(error);
         }
         if let MemberContent::File(_, Some(declared)) = &content {
-            self.ensure_member_fits(name, *declared)?;
+            self.ensure_member_fits(&name, *declared)?;
         }
         // Checked before staging exists, so a refused first member leaves nothing behind.
         let hard_link_target = match &content {
             MemberContent::Symlink(target) => {
-                validate_link_target(name, target)?;
+                validate_link_target(&name, target)?;
                 None
             }
-            MemberContent::HardLink(target) => Some(self.hard_link_target(name, target)?),
+            MemberContent::HardLink(target) => Some(self.hard_link_target(&name, target)?),
             _ => None,
         };
         self.ensure_staging()?;
@@ -306,7 +290,7 @@ impl<'a> ExtractionSession<'a> {
             MemberContent::File(reader, declared_size) => {
                 let (mut file, created) = staging.create_file(&outpath, metadata.mode)?;
                 let result = copy_member(
-                    name,
+                    &name,
                     reader,
                     &mut file,
                     self.cancelled,
@@ -364,15 +348,6 @@ impl<'a> ExtractionSession<'a> {
         Ok(())
     }
 
-    /// Publishes the staging folder for every outcome and reports where the
-    /// output landed.
-    ///
-    /// A completed extraction moves a single top-level entry up under its own
-    /// name (suffixed only if the destination already uses it) and renames a
-    /// staging folder holding several entries to the archive stem. A failed or
-    /// cancelled extraction that wrote anything keeps it under the archive stem
-    /// and names that folder; empty staging is removed.
-    ///
     /// Pending names exclude members already passed to `extract_member`.
     /// Reports apply established top-level renames, but cannot predict final leaf
     /// conflicts for unattempted members. Invalid names are omitted, not errors.
@@ -419,9 +394,7 @@ impl<'a> ExtractionSession<'a> {
                         (OsString::from(folder), true)
                     }
                 };
-                // Top-level directories are stamped only after they move: a
-                // directory without owner write permission cannot be renamed
-                // into another parent (`EACCES` on its `..` entry).
+                // Cross-parent directory moves may need owner write access to `..`.
                 let published = top_level
                     .into_iter()
                     .map(|(path, metadata)| {
@@ -453,7 +426,6 @@ impl<'a> ExtractionSession<'a> {
                 let mut completed = Vec::new();
                 let mut failed = Vec::new();
                 let mut not_attempted = Vec::new();
-                // Directories removed with directory-only staging were not kept.
                 if kept.is_some() || staging.is_none() {
                     completed.extend(self.completed.iter().map(|path| base(path)));
                 } else {
@@ -483,8 +455,6 @@ impl<'a> ExtractionSession<'a> {
 }
 
 impl Drop for ExtractionSession<'_> {
-    /// A session dropped before `finish` (a decoder panic) keeps whatever it
-    /// wrote under the archive stem, exactly like a failed extraction.
     fn drop(&mut self) {
         if let Some(staging) = self.staging.take() {
             let _ = keep_or_remove(
@@ -508,10 +478,7 @@ fn failure_message(message: String, kept: Result<Option<String>, String>) -> Str
     }
 }
 
-/// Deepest first, so no directory's restored mode blocks reaching another;
-/// the stable sort lets a repeated member's later entry win. After a failure
-/// the directories already restored get the default mode back, shallowest
-/// first, so the kept output stays writable and removable.
+/// Deepest-first restoration keeps ancestors traversable; rollback reverses that order.
 fn restore_directory_metadata(
     destination: &ExtractionDestination,
     mut directories: Vec<(PathBuf, MemberMetadata)>,
@@ -538,7 +505,6 @@ fn validate_link_target(name: &str, target: &[u8]) -> Result<(), ArchiveError> {
     Ok(())
 }
 
-/// After a completed publish the staging folder must be empty.
 fn remove_empty(parent: &ExtractionDestination, staging: &Staging) -> Result<(), ArchiveError> {
     match parent.remove_empty_staging(&staging.name) {
         Ok(true) => Ok(()),
@@ -550,10 +516,6 @@ fn remove_empty(parent: &ExtractionDestination, staging: &Staging) -> Result<(),
     }
 }
 
-/// Staging without any file, such as the directories left by a member that
-/// failed to decrypt, is removed. Anything else is published under the
-/// archive stem. Errors name the hidden staging folder, which still holds the
-/// output.
 fn keep_or_remove(
     parent: &ExtractionDestination,
     staging: Option<&Staging>,
@@ -590,9 +552,7 @@ fn staging_kept_message(error: &str, staging: &Staging) -> String {
     )
 }
 
-/// Joins `sentence` to `message`, ending `message` with a period first if it
-/// has no sentence punctuation. The quoted folder name in `sentence` must keep
-/// its backticks: the password-retry check ignores text between them.
+/// Backticks around filenames keep them out of the UI's password-retry heuristic.
 fn append_sentence(message: &str, sentence: &str) -> String {
     let separator = if message.ends_with(['.', '!', '?']) {
         " "

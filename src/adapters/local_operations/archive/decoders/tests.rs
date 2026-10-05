@@ -1742,6 +1742,54 @@ fn links_extract_as_links_in_every_format() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
+fn tar_hard_links_preserve_distinct_native_target_names() -> Result<(), Box<dyn Error>> {
+    use std::os::unix::ffi::OsStrExt;
+
+    let root = tempfile::tempdir()?;
+    let archive = root.path().join("native.tar");
+    let mut builder = tar::Builder::new(fs::File::create(&archive)?);
+    let names: [&[u8]; 2] = [b"a\xff", b"a\xfe"];
+    for (index, name) in names.iter().enumerate() {
+        let mut header = tar::Header::new_gnu();
+        header.set_path(Path::new(OsStr::from_bytes(name)))?;
+        header.set_mode(0o644);
+        header.set_size(1);
+        header.set_cksum();
+        builder.append(&header, &[index as u8][..])?;
+    }
+    for (index, target) in names.iter().enumerate() {
+        let mut header = tar::Header::new_gnu();
+        header.set_path(format!("hard-{index}"))?;
+        header.set_entry_type(tar::EntryType::Link);
+        header.set_link_name_literal(target)?;
+        header.set_mode(0o644);
+        header.set_size(0);
+        header.set_cksum();
+        builder.append(&header, io::empty())?;
+    }
+    builder.finish()?;
+    let destination = root.path().join("destination");
+    fs::create_dir(&destination)?;
+
+    completed_extract(decode_fixture(
+        &archive,
+        &destination,
+        ArchiveFormat::Tar,
+        None,
+        &Arc::new(AtomicUsize::new(0)),
+    )?)?;
+
+    let output = destination.join("native");
+    for (index, name) in names.iter().enumerate() {
+        let original = output.join(OsStr::from_bytes(name));
+        let linked = output.join(format!("hard-{index}"));
+        assert_eq!(fs::read(&linked)?, [index as u8]);
+        assert_eq!(fs::metadata(&linked)?.ino(), fs::metadata(original)?.ino());
+    }
+    Ok(())
+}
+
+#[test]
 fn unsupported_tar_members_are_refused_with_their_name() -> Result<(), Box<dyn Error>> {
     for format in [ArchiveFormat::Tar, ArchiveFormat::TarGz] {
         for (name, entry_type) in [

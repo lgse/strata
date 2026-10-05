@@ -465,7 +465,6 @@ fn empty_session_completes_without_a_first_name() -> Result<(), Box<dyn Error>> 
     Ok(())
 }
 
-/// Finishes the session with `result`, which must be a failure, and returns the reported message.
 fn failed_extract(session: ExtractionSession<'_>, result: Result<(), ArchiveError>) -> String {
     assert!(
         matches!(result, Err(ArchiveError::Failed(_))),
@@ -764,7 +763,6 @@ enum Expected {
     Cancelled(&'static [&'static str]),
 }
 
-/// Members written, finish result, expected outcome, files left in the destination.
 type OutcomeCase = (
     &'static [&'static str],
     Result<(), ArchiveError>,
@@ -985,7 +983,7 @@ fn links_consume_no_space_and_hard_links_follow_renamed_targets() -> Result<(), 
     )?;
     session.extract_member(
         "hard",
-        MemberContent::HardLink("data.txt"),
+        MemberContent::HardLink(Path::new("data.txt")),
         MemberMetadata::NONE,
     )?;
 
@@ -997,7 +995,6 @@ fn links_consume_no_space_and_hard_links_follow_renamed_targets() -> Result<(), 
     let output = root.path().join("archive");
     assert_eq!(fs::read_link(output.join("lnk"))?, Path::new("data.txt"));
     assert_eq!(fs::read(output.join("lnk"))?, b"first!");
-    // The duplicate became `data (2).txt`; the link follows the latest member of that name.
     assert_eq!(
         fs::metadata(output.join("hard"))?.ino(),
         fs::metadata(output.join("data (2).txt"))?.ino()
@@ -1018,7 +1015,7 @@ fn refused_link_members_leave_no_staging_behind() -> Result<(), Box<dyn Error>> 
     .enumerate()
     {
         let content = match index {
-            0 => MemberContent::HardLink("later.txt"),
+            0 => MemberContent::HardLink(Path::new("later.txt")),
             1 => MemberContent::Symlink(b""),
             2 => MemberContent::Symlink(b"a\0b"),
             _ => MemberContent::Symlink(&too_long),
@@ -1060,8 +1057,6 @@ fn directory_metadata_is_restored_deepest_first_only_on_completion() -> Result<(
         )?;
 
         let (output, mode) = if complete {
-            // The single root moves before it is stamped: a directory without
-            // owner write permission cannot be renamed into another parent.
             assert!(matches!(
                 session.finish(Ok(()), Vec::new)?,
                 ArchiveOutcome::Completed(Some(name)) if name == "ro"
@@ -1119,8 +1114,6 @@ fn a_failed_directory_restore_leaves_restored_directories_writable() -> Result<(
         MemberMetadata::NONE,
     )?;
 
-    // `top/ro` is made read-only before its time fails. Unless it is made
-    // writable again, its child cannot be removed with the directory-only output.
     let message = match session.finish(Ok(()), Vec::new) {
         Err(ArchiveError::Failed(message)) => message,
         other => panic!("expected a failed restore, got {other:?}"),

@@ -190,7 +190,6 @@ fn destination_never_writes_through_symlinks() -> Result<(), Box<dyn Error>> {
             .apply_directory_metadata(Path::new("redirect"), metadata, 0o022)
             .is_err()
     );
-    // An existing leaf symlink is skipped like a file, never written through.
     for name in ["leaf", "dangling"] {
         let (_, created) = destination.create_file(Path::new(name), None)?;
         assert_eq!(created, PathBuf::from(format!("{name} (2)")));
@@ -411,7 +410,7 @@ fn no_replace_unsupported(
 
 #[test]
 fn publication_without_rename_noreplace_never_replaces_entries() -> Result<(), Box<dyn Error>> {
-    let cases: [(&str, &str, &str, Setup, &str); 4] = [
+    let cases: [(&str, &str, &str, Setup, &str); 2] = [
         ("file", "readme.txt", "readme.txt", |_| Ok(()), "readme.txt"),
         (
             "file collision",
@@ -419,17 +418,6 @@ fn publication_without_rename_noreplace_never_replaces_entries() -> Result<(), B
             "readme.txt",
             |root| fs::write(root.join("readme.txt"), b"existing"),
             "readme (2).txt",
-        ),
-        ("directory", "docs/readme.txt", "docs", |_| Ok(()), "docs"),
-        (
-            "directory collision",
-            "docs/readme.txt",
-            "docs",
-            |root| {
-                fs::create_dir(root.join("docs"))?;
-                fs::write(root.join("docs/readme.txt"), b"existing")
-            },
-            "docs (2)",
         ),
     ];
     for (label, member, root_name, create_existing, expected) in cases {
@@ -466,38 +454,37 @@ fn publication_without_rename_noreplace_never_replaces_entries() -> Result<(), B
         );
     }
 
-    for (label, taken, expected) in [
-        ("folder", false, "bundle"),
-        ("folder collision", true, "bundle (1)"),
-    ] {
+    for taken in [false, true] {
         let root = tempfile::tempdir()?;
         if taken {
             fs::create_dir(root.path().join("bundle"))?;
             fs::write(root.path().join("bundle/keep.txt"), b"keep")?;
         }
         let destination = ExtractionDestination::open(root.path())?;
-        let (name, _) = stage(&destination, &["a.txt", "b.txt"])?;
+        let (name, staging) = stage(&destination, &["docs/readme.txt"])?;
 
-        let published = destination.publish_staging_as_folder_with(
-            &name,
-            "bundle.zip",
-            no_replace_unsupported,
-        )?;
-
-        assert_eq!(published, expected, "{label}");
-        assert_eq!(
-            fs::read(root.path().join(expected).join("a.txt"))?,
-            b"a.txt",
-            "{label}"
+        assert!(
+            destination
+                .publish_single_root_with(&staging, Path::new("docs"), no_replace_unsupported)
+                .is_err()
         );
-        assert!(!root.path().join(&name).exists(), "{label}");
+        assert!(
+            destination
+                .publish_staging_as_folder_with(&name, "bundle.zip", no_replace_unsupported)
+                .is_err()
+        );
+
+        assert_eq!(
+            fs::read(root.path().join(&name).join("docs/readme.txt"))?,
+            b"docs/readme.txt"
+        );
+        assert!(!root.path().join("docs").exists());
+        assert!(!root.path().join("bundle (1)").exists());
         if taken {
-            assert_eq!(
-                fs::read(root.path().join("bundle/keep.txt"))?,
-                b"keep",
-                "{label}"
-            );
-            assert_eq!(root.path().join("bundle").read_dir()?.count(), 1, "{label}");
+            assert_eq!(fs::read(root.path().join("bundle/keep.txt"))?, b"keep");
+            assert_eq!(root.path().join("bundle").read_dir()?.count(), 1);
+        } else {
+            assert!(!root.path().join("bundle").exists());
         }
     }
     Ok(())
@@ -573,7 +560,6 @@ fn metadata_the_filesystem_cannot_store_is_skipped() -> Result<(), Box<dyn Error
         ];
 
         assert_eq!(applied, [skipped; 3], "{errno:?}");
-        // A link whose time was refused for another reason is not left behind.
         assert_eq!(
             fs::symlink_metadata(root.path().join("lnk")).is_ok(),
             skipped,

@@ -42,6 +42,11 @@ Strata publishes the folder:
   If no file was written, any folders created along the way are removed and
   nothing is left behind.
 
+Publication never replaces an existing entry. If the filesystem lacks atomic
+no-replace directory renames, folder publication fails and the error names the
+hidden staging folder holding the output. Single files can use a no-clobber
+hard-link/unlink fallback when supported.
+
 Partial output from a failed attempt stays in its own folder, so a retry, such
 as after a wrong password, never merges into it. An archive with several
 top-level entries is extracted into the next numbered folder; a single entry
@@ -58,8 +63,9 @@ above, but their contents are unverified.
 Symbolic links are recreated with their stored targets, including absolute
 targets and targets outside the archive, and are never followed by later
 members: a member under a link name fails instead of writing through the link.
-TAR hard links become links to the member of that name extracted earlier from
-the same archive, following any conflict rename. A hard link to a member that
+TAR names and hard-link targets retain their native bytes. Hard links become
+links to the member of that name extracted earlier from the same archive,
+following any conflict rename. A hard link to a member that
 was not extracted, or that appears later, fails the extraction. FIFOs and
 device nodes are refused. An existing symlink at a member's name, such as an
 earlier link member with the same name, is skipped like a file: the member is

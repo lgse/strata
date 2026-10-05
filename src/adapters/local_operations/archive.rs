@@ -191,37 +191,7 @@ pub(super) fn compress(request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)
     })
 }
 
-/// Extracts the archive in `request` into a local destination directory.
-///
-/// Requires both the archive and destination to be local paths. Format is
-/// inferred from [`FileEntry::display_name`] via [`ArchiveFormat::from_extension`].
-/// Returns a [`LoadHandle`] that cancels in-flight work when dropped.
-///
-/// Emits [`ArchiveStarted`] immediately, [`ArchiveProgress`] while running,
-/// then [`Extracted`], [`Failed`], or [`Cancelled`]. A cancel after some
-/// members have been written reports completed, failed, and not-attempted
-/// locations through [`CancelledOperation`].
-///
-/// Members are staged in a hidden folder inside the destination. A single
-/// top-level entry lands under its own name, suffixed only if the destination
-/// already uses it; several entries are published as a folder named after the
-/// archive stem, which [`Extracted::first_name`] then selects. A failed or
-/// cancelled extraction keeps what it wrote in that stem folder, and the
-/// [`Failed`] message names it.
-/// Refuses a path that exists but is not a regular file with [`Failed`]
-/// before touching the destination.
-///
-/// # Concurrency
-///
-/// Runs on the default [`glib::MainContext`]. Decoding happens on a worker
-/// thread via [`gio::spawn_blocking`].
-///
-/// [`FileEntry::display_name`]: crate::model::FileEntry::display_name
-/// [`ArchiveStarted`]: OperationEvent::ArchiveStarted
-/// [`ArchiveProgress`]: OperationEvent::ArchiveProgress
-/// [`Extracted`]: OperationEvent::Extracted
-/// [`Failed`]: OperationEvent::Failed
-/// [`Cancelled`]: OperationEvent::Cancelled
+/// Dropping the returned handle cancels the worker. Events run on the default main context.
 pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
     let cancelled = Arc::new(AtomicBool::new(false));
     let task_cancelled = cancelled.clone();
@@ -235,10 +205,7 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
             });
             return;
         };
-        // A folder or special file can carry an archive extension; the decoders
-        // would open it and fail with a raw OS error (or block on a FIFO). The
-        // quoted name keeps a word like "password" in it from triggering the
-        // UI's password retry.
+        // Recheck stale listings before a decoder can block opening a FIFO.
         if let Ok(metadata) = std::fs::metadata(&archive_path)
             && !metadata.is_file()
         {

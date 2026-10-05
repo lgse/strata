@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Confined destination writes, the extraction staging folder lifecycle,
-//! publication and conflict naming.
-
 #[cfg(test)]
 mod tests;
 
@@ -18,11 +15,7 @@ use std::{
 
 use super::extraction::MemberMetadata;
 
-/// Reads the process umask from `/proc/self/status`.
-///
-/// Avoids the process-global `umask(2)` set-and-restore race that would
-/// otherwise be unsafe in a multi-threaded GUI. Returns `0o022` when `/proc`
-/// is unavailable or the `Umask:` line cannot be parsed.
+/// Reading procfs avoids a process-global umask(2) race in the multithreaded GUI.
 pub(super) fn process_umask() -> u32 {
     std::fs::read_to_string("/proc/self/status")
         .ok()
@@ -35,13 +28,10 @@ pub(super) fn process_umask() -> u32 {
         .unwrap_or(0o022)
 }
 
-/// Permission bits of a stored member mode, without setuid, setgid, sticky
-/// or file-type bits.
 pub(super) fn permission_bits(mode: u32) -> u32 {
     mode & 0o777
 }
 
-/// Sets only the modification time; times before 1970 are not applied.
 fn timestamps(modified: SystemTime) -> Option<rustix::fs::Timestamps> {
     let since_epoch = modified.duration_since(UNIX_EPOCH).ok()?;
     Some(rustix::fs::Timestamps {
@@ -56,9 +46,7 @@ fn timestamps(modified: SystemTime) -> Option<rustix::fs::Timestamps> {
     })
 }
 
-/// Filesystems without Unix permissions or times (vfat, exFAT, some network
-/// and FUSE mounts) refuse them; like tar and unzip, extraction carries on.
-/// `ENOTSUP` has the value of `EOPNOTSUPP` on Linux.
+/// FAT and some network/FUSE mounts cannot store Unix permissions or timestamps.
 fn best_effort(result: rustix::io::Result<()>) -> rustix::io::Result<()> {
     match result {
         Err(rustix::io::Errno::PERM | rustix::io::Errno::OPNOTSUPP | rustix::io::Errno::INVAL) => {
@@ -68,8 +56,6 @@ fn best_effort(result: rustix::io::Result<()>) -> rustix::io::Result<()> {
     }
 }
 
-/// The calls that restore member metadata. Tests replace them to simulate
-/// filesystems that refuse Unix permissions or times.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct MetadataCalls {
     pub(super) chmod: fn(BorrowedFd<'_>, rustix::fs::Mode) -> rustix::io::Result<()>,
@@ -89,15 +75,21 @@ impl MetadataCalls {
 }
 
 /// Clamp parent traversal at the extraction root so one such member does not abort the archive.
-pub(super) fn sanitized_archive_path(name: &str) -> Result<PathBuf, String> {
-    let normalized = name.replace('\\', "/");
-    if normalized.is_empty() || normalized.starts_with('/') {
+pub(super) fn sanitized_archive_path(name: impl AsRef<OsStr>) -> Result<PathBuf, String> {
+    let native = name.as_ref();
+    let name = native.to_string_lossy();
+    let normalized: Vec<_> = native
+        .as_bytes()
+        .iter()
+        .map(|byte| if *byte == b'\\' { b'/' } else { *byte })
+        .collect();
+    if normalized.is_empty() || normalized.starts_with(b"/") {
         return Err(format!("Refusing unsafe archive path: {name}"));
     }
 
     let mut path = PathBuf::new();
-    for component in normalized.split('/') {
-        match component.as_bytes() {
+    for component in normalized.split(|byte| *byte == b'/') {
+        match component {
             b"" | b"." => {}
             b".." => {
                 path.pop();
@@ -105,7 +97,7 @@ pub(super) fn sanitized_archive_path(name: &str) -> Result<PathBuf, String> {
             bytes if bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' => {
                 return Err(format!("Refusing unsafe archive path: {name}"));
             }
-            _ => path.push(component),
+            _ => path.push(OsStr::from_bytes(component)),
         }
     }
     if path.as_os_str().is_empty() {
@@ -129,9 +121,6 @@ fn suffixed_name(name: &OsStr, index: u64) -> OsString {
     OsString::from_vec(candidate)
 }
 
-/// Archive name without a known archive extension, used to name the folder
-/// that holds several extracted entries. Falls back to the full name when
-/// nothing would remain, such as for an archive called `.zip`.
 pub(super) fn archive_stem(archive_name: &str) -> &str {
     let lower = archive_name.to_ascii_lowercase();
     let stem = [".tar.gz", ".tgz", ".tar", ".zip", ".7z", ".rar"]
@@ -149,12 +138,7 @@ pub(super) fn archive_stem(archive_name: &str) -> &str {
     }
 }
 
-/// Pinned directory for extraction.
-///
-/// One instance pins the user's destination and a second one pins the hidden
-/// staging folder created under it, which receives every member. All member
-/// creates go through the staging root with `NOFOLLOW`, so a symlink swapped
-/// into the destination tree cannot redirect writes outside it.
+/// Pinned roots and NOFOLLOW traversal prevent symlink swaps from redirecting writes.
 #[derive(Debug)]
 pub(super) struct ExtractionDestination {
     root: OwnedFd,
@@ -206,14 +190,6 @@ impl ExtractionDestination {
         Self { calls, ..self }
     }
 
-    /// Creates an empty hidden `.strata-extraction-<uuid>` folder under the
-    /// pinned root and pins it as a second destination. Members are written
-    /// there and published by name once the outcome is known.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if no fresh name can be created or the folder cannot
-    /// be opened without following a symlink.
     pub(super) fn create_staging(&self) -> Result<(OsString, Self), String> {
         for _ in 0..8 {
             let name = format!(".strata-extraction-{}", gtk::glib::uuid_string_random());
@@ -245,12 +221,6 @@ impl ExtractionDestination {
         Err("Could not create the extraction staging folder: no unused name".to_owned())
     }
 
-    /// Removes `staging` if it is empty. Returns `Ok(false)` when it still
-    /// holds entries.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the folder cannot be removed for another reason.
     pub(super) fn remove_empty_staging(&self, staging: &OsStr) -> Result<bool, String> {
         match rustix::fs::unlinkat(&self.root, staging, rustix::fs::AtFlags::REMOVEDIR) {
             Ok(()) => Ok(true),
@@ -262,25 +232,11 @@ impl ExtractionDestination {
         }
     }
 
-    /// Removes `staging` when it holds nothing but directories, deepest first.
-    /// Returns `Ok(false)`, leaving everything in place, as soon as a file or
-    /// other non-directory entry is found.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if a directory cannot be read or removed.
     pub(super) fn remove_directory_only_staging(&self, staging: &OsStr) -> Result<bool, String> {
         remove_directory_only_tree(self.root.as_fd(), staging)
             .map_err(|error| format!("Could not remove the extraction staging folder: {error}"))
     }
 
-    /// Renames `staging` to the archive stem, or `stem (n)` when that name is
-    /// taken, without replacing anything. Returns the published name.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the rename fails for a reason other than a taken
-    /// name; `staging` is then left in place.
     pub(super) fn publish_staging_as_folder(
         &self,
         staging: &OsStr,
@@ -329,15 +285,6 @@ impl ExtractionDestination {
         Err("No available extraction folder name".to_owned())
     }
 
-    /// Moves the single top-level `root` out of `staging` into this
-    /// destination under its own name, or `name (n)` when something already
-    /// uses it. Existing entries, including symlinks and special files, are
-    /// never replaced or followed. Returns the published name.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the rename fails for a reason other than a taken
-    /// name; `root` is then left in `staging`.
     pub(super) fn publish_single_root(
         &self,
         staging: &Self,
@@ -409,16 +356,6 @@ impl ExtractionDestination {
         Ok(Some(stat.f_bavail.saturating_mul(block)))
     }
 
-    /// Finds a name in `directory` that does not already exist.
-    ///
-    /// Tries `name`, then [`suffixed_name`] with increasing indexes. Existing
-    /// regular files, directories and symlinks are skipped; special filesystem
-    /// objects (devices, sockets, FIFOs) are refused rather than overwritten.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if `directory` cannot be inspected or an existing
-    /// candidate is a special filesystem object.
     fn available_name<Fd: AsFd>(&self, directory: &Fd, name: &OsStr) -> Result<OsString, String> {
         for index in 1.. {
             let candidate = if index == 1 {
@@ -470,12 +407,6 @@ impl ExtractionDestination {
         self.descend(path, true)
     }
 
-    /// Opens the existing directory `path` with the same confinement as
-    /// [`Self::create_directories`], creating nothing.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if a component is missing, a symlink or not a directory.
     pub(super) fn open_directory(&self, path: &Path) -> Result<OwnedFd, String> {
         self.descend(path, false)
     }
@@ -507,8 +438,6 @@ impl ExtractionDestination {
         Ok(directory)
     }
 
-    /// Creates the parents of `path` and picks an unused leaf name. Returns
-    /// the parent, the leaf and the relative path that leaf will have.
     fn prepare_leaf(&self, path: &Path) -> Result<(OwnedFd, OsString, PathBuf), String> {
         let parent = self.create_directories(path.parent().unwrap_or_else(|| Path::new("")))?;
         let name = path
@@ -519,23 +448,6 @@ impl ExtractionDestination {
         Ok((parent, name, created))
     }
 
-    /// Creates the file at `path`, renaming the leaf if that name is already taken.
-    ///
-    /// Parent directories are created with [`Self::create_directories`]. The
-    /// leaf is opened with [`CREATE`], [`EXCL`], and [`NOFOLLOW`] so an existing
-    /// file or symlink is never overwritten. The file gets the permission bits
-    /// of `mode` (`0o666` when absent), masked by the umask. Returns the open
-    /// file and the relative path actually created, which may differ from
-    /// `path` after a rename.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if `path` has no file name, a parent cannot be created,
-    /// no unused name can be found, or the exclusive create fails.
-    ///
-    /// [`CREATE`]: rustix::fs::OFlags::CREATE
-    /// [`EXCL`]: rustix::fs::OFlags::EXCL
-    /// [`NOFOLLOW`]: rustix::fs::OFlags::NOFOLLOW
     pub(super) fn create_file(
         &self,
         path: &Path,
@@ -557,13 +469,6 @@ impl ExtractionDestination {
         Ok((file, created))
     }
 
-    /// Creates a symlink at `path` pointing at `target` exactly as stored,
-    /// renaming the leaf like [`Self::create_file`]. The link is never
-    /// followed, and its own modification time is set when known.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the link cannot be created or stamped.
     pub(super) fn create_symlink(
         &self,
         path: &Path,
@@ -590,12 +495,6 @@ impl ExtractionDestination {
         Ok(created)
     }
 
-    /// Sets the modification time of an open file, ignoring filesystems that
-    /// do not store one.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the filesystem refuses the time for another reason.
     pub(super) fn set_file_times(
         &self,
         file: &std::fs::File,
@@ -607,12 +506,7 @@ impl ExtractionDestination {
         }
     }
 
-    /// Creates `path` as a hard link to `target`, an entry this destination
-    /// already holds. A symlink target is linked itself, never followed.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if `target` is not available here or the link fails.
+    /// Link symlinks themselves rather than following their targets outside staging.
     pub(super) fn create_hard_link(&self, path: &Path, target: &Path) -> Result<PathBuf, String> {
         let unavailable = |error: String| {
             format!(
@@ -645,13 +539,6 @@ impl ExtractionDestination {
         Ok(created)
     }
 
-    /// Restores a directory's mode, masked by `umask`, and modification time.
-    /// Filesystems that store neither are ignored.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the directory cannot be opened without following a
-    /// symlink, or its mode or time cannot be set for another reason.
     pub(super) fn apply_directory_metadata(
         &self,
         path: &Path,
@@ -681,8 +568,7 @@ impl ExtractionDestination {
         Ok(())
     }
 
-    /// Gives a directory back the default mode, so a failed extraction's
-    /// output stays writable. Best effort: the failure is already reported.
+    /// Keep failed output removable; the original metadata error is already reported.
     pub(super) fn reset_directory_mode(&self, path: &Path, umask: u32) {
         if let Ok(directory) = self.open_directory(path) {
             let mode = rustix::fs::Mode::from_raw_mode(0o777 & !umask);
@@ -713,7 +599,6 @@ impl ExtractionDestination {
     }
 }
 
-/// `renameat2(RENAME_NOREPLACE)` between two pinned directories.
 type RenameNoReplace = fn(BorrowedFd<'_>, &OsStr, BorrowedFd<'_>, &OsStr) -> rustix::io::Result<()>;
 
 fn rename_no_replace(
@@ -731,13 +616,7 @@ fn rename_no_replace(
     )
 }
 
-/// Moves `from` to `to` without ever replacing an existing entry.
-///
-/// Filesystems without `RENAME_NOREPLACE` (some NFS and FUSE mounts) get a
-/// fallback that keeps the no-clobber guarantee: a file is hard-linked (which
-/// fails with `EEXIST`) and then unlinked; a directory first reserves `to` with
-/// `mkdirat` and then replaces only that empty reservation. A plain rename is
-/// never aimed at a name this function did not just create.
+/// Without RENAME_NOREPLACE, only non-directories have a safe link/unlink fallback.
 fn move_without_replacing(
     from_directory: BorrowedFd<'_>,
     from: &OsStr,
@@ -747,13 +626,13 @@ fn move_without_replacing(
 ) -> rustix::io::Result<()> {
     match rename(from_directory, from, to_directory, to) {
         Err(rustix::io::Errno::INVAL | rustix::io::Errno::NOSYS | rustix::io::Errno::OPNOTSUPP) => {
-            move_by_reservation(from_directory, from, to_directory, to)
+            move_by_link(from_directory, from, to_directory, to)
         }
         result => result,
     }
 }
 
-fn move_by_reservation(
+fn move_by_link(
     from_directory: BorrowedFd<'_>,
     from: &OsStr,
     to_directory: BorrowedFd<'_>,
@@ -772,11 +651,8 @@ fn move_by_reservation(
         let _ = rustix::fs::unlinkat(from_directory, from, rustix::fs::AtFlags::empty());
         return Ok(());
     }
-    rustix::fs::mkdirat(to_directory, to, rustix::fs::Mode::from_raw_mode(0o700))?;
-    rustix::fs::renameat(from_directory, from, to_directory, to).inspect_err(|_| {
-        // Only succeeds while the reservation is still an empty directory.
-        let _ = rustix::fs::unlinkat(to_directory, to, rustix::fs::AtFlags::REMOVEDIR);
-    })
+    // A mkdir reservation can be replaced before renameat, which would clobber it.
+    Err(rustix::io::Errno::OPNOTSUPP)
 }
 
 fn remove_directory_only_tree(parent: BorrowedFd<'_>, name: &OsStr) -> rustix::io::Result<bool> {
@@ -817,12 +693,7 @@ fn remove_directory_only_tree(parent: BorrowedFd<'_>, name: &OsStr) -> rustix::i
     Ok(true)
 }
 
-/// Tracks renamed top-level entries so nested members follow the same rename.
-///
-/// Extraction resolves names inside a fresh staging folder, so the leaf
-/// conflict naming in [`ExtractionDestination::create_file`] only renames
-/// duplicates within the archive (`same.txt`, then `same (2).txt`). A top-level
-/// name is resolved once and reused for every later member under it.
+/// Nested members must share their root's conflict rename.
 pub(super) struct ExtractNameResolver {
     renames: std::collections::HashMap<OsString, OsString>,
 }

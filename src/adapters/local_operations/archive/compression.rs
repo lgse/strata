@@ -165,15 +165,12 @@ enum ArchiveSource {
     File(std::fs::File),
     /// Open directory used to walk children descriptor-relative.
     Directory(std::fs::File),
-    /// Symlink target as stored, archived as a link rather than followed,
-    /// with the link's own modification time.
     Symlink {
         target: PathBuf,
         modified: Option<SystemTime>,
     },
 }
 
-/// Modification time and `st_mode` recorded for a member.
 fn source_metadata(source: &ArchiveSource) -> Result<(Option<SystemTime>, Option<u32>), String> {
     match source {
         ArchiveSource::File(file) | ArchiveSource::Directory(file) => {
@@ -193,7 +190,7 @@ fn unix_seconds(time: SystemTime) -> Option<u64> {
         .map(|since_epoch| since_epoch.as_secs())
 }
 
-/// Local-time DOS stamp, clamped to the 1980–2107 range the format can hold.
+/// DOS timestamps use local time and can only represent 1980–2107.
 fn zip_datetime(modified: Option<SystemTime>) -> zip::DateTime {
     let Some(local) = modified
         .and_then(unix_seconds)
@@ -219,8 +216,6 @@ fn zip_datetime(modified: Option<SystemTime>) -> zip::DateTime {
     }
 }
 
-/// Per-member options carrying the DOS time, an Info-ZIP `UT` field when the
-/// time fits its signed 32 bits, and the Unix mode when known.
 fn zip_member_options<'k>(
     base: zip::write::FileOptions<'k, ()>,
     modified: Option<SystemTime>,
@@ -443,8 +438,6 @@ fn compression_result(
 /// Regular files use deflate level 6 unless [`is_incompressible`] selects
 /// stored. An optional `password` enables AES-256 encryption. Symbolic-link
 /// targets must be UTF-8; otherwise the caller is asked to use TAR instead.
-/// Each member records its modification time (local DOS time plus an
-/// Info-ZIP `UT` field) and, except for links, its Unix permissions.
 ///
 /// # Arguments
 ///
@@ -545,8 +538,7 @@ pub(super) fn compress_zip(
 /// Writes a TAR archive of `entries` into `file`.
 ///
 /// When `gzip` is set, the TAR stream is wrapped in one gzip member at that level.
-/// Symbolic links are preserved as links. Every member records its mode and
-/// modification time.
+/// Symbolic links are preserved as links.
 ///
 /// # Arguments
 ///
@@ -720,8 +712,7 @@ fn is_incompressible(path: &Path) -> bool {
 ///
 /// Uses LZMA2 at level 6 with a thread count from
 /// [`std::thread::available_parallelism`]. An optional `password` adds AES
-/// encryption. Symbolic links are not supported. Members record their times
-/// and Unix mode (p7zip attribute convention).
+/// encryption. Symbolic links are not supported.
 ///
 /// # Arguments
 ///

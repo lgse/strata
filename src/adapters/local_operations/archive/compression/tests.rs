@@ -668,8 +668,6 @@ fn zip_extended_time(entry: &zip::read::ZipFile<'_, fs::File>) -> Option<i64> {
     })
 }
 
-/// Mode bits and the modification time each member records, preferring the
-/// ZIP `UT` field over the DOS time.
 fn read_compressed_metadata(
     path: &Path,
     format: ArchiveFormat,

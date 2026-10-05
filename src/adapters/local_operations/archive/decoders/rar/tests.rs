@@ -50,7 +50,6 @@ fn wire_metadata_maps_to_member_metadata() {
             Some(WireTime::DosLocal(0x4707_8AA4)),
             at(dos_local.try_into().expect("after 1970")),
         ),
-        // A FILETIME before 1970 is not applied.
         (None, Some(WireTime::FileTime(1)), None),
     ] {
         assert_eq!(
@@ -61,8 +60,6 @@ fn wire_metadata_maps_to_member_metadata() {
             }
         );
     }
-    // Only a mode whose type matches the member applies; a RAR symlink
-    // arrives as a file and keeps the default permissions.
     for (mode, directory, applied) in [
         (0o040_755, true, true),
         (0o040_755, false, false),

@@ -8,7 +8,6 @@ const METADATA: WireMetadata = WireMetadata {
     modified: Some(WireTime::FileTime(130_830_000_680_000_000)),
 };
 
-/// A record header with `text` appended, bypassing the writer's validation.
 fn raw_record(kind: u32, text: &[u8], size: u64, mode: u32, time: (u32, u64)) -> Vec<u8> {
     let mut buffer = Vec::new();
     buffer.extend_from_slice(&kind.to_le_bytes());

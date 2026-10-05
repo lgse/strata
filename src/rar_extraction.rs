@@ -9,7 +9,6 @@ const MAGIC: &[u8; 8] = b"STRRAR02";
 /// enough that a malformed/compromised child cannot force a huge allocation.
 const MAX_TEXT_BYTES: u32 = 8192;
 const HEADER_BYTES: usize = 32;
-/// Wire encoding of an absent mode.
 const NO_MODE: u32 = u32::MAX;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -21,7 +20,6 @@ pub(crate) enum WireTime {
     DosLocal(u32),
 }
 
-/// Member mode and modification time as UnRAR reports them.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct WireMetadata {
     pub(crate) mode: Option<u32>,
