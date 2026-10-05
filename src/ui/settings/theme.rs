@@ -11,7 +11,7 @@ use crate::{
     assets::icons,
     ui::{
         controls::segmented_control,
-        preferences::{InterfaceRenderer, PreferenceManager, TextSize},
+        preferences::{InterfaceRenderer, OmarchyVariant, PreferenceManager, TextSize},
         theme::{Theme, ThemeManager, ThemeTokens},
     },
 };
@@ -23,6 +23,8 @@ use super::{
 };
 
 mod editor;
+#[cfg(test)]
+mod tests;
 use editor::theme_editor;
 
 pub(super) struct ThemePage {
@@ -39,6 +41,7 @@ pub(super) fn theme_page(
 
     let system = super::settings_group(&content, "THEME");
     let follow = append_follow_omarchy_option(&system, &themes);
+    append_omarchy_variant_option(&system, &preferences, &themes);
     let current = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     current.set_valign(gtk::Align::Center);
     current.set_halign(gtk::Align::Start);
@@ -283,6 +286,39 @@ fn append_follow_omarchy_option(content: &gtk::Box, themes: &Rc<ThemeManager>) -
         super::search::set_available,
     );
     follow
+}
+
+fn append_omarchy_variant_option(
+    content: &gtk::Box,
+    preferences: &Rc<PreferenceManager>,
+    themes: &Rc<ThemeManager>,
+) {
+    let choice = super::bindings::choice_menu(
+        preferences,
+        "Omarchy variant",
+        &[
+            ("Original", OmarchyVariant::Original),
+            ("Darker", OmarchyVariant::Darker),
+            ("High contrast", OmarchyVariant::HighContrast),
+        ],
+        PreferenceManager::omarchy_variant,
+        PreferenceManager::set_omarchy_variant,
+    );
+    let row = super::control_row(
+        "Omarchy variant",
+        "Original palette mapping, darker surfaces, or stronger contrast. Keeps following your system theme.",
+        &choice,
+    );
+    super::indent_row(&row);
+    themes.bind_theme_preference(
+        &row,
+        |manager| (manager.is_omarchy_available(), manager.follows_omarchy()),
+        |widget, (available, following)| {
+            super::search::set_available(widget, available);
+            widget.set_sensitive(following);
+        },
+    );
+    content.append(&row);
 }
 
 fn append_text_size_option(content: &gtk::Box, preferences: &Rc<PreferenceManager>) {

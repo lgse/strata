@@ -58,7 +58,17 @@ On Omarchy Quattro, Strata detects the active theme from:
 ~/.local/state/omarchy/current/theme/colors.toml
 ```
 
-The application maps Quattro's `background`, `foreground`, `accent`, `selection`, and `color8` values into its semantic tokens and monitors the current-theme state for changes. It defaults to following Omarchy on first launch.
+The application maps Quattro's `background`, `foreground`, `accent`, `selection`, and `color8` values into its semantic tokens and monitors the current-theme state for changes, including edits to `colors.toml`. It defaults to following Omarchy on first launch.
+
+Under **Settings → Appearance → Follow Omarchy**, **Omarchy variant** offers:
+
+- **Original** (default): the existing palette mapping, unchanged.
+- **Darker**: dark surfaces based on the terminal background instead of the brighter ANSI gray, with readable text and accents. Light palettes also become dark interpretations.
+- **High contrast**: stronger text and boundary contrast, retaining a light palette's light appearance or a dark palette's dark appearance.
+
+The variants keep palette hues and adjust brightness where necessary; they do not invert colors or substitute another theme. Darker and High contrast derive muted/hover surfaces from the same palette, adjust semantic foregrounds for at least 4.5:1 contrast against those surfaces, and adapt preview syntax colors. High contrast targets 7:1 for primary text and 3:1 for borders. These are semantic-token targets, not a guarantee for every composited or disabled widget state.
+
+The choice is saved as `omarchy_variant = "original"`, `"darker"`, or `"high_contrast"` in Strata's `settings.toml`. It applies before Settings opens and live across windows, menus, dialogs, icons, and previews. Changing the active Omarchy theme retains the variant. Turning off Follow Omarchy disables the selector but remembers its value; bundled and custom themes are unaffected.
 
 Syntax colors follow Quattro's named `magenta`, `green`, `orange`, `cyan`, and `yellow` colors. Older terminal palettes can supply `color5` for keywords, `color2` for strings, `color9` for constants, and `color3` for types. Missing colors retain the existing source-palette or derived fallback.
 

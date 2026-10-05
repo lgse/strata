@@ -7,6 +7,8 @@ use std::{
     rc::Rc,
 };
 
+use sourceview5::prelude::BufferExt as _;
+
 use super::super::*;
 use crate::{
     model::{
@@ -54,6 +56,7 @@ fn older_preferences_keep_backward_compatible_behavior_defaults() {
     saved.remove("date_format");
     saved.remove("send_to_recent_destinations");
     saved.remove("tenxer_mode");
+    saved.remove("omarchy_variant");
     let restored: Preferences = saved.try_into().expect("backward-compatible preferences");
     assert_eq!(
         restored,
@@ -63,6 +66,7 @@ fn older_preferences_keep_backward_compatible_behavior_defaults() {
             date_format: "relative".into(),
             send_to_recent_destinations: HashMap::new(),
             tenxer_mode: false,
+            omarchy_variant: OmarchyVariant::Original,
             ..non_default_preferences()
         }
     );
@@ -141,12 +145,14 @@ fn send_to_history_is_device_scoped_deduplicated_capped_and_persistent() {
 fn a_malformed_preference_does_not_discard_the_others() {
     let mut saved = toml::Table::try_from(non_default_preferences()).expect("saved preferences");
     saved.insert("show_hidden".into(), "yes".into());
+    saved.insert("omarchy_variant".into(), "unknown".into());
     assert!(saved.clone().try_into::<Preferences>().is_err());
 
     assert_eq!(
         salvage_preferences(saved),
         Preferences {
             show_hidden: false,
+            omarchy_variant: OmarchyVariant::Original,
             ..non_default_preferences()
         }
     );
@@ -528,15 +534,130 @@ fn saved_omarchy_mode_loads_and_changes_through_the_same_binding() {
                 move |_, value| observed.borrow_mut().push(value),
             );
             assert_eq!(*values.borrow(), [true]);
+            let preferences = PreferenceManager::shared();
+            let windows = [gtk::Window::new(), gtk::Window::new()];
+            let buffer = gtk::TextBuffer::new(None);
+            buffer.create_tag(Some("document-accent"), &[]);
+            crate::ui::theme::register_document_buffer(&buffer);
+            let source = sourceview5::Buffer::new(None);
+            crate::ui::theme::register_source_buffer(&source);
+            let startup = manager.appearance_tokens();
+            for variant in [
+                OmarchyVariant::Darker,
+                OmarchyVariant::Original,
+                OmarchyVariant::HighContrast,
+                OmarchyVariant::Darker,
+            ] {
+                preferences.set_omarchy_variant(variant);
+                let tokens = manager.appearance_tokens();
+                assert_eq!(tokens == startup, variant == OmarchyVariant::Darker);
+                for window in &windows {
+                    assert_theme_colors(window, &tokens);
+                    let rebuilt_view = gtk::Box::new(gtk::Orientation::Vertical, 0);
+                    window.set_child(Some(&rebuilt_view));
+                    assert_theme_colors(&rebuilt_view, &tokens);
+                }
+                let rebuilt_buffer = gtk::TextBuffer::new(None);
+                rebuilt_buffer.create_tag(Some("document-accent"), &[]);
+                crate::ui::theme::register_document_buffer(&rebuilt_buffer);
+                for buffer in [&buffer, &rebuilt_buffer] {
+                    assert_eq!(
+                        buffer
+                            .tag_table()
+                            .lookup("document-accent")
+                            .expect("document accent tag")
+                            .foreground_rgba(),
+                        Some(gtk::gdk::RGBA::parse(&tokens.accent).expect("valid accent"))
+                    );
+                }
+                assert_eq!(
+                    source
+                        .style_scheme()
+                        .expect("active source scheme")
+                        .style("text")
+                        .expect("source text style")
+                        .background()
+                        .as_deref(),
+                    Some(tokens.surface.as_str())
+                );
+                assert_eq!(
+                    read_preferences().expect("saved variant").omarchy_variant,
+                    variant
+                );
+            }
+            let before_change = manager.appearance_tokens();
+            fs::write(
+                crate::ui::theme::omarchy_state_dir().join("theme/colors.toml"),
+                "background = '#201a12'\nforeground = '#ffeedd'\naccent = '#eebb99'\n",
+            )
+            .expect("update Omarchy colors");
+            wait_for_theme(|| {
+                manager.appearance_tokens() != before_change && {
+                    #[expect(deprecated, reason = "GTK has no replacement for named CSS colors")]
+                    let accent = windows[0]
+                        .style_context()
+                        .lookup_color("theme_accent")
+                        .expect("applied accent");
+                    accent
+                        == gtk::gdk::RGBA::parse(&manager.appearance_tokens().accent)
+                            .expect("valid updated accent")
+                }
+            });
+            assert_eq!(preferences.omarchy_variant(), OmarchyVariant::Darker);
+            for window in &windows {
+                assert_theme_colors(window, &manager.appearance_tokens());
+            }
             manager.set_follow_omarchy(false);
+            let builtin = manager.appearance_tokens();
+            preferences.set_omarchy_variant(OmarchyVariant::HighContrast);
+            assert_eq!(manager.appearance_tokens(), builtin);
+            for window in &windows {
+                assert_theme_colors(window, &builtin);
+            }
             manager.set_follow_omarchy(true);
+            assert_ne!(manager.appearance_tokens(), builtin);
             assert_eq!(*values.borrow(), [true, false, true]);
+            for window in windows {
+                window.close();
+            }
             assert_eq!(
                 read_preferences().expect("saved theme mode").mode,
                 "omarchy"
             );
         },
     );
+}
+
+fn assert_theme_colors(widget: &impl IsA<gtk::Widget>, tokens: &crate::ui::theme::ThemeTokens) {
+    for (name, expected) in [
+        ("theme_bg", &tokens.background),
+        ("theme_surface", &tokens.surface),
+        ("theme_accent", &tokens.accent),
+        ("theme_text", &tokens.text),
+    ] {
+        #[expect(deprecated, reason = "GTK has no replacement for named CSS colors")]
+        let actual = widget
+            .style_context()
+            .lookup_color(name)
+            .expect("applied theme color");
+        assert_eq!(
+            actual,
+            gtk::gdk::RGBA::parse(expected).expect("valid token"),
+            "{name}"
+        );
+    }
+}
+
+fn wait_for_theme(mut ready: impl FnMut() -> bool) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !ready() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "live Omarchy refresh timed out"
+        );
+        glib::MainContext::default().iteration(false);
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
 }
 
 #[test]
@@ -571,6 +692,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_show_keybinding_hints(true),
                 |m| m.set_reduce_motion(false),
                 |m| m.set_element_glow(true),
+                |m| m.set_omarchy_variant(OmarchyVariant::HighContrast),
                 |m| m.set_browser_mode(BrowserMode::Icons),
                 |m| m.set_browser_density(BrowserDensity::Compact),
                 |m| m.set_group_by_type(false),

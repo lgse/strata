@@ -40,10 +40,21 @@ pub(crate) enum InterfaceRenderer {
     System,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum OmarchyVariant {
+    #[default]
+    Original,
+    Darker,
+    HighContrast,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub(in crate::ui) struct Preferences {
     mode: String,
     theme: String,
+    #[serde(default)]
+    omarchy_variant: OmarchyVariant,
     #[serde(default = "default_enabled")]
     folder_peeking: bool,
     #[serde(default = "default_enabled")]
@@ -196,6 +207,7 @@ impl Default for Preferences {
         Self {
             mode: "theme".to_owned(),
             theme: "tokyo-night".to_owned(),
+            omarchy_variant: OmarchyVariant::default(),
             folder_peeking: true,
             single_click_previews: true,
             columns_mirror_selection: true,
@@ -710,6 +722,18 @@ impl PreferenceManager {
         refresh: impl Fn(&gtk::Widget, bool) + 'static,
     ) {
         self.bind_preference(anchor, Self::show_keybinding_hints, refresh);
+    }
+
+    pub fn omarchy_variant(&self) -> OmarchyVariant {
+        self.preferences.borrow().omarchy_variant
+    }
+
+    pub fn set_omarchy_variant(&self, variant: OmarchyVariant) {
+        if self.omarchy_variant() == variant {
+            return;
+        }
+        self.preferences.borrow_mut().omarchy_variant = variant;
+        self.save_preferences();
     }
 
     pub fn element_glow(&self) -> bool {

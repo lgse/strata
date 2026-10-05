@@ -150,6 +150,12 @@ const TARGETS: &[Target] = &[
         aliases: "appearance system theme quattro",
     },
     Target {
+        id: "omarchy-variant",
+        page: "theme",
+        title: "Omarchy variant",
+        aliases: "appearance system theme quattro palette original normal darker dark high contrast brightness",
+    },
+    Target {
         id: "current-theme",
         page: "theme",
         title: "Current theme",
