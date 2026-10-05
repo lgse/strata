@@ -203,6 +203,8 @@ pub(super) fn compress(request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)
 /// locations through [`CancelledOperation`]. Completed extractions spilling
 /// more than one top-level entry are bundled into a folder named after the
 /// archive stem; [`Extracted::first_name`] then selects that folder.
+/// Refuses a path that exists but is not a regular file with [`Failed`]
+/// before touching the destination.
 ///
 /// # Concurrency
 ///
@@ -228,6 +230,19 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
             });
             return;
         };
+        // A folder or special file can carry an archive extension; the decoders
+        // would open it and fail with a raw OS error (or block on a FIFO). The
+        // quoted name keeps a word like "password" in it from triggering the
+        // UI's password retry.
+        if let Ok(metadata) = std::fs::metadata(&archive_path)
+            && !metadata.is_file()
+        {
+            emit(OperationEvent::Failed {
+                request_id: request.id,
+                message: format!("Not an archive: `{}`", request.entry.display_name),
+            });
+            return;
+        }
         let Some(dest_dir) = request.destination.native_path().map(Path::to_path_buf) else {
             emit(OperationEvent::Failed {
                 request_id: request.id,

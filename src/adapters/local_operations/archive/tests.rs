@@ -438,6 +438,7 @@ fn extraction_failures_stop_progress_and_preserve_error_distinctions() -> Result
     let root = tempfile::tempdir()?;
     let destination = root.path().join("destination");
     fs::create_dir(&destination)?;
+    let unmade_destination = root.path().join("unmade");
     for (name, expected) in [
         (
             "fake.zip",
@@ -456,9 +457,13 @@ fn extraction_failures_stop_progress_and_preserve_error_distinctions() -> Result
         ("unreadable.zip", "Permission denied"),
         ("destination.zip", "Not a directory"),
         ("unknown.iso", "Unsupported archive format"),
+        ("folder.zip", "Not an archive: `folder.zip`"),
+        ("passwords.zip", "Not an archive: `passwords.zip`"),
     ] {
         let archive = root.path().join(name);
-        if name != "missing.zip" {
+        if matches!(name, "folder.zip" | "passwords.zip") {
+            fs::create_dir(&archive)?;
+        } else if name != "missing.zip" {
             fs::write(&archive, b"not an archive")?;
         }
         if name == "unreadable.zip" {
@@ -473,10 +478,10 @@ fn extraction_failures_stop_progress_and_preserve_error_distinctions() -> Result
             ExtractRequest {
                 id: OperationRequestId(434),
                 entry: test_file_entry(&archive),
-                destination: Location::local(if name == "destination.zip" {
-                    &archive
-                } else {
-                    &destination
+                destination: Location::local(match name {
+                    "destination.zip" => &archive,
+                    "folder.zip" => &unmade_destination,
+                    _ => &destination,
                 }),
                 created_destination: false,
                 password: None,
@@ -516,6 +521,7 @@ fn extraction_failures_stop_progress_and_preserve_error_distinctions() -> Result
         );
         drop(handle);
         assert!(destination.read_dir()?.next().is_none());
+        assert!(!unmade_destination.exists());
         assert!(!root.path().join("outside").exists());
     }
     Ok(())
