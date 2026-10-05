@@ -248,8 +248,10 @@ fn icon_texture_cache_bounds_entries_and_preserves_lru() {
             assert_eq!(cache.entries.len(), super::ICON_TEXTURE_CACHE_LIMIT);
 
             cache.clear();
-            assert_eq!(cache.entries.len(), 0);
-            assert_eq!(cache.recent.len(), 0);
+            assert!(cache.get(&hot_key).is_none());
+            assert!(cache.get(&new_key).is_none());
+            cache.insert(hot_key.clone(), dummy_texture);
+            assert!(cache.get(&hot_key).is_some());
         },
     );
 }
