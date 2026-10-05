@@ -1,8 +1,11 @@
 # SPDX-License-Identifier: MIT
+import gzip
+import io
 import os
 import re
 import shutil
 import struct
+import tarfile
 import zipfile
 import zlib
 from pathlib import Path
@@ -68,6 +71,18 @@ def _write_zip_with_absolute_member(path):
         archive.writestr(zipfile.ZipInfo("/etc/evil.txt"), "evil")
 
 
+def _write_tar_gz_with_bad_trailer(path):
+    raw = io.BytesIO()
+    data = b"x" * 50_000
+    with tarfile.open(fileobj=raw, mode="w") as archive:
+        info = tarfile.TarInfo("a.txt")
+        info.size = len(data)
+        archive.addfile(info, io.BytesIO(data))
+    damaged = bytearray(gzip.compress(raw.getvalue()))
+    damaged[-8] ^= 0xFF
+    path.write_bytes(bytes(damaged))
+
+
 @pytest.mark.parametrize("name,write_fixture,detail,kept,members", [
     *(
         pytest.param(name, _write_text, INVALID_ARCHIVE, None, [], id=name)
@@ -80,6 +95,14 @@ def _write_zip_with_absolute_member(path):
         "scatter",
         ["ok.txt", "second.txt"],
         id="scatter.zip",
+    ),
+    pytest.param(
+        "trailer.tar.gz",
+        _write_tar_gz_with_bad_trailer,
+        f"{INVALID_ARCHIVE} Extracted entries remain in `trailer`.",
+        "trailer",
+        ["a.txt"],
+        id="trailer.tar.gz",
     ),
 ])
 def test_invalid_archive_reports_damage_and_allows_another_extraction(

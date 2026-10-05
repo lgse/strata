@@ -4,11 +4,12 @@ use super::{
     ArchiveError, copy_with_big_buf,
     decoders::{extract_7z_from_reader, extract_tar},
     fixtures::{
-        COMPRESSION_STAGE, EXTRACTION_STAGE, HomeTrashGuard, extract_zip, stages,
+        COMPRESSION_STAGE, EXTRACTION_STAGE, HomeTrashGuard, corrupt_gzip_trailer, extract_zip, stages,
         never_cancelled,
         tempdir_on_home_device, test_file_entry, write_7z_entries, write_tar_entries,
         write_zip_stored,
     },
+    listing::INVALID_ARCHIVE,
 };
 use crate::{
     adapters::local_operations::LocalOperationProvider,
@@ -962,6 +963,48 @@ fn bundled_extraction_reserves_a_fresh_name_against_existing_entries() -> Result
     assert_eq!(
         fs::read_link(destination.join("bundle (1)"))?,
         Path::new("missing")
+    );
+    Ok(())
+}
+
+#[test]
+fn gzip_trailer_failure_is_reported_through_the_provider() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let archive = root.path().join("content.tar.gz");
+    let large = vec![b'x'; 50_000];
+    write_tar_entries(
+        &archive,
+        &[
+            (tar::EntryType::Regular, "a.txt", &large),
+            (tar::EntryType::Regular, "b.txt", b"b"),
+        ],
+        true,
+    )?;
+    corrupt_gzip_trailer(&archive, 8)?;
+    let destination = tempfile::tempdir()?;
+
+    let events = run_extraction(ExtractRequest {
+        id: OperationRequestId(7),
+        entry: test_file_entry(&archive),
+        destination: Location::local(destination.path()),
+        created_destination: false,
+        password: None,
+    });
+
+    let Some(OperationEvent::Failed { message, .. }) = events.last() else {
+        panic!("a damaged gzip trailer was accepted: {events:?}");
+    };
+    assert_eq!(
+        *message,
+        format!("{INVALID_ARCHIVE} Extracted entries remain in `content`.")
+    );
+    assert_eq!(entry_names(destination.path())?, ["content"]);
+    assert_eq!(
+        fs::metadata(destination.path().join("content/a.txt"))?.len(),
+        50_000
     );
     Ok(())
 }

@@ -234,6 +234,21 @@ pub(super) fn write_tar_entries(
     Ok(())
 }
 
+/// Flips one byte of the gzip trailer: `8` is the first CRC32 byte, `4` the first ISIZE byte.
+pub(super) fn corrupt_gzip_trailer(
+    path: &Path,
+    offset_from_end: usize,
+) -> Result<(), Box<dyn Error>> {
+    let mut bytes = fs::read(path)?;
+    let index = bytes
+        .len()
+        .checked_sub(offset_from_end)
+        .ok_or("gzip fixture is shorter than its trailer")?;
+    bytes[index] ^= 0xff;
+    fs::write(path, bytes)?;
+    Ok(())
+}
+
 pub(super) fn write_7z(path: &Path, name: &str, contents: &[u8]) -> Result<(), Box<dyn Error>> {
     write_7z_entries(path, &[(name, contents)])
 }

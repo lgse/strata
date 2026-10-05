@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::super::fixtures::{
-    always_cancelled, completed_extract, extract_zip, never_cancelled,
+    always_cancelled, completed_extract, corrupt_gzip_trailer, extract_zip, never_cancelled,
     patch_zip_uncompressed_size, write_7z, write_7z_entries, write_compression_fixture, write_tar,
     write_tar_entries, write_zip,
 };
@@ -1023,6 +1023,128 @@ fn truncated_headers_have_clear_errors() -> Result<(), Box<dyn Error>> {
         };
         assert_eq!(error.to_string(), super::INVALID_ARCHIVE, "{format:?}");
         assert!(destination.path().read_dir()?.next().is_none());
+    }
+    Ok(())
+}
+
+#[test]
+fn gzip_trailer_mismatch_fails_after_the_last_member() -> Result<(), Box<dyn Error>> {
+    let large = vec![b'x'; 50_000];
+    for (offset_from_end, label) in [(8, "crc32"), (4, "isize")] {
+        let root = tempfile::tempdir()?;
+        let archive = root.path().join("content.tar.gz");
+        write_tar_entries(
+            &archive,
+            &[
+                (tar::EntryType::Regular, "a.txt", &large),
+                (tar::EntryType::Regular, "b.txt", b"b"),
+            ],
+            true,
+        )?;
+        corrupt_gzip_trailer(&archive, offset_from_end)?;
+        let destination = tempfile::tempdir()?;
+        fs::write(destination.path().join("b.txt"), b"existing")?;
+        let progress = Arc::new(AtomicUsize::new(0));
+
+        let result = extract_tar(
+            &archive,
+            destination.path(),
+            "content.tar.gz",
+            true,
+            &progress,
+            &never_cancelled(),
+        );
+
+        let kept = format!("{} Extracted entries remain in `content`.", super::INVALID_ARCHIVE);
+        assert!(
+            matches!(&result, Err(ArchiveError::Failed(message)) if *message == kept),
+            "{label}: {result:?}"
+        );
+        assert_eq!(progress.load(Ordering::Relaxed), 2, "{label}");
+        assert_eq!(
+            fs::metadata(destination.path().join("content/a.txt"))?.len(),
+            50_000,
+            "{label}"
+        );
+        assert_eq!(
+            fs::read(destination.path().join("content/b.txt"))?,
+            b"b",
+            "{label}"
+        );
+        assert_eq!(
+            fs::read(destination.path().join("b.txt"))?,
+            b"existing",
+            "{label}"
+        );
+        assert_eq!(destination.path().read_dir()?.count(), 2, "{label}");
+    }
+    Ok(())
+}
+
+#[test]
+fn truncated_gzip_trailer_is_damaged() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let archive = root.path().join("content.tar.gz");
+    write_tar_entries(&archive, &[(tar::EntryType::Regular, "a.txt", b"a")], true)?;
+    let length = fs::metadata(&archive)?.len();
+    fs::OpenOptions::new()
+        .write(true)
+        .open(&archive)?
+        .set_len(length - 3)?;
+    let members = tar::Archive::new(flate2::read::GzDecoder::new(fs::File::open(&archive)?))
+        .entries()?
+        .count();
+    assert_eq!(members, 1, "the TAR stream must stay readable");
+    let destination = tempfile::tempdir()?;
+
+    let result = extract_tar(
+        &archive,
+        destination.path(),
+        "content.tar.gz",
+        true,
+        &Arc::new(AtomicUsize::new(0)),
+        &never_cancelled(),
+    );
+
+    let kept = format!("{} Extracted entries remain in `content`.", super::INVALID_ARCHIVE);
+    assert!(
+        matches!(&result, Err(ArchiveError::Failed(message)) if *message == kept),
+        "{result:?}"
+    );
+    assert_eq!(fs::read(destination.path().join("content/a.txt"))?, b"a");
+    assert_eq!(destination.path().read_dir()?.count(), 1);
+    Ok(())
+}
+
+#[test]
+fn gzip_trailer_check_is_cancellable() -> Result<(), Box<dyn Error>> {
+    let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    encoder.write_all(&[b'x'; 4096])?;
+    let valid = encoder.finish()?;
+    let mut corrupt = valid.clone();
+    let crc = corrupt.len() - 8;
+    corrupt[crc] ^= 0xff;
+    for (label, stream, cancelled, expected) in [
+        ("valid", &valid, never_cancelled(), Ok(())),
+        (
+            "cancelled",
+            &valid,
+            always_cancelled(),
+            Err(ArchiveError::Cancelled),
+        ),
+        (
+            "corrupt",
+            &corrupt,
+            never_cancelled(),
+            Err(ArchiveError::Failed(super::INVALID_ARCHIVE.to_owned())),
+        ),
+    ] {
+        let decoder = flate2::read::GzDecoder::new(Cursor::new(stream));
+        assert_eq!(
+            super::verify_gzip_trailer(decoder, &cancelled),
+            expected,
+            "{label}"
+        );
     }
     Ok(())
 }

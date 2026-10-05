@@ -6,6 +6,9 @@
 //! This boundary preserves legacy output semantics: TAR names use lossy UTF-8
 //! conversion, and non-directory entries (including links) become regular files.
 //! Native names and richer entry types remain part of the decoder evaluation.
+//!
+//! Gzip streams are read to the end after the last TAR entry so the CRC32 and
+//! length trailer is verified.
 
 use std::{
     collections::HashMap,
@@ -18,7 +21,7 @@ use std::{
 };
 
 use super::{
-    ARCHIVE_CANCELLED, ArchiveError, archive_failed,
+    ARCHIVE_CANCELLED, ArchiveError, archive_failed, copy_with_big_buf,
     extraction::{ArchiveOutcome, ExtractionSession, MemberContent},
 };
 
@@ -130,6 +133,11 @@ impl<R: Read> Read for ArchiveReader<R> {
             .read(buffer)
             .map_err(|error| archive_read_error(error, self.password_supplied))
     }
+}
+
+/// Reads the rest of a gzip stream so flate2 verifies CRC32/ISIZE; cancellable per chunk.
+fn verify_gzip_trailer(reader: impl Read, cancelled: &AtomicBool) -> Result<(), ArchiveError> {
+    copy_with_big_buf(ArchiveReader::new(reader), &mut std::io::sink(), cancelled).map(|_| ())
 }
 
 fn sevenz_error(error: ArchiveError) -> sevenz_rust2::Error {
@@ -250,6 +258,13 @@ pub(super) fn extract_tar(
         }
         Ok(())
     })();
+    let result = result.and_then(|()| {
+        if gzip {
+            verify_gzip_trailer(archive.into_inner(), cancelled)
+        } else {
+            Ok(())
+        }
+    });
     session.finish(result, || remaining.into_iter().collect())
 }
 
