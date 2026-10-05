@@ -535,7 +535,6 @@ impl PreviewDrawer {
     pub fn observe_browser(&self, browser: &Rc<Browser>) {
         let weak_state = Rc::downgrade(&self.state);
         let weak_browser = Rc::downgrade(browser);
-        let preview = self.clone();
         self.state.open.connect_clicked(move |_| {
             let (Some(state), Some(browser)) = (weak_state.upgrade(), weak_browser.upgrade())
             else {
@@ -549,7 +548,10 @@ impl PreviewDrawer {
             else {
                 return;
             };
-            let position = preview.prepare_handoff(&location);
+            let position = PreviewDrawer {
+                state: state.clone(),
+            }
+            .prepare_handoff(&location);
             super::browser::open_location_at(&location, position, &state.pane, &browser);
         });
         let preview = self.clone();
