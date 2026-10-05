@@ -169,6 +169,37 @@ fn unavailable_recent_targets_are_skipped() {
     assert!(matches!(resolution, RecentEntryResolution::Stale));
 }
 
+#[test]
+fn recent_symlink_targets_and_broken_links_are_distinguished() -> Result<(), Box<dyn Error>> {
+    use std::os::unix::fs::symlink;
+
+    let directory = tempfile::tempdir()?;
+    fs::create_dir(directory.path().join("directory"))?;
+    fs::write(directory.path().join("archive.zip"), b"fixture")?;
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    for (link, target, expected) in [
+        ("file-link.zip", "archive.zip", EntryKind::FileSymbolicLink),
+        ("directory-link", "directory", EntryKind::DirectorySymbolicLink),
+        ("broken-link.zip", "missing.zip", EntryKind::SymbolicLink),
+    ] {
+        let path = directory.path().join(link);
+        symlink(target, &path)?;
+        let recent = recent_info(&gio::File::for_path(&path).uri(), 42);
+        let resolution = glib::MainContext::default().block_on(resolve_recent_entry(
+            recent,
+            false,
+            Instant::now() + Duration::from_secs(10),
+        ));
+        let RecentEntryResolution::Entry(entry) = resolution else {
+            panic!("{link} should resolve to an entry");
+        };
+        assert_eq!(entry.kind, expected, "{link}");
+    }
+    Ok(())
+}
+
 struct BrowseSource {
     entry: FileEntry,
     validation_error: Option<LocationValidationError>,

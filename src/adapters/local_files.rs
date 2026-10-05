@@ -448,7 +448,7 @@ async fn resolve_recent_entry(
         remaining,
         target_file.query_info_future(
             attributes,
-            gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+            gio::FileQueryInfoFlags::NONE,
             glib::Priority::DEFAULT,
         ),
     )
