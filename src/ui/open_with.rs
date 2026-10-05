@@ -255,11 +255,17 @@ pub(in crate::ui) fn launch_at(
             command_line_at(&exec.to_string_lossy(), position.as_secs_f64())
         })
         .and_then(|command_line| {
-            let flags = if app.supports_uris() {
+            let mut flags = if app.supports_uris() {
                 gio::AppInfoCreateFlags::SUPPORTS_URIS
             } else {
                 gio::AppInfoCreateFlags::NONE
             };
+            if app
+                .downcast_ref::<gio_unix::DesktopAppInfo>()
+                .is_some_and(|desktop| desktop.boolean("StartupNotify"))
+            {
+                flags |= gio::AppInfoCreateFlags::SUPPORTS_STARTUP_NOTIFICATION;
+            }
             gio::AppInfo::create_from_commandline(command_line, Some(app.name().as_str()), flags)
                 .ok()
         });
