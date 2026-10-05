@@ -543,7 +543,10 @@ MB); the next visit to a partial board decodes only its missing cells.
 
 Opening a previewed video externally, with **Enter**, the header's Open button
 or activation in the listing, pauses the preview and hands its position to the
-default player. The launcher inserts the player's start option into its desktop
+default player. A file opened while its preview is still loading, as the second
+click of a double-click does, stays paused once that preview lands instead of
+autoplaying beside the player; moving to another file or pressing play lifts
+the hold. The launcher inserts the player's start option into its desktop
 `Exec` line before the file placeholder (or a bare `--`), seen through `env`
 and Flatpak wrappers: `--start` for mpv, `--start-time` for VLC, `--mpv-start`
 for Celluloid and `-ss` for MPlayer. Unknown players, failed timed launches and

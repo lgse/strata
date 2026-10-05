@@ -626,6 +626,61 @@ fn handoffs_pause_the_shown_video_and_report_positions_away_from_the_ends() {
 }
 
 #[test]
+fn files_opened_externally_stay_paused_when_their_preview_lands() {
+    crate::test_support::gtk_test(
+        "ui::preview::tests::video::files_opened_externally_stay_paused_when_their_preview_lands",
+        || {
+            let provider = Rc::new(Provider::default());
+            let drawer = PreviewDrawer::new(provider.clone(), false);
+            let preferences = crate::ui::preferences::PreferenceManager::shared();
+            preferences.set_preview_autoplay(true);
+            let state = &drawer.state;
+            // Synthetic clips keep the streams alive while the main loop runs.
+            let playing = || {
+                let media = state
+                    .media
+                    .borrow()
+                    .clone()
+                    .and_downcast::<crate::ui::media::DecodedMedia>()
+                    .expect("decoded stream");
+                media.use_test_stream();
+                media.is_playing()
+            };
+
+            // A double-click opens the file before the first click's preview has loaded.
+            let first = entry("a.mp4");
+            drawer.show(first.clone(), None);
+            assert_eq!(drawer.prepare_handoff(&first.location), None);
+            ready(&provider, 0, "video/mp4");
+            assert!(!playing(), "the opened file does not autoplay");
+
+            // The same when the preview was only debounced.
+            let second = entry("b.mp4");
+            state.show_after_focus_change(second.clone(), None);
+            assert_eq!(drawer.prepare_handoff(&second.location), None);
+            wait_until("the debounced show", || provider.0.borrow().len() == 2);
+            ready(&provider, 1, "video/mp4");
+            assert!(!playing());
+
+            assert!(state.media_command(gtk::gdk::Key::space));
+            assert!(playing(), "playing by hand lifts the hold");
+            drawer.close();
+            drawer.show(second, None);
+            ready(&provider, 2, "video/mp4");
+            assert!(playing(), "and the file autoplays again afterwards");
+
+            drawer.show(entry("c.mp4"), None);
+            assert_eq!(drawer.prepare_handoff(&entry("c.mp4").location), None);
+            drawer.show(entry("d.mp4"), None);
+            ready(&provider, 4, "video/mp4");
+            assert!(playing(), "moving to another file lifts the hold");
+            preferences.set_preview_autoplay(false);
+            drawer.close();
+        },
+    );
+}
+
+#[test]
 fn the_ease_in_curve_rises_evenly_and_lands_softly() {
     use crate::ui::preview::ease_in::gain as ease_in_gain;
     assert_eq!(ease_in_gain(0.0), 0.0);

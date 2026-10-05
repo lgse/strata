@@ -173,6 +173,8 @@ struct PreviewState {
     media_toggle_mute: RefCell<Option<Rc<dyn Fn()>>>,
     audio: RefCell<Option<AudioPreview>>,
     video: RefCell<Option<VideoPreview>>,
+    /// The file last handed to an external player; its preview stays paused.
+    handed_off: RefCell<Option<crate::model::Location>>,
     continue_playback: RefCell<Option<PlaybackContinuation>>,
     split: RefCell<Option<gtk::Paned>>,
     sizing: layout::SplitSizing,
@@ -396,6 +398,7 @@ impl PreviewDrawer {
             keyboard_view: RefCell::new(None),
             audio: RefCell::new(None),
             video: RefCell::new(None),
+            handed_off: RefCell::new(None),
             continue_playback: RefCell::new(None),
             claim_on_resume: Cell::new(false),
         });
@@ -495,12 +498,15 @@ impl PreviewDrawer {
 
     /// Pauses the previewed video and reports where it stopped, for opening it
     /// externally at that point. Other previews and the first or last second
-    /// yield nothing.
+    /// yield nothing. The file is remembered either way, so a preview of it
+    /// that is still loading (a double-click opens before the first click's
+    /// preview lands) does not autoplay beside the player.
     pub(in crate::ui) fn prepare_handoff(
         &self,
         location: &crate::model::Location,
     ) -> Option<Duration> {
         let state = &self.state;
+        state.handed_off.replace(Some(location.clone()));
         if state
             .current
             .borrow()
@@ -813,6 +819,9 @@ impl PreviewState {
     fn show(self: &Rc<Self>, entry: FileEntry, depth: Option<usize>) {
         self.cancel_pending_show();
         self.retain_pending_playback(&entry);
+        if self.handed_off.borrow().as_ref() != Some(&entry.location) {
+            self.handed_off.take();
+        }
         self.current_depth.set(depth);
         self.reserve_columns.set(true);
         self.dismissed.set(false);
@@ -1490,10 +1499,20 @@ impl PreviewState {
             PreviewContent::SandboxedMedia { media: mut source } => {
                 let is_gif = preview.content_type == "image/gif";
                 let family = media_family(&preview.content_type);
+                let handed_off = self.handed_off.borrow().as_ref() == Some(&preview.entry.location);
                 source.audio_only = family == Some(MediaFamily::Audio);
                 let media =
                     super::media::DecodedMedia::new(source.clone()).upcast::<gtk::MediaStream>();
                 self.media.replace(Some(media.clone()));
+                // Playing by hand lifts the hold an external open placed on this file.
+                let weak = Rc::downgrade(self);
+                media.connect_playing_notify(move |media| {
+                    if media.is_playing()
+                        && let Some(state) = weak.upgrade()
+                    {
+                        state.handed_off.take();
+                    }
+                });
                 let weak = Rc::downgrade(self);
                 media.connect_error_notify(move |media| {
                     let Some(error) = media.error() else {
@@ -1549,7 +1568,9 @@ impl PreviewState {
                         Some(center_play)
                     }
                 };
-                if preferences.preview_autoplay() || (continue_playback && family.is_some()) {
+                if !handed_off
+                    && (preferences.preview_autoplay() || (continue_playback && family.is_some()))
+                {
                     // Unasked-for playback starts silent; a continued one keeps its sound.
                     if preferences.preview_autoplay() && !continue_playback {
                         match family {
