@@ -35,11 +35,6 @@ use std::cell::Cell;
 use std::path::Path;
 use std::rc::Rc;
 
-/// Basename used when creating the archive, with `format`'s extension removed.
-///
-/// Typing `backup.zip` while [`ArchiveFormat::Zip`] is selected yields `backup`,
-/// so the committed file is `backup.zip` rather than `backup.zip.zip`. Suffixes
-/// that do not match [`ArchiveFormat::extension`] are left intact.
 /// Lowercased text of an extraction error outside its quoted span.
 ///
 /// Diagnostics quote one unescaped member or folder name between the first and
@@ -63,6 +58,11 @@ pub(super) fn extract_error_reports_wrong_password(message: &str) -> bool {
     unquoted_extract_error(message).contains("incorrect")
 }
 
+/// Basename used when creating the archive, with `format`'s extension removed.
+///
+/// Typing `backup.zip` while [`ArchiveFormat::Zip`] is selected yields `backup`,
+/// so the committed file is `backup.zip` rather than `backup.zip.zip`. Suffixes
+/// that do not match [`ArchiveFormat::extension`] are left intact.
 fn normalized_archive_name(name: &str, format: ArchiveFormat) -> String {
     name.strip_suffix(&format!(".{}", format.extension()))
         .unwrap_or(name)
