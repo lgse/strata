@@ -2,7 +2,8 @@
 
 use serde_json::Value;
 
-pub(crate) const MAX_METADATA_BYTES: u64 = 64 * 1024;
+/// Pretty-printed chapter lists and subtitle streams need far more than a plain file.
+pub(crate) const MAX_METADATA_BYTES: u64 = 256 * 1024;
 
 const MAX_CHAPTERS: usize = 200;
 const MAX_SUBTITLE_TRACKS: usize = 64;

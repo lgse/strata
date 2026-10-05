@@ -344,7 +344,7 @@ file information.
 Properties uses an asynchronous inspector. Only regular files with a
 local source are inspected; remote files are not downloaded for metadata. The
 inspector runs `ffprobe` inside the existing software-only bubblewrap sandbox,
-with a four-second probe timeout and a 64 KiB JSON limit. Image information can
+with a four-second probe timeout and a 256 KiB JSON limit. Image information can
 fall back to GDK Pixbuf inside that same sandbox. The enclosing helper retains
 the existing memory, CPU, and wall-time limits and receives no GPU access. Media
 sandboxes expose only the optional BLAS/LAPACK runtime alternatives for supported
@@ -373,7 +373,7 @@ Support depends on the format and available tools; unavailable tags in other
 RAW containers remain `N/A`.
 
 Both parsers run only inside a short-lived, software-only sandbox with the
-existing 512 MiB input limit, memory/CPU/wall-time limits, and a 64 KiB output
+existing 512 MiB input limit, memory/CPU/wall-time limits, and a 256 KiB output
 budget. Only the seven validated properties reach the UI; camera/lens strings
 are bounded plain text. Locally backed Trash entries use their existing local
 thumbnail source, recognizing the original display-name extension even when the
