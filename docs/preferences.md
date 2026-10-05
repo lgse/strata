@@ -12,6 +12,8 @@ appearance preferences change. Fresh installations select Tokyo Night, unless an
 available Omarchy theme is followed automatically. Saved theme choices remain
 unchanged. Folder peeking is off by default when no value is saved; explicitly
 saved choices are preserved. Enable it under **Settings → General → Browsing**.
+When enabled, automatic folder peeks wait for a 1000 ms hover; explicit keyboard
+peeks remain immediate.
 
 Settings-wide search is transient, panel-local UI state, not a saved preference.
 It filters the existing bound controls rather than creating copies. Register new
