@@ -125,6 +125,58 @@ fn extraction_writes_the_packaged_files_and_returns_the_package_directory() {
 }
 
 #[test]
+fn release_tar_format_extracts_long_prerelease_portal_paths() {
+    for version in ["0.12.0-rc.1", "0.12.0-nightly.20260907"] {
+        let directory = tempfile::tempdir().expect("release fixture");
+        let package = format!("strata-{version}-aarch64-unknown-linux-gnu");
+        let root = directory.path().join(&package);
+        let portal = "portal/dbus-1/services/io.github.lgse.Strata.FileChooser.service";
+        fs::create_dir_all(root.join(portal).parent().expect("portal directory"))
+            .expect("package directory");
+        fs::write(root.join("strata"), b"binary").expect("binary");
+        fs::write(root.join("SOURCE_COMMIT"), b"abc123\n").expect("source commit");
+        fs::write(root.join(portal), b"portal service").expect("portal service");
+        for format in ["gnu", "ustar"] {
+            let archive = directory.path().join(format!("{format}.tar.gz"));
+            let status = crate::trusted_command::command("tar")
+                .expect("release tar")
+                .arg(format!("--format={format}"))
+                .arg("-C")
+                .arg(directory.path())
+                .arg("-czf")
+                .arg(&archive)
+                .arg(&package)
+                .status()
+                .expect("pack release");
+            assert!(status.success());
+            let destination = directory.path().join(format!("extracted-{format}"));
+            fs::create_dir(&destination).expect("extraction directory");
+            let result = extract_release_archive(&archive, &destination);
+            if format == "gnu" {
+                assert!(
+                    result.is_err(),
+                    "GNU extension records must remain rejected"
+                );
+            } else {
+                let extracted = result.expect("extract release-format archive");
+                assert_eq!(
+                    fs::read(extracted.join(portal)).expect("portal"),
+                    b"portal service"
+                );
+                assert_eq!(
+                    fs::read(extracted.join("strata")).expect("binary"),
+                    b"binary"
+                );
+                assert_eq!(
+                    fs::read(extracted.join("SOURCE_COMMIT")).expect("commit"),
+                    b"abc123\n"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn extraction_rejects_duplicate_regular_files() {
     let dir = scratch_dir("duplicate", line!());
     let mut archive = ArchiveBuilder::new(&dir);

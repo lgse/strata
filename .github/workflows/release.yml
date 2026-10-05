@@ -252,7 +252,7 @@ jobs:
           install -m 644 data/io.github.lgse.Strata.desktop "dist/$package/"
           install -m 644 data/io.github.lgse.Strata.FileManager1.service "dist/$package/"
           install -m 644 data/icons/scalable/apps/io.github.lgse.Strata.svg "dist/$package/"
-          tar -C dist -czf "dist/$package.tar.gz" "$package"
+          tar --format=ustar -C dist -czf "dist/$package.tar.gz" "$package"
           (cd dist && sha256sum "$package.tar.gz" > "$package.tar.gz.sha256")
           (cd dist && sha256sum "$package.debug" > "$package.debug.sha256")
 

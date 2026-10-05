@@ -39,7 +39,9 @@ The example values are illustrative, not a usable release. The publisher must
 include both `x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu`. The
 consumer accepts at most eight unique, supported artifacts and verifies the
 selected architecture and exact asset name. Files inside the archive may evolve;
-the package directory, executable, and `SOURCE_COMMIT` remain required.
+the package directory, executable, and `SOURCE_COMMIT` remain required. Release
+archives use `tar --format=ustar` so long prerelease portal paths do not introduce
+GNU/PAX extension records, which the bounded extractor rejects.
 
 The signature envelope has `schema: 1` and a `signatures` array. Each entry has
 only `key_id` (64 lowercase hex characters) and `signature` (128 hex characters).
