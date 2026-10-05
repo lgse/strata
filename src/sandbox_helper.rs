@@ -353,7 +353,7 @@ fn read_media_metadata(input: &Path) -> Result<Vec<u8>, String> {
         Command::new("ffprobe")
             .args([
                 "-v", "error", "-threads", "1", "-show_entries",
-                "stream=codec_type,codec_name,profile,width,height,duration,avg_frame_rate,r_frame_rate,sample_rate,channels,channel_layout,pix_fmt,color_transfer,color_primaries:stream_disposition=attached_pic:stream_side_data=rotation:stream_tags=language:format=duration,bit_rate,format_name:chapter=start_time,end_time:chapter_tags=title",
+                "stream=codec_type,codec_name,width,height,duration,avg_frame_rate,r_frame_rate,sample_rate,channels,channel_layout,pix_fmt,color_transfer:stream_disposition=attached_pic:stream_side_data=rotation:stream_tags=language:format=duration,bit_rate:chapter=start_time,end_time:chapter_tags=title",
                 "-of", "json",
             ])
             .arg(input),

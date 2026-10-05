@@ -331,12 +331,12 @@ finishing that folder's enumeration before it publishes entries.
 File Properties shows available source-media details: image
 resolution; audio/video duration and overall bitrate; video codec, frame rate and
 HDR system; audio codec, sample rate, and channel count; and subtitle track and
-chapter counts. The probe also returns the video profile, pixel format, colour
-transfer and primaries, channel layout, container name, chapter times with
-sanitized titles (at most 200) and subtitle languages (at most 64 tracks) for
-the video preview's badges. These describe the original file,
-not the preview's scaled frames or resampled audio. Attached album artwork is not
-reported as a video track, and still images do not show synthetic video timing.
+chapter counts. The probe also returns the pixel format, colour transfer,
+channel layout, chapter times with sanitized titles (at most 200) and subtitle
+languages (at most 64 tracks) for the video preview's badges. These describe
+the original file, not the preview's scaled frames or resampled audio. Attached
+album artwork is not reported as a video track, and still images do not show
+synthetic video timing.
 For ordinary images and audio/video, missing individual fields are omitted; an
 unsuccessful inspection shows `Media: Unavailable` without blocking the other
 file information.

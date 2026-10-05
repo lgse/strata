@@ -3,11 +3,7 @@
 //! The sandboxed probe behind the badges, settled and cached like audio tags,
 //! plus a count of subtitle files sitting next to the video.
 
-use std::{
-    cell::{Cell, RefCell},
-    path::Path,
-    rc::Rc,
-};
+use std::{cell::RefCell, path::Path, rc::Rc};
 
 use gtk::{gio, glib};
 
@@ -96,7 +92,6 @@ fn load_details_with(
     let lease = source.clone();
     let job = cancellation.clone();
     let cancelled = cancellation.clone();
-    let published = Cell::new(false);
     glib::MainContext::default().spawn_local(async move {
         glib::timeout_future(LOAD_SETTLE).await;
         if cancelled.is_cancelled() {
@@ -116,7 +111,7 @@ fn load_details_with(
         .flatten()
         .map(Rc::new);
         // A reused view may already show another clip.
-        if cancelled.is_cancelled() || published.replace(true) {
+        if cancelled.is_cancelled() {
             return;
         }
         if let Some(details) = &details {

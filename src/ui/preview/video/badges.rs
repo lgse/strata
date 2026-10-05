@@ -4,6 +4,7 @@
 
 use crate::sandbox::metadata::MediaMetadata;
 
+/// In display order; only HDR is styled apart from the others.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Kind {
     Resolution,
@@ -13,20 +14,6 @@ pub(super) enum Kind {
     Codec,
     Audio,
     Captions,
-}
-
-impl Kind {
-    pub(super) fn css_class(self) -> &'static str {
-        match self {
-            Self::Resolution => "preview-video-badge-resolution",
-            Self::Hdr => "preview-video-badge-hdr",
-            Self::BitDepth => "preview-video-badge-depth",
-            Self::FrameRate => "preview-video-badge-fps",
-            Self::Codec => "preview-video-badge-codec",
-            Self::Audio => "preview-video-badge-audio",
-            Self::Captions => "preview-video-badge-captions",
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

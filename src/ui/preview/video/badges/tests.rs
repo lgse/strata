@@ -21,13 +21,7 @@ fn badges_describe_resolution_hdr_depth_rate_codec_audio_and_captions() {
         audio_codec: Some("eac3".into()),
         channels: Some(6),
         channel_layout: Some("5.1(side)".into()),
-        subtitle_tracks: vec![
-            SubtitleTrack {
-                codec: None,
-                language: None,
-            };
-            2
-        ],
+        subtitle_tracks: vec![SubtitleTrack { language: None }; 2],
         ..Default::default()
     };
     assert_eq!(

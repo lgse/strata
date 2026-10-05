@@ -15,16 +15,13 @@ pub(crate) struct MediaMetadata {
     pub(crate) duration: Option<f64>,
     pub(crate) bitrate: Option<f64>,
     pub(crate) video_codec: Option<String>,
-    pub(crate) video_profile: Option<String>,
     pub(crate) pixel_format: Option<String>,
     pub(crate) color_transfer: Option<String>,
-    pub(crate) color_primaries: Option<String>,
     pub(crate) audio_codec: Option<String>,
     pub(crate) frame_rate: Option<f64>,
     pub(crate) sample_rate: Option<f64>,
     pub(crate) channels: Option<u32>,
     pub(crate) channel_layout: Option<String>,
-    pub(crate) container: Option<String>,
     pub(crate) chapters: Vec<Chapter>,
     pub(crate) subtitle_tracks: Vec<SubtitleTrack>,
 }
@@ -38,7 +35,6 @@ pub(crate) struct Chapter {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct SubtitleTrack {
-    pub(crate) codec: Option<String>,
     pub(crate) language: Option<String>,
 }
 
@@ -53,7 +49,7 @@ fn codec(stream: &Value) -> Option<String> {
     token(&stream["codec_name"], |byte| b"_-".contains(&byte))
 }
 
-/// A short ASCII identifier such as a codec, profile or pixel format name.
+/// A short ASCII identifier such as a codec, layout or pixel format name.
 fn token(value: &Value, extra: impl Fn(u8) -> bool) -> Option<String> {
     value
         .as_str()
@@ -147,19 +143,13 @@ impl MediaMetadata {
             }
             if !image {
                 metadata.video_codec = codec(video);
-                metadata.video_profile = label_token(&video["profile"]);
                 metadata.pixel_format = token(&video["pix_fmt"], |byte| byte == b'_');
                 metadata.color_transfer = token(&video["color_transfer"], |byte| byte == b'-');
-                metadata.color_primaries = token(&video["color_primaries"], |byte| byte == b'-');
                 metadata.frame_rate = frame_rate(&video["avg_frame_rate"])
                     .or_else(|| frame_rate(&video["r_frame_rate"]));
             }
         }
         if !image {
-            metadata.container = value["format"]["format_name"]
-                .as_str()
-                .and_then(|names| names.split(',').next())
-                .and_then(|name| token(&Value::from(name), |byte| byte == b'_'));
             metadata.chapters = value["chapters"]
                 .as_array()
                 .map(|chapters| {
@@ -182,7 +172,6 @@ impl MediaMetadata {
                 .iter()
                 .filter(|stream| stream["codec_type"] == "subtitle")
                 .map(|stream| SubtitleTrack {
-                    codec: codec(stream),
                     language: language(stream),
                 })
                 .take(MAX_SUBTITLE_TRACKS)

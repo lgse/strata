@@ -765,7 +765,9 @@ impl VideoView {
         {
             let label = gtk::Label::new(Some(&badge.label));
             label.add_css_class("preview-video-badge");
-            label.add_css_class(badge.kind.css_class());
+            if badge.kind == badges::Kind::Hdr {
+                label.add_css_class("preview-video-badge-hdr");
+            }
             let revealer = gtk::Revealer::builder()
                 .child(&label)
                 .transition_type(gtk::RevealerTransitionType::Crossfade)
