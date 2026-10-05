@@ -1131,6 +1131,62 @@ fn a_failed_directory_restore_leaves_restored_directories_writable() -> Result<(
 }
 
 #[test]
+fn a_repeated_directory_member_merges_its_stored_metadata() -> Result<(), Box<dyn Error>> {
+    let earlier_time = UNIX_EPOCH + Duration::from_secs(1_000_000_000);
+    let later_time = UNIX_EPOCH + Duration::from_secs(1_100_000_000);
+    let unreadable = MemberMetadata {
+        mode: Some(0o000),
+        modified: None,
+    };
+    let full = |modified| MemberMetadata {
+        mode: Some(0o750),
+        modified: Some(modified),
+    };
+    let time_only = MemberMetadata {
+        mode: None,
+        modified: Some(later_time),
+    };
+    // A top-level directory is restored after publication, a nested one in staging.
+    for (directory, published, earlier, later, mtime) in [
+        ("dir", "dir", unreadable, full(earlier_time), earlier_time),
+        ("top/dir", "top", unreadable, full(earlier_time), earlier_time),
+        // A later entry overrides only the fields it stores.
+        ("dir", "dir", full(earlier_time), MemberMetadata::NONE, earlier_time),
+        ("dir", "dir", full(earlier_time), time_only, later_time),
+    ] {
+        let label = format!("{directory}: {earlier:?} then {later:?}");
+        let root = tempfile::tempdir()?;
+        let progress = AtomicUsize::new(0);
+        let cancelled = AtomicBool::new(false);
+        let mut session = ExtractionSession::open(root.path(), ARCHIVE, &progress, &cancelled)?;
+        session.extract_member(directory, MemberContent::Directory, earlier)?;
+        session.extract_member(
+            &format!("{directory}/file.txt"),
+            MemberContent::File(&mut &b"file"[..], Some(4)),
+            MemberMetadata::NONE,
+        )?;
+        session.extract_member(directory, MemberContent::Directory, later)?;
+
+        let outcome = session.finish(Ok(()), Vec::new);
+
+        assert!(
+            matches!(&outcome, Ok(ArchiveOutcome::Completed(Some(name))) if name == published),
+            "{label}: {outcome:?}"
+        );
+        let output = root.path().join(directory);
+        let metadata = fs::metadata(&output)?;
+        assert_eq!(
+            metadata.permissions().mode() & 0o7777,
+            expected_mode(0o750),
+            "{label}"
+        );
+        assert_eq!(metadata.modified()?, mtime, "{label}");
+        assert_eq!(fs::read(output.join("file.txt"))?, b"file", "{label}");
+    }
+    Ok(())
+}
+
+#[test]
 fn a_password_failure_that_cannot_discard_its_output_offers_no_retry() -> Result<(), Box<dyn Error>> {
     let root = tempfile::tempdir()?;
     let progress = AtomicUsize::new(0);

@@ -276,9 +276,7 @@ impl<'a> ExtractionSession<'a> {
         let created = match content {
             MemberContent::Directory => {
                 staging.create_directories(&outpath)?;
-                if metadata != MemberMetadata::NONE {
-                    self.directories.push((outpath.clone(), metadata));
-                }
+                self.directories.push((outpath.clone(), metadata));
                 outpath
             }
             MemberContent::Symlink(target) => {
@@ -370,9 +368,10 @@ impl<'a> ExtractionSession<'a> {
                 let Some(staging) = staging else {
                     return Ok(ArchiveOutcome::Completed(None));
                 };
-                let (top_level, nested): (Vec<_>, Vec<_>) = std::mem::take(&mut self.directories)
-                    .into_iter()
-                    .partition(|(path, _)| path.components().count() == 1);
+                let (top_level, nested): (Vec<_>, Vec<_>) =
+                    merge_repeated_directories(std::mem::take(&mut self.directories))
+                        .into_iter()
+                        .partition(|(path, _)| path.components().count() == 1);
                 // Nested directories never move on their own during publication.
                 if let Err(error) = restore_directory_metadata(&staging.directory, nested) {
                     let kept =
@@ -494,6 +493,33 @@ fn failure_message(message: String, kept: Result<Option<String>, String>) -> Str
         Ok(None) => message,
         Err(error) => append_sentence(&message, &error),
     }
+}
+
+/// A later entry of a repeated directory member overrides only the fields it
+/// stores, so the directory is restored once and an earlier mode cannot lock
+/// out a later one. Directories without any stored metadata are dropped.
+fn merge_repeated_directories(
+    directories: Vec<(PathBuf, MemberMetadata)>,
+) -> Vec<(PathBuf, MemberMetadata)> {
+    let mut positions: HashMap<PathBuf, usize> = HashMap::new();
+    let mut merged: Vec<(PathBuf, MemberMetadata)> = Vec::new();
+    for (path, metadata) in directories {
+        match positions.get(&path) {
+            Some(&position) => {
+                let earlier = &mut merged[position].1;
+                *earlier = MemberMetadata {
+                    mode: metadata.mode.or(earlier.mode),
+                    modified: metadata.modified.or(earlier.modified),
+                };
+            }
+            None => {
+                positions.insert(path.clone(), merged.len());
+                merged.push((path, metadata));
+            }
+        }
+    }
+    merged.retain(|(_, metadata)| *metadata != MemberMetadata::NONE);
+    merged
 }
 
 /// Deepest-first restoration keeps ancestors traversable; rollback reverses that order.

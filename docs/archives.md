@@ -87,7 +87,9 @@ come from the Info-ZIP extended timestamp, then the NTFS field, then the DOS
 time read as local time. Members without a stored mode keep the default
 permissions. Folder permissions and times are applied only when extraction
 completes, so partial output from a failed or cancelled extraction stays
-writable. Folders created only as parents of other members keep default
+writable. A folder listed more than once in the archive is restored once:
+each of its permissions and time comes from the last entry that stores it.
+Folders created only as parents of other members keep default
 permissions. Owner, group, access times, extended attributes and ACLs are not
 restored. RAR archives restore permissions and times, but their link members
 still extract as regular files.
