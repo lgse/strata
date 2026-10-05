@@ -23,9 +23,11 @@ use super::release_channel::Version;
 
 mod archive;
 mod command;
+mod download;
 mod manifest;
 
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
+use download::{DownloadTimeouts, describe_download_error, describe_read_error, download_agent};
+
 const RELEASE_DOWNLOAD_ROOT: &str = "https://github.com/lgse/strata/releases/download";
 const REPOSITORY: &str = "lgse/strata";
 const MAX_UPDATE_ARCHIVE_BYTES: u64 = 128 * 1024 * 1024;
@@ -722,11 +724,8 @@ fn fetch_update_metadata(
     cancel: &InstallCancel,
 ) -> Result<Vec<u8>, InstallStop> {
     cancel.check()?;
-    let config = ureq::Agent::config_builder()
-        .timeout_global(Some(REQUEST_TIMEOUT))
-        .build();
-    let agent: ureq::Agent = config.into();
-    let response = agent
+    // The archive's agent, so a cancel is noticed while the server is silent.
+    let response = download_agent(DownloadTimeouts::default(), cancel)
         .get(url)
         .header("User-Agent", "strata-file-manager")
         .call();
@@ -991,15 +990,33 @@ fn download_to_file_bounded(
     cancel: &InstallCancel,
     progress: &Sender<UpdateInstall>,
 ) -> Result<(), InstallStop> {
-    let config = ureq::Agent::config_builder()
-        .timeout_global(Some(REQUEST_TIMEOUT))
-        .build();
-    let agent: ureq::Agent = config.into();
-    let mut response = agent
+    download_to_file_with(
+        url,
+        destination,
+        limit,
+        cancel,
+        progress,
+        DownloadTimeouts::default(),
+    )
+}
+
+/// Downloads `url` to `destination`, failing when no byte arrives for
+/// `timeouts.idle` rather than after a fixed transfer time, so a slow link
+/// that keeps making progress can still finish.
+fn download_to_file_with(
+    url: &str,
+    destination: &Path,
+    limit: u64,
+    cancel: &InstallCancel,
+    progress: &Sender<UpdateInstall>,
+    timeouts: DownloadTimeouts,
+) -> Result<(), InstallStop> {
+    let response = download_agent(timeouts, cancel)
         .get(url)
         .header("User-Agent", "strata-file-manager")
-        .call()
-        .map_err(|error| format!("Could not download the update: {error}"))?;
+        .call();
+    cancel.check()?;
+    let mut response = response.map_err(|error| describe_download_error(&error))?;
     let total: Option<u64> = response
         .headers()
         .get("content-length")
@@ -1017,9 +1034,13 @@ fn download_to_file_bounded(
     let _sent = progress.send(UpdateInstall::Downloading { downloaded, total });
     loop {
         cancel.check()?;
-        let count = reader
-            .read(&mut buffer)
-            .map_err(|error| format!("Could not download the update: {error}"))?;
+        let count = match reader.read(&mut buffer) {
+            Ok(count) => count,
+            Err(error) => {
+                cancel.check()?;
+                return Err(describe_read_error(&error).into());
+            }
+        };
         if count == 0 {
             break;
         }

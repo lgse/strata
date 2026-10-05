@@ -2,13 +2,19 @@
 
 use std::{
     fs,
+    io::{self, Read as _, Write as _},
+    net::TcpListener,
     os::unix::fs::symlink,
     path::{Path, PathBuf},
+    sync::mpsc,
+    time::{Duration, Instant},
 };
 
 use super::{
-    APPLICATION_ICON, DESKTOP_ENTRY, InstallCancel, InstallRequest, InstallStop, UpdateMethod,
-    aur_repository_version_from_response, desktop_entry_with_exec, download_to_file_bounded,
+    APPLICATION_ICON, DESKTOP_ENTRY, InstallCancel, InstallRequest, InstallStop, UpdateInstall,
+    UpdateMethod, aur_repository_version_from_response, desktop_entry_with_exec,
+    download::{DownloadTimeouts, describe_download_error, describe_read_error},
+    download_to_file_bounded, download_to_file_with,
     is_old_instance, package_repository_version_for, parse_aur_package_version,
     parse_package_version, refresh_desktop_metadata, repository_database_version, restore_rollback,
     retire_old_instances, stage_binary_path, stage_rollback, stage_workdir, update_method_for,
@@ -716,4 +722,234 @@ fn a_staged_binary_that_runs_is_accepted() {
     fs::set_permissions(&staged, fs::Permissions::from_mode(0o755)).expect("make executable");
 
     assert!(verify_staged_binary(&staged).is_ok());
+}
+
+/// A loopback server for one download request.
+struct TrickleServer {
+    url: String,
+    _release: mpsc::Sender<()>,
+}
+
+/// Answers one request with a `content_length` head (none at all when
+/// `None`) and then `chunks`, each after `gap`. The connection then stays open
+/// until the server is dropped, so a short body reads as a stall rather than
+/// an early close. It closes after 10 s regardless, so a client that never
+/// times out fails its test instead of hanging it.
+fn serve_trickle(content_length: Option<usize>, chunks: Vec<Vec<u8>>, gap: Duration) -> TrickleServer {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).expect("loopback listener");
+    let port = listener.local_addr().expect("listener address").port();
+    let (release, released) = mpsc::channel::<()>();
+    std::thread::spawn(move || {
+        let Ok((mut stream, _)) = listener.accept() else {
+            return;
+        };
+        let mut head = Vec::new();
+        let mut buffer = [0_u8; 1024];
+        while !head.windows(4).any(|window| window == b"\r\n\r\n") {
+            match stream.read(&mut buffer) {
+                Ok(0) | Err(_) => return,
+                Ok(count) => head.extend_from_slice(&buffer[..count]),
+            }
+        }
+        if let Some(length) = content_length {
+            let head = format!(
+                "HTTP/1.1 200 OK\r\ncontent-length: {length}\r\nconnection: close\r\n\r\n"
+            );
+            if stream.write_all(head.as_bytes()).is_err() {
+                return;
+            }
+            for chunk in chunks {
+                std::thread::sleep(gap);
+                if stream.write_all(&chunk).is_err() {
+                    return;
+                }
+            }
+        }
+        let _released = released.recv_timeout(Duration::from_secs(10));
+    });
+    TrickleServer {
+        url: format!("http://127.0.0.1:{port}/strata.tar.gz"),
+        _release: release,
+    }
+}
+
+fn chunks(count: usize, size: usize) -> Vec<Vec<u8>> {
+    (0..count).map(|index| vec![index as u8; size]).collect()
+}
+
+fn short_timeouts(idle: Duration) -> DownloadTimeouts {
+    DownloadTimeouts {
+        connect: Duration::from_secs(2),
+        response: Duration::from_secs(2),
+        idle,
+    }
+}
+
+struct TimedDownload {
+    result: Result<(), String>,
+    elapsed: Duration,
+    finished: Instant,
+    bytes: Vec<u8>,
+}
+
+/// Downloads from `server`; `on_progress` sees every progress event from
+/// another thread, while the download is still running.
+fn timed_download(
+    server: &TrickleServer,
+    timeouts: DownloadTimeouts,
+    cancel: &InstallCancel,
+    on_progress: impl FnMut(UpdateInstall) + Send + 'static,
+) -> TimedDownload {
+    let dir = tempfile::tempdir().expect("download directory");
+    let destination = dir.path().join("strata.tar.gz");
+    let (progress, events) = mpsc::channel();
+    let observer = std::thread::spawn(move || events.into_iter().for_each(on_progress));
+    let started = Instant::now();
+    let result = download_to_file_with(
+        &server.url,
+        &destination,
+        64 * 1024 * 1024,
+        cancel,
+        &progress,
+        timeouts,
+    );
+    let finished = Instant::now();
+    drop(progress);
+    observer.join().expect("progress observer");
+    TimedDownload {
+        result: result.map_err(|stop| match stop {
+            InstallStop::Cancelled => "cancelled".to_owned(),
+            InstallStop::Failed(message) => message,
+        }),
+        elapsed: finished - started,
+        finished,
+        bytes: fs::read(&destination).unwrap_or_default(),
+    }
+}
+
+#[test]
+fn download_keeps_waiting_through_gaps_shorter_than_the_idle_limit() {
+    // Each gap outlasts one cancel poll, so a wait spans several polls, and
+    // the whole transfer takes twice the idle limit: there is no total cap.
+    let body = chunks(4, 4096);
+    let server = serve_trickle(Some(4 * 4096), body.clone(), Duration::from_millis(1500));
+    let idle = Duration::from_secs(3);
+
+    let download = timed_download(&server, short_timeouts(idle), &InstallCancel::new(), drop);
+
+    assert_eq!(download.result, Ok(()));
+    assert!(download.elapsed > idle * 2, "{:?}", download.elapsed);
+    assert_eq!(download.bytes, body.concat());
+}
+
+#[test]
+fn download_fails_when_the_body_stalls() {
+    let server = serve_trickle(Some(4 * 4096), chunks(1, 4096), Duration::ZERO);
+    let idle = Duration::from_millis(1500);
+
+    let download = timed_download(&server, short_timeouts(idle), &InstallCancel::new(), drop);
+
+    let error = download.result.expect_err("a stalled body must fail");
+    assert_eq!(
+        error,
+        "The download stalled — check your connection and try again"
+    );
+    assert!(download.elapsed >= idle, "{:?}", download.elapsed);
+    assert!(download.elapsed < Duration::from_secs(5), "{:?}", download.elapsed);
+}
+
+#[test]
+fn download_fails_when_headers_never_arrive() {
+    let server = serve_trickle(None, Vec::new(), Duration::ZERO);
+    // Longer than the test's bound, so only the idle limit can end the wait.
+    let timeouts = DownloadTimeouts {
+        response: Duration::from_secs(10),
+        ..short_timeouts(Duration::from_millis(1500))
+    };
+
+    let download = timed_download(&server, timeouts, &InstallCancel::new(), drop);
+
+    let error = download.result.expect_err("a silent server must fail");
+    assert_eq!(
+        error,
+        "The download stalled — check your connection and try again"
+    );
+    assert!(download.elapsed < Duration::from_secs(5), "{:?}", download.elapsed);
+}
+
+#[test]
+fn cancel_stops_a_stalled_download_without_waiting_for_the_idle_limit() {
+    let server = serve_trickle(Some(4 * 4096), chunks(1, 4096), Duration::ZERO);
+    let cancel = InstallCancel::new();
+    let (cancelled_at, cancelled) = mpsc::channel();
+    let canceller = cancel.clone();
+    let mut requested = false;
+
+    let download = timed_download(
+        &server,
+        short_timeouts(Duration::from_secs(20)),
+        &cancel,
+        move |event| {
+            if !requested
+                && matches!(event, UpdateInstall::Downloading { downloaded, .. } if downloaded > 0)
+            {
+                requested = true;
+                std::thread::sleep(Duration::from_millis(300));
+                let _sent = cancelled_at.send(Instant::now());
+                canceller.cancel();
+            }
+        },
+    );
+
+    let cancelled_at = cancelled.recv().expect("the download made progress first");
+    assert_eq!(download.result, Err("cancelled".to_owned()));
+    // Well before the server gives up after 10 s, let alone the idle limit.
+    let stopped = download.finished.saturating_duration_since(cancelled_at);
+    assert!(stopped < Duration::from_secs(3), "{stopped:?}");
+}
+
+#[test]
+fn download_errors_are_described_in_plain_language() {
+    let stalled = "The download stalled — check your connection and try again";
+    let unreachable = "Could not reach the download server — check your connection and try again";
+    let cases = [
+        (ureq::Error::Timeout(ureq::Timeout::RecvBody), stalled),
+        (ureq::Error::Timeout(ureq::Timeout::RecvResponse), stalled),
+        (ureq::Error::Timeout(ureq::Timeout::Resolve), unreachable),
+        (ureq::Error::Timeout(ureq::Timeout::Connect), unreachable),
+        (
+            ureq::Error::StatusCode(404),
+            "Could not download the update: http status: 404",
+        ),
+    ];
+    for (error, expected) in cases {
+        assert_eq!(describe_download_error(&error), expected, "{error:?}");
+    }
+
+    let wrapped = ureq::Error::Timeout(ureq::Timeout::RecvBody).into_io();
+    assert_eq!(describe_read_error(&wrapped), stalled);
+    let plain = io::Error::from(io::ErrorKind::ConnectionReset);
+    assert_eq!(
+        describe_read_error(&plain),
+        format!("Could not download the update: {plain}")
+    );
+}
+
+#[test]
+fn cancel_stops_a_silent_metadata_fetch_without_waiting_for_a_timeout() {
+    let server = serve_trickle(None, Vec::new(), Duration::ZERO);
+    let cancel = InstallCancel::new();
+    let canceller = cancel.clone();
+    let cancelled_at = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(300));
+        canceller.cancel();
+        Instant::now()
+    });
+
+    let result = super::fetch_update_metadata(&server.url, 8192, &cancel);
+
+    let stopped = Instant::now().saturating_duration_since(cancelled_at.join().expect("canceller"));
+    assert!(matches!(result, Err(InstallStop::Cancelled)), "{result:?}");
+    // Well before the server gives up after 10 s.
+    assert!(stopped < Duration::from_secs(3), "{stopped:?}");
 }

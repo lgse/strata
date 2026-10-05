@@ -62,7 +62,9 @@ toml = "1.1"
 tracing = "0.1.41"
 tracing-subscriber = "0.3.20"
 unicode-normalization = "0.1.25"
-ureq = { version = "3.4", features = ["json"] }
+# The update downloader implements `ureq::unversioned` transport traits, which
+# may change in a minor release.
+ureq = { version = "~3.4", features = ["json"] }
 zbus = { version = "5.19.0", default-features = false, features = ["async-io"] }
 zstd = "0.14.0"
 zip = "8.6.0"
