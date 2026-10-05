@@ -620,3 +620,23 @@ fn handoffs_pause_the_shown_video_and_report_positions_away_from_the_ends() {
         },
     );
 }
+
+#[test]
+fn the_ease_in_curve_rises_evenly_and_lands_softly() {
+    use crate::ui::preview::video::ease_in_gain;
+    assert_eq!(ease_in_gain(0.0), 0.0);
+    assert_eq!(ease_in_gain(1.0), 1.0);
+    assert_eq!(ease_in_gain(-0.5), 0.0);
+    assert_eq!(ease_in_gain(1.5), 1.0);
+    assert!(ease_in_gain(0.1) < 0.01, "the start is inaudible");
+    assert!(ease_in_gain(0.9) > 0.9, "the landing is nearly complete");
+    let mut previous = 0.0;
+    for step in 1..=100 {
+        let gain = ease_in_gain(f64::from(step) / 100.0);
+        assert!(gain >= previous, "monotonic at step {step}");
+        previous = gain;
+    }
+    let early = ease_in_gain(0.1);
+    let middle = ease_in_gain(0.5) - ease_in_gain(0.4);
+    assert!(middle > early, "most of the rise happens in the middle");
+}

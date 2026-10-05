@@ -43,8 +43,17 @@ const BUBBLE_CHROME: i32 = 8;
 const SEEK_COVER_OPACITY: f64 = 0.9;
 /// Autoplay stays silent this long after the first frame before sound eases in.
 const EASE_IN_DWELL: Duration = Duration::from_secs(1);
-const EASE_IN_RAMP: Duration = Duration::from_millis(700);
+const EASE_IN_RAMP: Duration = Duration::from_millis(1500);
 const EASE_IN_STEP: Duration = Duration::from_millis(16);
+
+/// Slow in, slow out, on a loudness-friendly curve: a smoothstep squared, so
+/// the gain leaves zero and reaches one with no slope, and the ear hears an
+/// even rise rather than a late jump.
+pub(super) fn ease_in_gain(progress: f64) -> f64 {
+    let progress = progress.clamp(0.0, 1.0);
+    let smooth = progress * progress * (3.0 - 2.0 * progress);
+    smooth * smooth
+}
 const BADGE_FADE: Duration = Duration::from_millis(140);
 const BADGE_STAGGER: Duration = Duration::from_millis(40);
 const SKELETON_BADGE_WIDTHS: [i32; 3] = [44, 56, 38];
@@ -609,7 +618,7 @@ impl VideoView {
                 view.set_fade(1.0);
                 return glib::ControlFlow::Break;
             }
-            view.set_fade(progress * progress);
+            view.set_fade(ease_in_gain(progress));
             glib::ControlFlow::Continue
         });
         self.ease_timer.replace(Some(timer));
