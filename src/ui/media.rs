@@ -118,6 +118,8 @@ mod imp {
         pub(super) paused: Cell<Option<Instant>>,
         pub(super) dormant: Cell<bool>,
         pub(super) seek_pending: Cell<Option<(u64, Instant)>>,
+        /// Where playback was before a seek, until the seek shows a frame.
+        pub(super) seek_origin: Cell<Option<u64>>,
         pub(super) first_frame: Cell<bool>,
         pub(super) clock: Cell<Option<Instant>>,
         pub(super) clock_base: Cell<u64>,
@@ -200,6 +202,10 @@ mod imp {
         fn seek(&self, timestamp: i64) {
             let position = timestamp.max(0) as u64;
             let obj = self.obj();
+            if self.first_frame.get() && self.seek_origin.get().is_none() {
+                obj.capture_position();
+                self.seek_origin.set(Some(self.position.get()));
+            }
             if self
                 .starting
                 .get()
@@ -789,6 +795,7 @@ impl DecodedMedia {
                             .map_or(0, |time| time.elapsed().as_millis())
                             as u64;
                         imp.first_frame.set(true);
+                        imp.seek_origin.set(None);
                         imp.starting.set(None);
                         imp.last_progress.set(Some(Instant::now()));
                         if self.is_playing() {
@@ -835,6 +842,20 @@ impl DecodedMedia {
                 Some(Event::Failed(error)) => {
                     if imp.first_frame.get() {
                         self.recover(&error)?;
+                        return Ok(());
+                    }
+                    // A seek into data the file does not have (a truncated
+                    // download, a duration the header overstates) goes back to
+                    // where playback was instead of ending the preview.
+                    if let Some(origin) = imp.seek_origin.take() {
+                        tracing::warn!(error, origin_us = origin, "seek failed; resuming");
+                        if self.is_seeking() {
+                            self.seek_failed();
+                        }
+                        self.restart_at(origin);
+                        if self.is_prepared() {
+                            self.update(imp.position.get() as i64);
+                        }
                         return Ok(());
                     }
                     return Err(error);

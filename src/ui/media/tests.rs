@@ -696,3 +696,54 @@ fn shrinking_the_pane_keeps_the_decode_and_only_real_growth_restarts_it() {
         },
     );
 }
+
+#[test]
+fn a_seek_the_file_cannot_serve_returns_to_where_playback_was() {
+    crate::test_support::gtk_test(
+        "ui::media::tests::a_seek_the_file_cannot_serve_returns_to_where_playback_was",
+        || {
+            let media = DecodedMedia::new(test_source("/truncated"));
+            let calls = Rc::new(RefCell::new(Vec::new()));
+            let loader_calls = calls.clone();
+            media.imp().loader.replace(Some(Rc::new(move |_, tick| {
+                loader_calls.borrow_mut().push(tick);
+                if tick >= 900 {
+                    crate::sandbox::media::tests::failing_stream()
+                } else {
+                    crate::sandbox::media::tests::stream(test_header(tick))
+                }
+            })));
+            media.upcast_ref::<gtk::MediaStream>().play();
+            drive_until(&media, &calls, 1);
+            let deadline = Instant::now() + Duration::from_secs(15);
+            while !media.imp().first_frame.get() {
+                media.tick().expect("tick succeeds");
+                assert!(Instant::now() < deadline, "first frame deadline");
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            std::thread::sleep(SEEK_DELAY);
+            media.seek(media::timestamp(900) as i64);
+            assert!(media.is_seeking());
+            drive_until(&media, &calls, 3);
+            let deadline = Instant::now() + Duration::from_secs(15);
+            while !media.imp().first_frame.get() {
+                media.tick().expect("the fallback keeps the stream alive");
+                assert!(Instant::now() < deadline, "fallback frame deadline");
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            assert_eq!(calls.borrow()[1], 900, "the seek was attempted");
+            assert!(
+                calls.borrow()[2] < 900,
+                "playback resumed where it was ({:?})",
+                calls.borrow()
+            );
+            assert!(!media.is_seeking());
+            assert!(
+                media.error().is_none(),
+                "a failed seek is not a failed preview"
+            );
+            assert!((media.timestamp() as u64) < media::timestamp(900));
+            media.close();
+        },
+    );
+}

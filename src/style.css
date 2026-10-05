@@ -2731,10 +2731,6 @@ paned > separator {
   outline-offset: 2px;
 }
 
-.preview-video-header {
-  padding: 8px 12px 2px;
-}
-
 .preview-video-eyebrow {
   color: @theme_dim_text;
   font-size: 0.72em;
@@ -2746,10 +2742,6 @@ paned > separator {
   color: @theme_text;
   font-size: 1.1em;
   font-weight: 700;
-}
-
-.preview-video-transport {
-  padding: 2px 12px 8px;
 }
 
 .preview-video-time {

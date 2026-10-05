@@ -414,7 +414,9 @@ PCM. Resampling preserves gaps/offsets relative to the common source timeline.
 
 Previews play **the entire source**, without a 30-second playback cap. Seeking
 restarts the sandbox at the requested source position, rounded down to the 30-fps
-grid. Video retains decoder preroll so a seek into a VFR gap can show the frame
+grid. A seek whose decoder dies before its first frame, as happens past the real
+end of a truncated download whose header overstates the duration, resumes where
+playback was instead of ending the preview. Video retains decoder preroll so a seek into a VFR gap can show the frame
 covering that point. Short GIFs still batch loops into a 30-second generation,
 with seeks mapped to their animation phase to avoid restarting a process every
 cycle; this does not truncate the animation. Longer GIFs play their complete
@@ -494,10 +496,12 @@ view without disabling track navigation. Tracks never advance automatically.
 ## Video previews
 
 Video files open in a now-playing view of their own, laid out like the audio
-view: a header with the file's position among the folder's videos, the volume
-control, the title and the badges on top, then the frame with its timeline
-directly beneath it and the same previous/play/next transport. Clicking the
-frame toggles playback; there is no separate centre button. Consecutive video files
+view: the frame is the hero, the header with the file's position among the
+folder's videos, the volume control, the title and the badges sits directly
+under it, then the timeline and the same previous/play/next transport, with
+the whole stack centred in the pane. The frame keeps its place from the first
+paint, sized by the poster's aspect until the probe answers. Clicking the frame
+toggles playback; there is no separate centre button. Consecutive video files
 reuse one view, like audio. Previous/next step to the previous or next file of
 the same media family, so audio steps to audio and video to video, following
 visible search results like audio does. Playback errors remain visible inside the

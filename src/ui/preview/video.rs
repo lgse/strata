@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 //! One view survives consecutive videos, so stepping through a folder never
-//! rebuilds the frame area or its controls. Like the audio view, the header
-//! sits on top and the frame, timeline and transport form the block below it.
+//! rebuilds the frame area or its controls. Like the audio view, the frame is
+//! the hero with the header right under it, then the timeline and transport.
 
 mod ambient;
 mod badges;
@@ -36,7 +36,6 @@ use super::{
 
 pub(in crate::ui::preview) use scrubber::Timeline;
 
-const FRAME_MARGIN: i32 = 12;
 const BUBBLE_MARGIN: i32 = 10;
 /// Padding plus border around the bubble's cell.
 const BUBBLE_CHROME: i32 = 8;
@@ -152,10 +151,6 @@ impl VideoView {
         frame.add_overlay(&picture);
         frame.set_focusable(true);
         frame.set_can_target(true);
-        frame.set_margin_start(FRAME_MARGIN);
-        frame.set_margin_end(FRAME_MARGIN);
-        frame.set_margin_top(FRAME_MARGIN);
-        frame.set_margin_bottom(FRAME_MARGIN);
         crate::ui::accessibility::set_label(&frame, "Video frame");
         let placeholder = frame::Placeholder::new();
         frame.add_overlay(&placeholder);
@@ -194,8 +189,6 @@ impl VideoView {
         header.append(&error);
 
         let timeline = Timeline::new();
-        timeline.set_margin_start(FRAME_MARGIN);
-        timeline.set_margin_end(FRAME_MARGIN);
 
         let elapsed = label("preview-media-time");
         elapsed.add_css_class("preview-video-time");
@@ -230,8 +223,8 @@ impl VideoView {
         transport.set_center_widget(Some(&buttons));
         transport.set_end_widget(Some(&total));
 
-        root.append(&header);
         root.append(&frame);
+        root.append(&header);
         root.append(&timeline);
         root.append(&transport);
 
@@ -364,7 +357,7 @@ impl VideoView {
         if self.band.replace(band) == band {
             return;
         }
-        self.layout.set_margin(FRAME_MARGIN + band);
+        self.layout.set_margin(band);
         for widget in [
             self.picture.upcast_ref::<gtk::Widget>(),
             self.placeholder.upcast_ref(),
@@ -523,7 +516,11 @@ impl VideoView {
     }
 
     fn sync_frame_size(&self, media: &DecodedMedia) {
-        self.placeholder.set_aspect(self.video_aspect(media));
+        let aspect = self.video_aspect(media);
+        self.placeholder.set_aspect(aspect);
+        if aspect.is_some() {
+            self.layout.set_aspect(aspect);
+        }
     }
 
     fn video_aspect(&self, media: &DecodedMedia) -> Option<f64> {
@@ -744,8 +741,15 @@ impl VideoView {
         self.play.set_sensitive(false);
         self.previous.set_sensitive(has_previous);
         self.next.set_sensitive(has_next);
-        self.placeholder
-            .set_poster(crate::ui::thumbnail::cached_thumbnail(entry));
+        let poster = crate::ui::thumbnail::cached_thumbnail(entry);
+        // The frame keeps its place from the first paint: the poster's aspect
+        // stands in until the probe answers.
+        self.layout.set_aspect(
+            poster
+                .as_ref()
+                .map(|poster| poster.intrinsic_aspect_ratio()),
+        );
+        self.placeholder.set_poster(poster);
         self.placeholder.set_aspect(None);
         self.placeholder.reveal();
         self.chapters.borrow_mut().clear();

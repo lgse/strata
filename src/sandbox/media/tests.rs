@@ -44,6 +44,31 @@ pub(crate) fn stream_to(header: Header, end: u64) -> Result<Session, String> {
     })
 }
 
+/// A session whose decoder dies before producing a header, as a seek past the
+/// end of a truncated file does.
+pub(crate) fn failing_stream() -> Result<Session, String> {
+    let slot = WorkerSlot::acquire().ok_or("Media previews are busy (four active players)")?;
+    let slot = Arc::new(slot);
+    let worker_slot = slot.clone();
+    let cancellation = Cancellation::default();
+    let cancelled = cancellation.clone();
+    let (sender, receiver) = mpsc::sync_channel(QUEUED_PACKETS);
+    let worker = thread::spawn(move || {
+        let _slot = worker_slot;
+        let _sent = send(
+            &sender,
+            Event::Failed("failed to fill whole buffer".into()),
+            &cancelled,
+        );
+    });
+    Ok(Session {
+        cancellation,
+        receiver,
+        worker,
+        _slot: slot,
+    })
+}
+
 fn wait_for(condition: impl Fn() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(2);
     while !condition() {
