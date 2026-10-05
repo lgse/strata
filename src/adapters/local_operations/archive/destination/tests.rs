@@ -138,7 +138,7 @@ fn destination_resolves_a_symlinked_directory_and_pins_it() -> Result<(), Box<dy
 }
 
 #[test]
-fn destination_refuses_symlinks_at_every_write_component() -> Result<(), Box<dyn Error>> {
+fn destination_never_writes_through_symlinks() -> Result<(), Box<dyn Error>> {
     let root = tempfile::tempdir()?;
     let external = tempfile::tempdir()?;
     fs::write(external.path().join("keep.txt"), b"original")?;
@@ -150,11 +150,11 @@ fn destination_refuses_symlinks_at_every_write_component() -> Result<(), Box<dyn
         root.path().join("dangling"),
     )?;
 
-    for name in ["redirect/new.txt", "leaf", "dangling"] {
-        assert!(
-            destination.create_file(Path::new(name)).is_err(),
-            "accepted {name}"
-        );
+    assert!(destination.create_file(Path::new("redirect/new.txt")).is_err());
+    // An existing leaf symlink is skipped like a file, never written through.
+    for name in ["leaf", "dangling"] {
+        let (_, created) = destination.create_file(Path::new(name))?;
+        assert_eq!(created, PathBuf::from(format!("{name} (2)")));
     }
     assert_eq!(fs::read(external.path().join("keep.txt"))?, b"original");
     assert_eq!(external.path().read_dir()?.count(), 1);

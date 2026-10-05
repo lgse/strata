@@ -329,8 +329,8 @@ impl ExtractionDestination {
     /// Finds a name in `directory` that does not already exist.
     ///
     /// Tries `name`, then [`suffixed_name`] with increasing indexes. Existing
-    /// regular files and directories are skipped; special filesystem objects
-    /// (devices, sockets, existing symlinks) are refused rather than overwritten.
+    /// regular files, directories and symlinks are skipped; special filesystem
+    /// objects (devices, sockets, FIFOs) are refused rather than overwritten.
     ///
     /// # Errors
     ///
@@ -352,7 +352,9 @@ impl ExtractionDestination {
                     ));
                 }
                 Ok(stat) => match rustix::fs::FileType::from_raw_mode(stat.st_mode) {
-                    rustix::fs::FileType::RegularFile | rustix::fs::FileType::Directory => {}
+                    rustix::fs::FileType::RegularFile
+                    | rustix::fs::FileType::Directory
+                    | rustix::fs::FileType::Symlink => {}
                     _ => {
                         return Err(format!(
                             "Refusing to extract over special filesystem object: {}",
