@@ -52,6 +52,34 @@ length trailer is verified after the last member. A mismatch or a truncated
 trailer is reported as a damaged archive. Members already written are kept as
 described above, but their contents are unverified.
 
+## Links, permissions and times
+
+Symbolic links are recreated with their stored targets, including absolute
+targets and targets outside the archive, and are never followed by later
+members: a member under a link name fails instead of writing through the link.
+TAR hard links become links to the member of that name extracted earlier from
+the same archive, following any conflict rename. A hard link to a member that
+was not extracted, or that appears later, fails the extraction. FIFOs and
+device nodes are refused. An existing symlink at a member's name, such as an
+earlier link member with the same name, is skipped like a file: the member is
+renamed to `name (2)`.
+
+Each member gets its stored permission bits, masked by the umask, with setuid,
+setgid and sticky bits removed, and its stored modification time. ZIP times
+come from the Info-ZIP extended timestamp, then the NTFS field, then the DOS
+time read as local time. Members without a stored mode keep the default
+permissions. Folder permissions and times are applied only when extraction
+completes, so partial output from a failed or cancelled extraction stays
+writable. Folders created only as parents of other members keep default
+permissions. Owner, group, access times, extended attributes and ACLs are not
+restored. RAR archives restore permissions and times, but their link members
+still extract as regular files.
+
+On filesystems that cannot store Unix permissions or times, such as FAT and
+exFAT, those are skipped without an error, as `tar` and `unzip` do. Links
+cannot be skipped: an archive with links fails there, naming the member, and
+keeps the output written so far.
+
 ## Extraction targets
 
 **Extract here** and **Extract to…** in the item context menu, the 10xer `; e`
@@ -117,8 +145,10 @@ change the usefulness of the preflight gzip choice, but not the output format.
 
 ZIP preserves UTF-8 symlink targets; TAR preserves native symlink targets. 7Z
 creation rejects symlinks rather than following or silently replacing them.
-Compression selection does not relax these restrictions or change staged
-publication, conflict handling, or permissions.
+Every format records each member's modification time and Unix mode. ZIP stores
+the time as local DOS time, clamped to 1980–2107, plus an Info-ZIP extended
+timestamp; TAR records symlink times too; 7Z uses the p7zip Unix-mode
+attribute.
 
 ## Existing archive names
 

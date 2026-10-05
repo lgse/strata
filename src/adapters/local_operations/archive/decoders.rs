@@ -3,9 +3,9 @@
 //! ZIP, TAR/gzip and 7z decoding adapters feeding the same extraction session.
 //! Format-specific member enumeration, passwords and error translation stay here.
 //!
-//! This boundary preserves legacy output semantics: TAR names use lossy UTF-8
-//! conversion, and non-directory entries (including links) become regular files.
-//! Native names and richer entry types remain part of the decoder evaluation.
+//! TAR names use lossy UTF-8 conversion. Symlinks, hard links (TAR) and member
+//! modes and times pass through `MemberContent`/`MemberMetadata`; FIFOs and
+//! device nodes are refused.
 //!
 //! Gzip streams are read to the end after the last TAR entry so the CRC32 and
 //! length trailer is verified.

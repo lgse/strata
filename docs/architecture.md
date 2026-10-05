@@ -241,8 +241,8 @@ Local archive operations live under `adapters/local_operations/archive/`:
 | --- | --- |
 | Operation entry points, worker lifecycle and progress events | `archive.rs` in the parent directory |
 | Staged publication, source traversal and compression writers | `compression.rs` |
-| Per-operation extraction state, copying, cleanup, size preflight and outcomes | `extraction.rs` |
-| Confined destination writes, path validation, staging folder lifecycle, publication and conflict naming | `destination.rs` |
+| Per-operation extraction state, copying, cleanup, size preflight, hard-link resolution, deferred directory metadata and outcomes | `extraction.rs` |
+| Confined destination writes, link creation, mode and time restoration, path validation, staging folder lifecycle, publication and conflict naming | `destination.rs` |
 | ZIP, TAR/gzip and 7z member enumeration, passwords and decoder errors | `decoders.rs` |
 
 Every decoder feeds one `ExtractionSession` per operation. The session has no codec or widget
@@ -266,9 +266,14 @@ capacity (`f_blocks == 0`, as FUSE mounts without `statfs` do) skip the free-spa
 keep only the declared-size match. The `zip` crate does not bound inflated output by the header
 size itself, so that match is the control that stops a ZIP member lying about its size.
 
-The private member boundary currently retains legacy lossy TAR-name conversion and regular-file
-output for non-directory entries, including links. It is not a complete archive-entry model;
-native names and entry-type semantics belong in the decoder compatibility evaluation. Format
+Decoders pass symlinks, TAR hard links and each member's mode and modification time through
+`MemberContent` and `MemberMetadata`, and refuse FIFOs and device nodes. Restoring metadata is
+best effort: `EPERM`, `EOPNOTSUPP` and `EINVAL` from filesystems without Unix permissions or times
+are ignored behind the `MetadataCalls` seam in `destination.rs`. Lossy TAR-name
+conversion is the remaining legacy conversion; native names belong in the decoder compatibility
+evaluation. The sandboxed RAR helper streams `STRRAR02` records carrying each member's mode and
+time (a RAR 5 FILETIME, or the DOS local time of older formats, which only the parent can
+convert in the user's zone); RAR links are not yet extracted as links. Format
 libraries remain behind the adapter boundary. See [archive creation](archives.md) for
 container-specific encoding, classification and cancellation behavior. Archive unit tests sit in each module's
 adjacent `tests.rs`; provider-level tests remain in `archive/tests.rs`, with shared test-only builders
