@@ -52,6 +52,16 @@ struct UpdateCheckRow {
     run_check: Rc<dyn Fn(bool)>,
     responsive_action: (gtk::Box, gtk::Button),
     install_underway: Rc<dyn Fn() -> bool>,
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "tests read the row's status text")
+    )]
+    status: gtk::Label,
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "tests seed and inspect the cached install offer")
+    )]
+    pending_download: Rc<RefCell<Option<PendingInstall>>>,
 }
 
 struct ResponsiveContent {
@@ -123,6 +133,15 @@ thread_local! {
 /// happening to still hold a strong reference.
 pub(super) fn install_guard() -> InstallGuard {
     INSTALL_GUARD.with(|guard| guard.clone())
+}
+
+/// Hands an [`InstallRequest`] and its cancel handle to the installer.
+/// Production uses [`services::install_update`]; tests substitute a fake.
+type InstallLauncher =
+    Rc<dyn Fn(InstallRequest, InstallCancel) -> std::sync::mpsc::Receiver<UpdateInstall>>;
+
+fn default_install_launcher() -> InstallLauncher {
+    Rc::new(services::install_update)
 }
 
 thread_local! {
@@ -914,6 +933,7 @@ fn updates_page(
         run_check,
         responsive_action,
         install_underway,
+        ..
     } = update_check_row(
         manager.clone(),
         available_notes.clone(),
@@ -1464,6 +1484,22 @@ fn update_check_row(
     install_guard: InstallGuard,
     update_method: UpdateMethod,
 ) -> UpdateCheckRow {
+    update_check_row_with(
+        manager,
+        available_notes,
+        install_guard,
+        update_method,
+        default_install_launcher(),
+    )
+}
+
+fn update_check_row_with(
+    manager: Rc<PreferenceManager>,
+    available_notes: ReleaseNotesCard,
+    install_guard: InstallGuard,
+    update_method: UpdateMethod,
+    launcher: InstallLauncher,
+) -> UpdateCheckRow {
     let row = gtk::Box::new(gtk::Orientation::Vertical, 0);
     row.add_css_class("settings-option");
     row.add_css_class("settings-update-status");
@@ -1697,6 +1733,8 @@ fn update_check_row(
     });
 
     let clicked_check = run_check.clone();
+    let row_status = status.clone();
+    let row_pending_download = pending_download.clone();
     button.connect_clicked(move |button| {
         if update_method == UpdateMethod::Aur && managed_update_available.get() {
             match launch_aur_update() {
@@ -1722,7 +1760,12 @@ fn update_check_row(
             button.set_sensitive(false);
             return;
         }
-        if let Some(pending) = pending_download.borrow_mut().take() {
+        // Take the offer out before branching: `clicked_check` (through
+        // `run_check`) and the guard-rejection branch below both write this
+        // cell again, and an `if let` scrutinee's `RefMut` would still be
+        // alive there.
+        let pending = pending_download.take();
+        if let Some(pending) = pending {
             if !offer_still_eligible(manager.release_channel(), pending.kind) {
                 // The channel was switched back to Stable -- possibly from
                 // another window, which this row never hears about -- after
@@ -1773,6 +1816,7 @@ fn update_check_row(
             let started = start_install(
                 &install_guard,
                 request,
+                &launcher,
                 move |event| {
                     apply_install_progress(&status_for_progress, &progress_for_progress, event)
                 },
@@ -1849,6 +1893,8 @@ fn update_check_row(
         run_check,
         responsive_action: (summary, button),
         install_underway,
+        status: row_status,
+        pending_download: row_pending_download,
     }
 }
 
@@ -1912,9 +1958,9 @@ fn drive_install(
     });
 }
 
-/// Starts `request`'s install unless another install-guarded flow is
-/// already running, driving it with [`drive_install`] and clearing `guard`
-/// once it reaches a terminal state.
+/// Starts `request`'s install through `launcher` unless another
+/// install-guarded flow is already running, driving it with [`drive_install`]
+/// and clearing `guard` once it reaches a terminal state.
 ///
 /// `guard` is shared by [`update_check_row`] and [`show_update_dialog`] -- the
 /// only call sites of [`services::install_update`]. Without it, controls in
@@ -1928,6 +1974,7 @@ fn drive_install(
 fn start_install(
     guard: &InstallGuard,
     request: InstallRequest,
+    launcher: &InstallLauncher,
     on_progress: impl Fn(InstallProgress) + 'static,
     on_installed: impl Fn() + 'static,
     on_cancelled: impl Fn() + 'static,
@@ -1937,7 +1984,7 @@ fn start_install(
         return Err(request);
     }
     let cancel = InstallCancel::new();
-    let receiver = services::install_update(request, cancel.clone());
+    let receiver = launcher(request, cancel.clone());
     let guard_for_installed = guard.clone();
     let guard_for_cancelled = guard.clone();
     let guard_for_failed = guard.clone();
@@ -2047,7 +2094,14 @@ fn restart_waiter(current_exe: &std::path::Path, parent_pid: u32) -> Option<Comm
     Some(command)
 }
 
+/// Relaunches the executable and quits `application`. Without an application,
+/// for example from a row whose window closed during the install, it does
+/// nothing: the binary is already replaced, so the next launch runs it, and
+/// exiting here would end the process without a clean shutdown.
 fn restart(application: Option<&gtk::Application>) {
+    let Some(application) = application else {
+        return;
+    };
     let Ok(current_exe) = crate::services::installed_executable() else {
         return;
     };
@@ -2064,10 +2118,7 @@ fn restart(application: Option<&gtk::Application>) {
     if waiter.spawn().is_err() {
         return;
     }
-    match application {
-        Some(application) => application.quit(),
-        None => std::process::exit(0),
-    }
+    application.quit();
 }
 
 pub(super) fn show_update_dialog(
@@ -2344,6 +2395,7 @@ pub(super) fn show_update_dialog(
         let outcome = start_install(
             &install_guard,
             install.clone(),
+            &default_install_launcher(),
             move |event| match event {
                 InstallProgress::Downloading { downloaded, total } => {
                     if let Some(total) = total.filter(|total| *total > 0) {
