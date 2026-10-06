@@ -160,9 +160,6 @@ pub(super) fn modal_layer(
     )
 }
 
-/// A [`modal_layer`] whose backdrop click, outside the dialog, runs
-/// `on_backdrop` instead of dismissing, for dialogs that must do more than
-/// close.
 #[expect(
     deprecated,
     reason = "GTK 4.12 deprecated translate_coordinates and allocation without a replacement for click-in-bounds checks"

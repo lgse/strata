@@ -244,14 +244,10 @@ pub struct CancelledOperation {
     pub affected_locations: HashSet<Location>,
 }
 
-/// Why an extraction needs another password. Only these failures offer a
-/// password retry; the message text never decides it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PasswordFailure {
-    /// The archive is encrypted and no password was given.
     Required,
-    /// The given password was rejected, or decryption failed in a way that
-    /// usually means a wrong password.
+    /// Includes ambiguous decryption failures that may instead indicate damaged data.
     Incorrect,
 }
 
@@ -347,7 +343,6 @@ pub enum OperationEvent {
     Failed {
         request_id: OperationRequestId,
         message: String,
-        /// Set only when an extraction failed for want of the right password.
         password_failure: Option<PasswordFailure>,
     },
     Compressed {

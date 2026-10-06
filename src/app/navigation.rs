@@ -209,9 +209,7 @@ pub struct ColumnState {
     selection_anchor: Option<Location>,
     selection_target: Option<Location>,
     pending_selection: HashSet<Location>,
-    /// Explicit reveal targets to select once listed; the first listed one takes the cursor.
     pending_reveal: Vec<Location>,
-    /// The current selection came from `pending_reveal` and has not been published yet.
     selection_from_reveal: bool,
     pub load_state: LoadState,
     pub truncated: bool,
@@ -494,8 +492,7 @@ impl NavigationState {
             .is_some_and(|column| !column.pending_reveal.is_empty())
     }
 
-    /// Whether the selection about to be published came from reveal targets; the first
-    /// publication after the reveal resolves takes focus, later ones do not.
+    /// Consume the focus request so later publications cannot steal focus again.
     pub fn take_selection_from_reveal(&mut self, depth: usize) -> bool {
         self.columns
             .get_mut(depth)

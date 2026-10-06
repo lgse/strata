@@ -347,9 +347,6 @@ impl<'a> ExtractionSession<'a> {
         Ok(())
     }
 
-    /// A password failure discards everything written, even unencrypted
-    /// members, because the retry extracts the whole archive again.
-    ///
     /// Pending names exclude members already passed to `extract_member`.
     /// Reports apply established top-level renames, but cannot predict final leaf
     /// conflicts for unattempted members. Invalid names are omitted, not errors.
@@ -497,9 +494,7 @@ fn failure_message(message: String, kept: Result<Option<String>, String>) -> Str
     }
 }
 
-/// A later entry of a repeated directory member overrides only the fields it
-/// stores, so the directory is restored once and an earlier mode cannot lock
-/// out a later one. Directories without any stored metadata are dropped.
+/// Restore each directory once: an earlier restrictive mode could block a later restore.
 fn merge_repeated_directories(
     directories: Vec<(PathBuf, MemberMetadata)>,
 ) -> Vec<(PathBuf, MemberMetadata)> {

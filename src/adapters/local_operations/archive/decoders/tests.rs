@@ -2200,7 +2200,6 @@ fn every_gzip_member_of_a_tar_gz_is_read_and_verified() -> Result<(), Box<dyn Er
 
 #[test]
 fn zero_padding_after_the_last_gzip_member_is_not_damage() -> Result<(), Box<dyn Error>> {
-    // A short tail, and a full tape/`dd` block; zeros followed by data are not padding.
     for (padding, padded) in [
         (vec![0, 0, b'x'], false),
         (vec![0; 10_240], true),
@@ -2373,8 +2372,6 @@ fn damage_in_an_unencrypted_member_is_not_a_password_failure() -> Result<(), Box
     Ok(())
 }
 
-/// Serves `data` through `BufRead`, failing once with `Interrupted` when the
-/// position reaches `fail_at`.
 struct FailsOnceAt {
     data: Vec<u8>,
     position: usize,

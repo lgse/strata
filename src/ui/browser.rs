@@ -239,10 +239,7 @@ pub(super) struct ViewState {
     print_handler: RefCell<Option<PrintHandler>>,
     search_selection_handlers: RefCell<Vec<Rc<dyn Fn()>>>,
     pending_select: RefCell<Vec<String>>,
-    /// The directory of a reveal that asked for properties, so the dialog opens
-    /// once the revealed entry it describes is actually loaded.
     pending_properties: RefCell<Option<Location>>,
-    /// Transfer targets a monitored destination had not listed when they were revealed.
     pending_location_selection: RefCell<Option<(Location, Vec<Location>)>>,
     pending_extract_retry: RefCell<Option<(FileEntry, Location)>>,
     extract_destination: RefCell<Option<Location>>,
@@ -879,8 +876,6 @@ impl BrowserView {
         }
     }
 
-    /// Opens `directory` with `targets` selected, optionally opening the properties
-    /// dialog for the focused target once it is listed.
     pub(crate) fn reveal_locations(
         &self,
         directory: Location,

@@ -4,7 +4,6 @@ use super::super::*;
 use super::{FakeInstaller, GUARD_REJECTION, offered_request, wait_until};
 use crate::test_support::gtk_test;
 
-/// What a completed check leaves behind when it offers a stable update.
 fn seed_offer(row: &UpdateCheckRow) {
     row.pending_download.replace(Some(PendingInstall {
         kind: BuildKind::Stable,
@@ -33,7 +32,6 @@ fn install_click_rejected_by_the_guard_keeps_the_row_usable() {
             let button = row.responsive_action.1.clone();
             seed_offer(&row);
 
-            // Another window's row or an update dialog holds the install.
             guard.set(true);
             button.emit_clicked();
 

@@ -41,7 +41,6 @@ fn archive_collisions_use_the_final_name() -> Result<(), Box<dyn std::error::Err
     Ok(())
 }
 
-/// Text of every visible label and button in the browser overlay.
 fn visible_texts(overlay: &gtk::Overlay) -> Vec<String> {
     let mut texts = Vec::new();
     let mut stack = Vec::new();
@@ -76,7 +75,6 @@ fn only_a_password_failure_kind_opens_the_extract_password_dialog() {
     crate::test_support::gtk_test(
         "ui::browser::archive::tests::only_a_password_failure_kind_opens_the_extract_password_dialog",
         || {
-            // The same wording for every kind: only the kind may decide.
             let message = "The password may be incorrect. Could not open `passwords.zip`.";
             for (password_failure, password_dialog, invalid_password) in [
                 (None, false, false),

@@ -35,9 +35,7 @@ use std::cell::Cell;
 use std::path::Path;
 use std::rc::Rc;
 
-/// Whether a failed extract reopens the password dialog and, if so, whether
-/// it reports an invalid password. Only the failure's structured kind decides:
-/// messages quote member and folder names, which can contain any word.
+/// Error text may contain arbitrary filenames; only the structured kind permits retry.
 pub(super) fn extract_password_retry(password_failure: Option<PasswordFailure>) -> Option<bool> {
     password_failure.map(|failure| failure == PasswordFailure::Incorrect)
 }
@@ -518,11 +516,6 @@ impl ViewState {
         );
     }
 
-    /// Prompts for a password after a password-capable extract failed.
-    ///
-    /// Shown from operation-failure handling when the failure is a missing or
-    /// incorrect password. Empty submissions remain in the dialog, while a
-    /// rejected password reopens it with inline error feedback.
     pub(super) fn show_extract_password_dialog(
         self: &Rc<Self>,
         entry: FileEntry,

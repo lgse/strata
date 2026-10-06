@@ -132,8 +132,6 @@ pub(super) fn install_guard() -> InstallGuard {
     INSTALL_GUARD.with(|guard| guard.clone())
 }
 
-/// Hands an [`InstallRequest`] and its cancel handle to the installer.
-/// Production uses [`services::install_update`]; tests substitute a fake.
 type InstallLauncher =
     Rc<dyn Fn(InstallRequest, InstallCancel) -> std::sync::mpsc::Receiver<UpdateInstall>>;
 
@@ -1760,10 +1758,7 @@ fn update_check_row_with(
             button.set_sensitive(false);
             return;
         }
-        // Take the offer out before branching: `clicked_check` (through
-        // `run_check`) and the guard-rejection branch below both write this
-        // cell again, and an `if let` scrutinee's `RefMut` would still be
-        // alive there.
+        // Both branches can reborrow this cell; an `if let` scrutinee would retain the RefMut.
         let pending = pending_download.take();
         if let Some(pending) = pending {
             if !offer_still_eligible(manager.release_channel(), pending.kind) {
@@ -1908,13 +1903,9 @@ fn update_check_row_with(
 /// those terminal states are always reported through the driver's other two
 /// callbacks instead.
 enum InstallProgress {
-    Downloading {
-        downloaded: u64,
-        total: Option<u64>,
-    },
+    Downloading { downloaded: u64, total: Option<u64> },
     Verifying,
     Installing,
-    /// Past the point of no return: the install can no longer be cancelled.
     Finalizing,
 }
 
@@ -1970,19 +1961,8 @@ fn drive_install(
     });
 }
 
-/// Starts `request`'s install through `launcher` unless another
-/// install-guarded flow is already running, driving it with [`drive_install`]
-/// and clearing `guard` once it reaches a terminal state.
-///
-/// `guard` is shared by [`update_check_row`] and [`show_update_dialog`] -- the
-/// only call sites of [`services::install_update`]. Without it, controls in
-/// separate windows could start two replacement threads concurrently.
-///
-/// Returns `Ok(())` once an install has started, or `Err(request)` --
-/// handing `request` back unused -- if `guard` was already held. Callers
-/// must handle the `Err` case by leaving their own button/status in a
-/// re-triable state, since the click that produced it did not actually
-/// start anything.
+/// The shared guard prevents concurrent replacements from different windows.
+/// Guard rejection leaves the request unused and must keep the caller retryable.
 fn start_install(
     guard: &InstallGuard,
     request: InstallRequest,
@@ -2110,10 +2090,7 @@ fn restart_waiter(current_exe: &std::path::Path, parent_pid: u32) -> Option<Comm
     Some(command)
 }
 
-/// Relaunches the executable and quits `application`. Without an application,
-/// for example from a row whose window closed during the install, it does
-/// nothing: the binary is already replaced, so the next launch runs it, and
-/// exiting here would end the process without a clean shutdown.
+/// A closed window may no longer have an application; never exit the process in that case.
 fn restart(application: Option<&gtk::Application>) {
     let Some(application) = application else {
         return;
@@ -2137,23 +2114,16 @@ fn restart(application: Option<&gtk::Application>) {
     application.quit();
 }
 
-/// Where the update dialog's in-place install stands.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum UpdateDialogPhase {
     Ready,
-    /// An install is running. Closing the dialog cancels it.
     Downloading,
-    /// The install can no longer be cancelled, so the dialog stays open
-    /// until it finishes.
     Finalizing,
-    /// The dialog was closed during an install, which was asked to stop.
     Cancelled,
     Failed,
     Installed,
 }
 
-/// The update dialog's interactive widgets, returned by
-/// [`build_update_dialog`] for tests; [`show_update_dialog`] discards them.
 #[cfg_attr(
     not(test),
     expect(dead_code, reason = "tests drive the dialog through these handles")
@@ -2310,9 +2280,6 @@ fn build_update_dialog(
             set_dismissible(false);
         }
     });
-    // Every way of closing the dialog -- Cancel, X, Escape and the backdrop --
-    // goes through here, so none of them can leave a download running behind
-    // a dialog that is gone, or close it once the install can't be stopped.
     let close_dialog: Rc<dyn Fn(&gtk::Box)> = Rc::new({
         let phase = phase.clone();
         let cancel_handle = cancel_handle.clone();
@@ -2328,8 +2295,7 @@ fn build_update_dialog(
                         .as_ref()
                         .is_some_and(|handle| !handle.cancel());
                     if committed {
-                        // The install passed its point of no return before
-                        // its Finalizing report arrived.
+                        // The installer can commit before its Finalizing event reaches the UI.
                         enter_finalizing();
                         return;
                     }
@@ -2530,8 +2496,7 @@ fn build_update_dialog(
                 action_for_installed.set_label("Restart now");
                 action_for_installed.add_css_class("suggested-action");
                 action_for_installed.set_sensitive(true);
-                // A restart that cannot launch the new build returns quietly;
-                // the dialog must not stay locked behind it.
+                // Restart can fail; leave a way to close the dialog.
                 dismissible_for_installed(true);
                 restart_application(&action_for_installed);
             },
@@ -2562,9 +2527,6 @@ fn build_update_dialog(
         match outcome {
             Ok(handle) => *cancel_handle.borrow_mut() = Some(handle),
             Err(_request) => {
-                // An install from the update row or another window is already
-                // running. Back to `Ready`, so the next click retries the
-                // install -- this click never actually started one.
                 phase.set(UpdateDialogPhase::Ready);
                 status.set_text("Another install is already running — try again shortly.");
                 progress.set_visible(false);

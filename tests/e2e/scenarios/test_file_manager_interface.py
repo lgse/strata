@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: MIT
-"""org.freedesktop.FileManager1 reveals exactly the items a caller names."""
 
 import os
 import subprocess

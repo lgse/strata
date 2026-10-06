@@ -26,8 +26,6 @@ pub(crate) struct WireMetadata {
     pub(crate) modified: Option<WireTime>,
 }
 
-/// Why the decoder failed, so the parent can offer a password retry without
-/// reading the message.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FailureKind {
     Other,
@@ -54,7 +52,6 @@ impl FailureKind {
     }
 }
 
-/// A decoder failure as an error record or a failed member trailer carries it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Failure {
     pub(crate) kind: FailureKind,
@@ -69,7 +66,6 @@ impl Failure {
         }
     }
 
-    /// Recovers the failure a [`FileBody`] read reported from its trailer.
     pub(crate) fn from_io(error: io::Error) -> Self {
         match error
             .get_ref()

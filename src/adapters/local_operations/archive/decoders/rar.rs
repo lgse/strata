@@ -32,8 +32,7 @@ pub(in crate::adapters::local_operations::archive) fn extract_rar(
     cancelled: &AtomicBool,
 ) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
     let mut session = ExtractionSession::open(dest_dir, archive_name, progress, cancelled)?;
-    // The stream reports a member's error as text; keep the original so a
-    // password failure keeps its kind.
+    // The stream's callback errors carry only text; retain the structured kind separately.
     let mut member_error = None;
     let outcome = stream_rar(
         archive_path,
@@ -62,8 +61,6 @@ pub(in crate::adapters::local_operations::archive) fn extract_rar(
     session.finish(result, Vec::new)
 }
 
-/// Turns a failed member trailer into the error the session keeps, so a
-/// password failure in the sandbox keeps its kind.
 struct MemberBody<'a>(&'a mut dyn Read);
 
 impl Read for MemberBody<'_> {

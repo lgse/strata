@@ -76,11 +76,8 @@ fn sevenz_decode_error(error: sevenz_rust2::Error) -> ArchiveError {
     }
 }
 
-/// Translates a failed read of member data. `decrypting` is set only for a
-/// member that is encrypted and was given a password: then malformed data
-/// usually means a wrong password, because plain-header 7z and ZipCrypto cannot
-/// tell one from damage. An unencrypted member's damage stays damage, even when
-/// the archive has a password.
+/// Only encrypted data permits password retry; plain-header 7z and ZipCrypto
+/// cannot distinguish a wrong password from damage.
 fn archive_read_error(error: std::io::Error, decrypting: bool) -> std::io::Error {
     use std::io::ErrorKind;
     let checksum_failed = matches!(
@@ -224,11 +221,7 @@ impl<R: Read> Read for ArchiveReader<R> {
 
 const GZIP_MAGIC: u8 = 0x1f;
 
-/// Decodes concatenated gzip members, as parallel compressors such as pigz and
-/// bgzip write them, one at a time; flate2 verifies each member's CRC32 and
-/// ISIZE trailer. Reading ends after a member that is followed by end of file
-/// or by anything other than another gzip header, which
-/// [`Self::verify_padding`] then checks.
+/// Unlike MultiGzDecoder, accepts zero padding after the final member.
 struct GzipMembers<R> {
     /// Always `Some` outside a transition in [`Read::read`].
     state: Option<GzipState<R>>,
@@ -236,11 +229,8 @@ struct GzipMembers<R> {
 
 enum GzipState<R> {
     Member(Box<flate2::bufread::GzDecoder<R>>),
-    /// A member has ended and the next bytes have not been looked at yet. A
-    /// failed look stays here, so the next read looks again instead of
-    /// reporting the end of the stream.
+    /// Retain this state on read errors so a retry cannot mistake them for EOF.
     Boundary(R),
-    /// Everything after the last member.
     Rest(R),
 }
 
@@ -253,8 +243,7 @@ impl<R: BufRead> GzipMembers<R> {
         }
     }
 
-    /// Accepts only zero bytes after the last member, as tape blocking and
-    /// `dd` leave them; cancellable per buffered chunk.
+    /// Tape blocking and `dd` may leave zero padding after the gzip trailer.
     fn verify_padding(self, cancelled: &AtomicBool) -> Result<(), ArchiveError> {
         let Some(GzipState::Rest(mut rest)) = self.state else {
             return Ok(());
@@ -282,7 +271,6 @@ impl<R: BufRead> Read for GzipMembers<R> {
             return Ok(0);
         }
         loop {
-            // Fallible work happens while the state stays in place.
             let next_member = match self.state.as_mut().expect("gzip state is present") {
                 GzipState::Member(decoder) => {
                     let count = decoder.read(buffer)?;
@@ -310,8 +298,7 @@ impl<R: BufRead> Read for GzipMembers<R> {
     }
 }
 
-/// Reads the rest of a gzip stream so every member's trailer is verified,
-/// then checks what follows the last member; cancellable per chunk.
+/// tar-rs stops before gzip's CRC32/ISIZE trailer; drain every member to verify it.
 fn verify_gzip_trailer<R: BufRead>(
     mut members: GzipMembers<R>,
     cancelled: &AtomicBool,
@@ -490,8 +477,6 @@ pub(super) fn extract_tar(
     session.finish(result, || remaining.into_iter().collect())
 }
 
-/// Whether each member's data is in a block with an AES coder. Members without
-/// data, such as directories, are never encrypted.
 fn encrypted_7z_members(archive: &sevenz_rust2::Archive) -> Vec<bool> {
     archive
         .stream_map
@@ -546,8 +531,7 @@ pub(super) fn extract_7z_from_reader(
         .map(|(index, entry)| (std::ptr::from_ref(entry), index))
         .collect();
     let mut submitted = vec![false; member_indices.len()];
-    // The decoder hands a member's error back unchanged; keep the original so
-    // cancellation and password failures keep their kind.
+    // sevenz_rust2 carries callback errors as text; retain their structured kind separately.
     let mut member_error = None;
     let result = archive.for_each_entries(|entry, reader| {
         let extracted = (|| {

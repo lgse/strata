@@ -438,13 +438,13 @@ def search_for(strata, target):
 
 
 @pytest.mark.preferences(search_open_files_directly=False)
-@pytest.mark.parametrize("mode,visited", [
-    pytest.param("Columns", False, marks=pytest.mark.preferences(browser_mode="columns"), id="columns"),
-    pytest.param("Icons", False, marks=pytest.mark.preferences(browser_mode="icons"), id="icons"),
-    pytest.param("List", False, marks=pytest.mark.preferences(browser_mode="list"), id="list"),
-    pytest.param("List", True, marks=pytest.mark.preferences(browser_mode="list"), id="list-visited"),
+@pytest.mark.parametrize("visited", [
+    pytest.param(False, marks=pytest.mark.preferences(browser_mode="columns"), id="columns"),
+    pytest.param(False, marks=pytest.mark.preferences(browser_mode="icons"), id="icons"),
+    pytest.param(False, marks=pytest.mark.preferences(browser_mode="list"), id="list"),
+    pytest.param(True, marks=pytest.mark.preferences(browser_mode="list"), id="list-visited"),
 ])
-def test_global_search_activation_selects_and_previews_the_file_result(strata, mode, visited):
+def test_global_search_activation_selects_and_previews_the_file_result(strata, visited):
     parent, target = create_activation_folder(strata, "activation-parent")
     if visited:
         open_typed_folder(strata, parent)

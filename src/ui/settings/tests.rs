@@ -29,8 +29,6 @@ fn offered_request() -> InstallRequest {
     }
 }
 
-/// Stands in for [`crate::services::install_update`]: records each launch and
-/// lets the test report the install's progress and outcome.
 #[derive(Default)]
 struct FakeInstaller {
     launches: Rc<RefCell<Vec<(InstallRequest, InstallCancel)>>>,
@@ -66,7 +64,6 @@ impl FakeInstaller {
             .expect("the dialog or row is still listening");
     }
 
-    /// Whether the most recent install was asked to stop.
     fn cancel_requested(&self) -> bool {
         self.launches
             .borrow()
@@ -74,15 +71,12 @@ impl FakeInstaller {
             .is_some_and(|(_, cancel)| cancel.is_cancelled())
     }
 
-    /// Passes the most recent install's point of no return, as the installer
-    /// does just before it replaces the binary.
     fn commit(&self) {
         let launches = self.launches.borrow();
         let (_, cancel) = launches.last().expect("a started install");
         assert!(cancel.try_commit(), "the install was already cancelled");
     }
 
-    /// Ends the install without a result, as a crashed installer thread would.
     fn disconnect(&self) {
         drop(self.progress.take().expect("a started install"));
     }

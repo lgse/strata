@@ -157,8 +157,6 @@ fn call<'a, 'b>(
     }
 }
 
-/// `decrypting` is set only when a password was given for encrypted data, so
-/// damaged plain data is never reported as a wrong password.
 fn decode_result(code: i32, decrypting: bool) -> Result<(), Failure> {
     if code == native::ERAR_SUCCESS {
         return Ok(());

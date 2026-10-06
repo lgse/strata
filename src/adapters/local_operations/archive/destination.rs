@@ -237,8 +237,7 @@ impl ExtractionDestination {
             .map_err(|error| format!("Could not remove the extraction staging folder: {error}"))
     }
 
-    /// Removes `staging` and everything in it without following symlinks;
-    /// entries not yet reached stay in place on error.
+    /// Never follows symlinks. Removal errors can leave a partially deleted tree.
     pub(super) fn remove_staging(&self, staging: &OsStr) -> Result<(), String> {
         remove_tree(self.root.as_fd(), staging, true)
             .map(|_| ())
@@ -663,9 +662,7 @@ fn move_by_link(
     Err(rustix::io::Errno::OPNOTSUPP)
 }
 
-/// Removes the directory `name` under `parent` deepest first, never following
-/// a symlink. Without `files`, returns `Ok(false)` as soon as a directory
-/// holds anything but directories, leaving that directory in place.
+/// Never follows symlinks. With `files` disabled, any non-directory preserves its ancestors.
 fn remove_tree(parent: BorrowedFd<'_>, name: &OsStr, files: bool) -> rustix::io::Result<bool> {
     let directory = rustix::fs::openat(
         parent,

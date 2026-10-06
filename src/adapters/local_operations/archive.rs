@@ -363,17 +363,12 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
     })
 }
 
-/// Shared with the sandboxed RAR helper so every format words a missing
-/// password alike.
 pub(crate) const PASSWORD_REQUIRED: &str = "A password is required to extract this archive.";
-/// Decrypted data that fails its checks, or a password 7z or RAR rejects:
-/// those cannot tell a wrong password from damage. ZIP's definite rejection
-/// uses `INCORRECT_ARCHIVE_PASSWORD` instead.
+/// 7z/RAR and failed decryption checks cannot always distinguish damage from a bad password.
 pub(crate) const MAYBE_BAD_PASSWORD: &str = "The password may be incorrect.";
 
 /// Byte size of the reusable read/write buffer used by [`copy_with_big_buf`].
 const COPY_BUF: usize = 1 << 20;
-/// Message of [`ArchiveError::Cancelled`].
 const ARCHIVE_CANCELLED: &str = "Operation cancelled";
 
 /// Failure or cooperative cancellation of a compress or extract step.
@@ -383,10 +378,7 @@ enum ArchiveError {
     Cancelled,
     /// Encoding, decoding, or filesystem work failed with this message.
     Failed(String),
-    /// An encrypted member or header needs a password and none was given.
     PasswordRequired(String),
-    /// The given password was rejected, or decryption failed in a way that
-    /// usually means a wrong password.
     IncorrectPassword(String),
 }
 
@@ -429,8 +421,6 @@ fn archive_failed(error: impl std::fmt::Display) -> ArchiveError {
     ArchiveError::Failed(error.to_string())
 }
 
-/// Converts a failed read of member data. Decoders wrap a password failure
-/// in the [`std::io::Error`] so its kind survives the copy.
 fn archive_read_failed(error: std::io::Error) -> ArchiveError {
     match error
         .get_ref()

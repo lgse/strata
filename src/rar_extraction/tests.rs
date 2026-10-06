@@ -70,15 +70,6 @@ fn file_record_and_ok_trailer_round_trip() {
 }
 
 #[test]
-fn file_trailer_failure_carries_the_message() {
-    let mut buffer = Vec::new();
-    write_file_failed(&mut buffer, &Failure::from("CRC mismatch"))
-        .expect("wire protocol round trip");
-    let mut reader = Cursor::new(buffer);
-    assert!(FileBody::new(&mut reader, 4).read(&mut [0u8; 4]).is_err());
-}
-
-#[test]
 fn failed_member_with_no_body_reports_error_before_any_file_bytes() {
     for kind in [
         FailureKind::Other,

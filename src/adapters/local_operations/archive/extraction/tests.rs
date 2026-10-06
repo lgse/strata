@@ -1156,7 +1156,6 @@ fn a_repeated_directory_member_merges_its_stored_metadata() -> Result<(), Box<dy
             full(earlier_time),
             earlier_time,
         ),
-        // A later entry overrides only the fields it stores.
         (
             "dir",
             "dir",

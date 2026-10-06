@@ -26,7 +26,6 @@ fn press_escape(dialog: &UpdateDialog) -> bool {
     )
 }
 
-/// Presses the backdrop's top-left corner, well outside the dialog card.
 fn press_backdrop(dialog: &UpdateDialog) {
     wait_until("the dialog to be laid out", || dialog.action.width() > 0);
     let controllers = dialog.layer.observe_controllers();
@@ -36,7 +35,6 @@ fn press_backdrop(dialog: &UpdateDialog) {
     click.emit_by_name::<()>("pressed", &[&1i32, &2.0f64, &2.0f64]);
 }
 
-/// Triggers `dismisser` whether or not its button is enabled.
 fn trigger(dialog: &UpdateDialog, dismisser: Dismisser) {
     match dismisser {
         Dismisser::Cancel => dialog.cancel.emit_clicked(),
@@ -99,7 +97,6 @@ fn open_dialog(installer: &FakeInstaller) -> (gtk::Window, UpdateDialog) {
         gtk::Orientation::Vertical,
         0,
     ))));
-    // Large enough that the backdrop surrounds the dialog card.
     let window = gtk::Window::builder()
         .default_width(1200)
         .default_height(900)
@@ -118,8 +115,6 @@ fn open_dialog(installer: &FakeInstaller) -> (gtk::Window, UpdateDialog) {
     (window, dialog)
 }
 
-/// Starts the download and waits for the installer to report `outcome`, or
-/// to disconnect without one when `None`.
 fn fail_download(dialog: &UpdateDialog, installer: &FakeInstaller, outcome: Option<&str>) {
     dialog.action.emit_clicked();
     match outcome {
@@ -169,7 +164,6 @@ fn guard_rejection_leaves_every_dismisser_working() {
         || {
             let guard = install_guard();
             for dismisser in DISMISSERS {
-                // An install from the update row or another window is running.
                 guard.set(true);
                 let installer = FakeInstaller::default();
                 let (window, dialog) = open_dialog(&installer);
@@ -363,7 +357,6 @@ fn installed_update_leaves_every_dismisser_working() {
                 installer.commit();
                 installer.report(UpdateInstall::Finalizing);
 
-                // The test window has no application, so nothing restarts.
                 installer.report(UpdateInstall::Installed);
                 wait_until("the install to finish", || {
                     dialog.action.label().as_deref() == Some("Restart now")

@@ -31,7 +31,6 @@ pub(super) struct PublicationPlan {
     pub(super) total: usize,
     pub(super) focused: Option<usize>,
     pub(super) positions: Vec<usize>,
-    /// The selection came from reveal targets, so the view moves focus to it.
     pub(super) take_focus: bool,
     pub(super) terminal: PublishTerminal,
 }

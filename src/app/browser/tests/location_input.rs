@@ -496,7 +496,6 @@ pub(super) fn listing_file(location: Location, name: &str, is_hidden: bool) -> F
     }
 }
 
-/// What a view preparing the new column sees: whether a reveal target is pending.
 pub(super) fn record_reveal_pending_on_column_added(
     browser: &Rc<Browser>,
 ) -> Rc<RefCell<Vec<bool>>> {
@@ -591,7 +590,6 @@ fn synchronous_file_validation_keeps_async_parent_validation_alive() {
 
 #[test]
 fn location_input_naming_a_file_inside_an_open_directory_selects_it_in_place() {
-    // Revealing into an open ancestor closes the deeper column it would otherwise leave open.
     for open_child in [false, true] {
         let file = Location::local("/fixture/report.pdf");
         let browser = Browser::new(Rc::new(TypedPathSource::containing(

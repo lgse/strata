@@ -25,9 +25,7 @@ pub(crate) enum Member<'a> {
     File { size: u64, body: &'a mut dyn Read },
 }
 
-/// Streams the members of a RAR archive from the sandboxed decoder. A
-/// decoder failure keeps its [`wire::FailureKind`]; other failures, including
-/// those returned by `on_member`, are [`wire::FailureKind::Other`].
+/// Callback errors lose their kind; only decoder failures retain it across the wire.
 pub(crate) fn stream_rar(
     archive_path: &Path,
     password: Option<&str>,
