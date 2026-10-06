@@ -186,20 +186,6 @@ impl Drop for Chooser {
     }
 }
 
-fn widget_with_class(widget: &gtk::Widget, class: &str) -> Option<gtk::Widget> {
-    if widget.has_css_class(class) {
-        return Some(widget.clone());
-    }
-    let mut child = widget.first_child();
-    while let Some(current) = child {
-        if let Some(found) = widget_with_class(&current, class) {
-            return Some(found);
-        }
-        child = current.next_sibling();
-    }
-    None
-}
-
 fn single_file() -> ChooserKind {
     ChooserKind::Open {
         directory: false,
