@@ -80,6 +80,38 @@ fn ordinary_entries_do_not_redirect_to_target_uris() {
     }
 }
 
+#[test]
+fn listed_entries_keep_non_utf8_uri_children() {
+    use std::{ffi::OsStr, os::unix::ffi::OsStrExt};
+    for (directory, name, uri) in [
+        ("trash:///", &b"caf\xe9.txt"[..], "trash:///caf%E9.txt"),
+        (
+            "sftp://host/share",
+            &b"\xff name"[..],
+            "sftp://host/share/%FF%20name",
+        ),
+    ] {
+        let info = gio::FileInfo::new();
+        info.set_name(OsStr::from_bytes(name));
+        info.set_display_name(&format!(
+            "{} (invalid encoding)",
+            String::from_utf8_lossy(name)
+        ));
+        info.set_file_type(gio::FileType::Regular);
+        let entry = listed_entry(
+            RequestId(1),
+            &Location::uri(directory),
+            &gio::File::for_uri(directory),
+            info,
+        )
+        .unwrap_or_else(|| panic!("non-UTF-8 children of {directory} are listed"));
+        assert_eq!(entry.location, Location::uri(uri));
+        assert_eq!(entry.native_name.as_bytes(), name);
+        assert!(entry.display_name.ends_with("(invalid encoding)"));
+        assert!(!entry.is_directory());
+    }
+}
+
 fn recent_info(target: &str, recent_modified: i64) -> gio::FileInfo {
     let info = gio::FileInfo::new();
     info.set_name("recent-item");

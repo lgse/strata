@@ -326,6 +326,33 @@ pub(crate) async fn query_file_entry(location: Location) -> Result<FileEntry, gl
     Ok(entry_from_info(location, info))
 }
 
+fn listed_entry(
+    request_id: RequestId,
+    location: &Location,
+    directory: &gio::File,
+    info: gio::FileInfo,
+) -> Option<FileEntry> {
+    let Some(child) = location_for_file(&directory.child(info.name())) else {
+        tracing::warn!(
+            request_id = request_id.0,
+            backend = %location.backend_name(),
+            "skipped a directory entry whose URI could not be parsed"
+        );
+        let display_name = info
+            .has_attribute(gio::FILE_ATTRIBUTE_STANDARD_DISPLAY_NAME)
+            .then(|| info.display_name());
+        tracing::debug!(
+            request_id = request_id.0,
+            location = %location.diagnostic_path(),
+            display_name = ?display_name,
+            name_bytes = info.name().as_os_str().len(),
+            "skipped directory entry"
+        );
+        return None;
+    };
+    Some(entry_from_info(child, info))
+}
+
 fn entry_from_info(location: Location, info: gio::FileInfo) -> FileEntry {
     let location = if matches!(
         info.file_type(),
@@ -1197,8 +1224,7 @@ impl FileSource for LocalFileSource {
                         let mut entries: Vec<_> = files
                             .into_iter()
                             .filter_map(|info| {
-                                let child = directory.child(info.name());
-                                Some(entry_from_info(location_for_file(&child)?, info))
+                                listed_entry(request_id, &location, &directory, info)
                             })
                             .collect();
                         let remaining_capacity = request.max_entries.saturating_sub(total_entries);
