@@ -20,7 +20,7 @@ Cancel or conversion failure leaves the chooser open without returning the incom
 
 Folder-only requests hide regular files in both directory listings and recursive results. File requests keep folders available for navigation. Changing a file-type filter refreshes the current results without clearing the search query; selection and acceptance follow the new filter.
 
-In Save dialogs, selecting a file copies its name into the name input without accepting the dialog. The automatic initial selection does not change the suggested name or destination. Selecting a folder changes the destination without changing the name. In Recent, select a file to save in its containing folder, or navigate to a local folder first.
+In Save dialogs, selecting a file copies its name into the name input without accepting the dialog. Names that are not valid UTF-8 display with replacement characters, but Save still targets the selected file's exact name while the name input shows it unchanged. The automatic initial selection does not change the suggested name or destination. Selecting a folder changes the destination without changing the name. In Recent, select a file to save in its containing folder, or navigate to a local folder first.
 
 Resizing a Miller column or a List heading in the chooser saves that width as the chooser default, so the next request opens with it. Regular Strata windows also remember widths, using separate browser defaults.
 
