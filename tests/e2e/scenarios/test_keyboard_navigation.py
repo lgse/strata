@@ -363,6 +363,30 @@ def test_select_all_selects_every_entry(strata, mode):
     )
 
 
+@pytest.mark.preferences(browser_mode="columns", single_click_previews=False)
+def test_columns_home_and_end_mirror_the_cursor(strata):
+    root = strata.fixture.root.name
+    strata.select_entry_with_keyboard("documents")
+    strata.wait(lambda: strata.pane_names() == [root, "documents"], "the child column to open")
+
+    strata.keyboard.press("End")
+    strata.wait_for_focused_entry("todo.txt")
+    strata.wait(lambda: strata.pane_names() == [root], "the stale child column to close")
+    assert strata.current_directory() == root
+
+    strata.keyboard.press("Up")
+    strata.wait_for_focused_entry("readme.md")
+    strata.keyboard.press("Up")
+    strata.wait_for_focused_entry("pictures")
+    strata.wait(lambda: strata.pane_names() == [root, "pictures"], "Up to mirror the folder")
+
+    strata.keyboard.press("Home")
+    strata.wait_for_focused_entry("archive")
+    strata.wait(
+        lambda: strata.pane_names() == [root, "archive"], "Home to mirror the first folder"
+    )
+
+
 def test_focus_stays_usable_after_changing_views(strata):
     strata.select_entry("readme.md")
     strata.wait_for_focused_entry("readme.md")
