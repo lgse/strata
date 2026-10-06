@@ -538,6 +538,16 @@ fn credentials_from_location_input(
     Ok((sanitized, credentials))
 }
 
+/// Entry text to show while a typed location mounts: the sanitized URI in its decoded display
+/// form, or `None` when the typed text needs no rewrite.
+fn mounting_entry_text(input: &str, sanitized: &str) -> Option<String> {
+    if sanitized == input {
+        return None;
+    }
+    let displayed = Location::uri(sanitized).display_path();
+    (displayed != input).then_some(displayed)
+}
+
 pub(super) enum TypedLocation {
     Navigating,
     Mounting { sanitized: String },
@@ -1539,8 +1549,8 @@ impl ViewState {
                 self.browser.focus_active();
             }
             Ok(TypedLocation::Mounting { sanitized }) => {
-                if sanitized != input.as_str() {
-                    self.location_entry.set_text(&sanitized);
+                if let Some(text) = mounting_entry_text(input.as_str(), &sanitized) {
+                    self.location_entry.set_text(&text);
                 }
             }
             Err(error) => {

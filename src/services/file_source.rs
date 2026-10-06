@@ -5,7 +5,10 @@ mod tests;
 
 use std::{fmt, rc::Rc, time::Duration};
 
-use crate::model::{FileEntry, Location, MetadataValue, uri_contains_credentials};
+use crate::model::{
+    FileEntry, GIO_URI_BUILD_FLAGS, GIO_URI_PARSE_FLAGS, Location, MetadataValue,
+    uri_contains_credentials,
+};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct RequestId(pub u64);
@@ -273,14 +276,12 @@ pub struct UriCredentials {
 }
 
 /// Removes URI user-info secrets while preserving the username separately.
+/// Path, query and fragment keep GIO's percent-encoding so non-UTF-8 names survive.
 pub fn sanitize_uri_credentials(
     input: &str,
 ) -> Result<(String, Option<UriCredentials>), LocationValidationError> {
-    let uri = glib::Uri::parse(
-        input,
-        glib::UriFlags::HAS_PASSWORD | glib::UriFlags::HAS_AUTH_PARAMS,
-    )
-    .map_err(|_| LocationValidationError::InvalidUri)?;
+    let uri = glib::Uri::parse(input, GIO_URI_PARSE_FLAGS)
+        .map_err(|_| LocationValidationError::InvalidUri)?;
     if !uri_contains_credentials(&uri) {
         return Ok((uri.to_str().to_string(), None));
     }
@@ -309,7 +310,7 @@ pub fn sanitize_uri_credentials(
     }
 
     let sanitized = glib::Uri::build_with_user(
-        glib::UriFlags::empty(),
+        GIO_URI_BUILD_FLAGS,
         &uri.scheme(),
         (!username.is_empty()).then_some(username.as_str()),
         None,

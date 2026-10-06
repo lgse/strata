@@ -64,16 +64,30 @@ fn embedded_uri_credentials_are_rejected() {
 
 #[test]
 fn embedded_uri_credentials_are_separated_from_the_sanitized_uri() {
-    for uri in [
-        "smb://user:secret@host/share",
-        "smb://user%3Asecret@host/share",
-        "smb://user;password=secret@host/share",
-        "smb://user%3Bpassword=secret@host/share",
+    for (uri, sanitized) in [
+        ("smb://user:secret@host/share", "smb://user@host/share"),
+        ("smb://user%3Asecret@host/share", "smb://user@host/share"),
+        (
+            "smb://user;password=secret@host/share",
+            "smb://user@host/share",
+        ),
+        (
+            "smb://user%3Bpassword=secret@host/share",
+            "smb://user@host/share",
+        ),
+        (
+            "sftp://user%3Asecret@host/caf%E9%20x.txt",
+            "sftp://user@host/caf%E9%20x.txt",
+        ),
+        (
+            "smb://user:secret@host/a%2Fb?x=%FF#f",
+            "smb://user@host/a%2Fb?x=%FF#f",
+        ),
     ] {
         assert_eq!(
             sanitize_uri_credentials(uri),
             Ok((
-                "smb://user@host/share".to_owned(),
+                sanitized.to_owned(),
                 Some(UriCredentials {
                     username: "user".to_owned(),
                     password: "secret".to_owned(),
@@ -91,11 +105,29 @@ fn credential_free_uris_are_accepted() {
         "smb://user@host/share",
         "sftp://user@host:2222/path",
         "network:///",
+        "trash:///caf%E9.txt",
+        "sftp://host/share/%FF",
     ] {
         assert_eq!(
             validate_uri_credentials(uri),
             Ok(()),
             "{uri:?} should be safe"
+        );
+    }
+}
+
+#[test]
+fn sanitized_uris_keep_gio_percent_encoding() {
+    for (uri, sanitized) in [
+        ("trash:///caf%E9.txt", "trash:///caf%E9.txt"),
+        ("sftp://host/share/a%2Fb", "sftp://host/share/a%2Fb"),
+        ("smb://host/caf%C3%A9", "smb://host/caf%C3%A9"),
+        ("smb://host/my share", "smb://host/my%20share"),
+    ] {
+        assert_eq!(
+            sanitize_uri_credentials(uri),
+            Ok((sanitized.to_owned(), None)),
+            "{uri:?}"
         );
     }
 }

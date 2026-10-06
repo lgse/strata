@@ -21,14 +21,53 @@ fn password_storage_selection_maps_to_gio_values() {
 
 #[test]
 fn location_input_credentials_are_one_shot_and_never_saved() {
-    let (location, credentials) = credentials_from_location_input("smb://alice:secret@host/share")
-        .expect("credential URI should parse");
-    let credentials = credentials.expect("credentials should be separated");
-
-    assert_eq!(location, "smb://alice@host/share");
-    assert_eq!(credentials.username, "alice");
-    assert_eq!(credentials.password, "secret");
-    assert_eq!(credentials.save, gio::PasswordSave::Never);
+    for (input, location, password, entry_text) in [
+        (
+            "smb://alice:secret@host/share",
+            "smb://alice@host/share",
+            Some("secret"),
+            Some("smb://alice@host/share"),
+        ),
+        (
+            "smb://alice:secret@host/café",
+            "smb://alice@host/caf%C3%A9",
+            Some("secret"),
+            Some("smb://alice@host/café"),
+        ),
+        (
+            "smb://alice:secret@host/my share",
+            "smb://alice@host/my%20share",
+            Some("secret"),
+            Some("smb://alice@host/my%20share"),
+        ),
+        ("smb://host/café", "smb://host/caf%C3%A9", None, None),
+        (
+            "smb://host/my share",
+            "smb://host/my%20share",
+            None,
+            Some("smb://host/my%20share"),
+        ),
+    ] {
+        let (sanitized, credentials) =
+            credentials_from_location_input(input).expect("location URI should parse");
+        assert_eq!(sanitized, location, "{input}");
+        assert_eq!(
+            mounting_entry_text(input, &sanitized).as_deref(),
+            entry_text,
+            "{input}"
+        );
+        assert_eq!(
+            credentials
+                .as_ref()
+                .map(|credentials| credentials.password.as_str()),
+            password,
+            "{input}"
+        );
+        if let Some(credentials) = credentials {
+            assert_eq!(credentials.username, "alice");
+            assert_eq!(credentials.save, gio::PasswordSave::Never);
+        }
+    }
 }
 
 #[test]

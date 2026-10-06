@@ -78,6 +78,19 @@ pub(crate) fn transfer_file_name(file: &gio::File) -> Option<OsString> {
     Some(OsStr::from_bytes(bytes).to_os_string())
 }
 
+/// GIO hands out percent-encoded URIs; keep path, query and fragment encoded so names that are
+/// not valid UTF-8 parse, while userinfo is still decoded for credential detection.
+pub(crate) const GIO_URI_PARSE_FLAGS: gio::glib::UriFlags = gio::glib::UriFlags::HAS_PASSWORD
+    .union(gio::glib::UriFlags::HAS_AUTH_PARAMS)
+    .union(gio::glib::UriFlags::ENCODED_PATH)
+    .union(gio::glib::UriFlags::ENCODED_QUERY)
+    .union(gio::glib::UriFlags::ENCODED_FRAGMENT);
+
+/// Build flags matching `GIO_URI_PARSE_FLAGS`, so already-encoded components are not re-escaped.
+pub(crate) const GIO_URI_BUILD_FLAGS: gio::glib::UriFlags = gio::glib::UriFlags::ENCODED_PATH
+    .union(gio::glib::UriFlags::ENCODED_QUERY)
+    .union(gio::glib::UriFlags::ENCODED_FRAGMENT);
+
 fn uri_scheme_eq(uri: &str, scheme: &str) -> bool {
     gio::glib::Uri::parse_scheme(uri).is_some_and(|parsed| parsed.eq_ignore_ascii_case(scheme))
 }

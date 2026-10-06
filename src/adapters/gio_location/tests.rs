@@ -14,15 +14,39 @@ fn local_conversion_preserves_native_path_bytes() {
 
 #[test]
 fn remote_conversion_preserves_gio_identity() {
-    for uri in [
-        "smb://host/share",
-        "sftp://host/path%20with%20spaces",
-        "trash:///",
+    use std::{ffi::OsStr, os::unix::ffi::OsStrExt};
+    for (file, name) in [
+        (gio::File::for_uri("smb://host/share"), Some(&b"share"[..])),
+        (
+            gio::File::for_uri("sftp://host/path%20with%20spaces"),
+            Some(&b"path with spaces"[..]),
+        ),
+        (gio::File::for_uri("trash:///"), None),
+        (
+            gio::File::for_uri("trash:///").child(OsStr::from_bytes(b"caf\xe9.txt")),
+            Some(&b"caf\xe9.txt"[..]),
+        ),
+        (
+            gio::File::for_uri("sftp://host/share").child(OsStr::from_bytes(b"\xff name")),
+            Some(&b"\xff name"[..]),
+        ),
+        (gio::File::for_uri("sftp://host/share/a%2Fb"), None),
+        (
+            gio::File::for_uri("smb://host/caf%C3%A9"),
+            Some("café".as_bytes()),
+        ),
     ] {
-        let file = gio_file_for_location(&Location::uri(uri));
-        assert!(file.equal(&gio::File::for_uri(uri)));
-        let round_trip = location_for_file(&file).expect("location");
-        assert!(gio_file_for_location(&round_trip).equal(&file));
+        let uri = file.uri();
+        let round_trip = location_for_file(&file).unwrap_or_else(|| panic!("{uri} has a location"));
+        assert!(gio_file_for_location(&round_trip).equal(&file), "{uri}");
+        assert_eq!(round_trip, Location::uri(uri.as_str()), "{uri}");
+        if let Some(name) = name {
+            assert_eq!(
+                round_trip.file_name().as_deref().map(OsStrExt::as_bytes),
+                Some(name),
+                "{uri}"
+            );
+        }
     }
 }
 
