@@ -164,6 +164,9 @@ On a desktop that does not manage the frontend as a systemd user unit, log out a
   across groups; plain arrows select only the focused item.
 - Space/Enter activate focused buttons and toggles. Down or Enter opens a focused
   dropdown; its arrows and Enter select an option.
+- Enter on a focused file accepts the request. In a multiple-selection request
+  with files selected, it returns every selected file, the same as **Open**.
+  Enter on a folder opens it.
 - F2 renames a single selected file or folder. Escape cancels the name editor
   without closing the chooser. Right-click an item for Rename or Properties;
   right-click empty pane space for New Folder. Alt+Enter opens Properties from
