@@ -51,6 +51,8 @@ Focused selections can be run on the same infrastructure:
 ./scripts/test-headless.py ui::window::bookmarks::tests
 ./scripts/test-headless.py adapters::bookmarks::tests
 ./scripts/test-headless.py adapters::local_operations::tests::deletion
+./scripts/test-headless.py ui::browser::trash::tests
+./scripts/test-headless.py without_trash_support
 ```
 
 The tests create their own temporary payloads and metadata. They cover:
@@ -67,11 +69,15 @@ The tests create their own temporary payloads and metadata. They cover:
 - bounded concurrent lookups, result ordering, and dropping active lookups when
   the batch is cancelled. A filesystem call already blocked inside the kernel
   may still take time to return; cancellation does not kill that system call.
+- the explained, Cancel-first permanent confirmation when Trash is unsupported,
+  both before a Trash attempt (the listing reports no Trash support) and after
+  one fails, in the foreground, docked, and after a mixed failure.
 
 Run the real keyboard and drag/drop regressions in the pinned E2E container:
 
 ```bash
 ./scripts/e2e.sh -k cross_volume
+./scripts/e2e.sh tests/e2e/scenarios/test_entry_management.py -k trash_support
 ```
 
 These verify Copy, Move, and Cancel with real keyboard input in every view, and
@@ -79,6 +85,9 @@ that the chosen action agrees with the resulting files. The default
 cross-device strategy is **Always Ask**. An unresolved volume lookup uses the
 configured cross-device policy and is described as unresolved,
 not as a proven device difference. Explicit modifier overrides remain supported.
+The `trash_support` selection deletes from a `/dev/shm` folder, which GIO
+reports as unable to trash, and checks that Delete and 10xer **d** explain the
+missing Trash, focus Cancel, and delete only after an explicit confirmation.
 
 ## Manual acceptance
 

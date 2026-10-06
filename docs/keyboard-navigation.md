@@ -60,7 +60,7 @@ Pressing blank column content focuses that directory, including empty directorie
 
 **Shift+Up/Down** extends the selection from the range anchor by one item, **Shift+Page Up/Page Down** by one page. After Escape clears the selection, the range starts at the cursor.
 
-Copy/cut use the selection in the focused column, never a hovered row. In Columns, Delete/Shift+Delete with no selected items does nothing: an open parent-path marker is not an implicit deletion target. The separate List/Icons parent-deletion fallback is tracked in #300.
+Copy/cut use the selection in the focused column, never a hovered row. In Columns, Delete/Shift+Delete with no selected items does nothing: an open parent-path marker is not an implicit deletion target. The separate List/Icons parent-deletion fallback is tracked in #300. Delete in a location without Trash support, or after a Trash attempt fails because Trash is unsupported, opens the permanent-deletion confirmation with Cancel focused and the reason stated; Shift+Delete is unchanged.
 
 Background selection updates from directory loading must not move keyboard focus to an inactive column.
 

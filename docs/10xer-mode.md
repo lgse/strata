@@ -367,7 +367,10 @@ button does not choose it: nothing changes until you accept, and Cancel or
 **d** / **Delete** show a **Move to Trash?** confirmation with its confirm button
 focused; pressing **d** again confirms it, so **d d** trashes. **D** / **Shift+Delete**, and **d** inside Trash, show the permanent
 deletion confirmation with its confirm button focused, so **Enter** confirms, and **d**
-there does nothing. Errors appear in
+there does nothing. In a folder whose listing reports no Trash support (such as
+a tmpfs), **d** / **Delete** open a permanent confirmation instead, stating
+that the location doesn't support Trash, with Cancel focused, so **d d** does
+not delete there. Errors appear in
 the usual operation dialogs, and **Ctrl+Z** undoes what the default map can undo.
 
 **a** opens `create ›` in the footer. **Enter** creates an empty file with exactly
