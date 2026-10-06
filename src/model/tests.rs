@@ -129,6 +129,7 @@ fn remote_locations_keep_uri_parents_and_breadcrumbs() {
         ("sftp://host/share/a%2Fb", "sftp://host/share"),
         ("sftp://host/share/a%2Fb/child", "sftp://host/share/a%2Fb"),
         ("sftp://host/share/100%25/child", "sftp://host/share/100%25"),
+        ("trash:///caf%E9.txt", "trash:///"),
     ] {
         assert_eq!(Location::uri(uri).parent(), Some(Location::uri(parent)));
     }
@@ -240,6 +241,10 @@ fn diagnostic_paths_preserve_native_paths_and_redact_remote_secrets() {
         "sftp://example.com/home/alice"
     );
     assert_eq!(
+        Location::uri("sftp://alice:pw@example.com/caf%E9?token=x#frag").diagnostic_path(),
+        "sftp://example.com/caf%E9"
+    );
+    assert_eq!(
         Location::uri("not a uri with alice:password@example.com").diagnostic_path(),
         "<invalid-uri>"
     );
@@ -261,6 +266,15 @@ fn display_paths_hide_remote_credentials_but_preserve_usernames() {
         Location::uri("smb://alice@host/share").display_path(),
         "smb://alice@host/share"
     );
+    for (uri, displayed) in [
+        ("trash:///caf%E9.txt", "trash:///caf%E9.txt"),
+        ("smb://host/caf%C3%A9", "smb://host/café"),
+        ("smb://alice:secret@host/caf%E9", "smb://host/caf%E9"),
+        ("sftp://host/share/a%2Fb", "sftp://host/share/a%2Fb"),
+        ("sftp://host/share/a%2fb", "sftp://host/share/a%2Fb"),
+    ] {
+        assert_eq!(Location::uri(uri).display_path(), displayed, "{uri}");
+    }
     assert_eq!(
         Location::uri("smb://alice%ZZ@host/share").display_path(),
         "<invalid-uri>"

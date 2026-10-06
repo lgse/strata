@@ -91,6 +91,30 @@ pub(crate) const GIO_URI_BUILD_FLAGS: gio::glib::UriFlags = gio::glib::UriFlags:
     .union(gio::glib::UriFlags::ENCODED_QUERY)
     .union(gio::glib::UriFlags::ENCODED_FRAGMENT);
 
+/// Decoded form when the URI is valid UTF-8, otherwise the percent-encoded form GIO produced.
+/// A path with an encoded slash also stays encoded, because decoding it would turn a name
+/// into a path separator when the displayed text is edited and submitted.
+fn parse_display_uri(uri: &str) -> Result<gio::glib::Uri, gio::glib::Error> {
+    let encoded = gio::glib::Uri::parse(uri, GIO_URI_PARSE_FLAGS);
+    if encoded
+        .as_ref()
+        .is_ok_and(|parsed| path_has_encoded_slash(&parsed.path()))
+    {
+        return encoded;
+    }
+    gio::glib::Uri::parse(
+        uri,
+        gio::glib::UriFlags::HAS_PASSWORD | gio::glib::UriFlags::HAS_AUTH_PARAMS,
+    )
+    .or(encoded)
+}
+
+fn path_has_encoded_slash(path: &str) -> bool {
+    path.as_bytes().windows(3).any(|escape| {
+        escape[0] == b'%' && escape[1] == b'2' && escape[2].eq_ignore_ascii_case(&b'f')
+    })
+}
+
 fn uri_scheme_eq(uri: &str, scheme: &str) -> bool {
     gio::glib::Uri::parse_scheme(uri).is_some_and(|parsed| parsed.eq_ignore_ascii_case(scheme))
 }
@@ -294,19 +318,16 @@ impl Location {
     pub fn diagnostic_path(&self) -> String {
         match &self.kind {
             LocationKind::Native(path) => path.to_string_lossy().into_owned(),
-            LocationKind::Uri(uri) => gio::glib::Uri::parse(
-                uri,
-                gio::glib::UriFlags::HAS_PASSWORD | gio::glib::UriFlags::HAS_AUTH_PARAMS,
-            )
-            .map(|uri| {
-                uri.to_string_partial(
-                    gio::glib::UriHideFlags::USERINFO
-                        | gio::glib::UriHideFlags::QUERY
-                        | gio::glib::UriHideFlags::FRAGMENT,
-                )
-                .to_string()
-            })
-            .unwrap_or_else(|_| "<invalid-uri>".into()),
+            LocationKind::Uri(uri) => parse_display_uri(uri)
+                .map(|uri| {
+                    uri.to_string_partial(
+                        gio::glib::UriHideFlags::USERINFO
+                            | gio::glib::UriHideFlags::QUERY
+                            | gio::glib::UriHideFlags::FRAGMENT,
+                    )
+                    .to_string()
+                })
+                .unwrap_or_else(|_| "<invalid-uri>".into()),
         }
     }
 
@@ -314,19 +335,16 @@ impl Location {
     pub fn display_path(&self) -> String {
         match &self.kind {
             LocationKind::Native(path) => path.to_string_lossy().into_owned(),
-            LocationKind::Uri(uri) => gio::glib::Uri::parse(
-                uri,
-                gio::glib::UriFlags::HAS_PASSWORD | gio::glib::UriFlags::HAS_AUTH_PARAMS,
-            )
-            .map(|uri| {
-                let hidden = if uri_contains_credentials(&uri) {
-                    gio::glib::UriHideFlags::USERINFO
-                } else {
-                    gio::glib::UriHideFlags::empty()
-                };
-                uri.to_string_partial(hidden).to_string()
-            })
-            .unwrap_or_else(|_| "<invalid-uri>".into()),
+            LocationKind::Uri(uri) => parse_display_uri(uri)
+                .map(|uri| {
+                    let hidden = if uri_contains_credentials(&uri) {
+                        gio::glib::UriHideFlags::USERINFO
+                    } else {
+                        gio::glib::UriHideFlags::empty()
+                    };
+                    uri.to_string_partial(hidden).to_string()
+                })
+                .unwrap_or_else(|_| "<invalid-uri>".into()),
         }
     }
 
