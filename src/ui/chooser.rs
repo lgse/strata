@@ -9,7 +9,7 @@ mod tests;
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
-    ffi::OsString,
+    ffi::{OsStr, OsString},
     path::{Path, PathBuf},
     rc::Rc,
     sync::{
@@ -475,6 +475,9 @@ struct ChooserState {
     filename: Option<gtk::Entry>,
     filename_selection: RefCell<Vec<Location>>,
     filename_edited: Cell<bool>,
+    /// Exact bytes of the filesystem name last copied into `filename`; the entry
+    /// itself holds only the lossy UTF-8 rendering.
+    filename_source: RefCell<Option<OsString>>,
     filter_dropdown: Option<ChooserDropdown>,
     filters: Vec<PortalFilter>,
     choices: Vec<ChoiceControl>,
@@ -758,6 +761,26 @@ impl ChooserState {
         self.chosen_entries(true)
     }
 
+    fn fill_filename(&self, filename: &gtk::Entry, name: &OsStr) {
+        filename.set_text(&name.to_string_lossy());
+        self.filename_source.replace(Some(name.to_owned()));
+    }
+
+    fn clear_filename(&self, filename: &gtk::Entry) {
+        filename.set_text("");
+        self.filename_source.replace(None);
+        self.filename_edited.set(false);
+    }
+
+    /// The destination name for the entry text: the recorded source's bytes while the
+    /// text still shows that source, otherwise the literal text the user typed.
+    fn save_destination_name(&self, text: &str) -> OsString {
+        match self.filename_source.borrow().as_deref() {
+            Some(source) if source.to_string_lossy() == text => source.to_owned(),
+            _ => OsString::from(text),
+        }
+    }
+
     fn update_selected_filename(&self) {
         let Some(filename) = self.filename.as_ref() else {
             return;
@@ -779,7 +802,7 @@ impl ChooserState {
             && let Some(name) = entry.location.native_path().and_then(Path::file_name)
             && safe_filename(name)
         {
-            filename.set_text(&name.to_string_lossy());
+            self.fill_filename(filename, name);
             self.filename_edited.set(false);
             filename.remove_css_class("error");
             crate::ui::accessibility::set_description(filename, None);
@@ -790,8 +813,7 @@ impl ChooserState {
                 ..
             }
         ) {
-            filename.set_text("");
-            self.filename_edited.set(false);
+            self.clear_filename(filename);
         }
     }
 
@@ -964,8 +986,7 @@ impl ChooserState {
                 Ok(entry) if entry.is_directory() => {
                     state.view.browser().navigate(entry.location);
                     if let Some(filename) = state.filename.as_ref() {
-                        filename.set_text("");
-                        state.filename_edited.set(false);
+                        state.clear_filename(filename);
                     }
                 }
                 Ok(entry) if state.view.browser().allows_entry(&entry) => {
@@ -1005,12 +1026,7 @@ impl ChooserState {
                 return;
             }
         };
-        let name = match &self.request.kind {
-            ChooserKind::SaveFile {
-                current_name: Some(current),
-            } if current.to_string_lossy() == name => current.clone(),
-            _ => OsString::from(name),
-        };
+        let name = self.save_destination_name(&name);
         self.accept_destinations(folder, vec![name]);
     }
 
@@ -1186,7 +1202,7 @@ impl ChooserState {
                     return;
                 };
                 if let Some(filename) = self.filename.as_ref() {
-                    filename.set_text(&name.to_string_lossy());
+                    self.fill_filename(filename, &name);
                 }
                 self.accept_destinations(folder, vec![name]);
             }
@@ -1733,6 +1749,10 @@ fn build_chooser_hosted(
     install_modal_focus_trap(&window);
     window.set_default_widget(Some(&accept));
 
+    let filename_source = match &request.kind {
+        ChooserKind::SaveFile { current_name } => current_name.clone(),
+        _ => None,
+    };
     let state = Rc::new(ChooserState {
         request,
         window: window.clone(),
@@ -1741,6 +1761,7 @@ fn build_chooser_hosted(
         filename: filename.clone(),
         filename_selection: RefCell::new(Vec::new()),
         filename_edited: Cell::new(false),
+        filename_source: RefCell::new(filename_source),
         filter_dropdown,
         filters,
         choices,
