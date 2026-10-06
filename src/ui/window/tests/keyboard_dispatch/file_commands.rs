@@ -1160,3 +1160,207 @@ fn tenxer_action_chord_compresses_and_extracts_archives() {
         },
     );
 }
+
+/// Local browsing whose listings report that Trash is unsupported, like a
+/// tmpfs, or, when `read_only`, a folder the user cannot delete from either.
+struct TrashlessLocal {
+    read_only: bool,
+}
+
+impl crate::services::FileSource for TrashlessLocal {
+    fn allows_entry(&self, entry: &crate::model::FileEntry) -> bool {
+        crate::adapters::LocalFileSource.allows_entry(entry)
+    }
+
+    fn validate_location(
+        &self,
+        location: &Location,
+    ) -> Result<(), crate::services::LocationValidationError> {
+        crate::adapters::LocalFileSource.validate_location(location)
+    }
+
+    fn validate_location_async(
+        &self,
+        location: Location,
+        emit: Rc<dyn Fn(Result<(), crate::services::LocationValidationError>)>,
+    ) -> crate::services::LoadHandle {
+        crate::adapters::LocalFileSource.validate_location_async(location, emit)
+    }
+
+    fn enumerate(
+        &self,
+        request: crate::services::DirectoryRequest,
+        emit: Rc<dyn Fn(crate::services::DirectoryEvent)>,
+    ) -> crate::services::LoadHandle {
+        let read_only = self.read_only;
+        crate::adapters::LocalFileSource.enumerate(
+            request,
+            Rc::new(move |event| {
+                emit(match event {
+                    crate::services::DirectoryEvent::Finished {
+                        request_id,
+                        truncated,
+                        can_delete,
+                        ..
+                    } => crate::services::DirectoryEvent::Finished {
+                        request_id,
+                        truncated,
+                        can_trash: Some(false),
+                        can_delete: if read_only { Some(false) } else { can_delete },
+                    },
+                    event => event,
+                })
+            }),
+        )
+    }
+
+    fn supports_metadata_fill(&self, location: &Location) -> bool {
+        crate::adapters::LocalFileSource.supports_metadata_fill(location)
+    }
+
+    fn fill_metadata(
+        &self,
+        request: crate::services::MetadataRequest,
+        emit: Rc<dyn Fn(crate::services::DirectoryEvent)>,
+    ) -> crate::services::LoadHandle {
+        crate::adapters::LocalFileSource.fill_metadata(request, emit)
+    }
+
+    fn watch(
+        &self,
+        location: Location,
+        include_hidden: bool,
+        notify: Rc<dyn Fn(crate::services::DirectoryChange)>,
+    ) -> Option<crate::services::LoadHandle> {
+        crate::adapters::LocalFileSource.watch(location, include_hidden, notify)
+    }
+}
+
+fn modal_text_contains(fixture: &KeyboardFixture, text: &str) -> bool {
+    fn contains(widget: &gtk::Widget, text: &str) -> bool {
+        widget.downcast_ref::<gtk::Label>().is_some_and(|label| {
+            label
+                .text()
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+                .contains(text)
+        }) || {
+            let mut child = widget.first_child();
+            let mut found = false;
+            while let Some(current) = child {
+                if contains(&current, text) {
+                    found = true;
+                    break;
+                }
+                child = current.next_sibling();
+            }
+            found
+        }
+    }
+    widget_with_class(fixture.overlay.upcast_ref(), "app-modal-layer")
+        .is_some_and(|layer| contains(&layer, text))
+}
+
+#[test]
+fn delete_without_trash_support_confirms_permanently_with_cancel_focused() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::file_commands::delete_without_trash_support_confirms_permanently_with_cancel_focused",
+        || {
+            // `read_only`: the folder refuses deletion too, so a missing Trash
+            // is not the whole story and the trash attempt reports the error.
+            for (read_only, tenxer, key) in [
+                (false, false, Key::Delete),
+                (false, true, Key::d),
+                (false, true, Key::Delete),
+                (true, false, Key::Delete),
+            ] {
+                let held = Rc::new(crate::test_support::operations::HeldOperations::default());
+                let provider = held.clone();
+                let fixture = KeyboardFixture::with_parts(Rc::new(TextPreview), move || {
+                    let view = BrowserView::new(
+                        Rc::new(TrashlessLocal { read_only }),
+                        crate::ui::browser::PeekBehavior::default(),
+                    );
+                    view.set_operation_provider(provider);
+                    view
+                });
+                let directory = fixture._directory.path().to_path_buf();
+                let browser = fixture.view.browser();
+                assert_eq!(
+                    (browser.can_trash_at(0), browser.can_delete_at(0)),
+                    (Some(false), Some(!read_only)),
+                    "precondition"
+                );
+                if tenxer {
+                    enable_tenxer(&fixture);
+                }
+                focus_files(&fixture);
+                move_to_named(&fixture, &browser, "a.txt");
+                plain(&fixture, key);
+                pump(100);
+                if read_only {
+                    let id = browser.last_started_operation().expect("trash attempt");
+                    assert_eq!(
+                        (
+                            held.delete_requests.borrow().as_slice(),
+                            modal_visible(&fixture.overlay)
+                        ),
+                        ([(id, false, 1)].as_slice(), false),
+                        "a read-only folder keeps the trash attempt: (delete requests, dialog open)"
+                    );
+                    continue;
+                }
+                assert_eq!(
+                    (
+                        held.delete_requests.borrow().len(),
+                        modal_visible(&fixture.overlay),
+                        modal_text_contains(&fixture, "Move to Trash"),
+                        modal_text_contains(&fixture, "doesn't support Trash"),
+                    ),
+                    (0, true, false, true),
+                    "{:?} (tenxer: {tenxer}): (delete requests started, dialog open, \
+                     is the Move to Trash dialog, explains missing Trash)",
+                    key.name()
+                );
+                wait_focused_button(&fixture, "Cancel");
+                pump(300);
+                assert_eq!(
+                    focused_button(&fixture).and_then(|button| button.label()),
+                    Some("Cancel".into()),
+                    "the size summary must not move focus to Permanently delete"
+                );
+                if tenxer {
+                    modal_key(&fixture, Key::d);
+                    pump(100);
+                    assert!(modal_visible(&fixture.overlay), "d never confirms it");
+                    assert!(held.delete_requests.borrow().is_empty());
+                }
+                assert!(modal_key(&fixture, Key::Return));
+                wait_until(|| !modal_visible(&fixture.overlay));
+                assert!(directory.join("a.txt").exists(), "Enter cancels");
+                assert!(held.delete_requests.borrow().is_empty());
+
+                focus_files(&fixture);
+                move_to_named(&fixture, &browser, "a.txt");
+                plain(&fixture, key);
+                wait_until(|| {
+                    widget_with_class(fixture.overlay.upcast_ref(), "action-dialog-confirm")
+                        .is_some_and(|confirm| confirm.is_sensitive())
+                });
+                assert!(click_class(&fixture.overlay, "action-dialog-confirm"));
+                wait_until(|| !held.delete_requests.borrow().is_empty());
+                let (id, permanent, count) = held.delete_requests.borrow_mut().remove(0);
+                assert_eq!((permanent, count), (true, 1), "{key:?} confirms permanently");
+                held.emit(
+                    id,
+                    crate::services::OperationEvent::Deleted {
+                        request_id: id,
+                        locations: vec![Location::local(directory.join("a.txt"))],
+                    },
+                );
+                wait_until(|| !modal_visible(&fixture.overlay));
+            }
+        },
+    );
+}
