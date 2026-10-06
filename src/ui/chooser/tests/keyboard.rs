@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use super::acceptance::{request, wait_until};
+use super::acceptance::{request, visible_collection_selection, wait_until};
 use super::*;
 use crate::ui::browser_modes::BrowserMode;
 use gtk::gdk::{Key, ModifierType};
@@ -193,6 +193,13 @@ fn single_file() -> ChooserKind {
     }
 }
 
+fn multiple_files() -> ChooserKind {
+    ChooserKind::Open {
+        directory: false,
+        multiple: true,
+    }
+}
+
 #[test]
 fn tenxer_keys_choose_the_cursor_file_in_every_view() {
     crate::test_support::gtk_test(
@@ -261,13 +268,9 @@ fn multiple_requests_fill_with_space_and_choose_the_fill() {
     crate::test_support::gtk_test(
         "ui::chooser::tests::keyboard::multiple_requests_fill_with_space_and_choose_the_fill",
         || {
-            let multiple = || ChooserKind::Open {
-                directory: false,
-                multiple: true,
-            };
             let tree = ["a.txt", "b.txt", "c.txt"];
 
-            let chooser = Chooser::open(multiple(), BrowserMode::List, &tree);
+            let chooser = Chooser::open(multiple_files(), BrowserMode::List, &tree);
             chooser.focus_files();
             chooser.move_to("a.txt");
             chooser.press(Key::space);
@@ -280,7 +283,7 @@ fn multiple_requests_fill_with_space_and_choose_the_fill() {
             );
             drop(chooser);
 
-            let chooser = Chooser::open(multiple(), BrowserMode::List, &tree);
+            let chooser = Chooser::open(multiple_files(), BrowserMode::List, &tree);
             chooser.focus_files();
             chooser.move_to("c.txt");
             assert!(chooser.press(Key::Return));
@@ -723,6 +726,119 @@ fn footer_create_and_rename_keep_the_request_open() {
             wait_until(|| chooser.root.path().join("made").is_dir());
             assert!(chooser.open_request());
             assert!(!chooser.root.path().join("draft.txt").exists());
+        },
+    );
+}
+
+#[test]
+fn default_map_enter_returns_the_whole_fill_in_every_view() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::keyboard::default_map_enter_returns_the_whole_fill_in_every_view",
+        || {
+            let shift_down = |chooser: &Chooser| {
+                chooser.press_with(Key::Down, ModifierType::SHIFT_MASK);
+            };
+            let select_all = |chooser: &Chooser| {
+                chooser.press_with(Key::a, ModifierType::CONTROL_MASK);
+            };
+            let native_first_and_last = |chooser: &Chooser| {
+                let browser = chooser.state.view.browser();
+                browser.commit_selection();
+                let selection = visible_collection_selection(&chooser.state.view.widget())
+                    .expect("visible browser collection");
+                selection.select_item(0, true);
+                selection.select_item(2, false);
+                wait_until(|| browser.selected_entries().len() == 2);
+            };
+            let cases: [(BrowserMode, &dyn Fn(&Chooser), &[&str]); 3] = [
+                (BrowserMode::Columns, &shift_down, &["a.txt", "b.txt"]),
+                (BrowserMode::List, &select_all, &["a.txt", "b.txt", "c.txt"]),
+                (BrowserMode::Icons, &native_first_and_last, &["a.txt", "c.txt"]),
+            ];
+            for (mode, fill, expected) in cases {
+                let chooser = Chooser::open_with(
+                    multiple_files(),
+                    mode,
+                    &["a.txt", "b.txt", "c.txt"],
+                    false,
+                );
+                chooser.focus_files();
+                fill(&chooser);
+                assert!(chooser.open_request(), "{mode:?} filling chose a file");
+
+                assert!(chooser.press(Key::Return), "{mode:?}");
+                let mut chosen = chooser.chosen();
+                chosen.sort();
+                let expected = expected
+                    .iter()
+                    .map(|name| chooser.uri(name))
+                    .collect::<Vec<_>>();
+                assert_eq!(chosen, expected, "{mode:?}");
+                chooser.press(Key::Return);
+                chooser.press(Key::Escape);
+                assert_eq!(chooser.responses.get(), 1, "{mode:?} responded twice");
+            }
+        },
+    );
+}
+
+#[test]
+fn default_map_enter_returns_only_the_files_of_a_fill_with_a_folder() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::keyboard::default_map_enter_returns_only_the_files_of_a_fill_with_a_folder",
+        || {
+            let chooser = Chooser::open_with(
+                multiple_files(),
+                BrowserMode::List,
+                &["a.txt", "b.txt", "sub/"],
+                false,
+            );
+            chooser.focus_files();
+            chooser.press_with(Key::a, ModifierType::CONTROL_MASK);
+            assert_eq!(chooser.state.view.browser().selected_entries().len(), 3);
+            assert_eq!(chooser.cursor_name().as_deref(), Some("b.txt"));
+
+            assert!(chooser.press(Key::Return));
+            let mut chosen = chooser.chosen();
+            chosen.sort();
+            assert_eq!(chosen, [chooser.uri("a.txt"), chooser.uri("b.txt")]);
+        },
+    );
+}
+
+#[test]
+fn default_map_enter_keeps_single_selection_and_folder_navigation() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::keyboard::default_map_enter_keeps_single_selection_and_folder_navigation",
+        || {
+            let chooser = Chooser::open_with(
+                single_file(),
+                BrowserMode::List,
+                &["alpha.txt", "beta.txt"],
+                false,
+            );
+            chooser.focus_files();
+            assert!(chooser.press(Key::Return));
+            assert_eq!(chooser.chosen(), [chooser.uri("alpha.txt")]);
+            assert_eq!(chooser.responses.get(), 1);
+            drop(chooser);
+
+            let chooser = Chooser::open_with(
+                multiple_files(),
+                BrowserMode::Columns,
+                &["alpha.txt", "folder/", "folder/inner.txt"],
+                false,
+            );
+            chooser.focus_files();
+            chooser.press(Key::Down);
+            chooser.press_with(Key::Up, ModifierType::SHIFT_MASK);
+            let browser = chooser.state.view.browser();
+            assert_eq!(browser.selected_entries().len(), 2);
+            assert_eq!(chooser.cursor_name().as_deref(), Some("folder"));
+            assert!(chooser.press(Key::Return));
+            let folder = Location::local(chooser.root.path().join("folder"));
+            wait_until(|| browser.active_location().as_ref() == Some(&folder));
+            assert!(chooser.open_request(), "Enter on a folder chose the fill");
         },
     );
 }
