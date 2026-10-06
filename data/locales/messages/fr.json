@@ -808,6 +808,8 @@
   "This item can be restored from Trash.": "Cet élément peut être restauré depuis la corbeille.",
   "This item will be moved back to the original location shown above.": "Cet élément sera replacé à l’emplacement d’origine indiqué ci-dessus.",
   "This item will be permanently deleted. This action cannot be undone.": "Cet élément sera supprimé définitivement. Cette action est irréversible.",
+  "This location doesn't support Trash. These items will be permanently deleted. This action cannot be undone.": "Cet emplacement ne prend pas en charge la corbeille. Ces éléments seront supprimés définitivement. Cette action est irréversible.",
+  "This location doesn't support Trash. This item will be permanently deleted. This action cannot be undone.": "Cet emplacement ne prend pas en charge la corbeille. Cet élément sera supprimé définitivement. Cette action est irréversible.",
   "This model exceeds the 2 million triangle preview limit. Try a lower-detail version.": "Ce modèle dépasse la limite d’aperçu de 2 millions de triangles. Essayez une version moins détaillée.",
   "This release has no signed update manifest. Choose a newer release or download it manually.": "Cette version n’a pas de manifeste de mise à jour signé. Choisissez une version plus récente ou téléchargez-la manuellement.",
   "This runs “%{value1}” on %{value2}.": "Cette commande exécute « %{value1} » sur %{value2}.",

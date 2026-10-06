@@ -366,7 +366,7 @@ impl ViewState {
             );
             return;
         }
-        self.show_delete_confirmation(entries);
+        self.show_trash_unavailable_confirmation(entries);
     }
 
     pub(in crate::ui::browser) fn update_transfer_progress(

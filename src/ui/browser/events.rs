@@ -882,12 +882,12 @@ impl ViewState {
                             &message,
                             Rc::new(move || {
                                 if let Some(state) = weak_state.upgrade() {
-                                    state.show_delete_confirmation(retryable_entries.clone());
+                                    state.show_trash_unavailable_confirmation(retryable_entries.clone());
                                 }
                             }),
                         );
                     } else {
-                        state.show_delete_confirmation(retryable_entries);
+                        state.show_trash_unavailable_confirmation(retryable_entries);
                     }
                 });
             }

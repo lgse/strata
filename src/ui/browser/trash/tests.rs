@@ -203,3 +203,159 @@ fn changing_metadata_after_confirmation_is_presented_refuses_the_move() {
         },
     );
 }
+
+fn normalized(label: &gtk::Label) -> String {
+    label.text().split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn has_label(root: &gtk::Window, text: &str) -> bool {
+    find_widget(root.upcast_ref(), &|label: &gtk::Label| {
+        normalized(label).contains(text)
+    })
+    .is_some()
+}
+
+fn focused_button_label(window: &gtk::Window) -> Option<String> {
+    gtk::prelude::RootExt::focus(window)?
+        .downcast::<gtk::Button>()
+        .ok()?
+        .label()
+        .map(String::from)
+}
+
+fn delete_summary_loaded(window: &gtk::Window) -> bool {
+    find_widget(window.upcast_ref(), &|label: &gtk::Label| {
+        let text = normalized(label);
+        text.contains(" · ") && text.ends_with("will be permanently deleted")
+    })
+    .is_some()
+}
+
+/// Window dispatch cannot reach the modal's own key controller.
+fn modal_key(window: &gtk::Window, key: gtk::gdk::Key) -> bool {
+    let layer = find_widget(window.upcast_ref(), &|widget: &gtk::Widget| {
+        widget.has_css_class("app-modal-layer")
+    })
+    .expect("open dialog");
+    let controllers = layer.observe_controllers();
+    (0..controllers.n_items())
+        .filter_map(|index| controllers.item(index))
+        .find_map(|controller| controller.downcast::<gtk::EventControllerKey>().ok())
+        .expect("dialog key controller")
+        .emit_by_name::<bool>(
+            "key-pressed",
+            &[&key, &0u32, &gtk::gdk::ModifierType::empty()],
+        )
+}
+
+fn pump(milliseconds: u64) {
+    let deadline = Instant::now() + Duration::from_millis(milliseconds);
+    while Instant::now() < deadline {
+        glib::MainContext::default().iteration(false);
+        std::thread::sleep(Duration::from_millis(1));
+    }
+}
+
+#[test]
+fn unsupported_trash_fallback_explains_and_focuses_cancel() {
+    crate::test_support::gtk_test(
+        "ui::browser::trash::tests::unsupported_trash_fallback_explains_and_focuses_cancel",
+        || {
+            let fixture = tempfile::tempdir().expect("fixture");
+            let paths = ["a.txt", "b.txt"].map(|name| fixture.path().join(name));
+            for path in &paths {
+                fs::write(path, b"keep").expect("fixture file");
+            }
+            let entries: Vec<FileEntry> = paths
+                .iter()
+                .map(|path| crate::test_support::operations::entry(Location::local(path)))
+                .collect();
+            let held = Rc::new(crate::test_support::operations::HeldOperations::default());
+            let view = view();
+            view.set_operation_provider(held.clone());
+            let window = window(&view);
+
+            // `mixed`: another item failed for a different reason, so the
+            // "Completed with errors" dialog's Delete Permanently comes first.
+            for mixed in [false, true] {
+                let unsupported = |id| crate::services::OperationEvent::CompletedWithErrors {
+                    request_id: id,
+                    deleted_locations: Vec::new(),
+                    retryable_locations: entries.iter().map(|entry| entry.location.clone()).collect(),
+                    has_non_retryable_failures: mixed,
+                    message: "a.txt: This location doesn't support Trash. Delete permanently instead.\n\n• b.txt: This location doesn't support Trash. Delete permanently instead.".into(),
+                };
+                let fail_trash_attempt = || {
+                    view.state.request_delete(entries.clone(), false);
+                    let id = view.browser().last_started_operation().expect("trash attempt");
+                    assert_eq!(
+                        held.delete_requests.borrow().last().copied(),
+                        Some((id, false, 2)),
+                        "Delete first attempts a trash"
+                    );
+                    held.emit(id, unsupported(id));
+                    if mixed {
+                        wait_until(|| button(window.upcast_ref(), "Delete Permanently").is_some());
+                        // The error dialog only opens the confirmation, so it keeps its focus.
+                        wait_until(|| {
+                            focused_button_label(&window).as_deref() == Some("Delete Permanently")
+                        });
+                        button(window.upcast_ref(), "Delete Permanently")
+                            .expect("retry")
+                            .emit_clicked();
+                    }
+                    wait_until(|| {
+                        button(window.upcast_ref(), "Permanently delete 2 items").is_some()
+                    });
+                };
+
+                fail_trash_attempt();
+                wait_until(|| {
+                    focused_button_label(&window).is_some_and(|label| {
+                        label == "Cancel" || label == "Permanently delete 2 items"
+                    })
+                });
+                let initial_focus = focused_button_label(&window);
+                wait_until(|| delete_summary_loaded(&window));
+                pump(300);
+                assert_eq!(
+                    (
+                        has_label(
+                            &window,
+                            "doesn't support Trash. These items will be permanently deleted."
+                        ),
+                        initial_focus.as_deref(),
+                        focused_button_label(&window).as_deref(),
+                    ),
+                    (true, Some("Cancel"), Some("Cancel")),
+                    "mixed: {mixed}: (explains missing Trash, initial focus, focus after the size summary)"
+                );
+
+                let requests = held.delete_requests.borrow().len();
+                assert!(modal_key(&window, gtk::gdk::Key::Return));
+                wait_until(|| button(window.upcast_ref(), "Permanently delete 2 items").is_none());
+                assert_eq!(held.delete_requests.borrow().len(), requests, "Enter cancels");
+                assert!(paths.iter().all(|path| path.exists()));
+
+                fail_trash_attempt();
+                button(window.upcast_ref(), "Permanently delete 2 items")
+                    .expect("confirm")
+                    .emit_clicked();
+                wait_until(|| held.delete_requests.borrow().len() == requests + 2);
+                let (id, permanent, count) =
+                    held.delete_requests.borrow().last().copied().expect("retry");
+                assert_eq!((permanent, count), (true, 2), "mixed: {mixed}: confirm is permanent");
+                held.emit(
+                    id,
+                    crate::services::OperationEvent::Deleted {
+                        request_id: id,
+                        locations: entries.iter().map(|entry| entry.location.clone()).collect(),
+                    },
+                );
+                wait_until(|| !view.browser().is_current_operation(id));
+            }
+            window.destroy();
+            view.browser().clear_observer();
+        },
+    );
+}

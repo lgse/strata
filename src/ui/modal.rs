@@ -457,7 +457,7 @@ fn show_message_dialog(
 /// Trash (issue #179): rather than a dead-end "Done" button, this offers an
 /// actionable "Delete Permanently" button that invokes `on_retry` -- the
 /// caller's job is to re-run the delete for just the retryable entries,
-/// e.g. via `show_delete_confirmation(retryable_entries)`.
+/// e.g. via `show_trash_unavailable_confirmation(retryable_entries)`.
 pub(super) fn show_delete_error_dialog(
     parent: &impl IsA<gtk::Widget>,
     detail: &str,

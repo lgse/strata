@@ -808,6 +808,8 @@
   "This item can be restored from Trash.": "この項目はゴミ箱から復元できます。",
   "This item will be moved back to the original location shown above.": "この項目は上に表示された元の場所へ戻されます。",
   "This item will be permanently deleted. This action cannot be undone.": "この項目は完全に削除されます。この操作は元に戻せません。",
+  "This location doesn't support Trash. These items will be permanently deleted. This action cannot be undone.": "この場所はゴミ箱に対応していません。これらの項目は完全に削除されます。この操作は元に戻せません。",
+  "This location doesn't support Trash. This item will be permanently deleted. This action cannot be undone.": "この場所はゴミ箱に対応していません。この項目は完全に削除されます。この操作は元に戻せません。",
   "This model exceeds the 2 million triangle preview limit. Try a lower-detail version.": "このモデルはプレビューの上限である 200 万個の三角形を超えています。詳細度の低いバージョンをお試しください。",
   "This release has no signed update manifest. Choose a newer release or download it manually.": "このリリースには署名済みの更新マニフェストがありません。新しいリリースを選ぶか、手動でダウンロードしてください。",
   "This runs “%{value1}” on %{value2}.": "%{value2}で「%{value1}」を実行します。",

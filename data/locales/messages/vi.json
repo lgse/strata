@@ -808,6 +808,8 @@
   "This item can be restored from Trash.": "Có thể khôi phục mục này từ Thùng rác.",
   "This item will be moved back to the original location shown above.": "Mục này sẽ được chuyển về vị trí ban đầu hiển thị ở trên.",
   "This item will be permanently deleted. This action cannot be undone.": "Mục này sẽ bị xóa vĩnh viễn. Không thể hoàn tác thao tác này.",
+  "This location doesn't support Trash. These items will be permanently deleted. This action cannot be undone.": "Vị trí này không hỗ trợ Thùng rác. Các mục này sẽ bị xóa vĩnh viễn. Không thể hoàn tác thao tác này.",
+  "This location doesn't support Trash. This item will be permanently deleted. This action cannot be undone.": "Vị trí này không hỗ trợ Thùng rác. Mục này sẽ bị xóa vĩnh viễn. Không thể hoàn tác thao tác này.",
   "This model exceeds the 2 million triangle preview limit. Try a lower-detail version.": "Mô hình này vượt quá giới hạn xem trước 2 triệu tam giác. Hãy thử phiên bản ít chi tiết hơn.",
   "This release has no signed update manifest. Choose a newer release or download it manually.": "Bản phát hành này không có tệp kê khai cập nhật đã ký. Hãy chọn bản phát hành mới hơn hoặc tải xuống thủ công.",
   "This runs “%{value1}” on %{value2}.": "Thao tác này chạy “%{value1}” trên %{value2}.",

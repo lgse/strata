@@ -572,3 +572,99 @@ fn archive_activity_is_retained_before_display_and_while_a_large_member_is_runni
         },
     );
 }
+
+fn labels(root: &gtk::Widget) -> Vec<String> {
+    let mut found = Vec::new();
+    if let Some(label) = root.downcast_ref::<gtk::Label>() {
+        found.push(label.text().split_whitespace().collect::<Vec<_>>().join(" "));
+    }
+    let mut child = root.first_child();
+    while let Some(widget) = child {
+        child = widget.next_sibling();
+        found.extend(labels(&widget));
+    }
+    found
+}
+
+fn focused_button_label(window: &gtk::Window) -> Option<String> {
+    gtk::prelude::RootExt::focus(window)?
+        .downcast::<gtk::Button>()
+        .ok()?
+        .label()
+        .map(String::from)
+}
+
+#[test]
+fn docked_deletion_without_trash_support_explains_and_focuses_cancel() {
+    crate::test_support::gtk_test(
+        "ui::browser::progress::tests::minimization::docked_deletion_without_trash_support_explains_and_focuses_cancel",
+        || {
+            let fixture = Fixture::new();
+            let path = fixture.temp.path().join("deleted.txt");
+            std::fs::write(&path, "keep").expect("deletion fixture file");
+            let deleted = entry(Location::local(&path));
+            fixture
+                .view
+                .state
+                .request_delete(vec![deleted.clone()], false);
+            let id = fixture
+                .view
+                .browser()
+                .last_started_operation()
+                .expect("trash attempt");
+            fixture.progress(id);
+            fixture.operations.emit(
+                id,
+                OperationEvent::CompletedWithErrors {
+                    request_id: id,
+                    deleted_locations: Vec::new(),
+                    retryable_locations: vec![deleted.location.clone()],
+                    has_non_retryable_failures: false,
+                    message: "deleted.txt: This location doesn't support Trash. Delete permanently instead.".into(),
+                },
+            );
+            pump_until(|| {
+                crate::ui::window::visible_modal_layer(&fixture.window).is_some_and(|layer| {
+                    labels(&layer)
+                        .iter()
+                        .any(|text| text.contains(" · ") && text.ends_with("will be permanently deleted"))
+                })
+            });
+            let start = Instant::now();
+            pump_until(|| start.elapsed() >= Duration::from_millis(300));
+            let layer =
+                crate::ui::window::visible_modal_layer(&fixture.window).expect("retry dialog");
+            assert_eq!(
+                (
+                    labels(&layer)
+                        .iter()
+                        .any(|text| text.contains("doesn't support Trash")),
+                    focused_button_label(&fixture.window).as_deref(),
+                ),
+                (true, Some("Cancel")),
+                "(explains missing Trash, focus after the size summary)"
+            );
+
+            let controllers = layer.observe_controllers();
+            let keys = (0..controllers.n_items())
+                .filter_map(|index| controllers.item(index))
+                .find_map(|controller| controller.downcast::<gtk::EventControllerKey>().ok())
+                .expect("dialog key controller");
+            assert!(keys.emit_by_name::<bool>(
+                "key-pressed",
+                &[
+                    &gtk::gdk::Key::Return,
+                    &0u32,
+                    &gtk::gdk::ModifierType::empty()
+                ],
+            ));
+            pump_until(|| crate::ui::window::visible_modal_layer(&fixture.window).is_none());
+            assert_eq!(
+                fixture.operations.delete_requests.borrow().as_slice(),
+                [(id, false, 1)],
+                "Enter cancels without starting a permanent deletion"
+            );
+            assert!(path.exists());
+        },
+    );
+}

@@ -808,6 +808,8 @@
   "This item can be restored from Trash.": "Этот элемент можно восстановить из корзины.",
   "This item will be moved back to the original location shown above.": "Этот элемент будет возвращён в исходное расположение, указанное выше.",
   "This item will be permanently deleted. This action cannot be undone.": "Этот элемент будет удалён безвозвратно. Это действие нельзя отменить.",
+  "This location doesn't support Trash. These items will be permanently deleted. This action cannot be undone.": "Это расположение не поддерживает корзину. Эти элементы будут удалены безвозвратно. Это действие нельзя отменить.",
+  "This location doesn't support Trash. This item will be permanently deleted. This action cannot be undone.": "Это расположение не поддерживает корзину. Этот элемент будет удалён безвозвратно. Это действие нельзя отменить.",
   "This model exceeds the 2 million triangle preview limit. Try a lower-detail version.": "Эта модель превышает предел предпросмотра в 2 миллиона треугольников. Попробуйте версию с меньшей детализацией.",
   "This release has no signed update manifest. Choose a newer release or download it manually.": "У этого выпуска нет подписанного манифеста обновления. Выберите более новый выпуск или загрузите его вручную.",
   "This runs “%{value1}” on %{value2}.": "Команда «%{value1}» будет запущена для %{value2}.",

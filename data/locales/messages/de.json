@@ -808,6 +808,8 @@
   "This item can be restored from Trash.": "Dieses Element kann aus dem Papierkorb wiederhergestellt werden.",
   "This item will be moved back to the original location shown above.": "Dieses Element wird an den oben gezeigten ursprünglichen Ort zurückverschoben.",
   "This item will be permanently deleted. This action cannot be undone.": "Dieses Element wird unwiderruflich gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.",
+  "This location doesn't support Trash. These items will be permanently deleted. This action cannot be undone.": "Dieser Ort unterstützt keinen Papierkorb. Diese Elemente werden unwiderruflich gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.",
+  "This location doesn't support Trash. This item will be permanently deleted. This action cannot be undone.": "Dieser Ort unterstützt keinen Papierkorb. Dieses Element wird unwiderruflich gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.",
   "This model exceeds the 2 million triangle preview limit. Try a lower-detail version.": "Dieses Modell überschreitet das Vorschaulimit von 2 Millionen Dreiecken. Versuchen Sie eine weniger detaillierte Version.",
   "This release has no signed update manifest. Choose a newer release or download it manually.": "Diese Version hat kein signiertes Update-Manifest. Wählen Sie eine neuere Version oder laden Sie sie manuell herunter.",
   "This runs “%{value1}” on %{value2}.": "Dies führt „%{value1}“ auf %{value2} aus.",

@@ -105,6 +105,8 @@ fn restore_error_summary(errors: &[String]) -> String {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum DeleteDialog {
     Permanent,
+    /// Permanent fallback the user did not ask for: Trash is unsupported here.
+    TrashUnavailable,
     Trash,
 }
 
@@ -775,8 +777,14 @@ impl ViewState {
         self.show_delete_dialog(entries, DeleteDialog::Permanent);
     }
 
+    /// Confirms a permanent deletion that replaces a Trash the location lacks.
+    pub(super) fn show_trash_unavailable_confirmation(self: &Rc<Self>, entries: Vec<FileEntry>) {
+        self.show_delete_dialog(entries, DeleteDialog::TrashUnavailable);
+    }
+
     fn show_delete_dialog(self: &Rc<Self>, entries: Vec<FileEntry>, kind: DeleteDialog) {
         let trash = kind == DeleteDialog::Trash;
+        let cancel_first = kind == DeleteDialog::TrashUnavailable;
         let Some(ModalHost {
             overlay: window_overlay,
             blurred_root,
@@ -867,11 +875,22 @@ impl ViewState {
             .build();
         file_scroller.add_css_class("delete-confirmation-list");
         layout.body.append(&file_scroller);
-        let explanation = message_dialog_description(&crate::i18n::tr(match (trash, count) {
-            (true, 1) => "This item can be restored from Trash.",
-            (true, _) => "These items can be restored from Trash.",
-            (false, 1) => "This item will be permanently deleted. This action cannot be undone.",
-            (false, _) => "These items will be permanently deleted. This action cannot be undone.",
+        let single = count == 1;
+        let explanation = message_dialog_description(&crate::i18n::tr(match (kind, single) {
+            (DeleteDialog::Trash, true) => "This item can be restored from Trash.",
+            (DeleteDialog::Trash, false) => "These items can be restored from Trash.",
+            (DeleteDialog::TrashUnavailable, true) => {
+                "This location doesn't support Trash. This item will be permanently deleted. This action cannot be undone."
+            }
+            (DeleteDialog::TrashUnavailable, false) => {
+                "This location doesn't support Trash. These items will be permanently deleted. This action cannot be undone."
+            }
+            (DeleteDialog::Permanent, true) => {
+                "This item will be permanently deleted. This action cannot be undone."
+            }
+            (DeleteDialog::Permanent, false) => {
+                "These items will be permanently deleted. This action cannot be undone."
+            }
         }));
         layout.body.append(&explanation);
         let content = layout.content;
@@ -952,6 +971,7 @@ impl ViewState {
         let escaped_root = blurred_root;
         let escaped_browser = self.browser.clone();
         let focused_cancel = cancel.clone();
+        let focused_cancel_initial = cancel.clone();
         let focused_confirm = confirm.clone();
         let enter_buttons = [cancel, confirm.clone(), close];
         keys.connect_key_pressed(move |_, key, _, modifiers| {
@@ -994,7 +1014,11 @@ impl ViewState {
             }
         });
         layer.add_controller(keys);
-        focus_button(&confirm);
+        if cancel_first {
+            focus_button(&focused_cancel_initial);
+        } else {
+            focus_button(&confirm);
+        }
         if trash {
             return;
         }

@@ -808,6 +808,8 @@
   "This item can be restored from Trash.": "Questo elemento può essere ripristinato dal cestino.",
   "This item will be moved back to the original location shown above.": "Questo elemento verrà riportato nel percorso originale mostrato sopra.",
   "This item will be permanently deleted. This action cannot be undone.": "Questo elemento verrà eliminato definitivamente. Questa azione non può essere annullata.",
+  "This location doesn't support Trash. These items will be permanently deleted. This action cannot be undone.": "Questa posizione non supporta il cestino. Questi elementi verranno eliminati definitivamente. Questa azione non può essere annullata.",
+  "This location doesn't support Trash. This item will be permanently deleted. This action cannot be undone.": "Questa posizione non supporta il cestino. Questo elemento verrà eliminato definitivamente. Questa azione non può essere annullata.",
   "This model exceeds the 2 million triangle preview limit. Try a lower-detail version.": "Questo modello supera il limite di anteprima di 2 milioni di triangoli. Prova una versione meno dettagliata.",
   "This release has no signed update manifest. Choose a newer release or download it manually.": "Questa release non ha un manifesto di aggiornamento firmato. Scegli una release più recente o scaricala manualmente.",
   "This runs “%{value1}” on %{value2}.": "Questa operazione esegue “%{value1}” su %{value2}.",
