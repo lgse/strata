@@ -72,6 +72,9 @@ unrar = { version = "0.5.8", optional = true }
 unrar_sys = { version = "0.5.8", optional = true }
 frizbee = "0.13"
 
+[dev-dependencies]
+rustls = { version = "0.23", default-features = false, features = ["std", "ring", "tls12"] }
+
 [build-dependencies]
 glib-build-tools = "0.22.8"
 

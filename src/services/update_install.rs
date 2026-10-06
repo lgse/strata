@@ -63,8 +63,7 @@ pub enum UpdateInstall {
     },
     Verifying,
     Installing,
-    /// The install passed its point of no return and can no longer be
-    /// cancelled.
+    /// Cancellation is no longer possible.
     Finalizing,
     Installed,
     Cancelled,
@@ -75,8 +74,7 @@ const INSTALL_OPEN: u8 = 0;
 const INSTALL_CANCELLED: u8 = 1;
 const INSTALL_COMMITTED: u8 = 2;
 
-/// Shared between an install and its UI: either the UI cancels the install
-/// or the install commits to finishing, never both.
+/// Cancellation and commitment to replacement are mutually exclusive.
 #[derive(Clone, Debug, Default)]
 pub struct InstallCancel(Arc<AtomicU8>);
 
@@ -85,14 +83,12 @@ impl InstallCancel {
         Self::default()
     }
 
-    /// Asks the install to stop. Returns `false` when it has already
-    /// committed to finishing and will not stop.
+    /// Returns false if replacement is already committed and cannot stop.
     pub fn cancel(&self) -> bool {
         self.settle(INSTALL_CANCELLED)
     }
 
-    /// Marks the point of no return. Returns `false` when the install was
-    /// cancelled first and must stop instead.
+    /// Returns false if cancellation won the race; the binary must not be replaced.
     pub(crate) fn try_commit(&self) -> bool {
         self.settle(INSTALL_COMMITTED)
     }
@@ -101,7 +97,6 @@ impl InstallCancel {
         self.0.load(Ordering::Acquire) == INSTALL_CANCELLED
     }
 
-    /// Moves an open install to `state`, or reports whether it already is.
     fn settle(&self, state: u8) -> bool {
         match self
             .0
@@ -560,10 +555,6 @@ fn try_install(
     Ok(())
 }
 
-/// Preserves the installed binary and replaces it with `staged`, unless the
-/// install was cancelled first. Past the commit the install can no longer be
-/// cancelled, which `progress` hears as [`UpdateInstall::Finalizing`].
-/// Returns the preserved copy.
 fn commit_replacement(
     staged: tempfile::TempPath,
     current_exe: &Path,
@@ -727,7 +718,6 @@ fn fetch_update_metadata(
     cancel: &InstallCancel,
 ) -> Result<Vec<u8>, InstallStop> {
     cancel.check()?;
-    // The archive's agent, so a cancel is noticed while the server is silent.
     let response = download_agent(DownloadTimeouts::default(), cancel)
         .get(url)
         .header("User-Agent", "strata-file-manager")
@@ -1003,9 +993,6 @@ fn download_to_file_bounded(
     )
 }
 
-/// Downloads `url` to `destination`, failing when no byte arrives for
-/// `timeouts.idle` rather than after a fixed transfer time, so a slow link
-/// that keeps making progress can still finish.
 fn download_to_file_with(
     url: &str,
     destination: &Path,

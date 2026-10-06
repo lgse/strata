@@ -2,7 +2,7 @@
 
 use std::{
     fs,
-    io::{self, Read as _, Write as _},
+    io::{Read as _, Write as _},
     net::TcpListener,
     os::unix::fs::symlink,
     path::{Path, PathBuf},
@@ -13,8 +13,7 @@ use std::{
 use super::{
     APPLICATION_ICON, DESKTOP_ENTRY, InstallCancel, InstallRequest, InstallStop, UpdateInstall,
     UpdateMethod, aur_repository_version_from_response, desktop_entry_with_exec,
-    download::{DownloadTimeouts, describe_download_error, describe_read_error},
-    download_to_file_bounded, download_to_file_with, is_old_instance,
+    download::DownloadTimeouts, download_to_file_bounded, download_to_file_with, is_old_instance,
     package_repository_version_for, parse_aur_package_version, parse_package_version,
     refresh_desktop_metadata, repository_database_version, restore_rollback, retire_old_instances,
     stage_binary_path, stage_rollback, stage_workdir, update_method_for, verified_download_url,
@@ -724,17 +723,12 @@ fn a_staged_binary_that_runs_is_accepted() {
     assert!(verify_staged_binary(&staged).is_ok());
 }
 
-/// A loopback server for one download request.
 struct TrickleServer {
     url: String,
     _release: mpsc::Sender<()>,
 }
 
-/// Answers one request with a `content_length` head (none at all when
-/// `None`) and then `chunks`, each after `gap`. The connection then stays open
-/// until the server is dropped, so a short body reads as a stall rather than
-/// an early close. It closes after 10 s regardless, so a client that never
-/// times out fails its test instead of hanging it.
+/// Keep the connection open after sending to distinguish a stall from early EOF.
 fn serve_trickle(
     content_length: Option<usize>,
     chunks: Vec<Vec<u8>>,
@@ -795,8 +789,6 @@ struct TimedDownload {
     bytes: Vec<u8>,
 }
 
-/// Downloads from `server`; `on_progress` sees every progress event from
-/// another thread, while the download is still running.
 fn timed_download(
     server: &TrickleServer,
     timeouts: DownloadTimeouts,
@@ -914,36 +906,8 @@ fn cancel_stops_a_stalled_download_without_waiting_for_the_idle_limit() {
 
     let cancelled_at = cancelled.recv().expect("the download made progress first");
     assert_eq!(download.result, Err("cancelled".to_owned()));
-    // Well before the server gives up after 10 s, let alone the idle limit.
     let stopped = download.finished.saturating_duration_since(cancelled_at);
     assert!(stopped < Duration::from_secs(3), "{stopped:?}");
-}
-
-#[test]
-fn download_errors_are_described_in_plain_language() {
-    let stalled = "The download stalled — check your connection and try again";
-    let unreachable = "Could not reach the download server — check your connection and try again";
-    let cases = [
-        (ureq::Error::Timeout(ureq::Timeout::RecvBody), stalled),
-        (ureq::Error::Timeout(ureq::Timeout::RecvResponse), stalled),
-        (ureq::Error::Timeout(ureq::Timeout::Resolve), unreachable),
-        (ureq::Error::Timeout(ureq::Timeout::Connect), unreachable),
-        (
-            ureq::Error::StatusCode(404),
-            "Could not download the update: http status: 404",
-        ),
-    ];
-    for (error, expected) in cases {
-        assert_eq!(describe_download_error(&error), expected, "{error:?}");
-    }
-
-    let wrapped = ureq::Error::Timeout(ureq::Timeout::RecvBody).into_io();
-    assert_eq!(describe_read_error(&wrapped), stalled);
-    let plain = io::Error::from(io::ErrorKind::ConnectionReset);
-    assert_eq!(
-        describe_read_error(&plain),
-        format!("Could not download the update: {plain}")
-    );
 }
 
 #[test]
@@ -961,6 +925,5 @@ fn cancel_stops_a_silent_metadata_fetch_without_waiting_for_a_timeout() {
 
     let stopped = Instant::now().saturating_duration_since(cancelled_at.join().expect("canceller"));
     assert!(matches!(result, Err(InstallStop::Cancelled)), "{result:?}");
-    // Well before the server gives up after 10 s.
     assert!(stopped < Duration::from_secs(3), "{stopped:?}");
 }

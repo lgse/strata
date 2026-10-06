@@ -2758,6 +2758,7 @@ dependencies = [
  "ring",
  "rquickjs",
  "rustix",
+ "rustls",
  "seccompiler",
  "serde",
  "serde_json",
