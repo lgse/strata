@@ -7,7 +7,6 @@ use super::{
     *,
 };
 
-/// Lists entries per directory; `unmounted` reports itself not mounted.
 #[derive(Default)]
 struct ListingSource {
     listings: RefCell<HashMap<Location, Vec<FileEntry>>>,
@@ -146,42 +145,47 @@ fn reveal_locations_selects_every_listed_target_and_focuses_the_first_requested(
 
 #[test]
 fn reveal_locations_into_an_open_parent_column_selects_in_place_and_closes_deeper_columns() {
-    let (browser, events, _) = reveal_browser(listings(vec![
-        (
-            "/fixture",
-            vec![
-                file("/fixture/a.txt"),
-                file("/fixture/b.txt"),
-                file("/fixture/sub"),
-            ],
-        ),
-        ("/fixture/sub", vec![file("/fixture/sub/x")]),
-    ]));
-    browser.navigate(location("/fixture"));
-    browser.descend(0, location("/fixture/sub"));
-    assert_eq!(browser.active_depth(), Some(1));
-    events.borrow_mut().clear();
+    for child_active in [false, true] {
+        let (browser, events, _) = reveal_browser(listings(vec![
+            (
+                "/fixture",
+                vec![
+                    file("/fixture/a.txt"),
+                    file("/fixture/b.txt"),
+                    file("/fixture/sub"),
+                ],
+            ),
+            ("/fixture/sub", vec![file("/fixture/sub/x")]),
+        ]));
+        browser.navigate(location("/fixture"));
+        browser.descend(0, location("/fixture/sub"));
+        assert_eq!(browser.active_depth(), Some(1));
+        if !child_active {
+            browser.set_active_column(0);
+        }
+        events.borrow_mut().clear();
 
-    let selected_in_place = browser.reveal_locations(
-        location("/fixture"),
-        vec![location("/fixture/b.txt"), location("/fixture/a.txt")],
-    );
+        let selected_in_place = browser.reveal_locations(
+            location("/fixture"),
+            vec![location("/fixture/b.txt"), location("/fixture/a.txt")],
+        );
 
-    assert!(selected_in_place);
-    assert_eq!(browser.active_depth(), Some(0));
-    assert_eq!(browser.location_at(1), None);
-    assert_eq!(
-        selected_locations(&browser),
-        vec![location("/fixture/a.txt"), location("/fixture/b.txt")]
-    );
-    assert_eq!(
-        browser.focused_entry().map(|entry| entry.location),
-        Some(location("/fixture/b.txt"))
-    );
-    assert!(!events.borrow().iter().any(|event| matches!(
-        event,
-        BrowserEvent::Reset | BrowserEvent::ColumnAdded { .. }
-    )));
+        assert!(selected_in_place);
+        assert_eq!(browser.active_depth(), Some(0));
+        assert_eq!(browser.location_at(1), None);
+        assert_eq!(
+            selected_locations(&browser),
+            vec![location("/fixture/a.txt"), location("/fixture/b.txt")]
+        );
+        assert_eq!(
+            browser.focused_entry().map(|entry| entry.location),
+            Some(location("/fixture/b.txt"))
+        );
+        assert!(!events.borrow().iter().any(|event| matches!(
+            event,
+            BrowserEvent::Reset | BrowserEvent::ColumnAdded { .. }
+        )));
+    }
 }
 
 #[test]
@@ -249,7 +253,6 @@ fn reveal_locations_survives_a_mount_round_trip() {
     )));
     assert_eq!(browser.active_location(), None);
 
-    // What the UI mount flow does once the share is mounted.
     browser.navigate(location(share));
 
     assert_eq!(

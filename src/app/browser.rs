@@ -85,7 +85,6 @@ pub struct BrowserColumnSnapshot {
     pub loading: bool,
     pub error: Option<String>,
     pub truncated: bool,
-    /// Explicit reveal targets are waiting for this column's listing.
     pub reveal_pending: bool,
 }
 
@@ -251,7 +250,6 @@ pub enum BrowserEvent {
     },
     OperationFailed {
         message: String,
-        /// Set only when an extraction failed for want of the right password.
         password_failure: Option<PasswordFailure>,
     },
     OperationCompletedWithErrors {
@@ -890,7 +888,6 @@ pub struct Browser {
     last_batch_selection: RefCell<BatchSelectionState>,
     peek_load: RefCell<Option<LoadHandle>>,
     validation_load: RefCell<Option<LoadHandle>>,
-    /// Reveal targets kept while the UI mounts their directory, then navigates to it.
     deferred_reveal: RefCell<Option<(Location, Vec<Location>)>>,
     validation_generation: Cell<u64>,
     navigation_cleanup: RefCell<Option<Box<dyn FnOnce()>>>,
@@ -1241,11 +1238,8 @@ impl Browser {
         self.navigate_for_selection(location, load_selection(select_first));
     }
 
-    /// The one entry point for "open `directory` with `targets` selected": targets are
-    /// matched by location, the first listed one takes the cursor, and they win over the
-    /// first-entry default and any remembered view position.
-    ///
-    /// Returns whether the targets were selected in place in an already listed column.
+    /// Targets override remembered positions; the first listed target takes the cursor.
+    /// Returns true only for an in-place selection that needs no subsequent load.
     pub fn reveal_locations(self: &Rc<Self>, directory: Location, targets: Vec<Location>) -> bool {
         if targets.is_empty() {
             self.navigate_location(directory, true);
@@ -1273,8 +1267,6 @@ impl Browser {
             return false;
         };
         self.activate_reveal_depth(depth);
-        // A partly listed target set (a transfer the monitor has not fully delivered yet)
-        // reloads so the late targets are selected too.
         if self.state.borrow().lists_every_target(depth, &targets)
             && self.select_entries_by_location_at(depth, &targets)
         {
@@ -1284,10 +1276,7 @@ impl Browser {
         false
     }
 
-    /// Reveals `targets` in the open, monitored `directory` without reloading it: the
-    /// listed targets are selected now and the monitor splices in the rest.
-    ///
-    /// Returns whether any target was selected.
+    /// The caller must retry missing targets as monitor updates arrive.
     pub fn reveal_monitored_locations(
         self: &Rc<Self>,
         directory: Location,
@@ -1306,16 +1295,12 @@ impl Browser {
 
     fn activate_reveal_depth(self: &Rc<Self>, depth: usize) {
         self.bump_navigation_generation();
-        // Deeper columns would keep showing (and acting on) a folder the reveal left.
-        if self.active_depth().is_some_and(|active| active > depth) {
-            self.close_column(depth + 1);
-        }
+        self.close_column(depth + 1);
         if self.active_depth() != Some(depth) {
             self.set_active_column(depth);
         }
     }
 
-    /// Like [`Self::descend`], with `targets` selected in the new column once listed.
     pub fn descend_revealing(
         self: &Rc<Self>,
         parent_depth: usize,
@@ -4272,7 +4257,7 @@ impl Browser {
         })
     }
 
-    /// Selects the listed `locations`; the cursor goes to the first one requested.
+    /// The first requested location takes the cursor, regardless of sort order.
     pub fn select_entries_by_location_at(
         self: &Rc<Self>,
         depth: usize,
@@ -4285,7 +4270,6 @@ impl Browser {
         self.select_entries_matching_at(depth, |entry| requested.get(&entry.location).copied())
     }
 
-    /// `rank` is `None` for entries to leave unselected; the lowest rank takes the cursor.
     fn select_entries_matching_at(
         self: &Rc<Self>,
         depth: usize,

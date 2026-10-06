@@ -1840,15 +1840,33 @@ fn transfer_reveal_waits_for_the_live_monitor_instead_of_reloading() {
                 "the empty local destination",
             );
             let request = view.browser().column_request_id(0).expect("loaded request");
-            let copied = fixture.path().join("copied.txt");
-            std::fs::write(&copied, b"copied").expect("copied fixture");
-
+            let first = fixture.path().join("first.txt");
+            let second = fixture.path().join("second.txt");
+            let selected_locations = || {
+                view.browser()
+                    .selected_entries()
+                    .into_iter()
+                    .map(|entry| entry.location)
+                    .collect::<Vec<_>>()
+            };
             view.state
                 .handle(&crate::app::BrowserEvent::TransferReveal {
                     destination,
-                    locations: vec![Location::local(copied)],
+                    locations: vec![Location::local(&first), Location::local(&second)],
                 });
 
+            std::fs::write(&first, b"first").expect("first copied fixture");
+            wait_until(
+                || selected_locations() == [Location::local(&first)],
+                "the first monitor update to select its target",
+            );
+            assert!(view.state.pending_location_selection.borrow().is_some());
+            std::fs::write(&second, b"second").expect("second copied fixture");
+            wait_until(
+                || selected_locations() == [Location::local(&first), Location::local(&second)],
+                "both transferred targets to be selected",
+            );
+            assert!(view.state.pending_location_selection.borrow().is_none());
             assert_eq!(view.browser().column_request_id(0), Some(request));
         },
     );

@@ -1138,8 +1138,6 @@ impl ViewState {
         if let Some(depth) = self.browser.open_depth(&destination)
             && self.browser.column_has_monitor(depth)
         {
-            // The live monitor splices in targets it has not delivered yet, so select the
-            // listed ones now and the rest as they arrive instead of reloading the folder.
             self.prepare_reveal(&destination);
             if self
                 .browser
@@ -1225,8 +1223,6 @@ impl ViewState {
         self.pending_location_selection.take();
     }
 
-    /// Drops stale reveal requests and clears any pane filter that would hide `directory`'s
-    /// targets.
     fn prepare_reveal(&self, directory: &Location) {
         self.clear_pending_reveal_requests();
         if let Some(depth) = self.browser.open_depth(directory) {
@@ -1237,8 +1233,6 @@ impl ViewState {
         }
     }
 
-    /// Opens `directory` with `targets` selected through the browser's reveal entry point,
-    /// after dropping stale archive/transfer selections and any pane filter hiding them.
     pub(super) fn reveal_locations(
         self: &Rc<Self>,
         directory: Location,
@@ -1252,7 +1246,7 @@ impl ViewState {
         if !self.browser.reveal_locations(directory, targets) {
             return;
         }
-        // Selected in place, so no load follows to scroll the column strip or open the dialog.
+        // In-place selections have no load completion to trigger these actions.
         self.reveal_focused_entry();
         if self.pending_properties.take().is_some()
             && let Some((depth, _, entry)) = self.browser.focused_item()
@@ -1261,16 +1255,13 @@ impl ViewState {
         }
     }
 
-    /// A reveal waiting for a mount that failed or was cancelled must not fire on a later visit.
     pub(super) fn abandon_deferred_reveal(&self) {
         self.browser.cancel_deferred_reveal();
         self.pending_properties.take();
     }
 
-    /// Selects the targets of a transfer into a monitored folder once the monitor has
-    /// spliced in the ones it had not delivered when the transfer was revealed.
     fn reveal_pending_transfer_at(self: &Rc<Self>, depth: usize) -> bool {
-        let selected = {
+        let (selected, complete) = {
             let pending = self.pending_location_selection.borrow();
             let Some((destination, locations)) = pending.as_ref() else {
                 return false;
@@ -1278,10 +1269,15 @@ impl ViewState {
             if self.browser.location_at(depth).as_ref() != Some(destination) {
                 return false;
             }
-            self.browser.select_entries_by_location_at(depth, locations)
+            (
+                self.browser.select_entries_by_location_at(depth, locations),
+                self.browser.lists_every_target(depth, locations),
+            )
         };
-        if selected {
+        if complete {
             self.pending_location_selection.take();
+        }
+        if selected {
             self.reveal_focused_entry();
         }
         selected
