@@ -17,7 +17,7 @@ use crate::{
         preview::{PreviewSurface, preview_target},
         tenxer_mode::Chord,
         window::{
-            SinglePaneArrow, home_directory, jump_direction, page_direction,
+            SinglePaneArrow, home_directory, home_end_direction, jump_direction, page_direction,
             sidebar_focus_direction, single_pane_arrow_action,
         },
     },
@@ -213,13 +213,12 @@ impl Dispatcher {
         if !event.without(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK) {
             return None;
         }
-        if self.view.item_view_has_focus() && matches!(event.key, Key::Home | Key::End) {
+        if self.view.item_view_has_focus()
+            && event.without(Modifiers::SUPER_MASK)
+            && let Some(direction) = home_end_direction(event.key)
+        {
             self.view.commit_selection();
-            if !event.shift()
-                && self
-                    .view
-                    .jump_parked_selection(if event.key == Key::Home { -1 } else { 1 })
-            {
+            if !event.shift() && self.view.jump_selection(direction) {
                 return Some(Propagation::Stop);
             }
         }

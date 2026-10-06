@@ -481,6 +481,8 @@ pub(super) fn is_browser_navigation_key(
             | gtk::gdk::Key::Right
             | gtk::gdk::Key::Home
             | gtk::gdk::Key::End
+            | gtk::gdk::Key::KP_Home
+            | gtk::gdk::Key::KP_End
             | gtk::gdk::Key::Page_Up
             | gtk::gdk::Key::Page_Down
             | gtk::gdk::Key::KP_Page_Up
@@ -497,6 +499,14 @@ fn page_direction(key: gtk::gdk::Key) -> Option<i32> {
     match key {
         gtk::gdk::Key::Page_Up | gtk::gdk::Key::KP_Page_Up => Some(-1),
         gtk::gdk::Key::Page_Down | gtk::gdk::Key::KP_Page_Down => Some(1),
+        _ => None,
+    }
+}
+
+fn home_end_direction(key: gtk::gdk::Key) -> Option<i32> {
+    match key {
+        gtk::gdk::Key::Home | gtk::gdk::Key::KP_Home => Some(-1),
+        gtk::gdk::Key::End | gtk::gdk::Key::KP_End => Some(1),
         _ => None,
     }
 }

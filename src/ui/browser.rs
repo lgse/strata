@@ -2285,39 +2285,22 @@ impl BrowserView {
     }
 
     /// Moves the focus to the first or last visible entry of the active pane, for
-    /// `Ctrl+Up` and `Ctrl+Down`.
+    /// `Ctrl+Up`/`Ctrl+Down` and plain `Home`/`End`. Works from a focused row or
+    /// tile and from focus parked on the pane's stack (an empty or not yet focused
+    /// column).
     pub fn jump_selection(&self, direction: i32) -> bool {
         let focused = self.state.overlay.root().and_then(|root| root.focus());
-        let Some((view, scroll)) = focused
+        let collection = focused
             .as_ref()
-            .and_then(super::scrolling::focused_collection)
-        else {
-            return false;
-        };
-        let order = self
-            .state
-            .browser
-            .active_depth()
-            .map(|depth| self.state.mode_views.borrow().visual_order(depth))
-            .filter(|order| !order.is_empty());
-        self.state
-            .browser
-            .page_along(direction, usize::MAX, order.as_deref());
-        super::scrolling::reveal_jump(&view, &scroll, direction);
-        true
-    }
-
-    pub fn jump_parked_selection(&self, direction: i32) -> bool {
-        if !self.item_view_has_focus()
-            || !self
-                .state
-                .overlay
-                .root()
-                .and_then(|root| root.focus())
-                .is_some_and(|focused| focused.is::<gtk::Stack>())
-        {
+            .and_then(super::scrolling::focused_collection);
+        let parked = focused
+            .as_ref()
+            .is_some_and(|focused| focused.is::<gtk::Stack>())
+            && self.item_view_has_focus();
+        if collection.is_none() && !parked {
             return false;
         }
+        self.keyboard_navigation();
         let order = self
             .state
             .browser
@@ -2327,6 +2310,9 @@ impl BrowserView {
         self.state
             .browser
             .page_along(direction, usize::MAX, order.as_deref());
+        if let Some((view, scroll)) = collection {
+            super::scrolling::reveal_jump(&view, &scroll, direction);
+        }
         true
     }
 

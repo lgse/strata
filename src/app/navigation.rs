@@ -2014,6 +2014,14 @@ impl NavigationState {
                 .or_else(|| visible.iter().position(|position| *position >= selected))
         });
         let target = match (current, direction < 0) {
+            // A full jump (Home/End, Ctrl+Up/Down) is absolute even without a cursor.
+            _ if page == usize::MAX => {
+                if direction < 0 {
+                    0
+                } else {
+                    last
+                }
+            }
             (None, true) => last,
             (None, false) => 0,
             (Some(current), true) => current.saturating_sub(steps),

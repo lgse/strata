@@ -1676,6 +1676,164 @@ fn tenxer_columns_mirror_the_first_move_after_a_load() {
 }
 
 #[test]
+fn columns_mirror_home_and_end_in_the_default_key_map() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::columns_mirror_home_and_end_in_the_default_key_map",
+        || {
+            let fixture = KeyboardFixture::new();
+            let preferences = PreferenceManager::shared();
+            preferences.set_tenxer_mode(false);
+            preferences.set_columns_mirror_selection(true);
+            preferences.set_single_click_previews(false);
+            fixture.view.set_columns_mirror_selection(true);
+            fixture.view.set_single_click_previews(false);
+            let browser = fixture.view.browser();
+            let folder = fixture._directory.path().join("mixed");
+            for name in ["a-dir", "b-dir", "c-dir"] {
+                std::fs::create_dir_all(folder.join(name)).expect("fixture folder");
+            }
+            std::fs::write(folder.join("e.bin"), b"e").expect("fixture file");
+            browser.navigate(Location::local(&folder));
+            wait_loaded(&browser, 0);
+            wait_until(|| focused_name(&browser) == "a-dir");
+            focus_files(&fixture);
+            let none = ModifierType::empty();
+            for (end_key, home_key) in [(Key::End, Key::Home), (Key::KP_End, Key::KP_Home)] {
+                fixture.press(Key::Down, none);
+                assert_eq!(focused_name(&browser), "b-dir", "{end_key:?}");
+                wait_until(|| location_ends_with(browser.location_at(1), "b-dir"));
+                wait_loaded(&browser, 1);
+
+                assert!(fixture.press(end_key, none), "Strata handles {end_key:?}");
+                assert_eq!(focused_name(&browser), "e.bin", "{end_key:?}");
+                assert_eq!(fill_names(&browser), ["e.bin"], "{end_key:?}");
+                wait_until(|| browser.location_at(1).is_none());
+                assert!(fixture.view.item_view_has_focus(), "{end_key:?}");
+                assert_eq!(
+                    browser.focused_item().map(|(depth, _, _)| depth),
+                    Some(0),
+                    "{end_key:?}"
+                );
+
+                fixture.press(Key::Up, none);
+                assert_eq!(focused_name(&browser), "c-dir", "{end_key:?}");
+                wait_until(|| location_ends_with(browser.location_at(1), "c-dir"));
+                wait_loaded(&browser, 1);
+
+                assert!(fixture.press(home_key, none), "Strata handles {home_key:?}");
+                assert_eq!(focused_name(&browser), "a-dir", "{home_key:?}");
+                wait_until(|| location_ends_with(browser.location_at(1), "a-dir"));
+                wait_loaded(&browser, 1);
+            }
+
+            fixture.press(Key::Down, none);
+            wait_until(|| location_ends_with(browser.location_at(1), "b-dir"));
+            wait_loaded(&browser, 1);
+            fixture.view.record_pointer_hover((12.0, 24.0), Some(0));
+            assert!(!fixture.view.widget().has_css_class("keyboard-navigation"));
+            assert!(fixture.press(Key::Down, ModifierType::CONTROL_MASK));
+            assert_eq!(focused_name(&browser), "e.bin");
+            wait_until(|| browser.location_at(1).is_none());
+        },
+    );
+}
+
+#[test]
+fn home_and_end_jump_to_the_first_and_last_item_in_the_default_key_map() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::home_and_end_jump_to_the_first_and_last_item_in_the_default_key_map",
+        || {
+            let fixture = KeyboardFixture::new();
+            PreferenceManager::shared().set_group_by_type(false);
+            let browser = fixture.view.browser();
+            let none = ModifierType::empty();
+            for mode in [BrowserMode::List, BrowserMode::Icons, BrowserMode::Columns] {
+                fixture.view.set_view_mode(mode);
+                focus_files(&fixture);
+                browser.select(0, 0);
+                browser.extend_selection(1);
+                focus_files(&fixture);
+                assert_eq!(focused_name(&browser), "b.txt", "{mode:?}");
+                assert_eq!(fill_names(&browser), ["a.txt", "b.txt"], "{mode:?}");
+
+                assert!(fixture.press(Key::End, none), "{mode:?} Strata handles End");
+                assert_eq!(focused_name(&browser), "c.txt", "{mode:?}");
+                assert_eq!(fill_names(&browser), ["c.txt"], "{mode:?}");
+                assert!(fixture.view.item_view_has_focus(), "{mode:?}");
+                if mode == BrowserMode::Columns {
+                    wait_until(|| focused_widget_shows(&fixture.window, "c.txt"));
+                }
+
+                assert!(
+                    fixture.press(Key::Home, none),
+                    "{mode:?} Strata handles Home"
+                );
+                assert_eq!(focused_name(&browser), "a.txt", "{mode:?}");
+                assert_eq!(fill_names(&browser), ["a.txt"], "{mode:?}");
+
+                assert!(
+                    !fixture.press(Key::End, ModifierType::SHIFT_MASK),
+                    "{mode:?} Shift+End stays with GTK"
+                );
+                assert_eq!(focused_name(&browser), "a.txt", "{mode:?}");
+            }
+        },
+    );
+}
+
+#[test]
+fn jump_keys_move_the_cursor_when_focus_is_parked_on_the_column() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::jump_keys_move_the_cursor_when_focus_is_parked_on_the_column",
+        || {
+            let fixture = KeyboardFixture::new();
+            PreferenceManager::shared().set_group_by_type(false);
+            let browser = fixture.view.browser();
+            for (forward, back) in [
+                (
+                    (Key::End, ModifierType::empty()),
+                    (Key::Home, ModifierType::empty()),
+                ),
+                (
+                    (Key::Down, ModifierType::CONTROL_MASK),
+                    (Key::Up, ModifierType::CONTROL_MASK),
+                ),
+            ] {
+                browser.select(0, 1);
+                park_focus_on_the_column(&fixture);
+
+                assert!(
+                    fixture.press(forward.0, forward.1),
+                    "{forward:?} while parked"
+                );
+                assert_eq!(focused_name(&browser), "c.txt", "{forward:?}");
+
+                park_focus_on_the_column(&fixture);
+                assert!(fixture.press(back.0, back.1), "{back:?} while parked");
+                assert_eq!(focused_name(&browser), "a.txt", "{back:?}");
+            }
+        },
+    );
+}
+
+fn park_focus_on_the_column(fixture: &KeyboardFixture) {
+    focus_files(fixture);
+    let focused = gtk::prelude::RootExt::focus(&fixture.window).expect("focused row");
+    let list = if focused.is::<gtk::ListView>() {
+        focused
+    } else {
+        focused
+            .ancestor(gtk::ListView::static_type())
+            .expect("column list")
+    };
+    let stack = list
+        .ancestor(gtk::Stack::static_type())
+        .expect("column stack");
+    assert!(stack.grab_focus());
+    assert!(fixture.view.item_view_has_focus());
+}
+
+#[test]
 fn tenxer_list_and_columns_move_enter_and_traverse_history() {
     crate::test_support::gtk_test(
         "ui::window::tests::keyboard_dispatch::tenxer_list_and_columns_move_enter_and_traverse_history",

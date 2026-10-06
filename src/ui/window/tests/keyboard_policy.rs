@@ -90,9 +90,16 @@ fn navigation_keys_claim_keyboard_ownership_but_commands_do_not() {
         Key::Tab,
         Key::ISO_Left_Tab,
         Key::Page_Down,
+        Key::Home,
+        Key::End,
+        Key::KP_Home,
+        Key::KP_End,
         Key::Return,
     ] {
-        assert!(super::is_browser_navigation_key(key, ModifierType::empty()));
+        assert!(
+            super::is_browser_navigation_key(key, ModifierType::empty()),
+            "{key:?}"
+        );
     }
     assert!(super::is_browser_navigation_key(
         Key::Down,

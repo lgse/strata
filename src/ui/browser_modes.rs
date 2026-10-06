@@ -1448,6 +1448,9 @@ impl ModeViews {
         };
         let mut target = match (current, direction.cmp(&0)) {
             (_, std::cmp::Ordering::Equal) => return None,
+            // A full jump is absolute even without a cursor, as in `NavigationState`.
+            (_, std::cmp::Ordering::Less) if page == usize::MAX => 0,
+            (_, std::cmp::Ordering::Greater) if page == usize::MAX => last,
             (None, std::cmp::Ordering::Less) => last,
             (None, _) => 0,
             (Some(current), std::cmp::Ordering::Less) => current.saturating_sub(page.max(1)),

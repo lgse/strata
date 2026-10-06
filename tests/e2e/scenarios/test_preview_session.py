@@ -82,7 +82,12 @@ def test_preview_mode_survives_unsupported_selections_and_matches_appearance(str
     option = preview_option(strata)
     assert option.has_state("pressed")
     strata.dismiss_menu()
-    assert strata.current_directory() == "Beta"
+    if mode == "Columns":
+        # Focus stays on the Appearance button, so the deepest pane is the
+        # column mirrored from Beta's cursor rather than Beta itself.
+        assert strata.selected_names("Alpha") == ["Beta"]
+    else:
+        assert strata.current_directory() == "Beta"
 
 
 @pytest.mark.preferences(browser_mode="icons", single_click_previews=False)
