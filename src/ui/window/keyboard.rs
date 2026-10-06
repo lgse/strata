@@ -174,6 +174,15 @@ impl ChooserKeys {
         let browser = self.browser.upgrade()?;
         self.dispatcher.handle_chooser_key(&browser, key, modifiers)
     }
+
+    /// Hands the focused entry, or the selected search result, to the request
+    /// policy in either key map. Returns whether a non-folder entry was handed
+    /// over; on false the caller falls back to navigation.
+    pub(in crate::ui) fn confirm_focused(&self) -> bool {
+        self.browser
+            .upgrade()
+            .is_some_and(|browser| self.dispatcher.chooser_confirm(&browser))
+    }
 }
 
 /// Leaving 10xer mode ends preview key ownership but keeps the drawer open.

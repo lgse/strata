@@ -2845,7 +2845,9 @@ fn install_shortcuts(
                 browser.enter_focused_directory();
             }
             (gtk::gdk::Key::l | gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter, false) => {
-                state.view.activate_focused()
+                if !tenxer.confirm_focused() {
+                    state.view.activate_focused();
+                }
             }
             _ => return glib::Propagation::Proceed,
         }
