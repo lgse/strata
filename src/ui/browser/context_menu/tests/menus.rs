@@ -29,32 +29,38 @@ impl FileSource for MenuSource {
                 "photos.zip",
             ]
             .into_iter()
-            .map(|name| FileEntry {
-                location: if request.location.is_recent_root() && name == "notes.txt" {
-                    Location::local("/fixture/notes.txt")
-                } else {
-                    crate::adapters::location_for_file(&parent.child(name)).expect("location")
-                },
-                native_name: name.into(),
-                thumbnail_path: None,
-                display_name: name.into(),
-                kind: if matches!(name, "folder" | "photos.zip") {
-                    EntryKind::Directory
-                } else {
-                    EntryKind::File
-                },
-                size: MetadataValue::Known(5),
-                modified_unix_seconds: MetadataValue::Known(0),
-                mode: MetadataValue::Known(if matches!(name, "run-me" | "folder" | "photos.zip") {
-                    0o755
-                } else {
-                    0o644
-                }),
-                recent_unix_seconds: MetadataValue::Unknown,
-                is_hidden: false,
-                image_dimensions: MetadataValue::Unknown,
-                child_count: MetadataValue::Unknown,
-                duration_seconds: MetadataValue::Unknown,
+            .map(|name| {
+                let in_recent = request.location.is_recent_root() && name == "notes.txt";
+                FileEntry {
+                    location: if in_recent {
+                        Location::local("/fixture/notes.txt")
+                    } else {
+                        crate::adapters::location_for_file(&parent.child(name)).expect("location")
+                    },
+                    native_name: name.into(),
+                    thumbnail_path: None,
+                    display_name: name.into(),
+                    kind: if matches!(name, "folder" | "photos.zip") {
+                        EntryKind::Directory
+                    } else {
+                        EntryKind::File
+                    },
+                    size: MetadataValue::Known(5),
+                    modified_unix_seconds: MetadataValue::Known(0),
+                    mode: MetadataValue::Known(
+                        if matches!(name, "run-me" | "folder" | "photos.zip") {
+                            0o755
+                        } else {
+                            0o644
+                        },
+                    ),
+                    recent_unix_seconds: MetadataValue::Unknown,
+                    is_hidden: false,
+                    image_dimensions: MetadataValue::Unknown,
+                    child_count: MetadataValue::Unknown,
+                    duration_seconds: MetadataValue::Unknown,
+                    recent_uri: in_recent.then(|| "recent:///notes.txt".to_owned()),
+                }
             })
             .collect();
             emit(DirectoryEvent::Batch {
@@ -357,6 +363,52 @@ fn archive_extraction_actions_follow_build_support() {
                 menu.popdown();
                 wait_until(|| !menu.is_mapped());
             }
+            view.browser().clear_observer();
+            window.destroy();
+        },
+    );
+}
+
+#[test]
+fn remove_from_recent_is_gated_on_the_recent_location() {
+    crate::test_support::gtk_test(
+        "ui::browser::context_menu::tests::menus::remove_from_recent_is_gated_on_the_recent_location",
+        || {
+            let fixture = tempfile::tempdir().expect("menu fixture");
+            let view = BrowserView::new(Rc::new(MenuSource), PeekBehavior::default());
+            let window = gtk::Window::builder()
+                .child(&view.widget())
+                .default_width(1000)
+                .default_height(850)
+                .build();
+            window.present();
+
+            view.browser().navigate(Location::local(fixture.path()));
+            wait_until(|| label(&view.widget(), "notes.txt").is_some());
+            let menu = open_menu(&view, Some("notes.txt"));
+            assert!(
+                !label_texts(&menu)
+                    .iter()
+                    .any(|text| text == "Remove from Recent"),
+                "{:?}",
+                label_texts(&menu)
+            );
+            menu.popdown();
+            wait_until(|| !menu.is_mapped());
+
+            view.browser().navigate(Location::uri("recent:///"));
+            wait_until(|| label(&view.widget(), "notes.txt").is_some());
+            let menu = open_menu(&view, Some("notes.txt"));
+            let labels = label_texts(&menu);
+            assert!(
+                labels.iter().any(|text| text == "Remove from Recent"),
+                "{labels:?}"
+            );
+            assert!(labels.iter().any(|text| text == "Open"), "{labels:?}");
+            assert!(labels.iter().any(|text| text == "Copy"), "{labels:?}");
+            menu.popdown();
+            wait_until(|| !menu.is_mapped());
+
             view.browser().clear_observer();
             window.destroy();
         },

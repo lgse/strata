@@ -55,6 +55,7 @@ pub(crate) enum ContextHint {
     MoveTo,
     CopyTo,
     Restore,
+    RemoveFromRecent,
     Terminal,
     Trash,
     PermanentDelete,
@@ -632,7 +633,10 @@ fn default_hint(hint: ContextHint, type_to_search: bool) -> &'static str {
         ContextHint::Copy => "Ctrl+C",
         ContextHint::Duplicate => "Ctrl+D",
         ContextHint::Paste => "Ctrl+V",
-        ContextHint::MoveTo | ContextHint::CopyTo | ContextHint::Restore => "",
+        ContextHint::MoveTo
+        | ContextHint::CopyTo
+        | ContextHint::Restore
+        | ContextHint::RemoveFromRecent => "",
         ContextHint::Terminal => "Ctrl+Alt+T",
         ContextHint::Trash => "Del",
         ContextHint::PermanentDelete => "Shift+Del",

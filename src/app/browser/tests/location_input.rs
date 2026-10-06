@@ -492,6 +492,7 @@ pub(super) fn listing_file(location: Location, name: &str, is_hidden: bool) -> F
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        recent_uri: None,
     }
 }
 

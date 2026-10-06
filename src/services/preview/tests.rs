@@ -630,6 +630,7 @@ fn password_request(password: Option<&str>) -> super::PreviewRequest {
             child_count: MetadataValue::Unknown,
             duration_seconds: MetadataValue::Unknown,
             is_hidden: false,
+            recent_uri: None,
         },
         text_byte_limit: 1024,
         render_document: false,

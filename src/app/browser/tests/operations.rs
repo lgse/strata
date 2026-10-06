@@ -18,6 +18,7 @@ fn deleted_trash_entries_refresh_the_trash_root() {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        recent_uri: None,
     };
 
     assert_eq!(
@@ -521,6 +522,7 @@ fn cancelling_extraction_keeps_progress_until_the_worker_reports_cancellation() 
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        recent_uri: None,
     };
     browser.extract(entry, Location::local("/fixture"), false, None);
 
@@ -718,6 +720,7 @@ fn create_and_rename_refresh_remote_columns_but_not_local_monitors() {
                         image_dimensions: MetadataValue::Unknown,
                         child_count: MetadataValue::Unknown,
                         duration_seconds: MetadataValue::Unknown,
+                        recent_uri: None,
                     },
                     "new-name.txt".to_owned(),
                 );

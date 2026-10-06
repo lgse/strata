@@ -17,6 +17,7 @@ fn entry(location: Location) -> FileEntry {
         image_dimensions: crate::model::MetadataValue::Unknown,
         child_count: crate::model::MetadataValue::Unknown,
         duration_seconds: crate::model::MetadataValue::Unknown,
+        recent_uri: None,
     }
 }
 

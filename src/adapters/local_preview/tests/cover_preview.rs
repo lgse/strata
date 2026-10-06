@@ -38,6 +38,7 @@ fn comic_and_epub_requests_render_covers_instead_of_archive_trees() {
             child_count: MetadataValue::Unknown,
             duration_seconds: MetadataValue::Unknown,
             is_hidden: false,
+            recent_uri: None,
         };
         let events = Rc::new(RefCell::new(Vec::new()));
         let emit = events.clone();

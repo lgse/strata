@@ -21,6 +21,7 @@ fn a_completed_trash_operation_can_be_undone_once() {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        recent_uri: None,
     };
 
     browser.delete(vec![entry], false);
@@ -52,6 +53,7 @@ fn pending_trash_undo_reports_original_locations_until_claimed() {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        recent_uri: None,
     };
 
     browser.delete(vec![entry], false);
@@ -82,6 +84,7 @@ fn another_browser_can_undo_the_latest_trash_operation() {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        recent_uri: None,
     };
 
     deleting_browser.delete(vec![entry], false);
@@ -546,6 +549,7 @@ fn permanent_delete_preserves_the_previous_trash_undo() {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        recent_uri: None,
     };
     let permanently_deleted = FileEntry {
         location: Location::local("/fixture/draft.txt"),

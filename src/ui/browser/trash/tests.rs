@@ -99,6 +99,7 @@ fn trashed_entry(root: &Path, name: &str, original: &Path) -> (FileEntry, PathBu
             image_dimensions: crate::model::MetadataValue::Unknown,
             child_count: crate::model::MetadataValue::Unknown,
             duration_seconds: crate::model::MetadataValue::Unknown,
+            recent_uri: None,
         },
         info,
     )

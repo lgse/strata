@@ -653,6 +653,7 @@ impl ChooserState {
             child_count: MetadataValue::Unknown,
             duration_seconds: MetadataValue::Unknown,
             is_hidden: false,
+            recent_uri: None,
         };
         if !self.view.browser().allows_entry(&entry) {
             self.accept_button.set_sensitive(true);

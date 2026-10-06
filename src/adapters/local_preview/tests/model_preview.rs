@@ -34,6 +34,7 @@ fn model_requests_reuse_only_matching_size_and_palette_without_ui_state() {
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
         is_hidden: false,
+        recent_uri: None,
     };
     let provider = LocalPreviewProvider::new(Rc::new(|| MediaPreviewBackend::Software));
     let calls = Arc::new(AtomicUsize::new(0));

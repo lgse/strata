@@ -36,6 +36,7 @@ pub(super) fn entry(name: &str) -> FileEntry {
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
         is_hidden: false,
+        recent_uri: None,
     }
 }
 

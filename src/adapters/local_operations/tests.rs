@@ -187,6 +187,7 @@ fn file_entry(path: &std::path::Path) -> FileEntry {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        recent_uri: None,
     }
 }
 

@@ -119,6 +119,7 @@ fn transfer_entry(path: &Path) -> FileEntry {
         child_count: crate::model::MetadataValue::Unknown,
         duration_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
+        recent_uri: None,
     }
 }
 
@@ -257,6 +258,7 @@ fn duplicate_transfer_uses_the_selected_entries_parent() {
         image_dimensions: crate::model::MetadataValue::Unknown,
         child_count: crate::model::MetadataValue::Unknown,
         duration_seconds: crate::model::MetadataValue::Unknown,
+        recent_uri: None,
     };
     let first = entry("/fixture/selected/first.txt");
     let second = entry("/fixture/selected/second.txt");

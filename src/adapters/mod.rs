@@ -18,6 +18,7 @@ pub(crate) use gio_location::{gio_file_for_location, location_for_file, reveal_t
 pub(crate) use local_actions::{LocalActionStore, resolve_executable as resolve_action_executable};
 pub use local_files::LocalFileSource;
 pub(crate) use local_files::query_file_entry;
+pub(crate) use local_files::{RecentRemovalState, recent_remove_entries};
 pub(crate) use local_jobs::LocalActionRunner;
 pub use local_operations::LocalOperationProvider;
 pub(crate) use local_operations::{

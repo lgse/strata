@@ -719,6 +719,7 @@ pub(crate) fn search_result_entry(item: &crate::services::SearchItem) -> crate::
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        recent_uri: None,
     }
 }
 

@@ -777,6 +777,11 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         .location_at(depth)
         .as_ref()
         .is_some_and(is_trash_location);
+    let in_recent = state
+        .browser
+        .location_at(depth)
+        .as_ref()
+        .is_some_and(crate::model::Location::is_recent_location);
     let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
     content.add_css_class("item-context-menu");
     let remaining = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -835,6 +840,12 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         ContextHint::Restore,
     );
     restore.set_visible(in_trash);
+    let remove_from_recent = item_context_option(
+        crate::assets::icons::CLOCK,
+        "Remove from Recent",
+        ContextHint::RemoveFromRecent,
+    );
+    remove_from_recent.set_visible(in_recent);
     let pin = item_context_option(
         crate::assets::icons::PIN,
         "Pin to sidebar",
@@ -934,6 +945,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     single_open.append(&run);
     single_open.append(&open_terminal);
     single_open.append(&restore);
+    single_open.append(&remove_from_recent);
     single_open.append(&print);
     single_open.append(&extract);
     single_open.append(&extract_to);
@@ -980,6 +992,12 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         ContextHint::Restore,
     );
     restore_multiple.set_visible(in_trash);
+    let remove_from_recent_multiple = item_context_option(
+        crate::assets::icons::CLOCK,
+        "Remove from Recent",
+        ContextHint::RemoveFromRecent,
+    );
+    remove_from_recent_multiple.set_visible(in_recent);
     let copy_multiple = item_context_option(crate::assets::icons::COPY, "Copy", ContextHint::Copy);
     let duplicate_multiple = item_context_option(
         crate::assets::icons::COPY_PLUS,
@@ -1049,6 +1067,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     multiple_open.append(&open_multiple);
     multiple_open.append(&open_with_multiple);
     multiple_open.append(&restore_multiple);
+    multiple_open.append(&remove_from_recent_multiple);
     content.append(&multiple_open);
     multiple.append(&cut_multiple);
     multiple.append(&copy_multiple);
@@ -1366,6 +1385,12 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
             state.request_restore(entries);
         });
     }
+    for button in [&remove_from_recent, &remove_from_recent_multiple] {
+        connect_selection_action(button, &popover, state, &target, |state, entries| {
+            let uris = entries.into_iter().filter_map(|entry| entry.recent_uri);
+            crate::adapters::recent_remove_entries(&state.recent_removal, uris);
+        });
+    }
     for (button, moving) in [
         (&move_to, true),
         (&copy_to, false),
@@ -1554,6 +1579,11 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
             let restorable = entries.iter().all(|entry| is_trash_item(&entry.location));
             restore.set_visible(restorable);
             restore_multiple.set_visible(restorable);
+            let recent_removable = in_recent
+                && !entries.is_empty()
+                && entries.iter().all(|entry| entry.recent_uri.is_some());
+            remove_from_recent.set_visible(recent_removable);
+            remove_from_recent_multiple.set_visible(recent_removable);
             for button in [&cut, &cut_multiple, &move_to, &move_multiple] {
                 button.set_visible(removable);
             }
