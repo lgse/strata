@@ -233,7 +233,9 @@ Filesystem work for Trash lives in `adapters/trash.rs`. Measurement shares one e
 across root and descendant batches; depth truncation and unreadable descendants remain branch-local.
 Deleting Trash streams its own batches, independently of any incomplete measurement. Native path
 and GIO URI conversion lives in `adapters/gio_location.rs`, shared by files, operations, preview and
-browser presentation. It preserves native bytes and sanitizes credentials on inbound GIO locations.
+browser presentation. It preserves native bytes, keeps GLib's normalized percent-encoding (so names
+that are not valid UTF-8 and encoded slashes survive), and sanitizes credentials on inbound GIO
+locations.
 
 Local archive operations live under `adapters/local_operations/archive/`:
 

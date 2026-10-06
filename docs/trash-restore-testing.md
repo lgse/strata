@@ -52,6 +52,7 @@ Focused selections can be run on the same infrastructure:
 ./scripts/test-headless.py adapters::bookmarks::tests
 ./scripts/test-headless.py adapters::local_operations::tests::deletion
 ./scripts/test-headless.py ui::browser::trash::tests
+./scripts/test-headless.py adapters::gio_location::tests
 ./scripts/test-headless.py without_trash_support
 ```
 
@@ -69,6 +70,10 @@ The tests create their own temporary payloads and metadata. They cover:
 - bounded concurrent lookups, result ordering, and dropping active lookups when
   the batch is cancelled. A filesystem call already blocked inside the kernel
   may still take time to return; cancellation does not kill that system call.
+- `trash:///` entries whose names are not valid UTF-8 keep GIO's percent-encoded
+  URI and their name bytes, so the Trash listing includes them
+  (`adapters::gio_location::tests`, `adapters::local_files::tests::browse`,
+  `services::file_source::tests`);
 - the explained, Cancel-first permanent confirmation when Trash is unsupported,
   both before a Trash attempt (the listing reports no Trash support) and after
   one fails, in the foreground, docked, and after a mixed failure.
@@ -109,6 +114,13 @@ or `.trashinfo` contents, and never run a blanket cleanup scan of other mounts.
 6. Exercise Undo and DnD modifiers, cursor feedback, and folder/background/sidebar
    targets in every view. A mixed-parent drop skips individual no-ops and still
    transfers the valid sources.
+7. In a session running `gvfsd`, trash a file whose name is not valid UTF-8
+   (for example the byte `\xe9`). The Trash view must list it as
+   `(invalid encoding)`, count it in the footer, enable Empty Trash, and show
+   its percent-encoded `trash:///` URI in the path bar and Properties. Restore
+   it and check that the original name bytes return; trash it again and delete
+   it permanently. The pinned E2E container sets `GIO_USE_VFS=local`, so it
+   cannot browse `trash:///` and does not cover this step.
 
 Dispose of the entire dedicated test environment afterward. No fixture utility
 in this repository modifies or cleans the user's real Trash.
