@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: MIT
 
-from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO
@@ -9,19 +8,13 @@ from threading import Thread
 from urllib.parse import unquote, urlparse
 import os
 import shutil
-import uuid
 
 import pytest
-from gi.repository import Gio, GLib
+from gi.repository import GLib
 from PIL import Image
 
 from harness import tree
-from harness.environment import process_environment
-from harness.process import ManagedProcess, terminate
-
-BACKEND = "org.freedesktop.impl.portal.desktop.strata"
-DESKTOP = "/org/freedesktop/portal/desktop"
-APPLICATION = "io.github.lgse.Strata.FileChooser"
+from harness.portal import open_file_request
 
 
 @contextmanager
@@ -54,34 +47,14 @@ def image_server(body):
 
 @pytest.fixture
 def png_chooser(strata_binary, headless_display, test_environment, fixture_tree, keyboard, pointer):
-    test_environment.write_preferences({"browser_mode": "list"})
-    environment = {**process_environment(), **test_environment.variables(), **headless_display.environment}
-    backend = ManagedProcess.spawn("portal", [str(strata_binary), "--portal"], log_dir=test_environment.root, env=environment, cwd=fixture_tree.root)
-    connection = Gio.DBusConnection.new_for_address_sync(
-        environment["DBUS_SESSION_BUS_ADDRESS"],
-        Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION,
-        None, None,
-    )
-    pool = ThreadPoolExecutor(max_workers=1)
-    handle = f"{DESKTOP}/request/strata_test/image_{uuid.uuid4().hex}"
-    future = None
-    try:
-        tree.wait_until(lambda: connection.call_sync(
-            "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "NameHasOwner",
-            GLib.Variant("(s)", (BACKEND,)), None, Gio.DBusCallFlags.NONE, 1000, None,
-        ).unpack()[0], message="portal backend registration", timeout=20)
-        options = {
-            "current_folder": GLib.Variant("ay", os.fsencode(fixture_tree.root) + b"\0"),
-            "filters": GLib.Variant("a(sa(us))", [("PNG images", [(1, "image/png")])]),
-        }
-        parameters = GLib.Variant("(osssa{sv})", (handle, "", "", "PNG conversion test", options))
-        future = pool.submit(connection.call_sync, BACKEND, DESKTOP, "org.freedesktop.impl.portal.FileChooser", "OpenFile", parameters, GLib.VariantType.new("(ua{sv})"), Gio.DBusCallFlags.NONE, 60000, None)
-
-        def window():
-            application = tree.find_application(APPLICATION)
-            return application.find(name="PNG conversion test") if application else None
-
-        chooser = tree.wait_until(window, message="PNG chooser", timeout=20)
+    options = {
+        "current_folder": GLib.Variant("ay", os.fsencode(fixture_tree.root) + b"\0"),
+        "filters": GLib.Variant("a(sa(us))", [("PNG images", [(1, "image/png")])]),
+    }
+    with open_file_request(
+        strata_binary, headless_display, test_environment, fixture_tree,
+        title="PNG conversion test", options=options, browser_mode="list",
+    ) as (chooser, future):
 
         def submit(url):
             entry = tree.wait_until(lambda: chooser.find(role="text", states={"editable"}), message="Name field")
@@ -91,15 +64,6 @@ def png_chooser(strata_binary, headless_display, test_environment, fixture_tree,
             keyboard.press("Return")
 
         yield chooser, future, submit
-    finally:
-        if future is not None and not future.done():
-            try:
-                connection.call_sync(BACKEND, handle, "org.freedesktop.impl.portal.Request", "Close", None, None, Gio.DBusCallFlags.NONE, 2000, None)
-            except GLib.Error:
-                pass
-        terminate(backend.popen)
-        pool.shutdown(wait=True, cancel_futures=True)
-        connection.close_sync(None)
 
 
 def test_png_conversion_requires_consent_and_reuses_the_download(png_chooser):
