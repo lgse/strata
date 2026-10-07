@@ -251,6 +251,25 @@ Columns reserves preview space from startup, even before a file is previewed. **
 
 In Columns, the pane to the right mirrors keyboard selection like Finder: moving with **Up/Down**, **Page Up/Page Down**, **Home/End** or **Ctrl+Up/Ctrl+Down** onto a folder shows its contents in a child column that takes the reserved preview space, onto a previewable file closes that child column and opens Quick Preview in the same space, and onto any other file closes the child pane. The focused column stays where it is throughout. Shift-extended ranges do not mirror. A preview closed with **Space**, **i**, **Esc**, the close button, or **Appearance → Preview panel** stays closed while mirroring until it is opened explicitly again. Pointer selection keeps the configured click behavior. **Settings → General → Browsing → Mirror columns selection** (on by default) toggles the mirroring. 10xer mode follows the same preference for its cursor in Columns; see [10xer mode](10xer-mode.md). **l** / **→** enters a directory or a file preview, and **i** toggles a file's preview or opens the next column / toggles folder peek for a directory.
 
+## Closing dialogs and overlays
+
+Closing an overlay or dialog by any route (Escape, its close or Cancel button, or a
+click outside it) returns keyboard focus to the control that opened it. This covers
+Ctrl+K search, Ctrl+Shift+K folder jump, Compress, archive conflicts, Customize, and
+error dialogs. If that control is gone, for example after the view was rebuilt or an
+inline editor closed, focus goes to the file list cursor, or to the pane of an empty or
+loading folder. File-operation progress always returns focus to the file list cursor,
+because the operation changes the listing. Choosing a search result hands focus to the
+browser instead, and a result the browser selects while a dialog closes, such as an
+extracted folder, keeps focus.
+
+Closing Settings always returns focus to the file list cursor, even when Settings was
+opened with the gear button. The one exception is a filter field or filter result that
+had focus when Settings opened, for example with **Ctrl+,**: it gets focus back.
+
+Customize opens with focus on **Done**, so one **Escape** closes it. Closing its
+custom color dialog returns focus to the custom color button.
+
 ## Opening and navigating the context menu
 
 **Menu** (the hardware context-menu key) and **Shift+F10** open the selection-aware
@@ -268,8 +287,9 @@ Once open: **Up/Down** move between enabled actions, wrapping past the first/las
 are skipped. **Enter/Space** activates the focused action immediately on key press.
 **Escape** closes the menu without changing the selection and returns keyboard
 focus to the item or pane that opened it. This applies in Columns, Icons, List,
-Trash, and the file chooser. Closing Properties returns focus to its originating
-control; choosing Rename hands focus to the editor instead.
+Trash, and the file chooser. Closing Properties follows the
+[overlay rule](#closing-dialogs-and-overlays); choosing Rename hands focus to the
+editor instead.
 
 ## Review fixture
 
