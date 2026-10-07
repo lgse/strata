@@ -158,6 +158,8 @@ On a desktop that does not manage the frontend as a systemd user unit, log out a
   and select the suggested filename. If focus is lost, an arrow restores it without
   requiring a click.
 - Tab/Shift+Tab traverse controls; arrows move between toolbar icons and options.
+  The file list is a single Tab stop (the whole strip in Columns), and Tab into
+  it lands on the keyboard cursor.
 - Up from the first file row reaches the pane toolbar; Down returns to files.
 - Icons arrows follow the visual rows and columns. List arrows follow the
   displayed order, including type grouping. Shift+arrows extend or shrink a range

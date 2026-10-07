@@ -447,7 +447,9 @@ to new entries beyond the initial viewport in large directories.
 The harness finds an entry because Strata names it. Those names live in
 `src/ui/accessibility.rs` and exist for screen readers first: an entry row is
 labeled with its name and described as `Folder` or `File`, a pane is labeled
-with its directory and described with its presentation, menu items carry the
+with its directory and described with its presentation, the focusable surface
+of an empty, unreadable or loading pane is labeled with its directory and
+described with its status text, menu items carry the
 menu role with the accelerator in the description, and modal dialogs carry the
 dialog role and a name. When the harness cannot identify a control, the fix is
 to name it in the application, not to reach around the accessibility layer.
