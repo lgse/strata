@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use super::Shelf;
+use super::{Shelf, locations_from_uri_list};
 use crate::model::Location;
 
 #[test]
@@ -28,6 +28,20 @@ fn collecting_files_preserves_sources_and_ignores_duplicate_drops()
     assert!(first_path.exists());
     assert!(second_path.exists());
     Ok(())
+}
+
+#[test]
+fn uri_list_accepts_files_and_ignores_comments_and_non_uris() {
+    let paths = locations_from_uri_list(
+        "# Nautilus file list\r\nfile:///tmp/one.txt\r\nnot-a-uri\r\nfile:///tmp/two.txt\r\n",
+    );
+    assert_eq!(
+        paths,
+        [
+            Location::local("/tmp/one.txt"),
+            Location::local("/tmp/two.txt")
+        ]
+    );
 }
 
 #[test]
