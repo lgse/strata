@@ -566,6 +566,10 @@ impl ViewState {
                             scroll_column_to(column, focused);
                         }
                         if *take_focus && self.mode_views.borrow().mode() == BrowserMode::Columns {
+                            // A cursor restore queued for the previous cursor must not pull
+                            // focus back from the newly selected entry.
+                            let generation = &column.cursor_restore_generation;
+                            generation.set(generation.get().wrapping_add(1));
                             column.focus_surface();
                         }
                     }

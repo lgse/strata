@@ -151,6 +151,13 @@ pub(super) fn remember_modal_focus(layer: &gtk::Box, overlay: &gtk::Overlay) -> 
     remember_removed_modal_focus(layer, overlay, true)
 }
 
+/// [`remember_modal_focus`] for dialogs whose work changes the listing, such as
+/// file-operation progress: closing it hands focus to the browser cursor through the
+/// window fallback, never to the row widget that was focused when it opened.
+pub(super) fn remember_modal_focus_for_listing(layer: &gtk::Box, overlay: &gtk::Overlay) {
+    remember_removed_modal_focus(layer, overlay, false);
+}
+
 fn remember_removed_modal_focus(
     layer: &gtk::Box,
     overlay: &gtk::Overlay,

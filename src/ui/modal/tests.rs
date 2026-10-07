@@ -202,6 +202,7 @@ enum Closing {
     OriginOnScreen,
     OriginHidden,
     FocusTakenMeanwhile,
+    ChainedOnListingDialog,
 }
 
 #[test]
@@ -213,6 +214,7 @@ fn dismissed_modal_restores_the_origin_or_falls_back_to_the_window_target() {
                 Closing::OriginOnScreen,
                 Closing::OriginHidden,
                 Closing::FocusTakenMeanwhile,
+                Closing::ChainedOnListingDialog,
             ] {
                 let fixture = FocusFixture::new();
                 let elsewhere = gtk::Button::with_label("Elsewhere");
@@ -222,10 +224,21 @@ fn dismissed_modal_restores_the_origin_or_falls_back_to_the_window_target() {
                     .and_downcast::<gtk::Box>()
                     .expect("fixture body")
                     .append(&elsewhere);
+                let listing = matches!(closing, Closing::ChainedOnListingDialog).then(|| {
+                    let progress =
+                        modal_layer(&gtk::Label::new(None), &fixture.overlay, None, None);
+                    remember_modal_focus_for_listing(&progress, &fixture.overlay);
+                    fixture.overlay.add_overlay(&progress);
+                    progress
+                });
                 let layer =
                     modal_layer(&gtk::Button::with_label("Close"), &fixture.overlay, None, None);
                 remember_modal_focus(&layer, &fixture.overlay);
                 fixture.overlay.add_overlay(&layer);
+                if let Some(progress) = listing {
+                    dismiss_modal_layer(&progress, &fixture.overlay, None);
+                    wait_until(|| progress.parent().is_none());
+                }
                 layer.grab_focus();
                 if matches!(closing, Closing::OriginHidden) {
                     fixture.origin.set_visible(false);
@@ -240,6 +253,9 @@ fn dismissed_modal_restores_the_origin_or_falls_back_to_the_window_target() {
                     Closing::OriginOnScreen => fixture.assert_focus(&fixture.origin, 0, &case),
                     Closing::OriginHidden => fixture.assert_focus(&fixture.target, 1, &case),
                     Closing::FocusTakenMeanwhile => fixture.assert_focus(&elsewhere, 0, &case),
+                    Closing::ChainedOnListingDialog => {
+                        fixture.assert_focus(&fixture.target, 1, &case);
+                    }
                 }
                 fixture.window.destroy();
             }

@@ -230,3 +230,141 @@ fn transfer_status_handles_empty_files_and_unknown_totals() {
     assert_eq!(bytes, "0 B");
     assert_eq!(items, "0 of 1 item");
 }
+
+fn present_progress(view: &crate::ui::browser::BrowserView, window: &gtk::Window) {
+    view.state.show_file_operation_progress(
+        16,
+        crate::assets::icons::COPY,
+        "Extracting archive",
+        "Cancelling will not undo completed changes",
+        std::rc::Rc::new(|| {}),
+    );
+    assert!(
+        crate::ui::window::visible_modal_layer(window).is_some(),
+        "sixteen items present the progress modal immediately"
+    );
+}
+
+fn pump_until(condition: impl Fn() -> bool) {
+    let context = glib::MainContext::default();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while !condition() && std::time::Instant::now() < deadline {
+        while context.iteration(false) {}
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
+fn focused_label(window: &gtk::Window) -> Option<String> {
+    use gtk::prelude::*;
+    gtk::prelude::RootExt::focus(window)
+        .and_downcast::<gtk::Button>()
+        .and_then(|button| button.label())
+        .map(|label| label.to_string())
+}
+
+#[test]
+fn progress_modal_returns_focus_to_the_listing_when_dismissed() {
+    crate::test_support::gtk_test(
+        "ui::browser::progress::tests::progress_modal_returns_focus_to_the_listing_when_dismissed",
+        || {
+            use gtk::prelude::*;
+            use std::rc::Rc;
+
+            crate::ui::prepare_portal_ui();
+            let view = crate::ui::browser::BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            let overlay = view.overlay();
+            let controls = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+            controls.set_halign(gtk::Align::Start);
+            controls.set_valign(gtk::Align::Start);
+            let origin = gtk::Button::with_label("Origin");
+            let listing = gtk::Button::with_label("Listing");
+            controls.append(&origin);
+            controls.append(&listing);
+            overlay.add_overlay(&controls);
+            let window = gtk::Window::builder().child(&overlay).build();
+            let fallback = listing.clone();
+            crate::ui::modal::set_modal_focus_fallback(
+                &window,
+                Rc::new(move || {
+                    fallback.grab_focus();
+                }),
+            );
+            window.present();
+            assert!(origin.grab_focus());
+            present_progress(&view, &window);
+            assert_ne!(focused_label(&window).as_deref(), Some("Origin"));
+            view.state.dismiss_file_operation_progress();
+            pump_until(|| crate::ui::window::visible_modal_layer(&window).is_none());
+            assert!(crate::ui::window::visible_modal_layer(&window).is_none());
+            // The operation changes the listing, so the widget focused at opening is no
+            // safe target; the browser fallback takes focus instead.
+            assert_eq!(focused_label(&window).as_deref(), Some("Listing"));
+            window.close();
+        },
+    );
+}
+
+#[test]
+fn a_dialog_opened_after_progress_keeps_focus_in_columns() {
+    crate::test_support::gtk_test(
+        "ui::browser::progress::tests::a_dialog_opened_after_progress_keeps_focus_in_columns",
+        || {
+            use gtk::prelude::*;
+            use std::rc::Rc;
+
+            crate::ui::prepare_portal_ui();
+            let directory = tempfile::tempdir().expect("progress folder");
+            for name in ["a.txt", "b.txt"] {
+                std::fs::write(directory.path().join(name), b"progress").expect("fixture file");
+            }
+            let view = crate::ui::browser::BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            view.set_view_mode(crate::ui::browser_modes::BrowserMode::Columns);
+            let window = gtk::Window::builder()
+                .child(&view.overlay())
+                .default_width(900)
+                .default_height(600)
+                .build();
+            view.set_as_modal_focus_fallback(&window);
+            window.present();
+            view.navigate_location(crate::model::Location::local(directory.path()));
+            pump_until(|| {
+                view.browser()
+                    .column_snapshot(0)
+                    .is_some_and(|column| !column.loading)
+            });
+            view.browser().select(0, 0);
+            view.focus_file_view();
+            pump_until(|| view.item_view_has_focus());
+            assert!(view.item_view_has_focus(), "the column holds focus");
+            // Deferred cursor work from loading and focusing must not land mid-dismissal.
+            let settle = std::time::Instant::now() + std::time::Duration::from_millis(300);
+            pump_until(|| std::time::Instant::now() >= settle);
+
+            present_progress(&view, &window);
+            let error_parent = view.overlay();
+            view.state.dismiss_file_operation_progress_then(move || {
+                crate::ui::modal::show_error_dialog(
+                    &error_parent,
+                    "Unable to complete operation",
+                    "The archive is damaged",
+                );
+            });
+            pump_until(|| focused_label(&window).as_deref() == Some("Close"));
+            let settle = std::time::Instant::now() + std::time::Duration::from_millis(300);
+            pump_until(|| std::time::Instant::now() >= settle);
+            assert_eq!(
+                focused_label(&window).as_deref(),
+                Some("Close"),
+                "the error dialog keeps focus, found {:?}",
+                gtk::prelude::RootExt::focus(&window).map(|focus| focus.type_().name())
+            );
+            window.close();
+        },
+    );
+}

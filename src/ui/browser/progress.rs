@@ -3,7 +3,9 @@
 use crate::ui::blur::BlurBin;
 use crate::ui::browser::entry::{format_file_size, item_count_label};
 use crate::ui::controls::{modal_layout, progress_summary};
-use crate::ui::modal::{ModalHost, dismiss_modal_layer, modal_layer};
+use crate::ui::modal::{
+    ModalHost, dismiss_modal_layer, modal_layer, remember_modal_focus_for_listing,
+};
 use gtk::glib;
 use gtk::prelude::*;
 use std::cell::{Cell, RefCell};
@@ -299,6 +301,7 @@ impl FileProgressState {
                 blurred_root.clone(),
                 Some(Rc::new(|| true)),
             );
+            remember_modal_focus_for_listing(&layer, &window_overlay);
             window_overlay.add_overlay(&layer);
             Some(layer)
         };

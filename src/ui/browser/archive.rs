@@ -27,7 +27,8 @@ use crate::ui::controls::{
     set_form_field_error,
 };
 use crate::ui::modal::{
-    ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog, submit_on_enter,
+    ModalHost, dismiss_modal_layer, modal_layer, remember_modal_focus, show_error_dialog,
+    submit_on_enter,
 };
 use gtk::prelude::*;
 use gtk::{gio, glib};
@@ -98,6 +99,7 @@ impl ViewState {
             blurred_root.clone(),
             block_dismiss,
         );
+        remember_modal_focus(&layer, &window_overlay);
         window_overlay.add_overlay(&layer);
 
         let dismiss: Rc<dyn Fn()> = Rc::new({
@@ -186,20 +188,19 @@ impl ViewState {
         let cancel = layout.cancel;
         let replace = layout.confirm;
         let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
+        remember_modal_focus(&layer, &window_overlay);
         window_overlay.add_overlay(&layer);
 
         for button in [&close, &cancel] {
             let dismissed_layer = layer.clone();
             let dismissed_overlay = window_overlay.clone();
             let dismissed_root = blurred_root.clone();
-            let browser = self.browser.clone();
             button.connect_clicked(move |_| {
                 dismiss_modal_layer(
                     &dismissed_layer,
                     &dismissed_overlay,
                     dismissed_root.as_ref(),
                 );
-                browser.focus_active();
             });
         }
 
