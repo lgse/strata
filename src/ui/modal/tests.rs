@@ -145,6 +145,108 @@ fn modal_focus_restoration_preserves_explicit_action_focus() {
     );
 }
 
+struct FocusFixture {
+    window: gtk::Window,
+    overlay: gtk::Overlay,
+    origin: gtk::Button,
+    target: gtk::Button,
+    fallbacks: Rc<Cell<usize>>,
+}
+
+impl FocusFixture {
+    fn new() -> Self {
+        let body = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let origin = gtk::Button::with_label("Origin");
+        let target = gtk::Button::with_label("File list");
+        body.append(&origin);
+        body.append(&target);
+        let overlay = gtk::Overlay::new();
+        overlay.set_child(Some(&body));
+        let window = gtk::Window::builder().child(&overlay).build();
+        crate::ui::window::install_modal_focus_trap(&window);
+        let fallbacks = Rc::new(Cell::new(0));
+        let counted = fallbacks.clone();
+        let fallback_target = target.clone();
+        set_modal_focus_fallback(
+            &window,
+            Rc::new(move || {
+                counted.set(counted.get() + 1);
+                fallback_target.grab_focus();
+            }),
+        );
+        window.present();
+        assert!(origin.grab_focus());
+        Self {
+            window,
+            overlay,
+            origin,
+            target,
+            fallbacks,
+        }
+    }
+
+    fn assert_focus(&self, expected: &gtk::Button, fallbacks: usize, case: &str) {
+        let focus = gtk::prelude::RootExt::focus(&self.window).and_downcast::<gtk::Button>();
+        assert_eq!(
+            focus.as_ref(),
+            Some(expected),
+            "{case}: focus is on {:?}",
+            focus.as_ref().and_then(gtk::Button::label)
+        );
+        assert_eq!(self.fallbacks.get(), fallbacks, "{case}: fallback calls");
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Closing {
+    OriginOnScreen,
+    OriginHidden,
+    FocusTakenMeanwhile,
+}
+
+#[test]
+fn dismissed_modal_restores_the_origin_or_falls_back_to_the_window_target() {
+    crate::test_support::gtk_test(
+        "ui::modal::tests::dismissed_modal_restores_the_origin_or_falls_back_to_the_window_target",
+        || {
+            for closing in [
+                Closing::OriginOnScreen,
+                Closing::OriginHidden,
+                Closing::FocusTakenMeanwhile,
+            ] {
+                let fixture = FocusFixture::new();
+                let elsewhere = gtk::Button::with_label("Elsewhere");
+                fixture
+                    .origin
+                    .parent()
+                    .and_downcast::<gtk::Box>()
+                    .expect("fixture body")
+                    .append(&elsewhere);
+                let layer =
+                    modal_layer(&gtk::Button::with_label("Close"), &fixture.overlay, None, None);
+                remember_modal_focus(&layer, &fixture.overlay);
+                fixture.overlay.add_overlay(&layer);
+                layer.grab_focus();
+                if matches!(closing, Closing::OriginHidden) {
+                    fixture.origin.set_visible(false);
+                }
+                dismiss_modal_layer(&layer, &fixture.overlay, None);
+                if matches!(closing, Closing::FocusTakenMeanwhile) {
+                    assert!(elsewhere.grab_focus());
+                }
+                wait_until(|| layer.parent().is_none());
+                let case = format!("{closing:?}");
+                match closing {
+                    Closing::OriginOnScreen => fixture.assert_focus(&fixture.origin, 0, &case),
+                    Closing::OriginHidden => fixture.assert_focus(&fixture.target, 1, &case),
+                    Closing::FocusTakenMeanwhile => fixture.assert_focus(&elsewhere, 0, &case),
+                }
+                fixture.window.destroy();
+            }
+        },
+    );
+}
+
 fn wait_until(condition: impl Fn() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(5);
     while !condition() {

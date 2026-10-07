@@ -1747,6 +1747,7 @@ fn build_chooser_hosted(
     window.set_child(Some(&overlay));
     view.install_inline_edit_dismissal(&window);
     install_modal_focus_trap(&window);
+    view.set_as_modal_focus_fallback(&window);
     window.set_default_widget(Some(&accept));
 
     let filename_source = match &request.kind {

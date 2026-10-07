@@ -1133,6 +1133,24 @@ impl BrowserView {
         }
     }
 
+    pub(in crate::ui) fn restore_listing_focus(&self) {
+        self.state.restore_listing_focus();
+    }
+
+    /// Makes this listing the focus target when a dismissed overlay leaves `window`
+    /// without a focused widget.
+    pub(in crate::ui) fn set_as_modal_focus_fallback(&self, window: &gtk::Window) {
+        let view = self.downgrade();
+        crate::ui::modal::set_modal_focus_fallback(
+            window,
+            Rc::new(move || {
+                if let Some(view) = view.upgrade() {
+                    view.restore_listing_focus();
+                }
+            }),
+        );
+    }
+
     pub fn set_density(&self, density: BrowserDensity) {
         self.state.mode_views.borrow_mut().set_density(density);
         self.state.overlay.remove_css_class("density-compact");
@@ -2461,6 +2479,20 @@ impl BrowserView {
 }
 
 impl ViewState {
+    /// Returns focus to the listing after an overlay closes: the cursor row, or the
+    /// pane surface of an empty or loading directory.
+    pub(super) fn restore_listing_focus(&self) {
+        if self.mode.get() == BrowserMode::Columns {
+            self.focus_rebuilt_active_column();
+            return;
+        }
+        self.browser.focus_active();
+        let focused = self.overlay.root().and_then(|root| root.focus());
+        if !focused.is_some_and(|focused| focused.is_mapped()) {
+            self.mode_views.borrow().focus_pane_surface();
+        }
+    }
+
     pub(super) fn notify_search_selection_changed(&self) {
         let handlers = self.search_selection_handlers.borrow().clone();
         for handler in handlers {

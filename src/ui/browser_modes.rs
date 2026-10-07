@@ -613,6 +613,10 @@ impl ModeViews {
         {
             return true;
         }
+        self.focus_pane_surface()
+    }
+
+    pub fn focus_pane_surface(&self) -> bool {
         self.single_pane().is_some_and(focus_pane_surface)
     }
 
