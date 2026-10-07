@@ -4,6 +4,19 @@ extend-exclude = [
   "data/icons/**",
   "data/licenses/**",
   "Cargo.lock",
+  # English is checked in en.json; English dictionaries cannot check translations.
+  "locales/**/de.json",
+  "locales/**/es.json",
+  "locales/**/fr.json",
+  "locales/**/it.json",
+  "locales/**/ja.json",
+  "locales/**/ko.json",
+  "locales/**/pt-BR.json",
+  "locales/**/ru.json",
+  "locales/**/vi.json",
+  # Multilingual plural forms and calendar names.
+  "locales/counts.json",
+  "locales/dates.json",
   # Reproducible upstream MathJax bundle and npm dependency lock.
   "data/math-renderer.js",
   "packaging/math-renderer/package-lock.json",
@@ -14,6 +27,8 @@ extend-ignore-re = [
   "`crypted\\.rar`",
   # Deliberately misspelled input in the Settings closest-match regression.
   '"relase chanel"',
+  # French caption exercised by the restart-to-apply regression.
+  '"Redémarrer maintenant"',
 ]
 
 [default.extend-words]
