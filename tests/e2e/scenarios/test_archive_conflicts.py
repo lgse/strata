@@ -112,6 +112,8 @@ def test_archive_conflict_keyboard_choices_preserve_cancel_and_replace_behavior(
             strata.wait(lambda: strata.dialog_button("Cancel").has_state("focused"), "Cancel focus")
         strata.keyboard.press("Return")
     strata.wait(lambda: strata.dialog() is None, "conflict dismissal")
+    if choice in {"Cancel", "Escape"}:
+        strata.wait_for_focused_entry("todo.txt")
     assert strata.fixture.path("archive (1).zip").read_bytes() == b"previous archive"
     assert not strata.fixture.path("archive (2).zip").exists()
     if choice == "Replace":

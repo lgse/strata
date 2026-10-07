@@ -83,6 +83,10 @@ def test_creating_an_existing_name_does_not_overwrite(strata, kind, name):
     assert dialog.name == "Unable to rename item"
     strata.pointer.click(strata.dialog_button("Close"))
     strata.wait(lambda: strata.dialog() is None, "the error to be dismissible")
+    strata.wait(
+        lambda: strata.focused_pane() is not None or strata.focused_name() is not None,
+        "focus returns to the listing",
+    )
     assert strata.fixture.listing() == original
     assert strata.fixture.path("todo.txt").read_text() == "todo\n"
     root = strata.fixture.root.name
