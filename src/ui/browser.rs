@@ -63,6 +63,7 @@ mod progress;
 mod properties;
 mod result_selection;
 mod tab_location;
+mod tab_stops;
 mod transfer;
 mod trash;
 
@@ -205,6 +206,7 @@ pub(super) struct ViewState {
     suppress_focus_scroll: Cell<bool>,
     /// Set while a footer prompt moves the cursor; the prompt keeps the keys.
     cursor_keeps_focus: Cell<bool>,
+    tab_crossing: Cell<tab_stops::TabCrossing>,
     pending_mirror: RefCell<Option<glib::SourceId>>,
     source_generation: Rc<Cell<u64>>,
     peek: RefCell<Option<PeekView>>,
@@ -594,6 +596,7 @@ impl BrowserView {
             horizontal_scroll_generation: Rc::new(Cell::new(0)),
             suppress_focus_scroll: Cell::new(false),
             cursor_keeps_focus: Cell::new(false),
+            tab_crossing: Cell::new(tab_stops::TabCrossing::None),
             pending_mirror: RefCell::new(None),
             source_generation,
             peek: RefCell::new(None),

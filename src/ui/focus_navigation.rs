@@ -115,6 +115,53 @@ pub(super) fn contains_widget(container: &gtk::Widget, focused: Option<&gtk::Wid
     focused.is_some_and(|focused| focused == container || focused.is_ancestor(container))
 }
 
+/// Moves focus to the next (`TabForward`) or previous (`TabBackward`) focusable widget
+/// outside `scope` in Tab order, wrapping at the ends of the window as GTK does. Never
+/// enters `scope`, so a whole subtree acts as one Tab stop.
+pub(super) fn focus_beyond(scope: &gtk::Widget, direction: gtk::DirectionType) -> bool {
+    let backward = direction == gtk::DirectionType::TabBackward;
+    let step = |widget: &gtk::Widget| {
+        if backward {
+            widget.prev_sibling()
+        } else {
+            widget.next_sibling()
+        }
+    };
+    let focus = |candidate: &gtk::Widget| {
+        candidate.is_mapped() && candidate.is_sensitive() && candidate.child_focus(direction)
+    };
+    let mut path = vec![scope.clone()];
+    while let Some(parent) = path.last().and_then(gtk::Widget::parent) {
+        path.push(parent);
+    }
+    for widget in &path {
+        let mut sibling = step(widget);
+        while let Some(candidate) = sibling {
+            if focus(&candidate) {
+                return true;
+            }
+            sibling = step(&candidate);
+        }
+    }
+    for widget in path.iter().rev() {
+        let Some(parent) = widget.parent() else {
+            continue;
+        };
+        let mut sibling = if backward {
+            parent.last_child()
+        } else {
+            parent.first_child()
+        };
+        while let Some(candidate) = sibling.filter(|candidate| candidate != widget) {
+            if focus(&candidate) {
+                return true;
+            }
+            sibling = step(&candidate);
+        }
+    }
+    false
+}
+
 /// Whether `focused` is a widget that was removed from `container`, such as a row a
 /// reload or re-sort replaced. GTK keeps the window's focus on it, and the focus chain
 /// through `container`, until the next paint moves focus to the next Tab stop. GTK

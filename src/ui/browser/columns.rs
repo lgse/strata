@@ -1263,6 +1263,7 @@ impl ViewState {
         list.add_css_class("file-list");
         list.set_enable_rubberband(false);
         list.set_single_click_activate(false);
+        list.set_tab_behavior(gtk::ListTabBehavior::Item);
         list.set_vexpand(true);
         crate::ui::accessibility::describe_entry_container(&list, &location.display_name());
 
@@ -1532,7 +1533,9 @@ impl ViewState {
         let focus = gtk::EventControllerFocus::new();
         let weak = Rc::downgrade(self);
         focus.connect_enter(move |_| {
+            // The strip is one Tab stop: Tab from outside lands on the active column.
             if let Some(state) = weak.upgrade()
+                && !state.land_tab_crossing()
                 && state
                     .context_menu_column
                     .get()

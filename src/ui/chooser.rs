@@ -2579,6 +2579,15 @@ fn install_shortcuts(
             popover.child_focus(direction);
             return glib::Propagation::Stop;
         }
+        if !preferences.tenxer_mode()
+            && let Some(direction) = super::focus_navigation::plain_tab_direction(key, modifiers)
+            && !focused
+                .as_ref()
+                .is_some_and(super::focus_navigation::in_popover)
+            && state.view.default_tab(direction)
+        {
+            return glib::Propagation::Stop;
+        }
         if preferences.tenxer_mode()
             && super::focus_navigation::plain_tab_direction(key, modifiers).is_some()
             && let Some(filename) = state.filename.as_ref()

@@ -50,21 +50,37 @@ def test_toolbar_controls_are_named(strata):
         assert strata.window.find(name=name) is not None, f"{name!r} is unnamed"
 
 
-def test_focus_order_reaches_the_files_from_the_header(strata):
-    """Tab from the window's first control eventually reaches the listing."""
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_focus_order_reaches_the_files_from_the_header(strata, mode):
+    """Tab from the window's first control reaches the listing, which is one named stop."""
 
+    root = strata.fixture.root.name
     strata.keyboard.press("Tab")
     seen = []
-    for _ in range(20):
+    for _ in range(40):
         focused = strata.focused_node()
-        if focused is None:
-            strata.keyboard.press("Tab")
-            continue
-        seen.append(f"{focused.role}:{focused.name}")
-        if focused.role in ("list", "table") or strata.focused_name() is not None:
-            return
+        if focused is not None:
+            seen.append(f"{focused.role}:{focused.name}")
+            if strata.focused_name() is not None:
+                break
         strata.keyboard.press("Tab")
-    raise AssertionError(f"Tab never reached the file listing; visited {seen}")
+    else:
+        raise AssertionError(f"Tab never reached a file entry; visited {seen}")
+    assert strata.focused_name() in ROOT_ENTRIES
+    container = strata.entry_container(root)
+    assert container is not None
+    assert container.name == root
+    assert container.description == "Files"
+    assert container.find(states={"focused"}) is not None
+
+    strata.keyboard.press("Tab")
+    strata.wait(
+        lambda: container.find(states={"focused"}) is None,
+        "one Tab to leave the listing",
+        timeout=5,
+    )
+    outside = strata.focused_node()
+    assert outside is not None and outside.name, f"Tab left for an unnamed stop: {outside}"
 
 
 def _focus_outside(strata, surface):

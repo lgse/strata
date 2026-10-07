@@ -29,6 +29,18 @@ impl Dispatcher {
             .or_else(|| self.sidebar_navigation(browser, event))
     }
 
+    /// Runs before inline editing so Tab from a rename field in Columns also leaves the strip.
+    pub(super) fn default_tab_navigation(&self, event: &KeyEvent) -> KeyResult {
+        if self.type_to_search.preferences.tenxer_mode() || self.focus_in_popover() {
+            return None;
+        }
+        let direction =
+            crate::ui::focus_navigation::plain_tab_direction(event.key, event.modifiers)?;
+        self.view
+            .default_tab(direction)
+            .then_some(Propagation::Stop)
+    }
+
     fn tenxer_pane_focus(&self, browser: &Browser, event: &mut KeyEvent) -> KeyResult {
         if event.text_has_focus() || self.focus_in_popover() {
             return None;

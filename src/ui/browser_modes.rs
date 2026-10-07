@@ -1859,6 +1859,19 @@ fn pane_holds_keyboard_focus(pane: &Pane) -> bool {
             .any(|section| widget_has_focus(&section.view, focused.as_ref()))
 }
 
+fn install_tab_landing(view: &gtk::Widget, state: Option<Weak<super::browser::ViewState>>) {
+    let Some(state) = state else {
+        return;
+    };
+    let focus = gtk::EventControllerFocus::new();
+    focus.connect_enter(move |_| {
+        if let Some(state) = state.upgrade() {
+            state.land_tab_crossing();
+        }
+    });
+    view.add_controller(focus);
+}
+
 /// The page a List or Icons pane shows for an empty or unreadable directory.
 const STATUS_PAGE: &str = "status";
 
@@ -2551,6 +2564,8 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
     view.set_vexpand(false);
     view.set_enable_rubberband(false);
     view.set_single_click_activate(false);
+    view.set_tab_behavior(gtk::ListTabBehavior::Item);
+    install_tab_landing(view.upcast_ref(), context.state.clone());
     configure_icons_view_density(&view, context.density.get());
     super::accessibility::describe_entry_container(
         &view,
@@ -3196,6 +3211,8 @@ fn build_list_pane(
     // GTK bundles single-click activation with hover selection, which collapses
     // multi-selection. Per-row gestures honor the configured click behavior instead.
     view.set_single_click_activate(false);
+    view.set_tab_behavior(gtk::ListTabBehavior::Item);
+    install_tab_landing(view.upcast_ref(), options.state.clone());
     if let Some(destination) = browser.location_at(depth) {
         install_mode_directory_drop_target(&view, destination, transfer_handler.clone());
     }

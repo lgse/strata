@@ -681,6 +681,7 @@ impl Dispatcher {
             header_left_boundary: false,
         };
         self.window_commands(&event)
+            .or_else(|| self.default_tab_navigation(&event))
             .or_else(|| self.inline_editing(&event))
             .or_else(|| self.filter_and_location_commands(&event))
             .or_else(|| self.video_controls(&event))

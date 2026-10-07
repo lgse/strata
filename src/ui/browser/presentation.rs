@@ -73,6 +73,19 @@ impl LoadPresentation {
         self
     }
 
+    pub(super) fn retry_has_focus(&self, focused: &gtk::Widget) -> bool {
+        self.retry.as_ref().is_some_and(|retry| {
+            crate::ui::focus_navigation::contains_widget(retry.upcast_ref(), Some(focused))
+        })
+    }
+
+    /// The error page's Retry button is a Tab stop inside the surface.
+    pub(super) fn focus_retry(&self) -> bool {
+        self.retry
+            .as_ref()
+            .is_some_and(|retry| retry.is_mapped() && retry.grab_focus())
+    }
+
     pub(super) fn show_loading(&self) {
         if let Some(retry) = self.retry.as_ref() {
             retry.set_visible(false);
