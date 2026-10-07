@@ -198,6 +198,27 @@ pass before merge.
 - Use shared control bindings rather than window-local copies or one-off broadcasts. Preserve documented chooser and window-local exceptions.
 - Extend the exhaustive saved-preferences fixture and behavioral coverage for startup before Settings opens, changes across two windows, and relevant view rebuilds. Serialization-only tests are not sufficient.
 
+## Internationalization
+
+- Every new or changed application-owned, user-facing string must be localized
+  with `rust-i18n` and added or updated in **all ten supported languages in the
+  same change**: English, French, German, Spanish, Japanese, Brazilian Portuguese,
+  Korean, Vietnamese, Italian, and Russian. This includes labels, buttons, menus,
+  placeholders, tooltips, accessibility names/descriptions, dialogs, help text,
+  errors, notifications, and status/progress messages.
+- Follow `docs/internationalization.md` and update the matching catalogs under
+  `locales/`. English fallback is a runtime safeguard, not permission to leave
+  translations missing or copy English into other languages as a placeholder.
+- Translate complete messages with named placeholders and the appropriate plural
+  forms. Preserve placeholder names, markup, paths, commands, and keybindings;
+  do not assemble sentences from English-only fragments or plural suffixes.
+- Keep translation at presentation boundaries. Never translate filesystem paths,
+  filenames, protocol/action identifiers, user-authored content, or labels and
+  values supplied by another application.
+- When changing UI text or catalogs, run the catalog coverage and interpolation
+  regressions with `./scripts/test-headless.py i18n::`, plus affected behavioral
+  tests as required by the validation policy above.
+
 ## UI controls
 
 - Reuse existing control builders, shared bindings, and CSS classes for dropdowns, buttons, toggles, and segmented controls before creating new ones. Match their hover, active, focus, disabled, and theme states; do not style a new control as a generic form field when an existing button style applies.
