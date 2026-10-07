@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: MIT
 
 use crate::model::{FolderColor, FolderColorValue};
-use crate::ui::controls::modal_layout;
-use crate::ui::modal::{ModalHost, dismiss_modal_layer, modal_layer};
+use crate::ui::controls::{focus_button, modal_layout};
+use crate::ui::modal::{
+    ModalHost, dismiss_modal_layer, dismiss_modal_layer_then, modal_layer,
+    modal_layer_with_backdrop, remember_modal_focus,
+};
 use gtk::prelude::*;
 use gtk::{gdk, glib};
 use std::cell::RefCell;
@@ -116,43 +119,54 @@ fn show_custom_color_modal(
         }));
     });
 
-    let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
+    // The Customize dialog stays open underneath, so the shared restore (which waits
+    // for the last modal) cannot return focus to the button that opened this one.
+    let opener = parent.as_ref().downgrade();
+    let close_layer: Rc<dyn Fn(&gtk::Box)> = {
+        let overlay = window_overlay.clone();
+        Rc::new(move |layer| {
+            let opener = opener.clone();
+            dismiss_modal_layer_then(layer, &overlay, blurred_root.as_ref(), move || {
+                if let Some(opener) = opener.upgrade()
+                    && opener.is_mapped()
+                {
+                    opener.grab_focus();
+                }
+            });
+        })
+    };
+    let layer = modal_layer_with_backdrop(&content, close_layer.clone());
+    remember_modal_focus(&layer, &window_overlay);
     window_overlay.add_overlay(&layer);
+    let dismiss: Rc<dyn Fn()> = {
+        let layer = layer.clone();
+        Rc::new(move || close_layer(&layer))
+    };
 
     let on_confirm = Rc::new(on_confirm);
-    let confirm_layer = layer.clone();
-    let confirm_overlay = window_overlay.clone();
-    let confirm_root = blurred_root.clone();
+    let confirm_dismiss = dismiss.clone();
     let chooser_for_confirm = chooser.clone();
     let on_confirm_click = on_confirm.clone();
     confirm.connect_clicked(move |_| {
         let hex = rgba_to_hex(&chooser_for_confirm.rgba());
-        dismiss_modal_layer(&confirm_layer, &confirm_overlay, confirm_root.as_ref());
+        confirm_dismiss();
         on_confirm_click(FolderColorValue::Custom(hex));
     });
 
-    let cancel_layer = layer.clone();
-    let cancel_overlay = window_overlay.clone();
-    let cancel_root = blurred_root.clone();
-    cancel.connect_clicked(move |_| {
-        dismiss_modal_layer(&cancel_layer, &cancel_overlay, cancel_root.as_ref());
-    });
+    let cancel_dismiss = dismiss.clone();
+    cancel.connect_clicked(move |_| cancel_dismiss());
 
     let keys = gtk::EventControllerKey::new();
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
-    let escape_layer = layer.clone();
-    let escape_overlay = window_overlay;
-    let escape_root = blurred_root;
     let chooser_for_escape = chooser.clone();
     keys.connect_key_pressed(move |_, key, _, _| {
         if key == gtk::gdk::Key::Escape {
             if chooser_for_escape.property::<bool>("show-editor") {
                 chooser_for_escape.set_property("show-editor", false);
-                glib::Propagation::Stop
             } else {
-                dismiss_modal_layer(&escape_layer, &escape_overlay, escape_root.as_ref());
-                glib::Propagation::Stop
+                dismiss();
             }
+            glib::Propagation::Stop
         } else {
             glib::Propagation::Proceed
         }
@@ -391,6 +405,7 @@ pub(in crate::ui) fn show_customize_modal(
     let content = layout.content;
     let confirm = layout.confirm;
     let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
+    remember_modal_focus(&layer, &window_overlay);
     window_overlay.add_overlay(&layer);
 
     let dismiss = {
@@ -408,15 +423,21 @@ pub(in crate::ui) fn show_customize_modal(
     let escape_layer = layer.clone();
     let escape_overlay = window_overlay;
     let escape_root = blurred_root;
+    let escape_emoji = emoji_chooser.downgrade();
     keys.connect_key_pressed(move |_, key, _, _| {
-        if key == gtk::gdk::Key::Escape {
-            dismiss_modal_layer(&escape_layer, &escape_overlay, escape_root.as_ref());
-            glib::Propagation::Stop
-        } else {
-            glib::Propagation::Proceed
+        if key != gtk::gdk::Key::Escape {
+            return glib::Propagation::Proceed;
         }
+        // The capture phase sees the emoji popover's Escape before the popover does.
+        if let Some(emoji) = escape_emoji.upgrade().filter(|emoji| emoji.is_visible()) {
+            emoji.popdown();
+        } else {
+            dismiss_modal_layer(&escape_layer, &escape_overlay, escape_root.as_ref());
+        }
+        glib::Propagation::Stop
     });
     layer.add_controller(keys);
+    focus_button(&confirm);
 }
 
 struct FolderColorBar {
@@ -534,14 +555,18 @@ fn build_folder_color_bar(
                     }
                     custom_btn.remove_css_class("active");
                     custom_stack.set_visible_child_name("plus");
-                    custom_btn.set_tooltip_text(Some(&crate::i18n::tr("Custom color…")));
+                    let label = crate::i18n::tr("Custom color…");
+                    custom_btn.set_tooltip_text(Some(&label));
+                    custom_btn.update_property(&[gtk::accessible::Property::Label(&label)]);
                     hex_for_draw.replace(None);
                 }
                 Some(FolderColorValue::Custom(hex)) => {
                     theme_btn.remove_css_class("active");
                     custom_btn.add_css_class("active");
                     custom_stack.set_visible_child_name("dot");
-                    custom_btn.set_tooltip_text(Some(&rust_i18n::t!("Custom (%{hex})", hex = hex)));
+                    let label = rust_i18n::t!("Custom (%{hex})", hex = hex);
+                    custom_btn.set_tooltip_text(Some(&label));
+                    custom_btn.update_property(&[gtk::accessible::Property::Label(&label)]);
                     hex_for_draw.replace(Some(hex.clone()));
                     custom_dot.queue_draw();
                 }
