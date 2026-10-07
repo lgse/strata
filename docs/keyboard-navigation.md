@@ -129,8 +129,9 @@ Each `*` stands for zero or more characters. Other punctuation (including `?`,
 parent paths, in Columns, Icons, List, and the file chooser. Hidden-file visibility
 and [Include subfolders](preferences.md#filter-scope) still control the scope;
 a wildcard does not enable recursive search. Existing result limits still apply.
-Clear the input or press Escape to restore the directory listing. **Ctrl+K**
-global fuzzy search is unchanged.
+Clear the input, or press Escape in the input or on a focused result, to restore
+the directory listing with focus on its cursor. **Ctrl+K** global fuzzy search is
+unchanged.
 
 ## Preview while filtering
 
@@ -139,6 +140,8 @@ In the browser and file chooser, **Down** from the Ctrl+F input focuses the sele
 **Menu/Shift+F10** on a focused result opens its file menu. While the input itself is focused, its text-editing menu remains available. **Space** toggles quick preview for a selected file result in Columns, Icons, and List, including after returning to the query. Previewing a file keeps the query, selection, and current directory intact; on a selected folder result, Space navigates into the folder instead.
 
 While the input is focused, Space types into the query if no result is selected. **Shift+Space** inserts a space there even with a result selected. Space opens a selected folder in every view without opening or loading the preview pane; unsupported files do not open a preview.
+
+With a result focused, the first **Escape** dismisses the filter even while its quick preview is open; a second Escape closes the preview. **Ctrl+1/2/3** keep focus in the filter: in the input with the caret after the query, or on the focused result. With a query typed and focus elsewhere, the results take focus once they show. Loading or refreshing the folder never moves focus out of the input or its results.
 
 ## Navigating an archive preview
 
