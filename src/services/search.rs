@@ -15,13 +15,16 @@ use std::{
 use crate::model::{EntryKind, MetadataValue};
 use unicode_normalization::UnicodeNormalization;
 
-use super::{is_hidden_name, native_hidden_names, native_kind};
+use super::{
+    is_hidden_name, native_hidden_names, native_kind,
+    path_match::{self, Frecency, PathMatcher, PathQuery, TextScore},
+};
 
-const RESULT_LIMIT: usize = 100;
+pub(crate) const RESULT_LIMIT: usize = 100;
 const PUBLISH_INTERVAL: Duration = Duration::from_millis(50);
 
 // Keep tool configuration searchable while pruning generated subtrees.
-const GENERATED_TREE_GLOBS: [&str; 12] = [
+const GENERATED_TREE_GLOBS: [&str; 14] = [
     "!**/.cache/",
     "!**/.cargo/registry/",
     "!**/.cargo/git/",
@@ -31,9 +34,11 @@ const GENERATED_TREE_GLOBS: [&str; 12] = [
     "!**/.m2/repository/",
     "!**/.npm/_cacache/",
     "!**/.bun/install/cache/",
+    "!**/go/pkg/mod/",
     "!**/node_modules/",
     "!**/target/",
     "!**/.venv/",
+    "!**/__pycache__/",
 ];
 
 /// Bounds worst-case index memory on an adversarially large tree. Each retained `SearchItem`
@@ -45,6 +50,27 @@ const MAX_INDEX_DEPTH: usize = 64;
 const INDEX_TIME_BUDGET: Duration = Duration::from_secs(10);
 const INITIAL_DIRECTORY_BATCH: usize = 1;
 const MAX_PENDING_DIRECTORIES: usize = 4_096;
+
+#[derive(Clone, Copy, Debug)]
+struct TraversalBudget {
+    max_entries: usize,
+    max_depth: usize,
+    time_budget: Duration,
+    initial_directory_batch: usize,
+    max_pending_directories: usize,
+}
+
+impl TraversalBudget {
+    const fn standard() -> Self {
+        Self {
+            max_entries: MAX_INDEX_ENTRIES,
+            max_depth: MAX_INDEX_DEPTH,
+            time_budget: INDEX_TIME_BUDGET,
+            initial_directory_batch: INITIAL_DIRECTORY_BATCH,
+            max_pending_directories: MAX_PENDING_DIRECTORIES,
+        }
+    }
+}
 
 pub fn fold_for_search(text: &str) -> String {
     if text.is_ascii() {
@@ -99,8 +125,12 @@ impl SearchItem {
         }
     }
 
-    pub(super) fn fuzzy_score(&self, normalized_query: &str) -> Option<i64> {
-        fuzzy_score_normalized(self, normalized_query)
+    pub(super) fn path_score(&self, matcher: &mut PathMatcher) -> Option<TextScore> {
+        matcher.score(&self.search_path, self.search_name_start)
+    }
+
+    pub(super) fn name_is(&self, normalized_name: &str) -> bool {
+        self.search_name() == normalized_name
     }
 
     #[cfg(test)]
@@ -111,15 +141,6 @@ impl SearchItem {
             EntryKind::File
         };
         Self::with_metadata(path, root, is_directory, kind, MetadataValue::Unknown)
-    }
-
-    fn from_native(path: PathBuf, root: &Path, is_directory: bool, kind: EntryKind) -> Self {
-        use std::os::unix::fs::MetadataExt;
-
-        let mode = std::fs::metadata(&path)
-            .map(|metadata| MetadataValue::Known(metadata.mode()))
-            .unwrap_or(MetadataValue::Unknown);
-        Self::with_metadata(path, root, is_directory, kind, mode)
     }
 
     fn with_metadata(
@@ -208,11 +229,12 @@ pub enum SearchEvent {
         items: Vec<SearchItem>,
         indexing: bool,
         coverage: SearchCoverage,
+        has_more: bool,
     },
 }
 
 enum SearchCommand {
-    Query(String),
+    Query(String, usize),
     IndexChanged,
 }
 
@@ -221,6 +243,7 @@ struct WalkProgress {
     query: String,
     normalized_query: String,
     matches: Vec<(i64, SearchItem)>,
+    limit: usize,
 }
 
 struct IndexLifecycle {
@@ -229,6 +252,7 @@ struct IndexLifecycle {
 }
 
 struct IndexState {
+    revision: usize,
     items: Vec<SearchItem>,
     indexing: bool,
     coverage: SearchCoverage,
@@ -239,18 +263,41 @@ struct SharedIndex {
     subscribers: Mutex<Vec<(usize, Sender<SearchCommand>)>>,
     next_subscriber: AtomicUsize,
     lifecycle: Mutex<IndexLifecycle>,
+    cancel_initial_indexer: AtomicBool,
+    refresh_requested: AtomicUsize,
+    refresh: Mutex<RefreshState>,
+    refresh_owner: Option<(Weak<SharedIndex>, usize)>,
+}
+
+struct RefreshState {
+    running: bool,
+    roots: Vec<PathBuf>,
+    hidden: bool,
+    recursive: bool,
+    exclusions: SearchExclusions,
 }
 
 impl SharedIndex {
     fn new() -> Self {
         Self {
             state: RwLock::new(IndexState {
+                revision: 0,
                 items: Vec::new(),
                 indexing: true,
                 coverage: SearchCoverage::default(),
             }),
             subscribers: Mutex::new(Vec::new()),
             next_subscriber: AtomicUsize::new(1),
+            cancel_initial_indexer: AtomicBool::new(false),
+            refresh_requested: AtomicUsize::new(0),
+            refresh: Mutex::new(RefreshState {
+                running: false,
+                roots: Vec::new(),
+                hidden: false,
+                recursive: false,
+                exclusions: SearchExclusions::default(),
+            }),
+            refresh_owner: None,
             lifecycle: Mutex::new(IndexLifecycle {
                 active_sessions: 1,
                 retired: false,
@@ -304,6 +351,20 @@ impl SharedIndex {
         }
     }
 
+    fn indexing_cancelled(&self) -> bool {
+        self.cancel_initial_indexer.load(Ordering::Acquire)
+            || self.is_retired()
+            || self
+                .refresh_owner
+                .as_ref()
+                .is_some_and(|(owner, generation)| {
+                    owner.upgrade().is_none_or(|owner| {
+                        owner.is_retired()
+                            || owner.refresh_requested.load(Ordering::Acquire) != *generation
+                    })
+                })
+    }
+
     fn is_retired(&self) -> bool {
         self.lifecycle
             .lock()
@@ -313,14 +374,113 @@ impl SharedIndex {
 }
 
 mod directory;
+pub(crate) mod exclusions;
 mod pattern;
 
-pub(crate) use pattern::filter_name_matches;
+pub(crate) use exclusions::SearchExclusions;
+pub(crate) use pattern::{filter_name_matches, filter_query_allows_typos};
 
-type SearchScorer = fn(&SearchItem, &str) -> Option<i64>;
+type NameScorer = fn(&SearchItem, &str) -> Option<i64>;
 
-type IndexRegistry = HashMap<(Vec<PathBuf>, bool, bool), Weak<SharedIndex>>;
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct RefusedFolders {
+    pub(crate) trees: Vec<PathBuf>,
+    pub(crate) folder: Option<PathBuf>,
+}
+
+impl RefusedFolders {
+    pub(crate) fn refuses(&self, path: &Path) -> bool {
+        self.folder.as_deref() == Some(path) || self.trees.iter().any(|tree| path.starts_with(tree))
+    }
+}
+
+#[derive(Clone)]
+enum SearchScorer {
+    Name(NameScorer),
+    Paths {
+        frecency: Arc<Frecency>,
+        /// `Some` restricts hits to directories and applies transfer exclusions.
+        folders: Option<Arc<RefusedFolders>>,
+    },
+}
+
+impl SearchScorer {
+    fn prepare<'a>(&'a self, normalized_query: &'a str) -> QueryScorer<'a> {
+        match self {
+            Self::Name(scorer) => QueryScorer::Name(*scorer, normalized_query),
+            Self::Paths {
+                frecency,
+                folders: Some(refused),
+            } if normalized_query.trim().is_empty() => QueryScorer::Folders(frecency, refused),
+            Self::Paths { frecency, folders } => QueryScorer::Paths {
+                matcher: PathMatcher::new(&PathQuery::parse(normalized_query)),
+                query: normalized_query,
+                frecency,
+                folders: folders.as_deref(),
+            },
+        }
+    }
+
+    fn lists_without_query(&self) -> bool {
+        matches!(
+            self,
+            Self::Paths {
+                folders: Some(_),
+                ..
+            }
+        )
+    }
+}
+
+enum QueryScorer<'a> {
+    Name(NameScorer, &'a str),
+    Paths {
+        matcher: PathMatcher,
+        query: &'a str,
+        frecency: &'a Frecency,
+        folders: Option<&'a RefusedFolders>,
+    },
+    Folders(&'a Frecency, &'a RefusedFolders),
+}
+
+impl QueryScorer<'_> {
+    fn score(&mut self, item: &SearchItem) -> Option<i64> {
+        match self {
+            Self::Name(scorer, query) => scorer(item, query),
+            Self::Folders(frecency, refused) => (item.is_directory && !refused.refuses(&item.path))
+                .then(|| {
+                    frecency.bias(&item.path, true) * (i64::from(u8::MAX) + 1)
+                        - i64::from(item.depth)
+                }),
+            Self::Paths {
+                matcher,
+                query,
+                frecency,
+                folders,
+            } => {
+                if let Some(refused) = folders
+                    && (!item.is_directory || refused.refuses(&item.path))
+                {
+                    return None;
+                }
+                let text = item.path_score(matcher)?;
+                let exact = if folders.is_some() {
+                    path_match::exact_bonus(&item.search_path, item.search_name_start, query)
+                } else {
+                    0
+                };
+                Some(path_match::rank(text, frecency.bias(&item.path, item.is_directory)) + exact)
+            }
+        }
+    }
+}
+
+type IndexRegistry = Vec<(
+    (Vec<PathBuf>, bool, bool, SearchExclusions),
+    Weak<SharedIndex>,
+)>;
 static SHARED_INDEXES: OnceLock<Mutex<IndexRegistry>> = OnceLock::new();
+static REFRESH_TRAVERSAL: Mutex<()> = Mutex::new(());
 
 pub struct SearchHandle {
     cancelled: Arc<AtomicBool>,
@@ -331,9 +491,14 @@ pub struct SearchHandle {
 
 impl SearchHandle {
     pub fn query(&self, query: &str) {
-        let _sent = self
-            .commands
-            .send(SearchCommand::Query(query.trim().to_owned()));
+        self.query_candidates(query, RESULT_LIMIT);
+    }
+
+    pub(crate) fn query_candidates(&self, query: &str, limit: usize) {
+        let _sent = self.commands.send(SearchCommand::Query(
+            query.trim().to_owned(),
+            limit.clamp(1, MAX_INDEX_ENTRIES),
+        ));
     }
 }
 
@@ -346,6 +511,7 @@ impl Drop for SearchHandle {
     }
 }
 
+#[cfg(test)]
 pub fn index_tree(root: PathBuf, show_hidden: bool) -> (SearchHandle, Receiver<SearchEvent>) {
     index_trees(vec![root], show_hidden)
 }
@@ -359,17 +525,69 @@ pub fn index_filter(
         vec![root],
         show_hidden,
         include_subfolders,
-        filter_score_normalized,
+        SearchScorer::Name(filter_score_normalized),
+        Vec::new(),
     )
 }
 
-/// Concurrent sessions share a snapshot until the last handle is dropped.
-/// Indexing and scoring run off the GTK thread.
+pub fn index_paths(
+    root: PathBuf,
+    show_hidden: bool,
+    recursive: bool,
+    frecency: Frecency,
+) -> (SearchHandle, Receiver<SearchEvent>) {
+    index_scoped(
+        vec![root],
+        show_hidden,
+        recursive,
+        SearchScorer::Paths {
+            frecency: Arc::new(frecency),
+            folders: None,
+        },
+        Vec::new(),
+    )
+}
+
+pub fn index_folder_paths(
+    root: PathBuf,
+    show_hidden: bool,
+    frecency: Frecency,
+    refused: RefusedFolders,
+) -> (SearchHandle, Receiver<SearchEvent>) {
+    index_scoped(
+        vec![root],
+        show_hidden,
+        true,
+        SearchScorer::Paths {
+            frecency: Arc::new(frecency),
+            folders: Some(Arc::new(refused)),
+        },
+        Vec::new(),
+    )
+}
+
+#[cfg(test)]
 pub fn index_trees(
     roots: Vec<PathBuf>,
     show_hidden: bool,
 ) -> (SearchHandle, Receiver<SearchEvent>) {
-    index_scoped(roots, show_hidden, true, fuzzy_score_normalized)
+    index_trees_with_exclusions(roots, show_hidden, Vec::new())
+}
+
+/// Concurrent sessions share a snapshot until the last handle is dropped.
+/// Indexing and scoring run off the GTK thread.
+pub fn index_trees_with_exclusions(
+    roots: Vec<PathBuf>,
+    show_hidden: bool,
+    exclusions: Vec<String>,
+) -> (SearchHandle, Receiver<SearchEvent>) {
+    index_scoped(
+        roots,
+        show_hidden,
+        true,
+        SearchScorer::Name(fuzzy_score_normalized),
+        exclusions,
+    )
 }
 
 fn index_scoped(
@@ -377,40 +595,210 @@ fn index_scoped(
     show_hidden: bool,
     recursive: bool,
     scorer: SearchScorer,
+    exclusions: Vec<String>,
 ) -> (SearchHandle, Receiver<SearchEvent>) {
     let mut seen = HashSet::new();
     let roots: Vec<_> = roots
         .into_iter()
         .filter(|root| seen.insert(root.clone()))
         .collect();
-    let key = (roots.clone(), show_hidden, recursive);
-    let registry = SHARED_INDEXES.get_or_init(|| Mutex::new(HashMap::new()));
+    let search_exclusions = SearchExclusions::from_strings(&exclusions);
+    let key = (
+        roots.clone(),
+        show_hidden,
+        recursive,
+        search_exclusions.clone(),
+    );
+    let registry = SHARED_INDEXES.get_or_init(|| Mutex::new(Vec::new()));
     let mut registry = registry
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    registry.retain(|_, index| index.strong_count() > 0);
+    registry.retain(|(_, index)| index.strong_count() > 0);
     let shared = registry
-        .get(&key)
-        .and_then(Weak::upgrade)
-        .filter(|index| index.try_acquire());
+        .iter()
+        .filter(|(candidate, _)| candidate == &key)
+        .filter_map(|(_, index)| index.upgrade())
+        .find(|index| index.try_acquire());
     let index = if let Some(index) = shared {
         index
     } else {
         let index = Arc::new(SharedIndex::new());
-        registry.insert(key, Arc::downgrade(&index));
+        registry.push((key, Arc::downgrade(&index)));
         start_indexer(
             index.clone(),
             roots,
             show_hidden,
-            MAX_INDEX_ENTRIES,
-            MAX_INDEX_DEPTH,
-            INDEX_TIME_BUDGET,
+            TraversalBudget::standard(),
             recursive,
+            search_exclusions,
         );
         index
     };
     drop(registry);
     start_search_session(index, scorer)
+}
+
+pub(crate) fn refresh_search_indexes_for_rename(from: &Path, to: &Path) {
+    let Some(registry) = SHARED_INDEXES.get() else {
+        return;
+    };
+    let mut registry = registry
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    registry.retain(|(_, index)| index.strong_count() > 0);
+    for ((roots, hidden, recursive, exclusions), index) in registry.iter_mut() {
+        if !roots.iter().any(|root| {
+            from.starts_with(root)
+                || to.starts_with(root)
+                || root.starts_with(from)
+                || root.starts_with(to)
+        }) {
+            continue;
+        }
+        for root in roots.iter_mut() {
+            if let Ok(suffix) = root.strip_prefix(from) {
+                *root = to.join(suffix);
+            }
+        }
+        let mut seen = HashSet::new();
+        roots.retain(|root| seen.insert(root.clone()));
+        if let Some(index) = index.upgrade() {
+            request_index_refresh(
+                index,
+                roots.clone(),
+                *hidden,
+                *recursive,
+                exclusions.clone(),
+            );
+        }
+    }
+}
+
+fn request_index_refresh(
+    index: Arc<SharedIndex>,
+    roots: Vec<PathBuf>,
+    hidden: bool,
+    recursive: bool,
+    exclusions: SearchExclusions,
+) {
+    let mut refresh = index
+        .refresh
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    index.refresh_requested.fetch_add(1, Ordering::AcqRel);
+    refresh.roots = roots;
+    refresh.hidden = hidden;
+    refresh.recursive = recursive;
+    refresh.exclusions = exclusions;
+    if refresh.running {
+        return;
+    }
+    refresh.running = true;
+    drop(refresh);
+    for attempt in 0..2 {
+        let worker_index = index.clone();
+        match std::thread::Builder::new()
+            .name("strata-search-refresh".into())
+            .spawn(move || refresh_index(&worker_index))
+        {
+            Ok(_) => return,
+            Err(error) => tracing::error!(%error, attempt, "search refresh worker failed to start"),
+        }
+    }
+    let mut refresh = index
+        .refresh
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    refresh.running = false;
+    let mut state = index
+        .state
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    state.coverage.unreadable = true;
+    drop(state);
+    index.broadcast_change();
+}
+
+fn refresh_index(index: &Arc<SharedIndex>) {
+    loop {
+        // Bound replacement memory/traversal across overlapping scopes, not just per index.
+        let traversal = REFRESH_TRAVERSAL
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let (generation, roots, hidden, recursive, exclusions) = {
+            let mut refresh = index
+                .refresh
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if index.is_retired() {
+                refresh.running = false;
+                return;
+            }
+            (
+                index.refresh_requested.load(Ordering::Acquire),
+                refresh.roots.clone(),
+                refresh.hidden,
+                refresh.recursive,
+                refresh.exclusions.clone(),
+            )
+        };
+        index.cancel_initial_indexer.store(true, Ordering::Release);
+        let replacement = SharedIndex {
+            refresh_owner: Some((Arc::downgrade(index), generation)),
+            ..SharedIndex::new()
+        };
+        if recursive {
+            build_index(
+                &replacement,
+                roots,
+                hidden,
+                TraversalBudget {
+                    max_entries: MAX_INDEX_ENTRIES,
+                    max_depth: MAX_INDEX_DEPTH,
+                    time_budget: INDEX_TIME_BUDGET,
+                    initial_directory_batch: INITIAL_DIRECTORY_BATCH,
+                    max_pending_directories: MAX_PENDING_DIRECTORIES,
+                },
+                exclusions,
+            );
+        } else {
+            directory::build_index(
+                &replacement,
+                roots,
+                hidden,
+                MAX_INDEX_ENTRIES,
+                INDEX_TIME_BUDGET,
+                &exclusions,
+            );
+        }
+        let mut refresh = index
+            .refresh
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if index.is_retired() {
+            refresh.running = false;
+            return;
+        }
+        if index.refresh_requested.load(Ordering::Acquire) == generation {
+            let fresh = replacement
+                .state
+                .into_inner()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let mut state = index
+                .state
+                .write()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let revision = state.revision.wrapping_add(1);
+            *state = fresh;
+            state.revision = revision;
+            drop(state);
+            index.broadcast_change();
+            refresh.running = false;
+            return;
+        }
+        drop(refresh);
+        drop(traversal);
+    }
 }
 
 #[cfg(test)]
@@ -442,9 +830,7 @@ fn index_trees_with_scheduler_budget(
     initial_directory_batch: usize,
     max_pending_directories: usize,
 ) -> (SearchHandle, Receiver<SearchEvent>) {
-    let index = Arc::new(SharedIndex::new());
-    build_index(
-        &index,
+    index_trees_with_scheduler_budget_and_exclusions(
         roots,
         show_hidden,
         TraversalBudget {
@@ -454,8 +840,43 @@ fn index_trees_with_scheduler_budget(
             initial_directory_batch,
             max_pending_directories,
         },
-    );
-    start_search_session(index, fuzzy_score_normalized)
+        SearchExclusions::default(),
+    )
+}
+
+#[cfg(test)]
+fn index_trees_with_scheduler_budget_and_exclusions(
+    roots: Vec<PathBuf>,
+    show_hidden: bool,
+    budget: TraversalBudget,
+    exclusions: SearchExclusions,
+) -> (SearchHandle, Receiver<SearchEvent>) {
+    let index = Arc::new(SharedIndex::new());
+    build_index(&index, roots, show_hidden, budget, exclusions);
+    start_search_session(index, SearchScorer::Name(fuzzy_score_normalized))
+}
+
+#[cfg(test)]
+pub(crate) fn index_trees_with_budget_and_exclusions(
+    roots: Vec<PathBuf>,
+    show_hidden: bool,
+    max_entries: usize,
+    max_depth: usize,
+    time_budget: Duration,
+    exclusions: Vec<String>,
+) -> (SearchHandle, Receiver<SearchEvent>) {
+    index_trees_with_scheduler_budget_and_exclusions(
+        roots,
+        show_hidden,
+        TraversalBudget {
+            max_entries,
+            max_depth,
+            time_budget,
+            initial_directory_batch: INITIAL_DIRECTORY_BATCH,
+            max_pending_directories: MAX_PENDING_DIRECTORIES,
+        },
+        SearchExclusions::from_strings(&exclusions),
+    )
 }
 
 fn start_search_session(
@@ -476,7 +897,7 @@ fn start_search_session(
                 &worker_cancelled,
                 &command_receiver,
                 &event_sender,
-                scorer,
+                &scorer,
             );
         });
     if let Err(error) = worker {
@@ -499,10 +920,11 @@ fn run_search_session(
     cancelled: &AtomicBool,
     commands: &Receiver<SearchCommand>,
     events: &Sender<SearchEvent>,
-    scorer: SearchScorer,
+    scorer: &SearchScorer,
 ) {
     let mut progress = WalkProgress::default();
     let mut indexed_items = 0;
+    let mut revision = 0;
     while !cancelled.load(Ordering::Acquire) {
         let first = match commands.recv_timeout(Duration::from_millis(50)) {
             Ok(command) => command,
@@ -513,7 +935,7 @@ fn run_search_session(
         let mut index_changed = false;
         for command in std::iter::once(first).chain(commands.try_iter()) {
             match command {
-                SearchCommand::Query(query) => next_query = Some(query),
+                SearchCommand::Query(query, limit) => next_query = Some((query, limit)),
                 SearchCommand::IndexChanged => index_changed = true,
             }
         }
@@ -522,27 +944,41 @@ fn run_search_session(
             .state
             .read()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if let Some(query) = next_query {
+        if let Some((query, limit)) = next_query {
             progress.normalized_query = fold_for_search(&query);
             progress.query = query;
-            progress.matches = if progress.normalized_query.is_empty() {
+            progress.limit = limit;
+        }
+        let lists = !progress.normalized_query.is_empty() || scorer.lists_without_query();
+        if query_changed
+            || revision != state.revision
+            || (index_changed && progress.limit > RESULT_LIMIT)
+        {
+            progress.matches = if !lists {
                 Vec::new()
             } else {
-                score_index(&state.items, &progress.normalized_query, scorer)
+                score_index_with_limit(
+                    &state.items,
+                    &progress.normalized_query,
+                    scorer,
+                    progress.limit,
+                )
             };
-        } else if index_changed && !progress.normalized_query.is_empty() {
+        } else if index_changed && lists {
+            let mut scorer = scorer.prepare(&progress.normalized_query);
             for item in &state.items[indexed_items..] {
-                if let Some(score) = scorer(item, &progress.normalized_query) {
-                    insert_match(&mut progress.matches, score, item);
+                if let Some(score) = scorer.score(item) {
+                    insert_match_with_limit(&mut progress.matches, score, item, progress.limit);
                 }
             }
         }
+        revision = state.revision;
         indexed_items = state.items.len();
         // Completion must describe the same snapshot that was scored.
         let indexing = state.indexing;
         let coverage = state.coverage;
         drop(state);
-        if query_changed || (index_changed && (!progress.query.is_empty() || !indexing)) {
+        if query_changed || (index_changed && (lists || !indexing)) {
             publish(events, &progress, indexing, coverage);
         }
     }
@@ -552,30 +988,25 @@ fn start_indexer(
     index: Arc<SharedIndex>,
     roots: Vec<PathBuf>,
     show_hidden: bool,
-    max_entries: usize,
-    max_depth: usize,
-    time_budget: Duration,
+    budget: TraversalBudget,
     recursive: bool,
+    exclusions: SearchExclusions,
 ) {
     let worker_index = index.clone();
     let worker = std::thread::Builder::new()
         .name("strata-search-index".into())
         .spawn(move || {
             if recursive {
-                build_index(
+                build_index(&worker_index, roots, show_hidden, budget, exclusions);
+            } else {
+                directory::build_index(
                     &worker_index,
                     roots,
                     show_hidden,
-                    TraversalBudget {
-                        max_entries,
-                        max_depth,
-                        time_budget,
-                        initial_directory_batch: INITIAL_DIRECTORY_BATCH,
-                        max_pending_directories: MAX_PENDING_DIRECTORIES,
-                    },
+                    budget.max_entries,
+                    budget.time_budget,
+                    &exclusions,
                 );
-            } else {
-                directory::build_index(&worker_index, roots, show_hidden, max_entries, time_budget);
             }
         });
     if let Err(error) = worker {
@@ -610,7 +1041,9 @@ struct ScheduledDirectory {
 
 impl PartialEq for ScheduledDirectory {
     fn eq(&self, other: &Self) -> bool {
-        self.task.virtual_work == other.task.virtual_work && self.sequence == other.sequence
+        self.task.virtual_work == other.task.virtual_work
+            && self.task.depth == other.task.depth
+            && self.sequence == other.sequence
     }
 }
 
@@ -628,21 +1061,27 @@ impl Ord for ScheduledDirectory {
             .task
             .virtual_work
             .cmp(&self.task.virtual_work)
+            .then_with(|| other.task.depth.cmp(&self.task.depth))
             .then_with(|| other.sequence.cmp(&self.sequence))
     }
 }
 
-fn directory_walker(
-    task: &DirectoryTask,
-    boundaries: Arc<HashSet<PathBuf>>,
-    show_hidden: bool,
-) -> ignore::Walk {
-    let mut overrides = ignore::overrides::OverrideBuilder::new(&task.root);
+fn build_root_overrides(root: &Path) -> ignore::overrides::Override {
+    let mut overrides = ignore::overrides::OverrideBuilder::new(root);
     for generated_tree in GENERATED_TREE_GLOBS {
         overrides
             .add(generated_tree)
             .expect("valid generated-tree prune glob");
     }
+    overrides.build().expect("valid generated-tree prune globs")
+}
+
+fn directory_walker(
+    task: &DirectoryTask,
+    overrides: &ignore::overrides::Override,
+    boundaries: Arc<HashSet<PathBuf>>,
+    show_hidden: bool,
+) -> ignore::Walk {
     let mut builder = ignore::WalkBuilder::new(&task.path);
     builder
         .follow_links(false)
@@ -650,19 +1089,21 @@ fn directory_walker(
         // `standard_filters` resets hidden-file filtering.
         .hidden(!show_hidden)
         .require_git(false)
-        .overrides(overrides.build().expect("valid generated-tree prune globs"))
+        .overrides(overrides.clone())
         .max_depth(Some(1))
         // Nested mounts are walked separately, never through both roots.
-        .filter_entry(move |entry| entry.depth() == 0 || !boundaries.contains(entry.path()));
+        .filter_entry(move |entry| {
+            entry.depth() == 0
+                || !(boundaries.contains(entry.path()) || is_kernel_filesystem(entry.path()))
+        });
     builder.build()
 }
 
-struct TraversalBudget {
-    max_entries: usize,
-    max_depth: usize,
-    time_budget: Duration,
-    initial_directory_batch: usize,
-    max_pending_directories: usize,
+// Avoid filling a root search with kernel interfaces; explicit roots bypass this filter.
+fn is_kernel_filesystem(path: &Path) -> bool {
+    ["/proc", "/sys", "/dev"]
+        .iter()
+        .any(|mount| path == Path::new(mount))
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -692,6 +1133,7 @@ fn build_index(
     roots: Vec<PathBuf>,
     show_hidden: bool,
     budget: TraversalBudget,
+    exclusions: SearchExclusions,
 ) {
     let TraversalBudget {
         max_entries,
@@ -712,12 +1154,21 @@ fn build_index(
         .filter(|root| seen.insert(root.clone()))
         .collect();
     let boundaries = Arc::new(seen);
+    let root_overrides: HashMap<PathBuf, ignore::overrides::Override> = roots
+        .iter()
+        .map(|root| (root.clone(), build_root_overrides(root)))
+        .collect();
     let initial_directory_batch = initial_directory_batch.max(1);
     let max_pending_directories = max_pending_directories.max(1);
+    let directory_batch_limit = (max_entries / 100).clamp(1, 64);
     let mut pending_branches = VecDeque::new();
     let mut pending_directory_count = 0_usize;
     let mut next_sequence = 0_u64;
     for root in roots {
+        let name = root.file_name().unwrap_or_default().to_string_lossy();
+        if exclusions.is_excluded(&root, &name, true) {
+            continue;
+        }
         if pending_directory_count >= max_pending_directories {
             coverage.directory_limit = true;
             continue;
@@ -747,23 +1198,28 @@ fn build_index(
         pending_directory_count = pending_directory_count.saturating_sub(1);
         let mut directory = scheduled.task;
         let mut new_branches = Vec::new();
-        if index.is_retired() {
+        if index.indexing_cancelled() {
             return;
         }
-        let mut walker = directory_walker(&directory, boundaries.clone(), show_hidden);
+        let overrides = root_overrides.get(&directory.root).expect("root overrides");
+        let mut walker =
+            directory_walker(&directory, overrides, boundaries.clone(), show_hidden).peekable();
+        let entry_depth = directory.depth.saturating_add(1);
         let mut seen_entries = 0;
         let mut processed_entries = 0;
         let mut slice_work = 0_usize;
+        let mut discovered_children = Vec::new();
         let exhausted = loop {
-            if index.is_retired() {
+            if index.indexing_cancelled() {
                 return;
             }
             if walk_start.elapsed() >= time_budget {
                 coverage.time_limit = true;
                 break 'walk;
             }
-            if processed_entries >= directory.batch_size {
-                break false;
+            if processed_entries >= directory.batch_size.max(directory_batch_limit) {
+                // An empty continuation would outrank children and waste their next turn.
+                break walker.peek().is_none();
             }
             let Some(result) = walker.next() else {
                 break true;
@@ -792,6 +1248,10 @@ fn build_index(
             }
             let file_type = entry.file_type();
             let is_directory = file_type.is_some_and(|kind| kind.is_dir());
+            let name = entry.file_name().to_string_lossy();
+            if exclusions.is_excluded(entry.path(), &name, is_directory) {
+                continue;
+            }
             // Structural entries are cheap within a branch so nested documents progress
             // before dense runs of regular files consume the shared entry budget.
             slice_work = slice_work.saturating_add(if is_directory { 1 } else { 8 });
@@ -799,6 +1259,20 @@ fn build_index(
                 coverage.depth_limit = true;
                 continue;
             }
+            let mode = if is_directory {
+                MetadataValue::Unknown
+            } else {
+                use std::os::unix::fs::MetadataExt;
+                // Executability follows the target, not the walker's symlink mode.
+                let metadata = if file_type.is_some_and(|kind| kind.is_symlink()) {
+                    std::fs::metadata(entry.path()).ok()
+                } else {
+                    entry.metadata().ok()
+                };
+                metadata
+                    .map(|metadata| MetadataValue::Known(metadata.mode()))
+                    .unwrap_or(MetadataValue::Unknown)
+            };
             let path = entry.into_path();
             let kind = file_type.map_or(EntryKind::Other, |kind| native_kind(kind, &path));
             match admit_path(&mut indexed_paths, &path, max_entries) {
@@ -809,39 +1283,20 @@ fn build_index(
                 }
                 PathAdmission::Unique => {}
             }
-            let entry_depth = directory.depth.saturating_add(1);
-            pending_items.push(SearchItem::from_native(
+            pending_items.push(SearchItem::with_metadata(
                 path.clone(),
                 &directory.root,
                 is_directory,
                 kind,
+                mode,
             ));
             indexed_entries += 1;
             if is_directory {
                 // Keep one queue slot available for this slice's continuation. A child that
                 // cannot be admitted is omitted, while already queued work still completes.
                 if pending_directory_count < max_pending_directories.saturating_sub(1) {
-                    let child = ScheduledDirectory {
-                        task: DirectoryTask {
-                            path,
-                            root: directory.root.clone(),
-                            depth: entry_depth,
-                            probe_only: entry_depth >= max_depth,
-                            skipped_entries: 0,
-                            batch_size: initial_directory_batch,
-                            virtual_work: directory.virtual_work.saturating_add(slice_work),
-                        },
-                        sequence: next_sequence,
-                    };
-                    next_sequence = next_sequence.wrapping_add(1);
                     pending_directory_count += 1;
-                    if directory.depth == 0 {
-                        let mut child_branch = BinaryHeap::new();
-                        child_branch.push(child);
-                        new_branches.push(child_branch);
-                    } else {
-                        branch.push(child);
-                    }
+                    discovered_children.push(path);
                 } else {
                     coverage.directory_limit = true;
                 }
@@ -856,10 +1311,35 @@ fn build_index(
             }
         };
         drop(walker);
+        // Within a branch, depth puts the continuation ahead of this slice's
+        // children, but earlier slices' children retain their lower work keys.
+        let resume_work = directory.virtual_work.saturating_add(slice_work);
+        for path in discovered_children {
+            let child = ScheduledDirectory {
+                task: DirectoryTask {
+                    path,
+                    root: directory.root.clone(),
+                    depth: entry_depth,
+                    probe_only: entry_depth >= max_depth,
+                    skipped_entries: 0,
+                    batch_size: initial_directory_batch,
+                    virtual_work: resume_work,
+                },
+                sequence: next_sequence,
+            };
+            next_sequence = next_sequence.wrapping_add(1);
+            if directory.depth == 0 {
+                let mut child_branch = BinaryHeap::new();
+                child_branch.push(child);
+                new_branches.push(child_branch);
+            } else {
+                branch.push(child);
+            }
+        }
         if !exhausted {
             directory.skipped_entries = directory.skipped_entries.saturating_add(processed_entries);
             directory.batch_size = directory.batch_size.saturating_mul(2);
-            directory.virtual_work = directory.virtual_work.saturating_add(slice_work);
+            directory.virtual_work = resume_work;
             branch.push(ScheduledDirectory {
                 task: directory,
                 sequence: next_sequence,
@@ -900,6 +1380,10 @@ fn append_index_items(
         .state
         .write()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if index.cancel_initial_indexer.load(Ordering::Acquire) {
+        items.clear();
+        return;
+    }
     state.items.append(items);
     state.indexing = indexing;
     state.coverage = coverage;
@@ -907,16 +1391,22 @@ fn append_index_items(
 
 type RankedPosition = Reverse<(i64, Reverse<usize>)>;
 
-fn score_index(
+#[cfg(test)]
+fn score_index(index: &[SearchItem], query: &str, scorer: SearchScorer) -> Vec<(i64, SearchItem)> {
+    score_index_with_limit(index, query, &scorer, RESULT_LIMIT)
+}
+
+fn score_index_with_limit(
     index: &[SearchItem],
     normalized_query: &str,
-    scorer: SearchScorer,
+    scorer: &SearchScorer,
+    limit: usize,
 ) -> Vec<(i64, SearchItem)> {
     let worker_count = std::thread::available_parallelism()
         .map_or(1, usize::from)
         .min(4);
     let best = if index.len() < 50_000 || worker_count == 1 {
-        score_range(index, normalized_query, 0, scorer)
+        score_range(index, normalized_query, 0, scorer, limit)
     } else {
         let chunk_size = index.len().div_ceil(worker_count);
         std::thread::scope(|scope| {
@@ -925,18 +1415,18 @@ fn score_index(
                 .enumerate()
                 .map(|(chunk, items)| {
                     scope.spawn(move || {
-                        score_range(items, normalized_query, chunk * chunk_size, scorer)
+                        score_range(items, normalized_query, chunk * chunk_size, scorer, limit)
                     })
                 })
                 .collect::<Vec<_>>();
-            let mut best = BinaryHeap::with_capacity(RESULT_LIMIT + 1);
+            let mut best = BinaryHeap::with_capacity(limit + 1);
             for worker in workers {
                 let candidates = match worker.join() {
                     Ok(candidates) => candidates,
                     Err(payload) => std::panic::resume_unwind(payload),
                 };
                 for Reverse(candidate) in candidates {
-                    retain_candidate(&mut best, candidate);
+                    retain_candidate(&mut best, candidate, limit);
                 }
             }
             best
@@ -957,20 +1447,30 @@ fn score_range(
     index: &[SearchItem],
     normalized_query: &str,
     position_offset: usize,
-    scorer: SearchScorer,
+    scorer: &SearchScorer,
+    limit: usize,
 ) -> BinaryHeap<RankedPosition> {
-    let mut best = BinaryHeap::with_capacity(RESULT_LIMIT + 1);
+    let mut best = BinaryHeap::with_capacity(limit + 1);
+    let mut scorer = scorer.prepare(normalized_query);
     for (position, item) in index.iter().enumerate() {
-        let Some(score) = scorer(item, normalized_query) else {
+        let Some(score) = scorer.score(item) else {
             continue;
         };
-        retain_candidate(&mut best, (score, Reverse(position_offset + position)));
+        retain_candidate(
+            &mut best,
+            (score, Reverse(position_offset + position)),
+            limit,
+        );
     }
     best
 }
 
-fn retain_candidate(best: &mut BinaryHeap<RankedPosition>, candidate: (i64, Reverse<usize>)) {
-    if best.len() < RESULT_LIMIT {
+fn retain_candidate(
+    best: &mut BinaryHeap<RankedPosition>,
+    candidate: (i64, Reverse<usize>),
+    limit: usize,
+) {
+    if best.len() < limit {
         best.push(Reverse(candidate));
     } else if best.peek().is_some_and(|Reverse(worst)| candidate > *worst) {
         best.pop();
@@ -978,11 +1478,21 @@ fn retain_candidate(best: &mut BinaryHeap<RankedPosition>, candidate: (i64, Reve
     }
 }
 
+#[cfg(test)]
 fn insert_match(matches: &mut Vec<(i64, SearchItem)>, score: i64, item: &SearchItem) {
+    insert_match_with_limit(matches, score, item, RESULT_LIMIT);
+}
+
+fn insert_match_with_limit(
+    matches: &mut Vec<(i64, SearchItem)>,
+    score: i64,
+    item: &SearchItem,
+    limit: usize,
+) {
     let position = matches.partition_point(|candidate| candidate.0 >= score);
-    if position < RESULT_LIMIT {
+    if position < limit {
         matches.insert(position, (score, item.clone()));
-        matches.truncate(RESULT_LIMIT);
+        matches.truncate(limit);
     }
 }
 
@@ -1001,15 +1511,20 @@ fn publish(
             .collect(),
         indexing,
         coverage,
+        has_more: progress.limit > 0
+            && progress.matches.len() == progress.limit
+            && progress.limit < MAX_INDEX_ENTRIES,
     });
 }
 
 fn filter_score_normalized(item: &SearchItem, query: &str) -> Option<i64> {
-    if !query.contains('*') {
+    if !filter_name_matches(item.search_name(), query) {
+        return None;
+    }
+    if !query.contains('*') && item.search_name().contains(query) {
         return fuzzy_score_normalized(item, query);
     }
-    filter_name_matches(item.search_name(), query)
-        .then_some(i64::from(item.is_directory) * 20 - i64::from(item.depth) * 32)
+    Some(i64::from(item.is_directory) * 20 - i64::from(item.depth) * 32)
 }
 
 fn fuzzy_score_normalized(item: &SearchItem, query: &str) -> Option<i64> {

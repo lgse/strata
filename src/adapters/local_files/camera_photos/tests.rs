@@ -2,6 +2,23 @@
 
 use super::*;
 
+fn isolated_camera_test(name: &str, run: impl FnOnce()) {
+    // Cancelled GIO requests can complete after their Rust futures are dropped.
+    // A mutex cannot keep those callbacks on their originating libtest thread.
+    const CHILD: &str = "STRATA_ISOLATED_CAMERA_TEST";
+    let name = format!("adapters::local_files::camera_photos::tests::{name}");
+    if std::env::var(CHILD).as_deref() == Ok(name.as_str()) {
+        run();
+        return;
+    }
+    let status = std::process::Command::new(std::env::current_exe().expect("test executable"))
+        .args(["--exact", &name, "--nocapture"])
+        .env(CHILD, &name)
+        .status()
+        .expect("isolated camera test starts");
+    assert!(status.success(), "{name} failed");
+}
+
 fn collect(root: &Path, max_entries: usize, time_budget: Duration) -> Vec<DirectoryEvent> {
     let _lock = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
@@ -169,43 +186,48 @@ fn discovers_only_files_across_date_folders_without_collapsing_duplicate_names()
 
 #[test]
 fn bounded_camera_peeks_keep_limits_but_complete_scans_reach_deep_files() {
-    let root = tempfile::tempdir().expect("camera tree");
-    fs::write(root.path().join("a.jpg"), b"a").expect("first image");
-    fs::write(root.path().join("b.jpg"), b"b").expect("second image");
-    let capped = collect(root.path(), 1, Duration::from_secs(4));
-    assert_eq!(files(&capped).len(), 1);
-    assert!(matches!(
-        capped.last(),
-        Some(DirectoryEvent::Finished {
-            truncated: true,
-            ..
-        })
-    ));
-    let timed = collect(root.path(), 100, Duration::ZERO);
-    assert!(matches!(
-        timed.last(),
-        Some(DirectoryEvent::Finished {
-            truncated: true,
-            ..
-        })
-    ));
-    let mut deep = root.path().to_path_buf();
-    for _ in 0..18 {
-        deep = deep.join("nested");
-    }
-    fs::create_dir_all(&deep).expect("deep camera tree");
-    fs::write(deep.join("deep.jpg"), b"c").expect("deep image");
-    let complete = collect(root.path(), usize::MAX, Duration::MAX);
-    let entries = files(&complete);
-    assert_eq!(entries.len(), 3);
-    assert!(entries.iter().any(|entry| entry.native_name == "deep.jpg"));
-    assert!(matches!(
-        complete.last(),
-        Some(DirectoryEvent::Finished {
-            truncated: false,
-            ..
-        })
-    ));
+    isolated_camera_test(
+        "bounded_camera_peeks_keep_limits_but_complete_scans_reach_deep_files",
+        || {
+            let root = tempfile::tempdir().expect("camera tree");
+            fs::write(root.path().join("a.jpg"), b"a").expect("first image");
+            fs::write(root.path().join("b.jpg"), b"b").expect("second image");
+            let capped = collect(root.path(), 1, Duration::from_secs(4));
+            assert_eq!(files(&capped).len(), 1);
+            assert!(matches!(
+                capped.last(),
+                Some(DirectoryEvent::Finished {
+                    truncated: true,
+                    ..
+                })
+            ));
+            let timed = collect(root.path(), 100, Duration::ZERO);
+            assert!(matches!(
+                timed.last(),
+                Some(DirectoryEvent::Finished {
+                    truncated: true,
+                    ..
+                })
+            ));
+            let mut deep = root.path().to_path_buf();
+            for _ in 0..18 {
+                deep = deep.join("nested");
+            }
+            fs::create_dir_all(&deep).expect("deep camera tree");
+            fs::write(deep.join("deep.jpg"), b"c").expect("deep image");
+            let complete = collect(root.path(), usize::MAX, Duration::MAX);
+            let entries = files(&complete);
+            assert_eq!(entries.len(), 3);
+            assert!(entries.iter().any(|entry| entry.native_name == "deep.jpg"));
+            assert!(matches!(
+                complete.last(),
+                Some(DirectoryEvent::Finished {
+                    truncated: false,
+                    ..
+                })
+            ));
+        },
+    );
 }
 
 #[test]
@@ -241,40 +263,45 @@ fn inaccessible_camera_roots_report_failure_instead_of_an_empty_library() {
 
 #[test]
 fn cancellation_after_first_batch_stops_recursive_discovery() {
-    let _lock = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
-        .lock()
-        .expect("context lock");
-    let context = glib::MainContext::default();
-    let _owner = context.acquire().expect("context owner");
-    let root = tempfile::tempdir().expect("camera tree");
-    for i in 0..20 {
-        fs::write(root.path().join(format!("{i}.jpg")), b"image").expect("photo");
-    }
-    let handle = Rc::new(RefCell::new(None::<LoadHandle>));
-    let cancel = handle.clone();
-    let count = Rc::new(Cell::new(0));
-    let emitted = count.clone();
-    handle.replace(Some(enumerate(
-        DirectoryRequest {
-            id: RequestId(902),
-            location: Location::uri(gio::File::for_path(root.path()).uri()),
-            batch_size: 1,
-            include_metadata: false,
-            max_entries: usize::MAX,
-            time_budget: Duration::MAX,
+    isolated_camera_test(
+        "cancellation_after_first_batch_stops_recursive_discovery",
+        || {
+            let _lock = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+                .lock()
+                .expect("context lock");
+            let context = glib::MainContext::default();
+            let _owner = context.acquire().expect("context owner");
+            let root = tempfile::tempdir().expect("camera tree");
+            for i in 0..20 {
+                fs::write(root.path().join(format!("{i}.jpg")), b"image").expect("photo");
+            }
+            let handle = Rc::new(RefCell::new(None::<LoadHandle>));
+            let cancel = handle.clone();
+            let count = Rc::new(Cell::new(0));
+            let emitted = count.clone();
+            handle.replace(Some(enumerate(
+                DirectoryRequest {
+                    id: RequestId(902),
+                    location: Location::uri(gio::File::for_path(root.path()).uri()),
+                    batch_size: 1,
+                    include_metadata: false,
+                    max_entries: usize::MAX,
+                    time_budget: Duration::MAX,
+                },
+                Rc::new(move |event| {
+                    assert!(matches!(event, DirectoryEvent::Batch { .. }));
+                    emitted.set(emitted.get() + 1);
+                    cancel.borrow_mut().take();
+                }),
+            )));
+            context.block_on(async {
+                let deadline = Instant::now() + Duration::from_secs(4);
+                while count.get() == 0 && Instant::now() < deadline {
+                    glib::timeout_future(Duration::from_millis(1)).await;
+                }
+                glib::timeout_future(Duration::from_millis(20)).await;
+            });
+            assert_eq!(count.get(), 1);
         },
-        Rc::new(move |event| {
-            assert!(matches!(event, DirectoryEvent::Batch { .. }));
-            emitted.set(emitted.get() + 1);
-            cancel.borrow_mut().take();
-        }),
-    )));
-    context.block_on(async {
-        let deadline = Instant::now() + Duration::from_secs(4);
-        while count.get() == 0 && Instant::now() < deadline {
-            glib::timeout_future(Duration::from_millis(1)).await;
-        }
-        glib::timeout_future(Duration::from_millis(20)).await;
-    });
-    assert_eq!(count.get(), 1);
+    );
 }

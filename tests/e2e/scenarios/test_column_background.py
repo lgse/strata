@@ -1,12 +1,11 @@
 # SPDX-License-Identifier: MIT
-"""Column background clicks focus the parent without closing its descendants."""
-
 import pytest
 
 
 @pytest.mark.preferences(browser_mode="columns", single_click_previews=False)
 @pytest.mark.parametrize("surface", ["item", "background"])
 @pytest.mark.parametrize("previous", ["root", "nested"])
+@pytest.mark.usefixtures("unreserved_columns")
 def test_context_menu_keeps_the_clicked_column_target(strata, surface, previous):
     root = strata.fixture.root.name
     nested = strata.fixture.path("documents/nested")
@@ -46,6 +45,7 @@ def test_context_menu_keeps_the_clicked_column_target(strata, surface, previous)
 
 @pytest.mark.preferences(browser_mode="columns")
 @pytest.mark.parametrize("surface", ["content", "header"])
+@pytest.mark.usefixtures("unreserved_columns")
 def test_column_background_click_focuses_parent(strata, surface):
     root = strata.fixture.root.name
     strata.open_directory("documents")
@@ -63,6 +63,8 @@ def test_column_background_click_focuses_parent(strata, surface):
         strata.wait_for_selection(["archive"], root)
         strata.pointer.click(strata.pane(root), at=strata.background_point(root))
         strata.wait(lambda: not strata.all_selected_names(), "active background click to clear selection")
+        assert "documents" not in strata.pane_names()
     else:
         assert strata.selected_names(directory=root) == selected
-    assert "documents" in strata.pane_names()
+        # The header label is chrome, not content background: it only focuses.
+        assert "documents" in strata.pane_names()

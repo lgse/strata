@@ -4,7 +4,9 @@ use crate::adapters::gio_file_for_location;
 use crate::app::Browser;
 use crate::model::{FileEntry, Location};
 use crate::ui::browser::paths::is_trash_location;
-use crate::ui::controls::{ModalTone, message_dialog_description, message_dialog_layout};
+use crate::ui::controls::{
+    ModalTone, focus_button, message_dialog_description, message_dialog_layout,
+};
 use crate::ui::modal::{ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog};
 use crate::ui::terminal;
 use gtk::gio;
@@ -18,6 +20,15 @@ pub(in crate::ui) fn open_location(
     parent: &impl IsA<gtk::Widget>,
     browser: &Rc<Browser>,
 ) {
+    open_location_at(location, None, parent, browser);
+}
+
+pub(in crate::ui) fn open_location_at(
+    location: &Location,
+    position: Option<std::time::Duration>,
+    parent: &impl IsA<gtk::Widget>,
+    browser: &Rc<Browser>,
+) {
     if is_trash_location(location) {
         show_error_dialog(
             parent,
@@ -27,16 +38,19 @@ pub(in crate::ui) fn open_location(
         return;
     }
     let file = gio_file_for_location(location);
+    let context = parent.as_ref().display().app_launch_context();
     let parent = parent.as_ref().downgrade();
     let location = location.clone();
     let browser = Rc::downgrade(browser);
     glib::MainContext::default().spawn_local(async move {
         match resolve_default_application(&file).await {
-            Ok((_content_type, Some(app))) => {
-                let result = crate::ui::open_with::launch(
+            Ok((content_type, Some(app))) => {
+                let result = crate::ui::open_with::launch_at(
                     &app,
-                    std::slice::from_ref(&file),
-                    None::<&gio::AppLaunchContext>,
+                    &file,
+                    &content_type,
+                    position,
+                    Some(&context),
                 );
                 if let Some(parent) = parent.upgrade() {
                     report_open_result(&location, &parent, result);
@@ -103,6 +117,7 @@ fn show_open_with_fallback(
     crate::ui::open_with::show(
         parent,
         vec![file],
+        vec![content_type.to_string()],
         recommended_apps,
         other_apps,
         crate::ui::open_with::OpenWithContext::ActivationFallback,
@@ -183,12 +198,7 @@ pub(super) fn confirm_run_program(location: &Location, parent: &impl IsA<gtk::Wi
 
     let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
     window_overlay.add_overlay(&layer);
-    let weak_cancel = cancel.downgrade();
-    gtk::glib::idle_add_local_once(move || {
-        if let Some(cancel) = weak_cancel.upgrade() {
-            cancel.grab_focus();
-        }
-    });
+    focus_button(&run);
     for button in [close, cancel] {
         let dismiss_layer = layer.clone();
         let dismiss_overlay = window_overlay.clone();
@@ -313,6 +323,3 @@ pub(in crate::ui) fn launch_terminal(location: &Location, parent: &impl IsA<gtk:
         );
     }
 }
-
-#[cfg(test)]
-mod tests;

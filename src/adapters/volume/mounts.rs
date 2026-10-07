@@ -40,7 +40,7 @@ impl MountTable {
         }
     }
 
-    pub(super) fn fs_type_for(&self, path: &Path) -> Option<&str> {
+    pub(crate) fn fs_type_for(&self, path: &Path) -> Option<&str> {
         self.innermost(path).map(|(_, fs_type)| fs_type.as_str())
     }
 
@@ -57,7 +57,7 @@ impl MountTable {
                 .any(|(mount_point, fs_type)| fs_type == "autofs" && path.starts_with(mount_point))
     }
 
-    pub(super) fn is_mount_point(&self, path: &Path) -> bool {
+    pub(crate) fn is_mount_point(&self, path: &Path) -> bool {
         self.entries
             .iter()
             .any(|(mount_point, _)| mount_point == path)

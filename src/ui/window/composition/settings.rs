@@ -5,7 +5,9 @@ use std::{cell::RefCell, rc::Rc};
 use gtk::{glib, prelude::*};
 
 use crate::{
-    services::{BuildKind, InstallSource, ManagedInstall, ReleaseMetadata, UpdateMethod},
+    services::{
+        BuildKind, InstallRequest, InstallSource, ManagedInstall, ReleaseMetadata, UpdateMethod,
+    },
     ui::{
         blur::BlurBin,
         preferences::PreferenceManager,
@@ -21,7 +23,7 @@ use super::{
 #[cfg(test)]
 mod tests;
 
-type AvailableUpdate = Rc<RefCell<Option<(ReleaseMetadata, String, UpdateMethod)>>>;
+type AvailableUpdate = Rc<RefCell<Option<(ReleaseMetadata, InstallRequest, UpdateMethod)>>>;
 
 pub(super) fn install(
     window: &gtk::ApplicationWindow,
@@ -33,7 +35,7 @@ pub(super) fn install(
     let guard = settings::install_guard();
     let notice = bind_update_notice(window, &content.sidebar, &guard);
     settings::register_update_notice(&notice);
-    bind_update_notice_preferences(window, preferences, &notice);
+    bind_update_notice_preferences(&content.overlay, preferences, &notice);
     let launcher = Rc::new(SettingsLauncher {
         layer: RefCell::new(None),
         button: content.header.settings.clone(),
@@ -42,22 +44,34 @@ pub(super) fn install(
         preferences: preferences.clone(),
         notice: notice.clone(),
         guard,
+        shortcuts: content.footer.shortcuts.clone(),
     });
-    let clicked_settings = launcher.clone();
-    content
-        .header
-        .settings
-        .connect_clicked(move |_| clicked_settings.show());
+    let clicked_settings = Rc::downgrade(&launcher);
+    content.header.settings.connect_clicked(move |_| {
+        if let Some(launcher) = clicked_settings.upgrade() {
+            launcher.show();
+        }
+    });
     let shortcut = gtk::EventControllerKey::new();
+    let active_root = content.overlay.downgrade();
     shortcut.connect_key_pressed(move |_, key, _, modifiers| {
-        if key != gtk::gdk::Key::comma || !modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
+        if !active_root.upgrade().is_some_and(|root| root.is_mapped())
+            || key != gtk::gdk::Key::comma
+            || !modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
         {
             return glib::Propagation::Proceed;
         }
         launcher.show();
         glib::Propagation::Stop
     });
-    window.add_controller(shortcut);
+    window.add_controller(shortcut.clone());
+    let controller: gtk::EventController = shortcut.upcast();
+    super::super::keyboard::release_controllers_on_close(
+        window.upcast_ref(),
+        &content.overlay,
+        std::slice::from_ref(&controller),
+    );
+    content.key_controllers.borrow_mut().push(controller);
     notice
 }
 
@@ -69,6 +83,7 @@ struct SettingsLauncher {
     preferences: Rc<PreferenceManager>,
     notice: UpdateNoticeHandler,
     guard: InstallGuard,
+    shortcuts: crate::ui::shortcut_footer::ShortcutFooter,
 }
 
 impl SettingsLauncher {
@@ -96,6 +111,7 @@ impl SettingsLauncher {
                 return;
             }
         }
+        self.shortcuts.cancel_chord();
         let layer = self.layer();
         self.blurred_root.set_blurred(true);
         layer.set_visible(true);
@@ -112,20 +128,16 @@ fn bind_update_notice(
 ) -> UpdateNoticeHandler {
     let available: AvailableUpdate = Rc::new(RefCell::new(None));
     let available_for_click = available.clone();
-    let parent = window.clone().upcast::<gtk::Window>();
+    let parent = window.upcast_ref::<gtk::Window>().downgrade();
     let guard = guard.clone();
     sidebar.update_notice.connect_clicked(move |_| {
-        let Some((release, download_url, update_method)) = available_for_click.borrow().clone()
-        else {
+        let Some((release, install, update_method)) = available_for_click.borrow().clone() else {
             return;
         };
-        settings::show_update_dialog(
-            &parent,
-            &release,
-            download_url,
-            guard.clone(),
-            update_method,
-        );
+        let Some(parent) = parent.upgrade() else {
+            return;
+        };
+        settings::show_update_dialog(&parent, &release, install, guard.clone(), update_method);
     });
     notice_handler(sidebar, available)
 }
@@ -135,15 +147,18 @@ fn notice_handler(sidebar: &SidebarView, available: AvailableUpdate) -> UpdateNo
     let label = sidebar.update_label.clone();
     let area = sidebar.update_area.clone();
     Rc::new(move |release| {
-        if let Some((release, download_url, update_method)) = release {
-            button.set_tooltip_text(Some(&update_tooltip(&release, update_method)));
+        if let Some((release, install, update_method)) = release {
+            crate::ui::accessibility::set_description(
+                &button,
+                Some(&update_tooltip(&release, update_method)),
+            );
             label.set_text(&sidebar_update_label(&release));
             if release.kind == BuildKind::Stable {
                 button.remove_css_class("preview");
             } else {
                 button.add_css_class("preview");
             }
-            *available.borrow_mut() = Some((release, download_url, update_method));
+            *available.borrow_mut() = Some((release, install, update_method));
             area.set_visible(true);
         } else {
             available.borrow_mut().take();

@@ -1,7 +1,11 @@
 # SPDX-License-Identifier: MIT
+import gzip
+import io
 import os
+import re
 import shutil
 import struct
+import tarfile
 import zipfile
 import zlib
 from pathlib import Path
@@ -17,20 +21,20 @@ ARCHIVE_FIXTURES = Path(__file__).parents[1] / "fixtures"
 @pytest.mark.parametrize("format", ["7Z", "TAR.GZ"])
 def test_cancel_compression_stops_before_publishing_and_allows_another_operation(strata, format):
     fixture = strata.fixture
-    fixture.path("payload.bin").write_bytes(os.urandom(16 * 1024 * 1024))
+    payload_size = 64 * 1024 * 1024
+    fixture.path("payload.bin").write_bytes(os.urandom(payload_size))
     strata.entry("payload.bin")
     strata.open_context_menu("payload.bin")
     strata.choose_menu_item("Compress…")
     dialog = strata.wait_for_dialog()
     strata.pointer.click(dialog.find(role="toggle button", name=format))
     strata.pointer.click(strata.dialog_button("Compress"))
-    strata.wait(
-        lambda: (dialog := strata.dialog()) is not None
-        and dialog.name == "Processing archive…"
-        and dialog.find(role="label", name="Preparing…") is not None,
-        "immediate preparation feedback",
+    cancel = strata.wait(
+        lambda: strata.window.find(role="button", name="Cancel Compressing items"),
+        "docked compression cancellation action",
     )
-    strata.pointer.click(strata.dialog_button("Cancel"))
+    strata.wait(lambda: strata.dialog() is None, "compression configuration dismissal")
+    strata.pointer.click(cancel)
     strata.wait(
         lambda: (dialog := strata.dialog()) is not None and dialog.name == "Operation cancelled",
         "compression worker to stop and report cancellation",
@@ -39,7 +43,7 @@ def test_cancel_compression_stops_before_publishing_and_allows_another_operation
     assert not list(fixture.root.glob(".strata-compression-*"))
     assert not list(fixture.root.glob("*.7z"))
     assert not list(fixture.root.glob("*.tar.gz"))
-    assert fixture.path("payload.bin").stat().st_size == 16 * 1024 * 1024
+    assert fixture.path("payload.bin").stat().st_size == payload_size
     strata.pointer.click(strata.dialog_button("Close"))
     strata.wait(lambda: strata.dialog() is None, "cancellation summary dismissal")
 
@@ -53,10 +57,60 @@ def test_cancel_compression_stops_before_publishing_and_allows_another_operation
         assert archive.read("todo.txt") == fixture.path("todo.txt").read_bytes()
 
 
-@pytest.mark.parametrize("name", ["fake.zip", "fake.7z", "fake.tar", "fake.tar.gz", "fake.rar"])
-def test_invalid_archive_reports_damage_and_allows_another_extraction(strata, name):
+INVALID_ARCHIVE = "This file is not a valid archive or is damaged."
+
+
+def _write_text(path):
+    path.write_bytes(b"This is harmless text, not an archive.\n")
+
+
+def _write_zip_with_absolute_member(path):
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("ok.txt", "ok")
+        archive.writestr("second.txt", "2")
+        archive.writestr(zipfile.ZipInfo("/etc/evil.txt"), "evil")
+
+
+def _write_tar_gz_with_bad_trailer(path):
+    raw = io.BytesIO()
+    data = b"x" * 50_000
+    with tarfile.open(fileobj=raw, mode="w") as archive:
+        info = tarfile.TarInfo("a.txt")
+        info.size = len(data)
+        archive.addfile(info, io.BytesIO(data))
+    damaged = bytearray(gzip.compress(raw.getvalue()))
+    damaged[-8] ^= 0xFF
+    path.write_bytes(bytes(damaged))
+
+
+@pytest.mark.parametrize("name,write_fixture,detail,kept,members", [
+    *(
+        pytest.param(name, _write_text, INVALID_ARCHIVE, None, [], id=name)
+        for name in ["fake.zip", "fake.7z", "fake.tar", "fake.tar.gz", "fake.rar"]
+    ),
+    pytest.param(
+        "scatter.zip",
+        _write_zip_with_absolute_member,
+        "Refusing unsafe archive path: /etc/evil.txt. Extracted entries remain in `scatter`.",
+        "scatter",
+        ["ok.txt", "second.txt"],
+        id="scatter.zip",
+    ),
+    pytest.param(
+        "trailer.tar.gz",
+        _write_tar_gz_with_bad_trailer,
+        f"{INVALID_ARCHIVE} Extracted entries remain in `trailer`.",
+        "trailer",
+        ["a.txt"],
+        id="trailer.tar.gz",
+    ),
+])
+def test_invalid_archive_reports_damage_and_allows_another_extraction(
+    strata, name, write_fixture, detail, kept, members
+):
     fixture = strata.fixture
-    fixture.path(name).write_bytes(b"This is harmless text, not an archive.\n")
+    write_fixture(fixture.path(name))
+    original = fixture.path(name).read_bytes()
     with zipfile.ZipFile(fixture.path("valid.zip"), "w") as archive:
         archive.writestr("extracted.txt", "harmless contents")
     strata.keyboard.press("ctrl+r")
@@ -71,9 +125,15 @@ def test_invalid_archive_reports_damage_and_allows_another_extraction(strata, na
         ),
         "the archive error dialog to replace the progress dialog",
     )
-    assert dialog.find(role="label", name="This file is not a valid archive or is damaged.")
+    # The dialog wraps long messages, so the label may contain line breaks.
+    detail_pattern = r"\s+".join(re.escape(word) for word in detail.split())
+    assert dialog.find(role="label", name_matches=f"^{detail_pattern}$")
     assert not strata.window.find(role="progress bar")
-    assert fixture.path(name).read_bytes() == b"This is harmless text, not an archive.\n"
+    assert fixture.path(name).read_bytes() == original
+    for member in members:
+        assert (fixture.path(kept) / member).is_file()
+        assert not fixture.path(member).exists()
+    assert not list(fixture.root.glob(".strata-extraction-*"))
     strata.pointer.click(strata.dialog_button("Close"))
     strata.wait(lambda: strata.dialog() is None, "error dismissal")
     strata.pointer.right_click(strata.entry("valid.zip"))
@@ -81,6 +141,16 @@ def test_invalid_archive_reports_damage_and_allows_another_extraction(strata, na
     strata.wait(lambda: fixture.path("extracted.txt").exists(), "valid archive extraction")
     assert fixture.path("extracted.txt").read_text() == "harmless contents"
     strata.wait(lambda: strata.dialog() is None, "extraction progress dismissal")
+
+
+def test_folder_named_like_an_archive_offers_no_extract_actions(strata):
+    strata.fixture.path("photos.zip").mkdir()
+    strata.keyboard.press("ctrl+r")
+    strata.open_context_menu("photos.zip")
+    items = strata.menu_items()
+    assert "Extract here" not in items and "Extract to…" not in items, items
+    assert "Open in Terminal" in items or "Pin to sidebar" in items, items
+    strata.dismiss_menu()
 
 
 @pytest.mark.parametrize("source,password,member,contents", [
@@ -123,6 +193,8 @@ def test_wrong_extract_password_reopens_dialog_until_password_is_correct(strata,
     )
     assert dialog.find(role="label", name="Invalid password") is not None
     assert dialog.find(role="label", name="Unable to complete operation") is None
+    if source.suffix == ".rar":
+        assert not fixture.path(member).exists()
 
     if source.suffix == ".rar":
         collector = ArtifactCollector(test_name=f"rar-password-{source.stem}")
@@ -144,26 +216,24 @@ def test_cancelled_extract_to_does_not_hijack_later_extract_here(strata):
     strata.keyboard.press("ctrl+r")
     strata.open_context_menu(archive_name)
     strata.choose_menu_item("Extract to…")
-    destination = fixture.path("leftover")
-    field = strata.editable_field()
-    strata.keyboard.press("ctrl+a")
-    strata.keyboard.type_text(str(destination))
-    strata.wait(lambda: field.text == str(destination), "the destination field")
-    strata.keyboard.press("Return")
+    destination = fixture.path("documents")
+    chooser = strata.destination_chooser("Extract to")
+    strata.navigate_destination(chooser, destination)
+    strata.confirm_destination(chooser, "Extract here")
     strata.wait(
         lambda: (dialog := strata.dialog()) is not None and dialog.name == "Extract",
         "the password prompt",
     )
     strata.keyboard.press("Escape")
     strata.wait(lambda: strata.dialog() is None, "password prompt cancellation")
-    assert not destination.exists()
+    assert not (destination / "later.txt").exists()
     strata.open_context_menu("later.zip")
     strata.choose_menu_item("Extract here")
     strata.wait(lambda: fixture.path("later.txt").exists(), "later extraction")
     strata.wait(lambda: strata.dialog() is None, "extraction progress dismissal")
     assert strata.current_directory() == fixture.root.name
     assert fixture.path("later.txt").read_text() == "later extraction\n"
-    assert not destination.exists()
+    assert not (destination / "later.txt").exists()
     strata.entry("later.txt")
     collector = ArtifactCollector(test_name="cancelled-extract-to")
     strata.screenshot(collector.directory / "after.png")
@@ -331,7 +401,7 @@ def test_zipcrypto_collision_reopens_extract_dialog(strata, deflated, contents):
     assert dialog.find(role="label", name="This file is not a valid archive or is damaged.") is None
 
     strata.keyboard.type_text("zipsecret")
-    strata.pointer.click(strata.dialog_button("Extract"))
+    strata.keyboard.press("Return")
     extracted = fixture.path("some.txt")
     strata.wait(lambda: extracted.exists(), "the archive to extract with the correct password")
     assert extracted.read_text() == contents.decode()

@@ -43,13 +43,20 @@ def classify_log(log: str) -> str | None:
         return ("The selected container engine cannot find the loaded runtime. "
                 "Use the same engine for image loading and scenario execution.")
     statuses = sorted(set(re.findall(
-        r"E: Failed to fetch https?://snapshot\.ubuntu\.com/\S+[^\n]*?\s(5\d\d)\s", log)))
+        r"archive\.archlinux\.org(?:[/\s:])[^\n]*(?:returned error:|response code said error:)\s*(5\d\d)",
+        log,
+        re.IGNORECASE,
+    )))
     if statuses:
-        return (f"Ubuntu Snapshot returned HTTP {'/'.join(statuses)} while fetching pinned "
+        return (f"Arch Linux Archive returned HTTP {'/'.join(statuses)} while fetching pinned "
                 "package metadata or packages. This is an upstream bootstrap/download failure, "
                 "not a GUI assertion failure. Package verification remains enabled.")
-    if re.search(r"E:.*(?:NO_PUBKEY|not signed|signatures? couldn't be verified|Hash Sum mismatch)", log):
-        return "APT rejected package metadata or its integrity; do not bypass signature/checksum verification."
+    if re.search(
+        r"(?i)(?:invalid or corrupted package.*PGP signature|signature.*(?:invalid|unknown trust)|"
+        r"failed to commit transaction.*invalid or corrupted package)",
+        log,
+    ):
+        return "Pacman rejected package metadata or its integrity; do not bypass signature/checksum verification."
     codes = sorted(set(re.findall(r"\berror\[(E\d{4})\]", log)))
     if codes:
         return f"Rust compilation failed ({', '.join(codes[:5])}); inspect the linked compiler output."
@@ -93,21 +100,21 @@ def failure_summary(build_result: str, shard_result: str, jobs: list[dict],
         lines.append(f"| {name} | {job['conclusion']} | {step_text} |")
         if job.get("conclusion") == "timed_out":
             reasons.append("A runner job hit its timeout. Inspect its last active step; "
-                           "a timeout alone does not establish an Ubuntu outage.")
+                           "a timeout alone does not establish an archive outage.")
         if reason := classify_log(logs.get(job["id"], "")):
             reasons.append(reason)
     if reasons:
         lines += ["", "### Observed cause", ""] + [f"- {reason}" for reason in dict.fromkeys(reasons)]
     else:
         lines += ["", "The exact cause could not be extracted automatically; open the linked "
-                  "unsuccessful step. Do not infer an Ubuntu outage from exit code 1 alone."]
+                  "unsuccessful step. Do not infer an archive outage from exit code 1 alone."]
     if unavailable:
         lines += ["", "Some job logs were unavailable through the API; the job links remain authoritative."]
     lines += ["", "### Next steps", ""]
-    if any("Ubuntu Snapshot returned" in reason for reason in reasons):
+    if any("Arch Linux Archive returned" in reason for reason in reasons):
         lines += ["- If matching environments are already published, verify both GHCR packages "
                   "are publicly readable; missing access can force source bootstrap unnecessarily.",
-                  "- After Ubuntu Snapshot recovers, run **Warm E2E dependencies** on the affected "
+                  "- After Arch Linux Archive recovers, run **Warm E2E dependencies** on the affected "
                   "branch, then rerun the **entire CI workflow**.",
                   "- Main cannot restore PR-scoped caches. A passing PR does not seed main's "
                   "first bootstrap; do not promote untrusted PR caches into main."]

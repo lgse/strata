@@ -11,6 +11,7 @@ pub(super) fn build_index(
     show_hidden: bool,
     max_entries: usize,
     time_budget: Duration,
+    exclusions: &SearchExclusions,
 ) {
     let start = Instant::now();
     let mut last_publish = start;
@@ -29,7 +30,7 @@ pub(super) fn build_index(
         };
         let hidden_names = native_hidden_names(&root);
         for entry in entries {
-            if index.is_retired() {
+            if index.indexing_cancelled() {
                 return;
             }
             if start.elapsed() >= time_budget {
@@ -63,7 +64,32 @@ pub(super) fn build_index(
                 kind,
                 EntryKind::Directory | EntryKind::DirectorySymbolicLink
             );
-            pending.push(SearchItem::from_native(path, &root, is_directory, kind));
+            let file_name = entry.file_name();
+            let name = file_name.to_string_lossy();
+            if exclusions.is_excluded(&path, &name, is_directory) {
+                continue;
+            }
+            let mode = if is_directory {
+                MetadataValue::Unknown
+            } else {
+                use std::os::unix::fs::MetadataExt;
+                // Executability follows the target, not DirEntry's symlink mode.
+                let metadata = if file_type.is_symlink() {
+                    std::fs::metadata(&path).ok()
+                } else {
+                    entry.metadata().ok()
+                };
+                metadata
+                    .map(|metadata| MetadataValue::Known(metadata.mode()))
+                    .unwrap_or(MetadataValue::Unknown)
+            };
+            pending.push(SearchItem::with_metadata(
+                path,
+                &root,
+                is_directory,
+                kind,
+                mode,
+            ));
             count += 1;
             if pending.len() >= 256 {
                 append_index_items(index, &mut pending, true, coverage);

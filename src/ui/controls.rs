@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+use std::{cell::Cell, rc::Rc, time::Duration};
+
 use gtk::prelude::*;
 
 pub(super) fn stepper(labels: [&str; 3]) -> (gtk::Box, [gtk::Button; 3]) {
@@ -12,6 +14,7 @@ pub(super) fn stepper(labels: [&str; 3]) -> (gtk::Box, [gtk::Button; 3]) {
         if index == 1 {
             button.add_css_class("appearance-text-value");
             button.set_hexpand(true);
+            super::accessibility::set_description(&button, Some(labels[index]));
         } else {
             let icon = if index == 0 {
                 crate::assets::icons::MINUS
@@ -24,8 +27,8 @@ pub(super) fn stepper(labels: [&str; 3]) -> (gtk::Box, [gtk::Button; 3]) {
             button.set_child(Some(&image));
             button.add_css_class("appearance-text-step");
             super::accessibility::set_label(&button, labels[index]);
+            button.set_tooltip_text(Some(labels[index]));
         }
-        button.set_tooltip_text(Some(labels[index]));
         control.append(&button);
         button
     });
@@ -42,6 +45,163 @@ pub(super) fn form_entry() -> gtk::Entry {
     let entry = gtk::Entry::new();
     entry.add_css_class("form-control");
     entry
+}
+
+pub(super) struct FormTextField {
+    pub widget: gtk::Box,
+    pub entry: gtk::Entry,
+    remaining: gtk::Label,
+}
+
+impl FormTextField {
+    pub fn with_character_limit(max_length: i32) -> Self {
+        let entry = form_entry();
+        entry.set_max_length(max_length);
+        let remaining = form_label("");
+        remaining.set_halign(gtk::Align::End);
+        remaining.set_xalign(1.0);
+        super::accessibility::set_label(&remaining, "Characters remaining");
+
+        let widget = gtk::Box::new(gtk::Orientation::Vertical, 4);
+        widget.append(&entry);
+        widget.append(&remaining);
+        let field = Self {
+            widget,
+            entry,
+            remaining,
+        };
+        field.refresh_remaining();
+        let remaining = field.remaining.clone();
+        field.entry.connect_changed(move |entry| {
+            Self::update_remaining(entry, &remaining);
+        });
+        let remaining = field.remaining.clone();
+        field.entry.connect_max_length_notify(move |entry| {
+            Self::update_remaining(entry, &remaining);
+        });
+        field
+    }
+
+    fn refresh_remaining(&self) {
+        Self::update_remaining(&self.entry, &self.remaining);
+    }
+
+    fn update_remaining(entry: &gtk::Entry, remaining: &gtk::Label) {
+        let limit = entry.max_length();
+        remaining.set_visible(limit > 0);
+        let count = (limit as usize).saturating_sub(entry.text().chars().count());
+        remaining.set_text(&format!("{count} chars remaining"));
+    }
+}
+
+#[cfg(test)]
+mod tests;
+
+pub(super) fn copyable_command(command: &str) -> gtk::Overlay {
+    let overlay = gtk::Overlay::new();
+    overlay.add_css_class("preview-command");
+    overlay.set_hexpand(true);
+
+    let field = form_entry();
+    field.add_css_class("preview-command-entry");
+    field.set_text(command);
+    field.set_editable(false);
+    field.set_hexpand(true);
+    overlay.set_child(Some(&field));
+
+    let copy = gtk::Button::builder()
+        .tooltip_text("Copy install command")
+        .halign(gtk::Align::End)
+        .valign(gtk::Align::Center)
+        .build();
+    copy.add_css_class("preview-command-copy");
+    copy.set_has_frame(false);
+    copy.set_cursor_from_name(Some("pointer"));
+    let copy_icon = crate::assets::primary_icon(crate::assets::icons::COPY, 16);
+    copy.set_child(Some(&copy_icon));
+    let copied_command = command.to_owned();
+    let feedback_generation = Rc::new(Cell::new(0_u64));
+    copy.connect_clicked(move |button| {
+        if let Some(display) = gtk::gdk::Display::default() {
+            display.clipboard().set_text(&copied_command);
+        }
+        let generation = feedback_generation.get().saturating_add(1);
+        feedback_generation.set(generation);
+        crate::assets::set_primary_icon(&copy_icon, crate::assets::icons::CHECK);
+        button.set_tooltip_text(Some("Install command copied"));
+        let button = button.clone();
+        let copy_icon = copy_icon.clone();
+        let feedback_generation = feedback_generation.clone();
+        glib::timeout_add_local_once(Duration::from_secs(2), move || {
+            if feedback_generation.get() == generation {
+                crate::assets::set_primary_icon(&copy_icon, crate::assets::icons::COPY);
+                button.set_tooltip_text(Some("Copy install command"));
+            }
+        });
+    });
+    overlay.add_overlay(&copy);
+    overlay
+}
+
+pub(super) struct ProgressSummary {
+    pub widget: gtk::Box,
+    pub header: gtk::Box,
+    pub amount: gtk::Label,
+    pub percent: gtk::Label,
+    pub progress: gtk::ProgressBar,
+}
+
+pub(super) fn progress_summary(caption: &str) -> ProgressSummary {
+    let header = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+    header.add_css_class("transfer-progress-header");
+    let amount_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
+    amount_box.set_hexpand(true);
+    let caption = gtk::Label::new(Some(caption));
+    caption.add_css_class("transfer-progress-caption");
+    caption.set_xalign(0.0);
+    let amount = gtk::Label::new(None);
+    amount.add_css_class("transfer-progress-bytes");
+    amount.set_xalign(0.0);
+    amount_box.append(&caption);
+    amount_box.append(&amount);
+    let percent = gtk::Label::new(None);
+    percent.add_css_class("transfer-progress-percent");
+    header.append(&amount_box);
+    header.append(&percent);
+    let progress = gtk::ProgressBar::new();
+    progress.add_css_class("modal-progress");
+    progress.set_fraction(0.0);
+    let widget = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    widget.append(&header);
+    widget.append(&progress);
+    ProgressSummary {
+        widget,
+        header,
+        amount,
+        percent,
+        progress,
+    }
+}
+
+pub(super) fn properties_action(icon: &str, label: &str, tone: ModalTone) -> gtk::Button {
+    let content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    content.set_halign(gtk::Align::Center);
+    let image = match tone {
+        ModalTone::Accent => crate::assets::primary_icon(icon, 14),
+        ModalTone::Danger => crate::assets::danger_icon(icon, 14),
+    };
+    content.append(&image);
+    content.append(&gtk::Label::new(Some(label)));
+    let button = gtk::Button::builder().child(&content).build();
+    match tone {
+        ModalTone::Accent => button.add_css_class("properties-action"),
+        ModalTone::Danger => {
+            button.add_css_class("action-dialog-confirm");
+            button.add_css_class("danger");
+        }
+    }
+    button.set_hexpand(true);
+    button
 }
 
 pub(super) fn form_password_entry() -> gtk::PasswordEntry {
@@ -163,16 +323,31 @@ pub(super) struct ModalLayout {
     pub icon: gtk::Image,
 }
 
+pub(super) fn focus_button(button: &gtk::Button) {
+    let weak = button.downgrade();
+    glib::idle_add_local_once(move || {
+        if let Some(button) = weak.upgrade() {
+            button.grab_focus();
+            if let Some(window) = button.root().and_downcast::<gtk::Window>() {
+                window.set_focus_visible(false);
+            }
+        }
+    });
+}
+
 impl ModalLayout {
-    pub fn set_loading(&self, loading: bool, tooltip: Option<&str>) {
+    pub fn set_loading(&self, loading: bool, description: Option<&str>) {
         if loading {
-            self.loading.set_tooltip_text(tooltip.or(Some("Working…")));
+            crate::ui::accessibility::set_description(
+                &self.loading,
+                description.or(Some("Working…")),
+            );
             self.loading.set_visible(true);
             self.loading.start();
         } else {
             self.loading.stop();
             self.loading.set_visible(false);
-            self.loading.set_tooltip_text(None);
+            crate::ui::accessibility::set_description(&self.loading, None);
         }
     }
 }
@@ -232,8 +407,8 @@ pub(super) fn modal_layout_with_tone(
     if tone == ModalTone::Danger {
         symbol.add_css_class("danger");
     }
-    symbol.set_size_request(40, 40);
     symbol.set_hexpand(false);
+    symbol.set_valign(gtk::Align::Fill);
     let icon = match tone {
         ModalTone::Accent => crate::assets::primary_icon(icon, 21),
         ModalTone::Danger => crate::assets::danger_icon(icon, 21),
@@ -320,14 +495,6 @@ pub(super) fn segmented_control(
         let button = gtk::ToggleButton::with_label(label);
         button.add_css_class("segmented-control-option");
         button.set_hexpand(true);
-        if index == 0 {
-            button.add_css_class("first");
-        } else {
-            button.add_css_class("not-first");
-        }
-        if index + 1 == labels.len() {
-            button.add_css_class("last");
-        }
         if let Some(first) = buttons.first() {
             button.set_group(Some(first));
         }
@@ -338,6 +505,3 @@ pub(super) fn segmented_control(
 
     (control, buttons)
 }
-
-#[cfg(test)]
-mod tests;

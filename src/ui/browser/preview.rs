@@ -16,7 +16,7 @@ impl ViewState {
         Some(ColumnSpan {
             left: f64::from(left),
             right: f64::from(left.saturating_add(column_width(column))),
-            total: columns.iter().map(column_width).map(f64::from).sum(),
+            trailing: f64::from(self.columns_width(depth.saturating_add(1)..)),
         })
     }
 
@@ -29,6 +29,25 @@ impl ViewState {
             .or_else(|| count.checked_sub(1))?;
         self.column_span(depth)
     }
+
+    fn navigated_len(&self) -> usize {
+        let count = self.columns.borrow().len();
+        self.browser
+            .active_depth()
+            .map_or(count, |depth| depth.saturating_add(1).min(count))
+    }
+
+    fn columns_width(
+        &self,
+        range: impl std::slice::SliceIndex<[ColumnView], Output = [ColumnView]>,
+    ) -> i32 {
+        self.columns.borrow().get(range).map_or(0, |columns| {
+            columns
+                .iter()
+                .map(column_width)
+                .fold(0, i32::saturating_add)
+        })
+    }
 }
 
 fn column_width(column: &ColumnView) -> i32 {
@@ -40,6 +59,10 @@ fn column_width(column: &ColumnView) -> i32 {
 }
 
 impl BrowserView {
+    pub(in crate::ui) fn is_resizing_columns(&self) -> bool {
+        self.state.column_resizing.get()
+    }
+
     pub(in crate::ui) fn preview_occupied_width(&self, available: i32) -> i32 {
         if self.view_mode() != BrowserMode::Columns {
             return single_pane_preview_reservation(available);
@@ -52,11 +75,31 @@ impl BrowserView {
             .fold(0, i32::saturating_add)
     }
 
-    pub(in crate::ui) fn preview_navigation_width(&self, available: i32) -> i32 {
+    pub(in crate::ui) fn preview_navigated_width(&self, available: i32) -> i32 {
+        if self.view_mode() != BrowserMode::Columns {
+            return single_pane_preview_reservation(available);
+        }
+        self.state.columns_width(..self.state.navigated_len())
+    }
+
+    pub(in crate::ui) fn preview_trailing_width(&self) -> i32 {
+        if self.view_mode() != BrowserMode::Columns {
+            return 0;
+        }
+        self.state.columns_width(self.state.navigated_len()..)
+    }
+
+    pub(in crate::ui) fn preview_navigation_width(&self) -> i32 {
+        self.state
+            .focused_column_span()
+            .map_or(COLUMN_WIDTH, |span| span.width() as i32)
+    }
+
+    pub(in crate::ui) fn preview_standard_navigation_width(&self) -> i32 {
         self.state
             .focused_column_span()
             .map_or(COLUMN_WIDTH, |span| {
-                (span.width() + span.peek_space(f64::from(available))) as i32
+                span.width().min(f64::from(COLUMN_WIDTH)) as i32
             })
     }
 
@@ -202,6 +245,17 @@ impl BrowserView {
                         let gap = view.state.columns_widget.margin_end().min(maximum_gap);
                         view.state.columns_widget.set_margin_end(gap);
                         view.release_preview_scroll_space(&weak_preview);
+                        if let Some(span) = view.state.focused_column_span() {
+                            let target = span.reveal_target(
+                                adjustment.value(),
+                                adjustment.page_size(),
+                                adjustment.lower(),
+                                adjustment.upper(),
+                            );
+                            if target != adjustment.value() {
+                                adjustment.set_value(target);
+                            }
+                        }
                     }
                 });
             });

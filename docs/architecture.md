@@ -69,7 +69,11 @@ filesystem, navigation, or operation code.
 Structural events rebuild the active presentation; row, loading, and selection handlers
 keep their effects separate. Only panes belonging to the active mode and event depth
 receive incremental updates. Shared browser effects in `ui/browser/events.rs` still run
-before alternate-mode dispatch.
+before alternate-mode dispatch. Browser notifications remain synchronous: pane/query
+updates must release `ModeViews` borrows before notifying observers. Load completion
+returns a selection-restoration action; the caller releases `ModeViews` before
+applying it, with the saved position already taken out of `ListNavigation`. Footer
+and selection observers therefore see restored state without dropped events.
 
 Pane helpers share string-model splicing, but authoritative entry borrows end before GTK
 notifications. Reload detaches selection/filter models without detaching the collection
@@ -86,7 +90,11 @@ widget parts without changing their layout. An owned binding snapshot resolves t
 source entry before updating GTK or requesting metadata.
 
 Fast-scroll binds update labels/accessibility and admit viewport-prioritized thumbnails
-and metadata without waiting for scrolling to stop. Cut styling, tooltips and date
+and metadata without waiting for scrolling to stop. Each viewport coalesces a follow-up
+admission pass after a frame, outside layout, so a final scroll cannot strand work
+classified against old allocations. Icons reserves a font-sized details line even when
+empty; metadata truncates within the caption width instead of resizing the grid.
+Cut styling, tooltips and date
 bindings refresh once per GTK frame, outside layout, for visible/overscan items.
 These presentation refreshes never resubmit file work or reset a name label or active
 rename editor. Identical active thumbnail/metadata requests are reused. Missing
@@ -119,6 +127,69 @@ refresh selection after layout/paint, even without pointer motion; unmapped rows
 overwrite cached geometry with stale allocations. The visible band stays clipped to the
 viewport, while earlier off-screen hits remain selected. Release completes pending
 layout-dependent selection before disconnecting the frame handler.
+
+### Collection behavior and lifetime boundaries
+
+The browser and open/save chooser use the same collection behavior, not a universal widget:
+
+| Owner | Responsibility and intentional differences |
+| --- | --- |
+| `ui/collection_interaction.rs` | Display-position pointer transitions (Ctrl toggle, Shift range, plain selection/drag-group preservation) and press/release/cancel ownership. Modified sequences are claimed only on release so marquee can participate. |
+| `ui/search_session.rs` | Root, hidden-file and recursive-scope inputs; worker/receiver, query intent, generation, bounded event draining, cancellation and status/coverage delivery. It knows neither widgets nor acceptance/navigation policy. |
+| `ui/inline_search.rs` | Single-pane search composition and transactional consumer selection publication. `inline_search/collection.rs` owns stable result objects and displayed-order lookup; `presentation.rs` builds and binds typed row/card parts. |
+| `ui/browser/columns/search.rs` | Native Columns result reconciliation. Its result vector is authoritative; the string model is only a label projection, updated in lockstep under selection suppression. Columns keeps its multi-depth navigation and native collection. |
+| `ui/collection_edit.rs` | A rename lease on an entry identity and typed editor/display handles: validation, submission signals, cancellation, focus, reveal tick and cleanup. It has no `ViewState` or `browser_modes` dependency. |
+| Browser/chooser adapters | Activation, single-click preview/navigation, selection cardinality, filename/preview updates, context commands and filesystem-operation coordination. `browser/inline_edit.rs` retains pending-operation identities, optimistic labels, refresh/error handling and operation safety. |
+
+Normal Columns resolves displayed positions through `ViewMap`; normal List/Icons use
+`SourceIndexMap` and the current view model (including List grouping). Filtered Columns
+resolves **all** result actions through its authoritative result vector. Single-pane results
+resolve activation, selection, drag, context and edit targets through the sorted GTK model;
+the path/rank map only supplies ordering to its sorter. Basenames are never identity.
+
+Single-pane publication captures selected/focused paths before reconciliation and restores
+selection by identity. Restoring focus never reselects an explicitly deselected entry.
+If the last selected result disappears, it retains the nearest previous
+selection slot; Columns intentionally leaves the selection empty when its selected result
+vanishes. Columns uses per-column hidden-file preferences and does not display a separate
+coverage/status row; single-pane search uses browser preferences and shows partial coverage or
+empty/indexing status. Nonlocal locations keep their native, nonrecursive filter fallback.
+The shared session preserves these adapter policies rather than normalizing them.
+
+During single-pane reconciliation, consumer selection callbacks are suppressed until model,
+selection, focus and bindings agree. Identity-preserving/no-op updates do not announce transient
+index changes. Callback lists and payloads are snapshots, with no callback-list borrow held
+across delivery. Reentrant result updates/query dismissal are queued (latest publication wins)
+until the current delivery completes. GTK's internal model notifications remain synchronous;
+consumers subscribe to the collection publication surface, not raw model signals.
+
+Presentations register `EditWidgets` at construction and bind their entry identity before
+handing out an `EditTarget`. Behavior never finds an editor by CSS class or sibling traversal.
+An unchanged binding preserves a draft; removing/rebinding/unbinding a row intentionally
+cancels the lease without submission. Commit, Escape, view teardown and owner destruction
+retire handlers and reveal ticks. Focus-leave handlers are disconnected immediately, but their
+controller is detached on a weak-widget idle callback: mutating GTK's controller list inside
+a Tab focus walk is unsafe. Deferred focus checks the active editor and does not reselect text.
+Presentation-specific reveal/cleanup hooks retain Columns' constrained editor and List's row
+reveal without putting those geometries in the edit controller.
+
+The view owns its filter binding and search session. Detaching a pane/column disconnects the
+entry, cancels a pending debounce, removes the poll source and drops the search handle/receiver.
+Query intent changes reject old results before debounce completes; root/scope/hidden-input
+changes or an explicit restart create a new generation. Polling holds a weak session reference,
+and delivers without borrowing session state so callbacks may cancel/restart safely. Filter
+scope preference bindings remain widget-anchored. Factory unbind cancels thumbnail requests
+and edits; teardown releases typed bound-widget records. Collection detachment retires deferred
+scroll work; presentation ticks are widget-owned and stop with their widget. These rules also
+apply when mode changes recreate a pane or a chooser closes.
+
+Native keyboard navigation and marquee geometry remain presentation adapters over the same
+selection models. They are deliberately not replaced with another navigation engine. Columns'
+source/depth anchor, slow-click rename and release activation, List metadata/grouping, Icons'
+content hit testing and chooser restrictions remain explicit policies. Tests retain distinct
+pointer, keyboard, lifecycle and filesystem-effect routes rather than replacing them with a
+cross-mode launch smoke test. See [GUI validation](e2e-testing.md) and
+[live preferences](preferences.md).
 
 ### Browser implementation map
 
@@ -170,30 +241,50 @@ Local archive operations live under `adapters/local_operations/archive/`:
 | --- | --- |
 | Operation entry points, worker lifecycle and progress events | `archive.rs` in the parent directory |
 | Staged publication, source traversal and compression writers | `compression.rs` |
-| Per-operation extraction state, copying, cleanup, size preflight and outcomes | `extraction.rs` |
-| Confined destination writes, path validation and conflict naming | `destination.rs` |
+| Per-operation extraction state, copying, cleanup, size preflight, hard-link resolution, deferred directory metadata and outcomes | `extraction.rs` |
+| Confined destination writes, link creation, mode and time restoration, path validation, staging folder lifecycle, publication and conflict naming | `destination.rs` |
 | ZIP, TAR/gzip and 7z member enumeration, passwords and decoder errors | `decoders.rs` |
 
 Every decoder feeds one `ExtractionSession` per operation. The session has no codec or widget
-API dependencies; decoders lend it member streams and provide already-known pending names on
-cancellation. Member identity tracking stays inside each decoder rather than assuming unique names
-or matching header/callback order. The session validates pending names and applies established
-root renames without filesystem probes or name reservations; final leaf conflicts remain unknown
-until a member is attempted. Sequential formats do not scan unread content to complete that list.
+API dependencies; decoders lend it member streams and the archive name, and provide
+already-known pending names on cancellation. The session writes members into a hidden staging
+folder under the destination and publishes it in `finish` for every outcome: a single root moves
+up verbatim, several roots are renamed to the archive stem, and failed or cancelled output stays
+in the archive-named folder unless it holds only directories.
+A password failure instead discards the staging folder, since the retry extracts everything
+again. Decoders report it as `ArchiveError::PasswordRequired` or `IncorrectPassword`, and its kind
+travels as `PasswordFailure` on `OperationEvent::Failed` and `BrowserEvent::OperationFailed`;
+that kind alone decides the password retry, never the message text. Only a member that is
+encrypted and was given a password reports malformed data as a possible wrong password. Staging
+that cannot be discarded turns the failure into an ordinary one.
+A directory member repeated in the archive is restored once, each field from the last entry
+that stores it.
+Member identity tracking stays
+inside each decoder rather than assuming unique names or matching header/callback order. The
+session validates pending names and applies established root renames without filesystem probes
+or name reservations; final leaf conflicts remain unknown until a member is attempted. Sequential formats do not scan unread content to complete that list.
 Before writing, the session checks claimed uncompressed size against destination free space from
 `fstatvfs` on the pinned root, and it refuses a member whose extracted size does not match the
 size declared by the archive header. ZIP and 7z advertise a total up front, so an oversized
 archive is refused before any member is written; TAR streams check each member as it arrives, so
-extraction stops at the free-space boundary and members already written stay in place. The
+extraction stops at the free-space boundary and members already written stay inside the
+archive-named folder, which the failure message names. The
 guarantee is that extraction never exceeds the free space observed when the session opened;
 it does not model per-file overhead such as block rounding or inodes. Filesystems that report no
 capacity (`f_blocks == 0`, as FUSE mounts without `statfs` do) skip the free-space checks and
 keep only the declared-size match. The `zip` crate does not bound inflated output by the header
 size itself, so that match is the control that stops a ZIP member lying about its size.
 
-The private member boundary currently retains legacy lossy TAR-name conversion and regular-file
-output for non-directory entries, including links. It is not a complete archive-entry model;
-native names and entry-type semantics belong in the decoder compatibility evaluation. Format
+Decoders pass symlinks, TAR hard links and each member's mode and modification time through
+`MemberContent` and `MemberMetadata`, and refuse FIFOs and device nodes. Restoring metadata is
+best effort: `EPERM`, `EOPNOTSUPP` and `EINVAL` from filesystems without Unix permissions or times
+are ignored behind the `MetadataCalls` seam in `destination.rs`. TAR extraction preserves
+native path bytes, including hard-link target identity. The sandboxed RAR helper streams
+`STRRAR03` records carrying each member's mode and
+time (a RAR 5 FILETIME, or the DOS local time of older formats, which only the parent can
+convert in the user's zone); RAR links are not yet extracted as links. Error records and failed
+member trailers carry a failure kind, so a missing or incorrect password reaches the parent
+without parsing text. Format
 libraries remain behind the adapter boundary. See [archive creation](archives.md) for
 container-specific encoding, classification and cancellation behavior. Archive unit tests sit in each module's
 adjacent `tests.rs`; provider-level tests remain in `archive/tests.rs`, with shared test-only builders
@@ -282,7 +373,35 @@ focus traversal, transient dismissal, then item/directory navigation. The privat
 introducing another browser controller. A stage returning `None` continues through Strata's
 handlers; `Some(Propagation::Proceed)` ends dispatch and leaves the event to GTK. In
 particular, editable controls and native single-pane selection must not fall through to
-browser commands. The file chooser retains its separate, restricted keyboard policy.
+browser commands. The file chooser retains its separate, restricted keyboard policy
+when 10xer mode is off.
+
+When [10xer mode](10xer-mode.md) is on, that dispatcher runs its 10xer stages
+(`tenxer_keys` and the `keyboard/` modules) ahead of the default pipeline. The
+chooser builds the same dispatcher with a `ChooserPolicy` and, while the
+preference is on, asks only its 10xer stages first (`ChooserKeys`); keys they
+leave go to the chooser's own restricted map. Window-wide stages such as global
+search, clipboard, and undo never see chooser keys, and `keyboard/chooser.rs`
+refuses commands the request does not allow: **Enter** / **o** confirm a file,
+**Esc** cancels after dismissing prompts or preview, and Open With, custom
+actions, and clipboard verbs stay unavailable. Window-local browse / visual / chord / prompt state
+lives in `ui/tenxer_mode.rs`, not on `Browser`. Per-window preference bindings
+update the shared `gtk::Application` accelerators idempotently; window destruction
+does not restore them while other windows still use 10xer mode.
+Chrome-visibility bindings hide pane Close/filter/refresh/sort in both
+interactive browsers and the chooser. Tab and arrow focus stay inside the
+Columns, List, and Icons panes; sidebar, header, and footer controls stay
+pointer-operated. The preference is
+`PreferenceManager::tenxer_mode` in `ui/preferences.rs`, not a theme setting.
+
+Initial binding applies the saved mode without transition teardown. Real transitions
+clear hidden queries and forced recursion, prompts, chords, and preview key ownership.
+Footer preference/observer callbacks and prompt controllers use weak owners.
+`gtk_window_destroy()` unrealizes a window but frees it only with its last
+reference, so window and chooser cleanup, their key controllers, and every
+preference binding anchored inside them are released on unrealize rather than on
+the destroy signal. `ui/shortcut_reference.rs` supplies
+shared Settings/F1 presentation; default F1 navigation remains view-specific.
 
 ## Capability boundaries
 
@@ -326,6 +445,23 @@ Start with stable data-driven customization:
 Internally, search, preview, and theme implementations should be registries so built-in providers remain modular. This does **not** require exposing an unsafe public plugin ABI in the first release.
 
 When third-party extensions are justified, prefer a versioned message protocol with explicit capabilities and permissions. This permits extensions written in multiple languages and allows isolation from the main process.
+
+### Custom actions
+
+User-authored context-menu actions follow that direction without an ABI:
+`model::action` parses and validates the portable `action.toml` contract,
+`services::actions` owns the cached catalog and matching, `adapters::local_actions`
+reads, validates, writes, imports, and exports action directories, and
+`adapters::local_jobs` starts one invocation as a child process. `services::jobs`
+owns the queue, per-item iteration, progress, cancellation bookkeeping, bounded
+logs, and history, with the presentation in `ui/jobs.rs` observing it.
+
+Definitions are data, not code, until an action is invoked: opening a menu only
+matches declarative rules. Invocations receive their inputs through files and the
+environment rather than through a shell or an interpolated command line, and the
+registry, job service, and runner keep filesystem, process, and widget
+responsibilities apart. Actions are trusted local programs; this boundary is
+organizational, not a security sandbox. See [Custom actions](custom-actions.md).
 
 ## Suggested source organization
 

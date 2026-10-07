@@ -3,10 +3,12 @@
 
 from __future__ import annotations
 
+import time
+
 import pytest
 
 from harness.browser import ENTRY_ROLES
-from harness.modes import ALL_MODES
+from harness.modes import ALL_MODES, SINGLE_PANE_MODES
 
 
 def _scroll_pane(node):
@@ -36,6 +38,23 @@ def _visible_rows(container, viewport):
             yield row
 
 
+@pytest.mark.preferences(browser_mode="columns", open_folder_after_drop=True)
+def test_drop_keeps_selection_only_at_destination(strata):
+    fixture = strata.fixture
+    source = strata.select_entry("todo.txt")
+    target = strata.entry("archive")
+
+    strata.pointer.drag(source, target)
+
+    strata.wait(
+        lambda: fixture.path("archive/todo.txt").exists(),
+        "the dragged file to arrive in archive",
+    )
+    strata.wait_for_entry_gone("todo.txt", directory=fixture.root.name)
+    strata.wait_for_selection(["todo.txt"], "archive")
+    assert strata.all_selected_names() == ["todo.txt"]
+
+
 @pytest.mark.parametrize("mode", ALL_MODES)
 def test_dragging_a_file_onto_a_folder_moves_it(strata, mode):
     fixture = strata.fixture
@@ -57,6 +76,49 @@ def test_dragging_a_file_onto_a_folder_moves_it(strata, mode):
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
+def test_spring_navigation_keeps_the_file_drag_usable(strata, mode):
+    source = strata.entry("todo.txt")
+    target = strata.entry("documents")
+    strata.pointer.drag_points(
+        strata.pointer.drag_origin(source), target.screen_bounds().center, release=False
+    )
+    try:
+        strata.wait(lambda: strata.pane("documents"), "spring navigation into documents")
+        crumb = strata.wait(
+            lambda: strata.window.find(role="button", name=strata.fixture.root.name),
+            "source folder breadcrumb",
+        )
+        strata.pointer.move_to(*crumb.screen_bounds().center)
+        strata.wait_for_directory(strata.fixture.root.name)
+        target = strata.entry("documents")
+        strata.pointer.move_to(*target.screen_bounds().center)
+        strata.wait(lambda: strata.pane("documents"), "second spring navigation")
+        pane = strata.pane("documents").screen_bounds()
+        strata.pointer.move_to(pane.x + pane.width // 2, pane.y + pane.height - 20)
+    finally:
+        strata.pointer.connection.button(1, False)
+    strata.wait(
+        lambda: strata.fixture.path("documents/todo.txt").exists(),
+        "the held file to drop after spring navigation",
+    )
+    assert not strata.fixture.path("todo.txt").exists()
+    assert strata.fixture.path("documents/todo.txt").read_text() == "todo\n"
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_dropping_on_a_parent_breadcrumb_moves_the_file(strata, mode):
+    strata.open_directory("documents")
+    crumb = strata.wait(
+        lambda: strata.window.find(role="button", name=strata.fixture.root.name),
+        "parent breadcrumb",
+    )
+    strata.pointer.drag(strata.entry("notes.txt", directory="documents"), crumb)
+    strata.wait(lambda: strata.fixture.path("notes.txt").exists(), "breadcrumb drop")
+    assert not strata.fixture.path("documents/notes.txt").exists()
+    assert strata.fixture.path("notes.txt").read_text() == "notes\n"
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
 @pytest.mark.parametrize("recursive", [
     pytest.param(False, marks=pytest.mark.preferences(filter_include_subfolders=False)),
     pytest.param(True, marks=pytest.mark.preferences(filter_include_subfolders=True)),
@@ -71,7 +133,7 @@ def test_dragging_a_filtered_result_to_a_sidebar_folder(strata, mode, recursive)
     strata.keyboard.press("ctrl+f")
     strata.keyboard.type_text(source_path.name)
     source = strata.wait(
-        lambda: strata.window.find(role="list item", name=source_path.name),
+        lambda: strata.search_result(source_path.name),
         "the filtered drag source",
     )
     strata.pointer.drag(source, strata.sidebar_button("Home"))
@@ -79,7 +141,7 @@ def test_dragging_a_filtered_result_to_a_sidebar_folder(strata, mode, recursive)
     strata.wait(lambda: not source_path.exists(), "the filtered source to be moved")
     assert destination.read_bytes() == contents
     strata.wait(
-        lambda: strata.window.find(role="list item", name=source_path.name) is None,
+        lambda: strata.search_result(source_path.name) is None,
         "the moved result to leave the filtered listing",
     )
 
@@ -147,6 +209,7 @@ def test_dragging_onto_the_pane_background_is_a_no_op(strata):
     )
 
 
+@pytest.mark.usefixtures("unreserved_columns")
 def test_dragging_a_folder_into_another_folder_moves_its_contents(strata):
     fixture = strata.fixture
     source = strata.select_entry("pictures")
@@ -194,27 +257,34 @@ ROW_DRAG_MODES = [
 
 @pytest.mark.preferences(single_click_previews=True)
 @pytest.mark.parametrize("mode", ROW_DRAG_MODES)
-def test_empty_name_space_drag_respects_view_policy(strata, mode):
-    """Columns keep whole-row dragging; List name whitespace starts selection."""
-
-    fixture = strata.fixture
+def test_empty_name_space_drag_starts_marquee(strata, mode):
     source = strata.entry("todo.txt")
     target = strata.entry("archive")
     start = strata.pointer.row_whitespace_point(source, "todo.txt")
 
     strata.pointer.drag_points(start, target.screen_bounds().center)
+    expect_name_space_marquee(strata)
 
-    if mode == "List":
-        expect_name_space_marquee(strata)
-        return
+
+@pytest.mark.preferences(single_click_previews=True)
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_selected_item_blank_space_starts_file_drag(strata, mode):
+    source = strata.entry("todo.txt")
+    strata.pointer.click(source)
+    strata.wait(lambda: "todo.txt" in strata.selected_names(), "source selection")
+    if mode == "Icons":
+        icon = source.find(role="image")
+        assert icon is not None
+        bounds = icon.screen_bounds()
+        start = (bounds.x - 6, bounds.center[1])
+    else:
+        start = strata.pointer.row_whitespace_point(source, "todo.txt")
+    strata.pointer.drag_points(start, strata.entry("archive").screen_bounds().center)
     strata.wait(
-        lambda: fixture.path("archive/todo.txt").exists(),
-        "the file dragged from empty row space to arrive in archive",
+        lambda: strata.fixture.path("archive/todo.txt").exists(),
+        "the selected file dragged from blank item space",
     )
-    strata.wait(
-        lambda: not fixture.path("todo.txt").exists(),
-        "the file dragged from empty row space to leave its source directory",
-    )
+    assert not strata.fixture.path("todo.txt").exists()
 
 
 def expect_name_space_marquee(strata):
@@ -232,16 +302,16 @@ def drag_from_row_padding(strata, mode, edge):
     source = strata.entry("todo.txt")
     target = strata.entry("archive")
     start = strata.pointer.row_padding_point(source, edge)
-    if mode == "List":
-        start = (strata.pointer.row_whitespace_point(source, "todo.txt")[0], start[1])
+    start = (strata.pointer.row_whitespace_point(source, "todo.txt")[0], start[1])
 
     strata.pointer.drag_points(start, target.screen_bounds().center)
 
-    if mode == "List":
-        expect_name_space_marquee(strata)
-        source = strata.select_entry_with_keyboard("todo.txt")
-        start = metadata_drag_origin(strata, source, edge)
-        strata.pointer.drag_points(start, strata.entry("archive").screen_bounds().center)
+    expect_name_space_marquee(strata)
+    if mode == "Columns":
+        return
+    source = strata.select_entry_with_keyboard("todo.txt")
+    start = metadata_drag_origin(strata, source, edge)
+    strata.pointer.drag_points(start, strata.entry("archive").screen_bounds().center)
     strata.wait(
         lambda: fixture.path("archive/todo.txt").exists(),
         f"the file dragged from {edge} row padding to arrive in archive",
@@ -277,9 +347,28 @@ def metadata_drag_origin(strata, source, edge=None):
     return bounds.x + 4, y
 
 
-@pytest.mark.preferences(folder_peeking=True, browser_mode="icons")
-def test_starting_a_drag_cancels_a_folder_peek(strata):
-    """#621: a drag beginning must cancel any open folder peek in Icons view."""
+@pytest.mark.preferences(folder_peeking=True, browser_mode="columns", columns_mirror_selection=False)
+def test_columns_never_open_hover_peeks_even_with_the_preference_enabled(strata):
+    folder = strata.entry("documents")
+    strata.pointer.move_to(*folder.screen_bounds().center)
+    deadline = time.monotonic() + 1.2
+    seen_peek = False
+
+    def observed_hover():
+        nonlocal seen_peek
+        seen_peek = seen_peek or strata.peek() is not None
+        return time.monotonic() >= deadline
+
+    strata.wait(observed_hover, "a sustained column hover to remain free of folder peeks")
+    assert not seen_peek, "Miller columns must ignore the folder-peeking preference"
+    strata.open_directory("documents")
+    strata.entry("notes.txt", directory="documents")
+
+
+@pytest.mark.preferences(folder_peeking=True)
+@pytest.mark.parametrize("mode", SINGLE_PANE_MODES)
+def test_starting_a_drag_cancels_a_folder_peek(strata, mode):
+    """#621: beginning a drag must cancel any open folder peek."""
 
     pane = strata.pane()
     pane_bounds = pane.screen_bounds()
@@ -288,7 +377,11 @@ def test_starting_a_drag_cancels_a_folder_peek(strata):
     folder = strata.entry("archive")
     start = strata.pointer.drag_origin(folder)
     strata.pointer.move_to(*start)
-    strata.wait(lambda: strata.peek() is not None, "the folder peek to open on hover")
+    deadline = time.monotonic() + 0.2
+    while time.monotonic() < deadline:
+        assert strata.peek() is None, "a brief hover must not open a folder peek"
+        time.sleep(0.02)
+    strata.wait(lambda: strata.peek() is not None, "the folder peek to open after sustained hover")
 
     target = strata.entry("documents")
     strata.pointer.drag_points(start, target.screen_bounds().center, release=False)
@@ -333,6 +426,7 @@ def test_dragging_a_file_to_the_strip_edge_scrolls_columns_in(strata):
     bounds = strata.window.window_bounds()
     strata.keyboard.connection.resize_surface(bounds.width, bounds.height, 640, 360)
     strata.wait(lambda: strata.window.window_bounds().width == 640, "a narrow window")
+    strata.wait_for_view("Columns")
 
     strata.open_directory("documents")
     strata.open_directory("deep", directory="documents")

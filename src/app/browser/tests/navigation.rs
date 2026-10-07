@@ -2,6 +2,59 @@
 
 use super::*;
 
+struct BoundarySource(RecordingFileSource);
+
+impl FileSource for BoundarySource {
+    fn allows_navigation(&self, location: &Location) -> bool {
+        location
+            .native_path()
+            .is_some_and(|path| path.starts_with("/fixture/device"))
+    }
+
+    fn validate_location(&self, location: &Location) -> Result<(), LocationValidationError> {
+        self.0.validate_location(location)
+    }
+
+    fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle {
+        self.0.enumerate(request, emit)
+    }
+}
+
+#[test]
+fn navigation_boundary_blocks_trusted_routes_without_loading_outside_locations() {
+    let requests = Rc::new(Cell::new(0));
+    let browser = Browser::new(Rc::new(BoundarySource(RecordingFileSource {
+        request_count: requests.clone(),
+    })));
+    let root = Location::local("/fixture/device");
+    let child = Location::local("/fixture/device/child");
+    let outside = Location::local("/fixture/outside");
+    browser.navigate(root.clone());
+    assert!(!browser.can_go_parent());
+    browser.parent();
+    browser.navigate(outside.clone());
+    browser.descend(0, outside.clone());
+    browser.show_child(0, outside);
+    assert_eq!(browser.active_location(), Some(root.clone()));
+    assert_eq!(
+        requests.get(),
+        1,
+        "rejected navigation never enumerates an outside location"
+    );
+    assert!(
+        !browser.can_go_back(),
+        "rejected routes do not enter navigation history"
+    );
+    browser.navigate(child.clone());
+    assert!(browser.can_go_parent());
+    browser.parent();
+    assert_eq!(browser.active_location(), Some(root.clone()));
+    browser.back();
+    assert_eq!(browser.active_location(), Some(child));
+    browser.forward();
+    assert_eq!(browser.active_location(), Some(root));
+}
+
 #[test]
 fn column_snapshots_preserve_load_errors() {
     let browser = Browser::new(Rc::new(RetryFileSource {
@@ -453,7 +506,11 @@ fn escape_closes_a_peek_before_clearing_selection_and_closing_the_deepest_column
     assert_eq!(browser.active_location(), location);
     assert!(events.borrow().iter().any(|event| matches!(
         event,
-        BrowserEvent::SelectionSetChanged { depth: 1, positions, .. } if positions.is_empty()
+        BrowserEvent::SelectionSetChanged {
+            depth: 1,
+            selection: SelectionUpdate::Positions(positions),
+            ..
+        } if positions.is_empty()
     )));
 
     events.borrow_mut().clear();
@@ -508,8 +565,10 @@ fn preview_and_open_are_distinct_file_actions() {
 
     assert!(events.borrow().iter().any(|event| matches!(
         event,
-        BrowserEvent::PreviewRequested { entry }
-            if entry.location == Location::local("/fixture/example.conf")
+        BrowserEvent::PreviewRequested {
+            entry,
+            automatic: false
+        } if entry.location == Location::local("/fixture/example.conf")
     )));
     events.borrow_mut().clear();
 
@@ -520,4 +579,46 @@ fn preview_and_open_are_distinct_file_actions() {
         BrowserEvent::OpenRequested { location }
             if location == &Location::local("/fixture/example.conf")
     )));
+}
+
+#[test]
+fn previewing_a_file_in_a_parent_column_closes_deeper_columns_before_requesting() {
+    let browser = Browser::new(Rc::new(OpenChildBesideFileSource));
+    browser.navigate(Location::local("/fixture"));
+    browser.select(0, 0);
+    browser.enter_focused_directory();
+    assert_eq!(browser.active_depth(), Some(1));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+
+    browser.preview(0, 1);
+
+    assert!(browser.location_at(1).is_none());
+    assert_eq!(browser.active_depth(), Some(0));
+    let events = events.borrow();
+    let focused_file = events.iter().rposition(|event| {
+        matches!(
+            event,
+            BrowserEvent::FocusChanged {
+                depth: 0,
+                position: Some(1)
+            }
+        )
+    });
+    let requested = events.iter().position(|event| {
+        matches!(
+            event,
+            BrowserEvent::PreviewRequested {
+                entry,
+                automatic: false
+            } if entry.location == Location::local("/fixture/example.conf")
+        )
+    });
+    assert!(
+        focused_file
+            .zip(requested)
+            .is_some_and(|(focus, request)| focus < request),
+        "the closed column must report the file's focus before the preview request"
+    );
 }

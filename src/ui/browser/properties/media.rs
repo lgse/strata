@@ -8,19 +8,7 @@ use crate::sandbox::{
     self, Cancellation, MediaPreviewBackend, ParseOperation, metadata::MediaMetadata,
 };
 
-pub(super) struct MetadataLoad(Cancellation);
-
-impl Drop for MetadataLoad {
-    fn drop(&mut self) {
-        self.0.cancel();
-    }
-}
-
-impl MetadataLoad {
-    pub(super) fn cancel(&self) {
-        self.0.cancel();
-    }
-}
+pub(super) use crate::ui::raw_details::MetadataLoad;
 
 fn append_row(parent: &gtk::Box, name: &str, value: &str) -> gtk::Label {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
@@ -32,7 +20,6 @@ fn append_row(parent: &gtk::Box, name: &str, value: &str) -> gtk::Label {
     label.set_selectable(true);
     label.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
     label.set_max_width_chars(48);
-    label.set_tooltip_text(Some(value));
     row.add_css_class("properties-row");
     heading.add_css_class("properties-row-label");
     label.add_css_class("properties-row-value");
@@ -72,6 +59,9 @@ fn rows(metadata: &MediaMetadata) -> Vec<(&'static str, String)> {
     if let Some(codec) = &metadata.video_codec {
         rows.push(("VIDEO CODEC", codec.clone()));
     }
+    if let Some(hdr) = metadata.hdr_format() {
+        rows.push(("HDR", hdr.into()));
+    }
     if let Some(rate) = metadata.frame_rate {
         rows.push(("FRAME RATE", format!("{rate:.2} fps")));
     }
@@ -90,6 +80,28 @@ fn rows(metadata: &MediaMetadata) -> Vec<(&'static str, String)> {
                 _ => channels.to_string(),
             },
         ));
+    }
+    if !metadata.subtitle_tracks.is_empty() {
+        let languages: Vec<&str> = metadata
+            .subtitle_tracks
+            .iter()
+            .filter_map(|track| track.language.as_deref())
+            .collect();
+        rows.push((
+            "SUBTITLES",
+            if languages.is_empty() {
+                metadata.subtitle_tracks.len().to_string()
+            } else {
+                format!(
+                    "{} ({})",
+                    metadata.subtitle_tracks.len(),
+                    languages.join(", ")
+                )
+            },
+        ));
+    }
+    if !metadata.chapters.is_empty() {
+        rows.push(("CHAPTERS", metadata.chapters.len().to_string()));
     }
     rows
 }

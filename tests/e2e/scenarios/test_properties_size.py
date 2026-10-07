@@ -60,11 +60,41 @@ def test_properties_explains_unreadable_folder_contents(sized_folder, strata):
         message = "Totals are incomplete.\nSome folders or entries couldn't be read."
         warning = strata.wait(lambda: dialog.find(name=message), "the incomplete measurement warning")
         assert warning.is_rendered()
-        strata.pointer.move_to(*warning.screen_bounds().center)
+    finally:
+        blocked.chmod(0o755)
+
+
+@pytest.mark.parametrize("route", ["keyboard", "context-menu"])
+@pytest.mark.parametrize("unreadable", [False, True])
+@pytest.mark.usefixtures("unreserved_columns")
+def test_selection_properties_routes_preserve_aggregate_warnings(
+    sized_folder, strata, route, unreadable
+):
+    blocked = sized_folder / ".hidden"
+    if unreadable:
+        blocked.chmod(0)
+    try:
+        strata.select_entry("sized-folder")
+        strata.pointer.click(strata.entry("readme.md"), modifiers=["ctrl"])
+        strata.wait_for_selection(["sized-folder", "readme.md"], sized_folder.parent.name)
+        if route == "keyboard":
+            strata.keyboard.press("alt+Return")
+        else:
+            strata.open_context_menu("readme.md", sized_folder.parent.name)
+            strata.choose_menu_item("Properties")
+        dialog = strata.wait_for_dialog()
+        expected = "≥ 25 B" if unreadable else "28 B"
         strata.wait(
-            lambda: strata.application.application_node.find(role="label", name=message),
-            "the warning tooltip",
+            lambda: dialog.find(role="label", name=expected),
+            "the combined selection size",
         )
+        counts = "≥ 5 files, ≥ 1 folder" if unreadable else "5 files, 1 folder"
+        assert dialog.find(role="label", name=counts)
+        if unreadable:
+            warning = dialog.find(
+                name="Totals are incomplete.\nSome folders or entries couldn't be read."
+            )
+            assert warning and warning.is_rendered()
     finally:
         blocked.chmod(0o755)
 

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 
 use gtk::{glib, prelude::*, subclass::prelude::*};
 
@@ -10,6 +10,8 @@ mod imp {
     #[derive(Default)]
     pub struct BlurBin {
         pub blurred: Cell<bool>,
+        pub frozen: Cell<bool>,
+        pub frozen_node: RefCell<Option<gtk::gsk::RenderNode>>,
     }
 
     #[glib::object_subclass]
@@ -48,7 +50,13 @@ mod imp {
             if self.blurred.get() {
                 snapshot.push_blur(3.5);
             }
-            self.obj().snapshot_child(&child, snapshot);
+            if self.frozen.get()
+                && let Some(node) = self.frozen_node.borrow().as_ref()
+            {
+                snapshot.append_node(node);
+            } else {
+                self.obj().snapshot_child(&child, snapshot);
+            }
             if self.blurred.get() {
                 snapshot.pop();
             }
@@ -73,5 +81,35 @@ impl BlurBin {
         if self.imp().blurred.replace(blurred) != blurred {
             self.queue_draw();
         }
+    }
+
+    pub(super) fn freeze(&self) -> bool {
+        if self.imp().frozen.get() {
+            return true;
+        }
+        let Some(child) = self.first_child() else {
+            return false;
+        };
+        let snapshot = gtk::Snapshot::new();
+        self.snapshot_child(&child, &snapshot);
+        let Some(node) = snapshot.to_node() else {
+            return false;
+        };
+        self.imp().frozen_node.replace(Some(node));
+        self.imp().frozen.set(true);
+        self.queue_draw();
+        true
+    }
+
+    pub(super) fn thaw(&self) {
+        if self.imp().frozen.replace(false) {
+            self.imp().frozen_node.take();
+            self.queue_draw();
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn is_frozen(&self) -> bool {
+        self.imp().frozen.get()
     }
 }

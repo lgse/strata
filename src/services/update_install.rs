@@ -3,20 +3,34 @@
 use std::{
     fs,
     io::{Read, Write},
+    os::unix::fs::MetadataExt as _,
     path::{Path, PathBuf},
     process::Command,
-    sync::mpsc::{self, Receiver, Sender},
-    time::Duration,
+    sync::{
+        Arc,
+        atomic::{AtomicU8, Ordering},
+        mpsc::{self, Receiver, Sender},
+    },
+    time::{Duration, Instant},
 };
 
 use gtk::glib;
 use serde::Deserialize;
 
-use crate::services::{InstallSource, ensure_self_managed};
+use crate::services::{InstallSource, ensure_self_managed, installed_executable};
 
 use super::release_channel::Version;
 
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
+mod archive;
+mod command;
+mod download;
+mod manifest;
+
+use download::{DownloadTimeouts, describe_download_error, describe_read_error, download_agent};
+
+const RELEASE_DOWNLOAD_ROOT: &str = "https://github.com/lgse/strata/releases/download";
+const REPOSITORY: &str = "lgse/strata";
+const MAX_UPDATE_ARCHIVE_BYTES: u64 = 128 * 1024 * 1024;
 const DESKTOP_ENTRY: &str = "io.github.lgse.Strata.desktop";
 const APPLICATION_ICON: &str = "io.github.lgse.Strata.svg";
 const AUR_RPC: &str = "https://aur.archlinux.org/rpc/v5/info";
@@ -43,27 +57,108 @@ impl UpdateMethod {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum UpdateInstall {
-    Downloading { downloaded: u64, total: Option<u64> },
+    Downloading {
+        downloaded: u64,
+        total: Option<u64>,
+    },
     Verifying,
     Installing,
+    /// Cancellation is no longer possible.
+    Finalizing,
     Installed,
+    Cancelled,
     Failed(String),
 }
 
-/// What to install: the archive to download.
-///
-/// Earlier versions of this type also carried the expected `version`
-/// string, but nothing ever read it: `install_update` only uses
-/// `download_url`, and the rollback caller (which was documented as
-/// needing it to flip the persisted channel afterwards) sets
-/// `Channel::Stable` unconditionally instead. Removed rather than wired up
-/// -- verifying the extracted binary against an expected version would
-/// mean executing an untrusted downloaded binary before replacing the
-/// installed one, which is a bigger change than this field's one dead
-/// reader justified.
+const INSTALL_OPEN: u8 = 0;
+const INSTALL_CANCELLED: u8 = 1;
+const INSTALL_COMMITTED: u8 = 2;
+
+/// Cancellation and commitment to replacement are mutually exclusive.
+#[derive(Clone, Debug, Default)]
+pub struct InstallCancel(Arc<AtomicU8>);
+
+impl InstallCancel {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Returns false if replacement is already committed and cannot stop.
+    pub fn cancel(&self) -> bool {
+        self.settle(INSTALL_CANCELLED)
+    }
+
+    /// Returns false if cancellation won the race; the binary must not be replaced.
+    pub(crate) fn try_commit(&self) -> bool {
+        self.settle(INSTALL_COMMITTED)
+    }
+
+    pub(crate) fn is_cancelled(&self) -> bool {
+        self.0.load(Ordering::Acquire) == INSTALL_CANCELLED
+    }
+
+    fn settle(&self, state: u8) -> bool {
+        match self
+            .0
+            .compare_exchange(INSTALL_OPEN, state, Ordering::AcqRel, Ordering::Acquire)
+        {
+            Ok(_) => true,
+            Err(current) => current == state,
+        }
+    }
+
+    fn check(&self) -> Result<(), InstallStop> {
+        if self.is_cancelled() {
+            return Err(InstallStop::Cancelled);
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+enum InstallStop {
+    Cancelled,
+    Failed(String),
+}
+
+impl From<String> for InstallStop {
+    fn from(message: String) -> Self {
+        Self::Failed(message)
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InstallRequest {
-    pub download_url: String,
+    pub tag: String,
+    pub asset_name: String,
+    pub advertised_url: String,
+}
+
+fn verified_download_url(request: &InstallRequest) -> Result<String, String> {
+    let version = request.tag.strip_prefix('v').and_then(Version::parse);
+    if !is_release_token(&request.tag)
+        || version.as_ref().is_none_or(|version| {
+            request.tag != format!("v{version}")
+                || request.asset_name != super::update_check::archive_name(&version.to_string())
+        })
+    {
+        return Err("The release names an unexpected update artifact.".to_owned());
+    }
+    let expected = format!(
+        "{RELEASE_DOWNLOAD_ROOT}/{}/{}",
+        request.tag, request.asset_name
+    );
+    if request.advertised_url != expected {
+        return Err("The release points at an unexpected download location.".to_owned());
+    }
+    Ok(expected)
+}
+
+fn is_release_token(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || "._-+".contains(character))
 }
 
 /// Determines whether the running executable may be updated in place or is
@@ -72,7 +167,7 @@ pub fn update_method() -> UpdateMethod {
     if InstallSource::detect().is_managed() {
         return UpdateMethod::Aur;
     }
-    let Ok(executable) = std::env::current_exe() else {
+    let Ok(executable) = installed_executable() else {
         return UpdateMethod::InPlace;
     };
     update_method_for(&executable, Path::new(PACMAN), Path::new(OS_RELEASE))
@@ -325,14 +420,15 @@ fn parse_package_version(value: &str) -> Option<Version> {
 
 /// Downloads, verifies, and installs `request`'s archive in place of the running
 /// executable. Package-owned executables are rejected before download.
-pub fn install_update(request: InstallRequest) -> Receiver<UpdateInstall> {
+pub fn install_update(request: InstallRequest, cancel: InstallCancel) -> Receiver<UpdateInstall> {
     let (sender, receiver) = mpsc::channel();
     let spawned = std::thread::Builder::new()
         .name("strata-update-install".into())
         .spawn(move || {
-            let outcome = match perform_install(&request.download_url, &sender) {
+            let outcome = match perform_install(&request, &cancel, &sender) {
                 Ok(()) => UpdateInstall::Installed,
-                Err(message) => UpdateInstall::Failed(message),
+                Err(InstallStop::Cancelled) => UpdateInstall::Cancelled,
+                Err(InstallStop::Failed(message)) => UpdateInstall::Failed(message),
             };
             let _sent = sender.send(outcome);
         });
@@ -340,28 +436,34 @@ pub fn install_update(request: InstallRequest) -> Receiver<UpdateInstall> {
     receiver
 }
 
-fn perform_install(download_url: &str, progress: &Sender<UpdateInstall>) -> Result<(), String> {
+fn perform_install(
+    request: &InstallRequest,
+    cancel: &InstallCancel,
+    progress: &Sender<UpdateInstall>,
+) -> Result<(), InstallStop> {
     ensure_self_managed(InstallSource::detect())?;
     match update_method() {
         UpdateMethod::InPlace => {}
         UpdateMethod::Aur => {
-            return Err("This installation is managed by its package manager.".to_owned());
+            return Err(InstallStop::Failed(
+                "This installation is managed by its package manager.".to_owned(),
+            ));
         }
         UpdateMethod::Omarchy => {
-            return Err(
+            return Err(InstallStop::Failed(
                 "This installation is managed by Omarchy; install updates with `omarchy update`."
                     .to_owned(),
-            );
+            ));
         }
         UpdateMethod::Pacman => {
-            return Err(
+            return Err(InstallStop::Failed(
                 "This installation is managed by pacman; install updates through a full system update."
                     .to_owned(),
-            );
+            ));
         }
     }
 
-    let current_exe = std::env::current_exe().map_err(|error| error.to_string())?;
+    let current_exe = installed_executable().map_err(|error| error.to_string())?;
     let exe_dir = current_exe
         .parent()
         .ok_or_else(|| "Could not determine the install directory".to_owned())?;
@@ -375,9 +477,12 @@ fn perform_install(download_url: &str, progress: &Sender<UpdateInstall>) -> Resu
     // install from starting at all, but a unique path is kept as its own
     // layer of defense -- e.g. against a leftover directory from a
     // hard-killed previous process.
+    let download_url = verified_download_url(request)?;
     let workdir = stage_workdir(exe_dir)?;
     try_install(
-        download_url,
+        request,
+        &download_url,
+        cancel,
         workdir.path(),
         exe_dir,
         &current_exe,
@@ -407,46 +512,358 @@ fn stage_binary_path(exe_dir: &Path) -> Result<tempfile::NamedTempFile, String> 
 }
 
 fn try_install(
+    request: &InstallRequest,
     download_url: &str,
+    cancel: &InstallCancel,
     workdir: &Path,
     exe_dir: &Path,
     current_exe: &Path,
     progress: &Sender<UpdateInstall>,
-) -> Result<(), String> {
-    let archive_path = workdir.join("strata.tar.gz");
-    download_to_file(download_url, &archive_path, progress)?;
+) -> Result<(), InstallStop> {
     let _sent = progress.send(UpdateInstall::Verifying);
-    verify_checksum(download_url, &archive_path)?;
+    let release = fetch_signed_release(request, cancel)?;
+    let archive_path = workdir.join("strata.tar.gz");
+    download_to_file_bounded(
+        download_url,
+        &archive_path,
+        release.archive_size(),
+        cancel,
+        progress,
+    )?;
+
+    let _sent = progress.send(UpdateInstall::Verifying);
+    let (package_dir, staged) =
+        prepare_release_binary(request, &release, &archive_path, workdir, cancel)?;
+
     let _sent = progress.send(UpdateInstall::Installing);
+    let old_executable = fs::metadata(current_exe)
+        .map_err(|error| format!("Could not inspect the installed binary: {error}"))?;
+    cancel.check()?;
+    let rollback = commit_replacement(staged, current_exe, exe_dir, cancel, progress)?;
 
-    let extract_dir = workdir.join("extracted");
-    fs::create_dir_all(&extract_dir).map_err(|error| error.to_string())?;
-    run(crate::trusted_command::command("tar")?
-        .arg("-xzf")
-        .arg(&archive_path)
-        .arg("-C")
-        .arg(&extract_dir))?;
-
-    let binary_paths = find_binaries(&extract_dir, &["strata"])?;
-    let binary_path = binary_paths
-        .first()
-        .ok_or_else(|| "Could not find the strata binary in the downloaded archive".to_owned())?;
-    let staged = stage_binary_path(exe_dir)?;
-    fs::copy(binary_path, staged.path())
-        .map_err(|error| format!("Could not stage the new binary: {error}"))?;
-    set_executable(staged.path())?;
-    staged
-        .persist(current_exe)
-        .map_err(|error| format!("Could not replace the installed binary: {error}"))?;
-
-    if let Some(package_dir) = binary_path.parent() {
-        refresh_desktop_metadata(package_dir, current_exe, &glib::user_data_dir());
+    if let Err(error) = sync_directory(exe_dir).and_then(|()| confirm_replacement(current_exe)) {
+        restore_rollback(&rollback, current_exe)?;
+        return Err(InstallStop::Failed(error));
     }
+
+    refresh_desktop_metadata(&package_dir, current_exe, &glib::user_data_dir());
     if let Err(error) = crate::portal_setup::refresh_after_in_place_update() {
         tracing::warn!(%error, "could not refresh the configured Strata portal after updating");
     }
+    retire_old_instances(Path::new("/proc"), current_exe, &old_executable);
 
     Ok(())
+}
+
+fn commit_replacement(
+    staged: tempfile::TempPath,
+    current_exe: &Path,
+    exe_dir: &Path,
+    cancel: &InstallCancel,
+    progress: &Sender<UpdateInstall>,
+) -> Result<PathBuf, InstallStop> {
+    let rollback = stage_rollback(current_exe, exe_dir)?;
+    if !cancel.try_commit() {
+        let _removed = fs::remove_file(&rollback);
+        return Err(InstallStop::Cancelled);
+    }
+    let _sent = progress.send(UpdateInstall::Finalizing);
+    if let Err(error) = staged.persist(current_exe) {
+        let _removed = fs::remove_file(&rollback);
+        return Err(InstallStop::Failed(format!(
+            "Could not replace the installed binary: {error}"
+        )));
+    }
+    Ok(rollback)
+}
+
+fn prepare_release_binary(
+    request: &InstallRequest,
+    release: &manifest::VerifiedRelease,
+    archive_path: &Path,
+    workdir: &Path,
+    cancel: &InstallCancel,
+) -> Result<(PathBuf, tempfile::TempPath), InstallStop> {
+    release.verify_archive(archive_path, cancel)?;
+    cancel.check()?;
+    let extract_dir = workdir.join("extracted");
+    fs::create_dir_all(&extract_dir).map_err(|error| error.to_string())?;
+    let package = archive::extract_release_archive(archive_path, &extract_dir)?;
+    verify_package_name(&package, request)?;
+    release.verify_source_commit(&package)?;
+    cancel.check()?;
+    let staged = stage_verified_binary(&package.join("strata"), workdir)?;
+    Ok((package, staged))
+}
+
+pub(crate) fn rollback_path(exe_dir: &Path) -> PathBuf {
+    exe_dir.join(".strata-update-rollback")
+}
+
+fn stage_rollback(current_exe: &Path, exe_dir: &Path) -> Result<PathBuf, String> {
+    let rollback = rollback_path(exe_dir);
+    let staged = stage_binary_path(exe_dir)?;
+    fs::copy(current_exe, staged.path())
+        .map_err(|error| format!("Could not preserve the current version: {error}"))?;
+    set_executable(staged.path())?;
+    staged
+        .as_file()
+        .sync_all()
+        .map_err(|error| error.to_string())?;
+    staged
+        .persist(&rollback)
+        .map_err(|error| error.to_string())?;
+    sync_directory(exe_dir)?;
+    Ok(rollback)
+}
+
+fn sync_directory(directory: &Path) -> Result<(), String> {
+    fs::File::open(directory)
+        .and_then(|file| file.sync_all())
+        .map_err(|error| format!("Could not synchronize the install directory: {error}"))
+}
+
+fn restore_rollback(rollback: &Path, current_exe: &Path) -> Result<(), InstallStop> {
+    fs::rename(rollback, current_exe).map_err(|error| {
+        InstallStop::Failed(format!(
+            "The update failed and the previous version could not be restored: {error}. \
+             Reinstall Strata from the release page."
+        ))
+    })?;
+    if let Some(directory) = current_exe.parent() {
+        sync_directory(directory)?;
+    }
+    Ok(())
+}
+
+fn stage_verified_binary(binary: &Path, directory: &Path) -> Result<tempfile::TempPath, String> {
+    let staged = stage_binary_path(directory)?;
+    fs::copy(binary, staged.path())
+        .map_err(|error| format!("Could not stage the new binary: {error}"))?;
+    set_executable(staged.path())?;
+    staged
+        .as_file()
+        .sync_all()
+        .map_err(|error| error.to_string())?;
+    // Linux refuses exec while any writable descriptor remains open (ETXTBSY).
+    let staged = staged.into_temp_path();
+    verify_staged_binary(&staged)?;
+    Ok(staged)
+}
+
+fn binary_probe_output(staged: &Path) -> Result<std::process::Output, String> {
+    // Published releases lack --version; this existing headless probe loads their runtime libraries.
+    command::run(
+        Command::new(staged)
+            .arg("--gvfs-probe")
+            .env("GIO_USE_VFS", "local")
+            .env("GIO_USE_VOLUME_MONITOR", "unix"),
+        &InstallCancel::new(),
+        Duration::from_secs(2),
+    )
+    .map_err(|stop| match stop {
+        InstallStop::Failed(message) => message,
+        InstallStop::Cancelled => "Update cancelled".to_owned(),
+    })
+}
+
+fn verify_staged_binary(staged: &Path) -> Result<(), String> {
+    if binary_probe_output(staged)?.status.success() {
+        Ok(())
+    } else {
+        Err("The downloaded update does not run on this system".to_owned())
+    }
+}
+
+fn verify_package_name(package: &Path, request: &InstallRequest) -> Result<(), String> {
+    if package.file_name().and_then(|name| name.to_str())
+        == request.asset_name.strip_suffix(".tar.gz")
+    {
+        Ok(())
+    } else {
+        Err("The authenticated archive does not contain the selected release package".to_owned())
+    }
+}
+
+fn confirm_replacement(current_exe: &Path) -> Result<(), String> {
+    if !current_exe.is_file() {
+        return Err("The updated executable is missing after installation".to_owned());
+    }
+    verify_staged_binary(current_exe)
+}
+
+fn fetch_signed_release(
+    request: &InstallRequest,
+    cancel: &InstallCancel,
+) -> Result<manifest::VerifiedRelease, InstallStop> {
+    verified_download_url(request)?;
+    let root = format!("{RELEASE_DOWNLOAD_ROOT}/{}", request.tag);
+    let bytes = fetch_update_metadata(
+        &format!("{root}/{}", manifest::MANIFEST_NAME),
+        manifest::MAX_MANIFEST_BYTES,
+        cancel,
+    )?;
+    let signatures = fetch_update_metadata(
+        &format!("{root}/{}", manifest::SIGNATURES_NAME),
+        manifest::MAX_SIGNATURES_BYTES,
+        cancel,
+    )?;
+    cancel.check()?;
+    manifest::authenticate(&bytes, &signatures, request).map_err(InstallStop::Failed)
+}
+
+fn fetch_update_metadata(
+    url: &str,
+    limit: u64,
+    cancel: &InstallCancel,
+) -> Result<Vec<u8>, InstallStop> {
+    cancel.check()?;
+    let response = download_agent(DownloadTimeouts::default(), cancel)
+        .get(url)
+        .header("User-Agent", "strata-file-manager")
+        .call();
+    cancel.check()?;
+    let mut response = response.map_err(|error| match error {
+        ureq::Error::StatusCode(404) => "This release has no signed update manifest. Choose a newer release or download it manually.".to_owned(),
+        error => format!("Could not download signed update metadata: {error}"),
+    })?;
+    read_metadata_body(&mut response, limit, cancel)
+}
+
+fn read_metadata_body(
+    response: &mut ureq::http::Response<ureq::Body>,
+    limit: u64,
+    cancel: &InstallCancel,
+) -> Result<Vec<u8>, InstallStop> {
+    cancel.check()?;
+    if response
+        .headers()
+        .get("content-length")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<u64>().ok())
+        .is_some_and(|length| length > limit)
+    {
+        return Err("The signed update metadata is too large".to_owned().into());
+    }
+    let mut reader = response.body_mut().as_reader();
+    let mut bytes = Vec::new();
+    let mut buffer = [0_u8; 4096];
+    loop {
+        cancel.check()?;
+        let read = reader.read(&mut buffer);
+        cancel.check()?;
+        let count = read.map_err(|error| error.to_string())?;
+        if count == 0 {
+            break;
+        }
+        if bytes.len() as u64 + count as u64 > limit {
+            return Err("The signed update metadata is too large".to_owned().into());
+        }
+        bytes.extend_from_slice(&buffer[..count]);
+    }
+    Ok(bytes)
+}
+
+/// Retire only our old executable's chooser and file-manager instances. Leave the
+/// updating instance alive to report success and relaunch the replacement.
+fn retire_old_instances(proc_root: &Path, install_path: &Path, old_executable: &fs::Metadata) {
+    let Ok(entries) = fs::read_dir(proc_root) else {
+        tracing::warn!("could not enumerate old Strata processes after updating");
+        return;
+    };
+    let mut retirees = Vec::new();
+    for entry in entries.flatten() {
+        let Some(pid) = entry
+            .file_name()
+            .to_str()
+            .and_then(|name| name.parse::<i32>().ok())
+            .and_then(rustix::process::Pid::from_raw)
+        else {
+            continue;
+        };
+        if pid.as_raw_pid() as u32 == std::process::id() {
+            continue;
+        }
+        let path = entry.path();
+        if !is_old_instance(&path, install_path, old_executable) {
+            continue;
+        }
+        // A pidfd pins the process identity across the final /proc check and
+        // SIGTERM; a reused numeric PID must never be signalled by the updater.
+        let fd = match rustix::process::pidfd_open(pid, rustix::process::PidfdFlags::empty()) {
+            Ok(fd) => fd,
+            Err(error) => {
+                tracing::warn!(%error, pid = pid.as_raw_pid(), "could not identify old Strata process safely");
+                continue;
+            }
+        };
+        if is_old_instance(&path, install_path, old_executable) {
+            match rustix::process::pidfd_send_signal(&fd, rustix::process::Signal::TERM) {
+                Ok(()) => retirees.push((pid, fd)),
+                Err(error) => {
+                    tracing::warn!(%error, pid = pid.as_raw_pid(), "could not stop old Strata instance")
+                }
+            }
+        }
+    }
+    let deadline = Instant::now() + Duration::from_secs(5);
+    for (pid, fd) in retirees {
+        if pidfd_exited(&fd, deadline) {
+            continue;
+        }
+        // A lingering old instance could still own the GApplication bus name.
+        // Do not relaunch into it after the replacement has been installed.
+        if let Err(error) = rustix::process::pidfd_send_signal(&fd, rustix::process::Signal::KILL) {
+            tracing::warn!(%error, pid = pid.as_raw_pid(), "could not terminate old Strata instance");
+        } else if !pidfd_exited(&fd, Instant::now() + Duration::from_secs(2)) {
+            tracing::warn!(pid = pid.as_raw_pid(), "old Strata instance has not exited");
+        }
+    }
+}
+
+fn pidfd_exited(fd: &rustix::fd::OwnedFd, deadline: Instant) -> bool {
+    use rustix::event::{PollFd, PollFlags, Timespec, poll};
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    let timeout = Timespec {
+        tv_sec: remaining.as_secs() as i64,
+        tv_nsec: i64::from(remaining.subsec_nanos()),
+    };
+    poll(&mut [PollFd::new(fd, PollFlags::IN)], Some(&timeout)).is_ok_and(|ready| ready > 0)
+}
+
+fn is_old_instance(proc_entry: &Path, install_path: &Path, old_executable: &fs::Metadata) -> bool {
+    let Ok(executable) = fs::metadata(proc_entry.join("exe")) else {
+        return false;
+    };
+    if !fs::metadata(proc_entry)
+        .is_ok_and(|process| process.uid() == rustix::process::getuid().as_raw())
+    {
+        return false;
+    }
+    // An instance left behind by an earlier update has an older inode, but
+    // /proc still exposes the original install path with " (deleted)".
+    let mut deleted_path = install_path.as_os_str().to_os_string();
+    deleted_path.push(" (deleted)");
+    let same_binary =
+        (executable.dev(), executable.ino()) == (old_executable.dev(), old_executable.ino());
+    if !same_binary
+        && !fs::read_link(proc_entry.join("exe")).is_ok_and(|path| path.as_os_str() == deleted_path)
+    {
+        return false;
+    }
+    let Ok(arguments) = fs::read(proc_entry.join("cmdline")) else {
+        return false;
+    };
+    let mut arguments = arguments.split(|byte| *byte == 0);
+    let Some(program) = arguments.next() else {
+        return false;
+    };
+    if program.is_empty() {
+        return false;
+    }
+    arguments
+        .next()
+        .is_none_or(|argument| !argument.starts_with(b"--") || argument == b"--portal")
 }
 
 /// Rewrites an already installed desktop entry and application icon from the
@@ -559,25 +976,46 @@ fn desktop_exec_argument(argument: &str) -> String {
         .replace('\r', "\\r")
 }
 
-fn download_to_file(
+fn download_to_file_bounded(
     url: &str,
     destination: &Path,
+    limit: u64,
+    cancel: &InstallCancel,
     progress: &Sender<UpdateInstall>,
-) -> Result<(), String> {
-    let config = ureq::Agent::config_builder()
-        .timeout_global(Some(REQUEST_TIMEOUT))
-        .build();
-    let agent: ureq::Agent = config.into();
-    let mut response = agent
+) -> Result<(), InstallStop> {
+    download_to_file_with(
+        url,
+        destination,
+        limit,
+        cancel,
+        progress,
+        DownloadTimeouts::default(),
+    )
+}
+
+fn download_to_file_with(
+    url: &str,
+    destination: &Path,
+    limit: u64,
+    cancel: &InstallCancel,
+    progress: &Sender<UpdateInstall>,
+    timeouts: DownloadTimeouts,
+) -> Result<(), InstallStop> {
+    let response = download_agent(timeouts, cancel)
         .get(url)
         .header("User-Agent", "strata-file-manager")
-        .call()
-        .map_err(|error| format!("Could not download the update: {error}"))?;
-    let total = response
+        .call();
+    cancel.check()?;
+    let mut response = response.map_err(|error| describe_download_error(&error))?;
+    let total: Option<u64> = response
         .headers()
         .get("content-length")
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.parse().ok());
+    if total.is_some_and(|total| total > limit) {
+        return Err(oversized_update());
+    }
+
     let mut reader = response.body_mut().as_reader();
     let mut file = fs::File::create(destination)
         .map_err(|error| format!("Could not save the update: {error}"))?;
@@ -585,103 +1023,30 @@ fn download_to_file(
     let mut buffer = [0_u8; 64 * 1024];
     let _sent = progress.send(UpdateInstall::Downloading { downloaded, total });
     loop {
-        let count = reader
-            .read(&mut buffer)
-            .map_err(|error| format!("Could not download the update: {error}"))?;
+        cancel.check()?;
+        let count = match reader.read(&mut buffer) {
+            Ok(count) => count,
+            Err(error) => {
+                cancel.check()?;
+                return Err(describe_read_error(&error).into());
+            }
+        };
         if count == 0 {
             break;
         }
+        downloaded = downloaded.saturating_add(count as u64);
+        if downloaded > limit {
+            return Err(oversized_update());
+        }
         file.write_all(&buffer[..count])
             .map_err(|error| format!("Could not save the update: {error}"))?;
-        downloaded = downloaded.saturating_add(count as u64);
         let _sent = progress.send(UpdateInstall::Downloading { downloaded, total });
     }
     Ok(())
 }
 
-fn verify_checksum(download_url: &str, archive_path: &Path) -> Result<(), String> {
-    let config = ureq::Agent::config_builder()
-        .timeout_global(Some(REQUEST_TIMEOUT))
-        .build();
-    let agent: ureq::Agent = config.into();
-    let checksum_url = format!("{download_url}.sha256");
-    let expected = agent
-        .get(&checksum_url)
-        .header("User-Agent", "strata-file-manager")
-        .call()
-        .and_then(|mut response| response.body_mut().read_to_string())
-        .map_err(|error| format!("Could not verify the update: {error}"))?;
-    verify_archive_checksum(archive_path, &expected)
-}
-
-fn verify_archive_checksum(archive_path: &Path, published: &str) -> Result<(), String> {
-    let expected_hash =
-        first_hash_token(published).ok_or_else(|| "The published checksum was empty".to_owned())?;
-    let actual_hash = file_sha256_hex(archive_path)?;
-    if actual_hash == expected_hash {
-        Ok(())
-    } else {
-        Err("Downloaded update failed checksum verification".to_owned())
-    }
-}
-
-fn file_sha256_hex(path: &Path) -> Result<String, String> {
-    use sha2::{Digest, Sha256};
-
-    let mut file =
-        fs::File::open(path).map_err(|error| format!("Could not read the update: {error}"))?;
-    let mut hasher = Sha256::new();
-    let mut buffer = [0_u8; 64 * 1024];
-    loop {
-        let count = file
-            .read(&mut buffer)
-            .map_err(|error| format!("Could not read the update: {error}"))?;
-        if count == 0 {
-            break;
-        }
-        hasher.update(&buffer[..count]);
-    }
-    Ok(hex_lower(&hasher.finalize()))
-}
-
-fn hex_lower(bytes: &[u8]) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut hex = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        hex.push(HEX[(byte >> 4) as usize] as char);
-        hex.push(HEX[(byte & 0x0f) as usize] as char);
-    }
-    hex
-}
-
-fn first_hash_token(text: &str) -> Option<String> {
-    text.split_whitespace().next().map(str::to_ascii_lowercase)
-}
-
-/// Locates each of `names` as a nested file within `extract_dir` (searching one
-/// level down, matching the layout of the release archives). Returns their paths
-/// in the same order as `names`, or an error naming the first one not found.
-///
-/// This is the seam issue #59 would need if it ever ships a second executable:
-/// today it is always called with a single name, and no caller performs a
-/// multi-file transactional install.
-fn find_binaries(extract_dir: &Path, names: &[&str]) -> Result<Vec<PathBuf>, String> {
-    let entries: Vec<_> = fs::read_dir(extract_dir)
-        .map_err(|error| error.to_string())?
-        .flatten()
-        .collect();
-    names
-        .iter()
-        .map(|name| {
-            entries
-                .iter()
-                .map(|entry| entry.path().join(name))
-                .find(|candidate| candidate.is_file())
-                .ok_or_else(|| {
-                    format!("Could not find the {name} binary in the downloaded archive")
-                })
-        })
-        .collect()
+fn oversized_update() -> InstallStop {
+    InstallStop::Failed("The update is larger than expected and was not installed".to_owned())
 }
 
 fn set_executable(path: &Path) -> Result<(), String> {
@@ -704,5 +1069,7 @@ fn run(command: &mut Command) -> Result<String, String> {
     String::from_utf8(output.stdout).map_err(|error| error.to_string())
 }
 
+#[cfg(test)]
+mod review_tests;
 #[cfg(test)]
 mod tests;

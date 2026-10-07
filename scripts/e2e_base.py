@@ -50,7 +50,7 @@ def ensure_base(engine, repository=REPOSITORY):
     remote = refs["environment_image"]
     image = inspect(engine, remote)
     if image is None:
-        print("Pulling the pinned E2E base once; no Ubuntu bootstrap will run.", file=sys.stderr)
+        print("Pulling the pinned E2E base once; no package bootstrap will run.", file=sys.stderr)
         result = subprocess.run([engine, "pull", "--platform=linux/amd64", remote],
                                 stdout=sys.stderr, check=False)
         if result.returncode:

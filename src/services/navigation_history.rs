@@ -10,12 +10,17 @@ use std::{
 use gio::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use super::search::{SearchItem, fold_for_search};
+use super::{
+    path_match::{self, Frecency, PathMatcher, PathQuery},
+    search::{SearchItem, fold_for_search},
+};
 
 const HISTORY_VERSION: u32 = 1;
 const MAX_ENTRIES: usize = 1_000;
 const MAX_RESULTS: usize = 100;
 const MAX_TOTAL_RANK: f64 = 10_000.0;
+// Exact names must outrank frecency within the same name-term tier.
+const EXACT_NAME_BONUS: i64 = 1 << 24;
 const HOUR_SECONDS: u64 = 60 * 60;
 const DAY_SECONDS: u64 = 24 * HOUR_SECONDS;
 const WEEK_SECONDS: u64 = 7 * DAY_SECONDS;
@@ -80,7 +85,7 @@ impl NavigationHistory {
         self.record_at(path, unix_time());
     }
 
-    fn record_at(&self, path: &Path, now: u64) {
+    pub(crate) fn record_at(&self, path: &Path, now: u64) {
         if !path.is_absolute() {
             return;
         }
@@ -102,29 +107,61 @@ impl NavigationHistory {
         }
     }
 
+    pub(crate) fn frecency_within(&self, root: &Path) -> Frecency {
+        self.frecency_within_at(root, unix_time())
+    }
+
+    fn frecency_within_at(&self, root: &Path, now: u64) -> Frecency {
+        Frecency::within(
+            root,
+            self.entries
+                .borrow()
+                .iter()
+                .map(|entry| (entry.path.clone(), frecency_score(entry, now))),
+        )
+    }
+
     pub(crate) fn search(&self, query: &str) -> Vec<SearchItem> {
         self.search_at(query, unix_time())
     }
 
+    pub(crate) fn search_excluding(&self, query: &str, excluded: Option<&Path>) -> Vec<SearchItem> {
+        self.search_at_excluding(query, unix_time(), excluded)
+    }
+
     fn search_at(&self, query: &str, now: u64) -> Vec<SearchItem> {
-        let query = fold_for_search(query.trim());
+        self.search_at_excluding(query, now, None)
+    }
+
+    fn search_at_excluding(
+        &self,
+        query: &str,
+        now: u64,
+        excluded: Option<&Path>,
+    ) -> Vec<SearchItem> {
+        let query = query.trim();
+        let exact_name = fold_for_search(query);
+        let mut matcher = HistoryMatcher::new(query);
         let mut matches = self
             .entries
             .borrow()
             .iter()
+            .filter(|entry| Some(entry.path.as_path()) != excluded)
             .filter_map(|entry| {
                 let item = SearchItem::for_history(entry.path.clone());
-                let text_score = if query.is_empty() {
-                    0
-                } else {
-                    item.fuzzy_score(&query)?
-                };
                 let frecency = frecency_score(entry, now);
-                let frecency_bonus = (frecency.max(0.0).ln_1p() * 256.0).min(2_000.0) as i64;
-                let score = if query.is_empty() {
-                    (frecency * 1_000.0) as i64
-                } else {
-                    text_score + frecency_bonus
+                let score = match matcher.score(&item)? {
+                    None => (frecency * 1_000.0) as i64,
+                    Some(text) => {
+                        let frecency_bonus =
+                            (frecency.max(0.0).ln_1p() * 256.0).min(2_000.0) as i64;
+                        let exact = if item.name_is(&exact_name) {
+                            EXACT_NAME_BONUS
+                        } else {
+                            0
+                        };
+                        path_match::rank(text, frecency_bonus + exact)
+                    }
                 };
                 Some((score, entry.last_accessed, item))
             })
@@ -141,6 +178,48 @@ impl NavigationHistory {
             .take(MAX_RESULTS)
             .map(|(_, _, item)| item)
             .collect()
+    }
+
+    pub(crate) fn recent_excluding(&self, query: &str, excluded: Option<&Path>) -> Vec<SearchItem> {
+        let mut matcher = HistoryMatcher::new(query);
+        let mut matches = self
+            .entries
+            .borrow()
+            .iter()
+            .filter(|entry| Some(entry.path.as_path()) != excluded)
+            .filter_map(|entry| {
+                let item = SearchItem::for_history(entry.path.clone());
+                matcher.score(&item)?;
+                Some((entry.last_accessed, item))
+            })
+            .collect::<Vec<_>>();
+        matches.sort_unstable_by(|left, right| {
+            right
+                .0
+                .cmp(&left.0)
+                .then_with(|| left.1.path.cmp(&right.1.path))
+        });
+        matches
+            .into_iter()
+            .take(MAX_RESULTS)
+            .map(|(_, item)| item)
+            .collect()
+    }
+}
+
+struct HistoryMatcher(Option<PathMatcher>);
+
+impl HistoryMatcher {
+    fn new(query: &str) -> Self {
+        let query = query.trim();
+        Self((!query.is_empty()).then(|| PathMatcher::new(&PathQuery::parse(query))))
+    }
+
+    fn score(&mut self, item: &SearchItem) -> Option<Option<path_match::TextScore>> {
+        match &mut self.0 {
+            None => Some(None),
+            Some(matcher) => item.path_score(matcher).map(Some),
+        }
     }
 }
 

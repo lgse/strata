@@ -38,6 +38,7 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "theme": "azure-glow",
     "folder_peeking": False,
     "single_click_previews": False,
+    "columns_mirror_selection": True,
     "search_open_files_directly": False,
     "type_to_search": True,
     "filter_include_subfolders": True,
@@ -64,7 +65,7 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "video_preview_backend": "automatic",
     "preview_muted": True,
     "preview_volume": 1.0,
-    "sidebar_order": ["desktop", "documents", "downloads", "pictures", "videos"],
+    "sidebar_order": ["desktop", "documents", "downloads", "music", "pictures", "videos"],
 }
 
 

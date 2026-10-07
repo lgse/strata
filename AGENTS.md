@@ -198,6 +198,21 @@ pass before merge.
 - Use shared control bindings rather than window-local copies or one-off broadcasts. Preserve documented chooser and window-local exceptions.
 - Extend the exhaustive saved-preferences fixture and behavioral coverage for startup before Settings opens, changes across two windows, and relevant view rebuilds. Serialization-only tests are not sufficient.
 
+## UI controls
+
+- Reuse existing control builders, shared bindings, and CSS classes for dropdowns, buttons, toggles, and segmented controls before creating new ones. Match their hover, active, focus, disabled, and theme states; do not style a new control as a generic form field when an existing button style applies.
+
+## Tooltips
+
+- Only icon-only buttons may have tooltips. Do not add them to text buttons,
+  menu items, labels, entries, file rows, status indicators, or other widgets,
+  even when their text is truncated.
+- For controls that switch between icon-only and labelled modes, enable tooltips
+  only in icon-only mode and clear them when the label is shown.
+- Keep important help, errors, and status information visible; use explicit
+  accessible names/descriptions for assistive technology. Never use tooltip
+  text as internal data for filtering, identification, or application behavior.
+
 ## Comments
 
 - Prefer self-explanatory names and structure. Do not add comments that narrate obvious code or restate a test's setup, actions, or assertions.
@@ -211,5 +226,5 @@ pass before merge.
 
 ## Theming
 
-- Apply semantic `@theme_*` colors to every visual state of new interface elements, including icons, text, backgrounds, borders, focus rings, selections, hover/active states, menus, and dialogs.
+- Apply semantic `@strata_*` colors to every visual state of new interface elements, including icons, text, backgrounds, borders, focus rings, selections, hover/active states, menus, and dialogs.
 - Never use static hex/RGB colors for themeable interface elements. Built-in, custom, and Omarchy themes must remain visually consistent and update live.

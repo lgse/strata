@@ -205,6 +205,12 @@ Upstream check on 2026-09-10 (source inspection, **not** a runtime retest):
   [GstPlay disposal code](https://github.com/GStreamer/gstreamer/blob/1.28.7/subprojects/gst-plugins-bad/gst-libs/gst/play/gstplay.c)
   retains the same own-thread disposal path implicated by the reproducer.
 
+The Arch test image now uses GTK 4.22.5 and GStreamer 1.28.7. Its private GTK
+patch changes only accessible coordinate translation; GTK 4.22.5 still lacks the
+`gst_context` release described above, and the image does not apply the GstPlay
+worker-lifetime patch. This test baseline neither promotes nor retires either
+media-runtime fix.
+
 Neither newer version has been substituted into this kit or measured in these
 captures. Check newer maintenance releases before selecting the shipping baseline;
 the observations above are not a reason to freeze all future security updates.

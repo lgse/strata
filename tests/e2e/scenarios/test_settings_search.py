@@ -65,6 +65,80 @@ def test_settings_search_filters_navigates_and_clears(strata, width):
     assert strata.window.find(name="Keep arrows in file list") is None
 
     strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("modified date format")
+    date_format = strata.wait(
+        lambda: strata.window.find(role="button", name="Modified date format"),
+        "date format setting in General",
+    )
+    assert strata.window.find(role="label", name="General") is not None
+    if width == 640:
+        strata.pointer.click(date_format)
+        strata.wait(
+            lambda: strata.window.find(role="text", name="Search settings") is None,
+            "compact search closes before opening date choices",
+        )
+    strata.pointer.click(date_format)
+    iso = strata.wait(
+        lambda: strata.window.find(role="label", name="ISO 8601"),
+        "ISO date format choice",
+    )
+    strata.pointer.click(iso)
+    strata.wait(
+        lambda: strata.environment.read_preferences().get("date_format") == '"iso"',
+        "date format selection persists from General",
+    )
+    # Hidden choice labels precede GTK releasing the popover's input grab.
+    strata.wait(
+        lambda: date_format.find(role="toggle button", states={"focused"}),
+        "date format choices close and return focus to their button",
+    )
+    if width == 640:
+        strata.pointer.click(strata.window.find(role="button", name="Search settings"))
+    search = strata.wait(
+        lambda: strata.window.find(role="text", name="Search settings"),
+        "settings search after changing date format",
+    )
+    strata.pointer.click(search)
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("exclusions")
+    exclusion = strata.wait(
+        lambda: strata.window.find(role="text", name="Search exclusion"),
+        "inline exclusion form is directly available in Settings",
+    )
+    if width == 640:
+        strata.pointer.click(exclusion)
+        strata.wait(
+            lambda: strata.window.find(role="text", name="Search settings") is None,
+            "compact search closes before editing exclusions",
+        )
+    strata.pointer.click(exclusion)
+    strata.keyboard.type_text("private-build")
+    strata.keyboard.press("Return")
+    remove = strata.wait(
+        lambda: strata.window.find(role="button", name="Remove exclusion private-build"),
+        "exclusion added inline with Enter",
+    )
+    strata.wait(
+        lambda: strata.environment.read_preferences().get("search_exclusions") == '["private-build"]',
+        "inline exclusion persists",
+    )
+    strata.pointer.click(remove)
+    strata.wait(
+        lambda: strata.window.find(role="button", name="Remove exclusion private-build") is None,
+        "exclusion removed inline",
+    )
+    strata.wait(
+        lambda: "search_exclusions" not in strata.environment.read_preferences(),
+        "removing the last exclusion persists",
+    )
+    if width == 640:
+        strata.pointer.click(strata.window.find(role="button", name="Search settings"))
+    search = strata.wait(
+        lambda: strata.window.find(role="text", name="Search settings"),
+        "settings search after editing exclusions",
+    )
+    strata.pointer.click(search)
+    strata.keyboard.press("ctrl+a")
     strata.keyboard.type_text("unfindablequantumsetting")
     strata.wait(
         lambda: strata.window.find(role="label", name="No settings match your search."),

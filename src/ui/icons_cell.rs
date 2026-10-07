@@ -24,6 +24,7 @@ pub(super) fn new_card(slot: i32) -> gtk::Box {
     card.set_valign(gtk::Align::Start);
 
     let icon = super::thumbnail::ThumbnailSlot::new(slot);
+    icon.set_icon_context(crate::assets::IconContext::Grid);
     icon.set_content_inset(0);
     icon.set_margin_top(ICONS_CARD_ICON_PADDING);
     icon.set_margin_bottom(ICONS_CARD_ICON_PADDING);
@@ -44,8 +45,9 @@ pub(super) fn new_card(slot: i32) -> gtk::Box {
 
     let details = gtk::Label::new(None);
     details.add_css_class("icons-card-details");
-    details.set_halign(gtk::Align::Center);
-    details.set_visible(false);
+    details.set_halign(gtk::Align::Fill);
+    details.set_single_line_mode(true);
+    details.set_ellipsize(gtk::pango::EllipsizeMode::End);
 
     // GtkOverlay requires its own layout-child type; this caption has a custom layout.
     let labels = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -108,6 +110,7 @@ pub(super) fn ensure_rename_field(card: &impl IsA<gtk::Widget>) -> Option<gtk::E
     crate::ui::accessibility::set_label(&field, "Rename");
     field.set_width_chars(1);
     field.set_hexpand(true);
+    gtk::prelude::EntryExt::set_alignment(&field, 0.5);
     field.set_visible(false);
     labels.append(&field);
     Some(field)
@@ -149,7 +152,7 @@ fn configure_label(label: &gtk::Inscription) {
     label.set_xalign(0.5);
     label.set_yalign(0.0);
     label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
-    label.set_text_overflow(gtk::InscriptionOverflow::EllipsizeEnd);
+    label.set_text_overflow(gtk::InscriptionOverflow::EllipsizeMiddle);
 }
 
 #[cfg(test)]

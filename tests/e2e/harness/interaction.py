@@ -27,6 +27,10 @@ KEYSYMS: dict[str, int] = {
     "Up": 0xFF52,
     "Right": 0xFF53,
     "Down": 0xFF54,
+    "KP_Left": 0xFF96,
+    "KP_Up": 0xFF97,
+    "KP_Right": 0xFF98,
+    "KP_Down": 0xFF99,
     "Page_Up": 0xFF55,
     "Page_Down": 0xFF56,
     "End": 0xFF57,
@@ -271,11 +275,13 @@ class Pointer:
         held = [MODIFIER_KEYSYMS[modifier.lower()] for modifier in modifiers]
         for modifier in held:
             self.connection.key(modifier, True)
+            time.sleep(EVENT_GAP)
         try:
             self._drag(start, end, steps=steps, release=release, after_press=after_press)
         finally:
             for modifier in reversed(held):
                 self.connection.key(modifier, False)
+                time.sleep(EVENT_GAP)
 
     def drag_to_point(
         self, source: Node, end: tuple[int, int], *, steps: int = DRAG_STEPS

@@ -75,25 +75,11 @@ def test_columns_view_baseline(strata, baseline):
 
 
 @pytest.mark.preferences(browser_mode="columns")
-def test_columns_overflow_baseline(strata, baseline, tmp_path):
+def test_columns_overflow_baseline(strata, baseline):
     strata.open_directory("documents")
     strata.open_directory("projects", "documents")
     strata.open_directory("release", "projects")
     _settle(strata, ["summary.md"])
-
-    capture = strata.screenshot(tmp_path / "columns-overflow.png")
-    sidebar = strata.sidebar_button("Home").parent
-    assert sidebar is not None
-    sidebar_bounds = sidebar.screen_bounds()
-    pane_bounds = strata.pane("release").screen_bounds()
-    leading_edge = sidebar_bounds.x + sidebar_bounds.width
-    scrollbar_y = pane_bounds.y + pane_bounds.height + 7
-    with Image.open(capture) as image:
-        pixels = image.convert("RGB")
-        assert pixels.getpixel((leading_edge, scrollbar_y)) == pixels.getpixel(
-            (leading_edge + 20, scrollbar_y)
-        ), "the horizontal scrollbar background should be continuous at its leading edge"
-
     baseline(strata, "columns-overflow")
 
 

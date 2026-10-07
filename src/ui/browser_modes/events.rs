@@ -4,19 +4,15 @@ use gtk::{gio, prelude::*};
 
 use super::{
     BrowserMode, ModeViews, Pane, pane_holds_keyboard_focus, reconnect_pane_model, replace_entries,
-    set_selections, show_count, update_bound_icons_metadata, update_bound_list_metadata,
+    select_all, set_selections, show_count, update_bound_icons_metadata,
+    update_bound_list_metadata,
 };
 use crate::{
-    app::{Browser, BrowserEvent, EntryInsertion, EntrySplice},
+    app::{Browser, BrowserEvent, EntryInsertion, EntrySplice, SelectionUpdate},
     ui::browser::entry_model_value,
 };
 
 impl ModeViews {
-    #[cfg(test)]
-    pub fn handle(&mut self, event: &BrowserEvent) {
-        self.handle_with_deferred_empty(event, false);
-    }
-
     pub(crate) fn handle_with_deferred_empty(&mut self, event: &BrowserEvent, defer_empty: bool) {
         if self.handle_structure_event(event) {
             return;
@@ -183,6 +179,7 @@ impl ModeViews {
         if let BrowserEvent::SortingFinished { depth } | BrowserEvent::ColumnReloaded { depth } =
             event
         {
+            let preferences = self.browser.column_preferences(*depth);
             self.update_panes(*depth, |pane| {
                 if let Some(button) = &pane.sort_direction_button {
                     super::super::browser::sync_column_sort_direction(
@@ -190,6 +187,9 @@ impl ModeViews {
                         *depth,
                         button,
                     );
+                }
+                if let (Some(sorting), Some(preferences)) = (&pane.sorting, preferences) {
+                    sorting.show(preferences.sort_key, preferences.sort_direction);
                 }
             });
         }
@@ -290,16 +290,18 @@ impl ModeViews {
         match event {
             BrowserEvent::SelectionSetChanged {
                 depth,
-                positions,
+                selection,
                 take_focus,
                 ..
             } => {
-                self.update_selection(*depth, positions, *take_focus);
+                self.update_selection(*depth, selection, *take_focus);
             }
             BrowserEvent::FocusChanged { depth, .. } => {
                 let positions = self.browser.selected_positions(*depth);
                 self.update_panes(*depth, |pane| set_selections(pane, &positions));
-                self.focus_visible_pane(*depth);
+                if !self.cursor_keeps_focus.get() {
+                    self.focus_visible_pane(*depth);
+                }
             }
             _ => {}
         }
@@ -315,19 +317,28 @@ impl ModeViews {
         });
     }
 
-    fn update_selection(&self, depth: usize, positions: &[usize], take_focus: bool) {
+    fn update_selection(&self, depth: usize, selection: &SelectionUpdate, take_focus: bool) {
         let view_has_focus = self
             .panes_at(depth)
             .iter()
             .any(|pane| pane_holds_keyboard_focus(pane));
-        self.update_panes(depth, |pane| set_selections(pane, positions));
+        let has_selection = match selection {
+            SelectionUpdate::All => {
+                self.update_panes(depth, select_all);
+                true
+            }
+            SelectionUpdate::Positions(positions) => {
+                self.update_panes(depth, |pane| set_selections(pane, positions));
+                !positions.is_empty()
+            }
+        };
         let camera_loading = self
             .browser
             .column_snapshot(depth)
             .is_some_and(|snapshot| snapshot.loading && snapshot.location.is_camera_photo_root());
         // Incoming photos shift source positions without a user selection change.
         // Re-focusing on every such update pulls scrolling back to the selected row.
-        if take_focus || (view_has_focus && !positions.is_empty() && !camera_loading) {
+        if take_focus || (view_has_focus && has_selection && !camera_loading) {
             self.focus_visible_pane(depth);
         }
     }
@@ -402,14 +413,14 @@ impl Pane {
     }
 
     fn start_sorting(&self) {
-        self.spinner.set_tooltip_text(Some("Sorting…"));
+        crate::ui::accessibility::set_description(&self.spinner, Some("Sorting…"));
         self.spinner.set_visible(true);
         self.spinner.start();
     }
 
     fn finish_sorting(&self) {
         self.hide_spinner();
-        self.spinner.set_tooltip_text(None);
+        crate::ui::accessibility::set_description(&self.spinner, None);
     }
 
     fn reload_rows(&self) {
@@ -453,6 +464,3 @@ impl Pane {
         self.loading.show("status");
     }
 }
-
-#[cfg(test)]
-mod tests;

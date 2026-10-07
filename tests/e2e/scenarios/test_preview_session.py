@@ -10,7 +10,7 @@ from harness.modes import ALL_MODES
 def fixture_tree():
     tree = FixtureTree.create({
         "a.txt": "root preview\n",
-        "z.zip": "unsupported fixture\n",
+        "z.rar": "unsupported fixture\n",
         "Alpha": {"a.txt": "alpha preview\n", "Beta": {"Gamma": {"Delta": {"a.txt": "delta preview\n"}}}},
     })
     Image.new("RGB", (80, 40), "green").save(tree.path("image.png"))
@@ -31,12 +31,18 @@ def preview_option(strata):
 @pytest.mark.parametrize("mode", ALL_MODES)
 def test_preview_mode_survives_unsupported_selections_and_matches_appearance(strata, mode):
     strata.switch_view(mode)
-    strata.select_entry("z.zip")
+    strata.select_entry("z.rar")
     option = preview_option(strata)
+    if mode == "Columns":
+        assert option.has_state("pressed"), "Columns reserves previews from startup"
+        strata.pointer.click(option)
+        strata.wait_for_menu_closed()
+        option = preview_option(strata)
     assert option.find(role="label", name="Space") is not None
     assert not option.has_state("pressed")
     strata.pointer.click(option)
-    if mode == "Icons":
+    strata.wait_for_menu_closed()
+    if mode in ["Columns", "Icons"]:
         strata.wait(lambda: strata.preview_shows("No preview for this selection"), "the reserved preview space")
     else:
         assert strata.preview() is None
@@ -44,15 +50,22 @@ def test_preview_mode_survives_unsupported_selections_and_matches_appearance(str
     assert option.has_state("pressed"), option.states
     strata.dismiss_menu()
     strata.select_entry("a.txt")
-    strata.wait(lambda: strata.preview_shows("root preview"), "automatic preview after ZIP")
-    strata.select_entry_with_keyboard("z.zip")
-    if mode == "Icons":
+    strata.wait(lambda: strata.preview_shows("root preview"), "automatic preview after unsupported selection")
+    strata.select_entry_with_keyboard("z.rar")
+    if mode in ["Columns", "Icons"]:
         strata.wait(lambda: strata.preview_shows("No preview for this selection"), "the empty preview slot")
+        assert not strata.preview_shows("root preview")
+        assert not strata.preview().find(role="button", name="Open in default application").has_state("sensitive")
+        strata.pointer.click(strata.pane(), at=strata.background_point())
+        strata.wait_for_selection([])
+        strata.wait(lambda: strata.preview_shows("No preview for this selection"), "the cleared selection's preview slot")
     else:
         strata.wait(lambda: strata.preview() is None, "unsupported selection to hide the panel")
     option = preview_option(strata)
     assert option.has_state("pressed"), option.states
     strata.pointer.click(option)
+    strata.wait_for_menu_closed()
+    strata.wait(lambda: strata.preview() is None, "the disabled preview panel to close")
     strata.select_entry("a.txt")
     assert strata.preview() is None
     strata.keyboard.press("space")
@@ -65,12 +78,11 @@ def test_preview_mode_survives_unsupported_selections_and_matches_appearance(str
     strata.wait(lambda: strata.preview_shows("alpha preview"), "preview after directory navigation")
     strata.select_entry_with_keyboard("Beta")
     strata.keyboard.press("space")
-    if mode == "Columns":
-        strata.wait_for_directory("Beta")
+    strata.wait_for_directory("Beta")
     option = preview_option(strata)
-    assert option.has_state("pressed") == (mode == "Columns")
+    assert option.has_state("pressed")
     strata.dismiss_menu()
-    assert strata.current_directory() == ("Beta" if mode == "Columns" else "Alpha")
+    assert strata.current_directory() == "Beta"
 
 
 @pytest.mark.preferences(browser_mode="icons", single_click_previews=False)
@@ -83,7 +95,7 @@ def test_icons_keep_their_layout_until_preview_mode_is_explicitly_toggled(strata
     assert width < full_width
 
     def positions():
-        return {name: strata.entry(name).screen_bounds() for name in ["Alpha", "a.txt", "image.png", "z.zip"]}
+        return {name: strata.entry(name).screen_bounds() for name in ["Alpha", "a.txt", "image.png", "z.rar"]}
 
     layout = positions()
 
@@ -93,12 +105,12 @@ def test_icons_keep_their_layout_until_preview_mode_is_explicitly_toggled(strata
             assert abs(actual.x - expected.x) <= 1 and abs(actual.y - expected.y) <= 1, (name, expected, actual)
             assert actual.width == expected.width and actual.height == expected.height
 
-    for name, expected in [("z.zip", "No preview for this selection"), ("image.png", "image/png"), ("Alpha", "No preview for this selection"), ("a.txt", "root preview")]:
+    for name, expected in [("z.rar", "No preview for this selection"), ("image.png", "image/png"), ("Alpha", "No preview for this selection"), ("a.txt", "root preview")]:
         strata.select_entry_with_keyboard(name)
         strata.wait(lambda: strata.preview_shows(expected), f"the preview for {name}")
         assert strata.pane().screen_bounds().width == width
         assert_layout()
-        if name in ["z.zip", "Alpha"]:
+        if name in ["z.rar", "Alpha"]:
             assert not strata.preview_shows("root preview")
             assert strata.preview().find(role="label", name="a.txt") is None
             assert not strata.preview().find(role="button", name="Open in default application").has_state("sensitive")
@@ -123,6 +135,10 @@ def test_icons_keep_their_layout_until_preview_mode_is_explicitly_toggled(strata
 
 @pytest.mark.preferences(browser_mode="columns", single_click_previews=False)
 def test_peek_click_reveals_a_column_without_activating_rows_or_toolbar_actions(strata):
+    option = preview_option(strata)
+    assert option.has_state("pressed")
+    strata.pointer.click(option)
+    strata.wait_for_menu_closed()
     browser_left = strata.pane().screen_bounds().x
     for name in ["Alpha", "Beta", "Gamma", "Delta"]:
         strata.open_directory(name)

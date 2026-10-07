@@ -1,10 +1,19 @@
 // SPDX-License-Identifier: MIT
 
-use std::{cell::RefCell, path::Path, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    path::{Path, PathBuf},
+    rc::Rc,
+};
+
+use sourceview5::prelude::BufferExt as _;
 
 use super::super::*;
 use crate::{
-    model::{SortDirection, SortKey, ViewPreferences},
+    model::{
+        EntryKind, FileEntry, Location, MetadataValue, SortDirection, SortKey, ViewPreferences,
+    },
     test_support::gtk_test,
     ui::{
         browser_modes::{BrowserDensity, BrowserMode, ClickCount},
@@ -44,14 +53,93 @@ fn older_preferences_keep_backward_compatible_behavior_defaults() {
     let mut saved = toml::Table::try_from(non_default_preferences()).expect("saved preferences");
     saved.remove("filter_include_subfolders");
     saved.remove("open_folder_after_drop");
+    saved.remove("date_format");
+    saved.remove("send_to_recent_destinations");
+    saved.remove("tenxer_mode");
+    saved.remove("omarchy_variant");
+    saved.remove("folder_peeking");
     let restored: Preferences = saved.try_into().expect("backward-compatible preferences");
     assert_eq!(
         restored,
         Preferences {
             filter_include_subfolders: true,
             open_folder_after_drop: false,
+            date_format: "relative".into(),
+            send_to_recent_destinations: HashMap::new(),
+            tenxer_mode: false,
+            omarchy_variant: OmarchyVariant::Original,
+            folder_peeking: false,
             ..non_default_preferences()
         }
+    );
+}
+
+#[test]
+fn empty_send_to_history_is_omitted_from_saved_preferences() {
+    let serialized = toml::Table::try_from(Preferences::default()).expect("default preferences");
+    assert!(!serialized.contains_key("send_to_recent_destinations"));
+}
+
+#[test]
+fn malformed_send_to_history_does_not_discard_other_preferences() {
+    let mut saved = toml::Table::try_from(non_default_preferences()).expect("saved preferences");
+    saved.insert("send_to_recent_destinations".into(), "invalid".into());
+    assert!(saved.clone().try_into::<Preferences>().is_err());
+
+    assert_eq!(
+        salvage_preferences(saved),
+        Preferences {
+            send_to_recent_destinations: HashMap::new(),
+            ..non_default_preferences()
+        }
+    );
+}
+
+#[test]
+fn send_to_history_is_device_scoped_deduplicated_capped_and_persistent() {
+    gtk_test(
+        "ui::preferences::tests::preferences::send_to_history_is_device_scoped_deduplicated_capped_and_persistent",
+        || {
+            let manager = PreferenceManager::shared();
+            for path in ["A", "B", "C", "B", "D"] {
+                manager.remember_send_to_destination("volume:kingston", Path::new(path), None);
+            }
+            manager.remember_send_to_destination("volume:sandisk", Path::new("Backup"), None);
+            manager.remember_send_to_destination("volume:drive-root", Path::new(""), None);
+
+            let expected = vec![PathBuf::from("D"), PathBuf::from("B"), PathBuf::from("C")];
+            assert_eq!(
+                manager.send_to_recent_destinations("volume:kingston"),
+                expected
+            );
+            assert_eq!(
+                manager.send_to_recent_destinations("volume:sandisk"),
+                [PathBuf::from("Backup")]
+            );
+            assert!(
+                manager
+                    .send_to_recent_destinations("volume:drive-root")
+                    .is_empty()
+            );
+
+            let reloaded = PreferenceManager::load();
+            assert_eq!(
+                reloaded.send_to_recent_destinations("volume:kingston"),
+                expected
+            );
+            assert_eq!(
+                reloaded.send_to_recent_destinations("volume:sandisk"),
+                [PathBuf::from("Backup")]
+            );
+            let saved: Preferences =
+                toml::from_str(&fs::read_to_string(settings_path()).expect("saved preferences"))
+                    .expect("persisted preferences reload");
+            assert!(
+                !saved
+                    .send_to_recent_destinations
+                    .contains_key("volume:drive-root")
+            );
+        },
     );
 }
 
@@ -59,12 +147,14 @@ fn older_preferences_keep_backward_compatible_behavior_defaults() {
 fn a_malformed_preference_does_not_discard_the_others() {
     let mut saved = toml::Table::try_from(non_default_preferences()).expect("saved preferences");
     saved.insert("show_hidden".into(), "yes".into());
+    saved.insert("omarchy_variant".into(), "unknown".into());
     assert!(saved.clone().try_into::<Preferences>().is_err());
 
     assert_eq!(
         salvage_preferences(saved),
         Preferences {
             show_hidden: false,
+            omarchy_variant: OmarchyVariant::Original,
             ..non_default_preferences()
         }
     );
@@ -101,8 +191,8 @@ fn assert_recovered_preferences_survive_save(
         fs::read_to_string(settings_path()).expect("unchanged settings file"),
         malformed
     );
-    expected.folder_peeking = true;
-    manager.set_folder_peeking(true);
+    expected.folder_peeking = false;
+    manager.set_folder_peeking(false);
 
     let persisted: Preferences =
         toml::from_str(&fs::read_to_string(settings_path()).expect("saved file"))
@@ -139,17 +229,17 @@ fn unreadable_preferences_are_preserved_while_live_changes_still_apply() {
                     );
                     values
                 });
-                manager.set_folder_peeking(false);
-                manager.set_folder_peeking(false);
+                manager.set_folder_peeking(true);
+                manager.set_folder_peeking(true);
                 for values in observations {
-                    assert_eq!(*values.borrow(), [true, false]);
+                    assert_eq!(*values.borrow(), [false, true]);
                 }
                 assert_eq!(
                     fs::read(settings_path()).expect("preserved settings"),
                     broken
                 );
                 fs::write(settings_path(), &valid).expect("repair settings");
-                manager.set_folder_peeking(true);
+                manager.set_folder_peeking(false);
                 assert_eq!(
                     fs::read(settings_path()).expect("repair left untouched"),
                     valid
@@ -158,9 +248,9 @@ fn unreadable_preferences_are_preserved_while_live_changes_still_apply() {
             }
             let manager = PreferenceManager::load();
             assert_eq!(*manager.preferences.borrow(), non_default_preferences());
-            manager.set_folder_peeking(true);
+            manager.set_folder_peeking(false);
             assert!(
-                read_preferences()
+                !read_preferences()
                     .expect("saving resumes after reload")
                     .folder_peeking
             );
@@ -175,8 +265,12 @@ fn missing_settings_allow_first_run_saves() {
         || {
             assert!(!settings_path().exists());
             let manager = PreferenceManager::load();
+            assert!(!manager.folder_peeking());
+            manager.set_folder_peeking(true);
+            assert!(read_preferences().expect("first run save").folder_peeking);
+            assert!(PreferenceManager::load().folder_peeking());
             manager.set_folder_peeking(false);
-            assert!(!read_preferences().expect("first run save").folder_peeking);
+            assert!(!PreferenceManager::load().folder_peeking());
         },
     );
 }
@@ -289,8 +383,9 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
             assert_eq!(*manager.preferences.borrow(), non_default_preferences());
             assert!(!themes.follows_omarchy());
             assert_eq!(themes.selected_id(), "nord");
-            assert!(!manager.folder_peeking());
+            assert!(manager.folder_peeking());
             assert!(!manager.single_click_previews());
+            assert!(!manager.columns_mirror_selection());
             assert!(!manager.hardware_accelerated_video_previews());
             assert_eq!(manager.video_preview_backend(), MediaPreviewBackend::Vulkan);
             assert_eq!(
@@ -298,8 +393,13 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
                 MediaPreviewBackend::Software
             );
             assert!(manager.search_open_files_directly());
+            assert_eq!(
+                manager.search_exclusions(),
+                vec![".venv", "/fixture/custom_excluded"]
+            );
             assert!(!manager.type_to_search());
             assert!(manager.arrow_navigation_scoped());
+            assert!(manager.tenxer_mode());
             assert!(!manager.filter_include_subfolders());
             assert!(!manager.show_keybinding_hints());
             assert!(!manager.window_show_close());
@@ -320,8 +420,8 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
                     let (glow, accent) = {
                         let style = surface.style_context();
                         (
-                            style.lookup_color("theme_glow").expect("glow color"),
-                            style.lookup_color("theme_accent").expect("accent color"),
+                            style.lookup_color("strata_glow").expect("glow color"),
+                            style.lookup_color("strata_accent").expect("accent color"),
                         )
                     };
                     if enabled {
@@ -332,6 +432,44 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
                     }
                 }
             }
+            let display = gtk::gdk::Display::default().expect("test display");
+            let user_css = gtk::CssProvider::new();
+            user_css.load_from_string(
+                "@define-color theme_bg #ff00ff; @define-color theme_accent #00ff00;",
+            );
+            gtk::style_context_add_provider_for_display(
+                &display,
+                &user_css,
+                gtk::STYLE_PROVIDER_PRIORITY_USER,
+            );
+            for theme in ["nord", "azure-glow", "nord"] {
+                themes.select_theme(theme);
+                let tokens = themes.current_tokens().expect("active theme");
+                for window in &windows {
+                    #[expect(
+                        deprecated,
+                        reason = "GTK has no replacement API for resolving named CSS colors"
+                    )]
+                    let style = window.style_context();
+                    #[expect(
+                        deprecated,
+                        reason = "GTK has no replacement API for resolving named CSS colors"
+                    )]
+                    for (name, expected) in [
+                        ("strata_bg", tokens.background.as_str()),
+                        ("strata_accent", tokens.accent.as_str()),
+                        ("theme_bg", "#ff00ff"),
+                        ("theme_accent", "#00ff00"),
+                    ] {
+                        assert_eq!(
+                            style.lookup_color(name).expect("named color"),
+                            gtk::gdk::RGBA::parse(expected).expect("token color"),
+                            "{theme}: {name}",
+                        );
+                    }
+                }
+            }
+            gtk::style_context_remove_provider_for_display(&display, &user_css);
             for window in windows {
                 window.close();
             }
@@ -362,12 +500,14 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
             assert!(!manager.sidebar_show_desktop());
             assert!(!manager.sidebar_show_documents());
             assert!(!manager.sidebar_show_downloads());
+            assert!(!manager.sidebar_show_music());
             assert!(!manager.sidebar_show_pictures());
             assert!(!manager.sidebar_show_videos());
+            assert!(!manager.sidebar_expanded());
             assert_eq!(
                 manager.sidebar_places_visibility(),
                 [
-                    false, false, false, false, false, false, false, false, false
+                    false, false, false, false, false, false, false, false, false, false
                 ]
             );
             assert_eq!(manager.text_size(), TextSize::new(24));
@@ -391,6 +531,19 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
             assert_eq!(
                 manager.cross_volume_drop_strategy(),
                 CrossVolumeDropStrategy::Move
+            );
+            assert_eq!(manager.date_format(), crate::util::DateFormat::Iso8601);
+            assert_eq!(
+                manager.device_label("volume:fixture-kingston").as_deref(),
+                Some("Research drive")
+            );
+            assert_eq!(
+                manager.send_to_recent_destinations("volume:fixture-kingston"),
+                [PathBuf::from("Academia/2026"), PathBuf::from("Teaching")]
+            );
+            assert_eq!(
+                manager.send_to_recent_destinations("volume:fixture-sandisk"),
+                [PathBuf::from("Backup")]
             );
             assert_eq!(
                 manager.default_directory(),
@@ -432,15 +585,130 @@ fn saved_omarchy_mode_loads_and_changes_through_the_same_binding() {
                 move |_, value| observed.borrow_mut().push(value),
             );
             assert_eq!(*values.borrow(), [true]);
+            let preferences = PreferenceManager::shared();
+            let windows = [gtk::Window::new(), gtk::Window::new()];
+            let buffer = gtk::TextBuffer::new(None);
+            buffer.create_tag(Some("document-accent"), &[]);
+            crate::ui::theme::register_document_buffer(&buffer);
+            let source = sourceview5::Buffer::new(None);
+            crate::ui::theme::register_source_buffer(&source);
+            let startup = manager.appearance_tokens();
+            for variant in [
+                OmarchyVariant::Darker,
+                OmarchyVariant::Original,
+                OmarchyVariant::HighContrast,
+                OmarchyVariant::Darker,
+            ] {
+                preferences.set_omarchy_variant(variant);
+                let tokens = manager.appearance_tokens();
+                assert_eq!(tokens == startup, variant == OmarchyVariant::Darker);
+                for window in &windows {
+                    assert_theme_colors(window, &tokens);
+                    let rebuilt_view = gtk::Box::new(gtk::Orientation::Vertical, 0);
+                    window.set_child(Some(&rebuilt_view));
+                    assert_theme_colors(&rebuilt_view, &tokens);
+                }
+                let rebuilt_buffer = gtk::TextBuffer::new(None);
+                rebuilt_buffer.create_tag(Some("document-accent"), &[]);
+                crate::ui::theme::register_document_buffer(&rebuilt_buffer);
+                for buffer in [&buffer, &rebuilt_buffer] {
+                    assert_eq!(
+                        buffer
+                            .tag_table()
+                            .lookup("document-accent")
+                            .expect("document accent tag")
+                            .foreground_rgba(),
+                        Some(gtk::gdk::RGBA::parse(&tokens.accent).expect("valid accent"))
+                    );
+                }
+                assert_eq!(
+                    source
+                        .style_scheme()
+                        .expect("active source scheme")
+                        .style("text")
+                        .expect("source text style")
+                        .background()
+                        .as_deref(),
+                    Some(tokens.surface.as_str())
+                );
+                assert_eq!(
+                    read_preferences().expect("saved variant").omarchy_variant,
+                    variant
+                );
+            }
+            let before_change = manager.appearance_tokens();
+            fs::write(
+                crate::ui::theme::omarchy_state_dir().join("theme/colors.toml"),
+                "background = '#201a12'\nforeground = '#ffeedd'\naccent = '#eebb99'\n",
+            )
+            .expect("update Omarchy colors");
+            wait_for_theme(|| {
+                manager.appearance_tokens() != before_change && {
+                    #[expect(deprecated, reason = "GTK has no replacement for named CSS colors")]
+                    let accent = windows[0]
+                        .style_context()
+                        .lookup_color("strata_accent")
+                        .expect("applied accent");
+                    accent
+                        == gtk::gdk::RGBA::parse(&manager.appearance_tokens().accent)
+                            .expect("valid updated accent")
+                }
+            });
+            assert_eq!(preferences.omarchy_variant(), OmarchyVariant::Darker);
+            for window in &windows {
+                assert_theme_colors(window, &manager.appearance_tokens());
+            }
             manager.set_follow_omarchy(false);
+            let builtin = manager.appearance_tokens();
+            preferences.set_omarchy_variant(OmarchyVariant::HighContrast);
+            assert_eq!(manager.appearance_tokens(), builtin);
+            for window in &windows {
+                assert_theme_colors(window, &builtin);
+            }
             manager.set_follow_omarchy(true);
+            assert_ne!(manager.appearance_tokens(), builtin);
             assert_eq!(*values.borrow(), [true, false, true]);
+            for window in windows {
+                window.close();
+            }
             assert_eq!(
                 read_preferences().expect("saved theme mode").mode,
                 "omarchy"
             );
         },
     );
+}
+
+fn assert_theme_colors(widget: &impl IsA<gtk::Widget>, tokens: &crate::ui::theme::ThemeTokens) {
+    for (name, expected) in [
+        ("strata_bg", &tokens.background),
+        ("strata_surface", &tokens.surface),
+        ("strata_accent", &tokens.accent),
+        ("strata_text", &tokens.text),
+    ] {
+        #[expect(deprecated, reason = "GTK has no replacement for named CSS colors")]
+        let actual = widget
+            .style_context()
+            .lookup_color(name)
+            .expect("applied theme color");
+        assert_eq!(
+            actual,
+            gtk::gdk::RGBA::parse(expected).expect("valid token"),
+            "{name}"
+        );
+    }
+}
+
+fn wait_for_theme(mut ready: impl FnMut() -> bool) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !ready() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "live Omarchy refresh timed out"
+        );
+        glib::MainContext::default().iteration(false);
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
 }
 
 #[test]
@@ -461,14 +729,17 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 move |_, value| observed.borrow_mut().push(value),
             );
             let preference_setters: &[fn(&PreferenceManager)] = &[
-                |m| m.set_folder_peeking(true),
+                |m| m.set_folder_peeking(false),
                 |m| m.set_single_click_previews(true),
+                |m| m.set_columns_mirror_selection(true),
                 |m| m.set_render_documents_by_default(true),
                 |m| m.set_hardware_accelerated_video_previews(true),
                 |m| m.set_video_preview_backend(MediaPreviewBackend::VaApi),
                 |m| m.set_search_open_files_directly(false),
+                |m| m.set_search_exclusions(vec!["changed_exclusion".to_owned()]),
                 |m| m.set_type_to_search(true),
                 |m| m.set_arrow_navigation_scoped(false),
+                |m| m.set_tenxer_mode(false),
                 |m| m.set_filter_include_subfolders(true),
                 |m| m.set_show_keybinding_hints(true),
                 |m| m.set_window_show_close(true),
@@ -476,6 +747,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_window_show_maximize(false),
                 |m| m.set_reduce_motion(false),
                 |m| m.set_element_glow(true),
+                |m| m.set_omarchy_variant(OmarchyVariant::HighContrast),
                 |m| m.set_browser_mode(BrowserMode::Icons),
                 |m| m.set_browser_density(BrowserDensity::Compact),
                 |m| m.set_group_by_type(false),
@@ -507,10 +779,13 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_sidebar_show_desktop(true),
                 |m| m.set_sidebar_show_documents(true),
                 |m| m.set_sidebar_show_downloads(true),
+                |m| m.set_sidebar_show_music(true),
                 |m| m.set_sidebar_show_pictures(true),
                 |m| m.set_sidebar_show_videos(true),
+                |m| m.set_sidebar_expanded(true),
                 |m| m.set_sort_preferences(ViewPreferences::default()),
                 |m| m.set_text_size(TextSize::new(11)),
+                |m| m.set_interface_renderer(InterfaceRenderer::System),
                 |m| m.set_checks_for_updates(true),
                 |m| m.set_release_channel(Channel::Stable),
                 |m| m.set_preview_muted(false),
@@ -519,8 +794,23 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_preview_autoplay(false),
                 |m| m.set_auto_refresh_interval(60),
                 |m| m.set_thumbnail_workers(3),
+                |m| m.set_icons_thumbnail_size(96),
+                |m| m.set_chooser_column_width(Some(360)),
+                |m| m.set_chooser_list_columns(None),
+                |m| m.set_browser_column_width(Some(400)),
+                |m| m.set_browser_list_columns(None),
                 |m| m.set_cross_volume_drop_strategy(CrossVolumeDropStrategy::Copy),
+                |m| m.set_date_format(crate::util::DateFormat::Long),
                 |m| m.set_default_directory(None),
+                |m| m.set_device_label("volume:fixture-kingston", "Photos / 📁"),
+                |m| m.set_device_label("volume:fixture-kingston", ""),
+                |m| {
+                    m.remember_send_to_destination(
+                        "volume:fixture-kingston",
+                        Path::new("Research"),
+                        None,
+                    )
+                },
                 |m| m.set_open_folder_after_drop(false),
                 |m| m.set_folder_color(Path::new("/fixture/folder"), None),
                 |m| m.set_custom_icon(Path::new("/fixture/folder"), None),
@@ -581,6 +871,82 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 changed_keys, all_keys,
                 "every stored field needs setter and notification coverage"
             );
+        },
+    );
+}
+
+#[test]
+fn saved_date_format_renders_before_settings_and_updates_bound_labels() {
+    gtk_test(
+        "ui::preferences::tests::preferences::saved_date_format_renders_before_settings_and_updates_bound_labels",
+        || {
+            seed_saved_preferences_for_test();
+            let manager = PreferenceManager::shared();
+            let seconds = glib::DateTime::now_local().expect("local time").to_unix() - 120;
+            let entry = FileEntry {
+                location: Location::local("/fixture/recent.txt"),
+                native_name: "recent.txt".into(),
+                display_name: "recent.txt".into(),
+                thumbnail_path: None,
+                kind: EntryKind::File,
+                size: MetadataValue::Known(4),
+                modified_unix_seconds: MetadataValue::Known(seconds),
+                mode: MetadataValue::Known(0o100644),
+                recent_unix_seconds: MetadataValue::Unknown,
+                is_hidden: false,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
+                recent_uri: None,
+            };
+            let absolute = |pattern: &str| {
+                glib::DateTime::from_unix_local(seconds)
+                    .expect("modified date")
+                    .format(pattern)
+                    .expect("format")
+                    .to_string()
+            };
+            let windows = [gtk::Window::new(), gtk::Window::new()];
+            let labels: Vec<gtk::Label> = windows
+                .iter()
+                .map(|window| {
+                    let label = gtk::Label::new(None);
+                    window.set_child(Some(&label));
+                    crate::util::set_modified_date(&label, Some(&entry), "—");
+                    label
+                })
+                .collect();
+            for label in &labels {
+                assert_eq!(label.label(), absolute("%Y-%m-%d %H:%M"));
+            }
+            manager.set_date_format(crate::util::DateFormat::Long);
+            for label in &labels {
+                assert_eq!(label.label(), absolute("%B %-d, %Y, %H:%M"));
+            }
+            crate::util::set_modified_date(&labels[0], None, "unknown");
+            manager.set_date_format(crate::util::DateFormat::Relative);
+            assert_eq!(labels[0].label(), "unknown");
+            let text = labels[1].label();
+            assert!(text == "Just now" || text.ends_with(" ago"), "{text}");
+            let mut rebound = entry.clone();
+            rebound.modified_unix_seconds = MetadataValue::Known(seconds - 86400);
+            crate::util::set_modified_date(&labels[0], Some(&rebound), "—");
+            manager.set_date_format(crate::util::DateFormat::Iso8601);
+            let expected = glib::DateTime::from_unix_local(seconds - 86400)
+                .expect("rebound date")
+                .format("%Y-%m-%d %H:%M")
+                .expect("format");
+            assert_eq!(labels[0].label(), expected);
+            assert_eq!(labels[1].label(), absolute("%Y-%m-%d %H:%M"));
+            let rebuilt = gtk::Label::new(None);
+            windows[1].set_child(Some(&rebuilt));
+            crate::util::set_modified_date(&rebuilt, Some(&entry), "—");
+            assert_eq!(rebuilt.label(), absolute("%Y-%m-%d %H:%M"));
+            manager.set_date_format(crate::util::DateFormat::Long);
+            assert_eq!(rebuilt.label(), absolute("%B %-d, %Y, %H:%M"));
+            for window in windows {
+                window.close();
+            }
         },
     );
 }

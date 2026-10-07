@@ -12,7 +12,8 @@ use std::{
 use gtk::{gdk, glib, prelude::*};
 
 use crate::services::{
-    NavigationHistory, SearchCoverage, SearchEvent, SearchHandle, SearchItem, index_trees,
+    NavigationHistory, SearchCoverage, SearchEvent, SearchHandle, SearchItem,
+    index_trees_with_exclusions,
 };
 
 const MAX_RESULT_UPDATES_PER_FRAME: usize = 8;
@@ -25,6 +26,7 @@ pub struct SearchDialog {
 struct SearchState {
     // Keep the shared provider alive when this dialog is hosted without a browser window.
     _themes: Rc<super::theme::ThemeManager>,
+    preferences: Rc<super::preferences::PreferenceManager>,
     layer: gtk::Box,
     field: gtk::Entry,
     indexing_spinner: gtk::Spinner,
@@ -60,6 +62,7 @@ impl SearchDialog {
         dismiss: Rc<dyn Fn()>,
     ) -> Self {
         let themes = super::theme::ThemeManager::shared();
+        let preferences = super::preferences::PreferenceManager::shared();
         let layer = gtk::Box::new(gtk::Orientation::Vertical, 0);
         layer.add_css_class("search-backdrop");
         layer.add_css_class("app-modal-layer");
@@ -92,7 +95,7 @@ impl SearchDialog {
         search_bar.append(&field);
         let indexing_spinner = gtk::Spinner::new();
         indexing_spinner.add_css_class("search-indexing-spinner");
-        indexing_spinner.set_tooltip_text(Some("Indexing files…"));
+        crate::ui::accessibility::set_description(&indexing_spinner, Some("Indexing files…"));
         indexing_spinner.set_valign(gtk::Align::Center);
         indexing_spinner.set_visible(false);
         search_bar.append(&indexing_spinner);
@@ -167,6 +170,7 @@ impl SearchDialog {
 
         let state = Rc::new(SearchState {
             _themes: themes,
+            preferences,
             layer,
             field,
             indexing_spinner,
@@ -322,9 +326,12 @@ impl SearchDialog {
             .map(|root| root.display().to_string())
             .collect::<Vec<_>>()
             .join("\n");
-        self.state.field.set_tooltip_text(Some(&format!(
-            "Search locations:\n{locations}\nRemote shares are not included."
-        )));
+        crate::ui::accessibility::set_description(
+            &self.state.field,
+            Some(&format!(
+                "Search locations:\n{locations}\nRemote shares are not included."
+            )),
+        );
         self.state.field.set_sensitive(!roots.is_empty());
         clear_results(&self.state);
         self.state.results.set_visible_child_name("status");
@@ -349,7 +356,8 @@ impl SearchDialog {
             self.state.layer.grab_focus();
             return;
         }
-        let (handle, receiver) = index_trees(roots, show_hidden);
+        let exclusions = self.state.preferences.search_exclusions();
+        let (handle, receiver) = index_trees_with_exclusions(roots, show_hidden, exclusions);
         self.state.search.replace(Some(handle));
         let weak = Rc::downgrade(&self.state);
         let _poll = glib::timeout_add_local(Duration::from_millis(16), move || {
@@ -372,6 +380,7 @@ impl SearchDialog {
                 items,
                 indexing,
                 coverage,
+                ..
             }) = latest
             {
                 if indexing {
@@ -382,9 +391,10 @@ impl SearchDialog {
                     state.indexing_spinner.set_visible(false);
                 }
                 if query == state.field.text().trim() {
-                    state
-                        .truncated_hint
-                        .set_tooltip_text(Some(&coverage.message()));
+                    crate::ui::accessibility::set_description(
+                        &state.truncated_hint,
+                        Some(&coverage.message()),
+                    );
                     state.truncated_hint.set_visible(coverage.is_partial());
                 }
                 if !query.is_empty() && query == state.field.text().trim() {
@@ -402,9 +412,10 @@ impl SearchDialog {
         self.state
             .field
             .set_placeholder_text(Some("Jump to a folder…"));
-        self.state
-            .field
-            .set_tooltip_text(Some("Folders previously visited in Strata"));
+        crate::ui::accessibility::set_description(
+            &self.state.field,
+            Some("Folders previously visited in Strata"),
+        );
         self.state.field.set_sensitive(true);
         clear_results(&self.state);
         self.state.field.set_text("");
@@ -536,9 +547,7 @@ fn render_results(
     let query_empty = query.is_empty();
     state.rendered_query.replace(query);
     let has_results = !state.visible_results.borrow().is_empty();
-    state
-        .truncated_hint
-        .set_tooltip_text(Some(&coverage.message()));
+    crate::ui::accessibility::set_description(&state.truncated_hint, Some(&coverage.message()));
     state.truncated_hint.set_visible(coverage.is_partial());
     state
         .results
@@ -646,9 +655,9 @@ fn result_row(state: &Rc<SearchState>, item: &SearchItem) -> gtk::ListBoxRow {
     let name = gtk::Label::new(Some(&item.name));
     name.add_css_class("search-result-name");
     name.set_xalign(0.0);
-    name.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    name.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
     let full_path = item.path.to_string_lossy();
-    row.set_tooltip_text(Some(&full_path));
+    crate::ui::accessibility::set_label(&row, &full_path);
     let path = gtk::Label::new(Some(&full_path));
     path.add_css_class("search-result-path");
     path.set_xalign(0.0);
@@ -693,7 +702,7 @@ fn show_result_menu(
     let reveal = context_menu_option(
         crate::assets::icons::FOLDER_OPEN,
         "Open containing folder",
-        "Alt+Enter",
+        crate::ui::shortcut_reference::ContextHint::ContainingFolder,
     );
     reveal.set_sensitive(item.path.parent().is_some());
     content.append(&reveal);

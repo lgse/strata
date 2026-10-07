@@ -4,7 +4,7 @@ use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
     fs, io,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     rc::Rc,
 };
 
@@ -17,6 +17,10 @@ use crate::{
     services::{Channel, CrossVolumeDropStrategy},
 };
 
+use super::icons_cell::{MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE};
+
+pub(in crate::ui) const SEND_TO_RECENT_DESTINATIONS_LIMIT: usize = 3;
+
 mod bindings;
 #[cfg(test)]
 pub(in crate::ui) mod fixtures;
@@ -28,14 +32,35 @@ thread_local! {
     static SHARED_MANAGER: RefCell<std::rc::Weak<PreferenceManager>> = const { RefCell::new(std::rc::Weak::new()) };
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum InterfaceRenderer {
+    Cairo,
+    #[default]
+    System,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum OmarchyVariant {
+    #[default]
+    Original,
+    Darker,
+    HighContrast,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub(in crate::ui) struct Preferences {
     mode: String,
     theme: String,
-    #[serde(default = "default_enabled")]
+    #[serde(default)]
+    omarchy_variant: OmarchyVariant,
+    #[serde(default)]
     folder_peeking: bool,
     #[serde(default = "default_enabled")]
     single_click_previews: bool,
+    #[serde(default = "default_enabled")]
+    columns_mirror_selection: bool,
     #[serde(default = "default_enabled")]
     render_documents_by_default: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -44,10 +69,14 @@ pub(in crate::ui) struct Preferences {
     video_preview_backend: String,
     #[serde(default)]
     search_open_files_directly: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    search_exclusions: Vec<String>,
     #[serde(default = "default_enabled")]
     type_to_search: bool,
     #[serde(default)]
     arrow_navigation_scoped: bool,
+    #[serde(default)]
+    tenxer_mode: bool,
     #[serde(default = "default_enabled")]
     filter_include_subfolders: bool,
     #[serde(default = "default_enabled")]
@@ -97,13 +126,19 @@ pub(in crate::ui) struct Preferences {
     #[serde(default = "default_enabled")]
     sidebar_show_downloads: bool,
     #[serde(default = "default_enabled")]
+    sidebar_show_music: bool,
+    #[serde(default = "default_enabled")]
     sidebar_show_pictures: bool,
     #[serde(default = "default_enabled")]
     sidebar_show_videos: bool,
+    #[serde(default = "default_enabled")]
+    sidebar_expanded: bool,
     #[serde(default)]
     show_hidden: bool,
     #[serde(default)]
     text_size: TextSize,
+    #[serde(default)]
+    interface_renderer: InterfaceRenderer,
     #[serde(default = "default_enabled")]
     folders_first: bool,
     #[serde(default = "default_sort_key")]
@@ -124,10 +159,18 @@ pub(in crate::ui) struct Preferences {
     auto_refresh_interval: u32,
     #[serde(default = "crate::sandbox::browser::default_worker_limit")]
     thumbnail_workers: usize,
+    #[serde(default = "default_icons_thumbnail_size")]
+    icons_thumbnail_size: i32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    chooser_column_width: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    browser_column_width: Option<i32>,
     #[serde(default = "default_cross_volume_drop_strategy")]
     cross_volume_drop_strategy: String,
     #[serde(default)]
     open_folder_after_drop: bool,
+    #[serde(default = "default_date_format")]
+    date_format: String,
     #[serde(default = "default_release_channel")]
     release_channel: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -136,6 +179,35 @@ pub(in crate::ui) struct Preferences {
     folder_colors: HashMap<String, String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     custom_icons: HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    send_to_recent_destinations: HashMap<String, Vec<PathBuf>>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    device_labels: HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    chooser_list_columns: Option<ListColumns>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    browser_list_columns: Option<ListColumns>,
+}
+
+/// Unscaled pixels; an unset `name` lets Name absorb the remaining space.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct ListColumns {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<i32>,
+    pub mode: i32,
+    pub size: i32,
+    #[serde(rename = "type")]
+    pub kind: i32,
+    pub modified: i32,
+}
+
+impl ListColumns {
+    fn is_valid(&self) -> bool {
+        self.name.is_none_or(|width| width > 0)
+            && [self.mode, self.size, self.kind, self.modified]
+                .iter()
+                .all(|width| *width > 0)
+    }
 }
 
 impl Default for Preferences {
@@ -143,14 +215,18 @@ impl Default for Preferences {
         Self {
             mode: "theme".to_owned(),
             theme: "tokyo-night".to_owned(),
-            folder_peeking: true,
+            omarchy_variant: OmarchyVariant::default(),
+            folder_peeking: false,
             single_click_previews: true,
+            columns_mirror_selection: true,
             render_documents_by_default: true,
             hardware_accelerated_video_previews: None,
             video_preview_backend: default_video_preview_backend(),
             search_open_files_directly: false,
+            search_exclusions: Vec::new(),
             type_to_search: true,
             arrow_navigation_scoped: false,
+            tenxer_mode: false,
             filter_include_subfolders: true,
             show_keybinding_hints: true,
             window_show_close: true,
@@ -175,10 +251,13 @@ impl Default for Preferences {
             sidebar_show_desktop: true,
             sidebar_show_documents: true,
             sidebar_show_downloads: true,
+            sidebar_show_music: true,
             sidebar_show_pictures: true,
             sidebar_show_videos: true,
+            sidebar_expanded: true,
             show_hidden: false,
             text_size: TextSize::default(),
+            interface_renderer: InterfaceRenderer::default(),
             folders_first: true,
             sort_key: default_sort_key(),
             sort_direction: default_sort_direction(),
@@ -189,12 +268,20 @@ impl Default for Preferences {
             preview_autoplay: false,
             auto_refresh_interval: 0,
             thumbnail_workers: crate::sandbox::browser::default_worker_limit(),
+            icons_thumbnail_size: default_icons_thumbnail_size(),
+            chooser_column_width: None,
+            browser_column_width: None,
             cross_volume_drop_strategy: default_cross_volume_drop_strategy(),
             open_folder_after_drop: false,
+            date_format: default_date_format(),
             release_channel: default_release_channel(),
             default_directory: None,
             folder_colors: HashMap::new(),
             custom_icons: HashMap::new(),
+            send_to_recent_destinations: HashMap::new(),
+            device_labels: HashMap::new(),
+            chooser_list_columns: None,
+            browser_list_columns: None,
         }
     }
 }
@@ -249,9 +336,14 @@ fn default_double_clicks() -> u8 {
 
 fn default_sidebar_order() -> Vec<String> {
     vec![
+        "home".to_owned(),
+        "trash".to_owned(),
+        "network".to_owned(),
+        "recent".to_owned(),
         "desktop".to_owned(),
         "documents".to_owned(),
         "downloads".to_owned(),
+        "music".to_owned(),
         "pictures".to_owned(),
         "videos".to_owned(),
     ]
@@ -269,6 +361,14 @@ fn default_full_volume() -> f64 {
     1.0
 }
 
+fn default_icons_thumbnail_size() -> i32 {
+    64
+}
+
+fn default_date_format() -> String {
+    crate::util::DateFormat::default().as_str().to_owned()
+}
+
 fn default_cross_volume_drop_strategy() -> String {
     CrossVolumeDropStrategy::Ask.as_str().to_owned()
 }
@@ -281,8 +381,15 @@ fn normalized_volume(volume: f64) -> f64 {
     }
 }
 
+pub(in crate::ui) fn is_valid_send_to_relative_path(path: &Path) -> bool {
+    let mut components = path.components();
+    matches!(components.next(), Some(Component::Normal(_)))
+        && components.all(|component| matches!(component, Component::Normal(_)))
+}
+
 pub struct PreferenceManager {
     preferences: RefCell<Preferences>,
+    startup_interface_renderer: InterfaceRenderer,
     changes: bindings::PreferenceChanges,
     persistence_dirty: Cell<bool>,
     persistence_enabled: bool,
@@ -312,9 +419,24 @@ impl PreferenceManager {
         preferences.thumbnail_workers = preferences
             .thumbnail_workers
             .clamp(1, crate::sandbox::browser::MAX_WORKERS);
+        preferences.icons_thumbnail_size = preferences
+            .icons_thumbnail_size
+            .clamp(MIN_ICONS_THUMBNAIL_SIZE, MAX_ICONS_THUMBNAIL_SIZE);
+        preferences.chooser_column_width =
+            preferences.chooser_column_width.filter(|width| *width > 0);
+        preferences.browser_column_width =
+            preferences.browser_column_width.filter(|width| *width > 0);
+        preferences.chooser_list_columns = preferences
+            .chooser_list_columns
+            .filter(ListColumns::is_valid);
+        preferences.browser_list_columns = preferences
+            .browser_list_columns
+            .filter(ListColumns::is_valid);
         super::motion::set_reduce_motion(preferences.reduce_motion);
+        crate::util::set_date_format(crate::util::DateFormat::parse(&preferences.date_format));
 
         Rc::new(Self {
+            startup_interface_renderer: preferences.interface_renderer,
             changes: bindings::PreferenceChanges::new(preferences.clone()),
             persistence_dirty: Cell::new(false),
             persistence_enabled,
@@ -371,6 +493,17 @@ impl PreferenceManager {
         apply: impl Fn(&gtk::Widget, T) + 'static,
     ) {
         self.changes.bind(self, anchor, read, apply);
+    }
+
+    /// A closed window can outlive its close while its own closures still
+    /// reference it, so its bindings end here rather than on destroy.
+    pub(in crate::ui) fn release_bindings_within(&self, root: &impl IsA<gtk::Widget>) {
+        self.changes.release_within(root.as_ref());
+    }
+
+    #[cfg(test)]
+    pub(in crate::ui) fn listener_count(&self) -> usize {
+        self.changes.listener_count()
     }
 
     /// Registers a process-lifetime callback invoked after preference changes are
@@ -478,6 +611,15 @@ impl PreferenceManager {
         self.save_preferences();
     }
 
+    pub fn columns_mirror_selection(&self) -> bool {
+        self.preferences.borrow().columns_mirror_selection
+    }
+
+    pub fn set_columns_mirror_selection(&self, enabled: bool) {
+        self.preferences.borrow_mut().columns_mirror_selection = enabled;
+        self.save_preferences();
+    }
+
     pub fn render_documents_by_default(&self) -> bool {
         self.preferences.borrow().render_documents_by_default
     }
@@ -533,6 +675,15 @@ impl PreferenceManager {
         self.save_preferences();
     }
 
+    pub fn search_exclusions(&self) -> Vec<String> {
+        self.preferences.borrow().search_exclusions.clone()
+    }
+
+    pub fn set_search_exclusions(&self, exclusions: Vec<String>) {
+        self.preferences.borrow_mut().search_exclusions = exclusions;
+        self.save_preferences();
+    }
+
     pub fn filter_include_subfolders(&self) -> bool {
         self.preferences.borrow().filter_include_subfolders
     }
@@ -558,6 +709,23 @@ impl PreferenceManager {
     pub fn set_arrow_navigation_scoped(&self, scoped: bool) {
         self.preferences.borrow_mut().arrow_navigation_scoped = scoped;
         self.save_preferences();
+    }
+
+    pub fn tenxer_mode(&self) -> bool {
+        self.preferences.borrow().tenxer_mode
+    }
+
+    pub fn set_tenxer_mode(&self, enabled: bool) {
+        self.preferences.borrow_mut().tenxer_mode = enabled;
+        self.save_preferences();
+    }
+
+    pub fn type_to_search_active(&self) -> bool {
+        self.type_to_search() && !self.tenxer_mode()
+    }
+
+    pub fn arrow_navigation_scoped_active(&self) -> bool {
+        self.tenxer_mode() || self.arrow_navigation_scoped()
     }
 
     pub fn show_keybinding_hints(&self) -> bool {
@@ -601,6 +769,18 @@ impl PreferenceManager {
 
     pub fn set_window_show_maximize(&self, enabled: bool) {
         self.preferences.borrow_mut().window_show_maximize = enabled;
+        self.save_preferences();
+    }
+
+    pub fn omarchy_variant(&self) -> OmarchyVariant {
+        self.preferences.borrow().omarchy_variant
+    }
+
+    pub fn set_omarchy_variant(&self, variant: OmarchyVariant) {
+        if self.omarchy_variant() == variant {
+            return;
+        }
+        self.preferences.borrow_mut().omarchy_variant = variant;
         self.save_preferences();
     }
 
@@ -690,6 +870,52 @@ impl PreferenceManager {
         self.save_preferences();
     }
 
+    pub fn icons_thumbnail_size(&self) -> i32 {
+        self.preferences.borrow().icons_thumbnail_size
+    }
+
+    pub fn set_icons_thumbnail_size(&self, size: i32) {
+        self.preferences.borrow_mut().icons_thumbnail_size =
+            size.clamp(MIN_ICONS_THUMBNAIL_SIZE, MAX_ICONS_THUMBNAIL_SIZE);
+        self.save_preferences();
+    }
+
+    pub fn chooser_column_width(&self) -> Option<i32> {
+        self.preferences.borrow().chooser_column_width
+    }
+
+    pub fn set_chooser_column_width(&self, width: Option<i32>) {
+        self.preferences.borrow_mut().chooser_column_width = width.filter(|width| *width > 0);
+        self.save_preferences();
+    }
+
+    pub fn browser_column_width(&self) -> Option<i32> {
+        self.preferences.borrow().browser_column_width
+    }
+
+    pub fn set_browser_column_width(&self, width: Option<i32>) {
+        self.preferences.borrow_mut().browser_column_width = width.filter(|width| *width > 0);
+        self.save_preferences();
+    }
+
+    pub fn browser_list_columns(&self) -> Option<ListColumns> {
+        self.preferences.borrow().browser_list_columns
+    }
+
+    pub fn set_browser_list_columns(&self, columns: Option<ListColumns>) {
+        self.preferences.borrow_mut().browser_list_columns = columns.filter(ListColumns::is_valid);
+        self.save_preferences();
+    }
+
+    pub fn chooser_list_columns(&self) -> Option<ListColumns> {
+        self.preferences.borrow().chooser_list_columns
+    }
+
+    pub fn set_chooser_list_columns(&self, columns: Option<ListColumns>) {
+        self.preferences.borrow_mut().chooser_list_columns = columns.filter(ListColumns::is_valid);
+        self.save_preferences();
+    }
+
     pub fn auto_refresh_interval(&self) -> u32 {
         self.preferences.borrow().auto_refresh_interval
     }
@@ -708,12 +934,92 @@ impl PreferenceManager {
         self.save_preferences();
     }
 
+    pub(in crate::ui) fn device_label(&self, device_id: &str) -> Option<String> {
+        self.preferences
+            .borrow()
+            .device_labels
+            .get(device_id)
+            .filter(|label| {
+                !label.trim().is_empty()
+                    && label.chars().count() <= 255
+                    && !label.chars().any(char::is_control)
+            })
+            .cloned()
+    }
+
+    pub(in crate::ui) fn set_device_label(&self, device_id: &str, label: &str) {
+        let label = label.trim();
+        if device_id.is_empty()
+            || label.chars().count() > 255
+            || label.chars().any(char::is_control)
+        {
+            return;
+        }
+        {
+            let mut preferences = self.preferences.borrow_mut();
+            if label.is_empty() {
+                preferences.device_labels.remove(device_id);
+            } else {
+                preferences
+                    .device_labels
+                    .insert(device_id.to_owned(), label.to_owned());
+            }
+        }
+        self.save_preferences();
+    }
+
+    pub(in crate::ui) fn send_to_recent_destinations(&self, device_id: &str) -> Vec<PathBuf> {
+        self.preferences
+            .borrow()
+            .send_to_recent_destinations
+            .get(device_id)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    pub(in crate::ui) fn remember_send_to_destination(
+        &self,
+        device_id: &str,
+        relative_path: &Path,
+        remove_relative_path: Option<&Path>,
+    ) {
+        if !is_valid_send_to_relative_path(relative_path) {
+            return;
+        }
+        {
+            let mut preferences = self.preferences.borrow_mut();
+            let recent = preferences
+                .send_to_recent_destinations
+                .entry(device_id.to_owned())
+                .or_default();
+            recent.retain(|path| {
+                path != relative_path && Some(path.as_path()) != remove_relative_path
+            });
+            recent.insert(0, relative_path.to_path_buf());
+            recent.truncate(SEND_TO_RECENT_DESTINATIONS_LIMIT);
+        }
+        self.save_preferences();
+    }
+
     pub fn open_folder_after_drop(&self) -> bool {
         self.preferences.borrow().open_folder_after_drop
     }
 
     pub fn set_open_folder_after_drop(&self, enabled: bool) {
         self.preferences.borrow_mut().open_folder_after_drop = enabled;
+        self.save_preferences();
+    }
+
+    pub fn date_format(&self) -> crate::util::DateFormat {
+        crate::util::DateFormat::parse(&self.preferences.borrow().date_format)
+    }
+
+    pub fn set_date_format(&self, format: crate::util::DateFormat) {
+        if self.date_format() == format {
+            return;
+        }
+        self.preferences.borrow_mut().date_format = format.as_str().to_owned();
+        crate::util::set_date_format(format);
         self.save_preferences();
     }
 
@@ -783,6 +1089,19 @@ impl PreferenceManager {
         }
         .to_owned();
         self.save_preferences();
+    }
+
+    pub fn interface_renderer(&self) -> InterfaceRenderer {
+        self.preferences.borrow().interface_renderer
+    }
+
+    pub fn set_interface_renderer(&self, renderer: InterfaceRenderer) {
+        self.preferences.borrow_mut().interface_renderer = renderer;
+        self.save_preferences();
+    }
+
+    pub fn interface_renderer_restart_required(&self) -> bool {
+        self.interface_renderer() != self.startup_interface_renderer
     }
 
     pub fn text_size(&self) -> TextSize {
@@ -963,6 +1282,15 @@ impl PreferenceManager {
         self.save_preferences();
     }
 
+    pub fn sidebar_show_music(&self) -> bool {
+        self.preferences.borrow().sidebar_show_music
+    }
+
+    pub fn set_sidebar_show_music(&self, visible: bool) {
+        self.preferences.borrow_mut().sidebar_show_music = visible;
+        self.save_preferences();
+    }
+
     pub fn sidebar_show_pictures(&self) -> bool {
         self.preferences.borrow().sidebar_show_pictures
     }
@@ -981,7 +1309,16 @@ impl PreferenceManager {
         self.save_preferences();
     }
 
-    pub fn sidebar_places_visibility(&self) -> [bool; 9] {
+    pub fn sidebar_expanded(&self) -> bool {
+        self.preferences.borrow().sidebar_expanded
+    }
+
+    pub fn set_sidebar_expanded(&self, expanded: bool) {
+        self.preferences.borrow_mut().sidebar_expanded = expanded;
+        self.save_preferences();
+    }
+
+    pub fn sidebar_places_visibility(&self) -> [bool; 10] {
         let preferences = self.preferences.borrow();
         [
             preferences.sidebar_show_home,
@@ -991,6 +1328,7 @@ impl PreferenceManager {
             preferences.sidebar_show_desktop,
             preferences.sidebar_show_documents,
             preferences.sidebar_show_downloads,
+            preferences.sidebar_show_music,
             preferences.sidebar_show_pictures,
             preferences.sidebar_show_videos,
         ]
@@ -1162,7 +1500,7 @@ pub(in crate::ui) fn snapped_root_font_px(root_font_px: u32, scale_factor: f64) 
 }
 
 pub(in crate::ui) fn config_directory() -> PathBuf {
-    glib::user_config_dir().join("strata")
+    crate::storage::config_directory()
 }
 
 fn settings_path() -> PathBuf {

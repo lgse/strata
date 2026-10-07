@@ -203,3 +203,299 @@ fn move_accepts_a_symlink_in_the_destinations_parent_path() -> Result<(), Box<dy
     assert_eq!(fs::read(actual_destination.join("target.txt"))?, b"keep");
     Ok(())
 }
+
+fn paste_move(
+    id: u64,
+    destination: &Path,
+    source: &Path,
+    conflict: TransferConflict,
+) -> (LoadHandle, Rc<RefCell<Vec<OperationEvent>>>) {
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let operation = LocalOperationProvider.paste(
+        PasteRequest {
+            id: OperationRequestId(id),
+            destination: Location::local(destination),
+            items: vec![PasteItem {
+                source: Location::local(source),
+                conflict,
+            }],
+            move_sources: true,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    (operation, events)
+}
+
+#[test]
+fn cross_volume_move_keeps_the_source_when_the_removable_flush_fails() -> Result<(), Box<dyn Error>>
+{
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source_dir = root.path().join("source");
+    let destination = root.path().join("usb");
+    fs::create_dir_all(&source_dir)?;
+    fs::create_dir_all(&destination)?;
+    let source = source_dir.join("notes.txt");
+    fs::write(&source, b"keep-me")?;
+    let _guard = RemovableFlushGuard::install(root.path(), Some(io::ErrorKind::Other), true);
+
+    let (_operation, events) =
+        paste_move(90, &destination, &source, TransferConflict::FailIfExists);
+    pump_until_transfer(&events);
+
+    let observed = sync_probe_observations();
+    assert!(
+        matches!(
+            terminal_transfer(&events.borrow()),
+            Some(OperationEvent::TransferFailed { .. })
+        ),
+        "events={:?} syncs={} source_exists={}",
+        events.borrow(),
+        observed.len(),
+        source.exists()
+    );
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, OperationEvent::Pasted { .. }))
+    );
+    assert_eq!(fs::read(&source)?, b"keep-me");
+    assert_eq!(fs::read(destination.join("notes.txt"))?, b"keep-me");
+    assert!(!sync_probe_observations().is_empty());
+    Ok(())
+}
+
+#[test]
+fn cross_volume_move_flushes_the_removable_destination_before_deleting_the_source()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source_dir = root.path().join("source");
+    let destination = root.path().join("usb");
+    fs::create_dir_all(&source_dir)?;
+    fs::create_dir_all(&destination)?;
+    let source = source_dir.join("notes.txt");
+    fs::write(&source, b"moved")?;
+    let during = watch_source_during_sync(&source);
+    let _guard = RemovableFlushGuard::install(root.path(), None, true);
+
+    let (_operation, events) =
+        paste_move(91, &destination, &source, TransferConflict::FailIfExists);
+    pump_until_transfer(&events);
+    assert_eq!(
+        during
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .first()
+            .copied(),
+        Some(true),
+        "the destination flush must start before the source is deleted"
+    );
+
+    assert!(matches!(
+        terminal_transfer(&events.borrow()),
+        Some(OperationEvent::Pasted { .. })
+    ));
+    assert!(!source.exists());
+    assert_eq!(fs::read(destination.join("notes.txt"))?, b"moved");
+    Ok(())
+}
+
+#[test]
+fn replacing_move_onto_removable_media_keeps_the_source_when_the_flush_fails()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source_dir = root.path().join("source");
+    let destination = root.path().join("usb");
+    fs::create_dir_all(&source_dir)?;
+    fs::create_dir_all(&destination)?;
+    let source = source_dir.join("notes.txt");
+    fs::write(&source, b"incoming")?;
+    fs::write(destination.join("notes.txt"), b"old")?;
+    let _guard = RemovableFlushGuard::install(root.path(), Some(io::ErrorKind::Other), false);
+
+    let (_operation, events) =
+        paste_move(92, &destination, &source, TransferConflict::ReplaceExisting);
+    pump_until_transfer(&events);
+
+    assert!(matches!(
+        terminal_transfer(&events.borrow()),
+        Some(OperationEvent::TransferFailed { .. })
+    ));
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, OperationEvent::Pasted { .. }))
+    );
+    assert_eq!(fs::read(&source)?, b"incoming");
+    assert_eq!(fs::read(destination.join("notes.txt"))?, b"incoming");
+    Ok(())
+}
+
+#[test]
+fn replacing_move_flushes_the_removable_destination_before_deleting_the_source()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source_dir = root.path().join("source");
+    let destination = root.path().join("usb");
+    fs::create_dir_all(&source_dir)?;
+    fs::create_dir_all(&destination)?;
+    let source = source_dir.join("notes.txt");
+    fs::write(&source, b"incoming")?;
+    fs::write(destination.join("notes.txt"), b"old")?;
+    let during = watch_source_during_sync(&source);
+    let _guard = RemovableFlushGuard::install(root.path(), None, false);
+
+    let (_operation, events) =
+        paste_move(93, &destination, &source, TransferConflict::ReplaceExisting);
+    pump_until_transfer(&events);
+    assert_eq!(
+        during
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .first()
+            .copied(),
+        Some(true)
+    );
+
+    assert!(matches!(
+        terminal_transfer(&events.borrow()),
+        Some(OperationEvent::Pasted { .. })
+    ));
+    assert!(!source.exists());
+    assert_eq!(fs::read(destination.join("notes.txt"))?, b"incoming");
+    Ok(())
+}
+
+#[test]
+fn merging_move_onto_removable_media_keeps_the_source_when_the_flush_fails()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source");
+    let destination = root.path().join("usb");
+    fs::create_dir_all(source.join("folder"))?;
+    fs::create_dir_all(destination.join("folder"))?;
+    fs::write(source.join("folder/incoming.txt"), b"new")?;
+    fs::write(destination.join("folder/stays.txt"), b"keep")?;
+    let _guard = RemovableFlushGuard::install(root.path(), Some(io::ErrorKind::Other), false);
+
+    let (_operation, events) = paste_move(
+        94,
+        &destination,
+        &source.join("folder"),
+        TransferConflict::Merge,
+    );
+    pump_until_transfer(&events);
+
+    assert!(matches!(
+        terminal_transfer(&events.borrow()),
+        Some(OperationEvent::TransferFailed { .. })
+    ));
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, OperationEvent::Pasted { .. }))
+    );
+    assert_eq!(fs::read(source.join("folder/incoming.txt"))?, b"new");
+    assert_eq!(fs::read(destination.join("folder/incoming.txt"))?, b"new");
+    assert_eq!(fs::read(destination.join("folder/stays.txt"))?, b"keep");
+    Ok(())
+}
+
+#[test]
+fn merging_move_flushes_the_removable_destination_before_deleting_the_source()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source");
+    let destination = root.path().join("usb");
+    fs::create_dir_all(source.join("folder"))?;
+    fs::create_dir_all(destination.join("folder"))?;
+    fs::write(source.join("folder/incoming.txt"), b"new")?;
+    fs::write(destination.join("folder/stays.txt"), b"keep")?;
+    let folder = source.join("folder");
+    let during = watch_source_during_sync(&folder);
+    let _guard = RemovableFlushGuard::install(root.path(), None, false);
+
+    let (_operation, events) = paste_move(
+        95,
+        &destination,
+        &source.join("folder"),
+        TransferConflict::Merge,
+    );
+    pump_until_transfer(&events);
+    assert_eq!(
+        during
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .first()
+            .copied(),
+        Some(true)
+    );
+
+    assert!(matches!(
+        terminal_transfer(&events.borrow()),
+        Some(OperationEvent::Pasted { .. })
+    ));
+    assert!(!source.join("folder").exists());
+    assert_eq!(fs::read(destination.join("folder/incoming.txt"))?, b"new");
+    assert_eq!(fs::read(destination.join("folder/stays.txt"))?, b"keep");
+    Ok(())
+}
+
+#[test]
+fn same_filesystem_rename_is_not_held_for_the_removable_flush() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source_dir = root.path().join("source");
+    let destination = root.path().join("usb");
+    fs::create_dir_all(&source_dir)?;
+    fs::create_dir_all(&destination)?;
+    let source = source_dir.join("notes.txt");
+    fs::write(&source, b"renamed")?;
+    let during = watch_source_during_sync(&source);
+    let _guard = RemovableFlushGuard::install(root.path(), Some(io::ErrorKind::Other), false);
+
+    let (_operation, events) =
+        paste_move(96, &destination, &source, TransferConflict::FailIfExists);
+    pump_until_transfer(&events);
+    let seen = during.lock().unwrap_or_else(|error| error.into_inner());
+    assert!(
+        !seen.is_empty() && seen.iter().all(|exists| !exists),
+        "a same-filesystem rename finishes before the removable flush starts: {seen:?}"
+    );
+
+    assert!(matches!(
+        terminal_transfer(&events.borrow()),
+        Some(OperationEvent::TransferFailed { .. })
+    ));
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, OperationEvent::Pasted { .. }))
+    );
+    assert!(!source.exists());
+    Ok(())
+}

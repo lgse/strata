@@ -4,11 +4,14 @@ mod adapters;
 mod app;
 mod assets;
 mod build_info;
+mod logging;
 mod media;
 mod metrics;
 mod model;
 mod portal;
 mod portal_setup;
+#[cfg(feature = "rar")]
+mod rar_extraction;
 mod sandbox;
 mod sandbox_helper;
 mod services;
@@ -28,6 +31,7 @@ use gtk::{gio, glib, prelude::*};
 use ui::UnlockTarget;
 
 const APPLICATION_ID: &str = "io.github.lgse.Strata";
+const CAIRO_SELECTED_BY_STRATA: &str = "STRATA_CAIRO_SELECTED_BY_STRATA";
 const GVFS_PROBE_ARGUMENT: &str = "--gvfs-probe";
 const GVFS_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 const GIO_FALLBACK_BACKENDS: [(&str, &str); 2] =
@@ -66,6 +70,13 @@ fn launch_mode(arguments: &[OsString]) -> LaunchMode {
         Some("--uninstall-udiskie-unlock") => LaunchMode::UninstallUdiskie,
         _ => LaunchMode::Application,
     }
+}
+
+fn should_select_cairo(
+    supplied_renderer: Option<&std::ffi::OsStr>,
+    choice: ui::preferences::InterfaceRenderer,
+) -> bool {
+    supplied_renderer.is_none() && choice == ui::preferences::InterfaceRenderer::Cairo
 }
 
 fn version_line() -> String {
@@ -163,9 +174,26 @@ fn main() -> gtk::glib::ExitCode {
 
     install_application_identity();
     metrics::initialize();
-    if let Err(error) = tracing_subscriber::fmt::try_init() {
-        eprintln!("Unable to initialize logging: {error}");
+    logging::initialize();
+    if should_select_cairo(
+        std::env::var_os("GSK_RENDERER").as_deref(),
+        ui::preferences::PreferenceManager::shared().interface_renderer(),
+    ) {
+        // GTK selects its renderer during startup. Re-exec before initializing GTK
+        // rather than mutating the environment after libraries may start threads.
+        let Ok(executable) = std::env::current_exe() else {
+            eprintln!("Unable to locate Strata to select the Cairo renderer");
+            return gtk::glib::ExitCode::FAILURE;
+        };
+        let error = std::process::Command::new(executable)
+            .args(&arguments[1..])
+            .env("GSK_RENDERER", "cairo")
+            .env(CAIRO_SELECTED_BY_STRATA, "1")
+            .exec();
+        eprintln!("Unable to restart Strata with Cairo renderer: {error}");
+        return gtk::glib::ExitCode::FAILURE;
     }
+
     if let Err(error) = portal_setup::refresh_stale_portal() {
         tracing::warn!(%error, "could not refresh the stale Strata portal");
     }
@@ -205,16 +233,37 @@ fn main() -> gtk::glib::ExitCode {
     application.connect_handle_local_options(|_, _| ControlFlow::Continue(()));
     application.connect_startup(|_| install_x11_program_class());
     application.connect_startup(export_file_manager_interface);
-    application.connect_activate(ui::present);
-    application.connect_open(|application, files, _| {
-        if files.is_empty() {
+    application.connect_startup(|_application| ui::schedule_rollback_cleanup());
+    application.connect_activate(|application| {
+        if let Err(error) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             ui::present(application);
-        }
-        for file in files {
-            ui::present_open(application, file.clone());
+        })) {
+            tracing::error!("panic during application activation: {error:?}");
         }
     });
-    application.connect_command_line(handle_command_line);
+    application.connect_open(|application, files, _| {
+        if let Err(error) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            if files.is_empty() {
+                ui::present(application);
+            }
+            for file in files {
+                ui::present_open(application, file.clone());
+            }
+        })) {
+            tracing::error!("panic during application open: {error:?}");
+        }
+    });
+    application.connect_command_line(|application, cmdline| {
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            handle_command_line(application, cmdline)
+        })) {
+            Ok(code) => code,
+            Err(error) => {
+                tracing::error!("panic during command line handling: {error:?}");
+                glib::ExitCode::FAILURE
+            }
+        }
+    });
     application.run()
 }
 

@@ -4,6 +4,42 @@ use super::*;
 use crate::services::fold_for_search;
 
 #[test]
+fn plain_queries_tolerate_one_edit_in_a_whole_filename_word() {
+    for (name, query, expected) in [
+        ("strata-trash.svg", "trahs", true),
+        ("strata-trash.svg", "trsh", true),
+        ("strata-trash.svg", "traash", true),
+        ("strata-trash.svg", "trazh", true),
+        ("strata-trash.svg", "tras", true),
+        ("strata-trash.svg", "trashh", true),
+        ("strata-trash.svg", "xtrash", true),
+        ("strata-trash.svg", "xtrashh", false),
+        ("strata-trash.svg", "tzazh", false),
+        ("strata-search.svg", "trash", false),
+        ("strata-refresh.svg", "trash", false),
+        ("strata-sliders-horizontal.svg", "trash", false),
+        ("strata-list-checks.svg", "trash", false),
+        ("trashcan.svg", "trahs", false),
+        ("strata-t-r-a-s-h.svg", "trash", false),
+        ("cat.txt", "bat", false),
+        ("text.txt", "txt", true),
+        ("README.txt", "read", true),
+        ("trash.svg", "trahs*", false),
+        ("trash.svg", "*trahs*", false),
+        ("trash.svg", "trazh.svg", false),
+        ("RE\u{301}SUME\u{301}.txt", "résmué", true),
+        ("旅行写真.jpg", "旅写真", false),
+        ("旅行写真.jpg", "旅写行真", true),
+    ] {
+        assert_eq!(
+            filter_name_matches(&fold_for_search(name), &fold_for_search(query)),
+            expected,
+            "name={name:?}, query={query:?}",
+        );
+    }
+}
+
+#[test]
 fn filename_patterns_anchor_stars_and_preserve_literal_substrings() {
     for (name, query, expected) in [
         ("clip.MOV", "*.MOV", true),

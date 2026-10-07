@@ -2,7 +2,6 @@
 
 use std::{
     cell::{Cell, RefCell},
-    collections::HashSet,
     rc::{Rc, Weak},
 };
 
@@ -13,12 +12,16 @@ use super::{
     TransferHandlerSlot, assemble_list_row, entry_mode, entry_size, entry_type,
     install_list_drag_drop, install_modified_selection_click, install_preview_click,
     list_row_parts, metadata_fill_position, register_bound_mode_item, register_list_column_cell,
-    set_label_if_changed, set_mode_cut_style,
+    set_label_if_changed, set_mode_mark_style,
 };
 use crate::{
     app::Browser,
-    model::{FileEntry, Location},
-    ui::{accessibility, browser, thumbnail},
+    model::FileEntry,
+    ui::{
+        accessibility,
+        browser::{self, ClipboardMark, ClipboardMarks, mark_in},
+        thumbnail,
+    },
 };
 
 pub(super) struct ListFactory {
@@ -29,7 +32,7 @@ pub(super) struct ListFactory {
     pub(super) previews: Rc<Cell<bool>>,
     pub(super) activation: Rc<Cell<ClickActivation>>,
     pub(super) transfers: TransferHandlerSlot,
-    pub(super) cuts: Rc<RefCell<HashSet<Location>>>,
+    pub(super) marks: Rc<RefCell<ClipboardMarks>>,
     pub(super) columns: ListColumnLayout,
     pub(super) scrolling: Rc<Cell<bool>>,
     pub(super) bound_items: Rc<RefCell<Vec<BoundModeItem>>>,
@@ -39,12 +42,13 @@ pub(super) struct ListFactory {
 
 impl ListFactory {
     pub(super) fn build(self) -> gtk::SignalListItemFactory {
+        let setup_items = self.bound_items.clone();
         let context = Rc::new(self);
         let factory = gtk::SignalListItemFactory::new();
         let setup = context.clone();
         factory.connect_setup(move |_, item| setup.setup(item));
         factory.connect_bind(move |_, item| context.bind(item));
-        factory.connect_unbind(|_, item| thumbnail::cancel_list_item_thumbnails(item));
+        super::install_edit_unbind(&factory, &setup_items);
         factory
     }
 
@@ -59,14 +63,25 @@ impl ListFactory {
         row.register_columns(&self.columns);
         self.install_interactions(item, &row);
         item.set_child(Some(&row.widget));
-        register_bound_mode_item(&self.bound_items, item, &row.widget, &row.name);
+        let edit = crate::ui::collection_edit::EditWidgets::new(&row.field, &row.name);
+        register_bound_mode_item(&self.bound_items, item, &row.widget, &row.name, edit);
     }
 
     fn install_interactions(&self, item: &gtk::ListItem, row: &ListRow) {
+        super::install_folder_peek(
+            &row.widget,
+            item,
+            self.state.clone(),
+            self.browser.clone(),
+            self.positions.index.clone(),
+            self.positions.view.clone(),
+            self.depth,
+        );
         let slow_click = Rc::new(super::SlowClickRename::default());
         install_preview_click(
             &row.widget,
             item,
+            &row.name,
             self.browser.clone(),
             self.state.clone().unwrap_or_default(),
             self.previews.clone(),
@@ -94,12 +109,7 @@ impl ListFactory {
             self.depth,
             Some((self.positions.index.clone(), self.positions.view.clone())),
             self.state.clone(),
-            (
-                Some(row.name.upcast_ref()),
-                Some(row.icon.upcast_ref()),
-                &content_click,
-                true,
-            ),
+            (&content_click, true, slow_click),
         );
     }
 
@@ -132,18 +142,33 @@ impl ListFactory {
             row.clear();
             return;
         };
-        let pending_name = self
-            .state
+        let state = self.state.as_ref().and_then(Weak::upgrade);
+        let pending_name = state
             .as_ref()
-            .and_then(Weak::upgrade)
             .and_then(|state| state.pending_rename_name(&binding.entry));
+        let edit = super::bound_edit(&self.bound_items, item);
+        if let Some(edit) = &edit {
+            edit.bind(&binding.entry.location);
+        }
         row.bind_labels(item, &binding.entry, pending_name.as_deref());
+        crate::ui::browser::find::highlight_listing_name(
+            row.name.upcast_ref(),
+            state
+                .as_ref()
+                .and_then(|state| state.find_highlight())
+                .as_deref(),
+            &self.filter_query.borrow(),
+        );
+        if let Some(edit) = &edit {
+            edit.display.set_visible(!edit.is_editing());
+            edit.field.set_visible(edit.is_editing());
+        }
         if self.scrolling.get() {
             binding.request_thumbnail_and_metadata(&row);
             set_label_if_changed(&row.modified, &crate::util::modified_date(&binding.entry));
         } else {
-            let is_cut = self.cuts.borrow().contains(&binding.entry.location);
-            set_mode_cut_style(&row.widget, is_cut);
+            let mark = mark_in(&self.marks.borrow(), &binding.entry.location);
+            set_mode_mark_style(&row.widget, mark);
             binding.refresh_details(&row);
         }
         row.icon.set_hidden(binding.entry.is_hidden);
@@ -196,8 +221,6 @@ impl ListRow {
     }
 
     fn bind_labels(&self, item: &gtk::ListItem, entry: &FileEntry, pending_name: Option<&str>) {
-        self.name.set_visible(true);
-        self.field.set_visible(false);
         set_label_if_changed(&self.name, pending_name.unwrap_or(&entry.display_name));
         self.name
             .set_opacity(if entry.is_hidden { 0.65 } else { 1.0 });
@@ -212,7 +235,8 @@ impl ListRow {
     }
 
     fn clear(&self) {
-        set_mode_cut_style(&self.widget, false);
+        crate::ui::file_providers::bind(&self.icon, None);
+        set_mode_mark_style(&self.widget, ClipboardMark::None);
         thumbnail::show_fallback_icon(&self.icon, crate::assets::icons::DOCUMENTS, 18);
         self.icon.set_hidden(false);
         self.icon.set_base_opacity(1.0);
@@ -271,7 +295,7 @@ pub(super) fn refresh_list_section(
     depth: usize,
     source_index: &SourceIndexMap,
     section: &PaneSection,
-    cuts: &HashSet<Location>,
+    marks: &ClipboardMarks,
 ) {
     section.bound_items.borrow().iter().for_each(|bound| {
         let Some(row) = bound
@@ -294,15 +318,11 @@ pub(super) fn refresh_list_section(
         let Some(entry) = browser.entry_at(depth, position) else {
             return;
         };
-        let is_cut = cuts.contains(&entry.location);
         let is_hidden = entry.is_hidden;
-        set_mode_cut_style(&row.widget, is_cut);
+        set_mode_mark_style(&row.widget, mark_in(marks, &entry.location));
         row.name.set_opacity(if is_hidden { 0.65 } else { 1.0 });
         crate::util::set_modified_date(&row.modified, Some(&entry), "—");
         row.icon.set_hidden(is_hidden);
         row.icon.set_base_opacity(1.0);
     });
 }
-
-#[cfg(test)]
-mod tests;

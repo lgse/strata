@@ -150,7 +150,7 @@ fn show_custom_color_modal(
     chooser.grab_focus();
 }
 
-pub(super) fn show_customize_modal(
+pub(in crate::ui) fn show_customize_modal(
     parent: &impl IsA<gtk::Widget>,
     path: PathBuf,
     is_directory: bool,

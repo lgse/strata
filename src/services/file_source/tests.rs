@@ -87,8 +87,18 @@ fn backend_unavailable_message_names_the_known_smb_package() {
 
 #[test]
 fn backend_unavailable_message_falls_back_for_unknown_schemes() {
-    let message = backend_unavailable_message("dav://host/path");
-    assert!(message.contains("dav://"));
+    let message = backend_unavailable_message("afp://host/path");
+    assert!(message.contains("afp://"));
+    assert!(message.contains("distribution"));
+}
+
+#[test]
+fn backend_unavailable_message_offers_candidate_packages_for_sftp() {
+    let message = backend_unavailable_message("sftp://host.example:2222/home/user");
+    assert!(message.contains("sftp://"));
+    assert!(message.contains("gvfs-backends"));
+    assert!(message.contains("distribution"));
+    assert!(!message.contains("host.example"));
 }
 
 #[test]

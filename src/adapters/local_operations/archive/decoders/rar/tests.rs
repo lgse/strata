@@ -1,190 +1,126 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
-use std::{error::Error, sync::atomic::Ordering};
+use gtk::glib;
+use std::time::{Duration, UNIX_EPOCH};
 
 #[test]
-fn excessive_native_dictionary_is_rejected() {
-    let cancelled = AtomicBool::new(false);
-    let result = call(None, &cancelled, None, |state| {
-        assert_eq!(
-            callback(UCM_LARGEDICT, state, 2 * 1024 * 1024, 1024 * 1024),
-            -1
-        );
-        ERAR_LARGE_DICT
-    });
+fn stream_error_reports_cancelled_when_the_flag_is_set_regardless_of_message() {
+    let cancelled = AtomicBool::new(true);
     assert_eq!(
-        result
-            .expect_err("large dictionary callback must fail")
-            .to_string(),
-        LARGE_DICTIONARY
+        stream_error(Failure::from("some unrelated failure"), None, &cancelled),
+        ArchiveError::Cancelled
     );
     assert_eq!(
-        decode_result(ERAR_LARGE_DICT, None)
-            .expect_err("large dictionary code must fail")
-            .to_string(),
-        LARGE_DICTIONARY
+        stream_error(
+            Failure::from("Operation cancelled"),
+            Some(ArchiveError::PasswordRequired("member".to_owned())),
+            &cancelled
+        ),
+        ArchiveError::Cancelled
     );
 }
 
 #[test]
-fn callback_streams_bounded_chunks() -> Result<(), Box<dyn Error>> {
-    let destination = tempfile::tempdir()?;
-    let progress = Arc::new(AtomicUsize::new(0));
+fn stream_error_keeps_the_failure_kind_when_not_cancelled() {
     let cancelled = AtomicBool::new(false);
-    let mut session = ExtractionSession::open(destination.path(), &progress, &cancelled)?;
-    let chunk = [42u8; 65536];
-    let mut decode = |sink: &mut MemberSink<'_>| {
-        call(None, &cancelled, Some(sink), |state| {
-            for _ in 0..1024 {
-                assert_eq!(
-                    callback(
-                        native::UCM_PROCESSDATA,
-                        state,
-                        chunk.as_ptr() as native::LPARAM,
-                        chunk.len() as native::LPARAM
-                    ),
-                    1
-                );
-            }
-            0
-        })?;
-        Ok(())
-    };
-    session.extract_member(
-        "large.bin",
-        MemberContent::Decoded(&mut decode, 64 * 1024 * 1024),
-    )?;
-    assert_eq!(
-        std::fs::metadata(destination.path().join("large.bin"))?.len(),
-        64 * 1024 * 1024
-    );
-    assert_eq!(progress.load(Ordering::Relaxed), 1);
-    Ok(())
-}
-
-#[test]
-fn callback_cancellation_removes_partial_member() -> Result<(), Box<dyn Error>> {
-    let destination = tempfile::tempdir()?;
-    let progress = Arc::new(AtomicUsize::new(0));
-    let cancelled = AtomicBool::new(false);
-    let mut session = ExtractionSession::open(destination.path(), &progress, &cancelled)?;
-    let chunk = [42u8; 32];
-    let mut decode = |sink: &mut MemberSink<'_>| {
-        call(None, &cancelled, Some(sink), |state| {
-            assert_eq!(
-                callback(
-                    native::UCM_PROCESSDATA,
-                    state,
-                    chunk.as_ptr() as native::LPARAM,
-                    32
-                ),
-                1
-            );
-            cancelled.store(true, Ordering::Relaxed);
-            assert_eq!(
-                callback(
-                    native::UCM_PROCESSDATA,
-                    state,
-                    chunk.as_ptr() as native::LPARAM,
-                    32
-                ),
-                -1
-            );
-            native::ERAR_UNKNOWN
-        })?;
-        Ok(())
-    };
-    let result = session.extract_member("partial.bin", MemberContent::Decoded(&mut decode, 64));
-    assert_eq!(result, Err(ArchiveError::Cancelled));
-    let outcome = session.finish(result, Vec::new)?;
-    assert!(
-        matches!(outcome, ArchiveOutcome::Cancelled { completed, failed, not_attempted } if completed.is_empty() && failed.is_empty() && not_attempted.len() == 1)
-    );
-    assert!(!destination.path().join("partial.bin").exists());
-    assert_eq!(progress.load(Ordering::Relaxed), 0);
-    Ok(())
-}
-
-#[test]
-fn decoded_members_validate_paths_and_space_before_callback() -> Result<(), Box<dyn Error>> {
-    let destination = tempfile::tempdir()?;
-    let progress = Arc::new(AtomicUsize::new(0));
-    let cancelled = AtomicBool::new(false);
-    for (name, size) in [
-        ("../escape", 0),
-        ("/absolute", 0),
-        ("C:\\escape", 0),
-        ("oversized", 2),
-    ] {
-        let mut session = ExtractionSession::open_with_available_bytes(
-            destination.path(),
-            &progress,
-            &cancelled,
-            Some(1),
-        )?;
-        let mut decode = |_: &mut MemberSink<'_>| -> Result<(), ArchiveError> {
-            panic!("invalid member must not be decoded")
-        };
-        assert!(
-            session
-                .extract_member(name, MemberContent::Decoded(&mut decode, size))
-                .is_err()
-        );
-    }
-    assert_eq!(std::fs::read_dir(destination.path())?.count(), 0);
-    Ok(())
-}
-
-#[test]
-fn callback_rejects_excess_output_and_short_members() -> Result<(), Box<dyn Error>> {
-    let destination = tempfile::tempdir()?;
-    let progress = Arc::new(AtomicUsize::new(0));
-    let cancelled = AtomicBool::new(false);
-    for declared in [1, 3] {
-        let mut session = ExtractionSession::open(destination.path(), &progress, &cancelled)?;
-        let bytes = [1u8, 2];
-        let mut decode = |sink: &mut MemberSink<'_>| {
-            call(None, &cancelled, Some(sink), |state| {
-                callback(
-                    native::UCM_PROCESSDATA,
-                    state,
-                    bytes.as_ptr() as native::LPARAM,
-                    2,
-                )
-            })?;
-            Ok(())
-        };
-        assert!(
-            session
-                .extract_member("invalid.bin", MemberContent::Decoded(&mut decode, declared))
-                .is_err()
-        );
-        assert!(!destination.path().join("invalid.bin").exists());
-    }
-    Ok(())
-}
-
-#[test]
-fn rar_destination_symlink_cannot_escape() -> Result<(), Box<dyn Error>> {
-    let root = tempfile::tempdir()?;
-    let destination = root.path().join("destination");
-    std::fs::create_dir(&destination)?;
-    let outside = root.path().join("outside");
-    std::fs::write(&outside, b"untouched")?;
-    std::os::unix::fs::symlink(&outside, destination.join("VERSION"))?;
-    let archive = root.path().join("test.rar");
-    std::fs::write(&archive, super::super::super::fixtures::RAR_VERSION_FIXTURE)?;
-    assert!(
-        extract_rar(
-            &archive,
-            &destination,
+    let required = "A password is required to extract this archive.";
+    let incorrect = "The password may be incorrect.";
+    let invalid = "This file is not a valid archive or is damaged.";
+    for (failure, member_error, expected) in [
+        (
+            Failure::from(invalid),
             None,
-            &Arc::new(AtomicUsize::new(0)),
-            &AtomicBool::new(false)
-        )
-        .is_err()
+            ArchiveError::Failed(invalid.to_owned()),
+        ),
+        (
+            Failure::new(FailureKind::PasswordRequired, required),
+            None,
+            ArchiveError::PasswordRequired(required.to_owned()),
+        ),
+        (
+            Failure::new(FailureKind::IncorrectPassword, incorrect),
+            None,
+            ArchiveError::IncorrectPassword(incorrect.to_owned()),
+        ),
+        // A member error reaches the stream only as text; the session's original wins.
+        (
+            Failure::from(incorrect),
+            Some(ArchiveError::IncorrectPassword(incorrect.to_owned())),
+            ArchiveError::IncorrectPassword(incorrect.to_owned()),
+        ),
+    ] {
+        assert_eq!(
+            stream_error(failure.clone(), member_error, &cancelled),
+            expected,
+            "{failure:?}"
+        );
+    }
+}
+
+#[test]
+fn a_failed_member_trailer_keeps_its_kind_through_the_member_body() {
+    let required = Failure::new(
+        FailureKind::PasswordRequired,
+        "A password is required to extract this archive.",
     );
-    assert_eq!(std::fs::read(outside)?, b"untouched");
-    Ok(())
+    let mut stream = Vec::new();
+    crate::rar_extraction::write_file_failed(&mut stream, &required).expect("fixture stream");
+    let mut reader = std::io::Cursor::new(stream);
+    let mut body = crate::rar_extraction::FileBody::new(&mut reader, 4);
+    let error = MemberBody(&mut body)
+        .read(&mut [0; 4])
+        .expect_err("a failed trailer must fail the read");
+    assert_eq!(
+        crate::adapters::local_operations::archive::archive_read_failed(error),
+        ArchiveError::PasswordRequired(required.message)
+    );
+}
+
+#[test]
+fn wire_metadata_maps_to_member_metadata() {
+    let at = |seconds| Some(UNIX_EPOCH + Duration::from_secs(seconds));
+    let dos_local = glib::DateTime::from_local(2015, 8, 7, 17, 21, 8.0)
+        .expect("valid local time")
+        .to_unix();
+    for (mode, modified, expected) in [
+        (None, None, None),
+        // 2015-08-07 17:21:08 UTC as a Windows FILETIME.
+        (
+            Some(0o100_644),
+            Some(WireTime::FileTime(130_834_416_680_000_000)),
+            at(1_438_968_068),
+        ),
+        // The same wall-clock time as a DOS date and time, read as local time.
+        (
+            None,
+            Some(WireTime::DosLocal(0x4707_8AA4)),
+            at(dos_local.try_into().expect("after 1970")),
+        ),
+        (None, Some(WireTime::FileTime(1)), None),
+    ] {
+        assert_eq!(
+            member_metadata(WireMetadata { mode, modified }, false),
+            MemberMetadata {
+                mode,
+                modified: expected,
+            }
+        );
+    }
+    for (mode, directory, applied) in [
+        (0o040_755, true, true),
+        (0o040_755, false, false),
+        (0o100_644, true, false),
+        (0o120_777, false, false),
+    ] {
+        let wire = WireMetadata {
+            mode: Some(mode),
+            modified: None,
+        };
+        assert_eq!(
+            member_metadata(wire, directory).mode,
+            applied.then_some(mode),
+            "{mode:o}"
+        );
+    }
 }

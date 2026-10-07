@@ -14,7 +14,7 @@ pub(super) fn update_results(
     selection: &gtk::MultiSelection,
     syncing: &Cell<bool>,
     items: Vec<SearchItem>,
-) {
+) -> bool {
     let selected_paths: HashSet<_> = bitset_positions(&selection.selection())
         .into_iter()
         .filter_map(|position| {
@@ -55,4 +55,10 @@ pub(super) fn update_results(
     }
     selection.set_selection(&selected, &gtk::Bitset::new_range(0, items.len() as u32));
     syncing.set(was_syncing);
+    let retained: HashSet<_> = items
+        .iter()
+        .filter(|item| selected_paths.contains(&item.path))
+        .map(|item| item.path.clone())
+        .collect();
+    retained != selected_paths
 }

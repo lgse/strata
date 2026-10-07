@@ -8,6 +8,8 @@ from pathlib import Path
 
 GIB = 1024**3
 MAX_AUTO_WORKERS = 16
+TASK_RESERVE = 128
+TASKS_PER_WORKER = 256
 
 
 def _read(path: Path) -> str:
@@ -80,11 +82,41 @@ def available_resources(proc: Path = Path("/proc")) -> tuple[float, int]:
     return cpus, memory
 
 
-def worker_count(cpus: float, memory: int, override: str = "auto") -> int:
+def available_tasks(proc: Path = Path("/proc")) -> int:
+    remaining = None
+    for directory in cgroup_directories(proc):
+        try:
+            candidate = max(
+                0,
+                int(_read(directory / "pids.max"))
+                - int(_read(directory / "pids.current")),
+            )
+            remaining = candidate if remaining is None else min(remaining, candidate)
+        except ValueError:
+            pass
+    return remaining or 0
+
+
+def worker_count(
+    cpus: float, memory: int, override: str = "auto", tasks: int = 0
+) -> int:
     if override != "auto":
         if not override.isdecimal() or int(override) < 1:
             raise ValueError("STRATA_E2E_WORKERS must be 'auto' or a positive integer")
         return int(override)
-    # Leave memory for the controller and infrastructure. Each worker runs
-    # Strata, Xvfb, and two buses; CPU oversubscription destabilizes GUI timing.
-    return max(1, min(MAX_AUTO_WORKERS, int(cpus / 2), (memory - GIB) // (2 * GIB)))
+    # Leave memory and task slots for the controller and infrastructure. Each
+    # worker runs Strata, Xvfb, two buses, and toolkit/media worker threads.
+    task_workers = (
+        max(1, (tasks - TASK_RESERVE) // TASKS_PER_WORKER)
+        if tasks
+        else MAX_AUTO_WORKERS
+    )
+    return max(
+        1,
+        min(
+            MAX_AUTO_WORKERS,
+            int(cpus / 2),
+            (memory - GIB) // (2 * GIB),
+            task_workers,
+        ),
+    )

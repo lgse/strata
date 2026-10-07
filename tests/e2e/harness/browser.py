@@ -7,11 +7,12 @@ in widget nesting is absorbed here instead of in twelve test files.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
 from . import screenshots, tree
-from .application import Application
+from .application import APPLICATION_NAME, Application
 from .environment import TestEnvironment
 from .fixtures import FixtureTree
 from .display import HeadlessDisplay
@@ -19,6 +20,7 @@ from .interaction import Keyboard, Pointer
 from .tree import Bounds, Node, wait_until
 
 ENTRY_ROLES = ("list item", "table cell")
+MENU_RETRY_INTERVAL = 1.0
 
 
 def _row_label_matches(node: Node) -> bool:
@@ -104,9 +106,11 @@ class Strata:
         return pane.find(description=ENTRY_CONTAINER_DESCRIPTION)
 
     def view_mode(self) -> str:
-        containers = self.containers()
-        if not containers:
-            raise AssertionError("no browser pane is on screen")
+        # Resizes can transiently remove panes from the accessibility tree.
+        containers = self.wait(
+            lambda: self.containers() or None,
+            "a browser pane to be on screen",
+        )
         return VIEW_DESCRIPTIONS[containers[0].description]
 
     def wait_for_view(self, mode: str) -> None:
@@ -165,6 +169,10 @@ class Strata:
             lambda: self.current_directory() == name,
             f"the browser to be working in {name!r}",
         )
+        # Column navigation may still be scrolling after the location changes.
+        pane = self._pane_or_none(name) or self._pane_or_none(None)
+        if pane is not None:
+            self.settle(pane)
 
     # ---------------------------------------------------------------- entries
 
@@ -205,14 +213,28 @@ class Strata:
     def matches(self, directory: str | None = None) -> list[str]:
         """What a recursive query currently lists.
 
-        Columns replaces the pane's own listing with the matches; the
-        single-pane views show them in a separate results list.
+        Columns replaces the pane's own listing with the matches; each
+        single-pane view shows them in a mode-consistent results collection.
         """
 
         results = self.window.find(role="list", name=SEARCH_RESULTS_LABEL)
+        result_role = "list item"
+        if results is None:
+            results = self.window.find(role="table", name=SEARCH_RESULTS_LABEL)
+            result_role = "table cell"
         if results is not None:
-            return [row.name for row in results.find_all(role="list item") if row.name]
+            return [row.name for row in results.find_all(role=result_role) if row.name]
         return self.entry_names(directory)
+
+    def search_result(self, name: str) -> Node | None:
+        results = self.window.find(role="list", name=SEARCH_RESULTS_LABEL)
+        role = "list item"
+        if results is None:
+            results = self.window.find(role="table", name=SEARCH_RESULTS_LABEL)
+            role = "table cell"
+        if results is not None:
+            return results.find(role=role, name=name)
+        return self.window.find(role="list item", name=name)
 
     def entry_names(self, directory: str | None = None) -> list[str]:
         return [node.name for node in self.entries(directory)]
@@ -334,7 +356,7 @@ class Strata:
             return self.wait(
                 lambda: self._selected_entry_or_none(name, directory),
                 f"{name!r} to become selected",
-                timeout=1.0,
+                timeout=4.0,
             )
         except tree.TreeTimeout:
             # A faster poll can click a row before GTK has it mapped for
@@ -373,7 +395,6 @@ class Strata:
             pane = self.pane(directory)
         container = self._entry_container_in(pane)
         if container is None:
-            # The bottom edge can be Columns' paste-target footer, not its content.
             return pane.screen_bounds().center
         bounds = container.screen_bounds()
         entries = self._entries_in(pane)
@@ -391,24 +412,10 @@ class Strata:
         self.pointer.move_to(*self.empty_point(directory))
         return pane
 
-    def paste_target(self) -> str | None:
-        """The pane Strata says Ctrl+V would paste into."""
-
-        for pane in self.containers():
-            if pane.find(role="label", name_matches="Paste here"):
-                return pane.name
-        return None
-
     def paste_into(self, directory: str | None = None) -> None:
         """Aim the paste at a pane, then paste into it."""
 
-        pane = self.hover_pane(directory)
-        # Columns marks the pane Ctrl+V would target; the single-pane views
-        # have only one candidate and show no marker.
-        self.wait(
-            lambda: self.paste_target() in (pane.name, None),
-            f"the paste target to become {pane.name!r}",
-        )
+        self.hover_pane(directory)
         self.keyboard.press("ctrl+v")
 
     # Enough steps to cross any fixture directory in the suite.
@@ -473,10 +480,22 @@ class Strata:
         if button is None:
             raise AssertionError("the Appearance button is missing")
         self.pointer.click(button)
-        return self.wait(
-            lambda: self.window.find(role="button", name="Columns"),
-            "the appearance menu to open",
-        )
+        clicked = time.monotonic()
+
+        def opened() -> Node | None:
+            nonlocal clicked
+            menu = self.window.find(role="button", name="Columns")
+            if (
+                menu is None
+                and time.monotonic() - clicked > MENU_RETRY_INTERVAL
+                and not button.has_state("checked")
+            ):
+                # A late startup focus change can close the menu as it opens.
+                self.pointer.click(button)
+                clicked = time.monotonic()
+            return menu
+
+        return self.wait(opened, "the appearance menu to open")
 
     def switch_view(self, mode: str) -> None:
         """Switch presentation through the appearance menu."""
@@ -556,6 +575,33 @@ class Strata:
             lambda: self.window.find(role="text", states={"editable", "focused"}),
             "an editable field to take focus",
         )
+
+    def destination_chooser(self, title: str) -> Node:
+        def chooser():
+            application = tree.find_application(APPLICATION_NAME)
+            return application.find(name=title) if application is not None else None
+
+        return self.wait(chooser, f"the floating {title} chooser")
+
+    def navigate_destination(self, chooser: Node, destination: Path) -> None:
+        self.keyboard.press("ctrl+l")
+        field = self.wait(
+            lambda: chooser.find(role="text", states={"editable", "focused"}),
+            "the chooser path entry",
+        )
+        self.keyboard.press("ctrl+a")
+        self.keyboard.type_text(str(destination))
+        self.wait(lambda: field.text == str(destination), "the destination path")
+        self.keyboard.press("Return")
+        self.wait(
+            lambda: chooser.find(role="label", name=destination.name, description=str(destination)),
+            "the destination breadcrumb",
+        )
+
+    def confirm_destination(self, chooser: Node, label: str) -> None:
+        button = self.wait(lambda: chooser.find(role="button", name=label), "the destination action")
+        self.pointer.click(button)
+        self.wait(lambda: not chooser.is_rendered(), "the destination chooser to close")
 
     def preview(self) -> Node | None:
         """The quick preview drawer, when it is on screen."""

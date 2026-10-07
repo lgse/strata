@@ -1,12 +1,19 @@
 // SPDX-License-Identifier: MIT
 
+use std::rc::Weak;
+
 use super::*;
 use crate::ui::{
     browser::{BrowserView, COLUMN_WIDTH, WeakBrowserView},
     browser_modes::BrowserMode,
+    window::{
+        MIN_SIDEBAR_WIDTH, SidebarState, SidebarView, preferred_sidebar_width, sidebar_rail_width,
+    },
 };
 
 const MIN_COLUMN_MULTIPLIER: i32 = 2;
+const MIN_SPLIT_PREVIEW_WIDTH: i32 = 240;
+const RAIL_RELEASE_MARGIN: i32 = 24;
 
 #[derive(Default)]
 pub(super) struct SplitSizing {
@@ -16,6 +23,8 @@ pub(super) struct SplitSizing {
     suspended: Cell<bool>,
     resume_media: Cell<bool>,
     reload_on_resume: Cell<bool>,
+    sidebar_railed: Cell<bool>,
+    sidebar_saved_width: Cell<i32>,
 }
 
 impl SplitSizing {
@@ -39,6 +48,13 @@ impl SplitSizing {
         }
     }
 
+    pub(super) fn browser(&self) -> Option<BrowserView> {
+        self.binding
+            .borrow()
+            .as_ref()
+            .and_then(|binding| binding.browser.upgrade())
+    }
+
     pub(super) fn is_suspended(&self) -> bool {
         self.suspended.get()
     }
@@ -47,22 +63,23 @@ impl SplitSizing {
 struct BrowserBinding {
     content: glib::WeakRef<gtk::Paned>,
     browser: WeakBrowserView,
+    sidebar: Option<Weak<SidebarState>>,
 }
 
 #[derive(Clone, Copy)]
 struct Geometry {
     available: i32,
     occupied: i32,
+    trailing: i32,
     start_minimum: i32,
+    show_minimum: i32,
     separator: i32,
     columns: bool,
-    icons: bool,
 }
 
 impl Geometry {
     fn can_show_preview(self) -> bool {
-        self.available > 0
-            && (!(self.columns || self.icons) || self.maximum_width() >= COLUMN_WIDTH)
+        self.available - self.separator - self.show_minimum >= MIN_SPLIT_PREVIEW_WIDTH
     }
 
     fn maximum_width(self) -> i32 {
@@ -80,7 +97,7 @@ impl Geometry {
         minimum.min(self.maximum_width())
     }
 
-    fn preview_width(self, manual: Option<i32>) -> i32 {
+    fn desired_width(self, manual: Option<i32>) -> i32 {
         let free = (self.available - self.separator - self.occupied).max(0);
         let desired = manual.unwrap_or_else(|| {
             if self.columns {
@@ -92,8 +109,24 @@ impl Geometry {
         desired.clamp(self.minimum_width(manual.is_some()), self.maximum_width())
     }
 
+    fn preview_width(self, manual: Option<i32>) -> i32 {
+        self.desired_width(manual).max(MIN_SPLIT_PREVIEW_WIDTH)
+    }
+
     fn position(self, manual: Option<i32>) -> i32 {
         self.available - self.separator - self.preview_width(manual)
+    }
+
+    fn empty_slot_minimum(self, manual: bool) -> i32 {
+        (self.minimum_width(manual) - self.trailing).max(0)
+    }
+
+    fn empty_slot_width(self, manual: Option<i32>) -> i32 {
+        (self.desired_width(manual) - self.trailing).max(0)
+    }
+
+    fn empty_slot_position(self, manual: Option<i32>) -> i32 {
+        self.available - self.separator - self.empty_slot_width(manual)
     }
 }
 
@@ -108,7 +141,7 @@ fn separator(split: &gtk::Paned) -> Option<gtk::Widget> {
     None
 }
 
-fn separator_width(split: &gtk::Paned) -> i32 {
+pub(in crate::ui) fn separator_width(split: &gtk::Paned) -> i32 {
     separator(split).map_or(0, |handle| {
         handle.measure(gtk::Orientation::Horizontal, -1).0
     })
@@ -117,7 +150,7 @@ fn separator_width(split: &gtk::Paned) -> i32 {
 fn sidebar_width(content: &gtk::Paned) -> i32 {
     if content
         .start_child()
-        .is_some_and(|child| child.is_visible())
+        .is_some_and(|child| child.get_visible())
     {
         content.position() + separator_width(content)
     } else {
@@ -131,24 +164,81 @@ impl PreviewDrawer {
         split: &gtk::Paned,
         content: &gtk::Paned,
         browser: &BrowserView,
+        sidebar: Option<&SidebarView>,
     ) {
         self.state.split.replace(Some(split.clone()));
         self.state.sizing.binding.replace(Some(BrowserBinding {
             content: content.downgrade(),
             browser: browser.downgrade(),
+            sidebar: sidebar.map(|sidebar| Rc::downgrade(&sidebar.state)),
         }));
+        self.state.refresh_panel_action();
         browser.bind_preview_scrolling(&self.state.revealer);
-        split.set_end_child(Some(&self.state.revealer));
+        let weak = Rc::downgrade(&self.state);
+        browser.connect_view_mode_changed(move |_| {
+            if let Some(state) = weak.upgrade() {
+                state.refresh_panel_action();
+                if !state.is_enabled() && !state.reserves_column_space() {
+                    state.hide_panel();
+                    state.release_sidebar_rail();
+                }
+            }
+        });
+        let weak = Rc::downgrade(&self.state);
+        let weak_browser = browser.downgrade();
+        browser.connect_search_selection_changed(Rc::new(move || {
+            let request_at_selection = weak.upgrade().and_then(|state| state.current_request.get());
+            let weak = weak.clone();
+            let weak_browser = weak_browser.clone();
+            glib::idle_add_local_once(move || {
+                let Some(state) = weak.upgrade().filter(|state| {
+                    state.is_enabled() && state.current_request.get() == request_at_selection
+                }) else {
+                    return;
+                };
+                let Some(browser) = weak_browser.upgrade() else {
+                    return;
+                };
+                if browser.selected_search_results().is_none() {
+                    return;
+                }
+                let entry = if browser.results_replace_listing() {
+                    browser
+                        .browser()
+                        .active_depth()
+                        .and_then(|depth| browser.displayed_cursor_entry(depth))
+                } else {
+                    browser.selected_search_result()
+                };
+                if let Some(entry) = preview_target(entry) {
+                    state.show_after_focus_change(entry, browser.browser().active_depth());
+                } else {
+                    state.clear_target();
+                }
+            });
+        }));
+        split.set_end_child(Some(&self.state.slot));
         self.state.revealer.set_visible(self.state.is_enabled());
+        self.state
+            .slot
+            .set_visible(self.state.is_enabled() || self.state.reserves_column_space());
         let weak = Rc::downgrade(&self.state);
         split.add_tick_callback(move |split, _| {
             let Some(state) = weak.upgrade() else {
                 return glib::ControlFlow::Break;
             };
-            if state.is_enabled() {
+            if state.is_enabled() || state.reserves_column_space() {
                 state.sync_split(split);
             }
             glib::ControlFlow::Continue
+        });
+        let weak = Rc::downgrade(&self.state);
+        split.connect_unmap(move |_| {
+            if let Some(state) = weak.upgrade()
+                && state.is_enabled()
+            {
+                state.suspend_panel();
+            }
         });
         let weak = Rc::downgrade(&self.state);
         split.connect_unrealize(move |_| {
@@ -183,15 +273,35 @@ impl PreviewState {
         )
     }
 
+    pub(super) fn slot_is_empty(&self) -> bool {
+        self.current.borrow().is_none() && !self.reserves_empty_preview()
+    }
+
     pub(super) fn reserves_empty_preview(&self) -> bool {
         self.is_enabled()
+            && !self.child_pane.get()
             && self
                 .sizing
                 .binding
                 .borrow()
                 .as_ref()
                 .and_then(|binding| binding.browser.upgrade())
-                .is_some_and(|browser| browser.view_mode() == BrowserMode::Icons)
+                .is_some_and(|browser| {
+                    matches!(
+                        browser.view_mode(),
+                        BrowserMode::Columns | BrowserMode::Icons
+                    )
+                })
+    }
+
+    pub(super) fn browsing_columns(&self) -> bool {
+        self.sizing
+            .browser()
+            .is_some_and(|browser| browser.view_mode() == BrowserMode::Columns)
+    }
+
+    pub(super) fn reserves_column_space(&self) -> bool {
+        self.reserve_columns.get() && self.browsing_columns()
     }
 
     fn geometry(&self, split: &gtk::Paned) -> Geometry {
@@ -199,39 +309,67 @@ impl PreviewState {
         let mut geometry = Geometry {
             available,
             occupied: available.saturating_sub(DEFAULT_WIDTH),
-            start_minimum: split
-                .start_child()
-                .map_or(0, |child| child.measure(gtk::Orientation::Horizontal, -1).0),
+            trailing: 0,
+            start_minimum: 0,
+            show_minimum: 0,
             separator: separator_width(split),
             columns: false,
-            icons: false,
         };
         if let Some(binding) = self.sizing.binding.borrow().as_ref()
             && let Some(content) = binding.content.upgrade()
             && let Some(browser) = binding.browser.upgrade()
         {
-            let sidebar = sidebar_width(&content);
+            let sidebar = self.intended_sidebar_width(binding, &content);
             geometry.columns = browser.view_mode() == BrowserMode::Columns;
-            geometry.icons = browser.view_mode() == BrowserMode::Icons;
             geometry.occupied =
-                sidebar + browser.preview_occupied_width((available - sidebar).max(0));
+                sidebar + browser.preview_navigated_width((available - sidebar).max(0));
             if geometry.columns {
-                geometry.start_minimum = geometry.start_minimum.max(sidebar.saturating_add(
-                    browser.preview_navigation_width(
-                        (available - sidebar - geometry.separator - COLUMN_WIDTH).max(0),
-                    ),
-                ));
-            } else if geometry.icons {
-                geometry.start_minimum = geometry
-                    .start_minimum
-                    .max(sidebar.saturating_add(COLUMN_WIDTH));
+                geometry.trailing = browser.preview_trailing_width();
+                geometry.start_minimum = sidebar.saturating_add(browser.preview_navigation_width());
+                geometry.show_minimum =
+                    sidebar.saturating_add(browser.preview_standard_navigation_width());
+            } else {
+                geometry.start_minimum = sidebar.saturating_add(COLUMN_WIDTH);
+                geometry.show_minimum = geometry.start_minimum;
             }
         }
         geometry
     }
 
+    // Budget the intended sidebar width so a clamped divider can recover.
+    fn intended_sidebar_width(&self, binding: &BrowserBinding, content: &gtk::Paned) -> i32 {
+        let current = sidebar_width(content);
+        if current == 0
+            || binding
+                .sidebar
+                .as_ref()
+                .and_then(Weak::upgrade)
+                .is_some_and(|sidebar| sidebar.rail.get())
+        {
+            return current;
+        }
+        current.max(self.saved_sidebar_width(binding) + separator_width(content))
+    }
+
+    fn saved_sidebar_width(&self, binding: &BrowserBinding) -> i32 {
+        binding
+            .sidebar
+            .as_ref()
+            .and_then(Weak::upgrade)
+            .and_then(|sidebar| sidebar.saved_width.get())
+            .unwrap_or_else(|| {
+                let saved = self.sizing.sidebar_saved_width.get();
+                if saved > 0 {
+                    saved
+                } else {
+                    preferred_sidebar_width()
+                }
+            })
+            .max(MIN_SIDEBAR_WIDTH)
+    }
+
     pub(super) fn can_show_in(&self, split: &gtk::Paned) -> bool {
-        self.geometry(split).can_show_preview()
+        split.is_mapped() && self.geometry(split).can_show_preview()
     }
 
     fn preserve_column_positions(&self, content_width: i32) {
@@ -244,25 +382,102 @@ impl PreviewState {
     }
 
     pub(super) fn show_panel(&self) {
+        if let Some(binding) = self.sizing.binding.borrow().as_ref()
+            && let Some(browser) = binding.browser.upgrade()
+        {
+            browser.clear_preview_scroll_space();
+        }
         self.revealer.set_transition_duration(0);
         self.pane.set_width_request(0);
+        self.slot.set_visible(true);
         self.revealer.set_visible(true);
         self.revealer.set_reveal_child(true);
     }
 
+    pub(super) fn release_sidebar_rail(&self) {
+        if !self.sizing.sidebar_railed.replace(false) {
+            return;
+        }
+        if let Some(binding) = self.sizing.binding.borrow().as_ref()
+            && let Some(content) = binding.content.upgrade()
+        {
+            let available = content
+                .root()
+                .map_or_else(|| content.width(), |r| r.width());
+            let needs_full = preferred_sidebar_width() + COLUMN_WIDTH + 1;
+            let keep_railed = available > 0 && available < needs_full;
+            let sidebar = binding.sidebar.as_ref().and_then(Weak::upgrade);
+            if let Some(sidebar) = sidebar.as_ref() {
+                sidebar.set_rail(keep_railed);
+            }
+            if content
+                .start_child()
+                .is_some_and(|sidebar| sidebar.get_visible())
+            {
+                if keep_railed {
+                    content.set_position(sidebar_rail_width());
+                } else {
+                    let restore = sidebar
+                        .as_ref()
+                        .and_then(|s| s.saved_width.get())
+                        .unwrap_or_else(|| {
+                            let saved = self.sizing.sidebar_saved_width.get();
+                            if saved > 0 {
+                                saved
+                            } else {
+                                preferred_sidebar_width()
+                            }
+                        })
+                        .max(MIN_SIDEBAR_WIDTH);
+                    content.set_position(restore);
+                }
+            }
+        }
+    }
+
     pub(super) fn hide_panel(&self) {
-        if self.revealer.is_visible()
-            && let Some(split) = self.split.borrow().as_ref()
+        let restore_browser_focus =
+            self.pane
+                .root()
+                .and_then(|root| root.focus())
+                .is_some_and(|focused| {
+                    focused == self.pane
+                    || focused.is_ancestor(&self.pane)
+                    // GTK may focus a divider while allocating a smaller split.
+                    || self.split.borrow().as_ref().is_some_and(|split| split.has_focus())
+                    || self.sizing.binding.borrow().as_ref().is_some_and(|binding| {
+                        binding.content.upgrade().is_some_and(|content| content.has_focus())
+                    })
+                });
+        let keep_slot = self.reserves_column_space();
+        if let Some(split) = self.split.borrow().as_ref()
+            && self.revealer.is_visible()
+            && !keep_slot
         {
             self.preserve_column_positions(split.width());
         }
         self.revealer.set_transition_duration(0);
         self.revealer.set_reveal_child(false);
         self.revealer.set_visible(false);
-        if let Some(split) = self.split.borrow().as_ref() {
+        if !keep_slot && let Some(split) = self.split.borrow().as_ref() {
+            self.slot.set_visible(false);
             split.set_resize_start_child(true);
             split.set_resize_end_child(false);
             split.set_position(split.width());
+        }
+        if restore_browser_focus
+            && let Some(split) = self.split.borrow().as_ref()
+            && let Some(browser) = self
+                .sizing
+                .binding
+                .borrow()
+                .as_ref()
+                .and_then(|binding| binding.browser.upgrade())
+        {
+            split.add_tick_callback(move |_, _| {
+                browser.focus_file_view();
+                glib::ControlFlow::Break
+            });
         }
     }
 
@@ -281,47 +496,197 @@ impl PreviewState {
         if let Some(media) = media {
             media.pause();
         }
-        let had_focus = self
-            .pane
-            .root()
-            .and_then(|root| root.focus())
-            .is_some_and(|focused| focused == self.pane || focused.is_ancestor(&self.pane));
         self.hide_panel();
-        if had_focus
-            && let Some(binding) = self.sizing.binding.borrow().as_ref()
-            && let Some(browser) = binding.browser.upgrade()
-        {
-            browser.browser().focus_active();
-        }
     }
 
     pub(super) fn sync_split(self: &Rc<Self>, split: &gtk::Paned) {
+        let mut geometry = self.geometry(split);
+        let reserved = self.reserves_column_space();
+        let preview_present =
+            self.current.borrow().is_some() || self.reserves_empty_preview() || reserved;
+        if preview_present
+            && let Some(binding) = self.sizing.binding.borrow().as_ref()
+            && let Some(content) = binding.content.upgrade()
+        {
+            let sidebar = binding.sidebar.as_ref().and_then(Weak::upgrade);
+            let visible = content
+                .start_child()
+                .is_some_and(|sidebar| sidebar.get_visible());
+            let is_railed = sidebar.as_ref().is_some_and(|s| s.rail.get());
+            let saved_width = sidebar
+                .as_ref()
+                .and_then(|s| s.saved_width.get())
+                .unwrap_or_else(|| {
+                    let saved = self.sizing.sidebar_saved_width.get();
+                    if saved > 0 {
+                        saved
+                    } else {
+                        preferred_sidebar_width()
+                    }
+                })
+                .max(MIN_SIDEBAR_WIDTH);
+            let full = if sidebar.is_none() {
+                0
+            } else if is_railed || !visible {
+                saved_width.max(preferred_sidebar_width())
+            } else {
+                // A manually narrowed sidebar must not prevent railing.
+                content.position().max(preferred_sidebar_width())
+            };
+            let content_sep = separator_width(&content);
+            let resizing_columns = binding
+                .browser
+                .upgrade()
+                .is_some_and(|browser| browser.is_resizing_columns());
+            let occupied = if let Some(browser) = binding.browser.upgrade() {
+                if geometry.columns {
+                    browser.preview_standard_navigation_width()
+                } else {
+                    COLUMN_WIDTH
+                }
+            } else {
+                COLUMN_WIDTH
+            };
+            // A previously clamped manual width must not defeat the preview minimum.
+            let preview_needed = self
+                .sizing
+                .manual_width
+                .get()
+                .unwrap_or(MIN_SPLIT_PREVIEW_WIDTH)
+                .max(MIN_SPLIT_PREVIEW_WIDTH);
+            let needs = full + content_sep + occupied + geometry.separator + preview_needed;
+            let content_has_room = content.width() <= 0 || content.width() >= full + COLUMN_WIDTH;
+            // Measure outside the split so railing cannot change its own threshold.
+            let available = split
+                .parent()
+                .map(|parent| parent.width())
+                .filter(|width| *width > 0)
+                .unwrap_or(geometry.available);
+            // Hysteresis prevents toggling at the threshold.
+            let wants_rail = if is_railed {
+                available < needs + RAIL_RELEASE_MARGIN
+            } else {
+                available < needs
+            };
+            let change_applies = !resizing_columns
+                && !self.sizing.resizing.get()
+                && if wants_rail {
+                    !is_railed && sidebar.is_some()
+                } else {
+                    is_railed && content_has_room
+                };
+            let squeezed_room = !is_railed
+                && visible
+                && !wants_rail
+                && !resizing_columns
+                && !self.sizing.resizing.get()
+                && content.position() < saved_width
+                && content.width() >= saved_width + content_sep + COLUMN_WIDTH;
+            if squeezed_room {
+                content.set_position(saved_width);
+                geometry = self.geometry(split);
+            }
+            if change_applies {
+                if wants_rail {
+                    if visible {
+                        let squeezed =
+                            content.position() + content_sep + COLUMN_WIDTH >= content.width();
+                        let width = if squeezed {
+                            saved_width
+                        } else {
+                            content.position().max(MIN_SIDEBAR_WIDTH)
+                        };
+                        self.sizing.sidebar_saved_width.set(width);
+                        if let Some(sidebar) = sidebar.as_ref() {
+                            sidebar.saved_width.set(Some(width));
+                        }
+                    }
+                    if let Some(sidebar) = sidebar.as_ref() {
+                        sidebar.set_rail(true);
+                    }
+                    if visible {
+                        content.set_position(sidebar_rail_width());
+                    }
+                    self.sizing.sidebar_railed.set(true);
+                } else {
+                    if let Some(sidebar) = sidebar.as_ref() {
+                        sidebar.set_rail(false);
+                    }
+                    if visible {
+                        content.set_position(saved_width);
+                    }
+                    self.sizing.sidebar_railed.set(false);
+                }
+                geometry = self.geometry(split);
+            }
+        }
+        // Keep the slot even below the content threshold to prevent scroll clamping.
+        let bare = reserved
+            && (self.slot_is_empty() || !split.is_mapped() || !geometry.can_show_preview());
+        if bare {
+            if self.sizing.resizing.get() {
+                return;
+            }
+            if self.current.borrow().is_some() {
+                self.suspend_panel();
+            } else if self.revealer.reveals_child() {
+                self.hide_panel();
+            }
+            let manual = self.sizing.manual_width.get();
+            self.slot.set_visible(true);
+            let position = geometry.empty_slot_position(manual);
+            let slot_fills_free_space =
+                manual.is_none() && position == geometry.occupied.saturating_add(geometry.trailing);
+            // A stale minimum would over-allocate the slot for one shrinking frame.
+            self.slot.set_width_request(if slot_fills_free_space {
+                0
+            } else {
+                geometry.empty_slot_minimum(manual.is_some())
+            });
+            split.set_resize_start_child(!slot_fills_free_space);
+            split.set_resize_end_child(slot_fills_free_space);
+            split.set_position(position);
+            return;
+        }
+        self.slot.set_width_request(0);
         if self.current.borrow().is_none() {
-            if !self.reserves_empty_preview() {
+            let reserves_empty_preview = self.reserves_empty_preview();
+            if !reserves_empty_preview || !geometry.can_show_preview() {
                 if self.revealer.reveals_child() {
                     self.hide_panel();
+                }
+                if !reserves_empty_preview {
+                    self.release_sidebar_rail();
+                    self.sizing.suspended.set(false);
                 }
                 return;
             }
             self.show_placeholder();
         }
-        let geometry = self.geometry(split);
-        if !geometry.can_show_preview() {
+        if !split.is_mapped() || !geometry.can_show_preview() {
             self.suspend_panel();
             return;
         }
         if self.animating.get() || self.sizing.resizing.get() {
             return;
         }
-        split.set_resize_start_child(true);
-        split.set_resize_end_child(false);
+        // GTK allocates after this tick; free-space previews must absorb window
+        // growth instead of correcting the browser's divider on the next frame.
+        let manual = self.sizing.manual_width.get();
+        let position = geometry.position(manual);
+        let preview_fills_free_space =
+            geometry.columns && manual.is_none() && position == geometry.occupied;
+        split.set_resize_start_child(!preview_fills_free_space);
+        split.set_resize_end_child(preview_fills_free_space);
         let restored = self.sizing.suspended.replace(false);
         if restored || !self.revealer.reveals_child() {
             self.show_panel();
         }
-        let manual = self.sizing.manual_width.get();
-        let minimum = geometry.minimum_width(manual.is_some());
-        let position = geometry.position(manual);
+        let minimum = if preview_fills_free_space {
+            0
+        } else {
+            geometry.minimum_width(manual.is_some())
+        };
         if self.pane.width_request() != minimum || split.position() != position {
             self.pane.set_width_request(minimum);
             split.set_position(position);
@@ -331,18 +696,19 @@ impl PreviewState {
         {
             browser.clear_preview_scroll_space();
         }
-        if restored {
-            if self.sizing.reload_on_resume.replace(false) {
-                let entry = self.current.borrow().clone();
-                if let Some(entry) = entry {
-                    self.load(entry, 0);
-                }
-            } else if self.sizing.resume_media.replace(false) {
-                let media = self.media.borrow().clone();
-                if let Some(media) = media {
-                    media.play();
-                }
+        if self.sizing.reload_on_resume.replace(false) {
+            let entry = self.current.borrow().clone();
+            if let Some(entry) = entry {
+                self.load(entry, 0);
             }
+        } else if restored && self.sizing.resume_media.replace(false) {
+            let media = self.media.borrow().clone();
+            if let Some(media) = media {
+                media.play();
+            }
+        }
+        if restored {
+            self.resume_keyboard_claim();
         }
     }
 
@@ -357,7 +723,14 @@ impl PreviewState {
     }
 
     pub(super) fn animate_open(self: &Rc<Self>, split: &gtk::Paned) {
+        self.sync_split(split);
+        if self.reserves_column_space() {
+            return;
+        }
         let geometry = self.geometry(split);
+        if !geometry.can_show_preview() {
+            return;
+        }
         let target = geometry.position(self.sizing.manual_width.get());
         let start = split.width();
         // The animation owns the divider, including after a resize while the pane was hidden.
@@ -404,7 +777,15 @@ impl PreviewState {
 
     pub(super) fn resize_preview(self: &Rc<Self>, split: &gtk::Paned, position: i32) {
         let geometry = self.geometry(split);
-        let width = (geometry.available - geometry.separator - position)
+        if !geometry.can_show_preview() {
+            return;
+        }
+        let lent = if self.slot_is_empty() {
+            geometry.trailing
+        } else {
+            0
+        };
+        let width = (geometry.available - geometry.separator - position + lent)
             .clamp(geometry.minimum_width(true), geometry.maximum_width());
         self.sizing.manual_width.set(Some(width));
         self.sync_split(split);
@@ -429,7 +810,7 @@ fn install_resize(split: &gtk::Paned, state: &Rc<PreviewState>) {
                     || event
                         .downcast_ref::<gtk::gdk::ButtonEvent>()
                         .is_some_and(|e| e.button() == 1))
-                    && state.is_enabled()
+                    && (state.is_enabled() || state.reserves_column_space())
                     && !state.sizing.is_suspended()
                     && on_separator(&split, event) =>
             {
@@ -438,9 +819,9 @@ fn install_resize(split: &gtk::Paned, state: &Rc<PreviewState>) {
                     .set(state.animation_generation.get().saturating_add(1));
                 state.animating.set(false);
                 state.sizing.resizing.set(true);
-                state
-                    .pane
-                    .set_width_request(state.geometry(&split).minimum_width(true));
+                let minimum = state.geometry(&split).minimum_width(true);
+                state.pane.set_width_request(minimum);
+                state.slot.set_width_request(minimum);
             }
             gtk::gdk::EventType::ButtonRelease
             | gtk::gdk::EventType::TouchEnd
@@ -456,7 +837,7 @@ fn install_resize(split: &gtk::Paned, state: &Rc<PreviewState>) {
     let weak = Rc::downgrade(state);
     split.connect_position_notify(move |split| {
         if let Some(state) = weak.upgrade()
-            && state.is_enabled()
+            && (state.is_enabled() || state.reserves_column_space())
             && state.sizing.resizing.replace(false)
         {
             state.resize_preview(split, split.position());
@@ -469,12 +850,12 @@ fn install_resize(split: &gtk::Paned, state: &Rc<PreviewState>) {
     split.connect_move_handle(move |split, _| {
         if split.has_focus() {
             if let Some(state) = weak.upgrade()
-                && state.is_enabled()
+                && (state.is_enabled() || state.reserves_column_space())
                 && !state.sizing.is_suspended()
             {
-                state
-                    .pane
-                    .set_width_request(state.geometry(split).minimum_width(true));
+                let minimum = state.geometry(split).minimum_width(true);
+                state.pane.set_width_request(minimum);
+                state.slot.set_width_request(minimum);
             }
             remember_keyboard_width(weak.clone());
         }
@@ -512,10 +893,9 @@ fn on_separator(split: &gtk::Paned, event: &gtk::gdk::Event) -> bool {
 }
 
 fn remember_keyboard_width(weak: std::rc::Weak<PreviewState>) {
-    let Some(state) = weak
-        .upgrade()
-        .filter(|state| state.is_enabled() && !state.sizing.is_suspended())
-    else {
+    let Some(state) = weak.upgrade().filter(|state| {
+        (state.is_enabled() || state.reserves_column_space()) && !state.sizing.is_suspended()
+    }) else {
         return;
     };
     let Some(split) = state.split.borrow().clone() else {
@@ -527,12 +907,9 @@ fn remember_keyboard_width(weak: std::rc::Weak<PreviewState>) {
     glib::idle_add_local_once(move || {
         if let Some(state) = weak.upgrade() {
             state.sizing.resizing.set(false);
-            if state.is_enabled() && split.position() != before {
+            if (state.is_enabled() || state.reserves_column_space()) && split.position() != before {
                 state.resize_preview(&split, split.position());
             }
         }
     });
 }
-
-#[cfg(test)]
-mod tests;

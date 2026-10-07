@@ -6,8 +6,20 @@ mod tests;
 mod archive;
 mod create_entry;
 
+#[cfg(test)]
+pub(crate) use archive::ArchiveListing;
+pub(crate) use archive::{
+    ARCHIVE_PREVIEW_FAILED_MESSAGE, ARCHIVE_TOO_LARGE_MESSAGE, ARCHIVE_UNSUPPORTED_MESSAGE,
+    ArchiveListingStatus, INVALID_ARCHIVE, MAX_ARCHIVE_PASSWORD_BYTES, MAYBE_BAD_PASSWORD,
+    PASSWORD_REQUIRED, archive_payload_valid, decode_archive_listing, encode_archive_result,
+    list_archive_entries_direct,
+};
+
+#[cfg(test)]
+pub(crate) use archive::write_compression_fixture;
+
 use std::{
-    cell::Cell,
+    cell::{Cell, RefCell},
     collections::{HashMap, HashSet},
     ffi::{OsStr, OsString},
     future::Future,
@@ -21,10 +33,10 @@ use std::{
     rc::Rc,
     sync::{
         Arc, Condvar, Mutex,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
     },
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use gtk::{gio, glib, prelude::*};
@@ -33,6 +45,7 @@ use crate::{
     adapters::{
         gio_file_for_location, location_for_file,
         trash_restore::{RestoreContext, plan_restore_for_location},
+        volume::MountTable,
     },
     model::{FileEntry, Location},
     services::{
@@ -43,6 +56,427 @@ use crate::{
         UndoRenameRequest, validate_basename,
     },
 };
+
+#[derive(Clone, Debug)]
+pub(crate) struct MountFlushHint {
+    pub root: PathBuf,
+    pub removable: bool,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum SyncDestination<'a> {
+    Local(&'a Path),
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "copy helper tests pass a destination that has no local path"
+        )
+    )]
+    NonLocal,
+}
+
+fn blocking_join_message(error: Box<dyn std::any::Any + Send>) -> String {
+    error
+        .downcast_ref::<String>()
+        .cloned()
+        .or_else(|| {
+            error
+                .downcast_ref::<&str>()
+                .map(|message| (*message).to_owned())
+        })
+        .unwrap_or_else(|| "filesystem sync panicked".to_owned())
+}
+
+pub(crate) fn sync_filesystem(root: &Path) -> io::Result<()> {
+    let handle = rustix::fs::open(
+        root,
+        rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::DIRECTORY | rustix::fs::OFlags::CLOEXEC,
+        rustix::fs::Mode::empty(),
+    )
+    .map_err(io::Error::from)?;
+    rustix::fs::syncfs(&handle).map_err(io::Error::from)?;
+    Ok(())
+}
+
+pub(crate) fn flush_filesystem(root: &Path) -> io::Result<()> {
+    #[cfg(test)]
+    if let Some(kind) = sync_probe_before(root) {
+        return Err(io::Error::new(kind, "flush failed"));
+    }
+    sync_filesystem(root)
+}
+
+#[cfg(test)]
+mod sync_probe {
+    use std::{
+        io,
+        path::{Path, PathBuf},
+        sync::{Arc, Condvar, Mutex, atomic::AtomicBool, atomic::Ordering},
+        thread,
+    };
+
+    struct SyncGate {
+        started: AtomicBool,
+        released: Mutex<bool>,
+        released_cv: Condvar,
+    }
+
+    struct SyncProbeState {
+        fail: Option<io::ErrorKind>,
+        gate: Option<Arc<SyncGate>>,
+        calls: Vec<SyncObservation>,
+    }
+
+    type SyncObserver = Arc<dyn Fn(&Path) + Send + Sync>;
+
+    static SYNC_PROBE: Mutex<Option<SyncProbeState>> = Mutex::new(None);
+    static SYNC_OBSERVER: Mutex<Option<SyncObserver>> = Mutex::new(None);
+
+    #[derive(Clone, Debug)]
+    pub(crate) struct SyncObservation {
+        pub root: PathBuf,
+        pub thread_id: thread::ThreadId,
+    }
+
+    pub(crate) fn install_sync_probe(fail: Option<io::ErrorKind>, gate: bool) {
+        let gate = gate.then(|| {
+            Arc::new(SyncGate {
+                started: AtomicBool::new(false),
+                released: Mutex::new(false),
+                released_cv: Condvar::new(),
+            })
+        });
+        let mut slot = SYNC_PROBE.lock().unwrap_or_else(|error| error.into_inner());
+        *slot = Some(SyncProbeState {
+            fail,
+            gate,
+            calls: Vec::new(),
+        });
+    }
+
+    pub(crate) fn clear_sync_probe() {
+        release_sync_probe();
+        let mut slot = SYNC_PROBE.lock().unwrap_or_else(|error| error.into_inner());
+        *slot = None;
+    }
+
+    pub(crate) fn set_sync_observer(observer: Option<SyncObserver>) {
+        let mut slot = SYNC_OBSERVER
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        *slot = observer;
+    }
+
+    pub(crate) fn release_sync_probe() {
+        let gate = {
+            let slot = SYNC_PROBE.lock().unwrap_or_else(|error| error.into_inner());
+            slot.as_ref().and_then(|probe| probe.gate.clone())
+        };
+        let Some(gate) = gate else {
+            return;
+        };
+        let mut released = gate
+            .released
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        *released = true;
+        gate.released_cv.notify_all();
+    }
+
+    pub(crate) fn sync_probe_is_blocked() -> bool {
+        let slot = SYNC_PROBE.lock().unwrap_or_else(|error| error.into_inner());
+        slot.as_ref()
+            .and_then(|probe| probe.gate.as_ref())
+            .is_some_and(|gate| gate.started.load(Ordering::SeqCst))
+    }
+
+    pub(crate) fn sync_probe_len() -> usize {
+        let slot = SYNC_PROBE.lock().unwrap_or_else(|error| error.into_inner());
+        slot.as_ref().map(|probe| probe.calls.len()).unwrap_or(0)
+    }
+
+    pub(crate) fn sync_probe_observations() -> Vec<SyncObservation> {
+        let slot = SYNC_PROBE.lock().unwrap_or_else(|error| error.into_inner());
+        slot.as_ref()
+            .map(|probe| probe.calls.clone())
+            .unwrap_or_default()
+    }
+
+    pub(super) fn sync_probe_before(root: &Path) -> Option<io::ErrorKind> {
+        let (fail, gate) = {
+            let mut slot = SYNC_PROBE.lock().unwrap_or_else(|error| error.into_inner());
+            let probe = slot.as_mut()?;
+            probe.calls.push(SyncObservation {
+                root: root.to_path_buf(),
+                thread_id: thread::current().id(),
+            });
+            (probe.fail, probe.gate.clone())
+        };
+        let observer = SYNC_OBSERVER
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone();
+        if let Some(observer) = observer {
+            observer(root);
+        }
+        if let Some(gate) = gate {
+            gate.started.store(true, Ordering::SeqCst);
+            let mut released = gate
+                .released
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            while !*released {
+                released = gate
+                    .released_cv
+                    .wait(released)
+                    .unwrap_or_else(|error| error.into_inner());
+            }
+        }
+        fail
+    }
+}
+
+#[cfg(test)]
+use sync_probe::sync_probe_before;
+#[cfg(test)]
+pub(crate) use sync_probe::{
+    clear_sync_probe, install_sync_probe, release_sync_probe, set_sync_observer,
+    sync_probe_is_blocked, sync_probe_len, sync_probe_observations,
+};
+
+#[cfg(test)]
+thread_local! {
+    static REMOVABLE_ROOTS_FOR_TEST: RefCell<Option<Vec<PathBuf>>> = const { RefCell::new(None) };
+    static FORCE_CROSS_VOLUME_FOR_TEST: Cell<bool> = const { Cell::new(false) };
+}
+
+#[cfg(test)]
+pub(crate) fn set_removable_roots_for_test(roots: Option<Vec<PathBuf>>) {
+    REMOVABLE_ROOTS_FOR_TEST.with(|slot| *slot.borrow_mut() = roots);
+}
+
+#[cfg(test)]
+pub(crate) fn set_force_cross_volume_for_test(force: bool) {
+    FORCE_CROSS_VOLUME_FOR_TEST.with(|slot| slot.set(force));
+}
+
+#[cfg(test)]
+fn force_cross_volume_for_test() -> bool {
+    FORCE_CROSS_VOLUME_FOR_TEST.with(|slot| slot.get())
+}
+
+#[cfg(test)]
+fn removable_hints_for_test() -> Option<Vec<MountFlushHint>> {
+    REMOVABLE_ROOTS_FOR_TEST.with(|slot| {
+        slot.borrow().as_ref().map(|roots| {
+            roots
+                .iter()
+                .map(|root| MountFlushHint {
+                    root: root.clone(),
+                    removable: true,
+                })
+                .collect()
+        })
+    })
+}
+
+pub(crate) fn removable_sync_roots(
+    destinations: &[SyncDestination<'_>],
+    hints: &[MountFlushHint],
+) -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    for destination in destinations {
+        let SyncDestination::Local(path) = destination else {
+            continue;
+        };
+        let Some(hint) = hints
+            .iter()
+            .filter(|hint| path.starts_with(&hint.root))
+            .max_by_key(|hint| hint.root.as_os_str().len())
+        else {
+            continue;
+        };
+        if hint.removable && !roots.iter().any(|root| root == &hint.root) {
+            roots.push(hint.root.clone());
+        }
+    }
+    roots
+}
+
+fn removable_roots_for_paths(paths: &[PathBuf]) -> Vec<PathBuf> {
+    if paths.is_empty() {
+        return Vec::new();
+    }
+    #[cfg(test)]
+    if let Some(hints) = removable_hints_for_test() {
+        let destinations: Vec<_> = paths
+            .iter()
+            .map(|path| SyncDestination::Local(path))
+            .collect();
+        return removable_sync_roots(&destinations, &hints);
+    }
+    let table = MountTable::current();
+    let mounts = gio::VolumeMonitor::get().mounts();
+    let mut hints = Vec::new();
+    for path in paths {
+        let Some(root) = table.mount_point_for(path).map(Path::to_path_buf) else {
+            continue;
+        };
+        if hints.iter().any(|hint: &MountFlushHint| hint.root == root) {
+            continue;
+        }
+        let removable = mounts.iter().any(|mount| {
+            mount.root().path().as_deref() == Some(root.as_path())
+                && mount_drive_is_removable(mount)
+        });
+        hints.push(MountFlushHint { root, removable });
+    }
+    let destinations: Vec<_> = paths
+        .iter()
+        .map(|path| SyncDestination::Local(path))
+        .collect();
+    removable_sync_roots(&destinations, &hints)
+}
+
+fn mount_drive_is_removable(mount: &gio::Mount) -> bool {
+    let drive = mount
+        .drive()
+        .or_else(|| mount.volume().and_then(|volume| volume.drive()));
+    drive.is_some_and(|drive| drive.is_removable() || drive.is_media_removable())
+}
+
+async fn flush_removable_writes(
+    paths: Vec<PathBuf>,
+    cancellable: &gio::Cancellable,
+    emit: &Rc<dyn Fn(OperationEvent)>,
+    request_id: OperationRequestId,
+    completed: &[Location],
+    affected_locations: HashSet<Location>,
+) -> bool {
+    let roots = removable_roots_for_paths(&paths);
+    if roots.is_empty() {
+        if cancellable.is_cancelled() {
+            emit(cancelled_event(
+                request_id,
+                completed.to_vec(),
+                Vec::new(),
+                Vec::new(),
+                affected_locations,
+            ));
+            return false;
+        }
+        return true;
+    }
+    emit(OperationEvent::FlushingToDevice { request_id });
+    for root in roots {
+        let synced = gio::spawn_blocking(move || flush_filesystem(&root)).await;
+        let error = match synced {
+            Ok(Ok(())) => continue,
+            Ok(Err(error)) => error.to_string(),
+            Err(error) => blocking_join_message(error),
+        };
+        emit(OperationEvent::TransferFailed {
+            request_id,
+            completed_locations: completed.to_vec(),
+            message: format!(
+                "The device could not finish writing: {error}. Earlier writes may still be pending; wait for safe eject before unplugging."
+            ),
+        });
+        return false;
+    }
+    if cancellable.is_cancelled() {
+        emit(cancelled_event(
+            request_id,
+            completed.to_vec(),
+            Vec::new(),
+            Vec::new(),
+            affected_locations,
+        ));
+        return false;
+    }
+    true
+}
+
+async fn flush_removable_destination(path: &Path) -> Result<(), glib::Error> {
+    let roots = removable_roots_for_paths(std::slice::from_ref(&path.to_path_buf()));
+    for root in roots {
+        let synced = gio::spawn_blocking(move || flush_filesystem(&root)).await;
+        match synced {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => return Err(io_error(error)),
+            Err(error) => return Err(io_error(blocking_join_message(error))),
+        }
+    }
+    Ok(())
+}
+
+async fn flush_written_roots(
+    paths: &[PathBuf],
+    emit: &Rc<dyn Fn(OperationEvent)>,
+    request_id: OperationRequestId,
+) -> Result<(), String> {
+    let roots = removable_roots_for_paths(paths);
+    if roots.is_empty() {
+        return Ok(());
+    }
+    emit(OperationEvent::FlushingToDevice { request_id });
+    for root in roots {
+        let result = gio::spawn_blocking(move || flush_filesystem(&root)).await;
+        let error = match result {
+            Ok(Ok(())) => continue,
+            Ok(Err(error)) => error.to_string(),
+            Err(error) => blocking_join_message(error),
+        };
+        return Err(format!(
+            "The device could not finish writing: {error}. Earlier writes may still be pending; wait for safe eject before unplugging."
+        ));
+    }
+    Ok(())
+}
+
+struct TransferStop {
+    completed: Vec<Location>,
+    failed: Vec<Location>,
+    not_attempted: Vec<Location>,
+    affected_locations: HashSet<Location>,
+    failure: Option<String>,
+    skip_flush: bool,
+}
+
+async fn stop_transfer(
+    paths: &[PathBuf],
+    emit: &Rc<dyn Fn(OperationEvent)>,
+    request_id: OperationRequestId,
+    stop: TransferStop,
+) {
+    let flush_error = if stop.skip_flush {
+        None
+    } else {
+        flush_written_roots(paths, emit, request_id).await.err()
+    };
+    match (stop.failure, flush_error) {
+        (failure, Some(flush_error)) => emit(OperationEvent::TransferFailed {
+            request_id,
+            completed_locations: stop.completed,
+            message: failure.map_or(flush_error.clone(), |message| {
+                format!("{message} {flush_error}")
+            }),
+        }),
+        (Some(message), None) => emit(OperationEvent::TransferFailed {
+            request_id,
+            completed_locations: stop.completed,
+            message,
+        }),
+        (None, None) => emit(cancelled_event(
+            request_id,
+            stop.completed,
+            stop.failed,
+            stop.not_attempted,
+            stop.affected_locations,
+        )),
+    }
+}
 
 async fn await_cancellable<O, T>(
     object: &O,
@@ -61,11 +495,33 @@ where
     .await
 }
 
+async fn join_local_tasks<K, T>(
+    tasks: Vec<(K, glib::JoinHandle<T>)>,
+) -> Vec<(K, Result<T, glib::JoinError>)>
+where
+    T: 'static,
+{
+    let mut results = Vec::with_capacity(tasks.len());
+    for (key, task) in tasks {
+        results.push((key, task.await));
+    }
+    results
+}
+
+const MAX_LOCAL_IO_WORKERS: usize = 8;
+const TRANSFER_PROGRESS_INTERVAL: Duration = Duration::from_millis(33);
+// Smaller copies normally finish before the first sample; keep them on GIO's lower-overhead path.
+const BYTE_PROGRESS_MIN_FILE_SIZE: u64 = 8 * 1024 * 1024;
+
 struct TransferProgressTracker {
     request_id: OperationRequestId,
     completed_items: Cell<usize>,
+    completed_files: Cell<usize>,
+    total_files: Option<usize>,
+    current_file: RefCell<Option<String>>,
     transferred_bytes: Cell<u64>,
     total_bytes: Option<u64>,
+    last_emit: Cell<Option<Instant>>,
     emit: Rc<dyn Fn(OperationEvent)>,
 }
 
@@ -73,25 +529,44 @@ impl TransferProgressTracker {
     fn new(
         request_id: OperationRequestId,
         total_bytes: Option<u64>,
+        total_files: Option<usize>,
         emit: Rc<dyn Fn(OperationEvent)>,
     ) -> Rc<Self> {
         Rc::new(Self {
             request_id,
             completed_items: Cell::new(0),
+            completed_files: Cell::new(0),
+            total_files,
+            current_file: RefCell::new(None),
             transferred_bytes: Cell::new(0),
             total_bytes,
+            last_emit: Cell::new(None),
             emit,
         })
     }
 
     fn emit(&self) {
+        self.last_emit.set(Some(Instant::now()));
         self.emit_progress(None);
+    }
+
+    fn emit_if_due(&self) {
+        if self
+            .last_emit
+            .get()
+            .is_none_or(|last| last.elapsed() >= TRANSFER_PROGRESS_INTERVAL)
+        {
+            self.emit();
+        }
     }
 
     fn emit_progress(&self, created_location: Option<Location>) {
         (self.emit)(OperationEvent::TransferProgress {
             request_id: self.request_id,
             completed_items: self.completed_items.get(),
+            completed_files: self.completed_files.get(),
+            total_files: self.total_files,
+            current_file: self.current_file.borrow().clone(),
             transferred_bytes: self.transferred_bytes.get(),
             total_bytes: self.total_bytes,
             created_location,
@@ -99,16 +574,38 @@ impl TransferProgressTracker {
     }
 
     fn add_bytes(&self, bytes: u64) {
+        if bytes == 0 {
+            return;
+        }
         self.transferred_bytes
             .set(self.transferred_bytes.get().saturating_add(bytes));
-        self.emit();
+        self.emit_if_due();
     }
 
-    fn begin_file(self: &Rc<Self>) -> FileTransferProgress {
+    fn begin_file(self: &Rc<Self>, name: String, track_bytes: bool) -> FileTransferProgress {
+        self.current_file.replace(Some(name));
+        self.emit_if_due();
+        let byte_progress = track_bytes.then(|| {
+            let reported_bytes = Arc::new(AtomicU64::new(0));
+            let reported_total = Arc::new(AtomicU64::new(0));
+            let observed_bytes = Rc::new(Cell::new(0));
+            let tracker = self.clone();
+            let timer_reported = reported_bytes.clone();
+            let timer_observed = observed_bytes.clone();
+            let update_source = glib::timeout_add_local(TRANSFER_PROGRESS_INTERVAL, move || {
+                record_file_progress(&tracker, &timer_reported, &timer_observed);
+                glib::ControlFlow::Continue
+            });
+            FileByteProgress {
+                reported_bytes,
+                reported_total,
+                observed_bytes,
+                update_source: RefCell::new(Some(update_source)),
+            }
+        });
         FileTransferProgress {
             tracker: self.clone(),
-            reported_bytes: Rc::new(Cell::new(0)),
-            reported_total: Rc::new(Cell::new(0)),
+            byte_progress,
         }
     }
 
@@ -116,6 +613,8 @@ impl TransferProgressTracker {
         &self,
         started_at: u64,
         expected_bytes: Option<u64>,
+        started_files: usize,
+        expected_files: Option<usize>,
         created_location: Option<Location>,
     ) {
         if let Some(expected_bytes) = expected_bytes {
@@ -124,50 +623,221 @@ impl TransferProgressTracker {
                 self.transferred_bytes.set(expected_end);
             }
         }
+        if let Some(expected_files) = expected_files {
+            self.completed_files.set(
+                self.completed_files
+                    .get()
+                    .max(started_files.saturating_add(expected_files)),
+            );
+        }
         self.completed_items
             .set(self.completed_items.get().saturating_add(1));
+        self.last_emit.set(Some(Instant::now()));
         self.emit_progress(created_location);
     }
 }
 
 struct FileTransferProgress {
     tracker: Rc<TransferProgressTracker>,
-    reported_bytes: Rc<Cell<u64>>,
-    reported_total: Rc<Cell<u64>>,
+    byte_progress: Option<FileByteProgress>,
+}
+
+struct FileByteProgress {
+    reported_bytes: Arc<AtomicU64>,
+    reported_total: Arc<AtomicU64>,
+    observed_bytes: Rc<Cell<u64>>,
+    update_source: RefCell<Option<glib::SourceId>>,
 }
 
 impl FileTransferProgress {
-    fn callback(&self) -> Box<dyn FnMut(i64, i64)> {
-        let tracker = self.tracker.clone();
-        let reported_bytes = self.reported_bytes.clone();
-        let reported_total = self.reported_total.clone();
-        Box::new(move |current, total| {
-            let current = current.max(0) as u64;
-            let previous = reported_bytes.get();
-            if current > previous {
-                reported_bytes.set(current);
-            }
-            if total >= 0 {
-                reported_total.set(reported_total.get().max(total as u64));
-            }
-            tracker.add_bytes(current.saturating_sub(previous));
-        })
+    fn reporter(&self) -> Option<FileProgressReporter> {
+        self.byte_progress
+            .as_ref()
+            .map(|progress| FileProgressReporter {
+                reported_bytes: progress.reported_bytes.clone(),
+                reported_total: progress.reported_total.clone(),
+            })
     }
 
-    fn finish(&self) {
-        let final_bytes = self.reported_total.get().max(self.reported_bytes.get());
-        let missing = final_bytes.saturating_sub(self.reported_bytes.get());
-        if missing > 0 {
-            self.tracker.add_bytes(missing);
-            self.reported_bytes.set(final_bytes);
+    fn finish(&self, bytes: Option<u64>) {
+        if let Some(progress) = &self.byte_progress {
+            progress.stop_updates();
+            let final_bytes = bytes
+                .unwrap_or_else(|| progress.reported_total.load(Ordering::Relaxed))
+                .max(progress.reported_bytes.load(Ordering::Relaxed));
+            progress
+                .reported_bytes
+                .fetch_max(final_bytes, Ordering::Relaxed);
+            record_file_progress(
+                &self.tracker,
+                &progress.reported_bytes,
+                &progress.observed_bytes,
+            );
+        } else if let Some(bytes) = bytes {
+            self.tracker
+                .transferred_bytes
+                .set(self.tracker.transferred_bytes.get().saturating_add(bytes));
+        }
+        let completed = self.tracker.completed_files.get().saturating_add(1);
+        self.tracker.completed_files.set(completed);
+        if self.tracker.total_files == Some(completed) {
+            self.tracker.emit();
+        } else {
+            self.tracker.emit_if_due();
         }
     }
+}
+
+impl Drop for FileTransferProgress {
+    fn drop(&mut self) {
+        if let Some(progress) = &self.byte_progress {
+            progress.stop_updates();
+        }
+    }
+}
+
+impl FileByteProgress {
+    fn stop_updates(&self) {
+        if let Some(source) = self.update_source.borrow_mut().take() {
+            source.remove();
+        }
+    }
+}
+
+#[derive(Clone)]
+struct FileProgressReporter {
+    reported_bytes: Arc<AtomicU64>,
+    reported_total: Arc<AtomicU64>,
+}
+
+impl FileProgressReporter {
+    fn record(&self, current: i64, total: i64) {
+        self.reported_bytes
+            .fetch_max(current.max(0) as u64, Ordering::Relaxed);
+        if total >= 0 {
+            self.reported_total
+                .fetch_max(total as u64, Ordering::Relaxed);
+        }
+    }
+}
+
+fn record_file_progress(
+    tracker: &TransferProgressTracker,
+    reported_bytes: &AtomicU64,
+    observed_bytes: &Cell<u64>,
+) {
+    let current = reported_bytes.load(Ordering::Relaxed);
+    let previous = observed_bytes.replace(current);
+    tracker.add_bytes(current.saturating_sub(previous));
+}
+
+async fn run_file_operation_with_progress(
+    reporter: FileProgressReporter,
+    operation: impl FnOnce(&mut dyn FnMut(i64, i64)) -> Result<(), glib::Error> + Send + 'static,
+    worker_error: &'static str,
+) -> Result<(), glib::Error> {
+    gio::spawn_blocking(move || {
+        let mut callback = move |current, total| reporter.record(current, total);
+        operation(&mut callback)
+    })
+    .await
+    .map_err(|_| io_error(worker_error))?
+}
+
+async fn copy_file_with_progress(
+    source: gio::File,
+    target: gio::File,
+    flags: gio::FileCopyFlags,
+    cancellable: gio::Cancellable,
+    reporter: Option<FileProgressReporter>,
+) -> Result<(), glib::Error> {
+    let Some(reporter) = reporter else {
+        return await_cancellable(&source, &cancellable, move |source, cancellable, result| {
+            source.copy_async(
+                &target,
+                flags,
+                glib::Priority::DEFAULT,
+                Some(cancellable),
+                None,
+                move |output| result.resolve(output),
+            );
+        })
+        .await;
+    };
+    run_file_operation_with_progress(
+        reporter,
+        move |progress| source.copy(&target, flags, Some(&cancellable), Some(progress)),
+        "Copy worker stopped unexpectedly",
+    )
+    .await
+}
+
+async fn move_file_with_progress(
+    source: gio::File,
+    target: gio::File,
+    flags: gio::FileCopyFlags,
+    cancellable: gio::Cancellable,
+    reporter: Option<FileProgressReporter>,
+) -> Result<(), glib::Error> {
+    let Some(reporter) = reporter else {
+        return await_cancellable(&source, &cancellable, move |source, cancellable, result| {
+            source.move_async(
+                &target,
+                flags,
+                glib::Priority::DEFAULT,
+                Some(cancellable),
+                None,
+                move |output| result.resolve(output),
+            );
+        })
+        .await;
+    };
+    run_file_operation_with_progress(
+        reporter,
+        move |progress| source.move_(&target, flags, Some(&cancellable), Some(progress)),
+        "Move worker stopped unexpectedly",
+    )
+    .await
+}
+
+const FAT32_MAX_FILE_SIZE: u64 = u32::MAX as u64;
+
+fn copy_failure_on_fat32(error: &glib::Error, fat32_destination: bool) -> (Option<String>, bool) {
+    if was_cancelled(error) {
+        return (None, false);
+    }
+    if !fat32_destination {
+        return (Some(error.to_string()), false);
+    }
+    let description = if error.message().contains("File too large") {
+        "A file is too large for this FAT32 drive (maximum file size: 4 GiB). Use an exFAT or another large-file-capable drive instead.".to_owned()
+    } else {
+        error.to_string()
+    };
+    (
+        Some(format!(
+            "{description} Earlier completed copies may still be writing; wait for safe eject before unplugging. Details: {error}"
+        )),
+        true,
+    )
+}
+
+fn fat32_file_size_limit(fs_type: Option<&str>) -> Option<u64> {
+    matches!(fs_type, Some("msdos" | "vfat")).then_some(FAT32_MAX_FILE_SIZE)
+}
+
+#[derive(Clone, Copy)]
+struct TransferEstimate {
+    bytes: Option<u64>,
+    files: usize,
+    regular_file: bool,
 }
 
 fn transfer_size(
     file: gio::File,
     cancellable: gio::Cancellable,
-) -> Pin<Box<dyn Future<Output = Result<Option<u64>, glib::Error>>>> {
+    max_file_size: Option<u64>,
+) -> Pin<Box<dyn Future<Output = Result<TransferEstimate, glib::Error>>>> {
     Box::pin(async move {
         let info = await_cancellable(&file, &cancellable, |file, cancellable, result| {
             file.query_info_async(
@@ -180,9 +850,26 @@ fn transfer_size(
         })
         .await?;
         if info.file_type() != gio::FileType::Directory {
-            return Ok(info
+            let size = info
                 .has_attribute(gio::FILE_ATTRIBUTE_STANDARD_SIZE)
-                .then(|| info.size().max(0) as u64));
+                .then(|| info.size().max(0) as u64);
+            if info.file_type() == gio::FileType::Regular
+                && let (Some(limit), Some(size)) = (max_file_size, size)
+                && size > limit
+            {
+                return Err(glib::Error::new(
+                    gio::IOErrorEnum::Failed,
+                    &format!(
+                        "{} is too large for a FAT32 drive (maximum file size: 4 GiB). Use an exFAT or another large-file-capable drive instead.",
+                        file.basename().unwrap_or_default().to_string_lossy()
+                    ),
+                ));
+            }
+            return Ok(TransferEstimate {
+                bytes: size,
+                files: 1,
+                regular_file: info.file_type() == gio::FileType::Regular,
+            });
         }
 
         let enumerator = await_cancellable(&file, &cancellable, |file, cancellable, result| {
@@ -196,6 +883,7 @@ fn transfer_size(
         })
         .await?;
         let mut total = Some(0_u64);
+        let mut files = 0_usize;
         loop {
             let children = await_cancellable(
                 &enumerator,
@@ -211,12 +899,33 @@ fn transfer_size(
             )
             .await?;
             if children.is_empty() {
-                return Ok(total);
+                return Ok(TransferEstimate {
+                    bytes: total,
+                    files,
+                    regular_file: false,
+                });
             }
-            for child in children {
-                let child_size =
-                    transfer_size(file.child(child.name()), cancellable.clone()).await?;
-                total = total.and_then(|total| child_size.and_then(|size| total.checked_add(size)));
+            for chunk in children.chunks(MAX_LOCAL_IO_WORKERS) {
+                let context = glib::MainContext::default();
+                let tasks = chunk
+                    .iter()
+                    .map(|child| {
+                        context.spawn_local(transfer_size(
+                            file.child(child.name()),
+                            cancellable.clone(),
+                            max_file_size,
+                        ))
+                    })
+                    .collect::<Vec<_>>();
+                for task in tasks {
+                    let child_size = task
+                        .await
+                        .map_err(|_| io_error("Transfer-size worker failed"))??;
+                    total = total.and_then(|total| {
+                        child_size.bytes.and_then(|size| total.checked_add(size))
+                    });
+                    files = files.saturating_add(child_size.files);
+                }
             }
         }
     })
@@ -225,19 +934,56 @@ fn transfer_size(
 async fn transfer_sizes(
     files: &[gio::File],
     cancellable: &gio::Cancellable,
-) -> Result<(Vec<Option<u64>>, Option<u64>), glib::Error> {
+    max_file_size: Option<u64>,
+) -> Result<
+    (
+        Vec<Option<u64>>,
+        Option<u64>,
+        Vec<Option<usize>>,
+        Option<usize>,
+        Vec<bool>,
+    ),
+    glib::Error,
+> {
     let mut sizes = Vec::with_capacity(files.len());
+    let mut counts = Vec::with_capacity(files.len());
     let mut total = Some(0_u64);
-    for file in files {
-        let size = match transfer_size(file.clone(), cancellable.clone()).await {
-            Ok(size) => size,
-            Err(error) if was_cancelled(&error) => return Err(error),
-            Err(_) => None,
-        };
-        total = total.and_then(|total| size.and_then(|size| total.checked_add(size)));
-        sizes.push(size);
+    let mut total_files = Some(0_usize);
+    let mut regular_files = Vec::with_capacity(files.len());
+    for chunk in files.chunks(MAX_LOCAL_IO_WORKERS) {
+        let context = glib::MainContext::default();
+        let tasks = chunk
+            .iter()
+            .map(|file| {
+                context.spawn_local(transfer_size(
+                    file.clone(),
+                    cancellable.clone(),
+                    max_file_size,
+                ))
+            })
+            .collect::<Vec<_>>();
+        for task in tasks {
+            let size = match task.await {
+                Ok(Ok(size)) => Some(size),
+                Ok(Err(error))
+                    if was_cancelled(&error)
+                        || error.message().contains(" is too large for a FAT32 drive ") =>
+                {
+                    return Err(error);
+                }
+                Ok(Err(_)) | Err(_) => None,
+            };
+            total = total.and_then(|total| {
+                size.and_then(|size| size.bytes.and_then(|bytes| total.checked_add(bytes)))
+            });
+            total_files =
+                total_files.and_then(|total| size.map(|size| total.saturating_add(size.files)));
+            counts.push(size.map(|size| size.files));
+            sizes.push(size.and_then(|size| size.bytes));
+            regular_files.push(size.is_some_and(|size| size.regular_file));
+        }
     }
-    Ok((sizes, total))
+    Ok((sizes, total, counts, total_files, regular_files))
 }
 
 fn validated_child(parent: &gio::File, name: &str) -> Result<gio::File, &'static str> {
@@ -247,6 +993,184 @@ fn validated_child(parent: &gio::File, name: &str) -> Result<gio::File, &'static
 
 fn transfer_is_noop(source: &gio::File, destination: &gio::File, target: &gio::File) -> bool {
     source.equal(target) || source.equal(destination) || destination.has_prefix(source)
+}
+
+fn default_transfer_target(
+    source: &gio::File,
+    destination: &gio::File,
+    fat_family: bool,
+    used_names: &mut HashSet<OsString>,
+) -> Option<(PathBuf, gio::File)> {
+    let name = source.basename()?;
+    let name = PathBuf::from(fat_family_child_name(
+        name.as_os_str(),
+        fat_family,
+        used_names,
+    ));
+    let target = destination.child(&name);
+    Some((name, target))
+}
+
+#[derive(Clone)]
+struct ParallelCopyPlan {
+    index: usize,
+    source: gio::File,
+    target: gio::File,
+    target_location: Location,
+    written_path: PathBuf,
+}
+
+fn parallel_copy_plans(
+    request: &PasteRequest,
+    sources: &[gio::File],
+    destination: &gio::File,
+    regular_files: &[bool],
+    fat_family: bool,
+) -> Option<Vec<ParallelCopyPlan>> {
+    if request.move_sources
+        || request.items.len() <= MAX_LOCAL_IO_WORKERS
+        || !destination.is_native()
+        || request
+            .items
+            .iter()
+            .any(|item| item.conflict != TransferConflict::FailIfExists)
+    {
+        return None;
+    }
+
+    let mut used_names = HashSet::new();
+    sources
+        .iter()
+        .enumerate()
+        .map(|(index, source)| {
+            if !source.is_native() || regular_files.get(index) != Some(&true) {
+                return None;
+            }
+            let (_, target) =
+                default_transfer_target(source, destination, fat_family, &mut used_names)?;
+            if transfer_is_noop(source, destination, &target) {
+                return None;
+            }
+            Some(ParallelCopyPlan {
+                index,
+                source: source.clone(),
+                target_location: location_for_file(&target)?,
+                written_path: target.path()?,
+                target,
+            })
+        })
+        .collect()
+}
+
+struct ParallelCopyOutcome {
+    completed: Vec<usize>,
+    failed: Vec<(usize, glib::Error)>,
+    next: usize,
+    written_paths: Vec<PathBuf>,
+}
+
+async fn copy_new_local_regular_file(
+    source: gio::File,
+    target: gio::File,
+    cancellable: gio::Cancellable,
+) -> Result<(), glib::Error> {
+    let copy_cancellable = cancellable.clone();
+    let (staged, target_path) = gio::spawn_blocking(move || {
+        let cancellable = copy_cancellable;
+        cancellable.set_error_if_cancelled()?;
+        let source_path = source
+            .path()
+            .ok_or_else(|| io_error("Copy source must be a local path"))?;
+        let source_parent_path = source_path
+            .parent()
+            .ok_or_else(|| io_error("Cannot copy the filesystem root"))?;
+        let source_name = source_path
+            .file_name()
+            .ok_or_else(|| io_error("Invalid copy source"))?;
+        let source_parent = open_local_parent_directory(source_parent_path).map_err(io_error)?;
+        let source_file =
+            match open_local_copy_source(&source_parent, source_name).map_err(io_error)? {
+                LocalCopySource::File(file) => file,
+                _ => return Err(io_error("Copy source is no longer a regular file")),
+            };
+        let target_path = target
+            .path()
+            .ok_or_else(|| io_error("Copy destination must be a local path"))?;
+        let target_parent = target_path
+            .parent()
+            .ok_or_else(|| io_error("The destination has no parent directory"))?;
+        let staged = StagedSibling::create(target_parent, false).map_err(io_error)?;
+        let source_ref = gio::File::for_path(format!("/proc/self/fd/{}", source_file.as_raw_fd()));
+        let staged_file = gio::File::for_path(staged.path());
+        source_ref.copy(
+            &staged_file,
+            gio::FileCopyFlags::ALL_METADATA | gio::FileCopyFlags::OVERWRITE,
+            Some(&cancellable),
+            None,
+        )?;
+        cancellable.set_error_if_cancelled()?;
+        Ok::<_, glib::Error>((staged, target_path))
+    })
+    .await
+    .map_err(|_| io_error("Copy worker stopped unexpectedly"))??;
+    publish_staged_without_replace(staged, target_path, cancellable).await
+}
+
+async fn execute_parallel_copy_plans(
+    plans: &[ParallelCopyPlan],
+    item_sizes: &[Option<u64>],
+    item_files: &[Option<usize>],
+    worker_count: usize,
+    cancellable: &gio::Cancellable,
+    progress: &Rc<TransferProgressTracker>,
+) -> ParallelCopyOutcome {
+    let mut outcome = ParallelCopyOutcome {
+        completed: Vec::new(),
+        failed: Vec::new(),
+        next: 0,
+        written_paths: Vec::new(),
+    };
+    while outcome.next < plans.len() && !cancellable.is_cancelled() {
+        let end = (outcome.next + worker_count).min(plans.len());
+        let chunk = &plans[outcome.next..end];
+        outcome
+            .written_paths
+            .extend(chunk.iter().map(|plan| plan.written_path.clone()));
+        let context = glib::MainContext::default();
+        let tasks = chunk
+            .iter()
+            .cloned()
+            .map(|plan| {
+                let cancellable = cancellable.clone();
+                context.spawn_local(async move {
+                    copy_new_local_regular_file(plan.source, plan.target, cancellable).await
+                })
+            })
+            .collect::<Vec<_>>();
+        for (plan, task) in chunk.iter().zip(tasks) {
+            match task.await {
+                Ok(Ok(())) => {
+                    outcome.completed.push(plan.index);
+                    progress.finish_item(
+                        progress.transferred_bytes.get(),
+                        item_sizes[plan.index],
+                        progress.completed_files.get(),
+                        item_files[plan.index],
+                        Some(plan.target_location.clone()),
+                    );
+                }
+                Ok(Err(error)) => outcome.failed.push((plan.index, error)),
+                Err(_) => outcome
+                    .failed
+                    .push((plan.index, io_error("Copy worker failed"))),
+            }
+        }
+        outcome.next = end;
+        if !outcome.failed.is_empty() {
+            break;
+        }
+    }
+    outcome
 }
 
 fn parse_copy_suffix(stem: &OsStr) -> (&OsStr, Option<u64>) {
@@ -312,6 +1236,114 @@ fn duplicate_target(
         }
     }
     Err(io_error("Could not find an unused duplicate name"))
+}
+
+const FAT_INVALID_BYTES: &[u8] = b"\"*/:<>?\\|";
+
+fn fat_sanitized_name(name: &OsStr) -> OsString {
+    let mut bytes: Vec<u8> = name
+        .as_bytes()
+        .iter()
+        .map(|&byte| {
+            if FAT_INVALID_BYTES.contains(&byte) || byte < 0x20 {
+                b'_'
+            } else {
+                byte
+            }
+        })
+        .collect();
+    // FAT drivers strip trailing dots and spaces.
+    while matches!(bytes.last(), Some(b'.' | b' ')) {
+        bytes.pop();
+    }
+    if bytes.is_empty() {
+        bytes.push(b'_');
+    }
+    OsString::from_vec(bytes)
+}
+
+fn fat_name_key(name: &OsStr) -> OsString {
+    match name.to_str() {
+        Some(name) => OsString::from(name.to_uppercase()),
+        None => OsString::from_vec(name.as_bytes().to_ascii_uppercase()),
+    }
+}
+
+fn unique_fat_sibling_name(candidate: OsString, used: &mut HashSet<OsString>) -> OsString {
+    if used.insert(fat_name_key(&candidate)) {
+        return candidate;
+    }
+    let extension = Path::new(&candidate)
+        .extension()
+        .filter(|extension| !extension.is_empty())
+        .map(OsStr::to_os_string);
+    let stem = Path::new(&candidate)
+        .file_stem()
+        .map(OsStr::to_os_string)
+        .unwrap_or(candidate);
+    let (base_stem, copy_num) = parse_copy_suffix(&stem);
+    let mut index = copy_num.map_or(1, |number| number + 1);
+    loop {
+        let attempt = duplicate_candidate_name(base_stem, extension.as_deref(), index);
+        if used.insert(fat_name_key(&attempt)) {
+            return attempt;
+        }
+        index = index.checked_add(1).unwrap_or(1);
+    }
+}
+
+fn fat_family_child_name(name: &OsStr, fat_family: bool, used: &mut HashSet<OsString>) -> OsString {
+    if fat_family {
+        unique_fat_sibling_name(fat_sanitized_name(name), used)
+    } else {
+        name.to_os_string()
+    }
+}
+
+#[derive(Clone, Copy)]
+struct CopyOptions {
+    overwrite_existing: bool,
+    fat_family: bool,
+    workers: usize,
+}
+
+fn target_is_fat_family(target: &gio::File, mounts: &MountTable) -> bool {
+    target
+        .path()
+        .is_some_and(|path| matches!(mounts.fs_type_for(&path), Some("msdos" | "vfat" | "exfat")))
+}
+
+async fn copy_children(
+    enumerator: &gio::FileEnumerator,
+    cancellable: &gio::Cancellable,
+    fat_family: bool,
+) -> Result<Vec<gio::FileInfo>, glib::Error> {
+    let mut children = Vec::new();
+    loop {
+        let batch = await_cancellable(
+            enumerator,
+            cancellable,
+            |enumerator, cancellable, result| {
+                enumerator.next_files_async(
+                    64,
+                    glib::Priority::DEFAULT,
+                    Some(cancellable),
+                    move |output| result.resolve(output),
+                );
+            },
+        )
+        .await?;
+        let finished = batch.is_empty();
+        children.extend(batch);
+        if !fat_family || finished {
+            break;
+        }
+    }
+    if fat_family {
+        // Planning and copying must allocate collision suffixes in the same order.
+        children.sort_by_key(|child| child.name());
+    }
+    Ok(children)
 }
 
 fn was_cancelled(error: &glib::Error) -> bool {
@@ -589,10 +1621,10 @@ async fn copy_new_remote_file_with(
 /// reflink optimisation) through a `/proc/self/fd` reference pinned to the
 /// exact file just verified, rather than the original, re-resolvable path.
 fn copy_recursively_local(
-    parent: OwnedFd,
+    parent: Arc<OwnedFd>,
     name: OsString,
     target: gio::File,
-    overwrite_existing: bool,
+    options: CopyOptions,
     cancellable: gio::Cancellable,
     created_root: Option<Rc<CreatedCopyRoot>>,
     progress: Option<Rc<TransferProgressTracker>>,
@@ -601,7 +1633,7 @@ fn copy_recursively_local(
         if cancellable.is_cancelled() {
             return Err(cancelled_local_operation());
         }
-        let step_parent = parent.try_clone().map_err(io_error)?;
+        let step_parent = parent.clone();
         let step_name = name.clone();
         let step =
             run_local_fs_step(move || open_local_copy_source(&step_parent, &step_name)).await?;
@@ -611,52 +1643,60 @@ fn copy_recursively_local(
                     .path()
                     .ok_or_else(|| io_error("Copy destination must be a local path"))?;
                 run_local_fs_step(move || {
-                    copy_local_symlink(&link_target, &target_path, overwrite_existing)
+                    copy_local_symlink(&link_target, &target_path, options.overwrite_existing)
                 })
                 .await
             }
             LocalCopySource::File(file) => {
+                #[cfg(test)]
+                let _activity = tests::CopyActivity::start();
                 // Deliberately no NOFOLLOW_SYMLINKS here: `/proc/self/fd/<n>`
                 // is itself reported as a symlink by lstat, even though the
                 // fd it names was already verified to be a plain file. GIO
                 // must follow it to reach that file's actual content rather
                 // than copying the magic-link's target text as a new symlink.
+                let source_size = file.metadata().ok().map(|metadata| metadata.len());
                 let source_ref = gio::File::for_path(format!("/proc/self/fd/{}", file.as_raw_fd()));
                 let flags = gio::FileCopyFlags::ALL_METADATA
-                    | if overwrite_existing {
+                    | if options.overwrite_existing {
                         gio::FileCopyFlags::OVERWRITE
                     } else {
                         gio::FileCopyFlags::NONE
                     };
-                let file_progress = progress.as_ref().map(TransferProgressTracker::begin_file);
-                let progress_callback = file_progress.as_ref().map(FileTransferProgress::callback);
-                let result = await_cancellable(
-                    &source_ref,
-                    &cancellable,
-                    move |source, cancellable, result| {
-                        source.copy_async(
-                            &target,
-                            flags,
-                            glib::Priority::DEFAULT,
-                            Some(cancellable),
-                            progress_callback,
-                            move |output| result.resolve(output),
-                        );
-                    },
+                let track_bytes =
+                    source_size.is_none_or(|size| size >= BYTE_PROGRESS_MIN_FILE_SIZE);
+                let file_progress = progress.as_ref().map(|progress| {
+                    progress.begin_file(name.to_string_lossy().into_owned(), track_bytes)
+                });
+                let reporter = file_progress
+                    .as_ref()
+                    .and_then(FileTransferProgress::reporter);
+                let result = copy_file_with_progress(
+                    source_ref,
+                    target,
+                    flags,
+                    cancellable.clone(),
+                    reporter,
                 )
                 .await;
                 if result.is_ok()
                     && let Some(file_progress) = file_progress
                 {
-                    file_progress.finish();
+                    file_progress.finish(source_size);
                 }
                 // Keeps `file` open (and its fd number stable) for the
                 // duration of the copy above; only drop it once resolved.
                 drop(file);
                 result
             }
-            LocalCopySource::Directory { handle, children } => {
-                if !overwrite_existing || !target.query_exists(Some(&cancellable)) {
+            LocalCopySource::Directory {
+                handle,
+                mut children,
+            } => {
+                if options.fat_family {
+                    children.sort();
+                }
+                if !options.overwrite_existing || !target.query_exists(Some(&cancellable)) {
                     await_cancellable(&target, &cancellable, |target, cancellable, result| {
                         target.make_directory_async(
                             glib::Priority::DEFAULT,
@@ -667,22 +1707,76 @@ fn copy_recursively_local(
                     .await?;
                     record_created_copy_root(&created_root, &target).await?;
                 }
-                for child_name in children {
+                let handle = Arc::new(handle);
+                let mut used_names = HashSet::with_capacity(children.len());
+                let batch_size = children.len().min(options.workers).max(1);
+                let child_options = CopyOptions {
+                    workers: options.workers / batch_size,
+                    ..options
+                };
+                for chunk in children.chunks(batch_size) {
                     if cancellable.is_cancelled() {
                         return Err(cancelled_local_operation());
                     }
-                    let child_parent = handle.try_clone().map_err(io_error)?;
-                    let child_target = target.child(&child_name);
-                    copy_recursively_local(
-                        child_parent,
-                        child_name,
-                        child_target,
-                        overwrite_existing,
-                        cancellable.clone(),
-                        None,
-                        progress.clone(),
-                    )
-                    .await?;
+                    if batch_size == 1 {
+                        let child_name = &chunk[0];
+                        let child_parent = handle.clone();
+                        let target_name =
+                            fat_family_child_name(child_name, options.fat_family, &mut used_names);
+                        let child_target = target.child(&target_name);
+                        copy_recursively_local(
+                            child_parent,
+                            child_name.clone(),
+                            child_target,
+                            child_options,
+                            cancellable.clone(),
+                            None,
+                            progress.clone(),
+                        )
+                        .await?;
+                    } else {
+                        let context = glib::MainContext::default();
+                        let mut tasks = Vec::with_capacity(chunk.len());
+                        for child_name in chunk {
+                            let child_parent = handle.clone();
+                            let target_name = fat_family_child_name(
+                                child_name,
+                                options.fat_family,
+                                &mut used_names,
+                            );
+                            let child_target = target.child(&target_name);
+                            let cancellable = cancellable.clone();
+                            let progress = progress.clone();
+                            let child_name = child_name.clone();
+                            let task = context.spawn_local(async move {
+                                copy_recursively_local(
+                                    child_parent,
+                                    child_name,
+                                    child_target,
+                                    child_options,
+                                    cancellable,
+                                    None,
+                                    progress,
+                                )
+                                .await
+                            });
+                            tasks.push(((), task));
+                        }
+                        let mut first_error = None;
+                        for (_, result) in join_local_tasks(tasks).await {
+                            let result = result
+                                .map_err(|_| io_error("Copy worker failed"))
+                                .and_then(std::convert::identity);
+                            if first_error.is_none()
+                                && let Err(error) = result
+                            {
+                                first_error = Some(error);
+                            }
+                        }
+                        if let Some(error) = first_error {
+                            return Err(error);
+                        }
+                    }
                 }
                 Ok(())
             }
@@ -700,6 +1794,7 @@ fn copy_recursively_local_path(
     cancellable: gio::Cancellable,
     created_root: Option<Rc<CreatedCopyRoot>>,
     progress: Option<Rc<TransferProgressTracker>>,
+    fat_family: bool,
 ) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
     Box::pin(async move {
         let Some(parent_path) = source_path.parent().map(Path::to_path_buf) else {
@@ -708,12 +1803,25 @@ fn copy_recursively_local_path(
         let Some(name) = source_path.file_name().map(OsStr::to_os_string) else {
             return Err(io_error("Invalid copy source"));
         };
+        let source_parent = parent_path.clone();
+        let target_parent = target
+            .path()
+            .and_then(|path| path.parent().map(Path::to_path_buf));
+        let workers = gio::spawn_blocking(move || {
+            local_parent_worker_count(std::iter::once(source_parent).chain(target_parent))
+        })
+        .await
+        .map_err(|_| io_error("Copy worker stopped unexpectedly"))?;
         let parent = run_local_fs_step(move || open_local_parent_directory(&parent_path)).await?;
         copy_recursively_local(
-            parent,
+            Arc::new(parent),
             name,
             target,
-            overwrite_existing,
+            CopyOptions {
+                overwrite_existing,
+                fat_family,
+                workers,
+            },
             cancellable,
             created_root,
             progress,
@@ -729,6 +1837,7 @@ fn copy_recursively_with_progress(
     cancellable: gio::Cancellable,
     created_root: Option<Rc<CreatedCopyRoot>>,
     progress: Option<Rc<TransferProgressTracker>>,
+    fat_family: bool,
 ) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
     if source.is_native()
         && target.is_native()
@@ -744,12 +1853,13 @@ fn copy_recursively_with_progress(
             cancellable,
             created_root,
             progress,
+            fat_family,
         );
     }
     Box::pin(async move {
         let info = await_cancellable(&source, &cancellable, |source, cancellable, result| {
             source.query_info_async(
-                "standard::type",
+                "standard::type,standard::size",
                 gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
                 glib::Priority::DEFAULT,
                 Some(cancellable),
@@ -780,37 +1890,36 @@ fn copy_recursively_with_progress(
                     );
                 })
                 .await?;
+            let mut used_names = HashSet::new();
             loop {
-                let children = await_cancellable(
-                    &enumerator,
-                    &cancellable,
-                    |enumerator, cancellable, result| {
-                        enumerator.next_files_async(
-                            64,
-                            glib::Priority::DEFAULT,
-                            Some(cancellable),
-                            move |output| result.resolve(output),
-                        );
-                    },
-                )
-                .await?;
+                let children = copy_children(&enumerator, &cancellable, fat_family).await?;
                 if children.is_empty() {
                     break;
                 }
                 for child in children {
+                    let child_name = child.name();
+                    let target_name =
+                        fat_family_child_name(child_name.as_os_str(), fat_family, &mut used_names);
                     copy_recursively_with_progress(
-                        source.child(child.name()),
-                        target.child(child.name()),
+                        source.child(&child_name),
+                        target.child(&target_name),
                         overwrite_existing,
                         cancellable.clone(),
                         None,
                         progress.clone(),
+                        fat_family,
                     )
                     .await?;
+                }
+                if fat_family {
+                    break;
                 }
             }
             Ok(())
         } else {
+            let source_size = info
+                .has_attribute(gio::FILE_ATTRIBUTE_STANDARD_SIZE)
+                .then(|| info.size().max(0) as u64);
             let flags = gio::FileCopyFlags::ALL_METADATA
                 | gio::FileCopyFlags::NOFOLLOW_SYMLINKS
                 | if overwrite_existing {
@@ -818,24 +1927,26 @@ fn copy_recursively_with_progress(
                 } else {
                     gio::FileCopyFlags::NONE
                 };
-            let file_progress = progress.as_ref().map(TransferProgressTracker::begin_file);
-            let progress_callback = file_progress.as_ref().map(FileTransferProgress::callback);
+            let track_bytes = source_size.is_none_or(|size| size >= BYTE_PROGRESS_MIN_FILE_SIZE);
+            let file_progress = progress.as_ref().map(|progress| {
+                progress.begin_file(
+                    source
+                        .basename()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .into_owned(),
+                    track_bytes,
+                )
+            });
+            let reporter = file_progress
+                .as_ref()
+                .and_then(FileTransferProgress::reporter);
             let result =
-                await_cancellable(&source, &cancellable, move |source, cancellable, result| {
-                    source.copy_async(
-                        &target,
-                        flags,
-                        glib::Priority::DEFAULT,
-                        Some(cancellable),
-                        progress_callback,
-                        move |output| result.resolve(output),
-                    );
-                })
-                .await;
+                copy_file_with_progress(source, target, flags, cancellable.clone(), reporter).await;
             if result.is_ok()
                 && let Some(file_progress) = file_progress
             {
-                file_progress.finish();
+                file_progress.finish(source_size);
             }
             result
         }
@@ -857,6 +1968,7 @@ fn copy_recursively(
         cancellable,
         created_root,
         None,
+        false,
     )
 }
 
@@ -865,6 +1977,17 @@ async fn copy_new_recursively_with_progress(
     target: gio::File,
     cancellable: gio::Cancellable,
     progress: Option<Rc<TransferProgressTracker>>,
+) -> Result<(), glib::Error> {
+    let fat_family = target_is_fat_family(&target, &MountTable::current());
+    copy_new_recursively_on_filesystem(source, target, cancellable, progress, fat_family).await
+}
+
+async fn copy_new_recursively_on_filesystem(
+    source: gio::File,
+    target: gio::File,
+    cancellable: gio::Cancellable,
+    progress: Option<Rc<TransferProgressTracker>>,
+    fat_family: bool,
 ) -> Result<(), glib::Error> {
     if !target.is_native() {
         let source_type =
@@ -895,6 +2018,7 @@ async fn copy_new_recursively_with_progress(
                             cancellable,
                             None,
                             progress,
+                            fat_family,
                         )
                         .await
                     })
@@ -939,54 +2063,31 @@ async fn copy_new_recursively_with_progress(
             })
             .await?
             .file_type();
-        if source_type == gio::FileType::Directory {
-            let parent = target_path
-                .parent()
-                .ok_or_else(|| io_error("The destination has no parent directory"))?;
-            let staged = StagedSibling::create(parent, true).map_err(io_error)?;
-            if let Err(error) = copy_recursively_with_progress(
-                source,
-                gio::File::for_path(staged.path()),
-                true,
-                cancellable.clone(),
-                None,
-                progress.clone(),
-            )
-            .await
-            {
-                discard_staged(staged).await;
-                return Err(error);
-            }
-            if let Err(error) = cancellable.set_error_if_cancelled() {
-                discard_staged(staged).await;
-                return Err(error);
-            }
-
-            let staged_path = staged.path().to_owned();
-            let committed = gio::spawn_blocking(move || {
-                rustix::fs::renameat_with(
-                    rustix::fs::CWD,
-                    &staged_path,
-                    rustix::fs::CWD,
-                    &target_path,
-                    rustix::fs::RenameFlags::NOREPLACE,
-                )
-            })
-            .await
-            .map_err(|_| io_error("The copy worker stopped unexpectedly"));
-            let committed = match committed {
-                Ok(Ok(())) => Ok(()),
-                Ok(Err(error)) => Err(io_error(format!(
-                    "Could not finish copying the item: {error}"
-                ))),
-                Err(error) => Err(error),
-            };
-            if let Err(error) = committed {
-                discard_staged(staged).await;
-                return Err(error);
-            }
-            return Ok(());
+        let parent = target_path
+            .parent()
+            .ok_or_else(|| io_error("The destination has no parent directory"))?;
+        let staged = StagedSibling::create(parent, source_type == gio::FileType::Directory)
+            .map_err(io_error)?;
+        if let Err(error) = copy_recursively_with_progress(
+            source,
+            gio::File::for_path(staged.path()),
+            true,
+            cancellable.clone(),
+            None,
+            progress.clone(),
+            fat_family,
+        )
+        .await
+        {
+            let cleanup = discard_incomplete_staged(staged).await;
+            return Err(copy_failure_after_cleanup(error, cleanup));
         }
+        if let Err(error) = cancellable.set_error_if_cancelled() {
+            let cleanup = discard_incomplete_staged(staged).await;
+            return Err(copy_failure_after_cleanup(error, cleanup));
+        }
+
+        return publish_staged_without_replace(staged, target_path, cancellable).await;
     }
 
     let created_root = Rc::new(CreatedCopyRoot::new());
@@ -997,6 +2098,7 @@ async fn copy_new_recursively_with_progress(
         cancellable.clone(),
         Some(created_root.clone()),
         progress,
+        fat_family,
     )
     .await;
     if result.as_ref().is_err_and(was_cancelled) && created_root.was_created.get() {
@@ -1037,6 +2139,7 @@ async fn move_local_with_progress(
     attempt_move: MoveAttempt,
 ) -> Result<(), glib::Error> {
     let source_identity = local_file_identity(&source).await?;
+    let target_path = target.path();
     let result = attempt_move(source.clone(), target.clone(), cancellable.clone()).await;
     match result {
         Err(error) if error.matches(gio::IOErrorEnum::WouldRecurse) => {
@@ -1047,6 +2150,9 @@ async fn move_local_with_progress(
                 progress,
             )
             .await?;
+            if let Some(path) = target_path.as_deref() {
+                flush_removable_destination(path).await?;
+            }
             permanently_delete_maybe_local_if_unchanged(source, true, source_identity, cancellable)
                 .await
         }
@@ -1074,6 +2180,13 @@ fn move_local_path(
     Box::pin(async move {
         if cancellable.is_cancelled() {
             return Err(cancelled_local_operation());
+        }
+        #[cfg(test)]
+        if force_cross_volume_for_test() {
+            return Err(glib::Error::new(
+                gio::IOErrorEnum::WouldRecurse,
+                "Cannot move directly",
+            ));
         }
         let Some(source_parent_path) = source_path.parent().map(Path::to_path_buf) else {
             return Err(io_error("Cannot move the filesystem root"));
@@ -1248,27 +2361,28 @@ async fn move_local(
             // Remote (GVfs) locations have no local descriptor to walk against, so
             // anything not fully local keeps the GIO path-based move below rather
             // than claiming an equivalent guarantee.
-            let move_progress = progress.as_ref().map(TransferProgressTracker::begin_file);
-            let progress_callback = move_progress.as_ref().map(FileTransferProgress::callback);
+            let move_progress = progress.as_ref().map(|progress| {
+                progress.begin_file(
+                    source
+                        .basename()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .into_owned(),
+                    true,
+                )
+            });
+            let reporter = move_progress
+                .as_ref()
+                .and_then(FileTransferProgress::reporter);
             Box::pin(async move {
                 let flags =
                     gio::FileCopyFlags::ALL_METADATA | gio::FileCopyFlags::NOFOLLOW_SYMLINKS;
                 let result =
-                    await_cancellable(&source, &cancellable, move |source, cancellable, result| {
-                        source.move_async(
-                            &target,
-                            flags,
-                            glib::Priority::DEFAULT,
-                            Some(cancellable),
-                            progress_callback,
-                            move |output| result.resolve(output),
-                        );
-                    })
-                    .await;
+                    move_file_with_progress(source, target, flags, cancellable, reporter).await;
                 if result.is_ok()
                     && let Some(move_progress) = move_progress
                 {
-                    move_progress.finish();
+                    move_progress.finish(None);
                 }
                 result
             })
@@ -1311,8 +2425,91 @@ impl StagedSibling {
     }
 }
 
-async fn discard_staged(staged: StagedSibling) {
-    let _discarded = gio::spawn_blocking(move || drop(staged)).await;
+async fn discard_incomplete_staged(staged: StagedSibling) -> Result<(), glib::Error> {
+    match gio::spawn_blocking(move || match staged {
+        StagedSibling::File(path) => path.close(),
+        StagedSibling::Directory(directory) => directory.close(),
+    })
+    .await
+    {
+        Ok(result) => result.map_err(io_error),
+        Err(error) => Err(io_error(blocking_join_message(error))),
+    }
+}
+
+async fn publish_staged_without_replace(
+    staged: StagedSibling,
+    target_path: PathBuf,
+    cancellable: gio::Cancellable,
+) -> Result<(), glib::Error> {
+    publish_staged_without_replace_with(staged, target_path, cancellable, |from, to| {
+        rustix::fs::renameat_with(
+            rustix::fs::CWD,
+            from,
+            rustix::fs::CWD,
+            to,
+            rustix::fs::RenameFlags::NOREPLACE,
+        )
+    })
+    .await
+}
+
+async fn publish_staged_without_replace_with(
+    staged: StagedSibling,
+    target_path: PathBuf,
+    cancellable: gio::Cancellable,
+    rename: impl FnOnce(&Path, &Path) -> rustix::io::Result<()> + Send + 'static,
+) -> Result<(), glib::Error> {
+    let staged_path = staged.path().to_owned();
+    let rename_target = target_path.clone();
+    let renamed = gio::spawn_blocking(move || rename(&staged_path, &rename_target)).await;
+    let result = match renamed {
+        Ok(Ok(())) => {
+            let _ = staged.keep();
+            return Ok(());
+        }
+        Ok(Err(
+            rustix::io::Errno::INVAL | rustix::io::Errno::NOSYS | rustix::io::Errno::OPNOTSUPP,
+        )) => {
+            // Plain rename can overwrite a racing destination. Without NOREPLACE,
+            // publication must use exclusive creation, even though it exposes partial copies.
+            let target = gio::File::for_path(&target_path);
+            let created_root = Rc::new(CreatedCopyRoot::new());
+            let copied = copy_recursively_with_progress(
+                gio::File::for_path(staged.path()),
+                target.clone(),
+                false,
+                cancellable,
+                Some(created_root.clone()),
+                None,
+                false,
+            )
+            .await;
+            if copied.is_err() && created_root.was_created.get() {
+                let cleanup = permanently_delete_maybe_local_if_unchanged(
+                    target,
+                    true,
+                    created_root.identity.get(),
+                    gio::Cancellable::new(),
+                )
+                .await;
+                copied.map_err(|error| copy_failure_after_cleanup(error, cleanup))
+            } else {
+                copied
+            }
+        }
+        Ok(Err(error)) => Err(io_error(error)),
+        Err(error) => Err(io_error(blocking_join_message(error))),
+    };
+    let cleanup = discard_incomplete_staged(staged).await;
+    match result {
+        Ok(()) => cleanup.map_err(|error| {
+            io_error(format!(
+                "The item was copied, but its staging copy could not be removed: {error}"
+            ))
+        }),
+        Err(error) => Err(copy_failure_after_cleanup(error, cleanup)),
+    }
 }
 
 fn io_error(error: impl std::fmt::Display) -> glib::Error {
@@ -1398,16 +2595,16 @@ async fn replace_local_with(
     )
     .await
     {
-        discard_staged(staged).await;
-        return Err(error);
+        let cleanup = discard_incomplete_staged(staged).await;
+        return Err(copy_failure_after_cleanup(error, cleanup));
     }
     if let Err(error) = cancellable.set_error_if_cancelled() {
-        discard_staged(staged).await;
-        return Err(error);
+        let cleanup = discard_incomplete_staged(staged).await;
+        return Err(copy_failure_after_cleanup(error, cleanup));
     }
     if let Err(error) = ensure_local_file_identity(&target, target_identity).await {
-        discard_staged(staged).await;
-        return Err(error);
+        let cleanup = discard_incomplete_staged(staged).await;
+        return Err(copy_failure_after_cleanup(error, cleanup));
     }
 
     let staged_path = staged.path().to_owned();
@@ -1423,22 +2620,23 @@ async fn replace_local_with(
         Ok(()) => true,
         Err(error) if is_trash_unsupported_failure(false, &error) => false,
         Err(error) => {
-            discard_staged(staged).await;
-            return Err(error);
+            let cleanup = discard_incomplete_staged(staged).await;
+            return Err(copy_failure_after_cleanup(error, cleanup));
         }
     };
     if trashed {
-        publish_staged_replacement(staged, target_path).await?;
+        publish_staged_replacement(staged, target_path.clone()).await?;
         // A failed publication must not register an undo that would delete
         // a concurrent arrival. The original remains recoverable in Trash.
         on_replaced();
     } else {
+        let exchange_target = target_path.clone();
         let exchanged = gio::spawn_blocking(move || {
             rustix::fs::renameat_with(
                 rustix::fs::CWD,
                 &staged_path,
                 rustix::fs::CWD,
-                &target_path,
+                &exchange_target,
                 rustix::fs::RenameFlags::EXCHANGE,
             )
         })
@@ -1452,8 +2650,8 @@ async fn replace_local_with(
             Err(error) => Err(error),
         };
         if let Err(error) = exchanged {
-            discard_staged(staged).await;
-            return Err(error);
+            let cleanup = discard_incomplete_staged(staged).await;
+            return Err(copy_failure_after_cleanup(error, cleanup));
         }
 
         let staged_file = gio::File::for_path(staged.keep().map_err(io_error)?);
@@ -1466,6 +2664,7 @@ async fn replace_local_with(
         .await?;
     }
     if move_source {
+        flush_removable_destination(&target_path).await?;
         permanently_delete_maybe_local_if_unchanged(
             source,
             source_is_directory,
@@ -1481,31 +2680,13 @@ async fn publish_staged_replacement(
     staged: StagedSibling,
     target_path: PathBuf,
 ) -> Result<(), glib::Error> {
-    let staged_path = staged.path().to_owned();
-    let renamed = gio::spawn_blocking(move || {
-        rustix::fs::renameat_with(
-            rustix::fs::CWD,
-            &staged_path,
-            rustix::fs::CWD,
-            &target_path,
-            rustix::fs::RenameFlags::NOREPLACE,
-        )
-    })
-    .await
-    .map_err(|_| io_error("The replacement worker stopped unexpectedly"))
-    .and_then(|result| result.map_err(io_error));
-    match renamed {
-        Ok(()) => {
-            let _kept = staged.keep();
-            Ok(())
-        }
-        Err(error) => {
-            discard_staged(staged).await;
-            Err(io_error(format!(
-                "Could not place the replacement item; the original is in Trash: {error}"
-            )))
-        }
-    }
+    publish_staged_without_replace(staged, target_path, gio::Cancellable::new())
+        .await
+        .map_err(|error| {
+            io_error(format!(
+                "Could not finish placing the replacement item; the original is in Trash: {error}"
+            ))
+        })
 }
 
 async fn replace_local_with_progress(
@@ -1517,6 +2698,7 @@ async fn replace_local_with_progress(
     progress: Option<Rc<TransferProgressTracker>>,
     on_replaced: &dyn Fn(),
 ) -> Result<(), glib::Error> {
+    let fat_family = target_is_fat_family(&target, &MountTable::current());
     replace_local_with(
         source,
         target,
@@ -1531,6 +2713,7 @@ async fn replace_local_with_progress(
                 cancellable,
                 None,
                 progress.clone(),
+                fat_family,
             )
         }),
         on_replaced,
@@ -1591,6 +2774,7 @@ fn trash_stage_overwrite(
 
 /// The injectable steps of a merge, bundled to keep the call sites small.
 struct MergeHooks<'a> {
+    fat_family: bool,
     copy_into_target: StageCopy,
     stage_overwrite: StageOverwrite,
     on_merged: &'a dyn Fn(MergePlan),
@@ -1601,6 +2785,7 @@ fn classify_merge<'a>(
     target: &'a gio::File,
     plan: &'a mut MergePlan,
     cancellable: &'a gio::Cancellable,
+    fat_family: bool,
 ) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>> + 'a>> {
     Box::pin(async move {
         let enumerator = await_cancellable(source, cancellable, |source, cancellable, result| {
@@ -1613,20 +2798,9 @@ fn classify_merge<'a>(
             );
         })
         .await?;
+        let mut used_names = HashSet::new();
         loop {
-            let children = await_cancellable(
-                &enumerator,
-                cancellable,
-                |enumerator, cancellable, result| {
-                    enumerator.next_files_async(
-                        64,
-                        glib::Priority::DEFAULT,
-                        Some(cancellable),
-                        move |output| result.resolve(output),
-                    );
-                },
-            )
-            .await?;
+            let children = copy_children(&enumerator, cancellable, fat_family).await?;
             if children.is_empty() {
                 return Ok(());
             }
@@ -1634,8 +2808,11 @@ fn classify_merge<'a>(
                 if cancellable.is_cancelled() {
                     return Err(cancelled_local_operation());
                 }
-                let child_source = source.child(child.name());
-                let child_target = target.child(child.name());
+                let child_name = child.name();
+                let target_name =
+                    fat_family_child_name(child_name.as_os_str(), fat_family, &mut used_names);
+                let child_source = source.child(&child_name);
+                let child_target = target.child(&target_name);
                 let target_type = match await_cancellable(
                     &child_target,
                     cancellable,
@@ -1663,7 +2840,8 @@ fn classify_merge<'a>(
                         }
                     }
                     Some(gio::FileType::Directory) if source_is_directory => {
-                        classify_merge(&child_source, &child_target, plan, cancellable).await?;
+                        classify_merge(&child_source, &child_target, plan, cancellable, fat_family)
+                            .await?;
                     }
                     Some(gio::FileType::Directory) => {
                         return Err(glib::Error::new(
@@ -1683,6 +2861,9 @@ fn classify_merge<'a>(
                         }
                     }
                 }
+            }
+            if fat_family {
+                return Ok(());
             }
         }
     })
@@ -1724,7 +2905,7 @@ async fn merge_local_with(
         }
     }
     let mut plan = MergePlan::default();
-    classify_merge(&source, &target, &mut plan, &cancellable).await?;
+    classify_merge(&source, &target, &mut plan, &cancellable, hooks.fat_family).await?;
     // Stage every overwritten original in Trash before the copy so undo can
     // restore it; on failure, report what was staged so it stays recoverable.
     let mut staged = Vec::new();
@@ -1747,8 +2928,12 @@ async fn merge_local_with(
     }
     (hooks.on_merged)(plan);
     let source_identity = local_file_identity(&source).await?;
+    let target_path = target.path();
     (hooks.copy_into_target)(source.clone(), target, true, cancellable.clone()).await?;
     if move_source {
+        if let Some(path) = target_path.as_deref() {
+            flush_removable_destination(path).await?;
+        }
         permanently_delete_maybe_local_if_unchanged(source, true, source_identity, cancellable)
             .await?;
     }
@@ -1764,6 +2949,7 @@ async fn merge_local_with_progress(
     progress: Option<Rc<TransferProgressTracker>>,
     on_merged: &dyn Fn(MergePlan),
 ) -> Result<(), glib::Error> {
+    let fat_family = target_is_fat_family(&target, &MountTable::current());
     merge_local_with(
         source,
         target,
@@ -1771,6 +2957,7 @@ async fn merge_local_with_progress(
         cancellable,
         affected_locations,
         MergeHooks {
+            fat_family,
             copy_into_target: Rc::new(move |source, target, _directory, cancellable| {
                 copy_recursively_with_progress(
                     source,
@@ -1779,6 +2966,7 @@ async fn merge_local_with_progress(
                     cancellable,
                     None,
                     progress.clone(),
+                    fat_family,
                 )
             }),
             stage_overwrite: Rc::new(trash_stage_overwrite),
@@ -2276,7 +3464,7 @@ fn remove_local_delete_directory(
     complete_local_delete_job(queue, completion);
 }
 
-fn local_device_is_rotational(fd: &OwnedFd) -> Option<bool> {
+fn local_device_is_rotational(fd: impl AsFd) -> Option<bool> {
     let stat = rustix::fs::fstat(fd).ok()?;
     let device = PathBuf::from("/sys/dev/block").join(format!(
         "{}:{}",
@@ -2323,9 +3511,13 @@ fn rotational_sysfs_node(path: &Path, visited: &mut HashSet<PathBuf>) -> Option<
     None
 }
 
-fn bounded_local_delete_worker_count(available: usize, rotational: bool) -> usize {
+fn bounded_local_worker_count(available: usize, rotational: bool) -> usize {
     let available = available.max(1);
-    if rotational { 1 } else { available.min(2) }
+    if rotational {
+        1
+    } else {
+        available.min(MAX_LOCAL_IO_WORKERS)
+    }
 }
 
 fn local_delete_worker_count(roots: &[LocalDeleteRoot]) -> usize {
@@ -2335,7 +3527,7 @@ fn local_delete_worker_count(roots: &[LocalDeleteRoot]) -> usize {
     let rotational = roots
         .iter()
         .any(|root| local_device_is_rotational(root.parent.as_ref()) == Some(true));
-    bounded_local_delete_worker_count(available, rotational)
+    bounded_local_worker_count(available, rotational)
 }
 
 fn parallel_delete_local_blocking_with_workers(
@@ -2397,19 +3589,22 @@ fn run_local_delete_workers(
     }
 }
 
-fn parallel_delete_local_blocking(
-    roots: Vec<LocalDeleteRoot>,
-    cancelled: Arc<AtomicBool>,
-) -> Result<(), String> {
-    let worker_count = local_delete_worker_count(&roots);
-    parallel_delete_local_blocking_with_workers(roots, cancelled, worker_count)
-}
-
 fn parallel_delete_local(
     roots: Vec<LocalDeleteRoot>,
     cancellable: gio::Cancellable,
 ) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
-    parallel_delete_local_with(roots, cancellable, parallel_delete_local_blocking)
+    parallel_delete_local_with_worker_count(roots, cancellable, None)
+}
+
+fn parallel_delete_local_with_worker_count(
+    roots: Vec<LocalDeleteRoot>,
+    cancellable: gio::Cancellable,
+    worker_count: Option<usize>,
+) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
+    parallel_delete_local_with(roots, cancellable, move |roots, cancelled| {
+        let worker_count = worker_count.unwrap_or_else(|| local_delete_worker_count(&roots));
+        parallel_delete_local_blocking_with_workers(roots, cancelled, worker_count)
+    })
 }
 
 fn parallel_delete_local_with(
@@ -2571,6 +3766,15 @@ fn permanently_delete_local_path_if_unchanged(
     expected: Option<LocalFileIdentity>,
     cancellable: gio::Cancellable,
 ) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
+    permanently_delete_local_path_if_unchanged_with_worker_count(path, expected, cancellable, None)
+}
+
+fn permanently_delete_local_path_if_unchanged_with_worker_count(
+    path: PathBuf,
+    expected: Option<LocalFileIdentity>,
+    cancellable: gio::Cancellable,
+    worker_count: Option<usize>,
+) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
     Box::pin(async move {
         let Some(parent_path) = path.parent().map(Path::to_path_buf) else {
             return Err(io_error("Cannot permanently delete the filesystem root"));
@@ -2580,7 +3784,20 @@ fn permanently_delete_local_path_if_unchanged(
         };
         let parent =
             run_local_delete_step(move || open_local_parent_directory(&parent_path)).await?;
-        permanently_delete_local(parent, name, expected, cancellable).await
+        if let Some(worker_count) = worker_count {
+            parallel_delete_local_with_worker_count(
+                vec![LocalDeleteRoot {
+                    parent: Arc::new(parent),
+                    name,
+                    expected,
+                }],
+                cancellable,
+                Some(worker_count),
+            )
+            .await
+        } else {
+            permanently_delete_local(parent, name, expected, cancellable).await
+        }
     })
 }
 
@@ -2633,6 +3850,25 @@ fn permanently_delete_maybe_local(
     cancellable: gio::Cancellable,
 ) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
     permanently_delete_maybe_local_if_unchanged(file, directory, None, cancellable)
+}
+
+fn permanently_delete_maybe_local_with_worker_count(
+    file: gio::File,
+    directory: bool,
+    cancellable: gio::Cancellable,
+    worker_count: Option<usize>,
+) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
+    if file.is_native()
+        && let Some(path) = file.path()
+    {
+        return permanently_delete_local_path_if_unchanged_with_worker_count(
+            path,
+            None,
+            cancellable,
+            worker_count,
+        );
+    }
+    permanently_delete(file, directory, cancellable)
 }
 
 fn permanently_delete_maybe_local_if_unchanged(
@@ -2854,6 +4090,32 @@ fn restored_destination(entry: &RestoreEntry) -> Location {
         .map(|path| Location::local(path.clone()))
         .or_else(|| entry.original_target.clone())
         .unwrap_or_else(|| entry.source.clone())
+}
+
+fn local_parent_worker_count(parents: impl IntoIterator<Item = PathBuf>) -> usize {
+    let available = thread::available_parallelism()
+        .map(usize::from)
+        .unwrap_or(1);
+    let rotational = parents
+        .into_iter()
+        .collect::<HashSet<_>>()
+        .iter()
+        .any(|parent| {
+            open_local_parent_directory(parent)
+                .ok()
+                .and_then(local_device_is_rotational)
+                == Some(true)
+        });
+    bounded_local_worker_count(available, rotational)
+}
+
+fn restore_worker_count(entries: &[RestoreEntry]) -> usize {
+    local_parent_worker_count(entries.iter().filter_map(|entry| {
+        restored_destination(entry)
+            .native_path()
+            .and_then(Path::parent)
+            .map(Path::to_path_buf)
+    }))
 }
 
 async fn restore_trash_entry(
@@ -3095,10 +4357,13 @@ async fn run_merge_undo(
                 }
             }
         };
-        let deleted_location = match result {
+        let deleted_locations = match result {
             Ok(()) => {
+                if existing_type.is_some() {
+                    super::bookmarks::deletion_completed(std::slice::from_ref(location));
+                }
                 completed_locations.push(location.clone());
-                Some(location.clone())
+                vec![location.clone()]
             }
             Err(error) if was_cancelled(&error) => {
                 failed_locations.push(location.clone());
@@ -3114,7 +4379,7 @@ async fn run_merge_undo(
             Err(error) => {
                 errors.push(format!("{}: {error}", location.display_name()));
                 failed_locations.push(location.clone());
-                None
+                Vec::new()
             }
         };
         completed += 1;
@@ -3122,7 +4387,7 @@ async fn run_merge_undo(
             request_id,
             completed,
             total,
-            deleted_location,
+            deleted_locations,
         });
     }
     if errors.is_empty() {
@@ -3233,6 +4498,7 @@ fn cancellation_handle(cancellable: gio::Cancellable) -> LoadHandle {
     LoadHandle::new(move || cancellable.cancel())
 }
 
+#[derive(Clone)]
 struct DeletionTarget {
     location: Location,
     display_name: String,
@@ -3269,6 +4535,16 @@ impl DeletionTarget {
     }
 }
 
+fn deletion_worker_count(targets: &[DeletionTarget]) -> usize {
+    local_parent_worker_count(targets.iter().filter_map(|target| {
+        target
+            .location
+            .native_path()
+            .and_then(Path::parent)
+            .map(Path::to_path_buf)
+    }))
+}
+
 async fn run_deletion(
     request_id: OperationRequestId,
     targets: Vec<DeletionTarget>,
@@ -3293,13 +4569,23 @@ async fn run_deletion(
         affected_locations.insert(Location::uri("trash:///"));
     }
     let total = targets.len();
-    for (index, target) in targets.iter().enumerate() {
+    let mut last_progress_emit = std::time::Instant::now();
+    let batch_size = if total > 32 {
+        deletion_worker_count(&targets)
+    } else {
+        1
+    };
+    let local_tree_worker_count = (batch_size > 1).then_some(1);
+    let mut completed_count = 0;
+    let mut pending_progress_locations = Vec::new();
+
+    for chunk in targets.chunks(batch_size) {
         if cancellable.is_cancelled() {
             emit(cancelled_event(
                 request_id,
                 deleted_locations,
                 failed_locations,
-                targets[index..]
+                targets[completed_count..]
                     .iter()
                     .map(|target| target.location.clone())
                     .collect(),
@@ -3307,65 +4593,106 @@ async fn run_deletion(
             ));
             return;
         }
-        let file = gio_file_for_location(&target.location);
-        let result = if permanent {
-            if target
-                .location
-                .uri_value()
-                .is_some_and(|uri| uri.starts_with("trash:"))
-            {
-                await_cancellable(&file, &cancellable, |file, cancellable, result| {
-                    file.delete_async(glib::Priority::DEFAULT, Some(cancellable), move |output| {
-                        result.resolve(output)
-                    });
-                })
-                .await
-            } else {
-                permanently_delete_maybe_local(file, target.is_directory, cancellable.clone()).await
-            }
-        } else {
-            await_cancellable(&file, &cancellable, |file, cancellable, result| {
-                file.trash_async(glib::Priority::DEFAULT, Some(cancellable), move |output| {
-                    result.resolve(output)
+
+        let context = glib::MainContext::default();
+        let tasks = chunk
+            .iter()
+            .map(|target| {
+                let target = target.clone();
+                let operation_target = target.clone();
+                let cancellable = cancellable.clone();
+                let task = context.spawn_local(async move {
+                    let file = gio_file_for_location(&operation_target.location);
+                    if permanent {
+                        if operation_target
+                            .location
+                            .uri_value()
+                            .is_some_and(|uri| uri.starts_with("trash:"))
+                        {
+                            await_cancellable(&file, &cancellable, |file, cancellable, result| {
+                                file.delete_async(
+                                    glib::Priority::DEFAULT,
+                                    Some(cancellable),
+                                    move |output| result.resolve(output),
+                                );
+                            })
+                            .await
+                        } else {
+                            permanently_delete_maybe_local_with_worker_count(
+                                file,
+                                operation_target.is_directory,
+                                cancellable.clone(),
+                                local_tree_worker_count,
+                            )
+                            .await
+                        }
+                    } else {
+                        await_cancellable(&file, &cancellable, |file, cancellable, result| {
+                            file.trash_async(
+                                glib::Priority::DEFAULT,
+                                Some(cancellable),
+                                move |output| result.resolve(output),
+                            );
+                        })
+                        .await
+                    }
                 });
+                (target, task)
             })
-            .await
-        };
-        let deleted_location = if let Err(error) = result {
-            if was_cancelled(&error) {
-                failed_locations.push(target.location.clone());
-                emit(cancelled_event(
+            .collect();
+
+        let mut chunk_cancelled = false;
+        for (target, result) in join_local_tasks(tasks).await {
+            completed_count += 1;
+            let result = result.unwrap_or_else(|_| Err(io_error("Delete worker failed")));
+            if let Err(error) = result {
+                if was_cancelled(&error) {
+                    chunk_cancelled = true;
+                    failed_locations.push(target.location.clone());
+                } else {
+                    if is_trash_unsupported_failure(permanent, &error) {
+                        retryable_locations.push(target.location.clone());
+                    }
+                    errors.push(deletion_error_message(
+                        &target.display_name,
+                        permanent,
+                        &error,
+                    ));
+                    failed_locations.push(target.location.clone());
+                }
+            } else {
+                super::bookmarks::deletion_completed(std::slice::from_ref(&target.location));
+                deleted_locations.push(target.location.clone());
+                pending_progress_locations.push(target.location.clone());
+            }
+            let is_last = completed_count == total;
+            let now = std::time::Instant::now();
+            if total <= 32
+                || is_last
+                || now.duration_since(last_progress_emit) >= std::time::Duration::from_millis(33)
+            {
+                last_progress_emit = now;
+                emit(OperationEvent::DeleteProgress {
                     request_id,
-                    deleted_locations,
-                    failed_locations,
-                    targets[index + 1..]
-                        .iter()
-                        .map(|target| target.location.clone())
-                        .collect(),
-                    affected_locations,
-                ));
-                return;
+                    completed: completed_count,
+                    total,
+                    deleted_locations: std::mem::take(&mut pending_progress_locations),
+                });
             }
-            if is_trash_unsupported_failure(permanent, &error) {
-                retryable_locations.push(target.location.clone());
-            }
-            errors.push(deletion_error_message(
-                &target.display_name,
-                permanent,
-                &error,
+        }
+        if chunk_cancelled {
+            emit(cancelled_event(
+                request_id,
+                deleted_locations,
+                failed_locations,
+                targets[completed_count..]
+                    .iter()
+                    .map(|target| target.location.clone())
+                    .collect(),
+                affected_locations,
             ));
-            failed_locations.push(target.location.clone());
-            None
-        } else {
-            deleted_locations.push(target.location.clone());
-            Some(target.location.clone())
-        };
-        emit(OperationEvent::DeleteProgress {
-            request_id,
-            completed: index + 1,
-            total,
-            deleted_location,
-        });
+            return;
+        }
     }
     if errors.is_empty() {
         emit(OperationEvent::Deleted {
@@ -3414,6 +4741,7 @@ impl OperationProvider for LocalOperationProvider {
                 emit(OperationEvent::Failed {
                     request_id: request.id,
                     message: message.to_owned(),
+                    password_failure: None,
                 });
                 return;
             }
@@ -3466,6 +4794,7 @@ impl OperationProvider for LocalOperationProvider {
                 Err(error) => emit(OperationEvent::Failed {
                     request_id: request.id,
                     message: error.to_string(),
+                    password_failure: None,
                 }),
             }
         });
@@ -3507,6 +4836,12 @@ impl OperationProvider for LocalOperationProvider {
         let operation_cancellable = cancellable.clone();
         let _task = glib::MainContext::default().spawn_local(async move {
             let destination = gio_file_for_location(&request.destination);
+            let mounts = MountTable::current();
+            let fat_family = target_is_fat_family(&destination, &mounts);
+            let max_file_size = destination
+                .path()
+                .and_then(|path| fat32_file_size_limit(mounts.fs_type_for(&path)));
+            let mut used_names = HashSet::new();
             let mut affected_locations = HashSet::from([request.destination.clone()]);
             for parent in request.items.iter().filter_map(|item| item.source.parent()) {
                 affected_locations.insert(parent);
@@ -3516,8 +4851,8 @@ impl OperationProvider for LocalOperationProvider {
                 .iter()
                 .map(|item| gio_file_for_location(&item.source))
                 .collect::<Vec<_>>();
-            let (item_sizes, total_bytes) =
-                match transfer_sizes(&sources, &operation_cancellable).await {
+            let (item_sizes, total_bytes, item_files, total_files, regular_files) =
+                match transfer_sizes(&sources, &operation_cancellable, max_file_size).await {
                     Ok(sizes) => sizes,
                     Err(error) if was_cancelled(&error) => {
                         emit(cancelled_event(
@@ -3542,33 +4877,132 @@ impl OperationProvider for LocalOperationProvider {
                         return;
                     }
                 };
-            let progress = TransferProgressTracker::new(request.id, total_bytes, emit.clone());
+            let progress =
+                TransferProgressTracker::new(request.id, total_bytes, total_files, emit.clone());
             progress.emit();
+            if let Some(plans) =
+                parallel_copy_plans(&request, &sources, &destination, &regular_files, fat_family)
+            {
+                for plan in &plans {
+                    affected_locations.insert(request.items[plan.index].source.clone());
+                    affected_locations.insert(plan.target_location.clone());
+                }
+                let available = thread::available_parallelism()
+                    .map(usize::from)
+                    .unwrap_or(1);
+                let rotational = destination
+                    .path()
+                    .and_then(|path| std::fs::File::open(path).ok())
+                    .and_then(|directory| local_device_is_rotational(&directory))
+                    .unwrap_or(fat_family);
+                let outcome = execute_parallel_copy_plans(
+                    &plans,
+                    &item_sizes,
+                    &item_files,
+                    bounded_local_worker_count(available, rotational),
+                    &operation_cancellable,
+                    &progress,
+                )
+                .await;
+                let mut completed_indices = outcome.completed;
+                completed_indices.sort_unstable();
+                let completed = completed_indices
+                    .into_iter()
+                    .map(|index| request.items[index].source.clone())
+                    .collect::<Vec<_>>();
+                if !outcome.failed.is_empty() || outcome.next < plans.len() {
+                    let failed = outcome
+                        .failed
+                        .iter()
+                        .map(|(index, _)| request.items[*index].source.clone())
+                        .collect();
+                    let failure_error = outcome
+                        .failed
+                        .iter()
+                        .find(|(_, error)| !was_cancelled(error))
+                        .map(|(_, error)| error);
+                    let (failure, skip_flush) = failure_error.map_or((None, false), |error| {
+                        copy_failure_on_fat32(error, max_file_size.is_some())
+                    });
+                    stop_transfer(
+                        &outcome.written_paths,
+                        &emit,
+                        request.id,
+                        TransferStop {
+                            completed,
+                            failed,
+                            not_attempted: request.items[outcome.next..]
+                                .iter()
+                                .map(|item| item.source.clone())
+                                .collect(),
+                            affected_locations,
+                            failure,
+                            skip_flush,
+                        },
+                    )
+                    .await;
+                    return;
+                }
+                if !flush_removable_writes(
+                    outcome.written_paths,
+                    &operation_cancellable,
+                    &emit,
+                    request.id,
+                    &completed,
+                    affected_locations,
+                )
+                .await
+                {
+                    return;
+                }
+                emit(OperationEvent::Pasted {
+                    request_id: request.id,
+                    locations: completed,
+                });
+                return;
+            }
             let mut completed = Vec::new();
+            let mut written_paths = Vec::new();
             for (index, item) in request.items.iter().enumerate() {
                 if operation_cancellable.is_cancelled() {
-                    emit(cancelled_event(
+                    stop_transfer(
+                        &written_paths,
+                        &emit,
                         request.id,
-                        completed,
-                        Vec::new(),
-                        request.items[index..]
-                            .iter()
-                            .map(|item| item.source.clone())
-                            .collect(),
-                        affected_locations,
-                    ));
+                        TransferStop {
+                            completed,
+                            failed: Vec::new(),
+                            not_attempted: request.items[index..]
+                                .iter()
+                                .map(|item| item.source.clone())
+                                .collect(),
+                            affected_locations,
+                            failure: None,
+                            skip_flush: false,
+                        },
+                    )
+                    .await;
                     return;
                 }
                 let source = sources[index].clone();
                 let item_started_at = progress.transferred_bytes.get();
-                let Some(name) = source.basename() else {
+                let started_files = progress.completed_files.get();
+                let Some((name, default_target)) =
+                    default_transfer_target(&source, &destination, fat_family, &mut used_names)
+                else {
+                    let flush_error = flush_written_roots(&written_paths, &emit, request.id)
+                        .await
+                        .err();
                     emit(OperationEvent::Failed {
                         request_id: request.id,
-                        message: "A clipboard item has no file name".to_owned(),
+                        message: match flush_error {
+                            Some(error) => format!("A clipboard item has no file name. {error}"),
+                            None => "A clipboard item has no file name".to_owned(),
+                        },
+                        password_failure: None,
                     });
                     return;
                 };
-                let default_target = destination.child(&name);
                 let is_duplicate = !request.move_sources && source.equal(&default_target);
                 let needs_unique_target =
                     is_duplicate || item.conflict == TransferConflict::KeepBoth;
@@ -3576,7 +5010,13 @@ impl OperationProvider for LocalOperationProvider {
                     || (is_duplicate && item.conflict == TransferConflict::ReplaceExisting)
                 {
                     completed.push(item.source.clone());
-                    progress.finish_item(item_started_at, item_sizes[index], None);
+                    progress.finish_item(
+                        item_started_at,
+                        item_sizes[index],
+                        started_files,
+                        item_files[index],
+                        None,
+                    );
                     continue;
                 }
                 let target = if needs_unique_target {
@@ -3597,24 +5037,24 @@ impl OperationProvider for LocalOperationProvider {
                     {
                         Ok(info) => info.file_type() == gio::FileType::Directory,
                         Err(error) => {
-                            if was_cancelled(&error) {
-                                emit(cancelled_event(
-                                    request.id,
+                            let failure = (!was_cancelled(&error)).then(|| error.to_string());
+                            stop_transfer(
+                                &written_paths,
+                                &emit,
+                                request.id,
+                                TransferStop {
                                     completed,
-                                    vec![item.source.clone()],
-                                    request.items[index + 1..]
+                                    failed: vec![item.source.clone()],
+                                    not_attempted: request.items[index + 1..]
                                         .iter()
                                         .map(|item| item.source.clone())
                                         .collect(),
                                     affected_locations,
-                                ));
-                                return;
-                            }
-                            emit(OperationEvent::TransferFailed {
-                                request_id: request.id,
-                                completed_locations: completed,
-                                message: error.to_string(),
-                            });
+                                    failure,
+                                    skip_flush: false,
+                                },
+                            )
+                            .await;
                             return;
                         }
                     };
@@ -3626,24 +5066,24 @@ impl OperationProvider for LocalOperationProvider {
                     ) {
                         Ok(target) => target,
                         Err(error) => {
-                            if was_cancelled(&error) {
-                                emit(cancelled_event(
-                                    request.id,
+                            let failure = (!was_cancelled(&error)).then(|| error.to_string());
+                            stop_transfer(
+                                &written_paths,
+                                &emit,
+                                request.id,
+                                TransferStop {
                                     completed,
-                                    vec![item.source.clone()],
-                                    request.items[index + 1..]
+                                    failed: vec![item.source.clone()],
+                                    not_attempted: request.items[index + 1..]
                                         .iter()
                                         .map(|item| item.source.clone())
                                         .collect(),
                                     affected_locations,
-                                ));
-                                return;
-                            }
-                            emit(OperationEvent::TransferFailed {
-                                request_id: request.id,
-                                completed_locations: completed,
-                                message: error.to_string(),
-                            });
+                                    failure,
+                                    skip_flush: false,
+                                },
+                            )
+                            .await;
                             return;
                         }
                     }
@@ -3655,12 +5095,16 @@ impl OperationProvider for LocalOperationProvider {
                 if let Some(target) = target_location.clone() {
                     affected_locations.insert(target);
                 }
+                if let Some(path) = target.path() {
+                    written_paths.push(path);
+                }
                 let result = if is_duplicate {
-                    copy_new_recursively_with_progress(
+                    copy_new_recursively_on_filesystem(
                         source,
                         target,
                         operation_cancellable.clone(),
                         Some(progress.clone()),
+                        fat_family,
                     )
                     .await
                 } else if item.conflict == TransferConflict::Merge {
@@ -3718,33 +5162,35 @@ impl OperationProvider for LocalOperationProvider {
                     )
                     .await
                 } else {
-                    copy_new_recursively_with_progress(
+                    copy_new_recursively_on_filesystem(
                         source,
                         target,
                         operation_cancellable.clone(),
                         Some(progress.clone()),
+                        fat_family,
                     )
                     .await
                 };
                 if let Err(error) = result {
-                    if was_cancelled(&error) {
-                        emit(cancelled_event(
-                            request.id,
+                    let (failure, skip_flush) =
+                        copy_failure_on_fat32(&error, max_file_size.is_some());
+                    stop_transfer(
+                        &written_paths,
+                        &emit,
+                        request.id,
+                        TransferStop {
                             completed,
-                            vec![item.source.clone()],
-                            request.items[index + 1..]
+                            failed: vec![item.source.clone()],
+                            not_attempted: request.items[index + 1..]
                                 .iter()
                                 .map(|item| item.source.clone())
                                 .collect(),
                             affected_locations,
-                        ));
-                        return;
-                    }
-                    emit(OperationEvent::TransferFailed {
-                        request_id: request.id,
-                        completed_locations: completed,
-                        message: error.to_string(),
-                    });
+                            failure,
+                            skip_flush,
+                        },
+                    )
+                    .await;
                     return;
                 }
                 completed.push(item.source.clone());
@@ -3753,7 +5199,25 @@ impl OperationProvider for LocalOperationProvider {
                 // held pre-existing contents that must not be trashed.
                 let created_location = target_location
                     .filter(|_| !request.move_sources && item.conflict != TransferConflict::Merge);
-                progress.finish_item(item_started_at, item_sizes[index], created_location);
+                progress.finish_item(
+                    item_started_at,
+                    item_sizes[index],
+                    started_files,
+                    item_files[index],
+                    created_location,
+                );
+            }
+            if !flush_removable_writes(
+                written_paths,
+                &operation_cancellable,
+                &emit,
+                request.id,
+                &completed,
+                affected_locations,
+            )
+            .await
+            {
+                return;
             }
             emit(OperationEvent::Pasted {
                 request_id: request.id,
@@ -3776,13 +5240,19 @@ impl OperationProvider for LocalOperationProvider {
                     }
                 }
             }
+            for location in &request.cleanup_locations {
+                affected_locations.insert(location.clone());
+                if let Some(parent) = location.parent() {
+                    affected_locations.insert(parent);
+                }
+            }
             let sources = request
                 .items
                 .iter()
                 .map(|item| gio_file_for_location(&item.record.current))
                 .collect::<Vec<_>>();
-            let (item_sizes, total_bytes) =
-                match transfer_sizes(&sources, &operation_cancellable).await {
+            let (item_sizes, total_bytes, item_files, total_files, _) =
+                match transfer_sizes(&sources, &operation_cancellable, None).await {
                     Ok(sizes) => sizes,
                     Err(error) if was_cancelled(&error) => {
                         emit(cancelled_event(
@@ -3807,9 +5277,11 @@ impl OperationProvider for LocalOperationProvider {
                         return;
                     }
                 };
-            let progress = TransferProgressTracker::new(request.id, total_bytes, emit.clone());
+            let progress =
+                TransferProgressTracker::new(request.id, total_bytes, total_files, emit.clone());
             progress.emit();
             let mut completed = Vec::new();
+            let mut restored_paths = Vec::new();
             for (index, item) in request.items.iter().enumerate() {
                 let remaining = || {
                     request.items[index..]
@@ -3818,17 +5290,29 @@ impl OperationProvider for LocalOperationProvider {
                         .collect::<Vec<_>>()
                 };
                 if operation_cancellable.is_cancelled() {
-                    emit(cancelled_event(
+                    stop_transfer(
+                        &restored_paths,
+                        &emit,
                         request.id,
-                        completed,
-                        Vec::new(),
-                        remaining(),
-                        affected_locations,
-                    ));
+                        TransferStop {
+                            completed,
+                            failed: Vec::new(),
+                            not_attempted: remaining(),
+                            affected_locations,
+                            failure: None,
+                            skip_flush: false,
+                        },
+                    )
+                    .await;
                     return;
                 }
                 let source = sources[index].clone();
                 let item_started_at = progress.transferred_bytes.get();
+                let started_files = progress.completed_files.get();
+                let restored_path = item.record.original.native_path().map(Path::to_path_buf);
+                if let Some(path) = restored_path {
+                    restored_paths.push(path);
+                }
                 let target = gio_file_for_location(&item.record.original);
                 let result = if item.conflict == TransferConflict::ReplaceExisting {
                     replace_local_with_progress(
@@ -3851,28 +5335,81 @@ impl OperationProvider for LocalOperationProvider {
                     .await
                 };
                 if let Err(error) = result {
-                    if was_cancelled(&error) {
-                        emit(cancelled_event(
-                            request.id,
+                    let failure = (!was_cancelled(&error)).then(|| error.to_string());
+                    stop_transfer(
+                        &restored_paths,
+                        &emit,
+                        request.id,
+                        TransferStop {
                             completed,
-                            vec![item.record.current.clone()],
-                            request.items[index + 1..]
+                            failed: vec![item.record.current.clone()],
+                            not_attempted: request.items[index + 1..]
                                 .iter()
                                 .map(|item| item.record.current.clone())
                                 .collect(),
                             affected_locations,
-                        ));
-                        return;
-                    }
-                    emit(OperationEvent::TransferFailed {
-                        request_id: request.id,
-                        completed_locations: completed,
-                        message: error.to_string(),
-                    });
+                            failure,
+                            skip_flush: false,
+                        },
+                    )
+                    .await;
                     return;
                 }
                 completed.push(item.record.current.clone());
-                progress.finish_item(item_started_at, item_sizes[index], None);
+                progress.finish_item(
+                    item_started_at,
+                    item_sizes[index],
+                    started_files,
+                    item_files[index],
+                    None,
+                );
+            }
+            if !flush_removable_writes(
+                restored_paths,
+                &operation_cancellable,
+                &emit,
+                request.id,
+                &completed,
+                affected_locations.clone(),
+            )
+            .await
+            {
+                return;
+            }
+            for location in &request.cleanup_locations {
+                let file = gio_file_for_location(location);
+                let result = await_cancellable(
+                    &file,
+                    &operation_cancellable,
+                    |file, cancellable, result| {
+                        file.trash_async(
+                            glib::Priority::DEFAULT,
+                            Some(cancellable),
+                            move |output| {
+                                result.resolve(output);
+                            },
+                        );
+                    },
+                )
+                .await;
+                if let Err(error) = result {
+                    if was_cancelled(&error) {
+                        emit(cancelled_event(
+                            request.id,
+                            completed,
+                            Vec::new(),
+                            vec![location.clone()],
+                            affected_locations,
+                        ));
+                    } else {
+                        emit(OperationEvent::TransferFailed {
+                            request_id: request.id,
+                            completed_locations: completed,
+                            message: error.to_string(),
+                        });
+                    }
+                    return;
+                }
             }
             emit(OperationEvent::Pasted {
                 request_id: request.id,
@@ -3920,6 +5457,7 @@ impl OperationProvider for LocalOperationProvider {
                 Err(error) => emit(OperationEvent::Failed {
                     request_id: request.id,
                     message: error.to_string(),
+                    password_failure: None,
                 }),
             }
         });
@@ -4021,6 +5559,7 @@ impl OperationProvider for LocalOperationProvider {
                         emit(OperationEvent::Failed {
                             request_id: request.id,
                             message: format!("Unable to find items in Trash: {error}"),
+                            password_failure: None,
                         });
                         return;
                     }
@@ -4033,13 +5572,16 @@ impl OperationProvider for LocalOperationProvider {
             let mut failed_locations = Vec::new();
             let mut affected_locations = HashSet::from([Location::uri("trash:///")]);
             let context = RestoreContext::current();
-            for (index, entry) in entries.iter().enumerate() {
+            let worker_count = restore_worker_count(&entries);
+            let mut completed = 0;
+            let mut cancelled = false;
+            for chunk in entries.chunks(worker_count) {
                 if operation_cancellable.is_cancelled() {
                     emit(cancelled_event(
                         request.id,
                         restored,
                         failed_locations,
-                        entries[index..]
+                        entries[completed..]
                             .iter()
                             .map(|entry| entry.source.clone())
                             .collect(),
@@ -4047,42 +5589,73 @@ impl OperationProvider for LocalOperationProvider {
                     ));
                     return;
                 }
-                let result = restore_trash_entry(
-                    entry,
-                    &context,
-                    &mut affected_locations,
-                    &operation_cancellable,
-                )
-                .await;
-                let restored_location = if let Err(error) = result {
-                    if was_cancelled(&error) {
-                        failed_locations.push(entry.source.clone());
-                        emit(cancelled_event(
-                            request.id,
-                            restored,
-                            failed_locations,
-                            entries[index + 1..]
-                                .iter()
-                                .map(|entry| entry.source.clone())
-                                .collect(),
-                            affected_locations,
-                        ));
-                        return;
-                    }
-                    errors.push(format!("{}: {error}", entry.display_name));
-                    failed_locations.push(entry.source.clone());
-                    None
-                } else {
-                    restored_locations.push(entry.source.clone());
-                    restored.push(restored_destination(entry));
-                    Some(restored_destination(entry))
-                };
-                emit(OperationEvent::RestoreProgress {
-                    request_id: request.id,
-                    completed: index + 1,
-                    total,
-                    restored_location,
-                });
+                let main_context = glib::MainContext::default();
+                let tasks = chunk
+                    .iter()
+                    .cloned()
+                    .map(|entry| {
+                        let context = context.clone();
+                        let cancellable = operation_cancellable.clone();
+                        main_context.spawn_local(async move {
+                            let mut affected = HashSet::new();
+                            let result =
+                                restore_trash_entry(&entry, &context, &mut affected, &cancellable)
+                                    .await;
+                            (entry, result, affected)
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                for task in tasks {
+                    let (entry, result, affected) = match task.await {
+                        Ok(outcome) => outcome,
+                        Err(_) => {
+                            let entry = entries[completed].clone();
+                            (
+                                entry,
+                                Err(io_error("Restore worker failed")),
+                                HashSet::new(),
+                            )
+                        }
+                    };
+                    affected_locations.extend(affected);
+                    completed += 1;
+                    let restored_location = match result {
+                        Err(error) => {
+                            if was_cancelled(&error) {
+                                cancelled = true;
+                            } else {
+                                errors.push(format!("{}: {error}", entry.display_name));
+                            }
+                            failed_locations.push(entry.source.clone());
+                            None
+                        }
+                        Ok(()) => {
+                            restored_locations.push(entry.source.clone());
+                            let destination = restored_destination(&entry);
+                            restored.push(destination.clone());
+                            Some(destination)
+                        }
+                    };
+                    emit(OperationEvent::RestoreProgress {
+                        request_id: request.id,
+                        completed,
+                        total,
+                        restored_location,
+                    });
+                }
+                if cancelled || operation_cancellable.is_cancelled() && completed < total {
+                    emit(cancelled_event(
+                        request.id,
+                        restored,
+                        failed_locations,
+                        entries[completed..]
+                            .iter()
+                            .map(|entry| entry.source.clone())
+                            .collect(),
+                        affected_locations,
+                    ));
+                    return;
+                }
             }
             if errors.is_empty() {
                 emit(OperationEvent::Restored {

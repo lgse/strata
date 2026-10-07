@@ -9,131 +9,164 @@ use crate::services::{
     VolumeRelation, drop_commit, transferable_drop_sources,
 };
 use crate::ui::browser::ViewState;
-use crate::ui::browser::columns::set_cut_path_style;
+use crate::ui::browser::columns::set_mark_path_style;
 use crate::ui::browser::paths::{can_remove_location, is_trash_location};
+use crate::ui::browser::transfer::ConflictFocus;
 use gtk::prelude::*;
 use gtk::{glib, graphene};
 use std::cell::{Cell, RefCell};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::rc::{Rc, Weak};
+use std::time::Duration;
 
-const DRAG_PROXY_MAX_SIZE: f64 = 72.0;
-const DRAG_PROXY_MIN_SIZE: f64 = 32.0;
 const DRAG_PROXY_PADDING: f64 = 3.0;
 const DRAG_PROXY_STACK_OFFSET: f64 = 5.0;
 
-/// Renders a compact Finder-style file pile and returns its pointer hotspot.
+const DRAG_PREVIEW_ICON_PX: f64 = 32.0;
+
+struct DragPreviewLayout {
+    canvas_w: f64,
+    canvas_h: f64,
+    front_x: f64,
+    front_y: f64,
+    badge: Option<(f64, f64, f64, f64)>,
+    hotspot: (i32, i32),
+}
+
+fn drag_preview_layout(icon_px: f64, badge: Option<(f64, f64)>) -> DragPreviewLayout {
+    let front_x = DRAG_PROXY_PADDING;
+    let front_y = DRAG_PROXY_PADDING;
+    let (badge_x, badge_y, badge_w, badge_h) = badge.map_or((0.0, 0.0, 0.0, 0.0), |(w, h)| {
+        (
+            front_x + icon_px - w * 0.4,
+            front_y + icon_px - h * 0.4,
+            w,
+            h,
+        )
+    });
+    let rear_extent = DRAG_PROXY_STACK_OFFSET + DRAG_PROXY_PADDING;
+    let canvas_w = (badge_x + badge_w)
+        .max(front_x + icon_px)
+        .max(icon_px + rear_extent + DRAG_PROXY_PADDING);
+    let canvas_h = (badge_y + badge_h)
+        .max(front_y + icon_px)
+        .max(icon_px + rear_extent + DRAG_PROXY_PADDING);
+    DragPreviewLayout {
+        canvas_w: canvas_w + DRAG_PROXY_PADDING,
+        canvas_h: canvas_h + DRAG_PROXY_PADDING,
+        front_x,
+        front_y,
+        badge: badge.map(|_| (badge_x, badge_y, badge_w, badge_h)),
+        hotspot: (
+            (front_x + icon_px / 2.0).round() as i32,
+            (front_y + icon_px / 2.0).round() as i32,
+        ),
+    }
+}
+
 #[expect(
     deprecated,
     reason = "lookup_color is the only way to read custom named CSS colors"
 )]
-pub(in crate::ui) fn drag_icon_with_count(
-    base: &gtk::Widget,
-    count: usize,
+pub(crate) fn drag_preview_icon(
+    base: &impl IsA<gtk::Widget>,
+    entries: &[FileEntry],
 ) -> Option<(gtk::gdk::Texture, i32, i32)> {
-    if count <= 1 {
-        return None;
-    }
-
-    let source_w = f64::from(base.width()).max(1.0);
-    let source_h = f64::from(base.height()).max(1.0);
-    let source_size = source_w.max(source_h);
-    let scale = if source_size < DRAG_PROXY_MIN_SIZE {
-        DRAG_PROXY_MIN_SIZE / source_size
-    } else {
-        (DRAG_PROXY_MAX_SIZE / source_size).min(1.0)
-    };
-    let icon_w = source_w * scale;
-    let icon_h = source_h * scale;
-    let front_x = DRAG_PROXY_PADDING;
-    let front_y = DRAG_PROXY_PADDING;
-    let paintable = gtk::WidgetPaintable::new(Some(base));
+    let icon_name = entries
+        .first()
+        .map(super::entry::entry_icon)
+        .unwrap_or(crate::assets::icons::DOCUMENTS);
+    let icon = crate::assets::drag_icon_texture(
+        icon_name,
+        &crate::assets::primary_icon_color(),
+        DRAG_PREVIEW_ICON_PX as i32,
+    )?;
+    let icon_w = f64::from(icon.width()).max(1.0);
+    let icon_h = f64::from(icon.height()).max(1.0);
 
     let style = base.style_context();
-    let accent = style.lookup_color("theme_accent")?;
+    let accent = style.lookup_color("strata_accent")?;
     let surface = style
-        .lookup_color("theme_surface")
-        .or_else(|| style.lookup_color("theme_bg"))?;
-    let text = style.lookup_color("theme_text")?;
+        .lookup_color("strata_surface")
+        .or_else(|| style.lookup_color("strata_bg"))?;
+    let text = style.lookup_color("strata_text")?;
     let badge_text = contrasting_badge_text(&accent, &text, &surface);
 
-    let label = count.to_string();
-    let layout = base.create_pango_layout(Some(&label));
-    if let Some(mut font) = layout.font_description() {
-        font.set_weight(gtk::pango::Weight::Semibold);
-        layout.set_font_description(Some(&font));
-    }
-    let (ink, _) = layout.pixel_extents();
-    let (badge_w, badge_h) = badge_dimensions(f64::from(ink.width()), f64::from(ink.height()));
-    let badge_x = front_x + icon_w - badge_w * 0.4;
-    let badge_y = front_y + icon_h - badge_h * 0.4;
-    let rear_extent = DRAG_PROXY_STACK_OFFSET + DRAG_PROXY_PADDING;
-    let canvas_w = (badge_x + badge_w).max(front_x + icon_w) + DRAG_PROXY_PADDING;
-    let canvas_h = (badge_y + badge_h).max(front_y + icon_h) + DRAG_PROXY_PADDING;
-    let canvas_w = canvas_w.max(icon_w + rear_extent + DRAG_PROXY_PADDING);
-    let canvas_h = canvas_h.max(icon_h + rear_extent + DRAG_PROXY_PADDING);
+    let multiple = entries.len() > 1;
+    let badge = multiple.then(|| {
+        let layout = base.create_pango_layout(Some(&entries.len().to_string()));
+        if let Some(mut font) = layout.font_description() {
+            font.set_weight(gtk::pango::Weight::Semibold);
+            layout.set_font_description(Some(&font));
+        }
+        let (ink, _) = layout.pixel_extents();
+        let (w, h) = badge_dimensions(f64::from(ink.width()), f64::from(ink.height()));
+        (layout, badge_text, ink, w, h)
+    });
+    let layout = drag_preview_layout(
+        icon_w.max(icon_h),
+        badge.as_ref().map(|(_, _, _, w, h)| (*w, *h)),
+    );
+    let icon_rect =
+        |x: f64, y: f64| graphene::Rect::new(x as f32, y as f32, icon_w as f32, icon_h as f32);
 
     let snapshot = gtk::Snapshot::new();
     let transparent = gtk::gdk::RGBA::new(0.0, 0.0, 0.0, 0.0);
     snapshot.append_color(
         &transparent,
-        &graphene::Rect::new(0.0, 0.0, canvas_w as f32, canvas_h as f32),
+        &graphene::Rect::new(0.0, 0.0, layout.canvas_w as f32, layout.canvas_h as f32),
     );
 
-    for (offset, opacity) in [(DRAG_PROXY_STACK_OFFSET, 0.32), (2.5, 0.6)] {
-        snapshot.push_opacity(opacity);
-        snapshot.save();
-        snapshot.translate(&graphene::Point::new(
-            (front_x + offset) as f32,
-            (front_y + offset) as f32,
-        ));
-        paintable.snapshot(&snapshot, icon_w, icon_h);
-        snapshot.restore();
-        snapshot.pop();
+    if multiple {
+        for (offset, opacity) in [(DRAG_PROXY_STACK_OFFSET, 0.32), (2.5, 0.6)] {
+            snapshot.push_opacity(opacity);
+            snapshot.append_texture(
+                &icon,
+                &icon_rect(layout.front_x + offset, layout.front_y + offset),
+            );
+            snapshot.pop();
+        }
     }
 
     let mut shadow_color = text;
     shadow_color.set_alpha(0.34);
     snapshot.push_shadow(&[gtk::gsk::Shadow::new(shadow_color, 0.0, 1.0, 3.0)]);
-    snapshot.save();
-    snapshot.translate(&graphene::Point::new(front_x as f32, front_y as f32));
-    paintable.snapshot(&snapshot, icon_w, icon_h);
-    snapshot.restore();
+    snapshot.append_texture(&icon, &icon_rect(layout.front_x, layout.front_y));
     snapshot.pop();
 
-    let badge_rect = gtk::gsk::RoundedRect::from_rect(
-        graphene::Rect::new(
-            badge_x as f32,
-            badge_y as f32,
-            badge_w as f32,
-            badge_h as f32,
-        ),
-        (badge_h / 2.0) as f32,
-    );
-    snapshot.push_rounded_clip(&badge_rect);
-    snapshot.append_color(&accent, badge_rect.bounds());
-    snapshot.pop();
-    snapshot.append_border(
-        &badge_rect,
-        &[1.0; 4],
-        &[surface, surface, surface, surface],
-    );
-    let tx = badge_x + (badge_w - f64::from(ink.width())) / 2.0 - f64::from(ink.x());
-    let ty = badge_y + (badge_h - f64::from(ink.height())) / 2.0 - f64::from(ink.y());
-    snapshot.save();
-    snapshot.translate(&graphene::Point::new(tx as f32, ty as f32));
-    snapshot.append_layout(&layout, &badge_text);
-    snapshot.restore();
+    if let (Some((badge_x, badge_y, badge_w, badge_h)), Some((pango, color, ink, _, _))) =
+        (layout.badge, badge.as_ref())
+    {
+        let badge_rect = gtk::gsk::RoundedRect::from_rect(
+            graphene::Rect::new(
+                badge_x as f32,
+                badge_y as f32,
+                badge_w as f32,
+                badge_h as f32,
+            ),
+            (badge_h / 2.0) as f32,
+        );
+        snapshot.push_rounded_clip(&badge_rect);
+        snapshot.append_color(&accent, badge_rect.bounds());
+        snapshot.pop();
+        snapshot.append_border(
+            &badge_rect,
+            &[1.0; 4],
+            &[surface, surface, surface, surface],
+        );
+        let tx = badge_x + (badge_w - f64::from(ink.width())) / 2.0 - f64::from(ink.x());
+        let ty = badge_y + (badge_h - f64::from(ink.height())) / 2.0 - f64::from(ink.y());
+        snapshot.save();
+        snapshot.translate(&graphene::Point::new(tx as f32, ty as f32));
+        snapshot.append_layout(pango, color);
+        snapshot.restore();
+    }
 
     let renderer = base.native().and_then(|native| native.renderer())?;
     let node = snapshot.to_node()?;
     let texture = renderer.render_texture(&node, None);
-    Some((
-        texture,
-        (front_x + icon_w / 2.0).round() as i32,
-        (front_y + icon_h / 2.0).round() as i32,
-    ))
+    Some((texture, layout.hotspot.0, layout.hotspot.1))
 }
 
 fn badge_dimensions(text_width: f64, text_height: f64) -> (f64, f64) {
@@ -176,12 +209,21 @@ pub(crate) struct PreparedFileDrop {
     pub state: Rc<FileDropState>,
 }
 
+pub(crate) const SPRING_LOAD_NAVIGATE_DELAY: Duration = Duration::from_millis(750);
+
 /// Reuses one classification for cursor feedback and the eventual transfer.
 pub(crate) struct FileDropState {
     destination: Rc<dyn Fn() -> Option<Location>>,
     last_override: Cell<DropOverride>,
     sources: RefCell<Option<Rc<[Location]>>>,
     classification: RefCell<Option<DropClassification>>,
+    spring_load: RefCell<Option<SpringLoadPending>>,
+}
+
+struct SpringLoadPending {
+    destination: Location,
+    navigate: Option<Box<dyn FnOnce(Location)>>,
+    timer: glib::SourceId,
 }
 
 struct DropClassification {
@@ -205,11 +247,60 @@ impl FileDropState {
             last_override: Cell::new(DropOverride::None),
             sources: RefCell::new(None),
             classification: RefCell::new(None),
+            spring_load: RefCell::new(None),
         }
     }
 
     pub(crate) fn destination(&self) -> Option<Location> {
         (self.destination)()
+    }
+
+    // Repeated motion must not postpone navigation; recycled rows must not open stale destinations.
+    pub(crate) fn schedule_spring_load_navigation(
+        self: &Rc<Self>,
+        drag_active: impl Fn() -> bool + 'static,
+        destination: Location,
+        delay: Duration,
+        navigate: impl FnOnce(Location) + 'static,
+    ) {
+        if self
+            .spring_load
+            .borrow()
+            .as_ref()
+            .is_some_and(|pending| pending.destination == destination)
+        {
+            return;
+        }
+        self.cancel_spring_load_navigation();
+        let state = Rc::downgrade(self);
+        let timer = glib::timeout_add_local_once(delay, move || {
+            let Some(state) = state.upgrade() else {
+                return;
+            };
+            let Some(pending) = state.spring_load.borrow_mut().take() else {
+                return;
+            };
+            if !drag_active() {
+                return;
+            }
+            if state.destination().as_ref() != Some(&pending.destination) {
+                return;
+            }
+            if let Some(navigate) = pending.navigate {
+                navigate(pending.destination);
+            }
+        });
+        *self.spring_load.borrow_mut() = Some(SpringLoadPending {
+            destination,
+            navigate: Some(Box::new(navigate)),
+            timer,
+        });
+    }
+
+    pub(crate) fn cancel_spring_load_navigation(&self) {
+        if let Some(pending) = self.spring_load.borrow_mut().take() {
+            pending.timer.remove();
+        }
     }
 
     fn reset(&self) {
@@ -307,6 +398,48 @@ impl FileDropState {
         });
         (relation, is_noop)
     }
+}
+
+pub(crate) fn file_drag_hover_target(
+    drop_state: &Rc<FileDropState>,
+    target: &gtk::DropTarget,
+) -> Option<Location> {
+    let destination = drop_state.destination()?;
+    target
+        .current_drop()
+        .filter(|offered| {
+            offered
+                .formats()
+                .contains_type(gtk::gdk::FileList::static_type())
+        })
+        .map(|_| destination)
+}
+
+/// Ignore drop validity so the source folder can spring open even though a self-drop is forbidden.
+pub(crate) fn arm_spring_load_navigation(
+    drop_state: &Rc<FileDropState>,
+    target: &gtk::DropTarget,
+    navigate: &Rc<dyn Fn(Location)>,
+) {
+    let Some(destination) = file_drag_hover_target(drop_state, target) else {
+        drop_state.cancel_spring_load_navigation();
+        return;
+    };
+    let drag_active = {
+        let target = target.downgrade();
+        move || {
+            target
+                .upgrade()
+                .is_some_and(|target| target.current_drop().is_some())
+        }
+    };
+    let navigate = navigate.clone();
+    drop_state.schedule_spring_load_navigation(
+        drag_active,
+        destination,
+        SPRING_LOAD_NAVIGATE_DELAY,
+        move |location| navigate(location),
+    );
 }
 
 pub(crate) fn prepare_file_drop_target(
@@ -677,17 +810,63 @@ fn needs_shell_escape(c: char) -> bool {
         )
 }
 
-// Process-wide cut intent shared by every window. The GDK clipboard only
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) enum ClipboardMark {
+    #[default]
+    None,
+    Copy,
+    Cut,
+}
+
+pub(crate) type ClipboardMarks = HashMap<Location, ClipboardMark>;
+
+pub(crate) fn mark_in(marks: &ClipboardMarks, location: &Location) -> ClipboardMark {
+    marks.get(location).copied().unwrap_or_default()
+}
+
+// Process-wide copy/cut intent shared by every window. The GDK clipboard only
 // carries a `FileList` with no cut marker, so this thread-local (GTK stays on
 // the main thread) is the source of truth for both paste behavior and styling.
 thread_local! {
     static SHARED_CUT_LOCATIONS: RefCell<Vec<Location>> = const { RefCell::new(Vec::new()) };
+    static SHARED_COPY_LOCATIONS: RefCell<Vec<Location>> = const { RefCell::new(Vec::new()) };
+    static OWNED_FILE_PROVIDER: RefCell<Option<gtk::gdk::ContentProvider>> = const { RefCell::new(None) };
     static CUT_VIEWS: RefCell<Vec<Weak<ViewState>>> = const { RefCell::new(Vec::new()) };
+    static WATCHING_OWNERSHIP: Cell<bool> = const { Cell::new(false) };
 }
 
 pub(super) fn register_cut_view(state: &Rc<ViewState>) {
+    watch_clipboard_ownership();
     CUT_VIEWS.with(|views| views.borrow_mut().push(Rc::downgrade(state)));
-    state.refresh_cut_rows();
+    state.refresh_mark_rows();
+}
+
+fn watch_clipboard_ownership() {
+    if WATCHING_OWNERSHIP.with(|watching| watching.replace(true)) {
+        return;
+    }
+    let Some(display) = gtk::gdk::Display::default() else {
+        WATCHING_OWNERSHIP.with(|watching| watching.set(false));
+        return;
+    };
+    display.clipboard().connect_changed(|clipboard| {
+        if owns_clipboard(clipboard) {
+            return;
+        }
+        OWNED_FILE_PROVIDER.with(|owned| owned.replace(None));
+        if !shared_cut_locations().is_empty() || !shared_copy_locations().is_empty() {
+            clear_shared_marks();
+        }
+    });
+}
+
+fn owns_clipboard(clipboard: &gtk::gdk::Clipboard) -> bool {
+    OWNED_FILE_PROVIDER.with(|owned| {
+        owned
+            .borrow()
+            .as_ref()
+            .is_some_and(|owned| clipboard.content().as_ref() == Some(owned))
+    })
 }
 
 fn refresh_cut_views() {
@@ -698,29 +877,92 @@ fn refresh_cut_views() {
         live
     });
     for view in views {
-        view.refresh_cut_rows();
+        view.refresh_mark_rows();
     }
 }
 
-pub(crate) fn set_cut_result_style(row: &gtk::Box, location: &Location) {
-    let cut = shared_cut_locations()
-        .iter()
-        .any(|cut| locations_equal(cut, location));
-    set_cut_path_style(row, cut);
+pub(crate) fn set_mark_result_style(row: &gtk::Box, location: &Location) {
+    set_mark_path_style(row, clipboard_mark(location));
+}
+
+pub(crate) fn clipboard_mark(location: &Location) -> ClipboardMark {
+    let listed = |locations: Vec<Location>| {
+        locations
+            .iter()
+            .any(|marked| locations_equal(marked, location))
+    };
+    if listed(shared_cut_locations()) {
+        ClipboardMark::Cut
+    } else if listed(shared_copy_locations()) {
+        ClipboardMark::Copy
+    } else {
+        ClipboardMark::None
+    }
+}
+
+fn shared_marks() -> ClipboardMarks {
+    let mut marks: ClipboardMarks = shared_copy_locations()
+        .into_iter()
+        .map(|location| (location, ClipboardMark::Copy))
+        .collect();
+    marks.extend(
+        shared_cut_locations()
+            .into_iter()
+            .map(|location| (location, ClipboardMark::Cut)),
+    );
+    marks
 }
 
 pub(super) fn shared_cut_locations() -> Vec<Location> {
     SHARED_CUT_LOCATIONS.with(|cut| cut.borrow().clone())
 }
 
-fn set_shared_cut(locations: &[Location]) {
-    SHARED_CUT_LOCATIONS.with(|cut| cut.replace(locations.to_vec()));
+fn shared_copy_locations() -> Vec<Location> {
+    SHARED_COPY_LOCATIONS.with(|copied| copied.borrow().clone())
+}
+
+fn set_shared_marks(copied: &[Location], cut: &[Location]) {
+    SHARED_COPY_LOCATIONS.with(|shared| shared.replace(copied.to_vec()));
+    SHARED_CUT_LOCATIONS.with(|shared| shared.replace(cut.to_vec()));
     refresh_cut_views();
 }
 
-fn clear_shared_cut() {
-    SHARED_CUT_LOCATIONS.with(|cut| cut.borrow_mut().clear());
-    refresh_cut_views();
+#[cfg(test)]
+fn set_shared_cut(locations: &[Location]) {
+    set_shared_marks(&[], locations);
+}
+
+fn clear_shared_marks() {
+    set_shared_marks(&[], &[]);
+}
+
+pub(super) fn unyank() {
+    clear_shared_marks();
+    let Some(display) = gtk::gdk::Display::default() else {
+        return;
+    };
+    let clipboard = display.clipboard();
+    if owns_clipboard(&clipboard) {
+        OWNED_FILE_PROVIDER.with(|owned| owned.replace(None));
+        if clipboard
+            .set_content(None::<&gtk::gdk::ContentProvider>)
+            .is_err()
+        {
+            tracing::warn!("unable to release the file clipboard");
+        }
+    }
+}
+
+pub(super) fn clipboard_may_paste() -> bool {
+    gtk::gdk::Display::default().is_some_and(|display| {
+        let formats = display.clipboard().formats();
+        formats.contains_type(gtk::gdk::FileList::static_type())
+            || formats.contains_type(gtk::gdk::Texture::static_type())
+            || formats
+                .mime_types()
+                .iter()
+                .any(|mime| mime == "text/uri-list" || mime.starts_with("image/"))
+    })
 }
 
 fn retain_shared_untransferred(transferred: &[Location]) {
@@ -750,12 +992,16 @@ fn set_location_files_clipboard(locations: &[Location]) -> bool {
         return false;
     }
     gtk::gdk::Display::default().is_some_and(|display| {
-        display
-            .clipboard()
-            .set_content(Some(&gtk::gdk::ContentProvider::for_value(
-                &gtk::gdk::FileList::from_array(&files).to_value(),
-            )))
-            .is_ok()
+        let provider = gtk::gdk::ContentProvider::for_value(
+            &gtk::gdk::FileList::from_array(&files).to_value(),
+        );
+        // Owned before claiming, so the ownership watcher sees this claim as ours.
+        let previous = OWNED_FILE_PROVIDER.with(|owned| owned.replace(Some(provider.clone())));
+        if display.clipboard().set_content(Some(&provider)).is_err() {
+            OWNED_FILE_PROVIDER.with(|owned| owned.replace(previous));
+            return false;
+        }
+        true
     })
 }
 
@@ -802,7 +1048,9 @@ fn retain_untransferred(cut: &mut Vec<Location>, transferred: &[Location]) {
 impl ViewState {
     pub(super) fn copy_entries(&self, entries: &[FileEntry]) {
         if set_files_clipboard(entries) {
-            self.clear_cut();
+            let locations: Vec<Location> =
+                entries.iter().map(|entry| entry.location.clone()).collect();
+            set_shared_marks(&locations, &[]);
         }
     }
 
@@ -816,7 +1064,7 @@ impl ViewState {
         if set_files_clipboard(entries) {
             let locations: Vec<Location> =
                 entries.iter().map(|entry| entry.location.clone()).collect();
-            set_shared_cut(&locations);
+            set_shared_marks(&[], &locations);
             return true;
         }
         false
@@ -829,34 +1077,47 @@ impl ViewState {
         self.start_transfer(destination, sources, false);
     }
 
-    fn clear_cut(&self) {
-        clear_shared_cut();
-    }
-
     pub(super) fn complete_cut_transfer(&self, transferred: &[Location]) {
+        let consumed = shared_cut_locations()
+            .iter()
+            .any(|cut| transferred.iter().any(|moved| locations_equal(cut, moved)));
+        if !consumed {
+            return;
+        }
         retain_shared_untransferred(transferred);
         let remaining = shared_cut_locations();
+        let Some(display) = gtk::gdk::Display::default() else {
+            return;
+        };
+        let clipboard = display.clipboard();
+        // A matching file-list format does not imply we still own the clipboard.
+        if !OWNED_FILE_PROVIDER.with(|owned| {
+            let owned = owned.borrow();
+            owned.is_some() && clipboard.content().as_ref() == owned.as_ref()
+        }) {
+            return;
+        }
         if remaining.is_empty() {
-            if let Some(display) = gtk::gdk::Display::default() {
-                let _result = display
-                    .clipboard()
-                    .set_content(None::<&gtk::gdk::ContentProvider>);
+            if clipboard
+                .set_content(None::<&gtk::gdk::ContentProvider>)
+                .is_ok()
+            {
+                OWNED_FILE_PROVIDER.with(|owned| owned.replace(None));
             }
         } else {
             let _set = set_location_files_clipboard(&remaining);
         }
     }
 
-    fn refresh_cut_rows(&self) {
-        let cut = shared_cut_locations();
-        self.mode_views.borrow().set_cut_locations(&cut);
-        let cut_lookup: HashSet<_> = cut.iter().collect();
+    fn refresh_mark_rows(&self) {
+        let marks = shared_marks();
+        self.mode_views.borrow().set_clipboard_marks(&marks);
         for (depth, column) in self.columns.borrow().iter().enumerate() {
             column.bound_rows.borrow_mut().retain(|bound| {
                 let (Some(item), Some(row)) = (bound.item.upgrade(), bound.row.upgrade()) else {
                     return false;
                 };
-                let entry = if column.search_handle.borrow().is_some() {
+                let entry = if column.recursive_search_active.get() {
                     column
                         .search_results
                         .borrow()
@@ -868,14 +1129,25 @@ impl ViewState {
                         .source_position(item.position())
                         .and_then(|position| self.browser.entry_at(depth, position))
                 };
-                let is_cut = entry.is_some_and(|entry| cut_lookup.contains(&entry.location));
-                set_cut_path_style(&row, is_cut);
+                let mark = entry.map_or(ClipboardMark::None, |entry| {
+                    mark_in(&marks, &entry.location)
+                });
+                set_mark_path_style(&row, mark);
                 true
             });
         }
     }
 
     pub(super) fn paste_into(self: &Rc<Self>, destination: Location) {
+        self.paste_preferring(destination, ConflictFocus::Replace, Rc::new(|| {}));
+    }
+
+    pub(super) fn paste_preferring(
+        self: &Rc<Self>,
+        destination: Location,
+        focus: ConflictFocus,
+        nothing: Rc<dyn Fn()>,
+    ) {
         if is_trash_location(&destination) || destination.is_recent_location() {
             return;
         }
@@ -891,7 +1163,7 @@ impl ViewState {
             let files = match result {
                 Ok(value) => match value.get::<gtk::gdk::FileList>() {
                     Ok(files) => files.files(),
-                    Err(_) => return,
+                    Err(_) => return nothing(),
                 },
                 Err(_) => match clipboard.read_texture_future().await {
                     Ok(Some(texture)) => {
@@ -900,16 +1172,19 @@ impl ViewState {
                         }
                         return;
                     }
-                    _ => return,
+                    _ => return nothing(),
                 },
             };
             let sources = files
                 .into_iter()
                 .filter_map(|file| location_for_file(&file))
                 .collect::<Vec<_>>();
+            if sources.is_empty() {
+                return nothing();
+            }
             if let Some(state) = weak.upgrade() {
                 let move_sources = is_cut_match(&sources);
-                state.start_transfer(destination, sources, move_sources);
+                state.paste_transfer(destination, sources, move_sources, focus);
             }
         });
     }

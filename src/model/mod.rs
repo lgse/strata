@@ -4,15 +4,25 @@ use std::{
     cmp::Ordering,
     ffi::OsString,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use gio::prelude::*;
 
+pub mod action;
+
+pub use action::{
+    ACTION_SCHEMA_VERSION, ActionConditions, ActionDefinition, ActionError, ActionInput,
+    ActionRuntime, ArgumentToken, ErrorPolicy, ExecutionMode, FOLDER_CONTENT_TYPE, InputKind,
+    InterpreterFamily, MAX_ACTION_ID_CHARS, MAX_ACTION_NAME_CHARS, MenuPlacement, RunSpec,
+    WorkingDirectory, expand_arguments, interpreter_family, suggest_id, valid_action_id,
+};
+
 /// A browsable destination. Native paths remain byte-safe and URI locations remain explicit.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 enum LocationKind {
-    Native(PathBuf),
-    Uri(String),
+    Native(Arc<Path>),
+    Uri(Arc<str>),
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -32,12 +42,14 @@ fn uri_scheme_eq(uri: &str, scheme: &str) -> bool {
 
 impl Location {
     pub fn local(path: impl Into<PathBuf>) -> Self {
+        let path: PathBuf = path.into();
         Self {
             kind: LocationKind::Native(path.into()),
         }
     }
 
     pub fn uri(uri: impl Into<String>) -> Self {
+        let uri: String = uri.into();
         Self {
             kind: LocationKind::Uri(uri.into()),
         }
@@ -81,9 +93,13 @@ impl Location {
         match &self.kind {
             LocationKind::Native(path) => {
                 let parent = path.parent()?;
-                (parent != path).then(|| Self::local(parent))
+                (parent != path.as_ref()).then(|| Self::local(parent))
             }
-            LocationKind::Uri(uri) if uri == "trash:///" || uri == "network:///" => None,
+            LocationKind::Uri(uri)
+                if uri.as_ref() == "trash:///" || uri.as_ref() == "network:///" =>
+            {
+                None
+            }
             LocationKind::Uri(uri) => {
                 // Walk the URI path. GVfs File::parent() can SIGSEGV on gphoto2
                 // and similar backends when many tests call it concurrently.
@@ -171,7 +187,7 @@ impl Location {
             (LocationKind::Native(path), LocationKind::Native(from), LocationKind::Native(to)) => {
                 let suffix = path.strip_prefix(from).ok()?;
                 Some(Self::local(if suffix.as_os_str().is_empty() {
-                    to.clone()
+                    to.to_path_buf()
                 } else {
                     to.join(suffix)
                 }))
@@ -290,7 +306,7 @@ impl Location {
                 .map(|name| name.to_string_lossy().into_owned())
                 .filter(|name| !name.is_empty())
                 .unwrap_or_else(|| path.to_string_lossy().into_owned()),
-            LocationKind::Uri(uri) if uri == "trash:///" => "Trash".into(),
+            LocationKind::Uri(uri) if uri.as_ref() == "trash:///" => "Trash".into(),
             LocationKind::Uri(uri) => self
                 .file_name()
                 .map(|name| name.to_string_lossy().into_owned())
@@ -391,6 +407,8 @@ pub struct FileEntry {
     pub size: MetadataValue<u64>,
     pub modified_unix_seconds: MetadataValue<i64>,
     pub recent_unix_seconds: MetadataValue<i64>,
+    /// Registry handle for Recent rows; `location` instead identifies the real target.
+    pub recent_uri: Option<String>,
     pub mode: MetadataValue<u32>,
     pub image_dimensions: MetadataValue<(u32, u32)>,
     pub child_count: MetadataValue<u64>,
@@ -410,6 +428,10 @@ impl FileEntry {
             self.kind,
             EntryKind::Directory | EntryKind::DirectorySymbolicLink
         )
+    }
+
+    pub fn is_file(&self) -> bool {
+        matches!(self.kind, EntryKind::File | EntryKind::FileSymbolicLink)
     }
 
     pub fn is_symbolic_link(&self) -> bool {

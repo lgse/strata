@@ -44,14 +44,15 @@ thread_local! {
     static THUMBNAIL_CACHE: RefCell<ThumbnailCache> = RefCell::new(ThumbnailCache::default());
     /// Per-viewport admission batches; one view's fling never postpones another's.
     static SETTLE_VIEWS: RefCell<HashMap<usize, ViewSettle>> = RefCell::new(HashMap::new());
-    static TRACKED_CUSTOMIZED_ICONS: RefCell<Vec<TrackedCustomizedIcon>> =
-        const { RefCell::new(Vec::new()) };
-    static TRACKED_THUMBNAILS: RefCell<Vec<TrackedThumbnail>> = const { RefCell::new(Vec::new()) };
+    static TRACKED_CUSTOMIZED_ICONS: RefCell<HashMap<usize, TrackedCustomizedIcon>> =
+        RefCell::new(HashMap::new());
+    static TRACKED_CUSTOMIZED_IMAGES: RefCell<HashMap<usize, TrackedCustomizedImage>> =
+        RefCell::new(HashMap::new());
+    static TRACKED_THUMBNAILS: RefCell<HashMap<usize, TrackedThumbnail>> = RefCell::new(HashMap::new());
     static REFRESHING_CUSTOMIZED_ICONS: Cell<bool> = const { Cell::new(false) };
 }
 
 struct TrackedThumbnail {
-    image: glib::WeakRef<ThumbnailSlot>,
     path: PathBuf,
 }
 
@@ -60,6 +61,19 @@ struct TrackedCustomizedIcon {
     path: PathBuf,
     icon: String,
     customized: bool,
+}
+
+struct TrackedCustomizedImage {
+    image: glib::WeakRef<gtk::Image>,
+    path: PathBuf,
+    default_icon: String,
+    kind: ImageIconKind,
+}
+
+#[derive(Clone, Copy)]
+enum ImageIconKind {
+    Default,
+    Folder,
 }
 
 struct ActiveRequest {
@@ -123,11 +137,6 @@ impl PersistQueue {
 
     fn pop_front(&mut self) -> Option<PersistJob> {
         self.queue.pop_front()
-    }
-
-    #[cfg(test)]
-    fn len(&self) -> usize {
-        self.queue.len()
     }
 }
 
@@ -277,6 +286,67 @@ impl CachedThumbnail {
     }
 }
 
+/// Cache-only lookup: a placeholder must not queue thumbnail work.
+pub(in crate::ui) fn cached_thumbnail(entry: &FileEntry) -> Option<gdk::Texture> {
+    let key = ThumbnailKey {
+        path: entry.local_thumbnail_path()?.to_path_buf(),
+        modified: known_metadata(&entry.modified_unix_seconds),
+        file_size: known_metadata(&entry.size),
+        thumbnail_size: super::thumbnail_cache::CANONICAL_MAX_EDGE,
+    };
+    match THUMBNAIL_CACHE.with(|cache| cache.borrow_mut().get(&key)) {
+        Some(CacheHit::Ready(texture)) => Some(texture),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+pub(in crate::ui) fn remember_thumbnail_for_test(entry: &FileEntry, texture: gdk::Texture) {
+    let key = ThumbnailKey {
+        path: entry
+            .local_thumbnail_path()
+            .expect("local entry")
+            .to_path_buf(),
+        modified: known_metadata(&entry.modified_unix_seconds),
+        file_size: known_metadata(&entry.size),
+        thumbnail_size: super::thumbnail_cache::CANONICAL_MAX_EDGE,
+    };
+    THUMBNAIL_CACHE.with(|cache| cache.borrow_mut().insert(key, texture));
+}
+
+pub(super) fn preserve_renamed_thumbnail(from: &crate::model::Location, entry: &FileEntry) {
+    let Some((from, to)) = from.native_path().zip(entry.location.native_path()) else {
+        return;
+    };
+    if from == to || from.extension() != to.extension() {
+        return;
+    }
+    let (Some(modified), Some(file_size)) = (
+        known_metadata(&entry.modified_unix_seconds),
+        known_metadata(&entry.size),
+    ) else {
+        return;
+    };
+    THUMBNAIL_CACHE.with_borrow_mut(|cache| {
+        let key = ThumbnailKey {
+            path: from.to_path_buf(),
+            modified: Some(modified),
+            file_size: Some(file_size),
+            thumbnail_size: super::thumbnail_cache::CANONICAL_MAX_EDGE,
+        };
+        if let Some(CacheHit::Ready(texture)) = cache.get(&key) {
+            cache.remove(&key);
+            cache.insert(
+                ThumbnailKey {
+                    path: to.to_path_buf(),
+                    ..key
+                },
+                texture,
+            );
+        }
+    });
+}
+
 #[derive(Default)]
 struct ThumbnailQueue {
     running: usize,
@@ -318,6 +388,8 @@ enum ThumbnailKind {
     Pdf,
     Video,
     AppImage,
+    EmbeddedModel(crate::services::ModelFormat),
+    Cover(crate::sandbox::CoverFormat),
 }
 
 pub(super) fn set_thumbnail_or_icon(
@@ -327,6 +399,7 @@ pub(super) fn set_thumbnail_or_icon(
     icon_size: i32,
     thumbnail_size: i32,
 ) {
+    super::file_providers::bind(image, entry.location.native_path());
     let Some(path) = entry.local_thumbnail_path() else {
         if entry.location.backend_name() == "gphoto2"
             && !entry.is_directory()
@@ -392,6 +465,7 @@ pub(super) fn set_thumbnail_or_icon_for_path(
     icon_size: i32,
     thumbnail_size: i32,
 ) {
+    super::file_providers::bind(image, Some(path));
     set_thumbnail_for_path(ThumbnailRequest {
         image,
         path,
@@ -553,10 +627,6 @@ fn park_thumbnail(key: ThumbnailKey, kind: ThumbnailKind, target: PendingTarget)
     }
 }
 
-#[cfg(test)]
-fn schedule_or_defer(key: ThumbnailKey, kind: ThumbnailKind, target: PendingTarget) {
-    park_thumbnail(key, kind, target);
-}
 fn mark_deferred(key: ThumbnailKey, kind: ThumbnailKind, image_id: usize, request: u64) {
     ACTIVE_REQUESTS.with(|requests| {
         if let Some(active) = requests
@@ -632,11 +702,6 @@ fn fire_view_group(group: usize) {
         std::mem::take(&mut settle.pending)
     });
     fire_parks(drained);
-}
-
-#[cfg(test)]
-fn fire_settled_thumbnails() {
-    fire_view_group(0);
 }
 
 fn request_is_live(target: &PendingTarget) -> bool {
@@ -846,7 +911,11 @@ async fn run_thumbnail_job(mut job: ThumbnailJob) {
 fn heavy(kind: ThumbnailKind) -> bool {
     matches!(
         kind,
-        ThumbnailKind::RawImage | ThumbnailKind::Pdf | ThumbnailKind::Video
+        ThumbnailKind::RawImage
+            | ThumbnailKind::Pdf
+            | ThumbnailKind::Video
+            | ThumbnailKind::EmbeddedModel(_)
+            | ThumbnailKind::Cover(_)
     )
 }
 
@@ -1089,44 +1158,37 @@ fn apply_thumbnail(image: &ThumbnailSlot, texture: &gdk::Texture, path: &Path) {
 }
 
 fn displayed_thumbnail_matches(image: &ThumbnailSlot, path: &Path) -> bool {
-    TRACKED_THUMBNAILS.with(|thumbnails| {
-        let mut thumbnails = thumbnails.borrow_mut();
-        thumbnails.retain(|tracked| tracked.image.upgrade().is_some());
+    TRACKED_THUMBNAILS.with_borrow(|thumbnails| {
         thumbnails
-            .iter()
-            .find(|tracked| tracked.image.upgrade().as_ref() == Some(image))
+            .get(&(image.as_ptr() as usize))
             .is_some_and(|tracked| tracked.path == path)
     })
 }
 
 fn register_displayed_thumbnail(image: &ThumbnailSlot, path: &Path) {
-    let weak_ref = glib::WeakRef::new();
-    weak_ref.set(Some(image));
-    TRACKED_THUMBNAILS.with(|thumbnails| {
-        let mut thumbnails = thumbnails.borrow_mut();
-        thumbnails.retain(|tracked| tracked.image.upgrade().is_some());
-        if let Some(existing) = thumbnails
-            .iter_mut()
-            .find(|tracked| tracked.image.upgrade().as_ref() == Some(image))
-        {
-            existing.path = path.to_path_buf();
-        } else {
-            thumbnails.push(TrackedThumbnail {
-                image: weak_ref,
+    TRACKED_THUMBNAILS.with_borrow_mut(|thumbnails| {
+        thumbnails.insert(
+            image.as_ptr() as usize,
+            TrackedThumbnail {
                 path: path.to_path_buf(),
-            });
-        }
+            },
+        );
     });
 }
 
 fn clear_displayed_thumbnail(image: &ThumbnailSlot) {
-    TRACKED_THUMBNAILS.with(|thumbnails| {
-        thumbnails.borrow_mut().retain(|tracked| {
-            tracked
-                .image
-                .upgrade()
-                .is_some_and(|tracked_image| tracked_image != *image)
-        });
+    TRACKED_THUMBNAILS.with_borrow_mut(|thumbnails| {
+        thumbnails.remove(&(image.as_ptr() as usize));
+    });
+}
+
+fn forget_slot(image_id: usize) {
+    // Dispose removes pointer keys before GTK can reuse the slot's address.
+    let _ = TRACKED_THUMBNAILS.try_with(|thumbnails| {
+        thumbnails.borrow_mut().remove(&image_id);
+    });
+    let _ = TRACKED_CUSTOMIZED_ICONS.try_with(|icons| {
+        icons.borrow_mut().remove(&image_id);
     });
 }
 
@@ -1149,13 +1211,44 @@ pub(super) fn show_customized_icon_image(
     fallback_icon: &str,
     size: i32,
 ) {
+    show_path_icon_image(image, path, fallback_icon, size, ImageIconKind::Default);
+}
+
+pub(super) fn show_customized_folder_image(
+    image: &gtk::Image,
+    path: &Path,
+    default_icon: &str,
+    size: i32,
+) {
+    show_path_icon_image(image, path, default_icon, size, ImageIconKind::Folder);
+}
+
+fn show_path_icon_image(
+    image: &gtk::Image,
+    path: &Path,
+    default_icon: &str,
+    size: i32,
+    kind: ImageIconKind,
+) {
     if image.pixel_size() != size {
         image.set_pixel_size(size);
     }
     if image.width_request() != size || image.height_request() != size {
         image.set_size_request(size, size);
     }
-    apply_path_customization_image(image, path, fallback_icon);
+    apply_path_customization_image(image, path, default_icon, kind);
+    TRACKED_CUSTOMIZED_IMAGES.with_borrow_mut(|images| {
+        images.retain(|_, tracked| tracked.image.upgrade().is_some());
+        images.insert(
+            image.as_ptr() as usize,
+            TrackedCustomizedImage {
+                image: image.downgrade(),
+                path: path.to_path_buf(),
+                default_icon: default_icon.to_owned(),
+                kind,
+            },
+        );
+    });
 }
 
 pub(super) fn cancel_list_item_thumbnails(item: &glib::Object) {
@@ -1194,17 +1287,42 @@ fn set_fallback_icon(
 ) -> (usize, u64) {
     let ids = prepare_thumbnail_target(image, size);
     clear_displayed_thumbnail(image);
-    let (texture, customized) = path_icon_texture(path, icon);
+    let (texture, customized) = path_icon_texture(
+        path,
+        icon,
+        image.icon_pixel_size(),
+        image.scale_factor(),
+        image.icon_context(),
+    );
     image.set_fallback(icon, texture.as_ref());
     if let Some(p) = path {
         register_tracked_icon(image, p, icon, customized);
+    } else {
+        TRACKED_CUSTOMIZED_ICONS.with_borrow_mut(|icons| {
+            icons.remove(&(image.as_ptr() as usize));
+        });
     }
     ids
 }
 
-fn path_icon_texture(path: Option<&Path>, fallback_icon: &str) -> (Option<gdk::Texture>, bool) {
+fn path_icon_texture(
+    path: Option<&Path>,
+    fallback_icon: &str,
+    size: i32,
+    scale_factor: i32,
+    context: crate::assets::IconContext,
+) -> (Option<gdk::Texture>, bool) {
     let Some(path) = path else {
-        return (crate::assets::primary_icon_paintable(fallback_icon), false);
+        return (
+            crate::assets::sized_icon_paintable(
+                fallback_icon,
+                &crate::assets::primary_icon_color(),
+                size,
+                scale_factor,
+                context,
+            ),
+            false,
+        );
     };
     let preference_manager = super::preferences::PreferenceManager::shared();
     let custom_icon = preference_manager.custom_icon(path);
@@ -1218,7 +1336,13 @@ fn path_icon_texture(path: Option<&Path>, fallback_icon: &str) -> (Option<gdk::T
             .map_or_else(crate::assets::primary_icon_color, |color| {
                 color.hex().to_owned()
             });
-        crate::assets::folder_decoration_paintable(decoration, &color)
+        crate::assets::sized_folder_decoration_paintable(
+            decoration,
+            &color,
+            size,
+            scale_factor,
+            context,
+        )
     } else if let Some(emoji) = custom_icon
         .as_deref()
         .and_then(crate::assets::icons::custom_emoji)
@@ -1227,27 +1351,50 @@ fn path_icon_texture(path: Option<&Path>, fallback_icon: &str) -> (Option<gdk::T
     } else {
         let rendered_icon = custom_icon.as_deref().unwrap_or(fallback_icon);
         if let Some(color) = color {
-            crate::assets::custom_colored_icon_paintable(rendered_icon, color.hex())
+            crate::assets::sized_icon_paintable(
+                rendered_icon,
+                color.hex(),
+                size,
+                scale_factor,
+                context,
+            )
         } else {
-            crate::assets::primary_icon_paintable(rendered_icon)
+            crate::assets::sized_icon_paintable(
+                rendered_icon,
+                &crate::assets::primary_icon_color(),
+                size,
+                scale_factor,
+                context,
+            )
         }
     };
     (texture, customized)
 }
 
 fn apply_path_customization(image: &ThumbnailSlot, path: &Path, fallback_icon: &str) -> bool {
-    let (texture, customized) = path_icon_texture(Some(path), fallback_icon);
+    let (texture, customized) = path_icon_texture(
+        Some(path),
+        fallback_icon,
+        image.icon_pixel_size(),
+        image.scale_factor(),
+        image.icon_context(),
+    );
     image.set_fallback(fallback_icon, texture.as_ref());
     customized
 }
 
-fn apply_path_customization_image(image: &gtk::Image, path: &Path, fallback_icon: &str) -> bool {
+fn apply_path_customization_image(
+    image: &gtk::Image,
+    path: &Path,
+    default_icon: &str,
+    kind: ImageIconKind,
+) -> bool {
     let preference_manager = super::preferences::PreferenceManager::shared();
     let custom_icon = preference_manager.custom_icon(path);
     let color = preference_manager.folder_color(path);
     let customized = custom_icon.is_some() || color.is_some();
 
-    if fallback_icon == crate::assets::icons::FOLDER
+    if (matches!(kind, ImageIconKind::Folder) || default_icon == crate::assets::icons::FOLDER)
         && let Some(decoration) = custom_icon.as_deref()
     {
         let color = color
@@ -1262,7 +1409,7 @@ fn apply_path_customization_image(image: &gtk::Image, path: &Path, fallback_icon
     {
         crate::assets::set_emoji_icon(image, emoji);
     } else {
-        let rendered_icon = custom_icon.as_deref().unwrap_or(fallback_icon);
+        let rendered_icon = custom_icon.as_deref().unwrap_or(default_icon);
         if let Some(color) = color {
             crate::assets::set_custom_colored_icon(image, rendered_icon, color.hex());
         } else {
@@ -1272,36 +1419,72 @@ fn apply_path_customization_image(image: &gtk::Image, path: &Path, fallback_icon
     customized
 }
 
+pub(super) fn refresh_slot_icon(image: &ThumbnailSlot) {
+    if image.texture().is_some() {
+        return;
+    }
+    let tracked = TRACKED_CUSTOMIZED_ICONS.with_borrow(|icons| {
+        icons
+            .get(&(image.as_ptr() as usize))
+            .map(|tracked| (tracked.path.clone(), tracked.icon.clone()))
+    });
+    if let Some((path, icon)) = tracked {
+        apply_path_customization(image, &path, &icon);
+    } else if let Some(icon) = image.fallback_icon() {
+        let (texture, _) = path_icon_texture(
+            None,
+            &icon,
+            image.icon_pixel_size(),
+            image.scale_factor(),
+            image.icon_context(),
+        );
+        image.set_fallback(&icon, texture.as_ref());
+    }
+}
+
 fn register_tracked_icon(image: &ThumbnailSlot, path: &Path, icon: &str, customized: bool) {
-    let weak_ref = glib::WeakRef::new();
-    weak_ref.set(Some(image));
-    TRACKED_CUSTOMIZED_ICONS.with(|icons| {
-        let mut icons = icons.borrow_mut();
-        icons.retain(|t| t.image.upgrade().is_some());
-        if let Some(existing) = icons
-            .iter_mut()
-            .find(|t| t.image.upgrade().as_ref() == Some(image))
-        {
-            existing.path = path.to_path_buf();
-            existing.icon = icon.to_owned();
-            existing.customized = customized;
-        } else {
-            icons.push(TrackedCustomizedIcon {
-                image: weak_ref,
+    TRACKED_CUSTOMIZED_ICONS.with_borrow_mut(|icons| {
+        icons.insert(
+            image.as_ptr() as usize,
+            TrackedCustomizedIcon {
+                image: image.downgrade(),
                 path: path.to_path_buf(),
                 icon: icon.to_owned(),
                 customized,
-            });
-        }
+            },
+        );
     });
 }
 
 pub(super) fn refresh_customized_icons(paths: &[PathBuf]) {
     refresh_tracked_icons(|tracked| paths.iter().any(|candidate| candidate == &tracked.path));
+    refresh_tracked_images(|path| paths.iter().any(|candidate| candidate == path));
 }
 
 pub(super) fn refresh_all_customized_icons() {
     refresh_tracked_icons(|_| true);
+    refresh_tracked_images(|_| true);
+}
+
+fn refresh_tracked_images(matches: impl Fn(&Path) -> bool) {
+    let pending = TRACKED_CUSTOMIZED_IMAGES.with_borrow_mut(|images| {
+        images.retain(|_, tracked| tracked.image.upgrade().is_some());
+        images
+            .values()
+            .filter(|tracked| matches(&tracked.path))
+            .filter_map(|tracked| {
+                Some((
+                    tracked.image.upgrade()?,
+                    tracked.path.clone(),
+                    tracked.default_icon.clone(),
+                    tracked.kind,
+                ))
+            })
+            .collect::<Vec<_>>()
+    });
+    for (image, path, default_icon, kind) in pending {
+        apply_path_customization_image(&image, &path, &default_icon, kind);
+    }
 }
 
 fn refresh_tracked_icons(matches: impl Fn(&TrackedCustomizedIcon) -> bool) {
@@ -1316,10 +1499,9 @@ fn refresh_tracked_icons(matches: impl Fn(&TrackedCustomizedIcon) -> bool) {
     }
     let _reset = Reset;
     let pending = TRACKED_CUSTOMIZED_ICONS.with(|icons| {
-        let mut icons = icons.borrow_mut();
-        icons.retain(|tracked| tracked.image.upgrade().is_some());
         icons
-            .iter()
+            .borrow()
+            .values()
             .filter(|tracked| matches(tracked))
             .filter_map(|tracked| {
                 let image = tracked.image.upgrade()?;
@@ -1342,10 +1524,7 @@ fn refresh_tracked_icons(matches: impl Fn(&TrackedCustomizedIcon) -> bool) {
             let Ok(mut icons) = icons.try_borrow_mut() else {
                 return;
             };
-            if let Some(tracked) = icons
-                .iter_mut()
-                .find(|tracked| tracked.image.upgrade().as_ref() == Some(&image))
-            {
+            if let Some(tracked) = icons.get_mut(&(image.as_ptr() as usize)) {
                 tracked.customized = customized;
             }
         });
@@ -1392,19 +1571,29 @@ fn cancel_thumbnail(image_id: usize) {
 }
 
 fn thumbnail_kind(path: &Path) -> Option<ThumbnailKind> {
+    if crate::sandbox::raw_metadata::is_raw(path) {
+        return Some(ThumbnailKind::RawImage);
+    }
     let extension = path.extension()?.to_str()?.to_ascii_lowercase();
     match extension.as_str() {
         "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp" | "tif" | "tiff" | "svg" | "heic"
         | "heif" | "avif" | "jxl" => Some(ThumbnailKind::Image),
-        "3fr" | "arw" | "cr2" | "cr3" | "dcr" | "dng" | "erf" | "kdc" | "mef" | "mos" | "mrw"
-        | "nef" | "nrw" | "orf" | "pef" | "raf" | "raw" | "rw2" | "rwl" | "sr2" | "srf" | "srw"
-        | "x3f" => Some(ThumbnailKind::RawImage),
         "pdf" => Some(ThumbnailKind::Pdf),
+        "3mf" => Some(ThumbnailKind::EmbeddedModel(
+            crate::services::ModelFormat::ThreeMf,
+        )),
+        "fcstd" => Some(ThumbnailKind::EmbeddedModel(
+            crate::services::ModelFormat::FreeCad,
+        )),
         "appimage" => Some(ThumbnailKind::AppImage),
         "mp4" | "mkv" | "webm" | "mov" | "avi" | "m4v" | "mpeg" | "mpg" | "ogv" => {
             Some(ThumbnailKind::Video)
         }
-        _ => None,
+        // FFmpeg exposes no art stream for tag-only Ogg, Opus or WAV covers.
+        "mp3" | "flac" | "m4a" | "m4b" | "mka" | "aiff" | "aif" | "wma" => {
+            Some(ThumbnailKind::Video)
+        }
+        _ => crate::sandbox::CoverFormat::from_argument(&extension).map(ThumbnailKind::Cover),
     }
 }
 
@@ -1420,41 +1609,8 @@ fn render_thumbnail(
         ThumbnailKind::Pdf => ParseOperation::ThumbnailPdf,
         ThumbnailKind::Video => ParseOperation::ThumbnailVideo,
         ThumbnailKind::AppImage => ParseOperation::ThumbnailAppImage,
+        ThumbnailKind::EmbeddedModel(format) => ParseOperation::ThumbnailModel(format),
+        ThumbnailKind::Cover(format) => ParseOperation::ThumbnailCover(format),
     };
     crate::sandbox::browser::thumbnail(path, operation, cancellation)
 }
-
-#[cfg(test)]
-pub(super) fn pending_thumbnail_id(path: &Path) -> Option<u64> {
-    PENDING_THUMBNAILS.with(|pending| {
-        pending
-            .borrow()
-            .iter()
-            .find_map(|(key, pending)| (key.path == path).then_some(pending.id))
-    })
-}
-
-#[cfg(test)]
-pub(super) fn has_pending_thumbnail(path: &Path) -> bool {
-    pending_thumbnail_id(path).is_some()
-}
-
-#[cfg(test)]
-pub(super) fn hold_thumbnail_workers() {
-    THUMBNAIL_QUEUE.with(|queue| queue.borrow_mut().running = MAX_CACHE_READERS);
-}
-
-#[cfg(test)]
-pub(super) fn clear_thumbnail_runtime() {
-    THUMBNAIL_QUEUE.with(|queue| {
-        let mut queue = queue.borrow_mut();
-        queue.running = 0;
-        queue.queued.clear();
-    });
-    PENDING_THUMBNAILS.with(|pending| pending.borrow_mut().clear());
-    ACTIVE_REQUESTS.with(|requests| requests.borrow_mut().clear());
-    SETTLE_VIEWS.with(|views| views.borrow_mut().clear());
-}
-
-#[cfg(test)]
-pub(super) mod tests;

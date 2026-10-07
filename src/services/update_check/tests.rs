@@ -249,6 +249,30 @@ fn preview_feed_skips_drafts_unparsable_tags_and_assetless_releases() {
 }
 
 #[test]
+fn preview_offers_final_release_over_an_installed_release_candidate() {
+    let final_asset = matching_asset_json("0.5.0");
+    let rc_asset = matching_asset_json("0.5.0-rc.2");
+    let responses = release_response_list(&format!(
+        r#"[
+            {{"tag_name":"v0.5.0","draft":false,"prerelease":false,"assets":[{final_asset}]}},
+            {{"tag_name":"v0.5.0-rc.2","draft":false,"prerelease":true,"assets":[{rc_asset}]}}
+        ]"#
+    ));
+    let summaries: Vec<_> = responses.iter().filter_map(to_release_summary).collect();
+    let installed = version("0.5.0-rc.2");
+    let result = select_update(Channel::Preview, &installed, &summaries);
+    match result {
+        UpdateCheck::Available { release, install } => {
+            assert_eq!(release.tag, "v0.5.0");
+            assert_eq!(install.tag, "v0.5.0");
+            assert_eq!(install.asset_name, archive_name("0.5.0"));
+            assert!(install.advertised_url.ends_with(&install.asset_name));
+        }
+        other => panic!("expected final 0.5.0 to be offered, got {other:?}"),
+    }
+}
+
+#[test]
 fn selecting_stable_on_a_prerelease_offers_the_latest_final_as_the_channel_transition() {
     let stable_asset = matching_asset_json("0.4.0");
     let response = release_response(&format!(

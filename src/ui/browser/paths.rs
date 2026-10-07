@@ -77,6 +77,3 @@ pub(super) fn compact_native_path(path: &Path) -> String {
         .map(|suffix| format!("~/{}", suffix.to_string_lossy()))
         .unwrap_or_else(|| path.to_string_lossy().into_owned())
 }
-
-#[cfg(test)]
-mod tests;

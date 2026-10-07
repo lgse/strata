@@ -63,6 +63,157 @@ fn encrypted_device_detection() {
 }
 
 #[test]
+fn removable_mount_policy_excludes_unsafe_roots_and_fixed_storage() {
+    let eligible = RemovableMountFacts {
+        shadowed: false,
+        native_root: true,
+        removable: true,
+        writable: true,
+        existing_directory: true,
+    };
+    assert!(removable_mount_is_eligible(eligible));
+
+    for (reason, facts) in [
+        (
+            "shadowed mount",
+            RemovableMountFacts {
+                shadowed: true,
+                ..eligible
+            },
+        ),
+        (
+            "non-native root",
+            RemovableMountFacts {
+                native_root: false,
+                ..eligible
+            },
+        ),
+        (
+            "fixed storage",
+            RemovableMountFacts {
+                removable: false,
+                ..eligible
+            },
+        ),
+        (
+            "read-only root",
+            RemovableMountFacts {
+                writable: false,
+                ..eligible
+            },
+        ),
+        (
+            "missing root",
+            RemovableMountFacts {
+                existing_directory: false,
+                ..eligible
+            },
+        ),
+    ] {
+        assert!(
+            !removable_mount_is_eligible(facts),
+            "{reason} must not be offered"
+        );
+    }
+}
+
+#[test]
+fn send_to_identity_uses_namespaced_volume_drive_unix_and_root_fallbacks() {
+    assert_eq!(
+        send_to_device_identity(
+            Some(" volume-id "),
+            Some("drive-id"),
+            Some("/dev/sdb1"),
+            Some("/dev/sdb"),
+            Some("file:///run/media/me/USB"),
+        )
+        .as_deref(),
+        Some("volume:volume-id")
+    );
+    assert_eq!(
+        send_to_device_identity(
+            Some("  "),
+            Some("drive-id"),
+            Some("/dev/sdb1"),
+            Some("/dev/sdb"),
+            Some("file:///usb"),
+        )
+        .as_deref(),
+        Some("drive:drive-id")
+    );
+    assert_eq!(
+        send_to_device_identity(
+            None,
+            None,
+            Some("/dev/sdb1"),
+            Some("/dev/sdb"),
+            Some("file:///usb")
+        )
+        .as_deref(),
+        Some("unix:/dev/sdb1")
+    );
+    assert_eq!(
+        send_to_device_identity(None, None, None, Some("/dev/sdb"), Some("file:///usb")).as_deref(),
+        Some("unix:/dev/sdb")
+    );
+    assert_eq!(
+        send_to_device_identity(None, None, Some(""), Some("/dev/sdb"), Some("file:///usb"))
+            .as_deref(),
+        Some("unix:/dev/sdb")
+    );
+    assert_eq!(
+        send_to_device_identity(
+            None,
+            None,
+            Some("  \t"),
+            Some("/dev/sdb"),
+            Some("file:///usb")
+        )
+        .as_deref(),
+        Some("unix:/dev/sdb")
+    );
+    assert_eq!(
+        send_to_device_identity(None, None, Some(""), None, Some("file:///usb")).as_deref(),
+        Some("root:file:///usb")
+    );
+    assert_eq!(
+        send_to_device_identity(Some("same"), Some("same"), None, None, Some("same")),
+        Some("volume:same".to_owned())
+    );
+    assert_eq!(
+        send_to_device_identity(None, Some("same"), None, None, Some("same")),
+        Some("drive:same".to_owned())
+    );
+    assert_eq!(
+        send_to_device_identity(Some("  "), Some(""), None, None, Some(" ")),
+        None
+    );
+}
+
+#[test]
+fn duplicate_send_to_identities_are_omitted_and_names_sort_deterministically() {
+    let destination = |id: &str, name: &str| RemovableDestination {
+        id: id.to_owned(),
+        name: name.to_owned(),
+        root: PathBuf::from(format!("/mnt/{id}")),
+    };
+    let mut unique = without_ambiguous_destinations(vec![
+        destination("duplicate", "Kingston"),
+        destination("duplicate", "Other name"),
+        destination("z", "sanDisk"),
+        destination("a", "SanDisk"),
+    ]);
+    sort_removable_destinations(&mut unique);
+    assert_eq!(
+        unique
+            .iter()
+            .map(|destination| (destination.name.as_str(), destination.id.as_str()))
+            .collect::<Vec<_>>(),
+        [("SanDisk", "a"), ("sanDisk", "z")]
+    );
+}
+
+#[test]
 fn padlock_emblem_decides_lock_state() {
     assert!(encrypted_device_is_locked(&["changes-prevent"], true));
     assert!(!encrypted_device_is_locked(&["changes-allow"], false));
@@ -231,6 +382,55 @@ fn a_non_system_drive_containing_home_is_still_included() {
         ),
         ["/mnt/Storage/Home", "/mnt/Storage"].map(PathBuf::from)
     );
+}
+
+#[test]
+fn strata_label_identity_survives_mount_changes_without_using_recycled_device_paths() {
+    assert_eq!(
+        label_identity(Some("fixture-uuid"), Some("file:///media/old")),
+        label_identity(Some("fixture-uuid"), Some("file:///media/new"))
+    );
+    assert_ne!(
+        label_identity(Some("fixture-uuid"), None),
+        label_identity(Some("other-uuid"), None)
+    );
+    assert_eq!(
+        label_identity(None, Some("smb://server/share")),
+        Some("root:smb://server/share".to_owned())
+    );
+    assert_eq!(label_identity(Some(""), None), None);
+}
+
+#[test]
+fn properties_resolve_the_innermost_block_mount_including_btrfs_and_escaped_paths() {
+    let table = br"25 1 8:1 / / rw - ext4 /dev/sda1 rw
+26 25 0:40 /@home /home rw - btrfs /dev/nvme0n1p2 rw
+27 26 8:2 / /home/USB\040Backup rw - exfat /dev/sdb1 rw
+28 27 0:2 / /home/USB\040Backup/cache rw - tmpfs tmpfs rw
+";
+    for (device, root) in [
+        ("/dev/sda1", Some("/")),
+        ("/dev/nvme0n1p2", Some("/home")),
+        ("/dev/sdb1", Some("/home/USB Backup")),
+        ("/dev/strata-unmounted-fixture", None),
+    ] {
+        assert_eq!(
+            mounted_path_from_table(table, Path::new(device)),
+            root.map(PathBuf::from)
+        );
+    }
+    for (path, device) in [
+        ("/", Some("/dev/sda1")),
+        ("/home/Documents", Some("/dev/nvme0n1p2")),
+        ("/home/USB Backup/file.txt", Some("/dev/sdb1")),
+        ("/home/USB Backup/cache", None),
+        ("/home/USB Backup-other", Some("/dev/nvme0n1p2")),
+    ] {
+        assert_eq!(
+            block_device_from_mount_table(table, Path::new(path)),
+            device.map(PathBuf::from)
+        );
+    }
 }
 
 #[test]

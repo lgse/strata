@@ -21,8 +21,13 @@ class WorkerCountTests(unittest.TestCase):
             with self.subTest(cpus=cpus, memory=memory):
                 self.assertEqual(RESOURCES.worker_count(cpus, memory * GIB), expected)
 
+    def test_pid_budget_caps_toolkit_thread_fanout(self):
+        self.assertEqual(RESOURCES.worker_count(32, 38 * GIB, tasks=2048), 7)
+        self.assertEqual(RESOURCES.worker_count(32, 38 * GIB, tasks=383), 1)
+        self.assertEqual(RESOURCES.worker_count(32, 38 * GIB, tasks=0), 16)
+
     def test_manual_override_and_serial(self):
-        self.assertEqual(RESOURCES.worker_count(4, GIB, "8"), 8)
+        self.assertEqual(RESOURCES.worker_count(4, GIB, "8", tasks=1), 8)
         self.assertEqual(RESOURCES.worker_count(32, 60 * GIB, "1"), 1)
 
     def test_invalid_overrides(self):
@@ -66,6 +71,13 @@ class ResourceDetectionTests(unittest.TestCase):
         self.limits(self.mount / "job/worker", **{"cpu.max": "max 100000", "memory.max": "max"})
         self.assertEqual(RESOURCES.available_resources(self.proc), (3.5, 7 * GIB))
 
+    def test_v2_ancestor_pid_slots(self):
+        self.mount_cgroup()
+        self.limits(self.mount, **{"pids.max": 4096, "pids.current": 512})
+        self.limits(self.mount / "job", **{"pids.max": "max", "pids.current": 100})
+        self.limits(self.mount / "job/worker", **{"pids.max": 2048, "pids.current": 100})
+        self.assertEqual(RESOURCES.available_tasks(self.proc), 1948)
+
     def test_v1_limits(self):
         self.mount_cgroup(membership="/", version=1)
         self.limits(self.mount, **{"cpu.cfs_quota_us": 200000, "cpu.cfs_period_us": 100000,
@@ -95,6 +107,7 @@ class ResourceDetectionTests(unittest.TestCase):
             self.assertEqual(RESOURCES.available_resources(self.proc), (1, 40 * GIB))
         (self.proc / "meminfo").unlink()
         self.assertEqual(RESOURCES.available_resources(self.proc)[1], 0)
+        self.assertEqual(RESOURCES.available_tasks(self.proc), 0)
 
     def test_memory_pressure_never_selects_zero_workers(self):
         self.mount_cgroup(membership="/")

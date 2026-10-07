@@ -20,6 +20,7 @@ fn test_entry(name: &str, kind: EntryKind) -> FileEntry {
         duration_seconds: MetadataValue::Unknown,
         recent_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
+        recent_uri: None,
     }
 }
 

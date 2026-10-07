@@ -66,6 +66,8 @@ def request(connection, args, folder):
                 ("All files", [(0, "*")]),
             ]
         options["filters"] = GLib.Variant("a(sa(us))", filters)
+    if args.case == "png":
+        options["filters"] = GLib.Variant("a(sa(us))", [("PNG images", [(1, "image/png")])])
     if args.case == "save":
         method = "SaveFile"
         options["current_name"] = GLib.Variant("s", "strata-portal-demo.txt")
@@ -110,7 +112,7 @@ def request(connection, args, folder):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("case", choices=["single", "multiple", "directory", "filters", "save", "savefiles"])
+    parser.add_argument("case", choices=["single", "multiple", "directory", "filters", "png", "save", "savefiles"])
     parser.add_argument("--binary", type=Path, help="Launch this build with isolated D-Bus, settings, and cache")
     parser.add_argument("--folder", type=Path, help="Initial folder; defaults to a disposable sample fixture")
     parser.add_argument("--choices", action="store_true")

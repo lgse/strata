@@ -254,12 +254,139 @@ fn escape_clears_only_the_active_selection_and_preserves_the_cursor() {
 }
 
 #[test]
+fn cursor_fill_stays_out_of_the_other_column_and_the_open_path() {
+    let mut source = ScriptedSource::scripted(vec!["a.txt", "b.txt"], Vec::new());
+    source.dirs = vec!["empty", "child"];
+    let browser = Rc::new(Browser::new(Rc::new(source)));
+    browser.navigate(Location::local("/fixture"));
+    assert!(browser.selection_is_load_cursor());
+    assert_eq!(browser.toggle_cursor_fill(), CursorToggle::Added);
+    assert!(!browser.selection_is_load_cursor());
+    let added = browser.focused_entry().expect("cursor").display_name;
+    browser.page_cursor(1, 1, None);
+    assert_eq!(
+        browser
+            .selected_entries()
+            .into_iter()
+            .map(|entry| entry.display_name)
+            .collect::<Vec<_>>(),
+        vec![added.clone()]
+    );
+    assert_ne!(
+        browser.focused_entry().expect("moved cursor").display_name,
+        added
+    );
+
+    browser.select_visible(0);
+    let all = browser.selected_positions(0);
+    assert!(all.len() > 1);
+    let cursor = browser.focused_item().map(|(_, position, _)| position);
+    browser.page_cursor(1, 1, None);
+    assert_eq!(browser.selected_positions(0), all);
+    assert_ne!(
+        browser.focused_item().map(|(_, position, _)| position),
+        cursor
+    );
+
+    browser.invert_visible(0);
+    let inverted = browser.selected_positions(0);
+    assert_ne!(inverted, all);
+    browser.page_cursor(1, 1, None);
+    assert_eq!(browser.selected_positions(0), inverted);
+
+    let parent = browser.selected_positions(0);
+    browser.show_child(0, Location::local("/fixture/child"));
+    assert!(browser.column_snapshot(1).is_some());
+    browser.select_visible(1);
+    assert_eq!(browser.selected_positions(0), parent);
+    browser.invert_visible(1);
+    assert_eq!(browser.selected_positions(0), parent);
+}
+
+#[test]
+fn visual_key_repeats_leave_the_range_and_publish_the_walked_fill() {
+    let source = ScriptedSource::scripted(vec!["a.txt", "b.txt", "c.txt"], Vec::new());
+    let browser = Rc::new(Browser::new(Rc::new(source)));
+    browser.navigate(Location::local("/fixture"));
+    let fills = Rc::new(RefCell::new(Vec::new()));
+    let observed = fills.clone();
+    browser.observe(move |event| {
+        if let BrowserEvent::SelectionSetChanged {
+            selection: SelectionUpdate::Positions(positions),
+            focused,
+            ..
+        } = event
+        {
+            observed.borrow_mut().push((positions.clone(), *focused));
+        }
+    });
+    let names = |browser: &Browser| {
+        let mut names: Vec<_> = browser
+            .selected_entries()
+            .into_iter()
+            .map(|entry| entry.display_name)
+            .collect();
+        names.sort();
+        names
+    };
+    let reversed = [2, 1, 0];
+
+    assert!(browser.toggle_visual(VisualKind::Select, Some(&reversed)));
+    assert_eq!(browser.visual_kind(), Some(VisualKind::Select));
+    assert_eq!(names(&browser), ["a.txt"]);
+    browser.page_cursor(-1, 1, Some(&reversed));
+    assert_eq!(
+        browser.focused_entry().map(|entry| entry.display_name),
+        Some("b.txt".to_owned())
+    );
+    assert_eq!(names(&browser), ["a.txt", "b.txt"]);
+    browser.place_cursor(0, 2, Some(&reversed));
+    assert_eq!(names(&browser), ["a.txt", "b.txt", "c.txt"]);
+    assert_eq!(fills.borrow().last(), Some(&(vec![0, 1, 2], 2)));
+
+    assert!(browser.toggle_visual(VisualKind::Select, Some(&reversed)));
+    assert_eq!(browser.visual_kind(), None, "repeating v leaves the range");
+    browser.place_cursor(0, 0, Some(&reversed));
+    assert_eq!(names(&browser), ["a.txt", "b.txt", "c.txt"]);
+
+    assert!(browser.toggle_visual(VisualKind::Unset, Some(&reversed)));
+    assert_eq!(names(&browser), ["b.txt", "c.txt"]);
+    assert!(browser.toggle_visual(VisualKind::Select, Some(&reversed)));
+    assert_eq!(
+        browser.visual_kind(),
+        Some(VisualKind::Select),
+        "the other key restarts at the cursor"
+    );
+    assert_eq!(names(&browser), ["a.txt", "b.txt", "c.txt"]);
+    let published = fills.borrow().len();
+    assert!(browser.leave_visual());
+    assert_eq!(
+        fills.borrow().len(),
+        published + 1,
+        "leaving republishes the fill"
+    );
+    assert!(!browser.leave_visual());
+    assert_eq!(names(&browser), ["a.txt", "b.txt", "c.txt"]);
+}
+
+#[test]
 fn select_all_excludes_hidden_entries_unless_shown() {
     let source = ScriptedSource::scripted(vec!["visible.txt", ".hidden.txt"], Vec::new());
     let browser = Browser::new(Rc::new(source));
     browser.navigate(Location::local("/fixture"));
 
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+
     browser.select_all(0);
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::SelectionSetChanged {
+            selection: SelectionUpdate::All,
+            ..
+        }
+    )));
     let selected = browser.selected_positions(0);
     assert_eq!(selected.len(), 1, "{selected:?}");
     let entry = browser.entry_at(0, selected[0]).expect("selected entry");
@@ -268,6 +395,90 @@ fn select_all_excludes_hidden_entries_unless_shown() {
     browser.toggle_hidden();
     browser.select_all(0);
     assert_eq!(browser.selected_positions(0).len(), 2);
+}
+
+#[test]
+fn deleting_an_entry_respects_neighbor_visibility_and_cursor_fill() {
+    for (names, removed, visible_neighbor) in [
+        (vec!["alpha.txt", ".hidden.txt"], "alpha.txt", None),
+        (
+            vec!["alpha.txt", ".hidden.txt", "charlie.txt"],
+            "alpha.txt",
+            Some("charlie.txt"),
+        ),
+        (
+            vec!["alpha.txt", ".hidden.txt", "charlie.txt"],
+            "charlie.txt",
+            Some("alpha.txt"),
+        ),
+    ] {
+        for show_hidden in [false, true] {
+            for batched in [false, true] {
+                for preserve_fill in [false, true] {
+                    let source = ScriptedSource::scripted(Vec::new(), Vec::new());
+                    let browser = Rc::new(Browser::new(Rc::new(source)));
+                    browser.apply_default_preferences(ViewPreferences {
+                        sort_key: SortKey::Size,
+                        ..ViewPreferences::default()
+                    });
+                    let parent = Location::local("/fixture");
+                    browser.navigate(parent.clone());
+                    if show_hidden {
+                        browser.toggle_hidden();
+                    }
+                    browser.set_preserve_fill_on_removal(preserve_fill);
+                    for (position, name) in names.iter().enumerate() {
+                        let mut entry = batch_entry(name);
+                        entry.is_hidden = name.starts_with('.');
+                        entry.size = MetadataValue::Known(position as u64);
+                        browser.handle_directory_change(0, &parent, DirectoryChange::Upsert(entry));
+                    }
+                    let order = column_names(&browser, 0);
+                    assert_eq!(order, names);
+                    let focused = order
+                        .iter()
+                        .position(|name| name == removed)
+                        .expect("deleted entry must be listed");
+                    browser.select(0, focused);
+                    let change =
+                        DirectoryChange::Remove(Location::local(format!("/fixture/{removed}")));
+                    if batched {
+                        browser.flush_deferred_file_operation_changes(
+                            std::collections::HashMap::from([(0, vec![(parent.clone(), change)])]),
+                            false,
+                        );
+                    } else {
+                        browser.handle_directory_change(0, &parent, change);
+                    }
+
+                    let expected = if show_hidden {
+                        Some(".hidden.txt")
+                    } else {
+                        visible_neighbor
+                    };
+                    let context = format!(
+                        "removing {removed} from {order:?}: hidden={show_hidden}, batch={batched}, preserve={preserve_fill}"
+                    );
+                    assert_eq!(
+                        browser
+                            .focused_entry()
+                            .map(|entry| entry.display_name)
+                            .as_deref(),
+                        expected,
+                        "{context}"
+                    );
+                    let selected: Vec<_> = browser
+                        .selected_entries()
+                        .into_iter()
+                        .map(|entry| entry.display_name)
+                        .collect();
+                    let expected_selected: Vec<_> =
+                        expected.filter(|_| !preserve_fill).into_iter().collect();
+                    assert_eq!(selected, expected_selected, "{context}");
+                }
+            }
+        }
+    }
 }
 
 #[test]
@@ -303,7 +514,9 @@ fn repeated_identical_batches_emit_selection_only_once() {
         .iter()
         .filter_map(|event| match event {
             BrowserEvent::SelectionSetChanged {
-                positions, focused, ..
+                selection: SelectionUpdate::Positions(positions),
+                focused,
+                ..
             } => Some((positions.clone(), *focused)),
             _ => None,
         })

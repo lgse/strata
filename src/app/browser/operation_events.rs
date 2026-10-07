@@ -10,9 +10,13 @@ use crate::{
     services::{OperationEvent, OperationRequestId},
 };
 
+mod background;
+pub(super) use background::BackgroundOperation;
+
 use super::{
-    Browser, BrowserEvent, MAX_INCREMENTAL_OPERATION_UPDATES, MergeUndoState, UndoEntry,
-    finish_undo, mark_undo_item_completed, move_records, push_pending_undo,
+    Browser, BrowserEvent, MergeUndoState, UndoEntry, completed_replay_items, finish_replay,
+    mark_replay_item_completed, move_records, push_pending_redo, push_pending_undo,
+    push_regenerated_undo,
 };
 
 struct OperationContext {
@@ -52,7 +56,7 @@ impl OperationCompletion {
         }
     }
 
-    fn record_trash_undo(&self, event: &OperationEvent) {
+    fn record_trash_undo(&self, event: &OperationEvent, publish: fn(UndoEntry)) {
         if !self.deleting || self.deletion_permanent || self.undoing {
             return;
         }
@@ -64,7 +68,7 @@ impl OperationCompletion {
             OperationEvent::Cancelled { result, .. } => result.completed.clone(),
             _ => Vec::new(),
         };
-        push_pending_undo(UndoEntry::Trash(locations));
+        publish(UndoEntry::Trash(locations));
     }
 
     fn record_transfer_undo(
@@ -72,6 +76,7 @@ impl OperationCompletion {
         moved: &[Location],
         created: Vec<Location>,
         merged: MergeUndoState,
+        publish: fn(UndoEntry),
     ) {
         if self.undoing {
             return;
@@ -86,11 +91,11 @@ impl OperationCompletion {
                         .filter(|source| !merged.sources.contains(*source))
                         .cloned()
                         .collect();
-                    push_pending_undo(UndoEntry::Move(move_records(&movable, destination)));
+                    publish(UndoEntry::Move(move_records(&movable, destination)));
                 }
             }
             Some(false) if merged.overwritten.is_empty() && merged.created.is_empty() => {
-                push_pending_undo(UndoEntry::Copy(created))
+                publish(UndoEntry::Copy(created))
             }
             Some(false) => {
                 let mut all_created = created;
@@ -99,7 +104,7 @@ impl OperationCompletion {
                 // progress; it must undo through the overwritten restore
                 // path instead, or the restored original would be trashed.
                 all_created.retain(|location| !merged.overwritten.contains(location));
-                push_pending_undo(UndoEntry::Merge {
+                publish(UndoEntry::Merge {
                     created: all_created,
                     overwritten: merged.overwritten,
                     originals: HashMap::new(),
@@ -130,7 +135,19 @@ impl Browser {
                 return;
             };
             let event_id = operation_event_id(&event);
-            if event_id != context.request_id || !browser.is_current_operation(event_id) {
+            if event_id != context.request_id {
+                return;
+            }
+            let background = browser
+                .background_operations
+                .borrow()
+                .get(&event_id)
+                .cloned();
+            if let Some(job) = background {
+                browser.handle_background_operation(&context, event, job);
+                return;
+            }
+            if !browser.is_current_operation(event_id) {
                 return;
             }
             if !browser.publish_operation_progress(&event) {
@@ -139,15 +156,15 @@ impl Browser {
         })
     }
 
-    fn publish_operation_progress(&self, event: &OperationEvent) -> bool {
+    fn publish_operation_progress(self: &Rc<Self>, event: &OperationEvent) -> bool {
         let progress = match event {
             OperationEvent::DeleteProgress {
                 completed,
                 total,
-                deleted_location,
+                deleted_locations,
                 ..
             } => {
-                if let Some(location) = deleted_location {
+                for location in deleted_locations {
                     self.mark_merged_undo_item_completed(location);
                 }
                 BrowserEvent::DeletionProgress {
@@ -157,6 +174,9 @@ impl Browser {
             }
             OperationEvent::TransferProgress {
                 completed_items,
+                completed_files,
+                total_files,
+                current_file,
                 transferred_bytes,
                 total_bytes,
                 created_location,
@@ -167,10 +187,14 @@ impl Browser {
                 }
                 BrowserEvent::TransferProgress {
                     completed_items: *completed_items,
+                    completed_files: *completed_files,
+                    total_files: *total_files,
+                    current_file: current_file.clone(),
                     transferred_bytes: *transferred_bytes,
                     total_bytes: *total_bytes,
                 }
             }
+            OperationEvent::FlushingToDevice { .. } => BrowserEvent::FlushingToDevice,
             OperationEvent::RestoreProgress {
                 completed,
                 total,
@@ -206,6 +230,14 @@ impl Browser {
             },
             _ => return false,
         };
+        if matches!(
+            event,
+            OperationEvent::DeleteProgress { .. }
+                | OperationEvent::TransferProgress { .. }
+                | OperationEvent::RestoreProgress { .. }
+        ) {
+            self.flush_visible_operation_changes();
+        }
         self.emit(progress);
         true
     }
@@ -214,20 +246,27 @@ impl Browser {
         let Some(restored) = restored else {
             return;
         };
-        let claim = self.undo_claim.borrow();
-        match claim.as_ref() {
-            Some((generation, UndoEntry::Trash(locations))) => {
-                if let Some(location) = completed
-                    .checked_sub(1)
-                    .and_then(|index| locations.get(index))
-                {
-                    mark_undo_item_completed(*generation, location);
+        for (claim, redo) in [(&self.undo_claim, false), (&self.redo_claim, true)] {
+            match claim.borrow().as_ref() {
+                // A trash undo reports the trash item, so completion maps by
+                // request order onto the recorded locations.
+                Some((generation, UndoEntry::Trash(locations))) => {
+                    if let Some(location) = completed
+                        .checked_sub(1)
+                        .and_then(|index| locations.get(index))
+                    {
+                        mark_replay_item_completed(redo, *generation, location);
+                        return;
+                    }
                 }
+                // Merge undos and copy redos restore to the real destination
+                // the event reports directly.
+                Some((generation, UndoEntry::Merge { .. } | UndoEntry::Copy(_))) => {
+                    mark_replay_item_completed(redo, *generation, restored);
+                    return;
+                }
+                _ => {}
             }
-            Some((generation, UndoEntry::Merge { .. })) => {
-                mark_undo_item_completed(*generation, restored);
-            }
-            _ => {}
         }
     }
 
@@ -236,24 +275,36 @@ impl Browser {
     fn mark_merged_undo_item_completed(&self, location: &Location) {
         let claim = self.undo_claim.borrow();
         if let Some((generation, UndoEntry::Merge { .. })) = claim.as_ref() {
-            mark_undo_item_completed(*generation, location);
+            mark_replay_item_completed(false, *generation, location);
         }
     }
 
     fn finish_operation(self: &Rc<Self>, context: &OperationContext, event: OperationEvent) {
         self.current_operation.set(None);
+        self.transfer_cancel_pending.set(false);
         if context.rename && self.rename_operation.get() == Some(context.request_id) {
             self.rename_operation.set(None);
         }
         let mut completion = OperationCompletion::take(self);
-        completion.file_operation_refreshed = self.flush_operation_changes(&completion, &event);
+        completion.file_operation_refreshed = self.flush_operation_changes(&completion);
+        let mut refresh_depths = self
+            .operation_rescan_depths
+            .take()
+            .into_iter()
+            .collect::<Vec<_>>();
+        refresh_depths.sort_unstable();
+        completion.file_operation_refreshed |= !refresh_depths.is_empty();
         // Flush observers run before the undo claim is consumed, as on the provider path.
         let undoing = self.undo_claim.take();
         if let Some((generation, entry)) = &undoing {
-            finish_claimed_undo(*generation, entry, &event);
+            finish_claimed_replay(false, *generation, entry, &event);
         }
-        completion.undoing = undoing.is_some();
-        completion.record_trash_undo(&event);
+        let redoing = self.redo_claim.take();
+        if let Some((generation, entry)) = &redoing {
+            finish_claimed_replay(true, *generation, entry, &event);
+        }
+        completion.undoing = undoing.is_some() || redoing.is_some();
+        completion.record_trash_undo(&event, push_pending_undo);
         self.finish_transfer(&mut completion, &event);
         if completion.deleting {
             self.emit(BrowserEvent::DeletionFinished {
@@ -261,28 +312,33 @@ impl Browser {
             });
         }
         if completion.restoring {
-            self.emit(BrowserEvent::RestorationFinished);
+            self.emit(BrowserEvent::RestorationFinished {
+                succeeded: matches!(&event, OperationEvent::Restored { .. }),
+            });
         }
-        self.operation_load.borrow_mut().take();
+        let load = self.operation_load.take();
+        drop(load);
         self.publish_operation_outcome(context, completion, event);
+        if !refresh_depths.is_empty() {
+            self.emit(BrowserEvent::OperationRefreshRequired {
+                depths: refresh_depths,
+            });
+        }
     }
 
-    fn flush_operation_changes(
-        self: &Rc<Self>,
-        completion: &OperationCompletion,
-        event: &OperationEvent,
-    ) -> bool {
-        if !completion.deleting && !completion.restoring {
+    fn flush_operation_changes(self: &Rc<Self>, completion: &OperationCompletion) -> bool {
+        if !completion.deleting && !completion.restoring && completion.moving.is_none() {
             return false;
         }
         let changes = self.deferred_file_operation_changes.take();
-        self.flush_deferred_file_operation_changes(
-            changes,
-            completed_change_count(event) > MAX_INCREMENTAL_OPERATION_UPDATES,
-        )
+        self.flush_deferred_file_operation_changes(changes, false)
     }
 
-    fn finish_transfer(&self, completion: &mut OperationCompletion, event: &OperationEvent) {
+    fn finish_transfer(
+        self: &Rc<Self>,
+        completion: &mut OperationCompletion,
+        event: &OperationEvent,
+    ) {
         let Some(moving) = completion.moving else {
             return;
         };
@@ -302,7 +358,18 @@ impl Browser {
         } else {
             Vec::new()
         };
-        completion.record_transfer_undo(&moved, created, self.merged_undo.take());
+        self.state
+            .borrow_mut()
+            .retain_selectionless_removals(moved.iter().cloned());
+        completion.record_transfer_undo(
+            &moved,
+            created,
+            self.merged_undo.take(),
+            push_pending_undo,
+        );
+        for location in &moved {
+            self.retire_recent_target(location);
+        }
         self.emit(BrowserEvent::TransferFinished {
             moved_locations: if completion.undoing {
                 Vec::new()
@@ -325,12 +392,20 @@ impl Browser {
                     message,
                 });
             }
-            OperationEvent::Failed { message, .. } => {
-                self.emit(BrowserEvent::OperationFailed { message })
-            }
+            OperationEvent::Failed {
+                message,
+                password_failure,
+                ..
+            } => self.emit(BrowserEvent::OperationFailed {
+                message,
+                password_failure,
+            }),
             OperationEvent::TransferFailed { message, .. } => {
                 self.refresh_columns_at_many(&context.refresh_locations);
-                self.emit(BrowserEvent::OperationFailed { message });
+                self.emit(BrowserEvent::OperationFailed {
+                    message,
+                    password_failure: None,
+                });
             }
             OperationEvent::CompletedWithErrors {
                 deleted_locations,
@@ -426,7 +501,8 @@ impl Browser {
             | OperationEvent::RestoreProgress { .. }
             | OperationEvent::Merged { .. }
             | OperationEvent::ArchiveStarted { .. }
-            | OperationEvent::ArchiveProgress { .. } => {}
+            | OperationEvent::ArchiveProgress { .. }
+            | OperationEvent::FlushingToDevice { .. } => {}
         }
     }
 
@@ -520,6 +596,7 @@ fn operation_event_id(event: &OperationEvent) -> OperationRequestId {
         | OperationEvent::Created { request_id }
         | OperationEvent::EntryCreated { request_id, .. }
         | OperationEvent::Pasted { request_id, .. }
+        | OperationEvent::FlushingToDevice { request_id }
         | OperationEvent::Merged { request_id, .. }
         | OperationEvent::TransferFailed { request_id, .. }
         | OperationEvent::TransferProgress { request_id, .. }
@@ -538,22 +615,6 @@ fn operation_event_id(event: &OperationEvent) -> OperationRequestId {
     }
 }
 
-fn completed_change_count(event: &OperationEvent) -> usize {
-    match event {
-        OperationEvent::Deleted { locations, .. } | OperationEvent::Restored { locations, .. } => {
-            locations.len()
-        }
-        OperationEvent::CompletedWithErrors {
-            deleted_locations, ..
-        } => deleted_locations.len(),
-        OperationEvent::RestoreCompletedWithErrors {
-            restored_locations, ..
-        } => restored_locations.len(),
-        OperationEvent::Cancelled { result, .. } => result.completed.len(),
-        _ => 0,
-    }
-}
-
 fn moved_locations(event: &OperationEvent) -> Vec<Location> {
     match event {
         OperationEvent::Pasted { locations, .. } => locations.clone(),
@@ -566,32 +627,61 @@ fn moved_locations(event: &OperationEvent) -> Vec<Location> {
     }
 }
 
-fn finish_claimed_undo(generation: u64, entry: &UndoEntry, event: &OperationEvent) {
-    let completed = match (entry, event) {
-        (UndoEntry::Trash(_), _) => Vec::new(),
-        (UndoEntry::Move(_), _) => moved_locations(event),
-        (
-            UndoEntry::Copy(_) | UndoEntry::Merge { .. },
-            OperationEvent::CompletedWithErrors {
-                deleted_locations, ..
-            },
-        ) => deleted_locations.clone(),
-        (
-            UndoEntry::Copy(_) | UndoEntry::Merge { .. },
-            OperationEvent::Cancelled { result, .. },
-        ) => result.completed.clone(),
-        (UndoEntry::Copy(_) | UndoEntry::Merge { .. }, _) => Vec::new(),
-        (UndoEntry::Rename(_), _) => Vec::new(),
+fn deleted_locations(event: &OperationEvent) -> Vec<Location> {
+    match event {
+        OperationEvent::Deleted { locations, .. } => locations.clone(),
+        OperationEvent::CompletedWithErrors {
+            deleted_locations, ..
+        } => deleted_locations.clone(),
+        OperationEvent::Cancelled { result, .. } => result.completed.clone(),
+        _ => Vec::new(),
+    }
+}
+
+fn finish_claimed_replay(redo: bool, generation: u64, entry: &UndoEntry, event: &OperationEvent) {
+    // A restore replay marks each landed item from progress events; a delete
+    // or move replay marks from the locations the finish event reports. A
+    // merge undo does both: originals mark through progress while its trashed
+    // `created` items arrive in the finish event.
+    let progress_marked = matches!(
+        (entry, redo),
+        (UndoEntry::Trash(_), false) | (UndoEntry::Copy(_), true)
+    );
+    let completed = match entry {
+        _ if progress_marked => Vec::new(),
+        UndoEntry::Move(_) | UndoEntry::Group { .. } => moved_locations(event),
+        UndoEntry::Rename(_) => Vec::new(),
+        _ => deleted_locations(event),
     };
     for location in &completed {
-        mark_undo_item_completed(generation, location);
+        mark_replay_item_completed(redo, generation, location);
     }
+    let restoring = matches!(
+        (entry, redo),
+        (UndoEntry::Trash(_) | UndoEntry::Merge { .. }, false) | (UndoEntry::Copy(_), true)
+    );
     let succeeded = match entry {
-        UndoEntry::Trash(_) => matches!(event, OperationEvent::Restored { .. }),
-        UndoEntry::Move(_) => matches!(event, OperationEvent::Pasted { .. }),
-        UndoEntry::Copy(_) => matches!(event, OperationEvent::Deleted { .. }),
-        UndoEntry::Merge { .. } => matches!(event, OperationEvent::Restored { .. }),
+        _ if restoring => matches!(event, OperationEvent::Restored { .. }),
+        UndoEntry::Move(_) | UndoEntry::Group { .. } => {
+            matches!(event, OperationEvent::Pasted { .. })
+        }
         UndoEntry::Rename(_) => matches!(event, OperationEvent::Renamed { .. }),
+        _ => matches!(event, OperationEvent::Deleted { .. }),
     };
-    finish_undo(generation, succeeded);
+    let applied = if succeeded {
+        Some(entry.clone())
+    } else {
+        completed_replay_items(redo, generation).filter(|completed| !completed.is_empty())
+    };
+    finish_replay(redo, generation, succeeded);
+    let Some(applied) = applied else {
+        return;
+    };
+    if redo {
+        push_regenerated_undo(applied);
+    } else if !matches!(applied, UndoEntry::Merge { .. } | UndoEntry::Group { .. }) {
+        // A merge undo mixes deletes and restores, and a group undo a move
+        // plus a trash, that no single redo operation can replay.
+        push_pending_redo(applied);
+    }
 }

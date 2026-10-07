@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-use std::path::Path;
+use std::{ffi::OsStr, os::unix::ffi::OsStrExt, path::Path};
 
 use super::{Method, RevealRequest, reveal_requests};
+use crate::model::Location;
 
 fn uris(values: &[&str]) -> Vec<String> {
     values.iter().map(|value| (*value).to_owned()).collect()
@@ -20,7 +21,10 @@ fn show_items_reveals_the_parent_directory_with_the_item_selected() {
         requests[0].directory.native_path(),
         Some(Path::new("/home/user/Downloads"))
     );
-    assert_eq!(requests[0].selection, vec!["example.md".to_owned()]);
+    assert_eq!(
+        requests[0].selection,
+        vec![Location::local("/home/user/Downloads/example.md")]
+    );
     assert!(!requests[0].properties);
 }
 
@@ -57,11 +61,14 @@ fn items_sharing_a_directory_are_selected_together_in_one_window() {
         vec![
             (
                 Some(Path::new("/home/user/Downloads")),
-                vec!["first.md".to_owned(), "second.md".to_owned()]
+                vec![
+                    Location::local("/home/user/Downloads/first.md"),
+                    Location::local("/home/user/Downloads/second.md"),
+                ]
             ),
             (
                 Some(Path::new("/home/user/Pictures")),
-                vec!["photo.png".to_owned()]
+                vec![Location::local("/home/user/Pictures/photo.png")]
             ),
         ]
     );
@@ -77,8 +84,8 @@ fn show_item_properties_marks_the_request() {
     assert_eq!(
         requests,
         vec![RevealRequest {
-            directory: crate::model::Location::local("/home/user/Downloads"),
-            selection: vec!["example.md".to_owned()],
+            directory: Location::local("/home/user/Downloads"),
+            selection: vec![Location::local("/home/user/Downloads/example.md")],
             properties: true,
         }]
     );
@@ -110,5 +117,27 @@ fn a_remote_uri_reveals_its_parent_as_a_uri_location() {
         "unexpected parent location: {:?}",
         requests[0].directory
     );
-    assert_eq!(requests[0].selection, vec!["notes.txt".to_owned()]);
+    assert_eq!(
+        requests[0].selection,
+        vec![Location::uri("sftp://host/home/user/notes.txt")]
+    );
+}
+
+#[test]
+fn show_items_keeps_colliding_non_utf8_names_distinct() {
+    let requests = reveal_requests(
+        Method::Items,
+        &uris(&[
+            "file:///home/user/Downloads/bad%E8name.txt",
+            "file:///home/user/Downloads/bad%E9name.txt",
+        ]),
+    );
+
+    assert_eq!(requests.len(), 1);
+    let downloads = Path::new("/home/user/Downloads");
+    assert_eq!(
+        requests[0].selection,
+        [b"bad\xe8name.txt", b"bad\xe9name.txt"]
+            .map(|name| Location::local(downloads.join(OsStr::from_bytes(name))))
+    );
 }

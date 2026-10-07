@@ -1,0 +1,898 @@
+// SPDX-License-Identifier: MIT
+
+use std::{
+    cell::{Cell, RefCell},
+    collections::{HashMap, HashSet},
+    path::{Path, PathBuf},
+    rc::{Rc, Weak},
+};
+
+use gtk::{gio, prelude::*};
+
+#[cfg(test)]
+mod tests;
+
+use crate::{
+    assets::{self, icons},
+    model::{FileEntry, Location, MenuPlacement},
+    services::{InvocationSource, MatchedAction},
+    ui::actions::{action_icon, folder_input, inputs_for_entries, native_paths, run_action},
+};
+
+use super::super::{SendToMenuHandlers, ViewState};
+
+const SEND_TO_DEVICE_NAME_MAX_CHARS: i32 = 15;
+
+pub(super) struct ActionMenuSection {
+    popover: gtk::PopoverMenu,
+    model: gio::Menu,
+    provider_model: gio::Menu,
+    provider_group: gio::SimpleActionGroup,
+    provider_epoch: Rc<std::cell::Cell<u64>>,
+    pub(super) transfer_sections: Option<[gio::Menu; 2]>,
+    send_to_row_indices: RefCell<[Option<i32>; 2]>,
+    root_model: gio::Menu,
+    header: Option<gtk::Widget>,
+    owner: gtk::glib::WeakRef<gtk::Widget>,
+    actions: gio::SimpleActionGroup,
+    dispatch: super::commands::MenuDispatch,
+    _commands: super::commands::CommandMenus,
+    navigation: Rc<super::keyboard::NativeMenuNavigation>,
+    monitor: gio::VolumeMonitor,
+    monitor_handlers: RefCell<Vec<gtk::glib::SignalHandlerId>>,
+    refresh_pending: Cell<bool>,
+    selection: RefCell<Option<SelectionMenuContext>>,
+}
+
+#[derive(Clone)]
+struct SelectionMenuContext {
+    state: Weak<ViewState>,
+    entries: Vec<FileEntry>,
+    parent: Option<PathBuf>,
+}
+
+fn refresh_on_change<T>(
+    menu: &Rc<ActionMenuSection>,
+) -> impl Fn(&gio::VolumeMonitor, &T) + 'static {
+    let menu = Rc::downgrade(menu);
+    move |_, _| {
+        if let Some(menu) = menu.upgrade() {
+            menu.schedule_removable_refresh();
+        }
+    }
+}
+
+impl Drop for ActionMenuSection {
+    fn drop(&mut self) {
+        for handler in self.monitor_handlers.get_mut().drain(..) {
+            self.monitor.disconnect(handler);
+        }
+        if self.popover.parent().is_some() {
+            self.popover.unparent();
+        }
+    }
+}
+
+impl ActionMenuSection {
+    pub(super) fn new(
+        before: &impl IsA<gtk::Widget>,
+        after: &impl IsA<gtk::Widget>,
+        header: Option<&gtk::Widget>,
+        anchor: &gtk::Widget,
+        transfer_buttons: Option<[gtk::Button; 2]>,
+    ) -> Rc<Self> {
+        let model = gio::Menu::new();
+        let root = gio::Menu::new();
+        let popover =
+            gtk::PopoverMenu::from_model_full(&gio::Menu::new(), gtk::PopoverMenuFlags::NESTED);
+        popover.set_menu_model(gio::MenuModel::NONE);
+        popover.set_has_arrow(false);
+        popover.add_css_class("folder-context-popover");
+        popover.add_css_class("actions-context-popover");
+        if header.is_none() {
+            popover.add_css_class("folder-menu-body");
+        }
+        let dispatch = super::commands::MenuDispatch;
+        let navigation = super::keyboard::NativeMenuNavigation::new(&popover);
+        let commands = super::commands::CommandMenus::new(
+            before.as_ref(),
+            after.as_ref(),
+            &popover,
+            &dispatch,
+            &navigation,
+            transfer_buttons.as_ref(),
+        );
+        popover.insert_action_group("builtin", Some(&commands.group));
+        if let Some(header) = header {
+            let item = gio::MenuItem::new(None, None);
+            item.set_attribute_value("custom", Some(&"context-header".to_variant()));
+            root.append_item(&item);
+            header.set_margin_start(8);
+            header.set_margin_end(8);
+            header.set_margin_top(8);
+        }
+        for section in &commands.before {
+            root.append_section(None, section);
+        }
+        root.append_section(None, &model);
+        let provider_model = gio::Menu::new();
+        let provider_group = gio::SimpleActionGroup::new();
+        let provider_epoch = Rc::new(std::cell::Cell::new(0));
+        let provider_start = root.n_items();
+        let provider_root = root.clone();
+        // An enclosing section would add a second separator above the titled groups.
+        provider_model.connect_items_changed(move |model, position, removed, added| {
+            for _ in 0..removed {
+                provider_root.remove(provider_start + position);
+            }
+            for index in position..position + added {
+                provider_root.insert_item(
+                    provider_start + index,
+                    &gio::MenuItem::from_model(model, index),
+                );
+            }
+        });
+        popover.insert_action_group("provider", Some(&provider_group));
+        let closed_epoch = provider_epoch.clone();
+        popover.connect_closed(move |popover| {
+            // GTK closes the popover before dispatching the chosen leaf action.
+            let epoch = closed_epoch.get();
+            let closed_epoch = closed_epoch.clone();
+            let popover = popover.downgrade();
+            gtk::glib::idle_add_local_once(move || {
+                if closed_epoch.get() == epoch && popover.upgrade().is_none_or(|p| !p.is_visible())
+                {
+                    closed_epoch.set(epoch + 1);
+                }
+            });
+        });
+        for section in &commands.after {
+            root.append_section(None, section);
+        }
+        let actions = gio::SimpleActionGroup::new();
+        popover.insert_action_group("custom", Some(&actions));
+        popover.connect_closed(|popover| {
+            let Some(clock) = popover.frame_clock() else {
+                return;
+            };
+            let weak = popover.downgrade();
+            let handler = Rc::new(std::cell::RefCell::new(None));
+            let handler_for_signal = handler.clone();
+            let id = clock.connect_after_paint(move |clock| {
+                if let Some(id) = handler_for_signal.borrow_mut().take() {
+                    clock.disconnect(id);
+                }
+                let weak = weak.clone();
+                gtk::glib::idle_add_local_once(move || {
+                    if let Some(popover) = weak.upgrade()
+                        && !popover.is_visible()
+                        && popover.parent().is_some()
+                    {
+                        popover.unparent();
+                    }
+                });
+            });
+            handler.replace(Some(id));
+            clock.request_phase(gtk::gdk::FrameClockPhase::AFTER_PAINT);
+        });
+        refresh_presentation(&popover, &navigation);
+        let transfer_sections = commands.transfer_sections.clone();
+        let menu = Rc::new(Self {
+            popover,
+            model,
+            provider_model,
+            provider_group,
+            provider_epoch,
+            transfer_sections,
+            send_to_row_indices: RefCell::new([None, None]),
+            root_model: root,
+            header: header.cloned(),
+            owner: anchor.downgrade(),
+            actions,
+            dispatch,
+            _commands: commands,
+            navigation,
+            monitor: gio::VolumeMonitor::get(),
+            monitor_handlers: RefCell::new(Vec::new()),
+            refresh_pending: Cell::new(false),
+            selection: RefCell::new(None),
+        });
+        let monitor = &menu.monitor;
+        if menu.transfer_sections.is_some() {
+            menu.monitor_handlers.replace(vec![
+                monitor.connect_mount_added(refresh_on_change(&menu)),
+                monitor.connect_mount_removed(refresh_on_change(&menu)),
+                monitor.connect_mount_changed(refresh_on_change(&menu)),
+                monitor.connect_volume_added(refresh_on_change(&menu)),
+                monitor.connect_volume_removed(refresh_on_change(&menu)),
+                monitor.connect_volume_changed(refresh_on_change(&menu)),
+                monitor.connect_drive_connected(refresh_on_change(&menu)),
+                monitor.connect_drive_disconnected(refresh_on_change(&menu)),
+                monitor.connect_drive_changed(refresh_on_change(&menu)),
+            ]);
+        }
+        menu
+    }
+
+    fn schedule_removable_refresh(self: &Rc<Self>) {
+        if !self.popover.is_visible() || self.refresh_pending.replace(true) {
+            return;
+        }
+        let weak = Rc::downgrade(self);
+        gtk::glib::idle_add_local_once(move || {
+            if let Some(menu) = weak.upgrade() {
+                menu.refresh_pending.set(false);
+                menu.refresh_removable_destinations();
+            }
+        });
+    }
+
+    fn refresh_removable_destinations(&self) {
+        let Some(selection) = self.selection.borrow().clone() else {
+            return;
+        };
+        if !self.popover.is_visible() {
+            return;
+        }
+        if let Some(state) = selection.state.upgrade() {
+            self.rebuild_for_selection(&state, &selection.entries, selection.parent);
+            self.popover.set_visible_submenu(Some("main"));
+            self.navigation.model_changed();
+        }
+    }
+
+    pub(super) fn popover(&self) -> gtk::Popover {
+        self.popover.clone().upcast()
+    }
+
+    pub(super) fn show(&self, anchor: &gtk::Widget, x: f64, y: f64) {
+        if self.popover.parent().is_none()
+            && let Some(owner) = self.owner.upgrade()
+        {
+            if let Some(overlay) = owner.downcast_ref::<gtk::Overlay>() {
+                overlay.add_overlay(&self.popover);
+            } else {
+                self.popover.set_parent(&owner);
+            }
+        }
+        self.navigation.begin();
+        self._commands.refresh();
+        if self.popover.menu_model().is_none() {
+            self.popover.set_menu_model(Some(&self.root_model));
+            if let Some(header) = &self.header {
+                assert!(self.popover.add_child(header, "context-header"));
+            }
+            refresh_presentation(&self.popover, &self.navigation);
+        }
+        self.popover.set_visible_submenu(Some("main"));
+        self.navigation.model_changed();
+        super::show_model_context_popover(self.popover.upcast_ref(), anchor, x, y);
+        super::keyboard::focus_first_or_last_menu_item(self.popover.upcast_ref(), true);
+    }
+
+    pub(super) fn rebuild_for_selection(
+        &self,
+        state: &Rc<ViewState>,
+        entries: &[FileEntry],
+        parent: Option<PathBuf>,
+    ) {
+        self.selection.replace(Some(SelectionMenuContext {
+            state: Rc::downgrade(state),
+            entries: entries.to_vec(),
+            parent: parent.clone(),
+        }));
+        #[cfg(test)]
+        if let Some(test_override) = state.send_to_menu_test_override.borrow().clone() {
+            self.rebuild_for_selection_with_destinations(
+                state,
+                entries,
+                parent,
+                test_override.destinations,
+                test_override.recent_destinations,
+                test_override.handlers,
+            );
+            return;
+        }
+
+        let weak_state = Rc::downgrade(state);
+        let activate_root: Rc<dyn Fn(String, Vec<Location>)> = Rc::new(move |id, sources| {
+            if let Some(state) = weak_state.upgrade() {
+                state.send_to_removable_device(id, sources);
+            }
+        });
+        let weak_state = Rc::downgrade(state);
+        let choose_folder: Rc<dyn Fn(String, Vec<Location>)> = Rc::new(move |id, sources| {
+            if let Some(state) = weak_state.upgrade() {
+                state.show_send_to_folder_dialog(id, sources);
+            }
+        });
+        let weak_state = Rc::downgrade(state);
+        let activate_recent: Rc<dyn Fn(String, PathBuf, Vec<Location>)> =
+            Rc::new(move |id, relative, sources| {
+                if let Some(state) = weak_state.upgrade() {
+                    state.send_to_recent_destination(id, relative, sources);
+                }
+            });
+        let handlers = SendToMenuHandlers {
+            activate_root,
+            activate_recent,
+            choose_folder,
+        };
+        let destinations = crate::ui::removable_destinations();
+        let preferences = crate::ui::preferences::PreferenceManager::shared();
+        let recent_destinations = destinations
+            .iter()
+            .map(|destination| {
+                (
+                    destination.id.clone(),
+                    preferences.send_to_recent_destinations(&destination.id),
+                )
+            })
+            .collect();
+        self.rebuild_for_selection_with_destinations(
+            state,
+            entries,
+            parent,
+            destinations,
+            recent_destinations,
+            handlers,
+        );
+    }
+
+    pub(super) fn rebuild_for_selection_with_destinations(
+        &self,
+        state: &Rc<ViewState>,
+        entries: &[FileEntry],
+        parent: Option<PathBuf>,
+        destinations: Vec<crate::ui::RemovableDestination>,
+        recent_destinations: HashMap<String, Vec<PathBuf>>,
+        handlers: SendToMenuHandlers,
+    ) {
+        self.clear();
+        let sources: Vec<_> = entries.iter().map(|entry| entry.location.clone()).collect();
+        if let Some(transfer_index) = match sources.len() {
+            0 => None,
+            1 => Some(0),
+            _ => Some(1),
+        } && let Some(transfer_sections) = &self.transfer_sections
+        {
+            let send_to = gio::Menu::new();
+            append_send_to_menu(
+                &send_to,
+                &self.actions,
+                &self.dispatch,
+                &destinations,
+                &recent_destinations,
+                &sources,
+                handlers,
+            );
+            if send_to.n_items() > 0 {
+                let section = &transfer_sections[transfer_index];
+                let row_index = section.n_items();
+                let devices = send_to.item_link(0, "submenu").expect("Send to submenu");
+                let item = gio::MenuItem::new_submenu(Some("Send to…"), &devices);
+                item.set_icon(&gio::ThemedIcon::new(crate::assets::icons::SEND_HORIZONTAL));
+                section.append_item(&item);
+                self.send_to_row_indices.borrow_mut()[transfer_index] = Some(row_index);
+            }
+        }
+
+        let (Some(inputs), Some(paths), Some(parent)) =
+            (inputs_for_entries(entries), native_paths(entries), parent)
+        else {
+            refresh_presentation(&self.popover, &self.navigation);
+            return;
+        };
+        self.watch_providers(paths.clone(), false);
+        let catalog = crate::ui::actions::shared().catalog();
+        self.rebuild_custom_actions(
+            state,
+            &catalog.matches(&inputs),
+            paths,
+            parent,
+            InvocationSource::Selection,
+        );
+    }
+
+    pub(super) fn rebuild_for_folder(&self, state: &Rc<ViewState>, location: &Location) {
+        self.selection.take();
+        self.clear();
+        let (Some(input), Some(path)) = (folder_input(location), location.native_path()) else {
+            refresh_presentation(&self.popover, &self.navigation);
+            return;
+        };
+        self.watch_providers(vec![path.to_path_buf()], true);
+        let catalog = crate::ui::actions::shared().catalog();
+        self.rebuild_custom_actions(
+            state,
+            &catalog.matches(std::slice::from_ref(&input)),
+            vec![path.to_path_buf()],
+            path.to_path_buf(),
+            InvocationSource::Background,
+        );
+    }
+
+    fn watch_providers(&self, paths: Vec<PathBuf>, background: bool) {
+        let popover = self.popover.downgrade();
+        let navigation = self.navigation.clone();
+        crate::ui::file_providers::watch_menu(
+            self.provider_model.clone(),
+            self.provider_group.clone(),
+            (
+                self.owner
+                    .upgrade()
+                    .as_ref()
+                    .unwrap_or(self.popover.upcast_ref()),
+                &self.popover,
+            ),
+            paths,
+            background,
+            (self.provider_epoch.clone(), self.provider_epoch.get()),
+            move |preserve_navigation| {
+                if let Some(popover) = popover.upgrade() {
+                    if preserve_navigation {
+                        navigation.preserve_submenu_navigation();
+                    }
+                    refresh_presentation(&popover, &navigation);
+                    navigation.model_changed();
+                }
+            },
+        );
+    }
+
+    fn clear(&self) {
+        self.provider_epoch.set(self.provider_epoch.get() + 1);
+        self.provider_model.remove_all();
+        for name in self.provider_group.list_actions() {
+            self.provider_group.remove_action(&name);
+        }
+        if let Some(transfer_sections) = &self.transfer_sections {
+            for (index, row_index) in self.send_to_row_indices.borrow_mut().iter_mut().enumerate() {
+                if let Some(row_index) = row_index.take() {
+                    transfer_sections[index].remove(row_index);
+                }
+            }
+        }
+        self.model.remove_all();
+        for name in self.actions.list_actions() {
+            self.actions.remove_action(&name);
+        }
+    }
+
+    fn rebuild_custom_actions(
+        &self,
+        state: &Rc<ViewState>,
+        matched: &[MatchedAction],
+        paths: Vec<PathBuf>,
+        parent: PathBuf,
+        source: InvocationSource,
+    ) {
+        let submenu = gio::Menu::new();
+        for (index, matched) in matched.iter().enumerate() {
+            let name = format!("run-{index}");
+            let action = gio::SimpleAction::new(&name, None);
+            action.set_enabled(matched.action.is_available());
+            let handle = matched.action.clone();
+            let paths = paths.clone();
+            let parent = parent.clone();
+            let state = Rc::downgrade(state);
+            let dispatch = self.dispatch.clone();
+            action.connect_activate(move |_, _| {
+                let (state, handle, paths, parent) =
+                    (state.clone(), handle.clone(), paths.clone(), parent.clone());
+                dispatch.defer(move || {
+                    if let Some(state) = state.upgrade() {
+                        run_action(&state.overlay, handle, paths, parent, source, None);
+                    }
+                });
+            });
+            self.actions.add_action(&action);
+            let item = gio::MenuItem::new(
+                Some(&matched.action.name().replace('_', "__")),
+                Some(&format!("custom.{name}")),
+            );
+            item.set_icon(&gio::ThemedIcon::new(action_icon(
+                matched.action.definition.icon.as_deref(),
+            )));
+            if let Some(hint) = matched.action.unavailable_reason().or(matched
+                .action
+                .definition
+                .description
+                .as_deref())
+            {
+                item.set_attribute_value("x-strata-description", Some(&hint.to_variant()));
+            }
+            let model = if matched.placement == MenuPlacement::Top {
+                &self.model
+            } else {
+                &submenu
+            };
+            model.append_item(&item);
+        }
+        if submenu.n_items() > 0 {
+            let item = gio::MenuItem::new_submenu(Some("Actions"), &submenu);
+            item.set_icon(&gio::ThemedIcon::new(icons::PLAY));
+            self.model.append_item(&item);
+        }
+        refresh_presentation(&self.popover, &self.navigation);
+    }
+}
+
+pub(super) fn append_send_to_menu(
+    model: &gio::Menu,
+    actions: &gio::SimpleActionGroup,
+    dispatch: &super::commands::MenuDispatch,
+    destinations: &[crate::ui::RemovableDestination],
+    recent_destinations: &HashMap<String, Vec<PathBuf>>,
+    sources: &[Location],
+    handlers: SendToMenuHandlers,
+) {
+    if destinations.is_empty() || sources.is_empty() {
+        return;
+    }
+    let devices = gio::Menu::new();
+    for (index, destination) in destinations.iter().enumerate() {
+        let name = format!("send-to-{index}");
+        let id = destination.id.clone();
+        let selected = sources.to_vec();
+        let activate_root = handlers.activate_root.clone();
+        let root_dispatch = dispatch.clone();
+        let action = gio::SimpleAction::new(&name, None);
+        action.connect_activate(move |_, _| {
+            let id = id.clone();
+            let selected = selected.clone();
+            let activate_root = activate_root.clone();
+            root_dispatch.defer(move || activate_root(id, selected));
+        });
+        actions.add_action(&action);
+
+        let root = gio::Menu::new();
+        root.append(Some("Drive root"), Some(&format!("custom.{name}")));
+        let recent_paths = recent_destinations
+            .get(&destination.id)
+            .map(|paths| valid_recent_destinations(&destination.root, paths))
+            .unwrap_or_default();
+        for (recent_index, relative) in recent_paths.into_iter().enumerate() {
+            let recent_name = format!("send-to-recent-{index}-{recent_index}");
+            let id = destination.id.clone();
+            let selected = sources.to_vec();
+            let relative_path = relative.clone();
+            let activate_recent = handlers.activate_recent.clone();
+            let recent_dispatch = dispatch.clone();
+            let recent_action = gio::SimpleAction::new(&recent_name, None);
+            recent_action.connect_activate(move |_, _| {
+                let id = id.clone();
+                let relative = relative_path.clone();
+                let selected = selected.clone();
+                let activate_recent = activate_recent.clone();
+                recent_dispatch.defer(move || activate_recent(id, relative, selected));
+            });
+            actions.add_action(&recent_action);
+            root.append(
+                Some(&format!(
+                    "{} (recent)",
+                    relative.to_string_lossy().replace('_', "__")
+                )),
+                Some(&format!("custom.{recent_name}")),
+            );
+        }
+        let folder_name = format!("choose-folder-{index}");
+        let id = destination.id.clone();
+        let selected = sources.to_vec();
+        let choose_folder = handlers.choose_folder.clone();
+        let folder_dispatch = dispatch.clone();
+        let folder_action = gio::SimpleAction::new(&folder_name, None);
+        folder_action.connect_activate(move |_, _| {
+            let id = id.clone();
+            let selected = selected.clone();
+            let choose_folder = choose_folder.clone();
+            folder_dispatch.defer(move || choose_folder(id, selected));
+        });
+        actions.add_action(&folder_action);
+        let choose = gio::Menu::new();
+        choose.append(
+            Some("Choose folder…"),
+            Some(&format!("custom.{folder_name}")),
+        );
+        let device = gio::Menu::new();
+        device.append_section(None, &root);
+        device.append_section(None, &choose);
+        let item = gio::MenuItem::new_submenu(Some(&destination.name.replace('_', "__")), &device);
+        item.set_icon(&gio::ThemedIcon::new(icons::HARD_DRIVE));
+        item.set_attribute_value("x-strata-send-to-device", Some(&true.to_variant()));
+        item.set_attribute_value("x-strata-description", Some(&destination.name.to_variant()));
+        devices.append_item(&item);
+    }
+    model.append_submenu(Some("Send to…"), &devices);
+}
+
+fn valid_recent_destinations(root: &Path, persisted: &[PathBuf]) -> Vec<PathBuf> {
+    let Some(canonical_root) = crate::ui::browser::destination::canonical_existing_directory(root)
+    else {
+        return Vec::new();
+    };
+    let mut seen_relative = HashSet::new();
+    let mut seen_destinations = HashSet::new();
+    let mut valid = Vec::new();
+    for relative in persisted {
+        if !crate::ui::preferences::is_valid_send_to_relative_path(relative)
+            || !seen_relative.insert(relative)
+        {
+            continue;
+        }
+        let Some(destination) = crate::ui::browser::destination::canonical_directory_within(
+            &canonical_root,
+            &canonical_root.join(relative),
+        ) else {
+            continue;
+        };
+        if destination == canonical_root || !seen_destinations.insert(destination) {
+            continue;
+        }
+        valid.push(relative.clone());
+        if valid.len() == crate::ui::preferences::SEND_TO_RECENT_DESTINATIONS_LIMIT {
+            break;
+        }
+    }
+    valid
+}
+
+pub(super) fn refresh_presentation(
+    root: &gtk::PopoverMenu,
+    navigation: &Rc<super::keyboard::NativeMenuNavigation>,
+) {
+    let mut items = Vec::new();
+    if let Some(model) = root.menu_model() {
+        collect_presentations(&model, &mut items);
+    }
+    present_native_items(root.upcast_ref(), root, &items, navigation);
+}
+
+#[derive(Clone)]
+struct ItemPresentation {
+    label: String,
+    description: String,
+    submenu: Option<gio::MenuModel>,
+    icon_size: i32,
+    send_to_device: bool,
+    danger: bool,
+    custom: bool,
+}
+
+fn collect_presentations(model: &gio::MenuModel, items: &mut Vec<ItemPresentation>) {
+    for index in 0..model.n_items() {
+        let string = |name| {
+            model
+                .item_attribute_value(index, name, None)
+                .and_then(|value| value.get::<String>())
+        };
+        if let Some(label) = string("label")
+            && model.item_link(index, "section").is_none()
+        {
+            items.push(ItemPresentation {
+                label: label.replace("__", "_"),
+                description: string("x-strata-description").unwrap_or_default(),
+                submenu: model.item_link(index, "submenu"),
+                icon_size: model
+                    .item_attribute_value(index, "x-strata-icon-size", None)
+                    .and_then(|value| value.get::<i32>())
+                    .unwrap_or(15),
+                send_to_device: model
+                    .item_attribute_value(index, "x-strata-send-to-device", None)
+                    .and_then(|value| value.get::<bool>())
+                    .unwrap_or(false),
+                danger: model
+                    .item_attribute_value(index, "x-strata-danger", None)
+                    .and_then(|value| value.get::<bool>())
+                    .unwrap_or(false),
+                custom: string("action").is_some_and(|name| name.starts_with("custom.")),
+            });
+        }
+        for link in ["section", "submenu"] {
+            if let Some(child) = model.item_link(index, link) {
+                collect_presentations(&child, items);
+            }
+        }
+    }
+}
+
+// Preserve generated rows: GTK uses them to own submenu selection and grabs.
+fn submenu_owner(root: &gtk::PopoverMenu, submenu: &gtk::PopoverMenu) -> Option<gtk::Widget> {
+    fn find(
+        widget: &gtk::Widget,
+        root: &gtk::Widget,
+        submenu: &gtk::Popover,
+    ) -> Option<gtk::Widget> {
+        if widget != root && widget.is::<gtk::Popover>() {
+            return None;
+        }
+        if widget.find_property("popover").is_some()
+            && widget.property::<Option<gtk::Popover>>("popover").as_ref() == Some(submenu)
+        {
+            return Some(widget.clone());
+        }
+        let mut child = widget.first_child();
+        while let Some(widget) = child {
+            if let Some(owner) = find(&widget, root, submenu) {
+                return Some(owner);
+            }
+            child = widget.next_sibling();
+        }
+        None
+    }
+
+    let root_widget = root.upcast_ref::<gtk::Widget>();
+    let submenu = submenu.clone().upcast::<gtk::Popover>();
+    find(root_widget, root_widget, &submenu)
+}
+
+fn present_native_items(
+    widget: &gtk::Widget,
+    root: &gtk::PopoverMenu,
+    items: &[ItemPresentation],
+    navigation: &Rc<super::keyboard::NativeMenuNavigation>,
+) {
+    if widget.is::<gtk::Button>() {
+        return;
+    }
+    if let Some(menu) = widget.downcast_ref::<gtk::PopoverMenu>() {
+        menu.add_css_class("folder-context-popover");
+        menu.add_css_class("actions-context-popover");
+        if menu != root && !menu.has_css_class("actions-submenu") {
+            menu.add_css_class("actions-submenu");
+            if let Some(owner) = submenu_owner(root, menu) {
+                super::keyboard::install_submenu_return(menu, &owner, navigation);
+            }
+            if gtk::minor_version() < 22 {
+                // Older GTK emits focus leave before updating contains-focus.
+                let focus = gtk::EventControllerFocus::new();
+                focus.set_propagation_limit(gtk::PropagationLimit::None);
+                let weak = menu.downgrade();
+                focus.connect_contains_focus_notify(move |focus| {
+                    if !focus.contains_focus() {
+                        let weak = weak.clone();
+                        gtk::glib::idle_add_local_once(move || {
+                            if let Some(menu) = weak.upgrade()
+                                && let Some(widget) = menu.root().and_then(|root| root.focus())
+                                && !widget.is_ancestor(&menu)
+                                && !menu.is_ancestor(&widget)
+                            {
+                                menu.set_visible(false);
+                            }
+                        });
+                    }
+                });
+                menu.add_controller(focus);
+            }
+        }
+    }
+    if let Some(scroll) = widget.downcast_ref::<gtk::ScrolledWindow>() {
+        if !scroll.has_css_class("context-menu-scroll") {
+            scroll.add_css_class("context-menu-scroll");
+            let is_root = scroll.ancestor(gtk::PopoverMenu::static_type()).as_ref()
+                == Some(root.upcast_ref());
+            if is_root {
+                crate::ui::preferences::PreferenceManager::shared().bind_interface_scale(
+                    scroll,
+                    |scroll, scale| {
+                        if let Some(scroll) = scroll.downcast_ref::<gtk::ScrolledWindow>() {
+                            let width = (310.0 * scale).round() as i32;
+                            scroll.set_min_content_width(width);
+                            scroll.set_max_content_width(width);
+                        }
+                    },
+                );
+            }
+        }
+        if scroll
+            .ancestor(gtk::PopoverMenu::static_type())
+            .and_downcast::<gtk::PopoverMenu>()
+            .and_then(|menu| menu.menu_model())
+            .is_some_and(|model| model.n_items() == 1)
+        {
+            scroll.set_vscrollbar_policy(gtk::PolicyType::Never);
+        }
+    }
+    let mut children = Vec::new();
+    let mut next = widget.first_child();
+    while let Some(child) = next {
+        next = child.next_sibling();
+        children.push(child);
+    }
+    if widget.accessible_role() == gtk::AccessibleRole::MenuItem
+        && let Some(label) = children
+            .iter()
+            .find_map(|child| child.downcast_ref::<gtk::Label>())
+        && let Some(item) = native_item_presentation(widget, label.text().as_str(), items)
+    {
+        let initialized = widget.has_css_class("strata-native-menu-item");
+        widget.add_css_class("strata-native-menu-item");
+        label.set_hexpand(true);
+        if item.send_to_device {
+            label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+            label.set_max_width_chars(SEND_TO_DEVICE_NAME_MAX_CHARS);
+        } else if item.custom {
+            label.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
+            label.set_max_width_chars(24);
+        }
+        if item.danger {
+            widget.add_css_class("danger");
+        }
+        label_menu_item(widget, &item);
+        if !initialized {
+            let mapped_item = item.clone();
+            widget.connect_map(move |widget| label_menu_item(widget, &mapped_item));
+        }
+        for image in children
+            .iter()
+            .filter_map(|child| child.downcast_ref::<gtk::Image>())
+        {
+            if let Some(icon) = image.gicon().and_downcast::<gio::ThemedIcon>()
+                && let Some(name) = icon.names().first()
+            {
+                bind_menu_icon(image, name);
+            } else {
+                image.set_pixel_size(item.icon_size);
+            }
+            image.set_halign(gtk::Align::Center);
+            image.set_valign(gtk::Align::Center);
+            image.set_margin_end(8);
+            // GTK's text-menu presentation hides icons by default.
+            image.set_visible(true);
+        }
+    }
+    for child in children {
+        present_native_items(&child, root, items, navigation);
+    }
+}
+
+fn label_menu_item(widget: &gtk::Widget, item: &ItemPresentation) {
+    // GTK 4.14's unnamed labelled-by relation otherwise masks the accessible name.
+    widget.reset_relation(gtk::AccessibleRelation::LabelledBy);
+    widget.update_property(&[
+        gtk::accessible::Property::Label(&item.label),
+        gtk::accessible::Property::Description(&item.description),
+    ]);
+}
+
+fn native_item_presentation(
+    widget: &gtk::Widget,
+    label: &str,
+    items: &[ItemPresentation],
+) -> Option<ItemPresentation> {
+    let popover = widget
+        .find_property("popover")
+        .and_then(|_| widget.property::<Option<gtk::Popover>>("popover"))
+        .and_then(|popover| popover.downcast::<gtk::PopoverMenu>().ok());
+
+    if let Some(popover) = popover {
+        let submenu = popover.menu_model()?;
+        return items
+            .iter()
+            .find(|item| item.submenu.as_ref() == Some(&submenu))
+            .cloned();
+    }
+
+    items.iter().find(|item| item.label == label).cloned()
+}
+
+fn bind_menu_icon(image: &gtk::Image, name: &str) {
+    let source = assets::primary_icon(name, 15);
+    if let Some(texture) = source.paintable().and_downcast::<gtk::gdk::Texture>() {
+        image.set_from_gicon(&texture);
+    }
+    source
+        .bind_property("pixel-size", image, "pixel-size")
+        .sync_create()
+        .build();
+    let target = image.downgrade();
+    source.connect_paintable_notify(move |source| {
+        if let (Some(image), Some(texture)) = (
+            target.upgrade(),
+            source.paintable().and_downcast::<gtk::gdk::Texture>(),
+        ) {
+            image.set_from_gicon(&texture);
+        }
+    });
+    image.connect_destroy(move |_| source.clear());
+}

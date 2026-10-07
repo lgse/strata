@@ -91,6 +91,7 @@ pub struct UndoMoveItem {
 pub struct UndoMoveRequest {
     pub id: OperationRequestId,
     pub items: Vec<UndoMoveItem>,
+    pub cleanup_locations: Vec<Location>,
 }
 
 #[derive(Clone, Debug)]
@@ -199,11 +200,18 @@ impl ArchiveFormat {
             Some(Self::Zip)
         } else if lower.ends_with(".7z") {
             Some(Self::SevenZ)
-        } else if lower.ends_with(".rar") {
+        } else if cfg!(feature = "rar") && lower.ends_with(".rar") {
             Some(Self::Rar)
         } else {
             None
         }
+    }
+
+    pub fn for_entry(entry: &FileEntry) -> Option<Self> {
+        if !entry.is_file() || entry.location.native_path().is_none() {
+            return None;
+        }
+        Self::from_extension(&entry.display_name)
     }
 }
 
@@ -223,6 +231,8 @@ pub struct ExtractRequest {
     pub id: OperationRequestId,
     pub entry: FileEntry,
     pub destination: Location,
+    /// Caller-reserved destinations are eligible for empty-folder cleanup.
+    pub created_destination: bool,
     pub password: Option<String>,
 }
 
@@ -232,6 +242,13 @@ pub struct CancelledOperation {
     pub failed: Vec<Location>,
     pub not_attempted: Vec<Location>,
     pub affected_locations: HashSet<Location>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PasswordFailure {
+    Required,
+    /// Includes ambiguous decryption failures that may instead indicate damaged data.
+    Incorrect,
 }
 
 #[derive(Clone, Debug)]
@@ -249,6 +266,9 @@ pub enum OperationEvent {
     Pasted {
         request_id: OperationRequestId,
         locations: Vec<Location>,
+    },
+    FlushingToDevice {
+        request_id: OperationRequestId,
     },
     /// A folder merge finished (or staged its backups): `created` are paths
     /// the merge wrote fresh, `overwritten` are paths whose originals now
@@ -268,6 +288,9 @@ pub enum OperationEvent {
     TransferProgress {
         request_id: OperationRequestId,
         completed_items: usize,
+        completed_files: usize,
+        total_files: Option<usize>,
+        current_file: Option<String>,
         transferred_bytes: u64,
         total_bytes: Option<u64>,
         created_location: Option<Location>,
@@ -276,7 +299,7 @@ pub enum OperationEvent {
         request_id: OperationRequestId,
         completed: usize,
         total: usize,
-        deleted_location: Option<Location>,
+        deleted_locations: Vec<Location>,
     },
     RestoreProgress {
         request_id: OperationRequestId,
@@ -320,6 +343,7 @@ pub enum OperationEvent {
     Failed {
         request_id: OperationRequestId,
         message: String,
+        password_failure: Option<PasswordFailure>,
     },
     Compressed {
         request_id: OperationRequestId,

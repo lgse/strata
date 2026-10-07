@@ -10,7 +10,8 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use super::update_install::{
-    UpdateMethod, aur_repository_version, omarchy_repository_version, package_repository_version,
+    InstallRequest, UpdateMethod, aur_repository_version, omarchy_repository_version,
+    package_repository_version,
 };
 use super::{
     DocumentBlock, parse_markdown,
@@ -47,11 +48,15 @@ pub struct ReleaseMetadata {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "one result per background check, not stored in bulk"
+)]
 pub enum UpdateCheck {
     UpToDate,
     Available {
         release: ReleaseMetadata,
-        download_url: String,
+        install: InstallRequest,
     },
     Failed(String),
 }
@@ -90,7 +95,7 @@ struct ReleaseAsset {
 }
 
 /// The asset naming convention published by `.github/workflows/release.yml`.
-fn archive_name(version: &str) -> String {
+pub(super) fn archive_name(version: &str) -> String {
     format!(
         "strata-{version}-{}-unknown-linux-gnu.tar.gz",
         std::env::consts::ARCH
@@ -204,17 +209,7 @@ fn fetch_preview(etag: Option<&str>) -> ChannelFetch {
     }
 }
 
-/// Resolves `tag` to the commit SHA it points at.
-///
-/// A release's own `target_commitish` cannot be used for this: GitHub
-/// ignores that value when the tag already exists, which is how
-/// `release.yml` publishes every release, so it comes back as the default
-/// branch name rather than a SHA. `/commits/{tag}` dereferences the
-/// annotated tag and returns the real commit.
-///
-/// `None` on any failure -- the dialog's identity block falls back to
-/// "Unknown", since an offered update must not hinge on a lookup that only
-/// feeds one display row.
+// Release target_commitish can be a branch name; the commits API dereferences annotated tags.
 fn fetch_commit(tag: &str) -> Option<String> {
     request_json::<CommitResponse>(&format!("{COMMITS_ROOT}/{tag}"))
         .ok()
@@ -368,7 +363,11 @@ fn available_check(release: &ReleaseSummary) -> UpdateCheck {
     match &release.download_url {
         Some(download_url) => UpdateCheck::Available {
             release: release_metadata(release),
-            download_url: download_url.clone(),
+            install: InstallRequest {
+                tag: release.tag.clone(),
+                asset_name: archive_name(&release.version.to_string()),
+                advertised_url: download_url.clone(),
+            },
         },
         None => UpdateCheck::UpToDate,
     }
@@ -543,13 +542,10 @@ fn fetch_package_update(
         Ok(response) => match package_update_from_response(&available, &response) {
             UpdateCheck::Available {
                 mut release,
-                download_url,
+                install,
             } => {
                 resolve_commit(&mut release);
-                UpdateCheck::Available {
-                    release,
-                    download_url,
-                }
+                UpdateCheck::Available { release, install }
             }
             check => check,
         },

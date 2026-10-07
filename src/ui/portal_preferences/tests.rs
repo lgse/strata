@@ -54,23 +54,7 @@ fn inline_setup_actions_follow_status_and_preserve_errors() {
             ]) {
                 let row = indicator.row.upgrade().expect("status row");
                 assert_eq!(row.is_visible(), configured.is_some());
-                if let Some(configured) = configured {
-                    assert_eq!(
-                        row.tooltip_text().as_deref(),
-                        Some(
-                            format!(
-                                "{}: {}",
-                                indicator.name,
-                                if configured {
-                                    "Configured"
-                                } else {
-                                    "Not configured"
-                                }
-                            )
-                            .as_str()
-                        )
-                    );
-                }
+                assert!(row.tooltip_text().is_none());
             }
             for enable in [true, false] {
                 summary.show_progress(enable);

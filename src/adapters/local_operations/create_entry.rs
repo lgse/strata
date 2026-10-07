@@ -36,6 +36,7 @@ pub(super) fn start(
                     emit(OperationEvent::Failed {
                         request_id: id,
                         message: message.to_owned(),
+                        password_failure: None,
                     });
                     return;
                 }
@@ -44,6 +45,7 @@ pub(super) fn start(
                 emit(OperationEvent::Failed {
                     request_id: id,
                     message: "The new item has an invalid URI".to_owned(),
+                    password_failure: None,
                 });
                 return;
             };
@@ -97,6 +99,7 @@ pub(super) fn start(
                         emit(OperationEvent::Failed {
                             request_id: id,
                             message: error.to_string(),
+                            password_failure: None,
                         });
                         return;
                     }
@@ -118,6 +121,13 @@ pub(super) fn start(
                     suffix += 1;
                     continue;
                 }
+                Err(error) if error.matches(gio::IOErrorEnum::Exists) => {
+                    emit(OperationEvent::Failed {
+                        request_id: id,
+                        message: format!("\u{201c}{candidate}\u{201d} already exists"),
+                        password_failure: None,
+                    });
+                }
                 Err(error) if was_cancelled(&error) => {
                     emit(cancelled_event(
                         id,
@@ -130,6 +140,7 @@ pub(super) fn start(
                 Err(error) => emit(OperationEvent::Failed {
                     request_id: id,
                     message: error.to_string(),
+                    password_failure: None,
                 }),
             }
             break;

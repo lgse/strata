@@ -5,6 +5,7 @@ use std::rc::Rc;
 use gtk::prelude::*;
 
 use crate::{
+    assets::icons,
     sandbox::MediaPreviewBackend,
     services::CrossVolumeDropStrategy,
     ui::{
@@ -47,6 +48,9 @@ pub(super) fn general_page(
             write: PreferenceManager::set_open_folder_after_drop,
         },
     );
+
+    let date_time = super::settings_group(&preferences, "DATE & TIME");
+    append_date_format_option(&date_time, &manager);
 
     let performance = super::settings_group(&preferences, "PERFORMANCE");
     append_auto_refresh_option(&performance, &manager);
@@ -93,6 +97,90 @@ pub(super) fn general_page(
         vec![portal_row, udiskie_row],
         responsive_activation_rows,
     )
+}
+
+fn append_date_format_option(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
+    const CHOICES: [(&str, crate::util::DateFormat); 3] = [
+        ("Relative", crate::util::DateFormat::Relative),
+        ("ISO 8601", crate::util::DateFormat::Iso8601),
+        ("Long", crate::util::DateFormat::Long),
+    ];
+    let menu = gtk::Box::new(gtk::Orientation::Vertical, 2);
+    menu.add_css_class("column-menu");
+    let popover = gtk::Popover::builder()
+        .child(&menu)
+        .has_arrow(false)
+        .build();
+    popover.add_css_class("column-popover");
+    let button = gtk::MenuButton::builder()
+        .popover(&popover)
+        .always_show_arrow(true)
+        .valign(gtk::Align::Center)
+        .build();
+    button.add_css_class("form-control");
+    button.add_css_class("settings-choice");
+    crate::ui::accessibility::set_description(&button, Some("Modified date format"));
+    crate::ui::accessibility::set_label(&button, "Modified date format");
+    manager.bind_preference(&button, PreferenceManager::date_format, |widget, format| {
+        if let Some(button) = widget.downcast_ref::<gtk::MenuButton>() {
+            button.set_label(match format {
+                crate::util::DateFormat::Relative => "Relative",
+                crate::util::DateFormat::Iso8601 => "ISO 8601",
+                crate::util::DateFormat::Long => "Long",
+            });
+        }
+    });
+    let mut examples = Vec::new();
+    for (name, format) in CHOICES {
+        let copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        copy.set_hexpand(true);
+        let title = gtk::Label::new(Some(name));
+        title.set_xalign(0.0);
+        let example = gtk::Label::new(None);
+        example.set_xalign(0.0);
+        example.add_css_class("settings-option-description");
+        copy.append(&title);
+        copy.append(&example);
+        let check = crate::assets::primary_icon(icons::CHECK, 16);
+        check.set_visible(manager.date_format() == format);
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+        row.append(&copy);
+        row.append(&check);
+        let option = gtk::Button::builder().child(&row).build();
+        option.add_css_class("column-menu-option");
+        option.set_has_frame(false);
+        manager.bind_preference(
+            &check,
+            PreferenceManager::date_format,
+            move |widget, selected| widget.set_visible(selected == format),
+        );
+        let weak_button = button.downgrade();
+        let manager = manager.clone();
+        option.connect_clicked(move |_| {
+            manager.set_date_format(format);
+            if let Some(button) = weak_button.upgrade() {
+                button.popdown();
+            }
+        });
+        menu.append(&option);
+        examples.push((example, format));
+    }
+    let examples = Rc::new(examples);
+    let refresh = {
+        let examples = examples.clone();
+        move || {
+            for (label, format) in examples.iter() {
+                label.set_text(&crate::util::modified_date_example(*format));
+            }
+        }
+    };
+    refresh();
+    popover.connect_show(move |_| refresh());
+    content.append(&super::control_row(
+        "Modified date format",
+        "How file modified times appear in lists and details.",
+        &button,
+    ));
 }
 
 fn append_thumbnail_workers_option(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
@@ -157,7 +245,7 @@ fn append_browsing_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) 
     for switch in [
         PreferenceSwitch {
             title: "Folder peeking",
-            description: "Preview folders automatically while moving through a pane.",
+            description: "Preview folders on hover in Icons and List views.",
             read: PreferenceManager::folder_peeking,
             write: PreferenceManager::set_folder_peeking,
         },
@@ -185,6 +273,24 @@ fn append_browsing_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) 
             read: PreferenceManager::arrow_navigation_scoped,
             write: PreferenceManager::set_arrow_navigation_scoped,
         },
+        PreferenceSwitch {
+            title: "Mirror columns selection",
+            description: "Show the selected folder's contents in the next pane as you move with the keyboard.",
+            read: PreferenceManager::columns_mirror_selection,
+            write: PreferenceManager::set_columns_mirror_selection,
+        },
+        PreferenceSwitch {
+            title: "10xer mode",
+            description: crate::ui::tenxer_mode::MODE_DESCRIPTION,
+            read: PreferenceManager::tenxer_mode,
+            write: PreferenceManager::set_tenxer_mode,
+        },
+        PreferenceSwitch {
+            title: "Show F1 Shortcuts button",
+            description: "Show the shortcuts button in the bottom bar. Item counts and clipboard status remain visible when the button is hidden. F1 always opens the full reference.",
+            read: PreferenceManager::show_keybinding_hints,
+            write: PreferenceManager::set_show_keybinding_hints,
+        },
     ] {
         append_preference_switch(&browsing, manager, switch);
     }
@@ -211,6 +317,19 @@ fn append_browsing_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) 
     ] {
         append_preference_switch(&search, manager, switch);
     }
+    append_search_exclusions_option(&search, manager);
+}
+
+fn append_search_exclusions_option(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
+    let editor = super::exclusions::search_exclusions_control(manager);
+    let row = super::control_row(
+        "Global search exclusions",
+        "Exclude folder names or directory paths from global search.",
+        &editor,
+    );
+    row.add_css_class("settings-exclusions-row");
+    row.set_orientation(gtk::Orientation::Vertical);
+    content.append(&row);
 }
 
 fn append_preference_switch(
@@ -220,10 +339,72 @@ fn append_preference_switch(
 ) {
     let (row, toggle) = settings_option(switch.title, switch.description, (switch.read)(manager));
     bind_switch(manager, &toggle, switch.read, switch.write);
+    if matches!(
+        switch.title,
+        "Type to search" | "Keep arrows in file list" | "Include subfolders"
+    ) {
+        bind_tenxer_unused_subtitle(&row, manager, switch.description);
+    }
     if switch.title == "Include subfolders" {
         super::indent_row(&row);
     }
+    if switch.title == "10xer mode" {
+        append_experimental_label(&row, manager);
+    }
     content.append(&row);
+}
+
+fn append_experimental_label(row: &gtk::Box, manager: &Rc<PreferenceManager>) {
+    let Some(copy) = row.first_child().and_downcast::<gtk::Box>() else {
+        return;
+    };
+    let experimental = gtk::Label::new(None);
+    experimental.add_css_class("settings-option-description");
+    experimental.add_css_class("tenxer-experimental");
+    experimental.set_xalign(0.0);
+    experimental.set_wrap(true);
+    experimental.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    manager.bind_preference(
+        &experimental,
+        PreferenceManager::tenxer_mode,
+        move |widget, enabled| {
+            let label = widget
+                .downcast_ref::<gtk::Label>()
+                .expect("10xer experimental label");
+            label.set_text(if enabled {
+                crate::ui::shortcut_reference::EXPERIMENTAL_LABEL
+            } else {
+                ""
+            });
+            label.set_visible(enabled);
+        },
+    );
+    copy.append(&experimental);
+}
+
+fn bind_tenxer_unused_subtitle(
+    row: &gtk::Box,
+    manager: &Rc<PreferenceManager>,
+    normal: &'static str,
+) {
+    let Some(description) = row
+        .first_child()
+        .and_then(|copy| copy.last_child())
+        .and_downcast::<gtk::Label>()
+    else {
+        return;
+    };
+    let unused = crate::ui::tenxer_mode::UNUSED_SUBTITLE;
+    manager.bind_preference(
+        &description,
+        PreferenceManager::tenxer_mode,
+        move |widget, enabled| {
+            if let Some(label) = widget.downcast_ref::<gtk::Label>() {
+                label.set_text(if enabled { unused } else { normal });
+                label.set_visible(true);
+            }
+        },
+    );
 }
 
 fn append_default_directory_option(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
@@ -231,14 +412,17 @@ fn append_default_directory_option(content: &gtk::Box, manager: &Rc<PreferenceMa
     choose.set_valign(gtk::Align::Center);
     choose.add_css_class("form-control");
     choose.add_css_class("settings-choice");
-    choose.set_tooltip_text(Some("Select default directory"));
+    crate::ui::accessibility::set_description(&choose, Some("Select default directory"));
     super::super::accessibility::set_label(&choose, "Default directory");
 
     let reset = gtk::Button::with_label("Reset");
     reset.add_css_class("form-control");
     reset.set_valign(gtk::Align::Center);
     reset.set_sensitive(manager.default_directory().is_some());
-    reset.set_tooltip_text(Some("Restore the home directory as default"));
+    crate::ui::accessibility::set_description(
+        &reset,
+        Some("Restore the home directory as default"),
+    );
 
     let controls = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     controls.append(&choose);
@@ -302,11 +486,9 @@ fn default_directory_text(path: Option<std::path::PathBuf>) -> String {
     }
 }
 
-fn abbreviate_home(path: &std::path::Path) -> String {
-    let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
-    if let Some(home) = home
-        && let Ok(rest) = path.strip_prefix(&home)
-    {
+pub(crate) fn abbreviate_home(path: &std::path::Path) -> String {
+    let home = glib::home_dir();
+    if let Ok(rest) = path.strip_prefix(&home) {
         format!("~/{}", rest.display())
     } else {
         path.display().to_string()
@@ -334,6 +516,7 @@ fn append_sidebar_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
         icons::MONITOR,
         icons::DOCUMENTS,
         icons::DOWNLOADS,
+        icons::MUSIC,
         icons::PICTURES,
         icons::VIDEOS,
     ];
@@ -379,6 +562,12 @@ fn append_sidebar_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
             description: "Show the Downloads folder in the sidebar.",
             read: PreferenceManager::sidebar_show_downloads,
             write: PreferenceManager::set_sidebar_show_downloads,
+        },
+        PreferenceSwitch {
+            title: "Show Music in sidebar",
+            description: "Show the Music folder in the sidebar.",
+            read: PreferenceManager::sidebar_show_music,
+            write: PreferenceManager::set_sidebar_show_music,
         },
         PreferenceSwitch {
             title: "Show Pictures in sidebar",
@@ -600,6 +789,7 @@ fn click_activation_option(
         label.set_width_chars(7);
         label.add_css_class("settings-option-description");
         control.set_hexpand(false);
+        control.set_width_request(180);
         control.set_valign(gtk::Align::Center);
         control.add_css_class("click-activation-control");
         // Include the view and item kind so assistive tools distinguish all twelve choices.

@@ -8,54 +8,62 @@ use crate::{
     app::{Browser, BrowserEvent},
     model::{EntryKind, FileEntry, Location, MetadataValue},
     services::{NavigationHistory, SearchItem},
-    ui::{preferences::PreferenceManager, preview::PreviewDrawer, search::SearchDialog},
+    ui::{
+        browser::BrowserView, preferences::PreferenceManager, preview::PreviewDrawer,
+        search::SearchDialog,
+    },
 };
 
 use super::WindowContent;
 
-#[cfg(test)]
-mod tests;
-
-pub(super) fn install(
-    window: &gtk::ApplicationWindow,
-    content: &WindowContent,
-    preferences: &Rc<PreferenceManager>,
-) {
+pub(super) fn install(content: &WindowContent, preferences: &Rc<PreferenceManager>) {
     let controller = content.browser.browser();
     let history = NavigationHistory::shared();
     install_history_recorder(&controller, &history);
     let preview = content.preview.clone();
     let search_preferences = preferences.clone();
-    let activate =
-        Rc::new(move |item| activate_result(&controller, &preview, &search_preferences, item));
-    let dismissed_root = content.blurred_root.clone();
-    let dismissed_button = content.header.search.clone();
-    let dismiss = Rc::new(move || {
-        dismissed_root.set_blurred(false);
-        dismissed_button.remove_css_class("active");
+    let activated_browser = content.browser.downgrade();
+    let activate = Rc::new(move |item| {
+        if let Some(browser) = activated_browser.upgrade() {
+            activate_result(&browser, &preview, &search_preferences, item);
+        }
     });
-    let browser = content.browser.clone();
+    let dismissed_root = content.blurred_root.downgrade();
+    let dismissed_button = content.header.search.downgrade();
+    let dismiss = Rc::new(move || {
+        if let Some(root) = dismissed_root.upgrade() {
+            root.set_blurred(false);
+        }
+        if let Some(button) = dismissed_button.upgrade() {
+            button.remove_css_class("active");
+        }
+    });
+    let browser = content.browser.downgrade();
     let preview = content.preview.clone();
     let reveal = Rc::new(move |item: SearchItem| {
         preview.clear_target();
-        browser.reveal_location(Location::local(item.path));
+        if let Some(browser) = browser.upgrade() {
+            browser.reveal_location(Location::local(item.path));
+        }
     });
     let dialog = SearchDialog::new(activate, reveal, dismiss);
     content.overlay.add_overlay(&dialog.widget());
     let toggle = toggle_handler(dialog.clone(), content, preferences);
     let clicked_search = toggle.clone();
-    content
-        .header
-        .search
-        .connect_clicked(move |_| clicked_search());
+    content.header.search.connect_clicked(move |_| {
+        if crate::ui::tenxer_mode::chrome_suppressed() {
+            return;
+        }
+        clicked_search();
+    });
     let action = gio::SimpleAction::new("search", None);
     action.connect_activate(move |_, _| toggle());
-    window.add_action(&action);
+    content.actions.add_action(&action);
 
     let jump = folder_jump_handler(dialog, content, history);
     let action = gio::SimpleAction::new("jump-folder", None);
     action.connect_activate(move |_, _| jump());
-    window.add_action(&action);
+    content.actions.add_action(&action);
 }
 
 #[derive(Default)]
@@ -103,10 +111,13 @@ fn toggle_handler(
     content: &WindowContent,
     preferences: &Rc<PreferenceManager>,
 ) -> Rc<dyn Fn()> {
-    let button = content.header.search.clone();
-    let root = content.blurred_root.clone();
+    let button = content.header.search.downgrade();
+    let root = content.blurred_root.downgrade();
     let preferences = preferences.clone();
     Rc::new(move || {
+        let (Some(button), Some(root)) = (button.upgrade(), root.upgrade()) else {
+            return;
+        };
         if dialog.is_visible() {
             dialog.hide();
             return;
@@ -123,9 +134,12 @@ fn folder_jump_handler(
     content: &WindowContent,
     history: Rc<NavigationHistory>,
 ) -> Rc<dyn Fn()> {
-    let button = content.header.search.clone();
-    let root = content.blurred_root.clone();
+    let button = content.header.search.downgrade();
+    let root = content.blurred_root.downgrade();
     Rc::new(move || {
+        let (Some(button), Some(root)) = (button.upgrade(), root.upgrade()) else {
+            return;
+        };
         if dialog.is_visible() {
             dialog.hide();
             return;
@@ -137,26 +151,25 @@ fn folder_jump_handler(
 }
 
 fn activate_result(
-    controller: &Rc<Browser>,
+    browser: &BrowserView,
     preview: &PreviewDrawer,
     preferences: &PreferenceManager,
     item: SearchItem,
 ) {
+    let controller = browser.browser();
     let location = Location::local(item.path.clone());
     if item.is_directory {
         preview.clear_target();
         controller.navigate(location);
         return;
     }
-    if let Some(parent) = item.path.parent() {
-        controller.navigate(Location::local(parent));
-    }
+    // The drawer turns on before the reveal, so the revealed selection re-targets it.
     if preferences.search_open_files_directly() {
-        controller.open_location(location);
+        controller.open_location(location.clone());
     } else {
         preview.show(
             FileEntry {
-                location,
+                location: location.clone(),
                 native_name: item.path.file_name().unwrap_or_default().to_os_string(),
                 thumbnail_path: None,
                 display_name: item.name,
@@ -169,8 +182,10 @@ fn activate_result(
                 image_dimensions: MetadataValue::Unknown,
                 child_count: MetadataValue::Unknown,
                 duration_seconds: MetadataValue::Unknown,
+                recent_uri: None,
             },
             controller.active_depth(),
         );
     }
+    browser.reveal_location(location);
 }

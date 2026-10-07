@@ -52,7 +52,8 @@ def open_panel(strata, panel):
         strata.open_appearance_menu()
         label = "Compact"
     else:
-        strata.pointer.click(strata.header_button("Thumbnail size"))
+        toggle = strata.window.find(role="toggle button", name="Thumbnail size")
+        assert toggle is not None and toggle.activate(), "thumbnail menu must be actionable"
         label = "Small"
     role = "label" if panel == "thumbnail" else "button"
     return strata.wait(
@@ -94,6 +95,7 @@ def test_panel_wheel_routing(strata, mode, panel, target):
 
 
 @pytest.mark.parametrize("pointed_column", ["parent", "child"])
+@pytest.mark.usefixtures("unreserved_columns")
 def test_outside_wheel_only_moves_the_column_under_the_pointer(strata, pointed_column):
     root = strata.fixture.root.name
     strata.open_directory("nested")

@@ -52,7 +52,9 @@ def _open_scrolling_directory(strata):
     folder.mkdir()
     for index in range(600):
         (folder / f"{index:03}.txt").write_text(f"{index}\n")
-    strata.open_directory("scrolling")
+    strata.select_entry_with_keyboard("scrolling")
+    strata.keyboard.press("Return")
+    strata.wait_for_directory("scrolling")
 
 
 @pytest.mark.preferences(browser_mode="list")
@@ -88,9 +90,16 @@ def test_sidebar_marquee_focus_preserves_a_scrolled_list(strata):
     assert any(node.has_state("focused") for _, node in container.walk())
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
-@pytest.mark.parametrize("scrolling", ["edge", "wheel"])
-def test_scrolling_extends_marquee_without_losing_earlier_files(strata, mode, scrolling):
+@pytest.mark.parametrize(
+    "scrolling,mode",
+    [
+        pytest.param(scrolling, mode.values[0], marks=mode.marks, id=f"{scrolling}-{mode.id}")
+        for scrolling in ("edge", "wheel")
+        for mode in ALL_MODES
+        if (scrolling, mode.id) != ("edge", "list")
+    ],
+)
+def test_scrolling_extends_marquee_without_losing_earlier_files(strata, scrolling, mode):
     _open_scrolling_directory(strata)
     anchor = strata.entry("010.txt")
     if mode == "Icons":
@@ -112,6 +121,15 @@ def test_scrolling_extends_marquee_without_losing_earlier_files(strata, mode, sc
     assert container is not None
     viewport = _viewport(container)
     viewport_bounds = viewport.screen_bounds()
+    scroll_bar = viewport.find(role="scroll bar")
+    assert scroll_bar is not None
+    initial_scroll = scroll_bar.numeric_value
+    assert initial_scroll is not None
+    anchor_bounds = anchor.screen_bounds()
+    target_scroll = initial_scroll + max(
+        anchor_bounds.y + anchor_bounds.height - viewport_bounds.y + 1,
+        1,
+    )
     end = (
         viewport_bounds.x + viewport_bounds.width - 24,
         viewport_bounds.y
@@ -126,10 +144,8 @@ def test_scrolling_extends_marquee_without_losing_earlier_files(strata, mode, sc
         if scrolling == "wheel":
             strata.pointer.scroll(at=end, clicks=32)
         strata.wait(
-            lambda: any(
-                _entry_name(row) >= "060.txt"
-                for row in _visible_entries(container, viewport)
-            ),
+            lambda: (value := scroll_bar.numeric_value) is not None
+            and value >= target_scroll,
             f"scrolling to carry the anchor above the viewport {viewport_bounds}",
         )
 

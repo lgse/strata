@@ -12,6 +12,24 @@ struct Target {
 
 const TARGETS: &[Target] = &[
     Target {
+        id: "custom-actions",
+        page: "actions",
+        title: "Custom actions",
+        aliases: "scripts context menu commands automation python bash plugin extension",
+    },
+    Target {
+        id: "new-action",
+        page: "actions",
+        title: "New custom action",
+        aliases: "create script context menu command",
+    },
+    Target {
+        id: "import-action",
+        page: "actions",
+        title: "Import custom action",
+        aliases: "share copy actions folder",
+    },
+    Target {
         id: "thumbnail-workers",
         page: "general",
         title: "Thumbnail workers",
@@ -48,6 +66,18 @@ const TARGETS: &[Target] = &[
         aliases: "browsing keyboard navigation focus sidebar toolbar",
     },
     Target {
+        id: "columns-mirror",
+        page: "general",
+        title: "Mirror columns selection",
+        aliases: "browsing columns keyboard selection next pane folders",
+    },
+    Target {
+        id: "hints",
+        page: "general",
+        title: "Show F1 Shortcuts button",
+        aliases: "browsing keyboard keybindings hints shortcuts reference help footer",
+    },
+    Target {
         id: "type-search",
         page: "general",
         title: "Type to search",
@@ -66,10 +96,16 @@ const TARGETS: &[Target] = &[
         aliases: "launch files quick preview",
     },
     Target {
+        id: "search-exclusions",
+        page: "general",
+        title: "Global search exclusions",
+        aliases: "search filter exclusions exclude folders directories ignore venv prune",
+    },
+    Target {
         id: "sidebar-places",
         page: "general",
         title: "Items shown in sidebar",
-        aliases: "sidebar places hide show home trash network recent shares desktop documents downloads pictures videos folder",
+        aliases: "sidebar places hide show home trash network recent shares desktop documents downloads music pictures videos folder",
     },
     Target {
         id: "opening",
@@ -120,6 +156,12 @@ const TARGETS: &[Target] = &[
         aliases: "appearance system theme quattro",
     },
     Target {
+        id: "omarchy-variant",
+        page: "theme",
+        title: "Omarchy variant",
+        aliases: "appearance system theme quattro palette original normal darker dark high contrast brightness",
+    },
+    Target {
         id: "current-theme",
         page: "theme",
         title: "Current theme",
@@ -138,6 +180,12 @@ const TARGETS: &[Target] = &[
         aliases: "appearance font typography pixels zoom scaling",
     },
     Target {
+        id: "date-format",
+        page: "general",
+        title: "Modified date format",
+        aliases: "date time format relative iso 8601 long absolute modified timestamp clock appearance",
+    },
+    Target {
         id: "glow",
         page: "theme",
         title: "Element glow",
@@ -150,16 +198,10 @@ const TARGETS: &[Target] = &[
         aliases: "appearance disable animations",
     },
     Target {
-        id: "hints",
-        page: "keybindings",
-        title: "Show F1 Shortcuts button",
-        aliases: "keyboard keybinding hints shortcuts footer navigation paste",
-    },
-    Target {
-        id: "shortcuts",
-        page: "keybindings",
-        title: "Shortcut reference",
-        aliases: "keyboard keys navigation selection files view application copy paste cut rename delete trash undo terminal refresh",
+        id: "renderer",
+        page: "theme",
+        title: "Interface renderer",
+        aliases: "appearance graphics cairo gtk gpu text artifacts performance restart",
     },
     Target {
         id: "check",
@@ -268,15 +310,7 @@ fn word_score(query: &str, word: &str) -> Option<i32> {
 
 fn score(query: &str, target: &Target) -> Option<i32> {
     let title = normalized(target.title);
-    let shortcuts = if target.id == "shortcuts" {
-        super::keybindings::search_text()
-    } else {
-        String::new()
-    };
-    let aliases = normalized(&format!(
-        "{} {} settings {shortcuts}",
-        target.aliases, target.page
-    ));
+    let aliases = normalized(&format!("{} {} settings", target.aliases, target.page));
     let mut total = 0;
     for query_word in query.split_whitespace() {
         let title_score = title
@@ -306,17 +340,13 @@ pub(super) struct Matches {
     ids: HashSet<&'static str>,
     pages: HashSet<&'static str>,
     best_page: Option<&'static str>,
-    query: String,
 }
 
 fn find_matches(query: &str) -> Matches {
     if query.chars().take(129).count() > 128 {
         return Matches::default();
     }
-    let mut result = Matches {
-        query: query.to_owned(),
-        ..Matches::default()
-    };
+    let mut result = Matches::default();
     let mut best = -1;
     for target in TARGETS {
         if let Some(score) = score(query, target) {
@@ -354,15 +384,6 @@ fn filter_tree(widget: &gtk::Widget, matches: Option<&Matches>) -> Option<bool> 
         let visible = !widget.has_css_class("settings-search-unavailable")
             && matches.is_none_or(|matches| matches.ids.contains(id));
         widget.set_visible(visible);
-        if id == "shortcuts" {
-            let query = matches.map(|matches| matches.query.as_str()).unwrap_or("");
-            let query = if normalized(&super::keybindings::search_text()).contains(query) {
-                query
-            } else {
-                ""
-            };
-            filter_shortcuts(widget, query);
-        }
         return Some(visible);
     }
     let children = children(widget);
@@ -401,20 +422,6 @@ fn filter_tree(widget: &gtk::Widget, matches: Option<&Matches>) -> Option<bool> 
         }
     }
     Some(visible)
-}
-
-fn filter_shortcuts(widget: &gtk::Widget, query: &str) {
-    if widget.has_css_class("shortcut-search")
-        && let Some(entry) = widget.downcast_ref::<gtk::Entry>()
-    {
-        if entry.text().as_str() != query {
-            entry.set_text(query);
-        }
-        return;
-    }
-    for child in children(widget) {
-        filter_shortcuts(&child, query);
-    }
 }
 
 pub(super) struct Search {
@@ -538,11 +545,10 @@ impl Search {
             .map(|button| {
                 (
                     button.downgrade(),
-                    match button.tooltip_text().as_deref() {
-                        Some("General") => "general",
-                        Some("Appearance") => "theme",
-                        Some("Keybindings") => "keybindings",
-                        Some("Updates") => "updates",
+                    match button.widget_name().as_str() {
+                        "General" => "general",
+                        "Appearance" => "theme",
+                        "Updates" => "updates",
                         _ => "about",
                     },
                 )

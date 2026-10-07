@@ -7,17 +7,18 @@ use crate::model::{FileEntry, Location};
 use crate::services::{LoadHandle, RestoreTrashItem};
 use crate::ui::blur::BlurBin;
 use crate::ui::browser::entry::{
-    entry_icon, entry_kind_summary, format_file_size, item_count_label,
+    aggregate_directory_summary, entry_icon, entry_kind_summary, format_file_size, item_count_label,
 };
 use crate::ui::browser::{ViewState, vim_focus_direction};
 use crate::ui::controls::{
-    ModalTone, message_dialog_description, message_dialog_layout, modal_layout,
+    ModalTone, focus_button, message_dialog_description, message_dialog_layout, modal_layout,
 };
 use crate::ui::modal::{
     ModalHost, dismiss_modal_layer, dismiss_modal_layer_then, modal_layer, show_error_dialog,
 };
 use gtk::prelude::*;
 use gtk::{gio, glib};
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -95,6 +96,12 @@ fn restore_error_summary(errors: &[String]) -> String {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DeleteDialog {
+    Permanent,
+    Trash,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum DeleteConfirmationFocus {
     Cancel,
     Confirm,
@@ -168,7 +175,16 @@ impl ViewState {
     }
 
     pub(super) fn clear_delete_animation(&self) {
+        self.delete_dissolve_request.set(None);
         self.pending_delete_dissolve.take();
+        self.pending_file_operation_animation.take();
+    }
+
+    pub(super) fn play_pending_file_operation_animation(&self) {
+        let Some(animation) = self.pending_file_operation_animation.take() else {
+            return;
+        };
+        animation.play(|| {});
     }
 
     pub(super) fn delete_animation_defers_empty_state(&self, depth: usize) -> bool {
@@ -181,7 +197,7 @@ impl ViewState {
 
     /// Safe to call more than once: whichever of cancel or completion runs first leaves the
     /// other a no-op.
-    fn clear_empty_trash(&self) {
+    fn clear_empty_trash(self: &Rc<Self>) {
         self.pending_empty_trash.borrow_mut().take();
         self.dismiss_file_operation_progress();
     }
@@ -485,13 +501,7 @@ impl ViewState {
             }
         });
         layer.add_controller(keys);
-        let initial_focus = cancel.clone();
-        glib::idle_add_local_once(move || {
-            initial_focus.grab_focus();
-            if let Some(window) = initial_focus.root().and_downcast::<gtk::Window>() {
-                window.set_focus_visible(true);
-            }
-        });
+        focus_button(&empty);
     }
 
     pub(super) fn request_restore(self: &Rc<Self>, entries: Vec<FileEntry>) {
@@ -561,7 +571,7 @@ impl ViewState {
 
         let count = resolved.len();
         let layout = message_dialog_layout(
-            crate::assets::icons::FOLDER,
+            crate::assets::icons::UNDO_2,
             &restore_confirmation_title(count),
             &entry_kind_summary(
                 &resolved
@@ -588,7 +598,10 @@ impl ViewState {
             destination_label.set_hexpand(true);
             destination_label.set_xalign(1.0);
             destination_label.set_selectable(true);
-            destination_label.set_tooltip_text(Some(&destination.to_string_lossy()));
+            crate::ui::accessibility::set_description(
+                &destination_label,
+                Some(&destination.to_string_lossy()),
+            );
             row.append(&icon);
             row.append(&name);
             row.append(&destination_label);
@@ -643,6 +656,7 @@ impl ViewState {
         let confirmed_overlay = window_overlay.clone();
         let confirmed_root = blurred_root.clone();
         let browser = self.browser.clone();
+        let confirmed_state = Rc::downgrade(self);
         let items = resolved
             .into_iter()
             .map(|(entry, destination)| RestoreTrashItem { entry, destination })
@@ -653,6 +667,18 @@ impl ViewState {
                 &confirmed_overlay,
                 confirmed_root.as_ref(),
             );
+            if let Some(state) = confirmed_state.upgrade() {
+                let source = state.delete_animation_source();
+                let trash_button = state.trash_button.upgrade();
+                let animation = source.zip(trash_button).and_then(|(source, trash_button)| {
+                    super::fly_to_trash::prepare_fly_from_trash(
+                        &source,
+                        items.iter().map(|item| &item.entry),
+                        &trash_button,
+                    )
+                });
+                state.pending_file_operation_animation.replace(animation);
+            }
             browser.restore(items.clone());
             browser.focus_active();
         });
@@ -679,13 +705,7 @@ impl ViewState {
             }
         });
         layer.add_controller(keys);
-        let initial_focus = cancel.clone();
-        glib::idle_add_local_once(move || {
-            initial_focus.grab_focus();
-            if let Some(window) = initial_focus.root().and_downcast::<gtk::Window>() {
-                window.set_focus_visible(true);
-            }
-        });
+        focus_button(&confirm);
     }
 
     pub(super) fn request_delete(self: &Rc<Self>, entries: Vec<FileEntry>, permanent: bool) {
@@ -698,29 +718,47 @@ impl ViewState {
         if permanent {
             self.show_delete_confirmation(entries);
         } else {
-            self.pending_delete_entries.replace(entries.clone());
-            let weak = Rc::downgrade(self);
-            let entries_for_anim = Rc::new(entries.clone());
-            let run_delete = move || {
-                if let Some(state) = weak.upgrade() {
-                    state.browser.delete((*entries_for_anim).clone(), false);
-                    state.browser.focus_active();
-                }
-            };
-            if let Some(trash_button) = self.trash_button.borrow().as_ref() {
-                super::fly_to_trash::fly_to_trash(
-                    self.overlay.upcast_ref(),
-                    &entries,
-                    trash_button,
-                    run_delete,
-                );
-            } else {
-                run_delete();
-            }
+            self.move_to_trash(entries);
         }
     }
 
+    pub(super) fn request_confirmed_delete(
+        self: &Rc<Self>,
+        entries: Vec<FileEntry>,
+        permanent: bool,
+    ) {
+        if entries
+            .iter()
+            .any(|entry| !super::paths::can_remove_location(&entry.location))
+        {
+            return;
+        }
+        let kind = if permanent {
+            DeleteDialog::Permanent
+        } else {
+            DeleteDialog::Trash
+        };
+        self.show_delete_dialog(entries, kind);
+    }
+
+    fn move_to_trash(self: &Rc<Self>, entries: Vec<FileEntry>) {
+        self.pending_delete_entries.replace(entries.clone());
+        let source = self.delete_animation_source();
+        let trash_button = self.trash_button.upgrade();
+        let animation = source.zip(trash_button).and_then(|(source, trash_button)| {
+            super::fly_to_trash::prepare_fly_to_trash(&source, entries.iter(), &trash_button)
+        });
+        self.pending_file_operation_animation.replace(animation);
+        self.browser.delete(entries, false);
+        self.browser.focus_active();
+    }
+
     pub(super) fn show_delete_confirmation(self: &Rc<Self>, entries: Vec<FileEntry>) {
+        self.show_delete_dialog(entries, DeleteDialog::Permanent);
+    }
+
+    fn show_delete_dialog(self: &Rc<Self>, entries: Vec<FileEntry>, kind: DeleteDialog) {
+        let trash = kind == DeleteDialog::Trash;
         let Some(ModalHost {
             overlay: window_overlay,
             blurred_root,
@@ -729,16 +767,33 @@ impl ViewState {
             return;
         };
 
+        let entries = Rc::new(entries);
         let count = entries.len();
-        let title = format!("Permanently delete {}?", item_count_label(count));
-        let confirm_label = format!("Permanently delete {}", item_count_label(count));
+        let (title, confirm_label) = if trash {
+            (
+                format!("Move {} to Trash?", item_count_label(count)),
+                "Move to Trash".to_owned(),
+            )
+        } else {
+            (
+                format!("Permanently delete {}?", item_count_label(count)),
+                format!("Permanently delete {}", item_count_label(count)),
+            )
+        };
         let layout = message_dialog_layout(
             crate::assets::icons::TRASH,
             &title,
             &entry_kind_summary(&entries),
             &confirm_label,
-            ModalTone::Danger,
+            if trash {
+                ModalTone::Accent
+            } else {
+                ModalTone::Danger
+            },
         );
+        if !trash {
+            layout.set_loading(true, Some("Calculating total size…"));
+        }
         let files = gtk::Box::new(gtk::Orientation::Vertical, 3);
         files.add_css_class("delete-confirmation-files");
         let (visible, hidden) = delete_confirmation_rows(&entries);
@@ -750,7 +805,7 @@ impl ViewState {
             name.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
             name.set_hexpand(true);
             name.set_xalign(0.0);
-            name.set_tooltip_text(Some(&entry.location.display_path()));
+            crate::ui::accessibility::set_description(&name, Some(&entry.location.display_path()));
             let metadata = gtk::Label::new(Some(&if entry.is_directory() {
                 "Folder".to_owned()
             } else {
@@ -784,16 +839,19 @@ impl ViewState {
             .propagate_natural_height(true)
             .build();
         file_scroller.add_css_class("delete-confirmation-list");
-        file_scroller.add_css_class("fixed-scrollbar");
         layout.body.append(&file_scroller);
-        let explanation = message_dialog_description(
-            "These items will be permanently deleted. This action cannot be undone.",
-        );
+        let explanation = message_dialog_description(if trash {
+            "These items can be restored from Trash."
+        } else {
+            "These items will be permanently deleted. This action cannot be undone."
+        });
         layout.body.append(&explanation);
         let content = layout.content;
         let close = layout.close;
         let cancel = layout.cancel;
         let confirm = layout.confirm;
+        let subtitle = layout.subtitle;
+        let spinner = layout.loading;
 
         let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
         window_overlay.add_overlay(&layer);
@@ -821,17 +879,27 @@ impl ViewState {
         let confirmed_overlay = window_overlay.clone();
         let confirmed_root = blurred_root.clone();
         let browser = self.browser.clone();
-        let entries_for_dissolve = entries.clone();
+        let pending_entries = Rc::new(RefCell::new(Some(entries.clone())));
         let weak_ui = Rc::downgrade(self);
         confirm.connect_clicked(move |_| {
+            let Some(entries_for_dissolve) = pending_entries.borrow_mut().take() else {
+                return;
+            };
             let browser = browser.clone();
-            let entries_for_dissolve = entries_for_dissolve.clone();
             let weak_ui = weak_ui.clone();
             dismiss_modal_layer_then(
                 &confirmed_layer,
                 &confirmed_overlay,
                 confirmed_root.as_ref(),
                 move || {
+                    if trash {
+                        if let Some(ui) = weak_ui.upgrade() {
+                            let entries = Rc::try_unwrap(entries_for_dissolve)
+                                .unwrap_or_else(|shared| shared.as_ref().clone());
+                            ui.move_to_trash(entries);
+                        }
+                        return;
+                    }
                     if let Some(ui) = weak_ui.upgrade() {
                         ui.clear_delete_animation();
                         let dissolve = ui.delete_animation_source().and_then(|source| {
@@ -842,7 +910,9 @@ impl ViewState {
                             ui.pending_delete_dissolve.replace(Some((depth, dissolve)));
                         }
                     }
-                    browser.delete(entries_for_dissolve, true);
+                    let entries = Rc::try_unwrap(entries_for_dissolve)
+                        .unwrap_or_else(|shared| shared.as_ref().clone());
+                    browser.delete(entries, true);
                     browser.focus_active();
                 },
             );
@@ -868,6 +938,17 @@ impl ViewState {
                 } else {
                     glib::Propagation::Proceed
                 }
+            } else if trash
+                && key == gtk::gdk::Key::d
+                && !modifiers.intersects(
+                    gtk::gdk::ModifierType::CONTROL_MASK
+                        | gtk::gdk::ModifierType::ALT_MASK
+                        | gtk::gdk::ModifierType::SUPER_MASK,
+                )
+                && crate::ui::preferences::PreferenceManager::shared().tenxer_mode()
+            {
+                focused_confirm.emit_clicked();
+                glib::Propagation::Stop
             } else if !modifiers
                 .intersects(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::ALT_MASK)
             {
@@ -885,13 +966,37 @@ impl ViewState {
             }
         });
         layer.add_controller(keys);
-        let initial_focus = confirm.clone();
-        glib::idle_add_local_once(move || {
-            initial_focus.grab_focus();
-            if let Some(window) = initial_focus.root().and_downcast::<gtk::Window>() {
-                window.set_focus_visible(false);
+        focus_button(&confirm);
+        if trash {
+            return;
+        }
+
+        let weak_subtitle = subtitle.downgrade();
+        let weak_spinner = spinner.downgrade();
+        let task = glib::MainContext::default().spawn_local(async move {
+            let summary = aggregate_directory_summary(&entries).await;
+            let (Some(subtitle), Some(spinner)) = (weak_subtitle.upgrade(), weak_spinner.upgrade())
+            else {
+                return;
+            };
+            subtitle.set_label(&format!(
+                "{}{} · {}{} will be permanently deleted",
+                if summary.truncated() { "At least " } else { "" },
+                item_count_label(summary.item_count),
+                if summary.truncated() { "at least " } else { "" },
+                format_file_size(summary.total_size)
+            ));
+            spinner.stop();
+            spinner.set_visible(false);
+        });
+        let task = Rc::new(task);
+        let closing_task = task.clone();
+        layer.connect_sensitive_notify(move |layer| {
+            if !layer.is_sensitive() {
+                closing_task.abort();
             }
         });
+        layer.connect_unrealize(move |_| task.abort());
     }
 }
 

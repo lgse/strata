@@ -16,11 +16,19 @@ use crate::{
         window::{
             apply_browser_mode, browser_mode_for_digit, is_browser_navigation_key,
             is_context_menu_shortcut, is_native_editing_shortcut, is_open_terminal_shortcut,
-            is_refresh_shortcut, is_rename_shortcut, is_sidebar_focus_shortcut,
+            is_redo_shortcut, is_refresh_shortcut, is_rename_shortcut, is_sidebar_focus_shortcut,
             is_toggle_hidden_shortcut, is_undo_shortcut, type_to_search_query,
         },
     },
 };
+
+fn entry_for(widget: &gtk::Widget) -> Option<gtk::Entry> {
+    widget.clone().downcast().ok().or_else(|| {
+        widget
+            .ancestor(gtk::Entry::static_type())
+            .and_then(|entry| entry.downcast().ok())
+    })
+}
 
 impl Dispatcher {
     pub(super) fn window_commands(&self, event: &KeyEvent) -> KeyResult {
@@ -96,7 +104,7 @@ impl Dispatcher {
             )
             && let Some(entry) = self.view.selected_search_result()
         {
-            if self.view.activate_directory_column() {
+            if self.view.activate_directory_on_space() {
                 return Some(Propagation::Stop);
             }
             self.preview.toggle(
@@ -136,6 +144,18 @@ impl Dispatcher {
     pub(super) fn sidebar_commands(&self, browser: &Browser, event: &KeyEvent) -> KeyResult {
         let toggle = self.top_bar.sidebar_toggle();
         if is_sidebar_focus_shortcut(event.key, event.modifiers) {
+            if self.type_to_search.preferences.tenxer_mode() {
+                if !toggle.is_active() {
+                    return Some(Propagation::Stop);
+                }
+                if self.sidebar.contains(&event.focused) {
+                    self.sidebar.restore(browser, true);
+                } else {
+                    self.sidebar.previous.replace(event.focused.clone());
+                    self.sidebar.state.focus_active_place();
+                }
+                return Some(Propagation::Stop);
+            }
             self.view.keyboard_navigation();
             if self.sidebar.contains(&event.focused) {
                 self.sidebar.restore(browser, false);
@@ -151,7 +171,16 @@ impl Dispatcher {
             }
             return Some(Propagation::Stop);
         }
-        if event.control() && !event.shift() && matches!(event.key, Key::b | Key::B) {
+        let toggles_sidebar = if self.type_to_search.preferences.tenxer_mode() {
+            matches!(event.key, Key::n | Key::N)
+        } else {
+            matches!(event.key, Key::b | Key::B)
+        };
+        if event.control()
+            && !event.shift()
+            && event.without(Modifiers::ALT_MASK)
+            && toggles_sidebar
+        {
             toggle.set_active(!toggle.is_active());
             return Some(Propagation::Stop);
         }
@@ -164,11 +193,26 @@ impl Dispatcher {
                 self.view.cancel_location_edit();
                 return Some(Propagation::Stop);
             }
+            if event.control()
+                && event
+                    .without(Modifiers::SHIFT_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
+                && event.key == Key::a
+                && let Some(entry) = event.focused.as_ref().and_then(entry_for)
+            {
+                entry.select_region(0, -1);
+                return Some(Propagation::Stop);
+            }
             return Some(Propagation::Proceed);
         }
         if !event.text_has_focus()
             && is_undo_shortcut(event.key, event.modifiers)
             && self.view.undo_last_operation()
+        {
+            return Some(Propagation::Stop);
+        }
+        if !event.text_has_focus()
+            && is_redo_shortcut(event.key, event.modifiers)
+            && self.view.redo_last_operation()
         {
             return Some(Propagation::Stop);
         }
@@ -184,16 +228,31 @@ impl Dispatcher {
         None
     }
 
-    pub(super) fn file_commands(&self, browser: &Rc<Browser>, event: &KeyEvent) -> KeyResult {
-        if event.alt()
+    pub(super) fn properties_command(&self, event: &KeyEvent) -> KeyResult {
+        if !event.text_has_focus()
+            && event.alt()
             && event.without(Modifiers::CONTROL_MASK | Modifiers::SHIFT_MASK)
             && matches!(event.key, Key::Return | Key::KP_Enter)
             && self.view.show_focused_properties()
         {
             return Some(Propagation::Stop);
         }
+        None
+    }
+
+    pub(super) fn file_commands(&self, browser: &Rc<Browser>, event: &KeyEvent) -> KeyResult {
         if event.control() && event.shift() && matches!(event.key, Key::n | Key::N) {
             self.view.create_new_folder();
+            return Some(Propagation::Stop);
+        }
+        if event.control()
+            && event.alt()
+            && event.without(Modifiers::SHIFT_MASK | Modifiers::SUPER_MASK)
+            && matches!(event.key, Key::n | Key::N)
+        {
+            if !self.view.create_new_folder_for_selection() {
+                self.view.create_new_folder();
+            }
             return Some(Propagation::Stop);
         }
         self.clipboard_command(event)
@@ -239,7 +298,8 @@ impl Dispatcher {
     pub(super) fn context_menu_command(&self, event: &KeyEvent) -> KeyResult {
         if is_context_menu_shortcut(event.key, event.modifiers)
             && !event.text_has_focus()
-            && self.view.open_focused_context_menu()
+            && (super::sidebar::open_sidebar_context_menu(&self.sidebar.widget)
+                || self.view.open_focused_context_menu())
         {
             return Some(Propagation::Stop);
         }

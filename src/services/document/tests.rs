@@ -112,6 +112,8 @@ fn classifies_supported_local_document_mimes_and_extensions_case_insensitively()
         "text/x-markdown",
         "TEXT/HTML",
         "application/xhtml+xml",
+        "application/rtf",
+        "text/rtf",
     ] {
         assert!(document_kind(mime, std::ffi::OsStr::new("file.txt"), true).is_some());
     }
@@ -125,6 +127,7 @@ fn classifies_supported_local_document_mimes_and_extensions_case_insensitively()
         "a.HTML",
         "a.htm",
         "a.xhtml",
+        "a.RTF",
     ] {
         assert!(document_kind("text/plain", std::ffi::OsStr::new(name), true).is_some());
     }
@@ -178,13 +181,13 @@ fn markdown_raw_html_is_inert_and_warned() {
 fn html_supports_semantic_blocks_formatting_entities_lists_tables_and_breaks() {
     let parsed = parse_document(
         DocumentKind::Html,
-        "<!doctype html><html><body><h2>Title &amp; more</h2><p><strong>Bold</strong><br><em>line</em></p><ol><li>one</li><li>two</li></ol><blockquote>quote</blockquote><pre>x &lt; y</pre><hr><table><thead><tr><th>A</th></tr></thead><tbody><tr><td>B</td></tr></tbody></table></body></html>",
+        "<!doctype html><html><body><h2>Title &amp; more</h2><p><strong>Bold</strong><br><em>line</em> <u>under</u></p><ol><li>one</li><li>two</li></ol><blockquote>quote</blockquote><pre>x &lt; y</pre><hr><table><thead><tr><th>A</th></tr></thead><tbody><tr><td>B</td></tr></tbody></table></body></html>",
         &Cancellation::default(),
     )
     .expect("supported HTML should render");
     let debug = format!("{:?}", parsed.document.blocks);
     assert!(debug.contains("Title &amp; more"));
-    assert!(debug.contains("<b>Bold</b>\\n<i>line</i>"));
+    assert!(debug.contains("<b>Bold</b>\\n<i>line</i> <u>under</u>"));
     assert!(debug.contains("marker: \"1.\""));
     assert!(debug.contains("Quote(\"quote\")"));
     assert!(parsed.document.blocks.iter().any(|block| matches!(

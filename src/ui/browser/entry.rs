@@ -1,15 +1,22 @@
 // SPDX-License-Identifier: MIT
 
-use crate::model::{EntryKind, FileEntry};
+use crate::adapters::directory_summary::{DirectorySummary, summarize_directory};
+use crate::adapters::gio_file_for_location;
+use crate::assets::icons;
+use crate::model::{EntryKind, FileEntry, MetadataValue};
 use crate::services::{
-    PreviewContent, content_family, filter_name_matches, fold_for_search, has_plain_text_extension,
-    is_extensionless_dotfile,
+    PathMatcher, PathQuery, PreviewContent, content_family, filter_name_matches, fold_for_search,
+    has_plain_text_extension, is_extensionless_dotfile,
 };
-use gtk::gio;
 use gtk::prelude::*;
+use gtk::{gio, glib};
 use std::cell::{Cell, RefCell};
 use std::path::Path;
 use std::rc::Rc;
+
+thread_local! {
+    static FILTER_TERMS: RefCell<Option<(String, PathMatcher)>> = const { RefCell::new(None) };
+}
 
 pub(in crate::ui) fn format_file_size(bytes: u64) -> String {
     const UNITS: [&str; 5] = ["B", "kB", "MB", "GB", "TB"];
@@ -152,16 +159,103 @@ pub(in crate::ui) fn entry_icon(entry: &FileEntry) -> &'static str {
 /// `query` must already be folded through `fold_for_search` by the caller.
 pub(super) fn entry_matches(value: &str, show_hidden: bool, query: &str) -> bool {
     (show_hidden || !model_is_hidden(value))
-        && (query.is_empty()
-            || filter_name_matches(&fold_for_search(model_display_name(value)), query))
+        && (query.trim().is_empty() || {
+            let name = fold_for_search(model_display_name(value));
+            if crate::ui::tenxer_mode::chrome_suppressed() {
+                with_filter_terms(query, |terms| terms.score(&name, 0).is_some())
+            } else {
+                filter_name_matches(&name, query)
+            }
+        })
 }
 
-pub(super) fn icon_for_name(name: &str) -> &'static str {
-    let extension = name
-        .rsplit_once('.')
-        .map(|(_, extension)| extension.to_ascii_lowercase());
-    match extension.as_deref() {
-        Some("sh" | "bash" | "zsh" | "fish") => crate::assets::icons::TERMINAL,
+pub(super) fn with_filter_terms<R>(query: &str, apply: impl FnOnce(&mut PathMatcher) -> R) -> R {
+    FILTER_TERMS.with_borrow_mut(|cached| {
+        if cached.as_ref().is_none_or(|(cached, _)| cached != query) {
+            *cached = Some((query.to_owned(), PathMatcher::new(&PathQuery::parse(query))));
+        }
+        let (_, matcher) = cached.as_mut().expect("filter terms cached above");
+        apply(matcher)
+    })
+}
+
+static FILENAME_ICONS: &[(&str, &str)] = &[
+    ("package-lock.json", icons::COG),
+    ("npm-shrinkwrap.json", icons::COG),
+    ("pnpm-lock.yaml", icons::COG),
+    ("bun.lockb", icons::COG),
+    ("cargo.lock", icons::COG),
+    ("gemfile", icons::COG),
+    ("go.mod", icons::COG),
+    ("pom.xml", icons::COG),
+    ("build.gradle", icons::COG),
+    ("cmakelists.txt", icons::COG),
+    ("dockerfile", icons::COG),
+    ("makefile", icons::COG),
+    (".gitignore", icons::COG),
+    (".gitconfig", icons::COG),
+    (".editorconfig", icons::COG),
+    (".inputrc", icons::COG),
+    (".npmrc", icons::COG),
+    (".yarnrc", icons::COG),
+    (".pypirc", icons::COG),
+    (".xcompose", icons::COG),
+    (".vimrc", icons::COG),
+    (".gvimrc", icons::COG),
+    (".viminfo", icons::COG),
+    (".bashrc", icons::FILE_TERMINAL),
+    (".bash_profile", icons::FILE_TERMINAL),
+    (".bash_login", icons::FILE_TERMINAL),
+    (".bash_logout", icons::FILE_TERMINAL),
+    (".zshrc", icons::FILE_TERMINAL),
+    (".zprofile", icons::FILE_TERMINAL),
+    (".zlogin", icons::FILE_TERMINAL),
+    (".zlogout", icons::FILE_TERMINAL),
+    (".profile", icons::FILE_TERMINAL),
+    (".login", icons::FILE_TERMINAL),
+    (".logout", icons::FILE_TERMINAL),
+    (".kshrc", icons::FILE_TERMINAL),
+    (".cshrc", icons::FILE_TERMINAL),
+    (".tcshrc", icons::FILE_TERMINAL),
+    ("id_rsa", icons::KEY_ROUND),
+    ("id_ed25519", icons::KEY_ROUND),
+    ("authorized_keys", icons::KEY_ROUND),
+    ("known_hosts", icons::KEY_ROUND),
+    ("readme", icons::DOCUMENTS),
+    ("license", icons::DOCUMENTS),
+];
+
+static FILENAME_AFFIX_PATTERNS: &[(&str, &str, &str)] = &[
+    ("Dockerfile.", "", icons::COG),
+    ("tsconfig.", ".json", icons::COG),
+    ("", "_history", icons::FILE_TERMINAL),
+    ("", ".lock", icons::COG),
+];
+
+fn exact_filename_icon(lowered: &str) -> Option<&'static str> {
+    FILENAME_ICONS
+        .iter()
+        .find(|(name, _)| *name == lowered)
+        .map(|(_, icon)| *icon)
+}
+
+fn affix_pattern_icon(name: &str) -> Option<&'static str> {
+    FILENAME_AFFIX_PATTERNS
+        .iter()
+        .find(|(prefix, suffix, _)| name.starts_with(prefix) && name.ends_with(suffix))
+        .map(|(_, _, icon)| *icon)
+}
+
+pub(in crate::ui) fn icon_for_name(name: &str) -> &'static str {
+    let lowered = name.to_ascii_lowercase();
+    if let Some(icon) = exact_filename_icon(&lowered) {
+        return icon;
+    }
+    if let Some(icon) = affix_pattern_icon(name) {
+        return icon;
+    }
+    let extension = lowered.rsplit_once('.').map(|(_, extension)| extension);
+    match extension {
         Some(
             "png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "bmp" | "avif" | "heic" | "heif"
             | "jxl" | "tif" | "tiff" | "3fr" | "arw" | "cr2" | "cr3" | "dcr" | "dng" | "erf"
@@ -169,14 +263,36 @@ pub(super) fn icon_for_name(name: &str) -> &'static str {
             | "rwl" | "sr2" | "srf" | "srw" | "x3f",
         ) => crate::assets::icons::PICTURES,
         Some("mp4" | "mkv" | "webm" | "mov" | "avi" | "m4v") => crate::assets::icons::VIDEOS,
-        Some("zip" | "tar" | "gz" | "bz2" | "xz" | "7z" | "rar" | "zst") => {
+        Some("mp3" | "wav" | "flac" | "ogg" | "m4a" | "aac" | "opus" | "wma" | "aiff") => {
+            crate::assets::icons::FILE_AUDIO
+        }
+        Some("html" | "htm" | "css" | "scss" | "xml") => crate::assets::icons::GLOBE,
+        Some("zip" | "7z" | "tar" | "gz" | "tgz" | "bz2" | "xz" | "zst" | "rar") => {
             crate::assets::icons::FILE_ARCHIVE
         }
+        Some("deb" | "rpm" | "pkg" | "appimage" | "msi" | "exe" | "apk") => {
+            crate::assets::icons::BOX
+        }
+        Some("pem" | "crt" | "cer" | "key" | "der" | "csr" | "pub" | "p12" | "pfx" | "jks") => {
+            crate::assets::icons::KEY_ROUND
+        }
+        Some("yaml" | "yml" | "toml" | "ini" | "conf" | "env") => crate::assets::icons::COG,
+        Some("json" | "jsonc") => crate::assets::icons::FILE_BRACES,
+        Some("db" | "sqlite" | "sqlite3" | "sql" | "psql" | "pgsql" | "mdb" | "accdb") => {
+            crate::assets::icons::DATABASE
+        }
+        Some("iso" | "img" | "dmg" | "vhd" | "vhdx" | "vdi" | "qcow") => crate::assets::icons::DISC,
+        Some("csv" | "tsv" | "xls" | "xlsx" | "ods") => icons::FILE_SPREADSHEET,
         Some(
-            "rs" | "c" | "h" | "cpp" | "go" | "py" | "rb" | "java" | "js" | "jsx" | "ts" | "tsx"
-            | "lua" | "php" | "html" | "css" | "scss" | "json",
+            "rs" | "c" | "h" | "cpp" | "hpp" | "go" | "java" | "kt" | "swift" | "dart" | "scala"
+            | "hs" | "lua" | "rb" | "php" | "py" | "js" | "ts" | "jsx" | "tsx" | "m" | "v" | "cs",
         ) => crate::assets::icons::FILE_CODE,
-        _ => crate::assets::icons::DOCUMENTS,
+        Some("sh" | "bash" | "zsh" | "fish" | "ksh" | "csh" | "ps1" | "bat" | "cmd") => {
+            crate::assets::icons::FILE_TERMINAL
+        }
+        Some("ppt" | "pptx" | "pps" | "ppsx" | "odp") => icons::PRESENTATION,
+        Some("ttf" | "otf" | "woff" | "woff2" | "eot" | "ttc" | "otc") => icons::FILE_TYPE,
+        _ => icons::DOCUMENTS,
     }
 }
 
@@ -198,6 +314,46 @@ pub(super) fn entry_kind_summary(entries: &[FileEntry]) -> String {
         (0, directories) => format!("{directories} folders"),
         _ => item_count_label(entries.len()),
     }
+}
+
+pub(super) async fn aggregate_directory_summary(entries: &[FileEntry]) -> DirectorySummary {
+    let mut total = DirectorySummary::default();
+    for (index, entry) in entries.iter().enumerate() {
+        if index > 0 && index % 256 == 0 {
+            glib::timeout_future(std::time::Duration::ZERO).await;
+        }
+        if entry.is_directory() {
+            let directory = gio_file_for_location(&entry.location);
+            match summarize_directory(&directory).await {
+                Ok(summary) => {
+                    total.item_count = total.item_count.saturating_add(summary.item_count);
+                    total.total_size = total.total_size.saturating_add(summary.total_size);
+                    total.visible_file_count = total
+                        .visible_file_count
+                        .saturating_add(summary.visible_file_count);
+                    total.visible_folder_count = total
+                        .visible_folder_count
+                        .saturating_add(summary.visible_folder_count);
+                    total.issues.unreadable |= summary.issues.unreadable;
+                    total.issues.timed_out |= summary.issues.timed_out;
+                    total.issues.depth_limited |= summary.issues.depth_limited;
+                }
+                Err(_) => total.issues.unreadable = true,
+            }
+        } else {
+            total.item_count = total.item_count.saturating_add(1);
+            total.visible_file_count = total.visible_file_count.saturating_add(1);
+            match entry.size {
+                MetadataValue::Known(size) => {
+                    total.total_size = total.total_size.saturating_add(size);
+                }
+                MetadataValue::Unknown | MetadataValue::Unavailable => {
+                    total.issues.unreadable = true;
+                }
+            }
+        }
+    }
+    total
 }
 
 #[cfg(test)]

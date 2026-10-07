@@ -45,6 +45,11 @@ impl PreferenceChanges {
         self.latest.replace(preferences.clone());
     }
 
+    #[cfg(test)]
+    pub(super) fn listener_count(&self) -> usize {
+        self.listeners.borrow().len()
+    }
+
     pub(super) fn observe(&self, observer: Rc<dyn Fn()>) {
         self.observers.borrow_mut().push(observer);
     }
@@ -77,12 +82,30 @@ impl PreferenceChanges {
                 listener.active.set(false);
             }
             if let Some(listeners) = weak_listeners.upgrade() {
-                listeners.borrow_mut().retain(|candidate| {
-                    !std::rc::Weak::ptr_eq(&Rc::downgrade(candidate), &weak_listener)
-                });
+                retain_live(&listeners, |candidate| candidate.active.get());
             }
         });
         (listener.refresh)(anchor.as_ref(), manager);
+    }
+
+    pub(super) fn release_within(&self, root: &gtk::Widget) {
+        let released: Vec<_> = {
+            let mut listeners = self.listeners.borrow_mut();
+            let (released, kept) =
+                std::mem::take(&mut *listeners)
+                    .into_iter()
+                    .partition(|listener| {
+                        listener
+                            .anchor
+                            .upgrade()
+                            .is_some_and(|anchor| &anchor == root || anchor.is_ancestor(root))
+                    });
+            *listeners = kept;
+            released
+        };
+        for listener in &released {
+            listener.active.set(false);
+        }
     }
 
     pub(super) fn notify(&self, manager: &PreferenceManager) {
@@ -95,9 +118,8 @@ impl PreferenceChanges {
             for observer in observers {
                 observer();
             }
-            let listeners = self.listeners.borrow().clone();
             notify_live(
-                listeners,
+                &self.listeners,
                 |listener| listener.active.get() && listener.anchor.upgrade().is_some(),
                 |listener| {
                     if listener.active.get()
@@ -115,19 +137,39 @@ impl PreferenceChanges {
     }
 }
 
-pub(in crate::ui) fn notify_live<T>(
-    listeners: Vec<T>,
+pub(in crate::ui) fn notify_live<T: Clone>(
+    listeners: &RefCell<Vec<T>>,
     is_live: impl Fn(&T) -> bool,
     run: impl Fn(&T),
-) -> Vec<T> {
-    let live: Vec<T> = listeners
-        .into_iter()
-        .filter(|entry| is_live(entry))
-        .collect();
+) {
+    retain_live(listeners, &is_live);
+    let live = listeners.borrow().clone();
     for entry in &live {
-        run(entry);
+        if is_live(entry) {
+            run(entry);
+        }
     }
-    live
+}
+
+fn retain_live<T>(listeners: &RefCell<Vec<T>>, is_live: impl Fn(&T) -> bool) {
+    // Dropping a listener can destroy another anchor and reenter this registry.
+    loop {
+        let previous = std::mem::take(&mut *listeners.borrow_mut());
+        let count = previous.len();
+        let mut kept: Vec<_> = previous
+            .into_iter()
+            .filter(|entry| is_live(entry))
+            .collect();
+        let removed = kept.len() != count;
+        {
+            let mut current = listeners.borrow_mut();
+            kept.append(&mut *current);
+            *current = kept;
+        }
+        if !removed {
+            break;
+        }
+    }
 }
 
 #[cfg(test)]

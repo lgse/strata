@@ -268,7 +268,6 @@ impl IntegrationIndicator {
                     "Not configured"
                 };
                 let description = format!("{} — {status}", self.name);
-                row.set_tooltip_text(Some(&description));
                 row.update_property(&[gtk::accessible::Property::Label(&description)]);
                 if let Some(icon) = self.icon.upgrade() {
                     crate::assets::set_primary_icon(

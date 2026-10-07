@@ -1,233 +1,232 @@
 // SPDX-License-Identifier: MIT
 
-use super::*;
+use super::{transfer_progress_status, transfer_rate_status};
+
+mod minimization;
 
 #[test]
-fn transfer_progress_reports_a_byte_fraction_when_the_total_is_known() {
-    assert_eq!(
-        transfer_progress_status(0, 2, 750, Some(1_000)),
-        ("75%".to_owned(), Some(0.75))
+fn transfer_status_tracks_completed_files_and_live_bytes() {
+    let (percent, bytes, items, fraction) = transfer_progress_status(
+        1,
+        3,
+        4,
+        Some(9),
+        1_500,
+        Some(4_000),
+        Some("archive-2026-09.tar"),
     );
+    assert_eq!(percent, "37%");
+    assert_eq!(bytes, "1.5 kB / 4 kB");
+    assert_eq!(items, "4 of 9 files · archive-2026-09.tar");
+    assert_eq!(fraction, Some(0.375));
+
+    let (percent, bytes, items, fraction) =
+        transfer_progress_status(2, 3, 5, Some(9), 2_000, None, None);
+    assert_eq!(percent, "Transferring…");
+    assert_eq!(bytes, "2 kB");
+    assert_eq!(items, "5 of 9 files");
+    assert_eq!(fraction, None);
     assert_eq!(
-        transfer_progress_status(1, 2, 1_500, Some(1_000)),
-        ("100%".to_owned(), Some(1.0))
+        transfer_rate_status(Some(1_000.0), 2_000, Some(12_000)),
+        "1 kB/s · 10s left"
     );
+    assert_eq!(transfer_rate_status(Some(1_000.0), 0, None), "1 kB/s");
     assert_eq!(
-        transfer_progress_status(0, 2, 1, Some(1_000)),
-        ("1%".to_owned(), Some(0.001))
+        transfer_rate_status(None, 0, Some(12_000)),
+        "Calculating speed…"
     );
 }
 
 #[test]
-fn zero_byte_transfer_progress_tracks_completed_items() {
-    assert_eq!(
-        transfer_progress_status(0, 2, 0, Some(0)),
-        ("0%".to_owned(), Some(0.0))
-    );
-    assert_eq!(
-        transfer_progress_status(1, 2, 0, Some(0)),
-        ("50%".to_owned(), Some(0.5))
-    );
-    assert_eq!(
-        transfer_progress_status(2, 2, 0, Some(0)),
-        ("100%".to_owned(), Some(1.0))
-    );
-    assert_eq!(
-        transfer_progress_status(0, 0, 0, Some(0)),
-        ("Preparing…".to_owned(), None)
-    );
-}
-
-#[test]
-fn transfer_progress_is_indeterminate_when_the_total_is_unknown() {
-    assert_eq!(
-        transfer_progress_status(0, 2, 0, None),
-        ("Preparing…".to_owned(), None)
-    );
-    assert_eq!(
-        transfer_progress_status(0, 2, 1_200, None),
-        ("1.2 kB copied".to_owned(), None)
-    );
-}
-
-#[test]
-fn small_operations_delay_progress_while_large_or_unbounded_operations_show_it_immediately() {
-    assert!(!should_show_progress_immediately(1));
-    assert!(!should_show_progress_immediately(
-        IMMEDIATE_PROGRESS_ITEM_COUNT - 1
-    ));
-    assert!(should_show_progress_immediately(
-        IMMEDIATE_PROGRESS_ITEM_COUNT
-    ));
-    assert!(should_show_progress_immediately(0));
-}
-
-#[test]
-fn archive_preparation_and_member_encoding_keep_activity_visible() {
+fn live_transfer_updates_the_visible_dialog_and_device_flush() {
     crate::test_support::gtk_test(
-        "ui::browser::progress::tests::archive_preparation_and_member_encoding_keep_activity_visible",
+        "ui::browser::progress::tests::live_transfer_updates_the_visible_dialog_and_device_flush",
         || {
+            use gtk::prelude::*;
+            use std::rc::Rc;
+
+            crate::ui::prepare_portal_ui();
             let view = crate::ui::browser::BrowserView::new(
                 Rc::new(crate::adapters::LocalFileSource),
                 crate::ui::browser::PeekBehavior::default(),
             );
-            let overlay = gtk::Overlay::new();
-            overlay.set_child(Some(&view.widget()));
+            let progress_state = view.state.file_progress();
+            let overlay = view.overlay();
             let window = gtk::Window::builder().child(&overlay).build();
             window.present();
-            let state = &view.state;
-            state.handle(&crate::app::BrowserEvent::ArchiveStarted { total: 0 });
-            assert!(state.pending_file_progress.borrow().is_none());
-            let (status, activity, progress) = {
-                let current = state.file_progress_view.borrow();
-                let current = current.as_ref().expect("immediate archive feedback");
-                (
-                    current.status.clone(),
-                    current.archive_activity.clone(),
-                    current.progress.clone(),
-                )
-            };
-            assert_eq!(status.text(), "Preparing…");
-            assert!(activity.is_visible() && activity.is_spinning());
-            for (completed, total, expected) in [
-                (0, 8, "Preparing…"),
-                (1, 8, "1 / 8 files"),
-                (1, 8, "1 / 8 files"),
-                (8, 8, "8 / 8 files"),
-            ] {
-                state.handle(&crate::app::BrowserEvent::ArchiveProgress { completed, total });
-                assert_eq!(status.text(), expected);
-                assert!(activity.is_visible() && activity.is_spinning());
-                if completed > 0 {
-                    assert_eq!(progress.fraction(), completed as f64 / total as f64);
-                }
-            }
-            state.dismiss_file_operation_progress();
-            assert!(!activity.is_spinning());
-            assert!(state.file_progress_view.borrow().is_none());
-            window.destroy();
-            view.browser().clear_observer();
-        },
-    );
-}
-
-#[test]
-fn backdrop_keeps_progress_and_cancel_available_until_terminal_dismissal() {
-    crate::test_support::gtk_test(
-        "ui::browser::progress::tests::backdrop_keeps_progress_and_cancel_available_until_terminal_dismissal",
-        || {
-            let view = crate::ui::browser::BrowserView::new(
-                Rc::new(crate::adapters::LocalFileSource),
-                crate::ui::browser::PeekBehavior::default(),
-            );
-            let overlay = gtk::Overlay::new();
-            overlay.set_child(Some(&view.widget()));
-            let window = gtk::Window::builder().child(&overlay).build();
-            window.present();
-            let state = &view.state;
-            let cancellations = Rc::new(Cell::new(0));
-            for title in [
-                "Working",
+            view.state.show_file_operation_progress(
+                16,
+                crate::assets::icons::COPY,
                 "Copying items",
-                "Moving items",
-                "Deleting items",
-                "Restoring items",
-                "Emptying Trash",
-            ] {
-                let cancelled = cancellations.clone();
-                state.show_file_operation_progress(
-                    16,
-                    crate::assets::icons::FILE_ARCHIVE,
-                    title,
-                    "Cancelling will not undo completed changes",
-                    Rc::new(move || cancelled.set(cancelled.get() + 1)),
+                "Cancelling will not undo completed changes",
+                Rc::new(|| {}),
+            );
+            progress_state
+                .transfer_current_file
+                .replace(Some("archive.tar".into()));
+            progress_state
+                .transfer_rate_bytes_per_second
+                .set(Some(2_000.0));
+            view.state
+                .update_transfer_progress(3, 5, Some(21), 2_000, Some(10_000));
+            {
+                let progress = progress_state.file_progress_view.borrow();
+                let progress = progress.as_ref().expect("visible progress dialog");
+                assert_eq!(progress.transfer_percent.text(), "20%");
+                assert_eq!(progress.transfer_bytes.text(), "2 kB / 10 kB");
+                assert_eq!(
+                    progress.transfer_items.text(),
+                    "5 of 21 files · archive.tar"
                 );
-                let (layer, status, progress) = {
-                    let current = state.file_progress_view.borrow();
-                    let current = current.as_ref().expect("progress view");
-                    (
-                        current.layer.clone(),
-                        current.status.clone(),
-                        current.progress.clone(),
-                    )
-                };
-                let controllers = layer.observe_controllers();
-                let click = (0..controllers.n_items())
-                    .find_map(|index| controllers.item(index).and_downcast::<gtk::GestureClick>())
-                    .expect("backdrop gesture");
-                let before = cancellations.get();
-                click.emit_by_name::<()>("pressed", &[&1i32, &0.0f64, &0.0f64]);
-                assert!(!layer.has_css_class("dismissing"), "{title}");
-                assert!(layer.is_sensitive());
-                assert_eq!(layer.parent().as_ref(), Some(overlay.upcast_ref()));
-                assert_eq!(cancellations.get(), before, "backdrop must not cancel");
-
-                state.update_archive_progress(4, 16);
-                assert_eq!(status.text(), "4 / 16 files");
-                assert_eq!(progress.fraction(), 0.25);
-                state.update_transfer_progress(8, 50, Some(100));
-                assert_eq!(status.text(), "50%");
-                assert_eq!(progress.fraction(), 0.5);
-                state.update_item_progress(12, 16);
-                assert_eq!(status.text(), "75%");
-                state.update_empty_trash_progress(12);
-                assert_eq!(status.text(), "12 items deleted");
-
-                let cancel = gtk::prelude::GtkWindowExt::focus(&window)
-                    .and_downcast::<gtk::Button>()
-                    .expect("Cancel has focus");
-                assert_eq!(cancel.label().as_deref(), Some("Cancel"));
-                assert!(cancel.is_visible() && cancel.is_sensitive());
-                cancel.emit_clicked();
-                assert_eq!(cancellations.get(), before + 1);
-                let escape = (0..controllers.n_items())
-                    .find_map(|index| {
-                        controllers
-                            .item(index)
-                            .and_downcast::<gtk::EventControllerKey>()
-                    })
-                    .expect("Escape controller");
-                assert!(escape.emit_by_name::<bool>(
-                    "key-pressed",
-                    &[
-                        &gtk::gdk::Key::Escape,
-                        &0u32,
-                        &gtk::gdk::ModifierType::empty()
-                    ],
-                ));
-                assert_eq!(cancellations.get(), before + 2);
-                assert!(
-                    !layer.has_css_class("dismissing"),
-                    "wait for cancellation to finish"
-                );
-
-                let dismissed = Rc::new(Cell::new(false));
-                let dismissed_callback = dismissed.clone();
-                state.dismiss_file_operation_progress_then(move || {
-                    dismissed_callback.set(true);
-                });
-                assert!(state.file_progress_view.borrow().is_none());
-                assert!(layer.has_css_class("dismissing"));
-                assert!(!dismissed.get());
-                let deadline = std::time::Instant::now() + Duration::from_secs(5);
-                while layer.parent().is_some() {
-                    assert!(std::time::Instant::now() < deadline, "terminal dismissal");
-                    glib::MainContext::default().iteration(false);
-                    std::thread::sleep(Duration::from_millis(1));
-                }
-                assert!(dismissed.get());
+                assert_eq!(progress.transfer_rate.text(), "2 kB/s · 4s left");
+                assert!(progress.transfer_header.is_visible());
+                assert!(progress.transfer_footer.is_visible());
             }
-            let ordinary =
-                modal_layer(&gtk::Label::new(Some("Confirmation")), &overlay, None, None);
-            overlay.add_overlay(&ordinary);
-            let controllers = ordinary.observe_controllers();
-            let click = (0..controllers.n_items())
-                .find_map(|index| controllers.item(index).and_downcast::<gtk::GestureClick>())
-                .expect("ordinary backdrop gesture");
-            click.emit_by_name::<()>("pressed", &[&1i32, &0.0f64, &0.0f64]);
-            assert!(ordinary.has_css_class("dismissing"));
-            window.destroy();
-            view.browser().clear_observer();
+            view.state.show_device_flush_status();
+            assert_eq!(
+                progress_state
+                    .file_progress_view
+                    .borrow()
+                    .as_ref()
+                    .expect("progress dialog while flushing")
+                    .transfer_rate
+                    .text(),
+                "Writing to device…"
+            );
+            view.state.dismiss_file_operation_progress();
+            window.close();
         },
     );
+}
+
+#[test]
+fn completion_callbacks_wait_for_the_progress_modal_to_leave() {
+    crate::test_support::gtk_test(
+        "ui::browser::progress::tests::completion_callbacks_wait_for_the_progress_modal_to_leave",
+        || {
+            use gtk::prelude::*;
+            use std::{cell::RefCell, rc::Rc, time::Duration};
+
+            crate::ui::prepare_portal_ui();
+            let view = crate::ui::browser::BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            let window = gtk::Window::builder().child(&view.overlay()).build();
+            window.present();
+            view.state.show_file_operation_progress(
+                16,
+                crate::assets::icons::COPY,
+                "Copying items",
+                "Cancelling will not undo completed changes",
+                Rc::new(|| {}),
+            );
+            let layer = view
+                .state
+                .file_progress()
+                .file_progress_view
+                .borrow()
+                .as_ref()
+                .expect("visible progress dialog")
+                .layer
+                .borrow()
+                .as_ref()
+                .expect("modal progress layer")
+                .clone();
+            let completions = Rc::new(RefCell::new(Vec::new()));
+            for index in 0..2 {
+                let completions = completions.clone();
+                let layer = layer.clone();
+                view.state.dismiss_file_operation_progress_then(move || {
+                    completions
+                        .borrow_mut()
+                        .push((index, layer.parent().is_none()));
+                });
+            }
+            let context = glib::MainContext::default();
+            let deadline = std::time::Instant::now() + Duration::from_secs(2);
+            while completions.borrow().len() < 2 && std::time::Instant::now() < deadline {
+                while context.iteration(false) {}
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            assert_eq!(completions.borrow().as_slice(), [(0, true), (1, true)]);
+            window.close();
+        },
+    );
+}
+
+#[test]
+fn stalled_cancellation_keeps_the_dock_cancellable_only_once() {
+    crate::test_support::gtk_test(
+        "ui::browser::progress::tests::stalled_cancellation_keeps_the_dock_cancellable_only_once",
+        || {
+            use gtk::prelude::*;
+            use std::{cell::Cell, rc::Rc};
+
+            crate::ui::prepare_portal_ui();
+            let view = crate::ui::browser::BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            let window = gtk::Window::builder().child(&view.overlay()).build();
+            window.present();
+            let progress_state = view.state.file_progress();
+            let cancellations = Rc::new(Cell::new(0));
+            let count = cancellations.clone();
+            let on_cancel: Rc<dyn Fn()> = Rc::new(move || count.set(count.get() + 1));
+            progress_state.dock_only.set(true);
+            progress_state.show_file_operation_progress(
+                16,
+                crate::assets::icons::COPY,
+                "Copying items",
+                "Cancelling will not undo completed changes",
+                on_cancel.clone(),
+            );
+            view.state
+                .update_transfer_progress(0, 0, Some(4), 100, Some(1_000));
+            progress_state.request_transfer_cancel(&on_cancel);
+            progress_state.request_transfer_cancel(&on_cancel);
+            assert_eq!(cancellations.get(), 1);
+            {
+                let progress = progress_state.file_progress_view.borrow();
+                let progress = progress.as_ref().expect("visible transfer");
+                assert_eq!(progress.title.text(), "Cancelling transfer…");
+                assert!(!progress.cancel.is_sensitive());
+            }
+            progress_state.transfer_cancel_timed_out.set(true);
+            progress_state.apply_transfer_cancel_status();
+            {
+                let progress = progress_state.file_progress_view.borrow();
+                let progress = progress.as_ref().expect("stalled transfer");
+                assert_eq!(progress.title.text(), "Device not responding");
+                assert!(progress.subtitle.text().contains("do not unplug"));
+                assert!(!progress.cancel.is_sensitive());
+                let card = progress.compact.as_ref().expect("docked stalled transfer");
+                assert!(!card.cancel.is_sensitive());
+                assert!(card.info.text().contains("Do not unplug"));
+                card.cancel.emit_clicked();
+            }
+            assert_eq!(cancellations.get(), 1);
+            assert!(progress_state.file_progress_view.borrow().is_some());
+            assert!(progress_state.transfer_cancel_requested.get());
+            assert!(crate::ui::window::visible_modal_layer(&window).is_none());
+            view.state.dismiss_file_operation_progress();
+            assert!(!progress_state.transfer_cancel_requested.get());
+            window.close();
+        },
+    );
+}
+
+#[test]
+fn transfer_status_handles_empty_files_and_unknown_totals() {
+    let (percent, bytes, items, fraction) =
+        transfer_progress_status(1, 2, 0, Some(0), 0, Some(0), None);
+    assert_eq!(percent, "50%");
+    assert_eq!(bytes, "0 B / 0 B");
+    assert_eq!(items, "1 of 2 items");
+    assert_eq!(fraction, Some(0.5));
+
+    let (_, bytes, items, _) = transfer_progress_status(0, 1, 0, None, 0, None, None);
+    assert_eq!(bytes, "0 B");
+    assert_eq!(items, "0 of 1 items");
 }

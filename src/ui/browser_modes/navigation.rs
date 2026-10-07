@@ -72,6 +72,12 @@ impl ListNavigation {
         if !snapshot.loading {
             return;
         }
+        // An explicit reveal target wins over the remembered position; the saved
+        // visit stays for a later Back, Forward or Up.
+        if snapshot.reveal_pending {
+            self.cancel();
+            return;
+        }
         self.pending = self
             .history
             .iter()
@@ -202,6 +208,3 @@ fn adjustments(pane: &Pane) -> Option<(gtk::Adjustment, gtk::Adjustment)> {
         .ok()?;
     Some((vertical.vadjustment(), horizontal.hadjustment()))
 }
-
-#[cfg(test)]
-mod tests;

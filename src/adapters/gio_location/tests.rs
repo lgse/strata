@@ -51,3 +51,22 @@ fn gio_files_with_embedded_credentials_are_sanitized() {
         "smb://user@host/share"
     );
 }
+
+#[test]
+fn reveal_target_for_file_spells_the_child_like_the_listing() {
+    use std::{ffi::OsStr, os::unix::ffi::OsStrExt, path::Path};
+    let native = Path::new(OsStr::from_bytes(b"/tmp/x/bad\xe8.txt"));
+    assert_eq!(
+        reveal_target_for_file(&gio::File::for_path(native)),
+        Some((Location::local("/tmp/x"), Location::local(native)))
+    );
+
+    let listed = gio::File::for_uri("sftp://host/a%20b").child("c.txt");
+    assert_eq!(
+        reveal_target_for_file(&gio::File::for_uri("sftp://host/a%20b/c.txt")),
+        Some((
+            Location::uri("sftp://host/a%20b"),
+            Location::uri(listed.uri())
+        ))
+    );
+}

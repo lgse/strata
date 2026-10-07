@@ -27,7 +27,7 @@ def test_environment():
 
 
 def test_opening_a_terminal_without_an_emulator_reports_no_terminal_found(strata):
-    strata.keyboard.press("ctrl+t")
+    strata.keyboard.press("ctrl+alt+t")
 
     dialog = strata.wait_for_dialog()
     assert dialog.name == "Unable to open terminal", (

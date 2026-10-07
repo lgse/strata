@@ -37,7 +37,14 @@ fn directory_index_reports_budgets_and_unreadable_roots() {
         ),
     ] {
         let index = SharedIndex::new();
-        build_index(&index, vec![root], false, max_entries, time_budget);
+        build_index(
+            &index,
+            vec![root],
+            false,
+            max_entries,
+            time_budget,
+            &SearchExclusions::default(),
+        );
         let data = index.state.read().expect("index data");
         assert!(!data.indexing);
         assert_eq!(data.coverage, expected);
@@ -57,6 +64,7 @@ fn cancelled_directory_index_never_publishes_results() {
         false,
         10,
         Duration::from_secs(10),
+        &SearchExclusions::default(),
     );
     assert!(index.state.read().expect("index data").items.is_empty());
 }
@@ -76,6 +84,7 @@ fn directory_index_follows_symlinks_to_directories() {
         false,
         usize::MAX,
         Duration::from_secs(10),
+        &SearchExclusions::default(),
     );
     let data = index.state.read().expect("index data");
     let alias = data
@@ -102,6 +111,7 @@ fn directory_index_honours_gio_hidden_file_entries() {
         false,
         usize::MAX,
         Duration::from_secs(10),
+        &SearchExclusions::default(),
     );
     assert!(
         !index
@@ -121,6 +131,7 @@ fn directory_index_honours_gio_hidden_file_entries() {
         true,
         usize::MAX,
         Duration::from_secs(10),
+        &SearchExclusions::default(),
     );
     assert!(
         index

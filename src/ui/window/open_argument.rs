@@ -8,7 +8,10 @@ use std::{
 
 use gtk::{gio, glib, prelude::*};
 
-use crate::{adapters::location_for_file, model::Location};
+use crate::{
+    adapters::{location_for_file, reveal_target_for_file},
+    model::Location,
+};
 
 use super::{BrowserView, WeakBrowserView, present_target};
 
@@ -163,14 +166,8 @@ async fn query_kind(
 }
 
 fn reveal_in_parent(browser: &BrowserView, file: &gio::File, location: Location) {
-    match file.parent().and_then(|parent| location_for_file(&parent)) {
-        Some(parent) => {
-            let name = file
-                .basename()
-                .map(|name| name.to_string_lossy().into_owned());
-            browser.select_after_load(name.into_iter().collect(), false);
-            browser.navigate_location(parent);
-        }
+    match reveal_target_for_file(file) {
+        Some((parent, target)) => browser.reveal_locations(parent, vec![target], false),
         None => browser.navigate_location(location),
     }
 }

@@ -28,18 +28,19 @@ def test_background_click_clears_all_selection(strata, mode):
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
-def test_background_press_does_not_clear_before_drag_intent(strata, mode):
+def test_background_press_clears_selection_before_drag_intent(strata, mode):
     root = _select_files(strata)
     start = _blank_point(strata, root)
     end = strata.entry("todo.txt", root).screen_bounds().center
 
-    def still_selected():
-        assert strata.selected_names(root) == ["readme.md", "todo.txt"]
+    def cleared_on_press():
+        assert strata.selected_names(root) == []
 
-    strata.pointer.drag_points(start, end, after_press=still_selected)
+    strata.pointer.drag_points(start, end, after_press=cleared_on_press)
     strata.wait(lambda: bool(strata.selected_names(root)), "marquee selection to survive release")
 
 
+@pytest.mark.usefixtures("unreserved_columns")
 def test_clicking_an_empty_column_clears_other_columns_without_closing_them(strata):
     strata.open_directory("archive")
     _select_files(strata)

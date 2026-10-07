@@ -2,6 +2,15 @@
 
 Strata publishes signed, attested Linux binaries through the **Release** GitHub Actions workflow (`.github/workflows/release.yml`). This is the maintainer runbook for cutting a release, plus the tag grammar the self-updater depends on.
 
+## Signing setup
+
+Before publishing, configure the `release-signing` environment, its default-branch
+restriction and required reviewer, and its `UPDATE_SIGNING_KEY` secret as described
+in [Signed in-app updates](signed-updates.md). The public key must be embedded in
+`data/update-keys.json`. Signing is mandatory: a missing key stops publication
+before the tag is pushed. The runbook also covers dual-signature key rotation,
+secure key backups, and the transition from existing unsigned releases.
+
 ## Tag grammar
 
 Exactly these forms are valid release tags. The self-updater rejects anything else outright, since this is the only contract it parses:
@@ -23,8 +32,9 @@ The in-app **Preview** channel receives alpha, beta, RC, and stable releases. Th
 Run the **Release** workflow from GitHub's Actions tab on the default branch, choose a `bump` (`patch`, `minor`, or `major`), and leave `mode` at its default, `stable`. Once both Linux targets build:
 
 - the `prepare` job refuses to proceed if a release candidate tag exists for the target core version whose commit is not yet reachable from the release source -- promote or discard that RC first, so a stable release can never silently supersede an untested one;
-- the `release` job commits the new version into `Cargo.toml` and `Cargo.lock`, tags the commit `vX.Y.Z`, and pushes both to the default branch; and
-- it publishes x86-64 and ARM64 archives, matching debug-symbol files, checksums, and build-provenance attestations as an ordinary (non-prerelease) GitHub release -- the endpoint a Stable install polls.
+- after maintainer approval, the isolated `sign` job signs the manifest using tools from the workflow revision, binding both archive digests to the tag and original build source commit;
+- after the separate release approval, the `release` job commits the new version into `Cargo.toml` and `Cargo.lock`, tags the commit `vX.Y.Z`, and pushes both to the default branch; and
+- it publishes x86-64 and ARM64 archives, matching debug-symbol files, checksums, the signed manifest, and build-provenance attestations as an ordinary (non-prerelease) GitHub release -- the endpoint a Stable install polls.
 
 ## Cutting and promoting prereleases
 
@@ -36,7 +46,7 @@ Run the same workflow manually with `mode` set to `alpha`, `beta`, `rc`, or `nig
 - gives nightlies a UTC-dated suffix, adding `.N` for repeated same-day runs;
 - never touches `Cargo.toml` or `Cargo.lock`, and never pushes a version commit -- it tags the source commit directly;
 - injects the exact tag and build kind at compile time; and
-- publishes a GitHub prerelease, keeping `/releases/latest` pointed at the last stable release.
+- requires the same signing and publication approvals as stable releases, then publishes a signed GitHub prerelease, keeping `/releases/latest` pointed at the last stable release.
 
 RC and nightly publication are intentionally manual. To promote a validated RC line to stable, run the workflow again with `mode: stable` and the same `bump` level. The resulting stable tag supersedes the prerelease line; the guard blocks promotion when an RC commit is not reachable from the stable source.
 
@@ -79,4 +89,4 @@ Cases covered:
 
 ## Known limitation
 
-This repository has no workflow test harness. The version-calculation logic above is unit tested; the workflow's job wiring, environment plumbing, and git/`gh` interactions are verified only by manual dry runs of the underlying shell logic against this repository's real `Cargo.toml` and tags, not by an actual GitHub Actions run.
+This repository has no full workflow execution harness. Version calculation and manifest signing have unit tests, including OpenSSL/Rust signature interoperability and checks on the signing job's source isolation. Those tests do not replace a real approved GitHub Actions release run for verifying environment secrets, artifact transfer, tagging, and publication.

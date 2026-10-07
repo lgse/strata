@@ -4,6 +4,10 @@
 import os
 import subprocess
 
+import pytest
+
+from harness import tree
+from harness.process import terminate
 from harness.application import binary_path
 from harness.environment import process_environment
 
@@ -73,12 +77,22 @@ def test_multiple_arguments_include_non_utf8_directory_and_file(strata):
         stream.write(b"reveal regression\n")
     broken_link = root + b"/broken-link.txt"
     os.symlink(root + b"/missing-target.txt", broken_link)
+    colliding_argument = root + b"/collide-\xe9.txt"
+    for colliding in (root + b"/collide-\xe8.txt", colliding_argument):
+        with open(colliding, "wb") as stream:
+            stream.write(b"colliding name\n")
 
     variables = process_environment()
     variables.update(strata.environment.variables())
     variables.update(strata.display.environment)
     subprocess.run(
-        [os.fsencode(binary_path()), *directories, file_argument, broken_link],
+        [
+            os.fsencode(binary_path()),
+            *directories,
+            file_argument,
+            broken_link,
+            colliding_argument,
+        ],
         env=variables,
         cwd=strata.fixture.root,
         check=True,
@@ -86,11 +100,17 @@ def test_multiple_arguments_include_non_utf8_directory_and_file(strata):
         capture_output=True,
     )
 
+    def colliding_selections(windows):
+        return [
+            sum(node.has_state("selected") for node in window.find_all(name="collide-\ufffd.txt"))
+            for window in windows
+        ]
+
     def requested_windows_exist():
         windows = strata.application.application_node.find_all(role="frame", name="Strata")
-        if len(windows) != 5:
+        if len(windows) != 6:
             return False
-        return all(
+        return 1 in colliding_selections(windows) and all(
             any(window.find(name=marker) is not None for window in windows)
             for marker in markers
         ) and all(
@@ -104,5 +124,45 @@ def test_multiple_arguments_include_non_utf8_directory_and_file(strata):
 
     strata.wait(
         requested_windows_exist,
-        "one window per argument, with the file and broken symlink revealed",
+        "one window per argument, with the files and broken symlink revealed",
     )
+    windows = strata.application.application_node.find_all(role="frame", name="Strata")
+    assert max(colliding_selections(windows)) == 1
+
+
+@pytest.mark.parametrize("closed_streams", ["stdout", "stderr", "both"])
+def test_startup_with_closed_pipes(strata, closed_streams):
+    target_dir = strata.fixture.path("closed-pipe-target")
+    target_dir.mkdir()
+    (target_dir / "target.txt").write_text("pipe regression\n")
+
+    strata.application.stop()
+    variables = process_environment()
+    variables.update(strata.environment.variables())
+    variables.update(strata.display.environment)
+    variables["RUST_LOG"] = "trace"
+
+    process = subprocess.Popen(
+        [binary_path(), str(target_dir)],
+        env=variables,
+        cwd=strata.fixture.root,
+        start_new_session=True,
+        stdout=subprocess.PIPE if closed_streams in ("stdout", "both") else subprocess.DEVNULL,
+        stderr=subprocess.PIPE if closed_streams in ("stderr", "both") else subprocess.DEVNULL,
+    )
+    try:
+        for stream in (process.stdout, process.stderr):
+            if stream is not None:
+                stream.close()
+
+        def target_window_exists():
+            assert process.poll() is None, f"Strata exited during startup: {process.returncode}"
+            application = tree.find_application("io.github.lgse.Strata")
+            if application is None:
+                return False
+            windows = application.find_all(role="frame", name="Strata")
+            return any(window.find(name="target.txt") is not None for window in windows)
+
+        strata.wait(target_window_exists, "primary startup with closed output pipes")
+    finally:
+        terminate(process)

@@ -28,5 +28,15 @@ pub(crate) fn location_for_file(file: &gio::File) -> Option<Location> {
     Some(Location::uri(sanitized))
 }
 
+/// Rebuild the child as GIO listings do, preserving location equality across URI spellings.
+pub(crate) fn reveal_target_for_file(file: &gio::File) -> Option<(Location, Location)> {
+    let parent = file.parent()?;
+    let name = file.basename()?;
+    Some((
+        location_for_file(&parent)?,
+        location_for_file(&parent.child(name))?,
+    ))
+}
+
 #[cfg(test)]
 mod tests;

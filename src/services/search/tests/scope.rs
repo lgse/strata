@@ -2,8 +2,8 @@
 
 use super::*;
 use crate::services::search::{
-    SearchCoverage, SharedIndex, append_index_items, filter_score_normalized, index_filter,
-    start_search_session,
+    SearchCoverage, SearchScorer, SharedIndex, append_index_items, filter_score_normalized,
+    index_filter, start_search_session,
 };
 use std::sync::Arc;
 
@@ -81,8 +81,8 @@ fn wildcard_filters_match_basenames_within_the_selected_scope() {
         ] {
             if recursive {
                 match query {
-                    "*.MOV" => expected.push("album.MOV/deep.MOV"),
-                    "*" | "MOV" => expected.extend(["album.MOV/nested.txt", "album.MOV/deep.MOV"]),
+                    "*.MOV" | "MOV" => expected.push("album.MOV/deep.MOV"),
+                    "*" => expected.extend(["album.MOV/nested.txt", "album.MOV/deep.MOV"]),
                     _ => {}
                 }
             }
@@ -92,6 +92,7 @@ fn wildcard_filters_match_basenames_within_the_selected_scope() {
                 items,
                 indexing,
                 coverage,
+                ..
             } = wait_for_results(&events).expect("filter results");
             assert_eq!(returned, query);
             assert!(!indexing);
@@ -108,9 +109,49 @@ fn wildcard_filters_match_basenames_within_the_selected_scope() {
 }
 
 #[test]
+fn plain_filters_rank_literal_names_above_typos_and_reject_scattered_or_path_matches() {
+    let fixture = tempfile::tempdir().expect("fixture");
+    for name in [
+        "strata-trash.svg",
+        "strata-trahs.svg",
+        "strata-sliders-horizontal.svg",
+        "strata-refresh.svg",
+        "strata-search.svg",
+        "strata-list-checks.svg",
+        "trash-folder/unrelated.svg",
+        "nested/STRATA-TRASH-FULL.svg",
+    ] {
+        fixture_file(fixture.path(), name);
+    }
+    for recursive in [false, true] {
+        let (search, events) = index_filter(fixture.path().into(), false, recursive);
+        for query in ["trash", "trahs"] {
+            search.query(query);
+            let SearchEvent::Results { items, .. } = wait_for_results(&events).expect("results");
+            let actual: HashSet<_> = items.iter().map(|item| item.name.as_str()).collect();
+            let mut expected =
+                HashSet::from(["strata-trash.svg", "strata-trahs.svg", "trash-folder"]);
+            if recursive {
+                expected.insert("STRATA-TRASH-FULL.svg");
+            }
+            assert_eq!(actual, expected, "recursive={recursive}, query={query}");
+            let typo_position = items
+                .iter()
+                .position(|item| item.name == "strata-trahs.svg");
+            assert_eq!(
+                typo_position,
+                Some(if query == "trash" { items.len() - 1 } else { 0 }),
+                "literal matches rank first: recursive={recursive}, query={query}",
+            );
+        }
+    }
+}
+
+#[test]
 fn wildcard_scoring_is_session_local_and_applies_to_new_index_batches() {
     let index = Arc::new(SharedIndex::new());
-    let (filter, events) = start_search_session(index.clone(), filter_score_normalized);
+    let (filter, events) =
+        start_search_session(index.clone(), SearchScorer::Name(filter_score_normalized));
     filter.query("*.MOV");
     let SearchEvent::Results { items, .. } = wait_for_results(&events).expect("empty index");
     assert!(items.is_empty());
@@ -128,7 +169,8 @@ fn wildcard_scoring_is_session_local_and_applies_to_new_index_batches() {
     let SearchEvent::Results { items, .. } = wait_for_results(&events).expect("rescored results");
     assert_eq!(items, expected);
 
-    let (global, global_events) = start_search_session(index, fuzzy_score_normalized);
+    let (global, global_events) =
+        start_search_session(index, SearchScorer::Name(fuzzy_score_normalized));
     global.query("*.MOV");
     let SearchEvent::Results { items, .. } =
         wait_for_results(&global_events).expect("global results");
@@ -155,4 +197,36 @@ fn recursive_and_directory_filters_never_share_the_wrong_scope() {
     let SearchEvent::Results { items, .. } =
         wait_for_results(&local_events).expect("local results");
     assert!(items.is_empty());
+}
+
+#[test]
+fn recursive_filter_stays_below_its_root_while_other_roots_are_indexed() {
+    let fixture = tempfile::tempdir().expect("fixture");
+    let parent = fixture.path();
+    for name in [
+        "current/needle.txt",
+        "current/deep/nested/needle-deep.txt",
+        "sibling/needle.txt",
+        "sibling/deep/needle-sibling.txt",
+        "needle-parent.txt",
+    ] {
+        fixture_file(parent, name);
+    }
+    let current = parent.join("current");
+    let (parent_search, parent_events) = index_tree(parent.to_path_buf(), false);
+    parent_search.query("needle");
+    wait_for_results(&parent_events).expect("parent index");
+    let (sibling_search, sibling_events) = index_filter(parent.join("sibling"), false, true);
+    sibling_search.query("needle");
+    wait_for_results(&sibling_events).expect("sibling index");
+
+    let (search, events) = index_filter(current.clone(), false, true);
+    search.query("needle");
+    let SearchEvent::Results { items, .. } = wait_for_results(&events).expect("current results");
+    let actual: HashSet<_> = items.iter().map(|item| item.path.clone()).collect();
+    let expected: HashSet<_> = ["needle.txt", "deep/nested/needle-deep.txt"]
+        .into_iter()
+        .map(|name| current.join(name))
+        .collect();
+    assert_eq!(actual, expected);
 }

@@ -2,16 +2,91 @@
 
 use std::{
     fs,
+    io::{Read as _, Write as _},
+    net::TcpListener,
+    os::unix::fs::symlink,
     path::{Path, PathBuf},
+    sync::mpsc,
+    time::{Duration, Instant},
 };
 
 use super::{
-    APPLICATION_ICON, DESKTOP_ENTRY, UpdateMethod, aur_repository_version_from_response,
-    desktop_entry_with_exec, file_sha256_hex, find_binaries, first_hash_token,
+    APPLICATION_ICON, DESKTOP_ENTRY, InstallCancel, InstallRequest, InstallStop, UpdateInstall,
+    UpdateMethod, aur_repository_version_from_response, desktop_entry_with_exec,
+    download::DownloadTimeouts, download_to_file_bounded, download_to_file_with, is_old_instance,
     package_repository_version_for, parse_aur_package_version, parse_package_version,
-    refresh_desktop_metadata, repository_database_version, stage_binary_path, stage_workdir,
-    update_method_for, verify_archive_checksum,
+    refresh_desktop_metadata, repository_database_version, restore_rollback, retire_old_instances,
+    stage_binary_path, stage_rollback, stage_workdir, update_method_for, verified_download_url,
+    verify_staged_binary,
 };
+
+#[test]
+fn old_instance_selection_retires_chooser_and_file_manager_not_helpers_or_other_binaries() {
+    let root = tempfile::tempdir().expect("process fixture");
+    let binary = root.path().join("old-strata");
+    let other = root.path().join("other-strata");
+    fs::write(&binary, b"old").expect("old binary");
+    fs::write(&other, b"other").expect("unrelated binary");
+    let old = fs::metadata(&binary).expect("old metadata");
+    let proc_entry = root.path().join("12345");
+    fs::create_dir(&proc_entry).expect("process directory");
+    symlink(&binary, proc_entry.join("exe")).expect("process executable");
+    for arguments in [
+        b"strata\0".as_slice(),
+        b"strata\0/home/user\0".as_slice(),
+        b"strata\0--portal\0".as_slice(),
+    ] {
+        fs::write(proc_entry.join("cmdline"), arguments).expect("process arguments");
+        assert!(is_old_instance(&proc_entry, &binary, &old));
+    }
+    for arguments in [
+        b"strata\0--browser-worker\0".as_slice(),
+        b"strata\0--preview-helper\0".as_slice(),
+        b"strata\0--install-portal\0".as_slice(),
+    ] {
+        fs::write(proc_entry.join("cmdline"), arguments).expect("helper arguments");
+        assert!(!is_old_instance(&proc_entry, &binary, &old));
+    }
+    fs::write(proc_entry.join("cmdline"), b"strata\0--portal\0").expect("chooser arguments");
+    fs::remove_file(proc_entry.join("exe")).expect("remove old executable link");
+    symlink(&other, proc_entry.join("exe")).expect("unrelated executable link");
+    assert!(!is_old_instance(&proc_entry, &binary, &old));
+    fs::remove_file(proc_entry.join("exe")).expect("remove unrelated link");
+    let deleted = root.path().join("old-strata (deleted)");
+    fs::write(&deleted, b"older").expect("earlier binary");
+    symlink(&deleted, proc_entry.join("exe")).expect("earlier executable link");
+    assert!(is_old_instance(&proc_entry, &binary, &old));
+}
+
+#[test]
+fn in_place_retirement_signals_and_waits_for_an_owned_process() {
+    let sleep = crate::trusted_command::resolve("sleep").expect("trusted sleep");
+    let root = tempfile::tempdir().expect("private proc fixture");
+    let mut child = std::process::Command::new(&sleep)
+        .arg("30")
+        .spawn()
+        .expect("start owned process");
+    let pid = child.id();
+    symlink(format!("/proc/{pid}"), root.path().join(pid.to_string()))
+        .expect("fixture process link");
+    let old = fs::metadata(&sleep).expect("old executable metadata");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while !is_old_instance(&root.path().join(pid.to_string()), &sleep, &old)
+        && std::time::Instant::now() < deadline
+    {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    retire_old_instances(root.path(), &sleep, &old);
+    let status = child.try_wait().expect("inspect retired process");
+    if status.is_none() {
+        child.kill().expect("clean up process after failure");
+        child.wait().expect("reap process after failure");
+    }
+    assert!(
+        status.is_some(),
+        "retirement must wait until the old process exits"
+    );
+}
 
 const PACKAGED_ENTRY: &str =
     "[Desktop Entry]\nType=Application\nName=Strata\nExec=strata %U\nIcon=io.github.lgse.Strata\n";
@@ -217,102 +292,6 @@ fn stage_binary_path_is_unique_per_call() {
 }
 
 #[test]
-fn first_hash_token_lowercases_and_ignores_trailing_filename() {
-    assert_eq!(
-        first_hash_token("ABCDEF  strata-0.2.0-x86_64-unknown-linux-gnu.tar.gz\n"),
-        Some("abcdef".to_owned())
-    );
-}
-
-#[test]
-fn first_hash_token_rejects_empty_input() {
-    assert_eq!(first_hash_token("   \n"), None);
-}
-
-#[test]
-fn archive_checksum_hashes_in_process() {
-    let dir = scratch_dir("checksum", line!());
-    let empty = dir.join("empty.tar.gz");
-    fs::write(&empty, b"").expect("write empty archive");
-    const EMPTY: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
-    assert_eq!(file_sha256_hex(&empty).expect("hash empty"), EMPTY);
-    verify_archive_checksum(&empty, &format!("{EMPTY}  empty.tar.gz\n"))
-        .expect("empty digest matches");
-
-    let nonempty = dir.join("payload.tar.gz");
-    fs::write(&nonempty, b"abc").expect("write nonempty archive");
-    const ABC: &str = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
-    assert_eq!(file_sha256_hex(&nonempty).expect("hash abc"), ABC);
-    verify_archive_checksum(
-        &nonempty,
-        "BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD  payload.tar.gz\n",
-    )
-    .expect("nonempty digest matches");
-    assert_eq!(
-        verify_archive_checksum(&nonempty, EMPTY).expect_err("mismatch"),
-        "Downloaded update failed checksum verification"
-    );
-
-    let _removed = fs::remove_dir_all(&dir);
-}
-
-#[test]
-fn find_binaries_locates_a_single_nested_binary() {
-    let dir = std::env::temp_dir().join(format!(
-        "strata-update-install-test-{}-{}",
-        std::process::id(),
-        line!()
-    ));
-    let package_dir = dir.join("strata-0.2.0-x86_64-unknown-linux-gnu");
-    fs::create_dir_all(&package_dir).expect("create package dir");
-    fs::write(package_dir.join("strata"), b"binary").expect("write binary");
-
-    let found = find_binaries(&dir, &["strata"]).expect("binary should be found");
-    assert_eq!(found, vec![package_dir.join("strata")]);
-
-    fs::remove_dir_all(&dir).expect("cleanup");
-}
-
-#[test]
-fn find_binaries_errors_when_a_requested_name_is_missing() {
-    let dir = std::env::temp_dir().join(format!(
-        "strata-update-install-test-empty-{}-{}",
-        std::process::id(),
-        line!()
-    ));
-    fs::create_dir_all(&dir).expect("create empty dir");
-
-    assert!(find_binaries(&dir, &["strata"]).is_err());
-
-    fs::remove_dir_all(&dir).expect("cleanup");
-}
-
-#[test]
-fn find_binaries_returns_all_requested_names_when_several_are_present() {
-    let dir = std::env::temp_dir().join(format!(
-        "strata-update-install-test-multi-{}-{}",
-        std::process::id(),
-        line!()
-    ));
-    let package_dir = dir.join("strata-0.2.0-x86_64-unknown-linux-gnu");
-    fs::create_dir_all(&package_dir).expect("create package dir");
-    fs::write(package_dir.join("strata"), b"binary").expect("write strata binary");
-    fs::write(package_dir.join("strata-helper"), b"binary").expect("write helper binary");
-
-    let found =
-        find_binaries(&dir, &["strata", "strata-helper"]).expect("both binaries should be found");
-    assert_eq!(
-        found,
-        vec![
-            package_dir.join("strata"),
-            package_dir.join("strata-helper"),
-        ]
-    );
-
-    fs::remove_dir_all(&dir).expect("cleanup");
-}
-
-#[test]
 fn desktop_entry_exec_points_at_the_install_path_and_keeps_field_codes() {
     let entry = desktop_entry_with_exec(PACKAGED_ENTRY, Path::new("/home/user/.local/bin/strata"));
 
@@ -480,4 +459,471 @@ fn refresh_keeps_an_installed_entry_when_the_archive_omits_metadata() {
     );
 
     fs::remove_dir_all(&dir).expect("cleanup");
+}
+
+fn request(tag: &str, asset: &str, advertised: &str) -> InstallRequest {
+    InstallRequest {
+        tag: tag.to_owned(),
+        asset_name: asset.to_owned(),
+        advertised_url: advertised.to_owned(),
+    }
+}
+
+const TAG: &str = "v0.11.2";
+
+fn release_url(tag: &str, asset: &str) -> String {
+    format!("https://github.com/lgse/strata/releases/download/{tag}/{asset}")
+}
+
+#[test]
+fn download_url_is_derived_from_the_release_tag_and_asset() {
+    let asset = super::super::update_check::archive_name("0.11.2");
+    let expected = release_url(TAG, &asset);
+
+    let url = verified_download_url(&request(TAG, &asset, &expected)).expect("url should verify");
+
+    assert_eq!(url, expected);
+}
+
+#[test]
+fn download_url_rejects_untrusted_locations_and_escaping_identities() {
+    let asset = super::super::update_check::archive_name("0.11.2");
+    let expected = release_url(TAG, &asset);
+    for advertised in [
+        expected.replace("github.com", "example.invalid"),
+        expected.replace("lgse/strata", "attacker/strata"),
+        expected.replace("https://", "http://"),
+        release_url("v0.11.1", &asset),
+        release_url(TAG, "unexpected.debug"),
+        expected.replace("https://", "https://user:token@"),
+    ] {
+        assert!(
+            verified_download_url(&request(TAG, &asset, &advertised)).is_err(),
+            "accepted {advertised}"
+        );
+    }
+    for (tag, asset) in [
+        (
+            "v0.11.2/../../../attacker/strata/releases/download/v1",
+            asset.as_str(),
+        ),
+        (TAG, "../../../attacker.tar.gz"),
+    ] {
+        assert!(verified_download_url(&request(tag, asset, &release_url(tag, asset))).is_err());
+    }
+}
+
+struct StubServer {
+    url: String,
+    handle: Option<std::thread::JoinHandle<()>>,
+}
+
+impl StubServer {
+    fn serving(headers: String, body: Vec<u8>) -> Self {
+        let listener =
+            std::net::TcpListener::bind("127.0.0.1:0").expect("bind loopback stub server");
+        let url = format!(
+            "http://{}/strata.tar.gz",
+            listener.local_addr().expect("stub server address")
+        );
+        let handle = std::thread::spawn(move || {
+            let Ok((mut stream, _peer)) = listener.accept() else {
+                return;
+            };
+            use std::io::{Read, Write};
+            stream
+                .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                .expect("request timeout");
+            let mut request = Vec::new();
+            let mut buffer = [0_u8; 1024];
+            while !request.windows(4).any(|bytes| bytes == b"\r\n\r\n") {
+                let count = stream.read(&mut buffer).expect("read request");
+                assert!(
+                    count > 0 && request.len() + count <= 8192,
+                    "complete bounded HTTP request"
+                );
+                request.extend_from_slice(&buffer[..count]);
+            }
+            let _written = stream.write_all(headers.as_bytes());
+            let _written = stream.write_all(&body);
+            let _flushed = stream.flush();
+        });
+        Self {
+            url,
+            handle: Some(handle),
+        }
+    }
+
+    fn with_body(body: Vec<u8>) -> Self {
+        let headers = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        );
+        Self::serving(headers, body)
+    }
+
+    fn claiming(length: u64) -> Self {
+        let headers =
+            format!("HTTP/1.1 200 OK\r\nContent-Length: {length}\r\nConnection: close\r\n\r\n");
+        Self::serving(headers, Vec::new())
+    }
+}
+
+impl Drop for StubServer {
+    fn drop(&mut self) {
+        if let Some(handle) = self.handle.take() {
+            let _joined = handle.join();
+        }
+    }
+}
+
+fn download(
+    server: &StubServer,
+    destination: &Path,
+    limit: u64,
+    cancel: &InstallCancel,
+) -> Result<(), String> {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let outcome = download_to_file_bounded(&server.url, destination, limit, cancel, &sender);
+    drop(sender);
+    let _drained: Vec<_> = receiver.into_iter().collect();
+    match outcome {
+        Ok(()) => Ok(()),
+        Err(InstallStop::Cancelled) => Err("cancelled".to_owned()),
+        Err(InstallStop::Failed(message)) => Err(message),
+    }
+}
+
+#[test]
+fn missing_signed_metadata_offers_manual_installation() {
+    let server = StubServer::serving(
+        "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_owned(),
+        Vec::new(),
+    );
+    let result = super::fetch_update_metadata(&server.url, 8192, &InstallCancel::new());
+    assert!(
+        matches!(result, Err(InstallStop::Failed(message)) if message.contains("no signed update manifest") && message.contains("manually"))
+    );
+}
+
+#[test]
+fn signed_metadata_download_keeps_the_exact_published_bytes() {
+    let body = b"{ \"schema\": 1 }\n";
+    let server = StubServer::with_body(body.to_vec());
+    assert_eq!(
+        super::fetch_update_metadata(&server.url, body.len() as u64, &InstallCancel::new())
+            .expect("metadata download"),
+        body
+    );
+}
+
+#[test]
+fn a_download_within_the_ceiling_is_written_to_disk() {
+    let dir = scratch_dir("download-ok", line!());
+    let destination = dir.join("strata.tar.gz");
+    let server = StubServer::with_body(vec![b'x'; 2048]);
+
+    download(&server, &destination, 4096, &InstallCancel::new()).expect("download should succeed");
+
+    assert_eq!(
+        fs::metadata(&destination).expect("downloaded file").len(),
+        2048
+    );
+}
+
+#[test]
+fn a_download_advertising_more_than_the_ceiling_is_refused() {
+    let dir = scratch_dir("download-claimed", line!());
+    let destination = dir.join("strata.tar.gz");
+    let server = StubServer::claiming(64 * 1024);
+
+    let error = download(&server, &destination, 4096, &InstallCancel::new())
+        .expect_err("an oversized content-length must be refused");
+
+    assert!(
+        error.contains("larger than expected"),
+        "unexpected: {error}"
+    );
+    assert!(!destination.exists());
+}
+
+#[test]
+fn a_download_that_streams_past_the_ceiling_is_stopped() {
+    let dir = scratch_dir("download-streamed", line!());
+    let destination = dir.join("strata.tar.gz");
+    let server = StubServer::serving(
+        "HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n".to_owned(),
+        vec![b'x'; 64 * 1024],
+    );
+
+    let error = download(&server, &destination, 4096, &InstallCancel::new())
+        .expect_err("an oversized stream must be stopped");
+
+    assert!(
+        error.contains("larger than expected"),
+        "unexpected: {error}"
+    );
+    assert!(
+        fs::metadata(&destination).expect("partial file").len() <= 4096 + 64 * 1024,
+        "the partial download should not have been allowed to run away"
+    );
+}
+
+#[test]
+fn a_cancelled_download_stops_without_reporting_a_failure() {
+    let dir = scratch_dir("download-cancelled", line!());
+    let destination = dir.join("strata.tar.gz");
+    let server = StubServer::with_body(vec![b'x'; 2048]);
+    let cancel = InstallCancel::new();
+    cancel.cancel();
+
+    let error = download(&server, &destination, 4096, &cancel).expect_err("cancel must stop");
+
+    assert_eq!(error, "cancelled");
+}
+
+#[test]
+fn a_preserved_executable_is_restored_after_a_failed_replacement() {
+    let dir = scratch_dir("rollback", line!());
+    let installed = dir.join("strata");
+    fs::write(&installed, b"previous version").expect("write installed binary");
+
+    let rollback = stage_rollback(&installed, &dir).expect("stage rollback");
+    fs::write(&installed, b"broken replacement").expect("replace installed binary");
+    restore_rollback(&rollback, &installed).expect("restore rollback");
+
+    assert_eq!(
+        fs::read(&installed).expect("read restored binary"),
+        b"previous version"
+    );
+    assert!(!rollback.exists(), "the rollback copy should be consumed");
+}
+
+#[test]
+fn a_staged_binary_that_cannot_run_is_rejected_before_installation() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = scratch_dir("staged-binary", line!());
+    let staged = dir.join("strata");
+    fs::write(&staged, "#!/bin/sh\nexit 1\n").expect("write staged binary");
+    fs::set_permissions(&staged, fs::Permissions::from_mode(0o755)).expect("make executable");
+
+    assert!(verify_staged_binary(&staged).is_err());
+}
+
+#[test]
+fn a_staged_binary_that_runs_is_accepted() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = scratch_dir("staged-binary-ok", line!());
+    let staged = dir.join("strata");
+    fs::write(&staged, "#!/bin/sh\nexit 0\n").expect("write staged binary");
+    fs::set_permissions(&staged, fs::Permissions::from_mode(0o755)).expect("make executable");
+
+    assert!(verify_staged_binary(&staged).is_ok());
+}
+
+struct TrickleServer {
+    url: String,
+    _release: mpsc::Sender<()>,
+}
+
+/// Keep the connection open after sending to distinguish a stall from early EOF.
+fn serve_trickle(
+    content_length: Option<usize>,
+    chunks: Vec<Vec<u8>>,
+    gap: Duration,
+) -> TrickleServer {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).expect("loopback listener");
+    let port = listener.local_addr().expect("listener address").port();
+    let (release, released) = mpsc::channel::<()>();
+    std::thread::spawn(move || {
+        let Ok((mut stream, _)) = listener.accept() else {
+            return;
+        };
+        let mut head = Vec::new();
+        let mut buffer = [0_u8; 1024];
+        while !head.windows(4).any(|window| window == b"\r\n\r\n") {
+            match stream.read(&mut buffer) {
+                Ok(0) | Err(_) => return,
+                Ok(count) => head.extend_from_slice(&buffer[..count]),
+            }
+        }
+        if let Some(length) = content_length {
+            let head =
+                format!("HTTP/1.1 200 OK\r\ncontent-length: {length}\r\nconnection: close\r\n\r\n");
+            if stream.write_all(head.as_bytes()).is_err() {
+                return;
+            }
+            for chunk in chunks {
+                std::thread::sleep(gap);
+                if stream.write_all(&chunk).is_err() {
+                    return;
+                }
+            }
+        }
+        let _released = released.recv_timeout(Duration::from_secs(10));
+    });
+    TrickleServer {
+        url: format!("http://127.0.0.1:{port}/strata.tar.gz"),
+        _release: release,
+    }
+}
+
+fn chunks(count: usize, size: usize) -> Vec<Vec<u8>> {
+    (0..count).map(|index| vec![index as u8; size]).collect()
+}
+
+fn short_timeouts(idle: Duration) -> DownloadTimeouts {
+    DownloadTimeouts {
+        connect: Duration::from_secs(2),
+        response: Duration::from_secs(2),
+        idle,
+    }
+}
+
+struct TimedDownload {
+    result: Result<(), String>,
+    elapsed: Duration,
+    finished: Instant,
+    bytes: Vec<u8>,
+}
+
+fn timed_download(
+    server: &TrickleServer,
+    timeouts: DownloadTimeouts,
+    cancel: &InstallCancel,
+    on_progress: impl FnMut(UpdateInstall) + Send + 'static,
+) -> TimedDownload {
+    let dir = tempfile::tempdir().expect("download directory");
+    let destination = dir.path().join("strata.tar.gz");
+    let (progress, events) = mpsc::channel();
+    let observer = std::thread::spawn(move || events.into_iter().for_each(on_progress));
+    let started = Instant::now();
+    let result = download_to_file_with(
+        &server.url,
+        &destination,
+        64 * 1024 * 1024,
+        cancel,
+        &progress,
+        timeouts,
+    );
+    let finished = Instant::now();
+    drop(progress);
+    observer.join().expect("progress observer");
+    TimedDownload {
+        result: result.map_err(|stop| match stop {
+            InstallStop::Cancelled => "cancelled".to_owned(),
+            InstallStop::Failed(message) => message,
+        }),
+        elapsed: finished - started,
+        finished,
+        bytes: fs::read(&destination).unwrap_or_default(),
+    }
+}
+
+#[test]
+fn download_keeps_waiting_through_gaps_shorter_than_the_idle_limit() {
+    // Each gap outlasts one cancel poll, so a wait spans several polls, and
+    // the whole transfer takes twice the idle limit: there is no total cap.
+    let body = chunks(4, 4096);
+    let server = serve_trickle(Some(4 * 4096), body.clone(), Duration::from_millis(1500));
+    let idle = Duration::from_secs(3);
+
+    let download = timed_download(&server, short_timeouts(idle), &InstallCancel::new(), drop);
+
+    assert_eq!(download.result, Ok(()));
+    assert!(download.elapsed > idle * 2, "{:?}", download.elapsed);
+    assert_eq!(download.bytes, body.concat());
+}
+
+#[test]
+fn download_fails_when_the_body_stalls() {
+    let server = serve_trickle(Some(4 * 4096), chunks(1, 4096), Duration::ZERO);
+    let idle = Duration::from_millis(1500);
+
+    let download = timed_download(&server, short_timeouts(idle), &InstallCancel::new(), drop);
+
+    let error = download.result.expect_err("a stalled body must fail");
+    assert_eq!(
+        error,
+        "The download stalled — check your connection and try again"
+    );
+    assert!(download.elapsed >= idle, "{:?}", download.elapsed);
+    assert!(
+        download.elapsed < Duration::from_secs(5),
+        "{:?}",
+        download.elapsed
+    );
+}
+
+#[test]
+fn download_fails_when_headers_never_arrive() {
+    let server = serve_trickle(None, Vec::new(), Duration::ZERO);
+    // Longer than the test's bound, so only the idle limit can end the wait.
+    let timeouts = DownloadTimeouts {
+        response: Duration::from_secs(10),
+        ..short_timeouts(Duration::from_millis(1500))
+    };
+
+    let download = timed_download(&server, timeouts, &InstallCancel::new(), drop);
+
+    let error = download.result.expect_err("a silent server must fail");
+    assert_eq!(
+        error,
+        "The download stalled — check your connection and try again"
+    );
+    assert!(
+        download.elapsed < Duration::from_secs(5),
+        "{:?}",
+        download.elapsed
+    );
+}
+
+#[test]
+fn cancel_stops_a_stalled_download_without_waiting_for_the_idle_limit() {
+    let server = serve_trickle(Some(4 * 4096), chunks(1, 4096), Duration::ZERO);
+    let cancel = InstallCancel::new();
+    let (cancelled_at, cancelled) = mpsc::channel();
+    let canceller = cancel.clone();
+    let mut requested = false;
+
+    let download = timed_download(
+        &server,
+        short_timeouts(Duration::from_secs(20)),
+        &cancel,
+        move |event| {
+            if !requested
+                && matches!(event, UpdateInstall::Downloading { downloaded, .. } if downloaded > 0)
+            {
+                requested = true;
+                std::thread::sleep(Duration::from_millis(300));
+                let _sent = cancelled_at.send(Instant::now());
+                canceller.cancel();
+            }
+        },
+    );
+
+    let cancelled_at = cancelled.recv().expect("the download made progress first");
+    assert_eq!(download.result, Err("cancelled".to_owned()));
+    let stopped = download.finished.saturating_duration_since(cancelled_at);
+    assert!(stopped < Duration::from_secs(3), "{stopped:?}");
+}
+
+#[test]
+fn cancel_stops_a_silent_metadata_fetch_without_waiting_for_a_timeout() {
+    let server = serve_trickle(None, Vec::new(), Duration::ZERO);
+    let cancel = InstallCancel::new();
+    let canceller = cancel.clone();
+    let cancelled_at = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(300));
+        canceller.cancel();
+        Instant::now()
+    });
+
+    let result = super::fetch_update_metadata(&server.url, 8192, &cancel);
+
+    let stopped = Instant::now().saturating_duration_since(cancelled_at.join().expect("canceller"));
+    assert!(matches!(result, Err(InstallStop::Cancelled)), "{result:?}");
+    assert!(stopped < Duration::from_secs(3), "{stopped:?}");
 }

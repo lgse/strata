@@ -2,6 +2,8 @@
 """Real browser requests reuse bounded sandbox supervisors across navigation."""
 
 import hashlib
+import io
+import zipfile
 import os
 import re
 import signal
@@ -9,7 +11,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from PIL import Image
+from PIL import Image, PngImagePlugin
 
 from harness.modes import ALL_MODES
 
@@ -38,13 +40,22 @@ def fixture_tree(fixture_tree):
         directory.mkdir()
         for index in range(6):
             Image.new("RGB", (320 + index, 180), (40, 160, 80)).save(directory / f"photo-{index}.png")
+        preview = io.BytesIO()
+        Image.new("RGB", (32, 32), (220, 40, 80)).save(preview, format="PNG")
+        for name, member in [("model.3mf", "Metadata/thumbnail.png"), ("model.FCStd", "thumbnails/Thumbnail.png")]:
+            with zipfile.ZipFile(directory / name, "w") as package:
+                package.writestr("3D/3dmodel.model", b"geometry must not be parsed")
+                package.writestr(member, preview.getvalue())
+                if name.endswith("3mf"):
+                    package.writestr("Metadata/broken-thumbnail.png", b"invalid image")
+        (directory / "plain.stl").write_text("solid empty\nendsolid\n")
     return fixture_tree
 
 
 def _folder_cached(strata, test_environment, folder):
     bucket = test_environment.cache_home / "thumbnails" / "large"
     return all((bucket / (hashlib.md5(path.as_uri().encode()).hexdigest() + ".png")).is_file()
-               for path in strata.fixture.path(folder).glob("*.png"))
+               for path in strata.fixture.path(folder).iterdir() if path.suffix != ".stl")
 
 
 def _worker_pids(strata):
@@ -52,9 +63,33 @@ def _worker_pids(strata):
     return [int(pid) for pid in re.findall(r"browser sandbox started pid=(\d+)", log)]
 
 
+def test_icons_rename_reuses_loaded_thumbnail_and_details(strata, test_environment):
+    strata.switch_view("Icons")
+    strata.open_directory("photos-a")
+    strata.wait(lambda: _folder_cached(strata, test_environment, "photos-a"),
+                "all original thumbnails persisted")
+    for index in range(6):
+        strata.wait(lambda index=index: strata.window.find(role="label", name=f"{320 + index}×180"),
+                    "original source dimensions")
+    strata.pointer.click(strata.entry("photo-0.png"))
+    strata.keyboard.press("F2")
+    field = strata.editable_field()
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("photo-0-renamed.png")
+    strata.wait(lambda: field.text == "photo-0-renamed.png", "replacement name")
+    completed = strata.application.log().count("browser worker completed")
+    strata.keyboard.press("Return")
+    strata.wait_for_entry_gone("photo-0.png")
+    strata.wait_for_selection(["photo-0-renamed.png"])
+    strata.wait(lambda: strata.entry("photo-0-renamed.png").find(role="label", name="320×180"),
+                "renamed image retains its dimensions")
+    strata.settle(strata.entry("photo-0-renamed.png"))
+    assert strata.application.log().count("browser worker completed") == completed
+
+
 @pytest.mark.parametrize("mode", ALL_MODES)
 def test_browser_workers_reuse_processes_and_preserve_source_details(strata, mode, test_environment):
-    strata.switch_view(mode)
+    assert strata.view_mode() == mode
 
     def cached(folder):
         return _folder_cached(strata, test_environment, folder)
@@ -68,13 +103,28 @@ def test_browser_workers_reuse_processes_and_preserve_source_details(strata, mod
     persistent = "Landlock ABI 3 unavailable" not in strata.application.log()
     assert 1 <= initial <= 2 if persistent else initial == 0
     if mode == "Icons":
-        strata.wait(lambda: strata.window.find(role="label", name="320×180"), "original image dimensions")
+        for width in range(320, 326):
+            strata.wait(lambda width=width: strata.window.find(role="label", name=f"{width}×180"),
+                        "original image dimensions")
     strata.keyboard.press("alt+Left")
     strata.wait(lambda: strata.entry("photos-b"), "parent folder")
     strata.open_directory("photos-b")
     strata.wait(lambda: cached("photos-b"), "second folder thumbnails persisted")
+    if mode == "Icons":
+        for width in range(320, 326):
+            strata.wait(lambda width=width: strata.window.find(role="label", name=f"{width}×180"),
+                        "second folder image dimensions")
     assert starts() <= 2, "navigation must reuse the process-wide pool"
-    assert strata.application.log().count("browser worker completed") >= 12
+    assert strata.application.log().count("browser worker completed") >= 16
+    bucket = test_environment.cache_home / "thumbnails" / "large"
+    for folder in ["photos-a", "photos-b"]:
+        for name in ["model.3mf", "model.FCStd"]:
+            path = strata.fixture.path(folder) / name
+            cached_image = bucket / (hashlib.md5(path.as_uri().encode()).hexdigest() + ".png")
+            with Image.open(cached_image) as image:
+                assert image.convert("RGB").getpixel((0, 0)) == (220, 40, 80)
+        path = strata.fixture.path(folder) / "plain.stl"
+        assert not (bucket / (hashlib.md5(path.as_uri().encode()).hexdigest() + ".png")).exists()
     if persistent:
         pid = _worker_pids(strata)[-1]
         status = Path(f"/proc/{pid}/status").read_text()
@@ -109,6 +159,35 @@ def test_idle_workers_exit_without_new_requests_and_restart_on_demand(strata, te
     strata.wait(lambda: _folder_cached(strata, test_environment, "photos-b"), "thumbnails after idle retirement")
     replacements = _worker_pids(strata)[len(original):]
     assert replacements if persistent else not replacements
+
+
+@pytest.mark.preferences(browser_mode="icons")
+def test_cached_icons_fill_dimensions_across_multiple_batches_after_a_jump(strata, test_environment):
+    directory = strata.fixture.path("cached-photos")
+    directory.mkdir()
+    bucket = test_environment.cache_home / "thumbnails" / "large"
+    bucket.mkdir(parents=True, exist_ok=True)
+    for index in range(256):
+        path = directory / f"photo-{index:04}.png"
+        Image.new("RGB", (320 + index, 180), (40, 160, 80)).save(path)
+        tags = PngImagePlugin.PngInfo()
+        tags.add_text("Thumb::URI", path.as_uri())
+        tags.add_text("Thumb::MTime", str(int(path.stat().st_mtime)))
+        name = hashlib.md5(path.as_uri().encode()).hexdigest() + ".png"
+        Image.new("RGB", (64, 32), (40, 160, 80)).save(bucket / name, pnginfo=tags)
+    strata.open_directory("cached-photos")
+    strata.select_entry("photo-0000.png")
+    strata.keyboard.press("End")
+    names = strata.wait(
+        lambda: (names if len(names := strata.entry_names()) > 16
+                 and "photo-0255.png" in names else None),
+        "more than one batch of cached thumbnails in the final viewport",
+    )
+    for name in names:
+        index = int(Path(name).stem.removeprefix("photo-"))
+        caption = f"{320 + index}×180"
+        strata.wait(lambda: strata.window.find(role="label", name=caption),
+                    f"warm thumbnail source dimensions for {name}")
 
 
 @pytest.mark.preferences(browser_mode="list")

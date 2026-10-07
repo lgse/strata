@@ -3,6 +3,52 @@
 use super::*;
 
 #[test]
+fn nested_copy_shares_one_worker_budget_across_subdirectories() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source");
+    let target = root.path().join("target");
+    for folder in 0..9 {
+        let directory = source.join(folder.to_string());
+        fs::create_dir_all(&directory)?;
+        for file in 0..9 {
+            fs::write(directory.join(file.to_string()), format!("{folder}/{file}"))?;
+        }
+    }
+    COPY_ACTIVITY.with(|activity| activity.set((0, 0)));
+    glib::MainContext::default().block_on(super::super::copy_recursively_local(
+        Arc::new(open_local_parent_directory(root.path())?),
+        OsString::from("source"),
+        gio::File::for_path(&target),
+        super::super::CopyOptions {
+            overwrite_existing: false,
+            fat_family: false,
+            workers: 2,
+        },
+        gio::Cancellable::new(),
+        None,
+        None,
+    ))?;
+    let (active, peak) = COPY_ACTIVITY.with(Cell::get);
+    assert_eq!(active, 0, "all file copies must settle before completion");
+    assert!(
+        peak <= 2,
+        "nested directories exceeded the copy budget: {peak}"
+    );
+    for folder in 0..9 {
+        for file in 0..9 {
+            assert_eq!(
+                fs::read_to_string(target.join(format!("{folder}/{file}")))?,
+                format!("{folder}/{file}")
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn recursive_copy_preserves_nested_directory_contents() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
@@ -295,6 +341,47 @@ fn cancelling_recursive_copy_removes_only_its_staging_output() -> Result<(), Box
 }
 
 #[test]
+fn cancelling_a_new_file_copy_removes_the_incomplete_stage() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source.bin");
+    let target = root.path().join("target.bin");
+    fs::File::create(&source)?.set_len(64 * 1024 * 1024)?;
+    fs::write(root.path().join("keep.txt"), b"keep")?;
+    let cancellable = gio::Cancellable::new();
+    let cancel_on_write = cancellable.clone();
+    let progress = TransferProgressTracker::new(
+        OperationRequestId(88),
+        Some(64 * 1024 * 1024),
+        Some(1),
+        Rc::new(move |event| {
+            if matches!(
+                event,
+                OperationEvent::TransferProgress {
+                    transferred_bytes: 1..,
+                    ..
+                }
+            ) {
+                cancel_on_write.cancel();
+            }
+        }),
+    );
+    let result = glib::MainContext::default().block_on(copy_new_recursively_with_progress(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        cancellable,
+        Some(progress),
+    ));
+    assert!(result.is_err_and(|error| error.matches(gio::IOErrorEnum::Cancelled)));
+    assert!(!target.exists());
+    assert_eq!(fs::read_dir(root.path())?.count(), 2);
+    assert_eq!(fs::read(root.path().join("keep.txt"))?, b"keep");
+    Ok(())
+}
+
+#[test]
 fn copying_and_replacing_symlinks_accepts_an_aliased_destination() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
@@ -341,12 +428,17 @@ fn copying_a_tree_with_a_named_pipe_fails_instead_of_blocking() -> Result<(), Bo
     let source = root.path().join("source");
     let target = root.path().join("target");
     fs::create_dir_all(&source)?;
-    fs::write(source.join("before.txt"), b"before")?;
     rustix::fs::mkfifoat(
         rustix::fs::CWD,
-        source.join("pipe"),
+        source.join("00-pipe"),
         rustix::fs::Mode::from_bits_truncate(0o600),
     )?;
+    for index in 1..16 {
+        fs::write(
+            source.join(format!("{index:02}-file.txt")),
+            index.to_string(),
+        )?;
+    }
 
     let result = glib::MainContext::default().block_on(copy_recursively(
         gio::File::for_path(&source),
@@ -361,6 +453,461 @@ fn copying_a_tree_with_a_named_pipe_fails_instead_of_blocking() -> Result<(), Bo
         error.to_string().contains("pipe"),
         "the error should name the entry: {error}"
     );
-    assert!(!target.join("pipe").exists());
+    assert!(!target.join("00-pipe").exists());
+    let entries_after_error = fs::read_dir(&target)?
+        .map(|entry| entry.map(|entry| entry.file_name()))
+        .collect::<Result<HashSet<_>, _>>()?;
+    glib::MainContext::default().block_on(glib::timeout_future(Duration::from_millis(20)));
+    let entries_after_settling = fs::read_dir(&target)?
+        .map(|entry| entry.map(|entry| entry.file_name()))
+        .collect::<Result<HashSet<_>, _>>()?;
+    assert_eq!(entries_after_settling, entries_after_error);
+    fs::remove_dir_all(&target)?;
+    let staged = glib::MainContext::default().block_on(copy_new_recursively(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        gio::Cancellable::new(),
+    ));
+    assert!(staged.is_err());
+    assert!(
+        !target.exists(),
+        "failed new copies must not expose partial trees"
+    );
+    assert_eq!(
+        fs::read_dir(root.path())?.count(),
+        1,
+        "failed stages are removed"
+    );
+    Ok(())
+}
+
+#[test]
+fn fat_sanitized_name_replaces_invalid_characters_and_trims_trailing_dots_and_spaces() {
+    assert_eq!(
+        fat_sanitized_name(OsStr::new("sc_macroorganizer?tabid:short=1.png")),
+        OsStr::new("sc_macroorganizer_tabid_short=1.png")
+    );
+    assert_eq!(
+        fat_sanitized_name(OsStr::new(r#"a"*/:<>?\|b"#)),
+        OsStr::new("a_________b")
+    );
+    assert_eq!(
+        fat_sanitized_name(OsStr::new("trailing dots.. ")),
+        OsStr::new("trailing dots")
+    );
+    assert_eq!(fat_sanitized_name(OsStr::new("...")), OsStr::new("_"));
+    assert_eq!(
+        fat_sanitized_name(OsStr::new("plain.txt")),
+        OsStr::new("plain.txt")
+    );
+}
+
+#[test]
+fn unique_fat_sibling_name_numbers_a_collision_instead_of_overwriting() {
+    let mut used = HashSet::new();
+    let first = unique_fat_sibling_name(OsString::from("a_b.txt"), &mut used);
+    let second = unique_fat_sibling_name(OsString::from("a_b.txt"), &mut used);
+    let third = unique_fat_sibling_name(OsString::from("a_b.txt"), &mut used);
+    assert_eq!(first, OsString::from("a_b.txt"));
+    assert_eq!(second, OsString::from("a_b (1).txt"));
+    assert_eq!(third, OsString::from("a_b (2).txt"));
+    assert_eq!(
+        unique_fat_sibling_name(OsString::from("A_B.txt"), &mut used),
+        OsString::from("A_B (3).txt")
+    );
+    let maximum = OsString::from("a (18446744073709551615).txt");
+    assert_eq!(unique_fat_sibling_name(maximum.clone(), &mut used), maximum);
+    let almost_maximum = OsString::from("a (18446744073709551614).txt");
+    assert_eq!(
+        unique_fat_sibling_name(almost_maximum.clone(), &mut used),
+        almost_maximum
+    );
+    assert_eq!(
+        unique_fat_sibling_name(almost_maximum, &mut used),
+        OsString::from("a (1).txt")
+    );
+}
+
+#[test]
+fn target_is_fat_family_reads_the_reported_filesystem_type() {
+    let mount_point = std::env::temp_dir().join("strata-fat-family-mount-probe");
+    let mounts = MountTable::parse(format!(
+        "1 0 8:1 / / rw - ext4 /dev/sda1 rw\n22 1 8:2 / {} rw - exfat /dev/sdb1 rw\n",
+        mount_point.display()
+    ));
+    assert!(target_is_fat_family(
+        &gio::File::for_path(mount_point.join("photo.jpg")),
+        &mounts
+    ));
+    assert!(!target_is_fat_family(
+        &gio::File::for_path("/some/other/path"),
+        &mounts
+    ));
+    assert!(!target_is_fat_family(
+        &gio::File::for_uri("sftp://example.com/remote"),
+        &mounts
+    ));
+}
+
+#[test]
+fn fat_family_copy_sanitizes_an_invalid_name_instead_of_discarding_the_whole_tree()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source");
+    let target = root.path().join("target");
+    fs::create_dir_all(source.join("nested"))?;
+    fs::write(source.join("ok.txt"), b"fine")?;
+    fs::write(
+        source.join("nested/sc_macroorganizer?tabid:short=1.png"),
+        b"cached icon",
+    )?;
+
+    let result = glib::MainContext::default().block_on(copy_recursively_fat_family(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        false,
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    assert!(result.is_ok(), "{result:?}");
+    assert_eq!(fs::read(target.join("ok.txt"))?, b"fine");
+    assert_eq!(
+        fs::read(target.join("nested/sc_macroorganizer_tabid_short=1.png"))?,
+        b"cached icon"
+    );
+    assert!(
+        !target
+            .join("nested/sc_macroorganizer?tabid:short=1.png")
+            .exists()
+    );
+    Ok(())
+}
+
+#[test]
+fn fat_family_copy_disambiguates_sibling_names_that_collide_after_sanitizing()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source");
+    let target = root.path().join("target");
+    fs::create_dir_all(&source)?;
+    fs::write(source.join("a?.txt"), b"first")?;
+    fs::write(source.join("a:.txt"), b"second")?;
+    fs::write(source.join("A*.txt"), b"third")?;
+
+    let result = glib::MainContext::default().block_on(copy_recursively_fat_family(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        false,
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    assert!(result.is_ok(), "{result:?}");
+    let mut contents = [
+        fs::read(target.join("A_.txt"))?,
+        fs::read(target.join("a_ (1).txt"))?,
+        fs::read(target.join("a_ (2).txt"))?,
+    ];
+    contents.sort();
+    assert_eq!(
+        contents,
+        [b"first".to_vec(), b"second".to_vec(), b"third".to_vec()]
+    );
+    Ok(())
+}
+
+#[test]
+fn non_fat_copy_leaves_invalid_characters_untouched() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source");
+    let target = root.path().join("target");
+    fs::create_dir_all(&source)?;
+    fs::write(source.join("a?b:c.txt"), b"unchanged")?;
+
+    let result = glib::MainContext::default().block_on(copy_recursively(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        false,
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    assert!(result.is_ok(), "{result:?}");
+    assert_eq!(fs::read(target.join("a?b:c.txt"))?, b"unchanged");
+    Ok(())
+}
+
+#[test]
+fn commit_staged_falls_back_when_noreplace_is_unsupported() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    for error in [
+        rustix::io::Errno::INVAL,
+        rustix::io::Errno::NOSYS,
+        rustix::io::Errno::OPNOTSUPP,
+    ] {
+        for directory in [false, true] {
+            let root = tempfile::tempdir()?;
+            let staged = super::super::StagedSibling::create(root.path(), directory)?;
+            let staged_path = staged.path().to_owned();
+            let target = root.path().join("target");
+            if directory {
+                fs::create_dir_all(staged_path.join("nested"))?;
+                fs::write(staged_path.join("nested/file.txt"), b"directory data")?;
+            } else {
+                fs::write(&staged_path, b"file data")?;
+            }
+
+            let result = glib::MainContext::default().block_on(
+                super::super::publish_staged_without_replace_with(
+                    staged,
+                    target.clone(),
+                    gio::Cancellable::new(),
+                    move |_, _| Err(error),
+                ),
+            );
+            assert!(result.is_ok(), "fallback commit must succeed for {error:?}");
+            assert!(
+                !staged_path.exists(),
+                "staged source should no longer exist"
+            );
+            assert!(target.exists(), "target destination must exist");
+            if directory {
+                assert_eq!(
+                    fs::read_to_string(target.join("nested/file.txt"))?,
+                    "directory data"
+                );
+            } else {
+                assert_eq!(fs::read_to_string(&target)?, "file data");
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn commit_staged_fallback_refuses_to_overwrite_existing_target() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    for error in [
+        rustix::io::Errno::INVAL,
+        rustix::io::Errno::NOSYS,
+        rustix::io::Errno::OPNOTSUPP,
+    ] {
+        for directory in [false, true] {
+            let root = tempfile::tempdir()?;
+            let staged = super::super::StagedSibling::create(root.path(), directory)?;
+            let staged_path = staged.path().to_owned();
+            let target = root.path().join("target");
+            if directory {
+                fs::create_dir(&target)?;
+                fs::write(target.join("existing.txt"), b"target data")?;
+            } else {
+                fs::write(&staged_path, b"new data")?;
+                fs::write(&target, b"target data")?;
+            }
+
+            let result = glib::MainContext::default().block_on(
+                super::super::publish_staged_without_replace_with(
+                    staged,
+                    target.clone(),
+                    gio::Cancellable::new(),
+                    move |_, _| Err(error),
+                ),
+            );
+            assert!(
+                result
+                    .expect_err("must refuse to overwrite existing target")
+                    .matches(gio::IOErrorEnum::Exists)
+            );
+            assert!(
+                !staged_path.exists(),
+                "failed publication must clean its stage"
+            );
+            if directory {
+                assert_eq!(
+                    fs::read_to_string(target.join("existing.txt"))?,
+                    "target data"
+                );
+            } else {
+                assert_eq!(fs::read_to_string(&target)?, "target data");
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn staged_publication_preserves_racing_destinations() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    for source_directory in [false, true] {
+        for destination_kind in ["file", "directory", "symlink"] {
+            let root = tempfile::tempdir()?;
+            let staged = super::super::StagedSibling::create(root.path(), source_directory)?;
+            let stage_path = staged.path().to_owned();
+            if !source_directory {
+                fs::write(&stage_path, b"new data")?;
+            }
+            let target = root.path().join("target");
+            let protected = root.path().join("protected");
+            fs::write(&protected, b"protected data")?;
+            let result = glib::MainContext::default().block_on(
+                super::super::publish_staged_without_replace_with(
+                    staged,
+                    target.clone(),
+                    gio::Cancellable::new(),
+                    move |_, to| {
+                        match destination_kind {
+                            "file" => fs::write(to, b"racing data").expect("create competing file"),
+                            "directory" => fs::create_dir(to).expect("create competing directory"),
+                            _ => std::os::unix::fs::symlink("protected", to)
+                                .expect("create competing symlink"),
+                        }
+                        Err(rustix::io::Errno::OPNOTSUPP)
+                    },
+                ),
+            );
+            assert!(result.is_err());
+            assert!(!stage_path.exists());
+            match destination_kind {
+                "file" => assert_eq!(fs::read(&target)?, b"racing data"),
+                "directory" => assert_eq!(fs::read_dir(&target)?.count(), 0),
+                _ => assert_eq!(fs::read_link(&target)?, Path::new("protected")),
+            }
+            assert_eq!(fs::read(root.path().join("protected"))?, b"protected data");
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn staged_fallback_preserves_dangling_symlinks() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let staged = super::super::StagedSibling::create(root.path(), false)?;
+    let staged_path = staged.path().to_owned();
+    fs::remove_file(&staged_path)?;
+    std::os::unix::fs::symlink("missing", &staged_path)?;
+    let target = root.path().join("target");
+    glib::MainContext::default().block_on(super::super::publish_staged_without_replace_with(
+        staged,
+        target.clone(),
+        gio::Cancellable::new(),
+        |_, _| Err(rustix::io::Errno::INVAL),
+    ))?;
+    assert_eq!(fs::read_link(target)?, Path::new("missing"));
+    assert!(fs::symlink_metadata(staged_path).is_err());
+    Ok(())
+}
+
+#[test]
+fn staged_fallback_removes_reserved_directory_on_copy_error() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let staged = super::super::StagedSibling::create(root.path(), true)?;
+    let staged_path = staged.path().to_owned();
+    let _socket = std::os::unix::net::UnixListener::bind(staged_path.join("unsupported.sock"))?;
+    let target = root.path().join("target");
+    let result =
+        glib::MainContext::default().block_on(super::super::publish_staged_without_replace_with(
+            staged,
+            target.clone(),
+            gio::Cancellable::new(),
+            |_, _| Err(rustix::io::Errno::NOSYS),
+        ));
+    assert!(result.is_err());
+    assert!(!target.exists());
+    assert!(!staged_path.exists());
+    Ok(())
+}
+
+#[test]
+fn staged_fallback_reports_cleanup_failure_after_publication() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let staged = super::super::StagedSibling::create(root.path(), false)?;
+    let target = root.path().join("target");
+    let result =
+        glib::MainContext::default().block_on(super::super::publish_staged_without_replace_with(
+            staged,
+            target.clone(),
+            gio::Cancellable::new(),
+            |from, _| {
+                fs::remove_file(from).expect("remove file stage");
+                fs::create_dir(from).expect("replace stage with directory");
+                fs::write(from.join("copied.txt"), b"published data").expect("populate stage");
+                Err(rustix::io::Errno::INVAL)
+            },
+        ));
+    assert!(
+        result
+            .expect_err("cleanup must fail")
+            .to_string()
+            .contains("The item was copied")
+    );
+    assert_eq!(fs::read(target.join("copied.txt"))?, b"published data");
+    Ok(())
+}
+
+#[test]
+fn cancelling_staged_fallback_removes_its_reserved_directory() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let staged = super::super::StagedSibling::create(root.path(), true)?;
+    let staged_path = staged.path().to_owned();
+    fs::File::create(staged_path.join("large.bin"))?.set_len(64 * 1024 * 1024)?;
+    let target = root.path().join("target");
+    let cancellable = gio::Cancellable::new();
+    let finished = Rc::new(Cell::new(false));
+    let completed = finished.clone();
+    let publish_target = target.clone();
+    let publish_cancellable = cancellable.clone();
+    let context = glib::MainContext::default();
+    let task = context.spawn_local(async move {
+        let result = super::super::publish_staged_without_replace_with(
+            staged,
+            publish_target,
+            publish_cancellable,
+            |_, _| Err(rustix::io::Errno::INVAL),
+        )
+        .await;
+        completed.set(true);
+        result
+    });
+    while !target.exists() && !finished.get() {
+        context.iteration(true);
+    }
+    assert!(
+        target.exists(),
+        "fallback must reserve the destination before cancellation"
+    );
+    cancellable.cancel();
+    let result = context.block_on(task)?;
+    settle_cancelled_io(&context);
+    assert!(result.is_err_and(|error| error.matches(gio::IOErrorEnum::Cancelled)));
+    assert!(!target.exists());
+    assert!(!staged_path.exists());
     Ok(())
 }

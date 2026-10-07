@@ -124,6 +124,7 @@ def test_paste_into_explicit_selection_after_returning_to_parent(strata, mode, s
     assert not fixture.path("notes.txt").exists()
 
 
+@pytest.mark.usefixtures("unreserved_columns")
 def test_opening_a_child_keeps_paste_under_the_pointer(strata):
     fixture = strata.fixture
 

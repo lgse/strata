@@ -21,12 +21,15 @@ pub(in crate::ui) fn pane_new_folder_button(
     )));
     crate::ui::controls::pane_header_action(&button);
     button.add_css_class("chooser-new-folder");
-    if state
-        .upgrade()
-        .and_then(|state| state.browser.location_at(depth))
-        .is_some_and(|location| location.is_recent_location())
-    {
-        button.set_visible(false);
+    if let Some(state) = state.upgrade() {
+        button.set_sensitive(state.interactive || state.chooser_allows_create.get());
+        if state
+            .browser
+            .location_at(depth)
+            .is_some_and(|location| location.is_recent_location())
+        {
+            button.set_visible(false);
+        }
     }
     button.update_property(&[gtk::accessible::Property::Label("New Folder")]);
     button.connect_clicked(move |_| {
@@ -47,10 +50,14 @@ pub(in crate::ui) fn pane_refresh_button(browser: &Rc<Browser>, depth: usize) ->
     crate::ui::controls::pane_header_action(&button);
     let weak_browser = Rc::downgrade(browser);
     button.connect_clicked(move |_| {
+        if crate::ui::tenxer_mode::chrome_suppressed() {
+            return;
+        }
         if let Some(browser) = weak_browser.upgrade() {
             browser.retry_column(depth);
         }
     });
+    crate::ui::tenxer_mode::hide_while_enabled(&button);
     button
 }
 
@@ -91,7 +98,12 @@ pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gt
         }
         let (option, check) = menu_option(label, preferences.sort_key == key);
         if key == SortKey::DeviceOrder {
-            option.set_tooltip_text(Some("Append photos as the device lists them; not necessarily chronological. Selecting this reloads the library."));
+            crate::ui::accessibility::set_description(
+                &option,
+                Some(
+                    "Append photos as the device lists them; not necessarily chronological. Selecting this reloads the library.",
+                ),
+            );
         }
         selected_checks.borrow_mut().push((key, check));
         let checks = selected_checks.clone();
@@ -140,15 +152,17 @@ pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gt
     popover.set_child(Some(&content));
     let keys = gtk::EventControllerKey::new();
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
-    let dismissed_popover = popover.clone();
-    keys.connect_key_pressed(move |_, key, _, modifiers| {
+    keys.connect_key_pressed(|controller, key, _, modifiers| {
         if modifiers
             .intersects(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::ALT_MASK)
         {
             return glib::Propagation::Proceed;
         }
+        let Some(popover) = controller.widget().and_downcast::<gtk::Popover>() else {
+            return glib::Propagation::Proceed;
+        };
         if key == gtk::gdk::Key::BackSpace {
-            dismissed_popover.popdown();
+            popover.popdown();
             glib::Propagation::Stop
         } else if let Some(direction) = match key {
             gtk::gdk::Key::h => Some(gtk::DirectionType::Left),
@@ -157,7 +171,7 @@ pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gt
             gtk::gdk::Key::l => Some(gtk::DirectionType::Right),
             _ => None,
         } {
-            dismissed_popover.child_focus(direction);
+            popover.child_focus(direction);
             glib::Propagation::Stop
         } else {
             glib::Propagation::Proceed
@@ -189,6 +203,7 @@ pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gt
         crate::assets::icons::SETTINGS_2,
     )));
     crate::ui::controls::pane_header_action(&button);
+    crate::ui::tenxer_mode::hide_while_enabled(&button);
     button
 }
 
@@ -202,6 +217,7 @@ pub(in crate::ui) fn column_sort_direction_toggle(
     button.set_child(Some(&icon));
     crate::ui::controls::pane_header_action(&button);
     sync_sort_direction_toggle(&button, &icon, preferences);
+    crate::ui::tenxer_mode::hide_sort_direction_while_enabled(&button);
 
     let weak_browser = Rc::downgrade(browser);
     let icon_for_map = icon.clone();
@@ -215,6 +231,9 @@ pub(in crate::ui) fn column_sort_direction_toggle(
     });
     let weak_browser = Rc::downgrade(browser);
     button.connect_clicked(move |button| {
+        if crate::ui::tenxer_mode::chrome_suppressed() {
+            return;
+        }
         let Some(browser) = weak_browser.upgrade() else {
             return;
         };

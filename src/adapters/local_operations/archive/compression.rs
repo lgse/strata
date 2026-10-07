@@ -8,9 +8,12 @@ mod tests;
 use super::super::{
     local_directory_children, open_local_child_directory, open_local_parent_directory,
 };
-use super::{ArchiveError, COPY_BUF, archive_failed, check_archive_cancelled, copy_with_big_buf};
+use super::{
+    ArchiveError, COPY_BUF, archive_failed, check_archive_cancelled, copy_with_big_buf,
+    decoders::FILE_ATTRIBUTE_UNIX_EXTENSION, destination::process_umask,
+};
 use crate::services::{TransferConflict, TrashedOriginal};
-use gtk::{gio, prelude::*};
+use gtk::{gio, glib, prelude::*};
 use std::{
     ffi::{OsStr, OsString},
     io::{self, Read, Seek, SeekFrom, Write},
@@ -23,6 +26,7 @@ use std::{
         Arc,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 /// Writes an archive through a staging file, then publishes it at `archive_path`.
@@ -153,23 +157,6 @@ fn umask_adjusted_file_permissions() -> std::fs::Permissions {
     std::fs::Permissions::from_mode(0o666 & !process_umask())
 }
 
-/// Reads the process umask from `/proc/self/status`.
-///
-/// Avoids the process-global `umask(2)` set-and-restore race that would
-/// otherwise be unsafe in a multi-threaded GUI. Returns `0o022` when `/proc`
-/// is unavailable or the `Umask:` line cannot be parsed.
-fn process_umask() -> u32 {
-    std::fs::read_to_string("/proc/self/status")
-        .ok()
-        .and_then(|status| {
-            status.lines().find_map(|line| {
-                line.strip_prefix("Umask:")
-                    .and_then(|value| u32::from_str_radix(value.trim(), 8).ok())
-            })
-        })
-        .unwrap_or(0o022)
-}
-
 /// An opened compression source, re-read from disk relative to its parent
 /// directory rather than trusted from any earlier listing.
 enum ArchiveSource {
@@ -178,8 +165,80 @@ enum ArchiveSource {
     File(std::fs::File),
     /// Open directory used to walk children descriptor-relative.
     Directory(std::fs::File),
-    /// Symlink target as stored, archived as a link rather than followed.
-    Symlink(PathBuf),
+    Symlink {
+        target: PathBuf,
+        modified: Option<SystemTime>,
+    },
+}
+
+fn source_metadata(source: &ArchiveSource) -> Result<(Option<SystemTime>, Option<u32>), String> {
+    match source {
+        ArchiveSource::File(file) | ArchiveSource::Directory(file) => {
+            let metadata = file.metadata().map_err(|error| error.to_string())?;
+            Ok((
+                metadata.modified().ok(),
+                Some(metadata.permissions().mode()),
+            ))
+        }
+        ArchiveSource::Symlink { modified, .. } => Ok((*modified, None)),
+    }
+}
+
+fn unix_seconds(time: SystemTime) -> Option<u64> {
+    time.duration_since(UNIX_EPOCH)
+        .ok()
+        .map(|since_epoch| since_epoch.as_secs())
+}
+
+/// DOS timestamps use local time and can only represent 1980–2107.
+fn zip_datetime(modified: Option<SystemTime>) -> zip::DateTime {
+    let Some(local) = modified
+        .and_then(unix_seconds)
+        .and_then(|seconds| i64::try_from(seconds).ok())
+        .and_then(|seconds| glib::DateTime::from_unix_local(seconds).ok())
+    else {
+        return zip::DateTime::DEFAULT;
+    };
+    let part = |value: i32| u8::try_from(value).unwrap_or_default();
+    match u16::try_from(local.year()).unwrap_or_default() {
+        ..1980 => zip::DateTime::DEFAULT,
+        2108.. => zip::DateTime::from_date_and_time(2107, 12, 31, 23, 59, 58)
+            .unwrap_or(zip::DateTime::DEFAULT),
+        year => zip::DateTime::from_date_and_time(
+            year,
+            part(local.month()),
+            part(local.day_of_month()),
+            part(local.hour()),
+            part(local.minute()),
+            part(local.second()),
+        )
+        .unwrap_or(zip::DateTime::DEFAULT),
+    }
+}
+
+fn zip_member_options<'k>(
+    base: zip::write::FileOptions<'k, ()>,
+    modified: Option<SystemTime>,
+    mode: Option<u32>,
+) -> Result<zip::write::FullFileOptions<'k>, String> {
+    let mut options = base
+        .last_modified_time(zip_datetime(modified))
+        .into_full_options();
+    if let Some(mode) = mode {
+        options = options.unix_permissions(mode);
+    }
+    if let Some(seconds) = modified
+        .and_then(unix_seconds)
+        .and_then(|seconds| i32::try_from(seconds).ok())
+    {
+        // Flags byte 1: only the modification time follows.
+        let mut field = vec![1];
+        field.extend_from_slice(&seconds.to_le_bytes());
+        options
+            .add_extra_data(0x5455, field, false)
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(options)
 }
 
 /// Opens the child named `name` inside `parent` without following symbolic links.
@@ -201,9 +260,14 @@ fn open_archive_source<Fd: AsFd>(parent: &Fd, name: &OsStr) -> Result<ArchiveSou
         rustix::fs::FileType::Symlink => {
             let target = rustix::fs::readlinkat(parent, name, Vec::new())
                 .map_err(|error| error.to_string())?;
-            Ok(ArchiveSource::Symlink(PathBuf::from(OsString::from_vec(
-                target.into_bytes(),
-            ))))
+            let modified = u64::try_from(stat.st_mtime)
+                .ok()
+                .zip(u32::try_from(stat.st_mtime_nsec).ok())
+                .and_then(|(seconds, nanos)| UNIX_EPOCH.checked_add(Duration::new(seconds, nanos)));
+            Ok(ArchiveSource::Symlink {
+                target: PathBuf::from(OsString::from_vec(target.into_bytes())),
+                modified,
+            })
         }
         rustix::fs::FileType::Directory => open_local_child_directory(parent, name)
             .map(std::fs::File::from)
@@ -424,11 +488,14 @@ pub(super) fn compress_zip(
                     path.display()
                 )
             })?;
+            let (modified, mode) = source_metadata(source)?;
             match source {
                 ArchiveSource::Directory(_) => {
-                    return writer.add_directory(name, stored).map_err(archive_failed);
+                    return writer
+                        .add_directory(name, zip_member_options(stored, modified, mode)?)
+                        .map_err(archive_failed);
                 }
-                ArchiveSource::Symlink(target) => {
+                ArchiveSource::Symlink { target, .. } => {
                     let target = target.to_str().ok_or_else(|| {
                         format!(
                             "ZIP cannot preserve the non-UTF-8 link target of {}. Use TAR instead.",
@@ -436,17 +503,17 @@ pub(super) fn compress_zip(
                         )
                     })?;
                     writer
-                        .add_symlink(name, target, stored)
+                        .add_symlink(name, target, zip_member_options(stored, modified, None)?)
                         .map_err(|error| error.to_string())?;
                 }
                 ArchiveSource::File(file) => {
-                    let options = if is_incompressible(path) {
+                    let base = if is_incompressible(path) {
                         stored
                     } else {
                         deflated
                     };
                     writer
-                        .start_file(name, options)
+                        .start_file(name, zip_member_options(base, modified, mode)?)
                         .map_err(|error| error.to_string())?;
                     copy_with_big_buf(
                         std::io::BufReader::with_capacity(COPY_BUF, file),
@@ -541,12 +608,15 @@ fn append_tar_entries(
     visit_archive_entries(entries, cancelled, &mut |path, source| {
         let mut header = tar::Header::new_gnu();
         match source {
-            ArchiveSource::Symlink(target) => {
+            ArchiveSource::Symlink { target, modified } => {
                 header.set_entry_type(tar::EntryType::Symlink);
                 header.set_size(0);
                 header.set_mode(0o777);
                 header.set_uid(0);
                 header.set_gid(0);
+                if let Some(seconds) = modified.and_then(unix_seconds) {
+                    header.set_mtime(seconds);
+                }
                 builder
                     .append_link(&mut header, path, target)
                     .map_err(|error| error.to_string())?;
@@ -694,7 +764,7 @@ pub(super) fn compress_7z(
                 ))
             })?;
             let (mut entry, file) = match source {
-                ArchiveSource::Symlink(_) => {
+                ArchiveSource::Symlink { .. } => {
                     return Err(archive_failed(format!(
                         "7z compression does not support symbolic links: {}. Use ZIP or TAR instead.",
                         path.display()
@@ -706,6 +776,10 @@ pub(super) fn compress_7z(
                 ArchiveSource::File(file) => (sevenz_rust2::ArchiveEntry::new_file(name), file),
             };
             let metadata = file.metadata().map_err(|error| error.to_string())?;
+            entry.has_windows_attributes = true;
+            entry.windows_attributes = FILE_ATTRIBUTE_UNIX_EXTENSION
+                | (metadata.permissions().mode() << 16)
+                | if metadata.is_dir() { 0x10 } else { 0x20 };
             if is_incompressible(path) {
                 writer.set_content_methods(stored_methods.clone());
             } else {

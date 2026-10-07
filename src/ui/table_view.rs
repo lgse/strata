@@ -171,7 +171,7 @@ impl TableState {
                 };
                 let row = *object.borrow::<usize>();
                 label.select_region(0, 0);
-                label.set_tooltip_text(None);
+                crate::ui::accessibility::set_description(&label, None);
                 if let Some(cell) = rows[row].get(index) {
                     super::virtual_preview::set_table_cell(&label, cell);
                 } else {
@@ -306,7 +306,6 @@ impl TableState {
             .propagate_natural_height(!fill_height)
             .vexpand(fill_height)
             .build();
-        scroll.add_css_class("fixed-scrollbar");
         text_selection.install(&view, &scroll);
         let weak = Rc::downgrade(self);
         let weak_columns = columns
@@ -439,6 +438,3 @@ fn append_row(text: &mut String, row: &[DocumentTableCellLayout]) {
     }
     text.push('\n');
 }
-
-#[cfg(test)]
-mod tests;

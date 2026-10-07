@@ -53,9 +53,8 @@ pub fn build_kind() -> BuildKind {
 /// misconfigured build always looks eligible for the next real update
 /// rather than silently blocking it.
 ///
-/// Never panics and never `.unwrap()`s: the final fallback the chain lands
-/// on is a fixed literal that will always parse and is covered by
-/// `installed_version_fallback_chain_never_panics` (`build_info::tests`).
+/// Never panics and never `.unwrap()`s: the final fallback is a fixed literal
+/// covered by the release-channel parser's canonical-form tests.
 pub fn installed_version() -> Version {
     Version::parse(RELEASE_TAG)
         .or_else(|| Version::parse(VERSION))

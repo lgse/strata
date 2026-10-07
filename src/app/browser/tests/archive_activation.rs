@@ -86,4 +86,20 @@ fn activating_non_archive_file_or_remote_archive_opens_externally() {
         BrowserEvent::OpenRequested { location }
             if location == &Location::uri("sftp://example.com/remote-archive.zip")
     )));
+
+    events.borrow_mut().clear();
+    browser.activate(0, 3);
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::ExtractRequested { .. })),
+        "{:?}",
+        events.borrow()
+    );
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::OpenRequested { location }
+            if location == &Location::local("/fixture/socket.zip")
+    )));
 }
