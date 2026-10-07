@@ -172,7 +172,7 @@ pub struct ThemeManager {
     omarchy_available: Cell<bool>,
     omarchy_monitors: RefCell<Vec<gio::FileMonitor>>,
     pending_omarchy_refresh: RefCell<Option<glib::SourceId>>,
-    previewing: Cell<bool>,
+    preview: RefCell<Option<ThemeTokens>>,
     appearance: RefCell<AppearancePreferences>,
     theme_listeners: ThemeListeners,
     active_model_palette: Cell<crate::services::ModelPalette>,
@@ -212,7 +212,7 @@ impl ThemeManager {
             omarchy_available: Cell::new(omarchy_available),
             omarchy_monitors: RefCell::new(Vec::new()),
             pending_omarchy_refresh: RefCell::new(None),
-            previewing: Cell::new(false),
+            preview: RefCell::new(None),
             appearance: RefCell::new(appearance),
             theme_listeners: ThemeListeners::default(),
             active_model_palette: Cell::new(crate::services::ModelPalette {
@@ -268,7 +268,7 @@ impl ThemeManager {
         if !self.themes.borrow().iter().any(|theme| theme.id == id) {
             return;
         }
-        self.previewing.set(false);
+        self.preview.take();
         let changed = self.follows_omarchy() || self.selected_id() != id;
         self.preferences.set_theme_selection("theme", Some(id));
         if !changed {
@@ -281,7 +281,7 @@ impl ThemeManager {
         if enabled && !self.is_omarchy_available() {
             return;
         }
-        self.previewing.set(false);
+        self.preview.take();
         let changed = self.follows_omarchy() != enabled;
         let mode = if enabled { "omarchy" } else { "theme" };
         self.preferences.set_theme_selection(mode, None);
@@ -290,17 +290,24 @@ impl ThemeManager {
         }
     }
 
+    /// Applies `tokens` until [`Self::cancel_preview`] or a theme selection; appearance
+    /// changes in the meantime re-apply the preview rather than the saved theme.
     pub fn preview(&self, tokens: &ThemeTokens) {
         if validate_tokens(tokens).is_ok() {
-            self.previewing.set(true);
+            self.preview.replace(Some(tokens.clone()));
             self.apply_tokens(tokens, None);
         }
     }
 
     pub fn cancel_preview(&self) {
-        if self.previewing.replace(false) {
+        if self.preview.take().is_some() {
             self.apply_selected();
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn is_previewing(&self) -> bool {
+        self.preview.borrow().is_some()
     }
 
     pub fn save_custom_theme(&self, tokens: ThemeTokens) -> io::Result<String> {
@@ -367,6 +374,11 @@ impl ThemeManager {
     }
 
     fn apply_selected(&self) {
+        let preview = self.preview.borrow().clone();
+        if let Some(tokens) = preview {
+            self.apply_tokens(&tokens, None);
+            return;
+        }
         if self.follows_omarchy() {
             if let Some(tokens) = load_omarchy_theme(self.preferences.omarchy_variant()) {
                 let palette = load_omarchy_source_palette();
@@ -451,9 +463,7 @@ impl ThemeManager {
             let Some(manager) = weak.upgrade() else {
                 return;
             };
-            if !manager.previewing.get() {
-                manager.apply_selected();
-            }
+            manager.apply_selected();
         });
     }
 
@@ -505,7 +515,7 @@ impl ThemeManager {
                     let availability_changed =
                         manager.omarchy_available.replace(available) != available;
                     if !available && manager.follows_omarchy() {
-                        manager.previewing.set(false);
+                        manager.preview.take();
                         manager.preferences.set_theme_selection("theme", None);
                         return;
                     }
@@ -513,7 +523,7 @@ impl ThemeManager {
                         manager.preferences.notify_changes();
                         return;
                     }
-                    if manager.follows_omarchy() && !manager.previewing.get() {
+                    if manager.follows_omarchy() {
                         manager.apply_selected();
                         manager.preferences.notify_changes();
                     }

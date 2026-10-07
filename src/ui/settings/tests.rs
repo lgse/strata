@@ -11,6 +11,7 @@ use gtk::glib;
 
 use super::{InstallCancel, InstallLauncher, InstallRequest, UpdateInstall};
 
+mod dismissal;
 mod general;
 mod restart;
 mod update_dialog;

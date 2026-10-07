@@ -29,7 +29,11 @@ fn syntax_pickers_preview_cancel_and_save_to_custom_theme() {
                 crate::ui::theme::register_source_buffer(buffer);
             }
             let original = foreground(&buffers[0], "def:string");
-            let (editor, fields) = theme_editor(manager.clone());
+            let ThemeEditor {
+                revealer: editor,
+                fields,
+                ..
+            } = theme_editor(manager.clone());
             let mut child = fields.first_child();
             while let Some(wrapper) = child {
                 let row = wrapper.first_child().expect("color field row");
@@ -100,6 +104,116 @@ fn syntax_pickers_preview_cancel_and_save_to_custom_theme() {
                 foreground(&rebuilt, "def:string").as_deref(),
                 Some("#123abc")
             );
+        },
+    );
+}
+
+fn accent_picker(fields: &gtk::FlowBox) -> gtk::ColorDialogButton {
+    let mut child = fields.first_child();
+    while let Some(wrapper) = child {
+        let row = wrapper.first_child().expect("color field row");
+        let label = row
+            .last_child()
+            .and_downcast::<gtk::Label>()
+            .expect("field label");
+        if label.text() == "Accent" {
+            return row
+                .first_child()
+                .and_downcast::<gtk::ColorDialogButton>()
+                .expect("accent picker");
+        }
+        child = wrapper.next_sibling();
+    }
+    panic!("accent field");
+}
+
+#[test]
+fn dismissing_the_editor_discards_the_preview_and_resets_the_form() {
+    gtk_test(
+        "ui::settings::theme::editor::tests::dismissing_the_editor_discards_the_preview_and_resets_the_form",
+        || {
+            let manager = ThemeManager::shared();
+            manager.set_follow_omarchy(false);
+            manager.select_theme("azure-glow");
+            let saved = manager.active_model_palette();
+            let saved_accent = gdk::RGBA::parse(
+                manager
+                    .current_tokens()
+                    .expect("selected theme tokens")
+                    .accent
+                    .as_str(),
+            )
+            .expect("saved accent");
+            let ThemeEditor {
+                revealer: editor,
+                fields,
+                ..
+            } = theme_editor(manager.clone());
+            editor.set_reveal_child(true);
+            let panel = editor.child().expect("editor panel");
+            let name = panel
+                .first_child()
+                .and_then(|header| header.next_sibling())
+                .and_downcast::<gtk::Entry>()
+                .expect("name entry");
+            let cancel = panel
+                .last_child()
+                .and_then(|actions| actions.first_child())
+                .and_downcast::<gtk::Button>()
+                .expect("cancel button");
+
+            accent_picker(&fields).set_rgba(&gdk::RGBA::parse("#13579b").expect("fixture"));
+            name.set_text("Draft");
+            assert_eq!(manager.active_model_palette().accent, 0x13579b);
+            cancel.emit_clicked();
+
+            let mut failures = Vec::new();
+            if manager.active_model_palette() != saved {
+                failures.push("the preview is still applied".to_owned());
+            }
+            if editor.reveals_child() {
+                failures.push("the editor is still revealed".to_owned());
+            }
+            if accent_picker(&fields).rgba() != saved_accent {
+                failures.push(format!(
+                    "the accent picker keeps {} instead of the selected theme's {}",
+                    accent_picker(&fields).rgba(),
+                    saved_accent
+                ));
+            }
+            if !name.text().is_empty() {
+                failures.push(format!("the name entry keeps {:?}", name.text()));
+            }
+            assert!(
+                failures.is_empty(),
+                "Cancel must discard the preview and reset the form:\n{}",
+                failures.join("\n")
+            );
+        },
+    );
+}
+
+#[test]
+fn dismissing_an_untouched_editor_keeps_another_editors_preview() {
+    gtk_test(
+        "ui::settings::theme::editor::tests::dismissing_an_untouched_editor_keeps_another_editors_preview",
+        || {
+            let manager = ThemeManager::shared();
+            manager.set_follow_omarchy(false);
+            manager.select_theme("azure-glow");
+            let editing = theme_editor(manager.clone());
+            let untouched = theme_editor(manager.clone());
+            (editing.reveal)();
+            (untouched.reveal)();
+            accent_picker(&editing.fields).set_rgba(&gdk::RGBA::parse("#13579b").expect("fixture"));
+            assert!(manager.is_previewing());
+
+            (untouched.dismiss)();
+            assert!(manager.is_previewing(), "another window's preview stays applied");
+            assert!(!untouched.revealer.reveals_child());
+
+            (editing.dismiss)();
+            assert!(!manager.is_previewing());
         },
     );
 }

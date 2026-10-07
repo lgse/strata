@@ -833,6 +833,7 @@ pub fn build_layer(
     let responsive_for_nav = responsive_panel.clone();
     let built: Rc<RefCell<std::collections::HashSet<&'static str>>> =
         Rc::new(RefCell::new(["general", "about"].into_iter().collect()));
+    let dismiss_hooks = DismissHooks::default();
     let nav_buttons: Rc<RefCell<Vec<gtk::Button>>> = Rc::new(RefCell::new(Vec::new()));
     for (label, icon, name) in [
         ("General", icons::SLIDERS, "general"),
@@ -859,6 +860,7 @@ pub fn build_layer(
         let updates_container = updates_container.clone();
         let responsive_panel = responsive_panel.clone();
         let search_state = settings_search.state.clone();
+        let dismiss_hooks = dismiss_hooks.clone();
         button.connect_clicked(move |clicked| {
             for candidate in buttons.borrow().iter() {
                 if candidate == clicked {
@@ -877,6 +879,7 @@ pub fn build_layer(
                         for (flow, columns) in page.flows {
                             responsive_panel.add_flow(flow, columns);
                         }
+                        dismiss_hooks.add(page.dismiss);
                     }
                     "actions" => {
                         let page = actions::actions_page();
@@ -945,27 +948,30 @@ pub fn build_layer(
     layer.append(&row);
     layer.append(&bottom);
 
-    let hidden_layer = layer.clone();
-    let inactive_settings = settings_button.clone();
-    let unblurred_root = root.clone();
-    close.connect_clicked(move |_| hide(&hidden_layer, &inactive_settings, &unblurred_root));
-    let hidden_layer = layer.clone();
-    let inactive_settings = settings_button.clone();
-    let unblurred_root = root.clone();
+    let close_settings: Rc<dyn Fn()> = {
+        let layer = layer.clone();
+        let button = settings_button.clone();
+        let root = root.clone();
+        let hooks = dismiss_hooks.clone();
+        Rc::new(move || hide(&layer, &button, &root, &hooks))
+    };
+    // A window closed mid-preview never runs `hide`; the preview is process-wide.
+    layer.connect_unrealize(move |_| dismiss_hooks.run());
+    let close_hide = close_settings.clone();
+    close.connect_clicked(move |_| close_hide());
+    let escape_hide = close_settings.clone();
     let keys = gtk::EventControllerKey::new();
     keys.connect_key_pressed(move |_, key, _, _| {
         if key != gdk::Key::Escape {
             return gtk::glib::Propagation::Proceed;
         }
-        hide(&hidden_layer, &inactive_settings, &unblurred_root);
+        escape_hide();
         gtk::glib::Propagation::Stop
     });
     layer.add_controller(keys);
 
     let click_layer = layer.clone();
     let click_dialog = responsive_panel.clone();
-    let click_settings = settings_button.clone();
-    let click_root = root.clone();
     let click = gtk::GestureClick::new();
     click.connect_pressed(move |_, _, x, y| {
         let on_dialog = click_dialog
@@ -978,7 +984,7 @@ pub fn build_layer(
                     && y < dy + alloc.height() as f64
             });
         if !on_dialog {
-            hide(&click_layer, &click_settings, &click_root);
+            close_settings();
         }
     });
     layer.add_controller(click);
@@ -986,7 +992,26 @@ pub fn build_layer(
     layer
 }
 
-fn hide(layer: &gtk::Box, button: &gtk::Button, root: &BlurBin) {
+/// Work that every route closing Settings must run, such as discarding a theme preview.
+#[derive(Clone, Default)]
+struct DismissHooks(Rc<RefCell<Vec<Rc<dyn Fn()>>>>);
+
+impl DismissHooks {
+    fn add(&self, hook: Rc<dyn Fn()>) {
+        self.0.borrow_mut().push(hook);
+    }
+
+    /// Hooks are idempotent: they run on every close and again when the layer unrealizes.
+    fn run(&self) {
+        let hooks = self.0.borrow().clone();
+        for hook in hooks {
+            hook();
+        }
+    }
+}
+
+fn hide(layer: &gtk::Box, button: &gtk::Button, root: &BlurBin, hooks: &DismissHooks) {
+    hooks.run();
     if layer.has_css_class("dismissing") {
         return;
     }

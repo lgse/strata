@@ -248,3 +248,39 @@ fn omarchy_monitor_ignores_unrelated_state_changes() {
         assert!(!is_omarchy_theme_event(&gtk::gio::File::for_path(path)));
     }
 }
+
+#[test]
+fn appearance_changes_keep_an_active_preview_until_it_is_cancelled() {
+    gtk_test(
+        "ui::theme::tests::appearance_changes_keep_an_active_preview_until_it_is_cancelled",
+        || {
+            use crate::ui::preferences::{PreferenceManager, TextSize};
+
+            let manager = super::ThemeManager::shared();
+            manager.set_follow_omarchy(false);
+            manager.select_theme("azure-glow");
+            let saved = manager.active_model_palette();
+            let mut tokens = manager.starter_tokens();
+            tokens.accent = "#13579b".to_owned();
+            manager.preview(&tokens);
+            assert_eq!(manager.active_model_palette().accent, 0x13579b);
+
+            let preferences = PreferenceManager::shared();
+            let original = preferences.text_size();
+            let changed = if original.root_font_px() == 20 { 18 } else { 20 };
+            preferences.set_text_size(TextSize::new(changed));
+            assert_eq!(
+                manager.active_model_palette().accent,
+                0x13579b,
+                "a text size change keeps the unsaved preview applied"
+            );
+            assert!(manager.is_previewing());
+
+            manager.cancel_preview();
+            assert!(!manager.is_previewing());
+            assert_eq!(manager.active_model_palette(), saved);
+            preferences.set_text_size(original);
+            assert_eq!(manager.active_model_palette(), saved);
+        },
+    );
+}

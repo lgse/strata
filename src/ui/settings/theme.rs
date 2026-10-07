@@ -30,6 +30,8 @@ use editor::theme_editor;
 pub(super) struct ThemePage {
     pub(super) widget: gtk::Widget,
     pub(super) flows: Vec<(gtk::FlowBox, u32)>,
+    /// Discards an unsaved theme preview when Settings closes.
+    pub(super) dismiss: Rc<dyn Fn()>,
 }
 
 pub(super) fn theme_page(
@@ -95,7 +97,8 @@ pub(super) fn theme_page(
         catalog.clear,
         catalog.appearance_buttons,
     );
-    let editor_fields = append_custom_theme_editor(&catalog.container, &custom, &themes);
+    let (editor_fields, dismiss) =
+        append_custom_theme_editor(&catalog.container, &custom, &themes);
     themes.bind_theme_preference(
         &library,
         ThemeManager::follows_omarchy,
@@ -182,6 +185,7 @@ pub(super) fn theme_page(
     ThemePage {
         widget: scroller,
         flows: vec![(catalog.packaged, 1), (custom, 1), (editor_fields, 4)],
+        dismiss,
     }
 }
 
@@ -256,7 +260,7 @@ fn append_custom_theme_editor(
     content: &gtk::Box,
     custom: &gtk::FlowBox,
     themes: &Rc<ThemeManager>,
-) -> gtk::FlowBox {
+) -> (gtk::FlowBox, Rc<dyn Fn()>) {
     let add = add_theme_card_button();
     let footer = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     footer.add_css_class("theme-library-footer");
@@ -270,12 +274,12 @@ fn append_custom_theme_editor(
     footer.append(&add);
     content.append(&footer);
     bind_new_custom_themes(custom, themes);
-    let (editor, editor_fields) = theme_editor(themes.clone());
-    editor.set_reveal_child(false);
-    content.append(&editor);
-    let shown_editor = editor.clone();
-    add.connect_clicked(move |_| shown_editor.set_reveal_child(true));
-    editor_fields
+    let editor = theme_editor(themes.clone());
+    editor.revealer.set_reveal_child(false);
+    content.append(&editor.revealer);
+    let reveal = editor.reveal;
+    add.connect_clicked(move |_| reveal());
+    (editor.fields, editor.dismiss)
 }
 
 fn append_follow_omarchy_option(content: &gtk::Box, themes: &Rc<ThemeManager>) -> gtk::Switch {

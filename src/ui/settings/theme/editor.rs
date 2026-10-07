@@ -3,7 +3,10 @@
 #[cfg(test)]
 mod tests;
 
-use std::{cell::RefCell, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
 use gtk::{gdk, prelude::*};
 
@@ -12,7 +15,18 @@ use crate::ui::{
     theme::{ThemeManager, ThemeTokens, color_to_hex},
 };
 
-pub(super) fn theme_editor(manager: Rc<ThemeManager>) -> (gtk::Revealer, gtk::FlowBox) {
+pub(super) struct ThemeEditor {
+    pub(super) revealer: gtk::Revealer,
+    pub(super) fields: gtk::FlowBox,
+    /// Opens the editor on the selected theme's colors.
+    pub(super) reveal: Rc<dyn Fn()>,
+    /// Discards the draft and its live preview, and collapses the editor.
+    pub(super) dismiss: Rc<dyn Fn()>,
+}
+
+type ColorPickers = Vec<(ColorField, gtk::ColorDialogButton)>;
+
+pub(super) fn theme_editor(manager: Rc<ThemeManager>) -> ThemeEditor {
     let panel = gtk::Box::new(gtk::Orientation::Vertical, 12);
     panel.add_css_class("theme-editor");
     panel.append(&editor_header());
@@ -20,10 +34,9 @@ pub(super) fn theme_editor(manager: Rc<ThemeManager>) -> (gtk::Revealer, gtk::Fl
     name.set_placeholder_text(Some(&crate::i18n::tr("Theme name")));
     panel.append(&name);
 
-    let mut tokens = manager.starter_tokens();
-    tokens.initialize_syntax_colors();
-    let values = Rc::new(RefCell::new(tokens));
-    let fields = theme_color_fields(&manager, &values);
+    let values = Rc::new(RefCell::new(starter_tokens(&manager)));
+    let preview = PreviewState::default();
+    let (fields, pickers) = theme_color_fields(&manager, &values, &preview);
     panel.append(&fields);
 
     let error = gtk::Label::new(None);
@@ -36,6 +49,55 @@ pub(super) fn theme_editor(manager: Rc<ThemeManager>) -> (gtk::Revealer, gtk::Fl
         .transition_type(gtk::RevealerTransitionType::SlideDown)
         .child(&panel)
         .build();
+
+    let reset: Rc<dyn Fn()> = {
+        let manager = manager.clone();
+        let values = values.clone();
+        let name = name.clone();
+        let error = error.clone();
+        let preview = preview.clone();
+        Rc::new(move || {
+            let mut tokens = starter_tokens(&manager);
+            preview.syncing.set(true);
+            for (field, picker) in &pickers {
+                if let Ok(color) = gdk::RGBA::parse(field.slot(&mut tokens).as_str()) {
+                    picker.set_rgba(&color);
+                }
+            }
+            preview.syncing.set(false);
+            preview.applied.set(false);
+            values.replace(tokens);
+            name.set_text("");
+            error.set_visible(false);
+        })
+    };
+    let reveal: Rc<dyn Fn()> = {
+        let reset = reset.clone();
+        let revealer = revealer.clone();
+        Rc::new(move || {
+            // A second Add theme press keeps the open draft.
+            if !revealer.reveals_child() {
+                reset();
+                revealer.set_reveal_child(true);
+            }
+        })
+    };
+    let dismiss: Rc<dyn Fn()> = {
+        let manager = manager.clone();
+        let revealer = revealer.clone();
+        let preview = preview.clone();
+        Rc::new(move || {
+            // The preview is process-wide: an editor that never previewed must not end
+            // one that another window's editor started.
+            if preview.applied.get() {
+                manager.cancel_preview();
+            }
+            if revealer.reveals_child() {
+                reset();
+                revealer.set_reveal_child(false);
+            }
+        })
+    };
     panel.append(&editor_actions(
         manager,
         ThemeEditorForm {
@@ -43,9 +105,30 @@ pub(super) fn theme_editor(manager: Rc<ThemeManager>) -> (gtk::Revealer, gtk::Fl
             values,
             error,
             revealer: revealer.clone(),
+            dismiss: dismiss.clone(),
+            preview,
         },
     ));
-    (revealer, fields)
+    ThemeEditor {
+        revealer,
+        fields,
+        reveal,
+        dismiss,
+    }
+}
+
+/// `syncing` mutes the pickers while a reset sets them; `applied` records that this
+/// editor started the current preview.
+#[derive(Clone, Default)]
+struct PreviewState {
+    syncing: Rc<Cell<bool>>,
+    applied: Rc<Cell<bool>>,
+}
+
+fn starter_tokens(manager: &ThemeManager) -> ThemeTokens {
+    let mut tokens = manager.starter_tokens();
+    tokens.initialize_syntax_colors();
+    tokens
 }
 
 fn editor_header() -> gtk::Box {
@@ -61,7 +144,8 @@ fn editor_header() -> gtk::Box {
 fn theme_color_fields(
     manager: &Rc<ThemeManager>,
     values: &Rc<RefCell<ThemeTokens>>,
-) -> gtk::FlowBox {
+    preview: &PreviewState,
+) -> (gtk::FlowBox, ColorPickers) {
     let fields = gtk::FlowBox::builder()
         .column_spacing(18)
         .row_spacing(10)
@@ -71,10 +155,13 @@ fn theme_color_fields(
         .homogeneous(true)
         .build();
     fields.add_css_class("theme-color-fields");
+    let mut pickers = Vec::new();
     for (label_text, field) in ColorField::ALL {
-        fields.insert(&color_field_row(label_text, field, manager, values), -1);
+        let (row, picker) = color_field_row(label_text, field, manager, values, preview);
+        fields.insert(&row, -1);
+        pickers.push((field, picker));
     }
-    fields
+    (fields, pickers)
 }
 
 fn color_field_row(
@@ -82,7 +169,8 @@ fn color_field_row(
     field: ColorField,
     manager: &Rc<ThemeManager>,
     values: &Rc<RefCell<ThemeTokens>>,
-) -> gtk::Box {
+    preview: &PreviewState,
+) -> (gtk::Box, gtk::ColorDialogButton) {
     let field_row = gtk::Box::new(gtk::Orientation::Horizontal, 7);
     let label_text = crate::i18n::tr(label_text);
     let label = gtk::Label::new(Some(&label_text));
@@ -103,13 +191,18 @@ fn color_field_row(
     }
     let values_for_color = values.clone();
     let manager_for_color = manager.clone();
+    let preview = preview.clone();
     picker.connect_rgba_notify(move |picker| {
+        if preview.syncing.get() {
+            return;
+        }
         *field.slot(&mut values_for_color.borrow_mut()) = color_to_hex(&picker.rgba().to_string());
         manager_for_color.preview(&values_for_color.borrow());
+        preview.applied.set(true);
     });
     field_row.append(&picker);
     field_row.append(&label);
-    field_row
+    (field_row, picker)
 }
 
 struct ThemeEditorForm {
@@ -117,6 +210,8 @@ struct ThemeEditorForm {
     values: Rc<RefCell<ThemeTokens>>,
     error: gtk::Label,
     revealer: gtk::Revealer,
+    dismiss: Rc<dyn Fn()>,
+    preview: PreviewState,
 }
 
 fn editor_actions(manager: Rc<ThemeManager>, form: ThemeEditorForm) -> gtk::Box {
@@ -125,6 +220,8 @@ fn editor_actions(manager: Rc<ThemeManager>, form: ThemeEditorForm) -> gtk::Box 
         values,
         error,
         revealer,
+        dismiss,
+        preview,
     } = form;
     let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     actions.set_halign(gtk::Align::End);
@@ -134,17 +231,14 @@ fn editor_actions(manager: Rc<ThemeManager>, form: ThemeEditorForm) -> gtk::Box 
     save.add_css_class("action-dialog-confirm");
     actions.append(&cancel);
     actions.append(&save);
-    let hidden = revealer.clone();
-    let manager_for_cancel = manager.clone();
-    cancel.connect_clicked(move |_| {
-        manager_for_cancel.cancel_preview();
-        hidden.set_reveal_child(false);
-    });
+    cancel.connect_clicked(move |_| dismiss());
     save.connect_clicked(move |_| {
         let mut tokens = values.borrow().clone();
         tokens.name = name.text().trim().to_owned();
         match manager.save_custom_theme(tokens) {
             Ok(_) => {
+                // Saving selects the theme, which ends the preview.
+                preview.applied.set(false);
                 error.set_visible(false);
                 revealer.set_reveal_child(false);
             }
