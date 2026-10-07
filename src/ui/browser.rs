@@ -70,7 +70,8 @@ mod trash;
 pub(super) use crate::ui::browser::clipboard::clipboard_mark;
 pub(in crate::ui) use crate::ui::browser::clipboard::drag_preview_icon;
 pub(super) use crate::ui::browser::clipboard::{
-    ClipboardMark, ClipboardMarks, file_drag_content, mark_in, set_mark_result_style,
+    ClipboardMark, ClipboardMarks, file_drag_content, file_drag_locations, mark_in,
+    set_mark_result_style,
 };
 pub(crate) use crate::ui::browser::clipboard::{
     PreparedFileDrop, arm_spring_load_navigation, drag_actions_for_modifiers,

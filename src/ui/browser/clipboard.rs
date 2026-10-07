@@ -707,9 +707,20 @@ pub(crate) fn locations_from_file_list_value(value: &glib::Value) -> Option<Vec<
 }
 
 pub(in crate::ui) fn file_drag_content(entries: &[FileEntry]) -> Option<gtk::gdk::ContentProvider> {
-    let files = entries
+    file_drag_locations(
+        &entries
+            .iter()
+            .map(|entry| entry.location.clone())
+            .collect::<Vec<_>>(),
+    )
+}
+
+pub(in crate::ui) fn file_drag_locations(
+    locations: &[Location],
+) -> Option<gtk::gdk::ContentProvider> {
+    let files = locations
         .iter()
-        .map(|entry| gio_file_for_location(&entry.location))
+        .map(gio_file_for_location)
         .collect::<Vec<_>>();
     if files.is_empty() {
         return None;

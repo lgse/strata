@@ -350,7 +350,11 @@ toggle/dismissal path between the header button and window action, reading prefe
 at dispatch. `settings` owns update notices and a single lazily created Settings layer
 per window; both Settings entry points reuse it and the process-wide install guard.
 Preferences take effect before Settings opens. Destruction disconnects the clipboard
-subscription, browser observers, and sidebar monitors.
+subscription, browser observers, and sidebar monitors. `composition/shelf.rs` owns the
+session-only file shelf shared across regular tabs and windows, not the chooser. Drops
+collect location references without modifying sources; drag-out and explicit Copy/Move
+here reuse the browser's file-transfer path. Transfers do not automatically clear the
+shelf, since a move or partial failure can leave references needing review.
 
 `ui/window/sidebar.rs` assembles the sidebar shell and connects its preferences,
 browser events, and device monitors. Shared place-row bindings retain explicit direct

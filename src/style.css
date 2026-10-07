@@ -3239,6 +3239,39 @@ entry.preview-command-entry selection {
   transition: none;
 }
 
+.file-shelf {
+  background: @strata_surface;
+  color: @strata_text;
+  border-top: 1px solid @strata_border;
+}
+
+.file-shelf-bar {
+  padding: 4px 10px;
+}
+
+.file-shelf-bar.drop-destination {
+  background: alpha(@strata_accent, 0.14);
+  box-shadow: inset 0 0 0 1px @strata_accent;
+}
+
+.file-shelf-hint,
+.file-shelf-path {
+  color: @strata_dim_text;
+}
+
+.file-shelf-content {
+  padding: 4px 10px 10px;
+}
+
+.file-shelf-row {
+  padding: 3px 4px;
+  border-bottom: 1px solid alpha(@strata_border, 0.5);
+}
+
+.file-shelf-actions {
+  padding-top: 2px;
+}
+
 .shortcut-footer {
   background: @strata_surface;
   color: @strata_text;
