@@ -97,8 +97,7 @@ pub(super) fn theme_page(
         catalog.clear,
         catalog.appearance_buttons,
     );
-    let (editor_fields, dismiss) =
-        append_custom_theme_editor(&catalog.container, &custom, &themes);
+    let (editor_fields, dismiss) = append_custom_theme_editor(&catalog.container, &custom, &themes);
     themes.bind_theme_preference(
         &library,
         ThemeManager::follows_omarchy,

@@ -74,7 +74,7 @@ fn settles(condition: impl Fn() -> bool) -> bool {
 
 #[derive(Clone, Copy, Debug)]
 enum Close {
-    CloseButton,
+    Button,
     Escape,
     Backdrop,
     WindowDestroyed,
@@ -82,7 +82,7 @@ enum Close {
 
 fn close(route: Close, layer: &gtk::Box, window: &gtk::Window) {
     match route {
-        Close::CloseButton => button_with_class(layer.upcast_ref(), "settings-close").emit_clicked(),
+        Close::Button => button_with_class(layer.upcast_ref(), "settings-close").emit_clicked(),
         Close::Escape => {
             let controllers = layer.observe_controllers();
             let handled = (0..controllers.n_items())
@@ -131,7 +131,7 @@ fn closing_settings_cancels_the_theme_preview_and_collapses_the_editor() {
             .expect("saved accent");
             let mut failures = Vec::new();
             for (index, route) in [
-                Close::CloseButton,
+                Close::Button,
                 Close::Escape,
                 Close::Backdrop,
                 Close::WindowDestroyed,

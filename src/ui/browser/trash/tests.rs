@@ -205,7 +205,11 @@ fn changing_metadata_after_confirmation_is_presented_refuses_the_move() {
 }
 
 fn normalized(label: &gtk::Label) -> String {
-    label.text().split_whitespace().collect::<Vec<_>>().join(" ")
+    label
+        .text()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn has_label(root: &gtk::Window, text: &str) -> bool {
@@ -278,16 +282,21 @@ fn unsupported_trash_fallback_explains_and_focuses_cancel() {
             // `mixed`: another item failed for a different reason, so the
             // "Completed with errors" dialog's Delete Permanently comes first.
             for mixed in [false, true] {
-                let unsupported = |id| crate::services::OperationEvent::CompletedWithErrors {
+                let unsupported = |id| {
+                    crate::services::OperationEvent::CompletedWithErrors {
                     request_id: id,
                     deleted_locations: Vec::new(),
                     retryable_locations: entries.iter().map(|entry| entry.location.clone()).collect(),
                     has_non_retryable_failures: mixed,
                     message: "a.txt: This location doesn't support Trash. Delete permanently instead.\n\n• b.txt: This location doesn't support Trash. Delete permanently instead.".into(),
+                }
                 };
                 let fail_trash_attempt = || {
                     view.state.request_delete(entries.clone(), false);
-                    let id = view.browser().last_started_operation().expect("trash attempt");
+                    let id = view
+                        .browser()
+                        .last_started_operation()
+                        .expect("trash attempt");
                     assert_eq!(
                         held.delete_requests.borrow().last().copied(),
                         Some((id, false, 2)),
@@ -334,7 +343,11 @@ fn unsupported_trash_fallback_explains_and_focuses_cancel() {
                 let requests = held.delete_requests.borrow().len();
                 assert!(modal_key(&window, gtk::gdk::Key::Return));
                 wait_until(|| button(window.upcast_ref(), "Permanently delete 2 items").is_none());
-                assert_eq!(held.delete_requests.borrow().len(), requests, "Enter cancels");
+                assert_eq!(
+                    held.delete_requests.borrow().len(),
+                    requests,
+                    "Enter cancels"
+                );
                 assert!(paths.iter().all(|path| path.exists()));
 
                 fail_trash_attempt();
@@ -342,9 +355,17 @@ fn unsupported_trash_fallback_explains_and_focuses_cancel() {
                     .expect("confirm")
                     .emit_clicked();
                 wait_until(|| held.delete_requests.borrow().len() == requests + 2);
-                let (id, permanent, count) =
-                    held.delete_requests.borrow().last().copied().expect("retry");
-                assert_eq!((permanent, count), (true, 2), "mixed: {mixed}: confirm is permanent");
+                let (id, permanent, count) = held
+                    .delete_requests
+                    .borrow()
+                    .last()
+                    .copied()
+                    .expect("retry");
+                assert_eq!(
+                    (permanent, count),
+                    (true, 2),
+                    "mixed: {mixed}: confirm is permanent"
+                );
                 held.emit(
                     id,
                     crate::services::OperationEvent::Deleted {

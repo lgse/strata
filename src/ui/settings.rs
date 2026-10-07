@@ -993,8 +993,10 @@ pub fn build_layer(
 }
 
 /// Work that every route closing Settings must run, such as discarding a theme preview.
+type DismissHookList = RefCell<Vec<Rc<dyn Fn()>>>;
+
 #[derive(Clone, Default)]
-struct DismissHooks(Rc<RefCell<Vec<Rc<dyn Fn()>>>>);
+struct DismissHooks(Rc<DismissHookList>);
 
 impl DismissHooks {
     fn add(&self, hook: Rc<dyn Fn()>) {

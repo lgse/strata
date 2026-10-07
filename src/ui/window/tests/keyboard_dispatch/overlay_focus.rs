@@ -103,7 +103,10 @@ fn press_escape_on(layer: &gtk::Widget) {
                 .and_downcast::<gtk::EventControllerKey>()
         })
         .any(|keys| {
-            keys.emit_by_name::<bool>("key-pressed", &[&Key::Escape, &0u32, &ModifierType::empty()])
+            keys.emit_by_name::<bool>(
+                "key-pressed",
+                &[&Key::Escape, &0u32, &ModifierType::empty()],
+            )
         });
     assert!(handled, "the overlay handles Escape");
 }
@@ -273,7 +276,10 @@ fn closing_settings_returns_focus_to_a_focused_filter_field() {
                 press_escape_on(&layer);
                 assert!(settles(|| !layer.is_visible()));
                 if !settles(|| browser.filter_has_focus()) {
-                    failures.push(format!("{mode:?}: focus is on {}", fixture.describe_focus()));
+                    failures.push(format!(
+                        "{mode:?}: focus is on {}",
+                        fixture.describe_focus()
+                    ));
                 }
                 browser.dismiss_focused_filter();
             }

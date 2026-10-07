@@ -1341,7 +1341,11 @@ fn delete_without_trash_support_confirms_permanently_with_cancel_focused() {
                 assert!(click_class(&fixture.overlay, "action-dialog-confirm"));
                 wait_until(|| !held.delete_requests.borrow().is_empty());
                 let (id, permanent, count) = held.delete_requests.borrow_mut().remove(0);
-                assert_eq!((permanent, count), (true, 1), "{key:?} confirms permanently");
+                assert_eq!(
+                    (permanent, count),
+                    (true, 1),
+                    "{key:?} confirms permanently"
+                );
                 held.emit(
                     id,
                     crate::services::OperationEvent::Deleted {

@@ -73,7 +73,8 @@ impl WindowContent {
         window.set_child(Some(&self.overlay));
         tenxer_splash::install(window, &self.overlay, preferences);
         super::install_modal_focus_trap(window);
-        self.browser.set_as_modal_focus_fallback(window.upcast_ref());
+        self.browser
+            .set_as_modal_focus_fallback(window.upcast_ref());
         notice
     }
 

@@ -51,7 +51,11 @@ fn modal_focus_fallback(window: &gtk::Window) -> Option<Rc<dyn Fn()>> {
         fallbacks.retain(|(candidate, _)| candidate.upgrade().is_some());
         fallbacks
             .iter()
-            .find(|(candidate, _)| candidate.upgrade().is_some_and(|candidate| candidate == *window))
+            .find(|(candidate, _)| {
+                candidate
+                    .upgrade()
+                    .is_some_and(|candidate| candidate == *window)
+            })
             .map(|(_, fallback)| fallback.clone())
     })
 }

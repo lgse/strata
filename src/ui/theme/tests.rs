@@ -267,7 +267,11 @@ fn appearance_changes_keep_an_active_preview_until_it_is_cancelled() {
 
             let preferences = PreferenceManager::shared();
             let original = preferences.text_size();
-            let changed = if original.root_font_px() == 20 { 18 } else { 20 };
+            let changed = if original.root_font_px() == 20 {
+                18
+            } else {
+                20
+            };
             preferences.set_text_size(TextSize::new(changed));
             assert_eq!(
                 manager.active_model_palette().accent,

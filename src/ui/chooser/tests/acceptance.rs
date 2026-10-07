@@ -1888,7 +1888,8 @@ fn save_file_keeps_the_exact_bytes_of_a_filled_non_utf8_name() {
 
             let suggested = OsStr::new("new.txt");
             let e9_name = OsStr::from_bytes(b"caf\xe9.txt");
-            let cases: [(&str, &OsStr, fn(&NonUtf8SaveFixture), (bool, String)); 6] = [
+            type SaveCase<'a> = (&'a str, &'a OsStr, fn(&NonUtf8SaveFixture), (bool, String));
+            let cases: [SaveCase; 6] = [
                 ("suggested name", e9_name, |_| {}, (true, uri(&e9))),
                 (
                     "select then save",
@@ -1904,7 +1905,10 @@ fn save_file_keeps_the_exact_bytes_of_a_filled_non_utf8_name() {
                         wait_until(|| visible_modal_layer(&fixture.state.window).is_some());
                         fixture.modal_button("action-dialog-cancel").emit_clicked();
                         wait_until(|| visible_modal_layer(&fixture.state.window).is_none());
-                        assert!(fixture.result.borrow().is_none(), "Cancel ended the request");
+                        assert!(
+                            fixture.result.borrow().is_none(),
+                            "Cancel ended the request"
+                        );
                         assert_eq!(fixture.filename().text(), "caf\u{FFFD}.txt");
                     },
                     (true, uri(&e9)),

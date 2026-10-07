@@ -576,7 +576,13 @@ fn archive_activity_is_retained_before_display_and_while_a_large_member_is_runni
 fn labels(root: &gtk::Widget) -> Vec<String> {
     let mut found = Vec::new();
     if let Some(label) = root.downcast_ref::<gtk::Label>() {
-        found.push(label.text().split_whitespace().collect::<Vec<_>>().join(" "));
+        found.push(
+            label
+                .text()
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" "),
+        );
     }
     let mut child = root.first_child();
     while let Some(widget) = child {
@@ -625,9 +631,9 @@ fn docked_deletion_without_trash_support_explains_and_focuses_cancel() {
             );
             pump_until(|| {
                 crate::ui::window::visible_modal_layer(&fixture.window).is_some_and(|layer| {
-                    labels(&layer)
-                        .iter()
-                        .any(|text| text.contains(" · ") && text.ends_with("will be permanently deleted"))
+                    labels(&layer).iter().any(|text| {
+                        text.contains(" · ") && text.ends_with("will be permanently deleted")
+                    })
                 })
             });
             let start = Instant::now();

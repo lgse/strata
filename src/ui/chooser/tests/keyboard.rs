@@ -750,18 +750,19 @@ fn default_map_enter_returns_the_whole_fill_in_every_view() {
                 selection.select_item(2, false);
                 wait_until(|| browser.selected_entries().len() == 2);
             };
-            let cases: [(BrowserMode, &dyn Fn(&Chooser), &[&str]); 3] = [
+            type EnterCase<'a> = (BrowserMode, &'a dyn Fn(&Chooser), &'a [&'a str]);
+            let cases: [EnterCase; 3] = [
                 (BrowserMode::Columns, &shift_down, &["a.txt", "b.txt"]),
                 (BrowserMode::List, &select_all, &["a.txt", "b.txt", "c.txt"]),
-                (BrowserMode::Icons, &native_first_and_last, &["a.txt", "c.txt"]),
+                (
+                    BrowserMode::Icons,
+                    &native_first_and_last,
+                    &["a.txt", "c.txt"],
+                ),
             ];
             for (mode, fill, expected) in cases {
-                let chooser = Chooser::open_with(
-                    multiple_files(),
-                    mode,
-                    &["a.txt", "b.txt", "c.txt"],
-                    false,
-                );
+                let chooser =
+                    Chooser::open_with(multiple_files(), mode, &["a.txt", "b.txt", "c.txt"], false);
                 chooser.focus_files();
                 fill(&chooser);
                 assert!(chooser.open_request(), "{mode:?} filling chose a file");

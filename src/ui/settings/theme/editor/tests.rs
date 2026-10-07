@@ -209,7 +209,10 @@ fn dismissing_an_untouched_editor_keeps_another_editors_preview() {
             assert!(manager.is_previewing());
 
             (untouched.dismiss)();
-            assert!(manager.is_previewing(), "another window's preview stays applied");
+            assert!(
+                manager.is_previewing(),
+                "another window's preview stays applied"
+            );
             assert!(!untouched.revealer.reveals_child());
 
             (editing.dismiss)();

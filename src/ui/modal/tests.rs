@@ -231,8 +231,12 @@ fn dismissed_modal_restores_the_origin_or_falls_back_to_the_window_target() {
                     fixture.overlay.add_overlay(&progress);
                     progress
                 });
-                let layer =
-                    modal_layer(&gtk::Button::with_label("Close"), &fixture.overlay, None, None);
+                let layer = modal_layer(
+                    &gtk::Button::with_label("Close"),
+                    &fixture.overlay,
+                    None,
+                    None,
+                );
                 remember_modal_focus(&layer, &fixture.overlay);
                 fixture.overlay.add_overlay(&layer);
                 if let Some(progress) = listing {
@@ -275,10 +279,9 @@ fn persistent_layer_restores_focus_when_hidden_unless_disarmed() {
             layer.set_visible(false);
             fixture.overlay.add_overlay(&layer);
             let restore = remember_persistent_modal_focus(layer.upcast_ref());
-            for (restore_origin, expected, fallbacks) in [
-                (true, &fixture.origin, 0),
-                (false, &fixture.target, 1),
-            ] {
+            for (restore_origin, expected, fallbacks) in
+                [(true, &fixture.origin, 0), (false, &fixture.target, 1)]
+            {
                 assert!(fixture.origin.grab_focus());
                 restore.set(false);
                 layer.set_visible(true);
@@ -290,7 +293,11 @@ fn persistent_layer_restores_focus_when_hidden_unless_disarmed() {
                 layer.set_visible(false);
                 layer.remove_css_class("dismissing");
                 layer.set_sensitive(true);
-                fixture.assert_focus(expected, fallbacks, &format!("restore origin: {restore_origin}"));
+                fixture.assert_focus(
+                    expected,
+                    fallbacks,
+                    &format!("restore origin: {restore_origin}"),
+                );
             }
             fixture.window.destroy();
         },
