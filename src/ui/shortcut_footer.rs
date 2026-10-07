@@ -611,11 +611,13 @@ impl ShortcutFooter {
         let count = gtk::Label::new(None);
         count.add_css_class("shortcut-footer-count");
         count.set_visible(false);
-        let paste = gtk::Label::new(Some("Files on clipboard"));
+        let paste = gtk::Label::new(Some(&crate::i18n::tr("Files on clipboard")));
         paste.add_css_class("shortcut-footer-paste");
         crate::ui::accessibility::set_description(
             &paste,
-            Some("Press Ctrl+V to paste into a supported directory."),
+            Some(&crate::i18n::tr(
+                "Press Ctrl+V to paste into a supported directory.",
+            )),
         );
         paste.set_visible(false);
         let tag = gtk::Label::new(Some(crate::ui::tenxer_mode::TAG_TEXT));
@@ -657,10 +659,15 @@ impl ShortcutFooter {
         let show_hints = Rc::new(Cell::new(true));
 
         let more = gtk::ToggleButton::new();
-        more.set_child(Some(&gtk::Label::new(Some("F1  Shortcuts"))));
+        more.set_child(Some(&gtk::Label::new(Some(&crate::i18n::tr(
+            "F1  Shortcuts",
+        )))));
         more.add_css_class("shortcut-footer-button");
-        super::accessibility::set_label(&more, "F1  Shortcuts");
-        crate::ui::accessibility::set_description(&more, Some("Show all file-view shortcuts (F1)"));
+        super::accessibility::set_label(&more, &crate::i18n::tr("F1  Shortcuts"));
+        crate::ui::accessibility::set_description(
+            &more,
+            Some(&crate::i18n::tr("Show all file-view shortcuts (F1)")),
+        );
         status.prepend(&more);
         let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         spacer.set_hexpand(true);
@@ -673,14 +680,14 @@ impl ShortcutFooter {
         content.set_overflow(gtk::Overflow::Hidden);
         let header = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         header.add_css_class("shortcut-reference-header");
-        let title = gtk::Label::new(Some("Keyboard shortcuts"));
+        let title = gtk::Label::new(Some(&crate::i18n::tr("Keyboard shortcuts")));
         title.add_css_class("shortcut-reference-title");
         title.set_hexpand(true);
         title.set_xalign(0.0);
         header.append(&title);
         let search = gtk::Entry::new();
         search.add_css_class("form-control");
-        search.set_placeholder_text(Some("Search actions or keys…"));
+        search.set_placeholder_text(Some(&crate::i18n::tr("Search actions or keys…")));
         search.set_hexpand(true);
         search.add_css_class("shortcut-reference-search");
         header.append(&search);
@@ -714,9 +721,9 @@ impl ShortcutFooter {
         content.append(&body);
         let footer_note = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         footer_note.add_css_class("shortcut-reference-footer");
-        let note = gtk::Label::new(Some(
+        let note = gtk::Label::new(Some(&crate::i18n::tr(
             "Ctrl+B categories · Ctrl+F search · Ctrl+L list · arrows/hjkl move · Tab cycle · Esc close",
-        ));
+        )));
         note.set_wrap(true);
         note.add_css_class("shortcut-reference-note");
         note.set_hexpand(true);
@@ -1624,7 +1631,7 @@ fn rebuild_reference(
         }
         button.update_state(&[gtk::accessible::State::Selected(Some(is_selected))]);
         let line = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        let label = gtk::Label::new(Some(name));
+        let label = gtk::Label::new(Some(&crate::i18n::tr(name)));
         label.set_hexpand(!compact);
         label.set_xalign(0.0);
         line.append(&label);
@@ -1713,6 +1720,7 @@ fn render_reference(
                 query.is_empty()
                     || key.to_lowercase().contains(&query)
                     || action.to_lowercase().contains(&query)
+                    || crate::i18n::tr(action).to_lowercase().contains(&query)
             })
             .collect();
         if !rows.is_empty() {
@@ -1721,7 +1729,7 @@ fn render_reference(
         }
     }
     if !found {
-        let empty = gtk::Label::new(Some("No matching shortcuts"));
+        let empty = gtk::Label::new(Some(&crate::i18n::tr("No matching shortcuts")));
         empty.add_css_class("shortcut-reference-note");
         reference.append(&empty);
     }
@@ -1773,8 +1781,7 @@ fn update_item_count(
     filter: Option<&FilterStatus>,
 ) {
     if let Some(filter) = filter {
-        let noun = if filter.total() == 1 { "item" } else { "items" };
-        label.set_label(&format!("{} {noun}", filter.total()));
+        label.set_label(&crate::i18n::count("items", filter.total()));
         crate::ui::accessibility::set_description(
             label,
             Some(&file_folder_breakdown(filter.files, filter.folders)),
@@ -1798,41 +1805,43 @@ fn update_item_count(
             }
         }
     }
-    let noun = if counts.total == 1 { "item" } else { "items" };
     if selected_len > 0 {
         if counts.total > 0 && selected_len == counts.total {
             let folders = counts.folders;
             let files = counts.files;
             let mut parts = Vec::new();
             if folders > 0 {
-                let noun = if folders == 1 { "folder" } else { "folders" };
-                parts.push(format!("{folders} {noun}"));
+                parts.push(crate::i18n::count("folders", folders));
             }
             if files > 0 {
-                let noun = if files == 1 { "file" } else { "files" };
-                parts.push(format!("{files} {noun}"));
+                parts.push(crate::i18n::count("files", files));
             }
-            let text = if parts.is_empty() {
-                format!("{selected_len} {noun} selected")
+            let items = if parts.is_empty() {
+                crate::i18n::count("items", selected_len)
             } else {
-                format!("{} selected", parts.join(", "))
+                parts.join(", ")
             };
+            let text = rust_i18n::t!("%{items} selected", items = items);
             label.set_label(&text);
         } else if selected_len > 64 {
-            label.set_label(&format!("{selected_len} {noun} selected"));
+            label.set_label(&rust_i18n::t!(
+                "%{items} selected",
+                items = crate::i18n::count("items", selected_len)
+            ));
         } else {
             let selected = browser.selected_entries();
             label.set_label(&selection_details(&selected));
         }
         crate::ui::accessibility::set_description(
             label,
-            Some(&format!(
-                "{} of {} {noun} selected. Size includes selected files only; folder contents are not counted.",
-                selected_len, counts.total
+            Some(&rust_i18n::t!(
+                "%{selected} of %{items} selected. Size includes selected files only; folder contents are not counted.",
+                selected = selected_len,
+                items = crate::i18n::count("items", counts.total)
             )),
         );
     } else {
-        label.set_label(&format!("{} {noun}", counts.total));
+        label.set_label(&crate::i18n::count("items", counts.total));
         crate::ui::accessibility::set_description(
             label,
             Some(&file_folder_breakdown(counts.files, counts.folders)),
@@ -1842,9 +1851,12 @@ fn update_item_count(
 }
 
 fn file_folder_breakdown(files: usize, folders: usize) -> String {
-    let file_noun = if files == 1 { "file" } else { "files" };
-    let folder_noun = if folders == 1 { "folder" } else { "folders" };
-    format!("{files} {file_noun}, {folders} {folder_noun}")
+    rust_i18n::t!(
+        "%{files}, %{folders}",
+        files = crate::i18n::count("files", files),
+        folders = crate::i18n::count("folders", folders)
+    )
+    .into_owned()
 }
 
 fn selection_details(entries: &[crate::model::FileEntry]) -> String {
@@ -1852,14 +1864,12 @@ fn selection_details(entries: &[crate::model::FileEntry]) -> String {
     let files = entries.len() - folders;
     let mut parts = Vec::new();
     if folders > 0 {
-        let noun = if folders == 1 { "folder" } else { "folders" };
-        parts.push(format!("{folders} {noun}"));
+        parts.push(crate::i18n::count("folders", folders));
     }
     if files > 0 {
-        let noun = if files == 1 { "file" } else { "files" };
-        parts.push(format!("{files} {noun}"));
+        parts.push(crate::i18n::count("files", files));
     }
-    let mut text = format!("{} selected", parts.join(", "));
+    let mut text = rust_i18n::t!("%{items} selected", items = parts.join(", ")).into_owned();
     if files > 0 {
         let mut bytes = 0u64;
         let mut known = 0;
@@ -1873,9 +1883,12 @@ fn selection_details(entries: &[crate::model::FileEntry]) -> String {
         if known == files {
             text.push_str(&format!(" ({size})"));
         } else if known > 0 {
-            text.push_str(&format!(" ({size} known; size incomplete)"));
+            text.push_str(&rust_i18n::t!(
+                " (%{size} known; size incomplete)",
+                size = size
+            ));
         } else {
-            text.push_str(" (size unavailable)");
+            text.push_str(&crate::i18n::tr(" (size unavailable)"));
         }
     }
     text
@@ -1939,7 +1952,7 @@ fn refresh_paste_availability(
 fn append_section(parent: &gtk::Box, title: &str, shortcuts: &[Shortcut], compact: bool) {
     let section = gtk::Box::new(gtk::Orientation::Vertical, 16);
     let heading = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-    let label = gtk::Label::new(Some(&title.to_uppercase()));
+    let label = gtk::Label::new(Some(&crate::i18n::tr(title).to_uppercase()));
     label.add_css_class("shortcut-reference-heading");
     heading.append(&label);
     let count = gtk::Label::new(Some(&shortcuts.len().to_string()));
@@ -1964,7 +1977,7 @@ fn append_section(parent: &gtk::Box, title: &str, shortcuts: &[Shortcut], compac
         );
         row.add_css_class("shortcut-reference-row");
         let action = gtk::Label::builder()
-            .label(*action)
+            .label(crate::i18n::tr(action))
             .xalign(0.0)
             .hexpand(true)
             .wrap(true)

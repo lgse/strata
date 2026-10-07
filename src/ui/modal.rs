@@ -381,7 +381,7 @@ fn show_message_dialog(
         } else {
             "The operation could not be completed"
         },
-        "Close",
+        &crate::i18n::tr("Close"),
         if error {
             ModalTone::Danger
         } else {
@@ -450,12 +450,12 @@ pub(super) fn show_delete_error_dialog(
 
     let layout = message_dialog_layout(
         crate::assets::icons::X,
-        "Completed with errors",
-        "Some items could not be processed",
-        "Delete Permanently",
+        &crate::i18n::tr("Completed with errors"),
+        &crate::i18n::tr("Some items could not be processed"),
+        &crate::i18n::tr("Delete Permanently"),
         ModalTone::Danger,
     );
-    layout.cancel.set_label("Done");
+    layout.cancel.set_label(&crate::i18n::tr("Done"));
     let explanation = message_dialog_description(detail);
     explanation.set_selectable(true);
     layout.body.append(&explanation);

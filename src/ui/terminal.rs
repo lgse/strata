@@ -190,9 +190,18 @@ impl Terminal {
     pub(super) fn launch_failure(&self, error: &std::io::Error) -> String {
         let program = self.program.to_string_lossy();
         if error.kind() == ErrorKind::NotFound {
-            return format!("Terminal “{program}” was not found on your PATH");
+            return rust_i18n::t!(
+                "Terminal “%{program}” was not found on your PATH",
+                program = program
+            )
+            .into_owned();
         }
-        format!("Terminal “{program}” could not be started: {error}")
+        rust_i18n::t!(
+            "Terminal “%{program}” could not be started: %{error}",
+            program = program,
+            error = error
+        )
+        .into_owned()
     }
 }
 
@@ -203,9 +212,7 @@ pub(super) fn no_terminal_message() -> String {
         .map(|known| known.program)
         .collect::<Vec<_>>()
         .join(", ");
-    format!(
-        "No terminal emulator was found. Install “{PREFERRED_LAUNCHER}” with a configured ~/.config/xdg-terminals.list, set $TERMINAL, or install one of: {fallbacks}"
-    )
+    rust_i18n::t!("No terminal emulator was found. Install “%{PREFERRED_LAUNCHER}” with a configured ~/.config/xdg-terminals.list, set $TERMINAL, or install one of: %{fallbacks}", PREFERRED_LAUNCHER = PREFERRED_LAUNCHER, fallbacks = fallbacks).into_owned()
 }
 
 fn explicit_terminal(path_var: Option<&OsStr>, terminal_var: Option<&OsStr>) -> Option<Terminal> {

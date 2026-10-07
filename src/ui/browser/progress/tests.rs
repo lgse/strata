@@ -228,5 +228,5 @@ fn transfer_status_handles_empty_files_and_unknown_totals() {
 
     let (_, bytes, items, _) = transfer_progress_status(0, 1, 0, None, 0, None, None);
     assert_eq!(bytes, "0 B");
-    assert_eq!(items, "0 of 1 items");
+    assert_eq!(items, "0 of 1 item");
 }

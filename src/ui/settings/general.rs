@@ -26,11 +26,14 @@ pub(super) fn general_page(
 ) -> (gtk::Widget, Vec<gtk::Box>, Vec<ResponsiveActivationRow>) {
     let preferences = page_content();
 
+    append_language_option(&preferences, &manager);
     append_browsing_options(&preferences, &manager);
     append_sidebar_options(&preferences, &manager);
 
     append_heading(&preferences, "OPENING ITEMS");
-    let description = gtk::Label::new(Some("How many clicks open a file or folder in each view."));
+    let description = gtk::Label::new(Some(&crate::i18n::tr(
+        "How many clicks open a file or folder in each view.",
+    )));
     description.set_xalign(0.0);
     description.add_css_class("settings-section-description");
     preferences.append(&description);
@@ -75,6 +78,38 @@ pub(super) fn general_page(
     )
 }
 
+fn append_language_option(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
+    let group = super::settings_group(content, "LANGUAGE");
+    let choice = super::bindings::choice_menu(
+        manager,
+        "Language",
+        &crate::i18n::Language::CHOICES,
+        PreferenceManager::language,
+        PreferenceManager::set_language,
+    );
+    choice.set_widget_name("settings-language");
+    let controls = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    controls.append(&choice);
+    let restart = gtk::Button::with_label(&crate::i18n::tr("Restart now"));
+    restart.set_widget_name("settings-language-restart");
+    restart.add_css_class("settings-action-button");
+    manager.bind_preference(
+        &restart,
+        PreferenceManager::language_restart_required,
+        |widget, required| widget.set_visible(required),
+    );
+    restart.connect_clicked(|_| {
+        let application = gio::Application::default().and_downcast::<gtk::Application>();
+        super::restart(application.as_ref());
+    });
+    controls.append(&restart);
+    group.append(&super::control_row(
+        "Language",
+        "Auto-detect follows your system language. Restart Strata to apply changes.",
+        &controls,
+    ));
+}
+
 fn append_date_format_option(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
     const CHOICES: [(&str, crate::util::DateFormat); 3] = [
         ("Relative", crate::util::DateFormat::Relative),
@@ -95,22 +130,25 @@ fn append_date_format_option(content: &gtk::Box, manager: &Rc<PreferenceManager>
         .build();
     button.add_css_class("form-control");
     button.add_css_class("settings-choice");
-    crate::ui::accessibility::set_description(&button, Some("Modified date format"));
-    crate::ui::accessibility::set_label(&button, "Modified date format");
+    crate::ui::accessibility::set_description(
+        &button,
+        Some(&crate::i18n::tr("Modified date format")),
+    );
+    crate::ui::accessibility::set_label(&button, &crate::i18n::tr("Modified date format"));
     manager.bind_preference(&button, PreferenceManager::date_format, |widget, format| {
         if let Some(button) = widget.downcast_ref::<gtk::MenuButton>() {
-            button.set_label(match format {
+            button.set_label(&crate::i18n::tr(match format {
                 crate::util::DateFormat::Relative => "Relative",
                 crate::util::DateFormat::Iso8601 => "ISO 8601",
                 crate::util::DateFormat::Long => "Long",
-            });
+            }));
         }
     });
     let mut examples = Vec::new();
     for (name, format) in CHOICES {
         let copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
         copy.set_hexpand(true);
-        let title = gtk::Label::new(Some(name));
+        let title = gtk::Label::new(Some(&crate::i18n::tr(name)));
         title.set_xalign(0.0);
         let example = gtk::Label::new(None);
         example.set_xalign(0.0);
@@ -347,11 +385,11 @@ fn append_experimental_label(row: &gtk::Box, manager: &Rc<PreferenceManager>) {
             let label = widget
                 .downcast_ref::<gtk::Label>()
                 .expect("10xer experimental label");
-            label.set_text(if enabled {
+            label.set_text(&crate::i18n::tr(if enabled {
                 crate::ui::shortcut_reference::EXPERIMENTAL_LABEL
             } else {
                 ""
-            });
+            }));
             label.set_visible(enabled);
         },
     );
@@ -376,7 +414,7 @@ fn bind_tenxer_unused_subtitle(
         PreferenceManager::tenxer_mode,
         move |widget, enabled| {
             if let Some(label) = widget.downcast_ref::<gtk::Label>() {
-                label.set_text(if enabled { unused } else { normal });
+                label.set_text(&crate::i18n::tr(if enabled { unused } else { normal }));
                 label.set_visible(true);
             }
         },
@@ -388,16 +426,19 @@ fn append_default_directory_option(content: &gtk::Box, manager: &Rc<PreferenceMa
     choose.set_valign(gtk::Align::Center);
     choose.add_css_class("form-control");
     choose.add_css_class("settings-choice");
-    crate::ui::accessibility::set_description(&choose, Some("Select default directory"));
-    super::super::accessibility::set_label(&choose, "Default directory");
+    crate::ui::accessibility::set_description(
+        &choose,
+        Some(&crate::i18n::tr("Select default directory")),
+    );
+    super::super::accessibility::set_label(&choose, &crate::i18n::tr("Default directory"));
 
-    let reset = gtk::Button::with_label("Reset");
+    let reset = gtk::Button::with_label(&crate::i18n::tr("Reset"));
     reset.add_css_class("form-control");
     reset.set_valign(gtk::Align::Center);
     reset.set_sensitive(manager.default_directory().is_some());
     crate::ui::accessibility::set_description(
         &reset,
-        Some("Restore the home directory as default"),
+        Some(&crate::i18n::tr("Restore the home directory as default")),
     );
 
     let controls = gtk::Box::new(gtk::Orientation::Horizontal, 8);
@@ -440,7 +481,7 @@ fn append_default_directory_option(content: &gtk::Box, manager: &Rc<PreferenceMa
             return;
         };
         let dialog = gtk::FileDialog::builder()
-            .title("Select default directory")
+            .title(crate::i18n::tr("Select default directory"))
             .modal(true)
             .build();
         let manager = manager.clone();
@@ -458,7 +499,7 @@ fn append_default_directory_option(content: &gtk::Box, manager: &Rc<PreferenceMa
 fn default_directory_text(path: Option<std::path::PathBuf>) -> String {
     match path {
         Some(path) => abbreviate_home(&path),
-        None => "Home directory".to_owned(),
+        None => crate::i18n::tr("Home directory"),
     }
 }
 
@@ -569,7 +610,7 @@ fn append_sidebar_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
         button.add_css_class("sidebar-place-chip");
         let content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         content.append(&crate::assets::primary_icon(icon, 16));
-        content.append(&gtk::Label::new(Some(label)));
+        content.append(&gtk::Label::new(Some(&crate::i18n::tr(label))));
         button.set_child(Some(&content));
         button.update_property(&[
             gtk::accessible::Property::Label(switch.title),
@@ -660,7 +701,7 @@ fn append_click_activation(
     spacer.set_hexpand(true);
     header.append(&spacer);
     for text in ["FILES", "FOLDERS"] {
-        let label = gtk::Label::new(Some(text));
+        let label = gtk::Label::new(Some(&crate::i18n::tr(text)));
         label.set_width_chars(17);
         header.append(&label);
     }
@@ -740,7 +781,7 @@ fn click_activation_option(
 ) {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 24);
     row.add_css_class("click-activation-row");
-    let title = gtk::Label::new(Some(mode));
+    let title = gtk::Label::new(Some(&crate::i18n::tr(mode)));
     title.set_xalign(0.0);
     title.set_hexpand(true);
     title.add_css_class("settings-option-title");
@@ -760,7 +801,7 @@ fn click_activation_option(
         option.add_css_class("activation-option");
         option.set_hexpand(false);
         option.set_valign(gtk::Align::Center);
-        let label = gtk::Label::new(Some(label));
+        let label = gtk::Label::new(Some(&crate::i18n::tr(label)));
         label.set_xalign(0.0);
         label.set_width_chars(7);
         label.add_css_class("settings-option-description");
@@ -820,7 +861,7 @@ fn video_preview_backend_control(
         ("Vulkan", MediaPreviewBackend::Vulkan),
     ]
     .map(|(label, value)| {
-        let (option, check) = menu_option(label, selected_backend == value);
+        let (option, check) = menu_option(&crate::i18n::tr(label), selected_backend == value);
         menu.append(&option);
         (value, option, check)
     });
@@ -840,7 +881,7 @@ fn video_preview_backend_control(
     backend.set_sensitive(backend_sensitive);
     backend.set_valign(gtk::Align::Center);
     backend.update_property(&[
-        gtk::accessible::Property::Label("Video preview hardware backend"),
+        gtk::accessible::Property::Label(&crate::i18n::tr("Video preview hardware backend")),
         gtk::accessible::Property::Description(description),
     ]);
     bind_video_preview_backend_menu(manager, &backend, options);
@@ -857,7 +898,7 @@ fn bind_video_preview_backend_menu(
         PreferenceManager::video_preview_backend,
         |widget, selected| {
             if let Some(button) = widget.downcast_ref::<gtk::MenuButton>() {
-                button.set_label(video_preview_backend_label(selected));
+                button.set_label(&crate::i18n::tr(video_preview_backend_label(selected)));
             }
         },
     );

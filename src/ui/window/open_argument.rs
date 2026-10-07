@@ -218,7 +218,7 @@ pub(super) fn show_connecting_overlay(
     label.add_css_class("form-message");
     content.append(&label);
 
-    let cancel = gtk::Button::with_label("Cancel");
+    let cancel = gtk::Button::with_label(&crate::i18n::tr("Cancel"));
     content.append(&cancel);
     cancel.connect_clicked(move |_| on_cancel());
 
@@ -253,9 +253,9 @@ fn show_error(browser: &BrowserView, file: gio::File, location: Location) {
     content.set_halign(gtk::Align::Center);
     content.set_valign(gtk::Align::Center);
 
-    let label = gtk::Label::new(Some(&format!(
-        "The requested location is unavailable\n{}",
-        location.display_path()
+    let label = gtk::Label::new(Some(&rust_i18n::t!(
+        "The requested location is unavailable\n%{value1}",
+        value1 = location.display_path()
     )));
     label.add_css_class("status-message");
     label.add_css_class("error");
@@ -267,7 +267,7 @@ fn show_error(browser: &BrowserView, file: gio::File, location: Location) {
     label.set_max_width_chars(60);
     content.append(&label);
 
-    let retry = gtk::Button::with_label("Retry");
+    let retry = gtk::Button::with_label(&crate::i18n::tr("Retry"));
     retry.add_css_class("retry-button");
     retry.set_halign(gtk::Align::Center);
     content.append(&retry);

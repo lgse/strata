@@ -1399,46 +1399,52 @@ fn send_to_plural_copy_shows_item_count() {
     crate::test_support::gtk_test(
         "ui::browser::transfer::tests::send_to_plural_copy_shows_item_count",
         || {
-            let SendToToastFixture {
-                _tempdir,
-                view,
-                overlay,
-                window,
-                events,
-                source_dir,
-                device,
-            } = open_send_to_toast_browser(
-                "send-to plural toast fixture",
-                &["a.txt", "b.txt", "c.txt"],
-            );
-            let device_root = device.clone();
-            let sources = ["a.txt", "b.txt", "c.txt"]
-                .into_iter()
-                .map(|name| Location::local(source_dir.join(name)))
-                .collect();
-            view.state.send_to_removable_device_with_resolver(
-                "volume:toast-device",
-                sources,
-                move |id| (id == "volume:toast-device").then(|| device_root.clone()),
-            );
-            wait_until(
-                || {
-                    ["a.txt", "b.txt", "c.txt"]
-                        .iter()
-                        .all(|name| device.join(name).exists())
-                        && events.borrow().iter().any(|event| {
-                            matches!(event, crate::app::BrowserEvent::TransferFinished { .. })
-                        })
-                },
-                "the plural send-to copy",
-            );
-            assert_eq!(
-                send_to_toast_labels(&overlay),
-                ["3 items copied to VANIA"],
-                "a plural success counts the items"
-            );
-            view.browser().clear_observer();
-            window.destroy();
+            for (locale, expected) in [
+                ("en", "3 items copied to VANIA"),
+                ("ru", "Скопировано на VANIA: 3 элемента"),
+            ] {
+                let SendToToastFixture {
+                    _tempdir,
+                    view,
+                    overlay,
+                    window,
+                    events,
+                    source_dir,
+                    device,
+                } = open_send_to_toast_browser(
+                    "send-to plural toast fixture",
+                    &["a.txt", "b.txt", "c.txt"],
+                );
+                rust_i18n::set_locale(locale);
+                let device_root = device.clone();
+                let sources = ["a.txt", "b.txt", "c.txt"]
+                    .into_iter()
+                    .map(|name| Location::local(source_dir.join(name)))
+                    .collect();
+                view.state.send_to_removable_device_with_resolver(
+                    "volume:toast-device",
+                    sources,
+                    move |id| (id == "volume:toast-device").then(|| device_root.clone()),
+                );
+                wait_until(
+                    || {
+                        ["a.txt", "b.txt", "c.txt"]
+                            .iter()
+                            .all(|name| device.join(name).exists())
+                            && events.borrow().iter().any(|event| {
+                                matches!(event, crate::app::BrowserEvent::TransferFinished { .. })
+                            })
+                    },
+                    "the plural send-to copy",
+                );
+                assert_eq!(
+                    send_to_toast_labels(&overlay),
+                    [expected],
+                    "a plural success counts the items in {locale}"
+                );
+                view.browser().clear_observer();
+                window.destroy();
+            }
         },
     );
 }

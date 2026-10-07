@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: MIT
 
+rust_i18n::i18n!("locales", fallback = "en");
+
 mod adapters;
 mod app;
 mod assets;
 mod build_info;
+mod i18n;
 mod logging;
 mod media;
 mod metrics;

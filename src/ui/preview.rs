@@ -229,7 +229,7 @@ impl PreviewDrawer {
         title.set_hexpand(true);
         title.set_xalign(0.0);
         let open = gtk::Button::builder()
-            .tooltip_text("Open in default application")
+            .tooltip_text(crate::i18n::tr("Open in default application"))
             .valign(gtk::Align::Center)
             .build();
         open.set_child(Some(&crate::assets::chrome_icon(
@@ -239,15 +239,17 @@ impl PreviewDrawer {
         open.set_visible(allow_external_open);
         let document_view_icon = crate::assets::primary_icon(crate::assets::icons::FILE_CODE, 16);
         let document_view_button = gtk::Button::builder()
-            .tooltip_text("View source")
+            .tooltip_text(crate::i18n::tr("View source"))
             .valign(gtk::Align::Center)
             .visible(false)
             .build();
         document_view_button.set_child(Some(&document_view_icon));
         document_view_button.add_css_class("preview-header-action");
-        document_view_button.update_property(&[gtk::accessible::Property::Label("View source")]);
+        document_view_button.update_property(&[gtk::accessible::Property::Label(
+            &crate::i18n::tr("View source"),
+        )]);
         let print = gtk::Button::builder()
-            .tooltip_text("Print")
+            .tooltip_text(crate::i18n::tr("Print"))
             .valign(gtk::Align::Center)
             .build();
         print.set_child(Some(&crate::assets::chrome_icon(
@@ -256,7 +258,7 @@ impl PreviewDrawer {
         print.add_css_class("preview-header-action");
         print.set_visible(false);
         let wrap = gtk::ToggleButton::builder()
-            .tooltip_text("Toggle word wrap")
+            .tooltip_text(crate::i18n::tr("Toggle word wrap"))
             .valign(gtk::Align::Center)
             .build();
         wrap.set_child(Some(&crate::assets::chrome_icon(
@@ -265,7 +267,7 @@ impl PreviewDrawer {
         wrap.add_css_class("preview-header-action");
         wrap.set_visible(false);
         let close = gtk::Button::builder()
-            .tooltip_text("Close preview (Space)")
+            .tooltip_text(crate::i18n::tr("Close preview (Space)"))
             .valign(gtk::Align::Center)
             .build();
         close.set_child(Some(&crate::assets::chrome_icon(
@@ -934,14 +936,14 @@ impl PreviewState {
 
         let layout = modal_layout(
             crate::assets::icons::PRINTER,
-            "Preparing PDF",
-            "Rendering pages for the print dialog",
-            "Cancel",
+            &crate::i18n::tr("Preparing PDF"),
+            &crate::i18n::tr("Rendering pages for the print dialog"),
+            &crate::i18n::tr("Cancel"),
         );
         layout.content.add_css_class("compact");
         layout.close.set_visible(false);
         layout.cancel.set_visible(false);
-        let status = gtk::Label::new(Some("Rendering pages…"));
+        let status = gtk::Label::new(Some(&crate::i18n::tr("Rendering pages…")));
         status.add_css_class("modal-progress-status");
         status.set_xalign(0.0);
         let progress = gtk::ProgressBar::new();
@@ -1345,18 +1347,20 @@ impl PreviewState {
         let icon = crate::assets::primary_icon(crate::assets::icons::LOCK, 34);
         icon.add_css_class("preview-feedback-icon");
         box_.append(&icon);
-        let heading = gtk::Label::new(Some("Password-protected archive"));
+        let heading = gtk::Label::new(Some(&crate::i18n::tr("Password-protected archive")));
         heading.add_css_class("preview-feedback-title");
         box_.append(&heading);
-        let detail = gtk::Label::new(Some("Enter the password to preview the archive contents"));
+        let detail = gtk::Label::new(Some(&crate::i18n::tr(
+            "Enter the password to preview the archive contents",
+        )));
         detail.add_css_class("preview-feedback-detail");
         box_.append(&detail);
 
         let password = form_password_entry();
         password.set_show_peek_icon(true);
-        password.set_placeholder_text(Some("Password"));
+        password.set_placeholder_text(Some(&crate::i18n::tr("Password")));
         password.set_width_chars(24);
-        let unlock = gtk::Button::with_label("Unlock");
+        let unlock = gtk::Button::with_label(&crate::i18n::tr("Unlock"));
         unlock.add_css_class("suggested-action");
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         row.add_css_class("preview-archive-password-row");
@@ -1434,7 +1438,9 @@ impl PreviewState {
                     super::preferences::PreferenceManager::shared().preview_text_wrap(),
                 );
                 if truncated && !virtualized {
-                    let notice = gtk::Label::new(Some("Preview limited to the first 1 MB"));
+                    let notice = gtk::Label::new(Some(&crate::i18n::tr(
+                        "Preview limited to the first 1 MB",
+                    )));
                     notice.add_css_class("preview-note");
                     self.content.append(&notice);
                 }
@@ -1478,9 +1484,15 @@ impl PreviewState {
                     Ok(texture) => {
                         let picture = gtk::Picture::for_paintable(&texture);
                         if model {
-                            super::accessibility::set_label(&picture, "Model preview");
+                            super::accessibility::set_label(
+                                &picture,
+                                &crate::i18n::tr("Model preview"),
+                            );
                         } else if cover {
-                            super::accessibility::set_label(&picture, "Cover preview");
+                            super::accessibility::set_label(
+                                &picture,
+                                &crate::i18n::tr("Cover preview"),
+                            );
                         }
                         picture.add_css_class("preview-image");
                         picture.set_can_shrink(true);
@@ -1938,7 +1950,9 @@ impl PreviewState {
             text_area.set_hexpand(true);
             text_area.set_vexpand(true);
             text_area.set_accessible_role(gtk::AccessibleRole::Img);
-            text_area.update_property(&[gtk::accessible::Property::Label("PDF page text")]);
+            text_area.update_property(&[gtk::accessible::Property::Label(&crate::i18n::tr(
+                "PDF page text",
+            ))]);
             let spinner = gtk::Spinner::new();
             spinner.set_halign(gtk::Align::Center);
             spinner.set_valign(gtk::Align::Center);
@@ -2094,7 +2108,7 @@ impl PreviewState {
                     } if response_id == request_id => {
                         crate::ui::accessibility::set_description(
                             &overlay,
-                            Some("Unable to render this PDF page"),
+                            Some(&crate::i18n::tr("Unable to render this PDF page")),
                         );
                     }
                     PreviewEvent::Progress { .. }
@@ -2444,7 +2458,7 @@ impl PreviewState {
         let pause_icon = crate::assets::primary_icon(crate::assets::icons::PAUSE, 18);
         let play_button = gtk::Button::new();
         play_button.add_css_class("preview-media-button");
-        play_button.set_tooltip_text(Some("Play/Pause (Ctrl+Alt+Space)"));
+        play_button.set_tooltip_text(Some(&crate::i18n::tr("Play/Pause (Ctrl+Alt+Space)")));
         play_button.set_child(Some(if media.is_playing() {
             &pause_icon
         } else {
@@ -2862,7 +2876,7 @@ impl PreviewState {
             .as_ref()
             .is_some_and(|entry| crate::services::is_model(&entry.native_name))
         {
-            let label = gtk::Label::new(Some("Waiting for preview…"));
+            let label = gtk::Label::new(Some(&crate::i18n::tr("Waiting for preview…")));
             label.add_css_class("preview-feedback-detail");
             label.set_wrap(true);
             self.loading_label.replace(Some(label));
@@ -3015,7 +3029,7 @@ impl VolumeControls {
     ) -> Self {
         let toggle = gtk::Button::new();
         toggle.add_css_class("preview-media-button");
-        toggle.set_tooltip_text(Some("Mute/unmute (Ctrl+Alt+M)"));
+        toggle.set_tooltip_text(Some(&crate::i18n::tr("Mute/unmute (Ctrl+Alt+M)")));
         let muted = preferences.preview_muted();
         let icon = crate::assets::primary_icon(
             if muted {
@@ -3183,7 +3197,12 @@ fn print_progress_for_page(completed: i32, total: i32) -> (String, f64) {
     let total = total.max(1);
     let completed = completed.clamp(0, total);
     (
-        format!("Rendering page {completed} of {total}"),
+        rust_i18n::t!(
+            "Rendering page %{completed} of %{total}",
+            completed = completed,
+            total = total
+        )
+        .into_owned(),
         f64::from(completed) / f64::from(total),
     )
 }
@@ -3562,7 +3581,11 @@ fn media_error_feedback(message: &str) -> (&'static str, String, Option<&'static
     }
     (
         "Preview unavailable",
-        format!("Unable to play this media preview: {message}"),
+        rust_i18n::t!(
+            "Unable to play this media preview: %{message}",
+            message = message
+        )
+        .into_owned(),
         None,
     )
 }

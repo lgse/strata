@@ -518,8 +518,11 @@ pub(crate) fn filter_change_for(previous: &str, settled: &str) -> gtk::FilterCha
 }
 
 pub(crate) fn filter_placeholder(count: usize) -> String {
-    let noun = if count == 1 { "item" } else { "items" };
-    format!("Filter {count} {noun}…")
+    rust_i18n::t!(
+        "Filter %{items}…",
+        items = crate::i18n::count("items", count)
+    )
+    .into_owned()
 }
 
 pub(crate) fn notify_filter_query(

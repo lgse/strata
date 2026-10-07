@@ -356,7 +356,7 @@ impl BrowserView {
         let location_entry = gtk::Entry::builder()
             .hexpand(true)
             .width_chars(36)
-            .placeholder_text("Enter a path or URI…")
+            .placeholder_text(crate::i18n::tr("Enter a path or URI…"))
             .build();
         location_entry.add_css_class("location-entry");
         let confirm_location = gtk::Button::builder()
@@ -523,7 +523,10 @@ impl BrowserView {
 
         let global_activity_spinner = gtk::Spinner::new();
         global_activity_spinner.add_css_class("global-activity-spinner");
-        crate::ui::accessibility::set_description(&global_activity_spinner, Some("Working…"));
+        crate::ui::accessibility::set_description(
+            &global_activity_spinner,
+            Some(&crate::i18n::tr("Working…")),
+        );
         global_activity_spinner.set_visible(false);
         let location_control = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         location_control.add_css_class("location-control");
@@ -1375,7 +1378,7 @@ impl BrowserView {
         if let Err(error) = self.state.open_typed_location(input, base.as_deref()) {
             show_error_dialog(
                 &self.state.overlay,
-                "Unable to open location",
+                &crate::i18n::tr("Unable to open location"),
                 &error.to_string(),
             );
         }
@@ -2483,7 +2486,7 @@ impl ViewState {
             self.global_activity_spinner.set_visible(false);
             crate::ui::accessibility::set_description(
                 &self.global_activity_spinner,
-                Some("Working…"),
+                Some(&crate::i18n::tr("Working…")),
             );
         }
     }

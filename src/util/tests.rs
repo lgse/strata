@@ -18,6 +18,35 @@ fn utc_date(year: i32, month: i32, day: i32, hour: i32, minute: i32) -> glib::Da
 }
 
 #[test]
+fn dates_follow_the_app_language_without_installed_system_locales() {
+    crate::test_support::gtk_test(
+        "util::tests::dates_follow_the_app_language_without_installed_system_locales",
+        || {
+            let modified = utc_date(2026, 9, 7, 14, 30);
+            let now = utc_date(2026, 9, 9, 14, 30);
+            for (locale, long, weekday) in [
+                ("fr", "7 septembre 2026, 14:30", "lundi"),
+                ("de", "7. September 2026, 14:30", "Montag"),
+                ("ja", "2026年9月7日 14:30", "月曜日"),
+                ("ko", "2026년 9월 7일 14:30", "월요일"),
+                ("ru", "7 сентября 2026 г., 14:30", "понедельник"),
+            ] {
+                rust_i18n::set_locale(locale);
+                assert_eq!(modified_date_at(&modified, &now, DateFormat::Long), long);
+                assert_eq!(
+                    modified_date_at(&modified, &now, DateFormat::Relative),
+                    weekday
+                );
+                assert_eq!(
+                    modified_date_at(&modified, &now, DateFormat::Iso8601),
+                    "2026-09-07 14:30"
+                );
+            }
+        },
+    );
+}
+
+#[test]
 fn date_format_parsing_tolerates_hand_edited_values() {
     for (value, expected) in [
         ("relative", DateFormat::Relative),

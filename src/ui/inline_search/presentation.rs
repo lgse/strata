@@ -58,7 +58,7 @@ impl ResultWidgets {
                 labels.append(&origin);
                 let field = gtk::Entry::new();
                 field.add_css_class("inline-rename");
-                accessibility::set_label(&field, "Rename");
+                accessibility::set_label(&field, &crate::i18n::tr("Rename"));
                 field.set_hexpand(true);
                 field.set_width_chars(1);
                 field.set_visible(false);

@@ -762,12 +762,12 @@ pub(super) fn build_appearance_menu(
     popover.add_css_class("appearance-popover");
     super::scrolling::popover::dismiss_on_outside_scroll(&popover);
     let button = gtk::MenuButton::builder()
-        .tooltip_text("Appearance")
+        .tooltip_text(crate::i18n::tr("Appearance"))
         .popover(&popover)
         .build();
     // Without an explicit name GTK builds one from the whole open popover, so
     // a screen reader reads the entire menu back as the button's label.
-    super::accessibility::set_label(&button, "Appearance");
+    super::accessibility::set_label(&button, &crate::i18n::tr("Appearance"));
     let popover_weak = popover.downgrade();
     append_menu_heading(&content, "VIEW");
     let current_mode = view.view_mode();
@@ -799,7 +799,9 @@ pub(super) fn build_appearance_menu(
     );
     crate::ui::accessibility::set_description(
         &group_by_type,
-        Some("Group List entries under file-type headings"),
+        Some(&crate::i18n::tr(
+            "Group List entries under file-type headings",
+        )),
     );
     preferences.bind_preference(
         &group_check,
@@ -871,7 +873,7 @@ pub(super) fn build_appearance_menu(
         .build();
     preview_toggle.add_css_class("appearance-option");
     preview_toggle.add_css_class("preview-panel-option");
-    super::accessibility::set_label(&preview_toggle, "Preview panel");
+    super::accessibility::set_label(&preview_toggle, &crate::i18n::tr("Preview panel"));
     let description_toggle = preview_toggle.downgrade();
     preferences.bind_preference(
         &preview_shortcut,
@@ -891,9 +893,10 @@ pub(super) fn build_appearance_menu(
                 crate::ui::accessibility::set_description(
                     &toggle,
                     Some(&if text.is_empty() {
-                        "Toggle preview panel while browsing".to_owned()
+                        crate::i18n::tr("Toggle preview panel while browsing")
                     } else {
-                        format!("Toggle preview panel while browsing ({text})")
+                        rust_i18n::t!("Toggle preview panel while browsing (%{text})", text = text)
+                            .into_owned()
                     }),
                 );
             }
@@ -1511,7 +1514,11 @@ impl SidebarState {
                     return;
                 }
                 let location = Location::local(home_directory());
-                let row = self.append_place(crate::assets::icons::HOME, "Home", location.clone());
+                let row = self.append_place(
+                    crate::assets::icons::HOME,
+                    &crate::i18n::tr("Home"),
+                    location.clone(),
+                );
                 self.add_keycap(&row, "h");
                 if !self.local_only {
                     self.attach_place_context_menu(&row, location, |state| {
@@ -1530,8 +1537,11 @@ impl SidebarState {
                     return;
                 }
                 let location = Location::uri("network:///");
-                let row =
-                    self.append_place(crate::assets::icons::NETWORK, "Network", location.clone());
+                let row = self.append_place(
+                    crate::assets::icons::NETWORK,
+                    &crate::i18n::tr("Network"),
+                    location.clone(),
+                );
                 self.add_keycap(&row, "n");
                 self.attach_place_context_menu(&row, location, |state| {
                     state.preference_manager.set_sidebar_show_network(false);
@@ -1563,9 +1573,14 @@ impl SidebarState {
                 .filter(|path| should_show_standard_place(place, path, &home_directory()))
         {
             let row = if self.local_only {
-                self.append_place(icon, name, Location::local(path))
+                self.append_place(icon, &crate::i18n::tr(name), Location::local(path))
             } else {
-                self.append_reorderable_place(place, icon, name, Location::local(path))
+                self.append_reorderable_place(
+                    place,
+                    icon,
+                    &crate::i18n::tr(name),
+                    Location::local(path),
+                )
             };
             if let Some(key) = standard_place_chord_key(place) {
                 self.add_keycap(&row, key);
@@ -1772,7 +1787,7 @@ impl SidebarState {
             }
             Err(error) => show_error_dialog(
                 &self.view.widget(),
-                "Unable to update pinned folders",
+                &crate::i18n::tr("Unable to update pinned folders"),
                 &error.to_string(),
             ),
         }
@@ -1885,7 +1900,7 @@ impl SidebarState {
 
     fn append_recent_place(self: &Rc<Self>) {
         let location = Location::uri("recent:///");
-        let row = sidebar_button(crate::assets::icons::CLOCK, "Recent");
+        let row = sidebar_button(crate::assets::icons::CLOCK, &crate::i18n::tr("Recent"));
         crate::ui::accessibility::set_description(&row, Some("recent:///"));
         self.add_keycap(&row, "r");
         self.bind_place_row(&row, location, PlaceNavigation::Direct);
@@ -1895,7 +1910,7 @@ impl SidebarState {
 
     fn append_trash_place(self: &Rc<Self>) {
         let location = Location::uri("trash:///");
-        let row = sidebar_button(crate::assets::icons::TRASH, "Trash");
+        let row = sidebar_button(crate::assets::icons::TRASH, &crate::i18n::tr("Trash"));
         crate::ui::accessibility::set_description(&row, Some("trash:///"));
         self.add_keycap(&row, "t");
         self.bind_place_row(&row, location, PlaceNavigation::Direct);
@@ -2343,7 +2358,11 @@ impl SidebarState {
                     .await
                     && !error.matches(gio::IOErrorEnum::Cancelled)
                 {
-                    show_error_dialog(&error_parent, "Unable to disconnect", &error.to_string());
+                    show_error_dialog(
+                        &error_parent,
+                        &crate::i18n::tr("Unable to disconnect"),
+                        &error.to_string(),
+                    );
                 }
             });
         });
@@ -3201,8 +3220,10 @@ fn request_encrypted_lock_showing(
     if mount.is_none() && drive.is_none() {
         show_error_dialog(
             parent,
-            "Unable to lock device",
-            "This volume has no supported lock operation while unmounted. Mount it in Strata, then try Lock again.",
+            &crate::i18n::tr("Unable to lock device"),
+            &crate::i18n::tr(
+                "This volume has no supported lock operation while unmounted. Mount it in Strata, then try Lock again.",
+            ),
         );
         return;
     }
@@ -3253,7 +3274,7 @@ fn request_encrypted_lock_showing(
                             Ok(Err(error)) => {
                                 show_error_dialog(
                                     &parent_for_forget,
-                                    "Couldn't forget the saved password",
+                                    &crate::i18n::tr("Couldn't forget the saved password"),
                                     &error.to_string(),
                                 );
                                 in_flight_for_forget.set(false);
@@ -3261,8 +3282,8 @@ fn request_encrypted_lock_showing(
                             Err(_) => {
                                 show_error_dialog(
                                     &parent_for_forget,
-                                    "Couldn't forget the saved password",
-                                    "The saved password could not be deleted.",
+                                    &crate::i18n::tr("Couldn't forget the saved password"),
+                                    &crate::i18n::tr("The saved password could not be deleted."),
                                 );
                                 in_flight_for_forget.set(false);
                             }
@@ -3308,9 +3329,9 @@ fn confirm_forget_cached_password(
 
     let layout = message_dialog_layout(
         crate::assets::icons::KEY,
-        "Forget saved password?",
+        &crate::i18n::tr("Forget saved password?"),
         volume_name,
-        "Forget and lock",
+        &crate::i18n::tr("Forget and lock"),
         ModalTone::Danger,
     );
     layout.body.append(&message_dialog_description(
@@ -3747,6 +3768,8 @@ async fn trash_has_items(root: &gio::File) -> Result<bool, glib::Error> {
 }
 
 fn sidebar_context_option(icon: &str, label: &str, danger: bool) -> gtk::Button {
+    let translated = crate::i18n::tr(label);
+    let label = translated.as_str();
     let button = super::accessibility::menu_item_button();
     super::accessibility::describe_menu_item(&button, label, "");
     button.add_css_class("item-context-option");

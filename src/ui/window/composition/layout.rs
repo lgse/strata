@@ -44,7 +44,7 @@ impl Header {
         widget.set_show_title_buttons(false);
         let sidebar_toggle = gtk::ToggleButton::builder()
             .active(true)
-            .tooltip_text("Toggle sidebar (Ctrl+B)")
+            .tooltip_text(crate::i18n::tr("Toggle sidebar (Ctrl+B)"))
             .build();
         sidebar_toggle.set_child(Some(&assets::primary_icon(icons::PANEL_LEFT, 17)));
         sidebar_toggle.add_css_class("sidebar-toggle");
@@ -84,7 +84,7 @@ impl Header {
         let actions = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         actions.add_css_class("header-actions");
         let new_tab = header_action(icons::PLUS, "New tab (Ctrl+T)");
-        crate::ui::accessibility::set_label(&new_tab, "New tab");
+        crate::ui::accessibility::set_label(&new_tab, &crate::i18n::tr("New tab"));
         actions.append(&new_tab);
         actions.append(&search);
         actions.append(&appearance);
@@ -111,7 +111,11 @@ impl Header {
 }
 
 pub(super) fn header_action(icon: &str, tooltip: &str) -> gtk::Button {
-    let button = gtk::Button::builder().tooltip_text(tooltip).build();
+    let tooltip = tooltip.rsplit_once(" (").map_or_else(
+        || crate::i18n::tr(tooltip),
+        |(label, shortcut)| format!("{} ({shortcut}", crate::i18n::tr(label)),
+    );
+    let button = gtk::Button::builder().tooltip_text(&tooltip).build();
     button.set_child(Some(&assets::chrome_icon(icon)));
     button.add_css_class("header-action");
     button.set_cursor_from_name(Some("pointer"));

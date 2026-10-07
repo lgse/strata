@@ -92,12 +92,12 @@ fn footer_tracks_modes_and_shields_files_while_open() {
         let depth = view.browser().active_depth().expect("active directory");
         view.browser().set_selection(depth, &[0, 1, 2], Some(2));
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-        while footer.count.text() != "1 folder, 2 files selected (6 B)"
+        while footer.count.text() != "1 folder, 2 files selected"
             && std::time::Instant::now() < deadline
         {
             settle();
         }
-        assert_eq!(footer.count.text(), "1 folder, 2 files selected (6 B)");
+        assert_eq!(footer.count.text(), "1 folder, 2 files selected");
         assert!(footer.count.tooltip_text().is_none());
         let folder = (0..3)
             .find(|position| {
@@ -112,6 +112,11 @@ fn footer_tracks_modes_and_shields_files_while_open() {
         view.browser().set_selection(depth, &[folder], Some(folder));
         assert_eq!(footer.count.text(), "1 folder selected");
         view.browser().set_selection(depth, &[file], Some(file));
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while footer.count.text() != "1 file selected (3 B)" && std::time::Instant::now() < deadline
+        {
+            settle();
+        }
         assert_eq!(footer.count.text(), "1 file selected (3 B)");
         view.browser().set_selection(depth, &[], None);
         assert_eq!(footer.count.text(), "3 items");
@@ -171,6 +176,7 @@ fn footer_tracks_modes_and_shields_files_while_open() {
         Some(glib::Propagation::Stop)
     );
     assert!(footer.session.is_open());
+    settle();
     assert!(footer.panel.child_focus(gtk::DirectionType::TabForward));
     footer.search.grab_focus();
     assert_eq!(

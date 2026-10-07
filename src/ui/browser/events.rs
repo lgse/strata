@@ -235,7 +235,10 @@ impl ViewState {
             BrowserEvent::SortingStarted { depth } => {
                 self.overlay.set_cursor_from_name(Some("wait"));
                 if let Some(column) = self.columns.borrow().get(*depth) {
-                    crate::ui::accessibility::set_description(&column.spinner, Some("Sorting…"));
+                    crate::ui::accessibility::set_description(
+                        &column.spinner,
+                        Some(&crate::i18n::tr("Sorting…")),
+                    );
                     column.spinner.set_visible(true);
                     column.spinner.start();
                     set_column_busy(column, true);
@@ -491,9 +494,10 @@ impl ViewState {
                         column.syncing_selection.set(false);
                     }
                     stop_column_spinner(column);
-                    column
-                        .presentation
-                        .show_error(&format!("Unable to read this directory\n{message}"));
+                    column.presentation.show_error(&rust_i18n::t!(
+                        "Unable to read this directory\n%{message}",
+                        message = message
+                    ));
                     set_column_busy(column, false);
                 }
             }
@@ -521,8 +525,10 @@ impl ViewState {
                 if let Some(peek) = self.peek.borrow().as_ref() {
                     peek.spinner.stop();
                     peek.spinner.set_visible(false);
-                    peek.presentation
-                        .show_error(&format!("Unable to read this directory\n{message}"));
+                    peek.presentation.show_error(&rust_i18n::t!(
+                        "Unable to read this directory\n%{message}",
+                        message = message
+                    ));
                 }
             }
             BrowserEvent::PeekClosed => self.close_peek_visual(),
@@ -655,7 +661,11 @@ impl ViewState {
                         false,
                     );
                 }
-                show_error_dialog(&self.overlay, "Unable to rename item", message);
+                show_error_dialog(
+                    &self.overlay,
+                    &crate::i18n::tr("Unable to rename item"),
+                    message,
+                );
             }
             BrowserEvent::TransferStarted { total, moving } => {
                 let browser = self.browser.clone();
@@ -701,8 +711,10 @@ impl ViewState {
             BrowserEvent::FlushingToDevice => self.show_device_flush_status(),
             BrowserEvent::TransferCancellationPending => show_error_dialog(
                 &self.overlay,
-                "Transfer cancellation pending",
-                "The device may still be writing. Wait for the transfer to finish or fail before starting another file operation. Do not unplug until you can safely eject it.",
+                &crate::i18n::tr("Transfer cancellation pending"),
+                &crate::i18n::tr(
+                    "The device may still be writing. Wait for the transfer to finish or fail before starting another file operation. Do not unplug until you can safely eject it.",
+                ),
             ),
             BrowserEvent::TransferFinished { moved_locations } => {
                 if !moved_locations.is_empty() {
@@ -833,7 +845,11 @@ impl ViewState {
                             navigate_after_extract,
                         );
                     } else {
-                        show_error_dialog(&state.overlay, "Unable to complete operation", &message);
+                        show_error_dialog(
+                            &state.overlay,
+                            &crate::i18n::tr("Unable to complete operation"),
+                            &message,
+                        );
                     }
                 });
             }
@@ -859,7 +875,11 @@ impl ViewState {
                         return;
                     };
                     if retryable_entries.is_empty() {
-                        show_error_dialog(&state.overlay, "Completed with errors", &message);
+                        show_error_dialog(
+                            &state.overlay,
+                            &crate::i18n::tr("Completed with errors"),
+                            &message,
+                        );
                     } else if has_non_retryable_failures {
                         let weak_state = Rc::downgrade(&state);
                         show_delete_error_dialog(
@@ -900,7 +920,11 @@ impl ViewState {
                         state
                             .browser
                             .refresh_after_cancellation(&affected_locations);
-                        show_error_dialog(&state.overlay, "Operation cancelled", &message);
+                        show_error_dialog(
+                            &state.overlay,
+                            &crate::i18n::tr("Operation cancelled"),
+                            &message,
+                        );
                     }
                 });
             }
@@ -941,7 +965,7 @@ impl ViewState {
                         self.abandon_deferred_reveal();
                         show_error_dialog(
                             &self.overlay,
-                            "Unable to open location",
+                            &crate::i18n::tr("Unable to open location"),
                             &error.to_string(),
                         );
                     }
@@ -949,7 +973,7 @@ impl ViewState {
             }
             BrowserEvent::LocationRevealFailed { location } => show_error_dialog(
                 &self.overlay,
-                "Unable to select file",
+                &crate::i18n::tr("Unable to select file"),
                 &format!(
                     "{} is not available in the loaded folder.",
                     location.display_path()

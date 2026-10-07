@@ -10,11 +10,12 @@ pub(super) fn stepper(labels: [&str; 3]) -> (gtk::Box, [gtk::Button; 3]) {
     control.set_hexpand(true);
     control.set_halign(gtk::Align::End);
     let buttons = std::array::from_fn(|index| {
+        let label = crate::i18n::tr(labels[index]);
         let button = gtk::Button::new();
         if index == 1 {
             button.add_css_class("appearance-text-value");
             button.set_hexpand(true);
-            super::accessibility::set_description(&button, Some(labels[index]));
+            super::accessibility::set_description(&button, Some(&label));
         } else {
             let icon = if index == 0 {
                 crate::assets::icons::MINUS
@@ -26,8 +27,8 @@ pub(super) fn stepper(labels: [&str; 3]) -> (gtk::Box, [gtk::Button; 3]) {
             image.set_valign(gtk::Align::Center);
             button.set_child(Some(&image));
             button.add_css_class("appearance-text-step");
-            super::accessibility::set_label(&button, labels[index]);
-            button.set_tooltip_text(Some(labels[index]));
+            super::accessibility::set_label(&button, &label);
+            button.set_tooltip_text(Some(&label));
         }
         control.append(&button);
         button
@@ -60,7 +61,7 @@ impl FormTextField {
         let remaining = form_label("");
         remaining.set_halign(gtk::Align::End);
         remaining.set_xalign(1.0);
-        super::accessibility::set_label(&remaining, "Characters remaining");
+        super::accessibility::set_label(&remaining, &crate::i18n::tr("Characters remaining"));
 
         let widget = gtk::Box::new(gtk::Orientation::Vertical, 4);
         widget.append(&entry);
@@ -110,7 +111,7 @@ pub(super) fn copyable_command(command: &str) -> gtk::Overlay {
     overlay.set_child(Some(&field));
 
     let copy = gtk::Button::builder()
-        .tooltip_text("Copy install command")
+        .tooltip_text(crate::i18n::tr("Copy install command"))
         .halign(gtk::Align::End)
         .valign(gtk::Align::Center)
         .build();
@@ -128,14 +129,14 @@ pub(super) fn copyable_command(command: &str) -> gtk::Overlay {
         let generation = feedback_generation.get().saturating_add(1);
         feedback_generation.set(generation);
         crate::assets::set_primary_icon(&copy_icon, crate::assets::icons::CHECK);
-        button.set_tooltip_text(Some("Install command copied"));
+        button.set_tooltip_text(Some(&crate::i18n::tr("Install command copied")));
         let button = button.clone();
         let copy_icon = copy_icon.clone();
         let feedback_generation = feedback_generation.clone();
         glib::timeout_add_local_once(Duration::from_secs(2), move || {
             if feedback_generation.get() == generation {
                 crate::assets::set_primary_icon(&copy_icon, crate::assets::icons::COPY);
-                button.set_tooltip_text(Some("Copy install command"));
+                button.set_tooltip_text(Some(&crate::i18n::tr("Copy install command")));
             }
         });
     });
@@ -156,7 +157,7 @@ pub(super) fn progress_summary(caption: &str) -> ProgressSummary {
     header.add_css_class("transfer-progress-header");
     let amount_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
     amount_box.set_hexpand(true);
-    let caption = gtk::Label::new(Some(caption));
+    let caption = gtk::Label::new(Some(&crate::i18n::tr(caption)));
     caption.add_css_class("transfer-progress-caption");
     caption.set_xalign(0.0);
     let amount = gtk::Label::new(None);
@@ -191,7 +192,7 @@ pub(super) fn properties_action(icon: &str, label: &str, tone: ModalTone) -> gtk
         ModalTone::Danger => crate::assets::danger_icon(icon, 14),
     };
     content.append(&image);
-    content.append(&gtk::Label::new(Some(label)));
+    content.append(&gtk::Label::new(Some(&crate::i18n::tr(label))));
     let button = gtk::Button::builder().child(&content).build();
     match tone {
         ModalTone::Accent => button.add_css_class("properties-action"),
@@ -232,7 +233,7 @@ pub(super) fn set_form_field_error(
 ) {
     if let Some(message) = message {
         field.add_css_class("error");
-        helper.set_text(message);
+        helper.set_text(&crate::i18n::tr(message));
         helper.set_visible(true);
     } else {
         field.remove_css_class("error");
@@ -435,7 +436,7 @@ pub(super) fn modal_layout_with_tone(
     let close = gtk::Button::new();
     close.add_css_class("action-dialog-close");
     close.set_valign(gtk::Align::Center);
-    close.set_tooltip_text(Some("Close dialog"));
+    close.set_tooltip_text(Some(&crate::i18n::tr("Close dialog")));
     close.set_child(Some(&crate::assets::primary_icon(
         crate::assets::icons::X,
         16,
@@ -455,9 +456,9 @@ pub(super) fn modal_layout_with_tone(
     actions.add_css_class("action-dialog-actions");
     let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     spacer.set_hexpand(true);
-    let cancel = gtk::Button::with_label("Cancel");
+    let cancel = gtk::Button::with_label(&crate::i18n::tr("Cancel"));
     cancel.add_css_class("action-dialog-cancel");
-    let confirm = gtk::Button::with_label(confirm_label);
+    let confirm = gtk::Button::with_label(&crate::i18n::tr(confirm_label));
     confirm.add_css_class("action-dialog-confirm");
     if tone == ModalTone::Danger {
         confirm.add_css_class("danger");
@@ -492,7 +493,7 @@ pub(super) fn segmented_control(
 
     let mut buttons = Vec::with_capacity(labels.len());
     for (index, label) in labels.iter().enumerate() {
-        let button = gtk::ToggleButton::with_label(label);
+        let button = gtk::ToggleButton::with_label(&crate::i18n::tr(label));
         button.add_css_class("segmented-control-option");
         button.set_hexpand(true);
         if let Some(first) = buttons.first() {

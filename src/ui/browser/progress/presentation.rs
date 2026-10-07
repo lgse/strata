@@ -56,9 +56,9 @@ impl FileProgressState {
         };
         compact.status.set_text(&status);
         if self.transfer_cancel_requested.get() && transferring {
-            compact
-                .info
-                .set_text("Device may still be writing. Do not unplug until the operation stops.");
+            compact.info.set_text(&crate::i18n::tr(
+                "Device may still be writing. Do not unplug until the operation stops.",
+            ));
         } else if transferring {
             let file = self.transfer_current_file.borrow();
             let description = self.task_description.borrow();
@@ -110,10 +110,12 @@ impl FileProgressState {
         compact
             .cancel
             .set_sensitive(!self.transfer_cancel_requested.get());
-        compact.cancel.set_tooltip_text(Some("Cancel operation"));
+        compact
+            .cancel
+            .set_tooltip_text(Some(&crate::i18n::tr("Cancel operation")));
         crate::ui::accessibility::set_label(
             &compact.cancel,
-            &format!("Cancel {}", view.title.text()),
+            &rust_i18n::t!("Cancel %{value1}", value1 = view.title.text()),
         );
     }
 }

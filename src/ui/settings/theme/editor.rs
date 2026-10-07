@@ -17,7 +17,7 @@ pub(super) fn theme_editor(manager: Rc<ThemeManager>) -> (gtk::Revealer, gtk::Fl
     panel.add_css_class("theme-editor");
     panel.append(&editor_header());
     let name = form_entry();
-    name.set_placeholder_text(Some("Theme name"));
+    name.set_placeholder_text(Some(&crate::i18n::tr("Theme name")));
     panel.append(&name);
 
     let mut tokens = manager.starter_tokens();
@@ -50,7 +50,7 @@ pub(super) fn theme_editor(manager: Rc<ThemeManager>) -> (gtk::Revealer, gtk::Fl
 
 fn editor_header() -> gtk::Box {
     let header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    let title = gtk::Label::new(Some("Add a theme"));
+    let title = gtk::Label::new(Some(&crate::i18n::tr("Add a theme")));
     title.add_css_class("settings-option-title");
     title.set_xalign(0.0);
     title.set_hexpand(true);
@@ -87,7 +87,7 @@ fn color_field_row(
     let label = gtk::Label::new(Some(label_text));
     label.set_xalign(0.0);
     let dialog = gtk::ColorDialog::builder()
-        .title(format!("Choose {label_text}"))
+        .title(rust_i18n::t!("Choose %{label_text}", label_text = label_text).into_owned())
         .with_alpha(false)
         .build();
     let picker = gtk::ColorDialogButton::new(Some(dialog));
@@ -122,9 +122,9 @@ fn editor_actions(manager: Rc<ThemeManager>, form: ThemeEditorForm) -> gtk::Box 
     } = form;
     let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     actions.set_halign(gtk::Align::End);
-    let cancel = gtk::Button::with_label("Cancel");
+    let cancel = gtk::Button::with_label(&crate::i18n::tr("Cancel"));
     cancel.add_css_class("action-dialog-cancel");
-    let save = gtk::Button::with_label("Add theme");
+    let save = gtk::Button::with_label(&crate::i18n::tr("Add theme"));
     save.add_css_class("action-dialog-confirm");
     actions.append(&cancel);
     actions.append(&save);

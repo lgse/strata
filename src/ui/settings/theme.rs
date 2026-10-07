@@ -71,11 +71,11 @@ pub(super) fn theme_page(
             current.append(&name);
             if let Some(description) = weak_description.upgrade() {
                 description.set_visible(true);
-                description.set_text(if following {
+                description.set_text(&crate::i18n::tr(if following {
                     "Managed by Omarchy. Turn off Follow Omarchy to pick a theme manually."
                 } else {
                     "Choose a theme from the library below."
-                });
+                }));
             }
         },
     );
@@ -117,11 +117,14 @@ pub(super) fn theme_page(
     renderer.set_hexpand(true);
     renderer.set_halign(gtk::Align::Fill);
     renderer_controls.append(&renderer);
-    let restart = gtk::Button::with_label("Restart now");
+    let restart = gtk::Button::with_label(&crate::i18n::tr("Restart now"));
     restart.set_hexpand(true);
     restart.set_halign(gtk::Align::Fill);
     restart.add_css_class("settings-action-button");
-    crate::ui::accessibility::set_label(&restart, "Restart to apply interface renderer");
+    crate::ui::accessibility::set_label(
+        &restart,
+        &crate::i18n::tr("Restart to apply interface renderer"),
+    );
     preferences.bind_preference(
         &restart,
         PreferenceManager::interface_renderer_restart_required,
@@ -257,7 +260,9 @@ fn append_custom_theme_editor(
     let add = add_theme_card_button();
     let footer = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     footer.add_css_class("theme-library-footer");
-    let location = gtk::Label::new(Some("Custom themes live in ~/.config/strata/themes"));
+    let location = gtk::Label::new(Some(&crate::i18n::tr(
+        "Custom themes live in ~/.config/strata/themes",
+    )));
     location.set_xalign(0.0);
     location.set_hexpand(true);
     location.set_wrap(true);
@@ -340,7 +345,10 @@ fn append_text_size_option(content: &gtk::Box, preferences: &Rc<PreferenceManage
     text_size_control.set_update_policy(gtk::SpinButtonUpdatePolicy::IfValid);
     text_size_control.add_css_class("form-control");
     text_size_control.add_css_class("text-size-control");
-    crate::ui::accessibility::set_label(&text_size_control, "Text size in pixels");
+    crate::ui::accessibility::set_label(
+        &text_size_control,
+        &crate::i18n::tr("Text size in pixels"),
+    );
     bind_number(
         preferences,
         &text_size_control,
@@ -357,12 +365,12 @@ fn append_text_size_option(content: &gtk::Box, preferences: &Rc<PreferenceManage
     super::search::tag(&text_size_row, "Text size");
     let text_size_copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
     text_size_copy.set_hexpand(true);
-    let text_size_title = gtk::Label::new(Some("Text size"));
+    let text_size_title = gtk::Label::new(Some(&crate::i18n::tr("Text size")));
     text_size_title.set_xalign(0.0);
     text_size_title.add_css_class("settings-option-title");
-    let text_size_description = gtk::Label::new(Some(
+    let text_size_description = gtk::Label::new(Some(&crate::i18n::tr(
         "Logical pixels, 8–48. Display scaling applies on top.",
-    ));
+    )));
     text_size_description.set_xalign(0.0);
     text_size_description.set_wrap(true);
     text_size_description.set_wrap_mode(gtk::pango::WrapMode::WordChar);
@@ -471,7 +479,7 @@ fn add_theme_card_button() -> gtk::Button {
     add_content.set_halign(gtk::Align::Center);
     add_content.set_valign(gtk::Align::Center);
     let plus = crate::assets::primary_icon(icons::PLUS, 16);
-    let add_label = gtk::Label::new(Some("Add theme"));
+    let add_label = gtk::Label::new(Some(&crate::i18n::tr("Add theme")));
     add_label.set_wrap(true);
     add_label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     add_content.append(&plus);
@@ -567,11 +575,11 @@ fn append_theme_card(
     label.set_hexpand(true);
     label.set_ellipsize(gtk::pango::EllipsizeMode::End);
     content.append(&label);
-    let kind = gtk::Label::new(Some(if theme_is_light(&theme.tokens) {
+    let kind = gtk::Label::new(Some(&crate::i18n::tr(if theme_is_light(&theme.tokens) {
         "LIGHT"
     } else {
         "DARK"
-    }));
+    })));
     kind.add_css_class("theme-kind");
     let metadata = gtk::Box::new(gtk::Orientation::Horizontal, 16);
     metadata.append(&kind);

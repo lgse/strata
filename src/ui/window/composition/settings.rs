@@ -169,18 +169,27 @@ fn notice_handler(sidebar: &SidebarView, available: AvailableUpdate) -> UpdateNo
 
 fn update_tooltip(release: &ReleaseMetadata, method: UpdateMethod) -> String {
     match method {
-        UpdateMethod::InPlace => format!("Install Strata v{}", release.version),
-        UpdateMethod::Aur => format!(
-            "Strata v{} is available through {}",
-            release.version,
-            InstallSource::detect()
+        UpdateMethod::InPlace => {
+            rust_i18n::t!("Install Strata v%{value1}", value1 = release.version).into_owned()
+        }
+        UpdateMethod::Aur => rust_i18n::t!(
+            "Strata v%{value1} is available through %{value2}",
+            value1 = release.version,
+            value2 = InstallSource::detect()
                 .managed()
                 .map(ManagedInstall::manager)
                 .unwrap_or("your package manager")
-        ),
-        UpdateMethod::Omarchy => {
-            format!("Strata v{} is available through Omarchy", release.version)
-        }
-        UpdateMethod::Pacman => format!("Strata v{} is available through pacman", release.version),
+        )
+        .into_owned(),
+        UpdateMethod::Omarchy => rust_i18n::t!(
+            "Strata v%{value1} is available through Omarchy",
+            value1 = release.version
+        )
+        .into_owned(),
+        UpdateMethod::Pacman => rust_i18n::t!(
+            "Strata v%{value1} is available through pacman",
+            value1 = release.version
+        )
+        .into_owned(),
     }
 }

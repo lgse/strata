@@ -260,7 +260,11 @@ impl ViewState {
                     self.settle_pending_delete_dissolve();
                 }
                 if entries.is_empty() {
-                    show_error_dialog(&self.overlay, "Completed with errors", message);
+                    show_error_dialog(
+                        &self.overlay,
+                        &crate::i18n::tr("Completed with errors"),
+                        message,
+                    );
                 } else if *has_non_retryable_failures || self.browser.has_foreground_operation() {
                     let weak = Rc::downgrade(self);
                     crate::ui::modal::show_delete_error_dialog(
@@ -302,7 +306,11 @@ impl ViewState {
                 if self.delete_dissolve_request.get() == Some(request_id) {
                     self.settle_pending_delete_dissolve();
                 }
-                show_error_dialog(&self.overlay, "Unable to complete operation", message);
+                show_error_dialog(
+                    &self.overlay,
+                    &crate::i18n::tr("Unable to complete operation"),
+                    message,
+                );
                 true
             }
             BrowserEvent::OperationCancelled {
@@ -318,7 +326,11 @@ impl ViewState {
                 let message = format!(
                     "{completed} completed, {failed} failed, and {not_attempted} not attempted.\n\nCompleted changes were not reverted."
                 );
-                show_error_dialog(&self.overlay, "Operation cancelled", &message);
+                show_error_dialog(
+                    &self.overlay,
+                    &crate::i18n::tr("Operation cancelled"),
+                    &message,
+                );
                 true
             }
             _ => false,
@@ -350,8 +362,10 @@ impl ViewState {
         if self.browser.has_foreground_operation() {
             show_error_dialog(
                 &self.overlay,
-                "Another operation is active",
-                "Finish or minimize that operation before retrying deletion. The failed items have not been deleted.",
+                &crate::i18n::tr("Another operation is active"),
+                &crate::i18n::tr(
+                    "Finish or minimize that operation before retrying deletion. The failed items have not been deleted.",
+                ),
             );
             return;
         }

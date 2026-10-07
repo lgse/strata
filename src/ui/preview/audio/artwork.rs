@@ -167,7 +167,9 @@ impl Artwork {
         artwork.add_css_class("preview-audio-artwork");
         artwork.imp().fade.set(1.0);
         artwork.imp().fresh.set(true);
-        artwork.update_property(&[gtk::accessible::Property::Label("Album art")]);
+        artwork.update_property(&[gtk::accessible::Property::Label(&crate::i18n::tr(
+            "Album art",
+        ))]);
         follow_theme(&artwork);
         artwork
     }

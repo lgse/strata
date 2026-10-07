@@ -60,6 +60,7 @@ pub(in crate::ui) fn non_default_preferences() -> Preferences {
         show_hidden: true,
         text_size: TextSize::new(24),
         interface_renderer: InterfaceRenderer::Cairo,
+        language: crate::i18n::Language::English,
         folders_first: false,
         sort_key: "size".into(),
         sort_direction: "descending".into(),

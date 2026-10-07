@@ -231,7 +231,10 @@ impl Dispatcher {
     fn arm_actions(&self) {
         let numbered = self.view.numbered_actions();
         let mut rows = if numbered.actions.is_empty() {
-            vec![("1\u{2013}0".to_owned(), "No matching actions".to_owned())]
+            vec![(
+                "1\u{2013}0".to_owned(),
+                crate::i18n::tr("No matching actions"),
+            )]
         } else {
             numbered
                 .actions
@@ -277,7 +280,8 @@ impl Dispatcher {
             return true;
         }
         let Some(action) = numbered.actions.get(slot - 1).cloned() else {
-            self.shortcuts.show_feedback(&format!("No action {digit}"));
+            self.shortcuts
+                .show_feedback(&rust_i18n::t!("No action %{digit}", digit = digit));
             return true;
         };
         if armed.ids.get(slot - 1).map(String::as_str) != Some(action.id()) {

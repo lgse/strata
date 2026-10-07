@@ -1,6 +1,7 @@
 use std::{env, path::PathBuf, process::Command};
 
 fn main() {
+    println!("cargo::rerun-if-changed=locales");
     glib_build_tools::compile_resources(&["data"], "data/strata.gresource.xml", "strata.gresource");
 
     println!("cargo::rerun-if-env-changed=STRATA_BUILD_COMMIT");

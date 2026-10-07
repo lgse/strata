@@ -32,8 +32,8 @@ pub(in crate::ui) fn open_location_at(
     if is_trash_location(location) {
         show_error_dialog(
             parent,
-            "Unable to open item",
-            "Items in Trash cannot be opened",
+            &crate::i18n::tr("Unable to open item"),
+            &crate::i18n::tr("Items in Trash cannot be opened"),
         );
         return;
     }
@@ -152,7 +152,7 @@ fn report_open_result(
         } else {
             error.message()
         };
-        show_error_dialog(parent, "Unable to open file", detail);
+        show_error_dialog(parent, &crate::i18n::tr("Unable to open file"), detail);
     }
 }
 
@@ -183,14 +183,17 @@ pub(super) fn confirm_run_program(location: &Location, parent: &impl IsA<gtk::Wi
     let name = location.display_name();
     let layout = message_dialog_layout(
         crate::assets::icons::TERMINAL,
-        "Run this program?",
+        &crate::i18n::tr("Run this program?"),
         &name,
-        "Run",
+        &crate::i18n::tr("Run"),
         ModalTone::Danger,
     );
-    layout.body.append(&message_dialog_description(&format!(
-        "\u{201c}{name}\u{201d} is an executable file. Only run programs you trust."
-    )));
+    layout
+        .body
+        .append(&message_dialog_description(&rust_i18n::t!(
+            "“%{name}” is an executable file. Only run programs you trust.",
+            name = name
+        )));
     let content = layout.content;
     let close = layout.close;
     let cancel = layout.cancel;
@@ -216,7 +219,11 @@ pub(super) fn confirm_run_program(location: &Location, parent: &impl IsA<gtk::Wi
         dismiss_modal_layer(&run_layer, &run_overlay, run_root.as_ref());
         if let Err(error) = launch_program(&run_location) {
             tracing::warn!(%error, "unable to run program");
-            show_error_dialog(&error_parent, "Unable to run program", &error.to_string());
+            show_error_dialog(
+                &error_parent,
+                &crate::i18n::tr("Unable to run program"),
+                &error.to_string(),
+            );
         }
     });
 }
@@ -286,16 +293,16 @@ pub(in crate::ui) fn launch_terminal(location: &Location, parent: &impl IsA<gtk:
     let Some(path) = location.native_path() else {
         show_error_dialog(
             parent,
-            "Unable to open terminal",
-            "This location is not a local folder",
+            &crate::i18n::tr("Unable to open terminal"),
+            &crate::i18n::tr("This location is not a local folder"),
         );
         return;
     };
     if is_trash_location(location) {
         show_error_dialog(
             parent,
-            "Unable to open terminal",
-            "Terminal cannot be opened in Trash",
+            &crate::i18n::tr("Unable to open terminal"),
+            &crate::i18n::tr("Terminal cannot be opened in Trash"),
         );
         return;
     }
@@ -308,7 +315,7 @@ pub(in crate::ui) fn launch_terminal(location: &Location, parent: &impl IsA<gtk:
         tracing::warn!("no terminal emulator found on PATH");
         show_error_dialog(
             parent,
-            "Unable to open terminal",
+            &crate::i18n::tr("Unable to open terminal"),
             &terminal::no_terminal_message(),
         );
         return;
@@ -318,7 +325,7 @@ pub(in crate::ui) fn launch_terminal(location: &Location, parent: &impl IsA<gtk:
         tracing::warn!(%error, %program, "unable to launch terminal");
         show_error_dialog(
             parent,
-            "Unable to open terminal",
+            &crate::i18n::tr("Unable to open terminal"),
             &terminal.launch_failure(&error),
         );
     }

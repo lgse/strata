@@ -50,7 +50,7 @@ fn show_custom_color_modal(
     };
     let title = format!("Custom {item_title} Color");
     let subtitle = format!("Choose a color for this {item_label}");
-    let layout = modal_layout(preview_icon, &title, &subtitle, "Apply");
+    let layout = modal_layout(preview_icon, &title, &subtitle, &crate::i18n::tr("Apply"));
     layout.close.set_visible(false);
 
     let modal_icon = layout.icon.clone();
@@ -83,7 +83,7 @@ fn show_custom_color_modal(
     back.add_css_class("action-dialog-cancel");
     let back_icon = crate::assets::primary_icon(crate::assets::icons::ARROW_LEFT, 14);
     back.set_child(Some(&back_icon));
-    back.set_tooltip_text(Some("Back to palette"));
+    back.set_tooltip_text(Some(&crate::i18n::tr("Back to palette")));
     back.set_visible(false);
     layout.actions.prepend(&back);
 
@@ -179,7 +179,12 @@ pub(in crate::ui) fn show_customize_modal(
     } else {
         "Customize File"
     };
-    let layout = modal_layout(crate::assets::icons::PALETTE, item_kind, &item_name, "Done");
+    let layout = modal_layout(
+        crate::assets::icons::PALETTE,
+        item_kind,
+        &item_name,
+        &crate::i18n::tr("Done"),
+    );
     layout.content.add_css_class("customize-dialog");
     layout
         .subtitle
@@ -205,7 +210,7 @@ pub(in crate::ui) fn show_customize_modal(
     preview.append(&preview_name);
     layout.body.append(&preview);
 
-    let clear = gtk::Button::with_label("Clear");
+    let clear = gtk::Button::with_label(&crate::i18n::tr("Clear"));
     clear.add_css_class("action-dialog-cancel");
     clear.set_sensitive(initial_color.is_some() || initial_icon.is_some());
     layout
@@ -214,7 +219,7 @@ pub(in crate::ui) fn show_customize_modal(
 
     let color_section = gtk::Box::new(gtk::Orientation::Vertical, 8);
     color_section.add_css_class("customize-section");
-    let color_label = gtk::Label::new(Some("COLOR"));
+    let color_label = gtk::Label::new(Some(&crate::i18n::tr("COLOR")));
     color_label.add_css_class("customize-section-label");
     color_label.set_xalign(0.0);
     color_section.append(&color_label);
@@ -245,7 +250,7 @@ pub(in crate::ui) fn show_customize_modal(
     let section = gtk::Box::new(gtk::Orientation::Vertical, 8);
     section.add_css_class("customize-section");
     section.add_css_class("separated");
-    let label = gtk::Label::new(Some("ICON"));
+    let label = gtk::Label::new(Some(&crate::i18n::tr("ICON")));
     label.add_css_class("customize-section-label");
     label.set_xalign(0.0);
     section.append(&label);
@@ -281,8 +286,8 @@ pub(in crate::ui) fn show_customize_modal(
         .as_deref()
         .and_then(crate::assets::icons::custom_emoji);
     let emoji_button = gtk::Button::with_label(&selected_emoji.map_or_else(
-        || "Choose Emoji…".to_owned(),
-        |emoji| format!("Emoji  {emoji}"),
+        || crate::i18n::tr("Choose Emoji…"),
+        |emoji| rust_i18n::t!("Emoji  %{emoji}", emoji = emoji).into_owned(),
     ));
     emoji_button.add_css_class("customize-emoji-button");
     emoji_button.update_property(&[gtk::accessible::Property::Description(
@@ -309,7 +314,7 @@ pub(in crate::ui) fn show_customize_modal(
                     button.remove_css_class("active");
                 }
             }
-            emoji_for_icon.set_label("Choose Emoji…");
+            emoji_for_icon.set_label(&crate::i18n::tr("Choose Emoji…"));
             crate::ui::preferences::PreferenceManager::shared()
                 .set_custom_icon(&icon_path, Some(selected_name));
             crate::ui::thumbnail::show_customized_icon_image(
@@ -332,7 +337,7 @@ pub(in crate::ui) fn show_customize_modal(
         for (_, button) in buttons_for_emoji.iter() {
             button.remove_css_class("active");
         }
-        emoji_label.set_label(&format!("Emoji  {emoji}"));
+        emoji_label.set_label(&rust_i18n::t!("Emoji  %{emoji}", emoji = emoji));
         crate::ui::preferences::PreferenceManager::shared()
             .set_custom_icon(&emoji_path, Some(&preference));
         crate::ui::thumbnail::show_customized_icon_image(
@@ -360,7 +365,7 @@ pub(in crate::ui) fn show_customize_modal(
         for (_, icon_button) in buttons_for_clear.iter() {
             icon_button.remove_css_class("active");
         }
-        emoji_for_clear.set_label("Choose Emoji…");
+        emoji_for_clear.set_label(&crate::i18n::tr("Choose Emoji…"));
         crate::ui::thumbnail::show_customized_icon_image(
             &clear_preview,
             &clear_path,
@@ -422,7 +427,7 @@ fn build_folder_color_bar(
     theme_btn.set_has_frame(false);
     theme_btn.add_css_class("folder-color-dot");
     theme_btn.add_css_class("folder-color-theme");
-    theme_btn.set_tooltip_text(Some("Default (Theme color)"));
+    theme_btn.set_tooltip_text(Some(&crate::i18n::tr("Default (Theme color)")));
     let theme_icon = crate::assets::primary_icon(crate::assets::icons::PALETTE, 12);
     theme_btn.set_child(Some(&theme_icon));
     container.append(&theme_btn);
@@ -446,7 +451,7 @@ fn build_folder_color_bar(
     custom_btn.set_has_frame(false);
     custom_btn.add_css_class("folder-color-dot");
     custom_btn.add_css_class("folder-color-custom");
-    custom_btn.set_tooltip_text(Some("Custom color…"));
+    custom_btn.set_tooltip_text(Some(&crate::i18n::tr("Custom color…")));
 
     let custom_stack = gtk::Stack::new();
     custom_stack.set_transition_type(gtk::StackTransitionType::None);
@@ -516,14 +521,14 @@ fn build_folder_color_bar(
                     }
                     custom_btn.remove_css_class("active");
                     custom_stack.set_visible_child_name("plus");
-                    custom_btn.set_tooltip_text(Some("Custom color…"));
+                    custom_btn.set_tooltip_text(Some(&crate::i18n::tr("Custom color…")));
                     hex_for_draw.replace(None);
                 }
                 Some(FolderColorValue::Custom(hex)) => {
                     theme_btn.remove_css_class("active");
                     custom_btn.add_css_class("active");
                     custom_stack.set_visible_child_name("dot");
-                    custom_btn.set_tooltip_text(Some(&format!("Custom ({hex})")));
+                    custom_btn.set_tooltip_text(Some(&rust_i18n::t!("Custom (%{hex})", hex = hex)));
                     hex_for_draw.replace(Some(hex.clone()));
                     custom_dot.queue_draw();
                 }

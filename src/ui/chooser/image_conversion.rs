@@ -59,7 +59,10 @@ impl ChooserState {
             if path != target
                 && let Err(error) = self.rename_download(&path, &target)
             {
-                self.show_error(&format!("Could not name the downloaded image: {error}"));
+                self.show_error(&rust_i18n::t!(
+                    "Could not name the downloaded image: %{error}",
+                    error = error
+                ));
                 return;
             }
             // Accepted PNG downloads bypass validation, including APNG and corrupt PNG data.
@@ -181,12 +184,12 @@ impl ChooserState {
         }
         let layout = message_dialog_layout(
             crate::assets::icons::COPY,
-            "Convert image to PNG?",
-            &format!(
-                "This image is {}, which the selected filter does not accept. Convert it to PNG?",
-                kind.label()
+            &crate::i18n::tr("Convert image to PNG?"),
+            &rust_i18n::t!(
+                "This image is %{value1}, which the selected filter does not accept. Convert it to PNG?",
+                value1 = kind.label()
             ),
-            "Convert to PNG",
+            &crate::i18n::tr("Convert to PNG"),
             ModalTone::Accent,
         );
         let layer = modal_layer(&layout.content, &overlay, root.clone(), None);

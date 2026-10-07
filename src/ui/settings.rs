@@ -673,14 +673,14 @@ pub fn build_layer(
     page.set_hexpand(true);
     let titlebar = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     titlebar.add_css_class("settings-titlebar");
-    let title = gtk::Label::new(Some("General"));
+    let title = gtk::Label::new(Some(&crate::i18n::tr("General")));
     title.set_xalign(0.0);
     title.set_hexpand(true);
     title.add_css_class("settings-title");
     title.set_ellipsize(gtk::pango::EllipsizeMode::End);
     title.set_max_width_chars(1);
     let close = gtk::Button::builder()
-        .tooltip_text("Close settings")
+        .tooltip_text(crate::i18n::tr("Close settings"))
         .build();
     close.set_child(Some(&crate::assets::primary_icon(icons::X, 18)));
     close.add_css_class("settings-close");
@@ -812,7 +812,7 @@ pub fn build_layer(
                 }
             }
             stack.set_visible_child_name(name);
-            title.set_text(&page_title);
+            title.set_text(&crate::i18n::tr(&page_title));
         });
         navigation.append(&button);
     }
@@ -976,7 +976,10 @@ fn append_channel_option(
 fn append_current_release_notes(preferences: &gtk::Box) {
     append_heading(preferences, "RELEASE NOTES");
     let current_notes = release_notes_card(
-        &format!("What's new in v{}", crate::build_info::installed_version()),
+        &rust_i18n::t!(
+            "What's new in v%{value1}",
+            value1 = crate::build_info::installed_version()
+        ),
         "Loading release notes…",
     );
     current_notes.container.remove(&current_notes.title);
@@ -1136,8 +1139,12 @@ fn channel_description(channel: Channel) -> &'static str {
 
 fn managed_channel_description(managed: &ManagedInstall) -> String {
     let tracked = match managed.channel() {
-        Some(channel) => format!("This install tracks the {channel} release channel."),
-        None => "The installed package decides the release channel.".to_owned(),
+        Some(channel) => rust_i18n::t!(
+            "This install tracks the %{channel} release channel.",
+            channel = channel
+        )
+        .into_owned(),
+        None => crate::i18n::tr("The installed package decides the release channel."),
     };
     match managed.alternate_instruction() {
         Some(alternate) => format!("{tracked} {alternate}"),
@@ -1281,8 +1288,10 @@ fn release_notes_card(title: &str, initial: &str) -> ReleaseNotesCard {
     badge.set_visible(false);
     let notes = gtk::Box::new(gtk::Orientation::Vertical, 6);
     set_release_notes_message(&notes, initial);
-    let fallback =
-        gtk::LinkButton::with_label("https://github.com/lgse/strata/releases", "View on GitHub");
+    let fallback = gtk::LinkButton::with_label(
+        "https://github.com/lgse/strata/releases",
+        &crate::i18n::tr("View on GitHub"),
+    );
     fallback.set_has_tooltip(false);
     fallback.add_css_class("release-notes-fallback");
     fallback.set_halign(gtk::Align::Start);
@@ -1324,8 +1333,10 @@ fn show_release_notes(card: &ReleaseNotesCard, release: &ReleaseMetadata) {
         release.version
     ));
     if current_release {
-        card.title
-            .set_text(&format!("What's new in v{}", release.version));
+        card.title.set_text(&rust_i18n::t!(
+            "What's new in v%{value1}",
+            value1 = release.version
+        ));
     }
     let changes = release
         .note_blocks
@@ -1337,8 +1348,8 @@ fn show_release_notes(card: &ReleaseNotesCard, release: &ReleaseMetadata) {
         .as_deref()
         .and_then(|date| date.split('T').next());
     card.summary.set_text(&match (changes, published) {
-        (0, None) => "Release notes".to_owned(),
-        (0, Some(date)) => format!("Published {date}"),
+        (0, None) => crate::i18n::tr("Release notes"),
+        (0, Some(date)) => rust_i18n::t!("Published %{date}", date = date).into_owned(),
         (count, None) => format!("{count} changes"),
         (count, Some(date)) => format!("{count} changes · published {date}"),
     });
@@ -1371,7 +1382,7 @@ fn load_current_release_notes(card: &ReleaseNotesCard) {
             }
             Ok(ReleaseNotes::Unavailable { url }) => {
                 card.summary
-                    .set_text("Release notes unavailable for this build");
+                    .set_text(&crate::i18n::tr("Release notes unavailable for this build"));
                 set_release_notes_message(
                     &card.notes,
                     "Release notes are unavailable because this version’s tag was not found.",
@@ -1381,10 +1392,11 @@ fn load_current_release_notes(card: &ReleaseNotesCard) {
                 glib::ControlFlow::Break
             }
             Ok(ReleaseNotes::Failed { message, url }) => {
-                card.summary.set_text("Couldn’t load release notes");
+                card.summary
+                    .set_text(&crate::i18n::tr("Couldn’t load release notes"));
                 set_release_notes_message(
                     &card.notes,
-                    &format!("Couldn’t load release notes: {message}"),
+                    &rust_i18n::t!("Couldn’t load release notes: %{message}", message = message),
                 );
                 card.fallback.set_uri(&url);
                 card.fallback.set_visible(true);
@@ -1392,7 +1404,8 @@ fn load_current_release_notes(card: &ReleaseNotesCard) {
             }
             Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
             Err(TryRecvError::Disconnected) => {
-                card.summary.set_text("Couldn’t load release notes");
+                card.summary
+                    .set_text(&crate::i18n::tr("Couldn’t load release notes"));
                 set_release_notes_message(
                     &card.notes,
                     "Couldn’t load release notes because the request ended unexpectedly.",
@@ -1416,7 +1429,7 @@ fn load_current_release_notes(card: &ReleaseNotesCard) {
 fn managed_install_row(managed: &ManagedInstall) -> gtk::Box {
     let row = gtk::Box::new(gtk::Orientation::Vertical, 2);
     row.add_css_class("settings-option");
-    let title = gtk::Label::new(Some("Package-managed installation"));
+    let title = gtk::Label::new(Some(&crate::i18n::tr("Package-managed installation")));
     title.set_xalign(0.0);
     title.add_css_class("settings-option-title");
     let description = gtk::Label::new(Some(&managed_install_summary(managed)));
@@ -1432,7 +1445,13 @@ fn managed_install_row(managed: &ManagedInstall) -> gtk::Box {
 fn managed_install_summary(managed: &ManagedInstall) -> String {
     let mut lines = vec![managed.ownership_summary()];
     if let Some(channel) = managed.channel() {
-        lines.push(format!("Tracking the {channel} release channel."));
+        lines.push(
+            rust_i18n::t!(
+                "Tracking the %{channel} release channel.",
+                channel = channel
+            )
+            .into_owned(),
+        );
     }
     lines.push(managed.update_instruction());
     lines.extend(managed.alternate_instruction());
@@ -1509,7 +1528,7 @@ fn update_check_row_with(
     let copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
     copy.set_hexpand(true);
     copy.set_valign(gtk::Align::Center);
-    let title = gtk::Label::new(Some("Check for updates"));
+    let title = gtk::Label::new(Some(&crate::i18n::tr("Check for updates")));
     title.set_xalign(0.0);
     title.add_css_class("settings-option-title");
     let status = gtk::Label::new(Some(&installed_version_status(
@@ -1534,7 +1553,7 @@ fn update_check_row_with(
     progress.set_hexpand(true);
     progress.set_visible(false);
     copy.append(&progress);
-    let button = gtk::Button::with_label("Check now");
+    let button = gtk::Button::with_label(&crate::i18n::tr("Check now"));
     button.add_css_class("settings-update-check");
     button.set_valign(gtk::Align::Center);
     summary.append(&copy);
@@ -1585,12 +1604,12 @@ fn update_check_row_with(
             *pending_download.borrow_mut() = None;
             installed.set(false);
             managed_update_available.set(false);
-            button.set_label("Check now");
+            button.set_label(&crate::i18n::tr("Check now"));
             progress.set_fraction(0.0);
             progress.set_visible(false);
             progress.remove_css_class("error");
-            title.set_text("Checking for updates…");
-            status.set_text("Checking for updates…");
+            title.set_text(&crate::i18n::tr("Checking for updates…"));
+            status.set_text(&crate::i18n::tr("Checking for updates…"));
             available_notes.container.set_visible(false);
             available_notes.fallback.set_visible(false);
             // Clear any previously offered release immediately, not only once
@@ -1640,11 +1659,11 @@ fn update_check_row_with(
                                 UpdateCheck::Failed(_) => icons::TRIANGLE_ALERT,
                             },
                         );
-                        title.set_text(match &result {
+                        title.set_text(&crate::i18n::tr(match &result {
                             UpdateCheck::UpToDate => "Strata is up to date",
                             UpdateCheck::Available { .. } => "An update is available",
                             UpdateCheck::Failed(_) => "Couldn’t check for updates",
-                        });
+                        }));
                         let returns_to_stable = matches!(
                             &result,
                             UpdateCheck::Available { release, .. }
@@ -1658,11 +1677,12 @@ fn update_check_row_with(
                             let UpdateCheck::Available { release, .. } = &result else {
                                 unreachable!();
                             };
-                            format!(
-                                "Stable channel target: <a href=\"{}\">v{}</a>",
-                                glib::markup_escape_text(&release.url),
-                                glib::markup_escape_text(&release.version),
+                            rust_i18n::t!(
+                                "Stable channel target: <a href=\"%{value1}\">v%{value2}</a>",
+                                value1 = glib::markup_escape_text(&release.url),
+                                value2 = glib::markup_escape_text(&release.version)
                             )
+                            .into_owned()
                         } else {
                             update_check_message(&result, update_method)
                         };
@@ -1687,23 +1707,23 @@ fn update_check_row_with(
                                 show_release_notes(&available_notes, release);
                                 if update_method.is_package_managed() {
                                     managed_update_available.set(true);
-                                    button.set_label(match update_method {
+                                    button.set_label(&crate::i18n::tr(match update_method {
                                         UpdateMethod::Aur => aur_update_action_label(),
                                         UpdateMethod::Omarchy => "Open Omarchy Update",
                                         UpdateMethod::Pacman => "Check again",
                                         UpdateMethod::InPlace => unreachable!(),
-                                    });
+                                    }));
                                 } else {
                                     *pending_download.borrow_mut() = Some(PendingInstall {
                                         kind: release.kind,
                                         returns_to_stable,
                                         request: install.clone(),
                                     });
-                                    button.set_label(if returns_to_stable {
+                                    button.set_label(&crate::i18n::tr(if returns_to_stable {
                                         "Return to stable"
                                     } else {
                                         "Install update"
-                                    });
+                                    }));
                                 }
                             }
                             UpdateCheck::UpToDate | UpdateCheck::Failed(_) => {}
@@ -1715,7 +1735,7 @@ fn update_check_row_with(
                     Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
                     Err(TryRecvError::Disconnected) => {
                         CHECK_IN_FLIGHT.set(false);
-                        title.set_text("Couldn’t check for updates");
+                        title.set_text(&crate::i18n::tr("Couldn’t check for updates"));
                         crate::assets::set_primary_icon(&status_icon, icons::TRIANGLE_ALERT);
                         status.set_markup(
                             "Couldn't check for updates · <a href=\"https://github.com/lgse/strata/releases/latest\">View releases on GitHub</a>",
@@ -1737,14 +1757,22 @@ fn update_check_row_with(
         if update_method == UpdateMethod::Aur && managed_update_available.get() {
             match launch_aur_update() {
                 Ok(message) => status.set_text(message),
-                Err(error) => status.set_text(&format!("Couldn’t open AUR update: {error}")),
+                Err(error) => status.set_text(&rust_i18n::t!(
+                    "Couldn’t open AUR update: %{error}",
+                    error = error
+                )),
             }
             return;
         }
         if update_method == UpdateMethod::Omarchy && managed_update_available.get() {
             match launch_omarchy_update() {
-                Ok(()) => status.set_text("Omarchy Update opened in your terminal."),
-                Err(error) => status.set_text(&format!("Couldn’t open Omarchy Update: {error}")),
+                Ok(()) => {
+                    status.set_text(&crate::i18n::tr("Omarchy Update opened in your terminal."))
+                }
+                Err(error) => status.set_text(&rust_i18n::t!(
+                    "Couldn’t open Omarchy Update: %{error}",
+                    error = error
+                )),
             }
             return;
         }
@@ -1753,11 +1781,11 @@ fn update_check_row_with(
             return;
         }
         if let Some(cancel) = cancel_handle.borrow_mut().take() {
-            status.set_text(if cancel.cancel() {
+            status.set_text(&crate::i18n::tr(if cancel.cancel() {
                 "Cancelling…"
             } else {
                 FINALIZING_STATUS
-            });
+            }));
             button.set_sensitive(false);
             return;
         }
@@ -1783,15 +1811,15 @@ fn update_check_row_with(
                 return;
             }
             installing.set(true);
-            status.set_text(if returns_to_stable {
+            status.set_text(&crate::i18n::tr(if returns_to_stable {
                 "Downloading stable release…"
             } else {
                 "Downloading update…"
-            });
+            }));
             progress.set_fraction(0.0);
             progress.set_visible(true);
             progress.remove_css_class("error");
-            button.set_label("Cancel");
+            button.set_label(&crate::i18n::tr("Cancel"));
             let progress_for_progress = progress.clone();
             let status_for_progress = status.clone();
             let button_for_progress = button.clone();
@@ -1824,12 +1852,12 @@ fn update_check_row_with(
                 },
                 move || {
                     let _taken = cancel_for_installed.borrow_mut().take();
-                    status_for_installed.set_text(if returns_to_stable {
+                    status_for_installed.set_text(&crate::i18n::tr(if returns_to_stable {
                         "Stable release installed — restart to apply"
                     } else {
                         "Update installed — restart to apply"
-                    });
-                    button_for_installed.set_label("Restart now");
+                    }));
+                    button_for_installed.set_label(&crate::i18n::tr("Restart now"));
                     button_for_installed.set_sensitive(true);
                     installed_for_installed.set(true);
                     checking_for_installed.set(false);
@@ -1837,9 +1865,9 @@ fn update_check_row_with(
                 },
                 move || {
                     let _taken = cancel_for_cancelled.borrow_mut().take();
-                    status_for_cancelled.set_text("Update cancelled");
+                    status_for_cancelled.set_text(&crate::i18n::tr("Update cancelled"));
                     progress_for_cancelled.set_visible(false);
-                    button_for_cancelled.set_label("Check now");
+                    button_for_cancelled.set_label(&crate::i18n::tr("Check now"));
                     button_for_cancelled.set_sensitive(true);
                     checking_for_cancelled.set(false);
                     installing_for_cancelled.set(false);
@@ -1847,12 +1875,16 @@ fn update_check_row_with(
                 move |message| {
                     let _taken = cancel_for_failed.borrow_mut().take();
                     match message {
-                        Some(message) => status_for_failed
-                            .set_text(&format!("Couldn't install update: {message}")),
-                        None => status_for_failed.set_text("Couldn't install update"),
+                        Some(message) => status_for_failed.set_text(&rust_i18n::t!(
+                            "Couldn't install update: %{message}",
+                            message = message
+                        )),
+                        None => {
+                            status_for_failed.set_text(&crate::i18n::tr("Couldn't install update"))
+                        }
                     }
                     progress_for_failed.add_css_class("error");
-                    button_for_failed.set_label("Check now");
+                    button_for_failed.set_label(&crate::i18n::tr("Check now"));
                     button_for_failed.set_sensitive(true);
                     checking_for_failed.set(false);
                     installing_for_failed.set(false);
@@ -1870,13 +1902,15 @@ fn update_check_row_with(
                 // already running. Leave this row
                 // re-triable rather than stuck mid-"downloading" with
                 // nothing actually happening.
-                status.set_text("Another install is already running — try again shortly.");
+                status.set_text(&crate::i18n::tr(
+                    "Another install is already running — try again shortly.",
+                ));
                 progress.set_visible(false);
-                button.set_label(if returns_to_stable {
+                button.set_label(&crate::i18n::tr(if returns_to_stable {
                     "Return to stable"
                 } else {
                     "Install update"
-                });
+                }));
                 button.set_sensitive(true);
                 checking.set(false);
                 installing.set(false);
@@ -2014,19 +2048,22 @@ fn apply_install_progress(
             if let Some(total) = total.filter(|total| *total > 0) {
                 let fraction = (downloaded as f64 / total as f64).clamp(0.0, 1.0);
                 progress.set_fraction(fraction);
-                status.set_text(&format!("Downloading update… {:.0}%", fraction * 100.0));
+                status.set_text(&rust_i18n::t!(
+                    "Downloading update… %{value1}%",
+                    value1 = format!("{:.0}", fraction * 100.0)
+                ));
             } else {
                 progress.pulse();
-                status.set_text(&format!(
-                    "Downloading update… {:.1} MB",
-                    downloaded as f64 / 1_048_576.0
+                status.set_text(&rust_i18n::t!(
+                    "Downloading update… %{value1} MB",
+                    value1 = format!("{:.1}", downloaded as f64 / 1_048_576.0)
                 ));
             }
         }
-        InstallProgress::Verifying => status.set_text("Verifying update…"),
+        InstallProgress::Verifying => status.set_text(&crate::i18n::tr("Verifying update…")),
         InstallProgress::Installing => {
             progress.set_fraction(1.0);
-            status.set_text("Installing update…");
+            status.set_text(&crate::i18n::tr("Installing update…"));
         }
         InstallProgress::Finalizing => {
             progress.set_fraction(1.0);
@@ -2111,10 +2148,19 @@ fn restart(application: Option<&gtk::Application>) {
     let Some(mut waiter) = restart_waiter(&current_exe, std::process::id()) else {
         return;
     };
-    if waiter.spawn().is_err() {
+    // Use the normal close path so active transfers, jobs and formatting can
+    // refuse a restart. Do not leave a waiter behind when closing is blocked.
+    if !close_windows_for_restart(application) || waiter.spawn().is_err() {
         return;
     }
     application.quit();
+}
+
+fn close_windows_for_restart(application: &gtk::Application) -> bool {
+    for window in application.windows() {
+        window.close();
+    }
+    application.windows().is_empty()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -2174,11 +2220,11 @@ fn build_update_dialog(
     let aur_action = aur_update_action_label();
     let layout = modal_layout(
         icons::DOWNLOADS,
-        &format!("Strata v{} is available", release.version),
-        &format!(
-            "Installed v{}  →  Available v{}",
-            crate::build_info::installed_version(),
-            release.version
+        &rust_i18n::t!("Strata v%{value1} is available", value1 = release.version),
+        &rust_i18n::t!(
+            "Installed v%{value1}  →  Available v%{value2}",
+            value1 = crate::build_info::installed_version(),
+            value2 = release.version
         ),
         match update_method {
             UpdateMethod::InPlace => "Download update",
@@ -2201,7 +2247,7 @@ fn build_update_dialog(
         layout.body.append(&badge);
         layout.body.append(&update_dialog_details(release));
     }
-    let notes_heading = gtk::Label::new(Some("What’s new"));
+    let notes_heading = gtk::Label::new(Some(&crate::i18n::tr("What’s new")));
     notes_heading.add_css_class("release-notes-title");
     notes_heading.set_xalign(0.0);
     let notes = gtk::Box::new(gtk::Orientation::Vertical, 6);
@@ -2222,18 +2268,21 @@ fn build_update_dialog(
         .child(&notes)
         .build();
     notes_scroll.add_css_class("update-dialog-notes");
-    let fallback = gtk::LinkButton::with_label(&release.url, "View release on GitHub");
+    let fallback =
+        gtk::LinkButton::with_label(&release.url, &crate::i18n::tr("View release on GitHub"));
     fallback.set_has_tooltip(false);
     fallback.add_css_class("release-notes-fallback");
     fallback.set_halign(gtk::Align::Start);
     let status_message = match update_method {
         UpdateMethod::InPlace => {
-            "Review the release notes before downloading the update.".to_owned()
+            crate::i18n::tr("Review the release notes before downloading the update.")
         }
         UpdateMethod::Aur => InstallSource::detect()
             .managed()
             .map(update_dialog_status)
-            .unwrap_or_else(|| "This installation is managed by its package manager.".to_owned()),
+            .unwrap_or_else(|| {
+                crate::i18n::tr("This installation is managed by its package manager.")
+            }),
         UpdateMethod::Omarchy => {
             "This installation is managed by Omarchy. Run “omarchy update” to install it."
                 .to_owned()
@@ -2347,10 +2396,10 @@ fn build_update_dialog(
         let action = action.clone();
         move || {
             withdrawn.set(true);
-            status.set_text(
+            status.set_text(&crate::i18n::tr(
                 "This build is no longer offered on your update channel — check for updates again.",
-            );
-            action.set_label("Close");
+            ));
+            action.set_label(&crate::i18n::tr("Close"));
         }
     });
     PreferenceManager::shared().on_release_channel_changed(&layer, {
@@ -2383,7 +2432,10 @@ fn build_update_dialog(
                     dismiss_modal_layer(&action_layer, &action_overlay, action_root.as_ref());
                     button.set_sensitive(false);
                 }
-                Err(error) => status.set_text(&format!("Couldn’t open AUR update: {error}")),
+                Err(error) => status.set_text(&rust_i18n::t!(
+                    "Couldn’t open AUR update: %{error}",
+                    error = error
+                )),
             }
             return;
         }
@@ -2393,7 +2445,10 @@ fn build_update_dialog(
                     dismiss_modal_layer(&action_layer, &action_overlay, action_root.as_ref());
                     button.set_sensitive(false);
                 }
-                Err(error) => status.set_text(&format!("Couldn’t open Omarchy Update: {error}")),
+                Err(error) => status.set_text(&rust_i18n::t!(
+                    "Couldn’t open Omarchy Update: %{error}",
+                    error = error
+                )),
             }
             return;
         }
@@ -2434,7 +2489,7 @@ fn build_update_dialog(
         phase.set(UpdateDialogPhase::Downloading);
         button.set_sensitive(false);
         progress.set_visible(true);
-        status.set_text("Starting download…");
+        status.set_text(&crate::i18n::tr("Starting download…"));
         let progress_for_progress = progress.clone();
         let status_for_progress = status.clone();
         let progress_for_installed = progress.clone();
@@ -2466,24 +2521,26 @@ fn build_update_dialog(
                     if let Some(total) = total.filter(|total| *total > 0) {
                         let fraction = (downloaded as f64 / total as f64).clamp(0.0, 1.0);
                         progress_for_progress.set_fraction(fraction);
-                        status_for_progress.set_text(&format!(
-                            "Downloading… {:.0}%  ({:.1} of {:.1} MB)",
-                            fraction * 100.0,
-                            downloaded as f64 / 1_048_576.0,
-                            total as f64 / 1_048_576.0,
+                        status_for_progress.set_text(&rust_i18n::t!(
+                            "Downloading… %{value1}%  (%{value2} of %{value3} MB)",
+                            value1 = format!("{:.0}", fraction * 100.0),
+                            value2 = format!("{:.1}", downloaded as f64 / 1_048_576.0),
+                            value3 = format!("{:.1}", total as f64 / 1_048_576.0)
                         ));
                     } else {
                         progress_for_progress.pulse();
-                        status_for_progress.set_text(&format!(
-                            "Downloading… {:.1} MB",
-                            downloaded as f64 / 1_048_576.0
+                        status_for_progress.set_text(&rust_i18n::t!(
+                            "Downloading… %{value1} MB",
+                            value1 = format!("{:.1}", downloaded as f64 / 1_048_576.0)
                         ));
                     }
                 }
-                InstallProgress::Verifying => status_for_progress.set_text("Verifying update…"),
+                InstallProgress::Verifying => {
+                    status_for_progress.set_text(&crate::i18n::tr("Verifying update…"))
+                }
                 InstallProgress::Installing => {
                     progress_for_progress.set_fraction(1.0);
-                    status_for_progress.set_text("Installing update…");
+                    status_for_progress.set_text(&crate::i18n::tr("Installing update…"));
                 }
                 InstallProgress::Finalizing => {
                     if phase_for_progress.get() == UpdateDialogPhase::Downloading {
@@ -2495,8 +2552,9 @@ fn build_update_dialog(
                 let _taken = cancel_for_installed.borrow_mut().take();
                 phase_for_installed.set(UpdateDialogPhase::Installed);
                 progress_for_installed.set_fraction(1.0);
-                status_for_installed.set_text("Update installed — restart to apply");
-                action_for_installed.set_label("Restart now");
+                status_for_installed
+                    .set_text(&crate::i18n::tr("Update installed — restart to apply"));
+                action_for_installed.set_label(&crate::i18n::tr("Restart now"));
                 action_for_installed.add_css_class("suggested-action");
                 action_for_installed.set_sensitive(true);
                 // Restart can fail; leave a way to close the dialog.
@@ -2518,12 +2576,15 @@ fn build_update_dialog(
                 dismissible_for_failed(true);
                 match message {
                     Some(message) => {
-                        status_for_failed.set_text(&format!("Couldn’t install update: {message}"));
+                        status_for_failed.set_text(&rust_i18n::t!(
+                            "Couldn’t install update: %{message}",
+                            message = message
+                        ));
                         progress_for_failed.add_css_class("error");
                     }
-                    None => status_for_failed.set_text("Couldn’t install update"),
+                    None => status_for_failed.set_text(&crate::i18n::tr("Couldn’t install update")),
                 }
-                action_for_failed.set_label("Close");
+                action_for_failed.set_label(&crate::i18n::tr("Close"));
                 action_for_failed.set_sensitive(true);
             },
         );
@@ -2531,7 +2592,9 @@ fn build_update_dialog(
             Ok(handle) => *cancel_handle.borrow_mut() = Some(handle),
             Err(_request) => {
                 phase.set(UpdateDialogPhase::Ready);
-                status.set_text("Another install is already running — try again shortly.");
+                status.set_text(&crate::i18n::tr(
+                    "Another install is already running — try again shortly.",
+                ));
                 progress.set_visible(false);
                 button.set_sensitive(true);
             }
@@ -2596,7 +2659,7 @@ fn launch_omarchy_update() -> Result<(), String> {
 }
 
 fn or_unknown(value: Option<String>) -> String {
-    value.unwrap_or_else(|| "Unknown".to_owned())
+    value.unwrap_or_else(|| crate::i18n::tr("Unknown"))
 }
 
 fn release_detail_rows(release: &ReleaseMetadata) -> [(&'static str, String); 4] {
@@ -2651,9 +2714,14 @@ fn installed_version_status(
     update_method: UpdateMethod,
 ) -> String {
     let version = if kind == BuildKind::Stable {
-        format!("Version {version}")
+        rust_i18n::t!("Version %{version}", version = version).into_owned()
     } else {
-        format!("Version {version} · {}", kind.label())
+        rust_i18n::t!(
+            "Version %{version} · %{value1}",
+            version = version,
+            value1 = kind.label()
+        )
+        .into_owned()
     };
     match update_method {
         UpdateMethod::InPlace => version,
@@ -2690,10 +2758,7 @@ fn update_dialog_status(managed: &ManagedInstall) -> String {
 fn update_check_message(result: &UpdateCheck, update_method: UpdateMethod) -> String {
     match result {
         UpdateCheck::UpToDate => {
-            format!(
-                "Up to date — version {}",
-                crate::build_info::installed_version()
-            )
+            rust_i18n::t!("Up to date — version %{value1}", value1 = crate::build_info::installed_version()).into_owned()
         }
         UpdateCheck::Available { release, .. } => {
             let instruction = match update_method {
@@ -2701,16 +2766,9 @@ fn update_check_message(result: &UpdateCheck, update_method: UpdateMethod) -> St
                 UpdateMethod::Omarchy => " · Run “omarchy update” to install",
                 UpdateMethod::Pacman => " · Install through a full system update",
             };
-            format!(
-                "Update available: <a href=\"{}\">v{}</a>{instruction}",
-                glib::markup_escape_text(&release.url),
-                glib::markup_escape_text(&release.version),
-            )
+            rust_i18n::t!("Update available: <a href=\"%{value1}\">v%{value2}</a>%{instruction}", value1 = glib::markup_escape_text(&release.url), value2 = glib::markup_escape_text(&release.version), instruction = instruction).into_owned()
         }
-        UpdateCheck::Failed(message) => format!(
-            "Couldn't check for updates: {} · <a href=\"https://github.com/lgse/strata/releases/latest\">View releases on GitHub</a>",
-            glib::markup_escape_text(message)
-        ),
+        UpdateCheck::Failed(message) => rust_i18n::t!("Couldn't check for updates: %{value1} · <a href=\"https://github.com/lgse/strata/releases/latest\">View releases on GitHub</a>", value1 = glib::markup_escape_text(message)).into_owned(),
     }
 }
 
@@ -2721,12 +2779,14 @@ fn navigation_button(icon: &str, label: &str) -> (gtk::Button, gtk::Label, gtk::
         "General" => "Browsing, search, files",
         "Appearance" => "Theme, text, motion",
         "Updates" => "Channel, release notes",
+        "Actions" => "Custom actions",
         _ => "Version and links",
     };
     let text = gtk::Label::new(None);
     text.set_markup(&format!(
-        "{}\n<span size=\"small\" weight=\"normal\">{subtitle}</span>",
-        glib::markup_escape_text(label)
+        "{}\n<span size=\"small\" weight=\"normal\">{}</span>",
+        glib::markup_escape_text(&crate::i18n::tr(label)),
+        glib::markup_escape_text(&crate::i18n::tr(subtitle))
     ));
     text.set_xalign(0.0);
     text.add_css_class("settings-nav-copy");
@@ -2738,19 +2798,19 @@ fn navigation_button(icon: &str, label: &str) -> (gtk::Button, gtk::Label, gtk::
     button.set_cursor_from_name(Some("pointer"));
     super::accessibility::set_label(
         &button,
-        if label == "Appearance" {
+        &crate::i18n::tr(if label == "Appearance" {
             "Appearance settings"
         } else {
             label
-        },
+        }),
     );
     (button, text, content)
 }
 
 fn scrollable_page(content: &gtk::Box, class: Option<&str>) -> gtk::Widget {
-    let empty = gtk::Label::new(Some(
+    let empty = gtk::Label::new(Some(&crate::i18n::tr(
         "No matching settings are available on this installation.",
-    ));
+    )));
     empty.add_css_class("settings-search-page-empty");
     empty.add_css_class("settings-option-description");
     empty.set_visible(false);
@@ -2811,12 +2871,12 @@ fn settings_option(title: &str, description: &str, active: bool) -> (gtk::Box, g
     let copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
     copy.set_hexpand(true);
     copy.set_valign(gtk::Align::Center);
-    let title_label = gtk::Label::new(Some(title));
+    let title_label = gtk::Label::new(Some(&crate::i18n::tr(title)));
     title_label.set_xalign(0.0);
     title_label.set_wrap(true);
     title_label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     title_label.add_css_class("settings-option-title");
-    let description_label = gtk::Label::new(Some(description));
+    let description_label = gtk::Label::new(Some(&crate::i18n::tr(description)));
     description_label.set_xalign(0.0);
     description_label.set_wrap(true);
     description_label.add_css_class("settings-option-description");
@@ -2829,8 +2889,8 @@ fn settings_option(title: &str, description: &str, active: bool) -> (gtk::Box, g
         .valign(gtk::Align::Center)
         .build();
     toggle.update_property(&[
-        gtk::accessible::Property::Label(title),
-        gtk::accessible::Property::Description(description),
+        gtk::accessible::Property::Label(&crate::i18n::tr(title)),
+        gtk::accessible::Property::Description(&crate::i18n::tr(description)),
     ]);
     row.append(&copy);
     row.append(&toggle);
@@ -2845,8 +2905,8 @@ fn search_field(placeholder: &str) -> (gtk::Overlay, gtk::Entry, gtk::Button) {
     let theme_search = gtk::Entry::new();
     theme_search.add_css_class("form-control");
     theme_search.add_css_class("settings-search");
-    theme_search.set_placeholder_text(Some(placeholder));
-    super::accessibility::set_label(&theme_search, placeholder);
+    theme_search.set_placeholder_text(Some(&crate::i18n::tr(placeholder)));
+    super::accessibility::set_label(&theme_search, &crate::i18n::tr(placeholder));
     let search_keys = gtk::EventControllerKey::new();
     search_keys.set_propagation_phase(gtk::PropagationPhase::Capture);
     let selected_search = theme_search.downgrade();
@@ -2863,7 +2923,7 @@ fn search_field(placeholder: &str) -> (gtk::Overlay, gtk::Entry, gtk::Button) {
     theme_search.add_controller(search_keys);
     let clear_search = gtk::Button::builder()
         .child(&crate::assets::primary_icon(icons::X, 15))
-        .tooltip_text("Clear search")
+        .tooltip_text(crate::i18n::tr("Clear search"))
         .halign(gtk::Align::End)
         .valign(gtk::Align::Center)
         .margin_end(6)
@@ -2927,7 +2987,7 @@ fn indent_row(row: &gtk::Box) {
 }
 
 fn append_heading(container: &gtk::Box, text: &str) -> gtk::Label {
-    let heading = gtk::Label::new(Some(text));
+    let heading = gtk::Label::new(Some(&crate::i18n::tr(text)));
     heading.set_xalign(0.0);
     heading.add_css_class("menu-heading");
     container.append(&heading);

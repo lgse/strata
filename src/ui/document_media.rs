@@ -224,9 +224,15 @@ fn show_error(row: &gtk::Box, source: &DocumentMedia, alt: &str, message: &str) 
         return;
     }
     let description = match source {
-        DocumentMedia::Math { .. } => format!("Equation unavailable: {message}"),
-        DocumentMedia::Image(_) => format!("Image: {alt}\n{message}"),
-        DocumentMedia::Mermaid(_) => format!("Mermaid diagram unavailable: {message}"),
+        DocumentMedia::Math { .. } => {
+            rust_i18n::t!("Equation unavailable: %{message}", message = message).into_owned()
+        }
+        DocumentMedia::Image(_) => {
+            rust_i18n::t!("Image: %{alt}\n%{message}", alt = alt, message = message).into_owned()
+        }
+        DocumentMedia::Mermaid(_) => {
+            rust_i18n::t!("Mermaid diagram unavailable: %{message}", message = message).into_owned()
+        }
     };
     let label = gtk::Label::new(Some(&description));
     label.add_css_class("preview-note");

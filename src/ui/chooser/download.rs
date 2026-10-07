@@ -30,7 +30,7 @@ impl DownloadProgress {
             16,
         ));
         let name = gtk::Label::new(Some(
-            &crate::services::remote_file_name(url).unwrap_or_else(|| "Download".to_owned()),
+            &crate::services::remote_file_name(url).unwrap_or_else(|| crate::i18n::tr("Download")),
         ));
         name.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
         name.set_max_width_chars(28);
@@ -43,7 +43,7 @@ impl DownloadProgress {
             .accessible_role(gtk::AccessibleRole::ProgressBar)
             .build();
         ring.add_css_class("chooser-download-progress");
-        crate::ui::accessibility::set_label(&ring, "Download progress");
+        crate::ui::accessibility::set_label(&ring, &crate::i18n::tr("Download progress"));
         ring.update_property(&[
             gtk::accessible::Property::ValueMin(0.0),
             gtk::accessible::Property::ValueMax(100.0),
@@ -87,13 +87,13 @@ impl DownloadProgress {
         indicator.set_visible_child_name("unknown");
         root.append(&indicator);
 
-        let status = gtk::Label::new(Some("Connecting…"));
+        let status = gtk::Label::new(Some(&crate::i18n::tr("Connecting…")));
         status.add_css_class("chooser-download-status");
         root.append(&status);
         let cancel = gtk::Button::new();
         cancel.add_css_class("job-action");
-        cancel.set_tooltip_text(Some("Cancel download"));
-        crate::ui::accessibility::set_label(&cancel, "Cancel download");
+        cancel.set_tooltip_text(Some(&crate::i18n::tr("Cancel download")));
+        crate::ui::accessibility::set_label(&cancel, &crate::i18n::tr("Cancel download"));
         cancel.set_child(Some(&crate::assets::primary_icon(
             crate::assets::icons::X,
             14,
@@ -118,8 +118,11 @@ impl DownloadProgress {
         self.status.set_text(text);
         self.status.set_visible(true);
         self.cancel
-            .set_tooltip_text(Some("Cancel image processing"));
-        crate::ui::accessibility::set_label(&self.cancel, "Cancel image processing");
+            .set_tooltip_text(Some(&crate::i18n::tr("Cancel image processing")));
+        crate::ui::accessibility::set_label(
+            &self.cancel,
+            &crate::i18n::tr("Cancel image processing"),
+        );
     }
 
     pub(super) fn set_name(&self, name: &str) {

@@ -25,6 +25,40 @@ use crate::{
 };
 
 #[test]
+fn saved_language_applies_before_settings_and_changes_only_after_restart() {
+    gtk_test(
+        "ui::preferences::tests::preferences::saved_language_applies_before_settings_and_changes_only_after_restart",
+        || {
+            let mut preferences = non_default_preferences();
+            preferences.language = crate::i18n::Language::French;
+            fs::create_dir_all(settings_path().parent().expect("settings directory"))
+                .expect("create settings directory");
+            fs::write(
+                settings_path(),
+                toml::to_string(&preferences).expect("serialize settings"),
+            )
+            .expect("save fixture");
+            let manager = PreferenceManager::load();
+            assert_eq!(crate::i18n::tr("Language"), "Langue");
+            assert!(!manager.language_restart_required());
+            manager.set_language(crate::i18n::Language::Japanese);
+            assert!(manager.language_restart_required());
+            assert_eq!(crate::i18n::tr("Language"), "Langue");
+            assert_eq!(
+                read_preferences().expect("read saved language").language,
+                crate::i18n::Language::Japanese
+            );
+            manager.set_language(crate::i18n::Language::French);
+            assert!(!manager.language_restart_required());
+            manager.set_language(crate::i18n::Language::Japanese);
+            let restarted = PreferenceManager::load();
+            assert!(!restarted.language_restart_required());
+            assert_eq!(&*rust_i18n::locale(), "ja");
+        },
+    );
+}
+
+#[test]
 fn recent_sort_is_not_stored_as_an_ordinary_folder_default() {
     gtk_test(
         "ui::preferences::tests::preferences::recent_sort_is_not_stored_as_an_ordinary_folder_default",
@@ -58,10 +92,12 @@ fn older_preferences_keep_backward_compatible_behavior_defaults() {
     saved.remove("tenxer_mode");
     saved.remove("omarchy_variant");
     saved.remove("folder_peeking");
+    saved.remove("language");
     let restored: Preferences = saved.try_into().expect("backward-compatible preferences");
     assert_eq!(
         restored,
         Preferences {
+            language: crate::i18n::Language::Auto,
             filter_include_subfolders: true,
             open_folder_after_drop: false,
             date_format: "relative".into(),
@@ -780,6 +816,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_sort_preferences(ViewPreferences::default()),
                 |m| m.set_text_size(TextSize::new(11)),
                 |m| m.set_interface_renderer(InterfaceRenderer::System),
+                |m| m.set_language(crate::i18n::Language::Auto),
                 |m| m.set_checks_for_updates(true),
                 |m| m.set_release_channel(Channel::Stable),
                 |m| m.set_preview_muted(false),

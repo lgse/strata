@@ -41,8 +41,10 @@ pub(super) fn clock(microseconds: i64) -> String {
 
 pub(super) fn track_caption(tags: &AudioTags, folder: Option<ListingPosition>) -> Option<String> {
     match (tags.track, tags.track_total, folder) {
-        (Some(track), Some(total), _) => Some(format!("Track {track} of {total}")),
-        (Some(track), None, _) => Some(format!("Track {track}")),
+        (Some(track), Some(total), _) => Some(
+            rust_i18n::t!("Track %{track} of %{total}", track = track, total = total).into_owned(),
+        ),
+        (Some(track), None, _) => Some(rust_i18n::t!("Track %{track}", track = track).into_owned()),
         (None, _, Some(position)) => Some(position.caption()),
         (None, _, None) => None,
     }
@@ -151,8 +153,8 @@ impl AudioView {
         play.add_css_class("preview-media-center");
         play.add_css_class("preview-audio-play");
         play.set_child(Some(&play_icon));
-        play.set_tooltip_text(Some("Play/Pause (Ctrl+Alt+Space)"));
-        crate::ui::accessibility::set_label(&play, "Play or pause");
+        play.set_tooltip_text(Some(&crate::i18n::tr("Play/Pause (Ctrl+Alt+Space)")));
+        crate::ui::accessibility::set_label(&play, &crate::i18n::tr("Play or pause"));
         let buttons = gtk::Box::new(gtk::Orientation::Horizontal, 10);
         buttons.set_valign(gtk::Align::Center);
         buttons.append(&previous);

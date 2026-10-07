@@ -651,9 +651,9 @@ pub(super) fn show(
     };
     let layout = modal_layout(
         crate::assets::icons::EXTERNAL_LINK,
-        "Open With",
+        &crate::i18n::tr("Open With"),
         subtitle,
-        "Open",
+        &crate::i18n::tr("Open"),
     );
     layout.content.add_css_class("open-with-dialog");
     layout.content.set_size_request(480, 460);
@@ -661,20 +661,23 @@ pub(super) fn show(
 
     let search_entry = gtk::SearchEntry::new();
     search_entry.add_css_class("open-with-search");
-    search_entry.set_placeholder_text(Some("Search applications…"));
+    search_entry.set_placeholder_text(Some(&crate::i18n::tr("Search applications…")));
     layout.body.append(&search_entry);
 
     let list = gtk::ListBox::new();
     list.add_css_class("open-with-list");
     list.set_selection_mode(gtk::SelectionMode::Single);
     list.set_activate_on_single_click(false);
-    list.update_property(&[gtk::accessible::Property::Label("Applications")]);
+    list.update_property(&[gtk::accessible::Property::Label(&crate::i18n::tr(
+        "Applications",
+    ))]);
 
-    let always_use = super::controls::form_check_button(if content_types.len() > 1 {
-        "Always use for these file types"
-    } else {
-        "Always use for this file type"
-    });
+    let always_use =
+        super::controls::form_check_button(&crate::i18n::tr(if content_types.len() > 1 {
+            "Always use for these file types"
+        } else {
+            "Always use for this file type"
+        }));
     always_use.set_visible(false);
     layout.actions.prepend(&always_use);
 
@@ -784,7 +787,9 @@ pub(super) fn show(
     list_scroll.set_hscrollbar_policy(gtk::PolicyType::Never);
     layout.body.append(&list_scroll);
 
-    let empty_search = gtk::Label::new(Some("No matching applications were found."));
+    let empty_search = gtk::Label::new(Some(&crate::i18n::tr(
+        "No matching applications were found.",
+    )));
     empty_search.add_css_class("open-with-empty");
     empty_search.set_wrap(true);
     empty_search.set_xalign(0.5);
@@ -1057,7 +1062,7 @@ pub(super) fn show(
             let open_parent = open_parent.clone();
             glib::timeout_add_local_once(Duration::from_millis(250), move || {
                 if let Some(parent) = open_parent.upgrade() {
-                    show_error_dialog(&parent, "Unable to open file", &detail);
+                    show_error_dialog(&parent, &crate::i18n::tr("Unable to open file"), &detail);
                 }
             });
             return;

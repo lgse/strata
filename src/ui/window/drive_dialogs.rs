@@ -139,7 +139,7 @@ fn modal_shell(
     danger: bool,
 ) -> Option<ModalShell> {
     let host = ModalHost::blurred_for(parent)?;
-    let layout = modal_layout(icon, title, subtitle, "Cancel");
+    let layout = modal_layout(icon, title, subtitle, &crate::i18n::tr("Cancel"));
     if danger {
         layout.content.add_css_class("destructive");
     }
@@ -163,7 +163,7 @@ fn modal_shell(
 
 fn field_block(label_text: &str, field: &impl IsA<gtk::Widget>) -> gtk::Box {
     let block = gtk::Box::new(gtk::Orientation::Vertical, 4);
-    let label = form_label(label_text);
+    let label = form_label(&crate::i18n::tr(label_text));
     label.set_xalign(0.0);
     block.append(&label);
     field.set_hexpand(true);
@@ -285,9 +285,11 @@ fn wire_entry_submission(entry: &gtk::Entry, confirm: &gtk::Button) {
 
 fn label_validation_error(label: &str) -> Option<String> {
     if label.chars().count() > 255 {
-        Some("Strata labels hold at most 255 characters.".to_owned())
+        Some(crate::i18n::tr(
+            "Strata labels hold at most 255 characters.",
+        ))
     } else if label.chars().any(char::is_control) {
-        Some("Labels cannot contain control characters.".to_owned())
+        Some(crate::i18n::tr("Labels cannot contain control characters."))
     } else {
         None
     }
@@ -384,7 +386,7 @@ pub(super) fn show_drive_properties(
 
     let mut row = 0;
     let mut add_row = |label_text: &str, value_text: &str| {
-        let label = form_label(label_text);
+        let label = form_label(&crate::i18n::tr(label_text));
         label.set_xalign(0.0);
         let value = gtk::Label::new(Some(value_text));
         value.set_xalign(0.0);
@@ -451,7 +453,7 @@ pub(super) fn show_drive_properties(
                         .map(|name| name.to_string())
                 })
         })
-        .unwrap_or_else(|| "Unknown".to_owned());
+        .unwrap_or_else(|| crate::i18n::tr("Unknown"));
     add_row("Filesystem", &filesystem);
 
     let total_bytes = block_device
@@ -616,9 +618,9 @@ fn show_label_dialog_for_identity(
         .layout
         .body
         .append(&field_block("Label shown in Strata", &field.widget));
-    let hint = gtk::Label::new(Some(
+    let hint = gtk::Label::new(Some(&crate::i18n::tr(
         "Strata-only display label; filesystem unchanged. Leave blank to reset.",
-    ));
+    )));
     hint.add_css_class("dim-label");
     hint.set_max_width_chars(40);
     hint.set_xalign(0.0);
@@ -795,19 +797,19 @@ pub(super) fn show_format_dialog(parent: &gtk::Widget, volume: &gio::Volume) {
         available[fs_combo.selected() as usize].max_label_len() as i32,
     );
     let label_entry = label_field.entry;
-    label_entry.set_placeholder_text(Some("Volume label (optional)"));
+    label_entry.set_placeholder_text(Some(&crate::i18n::tr("Volume label (optional)")));
     step1.append(&field_block("Filesystem label", &label_field.widget));
 
-    let quick_check = form_check_button("Quick format");
+    let quick_check = form_check_button(&crate::i18n::tr("Quick format"));
     quick_check.set_active(true);
     let check_row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     check_row.append(&quick_check);
     step1.append(&check_row);
 
     if volume.get_mount().is_some() {
-        let mount_note = gtk::Label::new(Some(
+        let mount_note = gtk::Label::new(Some(&crate::i18n::tr(
             "This volume is currently mounted. It will be unmounted to format it; click it in the sidebar afterwards to mount it again.",
-        ));
+        )));
         mount_note.add_css_class("dim-label");
         mount_note.set_xalign(0.0);
         mount_note.set_max_width_chars(48);
@@ -826,9 +828,9 @@ pub(super) fn show_format_dialog(parent: &gtk::Widget, volume: &gio::Volume) {
     summary.set_wrap(true);
     summary.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     step2.append(&summary);
-    let warning = gtk::Label::new(Some(
+    let warning = gtk::Label::new(Some(&crate::i18n::tr(
         "This permanently erases ALL DATA on this volume. This cannot be undone.",
-    ));
+    )));
     warning.add_css_class("form-message");
     warning.add_css_class("error");
     warning.set_xalign(0.0);
@@ -886,22 +888,14 @@ pub(super) fn show_format_dialog(parent: &gtk::Widget, volume: &gio::Volume) {
                 .and_then(|device| drive_ops::device_size_bytes(&device))
                 .map(human_size)
                 .unwrap_or_else(|| "unknown size".to_owned());
-            summary.set_text(&format!(
-                "Drive: {} ({}, {})\nFilesystem: {}\nLabel: {}\nMode: {}",
-                name,
-                device,
-                size,
-                fs_type.label(),
-                if label.is_empty() { "(none)" } else { &label },
-                if quick_check.is_active() {
+            summary.set_text(&rust_i18n::t!("Drive: %{value1} (%{value2}, %{value3})\nFilesystem: %{value4}\nLabel: %{value5}\nMode: %{value6}", value1 = name, value2 = device, value3 = size, value4 = fs_type.label(), value5 = if label.is_empty() { "(none)" } else { &label }, value6 = if quick_check.is_active() {
                     "Quick format"
                 } else {
                     "Full format"
-                },
-            ));
+                }));
             step1.set_visible(false);
             step2.set_visible(true);
-            confirm_btn.set_label("Format");
+            confirm_btn.set_label(&crate::i18n::tr("Format"));
             confirm_btn.grab_focus();
             armed.set(true);
             return;

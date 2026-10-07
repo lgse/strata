@@ -57,11 +57,11 @@ pub(super) fn actions_page() -> gtk::Widget {
     toolbar.set_hexpand(true);
     toolbar.set_margin_top(8);
     toolbar.set_margin_bottom(8);
-    let new_action = gtk::Button::with_label("New action…");
+    let new_action = gtk::Button::with_label(&crate::i18n::tr("New action…"));
     new_action.add_css_class("settings-action-button");
     new_action.add_css_class("settings-actions-create-button");
     search::tag(&new_action, "New custom action");
-    let import = gtk::Button::with_label("Import…");
+    let import = gtk::Button::with_label(&crate::i18n::tr("Import…"));
     import.add_css_class("settings-action-button");
     import.add_css_class("settings-actions-create-button");
     search::tag(&import, "Import custom action");
@@ -116,9 +116,9 @@ impl PageState {
         }
         let catalog = self.registry.catalog();
         if catalog.actions().is_empty() && catalog.failures().is_empty() {
-            let empty = gtk::Label::new(Some(
+            let empty = gtk::Label::new(Some(&crate::i18n::tr(
                 "No custom actions yet. Create one to add it to the context menu.",
-            ));
+            )));
             empty.set_xalign(0.0);
             empty.set_wrap(true);
             empty.add_css_class("settings-option-description");
@@ -130,9 +130,9 @@ impl PageState {
         }
         if !catalog.failures().is_empty() {
             append_heading(&self.problems, "PROBLEMS");
-            let note = gtk::Label::new(Some(
+            let note = gtk::Label::new(Some(&crate::i18n::tr(
                 "These files could not be loaded. Fix them in the actions folder, or remove them.",
-            ));
+            )));
             note.set_xalign(0.0);
             note.set_wrap(true);
             note.add_css_class("settings-option-description");
@@ -176,13 +176,19 @@ impl PageState {
             .halign(gtk::Align::End)
             .valign(gtk::Align::Center)
             .build();
-        toggle.update_property(&[gtk::accessible::Property::Label("Enabled")]);
+        toggle.update_property(&[gtk::accessible::Property::Label(&crate::i18n::tr(
+            "Enabled",
+        ))]);
         let state = self.clone();
         let action_id = action.id().to_owned();
         let anchor = row.clone();
         toggle.connect_state_set(move |_, enabled| {
             if let Err(message) = state.set_enabled(&action_id, enabled) {
-                show_error_dialog(&anchor, "Unable to save the action", &message);
+                show_error_dialog(
+                    &anchor,
+                    &crate::i18n::tr("Unable to save the action"),
+                    &message,
+                );
             }
             glib::Propagation::Proceed
         });
@@ -231,7 +237,7 @@ impl PageState {
 
     fn set_enabled(self: &Rc<Self>, id: &str, enabled: bool) -> Result<(), String> {
         let Some(action) = self.registry.catalog().get(id).cloned() else {
-            return Err(format!("The action “{id}” no longer exists"));
+            return Err(rust_i18n::t!("The action “%{id}” no longer exists", id = id).into_owned());
         };
         let mut definition = action.definition.clone();
         definition.enabled = enabled;
@@ -257,7 +263,11 @@ impl PageState {
         let script = match self.registry.read_script(action.id()) {
             Ok(script) => script,
             Err(error) => {
-                show_error_dialog(button, "Unable to read the action", &error.to_string());
+                show_error_dialog(
+                    button,
+                    &crate::i18n::tr("Unable to read the action"),
+                    &error.to_string(),
+                );
                 return;
             }
         };
@@ -269,7 +279,7 @@ impl PageState {
             directory: std::path::PathBuf::new(),
             definition: draft_definition(ActionRuntime::Python, ExecutionMode::WholeSelection),
             availability: crate::services::ActionAvailability::Unavailable {
-                reason: "This action has not been saved yet".to_owned(),
+                reason: crate::i18n::tr("This action has not been saved yet"),
             },
         });
         let script = ActionScript {
@@ -296,7 +306,7 @@ impl PageState {
         let layout = modal_layout(
             action_icon(action.definition.icon.as_deref()),
             title,
-            "Saved as action.toml under ~/.config/strata/actions/<id>",
+            &crate::i18n::tr("Saved as action.toml under ~/.config/strata/actions/<id>"),
             match mode {
                 EditorMode::Create => "Create action",
                 EditorMode::Edit => "Save changes",
@@ -387,7 +397,11 @@ impl PageState {
         let script = match self.registry.read_script(action.id()) {
             Ok(script) => script,
             Err(error) => {
-                show_error_dialog(button, "Unable to duplicate the action", &error.to_string());
+                show_error_dialog(
+                    button,
+                    &crate::i18n::tr("Unable to duplicate the action"),
+                    &error.to_string(),
+                );
                 return;
             }
         };
@@ -395,7 +409,11 @@ impl PageState {
         definition.id = match unique_copy_id(&self.registry, &definition.id) {
             Ok(id) => id,
             Err(message) => {
-                show_error_dialog(button, "Unable to duplicate the action", &message);
+                show_error_dialog(
+                    button,
+                    &crate::i18n::tr("Unable to duplicate the action"),
+                    &message,
+                );
                 return;
             }
         };
@@ -404,7 +422,11 @@ impl PageState {
             .registry
             .create(&ActionWriteRequest { definition, script })
         {
-            show_error_dialog(button, "Unable to duplicate the action", &error.to_string());
+            show_error_dialog(
+                button,
+                &crate::i18n::tr("Unable to duplicate the action"),
+                &error.to_string(),
+            );
         }
     }
 
@@ -413,7 +435,7 @@ impl PageState {
             return;
         };
         let dialog = gtk::FileDialog::builder()
-            .title("Import an action folder")
+            .title(crate::i18n::tr("Import an action folder"))
             .modal(true)
             .build();
         let state = self.clone();
@@ -438,7 +460,11 @@ impl PageState {
                     );
                 }
                 Err(error) => {
-                    show_error_dialog(&anchor, "Unable to import the action", &error.to_string());
+                    show_error_dialog(
+                        &anchor,
+                        &crate::i18n::tr("Unable to import the action"),
+                        &error.to_string(),
+                    );
                 }
             }
         });
@@ -449,7 +475,7 @@ impl PageState {
             return;
         };
         let dialog = gtk::FileDialog::builder()
-            .title("Export this action to a folder")
+            .title(crate::i18n::tr("Export this action to a folder"))
             .modal(true)
             .build();
         let registry = self.registry.clone();
@@ -466,9 +492,11 @@ impl PageState {
                 Ok(target) => {
                     show_notice(&anchor, "Action exported", &target.display().to_string())
                 }
-                Err(error) => {
-                    show_error_dialog(&anchor, "Unable to export the action", &error.to_string())
-                }
+                Err(error) => show_error_dialog(
+                    &anchor,
+                    &crate::i18n::tr("Unable to export the action"),
+                    &error.to_string(),
+                ),
             }
         });
     }
@@ -479,9 +507,9 @@ impl PageState {
         };
         let layout = message_dialog_layout(
             crate::assets::icons::TRASH,
-            "Delete this action?",
+            &crate::i18n::tr("Delete this action?"),
             action.name(),
-            "Delete",
+            &crate::i18n::tr("Delete"),
             ModalTone::Danger,
         );
         layout.body.append(&message_dialog_description(
@@ -514,7 +542,7 @@ impl PageState {
                 Ok(()) => PageState::render(&state),
                 Err(error) => show_error_dialog(
                     &failure_anchor,
-                    "Unable to delete the action",
+                    &crate::i18n::tr("Unable to delete the action"),
                     &error.to_string(),
                 ),
             }
@@ -553,7 +581,7 @@ fn show_notice(anchor: &impl IsA<gtk::Widget>, title: &str, detail: &str) {
         crate::assets::icons::CHECK,
         title,
         detail,
-        "Close",
+        &crate::i18n::tr("Close"),
         ModalTone::Accent,
     );
     let content = layout.content;
@@ -636,7 +664,7 @@ impl EditorForm {
 
         let name = form_entry();
         name.set_text(&definition.name);
-        name.set_placeholder_text(Some("Batch rename"));
+        name.set_placeholder_text(Some(&crate::i18n::tr("Batch rename")));
         let id = form_entry();
         id.set_text(&definition.id);
         id.set_placeholder_text(Some("batch-rename"));
@@ -654,7 +682,9 @@ impl EditorForm {
         id.set_sensitive(mode == EditorMode::Create);
         let description = form_entry();
         description.set_text(definition.description.as_deref().unwrap_or(""));
-        description.set_placeholder_text(Some("Describes this action to assistive technology"));
+        description.set_placeholder_text(Some(&crate::i18n::tr(
+            "Describes this action to assistive technology",
+        )));
 
         let selected_icon = Rc::new(std::cell::RefCell::new(definition.icon.clone()));
         let icon = icon_chooser(&selected_icon);
@@ -697,7 +727,9 @@ impl EditorForm {
 
         let program = form_entry();
         program.set_text(definition.run.program.as_deref().unwrap_or(""));
-        program.set_placeholder_text(Some("Installed program, for example make"));
+        program.set_placeholder_text(Some(&crate::i18n::tr(
+            "Installed program, for example make",
+        )));
         let arguments = gtk::TextView::builder()
             .monospace(true)
             .accepts_tab(false)
@@ -760,8 +792,8 @@ impl EditorForm {
             super::settings_option("Enabled", "Show this action in menus", definition.enabled);
         enabled_row.add_css_class("settings-action-option");
         enabled_row.add_css_class("settings-action-enabled");
-        let files = form_check_button("Files");
-        let folders = form_check_button("Folders");
+        let files = form_check_button(&crate::i18n::tr("Files"));
+        let folders = form_check_button(&crate::i18n::tr("Folders"));
         if definition.when.kinds.is_empty() {
             files.set_active(true);
             folders.set_active(true);
@@ -771,7 +803,7 @@ impl EditorForm {
         }
         let extensions = form_entry();
         extensions.set_text(&definition.when.extensions.join(", "));
-        extensions.set_placeholder_text(Some("Any"));
+        extensions.set_placeholder_text(Some(&crate::i18n::tr("Any")));
         extensions.set_width_chars(18);
         let max_items = form_entry();
         max_items.set_text(
@@ -781,7 +813,7 @@ impl EditorForm {
                 .map(|value| value.to_string())
                 .unwrap_or_default(),
         );
-        max_items.set_placeholder_text(Some("No limit"));
+        max_items.set_placeholder_text(Some(&crate::i18n::tr("No limit")));
         max_items.set_width_chars(18);
         max_items.set_input_purpose(gtk::InputPurpose::Digits);
         let entry_widths = gtk::SizeGroup::new(gtk::SizeGroupMode::Horizontal);
@@ -1326,7 +1358,7 @@ fn icon_chooser(selected: &Rc<std::cell::RefCell<Option<String>>>) -> gtk::Box {
     let more = gtk::MenuButton::new();
     more.set_child(Some(&picker_icon(crate::assets::icons::PLUS)));
     more.add_css_class("settings-action-more-icons");
-    more.set_tooltip_text(Some("More icons"));
+    more.set_tooltip_text(Some(&crate::i18n::tr("More icons")));
     label_control(&more, "More icons", "Choose another bundled Lucide icon");
     let grid = gtk::Grid::builder()
         .row_spacing(6)
@@ -1532,5 +1564,5 @@ fn unique_copy_id(registry: &ActionRegistry, id: &str) -> Result<String, String>
             return Ok(candidate);
         }
     }
-    Err(format!("No free action name is available for “{id}”"))
+    Err(rust_i18n::t!("No free action name is available for “%{id}”", id = id).into_owned())
 }

@@ -44,7 +44,7 @@ impl FilesystemType {
         };
         label.chars().find_map(|character| {
             if character.is_ascii_control() {
-                Some("Labels cannot contain control characters.".to_owned())
+                Some(crate::i18n::tr("Labels cannot contain control characters."))
             } else if forbidden.contains(character) {
                 Some(format!(
                     "{} labels cannot contain “{character}”.",
@@ -301,9 +301,9 @@ pub(super) async fn format_volume(
         return Err(DriveOpError::DeviceNotFound);
     }
     if label.chars().count() > fs_type.max_label_len() {
-        return Err(DriveOpError::InvalidLabel(
-            "Filesystem label is too long.".to_owned(),
-        ));
+        return Err(DriveOpError::InvalidLabel(crate::i18n::tr(
+            "Filesystem label is too long.",
+        )));
     }
     if let Some(message) = fs_type.label_character_error(&label) {
         return Err(DriveOpError::InvalidLabel(message));
@@ -334,7 +334,7 @@ pub(super) async fn format_volume(
         )
     })
     .await
-    .map_err(|_| DriveOpError::CommandFailed("Formatting task did not complete".to_owned()))?
+    .map_err(|_| DriveOpError::CommandFailed(crate::i18n::tr("Formatting task did not complete")))?
 }
 
 fn format_device(
@@ -385,7 +385,10 @@ pub(super) fn report_result(
         Err(DriveOpError::Cancelled) => {}
         Err(error) => show_error_dialog(
             parent,
-            &format!("Unable to update {display_name}"),
+            &rust_i18n::t!(
+                "Unable to update %{display_name}",
+                display_name = display_name
+            ),
             &error.to_string(),
         ),
     }

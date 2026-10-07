@@ -96,11 +96,21 @@ fn transfer_progress_status(
     current_file: Option<&str>,
 ) -> (String, String, String, Option<f64>) {
     let items = if let Some(total_files) = total_files.filter(|total| *total > 0) {
-        format!("{completed_files} of {total_files} files")
+        rust_i18n::t!(
+            "%{completed} of %{items}",
+            completed = completed_files,
+            items = crate::i18n::count("files", total_files)
+        )
+        .into_owned()
     } else if total_items > 0 {
-        format!("{completed_items} of {total_items} items")
+        rust_i18n::t!(
+            "%{completed} of %{items}",
+            completed = completed_items,
+            items = crate::i18n::count("items", total_items)
+        )
+        .into_owned()
     } else {
-        "Preparing items…".to_owned()
+        crate::i18n::tr("Preparing items…")
     };
     let items = match current_file.filter(|name| !name.is_empty()) {
         Some(name) => format!("{items} · {name}"),
@@ -119,7 +129,7 @@ fn transfer_progress_status(
             let fraction = (completed_items as f64 / total_items as f64).clamp(0.0, 1.0);
             (format!("{}%", (fraction * 100.0) as usize), Some(fraction))
         }
-        Some(0) => ("Preparing…".to_owned(), None),
+        Some(0) => (crate::i18n::tr("Preparing…"), None),
         Some(total) => {
             let fraction = (transferred_bytes as f64 / total as f64).clamp(0.0, 1.0);
             let percentage = (fraction * 100.0) as usize;
@@ -135,15 +145,17 @@ fn transfer_progress_status(
                 Some(fraction),
             )
         }
-        None if transferred_bytes == 0 && completed_items == 0 => ("Preparing…".to_owned(), None),
-        None => ("Transferring…".to_owned(), None),
+        None if transferred_bytes == 0 && completed_items == 0 => {
+            (crate::i18n::tr("Preparing…"), None)
+        }
+        None => (crate::i18n::tr("Transferring…"), None),
     };
     (status, bytes, items, fraction)
 }
 
 fn transfer_rate_status(rate: Option<f64>, transferred: u64, total: Option<u64>) -> String {
     let Some(rate) = rate.filter(|rate| rate.is_finite() && *rate > 0.0) else {
-        return "Calculating speed…".to_owned();
+        return crate::i18n::tr("Calculating speed…");
     };
     let speed = format!("{}/s", format_file_size(rate as u64));
     let Some(remaining) = total.and_then(|total| total.checked_sub(transferred)) else {
@@ -212,7 +224,7 @@ impl FileProgressState {
             return;
         };
 
-        let layout = modal_layout(icon, title_text, subtitle_text, "Cancel");
+        let layout = modal_layout(icon, title_text, subtitle_text, &crate::i18n::tr("Cancel"));
         layout.content.add_css_class("compact");
         layout.close.set_visible(false);
         layout.cancel.set_visible(false);
@@ -307,7 +319,8 @@ impl FileProgressState {
             } else if !state.transfer_cancel_requested.replace(true) {
                 if let Some(view) = state.file_progress_view.borrow().as_ref() {
                     view.cancel.set_sensitive(false);
-                    view.title.set_text("Cancelling operation…");
+                    view.title
+                        .set_text(&crate::i18n::tr("Cancelling operation…"));
                     view.indeterminate.set(true);
                     ensure_indeterminate_pulse(view);
                     state.sync_compact(view);
@@ -504,23 +517,30 @@ impl FileProgressState {
             return;
         };
         if self.transfer_cancel_timed_out.get() {
-            view.title.set_text("Device not responding");
-            view.subtitle.set_text(
+            view.title
+                .set_text(&crate::i18n::tr("Device not responding"));
+            view.subtitle.set_text(&crate::i18n::tr(
                 "Cancellation is still pending. The device may still be writing; do not unplug it.",
-            );
+            ));
             view.subtitle.set_wrap(true);
             view.subtitle.set_max_width_chars(60);
-            view.cancel.set_label("Cancellation requested");
+            view.cancel
+                .set_label(&crate::i18n::tr("Cancellation requested"));
             view.cancel.set_sensitive(false);
-            view.transfer_rate.set_text("Waiting for device…");
+            view.transfer_rate
+                .set_text(&crate::i18n::tr("Waiting for device…"));
         } else {
-            view.title.set_text("Cancelling transfer…");
-            view.subtitle
-                .set_text("Waiting for the active write to stop. The device may still be writing.");
+            view.title
+                .set_text(&crate::i18n::tr("Cancelling transfer…"));
+            view.subtitle.set_text(&crate::i18n::tr(
+                "Waiting for the active write to stop. The device may still be writing.",
+            ));
             view.subtitle.set_wrap(true);
-            view.cancel.set_label("Cancellation requested");
+            view.cancel
+                .set_label(&crate::i18n::tr("Cancellation requested"));
             view.cancel.set_sensitive(false);
-            view.transfer_rate.set_text("Waiting for device…");
+            view.transfer_rate
+                .set_text(&crate::i18n::tr("Waiting for device…"));
         }
         view.indeterminate.set(true);
         ensure_indeterminate_pulse(view);
@@ -539,9 +559,10 @@ impl FileProgressState {
         };
         if self.transfer_progress.get().is_some() {
             view.transfer_percent.set_text("…");
-            view.transfer_rate.set_text("Writing to device…");
+            view.transfer_rate
+                .set_text(&crate::i18n::tr("Writing to device…"));
         } else {
-            view.status.set_text("Writing to device…");
+            view.status.set_text(&crate::i18n::tr("Writing to device…"));
         }
         view.indeterminate.set(true);
         view.progress.pulse();
@@ -587,7 +608,7 @@ impl FileProgressState {
         view.archive_activity.set_visible(true);
         view.archive_activity.start();
         if self.transfer_cancel_requested.get() {
-            view.status.set_text("Stopping…");
+            view.status.set_text(&crate::i18n::tr("Stopping…"));
             view.indeterminate.set(true);
         } else if completed == 0 {
             let status = if total == 0 {
@@ -597,14 +618,18 @@ impl FileProgressState {
             } else {
                 "Processing archive…"
             };
-            view.status.set_text(status);
+            view.status.set_text(&crate::i18n::tr(status));
             view.indeterminate.set(true);
         } else if total == 0 {
-            view.status.set_text(&format!("{completed} files"));
+            view.status
+                .set_text(&crate::i18n::count("files", completed));
             view.indeterminate.set(true);
         } else {
-            view.status
-                .set_text(&format!("{completed} / {total} files"));
+            view.status.set_text(&rust_i18n::t!(
+                "%{completed} / %{items}",
+                completed = completed,
+                items = crate::i18n::count("files", total)
+            ));
             view.indeterminate.set(false);
             view.progress.set_fraction(completed as f64 / total as f64);
         }
@@ -721,8 +746,10 @@ impl FileProgressState {
         let Some(view) = progress_view.as_ref() else {
             return;
         };
-        view.status
-            .set_text(&format!("{} deleted", item_count_label(processed)));
+        view.status.set_text(&rust_i18n::t!(
+            "%{items} deleted",
+            items = item_count_label(processed)
+        ));
         view.indeterminate.set(true);
         self.sync_compact(view);
     }

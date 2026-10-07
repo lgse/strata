@@ -37,13 +37,15 @@ pub(super) fn about_page() -> gtk::Widget {
         heading.append(&badge);
     }
     copy.append(&heading);
-    let description = gtk::Label::new(Some("A keyboard-first file manager for Linux."));
+    let description = gtk::Label::new(Some(&crate::i18n::tr(
+        "A keyboard-first file manager for Linux.",
+    )));
     description.set_xalign(0.0);
     description.set_wrap(true);
     description.add_css_class("about-description");
     copy.append(&description);
     identity.append(&copy);
-    let button = gtk::Button::with_label("Copy version info");
+    let button = gtk::Button::with_label(&crate::i18n::tr("Copy version info"));
     button.add_css_class("settings-update-check");
     button.set_valign(gtk::Align::Center);
     button.connect_clicked(|button| button.clipboard().set_text(&version_info()));
@@ -122,14 +124,7 @@ fn toolkit_version() -> String {
 }
 
 fn version_info() -> String {
-    format!(
-        "Strata {}\n{}\nCommit: {}\nToolkit: {}\nAuthor: {}\nLicense: MIT",
-        crate::build_info::installed_version(),
-        crate::build_info::DESCRIPTION,
-        crate::build_info::COMMIT,
-        toolkit_version(),
-        crate::build_info::AUTHOR
-    )
+    rust_i18n::t!("Strata %{value1}\n%{value2}\nCommit: %{value3}\nToolkit: %{value4}\nAuthor: %{value5}\nLicense: MIT", value1 = crate::build_info::installed_version(), value2 = crate::build_info::DESCRIPTION, value3 = crate::build_info::COMMIT, value4 = toolkit_version(), value5 = crate::build_info::AUTHOR).into_owned()
 }
 
 fn append_about_detail(container: &gtk::Box, label: &str, value: &str) {

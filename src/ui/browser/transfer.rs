@@ -240,8 +240,8 @@ impl ViewState {
         else {
             show_error_dialog(
                 &self.overlay,
-                "Unable to transfer",
-                "The transfer could not be confirmed.",
+                &crate::i18n::tr("Unable to transfer"),
+                &crate::i18n::tr("The transfer could not be confirmed."),
             );
             return;
         };
@@ -249,13 +249,13 @@ impl ViewState {
         let count = sources.len();
         let layout = message_dialog_layout(
             crate::assets::icons::COPY,
-            "Copy or move?",
+            &crate::i18n::tr("Copy or move?"),
             &format!(
                 "{} to {}",
                 item_count_label(count),
                 compact_display_path(&destination)
             ),
-            "Copy",
+            &crate::i18n::tr("Copy"),
             ModalTone::Accent,
         );
         layout
@@ -263,7 +263,7 @@ impl ViewState {
             .append(&message_dialog_description(cross_volume_drop_description(
                 volume,
             )));
-        let move_button = gtk::Button::with_label("Move");
+        let move_button = gtk::Button::with_label(&crate::i18n::tr("Move"));
         move_button.add_css_class("action-dialog-cancel");
         layout
             .actions
@@ -365,8 +365,8 @@ impl ViewState {
         let Some(destination) = resolve(id) else {
             show_error_dialog(
                 &self.overlay,
-                "Destination unavailable",
-                "The removable device is no longer available.",
+                &crate::i18n::tr("Destination unavailable"),
+                &crate::i18n::tr("The removable device is no longer available."),
             );
             return;
         };
@@ -402,8 +402,8 @@ impl ViewState {
         if !crate::ui::preferences::is_valid_send_to_relative_path(relative) {
             show_error_dialog(
                 &self.overlay,
-                "Destination unavailable",
-                "The removable device or folder is no longer available.",
+                &crate::i18n::tr("Destination unavailable"),
+                &crate::i18n::tr("The removable device or folder is no longer available."),
             );
             return;
         }
@@ -412,8 +412,8 @@ impl ViewState {
         else {
             show_error_dialog(
                 &self.overlay,
-                "Destination unavailable",
-                "The removable device or folder is no longer available.",
+                &crate::i18n::tr("Destination unavailable"),
+                &crate::i18n::tr("The removable device or folder is no longer available."),
             );
             return;
         };
@@ -423,24 +423,24 @@ impl ViewState {
         ) else {
             show_error_dialog(
                 &self.overlay,
-                "Destination unavailable",
-                "The removable device or folder is no longer available.",
+                &crate::i18n::tr("Destination unavailable"),
+                &crate::i18n::tr("The removable device or folder is no longer available."),
             );
             return;
         };
         let Ok(relative_destination) = destination.strip_prefix(&current_root) else {
             show_error_dialog(
                 &self.overlay,
-                "Destination unavailable",
-                "The removable device or folder is no longer available.",
+                &crate::i18n::tr("Destination unavailable"),
+                &crate::i18n::tr("The removable device or folder is no longer available."),
             );
             return;
         };
         if !crate::ui::preferences::is_valid_send_to_relative_path(relative_destination) {
             show_error_dialog(
                 &self.overlay,
-                "Destination unavailable",
-                "The removable device or folder is no longer available.",
+                &crate::i18n::tr("Destination unavailable"),
+                &crate::i18n::tr("The removable device or folder is no longer available."),
             );
             return;
         }
@@ -475,9 +475,14 @@ impl ViewState {
 
     fn send_to_success_text(device_name: &str, item_count: usize) -> String {
         if item_count == 1 {
-            format!("Copied to {device_name}")
+            rust_i18n::t!("Copied to %{device_name}", device_name = device_name).into_owned()
         } else {
-            format!("{item_count} items copied to {device_name}")
+            rust_i18n::t!(
+                "%{items} copied to %{device_name}",
+                items = crate::i18n::count("items", item_count),
+                device_name = device_name
+            )
+            .into_owned()
         }
     }
 
@@ -974,26 +979,26 @@ impl ViewState {
 
         let layout = message_dialog_layout(
             crate::assets::icons::COPY,
-            "File already exists",
+            &crate::i18n::tr("File already exists"),
             name,
-            "Replace",
+            &crate::i18n::tr("Replace"),
             ModalTone::Danger,
         );
         layout.body.append(&message_dialog_description(explanation));
-        let apply_all = form_check_button("Apply to All");
+        let apply_all = form_check_button(&crate::i18n::tr("Apply to All"));
         apply_all.set_visible(apply_to_all_visible);
         layout.actions.prepend(&apply_all);
-        let skip = gtk::Button::with_label("Skip");
+        let skip = gtk::Button::with_label(&crate::i18n::tr("Skip"));
         skip.add_css_class("action-dialog-cancel");
         skip.set_visible(skip_visible);
         layout
             .actions
             .insert_child_after(&skip, Some(&layout.cancel));
-        let keep_both = gtk::Button::with_label("Keep Both");
+        let keep_both = gtk::Button::with_label(&crate::i18n::tr("Keep Both"));
         keep_both.add_css_class("action-dialog-cancel");
         keep_both.set_visible(actions.keep_both);
         layout.actions.insert_child_after(&keep_both, Some(&skip));
-        let merge = gtk::Button::with_label("Merge");
+        let merge = gtk::Button::with_label(&crate::i18n::tr("Merge"));
         merge.add_css_class("action-dialog-cancel");
         merge.set_visible(actions.merge);
         layout.actions.insert_child_after(&merge, Some(&keep_both));
@@ -1129,8 +1134,8 @@ impl ViewState {
         else {
             show_error_dialog(
                 &self.overlay,
-                "Destination unavailable",
-                "The removable device is no longer available.",
+                &crate::i18n::tr("Destination unavailable"),
+                &crate::i18n::tr("The removable device is no longer available."),
             );
             return;
         };
@@ -1185,19 +1190,21 @@ impl ViewState {
                     .and_then(|root| {
                         crate::ui::browser::destination::canonical_existing_directory(&root)
                     })
-                    .ok_or_else(|| "The removable device is no longer available.".to_string())?;
+                    .ok_or_else(|| {
+                        crate::i18n::tr("The removable device is no longer available.")
+                    })?;
                 crate::ui::browser::destination::rebind_directory_within_root(
                     opened_root,
                     path,
                     &current_root,
                 )
                 .ok_or_else(|| {
-                    "Choose an existing folder inside this removable device.".to_string()
+                    crate::i18n::tr("Choose an existing folder inside this removable device.")
                 })
             } else if path.is_dir() {
                 Ok(path.to_path_buf())
             } else {
-                Err("Choose an existing folder.".to_string())
+                Err(crate::i18n::tr("Choose an existing folder."))
             }
         });
         let state = self.clone();
@@ -1229,8 +1236,8 @@ impl ViewState {
                     }) else {
                         show_error_dialog(
                             &state.overlay,
-                            "Destination unavailable",
-                            "The removable device is no longer available.",
+                            &crate::i18n::tr("Destination unavailable"),
+                            &crate::i18n::tr("The removable device is no longer available."),
                         );
                         return;
                     };
@@ -1242,8 +1249,10 @@ impl ViewState {
                     else {
                         show_error_dialog(
                             &state.overlay,
-                            "Destination unavailable",
-                            "Choose an existing folder inside this removable device.",
+                            &crate::i18n::tr("Destination unavailable"),
+                            &crate::i18n::tr(
+                                "Choose an existing folder inside this removable device.",
+                            ),
                         );
                         return;
                     };

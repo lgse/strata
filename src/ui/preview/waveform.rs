@@ -100,7 +100,9 @@ impl Waveform {
         waveform.add_css_class("preview-waveform");
         waveform.set_focusable(true);
         waveform.set_cursor_from_name(Some("pointer"));
-        waveform.update_property(&[gtk::accessible::Property::Label("Playback position")]);
+        waveform.update_property(&[gtk::accessible::Property::Label(&crate::i18n::tr(
+            "Playback position",
+        ))]);
         waveform.imp().targets.replace(vec![0.0; BUCKETS as usize]);
         waveform.imp().shown.replace(vec![0.0; BUCKETS as usize]);
         follow_theme(&waveform);

@@ -133,6 +133,8 @@ pub(in crate::ui) struct Preferences {
     text_size: TextSize,
     #[serde(default)]
     interface_renderer: InterfaceRenderer,
+    #[serde(default)]
+    language: crate::i18n::Language,
     #[serde(default = "default_enabled")]
     folders_first: bool,
     #[serde(default = "default_sort_key")]
@@ -249,6 +251,7 @@ impl Default for Preferences {
             show_hidden: false,
             text_size: TextSize::default(),
             interface_renderer: InterfaceRenderer::default(),
+            language: crate::i18n::Language::default(),
             folders_first: true,
             sort_key: default_sort_key(),
             sort_direction: default_sort_direction(),
@@ -381,6 +384,7 @@ pub(in crate::ui) fn is_valid_send_to_relative_path(path: &Path) -> bool {
 pub struct PreferenceManager {
     preferences: RefCell<Preferences>,
     startup_interface_renderer: InterfaceRenderer,
+    startup_locale: &'static str,
     changes: bindings::PreferenceChanges,
     persistence_dirty: Cell<bool>,
     persistence_enabled: bool,
@@ -426,7 +430,10 @@ impl PreferenceManager {
         super::motion::set_reduce_motion(preferences.reduce_motion);
         crate::util::set_date_format(crate::util::DateFormat::parse(&preferences.date_format));
 
+        let startup_locale = preferences.language.locale();
+        rust_i18n::set_locale(startup_locale);
         Rc::new(Self {
+            startup_locale,
             startup_interface_renderer: preferences.interface_renderer,
             changes: bindings::PreferenceChanges::new(preferences.clone()),
             persistence_dirty: Cell::new(false),
@@ -1053,6 +1060,19 @@ impl PreferenceManager {
         }
         .to_owned();
         self.save_preferences();
+    }
+
+    pub fn language(&self) -> crate::i18n::Language {
+        self.preferences.borrow().language
+    }
+
+    pub fn set_language(&self, language: crate::i18n::Language) {
+        self.preferences.borrow_mut().language = language;
+        self.save_preferences();
+    }
+
+    pub fn language_restart_required(&self) -> bool {
+        self.language().locale() != self.startup_locale
     }
 
     pub fn interface_renderer(&self) -> InterfaceRenderer {

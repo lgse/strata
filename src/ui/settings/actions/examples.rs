@@ -12,17 +12,20 @@ use crate::{assets, ui::accessibility};
 pub(super) fn button() -> gtk::MenuButton {
     let content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     content.append(&assets::primary_icon(assets::icons::LIBRARY, 15));
-    content.append(&gtk::Label::new(Some("Library")));
+    content.append(&gtk::Label::new(Some(&crate::i18n::tr("Library"))));
     let button = gtk::MenuButton::builder().child(&content).build();
     button.add_css_class("settings-action-library-button");
-    accessibility::set_label(&button, "Library");
-    crate::ui::accessibility::set_description(&button, Some("Choose a bundled script template"));
+    accessibility::set_label(&button, &crate::i18n::tr("Library"));
+    crate::ui::accessibility::set_description(
+        &button,
+        Some(&crate::i18n::tr("Choose a bundled script template")),
+    );
     button
 }
 
 pub(super) fn install(button: &gtk::MenuButton, form: Weak<EditorForm>) {
     let body = accessibility::pane_box();
-    accessibility::set_label(&body, "Script library");
+    accessibility::set_label(&body, &crate::i18n::tr("Script library"));
     let popover = gtk::Popover::builder()
         .child(&body)
         .has_arrow(false)
@@ -56,8 +59,8 @@ pub(super) fn install(button: &gtk::MenuButton, form: Weak<EditorForm>) {
     confirmation.append(&question);
     let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     actions.set_halign(gtk::Align::End);
-    let cancel = gtk::Button::with_label("Keep draft");
-    let replace = gtk::Button::with_label("Replace script");
+    let cancel = gtk::Button::with_label(&crate::i18n::tr("Keep draft"));
+    let replace = gtk::Button::with_label(&crate::i18n::tr("Replace script"));
     for button in [&cancel, &replace] {
         button.add_css_class("settings-action-button");
         actions.append(button);
@@ -76,11 +79,7 @@ pub(super) fn install(button: &gtk::MenuButton, form: Weak<EditorForm>) {
             };
             if form.replaces_draft(example.runtime()) {
                 pending.set(Some(example));
-                question.set_text(&format!(
-                    "Replace your {} draft with {}? Code can be undone in the editor.",
-                    example.runtime().label(),
-                    example.name
-                ));
+                question.set_text(&rust_i18n::t!("Replace your %{value1} draft with %{value2}? Code can be undone in the editor.", value1 = example.runtime().label(), value2 = example.name));
                 confirmation.set_visible(true);
             } else {
                 popover.popdown();
@@ -248,7 +247,10 @@ fn template_row(example: &ActionExample) -> gtk::Button {
     content.append(&heading);
     content.append(&note(example.description));
     content.append(&note(example.inputs));
-    let requirements = note(&format!("Requires: {}", example.requirements));
+    let requirements = note(&rust_i18n::t!(
+        "Requires: %{value1}",
+        value1 = example.requirements
+    ));
     requirements.add_css_class("action-library-requirements");
     content.append(&requirements);
     let button = gtk::Button::builder().child(&content).build();

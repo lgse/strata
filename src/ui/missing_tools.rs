@@ -39,9 +39,9 @@ pub(super) fn show_missing_tools(
     };
     let layout = message_dialog_layout(
         assets::icons::TRIANGLE_ALERT,
-        "Missing tools",
-        "Install the required tools to continue",
-        "Close",
+        &crate::i18n::tr("Missing tools"),
+        &crate::i18n::tr("Install the required tools to continue"),
+        &crate::i18n::tr("Close"),
         ModalTone::Accent,
     );
     layout.cancel.set_visible(false);
@@ -51,7 +51,7 @@ pub(super) fn show_missing_tools(
         .map(|tool| tool.name)
         .collect::<Vec<_>>()
         .join(", ");
-    let missing = message_dialog_description(&format!("Missing: {names}"));
+    let missing = message_dialog_description(&rust_i18n::t!("Missing: %{names}", names = names));
     missing.set_selectable(true);
     layout.body.append(&missing);
     if let Some(command) = install_command(PackageManager::detect(), tools) {

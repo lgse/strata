@@ -90,8 +90,8 @@ impl CompactProgress {
         pane_header_action(&pin);
         pin.add_css_class("progress-card-action");
         pin.set_child(Some(&assets::primary_icon(assets::icons::PIN, 14)));
-        pin.set_tooltip_text(Some("Keep notification"));
-        accessibility::set_label(&pin, "Keep notification");
+        pin.set_tooltip_text(Some(&crate::i18n::tr("Keep notification")));
+        accessibility::set_label(&pin, &crate::i18n::tr("Keep notification"));
         pin.set_visible(false);
         header.append(&pin);
         let cancel = gtk::Button::new();
@@ -99,8 +99,8 @@ impl CompactProgress {
         cancel.add_css_class("progress-cancel");
         cancel.add_css_class("progress-card-action");
         cancel.set_child(Some(&assets::primary_icon(assets::icons::X, 14)));
-        cancel.set_tooltip_text(Some("Cancel operation"));
-        accessibility::set_label(&cancel, "Cancel operation");
+        cancel.set_tooltip_text(Some(&crate::i18n::tr("Cancel operation")));
+        accessibility::set_label(&cancel, &crate::i18n::tr("Cancel operation"));
         header.append(&cancel);
         root.append(&header);
         let details = gtk::Box::new(gtk::Orientation::Horizontal, 8);
@@ -125,11 +125,14 @@ impl CompactProgress {
         progress.add_css_class("modal-progress");
         root.append(&progress);
         let footer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        let complete = gtk::Button::with_label("Complete");
+        let complete = gtk::Button::with_label(&crate::i18n::tr("Complete"));
         complete.add_css_class("job-action");
         complete.add_css_class("progress-complete");
         complete.set_cursor_from_name(Some("pointer"));
-        accessibility::set_label(&complete, "Dismiss completed notification");
+        accessibility::set_label(
+            &complete,
+            &crate::i18n::tr("Dismiss completed notification"),
+        );
         complete.set_visible(false);
         footer.append(&complete);
         let meta = wrapped_label(42);
@@ -186,8 +189,9 @@ impl CompactProgress {
         self.pin.set_visible(true);
         self.cancel.set_visible(true);
         self.cancel.set_sensitive(true);
-        self.cancel.set_tooltip_text(Some("Dismiss notification"));
-        accessibility::set_label(&self.cancel, "Dismiss notification");
+        self.cancel
+            .set_tooltip_text(Some(&crate::i18n::tr("Dismiss notification")));
+        accessibility::set_label(&self.cancel, &crate::i18n::tr("Dismiss notification"));
         self.completion.complete(duration);
     }
 

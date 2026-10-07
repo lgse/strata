@@ -65,7 +65,9 @@ pub(in crate::ui::window) fn go_target(key: Key, pins: &[Location]) -> Option<Go
                     location: location.clone(),
                     validate: true,
                 },
-                None => GoTarget::Missing(format!("No pin {number}")),
+                None => GoTarget::Missing(
+                    rust_i18n::t!("No pin %{number}", number = number).into_owned(),
+                ),
             })
         }
     }
@@ -90,7 +92,7 @@ fn user_folder(directory: glib::UserDirectory, name: &str) -> Option<GoTarget> {
                 location: Location::local(path),
                 validate: false,
             },
-            None => GoTarget::Missing(format!("No {name} folder")),
+            None => GoTarget::Missing(rust_i18n::t!("No %{name} folder", name = name).into_owned()),
         },
     )
 }
@@ -225,8 +227,8 @@ impl Dispatcher {
             }
             PinChange::NotPinned(name) => format!("\u{201c}{name}\u{201d} isn\u{2019}t pinned"),
             PinChange::Refused(name) => format!("Can\u{2019}t pin \u{201c}{name}\u{201d}"),
-            PinChange::Nothing if pin => "Nothing to pin".to_owned(),
-            PinChange::Nothing => "Nothing to unpin".to_owned(),
+            PinChange::Nothing if pin => crate::i18n::tr("Nothing to pin"),
+            PinChange::Nothing => crate::i18n::tr("Nothing to unpin"),
         };
         self.shortcuts.show_feedback(&feedback);
     }

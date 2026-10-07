@@ -297,21 +297,15 @@ pub(in crate::ui) fn icon_for_name(name: &str) -> &'static str {
 }
 
 pub(super) fn item_count_label(count: usize) -> String {
-    if count == 1 {
-        "1 item".to_owned()
-    } else {
-        format!("{count} items")
-    }
+    crate::i18n::count("items", count)
 }
 
 pub(super) fn entry_kind_summary(entries: &[FileEntry]) -> String {
     let directories = entries.iter().filter(|entry| entry.is_directory()).count();
     let files = entries.len().saturating_sub(directories);
     match (files, directories) {
-        (1, 0) => "1 file".to_owned(),
-        (files, 0) => format!("{files} files"),
-        (0, 1) => "1 folder".to_owned(),
-        (0, directories) => format!("{directories} folders"),
+        (files, 0) => crate::i18n::count("files", files),
+        (0, directories) => crate::i18n::count("folders", directories),
         _ => item_count_label(entries.len()),
     }
 }

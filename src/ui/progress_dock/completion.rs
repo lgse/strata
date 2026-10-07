@@ -134,7 +134,9 @@ impl Completion {
         if let Some(progress) = self.widgets.progress.upgrade() {
             crate::ui::accessibility::set_description(
                 &progress,
-                Some("Time remaining before notification closes"),
+                Some(&crate::i18n::tr(
+                    "Time remaining before notification closes",
+                )),
             );
         }
         self.render(Instant::now());

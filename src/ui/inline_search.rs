@@ -740,7 +740,7 @@ pub(super) fn wrap(
                 update_results(state, Vec::new(), is_recursive);
             }
             if state.collection.sorted.n_items() == 0 {
-                state.status.set_text("Searching…");
+                state.status.set_text(&crate::i18n::tr("Searching…"));
                 state.status.set_visible(true);
             }
             let show_hidden = weak_browser
@@ -775,9 +775,9 @@ pub(super) fn wrap(
                     state.status.set_text(&if batch.coverage.is_partial() {
                         batch.coverage.message()
                     } else if batch.indexing {
-                        "Searching…".to_owned()
+                        crate::i18n::tr("Searching…")
                     } else {
-                        "No matching files".to_owned()
+                        crate::i18n::tr("No matching files")
                     });
                     state.collection.highlights.borrow_mut().hits = if scope.fuzzy() {
                         super::browser::find::search_hit_ranges(&batch.query, &search_root, &items)

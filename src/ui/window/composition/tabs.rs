@@ -473,8 +473,10 @@ impl TabWindow {
 fn operations_active(window: &gtk::ApplicationWindow) {
     crate::ui::modal::show_error_dialog(
         window,
-        "File operations are still active",
-        "Wait for these operations to finish, or cancel them before closing this tab or window. Cancellation does not undo completed changes.",
+        &crate::i18n::tr("File operations are still active"),
+        &crate::i18n::tr(
+            "Wait for these operations to finish, or cancel them before closing this tab or window. Cancellation does not undo completed changes.",
+        ),
     );
 }
 

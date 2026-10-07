@@ -89,7 +89,11 @@ struct MountPromptDetails {
 impl MountPromptDetails {
     fn fallback(location: &Location) -> Self {
         Self {
-            message: format!("Enter your credentials for “{}”.", location.display_path()),
+            message: rust_i18n::t!(
+                "Enter your credentials for “%{value1}”.",
+                value1 = location.display_path()
+            )
+            .into_owned(),
             default_user: String::new(),
             default_domain: String::new(),
             flags: fallback_ask_password_flags(location),
@@ -135,12 +139,13 @@ fn authentication_retry_message(flags: gio::AskPasswordFlags, message: &str) -> 
         });
     }
     if fields.is_empty() {
-        "That attempt wasn’t accepted. Try again.".to_owned()
+        crate::i18n::tr("That attempt wasn’t accepted. Try again.")
     } else {
-        format!(
-            "Those credentials weren’t accepted. Check {} and try again.",
-            fields.join(", ")
+        rust_i18n::t!(
+            "Those credentials weren’t accepted. Check %{value1} and try again.",
+            value1 = fields.join(", ")
         )
+        .into_owned()
     }
 }
 
@@ -184,9 +189,11 @@ fn show_trust_question_dialog(
 
     let layout = message_dialog_layout(
         crate::assets::icons::TRIANGLE_ALERT,
-        "Verify server identity",
-        "Only continue after verifying the SSH host key through a trusted source.",
-        "Continue anyway",
+        &crate::i18n::tr("Verify server identity"),
+        &crate::i18n::tr(
+            "Only continue after verifying the SSH host key through a trusted source.",
+        ),
+        &crate::i18n::tr("Continue anyway"),
         ModalTone::Danger,
     );
     let backend_message = message_dialog_description(&sanitize_failure_message(message));
@@ -297,8 +304,8 @@ fn show_authentication_dialog(
         } else {
             "Authentication required"
         },
-        "Authenticate to access this volume or location",
-        "Connect",
+        &crate::i18n::tr("Authenticate to access this volume or location"),
+        &crate::i18n::tr("Connect"),
     );
     layout.content.add_css_class("wide");
     layout.body.add_css_class("authentication-body");
@@ -349,7 +356,7 @@ fn show_authentication_dialog(
     let anonymous = connect_as_buttons[1].clone();
     if flags.contains(gio::AskPasswordFlags::ANONYMOUS_SUPPORTED) {
         let connect_as = gtk::Box::new(gtk::Orientation::Vertical, 7);
-        connect_as.append(&form_label("Connect as"));
+        connect_as.append(&form_label(&crate::i18n::tr("Connect as")));
         connect_as.append(&connect_as_control);
         layout.body.append(&connect_as);
     }
@@ -359,7 +366,7 @@ fn show_authentication_dialog(
         segmented_control(&["Don't remember", "Until logout", "Forever"], 0);
     if flags.contains(gio::AskPasswordFlags::SAVING_SUPPORTED) {
         let remember_field = gtk::Box::new(gtk::Orientation::Vertical, 5);
-        remember_field.append(&form_label("Password storage"));
+        remember_field.append(&form_label(&crate::i18n::tr("Password storage")));
         remember_field.append(&remember);
         layout.body.append(&remember_field);
     }
@@ -501,7 +508,7 @@ fn dismiss_authentication_prompt(browser_overlay: &gtk::Overlay, layer: &gtk::Bo
 
 fn append_authentication_field(fields: &gtk::Box, label_text: &str, field: &impl IsA<gtk::Widget>) {
     let group = gtk::Box::new(gtk::Orientation::Vertical, 5);
-    group.append(&form_label(label_text));
+    group.append(&form_label(&crate::i18n::tr(label_text)));
     group.append(field);
     fields.append(&group);
 }
@@ -688,7 +695,9 @@ fn mount_failure_message(location: &Location, error: &glib::Error) -> Option<Str
         return Some(backend_unavailable_message(uri));
     }
     if mount_error_is_host_key_rejection(error) {
-        return Some("The remote computer’s host key could not be verified. Confirm its fingerprint with the server administrator before trying again.".to_owned());
+        return Some(crate::i18n::tr(
+            "The remote computer’s host key could not be verified. Confirm its fingerprint with the server administrator before trying again.",
+        ));
     }
     if let Some(message) = transport_failure_message(error) {
         return Some(message);
@@ -1357,7 +1366,7 @@ impl ViewState {
                         if !mount_error_is_cancelled(&error) {
                             show_error_dialog(
                                 &state.overlay,
-                                "Unable to mount volume",
+                                &crate::i18n::tr("Unable to mount volume"),
                                 &error.to_string(),
                             );
                         }
@@ -1417,8 +1426,10 @@ impl ViewState {
                             state.finish_unlock_slot(&waited.keys);
                             show_error_dialog(
                                 &state.overlay,
-                                "Unable to mount volume",
-                                "The device started, but no mountable volume appeared.",
+                                &crate::i18n::tr("Unable to mount volume"),
+                                &crate::i18n::tr(
+                                    "The device started, but no mountable volume appeared.",
+                                ),
                             );
                         }
                     });
@@ -1502,7 +1513,7 @@ impl ViewState {
                         if !mount_error_is_cancelled(&error) {
                             show_error_dialog(
                                 &state.overlay,
-                                "Unable to mount volume",
+                                &crate::i18n::tr("Unable to mount volume"),
                                 &error.to_string(),
                             );
                         }
@@ -1544,7 +1555,11 @@ impl ViewState {
             Err(error) => {
                 self.location_stack.set_visible_child_name("breadcrumbs");
                 self.restore_location_text();
-                show_error_dialog(&self.overlay, "Unable to open location", &error.to_string());
+                show_error_dialog(
+                    &self.overlay,
+                    &crate::i18n::tr("Unable to open location"),
+                    &error.to_string(),
+                );
             }
         }
     }
@@ -1601,7 +1616,7 @@ impl ViewState {
             error => {
                 show_error_dialog(
                     &self.overlay,
-                    "Unable to open directory",
+                    &crate::i18n::tr("Unable to open directory"),
                     &error.to_string(),
                 );
             }
@@ -1636,7 +1651,11 @@ impl ViewState {
                         state.location_stack.set_visible_child_name("breadcrumbs");
                         state.restore_location_text();
                         if let Some(message) = mount_failure_message(&location, &error) {
-                            show_error_dialog(&state.overlay, "Unable to connect", &message);
+                            show_error_dialog(
+                                &state.overlay,
+                                &crate::i18n::tr("Unable to connect"),
+                                &message,
+                            );
                         }
                     }
                 }
@@ -1677,7 +1696,11 @@ impl ViewState {
                             prompt_details,
                         );
                     } else if let Some(message) = mount_failure_message(&location, &error) {
-                        show_error_dialog(&state.overlay, "Unable to connect", &message);
+                        show_error_dialog(
+                            &state.overlay,
+                            &crate::i18n::tr("Unable to connect"),
+                            &message,
+                        );
                     }
                 }
             },
@@ -1881,9 +1904,9 @@ impl ViewState {
 
         let layout = modal_layout(
             crate::assets::icons::LOCK,
-            "Unlocking volume",
+            &crate::i18n::tr("Unlocking volume"),
             volume_name,
-            "Hide",
+            &crate::i18n::tr("Hide"),
         );
         layout.content.add_css_class("compact");
         layout.set_loading(true, Some("Unlocking volume"));
@@ -2260,7 +2283,9 @@ impl ViewState {
                     &current_label,
                     Some(&crumb.display_path()),
                 );
-                let copy = gtk::Button::builder().tooltip_text("Copy path").build();
+                let copy = gtk::Button::builder()
+                    .tooltip_text(crate::i18n::tr("Copy path"))
+                    .build();
                 let copy_icon = crate::assets::primary_icon(crate::assets::icons::COPY, 16);
                 copy.set_child(Some(&copy_icon));
                 copy.add_css_class("copy-path");
@@ -2275,14 +2300,14 @@ impl ViewState {
                     let generation = feedback_generation.get().saturating_add(1);
                     feedback_generation.set(generation);
                     crate::assets::set_primary_icon(&copy_icon, crate::assets::icons::CHECK);
-                    button.set_tooltip_text(Some("Path copied"));
+                    button.set_tooltip_text(Some(&crate::i18n::tr("Path copied")));
                     let button = button.clone();
                     let copy_icon = copy_icon.clone();
                     let feedback_generation = feedback_generation.clone();
                     glib::timeout_add_local_once(Duration::from_secs(2), move || {
                         if feedback_generation.get() == generation {
                             crate::assets::set_primary_icon(&copy_icon, crate::assets::icons::COPY);
-                            button.set_tooltip_text(Some("Copy path"));
+                            button.set_tooltip_text(Some(&crate::i18n::tr("Copy path")));
                         }
                     });
                 });

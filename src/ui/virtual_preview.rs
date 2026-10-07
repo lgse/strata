@@ -794,14 +794,16 @@ fn highlighted_code_language(unit: &DocumentUnit) -> Option<&'static str> {
 
 fn code_copy_button(units: Rc<Vec<PreviewUnit>>, index: usize) -> gtk::Button {
     let button = gtk::Button::builder()
-        .tooltip_text("Copy code")
+        .tooltip_text(crate::i18n::tr("Copy code"))
         .halign(gtk::Align::End)
         .valign(gtk::Align::Start)
         .build();
     button.add_css_class("preview-code-copy");
     button.set_has_frame(false);
     button.set_cursor_from_name(Some("pointer"));
-    button.update_property(&[gtk::accessible::Property::Label("Copy code")]);
+    button.update_property(&[gtk::accessible::Property::Label(&crate::i18n::tr(
+        "Copy code",
+    ))]);
     let icon = crate::assets::primary_icon(crate::assets::icons::COPY, 15);
     button.set_child(Some(&icon));
 
@@ -814,8 +816,10 @@ fn code_copy_button(units: Rc<Vec<PreviewUnit>>, index: usize) -> gtk::Button {
         let generation = feedback_generation.get().wrapping_add(1);
         feedback_generation.set(generation);
         crate::assets::set_primary_icon(&icon, crate::assets::icons::CHECK);
-        button.set_tooltip_text(Some("Code copied"));
-        button.update_property(&[gtk::accessible::Property::Label("Code copied")]);
+        button.set_tooltip_text(Some(&crate::i18n::tr("Code copied")));
+        button.update_property(&[gtk::accessible::Property::Label(&crate::i18n::tr(
+            "Code copied",
+        ))]);
 
         let weak_button = button.downgrade();
         let weak_icon = icon.downgrade();
@@ -828,8 +832,10 @@ fn code_copy_button(units: Rc<Vec<PreviewUnit>>, index: usize) -> gtk::Button {
                 crate::assets::set_primary_icon(&icon, crate::assets::icons::COPY);
             }
             if let Some(button) = weak_button.upgrade() {
-                button.set_tooltip_text(Some("Copy code"));
-                button.update_property(&[gtk::accessible::Property::Label("Copy code")]);
+                button.set_tooltip_text(Some(&crate::i18n::tr("Copy code")));
+                button.update_property(&[gtk::accessible::Property::Label(&crate::i18n::tr(
+                    "Copy code",
+                ))]);
             }
         });
     });
@@ -1125,9 +1131,9 @@ pub(super) fn set_table_cell(label: &gtk::Label, cell: &DocumentTableCellLayout)
         ));
         crate::ui::accessibility::set_description(
             label,
-            Some(
+            Some(&crate::i18n::tr(
                 "Cell shortened for responsive preview; copying the table keeps the complete text.",
-            ),
+            )),
         );
     } else if let Some(markup) = styled_markup(&cell.text, &cell.spans) {
         label.set_markup(&markup);
@@ -1135,9 +1141,9 @@ pub(super) fn set_table_cell(label: &gtk::Label, cell: &DocumentTableCellLayout)
         label.set_text(&cell.text);
         crate::ui::accessibility::set_description(
             label,
-            Some(
+            Some(&crate::i18n::tr(
                 "Cell formatting omitted for responsive preview; copying keeps the complete text.",
-            ),
+            )),
         );
     }
     if cell.header {
@@ -1149,7 +1155,11 @@ pub(super) fn set_table_cell(label: &gtk::Label, cell: &DocumentTableCellLayout)
 
 pub(super) fn open_web_link(uri: &str, parent: &impl IsA<gtk::Widget>) {
     if let Err(error) = gio::AppInfo::launch_default_for_uri(uri, None::<&gio::AppLaunchContext>) {
-        super::modal::show_error_dialog(parent, "Unable to open link", &error.to_string());
+        super::modal::show_error_dialog(
+            parent,
+            &crate::i18n::tr("Unable to open link"),
+            &error.to_string(),
+        );
     }
 }
 

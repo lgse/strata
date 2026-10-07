@@ -21,7 +21,7 @@ pub(super) fn install(
     picture.set_can_target(false);
     picture.set_focusable(false);
     picture.add_css_class("tenxer-splash");
-    crate::ui::accessibility::set_label(&picture, "10xer mode enabled");
+    crate::ui::accessibility::set_label(&picture, &crate::i18n::tr("10xer mode enabled"));
     picture.set_visible(false);
     overlay.add_overlay(&picture);
     overlay.set_measure_overlay(&picture, false);

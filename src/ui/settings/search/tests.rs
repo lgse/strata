@@ -4,6 +4,29 @@ use super::*;
 use crate::ui::{blur::BlurBin, preferences::PreferenceManager};
 
 #[test]
+fn localized_setting_titles_keep_stable_search_targets() {
+    crate::test_support::gtk_test(
+        "ui::settings::search::tests::localized_setting_titles_keep_stable_search_targets",
+        || {
+            for (locale, query) in [
+                ("fr", "Langue"),
+                ("de", "Sprache"),
+                ("ja", "言語"),
+                ("ko", "언어"),
+                ("ru", "Язык"),
+            ] {
+                rust_i18n::set_locale(locale);
+                for query in [query, "Language"] {
+                    let matches = find_matches(&normalized(query));
+                    assert_eq!(matches.best_page, Some("general"), "{locale}: {query}");
+                    assert!(matches.ids.contains("language"));
+                }
+            }
+        },
+    );
+}
+
+#[test]
 fn ranks_exact_labels_aliases_and_small_typing_errors() {
     for (query, page, id) in [
         ("Folder peeking", "general", "peeking"),

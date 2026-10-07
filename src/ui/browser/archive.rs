@@ -170,16 +170,13 @@ impl ViewState {
         };
         let layout = message_dialog_layout(
             crate::assets::icons::FILE_ARCHIVE,
-            "File already exists",
+            &crate::i18n::tr("File already exists"),
             &final_name,
-            "Replace",
+            &crate::i18n::tr("Replace"),
             ModalTone::Danger,
         );
-        layout.body.append(&message_dialog_description(&format!(
-            "An archive named “{final_name}” already exists in {}. Replace it to overwrite its contents, or keep both to create a numbered copy.",
-            compact_display_path(&destination)
-        )));
-        let keep_both = gtk::Button::with_label("Keep Both");
+        layout.body.append(&message_dialog_description(&rust_i18n::t!("An archive named “%{final_name}” already exists in %{value1}. Replace it to overwrite its contents, or keep both to create a numbered copy.", final_name = final_name, value1 = compact_display_path(&destination))));
+        let keep_both = gtk::Button::with_label(&crate::i18n::tr("Keep Both"));
         keep_both.add_css_class("action-dialog-cancel");
         layout
             .actions
@@ -290,7 +287,11 @@ impl ViewState {
             "archive".to_owned()
         };
 
-        let title = format!("Compress {}", item_count_label(entries.len()));
+        let title = rust_i18n::t!(
+            "Compress %{value1}",
+            value1 = item_count_label(entries.len())
+        )
+        .into_owned();
         let subtitle = entry_kind_summary(&entries);
 
         let name_entry = form_entry();
@@ -318,25 +319,25 @@ impl ViewState {
             })),
         );
 
-        let name_label = form_label("Archive name");
+        let name_label = form_label(&crate::i18n::tr("Archive name"));
         body.append(&name_label);
         body.append(&name_entry);
 
-        let format_label = form_label("Format");
+        let format_label = form_label(&crate::i18n::tr("Format"));
         let (format_control, format_options) =
             segmented_control(&["ZIP", "7Z", "TAR.GZ", "TAR"], 0);
         let selected_format = Rc::new(Cell::new(ArchiveFormat::Zip));
         body.append(&format_label);
         body.append(&format_control);
 
-        let protection_label = form_label("Protection");
+        let protection_label = form_label(&crate::i18n::tr("Protection"));
         let (protection_control, protection_options) =
             segmented_control(&["No password", "Password protected"], 0);
         let no_password = protection_options[0].clone();
         let password_protected = protection_options[1].clone();
 
-        let password_label = form_label("Password");
-        let confirm_label = form_label("Confirm password");
+        let password_label = form_label(&crate::i18n::tr("Password"));
+        let confirm_label = form_label(&crate::i18n::tr("Confirm password"));
         let password_fields = gtk::Box::new(gtk::Orientation::Vertical, 6);
         password_fields.append(&password_label);
         password_fields.append(&password_entry);
@@ -406,8 +407,8 @@ impl ViewState {
                 if pw.is_empty() {
                     show_error_dialog(
                         &overlay_for_error,
-                        "Password required",
-                        "Enter a password or choose No password.",
+                        &crate::i18n::tr("Password required"),
+                        &crate::i18n::tr("Enter a password or choose No password."),
                     );
                     return;
                 }
@@ -415,8 +416,8 @@ impl ViewState {
                 if pw != confirm_pw {
                     show_error_dialog(
                         &overlay_for_error,
-                        "Passwords do not match",
-                        "Please enter the same password in both fields.",
+                        &crate::i18n::tr("Passwords do not match"),
+                        &crate::i18n::tr("Please enter the same password in both fields."),
                     );
                     return;
                 }
@@ -455,8 +456,8 @@ impl ViewState {
         let Some(parent) = entry.location.parent() else {
             show_error_dialog(
                 &self.overlay,
-                "Cannot extract",
-                "This archive has no parent directory.",
+                &crate::i18n::tr("Cannot extract"),
+                &crate::i18n::tr("This archive has no parent directory."),
             );
             return;
         };
@@ -534,7 +535,7 @@ impl ViewState {
             Some(Rc::new(move || !dirty_password.text().is_empty())),
         );
 
-        let password_label = form_label("Password");
+        let password_label = form_label(&crate::i18n::tr("Password"));
         let password_error = form_error_label();
         body.append(&password_label);
         body.append(&password_entry);

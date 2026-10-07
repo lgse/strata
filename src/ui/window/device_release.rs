@@ -655,7 +655,12 @@ pub(super) fn present_release_overlay(parent: &gtk::Widget, key: &ReleaseKey) {
     let Some(host) = ModalHost::blurred_for(parent) else {
         return;
     };
-    let layout = modal_layout(kind.icon(), kind.title(), &display_name, "Hide");
+    let layout = modal_layout(
+        kind.icon(),
+        kind.title(),
+        &display_name,
+        &crate::i18n::tr("Hide"),
+    );
     layout.content.add_css_class("compact");
     layout.set_loading(true, Some(kind.title()));
     layout.cancel.set_visible(false);
@@ -813,14 +818,14 @@ fn apply_decision(key: &ReleaseKey, decision: ReleaseDecision) {
 
 fn show_safe_to_remove(overlay: &ReleaseOverlay, display_name: &str) {
     overlay.mode.set(OverlayMode::Dismiss);
-    overlay.title.set_text("Safe to remove");
+    overlay.title.set_text(&crate::i18n::tr("Safe to remove"));
     overlay.loading.stop();
     overlay.loading.set_visible(false);
     crate::ui::accessibility::set_description(&overlay.loading, None);
     overlay
         .body
         .set_text(&format!("{display_name} can be unplugged."));
-    overlay.confirm.set_label("Close");
+    overlay.confirm.set_label(&crate::i18n::tr("Close"));
 }
 
 #[expect(

@@ -1057,23 +1057,23 @@ impl ChooserState {
             .join(", ");
         let layout = message_dialog_layout(
             crate::assets::icons::COPY,
-            if paths.len() > 1 {
+            &crate::i18n::tr(if paths.len() > 1 {
                 "Replace existing files?"
             } else {
                 "Replace existing file?"
-            },
+            }),
             &names,
-            "Replace",
+            &crate::i18n::tr("Replace"),
             ModalTone::Danger,
         );
         layout
             .body
             .append(&super::controls::message_dialog_description(
-                if paths.len() > 1 {
+                &crate::i18n::tr(if paths.len() > 1 {
                     "One or more destination files already exist. Continuing may overwrite them."
                 } else {
                     "The destination file already exists. Continuing may overwrite it."
-                },
+                }),
             ));
         let layer = modal_layer(&layout.content, &overlay, root.clone(), None);
         overlay.add_overlay(&layer);
@@ -1489,7 +1489,7 @@ fn build_chooser_hosted(
     header.set_show_title_buttons(false);
     let sidebar_toggle = gtk::ToggleButton::builder()
         .active(true)
-        .tooltip_text("Toggle sidebar (Ctrl+B)")
+        .tooltip_text(crate::i18n::tr("Toggle sidebar (Ctrl+B)"))
         .build();
     sidebar_toggle.set_child(Some(&crate::assets::primary_icon(
         crate::assets::icons::PANEL_LEFT,
@@ -1506,7 +1506,7 @@ fn build_chooser_hosted(
     header_content.append(&sidebar_toggle);
     header_content.append(&location);
     let close = gtk::Button::builder()
-        .tooltip_text("Cancel file selection (Esc)")
+        .tooltip_text(crate::i18n::tr("Cancel file selection (Esc)"))
         .build();
     close.set_child(Some(&crate::assets::chrome_icon(crate::assets::icons::X)));
     close.add_css_class("header-action");
@@ -1569,7 +1569,7 @@ fn build_chooser_hosted(
             let row = labeled_row("Name", None::<&gtk::Widget>);
             let entry = form_entry();
             entry.set_hexpand(true);
-            entry.set_placeholder_text(Some("Enter a filename"));
+            entry.set_placeholder_text(Some(&crate::i18n::tr("Enter a filename")));
             if let Some(name) = current_name {
                 entry.set_text(&name.to_string_lossy());
                 entry.select_region(0, -1);
@@ -1599,7 +1599,7 @@ fn build_chooser_hosted(
             let row = labeled_row("Name", None::<&gtk::Widget>);
             let entry = form_entry();
             entry.set_hexpand(true);
-            entry.set_placeholder_text(Some("Enter a filename or https:// URL"));
+            entry.set_placeholder_text(Some(&crate::i18n::tr("Enter a filename or https:// URL")));
             row.append(&entry);
             details.append(&row);
             Some(entry)
@@ -1644,7 +1644,7 @@ fn build_chooser_hosted(
         }
     )
     .then(|| {
-        let check = form_check_button("Open files read-only");
+        let check = form_check_button(&crate::i18n::tr("Open files read-only"));
         append_option(&options, &check);
         check
     });
@@ -1658,7 +1658,7 @@ fn build_chooser_hosted(
     error.add_css_class("form-field-error");
     error.set_visible(false);
 
-    let cancel = gtk::Button::with_label("Cancel");
+    let cancel = gtk::Button::with_label(&crate::i18n::tr("Cancel"));
     cancel.add_css_class("action-dialog-cancel");
     let accept = gtk::Button::with_mnemonic(&request.accept_label);
     accept.add_css_class("action-dialog-confirm");
@@ -1669,7 +1669,10 @@ fn build_chooser_hosted(
             ..
         }
     ) {
-        crate::ui::accessibility::set_description(&accept, Some("Select folder (Ctrl+Enter)"));
+        crate::ui::accessibility::set_description(
+            &accept,
+            Some(&crate::i18n::tr("Select folder (Ctrl+Enter)")),
+        );
     }
     let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     actions.add_css_class("chooser-actions");
