@@ -3,7 +3,7 @@
 use gtk::{gio, prelude::*};
 
 use super::{
-    BrowserMode, ModeViews, Pane, STATUS_PAGE, pane_holds_keyboard_focus, reconnect_pane_model,
+    BrowserMode, ModeViews, Pane, STATUS_PAGE, pane_contains_focus, reconnect_pane_model,
     replace_entries, select_all, set_selections, show_count, update_bound_icons_metadata,
     update_bound_list_metadata,
 };
@@ -48,10 +48,11 @@ impl ModeViews {
                     .active_depth()
                     .filter(|depth| depth >= from_depth)
                 {
+                    // The rebuild replaces the panes, including a focused filter field.
                     let refocus = self
                         .panes_at(depth)
                         .iter()
-                        .any(|pane| pane_holds_keyboard_focus(pane));
+                        .any(|pane| pane_contains_focus(pane));
                     self.rebuild_active_mode();
                     if refocus {
                         self.focus_visible_pane(depth);
@@ -119,10 +120,7 @@ impl ModeViews {
                 });
             }
             BrowserEvent::EntriesSpliced { depth, splices, .. } => {
-                let restore_cursor = self
-                    .panes_at(*depth)
-                    .iter()
-                    .any(|pane| pane_holds_keyboard_focus(pane));
+                let restore_cursor = self.listing_holds_focus(*depth);
                 let positions = self.browser.selected_positions(*depth);
                 self.update_panes(*depth, |pane| {
                     pane.splice_rows(splices, defer_empty);
@@ -318,10 +316,8 @@ impl ModeViews {
     }
 
     fn update_selection(&self, depth: usize, selection: &SelectionUpdate, take_focus: bool) {
-        let view_has_focus = self
-            .panes_at(depth)
-            .iter()
-            .any(|pane| pane_holds_keyboard_focus(pane));
+        // A focused filter field or results page is not the view holding focus.
+        let view_has_focus = self.listing_holds_focus(depth);
         let has_selection = match selection {
             SelectionUpdate::All => {
                 self.update_panes(depth, select_all);

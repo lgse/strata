@@ -923,6 +923,13 @@ impl ModeViews {
             .find_map(|pane| pane_filter_focus(pane, focused.as_ref()))
     }
 
+    /// Whether the listing of `depth` holds focus, rather than its filter session.
+    pub(in crate::ui) fn listing_holds_focus(&self, depth: usize) -> bool {
+        self.panes_at(depth)
+            .iter()
+            .any(|pane| pane_holds_keyboard_focus(pane))
+    }
+
     pub fn selected_search_result(&self) -> Option<FileEntry> {
         self.single_pane()?.search.selected_entry()
     }
@@ -1883,13 +1890,27 @@ fn pane_filter_focus(pane: &Pane, focused: Option<&gtk::Widget>) -> Option<Filte
     (revealed && results).then_some(FilterFocus::Results)
 }
 
-fn pane_holds_keyboard_focus(pane: &Pane) -> bool {
+/// Any part of the pane holds focus, its filter session included.
+fn pane_contains_focus(pane: &Pane) -> bool {
     let focused = pane.stack.root().and_then(|root| root.focus());
     widget_has_focus(&pane.stack, focused.as_ref())
         || pane
             .item_sections()
             .iter()
             .any(|section| widget_has_focus(&section.view, focused.as_ref()))
+}
+
+/// The listing itself holds focus: the pane surface or one of its item views, not the
+/// filter field or the results that replace the listing, 10xer's included. Loads and
+/// live changes refocus the listing only then.
+fn pane_holds_keyboard_focus(pane: &Pane) -> bool {
+    let focused = pane.stack.root().and_then(|root| root.focus());
+    let filter_session = pane
+        .filter_entry
+        .as_ref()
+        .is_some_and(|entry| widget_has_focus(entry, focused.as_ref()))
+        || pane.search.has_item_focus(focused.as_ref());
+    !filter_session && pane_contains_focus(pane)
 }
 
 fn install_tab_landing(view: &gtk::Widget, state: Option<Weak<super::browser::ViewState>>) {

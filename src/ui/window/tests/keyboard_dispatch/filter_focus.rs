@@ -419,3 +419,80 @@ fn escape_from_a_focused_result_dismisses_the_filter_before_the_preview() {
         },
     );
 }
+
+/// More than the browser publishes inline, so the rows after the first 128 arrive in
+/// an idle tail and the load completes after Ctrl+F.
+const STAGED_ENTRIES: usize = 600;
+
+fn staged_load_case(mode: BrowserMode) -> Result<(), String> {
+    let fixture = KeyboardFixture::new();
+    let big = fixture._directory.path().join("big");
+    std::fs::create_dir(&big).expect("staged folder");
+    for index in 0..STAGED_ENTRIES {
+        std::fs::write(big.join(format!("file-{index:04}.txt")), b"x").expect("staged file");
+    }
+    fixture.view.set_view_mode(mode);
+    focus_files(&fixture);
+    let browser = fixture.view.browser();
+    let first_publish = Rc::new(Cell::new(false));
+    let finished = Rc::new(Cell::new(false));
+    let (seen, done) = (first_publish.clone(), finished.clone());
+    browser.observe(move |event| match event {
+        BrowserEvent::EntriesReplaced {
+            depth: 0,
+            count: 128,
+        } => seen.set(true),
+        BrowserEvent::LoadFinished { depth: 0, .. } => done.set(true),
+        _ => {}
+    });
+    let big = Location::local(&big);
+    browser.navigate(big.clone());
+    wait_until(|| first_publish.get());
+    if !fixture.press(Key::f, ModifierType::CONTROL_MASK) || !fixture.view.filter_has_focus() {
+        return Err(format!(
+            "Ctrl+F during the load did not focus the field; focus is on {}",
+            describe_focus(&fixture)
+        ));
+    }
+    // The load reports done before its idle tail completes the publication.
+    wait_until(|| finished.get());
+    wait_until(|| entry_count(&browser) == STAGED_ENTRIES);
+    pump(100);
+    if !fixture.view.filter_has_focus() || fixture.view.item_view_has_focus() {
+        return Err(format!(
+            "the load took focus from the field; it is on {}",
+            describe_focus(&fixture)
+        ));
+    }
+    fixture.press(Key::a, ModifierType::CONTROL_MASK);
+    if fixture.selected() != [0] {
+        return Err(format!(
+            "Ctrl+A selected {} hidden rows instead of the field text",
+            fixture.selected().len()
+        ));
+    }
+    fixture.press(Key::BackSpace, ModifierType::empty());
+    pump(100);
+    if browser.active_location().as_ref() != Some(&big) {
+        return Err("Backspace left the folder instead of editing the field".to_owned());
+    }
+    Ok(())
+}
+
+#[test]
+fn staged_load_completion_keeps_focus_in_the_filter_entry() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::filter_focus::staged_load_completion_keeps_focus_in_the_filter_entry",
+        || {
+            let failures = [BrowserMode::Icons, BrowserMode::List]
+                .into_iter()
+                .filter_map(|mode| {
+                    staged_load_case(mode)
+                        .err()
+                        .map(|error| format!("{mode:?}: {error}"))
+                })
+                .collect();
+            report(failures);
+        },
+    );
+}
