@@ -22,6 +22,7 @@ mod folder_jump;
 mod footer_prompt;
 mod go_prompt;
 mod mode_exit;
+mod overlay_focus;
 mod pane_focus;
 mod place_chords;
 mod preview_ownership;

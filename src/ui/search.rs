@@ -49,6 +49,8 @@ struct SearchState {
     reveal: Rc<dyn Fn(SearchItem)>,
     context_menu: RefCell<Option<gtk::Popover>>,
     dismiss: Rc<dyn Fn()>,
+    /// Cleared when a result is chosen, so focus follows the browser, not the opener.
+    focus_restore: Rc<Cell<bool>>,
 }
 
 impl SearchDialog {
@@ -175,6 +177,7 @@ impl SearchDialog {
         panel.append(&footer);
         super::modal::layout::install(&layer, &panel);
 
+        let focus_restore = super::modal::remember_persistent_modal_focus(layer.upcast_ref());
         let state = Rc::new(SearchState {
             _themes: themes,
             preferences,
@@ -200,6 +203,7 @@ impl SearchDialog {
             reveal,
             context_menu: RefCell::new(None),
             dismiss,
+            focus_restore,
         });
 
         let changed = Rc::downgrade(&state);
@@ -734,6 +738,7 @@ fn close_result_menu(state: &SearchState) {
 }
 
 fn reveal_result(state: &SearchState, item: SearchItem) {
+    skip_focus_restore(state);
     let reveal = state.reveal.clone();
     hide_then(state, move || reveal(item));
 }
@@ -866,8 +871,13 @@ fn activate_position(state: &Rc<SearchState>, position: i32) {
     else {
         return;
     };
+    skip_focus_restore(state);
     hide(state);
     (state.activate)(item);
+}
+
+fn skip_focus_restore(state: &SearchState) {
+    state.focus_restore.set(false);
 }
 
 fn hide(state: &SearchState) {

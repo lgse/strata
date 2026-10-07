@@ -185,6 +185,40 @@ fn remember_removed_modal_focus(
     restore
 }
 
+/// [`remember_modal_focus`] for layers hidden with `set_visible(false)` rather than
+/// removed, such as Settings and the search palettes. The origin is captured each
+/// time the layer becomes visible and restored when a `dismissing` hide completes.
+/// The returned flag is re-armed on every show; clear it to skip the origin and
+/// fall back to the browser (an activation that already moved focus keeps it).
+pub(crate) fn remember_persistent_modal_focus(layer: &gtk::Widget) -> Rc<Cell<bool>> {
+    let restore = Rc::new(Cell::new(true));
+    let shown: RefCell<Option<Rc<ModalFocusOrigin>>> = RefCell::new(None);
+    let restore_on_hide = restore.clone();
+    layer.connect_visible_notify(move |layer| {
+        let window = layer.root().and_downcast::<gtk::Window>();
+        if layer.is_visible() {
+            restore_on_hide.set(true);
+            forget_focus_origin(layer);
+            shown.replace(Some(register_focus_origin(layer, window.as_ref(), true)));
+            return;
+        }
+        let Some(origin) = shown.take() else {
+            return;
+        };
+        forget_focus_origin(layer);
+        let Some(window) = window else {
+            return;
+        };
+        if !layer.has_css_class("dismissing")
+            || crate::ui::window::visible_modal_layer(&window).is_some()
+        {
+            return;
+        }
+        restore_modal_focus(&window, &origin, restore_on_hide.get());
+    });
+    restore
+}
+
 pub(super) fn set_modal_focus_restore(layer: &gtk::Widget, restore: Rc<dyn Fn()>) {
     MODAL_FOCUS_ORIGINS.with(|origins| {
         if let Some((_, origin)) = origins.borrow().iter().find(|(candidate, _)| {

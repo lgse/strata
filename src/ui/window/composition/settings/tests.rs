@@ -15,6 +15,12 @@ fn settings_launcher_refuses_to_open_over_another_modal() {
             let window = gtk::Window::builder().child(&overlay).build();
             let launcher = SettingsLauncher {
                 layer: RefCell::new(None),
+                focus_restore: RefCell::new(None),
+                browser: crate::ui::browser::BrowserView::new(
+                    Rc::new(crate::adapters::LocalFileSource),
+                    crate::ui::browser::PeekBehavior::default(),
+                )
+                .downgrade(),
                 button: gtk::Button::new(),
                 blurred_root,
                 overlay: overlay.clone(),

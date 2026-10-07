@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-use std::{cell::RefCell, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
 use gtk::{glib, prelude::*};
 
@@ -10,6 +13,7 @@ use crate::{
     },
     ui::{
         blur::BlurBin,
+        browser::WeakBrowserView,
         preferences::PreferenceManager,
         settings::{self, InstallGuard, UpdateNoticeHandler},
     },
@@ -38,6 +42,8 @@ pub(super) fn install(
     bind_update_notice_preferences(&content.overlay, preferences, &notice);
     let launcher = Rc::new(SettingsLauncher {
         layer: RefCell::new(None),
+        focus_restore: RefCell::new(None),
+        browser: content.browser.downgrade(),
         button: content.header.settings.clone(),
         blurred_root: content.blurred_root.clone(),
         overlay: content.overlay.clone(),
@@ -77,6 +83,8 @@ pub(super) fn install(
 
 struct SettingsLauncher {
     layer: RefCell<Option<gtk::Box>>,
+    focus_restore: RefCell<Option<Rc<Cell<bool>>>>,
+    browser: WeakBrowserView,
     button: gtk::Button,
     blurred_root: BlurBin,
     overlay: gtk::Overlay,
@@ -99,6 +107,10 @@ impl SettingsLauncher {
             self.guard.clone(),
         );
         self.overlay.add_overlay(&layer);
+        self.focus_restore
+            .replace(Some(crate::ui::modal::remember_persistent_modal_focus(
+                layer.upcast_ref(),
+            )));
         self.layer.borrow_mut().replace(layer.clone());
         layer
     }
@@ -112,9 +124,18 @@ impl SettingsLauncher {
             }
         }
         self.shortcuts.cancel_chord();
+        // Closing Settings returns focus to the file list, not to the gear or other chrome
+        // that opened it; only a focused filter session gets its field or results back.
+        let filter_had_focus = self
+            .browser
+            .upgrade()
+            .is_some_and(|browser| browser.filter_focus().is_some());
         let layer = self.layer();
         self.blurred_root.set_blurred(true);
         layer.set_visible(true);
+        if let Some(restore_origin) = self.focus_restore.borrow().as_ref() {
+            restore_origin.set(filter_had_focus);
+        }
         layer.grab_focus();
         self.button.add_css_class("active");
         crate::ui::browser::animate_in(&layer);

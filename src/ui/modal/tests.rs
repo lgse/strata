@@ -247,6 +247,40 @@ fn dismissed_modal_restores_the_origin_or_falls_back_to_the_window_target() {
     );
 }
 
+#[test]
+fn persistent_layer_restores_focus_when_hidden_unless_disarmed() {
+    crate::test_support::gtk_test(
+        "ui::modal::tests::persistent_layer_restores_focus_when_hidden_unless_disarmed",
+        || {
+            let fixture = FocusFixture::new();
+            let layer = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            layer.add_css_class("app-modal-layer");
+            layer.set_focusable(true);
+            layer.set_visible(false);
+            fixture.overlay.add_overlay(&layer);
+            let restore = remember_persistent_modal_focus(layer.upcast_ref());
+            for (restore_origin, expected, fallbacks) in [
+                (true, &fixture.origin, 0),
+                (false, &fixture.target, 1),
+            ] {
+                assert!(fixture.origin.grab_focus());
+                restore.set(false);
+                layer.set_visible(true);
+                assert!(restore.get(), "showing the layer re-arms the origin");
+                assert!(layer.grab_focus());
+                restore.set(restore_origin);
+                layer.add_css_class("dismissing");
+                layer.set_sensitive(false);
+                layer.set_visible(false);
+                layer.remove_css_class("dismissing");
+                layer.set_sensitive(true);
+                fixture.assert_focus(expected, fallbacks, &format!("restore origin: {restore_origin}"));
+            }
+            fixture.window.destroy();
+        },
+    );
+}
+
 fn wait_until(condition: impl Fn() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(5);
     while !condition() {
