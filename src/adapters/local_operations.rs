@@ -1074,7 +1074,9 @@ async fn copy_new_local_regular_file(
     target: gio::File,
     cancellable: gio::Cancellable,
 ) -> Result<(), glib::Error> {
-    gio::spawn_blocking(move || {
+    let copy_cancellable = cancellable.clone();
+    let (staged, target_path) = gio::spawn_blocking(move || {
+        let cancellable = copy_cancellable;
         cancellable.set_error_if_cancelled()?;
         let source_path = source
             .path()
@@ -1107,18 +1109,11 @@ async fn copy_new_local_regular_file(
             None,
         )?;
         cancellable.set_error_if_cancelled()?;
-        rustix::fs::renameat_with(
-            rustix::fs::CWD,
-            staged.path(),
-            rustix::fs::CWD,
-            &target_path,
-            rustix::fs::RenameFlags::NOREPLACE,
-        )
-        .map_err(|error| io_error(format!("Could not finish copying the item: {error}")))?;
-        Ok(())
+        Ok::<_, glib::Error>((staged, target_path))
     })
     .await
-    .map_err(|_| io_error("Copy worker stopped unexpectedly"))?
+    .map_err(|_| io_error("Copy worker stopped unexpectedly"))??;
+    publish_staged_without_replace(staged, target_path, cancellable).await
 }
 
 async fn execute_parallel_copy_plans(
@@ -2092,30 +2087,7 @@ async fn copy_new_recursively_on_filesystem(
             return Err(copy_failure_after_cleanup(error, cleanup));
         }
 
-        let staged_path = staged.path().to_owned();
-        let committed = gio::spawn_blocking(move || {
-            rustix::fs::renameat_with(
-                rustix::fs::CWD,
-                &staged_path,
-                rustix::fs::CWD,
-                &target_path,
-                rustix::fs::RenameFlags::NOREPLACE,
-            )
-        })
-        .await
-        .map_err(|_| io_error("The copy worker stopped unexpectedly"));
-        let committed = match committed {
-            Ok(Ok(())) => Ok(()),
-            Ok(Err(error)) => Err(io_error(format!(
-                "Could not finish copying the item: {error}"
-            ))),
-            Err(error) => Err(error),
-        };
-        if let Err(error) = committed {
-            let cleanup = discard_incomplete_staged(staged).await;
-            return Err(copy_failure_after_cleanup(error, cleanup));
-        }
-        return Ok(());
+        return publish_staged_without_replace(staged, target_path, cancellable).await;
     }
 
     let created_root = Rc::new(CreatedCopyRoot::new());
@@ -2465,6 +2437,81 @@ async fn discard_incomplete_staged(staged: StagedSibling) -> Result<(), glib::Er
     }
 }
 
+async fn publish_staged_without_replace(
+    staged: StagedSibling,
+    target_path: PathBuf,
+    cancellable: gio::Cancellable,
+) -> Result<(), glib::Error> {
+    publish_staged_without_replace_with(staged, target_path, cancellable, |from, to| {
+        rustix::fs::renameat_with(
+            rustix::fs::CWD,
+            from,
+            rustix::fs::CWD,
+            to,
+            rustix::fs::RenameFlags::NOREPLACE,
+        )
+    })
+    .await
+}
+
+async fn publish_staged_without_replace_with(
+    staged: StagedSibling,
+    target_path: PathBuf,
+    cancellable: gio::Cancellable,
+    rename: impl FnOnce(&Path, &Path) -> rustix::io::Result<()> + Send + 'static,
+) -> Result<(), glib::Error> {
+    let staged_path = staged.path().to_owned();
+    let rename_target = target_path.clone();
+    let renamed = gio::spawn_blocking(move || rename(&staged_path, &rename_target)).await;
+    let result = match renamed {
+        Ok(Ok(())) => {
+            let _ = staged.keep();
+            return Ok(());
+        }
+        Ok(Err(
+            rustix::io::Errno::INVAL | rustix::io::Errno::NOSYS | rustix::io::Errno::OPNOTSUPP,
+        )) => {
+            // Plain rename can overwrite a racing destination. Without NOREPLACE,
+            // publication must use exclusive creation, even though it exposes partial copies.
+            let target = gio::File::for_path(&target_path);
+            let created_root = Rc::new(CreatedCopyRoot::new());
+            let copied = copy_recursively_with_progress(
+                gio::File::for_path(staged.path()),
+                target.clone(),
+                false,
+                cancellable,
+                Some(created_root.clone()),
+                None,
+                false,
+            )
+            .await;
+            if copied.is_err() && created_root.was_created.get() {
+                let cleanup = permanently_delete_maybe_local_if_unchanged(
+                    target,
+                    true,
+                    created_root.identity.get(),
+                    gio::Cancellable::new(),
+                )
+                .await;
+                copied.map_err(|error| copy_failure_after_cleanup(error, cleanup))
+            } else {
+                copied
+            }
+        }
+        Ok(Err(error)) => Err(io_error(error)),
+        Err(error) => Err(io_error(blocking_join_message(error))),
+    };
+    let cleanup = discard_incomplete_staged(staged).await;
+    match result {
+        Ok(()) => cleanup.map_err(|error| {
+            io_error(format!(
+                "The item was copied, but its staging copy could not be removed: {error}"
+            ))
+        }),
+        Err(error) => Err(copy_failure_after_cleanup(error, cleanup)),
+    }
+}
+
 fn io_error(error: impl std::fmt::Display) -> glib::Error {
     glib::Error::new(gio::IOErrorEnum::Failed, &error.to_string())
 }
@@ -2633,34 +2680,13 @@ async fn publish_staged_replacement(
     staged: StagedSibling,
     target_path: PathBuf,
 ) -> Result<(), glib::Error> {
-    let staged_path = staged.path().to_owned();
-    let renamed = gio::spawn_blocking(move || {
-        rustix::fs::renameat_with(
-            rustix::fs::CWD,
-            &staged_path,
-            rustix::fs::CWD,
-            &target_path,
-            rustix::fs::RenameFlags::NOREPLACE,
-        )
-    })
-    .await
-    .map_err(|_| io_error("The replacement worker stopped unexpectedly"))
-    .and_then(|result| result.map_err(io_error));
-    match renamed {
-        Ok(()) => {
-            let _kept = staged.keep();
-            Ok(())
-        }
-        Err(error) => {
-            let cleanup = discard_incomplete_staged(staged).await;
-            Err(copy_failure_after_cleanup(
-                io_error(format!(
-                    "Could not place the replacement item; the original is in Trash: {error}"
-                )),
-                cleanup,
+    publish_staged_without_replace(staged, target_path, gio::Cancellable::new())
+        .await
+        .map_err(|error| {
+            io_error(format!(
+                "Could not finish placing the replacement item; the original is in Trash: {error}"
             ))
-        }
-    }
+        })
 }
 
 async fn replace_local_with_progress(

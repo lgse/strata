@@ -254,7 +254,7 @@ impl TabStrip {
             }
         });
         widget.add_controller(middle);
-        install_reordering(state, id, &select);
+        install_reordering(state, id, &select, &label);
         install_file_drop(state, id, &widget, browser);
         self.headers.borrow_mut().push(Header {
             id,
@@ -385,12 +385,17 @@ impl TabStrip {
     }
 }
 
-fn install_reordering(state: &Rc<TabWindow>, id: u64, widget: &gtk::Button) {
+fn install_reordering(state: &Rc<TabWindow>, id: u64, widget: &gtk::Button, label: &gtk::Label) {
     let prefix = format!("strata-tab-{}:", state.drag_token);
     let value = format!("{prefix}{id}");
     let source = gtk::DragSource::new();
     source.set_actions(gdk::DragAction::MOVE);
-    source.connect_prepare(move |_, _, _| Some(gdk::ContentProvider::for_value(&value.to_value())));
+    let drag_label = label.downgrade();
+    source.connect_prepare(move |source, _, _| {
+        let label = drag_label.upgrade()?;
+        source.set_icon(Some(&gtk::WidgetPaintable::new(Some(&label))), 0, 0);
+        Some(gdk::ContentProvider::for_value(&value.to_value()))
+    });
     widget.add_controller(source);
     let target = gtk::DropTarget::new(String::static_type(), gdk::DragAction::MOVE);
     target.connect_accept(|_, drop| {

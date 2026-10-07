@@ -292,6 +292,13 @@ fn tab_shortcuts_work_in_both_modes_and_follow_reordering() {
             load(&tabs.active_browser(), Location::local(root.path()));
             for tenxer in [false, true] {
                 tabs.preferences.set_tenxer_mode(tenxer);
+                for key in [Key::Page_Up, Key::Page_Down] {
+                    for modifiers in [M::CONTROL_MASK, M::CONTROL_MASK | M::SHIFT_MASK] {
+                        assert!(is_tab_shortcut(key, modifiers));
+                        assert_eq!(tabs.handle_key(key, modifiers), glib::Propagation::Stop);
+                        assert_eq!(tabs.active.get(), 1);
+                    }
+                }
                 assert_eq!(
                     tabs.handle_key(Key::t, M::CONTROL_MASK),
                     glib::Propagation::Stop
@@ -306,8 +313,132 @@ fn tab_shortcuts_work_in_both_modes_and_follow_reordering() {
                 assert_eq!(tabs.active.get(), 1);
                 tabs.handle_key(Key::ISO_Left_Tab, M::CONTROL_MASK | M::SHIFT_MASK);
                 assert_eq!(tabs.active.get(), new_id);
+                tabs.new_tab();
+                let last_id = tabs.active.get();
+                tabs.select(new_id);
+                for (key, expected) in [
+                    (Key::Page_Up, last_id),
+                    (Key::Page_Up, 1),
+                    (Key::Page_Down, last_id),
+                    (Key::Page_Down, new_id),
+                    (Key::KP_Page_Up, last_id),
+                    (Key::KP_Page_Up, 1),
+                    (Key::KP_Page_Down, last_id),
+                    (Key::KP_Page_Down, new_id),
+                ] {
+                    assert!(is_tab_shortcut(key, M::CONTROL_MASK | M::LOCK_MASK));
+                    assert_eq!(
+                        tabs.handle_key(key, M::CONTROL_MASK | M::LOCK_MASK),
+                        glib::Propagation::Stop
+                    );
+                    assert_eq!(tabs.active.get(), expected, "{key:?}, 10xer={tenxer}");
+                }
+                for modifiers in [
+                    M::empty(),
+                    M::SUPER_MASK,
+                    M::SHIFT_MASK,
+                    M::CONTROL_MASK | M::ALT_MASK,
+                    M::CONTROL_MASK | M::SUPER_MASK,
+                    M::CONTROL_MASK | M::META_MASK,
+                    M::CONTROL_MASK | M::HYPER_MASK,
+                ] {
+                    for key in [
+                        Key::Page_Up,
+                        Key::Page_Down,
+                        Key::KP_Page_Up,
+                        Key::KP_Page_Down,
+                    ] {
+                        assert!(!is_tab_shortcut(key, modifiers));
+                        assert_eq!(tabs.handle_key(key, modifiers), glib::Propagation::Proceed);
+                        assert_eq!(tabs.active.get(), new_id);
+                    }
+                }
+                tabs.close(last_id);
                 tabs.handle_key(Key::w, M::CONTROL_MASK);
                 assert_eq!(tabs.active.get(), 1);
+            }
+            window.destroy();
+        },
+    );
+}
+
+#[test]
+fn tab_reorder_shortcuts_keep_active_context_and_stop_at_edges() {
+    gtk_test(
+        "ui::window::composition::tabs::tests::tab_reorder_shortcuts_keep_active_context_and_stop_at_edges",
+        || {
+            use gdk::{Key, ModifierType as M};
+            let root = tempfile::tempdir().expect("tab fixture");
+            std::fs::write(root.path().join("one.txt"), "one").expect("selected file");
+            let (window, tabs) = open();
+            load(&tabs.active_browser(), Location::local(root.path()));
+            tabs.new_tab();
+            let middle = tabs.active.get();
+            let browser = tabs.active_browser();
+            load(&browser, Location::local(root.path()));
+            browser.browser().select(0, 0);
+            let selected: Vec<_> = browser.browser().selected_entries();
+            tabs.new_tab();
+            let last = tabs.active.get();
+            tabs.select(middle);
+            for tenxer in [false, true] {
+                tabs.preferences.set_tenxer_mode(tenxer);
+                for (key, expected) in [
+                    (Key::Page_Up, vec![middle, 1, last]),
+                    (Key::Page_Up, vec![middle, 1, last]),
+                    (Key::Page_Down, vec![1, middle, last]),
+                    (Key::Page_Down, vec![1, last, middle]),
+                    (Key::Page_Down, vec![1, last, middle]),
+                    (Key::KP_Page_Up, vec![1, middle, last]),
+                    (Key::KP_Page_Up, vec![middle, 1, last]),
+                    (Key::KP_Page_Up, vec![middle, 1, last]),
+                    (Key::KP_Page_Down, vec![1, middle, last]),
+                    (Key::KP_Page_Down, vec![1, last, middle]),
+                    (Key::KP_Page_Down, vec![1, last, middle]),
+                    (Key::KP_Page_Up, vec![1, middle, last]),
+                ] {
+                    let modifiers = M::CONTROL_MASK | M::SHIFT_MASK | M::LOCK_MASK;
+                    assert!(is_tab_shortcut(key, modifiers));
+                    assert_eq!(tabs.handle_key(key, modifiers), glib::Propagation::Stop);
+                    assert_eq!(tabs.active.get(), middle);
+                    assert_eq!(
+                        tabs.tabs
+                            .borrow()
+                            .iter()
+                            .map(|tab| tab.id)
+                            .collect::<Vec<_>>(),
+                        expected,
+                        "{key:?}, 10xer={tenxer}"
+                    );
+                    assert_eq!(
+                        browser.browser().active_location(),
+                        Some(Location::local(root.path()))
+                    );
+                    assert_eq!(browser.browser().selected_entries(), selected);
+                }
+                tabs.reorder(last, middle);
+                for extra in [M::ALT_MASK, M::SUPER_MASK, M::META_MASK, M::HYPER_MASK] {
+                    for key in [
+                        Key::Page_Up,
+                        Key::Page_Down,
+                        Key::KP_Page_Up,
+                        Key::KP_Page_Down,
+                    ] {
+                        let modifiers = M::CONTROL_MASK | M::SHIFT_MASK | extra;
+                        assert!(!is_tab_shortcut(key, modifiers));
+                        assert_eq!(tabs.handle_key(key, modifiers), glib::Propagation::Proceed);
+                        assert_eq!(tabs.active.get(), middle);
+                        assert_eq!(
+                            tabs.tabs
+                                .borrow()
+                                .iter()
+                                .map(|tab| tab.id)
+                                .collect::<Vec<_>>(),
+                            vec![1, last, middle]
+                        );
+                    }
+                }
+                tabs.reorder(last, middle);
             }
             window.destroy();
         },
@@ -452,6 +583,30 @@ fn operations_in_inactive_tabs_prevent_tab_and_window_closure() {
                 count,
                 "modal input cannot create a hidden tab"
             );
+            let active = tabs.active.get();
+            for key in [
+                gdk::Key::Page_Up,
+                gdk::Key::Page_Down,
+                gdk::Key::KP_Page_Up,
+                gdk::Key::KP_Page_Down,
+            ] {
+                for modifiers in [
+                    gdk::ModifierType::CONTROL_MASK,
+                    gdk::ModifierType::CONTROL_MASK | gdk::ModifierType::SHIFT_MASK,
+                ] {
+                    assert_eq!(tabs.handle_key(key, modifiers), glib::Propagation::Proceed);
+                    assert_eq!(tabs.active.get(), active, "modal input cannot switch tabs");
+                    assert_eq!(
+                        tabs.tabs
+                            .borrow()
+                            .iter()
+                            .map(|tab| tab.id)
+                            .collect::<Vec<_>>(),
+                        vec![1, active],
+                        "modal input cannot reorder tabs"
+                    );
+                }
+            }
             window.destroy();
             assert!(operations.cancelled(operation));
         },
