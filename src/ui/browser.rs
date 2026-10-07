@@ -99,7 +99,7 @@ pub(crate) use crate::ui::browser::file_commands::{
 };
 pub(super) use crate::ui::browser::inline_edit::{queue_rename, reveal_rename_row};
 pub(in crate::ui) use crate::ui::browser::listing_filter::{
-    FilterStatus, results_step_target, scroll_results_to, selected_cursor,
+    FilterFocus, FilterStatus, results_step_target, scroll_results_to, selected_cursor,
 };
 pub(super) use crate::ui::browser::pane_header::{
     column_sort_direction_toggle, column_sort_menu, empty_trash_button, pane_new_folder_button,
@@ -2026,21 +2026,7 @@ impl BrowserView {
     }
 
     pub fn filter_has_focus(&self) -> bool {
-        match self.view_mode() {
-            BrowserMode::Columns => {
-                let focused = self.state.overlay.root().and_then(|root| root.focus());
-                self.state.columns.borrow().iter().any(|column| {
-                    column.filter_entry.has_focus()
-                        || focused.as_ref().is_some_and(|focused| {
-                            focused == column.filter_entry.upcast_ref::<gtk::Widget>()
-                                || focused.is_ancestor(&column.filter_entry)
-                        })
-                })
-            }
-            BrowserMode::Icons | BrowserMode::List => {
-                self.state.mode_views.borrow().filter_has_focus()
-            }
-        }
+        self.filter_focus() == Some(FilterFocus::Entry)
     }
 
     /// Recursive results have their own selection, independent of the directory's selection.
@@ -2332,23 +2318,31 @@ impl BrowserView {
         empty && self.dismiss_focused_filter()
     }
 
+    /// Dismisses the filter whose field or results have focus. An empty revealed
+    /// Columns filter has no results, so Escape on its rows clears the selection instead.
     pub fn dismiss_focused_filter(&self) -> bool {
         if self.state.mode_views.borrow().dismiss_focused_filter() {
             return true;
         }
         let focused = self.state.overlay.root().and_then(|root| root.focus());
-        let columns = self.state.columns.borrow();
-        let Some(column) = columns.iter().find(|column| {
-            column.filter_entry.has_focus()
-                || focused.as_ref().is_some_and(|focused| {
-                    focused == column.filter_entry.upcast_ref::<gtk::Widget>()
-                        || focused.is_ancestor(&column.filter_entry)
-                })
-        }) else {
+        let column = focused.and_then(|focused| {
+            self.state
+                .columns
+                .borrow()
+                .iter()
+                .find(|column| listing_filter::column_filter_focus(column, &focused).is_some())
+                .cloned()
+        });
+        let Some(column) = column else {
             return false;
         };
         column.filter_button.set_active(false);
+        // Show the listing now rather than after the debounce, so focus lands on it.
+        column.flush_filter_query();
         column.focus_surface();
+        // The returning rows arrive unselected; restore the directory's cursor and
+        // selection on them.
+        self.state.browser.focus_active();
         true
     }
 

@@ -428,3 +428,81 @@ fn typing_a_character_opens_the_filter_with_that_query() {
         },
     );
 }
+
+#[test]
+fn escape_on_a_focused_result_dismisses_the_filter_without_cancelling() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::filtered_preview::escape_on_a_focused_result_dismisses_the_filter_without_cancelling",
+        || {
+            crate::ui::prepare_portal_ui();
+            let root = tempfile::tempdir().expect("fixture");
+            std::fs::write(root.path().join("notes.txt"), "text").expect("file");
+            std::fs::write(root.path().join("other.txt"), "text").expect("file");
+            for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
+                PreferenceManager::shared().set_browser_mode(mode);
+                let state = build_chooser(
+                    ChooserRequest {
+                        token: format!("escape-result-{mode:?}"),
+                        title: "Chooser".into(),
+                        accept_label: "Open".into(),
+                        modal: false,
+                        parent: None,
+                        parent_size_hint: None,
+                        initial_directory: root.path().into(),
+                        kind: ChooserKind::Open {
+                            directory: false,
+                            multiple: false,
+                        },
+                        filters: Vec::new(),
+                        current_filter: None,
+                        choices: Vec::new(),
+                    },
+                    Arc::new(AtomicBool::new(false)),
+                    |_| {},
+                )
+                .expect("chooser");
+                // Finish deferred startup focus before simulating user input.
+                let initialized = Rc::new(Cell::new(false));
+                let notify = initialized.clone();
+                glib::idle_add_local_once(move || notify.set(true));
+                wait_until(|| initialized.get());
+                let browser = state.view.browser();
+                wait_until(|| {
+                    browser
+                        .column_snapshot(0)
+                        .is_some_and(|column| !column.loading)
+                });
+                assert!(state.view.show_filter_with_query("notes"));
+                let field = gtk::prelude::RootExt::focus(&state.window)
+                    .and_then(|focused| focused.ancestor(gtk::Entry::static_type()))
+                    .and_downcast::<gtk::Entry>()
+                    .expect("focused filter entry");
+                wait_until(|| state.view.filter_result_names() == ["notes.txt"]);
+                assert!(press(
+                    &keys(&field),
+                    gtk::gdk::Key::Down,
+                    gtk::gdk::ModifierType::empty()
+                ));
+                wait_until(|| {
+                    state.view.filter_focus() == Some(crate::ui::browser::FilterFocus::Results)
+                });
+
+                assert!(press(
+                    &keys(&state.window),
+                    gtk::gdk::Key::Escape,
+                    gtk::gdk::ModifierType::empty()
+                ));
+                assert!(
+                    state.completion.borrow().is_some(),
+                    "{mode:?}: Escape on a result cancelled the request"
+                );
+                wait_until(|| {
+                    state.view.listing_filter().is_none()
+                        && state.view.filter_focus().is_none()
+                        && state.view.item_view_has_focus()
+                });
+                state.cancel();
+            }
+        },
+    );
+}

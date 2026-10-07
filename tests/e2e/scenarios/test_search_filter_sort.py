@@ -66,25 +66,56 @@ def test_type_to_search_finds_matches_anywhere_in_the_tree(strata, mode, root):
     )
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
-def test_filtering_a_pane_narrows_the_listing(strata, mode, root):
+# Escape from the field and from a focused result. Recursive hits (the default) and the
+# in-place Columns filter (Include subfolders off) are separate result routes in Columns;
+# Icons and List show both in the same results view.
+ESCAPE_CASES = [
+    *[
+        pytest.param(
+            mode.values[0], route, "spreadsheet", "spreadsheet.csv",
+            marks=mode.marks, id=f"{mode.id}-{route}",
+        )
+        for mode in ALL_MODES
+        for route in ("input", "result")
+    ],
+    pytest.param(
+        "Columns", "result", "todo", "todo.txt",
+        marks=pytest.mark.preferences(browser_mode="columns", filter_include_subfolders=False),
+        id="columns-result-in-place",
+    ),
+]
+
+
+@pytest.mark.parametrize("mode,route,query,match", ESCAPE_CASES)
+def test_filtering_a_pane_narrows_the_listing(strata, mode, route, query, match, root):
     strata.select_entry("readme.md", directory=root)
 
     strata.keyboard.press("ctrl+f")
     field = strata.editable_field()
-    strata.keyboard.type_text("spreadsheet")
-    strata.wait(lambda: field.text == "spreadsheet", "the filter query to be typed")
+    strata.keyboard.type_text(query)
+    strata.wait(lambda: field.text == query, "the filter query to be typed")
 
     strata.wait(
-        lambda: strata.matches(root) == ["spreadsheet.csv"],
+        lambda: strata.matches(root) == [match],
         "the filter to list only matching entries",
     )
+    if route == "result":
+        strata.keyboard.press("Down")
+        strata.wait_for_focused_entry(match)
+        assert not field.has_state("focused")
 
     strata.keyboard.press("Escape")
     strata.wait(
         lambda: strata.entry_names(root) == ROOT_ENTRIES,
         "Escape to restore the full listing",
     )
+    # The directory's own selection and cursor return, whichever result had focus.
+    strata.wait_for_focused_entry("readme.md")
+    strata.wait(
+        lambda: strata.selected_names(root) == ["readme.md"],
+        "the listing to show the directory's selection",
+    )
+    assert strata.window.find(role="text", states={"editable", "focused"}) is None
 
 
 @pytest.fixture

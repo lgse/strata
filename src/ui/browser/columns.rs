@@ -816,6 +816,23 @@ impl ViewState {
         }
     }
 
+    /// The directory rows return to the selection model unselected when a filter ends.
+    fn resync_column_selection(&self, depth: usize) {
+        let Ok(columns) = self.columns.try_borrow() else {
+            return;
+        };
+        let Some(column) = columns.get(depth) else {
+            return;
+        };
+        let positions: Vec<_> = self
+            .browser
+            .selected_positions(depth)
+            .into_iter()
+            .filter_map(|position| column.map.view_position(position))
+            .collect();
+        set_column_selections(column, &positions);
+    }
+
     pub(super) fn focus_rebuilt_active_column(&self) {
         let Some(depth) = self.browser.active_depth() else {
             return;
@@ -1146,6 +1163,7 @@ impl ViewState {
                         &model_for_search,
                     );
                     if let Some(state) = weak_state_for_search.upgrade() {
+                        state.resync_column_selection(depth_for_search);
                         state.refresh_name_highlights();
                         state.notify_filter_results_changed();
                     }

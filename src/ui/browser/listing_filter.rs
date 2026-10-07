@@ -45,6 +45,17 @@ pub(in crate::ui) struct FilterStatus {
     pub visual: Option<VisualKind>,
 }
 
+/// Which part of the active pane's filter session holds keyboard focus.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::ui) enum FilterFocus {
+    /// The Ctrl+F field.
+    Entry,
+    /// The rows that replace the listing while the field has text: the results view in
+    /// Icons and List, or a column's rows while it shows recursive hits or narrows in
+    /// place.
+    Results,
+}
+
 impl FilterStatus {
     pub(in crate::ui) fn total(&self) -> usize {
         self.files + self.folders
@@ -255,6 +266,22 @@ impl Target {
     }
 }
 
+/// Only a revealed funnel counts: a 10xer footer filter leaves it closed and has its
+/// own Escape order.
+pub(super) fn column_filter_focus(
+    column: &ColumnView,
+    focused: &gtk::Widget,
+) -> Option<FilterFocus> {
+    let within = |widget: &gtk::Widget| focused == widget || focused.is_ancestor(widget);
+    if within(column.filter_entry.upcast_ref()) {
+        return Some(FilterFocus::Entry);
+    }
+    (within(column.list.upcast_ref())
+        && column.filter_button.is_active()
+        && (column.recursive_search_active.get() || column.map.has_query()))
+    .then_some(FilterFocus::Results)
+}
+
 pub(super) fn column_cursor(column: &ColumnView) -> Option<u32> {
     let focused = column.list.root().and_then(|root| root.focus());
     focused
@@ -373,6 +400,18 @@ impl ViewState {
         )
     }
 
+    /// `None` when the listing, chrome or something outside the panes has focus.
+    pub(super) fn filter_focus(&self) -> Option<FilterFocus> {
+        if self.mode.get() != BrowserMode::Columns {
+            return self.mode_views.borrow().filter_focus();
+        }
+        let focused = self.overlay.root()?.focus()?;
+        self.columns
+            .borrow()
+            .iter()
+            .find_map(|column| column_filter_focus(column, &focused))
+    }
+
     fn filter_depth(&self) -> Option<usize> {
         if self.mode.get() == BrowserMode::Columns {
             self.focused_column_depth()
@@ -386,6 +425,10 @@ impl ViewState {
 impl BrowserView {
     pub(super) fn filter_target(&self) -> Option<Target> {
         self.state.filter_target()
+    }
+
+    pub(in crate::ui) fn filter_focus(&self) -> Option<FilterFocus> {
+        self.state.filter_focus()
     }
 
     pub(in crate::ui) fn listing_filter(&self) -> Option<String> {

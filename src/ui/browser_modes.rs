@@ -23,7 +23,7 @@ use crate::{
     app::{Browser, BrowserColumnSnapshot},
     model::{FileEntry, Location, MetadataValue, SortDirection, SortKey},
     services::DropCommit,
-    ui::browser::{ClipboardMark, ClipboardMarks, mark_in, paths::is_trash_location},
+    ui::browser::{ClipboardMark, ClipboardMarks, FilterFocus, mark_in, paths::is_trash_location},
 };
 
 mod events;
@@ -914,14 +914,13 @@ impl ModeViews {
         }));
     }
 
-    pub fn filter_has_focus(&self) -> bool {
+    pub(in crate::ui) fn filter_focus(&self) -> Option<FilterFocus> {
         let focused = self.stack.root().and_then(|root| root.focus());
         // Previous-mode panes stay in the tree unmapped; a just-revealed field
         // can have focus before GTK maps it.
         self.visible_panes()
             .into_iter()
-            .filter_map(|pane| pane.filter_entry.as_ref())
-            .any(|entry| widget_has_focus(entry, focused.as_ref()))
+            .find_map(|pane| pane_filter_focus(pane, focused.as_ref()))
     }
 
     pub fn selected_search_result(&self) -> Option<FileEntry> {
@@ -1119,24 +1118,31 @@ impl ModeViews {
         }
     }
 
+    /// Dismisses the filter whose field or results have focus, and returns focus to the
+    /// directory cursor.
     pub fn dismiss_focused_filter(&self) -> bool {
         let focused = self.stack.root().and_then(|root| root.focus());
         let Some(pane) = self
-            .icons_panes
-            .iter()
-            .chain(self.list_pane.iter())
-            .find(|pane| {
-                pane.filter_entry
-                    .as_ref()
-                    .is_some_and(|entry| widget_has_focus(entry, focused.as_ref()))
-            })
+            .visible_panes()
+            .into_iter()
+            .find(|pane| pane_filter_focus(pane, focused.as_ref()).is_some())
         else {
             return false;
         };
         if let Some(button) = pane.filter_button.as_ref() {
             button.set_active(false);
         }
-        focus_pane_surface(pane);
+        // Show the listing now rather than after the debounce, so focus lands on it.
+        if pane.search.replaces_listing() {
+            pane.search.flush_query();
+        } else {
+            super::browser::notify_filter_query(&pane.filter, &pane.filter_query, String::new());
+        }
+        if self.rename_is_active() {
+            focus_pane_surface(pane);
+        } else {
+            self.focus_visible_pane(pane.depth);
+        }
         true
     }
 
@@ -1848,6 +1854,33 @@ fn widget_has_focus(widget: &impl IsA<gtk::Widget>, focused: Option<&gtk::Widget
         || focused.is_some_and(|focused| {
             focused == widget.as_ref() || focused.is_ancestor(widget.as_ref())
         })
+}
+
+/// Only a revealed funnel counts: a 10xer footer filter leaves it closed and has its own
+/// Escape order. Away from native folders the filter narrows the listing in place, so its
+/// narrowed rows are the results.
+fn pane_filter_focus(pane: &Pane, focused: Option<&gtk::Widget>) -> Option<FilterFocus> {
+    if pane
+        .filter_entry
+        .as_ref()
+        .is_some_and(|entry| widget_has_focus(entry, focused))
+    {
+        return Some(FilterFocus::Entry);
+    }
+    let revealed = pane
+        .filter_button
+        .as_ref()
+        .is_some_and(gtk::ToggleButton::is_active);
+    let results = if pane.search.replaces_listing() {
+        pane.search.results_view().is_some() && pane.search.has_item_focus(focused)
+    } else {
+        !pane.filter_query.borrow().is_empty()
+            && pane
+                .item_sections()
+                .iter()
+                .any(|section| widget_has_focus(&section.view, focused))
+    };
+    (revealed && results).then_some(FilterFocus::Results)
 }
 
 fn pane_holds_keyboard_focus(pane: &Pane) -> bool {
