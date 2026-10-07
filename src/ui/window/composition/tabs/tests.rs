@@ -131,6 +131,44 @@ fn sibling_fixture(
 }
 
 #[test]
+fn saved_window_buttons_survive_tab_chrome_refreshes() {
+    gtk_test(
+        "ui::window::composition::tabs::tests::saved_window_buttons_survive_tab_chrome_refreshes",
+        || {
+            PreferenceManager::seed_saved_preferences_for_test();
+            let (window, tabs) = open();
+            let assert_buttons = |expected: [bool; 3]| {
+                let tab = tabs.active_tab();
+                let header = &tab.content.header;
+                for (button, visible) in [&header.minimize, &header.maximize, &header.close]
+                    .into_iter()
+                    .zip(expected)
+                {
+                    assert_eq!(button.is_visible(), visible);
+                }
+            };
+            assert_buttons([true, true, false]);
+            tabs.new_tab();
+            assert_buttons([true, true, false]);
+            tabs.select(1);
+            assert_buttons([true, true, false]);
+            tabs.preferences.set_window_show_close(true);
+            tabs.preferences.set_window_show_minimize(false);
+            tabs.preferences.set_window_show_maximize(false);
+            assert_buttons([false, false, true]);
+            tabs.select(2);
+            assert_buttons([false, false, true]);
+            tabs.preferences.set_window_show_close(false);
+            tabs.close(2);
+            assert_buttons([false, false, false]);
+            tabs.new_tab();
+            assert_buttons([false, false, false]);
+            window.destroy();
+        },
+    );
+}
+
+#[test]
 fn folder_click_titles_skip_parent_focus_and_keyboard_preview_stays_parent_scoped() {
     gtk_test(
         "ui::window::composition::tabs::tests::folder_click_titles_skip_parent_focus_and_keyboard_preview_stays_parent_scoped",

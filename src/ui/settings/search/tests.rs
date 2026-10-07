@@ -105,6 +105,16 @@ fn global_search_navigates_filters_lazy_pages_and_restores_without_editing_prefe
             assert_eq!(stack.visible_child_name().as_deref(), Some("general"));
             assert!(item(layer.upcast_ref(), "preview-autoplay").is_visible());
             assert!(!item(layer.upcast_ref(), "peeking").is_visible());
+            entry.set_text("window buttons");
+            assert_eq!(stack.visible_child_name().as_deref(), Some("general"));
+            for id in ["window-minimize", "window-maximize", "window-close"] {
+                assert!(item(layer.upcast_ref(), id).is_visible());
+            }
+            assert!(!item(layer.upcast_ref(), "previews").is_visible());
+            entry.set_text("restore");
+            assert!(item(layer.upcast_ref(), "window-maximize").is_visible());
+            assert!(!item(layer.upcast_ref(), "window-minimize").is_visible());
+            assert!(!item(layer.upcast_ref(), "window-close").is_visible());
             entry.set_text("tezt size");
             assert_eq!(stack.visible_child_name().as_deref(), Some("theme"));
             assert!(item(layer.upcast_ref(), "text").is_visible());

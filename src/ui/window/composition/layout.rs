@@ -79,15 +79,23 @@ impl Header {
             build_appearance_menu(browser, &browser.browser(), preferences.clone(), preview);
         let settings = header_action(icons::SETTINGS, "Settings");
         let minimize = header_action(icons::MINUS, "Minimize window");
-        let minimizing_window = window.clone();
-        minimize.connect_clicked(move |_| minimizing_window.minimize());
+        crate::ui::accessibility::set_label(&minimize, "Minimize window");
+        let minimizing_window = window.downgrade();
+        minimize.connect_clicked(move |_| {
+            if let Some(window) = minimizing_window.upgrade() {
+                window.minimize();
+            }
+        });
         let maximize = header_action(icons::MAXIMIZE, "Maximize window");
-        let maximizing_window = window.clone();
+        let maximizing_window = window.downgrade();
         maximize.connect_clicked(move |_| {
-            if maximizing_window.is_maximized() {
-                maximizing_window.unmaximize();
+            let Some(window) = maximizing_window.upgrade() else {
+                return;
+            };
+            if window.is_maximized() {
+                window.unmaximize();
             } else {
-                maximizing_window.maximize();
+                window.maximize();
             }
         });
         bind_maximize_icon(window, &maximize);
@@ -162,6 +170,7 @@ fn bind_maximize_icon(window: &gtk::ApplicationWindow, button: &gtk::Button) {
         assets::set_primary_icon(&image, icon);
         if let Some(button) = weak_button.upgrade() {
             button.set_tooltip_text(Some(tooltip));
+            crate::ui::accessibility::set_label(&button, tooltip);
         }
     };
     update(window);

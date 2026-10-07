@@ -138,6 +138,16 @@ impl WindowContent {
     }
 
     #[cfg(test)]
+    pub(super) fn minimize_button(&self) -> &gtk::Button {
+        &self.header.minimize
+    }
+
+    #[cfg(test)]
+    pub(super) fn maximize_button(&self) -> &gtk::Button {
+        &self.header.maximize
+    }
+
+    #[cfg(test)]
     pub(super) fn close_button(&self) -> &gtk::Button {
         &self.header.close
     }

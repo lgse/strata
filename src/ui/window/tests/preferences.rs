@@ -234,6 +234,85 @@ fn default_chrome_stays_operable_without_a_saved_tenxer_mode() {
 }
 
 #[test]
+fn window_buttons_load_and_follow_settings_across_open_and_later_windows() {
+    gtk_test(
+        "ui::window::tests::preferences::window_buttons_load_and_follow_settings_across_open_and_later_windows",
+        || {
+            write_settings(
+                "window_show_minimize = true\nwindow_show_maximize = true\nwindow_show_close = false\n",
+            );
+            let manager = PreferenceManager::shared();
+            let first = OpenWindow::open();
+            let second = OpenWindow::open();
+            let assert_buttons = |open: &OpenWindow, expected: [bool; 3]| {
+                for (button, visible) in [
+                    open.content.minimize_button(),
+                    open.content.maximize_button(),
+                    open.content.close_button(),
+                ]
+                .into_iter()
+                .zip(expected)
+                {
+                    assert_eq!(button.is_visible(), visible);
+                }
+            };
+            for open in [&first, &second] {
+                assert!(settings_closed(open));
+                assert_buttons(open, [true, true, false]);
+            }
+            let saved = std::fs::read(settings_file()).expect("saved settings");
+            for open in [&first, &second] {
+                open.content.settings_button().emit_clicked();
+            }
+            settle();
+            assert_eq!(
+                std::fs::read(settings_file()).expect("settings unchanged"),
+                saved
+            );
+            let titles = [
+                "Show minimize button",
+                "Show maximize button",
+                "Show close button",
+            ];
+            for (index, title) in titles.into_iter().enumerate() {
+                let switch = switch_named(first.content.overlay(), title);
+                let initial = index != 2;
+                switch.set_active(!initial);
+                settle();
+                let mut expected = [true, true, false];
+                expected[index] = !initial;
+                for open in [&first, &second] {
+                    assert_buttons(open, expected);
+                    assert_eq!(
+                        switch_named(open.content.overlay(), title).is_active(),
+                        !initial
+                    );
+                }
+                switch_named(second.content.overlay(), title).set_active(initial);
+                settle();
+                for open in [&first, &second] {
+                    assert_buttons(open, [true, true, false]);
+                }
+            }
+            manager.set_window_show_minimize(false);
+            manager.set_window_show_maximize(false);
+            manager.set_window_show_close(true);
+            let third = OpenWindow::open();
+            for open in [&first, &second, &third] {
+                assert_buttons(open, [false, false, true]);
+            }
+            let persisted: toml::Value = toml::from_str(
+                &std::fs::read_to_string(settings_file()).expect("persisted preferences"),
+            )
+            .expect("valid settings");
+            assert_eq!(persisted["window_show_minimize"].as_bool(), Some(false));
+            assert_eq!(persisted["window_show_maximize"].as_bool(), Some(false));
+            assert_eq!(persisted["window_show_close"].as_bool(), Some(true));
+        },
+    );
+}
+
+#[test]
 fn saved_tenxer_mode_applies_before_settings_and_to_lazy_views() {
     gtk_test(
         "ui::window::tests::preferences::saved_tenxer_mode_applies_before_settings_and_to_lazy_views",
