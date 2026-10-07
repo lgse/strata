@@ -155,9 +155,7 @@ impl ListNavigation {
         });
         // Bind the cursor before restoring the viewport; focusing it afterwards
         // would otherwise reveal it at a different vertical offset.
-        if !view.grab_focus() {
-            pane.stack.grab_focus();
-        }
+        super::focus_pane_surface(pane);
         if let Some(cursor) = cursor {
             focus_collection_item(view, cursor);
         }

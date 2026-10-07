@@ -461,7 +461,8 @@ headerbar.browser-header menubutton.header-action > button {
   min-height: 0;
 }
 
-.column-peek-target:focus-visible {
+.column-peek-target:focus-visible,
+.directory-surface:focus:focus-visible {
   outline: 2px solid @strata_accent;
   outline-offset: -2px;
 }

@@ -65,3 +65,50 @@ def test_focus_order_reaches_the_files_from_the_header(strata):
             return
         strata.keyboard.press("Tab")
     raise AssertionError(f"Tab never reached the file listing; visited {seen}")
+
+
+def _focus_outside(strata, surface):
+    node = strata.focused_node()
+    if node is None or not node.name or node == surface:
+        return None
+    if any(ancestor == surface for ancestor in node.ancestors()):
+        return None
+    return node
+
+
+@pytest.mark.parametrize("entry", ["keyboard", "pointer"])
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_empty_directory_keeps_focus_and_tab_order(strata, mode, entry):
+    strata.fixture.path("empty").mkdir()
+    strata.keyboard.press("F5")
+    strata.entry("empty")
+    if entry == "keyboard":
+        strata.select_entry_with_keyboard("empty")
+        strata.keyboard.press("Return")
+    elif mode == "Columns":
+        strata.click_entry("empty")
+    else:
+        strata.double_click_entry("empty")
+    strata.wait_for_directory("empty")
+
+    surface = strata.wait(
+        lambda: (node := strata.focused_node()) is not None and node.name == "empty" and node,
+        "focus on the empty directory's pane surface",
+        timeout=5,
+    )
+    assert surface.description == "This directory is empty"
+
+    strata.keyboard.press("Tab")
+    strata.wait(lambda: _focus_outside(strata, surface), "Tab to leave the empty pane", timeout=5)
+    strata.keyboard.press("shift+Tab")
+    strata.wait(
+        lambda: strata.focused_node() == surface,
+        "Shift+Tab to return to the empty pane",
+        timeout=5,
+    )
+    strata.keyboard.press("shift+Tab")
+    strata.wait(
+        lambda: _focus_outside(strata, surface),
+        "Shift+Tab to reach the control before the empty pane",
+        timeout=5,
+    )

@@ -125,16 +125,6 @@ fn leave_folder(fixture: &KeyboardFixture) {
     focus_files(fixture);
 }
 
-fn open_empty_folder(fixture: &KeyboardFixture) {
-    let empty = fixture._directory.path().join("empty");
-    std::fs::create_dir(&empty).expect("empty folder");
-    let browser = fixture.view.browser();
-    browser.navigate(Location::local(&empty));
-    wait_until(|| browser.active_location() == Some(Location::local(&empty)));
-    wait_loaded(&browser, 0);
-    focus_files(fixture);
-}
-
 #[test]
 fn tenxer_yank_cut_and_unyank_mark_the_fill_or_cursor() {
     crate::test_support::gtk_test(

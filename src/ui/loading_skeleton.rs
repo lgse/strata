@@ -1,7 +1,14 @@
 use gtk::prelude::*;
 
 mod delay;
+mod surface;
 pub(crate) use delay::DelayedLoading;
+pub(crate) use surface::{DirectorySurface, focus_surface_or, surface_takes_focus};
+
+/// Directory stack pages shared by the panes and columns.
+pub(crate) const CONTENT_PAGE: &str = "content";
+pub(crate) const PENDING_PAGE: &str = "pending";
+pub(crate) const LOADING_PAGE: &str = "loading";
 
 pub(super) const ROW_COUNT: u32 = 18;
 

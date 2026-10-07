@@ -566,7 +566,7 @@ impl ViewState {
                             scroll_column_to(column, focused);
                         }
                         if *take_focus && self.mode_views.borrow().mode() == BrowserMode::Columns {
-                            column.list.grab_focus();
+                            column.focus_surface();
                         }
                     }
                 }
@@ -598,9 +598,8 @@ impl ViewState {
                         && self.mode_views.borrow().mode() == BrowserMode::Columns
                         && self.browser.active_depth() == Some(*depth)
                         && !self.suppress_scroll_after_drop.get()
-                        && !column.list.grab_focus()
                     {
-                        column.presentation.stack.grab_focus();
+                        column.focus_surface();
                     }
                     if !editing
                         && self.mode_views.borrow().mode() == BrowserMode::Columns

@@ -3,8 +3,8 @@
 use gtk::{gio, prelude::*};
 
 use super::{
-    BrowserMode, ModeViews, Pane, pane_holds_keyboard_focus, reconnect_pane_model, replace_entries,
-    select_all, set_selections, show_count, update_bound_icons_metadata,
+    BrowserMode, ModeViews, Pane, STATUS_PAGE, pane_holds_keyboard_focus, reconnect_pane_model,
+    replace_entries, select_all, set_selections, show_count, update_bound_icons_metadata,
     update_bound_list_metadata,
 };
 use crate::{
@@ -309,7 +309,7 @@ impl ModeViews {
 
     pub(crate) fn show_empty_if_empty(&self, depth: usize) {
         self.update_panes(depth, |pane| {
-            let showing_error = pane.stack.visible_child_name().as_deref() == Some("status")
+            let showing_error = pane.stack.visible_child_name().as_deref() == Some(STATUS_PAGE)
                 && pane.status.has_css_class("error");
             if pane.model.n_items() == 0 && !pane.spinner.is_spinning() && !showing_error {
                 show_count(pane);
@@ -466,6 +466,6 @@ impl Pane {
             message = message
         ));
         self.status.add_css_class("error");
-        self.loading.show("status");
+        self.loading.show(STATUS_PAGE);
     }
 }

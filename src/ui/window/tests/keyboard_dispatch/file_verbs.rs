@@ -87,16 +87,6 @@ fn submit_rename(fixture: &KeyboardFixture, text: &str) {
     plain(fixture, Key::Return);
 }
 
-fn open_empty_folder(fixture: &KeyboardFixture) {
-    let empty = fixture._directory.path().join("empty");
-    std::fs::create_dir(&empty).expect("empty folder");
-    let browser = fixture.view.browser();
-    browser.navigate(Location::local(&empty));
-    wait_until(|| browser.active_location() == Some(Location::local(&empty)));
-    wait_loaded(&browser, 0);
-    focus_files(fixture);
-}
-
 fn button_labeled(widget: &gtk::Widget, label: &str) -> Option<gtk::Button> {
     if let Some(button) = widget.downcast_ref::<gtk::Button>()
         && button.is_visible()

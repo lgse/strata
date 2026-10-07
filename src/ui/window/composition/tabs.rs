@@ -203,15 +203,14 @@ impl TabWindow {
         tab.content.activate_actions(&window);
         self.refresh_chrome();
         self.strip.select(id);
-        if let Some(focus) = tab
+        let saved = tab
             .focus
             .borrow()
             .as_ref()
             .and_then(glib::WeakRef::upgrade)
-            .filter(|widget| widget.is_mapped())
-        {
-            focus.grab_focus();
-        } else {
+            .filter(|widget| widget.is_mapped());
+        // An empty directory's surface stops taking focus once its listing returns.
+        if !saved.is_some_and(|focus| focus.grab_focus()) {
             tab.content.browser.browser().focus_active();
         }
     }

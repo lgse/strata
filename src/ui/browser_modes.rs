@@ -613,8 +613,7 @@ impl ModeViews {
         {
             return true;
         }
-        self.single_pane()
-            .is_some_and(|pane| pane.focus_view().grab_focus() || pane.stack.grab_focus())
+        self.single_pane().is_some_and(focus_pane_surface)
     }
 
     /// Use rendered rows: filtering, grouping, and resizing change the icons geometry.
@@ -1137,7 +1136,7 @@ impl ModeViews {
         if let Some(button) = pane.filter_button.as_ref() {
             button.set_active(false);
         }
-        pane.focus_view().grab_focus();
+        focus_pane_surface(pane);
         true
     }
 
@@ -1576,6 +1575,10 @@ impl ModeViews {
         else {
             return;
         };
+        if super::loading_skeleton::surface_takes_focus(&pane.stack) {
+            pane.stack.grab_focus();
+            return;
+        }
         let target = self
             .browser
             .focused_item()
@@ -1612,8 +1615,12 @@ impl ModeViews {
             focus_collection_item(&view, position);
         }
         let view = view.downgrade();
+        let stack = pane.stack.downgrade();
         glib::idle_add_local_once(move || {
             if let Some(view) = view.upgrade()
+                && stack
+                    .upgrade()
+                    .is_some_and(|stack| !super::loading_skeleton::surface_takes_focus(&stack))
                 && widget_has_focus(&view, view.root().and_then(|root| root.focus()).as_ref())
             {
                 if view
@@ -1791,6 +1798,7 @@ impl ModeViews {
             depth,
             &snapshot.location.display_name(),
         );
+        install_pane_surface(&pane, &self.browser, &snapshot.location.display_name());
         configure_icons_density(&pane, self.density);
         pane.folder_context_trigger = self.install_context_menu(&pane);
         self.icons_root.append(&pane.shell);
@@ -1826,6 +1834,7 @@ impl ModeViews {
             depth,
             &snapshot.location.display_name(),
         );
+        install_pane_surface(&pane, &self.browser, &snapshot.location.display_name());
         pane.folder_context_trigger = self.install_context_menu(&pane);
         self.list_root.append(&pane.shell);
         apply_snapshot(&pane, &snapshot, &self.browser);
@@ -1848,6 +1857,26 @@ fn pane_holds_keyboard_focus(pane: &Pane) -> bool {
             .item_sections()
             .iter()
             .any(|section| widget_has_focus(&section.view, focused.as_ref()))
+}
+
+/// The page a List or Icons pane shows for an empty or unreadable directory.
+const STATUS_PAGE: &str = "status";
+
+fn install_pane_surface(pane: &Pane, browser: &Rc<Browser>, directory: &str) {
+    super::loading_skeleton::DirectorySurface::install(
+        &pane.stack,
+        &pane.status,
+        &pane.section.view,
+        pane.search.result_collection_view().as_ref(),
+        browser,
+        directory,
+    );
+}
+
+/// Focuses the pane's collection view, or the pane itself while it shows a status or
+/// loading page.
+fn focus_pane_surface(pane: &Pane) -> bool {
+    super::loading_skeleton::focus_surface_or(&pane.stack, &pane.focus_view())
 }
 
 #[derive(Clone)]
@@ -2212,16 +2241,17 @@ fn build_icons_pane(
             if let (Some(stack), Some(context)) =
                 (loading_stack.upgrade(), loading_context.upgrade())
             {
-                let was_loading = stack.visible_child_name().as_deref() == Some("loading");
-                if let Some(old) = stack.child_by_name("loading") {
+                let was_loading = stack.visible_child_name().as_deref()
+                    == Some(super::loading_skeleton::LOADING_PAGE);
+                if let Some(old) = stack.child_by_name(super::loading_skeleton::LOADING_PAGE) {
                     stack.remove(&old);
                 }
                 stack.add_named(
                     &icons_loading_skeleton(size, context.density.get()),
-                    Some("loading"),
+                    Some(super::loading_skeleton::LOADING_PAGE),
                 );
                 if was_loading {
-                    stack.set_visible_child_name("loading");
+                    stack.set_visible_child_name(super::loading_skeleton::LOADING_PAGE);
                 }
             }
             let Some(sections) = sections_for_size.upgrade() else {
@@ -2728,7 +2758,9 @@ fn ensure_icons_card_slot(card: &gtk::Box, thumbnail_size: i32) {
 fn configure_icons_density(pane: &Pane, density: BrowserDensity) {
     pane.search
         .set_icons_max_columns(density_icons_columns(density));
-    if let Some(loading) = pane.stack.child_by_name("loading")
+    if let Some(loading) = pane
+        .stack
+        .child_by_name(super::loading_skeleton::LOADING_PAGE)
         && let Some(scroll) = loading.first_child().and_downcast::<gtk::ScrolledWindow>()
         && let Some(icons) = scroll.child().and_downcast::<gtk::GridView>()
     {
@@ -3490,14 +3522,15 @@ fn pane_base(
     let status = gtk::Label::new(Some(&crate::i18n::tr("This directory is empty")));
     status.add_css_class("status-message");
     status.set_wrap(true);
+    // Focusable only off the content page (see `DirectorySurface`); a group role keeps its name.
     let stack = gtk::Stack::builder()
         .hexpand(true)
         .vexpand(true)
-        .focusable(true)
+        .accessible_role(gtk::AccessibleRole::Group)
         .build();
-    stack.add_named(&content, Some("content"));
-    stack.add_named(loading, Some("loading"));
-    stack.add_named(&status, Some("status"));
+    stack.add_named(&content, Some(super::loading_skeleton::CONTENT_PAGE));
+    stack.add_named(loading, Some(super::loading_skeleton::LOADING_PAGE));
+    stack.add_named(&status, Some(STATUS_PAGE));
     shell.append(&stack);
 
     let model = gtk::StringList::new(&[]);
@@ -4463,7 +4496,10 @@ fn collection_keeps_cursor(view: &gtk::Widget) -> bool {
         return false;
     }
     focused.as_ref().is_none_or(|focused| {
-        focused == view || view.is_ancestor(focused) || focused.is_ancestor(view)
+        focused == view
+            || view.is_ancestor(focused)
+            || focused.is_ancestor(view)
+            || super::focus_navigation::focus_removed_from(view, focused)
     })
 }
 
@@ -4570,17 +4606,21 @@ fn reconnect_pane_model(pane: &Pane) {
 }
 
 fn show_count(pane: &Pane) {
-    let count = pane.model.n_items();
-    if let Some(entry) = &pane.filter_entry {
-        entry.set_placeholder_text(Some(&super::browser::filter_placeholder(count as usize)));
-    }
-    if count == 0 {
+    show_count_controls(pane);
+    if pane.model.n_items() == 0 {
         pane.status.remove_css_class("error");
         pane.status
             .set_label(&crate::i18n::tr("This directory is empty"));
-        pane.loading.show("status");
+        pane.loading.show(STATUS_PAGE);
     } else {
-        pane.loading.show("content");
+        pane.loading.show(super::loading_skeleton::CONTENT_PAGE);
+    }
+}
+
+fn show_count_controls(pane: &Pane) {
+    let count = pane.model.n_items();
+    if let Some(entry) = &pane.filter_entry {
+        entry.set_placeholder_text(Some(&super::browser::filter_placeholder(count as usize)));
     }
     if let Some(button) = &pane.empty_trash_button {
         button.set_sensitive(count > 0);
@@ -4590,7 +4630,15 @@ fn show_count(pane: &Pane) {
 fn apply_snapshot(pane: &Pane, snapshot: &BrowserColumnSnapshot, browser: &Browser) {
     replace_entries(pane, browser, snapshot.count);
     reconnect_pane_model(pane);
-    show_count(pane);
+    let restarts_loading =
+        snapshot.loading && (snapshot.count == 0 || !snapshot.location.is_camera_photo_root());
+    // A load still in progress is not an empty directory; showing that page first
+    // would hand the surface focus before the grace period decides.
+    if restarts_loading {
+        show_count_controls(pane);
+    } else {
+        show_count(pane);
+    }
     set_selections(pane, &snapshot.selected_positions);
     if let Some(&focused) = snapshot.selected_positions.last() {
         scroll_pane_to_source(pane, focused);
@@ -4598,7 +4646,7 @@ fn apply_snapshot(pane: &Pane, snapshot: &BrowserColumnSnapshot, browser: &Brows
     pane.truncated_hint.set_visible(snapshot.truncated);
     if snapshot.loading {
         pane.spinner.start();
-        if snapshot.count == 0 || !snapshot.location.is_camera_photo_root() {
+        if restarts_loading {
             pane.loading.start();
         }
     } else {
@@ -4609,7 +4657,7 @@ fn apply_snapshot(pane: &Pane, snapshot: &BrowserColumnSnapshot, browser: &Brows
                 message = message
             ));
             pane.status.add_css_class("error");
-            pane.loading.show("status");
+            pane.loading.show(STATUS_PAGE);
         }
     }
 }

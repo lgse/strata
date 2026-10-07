@@ -1301,7 +1301,7 @@ impl BrowserView {
                         || focused.is_ancestor(&column.header_actions)
                 })
             })
-            .is_some_and(|column| column.list.grab_focus())
+            .is_some_and(ColumnView::focus_surface)
     }
 
     pub fn navigate_up(&self) {
@@ -2286,8 +2286,8 @@ impl BrowserView {
 
     /// Moves the focus to the first or last visible entry of the active pane, for
     /// `Ctrl+Up`/`Ctrl+Down` and plain `Home`/`End`. Works from a focused row or
-    /// tile and from focus parked on the pane's stack (an empty or not yet focused
-    /// column).
+    /// tile, from the collection view itself, and from the pane surface while it
+    /// shows a loading page.
     pub fn jump_selection(&self, direction: i32) -> bool {
         let focused = self.state.overlay.root().and_then(|root| root.focus());
         let collection = focused
@@ -2345,7 +2345,7 @@ impl BrowserView {
             return false;
         };
         column.filter_button.set_active(false);
-        column.list.grab_focus();
+        column.focus_surface();
         true
     }
 
@@ -2648,9 +2648,7 @@ impl ViewState {
                     })
             {
                 // Do not leave keyboard focus inside controls hidden by pointer navigation.
-                if !column.list.grab_focus() {
-                    column.presentation.stack.grab_focus();
-                }
+                column.focus_surface();
             }
             column
                 .header_actions_stack
@@ -2697,7 +2695,7 @@ impl ViewState {
         }
         if let Some(column) = self.columns.borrow().get(depth) {
             column.selection.select_all();
-            column.list.grab_focus();
+            column.focus_surface();
         }
     }
 }

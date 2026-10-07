@@ -142,6 +142,13 @@ impl InlineSearch {
             .flatten()
     }
 
+    /// The view that shows filter results in place of the listing, shown or not.
+    pub(in crate::ui) fn result_collection_view(&self) -> Option<gtk::Widget> {
+        self.state
+            .as_ref()
+            .map(|state| state.collection.view.clone())
+    }
+
     pub(in crate::ui) fn has_item_focus(&self, focused: Option<&gtk::Widget>) -> bool {
         self.state.as_ref().is_some_and(|state| {
             focused.is_some_and(|focused| {

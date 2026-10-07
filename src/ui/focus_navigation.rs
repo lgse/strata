@@ -115,6 +115,25 @@ pub(super) fn contains_widget(container: &gtk::Widget, focused: Option<&gtk::Wid
     focused.is_some_and(|focused| focused == container || focused.is_ancestor(container))
 }
 
+/// Whether `focused` is a widget that was removed from `container`, such as a row a
+/// reload or re-sort replaced. GTK keeps the window's focus on it, and the focus chain
+/// through `container`, until the next paint moves focus to the next Tab stop. GTK
+/// does not clear a chain whose focus was detached, so the whole chain up to the
+/// window must lead to `container`.
+pub(super) fn focus_removed_from(container: &gtk::Widget, focused: &gtk::Widget) -> bool {
+    if focused.root().is_some() {
+        return false;
+    }
+    let mut child = container.clone();
+    while let Some(parent) = child.parent() {
+        if parent.focus_child().as_ref() != Some(&child) {
+            return false;
+        }
+        child = parent;
+    }
+    child.is::<gtk::Root>()
+}
+
 pub(super) fn editable(widget: &gtk::Widget) -> bool {
     widget.is::<gtk::Editable>()
         || widget.is::<gtk::TextView>()

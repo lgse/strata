@@ -80,6 +80,21 @@ pub(super) fn describe_entry_container(container: &impl IsA<gtk::Accessible>, di
     ]);
 }
 
+pub(super) const LOADING_SURFACE_DESCRIPTION: &str = "Loading";
+
+/// The pane surface takes keyboard focus while a directory is empty, unreadable or
+/// loading; it is named after the directory and described by what it shows.
+pub(super) fn describe_pane_surface(
+    surface: &impl IsA<gtk::Accessible>,
+    directory: &str,
+    status: &str,
+) {
+    surface.update_property(&[
+        gtk::accessible::Property::Label(directory),
+        gtk::accessible::Property::Description(status),
+    ]);
+}
+
 pub(super) fn menu_item_button() -> gtk::Button {
     gtk::Button::builder()
         .accessible_role(gtk::AccessibleRole::MenuItem)

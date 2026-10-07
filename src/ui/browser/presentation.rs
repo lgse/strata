@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: MIT
 
+use std::rc::Rc;
+
 use gtk::prelude::*;
+
+use crate::ui::loading_skeleton::{CONTENT_PAGE, LOADING_PAGE};
+
+const FEEDBACK_PAGE: &str = "feedback";
 
 #[derive(Clone)]
 pub(super) struct LoadPresentation {
@@ -33,10 +39,11 @@ impl LoadPresentation {
             .transition_duration(100)
             .hexpand(true)
             .vexpand(true)
+            .accessible_role(gtk::AccessibleRole::Group)
             .build();
-        stack.add_named(content, Some("content"));
-        stack.add_named(&skeleton, Some("loading"));
-        stack.add_named(&feedback, Some("feedback"));
+        stack.add_named(content, Some(CONTENT_PAGE));
+        stack.add_named(&skeleton, Some(LOADING_PAGE));
+        stack.add_named(&feedback, Some(FEEDBACK_PAGE));
         let loading = crate::ui::loading_skeleton::DelayedLoading::new(&stack);
 
         Self {
@@ -47,6 +54,25 @@ impl LoadPresentation {
         }
     }
 
+    /// Lets the stack take keyboard focus in place of `view` while it shows the empty,
+    /// error or loading page. Peek columns never call this, so they stay unfocusable.
+    pub(super) fn with_focus_fallback(
+        self,
+        directory: &str,
+        view: &impl IsA<gtk::Widget>,
+        browser: &Rc<crate::app::Browser>,
+    ) -> Self {
+        crate::ui::loading_skeleton::DirectorySurface::install(
+            &self.stack,
+            &self.message,
+            view,
+            None,
+            browser,
+            directory,
+        );
+        self
+    }
+
     pub(super) fn show_loading(&self) {
         if let Some(retry) = self.retry.as_ref() {
             retry.set_visible(false);
@@ -55,7 +81,7 @@ impl LoadPresentation {
     }
 
     pub(super) fn show_content(&self) {
-        self.loading.show("content");
+        self.loading.show(CONTENT_PAGE);
     }
 
     pub(super) fn show_empty(&self) {
@@ -65,11 +91,11 @@ impl LoadPresentation {
         if let Some(retry) = self.retry.as_ref() {
             retry.set_visible(false);
         }
-        self.loading.show("feedback");
+        self.loading.show(FEEDBACK_PAGE);
     }
 
     pub(super) fn show_empty_if_ready(&self) {
-        let showing_error = self.stack.visible_child_name().as_deref() == Some("feedback")
+        let showing_error = self.stack.visible_child_name().as_deref() == Some(FEEDBACK_PAGE)
             && self.message.has_css_class("error");
         if !showing_error {
             self.show_empty();
@@ -82,6 +108,6 @@ impl LoadPresentation {
         if let Some(retry) = self.retry.as_ref() {
             retry.set_visible(true);
         }
-        self.loading.show("feedback");
+        self.loading.show(FEEDBACK_PAGE);
     }
 }

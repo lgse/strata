@@ -21,6 +21,7 @@ mod folder_jump;
 mod footer_prompt;
 mod go_prompt;
 mod mode_exit;
+mod pane_focus;
 mod place_chords;
 mod preview_ownership;
 mod video_clips;
@@ -1782,9 +1783,9 @@ fn home_and_end_jump_to_the_first_and_last_item_in_the_default_key_map() {
 }
 
 #[test]
-fn jump_keys_move_the_cursor_when_focus_is_parked_on_the_column() {
+fn jump_keys_move_the_cursor_when_focus_is_parked_on_the_column_list() {
     crate::test_support::gtk_test(
-        "ui::window::tests::keyboard_dispatch::jump_keys_move_the_cursor_when_focus_is_parked_on_the_column",
+        "ui::window::tests::keyboard_dispatch::jump_keys_move_the_cursor_when_focus_is_parked_on_the_column_list",
         || {
             let fixture = KeyboardFixture::new();
             PreferenceManager::shared().set_group_by_type(false);
@@ -1826,10 +1827,10 @@ fn park_focus_on_the_column(fixture: &KeyboardFixture) {
             .ancestor(gtk::ListView::static_type())
             .expect("column list")
     };
-    let stack = list
-        .ancestor(gtk::Stack::static_type())
-        .expect("column stack");
-    assert!(stack.grab_focus());
+    // The column surface takes focus only off its content page, so park on the list
+    // widget itself, as GTK does when the list has no focused row to restore.
+    gtk::prelude::RootExt::set_focus(&fixture.window, Some(&list));
+    assert_eq!(gtk::prelude::RootExt::focus(&fixture.window), Some(list));
     assert!(fixture.view.item_view_has_focus());
 }
 
@@ -2691,6 +2692,18 @@ fn default_recorder_app(mime_type: &str, output: &std::path::Path) {
 fn focus_files(fixture: &KeyboardFixture) {
     fixture.view.browser().focus_active();
     wait_until(|| fixture.view.item_view_has_focus());
+}
+
+fn open_empty_folder(fixture: &KeyboardFixture) {
+    let empty = fixture._directory.path().join("empty");
+    if !empty.exists() {
+        std::fs::create_dir(&empty).expect("empty folder");
+    }
+    let browser = fixture.view.browser();
+    browser.navigate(Location::local(&empty));
+    wait_until(|| browser.active_location() == Some(Location::local(&empty)));
+    wait_loaded(&browser, 0);
+    focus_files(fixture);
 }
 
 fn focus_icon(fixture: &KeyboardFixture, browser: &crate::app::Browser, name: &str) {
