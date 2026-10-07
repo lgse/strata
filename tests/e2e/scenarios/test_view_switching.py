@@ -89,7 +89,8 @@ def test_switching_preserves_directory_selection_and_sort(strata):
     strata.wait_for_focused_entry("diagram.txt")
 
 
-def test_switching_preserves_the_pane_filter(strata):
+@pytest.mark.parametrize("start", ["input", "result"])
+def test_switching_preserves_the_pane_filter(strata, start):
     strata.keyboard.press("ctrl+f")
     field = strata.editable_field()
     strata.keyboard.type_text("todo")
@@ -98,6 +99,9 @@ def test_switching_preserves_the_pane_filter(strata):
         lambda: strata.matches() == ["todo.txt"],
         "the filter to narrow the listing",
     )
+    if start == "result":
+        strata.keyboard.press("Down")
+        strata.wait_for_focused_entry("todo.txt")
 
     for mode in ["Icons", "List", "Columns"]:
         strata.keyboard.press(MODE_SHORTCUTS[mode])
@@ -113,6 +117,18 @@ def test_switching_preserves_the_pane_filter(strata):
             lambda: strata.matches() == ["todo.txt"],
             "the narrowed listing to survive the switch",
         )
+        focused = strata.focused_node()
+        assert focused is None or "Shortcuts" not in focused.name
+        if start == "input":
+            field = strata.editable_field()
+            assert field.text == "todo"
+            # Down from the field reaches a result, not the footer.
+            strata.keyboard.press("Down")
+            strata.wait_for_focused_entry("todo.txt")
+            strata.keyboard.press("Up")
+            strata.editable_field()
+        else:
+            strata.wait_for_focused_entry("todo.txt")
 
 
 def test_list_column_resize_tracks_the_pointer_without_an_initial_jump(strata):

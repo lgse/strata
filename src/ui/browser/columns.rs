@@ -855,6 +855,14 @@ impl ViewState {
         column.focus_surface();
         let column = column.clone();
         glib::idle_add_local_once(move || {
+            // A Ctrl+F or popover opened since the rebuild keeps focus.
+            let focused = column.list.root().and_then(|root| root.focus());
+            if focused.is_some_and(|focused| {
+                crate::ui::focus_navigation::editable(&focused)
+                    || crate::ui::focus_navigation::in_popover(&focused)
+            }) {
+                return;
+            }
             column.focus_surface();
         });
     }

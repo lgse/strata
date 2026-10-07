@@ -81,8 +81,8 @@ pub(crate) use crate::ui::browser::clipboard::{
 pub(crate) use crate::ui::browser::collection::{
     ActivePaneFilter, bind_listing_filter, detach_collection_view, filter_placeholder,
     focus_collection_item_when_allocated, focus_filter_entry, notify_filter_query,
-    prepare_collection_inline_edit, restore_filter_controls, reveal_collection_after_layout,
-    scroll_collection_when_allocated, search_result_entry,
+    prepare_collection_inline_edit, refocus_filter_entry, restore_filter_controls,
+    reveal_collection_after_layout, scroll_collection_when_allocated, search_result_entry,
 };
 pub(in crate::ui) use crate::ui::browser::collection::{FilterQueryBinding, bind_filter_query};
 pub(super) use crate::ui::browser::context_menu::{
@@ -1056,6 +1056,8 @@ impl BrowserView {
         // The rebuilt view has a different displayed order for the same anchor.
         self.state.browser.leave_visual();
         let searching = self.state.listing_search_showing();
+        // Read before the rebuild tears down the focused field or results.
+        let filter_focus = self.state.filter_focus();
         self.state.mode.set(mode);
         let filter = match previous {
             BrowserMode::Columns => self.state.capture_active_column_filter(),
@@ -1083,10 +1085,41 @@ impl BrowserView {
                 .clear_inactive_mode(previous),
         }
         self.state.carry_listing_search(searching);
-        if mode == BrowserMode::Columns {
+        self.restore_view_switch_focus(filter_focus);
+    }
+
+    /// Focus follows the filter session across a view switch.
+    fn restore_view_switch_focus(&self, filter_focus: Option<FilterFocus>) {
+        if let Some(target) = self.filter_target() {
+            if filter_focus == Some(FilterFocus::Entry) {
+                refocus_filter_entry(target.entry());
+                return;
+            }
+            if filter_focus == Some(FilterFocus::Results)
+                || listing_filter::filter_shows_query(&target)
+            {
+                target.settle();
+                self.focus_filter_results(&target);
+                return;
+            }
+        }
+        if self.view_mode() == BrowserMode::Columns {
             self.state.focus_rebuilt_active_column();
         } else if let Some(depth) = self.state.browser.active_depth() {
             self.state.mode_views.borrow().focus_visible_pane(depth);
+        }
+    }
+
+    /// Focus for a view switched from a menu, once the menu has closed: results replace
+    /// the listing that would otherwise take focus.
+    pub(in crate::ui) fn focus_switched_view(&self) {
+        if let Some(target) = self
+            .filter_target()
+            .filter(listing_filter::filter_shows_query)
+        {
+            self.focus_filter_results(&target);
+        } else {
+            self.state.browser.focus_active();
         }
     }
 

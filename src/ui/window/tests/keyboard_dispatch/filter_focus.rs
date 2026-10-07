@@ -9,6 +9,23 @@ use crate::{
     ui::browser::FilterFocus,
 };
 
+/// Where focus was before an action: in the pane filter's field, on one of its results,
+/// or on a listing with no filter.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Start {
+    Entry,
+    Result,
+    Listing,
+}
+
+/// How the view is switched: Ctrl+digit keeps focus where it is, the View menu takes it
+/// into its popover first.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Route {
+    Keys,
+    Menu,
+}
+
 fn settles(condition: impl Fn() -> bool) -> bool {
     let deadline = Instant::now() + Duration::from_secs(5);
     while !condition() {
@@ -34,6 +51,14 @@ fn describe_focus(fixture: &KeyboardFixture) -> String {
             focused.css_classes(),
             focused.is_mapped()
         ),
+    }
+}
+
+fn digit(mode: BrowserMode) -> Key {
+    match mode {
+        BrowserMode::Columns => Key::_1,
+        BrowserMode::Icons => Key::_2,
+        BrowserMode::List => Key::_3,
     }
 }
 
@@ -413,6 +438,161 @@ fn escape_from_a_focused_result_dismisses_the_filter_before_the_preview() {
                     preview_case(mode)
                         .err()
                         .map(|error| format!("{mode:?}: {error}"))
+                })
+                .collect();
+            report(failures);
+        },
+    );
+}
+
+fn mode_label(mode: BrowserMode) -> &'static str {
+    match mode {
+        BrowserMode::Columns => "Columns",
+        BrowserMode::Icons => "Icons",
+        BrowserMode::List => "List",
+    }
+}
+
+fn descendant(
+    widget: &gtk::Widget,
+    matches: &impl Fn(&gtk::Widget) -> bool,
+) -> Option<gtk::Widget> {
+    if matches(widget) {
+        return Some(widget.clone());
+    }
+    std::iter::successors(widget.first_child(), gtk::Widget::next_sibling)
+        .find_map(|child| descendant(&child, matches))
+}
+
+/// Picks `to` from the Appearance menu the way a click does: focus moves into the menu,
+/// which closes after the switch.
+fn switch_from_menu(fixture: &KeyboardFixture, to: BrowserMode) -> Result<(), String> {
+    let menu = build_appearance_menu(
+        &fixture.view,
+        &fixture.view.browser(),
+        PreferenceManager::shared(),
+        &fixture.preview,
+    );
+    fixture.overlay.add_overlay(&menu);
+    menu.popup();
+    let Some(popover) = menu
+        .popover()
+        .filter(|popover| settles(|| popover.is_visible()))
+    else {
+        return Err("the Appearance menu did not open".to_owned());
+    };
+    let Some(option) = descendant(popover.upcast_ref(), &|widget| {
+        widget.is::<gtk::Button>()
+            && widget.has_css_class("appearance-option")
+            && shows_text(widget, mode_label(to))
+    })
+    .and_downcast::<gtk::Button>() else {
+        return Err(format!("the menu has no {} option", mode_label(to)));
+    };
+    option.grab_focus();
+    option.emit_clicked();
+    Ok(())
+}
+
+fn switch_case(
+    from: BrowserMode,
+    to: BrowserMode,
+    start: Start,
+    route: Route,
+) -> Result<(), String> {
+    let fixture = filtered_fixture(from, false);
+    if start != Start::Listing {
+        let field = show_filter_with_results(&fixture, "report", &IMMEDIATE_REPORTS)?;
+        if start == Start::Result {
+            focus_first_result(&fixture, &field)?;
+        }
+    }
+
+    match route {
+        Route::Keys => {
+            if !fixture.press(digit(to), ModifierType::CONTROL_MASK) {
+                return Err("Ctrl+digit was not handled".to_owned());
+            }
+        }
+        Route::Menu => switch_from_menu(&fixture, to)?,
+    }
+    if !settles(|| fixture.view.view_mode() == to) {
+        return Err("the view did not switch".to_owned());
+    }
+    let held = |fixture: &KeyboardFixture| match start {
+        Start::Entry => fixture.view.filter_has_focus(),
+        Start::Result => result_has_focus(fixture) && hit_cursor(fixture).is_some(),
+        Start::Listing => {
+            fixture.view.item_view_has_focus() && fixture.view.filter_focus().is_none()
+        }
+    };
+    if !settles(|| held(&fixture)) {
+        return Err(format!(
+            "focus did not stay with the {start:?} after the switch; it is on {}",
+            describe_focus(&fixture)
+        ));
+    }
+    if start == Start::Entry {
+        let field = focused_entry(&fixture.window);
+        if field.text() != "report" || field.selection_bounds().is_some() || field.position() != 6 {
+            return Err(format!(
+                "the field reads {:?} with selection {:?} and caret {}; expected the query with \
+                 the caret at its end",
+                field.text(),
+                field.selection_bounds(),
+                field.position()
+            ));
+        }
+    }
+    // Past the filter debounce, result arrival, the menu's idle and idle refocus.
+    pump(400);
+    if !held(&fixture) {
+        return Err(format!(
+            "focus was taken from the {start:?} after the switch settled; it is on {}",
+            describe_focus(&fixture)
+        ));
+    }
+    if start != Start::Listing
+        && (fixture.view.listing_filter().as_deref() != Some("report")
+            || !settles(|| filter_applied(&fixture, &IMMEDIATE_REPORTS)))
+    {
+        return Err(format!(
+            "the switch lost the filter: {:?}, results {:?}",
+            fixture.view.listing_filter(),
+            result_names(&fixture)
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn switching_view_mode_keeps_focus_on_the_filter() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::filter_focus::switching_view_mode_keeps_focus_on_the_filter",
+        || {
+            use BrowserMode::{Columns, Icons, List};
+            let mut cases = Vec::new();
+            for (from, to) in [
+                (Columns, List),
+                (List, Icons),
+                (Icons, Columns),
+                (Columns, Icons),
+            ] {
+                for start in [Start::Entry, Start::Result] {
+                    cases.push((from, to, start, Route::Keys));
+                }
+            }
+            // The menu takes focus from the field, so only results can keep it.
+            for (from, to) in [(List, Icons), (Icons, List), (Columns, List)] {
+                cases.push((from, to, Start::Result, Route::Menu));
+            }
+            cases.push((List, Icons, Start::Listing, Route::Keys));
+            let failures = cases
+                .into_iter()
+                .filter_map(|(from, to, start, route)| {
+                    switch_case(from, to, start, route)
+                        .err()
+                        .map(|error| format!("{from:?} -> {to:?}, {start:?}, {route:?}: {error}"))
                 })
                 .collect();
             report(failures);

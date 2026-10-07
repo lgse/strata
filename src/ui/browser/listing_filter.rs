@@ -361,6 +361,10 @@ fn filter_status(target: &Target, root: Option<&Path>) -> Option<FilterStatus> {
     })
 }
 
+pub(super) fn filter_shows_query(target: &Target) -> bool {
+    !target.entry().text().trim().is_empty()
+}
+
 pub(super) fn set_filter_text(target: &Target, query: &str) {
     if query.is_empty() {
         // Closing a funnel that 10xer hides clears nothing; the text is cleared below.

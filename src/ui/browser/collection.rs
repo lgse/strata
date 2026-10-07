@@ -256,12 +256,18 @@ pub(crate) fn restore_filter_controls(
     entry.set_text(&filter.query);
 }
 
+/// Returns focus to a field that already shows its query, with the caret at the end so
+/// typing extends the query.
+pub(crate) fn refocus_filter_entry(entry: &gtk::Entry) {
+    // Regular grab_focus selects the query, so the next key would replace it.
+    entry.grab_focus_without_selecting();
+    entry.select_region(-1, -1);
+}
+
 pub(crate) fn focus_filter_entry(entry: &gtk::Entry, query: Option<&str>) {
     if let Some(query) = query {
         entry.set_text(query);
-        // Regular grab_focus selects the seed again, so the next key would replace it.
-        entry.grab_focus_without_selecting();
-        entry.select_region(-1, -1);
+        refocus_filter_entry(entry);
     } else {
         entry.grab_focus();
     }
