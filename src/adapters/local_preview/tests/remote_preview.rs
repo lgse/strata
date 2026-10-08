@@ -128,7 +128,7 @@ fn uri_video_retains_one_private_input_through_player_clones_and_worker_exit() {
                 }
             });
             assert!(
-                matches!(&events.borrow()[0], PreviewEvent::Failed { message, .. } if message.contains("256 MiB"))
+                matches!(&events.borrow()[0], PreviewEvent::Failed { message, .. } if message.contains("268.4 MB"))
             );
         },
     );
@@ -308,7 +308,7 @@ fn unsupported_and_oversized_remote_inputs_fail_before_transfer_or_render() {
                 (
                     "photo.jpg",
                     MetadataValue::Known(65 * 1024 * 1024),
-                    "64 MiB",
+                    "67.1 MB",
                 ),
             ] {
                 let mut request = request(&Path::new("/nonexistent").join(name), name);

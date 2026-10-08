@@ -12,13 +12,59 @@ use quick_xml::{
 };
 use resvg::tiny_skia::{Color, Pixmap};
 
+const _: () = assert!(
+    MAX_MODEL_TRIANGLES == 2_000_000,
+    "update the triangle limit message and its catalog entry"
+);
+
+// The preview pane translates this exact text, so it must not embed runtime values.
 fn triangle_limit_message() -> String {
-    format!(
-        "This model exceeds the {} million triangle preview limit. Try a lower-detail version.",
-        MAX_MODEL_TRIANGLES as f64 / 1_000_000.
-    )
+    "This model exceeds the 2 million triangle preview limit. Try a lower-detail version."
+        .to_owned()
 }
 const MULTIPART_MODEL_MESSAGE: &str = "Multipart model detected. Unable to render preview.";
+const TOO_COMPLEX_MODEL_MESSAGE: &str = "This model is too complex to draw within the preview rendering limit. Try a lower-detail version.";
+const DAMAGED_MODEL_MESSAGE: &str = "This model file is invalid or damaged.";
+const MODEL_INPUT_LIMIT_MESSAGE: &str =
+    "This model file exceeds the 128 MiB preview limit. Try a smaller or lower-detail version.";
+const VERTEX_LIMIT_MESSAGE: &str =
+    "This 3MF model exceeds the 2 million vertex preview limit. Try a lower-detail version.";
+const UNPACKED_LIMIT_MESSAGE: &str = "The unpacked 3MF model exceeds the 128 MiB preview limit.";
+const _: () = assert!(
+    MAX_MODEL_INPUT_BYTES == 128 * 1024 * 1024
+        && MAX_MODEL_VERTICES == 2_000_000
+        && MAX_MODEL_XML_BYTES == 128 * 1024 * 1024,
+    "update the model limit messages and their catalog entries"
+);
+
+/// The preview pane translates these exact texts; parse diagnostics are not actionable.
+fn user_model_message(message: String) -> String {
+    match message.as_str() {
+        "Model exceeds the input size limit" | "Model package exceeds the input size limit" => {
+            MODEL_INPUT_LIMIT_MESSAGE.to_owned()
+        }
+        MULTIPART_MODEL_MESSAGE
+        | TOO_COMPLEX_MODEL_MESSAGE
+        | VERTEX_LIMIT_MESSAGE
+        | UNPACKED_LIMIT_MESSAGE
+        | "STL contains no valid triangles"
+        | "3MF contains no printable triangles"
+        | "3MF package has no model"
+        | "Model has no visible extent"
+        | "External 3MF model references are not supported"
+        | "This FreeCAD file has no usable embedded thumbnail"
+        | "This model has no unambiguous usable embedded thumbnail" => message,
+        _ if message == triangle_limit_message() => message,
+        _ if message.ends_with(" limit exceeded")
+            || message.contains(" budget exceeded")
+            || message.contains(" preview limit")
+            || message.starts_with("Cannot allocate ") =>
+        {
+            TOO_COMPLEX_MODEL_MESSAGE.to_owned()
+        }
+        _ => DAMAGED_MODEL_MESSAGE.to_owned(),
+    }
+}
 
 type Point = [f32; 3];
 type Matrix = [f32; 12];
@@ -121,10 +167,7 @@ fn triangles_3mf(xml: &[u8]) -> Result<Vec<[Point; 3]>, String> {
                 b"vertex" if current.is_some() => {
                     vertices += 1;
                     if vertices > MAX_MODEL_VERTICES {
-                        return Err(format!(
-                            "This 3MF model exceeds the {} million vertex preview limit. Try a lower-detail version.",
-                            MAX_MODEL_VERTICES as f64 / 1_000_000.
-                        ));
+                        return Err(VERTEX_LIMIT_MESSAGE.to_owned());
                     }
                     let point = [
                         number(&tag, b"x")?,
@@ -412,7 +455,7 @@ fn shade(
         let (left, right, top, bottom) = (lower(0), upper(0, width), lower(1), upper(1, height));
         work += u64::from(right.saturating_sub(left)) * u64::from(bottom.saturating_sub(top));
         if work > MAX_MODEL_RASTER_WORK {
-            return Err("This model is too complex to draw within the preview rendering limit. Try a lower-detail version.".into());
+            return Err(TOO_COMPLEX_MODEL_MESSAGE.into());
         }
         for y in top..bottom {
             for x in left..right {
@@ -538,6 +581,14 @@ fn render_3mf(
 }
 
 pub(super) fn render_reporting(
+    input: &Path,
+    value: &str,
+    progress: &dyn Fn(ModelPreviewStage),
+) -> Result<Vec<u8>, String> {
+    render_model(input, value, progress).map_err(user_model_message)
+}
+
+fn render_model(
     input: &Path,
     value: &str,
     progress: &dyn Fn(ModelPreviewStage),

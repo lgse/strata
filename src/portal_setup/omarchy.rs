@@ -62,16 +62,15 @@ pub(super) fn install(context: &SetupContext, executable: &Path) -> Result<(), S
 fn installed_bindings(original: &str, major: u8, executable: &Path) -> Result<String, String> {
     let executable = executable
         .to_str()
-        .ok_or("The shortcut executable path must be UTF-8")?;
+        .ok_or_else(|| crate::i18n::tr("The shortcut executable path must be UTF-8"))?;
     if !executable.starts_with('/')
         || !executable
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || b"/._-".contains(&byte))
     {
-        return Err(
-            "The Strata executable path contains characters unsupported by keyboard shortcuts."
-                .into(),
-        );
+        return Err(crate::i18n::tr(
+            "The Strata executable path contains characters unsupported by keyboard shortcuts.",
+        ));
     }
     let prefix = if major == 4 { "--" } else { "#" };
     let start = format!("{prefix} strata-installer: file-manager start");
@@ -114,9 +113,9 @@ pub(super) fn restore(context: &SetupContext) -> Result<(), String> {
         return Ok(());
     };
     if detected_nautilus().is_none() {
-        return Err(
-            "Nautilus was not detected; the Strata keyboard shortcuts were left unchanged.".into(),
-        );
+        return Err(crate::i18n::tr(
+            "Nautilus was not detected; the Strata keyboard shortcuts were left unchanged.",
+        ));
     }
     replace_bindings(&path, &original, &updated, reload)
 }
@@ -161,14 +160,18 @@ fn restored_bindings(original: &str, major: u8) -> Result<Option<String>, String
         return Ok(None);
     }
     if original.matches(&start).count() != 1 || original.matches(&end).count() != 1 {
-        return Err("The Strata keyboard shortcut block is ambiguous; restore it manually.".into());
+        return Err(crate::i18n::tr(
+            "The Strata keyboard shortcut block is ambiguous; restore it manually.",
+        ));
     }
     let start_index = original
         .find(&start)
         .ok_or("Missing shortcut block start")?;
     let end_index = original.find(&end).ok_or("Missing shortcut block end")?;
     if end_index < start_index {
-        return Err("The Strata keyboard shortcut block is malformed; restore it manually.".into());
+        return Err(crate::i18n::tr(
+            "The Strata keyboard shortcut block is malformed; restore it manually.",
+        ));
     }
     let block = &original[start_index + start.len()..end_index];
     let lines: Vec<_> = block
@@ -196,7 +199,9 @@ fn restored_bindings(original: &str, major: u8) -> Result<Option<String>, String
             && lines[3].ends_with("strata \"$(omarchy-cmd-terminal-cwd)\"")
     };
     if !recognized {
-        return Err("The Strata keyboard shortcuts have been customized; restore them manually to avoid losing your edits.".into());
+        return Err(crate::i18n::tr(
+            "The Strata keyboard shortcuts have been customized; restore them manually to avoid losing your edits.",
+        ));
     }
     let replacement = if major == 4 {
         "hl.unbind(\"SUPER + SHIFT + F\")\nhl.unbind(\"SUPER + ALT + SHIFT + F\")\no.bind(\"SUPER + SHIFT + F\", \"File manager\", { launch = \"nautilus --new-window\" })\no.bind(\"SUPER + ALT + SHIFT + F\", \"File manager (cwd)\",\n  \"uwsm-app -- nautilus --new-window \\\"$(omarchy-cmd-terminal-cwd)\\\"\")"
@@ -223,26 +228,40 @@ fn replace_bindings(
     backup
         .write_all(original.as_bytes())
         .map_err(|error| path_error("back up", path, error))?;
-    let (_, backup_path) = backup
-        .keep()
-        .map_err(|error| format!("Could not keep keyboard configuration backup: {error}"))?;
+    let (_, backup_path) = backup.keep().map_err(|error| {
+        rust_i18n::t!(
+            "Could not keep keyboard configuration backup: %{error}",
+            error = error
+        )
+        .into_owned()
+    })?;
     crate::storage::atomic_write(path, updated.as_bytes())
         .map_err(|error| path_error("write", path, error))?;
     if let Err(error) = validate() {
         crate::storage::atomic_write(path, original.as_bytes()).map_err(|rollback| {
-            format!(
-                "{error}; rollback failed: {rollback}. Backup: {}",
-                backup_path.display()
+            rust_i18n::t!(
+                "%{error}; rollback failed: %{rollback}. Backup: %{path}",
+                error = error,
+                rollback = rollback,
+                path = backup_path.display()
             )
+            .into_owned()
         })?;
-        let rollback = validate()
-            .err()
-            .map(|error| format!("; rollback reload failed: {error}"))
-            .unwrap_or_default();
-        return Err(format!(
-            "{error}{rollback}. Restored keyboard configuration; backup: {}",
-            backup_path.display()
-        ));
+        let backup = backup_path.display();
+        return Err(match validate() {
+            Ok(()) => rust_i18n::t!(
+                "%{error}. Restored keyboard configuration; backup: %{path}",
+                error = error,
+                path = backup
+            ),
+            Err(rollback) => rust_i18n::t!(
+                "%{error}; rollback reload failed: %{rollback}. Restored keyboard configuration; backup: %{path}",
+                error = error,
+                rollback = rollback,
+                path = backup
+            ),
+        }
+        .into_owned());
     }
     Ok(())
 }
@@ -253,19 +272,33 @@ fn reload() -> Result<(), String> {
     }
     for argument in ["reload", "configerrors"] {
         let output = crate::trusted_command::command("hyprctl")
-            .map_err(|error| format!("Could not {argument} Hyprland: {error}"))?
+            .map_err(|error| hyprctl_error(argument, error))?
             .arg(argument)
             .output()
-            .map_err(|error| format!("Could not {argument} Hyprland: {error}"))?;
+            .map_err(|error| hyprctl_error(argument, error))?;
         if !output.status.success()
             || (argument == "configerrors" && !output.stdout.trim_ascii().is_empty())
         {
-            return Err(format!(
-                "Hyprland {argument} failed: {}{}",
-                String::from_utf8_lossy(&output.stdout),
-                String::from_utf8_lossy(&output.stderr)
-            ));
+            return Err(rust_i18n::t!(
+                "Hyprland %{command} failed: %{output}",
+                command = argument,
+                output = format!(
+                    "{}{}",
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr)
+                )
+            )
+            .into_owned());
         }
     }
     Ok(())
+}
+
+fn hyprctl_error(argument: &str, error: impl std::fmt::Display) -> String {
+    rust_i18n::t!(
+        "Could not run “%{program}”: %{error}",
+        program = format!("hyprctl {argument}"),
+        error = error
+    )
+    .into_owned()
 }

@@ -30,7 +30,7 @@ def test_cancel_compression_stops_before_publishing_and_allows_another_operation
     strata.pointer.click(dialog.find(role="toggle button", name=format))
     strata.pointer.click(strata.dialog_button("Compress"))
     cancel = strata.wait(
-        lambda: strata.window.find(role="button", name="Cancel Compressing items"),
+        lambda: strata.window.find(role="button", name="Cancel compressing"),
         "docked compression cancellation action",
     )
     strata.wait(lambda: strata.dialog() is None, "compression configuration dismissal")
@@ -91,7 +91,7 @@ def _write_tar_gz_with_bad_trailer(path):
     pytest.param(
         "scatter.zip",
         _write_zip_with_absolute_member,
-        "Refusing unsafe archive path: /etc/evil.txt. Extracted entries remain in `scatter`.",
+        "Refusing unsafe archive path: /etc/evil.txt. Extracted entries remain in “scatter”.",
         "scatter",
         ["ok.txt", "second.txt"],
         id="scatter.zip",
@@ -99,7 +99,7 @@ def _write_tar_gz_with_bad_trailer(path):
     pytest.param(
         "trailer.tar.gz",
         _write_tar_gz_with_bad_trailer,
-        f"{INVALID_ARCHIVE} Extracted entries remain in `trailer`.",
+        f"{INVALID_ARCHIVE} Extracted entries remain in “trailer”.",
         "trailer",
         ["a.txt"],
         id="trailer.tar.gz",

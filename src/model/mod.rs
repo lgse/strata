@@ -335,10 +335,10 @@ impl Location {
 
     pub fn display_name(&self) -> String {
         if self.is_recent_root() {
-            return "Recent".into();
+            return crate::i18n::tr("Recent");
         }
         if self.is_camera_photo_root() {
-            return "Photos".into();
+            return crate::i18n::tr("Photos");
         }
         match &self.kind {
             LocationKind::Native(path) => path
@@ -346,7 +346,7 @@ impl Location {
                 .map(|name| name.to_string_lossy().into_owned())
                 .filter(|name| !name.is_empty())
                 .unwrap_or_else(|| path.to_string_lossy().into_owned()),
-            LocationKind::Uri(uri) if uri.as_ref() == "trash:///" => "Trash".into(),
+            LocationKind::Uri(uri) if uri.as_ref() == "trash:///" => crate::i18n::tr("Trash"),
             LocationKind::Uri(uri) => self
                 .file_name()
                 .map(|name| name.to_string_lossy().into_owned())

@@ -42,6 +42,7 @@ pub(in crate::ui::browser) struct FileProgressState {
     pub(super) dock_only: Cell<bool>,
     pub(super) task_description: RefCell<String>,
     pub(super) destination_description: RefCell<String>,
+    pub(super) destination_label: RefCell<String>,
 }
 
 impl FileProgressState {
@@ -68,6 +69,7 @@ impl FileProgressState {
             dock_only: Cell::new(false),
             task_description: RefCell::new(String::new()),
             destination_description: RefCell::new(String::new()),
+            destination_label: RefCell::new(String::new()),
         }
     }
 }
@@ -138,6 +140,9 @@ impl ViewState {
         progress
             .destination_description
             .replace(self.browser.operation_destination_description());
+        progress
+            .destination_label
+            .replace(self.browser.operation_destination_label());
         progress
             .task_description
             .replace(self.browser.operation_description());
@@ -260,7 +265,7 @@ impl ViewState {
                     self.settle_pending_delete_dissolve();
                 }
                 if entries.is_empty() {
-                    show_error_dialog(&self.overlay, "Completed with errors", message);
+                    crate::ui::modal::show_partial_failure_dialog(&self.overlay, message);
                 } else if *has_non_retryable_failures || self.browser.has_foreground_operation() {
                     let weak = Rc::downgrade(self);
                     crate::ui::modal::show_delete_error_dialog(
@@ -302,7 +307,11 @@ impl ViewState {
                 if self.delete_dissolve_request.get() == Some(request_id) {
                     self.settle_pending_delete_dissolve();
                 }
-                show_error_dialog(&self.overlay, "Unable to complete operation", message);
+                show_error_dialog(
+                    &self.overlay,
+                    &crate::i18n::tr("Unable to complete operation"),
+                    message,
+                );
                 true
             }
             BrowserEvent::OperationCancelled {
@@ -315,10 +324,11 @@ impl ViewState {
                     self.settle_pending_delete_dissolve();
                 }
                 self.browser.refresh_after_cancellation(affected_locations);
-                let message = format!(
-                    "{completed} completed, {failed} failed, and {not_attempted} not attempted.\n\nCompleted changes were not reverted."
+                show_error_dialog(
+                    &self.overlay,
+                    &crate::i18n::tr("Operation cancelled"),
+                    &super::cancelled_operation_summary(*completed, *failed, *not_attempted),
                 );
-                show_error_dialog(&self.overlay, "Operation cancelled", &message);
                 true
             }
             _ => false,
@@ -326,13 +336,12 @@ impl ViewState {
         if finished {
             match event {
                 BrowserEvent::TransferCompleted => {
-                    progress.complete_file_operation_progress("Copy complete")
+                    progress.complete_file_operation_progress(&crate::i18n::tr("Copy complete"))
                 }
-                BrowserEvent::ArchiveCompleted { .. } => {
-                    progress.complete_file_operation_progress("Compression complete")
-                }
+                BrowserEvent::ArchiveCompleted { .. } => progress
+                    .complete_file_operation_progress(&crate::i18n::tr("Compression complete")),
                 BrowserEvent::DeletionFinished { succeeded: true } => {
-                    progress.complete_file_operation_progress("Deletion complete")
+                    progress.complete_file_operation_progress(&crate::i18n::tr("Deletion complete"))
                 }
                 _ => progress.dismiss_file_operation_progress(),
             }
@@ -350,8 +359,10 @@ impl ViewState {
         if self.browser.has_foreground_operation() {
             show_error_dialog(
                 &self.overlay,
-                "Another operation is active",
-                "Finish or minimize that operation before retrying deletion. The failed items have not been deleted.",
+                &crate::i18n::tr("Another operation is active"),
+                &crate::i18n::tr(
+                    "Finish or minimize that operation before retrying deletion. The failed items have not been deleted.",
+                ),
             );
             return;
         }

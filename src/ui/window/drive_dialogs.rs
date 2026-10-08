@@ -12,7 +12,7 @@ use crate::{
     ui::{
         controls::{
             FormTextField, ModalLayout, ModalTone, ProgressSummary, form_check_button, form_label,
-            modal_layout, progress_summary, properties_action,
+            keep_words_whole, modal_layout, progress_summary, properties_action,
         },
         missing_tools::{MissingTool, show_missing_tools},
         modal::{ModalHost, dismiss_modal_layer, modal_layer, remember_modal_focus},
@@ -139,7 +139,7 @@ fn modal_shell(
     danger: bool,
 ) -> Option<ModalShell> {
     let host = ModalHost::blurred_for(parent)?;
-    let layout = modal_layout(icon, title, subtitle, "Cancel");
+    let layout = modal_layout(icon, title, subtitle, &crate::i18n::tr("Cancel"));
     if danger {
         layout.content.add_css_class("destructive");
     }
@@ -163,7 +163,7 @@ fn modal_shell(
 
 fn field_block(label_text: &str, field: &impl IsA<gtk::Widget>) -> gtk::Box {
     let block = gtk::Box::new(gtk::Orientation::Vertical, 4);
-    let label = form_label(label_text);
+    let label = form_label(&crate::i18n::tr(label_text));
     label.set_xalign(0.0);
     block.append(&label);
     field.set_hexpand(true);
@@ -211,28 +211,15 @@ fn show_inline_error(label: &gtk::Label, message: &str) {
     label.set_visible(true);
 }
 
-fn human_size(bytes: u64) -> String {
-    const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
-    let mut value = bytes as f64;
-    let mut unit = 0;
-    while value >= 1000.0 && unit + 1 < UNITS.len() {
-        value /= 1000.0;
-        unit += 1;
-    }
-    if unit == 0 {
-        format!("{bytes} {}", UNITS[unit])
-    } else {
-        format!("{value:.1} {}", UNITS[unit])
-    }
-}
-
 fn capacity_summary(total: u64, available: u64) -> ProgressSummary {
     let used = total.saturating_sub(available);
     let fraction = used as f64 / total.max(1) as f64;
     let summary = progress_summary("Used");
-    summary
-        .amount
-        .set_text(&format!("{} / {}", human_size(used), human_size(total)));
+    summary.amount.set_text(&format!(
+        "{} / {}",
+        crate::i18n::file_size(used),
+        crate::i18n::file_size(total)
+    ));
     summary.percent.set_visible(false);
     summary.progress.set_fraction(fraction);
     summary
@@ -285,9 +272,11 @@ fn wire_entry_submission(entry: &gtk::Entry, confirm: &gtk::Button) {
 
 fn label_validation_error(label: &str) -> Option<String> {
     if label.chars().count() > 255 {
-        Some("Strata labels hold at most 255 characters.".to_owned())
+        Some(crate::i18n::tr(
+            "Strata labels hold at most 255 characters.",
+        ))
     } else if label.chars().any(char::is_control) {
-        Some("Labels cannot contain control characters.".to_owned())
+        Some(crate::i18n::tr("Labels cannot contain control characters."))
     } else {
         None
     }
@@ -358,9 +347,9 @@ pub(super) fn show_drive_properties(
     let Some(shell) = modal_shell(
         parent,
         assets::icons::INFO,
-        "Properties",
+        &crate::i18n::tr("Properties"),
         &name,
-        "Close",
+        &crate::i18n::tr("Close"),
         false,
     ) else {
         return;
@@ -384,7 +373,7 @@ pub(super) fn show_drive_properties(
 
     let mut row = 0;
     let mut add_row = |label_text: &str, value_text: &str| {
-        let label = form_label(label_text);
+        let label = form_label(&crate::i18n::tr(label_text));
         label.set_xalign(0.0);
         let value = gtk::Label::new(Some(value_text));
         value.set_xalign(0.0);
@@ -400,7 +389,7 @@ pub(super) fn show_drive_properties(
 
     add_row("System name", &name);
     if let Some(id) = target.label_id() {
-        let label = add_row("Strata label", "Not set");
+        let label = add_row("Strata label", &crate::i18n::tr("Not set"));
         super::super::preferences::PreferenceManager::shared().bind_preference(
             &label,
             move |manager| manager.device_label(&id),
@@ -408,7 +397,11 @@ pub(super) fn show_drive_properties(
                 widget
                     .downcast_ref::<gtk::Label>()
                     .expect("Strata label value")
-                    .set_text(value.as_deref().unwrap_or("Not set"))
+                    .set_text(
+                        &value
+                            .as_deref()
+                            .map_or_else(|| crate::i18n::tr("Not set"), str::to_owned),
+                    )
             },
         );
     }
@@ -451,7 +444,7 @@ pub(super) fn show_drive_properties(
                         .map(|name| name.to_string())
                 })
         })
-        .unwrap_or_else(|| "Unknown".to_owned());
+        .unwrap_or_else(|| crate::i18n::tr("Unknown"));
     add_row("Filesystem", &filesystem);
 
     let total_bytes = block_device
@@ -464,7 +457,7 @@ pub(super) fn show_drive_properties(
                 .map(|path| path.display().to_string())
                 .unwrap_or_else(|| "—".to_owned());
             add_row("Mount point", &location);
-            add_row("Status", "Mounted");
+            add_row("Status", &crate::i18n::tr("Mounted"));
             let usage = root
                 .path()
                 .and_then(|path| drive_ops::usage_for_path(&path));
@@ -475,28 +468,28 @@ pub(super) fn show_drive_properties(
             match (total, usage) {
                 (Some(total), Some((_, available))) => {
                     let used = total.saturating_sub(available);
-                    add_row("Capacity", &human_size(total));
-                    add_row("Used", &human_size(used));
-                    add_row("Free", &human_size(available));
+                    add_row("Capacity", &crate::i18n::file_size(total));
+                    add_row("Used", &crate::i18n::file_size(used));
+                    add_row("Free", &crate::i18n::file_size(available));
                     let summary = capacity_summary(total, available);
                     summary.widget.set_margin_top(8);
                     grid.attach(&summary.widget, 0, row, 2, 1);
                 }
                 (Some(total), None) => {
-                    add_row("Capacity", &human_size(total));
-                    add_row("Used", "Unavailable");
+                    add_row("Capacity", &crate::i18n::file_size(total));
+                    add_row("Used", &crate::i18n::tr("Unavailable"));
                 }
                 (None, _) => {
-                    add_row("Capacity", "Unavailable");
+                    add_row("Capacity", &crate::i18n::tr("Unavailable"));
                 }
             }
         }
         None => {
-            add_row("Status", "Not mounted");
+            add_row("Status", &crate::i18n::tr("Not mounted"));
             if let Some(total) = total_bytes {
-                add_row("Capacity", &human_size(total));
+                add_row("Capacity", &crate::i18n::file_size(total));
             }
-            add_row("Used", "Unavailable (not mounted)");
+            add_row("Used", &crate::i18n::tr("Unavailable (not mounted)"));
         }
     }
 
@@ -592,9 +585,9 @@ fn show_label_dialog_for_identity(
     let Some(shell) = modal_shell(
         parent,
         assets::icons::PENCIL,
-        "Set label",
+        &crate::i18n::tr("Set label"),
         system_name,
-        "Save label",
+        &crate::i18n::tr("Save label"),
         false,
     ) else {
         return;
@@ -616,14 +609,15 @@ fn show_label_dialog_for_identity(
         .layout
         .body
         .append(&field_block("Label shown in Strata", &field.widget));
-    let hint = gtk::Label::new(Some(
+    let hint = gtk::Label::new(Some(&crate::i18n::tr(
         "Strata-only display label; filesystem unchanged. Leave blank to reset.",
-    ));
+    )));
     hint.add_css_class("dim-label");
     hint.set_max_width_chars(40);
     hint.set_xalign(0.0);
     hint.set_wrap(true);
     hint.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    keep_words_whole(&hint);
     shell.layout.body.append(&hint);
     let error = inline_error();
     error.set_max_width_chars(26);
@@ -724,7 +718,7 @@ fn format_filesystem_selector(
         .iter()
         .map(|fs| {
             if current == Some(fs.label()) {
-                format!("{} (current)", fs.label())
+                rust_i18n::t!("%{filesystem} (current)", filesystem = fs.label()).into_owned()
             } else {
                 fs.label().to_owned()
             }
@@ -758,7 +752,7 @@ pub(super) fn show_format_dialog(parent: &gtk::Widget, volume: &gio::Volume) {
     if !missing.is_empty() {
         show_missing_tools(
             parent,
-            "Formatting drives requires additional filesystem tools.",
+            &crate::i18n::tr("Formatting drives requires additional filesystem tools."),
             &missing,
         );
         return;
@@ -770,15 +764,15 @@ pub(super) fn show_format_dialog(parent: &gtk::Widget, volume: &gio::Volume) {
         .and_then(drive_ops::filesystem_label_for_device);
     let device = block_device
         .map(|path| path.display().to_string())
-        .unwrap_or_else(|| "unknown device".to_owned());
+        .unwrap_or_else(|| crate::i18n::tr("unknown device"));
     let subtitle = format!("{name} ({device})");
     let volume = volume.clone();
     let Some(shell) = modal_shell(
         parent,
         assets::icons::TRIANGLE_ALERT,
-        "Format Drive",
+        &crate::i18n::tr("Format Drive"),
         &subtitle,
-        "Continue",
+        &crate::i18n::tr("Continue"),
         true,
     ) else {
         return;
@@ -795,19 +789,19 @@ pub(super) fn show_format_dialog(parent: &gtk::Widget, volume: &gio::Volume) {
         available[fs_combo.selected() as usize].max_label_len() as i32,
     );
     let label_entry = label_field.entry;
-    label_entry.set_placeholder_text(Some("Volume label (optional)"));
+    label_entry.set_placeholder_text(Some(&crate::i18n::tr("Volume label (optional)")));
     step1.append(&field_block("Filesystem label", &label_field.widget));
 
-    let quick_check = form_check_button("Quick format");
+    let quick_check = form_check_button(&crate::i18n::tr("Quick format"));
     quick_check.set_active(true);
     let check_row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     check_row.append(&quick_check);
     step1.append(&check_row);
 
     if volume.get_mount().is_some() {
-        let mount_note = gtk::Label::new(Some(
+        let mount_note = gtk::Label::new(Some(&crate::i18n::tr(
             "This volume is currently mounted. It will be unmounted to format it; click it in the sidebar afterwards to mount it again.",
-        ));
+        )));
         mount_note.add_css_class("dim-label");
         mount_note.set_xalign(0.0);
         mount_note.set_max_width_chars(48);
@@ -826,9 +820,9 @@ pub(super) fn show_format_dialog(parent: &gtk::Widget, volume: &gio::Volume) {
     summary.set_wrap(true);
     summary.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     step2.append(&summary);
-    let warning = gtk::Label::new(Some(
+    let warning = gtk::Label::new(Some(&crate::i18n::tr(
         "This permanently erases ALL DATA on this volume. This cannot be undone.",
-    ));
+    )));
     warning.add_css_class("form-message");
     warning.add_css_class("error");
     warning.set_xalign(0.0);
@@ -884,24 +878,16 @@ pub(super) fn show_format_dialog(parent: &gtk::Widget, volume: &gio::Volume) {
             }
             let size = drive_ops::block_device_for_volume(&volume)
                 .and_then(|device| drive_ops::device_size_bytes(&device))
-                .map(human_size)
-                .unwrap_or_else(|| "unknown size".to_owned());
-            summary.set_text(&format!(
-                "Drive: {} ({}, {})\nFilesystem: {}\nLabel: {}\nMode: {}",
-                name,
-                device,
-                size,
-                fs_type.label(),
-                if label.is_empty() { "(none)" } else { &label },
-                if quick_check.is_active() {
+                .map(crate::i18n::file_size)
+                .unwrap_or_else(|| crate::i18n::tr("unknown size"));
+            summary.set_text(&rust_i18n::t!("Drive: %{value1} (%{value2}, %{value3})\nFilesystem: %{value4}\nLabel: %{value5}\nMode: %{value6}", value1 = name, value2 = device, value3 = size, value4 = fs_type.label(), value5 = if label.is_empty() { crate::i18n::tr("(none)") } else { label.clone() }, value6 = crate::i18n::tr(if quick_check.is_active() {
                     "Quick format"
                 } else {
                     "Full format"
-                },
-            ));
+                })));
             step1.set_visible(false);
             step2.set_visible(true);
-            confirm_btn.set_label("Format");
+            confirm_btn.set_label(&crate::i18n::tr("Format"));
             confirm_btn.grab_focus();
             armed.set(true);
             return;

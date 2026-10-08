@@ -129,12 +129,14 @@ impl Completion {
         self.duration.set(duration);
         self.remaining.set(duration);
         if let Some(status) = self.widgets.status.upgrade() {
-            status.set_text("100%");
+            status.set_text(&crate::i18n::percent(100));
         }
         if let Some(progress) = self.widgets.progress.upgrade() {
             crate::ui::accessibility::set_description(
                 &progress,
-                Some("Time remaining before notification closes"),
+                Some(&crate::i18n::tr(
+                    "Time remaining before notification closes",
+                )),
             );
         }
         self.render(Instant::now());
@@ -205,13 +207,18 @@ impl Completion {
             );
         }
         if let Some(meta) = self.widgets.meta.upgrade() {
-            let text = if self.pinned.get() {
-                " · pinned".to_owned()
+            let state = if self.pinned.get() {
+                crate::i18n::tr("pinned")
             } else if self.paused() {
-                " · paused".to_owned()
+                crate::i18n::tr("paused")
             } else {
-                format!(" · closing in {}s", left.as_secs_f64().ceil() as u64)
+                rust_i18n::t!(
+                    "closing in %{time}",
+                    time = crate::i18n::duration(left.as_secs_f64().ceil() as u64)
+                )
+                .into_owned()
             };
+            let text = format!(" · {state}");
             if meta.text() != text {
                 meta.set_text(&text);
             }

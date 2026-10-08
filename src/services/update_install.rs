@@ -19,6 +19,7 @@ use serde::Deserialize;
 
 use crate::services::{InstallSource, ensure_self_managed, installed_executable};
 
+use super::network_error::NetworkError;
 use super::release_channel::Version;
 
 mod archive;
@@ -142,14 +143,18 @@ fn verified_download_url(request: &InstallRequest) -> Result<String, String> {
                 || request.asset_name != super::update_check::archive_name(&version.to_string())
         })
     {
-        return Err("The release names an unexpected update artifact.".to_owned());
+        return Err(crate::i18n::tr(
+            "The release names an unexpected update artifact.",
+        ));
     }
     let expected = format!(
         "{RELEASE_DOWNLOAD_ROOT}/{}/{}",
         request.tag, request.asset_name
     );
     if request.advertised_url != expected {
-        return Err("The release points at an unexpected download location.".to_owned());
+        return Err(crate::i18n::tr(
+            "The release points at an unexpected download location.",
+        ));
     }
     Ok(expected)
 }
@@ -232,12 +237,14 @@ pub(super) fn aur_repository_version() -> Result<Version, String> {
     let package = InstallSource::detect()
         .managed()
         .and_then(|managed| managed.package())
-        .ok_or_else(|| "the AUR packaging marker does not name a package".to_owned())?;
+        .ok_or_else(|| crate::i18n::tr("the AUR packaging marker does not name a package"))?;
     if !package
         .bytes()
         .all(|byte| byte.is_ascii_alphanumeric() || b"@._+-".contains(&byte))
     {
-        return Err("the AUR packaging marker contains an invalid package name".to_owned());
+        return Err(crate::i18n::tr(
+            "the AUR packaging marker contains an invalid package name",
+        ));
     }
 
     let url = format!("{AUR_RPC}?arg[]={package}");
@@ -245,32 +252,48 @@ pub(super) fn aur_repository_version() -> Result<Version, String> {
         .timeout_global(Some(Duration::from_secs(10)))
         .build()
         .into();
-    let mut response = agent
-        .get(&url)
-        .call()
-        .map_err(|error| format!("could not query the AUR: {error}"))?;
+    let mut response = agent.get(&url).call().map_err(|error| {
+        rust_i18n::t!(
+            "could not query the AUR: %{error}",
+            error = NetworkError::from_ureq(&error).detail()
+        )
+        .into_owned()
+    })?;
     let mut contents = String::new();
     response
         .body_mut()
         .as_reader()
         .take(AUR_RESPONSE_LIMIT + 1)
         .read_to_string(&mut contents)
-        .map_err(|error| format!("could not read the AUR response: {error}"))?;
+        .map_err(|error| {
+            rust_i18n::t!(
+                "could not read the AUR response: %{error}",
+                error = NetworkError::from_io(&error).detail()
+            )
+            .into_owned()
+        })?;
     if contents.len() as u64 > AUR_RESPONSE_LIMIT {
-        return Err("the AUR response exceeded the size limit".to_owned());
+        return Err(crate::i18n::tr("the AUR response exceeded the size limit"));
     }
     aur_repository_version_from_response(&contents, package)
 }
 
 fn aur_repository_version_from_response(contents: &str, package: &str) -> Result<Version, String> {
-    let response: AurResponse = serde_json::from_str(contents)
-        .map_err(|error| format!("the AUR returned an invalid response: {error}"))?;
+    let response: AurResponse = serde_json::from_str(contents).map_err(|error| {
+        rust_i18n::t!(
+            "the AUR returned an invalid response: %{error}",
+            error = error
+        )
+        .into_owned()
+    })?;
     response
         .results
         .into_iter()
         .find(|result| result.name == package)
         .and_then(|result| parse_aur_package_version(&result.version))
-        .ok_or_else(|| format!("{package} is not available in the AUR"))
+        .ok_or_else(|| {
+            rust_i18n::t!("%{package} is not available in the AUR", package = package).into_owned()
+        })
 }
 
 fn parse_aur_package_version(value: &str) -> Option<Version> {
@@ -304,19 +327,30 @@ pub(super) fn omarchy_repository_version() -> Result<Version, String> {
         .timeout_global(Some(Duration::from_secs(10)))
         .build()
         .into();
-    let mut response = agent
-        .get(&database_url)
-        .call()
-        .map_err(|error| format!("could not query the Omarchy repository: {error}"))?;
+    let mut response = agent.get(&database_url).call().map_err(|error| {
+        rust_i18n::t!(
+            "could not query the Omarchy repository: %{error}",
+            error = NetworkError::from_ureq(&error).detail()
+        )
+        .into_owned()
+    })?;
     let mut database = Vec::new();
     response
         .body_mut()
         .as_reader()
         .take(REPOSITORY_DATABASE_LIMIT + 1)
         .read_to_end(&mut database)
-        .map_err(|error| format!("could not read the Omarchy repository: {error}"))?;
+        .map_err(|error| {
+            rust_i18n::t!(
+                "could not read the Omarchy repository: %{error}",
+                error = NetworkError::from_io(&error).detail()
+            )
+            .into_owned()
+        })?;
     if database.len() as u64 > REPOSITORY_DATABASE_LIMIT {
-        return Err("Omarchy repository database exceeded the size limit".to_owned());
+        return Err(crate::i18n::tr(
+            "Omarchy repository database exceeded the size limit",
+        ));
     }
     repository_database_version(&database, PACKAGE_NAME)
 }
@@ -325,30 +359,50 @@ fn omarchy_repository_server(pacman_conf: &Path) -> Result<String, String> {
     let output = Command::new(pacman_conf)
         .args(["--repo", "omarchy", "Server"])
         .output()
-        .map_err(|error| format!("could not read the Omarchy repository configuration: {error}"))?;
+        .map_err(|error| {
+            rust_i18n::t!(
+                "could not read the Omarchy repository configuration: %{error}",
+                error = crate::services::io_error_detail(&error)
+            )
+            .into_owned()
+        })?;
     if !output.status.success() {
-        return Err("Omarchy repository is not configured".to_owned());
+        return Err(crate::i18n::tr("Omarchy repository is not configured"));
     }
     let output = String::from_utf8(output.stdout)
-        .map_err(|_| "Omarchy repository configuration is invalid".to_owned())?;
+        .map_err(|_| crate::i18n::tr("Omarchy repository configuration is invalid"))?;
     output
         .lines()
         .map(str::trim)
         .find(|line| line.starts_with("https://") || line.starts_with("http://"))
         .map(str::to_owned)
-        .ok_or_else(|| "Omarchy repository configuration has no package server".to_owned())
+        .ok_or_else(|| crate::i18n::tr("Omarchy repository configuration has no package server"))
 }
 
 fn repository_database_version(database: &[u8], package: &str) -> Result<Version, String> {
-    let decoder = zstd::stream::read::Decoder::new(database)
-        .map_err(|error| format!("could not decode the Omarchy repository: {error}"))?;
+    let decoder = zstd::stream::read::Decoder::new(database).map_err(|error| {
+        rust_i18n::t!(
+            "could not decode the Omarchy repository: %{error}",
+            error = error
+        )
+        .into_owned()
+    })?;
     let mut archive = tar::Archive::new(decoder);
-    let entries = archive
-        .entries()
-        .map_err(|error| format!("could not read the Omarchy repository: {error}"))?;
+    let entries = archive.entries().map_err(|error| {
+        rust_i18n::t!(
+            "could not read the Omarchy repository: %{error}",
+            error = error
+        )
+        .into_owned()
+    })?;
     for entry in entries {
-        let mut entry =
-            entry.map_err(|error| format!("could not read the Omarchy repository: {error}"))?;
+        let mut entry = entry.map_err(|error| {
+            rust_i18n::t!(
+                "could not read the Omarchy repository: %{error}",
+                error = error
+            )
+            .into_owned()
+        })?;
         let is_description = entry
             .path()
             .is_ok_and(|path| path.to_string_lossy().ends_with("/desc"));
@@ -362,10 +416,12 @@ fn repository_database_version(database: &[u8], package: &str) -> Result<Version
         if repository_description_field(&description, "NAME") == Some(package) {
             return repository_description_field(&description, "VERSION")
                 .and_then(parse_package_version)
-                .ok_or_else(|| "Omarchy repository returned an invalid version".to_owned());
+                .ok_or_else(|| crate::i18n::tr("Omarchy repository returned an invalid version"));
         }
     }
-    Err("Strata is not available in the Omarchy repository".to_owned())
+    Err(crate::i18n::tr(
+        "Strata is not available in the Omarchy repository",
+    ))
 }
 
 fn repository_description_field<'a>(description: &'a str, field: &str) -> Option<&'a str> {
@@ -393,19 +449,27 @@ fn package_repository_version_for(pacman: &Path, package: &str) -> Result<Versio
             package,
         ])
         .output()
-        .map_err(|error| format!("could not query the package repository: {error}"))?;
+        .map_err(|error| {
+            rust_i18n::t!(
+                "could not query the package repository: %{error}",
+                error = crate::services::io_error_detail(&error)
+            )
+            .into_owned()
+        })?;
     if !output.status.success() {
-        return Err("package is not available in the configured repositories".to_owned());
+        return Err(crate::i18n::tr(
+            "package is not available in the configured repositories",
+        ));
     }
 
     let output = String::from_utf8(output.stdout)
-        .map_err(|_| "package repository returned an invalid version".to_owned())?;
+        .map_err(|_| crate::i18n::tr("package repository returned an invalid version"))?;
     output
         .lines()
         .filter_map(|line| line.trim().split_once(char::is_whitespace))
         .find(|(name, _version)| *name == package)
         .and_then(|(_name, version)| parse_package_version(version.trim()))
-        .ok_or_else(|| "package repository returned an invalid version".to_owned())
+        .ok_or_else(|| crate::i18n::tr("package repository returned an invalid version"))
 }
 
 fn parse_package_version(value: &str) -> Option<Version> {
@@ -445,28 +509,27 @@ fn perform_install(
     match update_method() {
         UpdateMethod::InPlace => {}
         UpdateMethod::Aur => {
-            return Err(InstallStop::Failed(
-                "This installation is managed by its package manager.".to_owned(),
-            ));
+            return Err(InstallStop::Failed(crate::i18n::tr(
+                "This installation is managed by its package manager.",
+            )));
         }
         UpdateMethod::Omarchy => {
-            return Err(InstallStop::Failed(
-                "This installation is managed by Omarchy; install updates with `omarchy update`."
-                    .to_owned(),
-            ));
+            return Err(InstallStop::Failed(crate::i18n::tr(
+                "This installation is managed by Omarchy; install updates with `omarchy update`.",
+            )));
         }
         UpdateMethod::Pacman => {
-            return Err(InstallStop::Failed(
-                "This installation is managed by pacman; install updates through a full system update."
-                    .to_owned(),
-            ));
+            return Err(InstallStop::Failed(crate::i18n::tr(
+                "This installation is managed by pacman; install updates through a full system update.",
+            )));
         }
     }
 
-    let current_exe = installed_executable().map_err(|error| error.to_string())?;
+    let current_exe =
+        installed_executable().map_err(|error| crate::services::io_error_message(&error))?;
     let exe_dir = current_exe
         .parent()
-        .ok_or_else(|| "Could not determine the install directory".to_owned())?;
+        .ok_or_else(|| crate::i18n::tr("Could not determine the install directory"))?;
 
     // A unique-per-install directory, not the old process-scoped
     // `.strata-update-{pid}`: with three independent install drivers (the
@@ -498,7 +561,13 @@ fn stage_workdir(exe_dir: &Path) -> Result<tempfile::TempDir, String> {
     tempfile::Builder::new()
         .prefix(".strata-update-")
         .tempdir_in(exe_dir)
-        .map_err(|error| format!("Could not stage the update: {error}"))
+        .map_err(|error| {
+            rust_i18n::t!(
+                "Could not stage the update: %{error}",
+                error = crate::services::io_error_detail(&error)
+            )
+            .into_owned()
+        })
 }
 
 /// Creates a fresh, uniquely-named path for the staged replacement binary
@@ -508,7 +577,13 @@ fn stage_binary_path(exe_dir: &Path) -> Result<tempfile::NamedTempFile, String> 
         .prefix(".strata-update-")
         .suffix(".tmp")
         .tempfile_in(exe_dir)
-        .map_err(|error| format!("Could not stage the new binary: {error}"))
+        .map_err(|error| {
+            rust_i18n::t!(
+                "Could not stage the new binary: %{error}",
+                error = crate::services::io_error_detail(&error)
+            )
+            .into_owned()
+        })
 }
 
 fn try_install(
@@ -536,8 +611,13 @@ fn try_install(
         prepare_release_binary(request, &release, &archive_path, workdir, cancel)?;
 
     let _sent = progress.send(UpdateInstall::Installing);
-    let old_executable = fs::metadata(current_exe)
-        .map_err(|error| format!("Could not inspect the installed binary: {error}"))?;
+    let old_executable = fs::metadata(current_exe).map_err(|error| {
+        rust_i18n::t!(
+            "Could not inspect the installed binary: %{error}",
+            error = crate::services::io_error_detail(&error)
+        )
+        .into_owned()
+    })?;
     cancel.check()?;
     let rollback = commit_replacement(staged, current_exe, exe_dir, cancel, progress)?;
 
@@ -570,9 +650,13 @@ fn commit_replacement(
     let _sent = progress.send(UpdateInstall::Finalizing);
     if let Err(error) = staged.persist(current_exe) {
         let _removed = fs::remove_file(&rollback);
-        return Err(InstallStop::Failed(format!(
-            "Could not replace the installed binary: {error}"
-        )));
+        return Err(InstallStop::Failed(
+            rust_i18n::t!(
+                "Could not replace the installed binary: %{error}",
+                error = crate::services::io_error_detail(&error.error)
+            )
+            .into_owned(),
+        ));
     }
     Ok(rollback)
 }
@@ -587,7 +671,7 @@ fn prepare_release_binary(
     release.verify_archive(archive_path, cancel)?;
     cancel.check()?;
     let extract_dir = workdir.join("extracted");
-    fs::create_dir_all(&extract_dir).map_err(|error| error.to_string())?;
+    fs::create_dir_all(&extract_dir).map_err(|error| crate::services::io_error_message(&error))?;
     let package = archive::extract_release_archive(archive_path, &extract_dir)?;
     verify_package_name(&package, request)?;
     release.verify_source_commit(&package)?;
@@ -603,16 +687,21 @@ pub(crate) fn rollback_path(exe_dir: &Path) -> PathBuf {
 fn stage_rollback(current_exe: &Path, exe_dir: &Path) -> Result<PathBuf, String> {
     let rollback = rollback_path(exe_dir);
     let staged = stage_binary_path(exe_dir)?;
-    fs::copy(current_exe, staged.path())
-        .map_err(|error| format!("Could not preserve the current version: {error}"))?;
+    fs::copy(current_exe, staged.path()).map_err(|error| {
+        rust_i18n::t!(
+            "Could not preserve the current version: %{error}",
+            error = crate::services::io_error_detail(&error)
+        )
+        .into_owned()
+    })?;
     set_executable(staged.path())?;
     staged
         .as_file()
         .sync_all()
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| crate::services::io_error_message(&error))?;
     staged
         .persist(&rollback)
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| crate::services::io_error_message(&error.error))?;
     sync_directory(exe_dir)?;
     Ok(rollback)
 }
@@ -620,15 +709,24 @@ fn stage_rollback(current_exe: &Path, exe_dir: &Path) -> Result<PathBuf, String>
 fn sync_directory(directory: &Path) -> Result<(), String> {
     fs::File::open(directory)
         .and_then(|file| file.sync_all())
-        .map_err(|error| format!("Could not synchronize the install directory: {error}"))
+        .map_err(|error| {
+            rust_i18n::t!(
+                "Could not synchronize the install directory: %{error}",
+                error = crate::services::io_error_detail(&error)
+            )
+            .into_owned()
+        })
 }
 
 fn restore_rollback(rollback: &Path, current_exe: &Path) -> Result<(), InstallStop> {
     fs::rename(rollback, current_exe).map_err(|error| {
-        InstallStop::Failed(format!(
-            "The update failed and the previous version could not be restored: {error}. \
-             Reinstall Strata from the release page."
-        ))
+        InstallStop::Failed(
+            rust_i18n::t!(
+                "The update failed and the previous version could not be restored: %{error}. Reinstall Strata from the release page.",
+                error = crate::services::io_error_detail(&error)
+            )
+            .into_owned(),
+        )
     })?;
     if let Some(directory) = current_exe.parent() {
         sync_directory(directory)?;
@@ -638,13 +736,18 @@ fn restore_rollback(rollback: &Path, current_exe: &Path) -> Result<(), InstallSt
 
 fn stage_verified_binary(binary: &Path, directory: &Path) -> Result<tempfile::TempPath, String> {
     let staged = stage_binary_path(directory)?;
-    fs::copy(binary, staged.path())
-        .map_err(|error| format!("Could not stage the new binary: {error}"))?;
+    fs::copy(binary, staged.path()).map_err(|error| {
+        rust_i18n::t!(
+            "Could not stage the new binary: %{error}",
+            error = crate::services::io_error_detail(&error)
+        )
+        .into_owned()
+    })?;
     set_executable(staged.path())?;
     staged
         .as_file()
         .sync_all()
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| crate::services::io_error_message(&error))?;
     // Linux refuses exec while any writable descriptor remains open (ETXTBSY).
     let staged = staged.into_temp_path();
     verify_staged_binary(&staged)?;
@@ -663,7 +766,7 @@ fn binary_probe_output(staged: &Path) -> Result<std::process::Output, String> {
     )
     .map_err(|stop| match stop {
         InstallStop::Failed(message) => message,
-        InstallStop::Cancelled => "Update cancelled".to_owned(),
+        InstallStop::Cancelled => crate::i18n::tr("Update cancelled"),
     })
 }
 
@@ -671,7 +774,9 @@ fn verify_staged_binary(staged: &Path) -> Result<(), String> {
     if binary_probe_output(staged)?.status.success() {
         Ok(())
     } else {
-        Err("The downloaded update does not run on this system".to_owned())
+        Err(crate::i18n::tr(
+            "The downloaded update does not run on this system",
+        ))
     }
 }
 
@@ -681,13 +786,17 @@ fn verify_package_name(package: &Path, request: &InstallRequest) -> Result<(), S
     {
         Ok(())
     } else {
-        Err("The authenticated archive does not contain the selected release package".to_owned())
+        Err(crate::i18n::tr(
+            "The authenticated archive does not contain the selected release package",
+        ))
     }
 }
 
 fn confirm_replacement(current_exe: &Path) -> Result<(), String> {
     if !current_exe.is_file() {
-        return Err("The updated executable is missing after installation".to_owned());
+        return Err(crate::i18n::tr(
+            "The updated executable is missing after installation",
+        ));
     }
     verify_staged_binary(current_exe)
 }
@@ -724,8 +833,12 @@ fn fetch_update_metadata(
         .call();
     cancel.check()?;
     let mut response = response.map_err(|error| match error {
-        ureq::Error::StatusCode(404) => "This release has no signed update manifest. Choose a newer release or download it manually.".to_owned(),
-        error => format!("Could not download signed update metadata: {error}"),
+        ureq::Error::StatusCode(404) => crate::i18n::tr("This release has no signed update manifest. Choose a newer release or download it manually."),
+        error => rust_i18n::t!(
+            "Could not download signed update metadata: %{error}",
+            error = NetworkError::from_ureq(&error).detail()
+        )
+        .into_owned(),
     })?;
     read_metadata_body(&mut response, limit, cancel)
 }
@@ -743,7 +856,7 @@ fn read_metadata_body(
         .and_then(|value| value.parse::<u64>().ok())
         .is_some_and(|length| length > limit)
     {
-        return Err("The signed update metadata is too large".to_owned().into());
+        return Err(crate::i18n::tr("The signed update metadata is too large").into());
     }
     let mut reader = response.body_mut().as_reader();
     let mut bytes = Vec::new();
@@ -752,12 +865,12 @@ fn read_metadata_body(
         cancel.check()?;
         let read = reader.read(&mut buffer);
         cancel.check()?;
-        let count = read.map_err(|error| error.to_string())?;
+        let count = read.map_err(|error| describe_read_error(&error))?;
         if count == 0 {
             break;
         }
         if bytes.len() as u64 + count as u64 > limit {
-            return Err("The signed update metadata is too large".to_owned().into());
+            return Err(crate::i18n::tr("The signed update metadata is too large").into());
         }
         bytes.extend_from_slice(&buffer[..count]);
     }
@@ -908,9 +1021,10 @@ fn write_desktop_entry(
     if !staged_entry.is_file() {
         return Err(format!("the archive contains no {DESKTOP_ENTRY}"));
     }
-    let template = fs::read_to_string(&staged_entry).map_err(|error| error.to_string())?;
+    let template = fs::read_to_string(&staged_entry)
+        .map_err(|error| crate::services::io_error_message(&error))?;
     fs::write(entry_path, desktop_entry_with_exec(&template, executable))
-        .map_err(|error| error.to_string())
+        .map_err(|error| crate::services::io_error_message(&error))
 }
 
 fn write_application_icon(package_dir: &Path, data_home: &Path) -> Result<(), String> {
@@ -919,10 +1033,10 @@ fn write_application_icon(package_dir: &Path, data_home: &Path) -> Result<(), St
         return Err(format!("the archive contains no {APPLICATION_ICON}"));
     }
     let icon_dir = data_home.join("icons/hicolor/scalable/apps");
-    fs::create_dir_all(&icon_dir).map_err(|error| error.to_string())?;
+    fs::create_dir_all(&icon_dir).map_err(|error| crate::services::io_error_message(&error))?;
     fs::copy(&staged_icon, icon_dir.join(APPLICATION_ICON))
         .map(|_copied| ())
-        .map_err(|error| error.to_string())
+        .map_err(|error| crate::services::io_error_message(&error))
 }
 
 /// Points the packaged entry's `Exec` line at the running install path, keeping
@@ -1017,8 +1131,13 @@ fn download_to_file_with(
     }
 
     let mut reader = response.body_mut().as_reader();
-    let mut file = fs::File::create(destination)
-        .map_err(|error| format!("Could not save the update: {error}"))?;
+    let mut file = fs::File::create(destination).map_err(|error| {
+        rust_i18n::t!(
+            "Could not save the update: %{error}",
+            error = crate::services::io_error_detail(&error)
+        )
+        .into_owned()
+    })?;
     let mut downloaded = 0_u64;
     let mut buffer = [0_u8; 64 * 1024];
     let _sent = progress.send(UpdateInstall::Downloading { downloaded, total });
@@ -1038,21 +1157,33 @@ fn download_to_file_with(
         if downloaded > limit {
             return Err(oversized_update());
         }
-        file.write_all(&buffer[..count])
-            .map_err(|error| format!("Could not save the update: {error}"))?;
+        file.write_all(&buffer[..count]).map_err(|error| {
+            rust_i18n::t!(
+                "Could not save the update: %{error}",
+                error = crate::services::io_error_detail(&error)
+            )
+            .into_owned()
+        })?;
         let _sent = progress.send(UpdateInstall::Downloading { downloaded, total });
     }
     Ok(())
 }
 
 fn oversized_update() -> InstallStop {
-    InstallStop::Failed("The update is larger than expected and was not installed".to_owned())
+    InstallStop::Failed(crate::i18n::tr(
+        "The update is larger than expected and was not installed",
+    ))
 }
 
 fn set_executable(path: &Path) -> Result<(), String> {
     use std::os::unix::fs::PermissionsExt;
-    fs::set_permissions(path, fs::Permissions::from_mode(0o755))
-        .map_err(|error| format!("Could not mark the update executable: {error}"))
+    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).map_err(|error| {
+        rust_i18n::t!(
+            "Could not mark the update executable: %{error}",
+            error = crate::services::io_error_detail(&error)
+        )
+        .into_owned()
+    })
 }
 
 fn run(command: &mut Command) -> Result<String, String> {

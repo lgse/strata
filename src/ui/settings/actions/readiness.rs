@@ -81,23 +81,23 @@ pub(super) fn indicator(
                 Ok(target) => match crate::adapters::resolve_action_executable(&target) {
                     Some(path) => (
                         "available",
-                        format!("{} available", runtime.label()),
-                        format!(
-                            "Executable: {}\nInterpreter availability only. Script syntax and external dependencies are not checked. Nothing is executed by this check.",
-                            path.display()
-                        ),
+                        rust_i18n::t!("%{runtime} available", runtime = runtime.label())
+                            .into_owned(),
+                        rust_i18n::t!("Executable: %{value1}\nInterpreter availability only. Script syntax and external dependencies are not checked. Nothing is executed by this check.", value1 = path.display()).into_owned(),
                     ),
                     None => (
                         "unavailable",
-                        format!("{} not found — cannot run", runtime.label()),
-                        format!(
-                            "Executable not found: {target}. Install it and reopen this dialog, or choose an installed executable. You can still save this draft."
-                        ),
+                        rust_i18n::t!(
+                            "%{runtime} not found — cannot run",
+                            runtime = runtime.label()
+                        )
+                        .into_owned(),
+                        rust_i18n::t!("Executable not found: %{target}. Install it and reopen this dialog, or choose an installed executable. You can still save this draft.", target = target).into_owned(),
                     ),
                 },
                 Err(error) => (
                     "unavailable",
-                    "Invalid interpreter — cannot run".to_owned(),
+                    crate::i18n::tr("Invalid interpreter — cannot run"),
                     error,
                 ),
             };
@@ -141,5 +141,5 @@ fn executable(runtime: ActionRuntime, source: &str) -> Result<String, String> {
                         .to_owned()
                 })
         })
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.user_message())
 }

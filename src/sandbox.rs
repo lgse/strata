@@ -414,9 +414,9 @@ fn parse_sandboxed(
     }
     let input = input
         .canonicalize()
-        .map_err(|error| format!("Unable to open preview input: {error}"))?;
-    let input_metadata = fs::metadata(&input)
-        .map_err(|error| format!("Unable to inspect preview input: {error}"))?;
+        .map_err(|error| crate::services::io_error_message(&error))?;
+    let input_metadata =
+        fs::metadata(&input).map_err(|error| crate::services::io_error_message(&error))?;
     if !input_metadata.is_file() {
         return Err("Preview input is not a regular file".to_owned());
     }
@@ -431,10 +431,11 @@ fn parse_sandboxed(
             ) {
                 "The image exceeds the 32 MiB conversion limit. Choose a smaller image.".to_owned()
             } else if matches!(operation, ParseOperation::PreviewModel(_)) {
-                format!(
-                    "This model file exceeds the {} MiB preview limit. Try a smaller or lower-detail version.",
-                    MAX_MODEL_INPUT_BYTES / (1024 * 1024)
-                )
+                const _: () = assert!(
+                    MAX_MODEL_INPUT_BYTES == 128 * 1024 * 1024,
+                    "update the model size limit message and its catalog entry"
+                );
+                "This model file exceeds the 128 MiB preview limit. Try a smaller or lower-detail version.".to_owned()
             } else {
                 "Preview input exceeds the supported size limit".to_owned()
             },
@@ -449,7 +450,8 @@ fn parse_sandboxed(
         });
     }
 
-    let output = PrivateOutput::create().map_err(|error| error.to_string())?;
+    let output =
+        PrivateOutput::create().map_err(|error| crate::services::io_error_message(&error))?;
     let secret = if let ParseOperation::ArchiveList {
         password: Some(password),
         ..
@@ -464,8 +466,8 @@ fn parse_sandboxed(
     let running_executable = PathBuf::from(format!("/proc/{}/exe", std::process::id()));
     let executable =
         resolve_renderer_executable(&current_executable, &running_executable, output.path())?;
-    let bwrap = crate::trusted_command::resolve("bwrap")
-        .map_err(|error| format!("Unable to start the preview sandbox: {error}"))?;
+    let bwrap =
+        crate::trusted_command::resolve("bwrap").map_err(|error| sandbox_unavailable(&error))?;
     let devices = Vec::new();
     let mut command = sandbox_command(
         &bwrap,
@@ -484,8 +486,7 @@ fn parse_sandboxed(
     }
     command.stderr(Stdio::null());
     command.stdout(Stdio::null());
-    let mut child = spawn_renderer(&mut command)
-        .map_err(|error| format!("Unable to start the preview sandbox: {error}"))?;
+    let mut child = spawn_renderer(&mut command).map_err(|error| sandbox_start_failed(&error))?;
     drop(command);
     let timeout = if matches!(
         operation,
@@ -599,6 +600,21 @@ fn resolve_renderer_executable(
     fs::copy(running, &snapshot)
         .map_err(|error| format!("Unable to preserve the running Strata executable: {error}"))?;
     Ok(snapshot)
+}
+
+/// Fixed text for a missing or untrusted bubblewrap; the detail names system directories.
+pub(crate) fn sandbox_unavailable(detail: &str) -> String {
+    tracing::warn!(detail, "the bubblewrap sandbox is unavailable");
+    crate::i18n::tr("The bubblewrap sandbox is not available")
+}
+
+pub(crate) fn sandbox_start_failed(error: &io::Error) -> String {
+    tracing::warn!(%error, "unable to start the sandbox");
+    rust_i18n::t!(
+        "Unable to start the sandbox: %{error}",
+        error = crate::services::io_error_detail(error)
+    )
+    .into_owned()
 }
 
 fn spawn_renderer(command: &mut Command) -> io::Result<Child> {

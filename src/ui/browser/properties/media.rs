@@ -12,7 +12,7 @@ pub(super) use crate::ui::raw_details::MetadataLoad;
 
 fn append_row(parent: &gtk::Box, name: &str, value: &str) -> gtk::Label {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-    let heading = gtk::Label::new(Some(name));
+    let heading = gtk::Label::new(Some(&crate::i18n::tr(name)));
     heading.set_xalign(0.0);
     let label = gtk::Label::new(Some(value));
     label.set_xalign(0.0);
@@ -32,7 +32,15 @@ fn append_row(parent: &gtk::Box, name: &str, value: &str) -> gtk::Label {
 fn rows(metadata: &MediaMetadata) -> Vec<(&'static str, String)> {
     let mut rows = Vec::new();
     if let Some((width, height)) = metadata.dimensions {
-        rows.push(("RESOLUTION", format!("{width} × {height} pixels")));
+        rows.push((
+            "RESOLUTION",
+            rust_i18n::t!(
+                "%{width} × %{height} pixels",
+                width = width,
+                height = height
+            )
+            .into_owned(),
+        ));
     }
     if let Some(duration) = metadata.duration {
         let seconds = duration.round() as u64;
@@ -50,9 +58,17 @@ fn rows(metadata: &MediaMetadata) -> Vec<(&'static str, String)> {
         rows.push((
             "BITRATE",
             if bitrate >= 1_000_000.0 {
-                format!("{:.2} Mb/s", bitrate / 1_000_000.0)
+                rust_i18n::t!(
+                    "%{rate} Mb/s",
+                    rate = crate::i18n::decimal(bitrate / 1_000_000.0, 2)
+                )
+                .into_owned()
             } else {
-                format!("{:.0} kb/s", bitrate / 1000.0)
+                rust_i18n::t!(
+                    "%{rate} kb/s",
+                    rate = crate::i18n::decimal(bitrate / 1000.0, 0)
+                )
+                .into_owned()
             },
         ));
     }
@@ -63,20 +79,27 @@ fn rows(metadata: &MediaMetadata) -> Vec<(&'static str, String)> {
         rows.push(("HDR", hdr.into()));
     }
     if let Some(rate) = metadata.frame_rate {
-        rows.push(("FRAME RATE", format!("{rate:.2} fps")));
+        rows.push((
+            "FRAME RATE",
+            rust_i18n::t!("%{rate} fps", rate = crate::i18n::decimal(rate, 2)).into_owned(),
+        ));
     }
     if let Some(codec) = &metadata.audio_codec {
         rows.push(("AUDIO CODEC", codec.clone()));
     }
     if let Some(rate) = metadata.sample_rate {
-        rows.push(("SAMPLE RATE", format!("{:.1} kHz", rate / 1000.0)));
+        rows.push((
+            "SAMPLE RATE",
+            rust_i18n::t!("%{rate} kHz", rate = crate::i18n::decimal(rate / 1000.0, 1))
+                .into_owned(),
+        ));
     }
     if let Some(channels) = metadata.channels {
         rows.push((
             "CHANNELS",
             match channels {
-                1 => "1 (Mono)".into(),
-                2 => "2 (Stereo)".into(),
+                1 => crate::i18n::tr("1 (Mono)"),
+                2 => crate::i18n::tr("2 (Stereo)"),
                 _ => channels.to_string(),
             },
         ));
@@ -140,7 +163,7 @@ pub(super) fn load(section: &gtk::Box, path: PathBuf) -> MetadataLoad {
             return;
         }
         if let Some(section) = section.upgrade() {
-            append_row(&section, "MEDIA", "Loading…");
+            append_row(&section, "MEDIA", &crate::i18n::tr("Loading…"));
             section.set_visible(true);
         } else {
             return;
@@ -172,7 +195,7 @@ pub(super) fn load(section: &gtk::Box, path: PathBuf) -> MetadataLoad {
             .map(|metadata| rows(&metadata))
             .unwrap_or_default();
         if rows.is_empty() {
-            append_row(&section, "MEDIA", "Unavailable");
+            append_row(&section, "MEDIA", &crate::i18n::tr("Unavailable"));
             return;
         }
         let headings = gtk::SizeGroup::new(gtk::SizeGroupMode::Horizontal);

@@ -31,19 +31,21 @@ pub(super) fn about_page() -> gtk::Widget {
     heading.append(&name);
     let kind = crate::build_info::build_kind();
     if kind != services::BuildKind::Stable {
-        let badge = gtk::Label::new(Some(kind.label()));
+        let badge = gtk::Label::new(Some(&kind.localized_label()));
         badge.add_css_class("prerelease-badge");
         badge.set_valign(gtk::Align::Center);
         heading.append(&badge);
     }
     copy.append(&heading);
-    let description = gtk::Label::new(Some("A keyboard-first file manager for Linux."));
+    let description = gtk::Label::new(Some(&crate::i18n::tr(
+        "A keyboard-first file manager for Linux.",
+    )));
     description.set_xalign(0.0);
     description.set_wrap(true);
     description.add_css_class("about-description");
     copy.append(&description);
     identity.append(&copy);
-    let button = gtk::Button::with_label("Copy version info");
+    let button = gtk::Button::with_label(&crate::i18n::tr("Copy version info"));
     button.add_css_class("settings-update-check");
     button.set_valign(gtk::Align::Center);
     button.connect_clicked(|button| button.clipboard().set_text(&version_info()));
@@ -89,10 +91,11 @@ pub(super) fn about_page() -> gtk::Widget {
         let button = gtk::LinkButton::builder().uri(&uri).build();
         button.add_css_class("about-repository");
         super::search::tag(&button, label);
-        crate::ui::accessibility::set_label(&button, label);
+        let label = crate::i18n::tr(label);
+        crate::ui::accessibility::set_label(&button, &label);
         let row = super::wrap::WrapRow::new(16);
         row.append(&crate::assets::primary_icon(icon, 18));
-        let title = gtk::Label::new(Some(label));
+        let title = gtk::Label::new(Some(&label));
         title.set_xalign(0.0);
         title.set_hexpand(true);
         title.set_wrap(true);
@@ -122,21 +125,14 @@ fn toolkit_version() -> String {
 }
 
 fn version_info() -> String {
-    format!(
-        "Strata {}\n{}\nCommit: {}\nToolkit: {}\nAuthor: {}\nLicense: MIT",
-        crate::build_info::installed_version(),
-        crate::build_info::DESCRIPTION,
-        crate::build_info::COMMIT,
-        toolkit_version(),
-        crate::build_info::AUTHOR
-    )
+    rust_i18n::t!("Strata %{value1}\n%{value2}\nCommit: %{value3}\nToolkit: %{value4}\nAuthor: %{value5}\nLicense: MIT", value1 = crate::build_info::installed_version(), value2 = crate::i18n::tr("A keyboard-first file manager for Linux."), value3 = crate::build_info::COMMIT, value4 = toolkit_version(), value5 = crate::build_info::AUTHOR).into_owned()
 }
 
 fn append_about_detail(container: &gtk::Box, label: &str, value: &str) {
     let row = super::wrap::WrapRow::new(16);
     row.set_end_align(true);
     row.add_css_class("about-detail-row");
-    let label = gtk::Label::new(Some(label));
+    let label = gtk::Label::new(Some(&crate::i18n::tr(label)));
     label.add_css_class("about-detail-label");
     label.add_css_class("settings-control-label");
     label.set_xalign(0.0);

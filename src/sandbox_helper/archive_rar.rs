@@ -306,9 +306,7 @@ fn extract(
             let outcome = process(&mut |bytes| {
                 let length = bytes.len() as u64;
                 if length > size.saturating_sub(written) {
-                    return Err(format!(
-                        "Archive member `{name}` declared {size} bytes but produced more"
-                    ));
+                    return Err(INVALID_ARCHIVE.to_owned());
                 }
                 wire::write_chunk(writer, bytes).map_err(|error| error.to_string())?;
                 written += length;
@@ -318,10 +316,7 @@ fn extract(
                 if written == size {
                     Ok(())
                 } else {
-                    Err(format!(
-                        "Archive member `{name}` declared {size} bytes but produced {written} bytes"
-                    )
-                    .into())
+                    Err(INVALID_ARCHIVE.into())
                 }
             });
             match outcome {

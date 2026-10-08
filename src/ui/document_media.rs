@@ -144,13 +144,14 @@ fn show_entry(row: &gtk::Box, entry: &Entry) {
     }
     match &entry.result {
         None => {
-            let label = gtk::Label::new(Some(
-                if matches!(entry.source, DocumentMedia::Math { display: false, .. }) {
-                    "…"
-                } else {
-                    "Loading preview…"
-                },
-            ));
+            let label = gtk::Label::new(Some(&if matches!(
+                entry.source,
+                DocumentMedia::Math { display: false, .. }
+            ) {
+                "…".to_owned()
+            } else {
+                crate::i18n::tr("Loading preview…")
+            }));
             label.add_css_class("preview-note");
             row.append(&label);
         }
@@ -172,10 +173,10 @@ fn show_entry(row: &gtk::Box, entry: &Entry) {
                 .set((texture.width(), texture.height()));
             picture.set_parent(&frame);
             row.append(&frame);
-            picture.set_alternative_text(Some(match &entry.source {
-                DocumentMedia::Image(_) => &entry.alt,
-                DocumentMedia::Mermaid(_) => "Mermaid diagram",
-                DocumentMedia::Math { .. } => "LaTeX equation",
+            picture.set_alternative_text(Some(&match &entry.source {
+                DocumentMedia::Image(_) => entry.alt.clone(),
+                DocumentMedia::Mermaid(_) => crate::i18n::tr("Mermaid diagram"),
+                DocumentMedia::Math { .. } => crate::i18n::tr("LaTeX equation"),
             }));
             if matches!(&entry.source, DocumentMedia::Math { display: false, .. }) {
                 register_diagram(&frame);
@@ -190,7 +191,7 @@ fn show_entry(row: &gtk::Box, entry: &Entry) {
             };
             if let Some((source, label)) = source_to_copy {
                 register_diagram(&frame);
-                let button = gtk::Button::with_label(label);
+                let button = gtk::Button::with_label(&crate::i18n::tr(label));
                 button.add_css_class("preview-header-action");
                 button.set_halign(gtk::Align::End);
                 let source = source.clone();
@@ -212,6 +213,9 @@ fn image_description(alt: &str) -> String {
 
 fn show_error(row: &gtk::Box, source: &DocumentMedia, alt: &str, message: &str) {
     let alt = image_description(alt);
+    // Render failures are English source messages; unknown ones pass through unchanged.
+    let message = crate::i18n::tr(message);
+    let message = message.as_str();
     if let DocumentMedia::Math {
         source,
         display: false,
@@ -224,9 +228,15 @@ fn show_error(row: &gtk::Box, source: &DocumentMedia, alt: &str, message: &str) 
         return;
     }
     let description = match source {
-        DocumentMedia::Math { .. } => format!("Equation unavailable: {message}"),
-        DocumentMedia::Image(_) => format!("Image: {alt}\n{message}"),
-        DocumentMedia::Mermaid(_) => format!("Mermaid diagram unavailable: {message}"),
+        DocumentMedia::Math { .. } => {
+            rust_i18n::t!("Equation unavailable: %{message}", message = message).into_owned()
+        }
+        DocumentMedia::Image(_) => {
+            rust_i18n::t!("Image: %{alt}\n%{message}", alt = alt, message = message).into_owned()
+        }
+        DocumentMedia::Mermaid(_) => {
+            rust_i18n::t!("Mermaid diagram unavailable: %{message}", message = message).into_owned()
+        }
     };
     let label = gtk::Label::new(Some(&description));
     label.add_css_class("preview-note");

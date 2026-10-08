@@ -30,18 +30,20 @@ pub(super) struct TrashLoadingView {
 }
 
 fn empty_trash_error_summary(outcome: &EmptyTrashOutcome) -> String {
-    let mut summary = format!(
-        "{} could not be deleted. The remaining items were processed.",
-        item_count_label(outcome.failed)
-    );
+    let mut summary = rust_i18n::t!(
+        "%{items} could not be deleted. The remaining items were processed.",
+        items = item_count_label(outcome.failed)
+    )
+    .into_owned();
     for error in &outcome.errors {
         summary.push_str("\n\n• ");
         summary.push_str(error);
     }
     if outcome.failed > outcome.errors.len() {
-        summary.push_str(&format!(
-            "\n\n…and {} more",
-            outcome.failed - outcome.errors.len()
+        summary.push_str("\n\n");
+        summary.push_str(&crate::i18n::count(
+            "more_items",
+            outcome.failed - outcome.errors.len(),
         ));
     }
     summary
@@ -62,14 +64,14 @@ pub(super) fn retryable_delete_entries(
 }
 
 fn restore_confirmation_title(count: usize) -> String {
-    format!("Restore {}?", item_count_label(count))
+    rust_i18n::t!("Restore %{value1}?", value1 = item_count_label(count)).into_owned()
 }
 
 fn restore_confirmation_confirm_label(count: usize) -> String {
     if count == 1 {
-        "Restore".to_owned()
+        crate::i18n::tr("Restore")
     } else {
-        format!("Restore {}", item_count_label(count))
+        rust_i18n::t!("Restore %{value1}", value1 = item_count_label(count)).into_owned()
     }
 }
 
@@ -81,7 +83,11 @@ fn restore_error_summary(errors: &[String]) -> String {
     let mut summary = if errors.len() == 1 {
         errors[0].clone()
     } else {
-        format!("{} could not be restored.", item_count_label(errors.len()))
+        rust_i18n::t!(
+            "%{items} could not be restored.",
+            items = item_count_label(errors.len())
+        )
+        .into_owned()
     };
     if errors.len() > 1 {
         for error in errors.iter().take(8) {
@@ -89,7 +95,8 @@ fn restore_error_summary(errors: &[String]) -> String {
             summary.push_str(error);
         }
         if errors.len() > 8 {
-            summary.push_str(&format!("\n\n…and {} more", errors.len() - 8));
+            summary.push_str("\n\n");
+            summary.push_str(&crate::i18n::count("more_items", errors.len() - 8));
         }
     }
     summary
@@ -127,13 +134,7 @@ fn delete_confirmation_rows(entries: &[FileEntry]) -> (&[FileEntry], usize) {
 
 /// Summary for the hidden remainder, or nothing when everything is shown.
 fn delete_confirmation_overflow_label(hidden: usize) -> Option<String> {
-    (hidden > 0).then(|| {
-        format!(
-            "… and {} more {}",
-            hidden,
-            if hidden == 1 { "item" } else { "items" }
-        )
-    })
+    (hidden > 0).then(|| crate::i18n::count("more_items", hidden))
 }
 
 impl ViewState {
@@ -148,7 +149,7 @@ impl ViewState {
                         if let Some(state) = weak.upgrade() {
                             show_error_dialog(
                                 &state.overlay,
-                                "Unable to move to Trash",
+                                &crate::i18n::tr("Unable to move to Trash"),
                                 &error.to_string(),
                             );
                         }
@@ -261,7 +262,7 @@ impl ViewState {
                         state.clear_trash_loading();
                         show_error_dialog(
                             &state.overlay,
-                            "Unable to read Trash",
+                            &crate::i18n::tr("Unable to read Trash"),
                             &error.to_string(),
                         );
                     }
@@ -290,17 +291,23 @@ impl ViewState {
         else {
             show_error_dialog(
                 &self.overlay,
-                "Unable to continue",
-                "The operation could not be confirmed.",
+                &crate::i18n::tr("Unable to continue"),
+                &crate::i18n::tr("The operation could not be confirmed."),
             );
             return false;
         };
 
-        let layout = modal_layout(crate::assets::icons::TRASH, title, "", action);
-        layout.set_loading(true, Some(title));
+        let title = crate::i18n::tr(title);
+        let layout = modal_layout(
+            crate::assets::icons::TRASH,
+            &title,
+            "",
+            &crate::i18n::tr(action),
+        );
+        layout.set_loading(true, Some(&title));
         layout.subtitle.set_visible(false);
         layout.confirm.set_visible(false);
-        let explanation = message_dialog_description(detail);
+        let explanation = message_dialog_description(&crate::i18n::tr(detail));
         layout.body.append(&explanation);
         let content = layout.content;
         let cancel = layout.cancel;
@@ -371,20 +378,22 @@ impl ViewState {
 
         let layout = message_dialog_layout(
             crate::assets::icons::TRASH,
-            "Empty Trash?",
-            &format!(
-                "{}{} · {}{} will be reclaimed",
-                if summary.truncated() { "At least " } else { "" },
-                item_count_label(summary.item_count),
-                if summary.truncated() { "at least " } else { "" },
-                format_file_size(summary.total_size)
+            &crate::i18n::tr("Empty Trash?"),
+            &rust_i18n::t!(
+                if summary.truncated() {
+                    "At least %{items} · at least %{size} will be reclaimed"
+                } else {
+                    "%{items} · %{size} will be reclaimed"
+                },
+                items = item_count_label(summary.item_count),
+                size = format_file_size(summary.total_size)
             ),
-            "Empty Trash",
+            &crate::i18n::tr("Empty Trash"),
             ModalTone::Danger,
         );
-        let explanation = message_dialog_description(
+        let explanation = message_dialog_description(&crate::i18n::tr(
             "Everything in Trash will be permanently deleted. This action cannot be undone.",
-        );
+        ));
         layout.body.append(&explanation);
         let content = layout.content;
         let close = layout.close;
@@ -450,9 +459,8 @@ impl ViewState {
                         // keep this operation's own state bounded too.
                         finish_browser.refresh_columns_at(&Location::uri("trash:///"));
                         if outcome.failed > 0 {
-                            show_error_dialog(
+                            crate::ui::modal::show_partial_failure_dialog(
                                 &error_overlay,
-                                "Completed with errors",
                                 &empty_trash_error_summary(&outcome),
                             );
                         }
@@ -465,7 +473,7 @@ impl ViewState {
                         );
                         show_error_dialog(
                             &error_overlay,
-                            "Unable to empty Trash",
+                            &crate::i18n::tr("Unable to empty Trash"),
                             &error.to_string(),
                         );
                     }
@@ -530,7 +538,14 @@ impl ViewState {
             {
                 match destination {
                     Ok(destination) => resolved.push((entry, destination)),
-                    Err(error) => errors.push(format!("{}: {error}", entry.display_name)),
+                    Err(error) => errors.push(
+                        rust_i18n::t!(
+                            "%{name}: %{error}",
+                            name = entry.display_name.as_str(),
+                            error = crate::services::error_detail(error.user_message())
+                        )
+                        .into_owned(),
+                    ),
                 }
             }
             let Some(state) = weak.upgrade() else {
@@ -540,7 +555,7 @@ impl ViewState {
             if resolved.is_empty() {
                 show_error_dialog(
                     &state.overlay,
-                    "Unable to restore",
+                    &crate::i18n::tr("Unable to restore"),
                     &restore_error_summary(&errors),
                 );
                 return;
@@ -563,8 +578,8 @@ impl ViewState {
         else {
             show_error_dialog(
                 &self.overlay,
-                "Unable to restore",
-                "The restore destinations could not be confirmed.",
+                &crate::i18n::tr("Unable to restore"),
+                &crate::i18n::tr("The restore destinations could not be confirmed."),
             );
             return;
         };
@@ -616,8 +631,11 @@ impl ViewState {
             .build();
         file_scroller.add_css_class("delete-confirmation-list");
         layout.body.append(&file_scroller);
-        let mut explanation =
-            "These items will be moved back to the original locations shown above.".to_owned();
+        let mut explanation = crate::i18n::tr(if count == 1 {
+            "This item will be moved back to the original location shown above."
+        } else {
+            "These items will be moved back to the original locations shown above."
+        });
         if !skipped.is_empty() {
             explanation.push_str("\n\n");
             explanation.push_str(&restore_error_summary(&skipped));
@@ -771,13 +789,22 @@ impl ViewState {
         let count = entries.len();
         let (title, confirm_label) = if trash {
             (
-                format!("Move {} to Trash?", item_count_label(count)),
-                "Move to Trash".to_owned(),
+                rust_i18n::t!("Move %{value1} to Trash?", value1 = item_count_label(count))
+                    .into_owned(),
+                crate::i18n::tr("Move to Trash"),
             )
         } else {
             (
-                format!("Permanently delete {}?", item_count_label(count)),
-                format!("Permanently delete {}", item_count_label(count)),
+                rust_i18n::t!(
+                    "Permanently delete %{value1}?",
+                    value1 = item_count_label(count)
+                )
+                .into_owned(),
+                rust_i18n::t!(
+                    "Permanently delete %{value1}",
+                    value1 = item_count_label(count)
+                )
+                .into_owned(),
             )
         };
         let layout = message_dialog_layout(
@@ -792,7 +819,7 @@ impl ViewState {
             },
         );
         if !trash {
-            layout.set_loading(true, Some("Calculating total size…"));
+            layout.set_loading(true, Some(&crate::i18n::tr("Calculating total size…")));
         }
         let files = gtk::Box::new(gtk::Orientation::Vertical, 3);
         files.add_css_class("delete-confirmation-files");
@@ -807,7 +834,7 @@ impl ViewState {
             name.set_xalign(0.0);
             crate::ui::accessibility::set_description(&name, Some(&entry.location.display_path()));
             let metadata = gtk::Label::new(Some(&if entry.is_directory() {
-                "Folder".to_owned()
+                crate::i18n::tr("Folder")
             } else {
                 match entry.size {
                     crate::model::MetadataValue::Known(size) => format_file_size(size),
@@ -840,11 +867,12 @@ impl ViewState {
             .build();
         file_scroller.add_css_class("delete-confirmation-list");
         layout.body.append(&file_scroller);
-        let explanation = message_dialog_description(if trash {
-            "These items can be restored from Trash."
-        } else {
-            "These items will be permanently deleted. This action cannot be undone."
-        });
+        let explanation = message_dialog_description(&crate::i18n::tr(match (trash, count) {
+            (true, 1) => "This item can be restored from Trash.",
+            (true, _) => "These items can be restored from Trash.",
+            (false, 1) => "This item will be permanently deleted. This action cannot be undone.",
+            (false, _) => "These items will be permanently deleted. This action cannot be undone.",
+        }));
         layout.body.append(&explanation);
         let content = layout.content;
         let close = layout.close;
@@ -979,12 +1007,14 @@ impl ViewState {
             else {
                 return;
             };
-            subtitle.set_label(&format!(
-                "{}{} · {}{} will be permanently deleted",
-                if summary.truncated() { "At least " } else { "" },
-                item_count_label(summary.item_count),
-                if summary.truncated() { "at least " } else { "" },
-                format_file_size(summary.total_size)
+            subtitle.set_label(&rust_i18n::t!(
+                if summary.truncated() {
+                    "At least %{items} · at least %{size} will be permanently deleted"
+                } else {
+                    "%{items} · %{size} will be permanently deleted"
+                },
+                items = item_count_label(summary.item_count),
+                size = format_file_size(summary.total_size)
             ));
             spinner.stop();
             spinner.set_visible(false);

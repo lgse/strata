@@ -48,6 +48,7 @@ poppler = { package = "poppler-rs", version = "0.26.0" }
 pulldown-cmark = { version = "0.13", default-features = false }
 ring = "0.17.14"
 resvg = { version = "0.48.1", default-features = false, features = ["text", "system-fonts"] }
+rust-i18n = "3.1.5"
 rustix = { version = "1.1.4", features = ["fs", "process", "event", "net", "mount", "thread", "stdio", "pipe", "runtime"] }
 seccompiler = "0.5.0"
 serde = { version = "1.0", features = ["derive"] }
@@ -77,6 +78,7 @@ rustls = { version = "0.23", default-features = false, features = ["std", "ring"
 
 [build-dependencies]
 glib-build-tools = "0.22.8"
+rust-i18n-support = "3.1.5"
 
 [profile.release]
 # Whole-program optimization for the hot listing/sort/insert paths. Build

@@ -593,11 +593,11 @@ pub(in crate::ui) fn install_folder_context_menu(
         select_all.set_sensitive(has_entries());
         open_terminal.set_sensitive(can_open_terminal(&location_for_trigger));
         let hidden_files_shown = browser_for_trigger.preferences().show_hidden;
-        toggle_hidden_label.set_text(if hidden_files_shown {
+        toggle_hidden_label.set_text(&crate::i18n::tr(if hidden_files_shown {
             "Hide Hidden Files"
         } else {
             "Show Hidden Files"
-        });
+        }));
         crate::assets::set_primary_icon(
             &toggle_hidden_icon,
             if hidden_files_shown {
@@ -1195,7 +1195,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         ) {
             crate::ui::modal::show_error_dialog(
                 &state.overlay,
-                "Unable to open file",
+                &crate::i18n::tr("Unable to open file"),
                 error.message(),
             );
         }
@@ -1638,7 +1638,10 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
                 !in_trash && entries.len() == 1 && entry.location.native_path().is_some(),
             );
             if entries.len() > 1 {
-                heading.set_text(&format!("{} items selected", entries.len()));
+                heading.set_text(&rust_i18n::t!(
+                    "%{items} selected",
+                    items = crate::i18n::count("items", entries.len())
+                ));
                 summary.set_text(&selected_items_summary(&entries));
                 single.set_visible(false);
                 multiple.set_visible(true);
@@ -1892,6 +1895,8 @@ fn item_context_danger_option(icon: &str, label: &str, hint: ContextHint) -> gtk
 }
 
 fn item_context_option_with_icon(icon: gtk::Image, label: &str, hint: ContextHint) -> gtk::Button {
+    let translated = crate::i18n::tr(label);
+    let label = translated.as_str();
     let button = presentation::menu_item_button();
     button.add_css_class("item-context-option");
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
@@ -1915,6 +1920,8 @@ fn context_menu_row(
     hint: ContextHint,
     button: &gtk::Button,
 ) -> (gtk::Box, gtk::Image, gtk::Label) {
+    let translated = crate::i18n::tr(label);
+    let label = translated.as_str();
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     let icon = crate::assets::primary_icon(icon, 15);
     icon.add_css_class("folder-context-icon");
@@ -1947,6 +1954,8 @@ pub(super) fn context_menu_danger_option(
     label: &str,
     hint: ContextHint,
 ) -> gtk::Button {
+    let translated = crate::i18n::tr(label);
+    let label = translated.as_str();
     let button = crate::ui::accessibility::menu_item_button();
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     let icon = crate::assets::danger_icon(icon, 15);
@@ -2031,13 +2040,13 @@ impl OpenWithSelection {
     }
 }
 
+/// `explanation` is an untranslated source message.
 fn set_open_with_explanation(button: &gtk::Button, explanation: Option<&str>) {
+    let explanation = explanation.map(crate::i18n::tr).unwrap_or_default();
     if let Some(option) = button.downcast_ref::<presentation::MenuOption>() {
-        option.set_menu_description(explanation.unwrap_or(""));
+        option.set_menu_description(explanation.as_str());
     }
-    button.update_property(&[gtk::accessible::Property::Description(
-        explanation.unwrap_or(""),
-    )]);
+    button.update_property(&[gtk::accessible::Property::Description(&explanation)]);
 }
 
 fn prepare_open_with(

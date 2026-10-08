@@ -76,3 +76,57 @@ fn character_counter_tracks_edits_and_character_limits() {
         },
     );
 }
+
+#[test]
+fn dialog_text_keeps_paragraphs_and_unspaced_scripts_intact() {
+    assert_eq!(
+        dialog_text("0 件完了、1 件未処理。\n\n完了した変更は元に戻されていません。"),
+        "0 件完了、1 件未処理。\n\n完了した変更は元に戻されていません。"
+    );
+    assert_eq!(
+        dialog_text("  Completed  with errors:\n\n\n• a.txt:  denied\n• b.txt\n"),
+        "Completed with errors:\n\n• a.txt: denied\n• b.txt"
+    );
+    let long_run = "アーカイブ".repeat(30);
+    assert_eq!(dialog_text(&long_run), long_run);
+    assert_eq!(
+        dialog_text("Impossible de créer « a\u{a0}b »\u{a0}:  1\u{202f}234\u{2007}éléments"),
+        "Impossible de créer « a\u{a0}b »\u{a0}: 1\u{202f}234\u{2007}éléments"
+    );
+}
+
+#[test]
+fn korean_words_are_kept_whole_except_long_runs() {
+    let text = "다음 중 하나를 설치하세요: readonly에 a b";
+    let words = korean_word_ranges(text)
+        .into_iter()
+        .map(|range| &text[range])
+        .collect::<Vec<_>>();
+    assert_eq!(words, ["다음", "하나를", "설치하세요:", "readonly에"]);
+    assert!(korean_word_ranges(&"가나다".repeat(5)).is_empty());
+    assert!(korean_word_ranges("Cannot create “readonly”").is_empty());
+}
+
+#[test]
+fn particles_after_long_names_stay_with_their_last_character() {
+    let text = "переноса_строк.txt을(를) /home/user/fx/readonly에서: archive.tar.gz.";
+    let words = korean_word_ranges(text)
+        .into_iter()
+        .map(|range| &text[range])
+        .collect::<Vec<_>>();
+    assert_eq!(words, ["t을(를)", "y에서:"]);
+}
+
+#[test]
+fn parenthesised_particles_after_long_hangul_names_stay_with_the_syllable_before_them() {
+    let name = "한국어로된아주긴파일이름입니다확".repeat(2);
+    for (particle, kept) in [("을(를)", "확을(를)"), ("(으)로:", "확(으)로:")] {
+        let text = format!("{name}{particle} 삭제");
+        let words = korean_word_ranges(&text)
+            .into_iter()
+            .map(|range| &text[range])
+            .collect::<Vec<_>>();
+        assert_eq!(words, [kept, "삭제"]);
+    }
+    assert!(korean_word_ranges(&"가나다".repeat(5)).is_empty());
+}

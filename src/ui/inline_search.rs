@@ -596,6 +596,9 @@ pub(super) fn wrap(
     let results = gtk::Box::new(gtk::Orientation::Vertical, 4);
     let status = gtk::Label::new(None);
     status.add_css_class("status-message");
+    status.set_wrap(true);
+    status.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    status.set_justify(gtk::Justification::Center);
     results.append(&status);
     let recursive = Rc::new(Cell::new(false));
     let (collection, scroll, overlay) = build_collection(
@@ -740,7 +743,7 @@ pub(super) fn wrap(
                 update_results(state, Vec::new(), is_recursive);
             }
             if state.collection.sorted.n_items() == 0 {
-                state.status.set_text("Searching…");
+                state.status.set_text(&crate::i18n::tr("Searching…"));
                 state.status.set_visible(true);
             }
             let show_hidden = weak_browser
@@ -775,9 +778,9 @@ pub(super) fn wrap(
                     state.status.set_text(&if batch.coverage.is_partial() {
                         batch.coverage.message()
                     } else if batch.indexing {
-                        "Searching…".to_owned()
+                        crate::i18n::tr("Searching…")
                     } else {
-                        "No matching files".to_owned()
+                        crate::i18n::tr("No matching files")
                     });
                     state.collection.highlights.borrow_mut().hits = if scope.fuzzy() {
                         super::browser::find::search_hit_ranges(&batch.query, &search_root, &items)

@@ -370,7 +370,7 @@ impl ActionMenuSection {
                 let section = &transfer_sections[transfer_index];
                 let row_index = section.n_items();
                 let devices = send_to.item_link(0, "submenu").expect("Send to submenu");
-                let item = gio::MenuItem::new_submenu(Some("Send to…"), &devices);
+                let item = gio::MenuItem::new_submenu(Some(&crate::i18n::tr("Send to…")), &devices);
                 item.set_icon(&gio::ThemedIcon::new(crate::assets::icons::SEND_HORIZONTAL));
                 section.append_item(&item);
                 self.send_to_row_indices.borrow_mut()[transfer_index] = Some(row_index);
@@ -510,7 +510,7 @@ impl ActionMenuSection {
             model.append_item(&item);
         }
         if submenu.n_items() > 0 {
-            let item = gio::MenuItem::new_submenu(Some("Actions"), &submenu);
+            let item = gio::MenuItem::new_submenu(Some(&crate::i18n::tr("Actions")), &submenu);
             item.set_icon(&gio::ThemedIcon::new(icons::PLAY));
             self.model.append_item(&item);
         }
@@ -591,7 +591,7 @@ pub(super) fn append_send_to_menu(
         actions.add_action(&folder_action);
         let choose = gio::Menu::new();
         choose.append(
-            Some("Choose folder…"),
+            Some(&crate::i18n::tr("Choose folder…")),
             Some(&format!("custom.{folder_name}")),
         );
         let device = gio::Menu::new();
@@ -603,7 +603,7 @@ pub(super) fn append_send_to_menu(
         item.set_attribute_value("x-strata-description", Some(&destination.name.to_variant()));
         devices.append_item(&item);
     }
-    model.append_submenu(Some("Send to…"), &devices);
+    model.append_submenu(Some(&crate::i18n::tr("Send to…")), &devices);
 }
 
 fn valid_recent_destinations(root: &Path, persisted: &[PathBuf]) -> Vec<PathBuf> {
@@ -772,14 +772,14 @@ fn present_native_items(
             let is_root = scroll.ancestor(gtk::PopoverMenu::static_type()).as_ref()
                 == Some(root.upcast_ref());
             if is_root {
+                // A floor rather than a fixed width: translated rows may need more room,
+                // and a natural width would follow long header paths instead of ellipsizing.
+                scroll.set_hscrollbar_policy(gtk::PolicyType::Never);
+                scroll.set_propagate_natural_width(false);
                 crate::ui::preferences::PreferenceManager::shared().bind_interface_scale(
                     scroll,
                     |scroll, scale| {
-                        if let Some(scroll) = scroll.downcast_ref::<gtk::ScrolledWindow>() {
-                            let width = (310.0 * scale).round() as i32;
-                            scroll.set_min_content_width(width);
-                            scroll.set_max_content_width(width);
-                        }
+                        scroll.set_size_request((310.0 * scale).round() as i32, -1);
                     },
                 );
             }

@@ -100,7 +100,9 @@ impl Waveform {
         waveform.add_css_class("preview-waveform");
         waveform.set_focusable(true);
         waveform.set_cursor_from_name(Some("pointer"));
-        waveform.update_property(&[gtk::accessible::Property::Label("Playback position")]);
+        waveform.update_property(&[gtk::accessible::Property::Label(&crate::i18n::tr(
+            "Playback position",
+        ))]);
         waveform.imp().targets.replace(vec![0.0; BUCKETS as usize]);
         waveform.imp().shown.replace(vec![0.0; BUCKETS as usize]);
         follow_theme(&waveform);
@@ -231,10 +233,10 @@ impl Waveform {
                 gtk::accessible::Property::ValueMin(0.0),
                 gtk::accessible::Property::ValueMax((duration.max(0) / 1_000_000) as f64),
                 gtk::accessible::Property::ValueNow(second as f64),
-                gtk::accessible::Property::ValueText(&format!(
-                    "{} of {}",
-                    clock(timestamp),
-                    clock(duration)
+                gtk::accessible::Property::ValueText(&rust_i18n::t!(
+                    "%{elapsed} of %{duration}",
+                    elapsed = clock(timestamp),
+                    duration = clock(duration)
                 )),
             ]);
         }

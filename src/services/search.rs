@@ -198,28 +198,24 @@ impl SearchCoverage {
         self != Self::default()
     }
 
+    /// Localized status text; empty when the search was complete.
     pub fn message(self) -> String {
-        let mut reasons = Vec::new();
-        if self.entry_limit {
-            reasons.push("entry limit reached");
-        }
-        if self.directory_limit {
-            reasons.push("some folders were omitted");
-        }
-        if self.depth_limit {
-            reasons.push("depth limit reached");
-        }
-        if self.time_limit {
-            reasons.push("indexing time limit reached");
-        }
-        if self.unreadable {
-            reasons.push("some folders could not be read");
-        }
-        if reasons.is_empty() {
-            String::new()
-        } else {
-            format!("Partial search — {}", reasons.join("; "))
-        }
+        let reasons = [
+            (self.entry_limit, "entry limit reached"),
+            (self.directory_limit, "some folders were omitted"),
+            (self.depth_limit, "depth limit reached"),
+            (self.time_limit, "indexing time limit reached"),
+            (self.unreadable, "some folders could not be read"),
+        ]
+        .into_iter()
+        .filter(|(applies, _)| *applies)
+        .map(|(_, reason)| crate::i18n::tr(reason))
+        .reduce(|first, second| {
+            rust_i18n::t!("%{first}; %{second}", first = first, second = second).into_owned()
+        });
+        reasons.map_or_else(String::new, |reasons| {
+            rust_i18n::t!("Partial search — %{reasons}", reasons = reasons).into_owned()
+        })
     }
 }
 

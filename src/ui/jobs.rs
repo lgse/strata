@@ -94,23 +94,24 @@ impl RowWidgets {
         }
         if let Some(label) = self.log.upgrade() {
             let log = details_text(snapshot);
-            label.set_text(if log.is_empty() {
-                "No output yet."
+            label.set_text(&if log.is_empty() {
+                crate::i18n::tr("No output yet.")
             } else {
-                &log
+                log
             });
             crate::ui::accessibility::set_description(
                 &label,
                 snapshot
                     .log_truncated
-                    .then_some("Older output was discarded to bound memory"),
+                    .then(|| crate::i18n::tr("Older output was discarded to bound memory"))
+                    .as_deref(),
             );
         }
         if let Some(label) = self.created.upgrade() {
             label.set_visible(!snapshot.created.is_empty());
-            label.set_text(&format!(
-                "Reported {} created.",
-                item_count(snapshot.created.len())
+            label.set_text(&rust_i18n::t!(
+                "Reported %{value1} created.",
+                value1 = item_count(snapshot.created.len())
             ));
         }
     }
@@ -146,7 +147,10 @@ impl JobsIndicator {
         root.set_direction(gtk::ArrowType::Up);
         root.add_css_class("shortcut-footer-button");
         root.add_css_class("jobs-indicator");
-        crate::ui::accessibility::set_description(&root, Some("Show background jobs"));
+        crate::ui::accessibility::set_description(
+            &root,
+            Some(&crate::i18n::tr("Show background jobs")),
+        );
         let label = gtk::Label::new(None);
         label.add_css_class("jobs-indicator-label");
         root.set_child(Some(&label));
@@ -171,7 +175,10 @@ impl JobsIndicator {
         let header = gtk::Box::new(gtk::Orientation::Horizontal, 10);
         header.add_css_class("jobs-header");
         header.append(&icon_bezel(crate::assets::icons::LIST_CHECKS));
-        let title = gtk::Label::builder().label("Jobs").xalign(0.0).build();
+        let title = gtk::Label::builder()
+            .label(crate::i18n::tr("Jobs"))
+            .xalign(0.0)
+            .build();
         title.add_css_class("jobs-title");
         let minimize = job_button("Minimize", crate::assets::icons::MINUS);
         header.append(&title);
@@ -190,7 +197,7 @@ impl JobsIndicator {
             crate::assets::icons::TRASH,
             14,
         ));
-        clear_content.append(&gtk::Label::new(Some("Clear finished")));
+        clear_content.append(&gtk::Label::new(Some(&crate::i18n::tr("Clear finished"))));
         clear.set_child(Some(&clear_content));
         clear.add_css_class("jobs-clear");
         clear.set_visible(false);
@@ -245,8 +252,9 @@ impl JobsIndicator {
                 running.set_text(&dashboard_activity_label(active, queued));
                 running.set_visible(active + queued > 0);
                 finished.set_text(&format!(
-                    "{}{history} finished",
-                    if active + queued > 0 { "· " } else { "" }
+                    "{}{}",
+                    if active + queued > 0 { "· " } else { "" },
+                    rust_i18n::t!("%{count} finished", count = history)
                 ));
                 finished.set_visible(history > 0);
             }
@@ -375,18 +383,13 @@ impl JobsIndicator {
         window.insert_action_group("jobs", Some(&group));
         if let Some(window) = window.as_ref().downcast_ref::<gtk::Window>() {
             let service = self.state.service.clone();
-            window.connect_close_request(move |window| {
-                let last_window = window.application()
-                    .is_some_and(|application| application.windows().len() == 1);
-                if last_window && service.running_count() + service.queued_count() > 0 {
-                    crate::ui::modal::show_error_dialog(
-                        window,
-                        "Background jobs are still active",
-                        "Wait for Jobs to finish, or cancel them in the Jobs dashboard before closing the last window. Cancellation does not undo file changes.",
-                    );
-                    return glib::Propagation::Stop;
-                }
-                glib::Propagation::Proceed
+            crate::ui::close_guard::install(window, move |closing_application| {
+                (closing_application && service.running_count() + service.queued_count() > 0).then(|| {
+                    crate::ui::close_guard::CloseBlocker {
+                        title: crate::i18n::tr("Background jobs are still active"),
+                        detail: crate::i18n::tr("Wait for Jobs to finish, or cancel them in the Jobs dashboard before closing the last window. Cancellation does not undo file changes."),
+                    }
+                })
             });
         }
     }
@@ -498,7 +501,7 @@ fn render_rows(
     }
     clear.set_visible(state.service.finished_count() > 0);
     if snapshots.is_empty() {
-        let empty = gtk::Label::new(Some("No background jobs."));
+        let empty = gtk::Label::new(Some(&crate::i18n::tr("No background jobs.")));
         empty.add_css_class("jobs-empty");
         empty.set_xalign(0.0);
         list.append(&empty);
@@ -604,7 +607,7 @@ fn job_row(
     let log = details_text(snapshot);
     let log_label = gtk::Label::builder()
         .label(if log.is_empty() {
-            "No output yet.".to_owned()
+            crate::i18n::tr("No output yet.")
         } else {
             log
         })
@@ -619,7 +622,9 @@ fn job_row(
     if snapshot.log_truncated {
         crate::ui::accessibility::set_description(
             &log_label,
-            Some("Older output was discarded to bound memory"),
+            Some(&crate::i18n::tr(
+                "Older output was discarded to bound memory",
+            )),
         );
     }
     let scroll = gtk::ScrolledWindow::builder()
@@ -735,6 +740,7 @@ fn job_controls(
 }
 
 fn job_button(label: &str, icon: &str) -> gtk::Button {
+    let label = &crate::i18n::tr(label);
     let image = crate::assets::primary_icon(icon, crate::assets::CHROME_ICON_PX);
     image.set_halign(gtk::Align::Center);
     image.set_valign(gtk::Align::Center);
@@ -753,13 +759,10 @@ pub(crate) fn indicator_label(service: &JobService) -> String {
     let queued = service.queued_count();
     let mut parts = Vec::new();
     if running > 0 {
-        parts.push(format!(
-            "{running} {}",
-            plural(running, "job running", "jobs running")
-        ));
+        parts.push(crate::i18n::count("jobs_running", running));
     }
     if queued > 0 {
-        parts.push(format!("{queued} queued"));
+        parts.push(rust_i18n::t!("%{count} queued", count = queued).into_owned());
     }
     if !parts.is_empty() {
         return parts.join(" · ");
@@ -768,23 +771,29 @@ pub(crate) fn indicator_label(service: &JobService) -> String {
     if finished == 0 {
         return String::new();
     }
-    let suffix = if service.has_failures() {
-        "finished · failures"
+    let jobs = crate::i18n::count("jobs_finished", finished);
+    if service.has_failures() {
+        rust_i18n::t!("%{jobs} · failures", jobs = jobs).into_owned()
     } else {
-        "finished"
-    };
-    format!("{finished} {} {suffix}", plural(finished, "job", "jobs"))
+        jobs
+    }
 }
 
 fn status_label(snapshot: &JobSnapshot) -> String {
     let elapsed = format_elapsed(snapshot.elapsed);
     match snapshot.status {
-        JobStatus::Succeeded => format!("Done in {elapsed}"),
-        JobStatus::Failed => format!("Failed after {elapsed}"),
-        JobStatus::Cancelled => format!("Cancelled after {elapsed}"),
-        JobStatus::Cancelling => "Cancelling…".to_owned(),
-        JobStatus::Queued => "Queued".to_owned(),
-        JobStatus::Running => format!("Running for {elapsed}"),
+        JobStatus::Succeeded => rust_i18n::t!("Done in %{elapsed}", elapsed = elapsed).into_owned(),
+        JobStatus::Failed => {
+            rust_i18n::t!("Failed after %{elapsed}", elapsed = elapsed).into_owned()
+        }
+        JobStatus::Cancelled => {
+            rust_i18n::t!("Cancelled after %{elapsed}", elapsed = elapsed).into_owned()
+        }
+        JobStatus::Cancelling => crate::i18n::tr("Cancelling…"),
+        JobStatus::Queued => crate::i18n::tr("Queued"),
+        JobStatus::Running => {
+            rust_i18n::t!("Running for %{elapsed}", elapsed = elapsed).into_owned()
+        }
     }
 }
 
@@ -798,9 +807,13 @@ fn status_icon(status: JobStatus) -> Option<&'static str> {
 
 fn dashboard_activity_label(running: usize, queued: usize) -> String {
     match (running, queued) {
-        (0, queued) => format!("{queued} queued"),
-        (running, 0) => format!("{running} running"),
-        (running, queued) => format!("{running} running · {queued} queued"),
+        (0, queued) => rust_i18n::t!("%{count} queued", count = queued).into_owned(),
+        (running, 0) => rust_i18n::t!("%{count} running", count = running).into_owned(),
+        (running, queued) => format!(
+            "{} · {}",
+            rust_i18n::t!("%{count} running", count = running),
+            rust_i18n::t!("%{count} queued", count = queued)
+        ),
     }
 }
 
@@ -868,15 +881,23 @@ fn meta_label(snapshot: &JobSnapshot) -> String {
     if snapshot.mode == crate::model::ExecutionMode::PerItem && snapshot.progress.total_items > 0 {
         parts.push(format!(
             "{}/{}",
-            snapshot.progress.completed_items, snapshot.progress.total_items
+            crate::i18n::integer(snapshot.progress.completed_items as u64),
+            crate::i18n::integer(snapshot.progress.total_items as u64)
         ));
         if snapshot.progress.failed_items > 0 {
-            parts.push(format!("{} failed", snapshot.progress.failed_items));
+            parts.push(
+                rust_i18n::t!("%{count} failed", count = snapshot.progress.failed_items)
+                    .into_owned(),
+            );
         }
     } else if let Some(script) = &snapshot.progress.script
         && let Some(total) = script.total.filter(|total| *total > 0)
     {
-        parts.push(format!("{}/{total}", script.completed));
+        parts.push(format!(
+            "{}/{}",
+            crate::i18n::integer(script.completed as u64),
+            crate::i18n::integer(total as u64)
+        ));
     }
     parts.push(compact_home(&snapshot.parent));
     parts.join(" · ")
@@ -885,29 +906,18 @@ fn meta_label(snapshot: &JobSnapshot) -> String {
 fn compact_home(path: &std::path::Path) -> String {
     let home = glib::home_dir();
     match path.strip_prefix(&home) {
-        Ok(rest) if rest.as_os_str().is_empty() => "Home".to_owned(),
+        Ok(rest) if rest.as_os_str().is_empty() => crate::i18n::tr("Home"),
         Ok(rest) => format!("~/{}", rest.display()),
         Err(_) => path.display().to_string(),
     }
 }
 
 fn format_elapsed(elapsed: Duration) -> String {
-    let seconds = elapsed.as_secs();
-    if seconds < 60 {
-        format!("{seconds}s")
-    } else if seconds < 3600 {
-        format!("{}m {:02}s", seconds / 60, seconds % 60)
-    } else {
-        format!("{}h {:02}m", seconds / 3600, (seconds % 3600) / 60)
-    }
+    crate::i18n::duration(elapsed.as_secs())
 }
 
 fn item_count(count: usize) -> String {
-    format!("{count} {}", plural(count, "item", "items"))
-}
-
-fn plural(count: usize, singular: &'static str, plural: &'static str) -> &'static str {
-    if count == 1 { singular } else { plural }
+    crate::i18n::count("items", count)
 }
 
 pub(crate) fn job_icon(snapshot: &JobSnapshot) -> &'static str {

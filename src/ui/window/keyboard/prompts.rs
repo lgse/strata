@@ -63,7 +63,8 @@ impl Dispatcher {
             Key::s => match self.view.begin_listing_search() {
                 Some(query) => self.shortcuts.open_prompt_with(Prompt::Search, &query),
                 None => {
-                    self.shortcuts.show_feedback("Nothing to search");
+                    self.shortcuts
+                        .show_feedback(&crate::i18n::tr("Nothing to search"));
                     true
                 }
             },
@@ -74,7 +75,9 @@ impl Dispatcher {
 
     fn repeat_find(&self, reverse: bool) {
         match self.view.repeat_find(reverse, true) {
-            None => self.shortcuts.show_feedback("No previous find"),
+            None => self
+                .shortcuts
+                .show_feedback(&crate::i18n::tr("No previous find")),
             Some(false) => self.report_miss(),
             Some(true) => {}
         }
@@ -83,7 +86,7 @@ impl Dispatcher {
     fn report_miss(&self) {
         let query = self.view.find_query().unwrap_or_default();
         self.shortcuts
-            .show_feedback(&format!("No matches for \u{201c}{query}\u{201d}"));
+            .show_feedback(&rust_i18n::t!("No matches for “%{query}”", query = query));
     }
 
     pub(super) fn prompt_key(
@@ -258,14 +261,14 @@ impl Dispatcher {
     fn submit_create(&self, browser: &Browser, text: &str) {
         let hint = match self.view.create_typed_entry(text) {
             Ok(()) => return self.return_to_listing(browser),
-            Err(CreateRefusal::Invalid(message)) => message.to_owned(),
+            Err(CreateRefusal::Invalid(message)) => crate::i18n::tr(message),
             Err(CreateRefusal::Exists(name)) => {
-                format!("\u{201c}{name}\u{201d} already exists")
+                rust_i18n::t!("“%{name}” already exists", name = name).into_owned()
             }
             Err(CreateRefusal::Unsupported) => {
                 self.return_to_listing(browser);
                 self.shortcuts
-                    .show_feedback("Can\u{2019}t create items here");
+                    .show_feedback(&crate::i18n::tr("Can’t create items here"));
                 return;
             }
         };
@@ -280,14 +283,14 @@ impl Dispatcher {
         };
         let hint = match self.view.rename_typed_entry(entry, text) {
             Ok(()) => return self.return_to_listing(browser),
-            Err(CreateRefusal::Invalid(message)) => message.to_owned(),
+            Err(CreateRefusal::Invalid(message)) => crate::i18n::tr(message),
             Err(CreateRefusal::Exists(name)) => {
-                format!("\u{201c}{name}\u{201d} already exists")
+                rust_i18n::t!("“%{name}” already exists", name = name).into_owned()
             }
             Err(CreateRefusal::Unsupported) => {
                 self.return_to_listing(browser);
                 self.shortcuts
-                    .show_feedback("Can\u{2019}t rename items here");
+                    .show_feedback(&crate::i18n::tr("Can’t rename items here"));
                 return;
             }
         };
@@ -359,7 +362,7 @@ impl FolderPrompt {
         if self.picker.is_pending() {
             self.shortcuts
                 .prompt_sink(kind)
-                .show(None, Some(folder_picker::SEARCHING));
+                .show(None, Some(&crate::i18n::tr(folder_picker::SEARCHING)));
         }
         let picker = self.picker.clone();
         picker.when_settled(move || self.submit(kind, &text, None));
@@ -404,7 +407,10 @@ impl FolderPrompt {
             let reason = folder_picker::scope(text, current.as_deref(), &glib::home_dir())
                 .err()
                 .unwrap_or(folder_picker::NO_MATCHES);
-            return self.shortcuts.prompt_sink(kind).show(None, Some(reason));
+            return self
+                .shortcuts
+                .prompt_sink(kind)
+                .show(None, Some(&crate::i18n::tr(reason)));
         };
         send_to_destination(
             &self.view,
@@ -450,13 +456,15 @@ pub(super) fn show_folder_candidates(
         let listed = !shown.paths.is_empty();
         let keys = CandidateKeys {
             enter: destination_action(kind),
-            tab: Some("Complete"),
+            tab: Some("completion.complete"),
         };
         shortcuts.show_candidates(shown.paths, keys);
         if listed {
             show_candidate_hint(&shortcuts);
         } else {
-            shortcuts.prompt_sink(kind).show(None, shown.hint);
+            shortcuts
+                .prompt_sink(kind)
+                .show(None, shown.hint.map(crate::i18n::tr).as_deref());
         }
     });
 }
@@ -504,9 +512,16 @@ fn show_candidate_hint(shortcuts: &ShortcutFooter) {
         return;
     };
     let hint = match shortcuts.candidate_position() {
-        None => Some(folder_picker::NO_MATCHES.to_owned()),
+        None => Some(crate::i18n::tr(folder_picker::NO_MATCHES)),
         Some((_, 1)) => None,
-        Some((index, count)) => Some(format!("{} of {count}", index + 1)),
+        Some((index, count)) => Some(
+            rust_i18n::t!(
+                "%{position} of %{count}",
+                position = crate::i18n::integer((index + 1) as u64),
+                count = crate::i18n::integer(count as u64)
+            )
+            .into_owned(),
+        ),
     };
     shortcuts.prompt_sink(kind).show(None, hint.as_deref());
 }
@@ -557,7 +572,9 @@ pub(super) fn send_to_destination(
         };
         match result {
             Ok(()) => return_to_listing(&shortcuts, &view, &view.browser()),
-            Err(reason) => shortcuts.prompt_sink(kind).show(None, Some(reason)),
+            Err(reason) => shortcuts
+                .prompt_sink(kind)
+                .show(None, Some(&crate::i18n::tr(reason))),
         }
     });
 }

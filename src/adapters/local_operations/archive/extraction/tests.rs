@@ -323,7 +323,7 @@ fn read_failure_removes_partial_output_without_reporting_cancellation() -> Resul
     assert!(matches!(
         session.finish(result, || panic!("failure must not enumerate remaining members")),
         Err(ArchiveError::Failed(message))
-            if message == "broken stream. Extracted entries remain in `archive`."
+            if message == "broken stream. Extracted entries remain in “archive”."
     ));
     assert_eq!(progress.load(Ordering::Relaxed), 1);
     assert_eq!(fs::read(root.path().join("archive/done.txt"))?, b"done");
@@ -500,7 +500,7 @@ fn declared_size_overflow_removes_partial_output() -> Result<(), Box<dyn Error>>
 
     assert_eq!(
         message,
-        "Archive member `overflow.txt` declared 4 bytes but produced more"
+        "Archive member “overflow.txt” declared 4 bytes but produced more"
     );
     assert!(root.path().read_dir()?.next().is_none());
     assert_eq!(progress.load(Ordering::Relaxed), 0);
@@ -523,7 +523,7 @@ fn declared_size_shortfall_removes_partial_output() -> Result<(), Box<dyn Error>
 
     assert_eq!(
         message,
-        "Archive member `short.txt` declared 8 bytes but produced 4 bytes"
+        "Archive member “short.txt” declared 8 bytes but produced 4 bytes"
     );
     assert!(root.path().read_dir()?.next().is_none());
     assert_eq!(progress.load(Ordering::Relaxed), 0);
@@ -552,7 +552,7 @@ fn member_preflight_refuses_when_destination_lacks_space() -> Result<(), Box<dyn
     let message = failed_extract(session, result);
 
     assert!(
-        message.contains("declared 8 bytes, but only 4 bytes are free"),
+        message.contains("declared 8 B, but only 4 B is free"),
         "{message}"
     );
     assert!(!message.contains("remain in"), "{message}");
@@ -583,7 +583,7 @@ fn copy_without_declared_size_stops_at_free_space() -> Result<(), Box<dyn Error>
 
     assert_eq!(
         message,
-        "Not enough free space at the destination to extract `payload.txt` (4 bytes available)"
+        "Not enough free space at the destination to extract “payload.txt” (4 B available)"
     );
     assert!(root.path().read_dir()?.next().is_none());
     assert_eq!(progress.load(Ordering::Relaxed), 0);
@@ -607,7 +607,9 @@ fn claimed_total_preflight_refuses_before_any_member() -> Result<(), Box<dyn Err
     let message = failed_extract(session, result);
 
     assert!(
-        message.contains("Archive declared size (100 bytes) exceeds the 10 bytes of free space"),
+        message.contains(
+            "Archive declared size (100 B) exceeds the free space at the destination (10 B)"
+        ),
         "{message}"
     );
     assert!(!message.contains("remain in"), "{message}");
@@ -643,11 +645,11 @@ fn second_member_preflight_uses_remaining_space() -> Result<(), Box<dyn Error>> 
     let message = failed_extract(session, result);
 
     assert!(
-        message.contains("declared 4 bytes, but only 2 bytes are free"),
+        message.contains("declared 4 B, but only 2 B is free"),
         "{message}"
     );
     assert!(
-        message.ends_with("free at the destination. Extracted entries remain in `archive`."),
+        message.ends_with("free at the destination. Extracted entries remain in “archive”."),
         "{message}"
     );
     assert_eq!(
@@ -789,13 +791,13 @@ fn finish_publishes_every_outcome_shape() -> Result<(), Box<dyn Error>> {
         (
             &["a.txt"],
             Err(ArchiveError::Failed("boom".to_owned())),
-            Expected::Failed("boom. Extracted entries remain in `archive`."),
+            Expected::Failed("boom. Extracted entries remain in “archive”."),
             &["archive/a.txt"],
         ),
         (
             &["a.txt"],
             Err(ArchiveError::Failed("Damaged.".to_owned())),
-            Expected::Failed("Damaged. Extracted entries remain in `archive`."),
+            Expected::Failed("Damaged. Extracted entries remain in “archive”."),
             &["archive/a.txt"],
         ),
         (
@@ -1006,7 +1008,7 @@ fn links_consume_no_space_and_hard_links_follow_renamed_targets() -> Result<(), 
 fn refused_link_members_leave_no_staging_behind() -> Result<(), Box<dyn Error>> {
     let too_long = [b'a'; 4096];
     for (index, expected) in [
-        "is a hard link to `later.txt`, which was not extracted",
+        "is a hard link to “later.txt”, which was not extracted",
         "has an invalid symbolic link target",
         "has an invalid symbolic link target",
         "has an invalid symbolic link target",
@@ -1030,7 +1032,7 @@ fn refused_link_members_leave_no_staging_behind() -> Result<(), Box<dyn Error>> 
 
         assert!(root.path().read_dir()?.next().is_none(), "case {index}");
         let message = failed_extract(session, result);
-        assert_eq!(message, format!("Archive member `link` {expected}"));
+        assert_eq!(message, format!("Archive member “link” {expected}"));
         assert!(root.path().read_dir()?.next().is_none(), "case {index}");
         assert_eq!(progress.load(Ordering::Relaxed), 0);
     }
@@ -1122,8 +1124,8 @@ fn a_failed_directory_restore_leaves_restored_directories_writable() -> Result<(
     assert_eq!(
         message,
         format!(
-            "Could not restore the modification time of `top/ro`: {}",
-            rustix::io::Errno::IO
+            "Could not restore the modification time of “top/ro”: {}",
+            crate::services::io_error_message(&rustix::io::Errno::IO.into())
         )
     );
     assert!(root.path().read_dir()?.next().is_none());
@@ -1230,7 +1232,7 @@ fn a_password_failure_that_cannot_discard_its_output_offers_no_retry() -> Result
             if message.starts_with(&format!(
                 "{} Could not remove the extraction staging folder: Permission denied",
                 crate::adapters::PASSWORD_REQUIRED
-            )) && message.ends_with(" Extracted entries remain in `archive`.")),
+            )) && message.ends_with(" Extracted entries remain in “archive”.")),
         "{outcome:?}"
     );
     assert_eq!(fs::read(kept.join("file.txt"))?, b"file");

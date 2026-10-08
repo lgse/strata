@@ -177,10 +177,11 @@ pub(crate) enum Prompt {
 }
 
 impl Prompt {
-    pub(crate) fn label(self) -> &'static str {
-        match self {
-            Self::Find => "/",
-            Self::FindBackward => "?",
+    /// The find labels are keycaps; the others are translated.
+    pub(crate) fn label(self) -> String {
+        let label = match self {
+            Self::Find => return "/".to_owned(),
+            Self::FindBackward => return "?".to_owned(),
             Self::Filter => "filter:",
             Self::Search => "search:",
             Self::Go => "go \u{203a}",
@@ -191,7 +192,8 @@ impl Prompt {
             Self::MoveTo => "move to \u{203a}",
             Self::CopyTo => "copy to \u{203a}",
             Self::ExtractTo => "extract to \u{203a}",
-        }
+        };
+        crate::i18n::tr(label)
     }
 
     pub(crate) fn picks_history(self) -> bool {

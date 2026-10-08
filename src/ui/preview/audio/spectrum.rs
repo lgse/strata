@@ -111,7 +111,9 @@ impl Spectrum {
     pub(super) fn new() -> Self {
         let spectrum: Self = glib::Object::new();
         spectrum.add_css_class("preview-audio-spectrum");
-        spectrum.update_property(&[gtk::accessible::Property::Label("Audio spectrum")]);
+        spectrum.update_property(&[gtk::accessible::Property::Label(&crate::i18n::tr(
+            "Audio spectrum",
+        ))]);
         follow_theme(&spectrum);
         spectrum
     }

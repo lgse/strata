@@ -190,21 +190,13 @@ pub enum ModelPreviewStage {
 }
 
 impl ModelPreviewStage {
+    /// Localized progress text.
     pub fn label(self) -> String {
         match self {
-            Self::Reading => "Reading model…".into(),
-            Self::Thumbnail => "Reading thumbnail…".into(),
-            Self::Finishing => "Finishing preview…".into(),
-            Self::Rendering { triangles } => {
-                let count = if triangles >= 1_000_000 {
-                    format!("{:.1}M", triangles as f64 / 1_000_000.)
-                } else if triangles >= 1_000 {
-                    format!("{:.1}K", triangles as f64 / 1_000.)
-                } else {
-                    triangles.to_string()
-                };
-                format!("Rendering {count} triangles…")
-            }
+            Self::Reading => crate::i18n::tr("Reading model…"),
+            Self::Thumbnail => crate::i18n::tr("Reading thumbnail…"),
+            Self::Finishing => crate::i18n::tr("Finishing preview…"),
+            Self::Rendering { triangles } => crate::i18n::count("rendering_triangles", triangles),
         }
     }
 }

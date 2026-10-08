@@ -1198,22 +1198,27 @@ impl ViewState {
             return;
         };
         let png_bytes = texture.save_to_png_bytes();
+        let stem = crate::i18n::tr("pasted_image.name");
         gio::spawn_blocking(move || {
-            if let Err(error) = write_pasted_image(&dir, png_bytes.as_ref()) {
+            if let Err(error) = write_pasted_image(&dir, &stem, png_bytes.as_ref()) {
                 tracing::warn!(%error, "unable to write pasted image");
             }
         });
     }
 }
 
-fn write_pasted_image(dir: &std::path::Path, bytes: &[u8]) -> std::io::Result<std::path::PathBuf> {
+fn write_pasted_image(
+    dir: &std::path::Path,
+    stem: &str,
+    bytes: &[u8],
+) -> std::io::Result<std::path::PathBuf> {
     use std::io::Write;
 
     for suffix in 0u64.. {
         let name = if suffix == 0 {
-            "image.png".to_owned()
+            format!("{stem}.png")
         } else {
-            format!("image ({suffix}).png")
+            format!("{stem} ({suffix}).png")
         };
         let path = dir.join(name);
         match std::fs::OpenOptions::new()

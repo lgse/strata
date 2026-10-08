@@ -17,7 +17,7 @@ pub(super) fn theme_editor(manager: Rc<ThemeManager>) -> (gtk::Revealer, gtk::Fl
     panel.add_css_class("theme-editor");
     panel.append(&editor_header());
     let name = form_entry();
-    name.set_placeholder_text(Some("Theme name"));
+    name.set_placeholder_text(Some(&crate::i18n::tr("Theme name")));
     panel.append(&name);
 
     let mut tokens = manager.starter_tokens();
@@ -50,7 +50,7 @@ pub(super) fn theme_editor(manager: Rc<ThemeManager>) -> (gtk::Revealer, gtk::Fl
 
 fn editor_header() -> gtk::Box {
     let header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    let title = gtk::Label::new(Some("Add a theme"));
+    let title = gtk::Label::new(Some(&crate::i18n::tr("Add a theme")));
     title.add_css_class("settings-option-title");
     title.set_xalign(0.0);
     title.set_hexpand(true);
@@ -84,10 +84,16 @@ fn color_field_row(
     values: &Rc<RefCell<ThemeTokens>>,
 ) -> gtk::Box {
     let field_row = gtk::Box::new(gtk::Orientation::Horizontal, 7);
-    let label = gtk::Label::new(Some(label_text));
+    let label_text = crate::i18n::tr(label_text);
+    let label = gtk::Label::new(Some(&label_text));
     label.set_xalign(0.0);
+    label.set_hexpand(true);
+    // The grid is homogeneous, so a character-wrapping label would shrink every field.
+    label.add_css_class("settings-word-wrap");
+    label.set_wrap(true);
+    label.set_wrap_mode(gtk::pango::WrapMode::Word);
     let dialog = gtk::ColorDialog::builder()
-        .title(format!("Choose {label_text}"))
+        .title(rust_i18n::t!("%{label_text} color", label_text = label_text).into_owned())
         .with_alpha(false)
         .build();
     let picker = gtk::ColorDialogButton::new(Some(dialog));
@@ -122,9 +128,9 @@ fn editor_actions(manager: Rc<ThemeManager>, form: ThemeEditorForm) -> gtk::Box 
     } = form;
     let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     actions.set_halign(gtk::Align::End);
-    let cancel = gtk::Button::with_label("Cancel");
+    let cancel = gtk::Button::with_label(&crate::i18n::tr("Cancel"));
     cancel.add_css_class("action-dialog-cancel");
-    let save = gtk::Button::with_label("Add theme");
+    let save = gtk::Button::with_label(&crate::i18n::tr("Add theme"));
     save.add_css_class("action-dialog-confirm");
     actions.append(&cancel);
     actions.append(&save);
@@ -143,12 +149,25 @@ fn editor_actions(manager: Rc<ThemeManager>, form: ThemeEditorForm) -> gtk::Box 
                 revealer.set_reveal_child(false);
             }
             Err(message) => {
-                error.set_text(&message.to_string());
+                error.set_text(&save_error_text(&message));
                 error.set_visible(true);
             }
         }
     });
     actions
+}
+
+fn save_error_text(error: &std::io::Error) -> String {
+    // Validation errors carry an English catalog key; other errors come from the OS.
+    if error.kind() == std::io::ErrorKind::InvalidInput {
+        crate::i18n::tr(&error.to_string())
+    } else {
+        rust_i18n::t!(
+            "Could not save the theme: %{error}",
+            error = crate::services::io_error_detail(error)
+        )
+        .into_owned()
+    }
 }
 
 #[derive(Clone, Copy)]

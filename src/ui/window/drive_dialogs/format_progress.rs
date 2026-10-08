@@ -24,12 +24,15 @@ impl FormatProgress {
     pub(super) fn new(parent: &gtk::Widget, display_name: &str) -> Option<Rc<Self>> {
         let host = ModalHost::for_widget(parent)?;
         let card = Rc::new(CompactProgress::new(&host.overlay, assets::icons::SHREDDER));
-        card.title.set_text("Formatting drive");
+        card.title.set_text(&crate::i18n::tr("Formatting drive"));
         card.status.set_text("…");
-        card.destination.set_text(&format!("Drive: {display_name}"));
+        card.destination.set_text(&rust_i18n::t!(
+            "Drive: %{display_name}",
+            display_name = display_name
+        ));
         card.info
-            .set_text("Do not unplug until formatting finishes.");
-        card.meta.set_text("Formatting…");
+            .set_text(&crate::i18n::tr("Do not unplug until formatting finishes."));
+        card.meta.set_text(&crate::i18n::tr("Formatting…"));
         card.cancel.set_visible(false);
         let state = Rc::new(Self {
             card,
@@ -51,11 +54,12 @@ impl FormatProgress {
         )));
         if let Some(window) = state.overlay.root().and_downcast::<gtk::Window>() {
             let weak = Rc::downgrade(&state);
-            window.connect_close_request(move |window| {
-                if let Some(state) = weak.upgrade() && !state.finished.get() {
-                    crate::ui::window::show_error_dialog(window, "Drive formatting is still active", "Wait until formatting finishes before closing this window. Do not unplug the drive.");
-                    glib::Propagation::Stop
-                } else { glib::Propagation::Proceed }
+            crate::ui::close_guard::install(&window, move |_| {
+                let state = weak.upgrade()?;
+                (!state.finished.get()).then(|| crate::ui::close_guard::CloseBlocker {
+                    title: crate::i18n::tr("Drive formatting is still active"),
+                    detail: crate::i18n::tr("Wait until formatting finishes before closing this window. Do not unplug the drive."),
+                })
             });
             let weak = Rc::downgrade(&state);
             window.connect_unrealize(move |_| {
@@ -83,8 +87,8 @@ impl FormatProgress {
             Ok(()) => {
                 self.card
                     .info
-                    .set_text("The drive was formatted successfully.");
-                self.card.completed("Format complete");
+                    .set_text(&crate::i18n::tr("The drive was formatted successfully."));
+                self.card.completed(&crate::i18n::tr("Format complete"));
             }
             Err(error) => {
                 self.dismiss();

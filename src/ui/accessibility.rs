@@ -28,9 +28,9 @@ pub(super) fn describe_location_controls(
     confirm: &impl IsA<gtk::Accessible>,
     cancel: &impl IsA<gtk::Accessible>,
 ) {
-    set_label(entry, LOCATION_LABEL);
-    set_label(confirm, LOCATION_CONFIRM_LABEL);
-    set_label(cancel, LOCATION_CANCEL_LABEL);
+    set_label(entry, &crate::i18n::tr(LOCATION_LABEL));
+    set_label(confirm, &crate::i18n::tr(LOCATION_CONFIRM_LABEL));
+    set_label(cancel, &crate::i18n::tr(LOCATION_CANCEL_LABEL));
 }
 
 /// The name belongs on the list item rather than on the row content: the item
@@ -38,7 +38,9 @@ pub(super) fn describe_location_controls(
 /// the selected and focused states.
 pub(super) fn describe_entry(item: &gtk::ListItem, display_name: &str, entry: Option<&FileEntry>) {
     item.set_accessible_label(display_name);
-    item.set_accessible_description(entry.map_or("Entry", entry_kind_name));
+    item.set_accessible_description(
+        &entry.map_or_else(|| crate::i18n::tr("Entry"), entry_kind_name),
+    );
 }
 
 /// A plain `GtkBox` has the `generic` accessible role, and ARIA forbids naming
@@ -65,7 +67,7 @@ pub(super) fn dialog_box(title: &str) -> gtk::Box {
 pub(super) fn describe_pane(pane: &impl IsA<gtk::Accessible>, directory: &str, mode: BrowserMode) {
     pane.update_property(&[
         gtk::accessible::Property::Label(directory),
-        gtk::accessible::Property::Description(view_name(mode)),
+        gtk::accessible::Property::Description(&view_name(mode)),
     ]);
 }
 
@@ -74,7 +76,7 @@ pub(super) const ENTRY_CONTAINER_DESCRIPTION: &str = "Files";
 pub(super) fn describe_entry_container(container: &impl IsA<gtk::Accessible>, directory: &str) {
     container.update_property(&[
         gtk::accessible::Property::Label(directory),
-        gtk::accessible::Property::Description(ENTRY_CONTAINER_DESCRIPTION),
+        gtk::accessible::Property::Description(&crate::i18n::tr(ENTRY_CONTAINER_DESCRIPTION)),
     ]);
 }
 
@@ -105,23 +107,23 @@ pub(super) fn describe_menu_item(
     ]);
 }
 
-pub(super) fn view_name(mode: BrowserMode) -> &'static str {
-    match mode {
+pub(super) fn view_name(mode: BrowserMode) -> String {
+    crate::i18n::tr(match mode {
         BrowserMode::Columns => "Columns view",
         BrowserMode::Icons => "Icons view",
         BrowserMode::List => "List view",
-    }
+    })
 }
 
-fn entry_kind_name(entry: &FileEntry) -> &'static str {
-    match entry.kind {
+fn entry_kind_name(entry: &FileEntry) -> String {
+    crate::i18n::tr(match entry.kind {
         EntryKind::Directory => "Folder",
         EntryKind::DirectorySymbolicLink => "Folder link",
         EntryKind::File => "File",
         EntryKind::FileSymbolicLink => "File link",
         EntryKind::SymbolicLink => "Broken link",
         EntryKind::Other => "Other",
-    }
+    })
 }
 
 #[cfg(test)]

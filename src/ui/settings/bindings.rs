@@ -24,21 +24,22 @@ pub(super) fn choice_menu<T: Copy + PartialEq + 'static>(
         .build();
     button.add_css_class("form-control");
     button.add_css_class("settings-choice");
-    crate::ui::accessibility::set_description(&button, Some(title));
-    super::super::accessibility::set_label(&button, title);
+    crate::ui::accessibility::set_description(&button, Some(&crate::i18n::tr(title)));
+    super::super::accessibility::set_label(&button, &crate::i18n::tr(title));
     let labels = choices.to_vec();
     manager.bind_preference(&button, read, move |widget, value| {
         if let Some(button) = widget.downcast_ref::<gtk::MenuButton>() {
-            button.set_label(
+            button.set_label(&crate::i18n::tr(
                 labels
                     .iter()
                     .find(|(_, candidate)| *candidate == value)
                     .map_or(labels[0].0, |(label, _)| *label),
-            );
+            ));
         }
     });
     for &(label, value) in choices {
-        let (option, check) = super::super::controls::menu_option(label, read(manager) == value);
+        let (option, check) =
+            super::super::controls::menu_option(&crate::i18n::tr(label), read(manager) == value);
         manager.bind_preference(&check, read, move |widget, selected| {
             widget.set_visible(selected == value)
         });

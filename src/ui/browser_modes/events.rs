@@ -413,7 +413,10 @@ impl Pane {
     }
 
     fn start_sorting(&self) {
-        crate::ui::accessibility::set_description(&self.spinner, Some("Sorting…"));
+        crate::ui::accessibility::set_description(
+            &self.spinner,
+            Some(&crate::i18n::tr("Sorting…")),
+        );
         self.spinner.set_visible(true);
         self.spinner.start();
     }
@@ -458,8 +461,10 @@ impl Pane {
             section.syncing.set(false);
         }
         self.spinner.stop();
-        self.status
-            .set_label(&format!("Unable to read this directory\n{message}"));
+        self.status.set_label(&rust_i18n::t!(
+            "Unable to read this directory\n%{message}",
+            message = message
+        ));
         self.status.add_css_class("error");
         self.loading.show("status");
     }

@@ -211,6 +211,49 @@ impl fmt::Display for ActionStoreError {
     }
 }
 
+impl ActionStoreError {
+    /// Localized counterpart of the English `Display`, which stays for logs.
+    pub fn user_message(&self) -> String {
+        use rust_i18n::t;
+        match self {
+            Self::Invalid(error) => return error.user_message(),
+            Self::Io(message) => return message.clone(),
+            Self::AlreadyExists(name) => {
+                t!("An action named “%{name}” already exists", name = name)
+            }
+            Self::NotFound(id) => t!("The action “%{id}” no longer exists", id = id),
+            Self::IdMismatch {
+                declared,
+                directory,
+            } => t!(
+                "The manifest declares id “%{declared}”, but its folder is named “%{directory}”; they must match",
+                declared = declared,
+                directory = directory
+            ),
+            Self::NotARegularFile(name) => t!(
+                "“%{name}” must be a regular file, not a link or directory",
+                name = name
+            ),
+            Self::MissingEntrypoint(name) => t!(
+                "The script “%{name}” is missing beside action.toml",
+                name = name
+            ),
+            Self::MissingProgram(program) => {
+                t!("“%{program}” was not found on your PATH", program = program)
+            }
+            Self::MissingInterpreter(program) => t!(
+                "The interpreter “%{program}” was not found. Install it, or point the action at an interpreter that exists",
+                program = program
+            ),
+            Self::NotAnActionDirectory(path) => t!(
+                "“%{path}” does not contain an action.toml file",
+                path = path
+            ),
+        }
+        .into_owned()
+    }
+}
+
 impl std::error::Error for ActionStoreError {}
 
 impl From<ActionError> for ActionStoreError {

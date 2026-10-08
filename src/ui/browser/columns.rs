@@ -793,9 +793,10 @@ impl ViewState {
                 // Rebuilt, already-loaded columns receive no finish event to cancel the timer.
                 stop_column_spinner(column);
                 if let Some(message) = snapshot.error.as_deref() {
-                    column
-                        .presentation
-                        .show_error(&format!("Unable to read this directory\n{message}"));
+                    column.presentation.show_error(&rust_i18n::t!(
+                        "Unable to read this directory\n%{message}",
+                        message = message
+                    ));
                 } else if snapshot.count == 0 {
                     column.presentation.show_empty();
                 } else {
@@ -899,9 +900,9 @@ impl ViewState {
         truncated_hint.add_css_class("column-truncated-hint");
         crate::ui::accessibility::set_description(
             &truncated_hint,
-            Some(
+            Some(&crate::i18n::tr(
                 "This directory has more entries than could be loaded; showing a partial listing.",
-            ),
+            )),
         );
         truncated_hint.set_visible(false);
         heading_box.append(&heading);
@@ -943,7 +944,7 @@ impl ViewState {
         header_actions.append(&filter_button);
         if depth > 0 {
             let close = gtk::Button::builder()
-                .tooltip_text("Close this pane")
+                .tooltip_text(crate::i18n::tr("Close this pane"))
                 .build();
             close.set_child(Some(&crate::assets::chrome_icon(crate::assets::icons::X)));
             crate::ui::controls::pane_header_action(&close);
@@ -1445,7 +1446,7 @@ impl ViewState {
                 *timer_source.borrow_mut() = Some(source_id);
             });
         }
-        let retry = gtk::Button::with_label("Retry");
+        let retry = gtk::Button::with_label(&crate::i18n::tr("Retry"));
         retry.add_css_class("retry-button");
         let weak_browser = Rc::downgrade(&self.browser);
         retry.connect_clicked(move |_| {
@@ -1659,9 +1660,12 @@ impl ViewState {
         reveal_button.set_visible(false);
         crate::ui::accessibility::set_label(
             &reveal_button,
-            &format!("Reveal {} column", location.display_name()),
+            &rust_i18n::t!("Reveal %{value1} column", value1 = location.display_name()),
         );
-        reveal_button.set_tooltip_text(Some(&format!("Reveal {}", location.display_path())));
+        reveal_button.set_tooltip_text(Some(&rust_i18n::t!(
+            "Reveal %{value1}",
+            value1 = location.display_path()
+        )));
         let weak = Rc::downgrade(self);
         let revealed_location = location.clone();
         reveal_button.connect_clicked(move |_| {

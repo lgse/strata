@@ -59,7 +59,8 @@ impl LoadPresentation {
     }
 
     pub(super) fn show_empty(&self) {
-        self.message.set_text("This directory is empty");
+        self.message
+            .set_text(&crate::i18n::tr("This directory is empty"));
         self.message.remove_css_class("error");
         if let Some(retry) = self.retry.as_ref() {
             retry.set_visible(false);

@@ -52,13 +52,13 @@ impl FileProgressState {
         } else if transferring {
             view.transfer_percent.text().to_string()
         } else {
-            format!("{}%", (view.progress.fraction() * 100.0) as usize)
+            crate::i18n::percent((view.progress.fraction() * 100.0) as usize)
         };
         compact.status.set_text(&status);
         if self.transfer_cancel_requested.get() && transferring {
-            compact
-                .info
-                .set_text("Device may still be writing. Do not unplug until the operation stops.");
+            compact.info.set_text(&crate::i18n::tr(
+                "Device may still be writing. Do not unplug until the operation stops.",
+            ));
         } else if transferring {
             let file = self.transfer_current_file.borrow();
             let description = self.task_description.borrow();
@@ -83,21 +83,21 @@ impl FileProgressState {
                         self.file_operation_progress.get().1,
                     )
                 };
-                format!("{completed}/{total}")
+                format!(
+                    "{}/{}",
+                    crate::i18n::integer(completed as u64),
+                    crate::i18n::integer(total as u64)
+                )
             });
         compact.count.set_text(count.as_deref().unwrap_or_default());
         compact.count.set_visible(count.is_some());
         let destination = self.destination_description.borrow();
+        let label = self.destination_label.borrow();
         compact
             .destination
-            .set_text(&match destination.strip_prefix("Destination: ") {
-                Some(path) => format!("→ {path}"),
-                None => destination.to_string(),
-            });
+            .set_text(if destination.is_empty() { "" } else { &label });
         crate::ui::accessibility::set_description(&compact.destination, Some(&destination));
-        compact
-            .destination
-            .set_visible(!self.destination_description.borrow().is_empty());
+        compact.destination.set_visible(!destination.is_empty());
         let meta = if transferring {
             view.transfer_rate.text()
         } else {
@@ -110,10 +110,23 @@ impl FileProgressState {
         compact
             .cancel
             .set_sensitive(!self.transfer_cancel_requested.get());
-        compact.cancel.set_tooltip_text(Some("Cancel operation"));
-        crate::ui::accessibility::set_label(
-            &compact.cancel,
-            &format!("Cancel {}", view.title.text()),
-        );
+        compact
+            .cancel
+            .set_tooltip_text(Some(&crate::i18n::tr("Cancel operation")));
+        crate::ui::accessibility::set_label(&compact.cancel, &view.cancel_label);
     }
+}
+
+/// `title` is the untranslated progress title passed by the operation.
+pub(super) fn cancel_accessible_label(title: &str) -> String {
+    crate::i18n::tr(match title {
+        "Copying items" => "Cancel copying",
+        "Moving items" => "Cancel moving",
+        "Deleting items" => "Cancel deleting",
+        "Restoring items" => "Cancel restoring",
+        "Compressing items" => "Cancel compressing",
+        "Processing archive…" => "Cancel archive processing",
+        "Emptying Trash" => "Cancel emptying Trash",
+        _ => "Cancel operation",
+    })
 }

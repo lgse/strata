@@ -11,7 +11,7 @@ use gtk::{gio, glib, prelude::*};
 
 use super::{
     BrowserView,
-    open_argument::{CONNECTING_DELAY, clear_status, show_connecting_overlay},
+    open_argument::{CONNECTING_DELAY, clear_status, show_connecting_overlay, status_card},
     present_target,
 };
 
@@ -113,7 +113,7 @@ fn start_unlock_wait(
         };
         let cancel_request = connecting_request.clone();
         let cancel_browser = browser.downgrade();
-        show_connecting_overlay(&browser, CONNECTING_MESSAGE, move || {
+        show_connecting_overlay(&browser, &crate::i18n::tr(CONNECTING_MESSAGE), move || {
             cancel_request.finish();
             if let Some(browser) = cancel_browser.upgrade() {
                 clear_status(&browser);
@@ -320,21 +320,35 @@ fn show_not_found(browser: &BrowserView) {
 fn show_unlock_error(browser: &BrowserView, message: &str) {
     clear_status(browser);
     let overlay = browser.overlay();
-    let content = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    content.add_css_class("open-argument-status");
-    content.add_css_class("directory-feedback");
-    content.set_halign(gtk::Align::Center);
-    content.set_valign(gtk::Align::Center);
+    // Replaces the waiting card in place, so it never overlaps the folder's own status text.
+    let (row, content) = status_card();
 
-    let label = gtk::Label::new(Some(message));
+    let label = gtk::Label::new(Some(&crate::i18n::tr(message)));
     label.add_css_class("status-message");
     label.add_css_class("error");
-    label.set_justify(gtk::Justification::Center);
     label.set_wrap(true);
-    label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    label.set_wrap_mode(gtk::pango::WrapMode::Word);
+    label.set_max_width_chars(40);
+    label.set_xalign(0.0);
     content.append(&label);
 
-    overlay.add_overlay(&content);
+    let dismiss_label = crate::i18n::tr("Dismiss");
+    let dismiss = gtk::Button::builder()
+        .child(&crate::assets::primary_icon(crate::assets::icons::X, 16))
+        .tooltip_text(&dismiss_label)
+        .valign(gtk::Align::Center)
+        .build();
+    dismiss.add_css_class("action-dialog-close");
+    crate::ui::accessibility::set_label(&dismiss, &dismiss_label);
+    let weak = browser.downgrade();
+    dismiss.connect_clicked(move |_| {
+        if let Some(browser) = weak.upgrade() {
+            clear_status(&browser);
+        }
+    });
+    content.append(&dismiss);
+
+    overlay.add_overlay(&row);
 }
 
 struct UnlockRequest {

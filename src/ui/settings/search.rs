@@ -12,6 +12,12 @@ struct Target {
 
 const TARGETS: &[Target] = &[
     Target {
+        id: "language",
+        page: "general",
+        title: "Language",
+        aliases: "locale translation auto detect restart English Français Deutsch Español 日本語 Português 한국어 Tiếng Việt Italiano Русский",
+    },
+    Target {
         id: "custom-actions",
         page: "actions",
         title: "Custom actions",
@@ -70,6 +76,12 @@ const TARGETS: &[Target] = &[
         page: "general",
         title: "Mirror columns selection",
         aliases: "browsing columns keyboard selection next pane folders",
+    },
+    Target {
+        id: "tenxer",
+        page: "general",
+        title: "10xer mode",
+        aliases: "browsing keyboard modal prompts footer commands experimental",
     },
     Target {
         id: "hints",
@@ -327,8 +339,17 @@ fn word_score(query: &str, word: &str) -> Option<i32> {
 }
 
 fn score(query: &str, target: &Target) -> Option<i32> {
-    let title = normalized(target.title);
-    let aliases = normalized(&format!("{} {} settings", target.aliases, target.page));
+    let source_title = normalized(target.title);
+    let localized_title = normalized(&crate::i18n::tr(target.title));
+    let title = format!("{source_title} {localized_title}");
+    let aliases = normalized(&format!(
+        "{} {} {} {} settings {}",
+        target.aliases,
+        localized_keywords(target),
+        target.page,
+        crate::i18n::tr(page_title(target.page)),
+        crate::i18n::tr("Settings"),
+    ));
     let mut total = 0;
     for query_word in query.split_whitespace() {
         let title_score = title
@@ -343,14 +364,35 @@ fn score(query: &str, target: &Target) -> Option<i32> {
     }
     Some(
         total
-            + if title == query {
+            + if source_title == query || localized_title == query {
                 1000
-            } else if title.contains(query) {
+            } else if source_title.contains(query) || localized_title.contains(query) {
                 200
             } else {
                 0
             },
     )
+}
+
+/// Semantic keys; a missing entry adds nothing, since the English aliases are always searched.
+fn localized_keywords(target: &Target) -> String {
+    let key = format!("settings_keywords.{}", target.id);
+    let keywords = crate::i18n::tr(&key);
+    if keywords == key {
+        String::new()
+    } else {
+        keywords
+    }
+}
+
+fn page_title(page: &str) -> &'static str {
+    match page {
+        "general" => "General",
+        "actions" => "Actions",
+        "theme" => "Appearance",
+        "updates" => "Updates",
+        _ => "About",
+    }
 }
 
 #[derive(Default)]
@@ -452,7 +494,7 @@ pub(super) fn append(navigation: &gtk::Box) -> Search {
     field.add_css_class("settings-global-search");
     entry.add_css_class("settings-global-search-entry");
     entry.set_width_chars(1);
-    crate::ui::accessibility::set_label(&entry, "Search settings");
+    crate::ui::accessibility::set_label(&entry, &crate::i18n::tr("Search settings"));
     navigation.append(&field);
     let (popup_field, popup_entry, popup_clear) = super::search_field("Search settings");
     popup_field.set_size_request(260, -1);
@@ -467,13 +509,13 @@ pub(super) fn append(navigation: &gtk::Box) -> Search {
         crate::assets::icons::SEARCH,
         18,
     )));
-    compact.set_tooltip_text(Some("Search settings"));
-    crate::ui::accessibility::set_label(&compact, "Search settings");
+    compact.set_tooltip_text(Some(&crate::i18n::tr("Search settings")));
+    crate::ui::accessibility::set_label(&compact, &crate::i18n::tr("Search settings"));
     compact.set_popover(Some(&popover));
     compact.add_css_class("settings-global-search-compact");
     compact.set_visible(false);
     navigation.append(&compact);
-    crate::ui::accessibility::set_label(&popup_entry, "Search settings");
+    crate::ui::accessibility::set_label(&popup_entry, &crate::i18n::tr("Search settings"));
     entry
         .bind_property("text", &popup_entry, "text")
         .bidirectional()
@@ -551,7 +593,7 @@ impl Search {
         title: &gtk::Label,
         buttons: &Rc<RefCell<Vec<gtk::Button>>>,
     ) {
-        let empty = gtk::Label::new(Some("No settings match your search."));
+        let empty = gtk::Label::new(Some(&crate::i18n::tr("No settings match your search.")));
         empty.set_wrap(true);
         empty.add_css_class("settings-option-description");
         stack.add_named(&empty, Some("settings-search-empty"));
@@ -605,7 +647,7 @@ impl Search {
                 if no_matches {
                     stack.set_visible_child_name("settings-search-empty");
                     if let Some(title) = title.upgrade() {
-                        title.set_text("Search results");
+                        title.set_text(&crate::i18n::tr("Search results"));
                     }
                 } else if let Some(destination) = destination {
                     for (button, page) in &buttons {

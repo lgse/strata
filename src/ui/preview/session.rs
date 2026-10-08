@@ -112,14 +112,14 @@ impl PreviewState {
             return;
         }
         self.clear_content();
-        self.title.set_text(PREVIEW_LABEL);
+        self.title.set_text(&crate::i18n::tr(PREVIEW_LABEL));
         crate::ui::accessibility::set_description(&self.title, None);
         self.icon.set_visible(false);
         self.metadata.set_visible(false);
         self.open.set_sensitive(false);
         self.header_handle.set_cursor_from_name(None);
         let placeholder = gtk::Label::builder()
-            .label("No preview for this selection")
+            .label(crate::i18n::tr("No preview for this selection"))
             .wrap(true)
             .justify(gtk::Justification::Center)
             .hexpand(true)

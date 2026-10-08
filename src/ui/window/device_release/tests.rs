@@ -489,9 +489,10 @@ fn start_release_flushes_on_a_worker_and_a_flush_error_skips_gio() {
             assert_eq!(calls.get(), 0);
             let texts = label_texts(overlay.upcast_ref());
             assert!(
-                texts.iter().any(|text| text.contains("os error")),
-                "open failure must be the real io error, got {texts:?}"
+                texts.iter().any(|text| text == "No such file or folder"),
+                "open failure must be the localized io error, got {texts:?}"
             );
+            assert!(texts.iter().all(|text| !text.contains("os error")));
             assert!(texts.iter().all(|text| !text.contains("Could not flush")));
             assert!(texts.iter().all(|text| text != "Safe to remove"));
             assert!(
@@ -531,7 +532,7 @@ fn start_release_flushes_on_a_worker_and_a_flush_error_skips_gio() {
             assert_eq!(calls.get(), 0);
             let texts = label_texts(overlay.upcast_ref());
             assert!(
-                texts.iter().any(|text| text.contains("os error")),
+                texts.iter().any(|text| text == "Not a folder"),
                 "a file mount root must fail in open, got {texts:?}"
             );
             assert!(texts.iter().all(|text| !text.contains("Could not flush")));

@@ -383,7 +383,7 @@ fn launch_with_recent_registration(
     if !launcher.supports_uris() && requires_uri_handlers(files) {
         return Err(glib::Error::new(
             gio::IOErrorEnum::NotSupported,
-            "This application cannot open files at this location",
+            &crate::i18n::tr("This application cannot open files at this location"),
         ));
     }
     launcher.launch(files, context)?;
@@ -580,7 +580,7 @@ fn create_section_header(title: &str) -> gtk::ListBoxRow {
     row.set_focusable(false);
     row.set_can_focus(false);
 
-    let label = gtk::Label::new(Some(title));
+    let label = gtk::Label::new(Some(&crate::i18n::tr(title)));
     label.add_css_class("open-with-heading");
     label.set_xalign(0.0);
     row.set_child(Some(&label));
@@ -644,16 +644,16 @@ pub(super) fn show(
         root.set_blurred(true);
     }
 
-    let subtitle = if files.len() == 1 {
+    let subtitle = crate::i18n::tr(if files.len() == 1 {
         "Choose an application to open this item"
     } else {
         "Choose an application to open these items"
-    };
+    });
     let layout = modal_layout(
         crate::assets::icons::EXTERNAL_LINK,
-        "Open With",
-        subtitle,
-        "Open",
+        &crate::i18n::tr("Open With"),
+        &subtitle,
+        &crate::i18n::tr("Open"),
     );
     layout.content.add_css_class("open-with-dialog");
     layout.content.set_size_request(480, 460);
@@ -661,20 +661,23 @@ pub(super) fn show(
 
     let search_entry = gtk::SearchEntry::new();
     search_entry.add_css_class("open-with-search");
-    search_entry.set_placeholder_text(Some("Search applications…"));
+    search_entry.set_placeholder_text(Some(&crate::i18n::tr("Search applications…")));
     layout.body.append(&search_entry);
 
     let list = gtk::ListBox::new();
     list.add_css_class("open-with-list");
     list.set_selection_mode(gtk::SelectionMode::Single);
     list.set_activate_on_single_click(false);
-    list.update_property(&[gtk::accessible::Property::Label("Applications")]);
+    list.update_property(&[gtk::accessible::Property::Label(&crate::i18n::tr(
+        "Applications",
+    ))]);
 
-    let always_use = super::controls::form_check_button(if content_types.len() > 1 {
-        "Always use for these file types"
-    } else {
-        "Always use for this file type"
-    });
+    let always_use =
+        super::controls::form_check_button(&crate::i18n::tr(if content_types.len() > 1 {
+            "Always use for these file types"
+        } else {
+            "Always use for this file type"
+        }));
     always_use.set_visible(false);
     layout.actions.prepend(&always_use);
 
@@ -784,7 +787,9 @@ pub(super) fn show(
     list_scroll.set_hscrollbar_policy(gtk::PolicyType::Never);
     layout.body.append(&list_scroll);
 
-    let empty_search = gtk::Label::new(Some("No matching applications were found."));
+    let empty_search = gtk::Label::new(Some(&crate::i18n::tr(
+        "No matching applications were found.",
+    )));
     empty_search.add_css_class("open-with-empty");
     empty_search.set_wrap(true);
     empty_search.set_xalign(0.5);
@@ -799,7 +804,7 @@ pub(super) fn show(
     if !has_apps {
         search_entry.set_visible(false);
         list_scroll.set_visible(false);
-        let empty = gtk::Label::new(Some(context.empty_message()));
+        let empty = gtk::Label::new(Some(&crate::i18n::tr(context.empty_message())));
         empty.add_css_class("open-with-empty");
         empty.set_wrap(true);
         empty.set_xalign(0.5);
@@ -1057,7 +1062,7 @@ pub(super) fn show(
             let open_parent = open_parent.clone();
             glib::timeout_add_local_once(Duration::from_millis(250), move || {
                 if let Some(parent) = open_parent.upgrade() {
-                    show_error_dialog(&parent, "Unable to open file", &detail);
+                    show_error_dialog(&parent, &crate::i18n::tr("Unable to open file"), &detail);
                 }
             });
             return;

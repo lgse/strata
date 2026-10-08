@@ -22,14 +22,16 @@ pub(super) fn search_exclusions_control(manager: &Rc<PreferenceManager>) -> gtk:
     let field = form_entry();
     field.set_hexpand(true);
     field.set_width_chars(1);
-    field.set_placeholder_text(Some("Folder name (e.g. .venv) or ~/path…"));
-    super::super::accessibility::set_label(&field, "Search exclusion");
+    field.set_placeholder_text(Some(&crate::i18n::tr(
+        "Folder name (e.g. .venv) or ~/path…",
+    )));
+    super::super::accessibility::set_label(&field, &crate::i18n::tr("Search exclusion"));
 
-    let browse_btn = gtk::Button::with_label("Browse…");
+    let browse_btn = gtk::Button::with_label(&crate::i18n::tr("Browse…"));
     browse_btn.add_css_class("settings-action-button");
     browse_btn.set_valign(gtk::Align::Fill);
 
-    let add_btn = gtk::Button::with_label("Add");
+    let add_btn = gtk::Button::with_label(&crate::i18n::tr("Add"));
     add_btn.add_css_class("settings-action-button");
     add_btn.set_valign(gtk::Align::Fill);
 
@@ -39,6 +41,7 @@ pub(super) fn search_exclusions_control(manager: &Rc<PreferenceManager>) -> gtk:
     buttons_box.append(&add_btn);
 
     let input_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    input_row.add_css_class("settings-exclusions-input");
     input_row.append(&field);
     input_row.append(&buttons_box);
 
@@ -124,7 +127,7 @@ pub(super) fn search_exclusions_control(manager: &Rc<PreferenceManager>) -> gtk:
             return;
         };
         let dialog = gtk::FileDialog::builder()
-            .title("Select folder to exclude")
+            .title(crate::i18n::tr("Select folder to exclude"))
             .modal(true)
             .build();
         let field = field_for_browse.clone();
@@ -156,9 +159,9 @@ fn render_exclusion_rows(
         container.remove(&child);
     }
     if exclusions.is_empty() {
-        let empty = gtk::Label::new(Some(
+        let empty = gtk::Label::new(Some(&crate::i18n::tr(
             "No custom exclusions added. Common tool caches (.venv, node_modules, target, etc.) are excluded automatically.",
-        ));
+        )));
         empty.add_css_class("settings-option-description");
         empty.add_css_class("settings-exclusion-row");
         empty.set_xalign(0.0);
@@ -178,7 +181,11 @@ fn render_exclusion_rows(
         row.append(&name_label);
 
         let is_path = SearchExclusions::is_directory_path(&item);
-        let type_label = gtk::Label::new(Some(if is_path { "Directory" } else { "Folder name" }));
+        let type_label = gtk::Label::new(Some(&crate::i18n::tr(if is_path {
+            "Directory"
+        } else {
+            "Folder name"
+        })));
         type_label.add_css_class("settings-option-description");
         type_label.set_xalign(1.0);
         row.append(&type_label);
@@ -188,12 +195,15 @@ fn render_exclusion_rows(
         remove.add_css_class("settings-action-icon-button");
         remove.add_css_class("danger");
         remove.set_valign(gtk::Align::Center);
-        remove.set_tooltip_text(Some("Remove exclusion"));
+        remove.set_tooltip_text(Some(&crate::i18n::tr("Remove exclusion")));
         let remove_icon = crate::assets::danger_icon(icons::TRASH, crate::assets::CHROME_ICON_PX);
         remove_icon.set_halign(gtk::Align::Center);
         remove_icon.set_valign(gtk::Align::Center);
         remove.set_child(Some(&remove_icon));
-        super::super::accessibility::set_label(&remove, &format!("Remove exclusion {item}"));
+        super::super::accessibility::set_label(
+            &remove,
+            &rust_i18n::t!("Remove exclusion %{item}", item = item),
+        );
         let weak_manager = Rc::downgrade(manager);
         remove.connect_clicked(move |_| {
             if let Some(manager) = weak_manager.upgrade() {

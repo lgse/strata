@@ -246,9 +246,9 @@ fn capacity_summary_reports_used_bytes_and_fraction() {
         "ui::window::drive_dialogs::tests::capacity_summary_reports_used_bytes_and_fraction",
         || {
             for (total, available, amount, fraction) in [
-                (1000, 250, "750 B / 1.0 KB", 0.75),
-                (1000, 0, "1.0 KB / 1.0 KB", 1.0),
-                (1000, 1200, "0 B / 1.0 KB", 0.0),
+                (1000, 250, "750 B / 1 kB", 0.75),
+                (1000, 0, "1 kB / 1 kB", 1.0),
+                (1000, 1200, "0 B / 1 kB", 0.0),
                 (0, 0, "0 B / 0 B", 0.0),
             ] {
                 let summary = capacity_summary(total, available);

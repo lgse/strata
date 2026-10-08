@@ -157,7 +157,11 @@ fn enqueue(
         source,
     }) {
         Ok(id) => super::jobs::present_for(anchor, id),
-        Err(error) => show_error_dialog(anchor, "Unable to run action", &error.to_string()),
+        Err(error) => show_error_dialog(
+            anchor,
+            &crate::i18n::tr("Unable to run action"),
+            &error.to_string(),
+        ),
     }
 }
 
@@ -176,25 +180,27 @@ fn confirm_and_run(
     else {
         show_error_dialog(
             anchor,
-            "Unable to confirm action",
-            "Open the action from a browser window.",
+            &crate::i18n::tr("Unable to confirm action"),
+            &crate::i18n::tr("Open the action from a browser window."),
         );
         return;
     };
     let jobs = super::jobs::shared();
     let layout = message_dialog_layout(
         action_icon(action.definition.icon.as_deref()),
-        "Run this action?",
+        &crate::i18n::tr("Run this action?"),
         action.name(),
-        "Run",
+        &crate::i18n::tr("Run"),
         ModalTone::Danger,
     );
     let count = paths.len();
-    layout.body.append(&message_dialog_description(&format!(
-        "This runs “{}” on {}.",
-        action.name(),
-        item_count_label(count)
-    )));
+    layout
+        .body
+        .append(&message_dialog_description(&rust_i18n::t!(
+            "This runs “%{value1}” on %{value2}.",
+            value1 = action.name(),
+            value2 = item_count_label(count)
+        )));
     if let Some(description) = action.definition.description.as_deref() {
         layout.body.append(&message_dialog_description(description));
     }
@@ -236,8 +242,5 @@ fn confirm_and_run(
 }
 
 fn item_count_label(count: usize) -> String {
-    match count {
-        1 => "1 selected item".to_owned(),
-        count => format!("{count} selected items"),
-    }
+    crate::i18n::count("selected_items", count)
 }

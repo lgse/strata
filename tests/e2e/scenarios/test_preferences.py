@@ -106,3 +106,57 @@ def test_enabled_tenxer_applies_before_settings_and_survives_restart(strata):
     assert _search_button(strata.window) is None
     assert _close_button(strata.window) is not None
     assert strata.environment.read_preferences().get("tenxer_mode") == "true"
+
+
+@pytest.mark.preferences(language="fr")
+def test_language_selection_and_auto_detection_apply_after_relaunch(strata):
+    settings = strata.wait(
+        lambda: strata.window.find(role="button", name="Paramètres"),
+        "saved French language before opening Settings",
+    )
+    strata.pointer.click(settings)
+    language = strata.wait(
+        lambda: strata.window.find(role="button", name="Langue"), "French language selector"
+    )
+    strata.pointer.click(language)
+    japanese = strata.wait(
+        lambda: strata.window.find(role="label", name="日本語"), "Japanese autonym"
+    )
+    strata.pointer.click(japanese)
+    strata.wait(
+        lambda: strata.environment.read_preferences().get("language") == '"ja"',
+        "manual language saved",
+    )
+    strata.wait(
+        lambda: strata.window.find(role="button", name="Redémarrer maintenant"),
+        "restart notice remains in the running French language",
+    )
+    assert strata.window.find(role="button", name="Langue") is not None
+    assert strata.window.find(role="button", name="言語") is None
+
+    strata.application.stop()
+    strata.application.start()
+    settings = strata.wait(
+        lambda: strata.window.find(role="button", name="設定"), "Japanese after relaunch"
+    )
+    strata.pointer.click(settings)
+    language = strata.wait(
+        lambda: strata.window.find(role="button", name="言語"), "Japanese language selector"
+    )
+    strata.pointer.click(language)
+    automatic = strata.wait(
+        lambda: strata.window.find(role="label", name="自動検出"), "Auto-detect in Japanese"
+    )
+    strata.pointer.click(automatic)
+    strata.wait(
+        lambda: strata.environment.read_preferences().get("language") == '"auto"',
+        "Auto-detect saved",
+    )
+    assert strata.window.find(role="button", name="言語") is not None
+
+    strata.application.stop()
+    strata.application.start()
+    strata.wait(
+        lambda: strata.window.find(role="button", name="Settings"),
+        "Auto-detect returns to the isolated C.UTF-8 environment's English UI",
+    )

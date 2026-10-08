@@ -1961,7 +1961,9 @@ pub(crate) fn filter_controls(tooltip: &str) -> (gtk::Entry, gtk::Revealer, gtk:
         .transition_type(gtk::RevealerTransitionType::SlideDown)
         .child(&row)
         .build();
-    let button = gtk::ToggleButton::builder().tooltip_text(tooltip).build();
+    let button = gtk::ToggleButton::builder()
+        .tooltip_text(crate::i18n::tr(tooltip))
+        .build();
     button.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::FUNNEL,
     )));
@@ -1993,7 +1995,7 @@ fn icons_controls(browser: &Rc<Browser>, depth: usize, thumbnail_size: i32) -> I
     thumbnail_popover.add_css_class("icons-thumbnail-popover");
     let thumbnail_content = gtk::Box::new(gtk::Orientation::Vertical, 10);
     let thumbnail_heading = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-    let thumbnail_title = gtk::Label::new(Some("Thumbnail size"));
+    let thumbnail_title = gtk::Label::new(Some(&crate::i18n::tr("Thumbnail size")));
     thumbnail_title.add_css_class("icons-thumbnail-title");
     thumbnail_title.set_xalign(0.0);
     thumbnail_title.set_hexpand(true);
@@ -2015,10 +2017,10 @@ fn icons_controls(browser: &Rc<Browser>, depth: usize, thumbnail_size: i32) -> I
     disable_scale_long_press_zoom(&thumbnail_scale);
     let thumbnail_extremes = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     thumbnail_extremes.add_css_class("icons-thumbnail-extremes");
-    let small = gtk::Label::new(Some("Small"));
+    let small = gtk::Label::new(Some(&crate::i18n::tr("Small")));
     small.set_xalign(0.0);
     small.set_hexpand(true);
-    let large = gtk::Label::new(Some("Large"));
+    let large = gtk::Label::new(Some(&crate::i18n::tr("Large")));
     large.set_xalign(1.0);
     thumbnail_extremes.append(&small);
     thumbnail_extremes.append(&large);
@@ -2027,7 +2029,7 @@ fn icons_controls(browser: &Rc<Browser>, depth: usize, thumbnail_size: i32) -> I
     thumbnail_content.append(&thumbnail_extremes);
     thumbnail_popover.set_child(Some(&thumbnail_content));
     let thumbnail_menu = gtk::MenuButton::builder()
-        .tooltip_text("Thumbnail size")
+        .tooltip_text(crate::i18n::tr("Thumbnail size"))
         .popover(&thumbnail_popover)
         .build();
     crate::ui::controls::pane_header_action(&thumbnail_menu);
@@ -2783,7 +2785,7 @@ fn list_headings(
         register_list_column_cell(&columns, index, &cell);
 
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 5);
-        let label = gtk::Label::new(Some(text));
+        let label = gtk::Label::new(Some(&crate::i18n::tr(text)));
         label.set_xalign(0.0);
         label.set_hexpand(true);
         label.set_ellipsize(gtk::pango::EllipsizeMode::End);
@@ -3019,7 +3021,7 @@ fn list_navigation(browser: &Rc<Browser>) -> gtk::Box {
         ),
     ] {
         let button = gtk::Button::builder()
-            .tooltip_text(tooltip)
+            .tooltip_text(crate::i18n::tr(tooltip))
             .sensitive(available)
             .build();
         button.set_child(Some(&crate::assets::chrome_icon(icon)));
@@ -3460,7 +3462,9 @@ fn pane_base(
     let truncated_hint = crate::assets::primary_icon(crate::assets::icons::TRIANGLE_ALERT, 16);
     crate::ui::accessibility::set_description(
         &truncated_hint,
-        Some("This directory has more entries than could be loaded; showing a partial listing."),
+        Some(&crate::i18n::tr(
+            "This directory has more entries than could be loaded; showing a partial listing.",
+        )),
     );
     truncated_hint.set_visible(false);
     heading_box.append(&heading);
@@ -3480,7 +3484,7 @@ fn pane_base(
     let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
     content.set_hexpand(true);
     content.set_vexpand(true);
-    let status = gtk::Label::new(Some("This directory is empty"));
+    let status = gtk::Label::new(Some(&crate::i18n::tr("This directory is empty")));
     status.add_css_class("status-message");
     status.set_wrap(true);
     let stack = gtk::Stack::builder()
@@ -4569,7 +4573,8 @@ fn show_count(pane: &Pane) {
     }
     if count == 0 {
         pane.status.remove_css_class("error");
-        pane.status.set_label("This directory is empty");
+        pane.status
+            .set_label(&crate::i18n::tr("This directory is empty"));
         pane.loading.show("status");
     } else {
         pane.loading.show("content");
@@ -4596,8 +4601,10 @@ fn apply_snapshot(pane: &Pane, snapshot: &BrowserColumnSnapshot, browser: &Brows
     } else {
         pane.spinner.stop();
         if let Some(message) = snapshot.error.as_deref() {
-            pane.status
-                .set_label(&format!("Unable to read this directory\n{message}"));
+            pane.status.set_label(&rust_i18n::t!(
+                "Unable to read this directory\n%{message}",
+                message = message
+            ));
             pane.status.add_css_class("error");
             pane.loading.show("status");
         }
@@ -4627,7 +4634,7 @@ fn assemble_list_row() -> gtk::Box {
     name.set_max_width_chars(1);
     let field = gtk::Entry::new();
     field.add_css_class("inline-rename");
-    super::accessibility::set_label(&field, "Rename");
+    super::accessibility::set_label(&field, &crate::i18n::tr("Rename"));
     field.set_hexpand(true);
     field.set_visible(false);
     name_cell.append(&icon);
@@ -4784,7 +4791,10 @@ fn entry_size(entry: &FileEntry) -> String {
 }
 
 fn entry_type(entry: &FileEntry) -> String {
-    crate::services::entry_type_description(entry)
+    match crate::services::entry_type(entry) {
+        crate::services::EntryType::Known(description) => description,
+        kind => crate::i18n::tr(kind.description()),
+    }
 }
 
 fn entry_mode(entry: &FileEntry) -> String {
@@ -4878,9 +4888,8 @@ fn format_duration(seconds: u64) -> String {
 fn entry_icons_item_info(entry: &FileEntry) -> Option<String> {
     if entry.is_directory() {
         return match entry.child_count {
-            MetadataValue::Known(0) => Some("No items".to_owned()),
-            MetadataValue::Known(1) => Some("1 item".to_owned()),
-            MetadataValue::Known(count) => Some(format!("{count} items")),
+            MetadataValue::Known(0) => Some(crate::i18n::tr("No items")),
+            MetadataValue::Known(count) => Some(crate::i18n::count_u64("items", count)),
             MetadataValue::Unknown | MetadataValue::Unavailable => None,
         };
     }
@@ -4987,7 +4996,7 @@ fn compare_type_groups_for_preferences(
 }
 
 fn type_group_heading(label: &str) -> gtk::Label {
-    let heading = gtk::Label::new(Some(label));
+    let heading = gtk::Label::new(Some(&crate::i18n::tr(label)));
     heading.add_css_class("type-group-heading");
     heading.set_xalign(0.0);
     heading
@@ -5014,7 +5023,7 @@ fn type_group_header_factory() -> gtk::SignalListItemFactory {
             .map(|item| model_value(&item))
             .unwrap_or_default();
         let group = value_type_group(&value);
-        heading.set_label(&group);
+        heading.set_label(&crate::i18n::tr(&group));
         heading.set_visible(!group.is_empty());
     });
     factory

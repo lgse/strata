@@ -86,7 +86,7 @@ pub(super) fn compress(request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)
         let Some(dest_dir) = request.destination.native_path().map(Path::to_path_buf) else {
             emit(OperationEvent::Failed {
                 request_id: request.id,
-                message: "Archive destination must be a local path".to_owned(),
+                message: crate::i18n::tr("Archive destination must be a local path"),
                 password_failure: None,
             });
             return;
@@ -94,7 +94,7 @@ pub(super) fn compress(request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)
         if let Err(message) = validate_basename(&request.archive_name) {
             emit(OperationEvent::Failed {
                 request_id: request.id,
-                message: message.to_owned(),
+                message: crate::i18n::tr(message),
                 password_failure: None,
             });
             return;
@@ -109,7 +109,7 @@ pub(super) fn compress(request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)
         if entries.is_empty() {
             emit(OperationEvent::Failed {
                 request_id: request.id,
-                message: "Nothing to compress".to_owned(),
+                message: crate::i18n::tr("Nothing to compress"),
                 password_failure: None,
             });
             return;
@@ -159,9 +159,9 @@ pub(super) fn compress(request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)
                     ArchiveFormat::Tar => {
                         compress_tar(file, &entries, None, &work_progress, &work_cancelled)
                     }
-                    ArchiveFormat::Rar => Err(ArchiveError::Failed(
-                        "RAR compression is not supported".to_owned(),
-                    )),
+                    ArchiveFormat::Rar => Err(ArchiveError::Failed(crate::i18n::tr(
+                        "RAR compression is not supported",
+                    ))),
                 }
             },
         )
@@ -185,7 +185,7 @@ pub(super) fn compress(request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)
             )),
             Err(error) => emit(OperationEvent::Failed {
                 request_id: request.id,
-                message: error.to_string(),
+                message: error.user_message(),
                 password_failure: None,
             }),
         }
@@ -205,7 +205,7 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
         let Some(archive_path) = request.entry.location.native_path().map(Path::to_path_buf) else {
             emit(OperationEvent::Failed {
                 request_id: request.id,
-                message: "Archive must be a local file".to_owned(),
+                message: crate::i18n::tr("Archive must be a local file"),
                 password_failure: None,
             });
             return;
@@ -216,7 +216,11 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
         {
             emit(OperationEvent::Failed {
                 request_id: request.id,
-                message: format!("Not an archive: `{}`", request.entry.display_name),
+                message: rust_i18n::t!(
+                    "Not an archive: “%{name}”",
+                    name = request.entry.display_name
+                )
+                .into_owned(),
                 password_failure: None,
             });
             return;
@@ -224,7 +228,7 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
         let Some(dest_dir) = request.destination.native_path().map(Path::to_path_buf) else {
             emit(OperationEvent::Failed {
                 request_id: request.id,
-                message: "Extract destination must be a local path".to_owned(),
+                message: crate::i18n::tr("Extract destination must be a local path"),
                 password_failure: None,
             });
             return;
@@ -233,7 +237,11 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
         if created_dest && let Err(e) = std::fs::create_dir_all(&dest_dir) {
             emit(OperationEvent::Failed {
                 request_id: request.id,
-                message: format!("Could not create folder: {e}"),
+                message: rust_i18n::t!(
+                    "Could not create folder: %{error}",
+                    error = crate::services::io_error_detail(&e)
+                )
+                .into_owned(),
                 password_failure: None,
             });
             return;
@@ -254,7 +262,8 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
         let work_total = total.clone();
         let result = gio::spawn_blocking(move || match format {
             Some(ArchiveFormat::Zip) => {
-                let file = std::fs::File::open(&archive_path).map_err(|e| e.to_string())?;
+                let file = std::fs::File::open(&archive_path)
+                    .map_err(|e| crate::services::io_error_message(&e))?;
                 let mut archive = zip::ZipArchive::new(file).map_err(decoders::zip_error)?;
                 work_total.store(archive.len(), Ordering::Relaxed);
                 extract_zip_from_archive(
@@ -271,7 +280,8 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
                     .as_deref()
                     .map(sevenz_rust2::Password::from)
                     .unwrap_or_default();
-                let file = std::fs::File::open(&archive_path).map_err(|e| e.to_string())?;
+                let file = std::fs::File::open(&archive_path)
+                    .map_err(|e| crate::services::io_error_message(&e))?;
                 extract_7z_from_reader(
                     file,
                     &dest_dir,
@@ -298,9 +308,9 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
                 &work_cancelled,
             ),
             #[cfg(not(feature = "rar"))]
-            Some(ArchiveFormat::Rar) => Err(archive_failed(
-                "RAR support is disabled in this build.".to_owned(),
-            )),
+            Some(ArchiveFormat::Rar) => Err(archive_failed(crate::i18n::tr(
+                "RAR support is disabled in this build.",
+            ))),
             #[cfg(feature = "rar")]
             Some(ArchiveFormat::Rar) => extract_rar(
                 &archive_path,
@@ -310,8 +320,9 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
                 &work_progress,
                 &work_cancelled,
             ),
-            None => Err(archive_failed(format!(
-                "Unsupported archive format: {display_name}"
+            None => Err(archive_failed(rust_i18n::t!(
+                "Unsupported archive format: %{name}",
+                name = display_name
             ))),
         })
         .await;
@@ -349,11 +360,11 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
             Ok(Err(error)) => emit(OperationEvent::Failed {
                 request_id: request.id,
                 password_failure: error.password_failure(),
-                message: error.to_string(),
+                message: error.user_message(),
             }),
             Err(_) => emit(OperationEvent::Failed {
                 request_id: request.id,
-                message: "Extraction task panicked".to_owned(),
+                message: crate::i18n::tr("Extraction stopped unexpectedly"),
                 password_failure: None,
             }),
         }
@@ -383,6 +394,18 @@ enum ArchiveError {
 }
 
 impl ArchiveError {
+    /// Failures are localized where they are built; password and
+    /// cancellation messages are shared constants translated here.
+    fn user_message(&self) -> String {
+        match self {
+            Self::Cancelled => crate::i18n::tr(ARCHIVE_CANCELLED),
+            Self::PasswordRequired(message) | Self::IncorrectPassword(message) => {
+                crate::i18n::tr(message)
+            }
+            Self::Failed(message) => message.clone(),
+        }
+    }
+
     fn password_failure(&self) -> Option<PasswordFailure> {
         match self {
             Self::PasswordRequired(_) => Some(PasswordFailure::Required),
@@ -427,8 +450,12 @@ fn archive_read_failed(error: std::io::Error) -> ArchiveError {
         .and_then(|inner| inner.downcast_ref::<ArchiveError>())
     {
         Some(inner) => inner.clone(),
-        None => archive_failed(error),
+        None => archive_io_failed(&error),
     }
+}
+
+fn archive_io_failed(error: &std::io::Error) -> ArchiveError {
+    archive_failed(crate::services::io_error_message(error))
 }
 
 /// Returns [`ArchiveError::Cancelled`] when the `cancelled` flag is set.
@@ -498,11 +525,13 @@ fn copy_with_big_buf(
     let mut total = 0;
     loop {
         check_archive_cancelled(cancelled)?;
-        let n = reader.read(&mut buf).map_err(archive_failed)?;
+        let n = reader.read(&mut buf).map_err(archive_read_failed)?;
         if n == 0 {
             break;
         }
-        writer.write_all(&buf[..n]).map_err(archive_failed)?;
+        writer
+            .write_all(&buf[..n])
+            .map_err(|error| archive_io_failed(&error))?;
         total += n as u64;
     }
     Ok(total)

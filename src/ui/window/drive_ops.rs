@@ -44,12 +44,16 @@ impl FilesystemType {
         };
         label.chars().find_map(|character| {
             if character.is_ascii_control() {
-                Some("Labels cannot contain control characters.".to_owned())
+                Some(crate::i18n::tr("Labels cannot contain control characters."))
             } else if forbidden.contains(character) {
-                Some(format!(
-                    "{} labels cannot contain “{character}”.",
-                    self.label()
-                ))
+                Some(
+                    rust_i18n::t!(
+                        "%{filesystem} labels cannot contain “%{character}”.",
+                        filesystem = self.label(),
+                        character = character
+                    )
+                    .into_owned(),
+                )
             } else {
                 None
             }
@@ -138,6 +142,24 @@ impl std::fmt::Display for DriveOpError {
             Self::Cancelled => f.write_str("Operation cancelled"),
             Self::InvalidLabel(msg) => write!(f, "Invalid label: {msg}"),
             Self::Io(error) => write!(f, "I/O error: {error}"),
+        }
+    }
+}
+
+impl DriveOpError {
+    pub(super) fn user_message(&self) -> String {
+        match self {
+            Self::CommandFailed(message) => message.clone(),
+            Self::DeviceNotFound => crate::i18n::tr("Could not identify the drive's block device"),
+            Self::Cancelled => crate::i18n::tr("Operation cancelled"),
+            Self::InvalidLabel(reason) => {
+                rust_i18n::t!("Invalid label: %{reason}", reason = reason).into_owned()
+            }
+            Self::Io(error) => rust_i18n::t!(
+                "I/O error: %{error}",
+                error = crate::services::io_error_detail(error)
+            )
+            .into_owned(),
         }
     }
 }
@@ -301,9 +323,9 @@ pub(super) async fn format_volume(
         return Err(DriveOpError::DeviceNotFound);
     }
     if label.chars().count() > fs_type.max_label_len() {
-        return Err(DriveOpError::InvalidLabel(
-            "Filesystem label is too long.".to_owned(),
-        ));
+        return Err(DriveOpError::InvalidLabel(crate::i18n::tr(
+            "Filesystem label is too long.",
+        )));
     }
     if let Some(message) = fs_type.label_character_error(&label) {
         return Err(DriveOpError::InvalidLabel(message));
@@ -334,7 +356,7 @@ pub(super) async fn format_volume(
         )
     })
     .await
-    .map_err(|_| DriveOpError::CommandFailed("Formatting task did not complete".to_owned()))?
+    .map_err(|_| DriveOpError::CommandFailed(crate::i18n::tr("Formatting task did not complete")))?
 }
 
 fn format_device(
@@ -385,8 +407,11 @@ pub(super) fn report_result(
         Err(DriveOpError::Cancelled) => {}
         Err(error) => show_error_dialog(
             parent,
-            &format!("Unable to update {display_name}"),
-            &error.to_string(),
+            &rust_i18n::t!(
+                "Unable to update %{display_name}",
+                display_name = display_name
+            ),
+            &error.user_message(),
         ),
     }
 }

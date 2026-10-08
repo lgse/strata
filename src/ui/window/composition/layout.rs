@@ -48,7 +48,7 @@ impl Header {
         widget.set_show_title_buttons(false);
         let sidebar_toggle = gtk::ToggleButton::builder()
             .active(true)
-            .tooltip_text("Toggle sidebar (Ctrl+B)")
+            .tooltip_text(crate::i18n::tr("Toggle sidebar (Ctrl+B)"))
             .build();
         sidebar_toggle.set_child(Some(&assets::primary_icon(icons::PANEL_LEFT, 17)));
         sidebar_toggle.add_css_class("sidebar-toggle");
@@ -73,20 +73,21 @@ impl Header {
         }
         let location = browser.location_widget();
         location.set_hexpand(true);
-        let search = header_action(icons::SEARCH, "Search (Ctrl+K)");
+        let search = header_action(icons::SEARCH, &crate::i18n::tr("Search (Ctrl+K)"));
         crate::ui::tenxer_mode::hide_while_enabled(&search);
         let appearance =
             build_appearance_menu(browser, &browser.browser(), preferences.clone(), preview);
-        let settings = header_action(icons::SETTINGS, "Settings");
-        let minimize = header_action(icons::MINUS, "Minimize window");
-        crate::ui::accessibility::set_label(&minimize, "Minimize window");
+        let settings = header_action(icons::SETTINGS, &crate::i18n::tr("Settings"));
+        let minimize_label = crate::i18n::tr("Minimize window");
+        let minimize = header_action(icons::MINUS, &minimize_label);
+        crate::ui::accessibility::set_label(&minimize, &minimize_label);
         let minimizing_window = window.downgrade();
         minimize.connect_clicked(move |_| {
             if let Some(window) = minimizing_window.upgrade() {
                 window.minimize();
             }
         });
-        let maximize = header_action(icons::MAXIMIZE, "Maximize window");
+        let maximize = header_action(icons::MAXIMIZE, &crate::i18n::tr("Maximize window"));
         let maximizing_window = window.downgrade();
         maximize.connect_clicked(move |_| {
             let Some(window) = maximizing_window.upgrade() else {
@@ -99,7 +100,7 @@ impl Header {
             }
         });
         bind_maximize_icon(window, &maximize);
-        let close = header_action(icons::X, "Close window");
+        let close = header_action(icons::X, &crate::i18n::tr("Close window"));
         let closing_window = window.downgrade();
         close.connect_clicked(move |_| {
             if let Some(window) = closing_window.upgrade() {
@@ -119,8 +120,8 @@ impl Header {
         }
         let actions = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         actions.add_css_class("header-actions");
-        let new_tab = header_action(icons::PLUS, "New tab (Ctrl+T)");
-        crate::ui::accessibility::set_label(&new_tab, "New tab");
+        let new_tab = header_action(icons::PLUS, &crate::i18n::tr("New tab (Ctrl+T)"));
+        crate::ui::accessibility::set_label(&new_tab, &crate::i18n::tr("New tab"));
         actions.append(&new_tab);
         actions.append(&search);
         actions.append(&appearance);
@@ -163,14 +164,14 @@ fn bind_maximize_icon(window: &gtk::ApplicationWindow, button: &gtk::Button) {
             return;
         };
         let (icon, tooltip) = if window.is_maximized() {
-            (icons::MINIMIZE, "Restore window")
+            (icons::MINIMIZE, crate::i18n::tr("Restore window"))
         } else {
-            (icons::MAXIMIZE, "Maximize window")
+            (icons::MAXIMIZE, crate::i18n::tr("Maximize window"))
         };
         assets::set_primary_icon(&image, icon);
         if let Some(button) = weak_button.upgrade() {
-            button.set_tooltip_text(Some(tooltip));
-            crate::ui::accessibility::set_label(&button, tooltip);
+            button.set_tooltip_text(Some(&tooltip));
+            crate::ui::accessibility::set_label(&button, &tooltip);
         }
     };
     update(window);

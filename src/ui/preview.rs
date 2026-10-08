@@ -22,7 +22,9 @@ use crate::{
     },
 };
 
-use super::{blur::BlurBin, controls::form_password_entry, controls::modal_layout};
+use super::{
+    blur::BlurBin, browser::format_file_size, controls::form_password_entry, controls::modal_layout,
+};
 
 mod archive;
 pub(super) mod audio;
@@ -215,7 +217,7 @@ impl PreviewDrawer {
     pub fn new(provider: Rc<dyn PreviewProvider>, allow_external_open: bool) -> Self {
         let pane = super::accessibility::pane_box();
         pane.add_css_class("preview-pane");
-        super::accessibility::set_label(&pane, PREVIEW_LABEL);
+        super::accessibility::set_label(&pane, &crate::i18n::tr(PREVIEW_LABEL));
         pane.set_size_request(MIN_WIDTH, -1);
         pane.set_hexpand(true);
         pane.set_vexpand(true);
@@ -229,7 +231,7 @@ impl PreviewDrawer {
         title.set_hexpand(true);
         title.set_xalign(0.0);
         let open = gtk::Button::builder()
-            .tooltip_text("Open in default application")
+            .tooltip_text(crate::i18n::tr("Open in default application"))
             .valign(gtk::Align::Center)
             .build();
         open.set_child(Some(&crate::assets::chrome_icon(
@@ -239,15 +241,17 @@ impl PreviewDrawer {
         open.set_visible(allow_external_open);
         let document_view_icon = crate::assets::primary_icon(crate::assets::icons::FILE_CODE, 16);
         let document_view_button = gtk::Button::builder()
-            .tooltip_text("View source")
+            .tooltip_text(crate::i18n::tr("View source"))
             .valign(gtk::Align::Center)
             .visible(false)
             .build();
         document_view_button.set_child(Some(&document_view_icon));
         document_view_button.add_css_class("preview-header-action");
-        document_view_button.update_property(&[gtk::accessible::Property::Label("View source")]);
+        document_view_button.update_property(&[gtk::accessible::Property::Label(
+            &crate::i18n::tr("View source"),
+        )]);
         let print = gtk::Button::builder()
-            .tooltip_text("Print")
+            .tooltip_text(crate::i18n::tr("Print"))
             .valign(gtk::Align::Center)
             .build();
         print.set_child(Some(&crate::assets::chrome_icon(
@@ -256,7 +260,7 @@ impl PreviewDrawer {
         print.add_css_class("preview-header-action");
         print.set_visible(false);
         let wrap = gtk::ToggleButton::builder()
-            .tooltip_text("Toggle word wrap")
+            .tooltip_text(crate::i18n::tr("Toggle word wrap"))
             .valign(gtk::Align::Center)
             .build();
         wrap.set_child(Some(&crate::assets::chrome_icon(
@@ -265,7 +269,7 @@ impl PreviewDrawer {
         wrap.add_css_class("preview-header-action");
         wrap.set_visible(false);
         let close = gtk::Button::builder()
-            .tooltip_text("Close preview (Space)")
+            .tooltip_text(crate::i18n::tr("Close preview (Space)"))
             .valign(gtk::Align::Center)
             .build();
         close.set_child(Some(&crate::assets::chrome_icon(
@@ -934,14 +938,14 @@ impl PreviewState {
 
         let layout = modal_layout(
             crate::assets::icons::PRINTER,
-            "Preparing PDF",
-            "Rendering pages for the print dialog",
-            "Cancel",
+            &crate::i18n::tr("Preparing PDF"),
+            &crate::i18n::tr("Rendering pages for the print dialog"),
+            &crate::i18n::tr("Cancel"),
         );
         layout.content.add_css_class("compact");
         layout.close.set_visible(false);
         layout.cancel.set_visible(false);
-        let status = gtk::Label::new(Some("Rendering pages…"));
+        let status = gtk::Label::new(Some(&crate::i18n::tr("Rendering pages…")));
         status.add_css_class("modal-progress-status");
         status.set_xalign(0.0);
         let progress = gtk::ProgressBar::new();
@@ -1309,14 +1313,18 @@ impl PreviewState {
                 self.cancel_loading();
                 self.current_request.set(Some(expected));
                 self.title.set_text(&entry.display_name);
+                // Failures carry English source messages: known ones have catalog
+                // entries, and system error text passes through unchanged.
+                let detail = crate::i18n::tr(&message);
                 if message == crate::services::INCORRECT_ARCHIVE_PASSWORD {
-                    self.render_archive_password_prompt(entry, Some(&message));
+                    self.render_archive_password_prompt(entry, Some(&detail));
                 } else {
                     self.current_request.set(None);
-                    if !self.show_audio_error("Preview unavailable", &message, None)
-                        && !self.show_video_error("Preview unavailable", &message, None)
+                    let title = crate::i18n::tr("Preview unavailable");
+                    if !self.show_audio_error(&title, &detail, None)
+                        && !self.show_video_error(&title, &detail, None)
                     {
-                        self.show_message("Preview unavailable", &message);
+                        self.show_message(&title, &detail);
                     }
                 }
             }
@@ -1345,18 +1353,26 @@ impl PreviewState {
         let icon = crate::assets::primary_icon(crate::assets::icons::LOCK, 34);
         icon.add_css_class("preview-feedback-icon");
         box_.append(&icon);
-        let heading = gtk::Label::new(Some("Password-protected archive"));
+        let heading = gtk::Label::new(Some(&crate::i18n::tr("Password-protected archive")));
         heading.add_css_class("preview-feedback-title");
+        heading.set_wrap(true);
+        heading.set_justify(gtk::Justification::Center);
         box_.append(&heading);
-        let detail = gtk::Label::new(Some("Enter the password to preview the archive contents"));
+        let detail = gtk::Label::new(Some(&crate::i18n::tr(
+            "Enter the password to preview the archive contents",
+        )));
         detail.add_css_class("preview-feedback-detail");
+        detail.set_wrap(true);
+        detail.set_justify(gtk::Justification::Center);
         box_.append(&detail);
 
         let password = form_password_entry();
         password.set_show_peek_icon(true);
-        password.set_placeholder_text(Some("Password"));
-        password.set_width_chars(24);
-        let unlock = gtk::Button::with_label("Unlock");
+        password.set_placeholder_text(Some(&crate::i18n::tr("Password")));
+        // Narrow panes shrink the entry rather than overflowing the window.
+        password.set_width_chars(8);
+        password.set_max_width_chars(24);
+        let unlock = gtk::Button::with_label(&crate::i18n::tr("Unlock"));
         unlock.add_css_class("suggested-action");
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         row.add_css_class("preview-archive-password-row");
@@ -1434,7 +1450,9 @@ impl PreviewState {
                     super::preferences::PreferenceManager::shared().preview_text_wrap(),
                 );
                 if truncated && !virtualized {
-                    let notice = gtk::Label::new(Some("Preview limited to the first 1 MB"));
+                    let notice = gtk::Label::new(Some(&crate::i18n::tr(
+                        "Preview limited to the first 1 MB",
+                    )));
                     notice.add_css_class("preview-note");
                     self.content.append(&notice);
                 }
@@ -1478,9 +1496,15 @@ impl PreviewState {
                     Ok(texture) => {
                         let picture = gtk::Picture::for_paintable(&texture);
                         if model {
-                            super::accessibility::set_label(&picture, "Model preview");
+                            super::accessibility::set_label(
+                                &picture,
+                                &crate::i18n::tr("Model preview"),
+                            );
                         } else if cover {
-                            super::accessibility::set_label(&picture, "Cover preview");
+                            super::accessibility::set_label(
+                                &picture,
+                                &crate::i18n::tr("Cover preview"),
+                            );
                         }
                         picture.add_css_class("preview-image");
                         picture.set_can_shrink(true);
@@ -1492,7 +1516,8 @@ impl PreviewState {
                         self.content
                             .append(&media_layout::section(&picture, &texture));
                     }
-                    Err(error) => self.show_message("Preview unavailable", &error.to_string()),
+                    Err(error) => self
+                        .show_message(&crate::i18n::tr("Preview unavailable"), &error.to_string()),
                 }
             }
             PreviewContent::SandboxedMedia { media: mut source } => {
@@ -1595,8 +1620,8 @@ impl PreviewState {
             }
             PreviewContent::Image | PreviewContent::Media => {
                 self.show_message(
-                    "Preview unavailable",
-                    "The sandboxed renderer returned no preview",
+                    &crate::i18n::tr("Preview unavailable"),
+                    &crate::i18n::tr("The sandboxed renderer returned no preview"),
                 );
             }
             PreviewContent::Pdf {
@@ -1615,8 +1640,8 @@ impl PreviewState {
             }
             PreviewContent::Unsupported => {
                 self.show_message(
-                    "No visual preview",
-                    "Metadata is available for this file type.",
+                    &crate::i18n::tr("No visual preview"),
+                    &crate::i18n::tr("Metadata is available for this file type."),
                 );
             }
         }
@@ -1738,7 +1763,8 @@ impl PreviewState {
         );
 
         if let Some(reason) = fallback_reason.as_deref() {
-            self.content.append(&document_notice(reason));
+            self.content
+                .append(&document_notice(&crate::i18n::tr(reason)));
         }
 
         let stack = gtk::Stack::builder()
@@ -1815,9 +1841,10 @@ impl PreviewState {
 
     fn update_document_view_action(&self) {
         let (label, icon) = document_view_action(self.document_view.get());
-        self.document_view_button.set_tooltip_text(Some(label));
+        let label = crate::i18n::tr(label);
+        self.document_view_button.set_tooltip_text(Some(&label));
         self.document_view_button
-            .update_property(&[gtk::accessible::Property::Label(label)]);
+            .update_property(&[gtk::accessible::Property::Label(&label)]);
         crate::assets::set_primary_icon(&self.document_view_icon, icon);
     }
 
@@ -1938,7 +1965,9 @@ impl PreviewState {
             text_area.set_hexpand(true);
             text_area.set_vexpand(true);
             text_area.set_accessible_role(gtk::AccessibleRole::Img);
-            text_area.update_property(&[gtk::accessible::Property::Label("PDF page text")]);
+            text_area.update_property(&[gtk::accessible::Property::Label(&crate::i18n::tr(
+                "PDF page text",
+            ))]);
             let spinner = gtk::Spinner::new();
             spinner.set_halign(gtk::Align::Center);
             spinner.set_valign(gtk::Align::Center);
@@ -2094,7 +2123,7 @@ impl PreviewState {
                     } if response_id == request_id => {
                         crate::ui::accessibility::set_description(
                             &overlay,
-                            Some("Unable to render this PDF page"),
+                            Some(&crate::i18n::tr("Unable to render this PDF page")),
                         );
                     }
                     PreviewEvent::Progress { .. }
@@ -2444,7 +2473,7 @@ impl PreviewState {
         let pause_icon = crate::assets::primary_icon(crate::assets::icons::PAUSE, 18);
         let play_button = gtk::Button::new();
         play_button.add_css_class("preview-media-button");
-        play_button.set_tooltip_text(Some("Play/Pause (Ctrl+Alt+Space)"));
+        play_button.set_tooltip_text(Some(&crate::i18n::tr("Play/Pause (Ctrl+Alt+Space)")));
         play_button.set_child(Some(if media.is_playing() {
             &pause_icon
         } else {
@@ -2862,7 +2891,7 @@ impl PreviewState {
             .as_ref()
             .is_some_and(|entry| crate::services::is_model(&entry.native_name))
         {
-            let label = gtk::Label::new(Some("Waiting for preview…"));
+            let label = gtk::Label::new(Some(&crate::i18n::tr("Waiting for preview…")));
             label.add_css_class("preview-feedback-detail");
             label.set_wrap(true);
             self.loading_label.replace(Some(label));
@@ -2907,11 +2936,11 @@ impl PreviewState {
         let message = error.message();
         let (title, detail, command) = media_error_feedback(message);
         self.continue_playback.take();
-        if !self.show_audio_error(title, &detail, command)
-            && !self.show_video_error(title, &detail, command)
+        if !self.show_audio_error(&title, &detail, command)
+            && !self.show_video_error(&title, &detail, command)
         {
             self.show_message_with_icon(
-                title,
+                &title,
                 &detail,
                 Some(crate::assets::icons::TRIANGLE_ALERT),
                 command,
@@ -3015,7 +3044,7 @@ impl VolumeControls {
     ) -> Self {
         let toggle = gtk::Button::new();
         toggle.add_css_class("preview-media-button");
-        toggle.set_tooltip_text(Some("Mute/unmute (Ctrl+Alt+M)"));
+        toggle.set_tooltip_text(Some(&crate::i18n::tr("Mute/unmute (Ctrl+Alt+M)")));
         let muted = preferences.preview_muted();
         let icon = crate::assets::primary_icon(
             if muted {
@@ -3120,12 +3149,20 @@ pub(super) struct ListingPosition {
 
 impl ListingPosition {
     pub(super) fn caption(self) -> String {
-        format!(
-            "{} of {} in {}",
-            self.position,
-            self.count,
-            if self.results { "results" } else { "folder" }
-        )
+        if self.results {
+            rust_i18n::t!(
+                "%{position} of %{count} in results",
+                position = crate::i18n::integer(self.position as u64),
+                count = crate::i18n::integer(self.count as u64)
+            )
+        } else {
+            rust_i18n::t!(
+                "%{position} of %{count} in folder",
+                position = crate::i18n::integer(self.position as u64),
+                count = crate::i18n::integer(self.count as u64)
+            )
+        }
+        .into_owned()
     }
 }
 
@@ -3183,7 +3220,12 @@ fn print_progress_for_page(completed: i32, total: i32) -> (String, f64) {
     let total = total.max(1);
     let completed = completed.clamp(0, total);
     (
-        format!("Rendering page {completed} of {total}"),
+        rust_i18n::t!(
+            "Rendering page %{completed} of %{total}",
+            completed = crate::i18n::integer(completed as u64),
+            total = crate::i18n::integer(total as u64)
+        )
+        .into_owned(),
         f64::from(completed) / f64::from(total),
     )
 }
@@ -3263,8 +3305,9 @@ fn print_text(text: String, job_name: &str, parent: Option<&gtk::Window>) {
 
 fn show_print_error(parent: Option<&gtk::Window>, detail: &str) {
     let dialog = gtk::AlertDialog::builder()
-        .message("Unable to prepare file for printing")
-        .detail(detail)
+        .message(crate::i18n::tr("Unable to prepare file for printing"))
+        .detail(crate::i18n::tr(detail))
+        .buttons([crate::i18n::tr("Close")])
         .build();
     dialog.show(parent);
 }
@@ -3541,7 +3584,7 @@ pub(super) fn document_notice(message: &str) -> gtk::Label {
     notice
 }
 
-fn media_error_feedback(message: &str) -> (&'static str, String, Option<&'static str>) {
+fn media_error_feedback(message: &str) -> (String, String, Option<&'static str>) {
     let normalized = message.to_ascii_lowercase();
     if [
         "gstreamer",
@@ -3554,15 +3597,20 @@ fn media_error_feedback(message: &str) -> (&'static str, String, Option<&'static
     .any(|marker| normalized.contains(marker))
     {
         return (
-            "Additional media support required",
-            "On Arch or Omarchy, install the required GStreamer plugins, then restart Strata."
-                .to_owned(),
+            crate::i18n::tr("Additional media support required"),
+            crate::i18n::tr(
+                "On Arch or Omarchy, install the required GStreamer plugins, then restart Strata.",
+            ),
             Some(MEDIA_PLUGIN_INSTALL_COMMAND),
         );
     }
     (
-        "Preview unavailable",
-        format!("Unable to play this media preview: {message}"),
+        crate::i18n::tr("Preview unavailable"),
+        rust_i18n::t!(
+            "Unable to play this media preview: %{message}",
+            message = crate::i18n::tr(message)
+        )
+        .into_owned(),
         None,
     )
 }
@@ -3571,7 +3619,9 @@ fn metadata_value(description: &str) -> gtk::Label {
     let value = gtk::Label::new(Some("—"));
     value.set_ellipsize(gtk::pango::EllipsizeMode::End);
     value.set_xalign(0.0);
-    value.update_property(&[gtk::accessible::Property::Description(description)]);
+    value.update_property(&[gtk::accessible::Property::Description(&crate::i18n::tr(
+        description,
+    ))]);
     value
 }
 
@@ -3904,21 +3954,6 @@ fn file_extension(entry: &FileEntry) -> &str {
         .and_then(|path| path.extension())
         .and_then(|extension| extension.to_str())
         .unwrap_or("file")
-}
-
-fn format_file_size(bytes: u64) -> String {
-    let units = ["B", "kB", "MB", "GB"];
-    let (value, unit) = super::browser::rounded_size_and_unit(bytes, &units);
-    if unit == 0 || value >= 10.0 {
-        let displayed = value.round();
-        if displayed >= 1_000.0 && unit + 1 < units.len() {
-            format!("{:.1} {}", displayed / 1_000.0, units[unit + 1])
-        } else {
-            format!("{displayed:.0} {}", units[unit])
-        }
-    } else {
-        format!("{value:.1} {}", units[unit])
-    }
 }
 
 fn sync_media_time(

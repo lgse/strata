@@ -55,6 +55,12 @@ const REMOTE_DIRECTORY_BATCH_SIZE: usize = 128;
 const PEEK_MAX_ENTRIES: usize = 64;
 const PEEK_TIME_BUDGET: Duration = Duration::from_secs(3);
 
+enum OperationDestination<'a> {
+    Folder(&'a Location),
+    Trash,
+    PermanentDeletion,
+}
+
 #[derive(Clone)]
 enum LoadSelection {
     Nothing,
@@ -900,7 +906,10 @@ pub struct Browser {
     operation_backgroundable: Cell<bool>,
     operation_cancel_requested: Cell<bool>,
     operation_description: RefCell<String>,
+    /// Accessible description of the operation's destination.
     operation_destination_description: RefCell<String>,
+    /// Compact visible form of the destination, read only while a description is set.
+    operation_destination_label: RefCell<String>,
     transfer_cancel_pending: Cell<bool>,
     current_operation: Cell<Option<OperationRequestId>>,
     last_started_operation: Cell<Option<OperationRequestId>>,
@@ -968,6 +977,7 @@ impl Browser {
             operation_cancel_requested: Cell::new(false),
             operation_description: RefCell::new(String::new()),
             operation_destination_description: RefCell::new(String::new()),
+            operation_destination_label: RefCell::new(String::new()),
             transfer_cancel_pending: Cell::new(false),
             current_operation: Cell::new(None),
             last_started_operation: Cell::new(None),
@@ -1055,9 +1065,7 @@ impl Browser {
         }
 
         if let Some(message) = unsupported_shorthand_message(input) {
-            return Err(LocationValidationError::UnsupportedShorthand(
-                message.to_owned(),
-            ));
+            return Err(LocationValidationError::UnsupportedShorthand(message));
         }
         if let Some(current) = self
             .active_location()
@@ -2210,14 +2218,14 @@ impl Browser {
         if let Err(message) = validate_basename(&new_name) {
             self.emit(BrowserEvent::RenameFailed {
                 request_id: None,
-                message: message.to_owned(),
+                message: crate::i18n::tr(message),
             });
             return None;
         }
         let Some(provider) = self.operation_provider.borrow().clone() else {
             self.emit(BrowserEvent::RenameFailed {
                 request_id: None,
-                message: "File operations are unavailable".to_owned(),
+                message: crate::i18n::tr("File operations are unavailable"),
             });
             return None;
         };
@@ -2271,7 +2279,7 @@ impl Browser {
     }
 
     pub fn create_new_folder(self: &Rc<Self>, parent: Location) {
-        self.create_directory_with_naming(parent, "new folder".to_owned(), true);
+        self.create_directory_with_naming(parent, crate::i18n::tr("new folder"), true);
     }
 
     fn create_directory_with_naming(
@@ -2285,14 +2293,14 @@ impl Browser {
         }
         if let Err(message) = validate_basename(&name) {
             self.emit(BrowserEvent::OperationFailed {
-                message: message.to_owned(),
+                message: crate::i18n::tr(message),
                 password_failure: None,
             });
             return;
         }
         let Some(provider) = self.operation_provider.borrow().clone() else {
             self.emit(BrowserEvent::OperationFailed {
-                message: "File operations are unavailable".to_owned(),
+                message: crate::i18n::tr("File operations are unavailable"),
                 password_failure: None,
             });
             return;
@@ -2322,7 +2330,7 @@ impl Browser {
     }
 
     pub fn create_new_file(self: &Rc<Self>, parent: Location) {
-        self.create_file_with_naming(parent, "new file".to_owned(), true);
+        self.create_file_with_naming(parent, crate::i18n::tr("new file"), true);
     }
 
     fn create_file_with_naming(self: &Rc<Self>, parent: Location, name: String, unique_name: bool) {
@@ -2331,14 +2339,14 @@ impl Browser {
         }
         if let Err(message) = validate_basename(&name) {
             self.emit(BrowserEvent::OperationFailed {
-                message: message.to_owned(),
+                message: crate::i18n::tr(message),
                 password_failure: None,
             });
             return;
         }
         let Some(provider) = self.operation_provider.borrow().clone() else {
             self.emit(BrowserEvent::OperationFailed {
-                message: "File operations are unavailable".to_owned(),
+                message: crate::i18n::tr("File operations are unavailable"),
                 password_failure: None,
             });
             return;
@@ -2392,7 +2400,7 @@ impl Browser {
         }
         let Some(provider) = self.operation_provider.borrow().clone() else {
             self.emit(BrowserEvent::OperationFailed {
-                message: "File operations are unavailable".to_owned(),
+                message: crate::i18n::tr("File operations are unavailable"),
                 password_failure: None,
             });
             return;
@@ -2415,8 +2423,7 @@ impl Browser {
                 .map(|item| item.source.clone()),
         );
         self.transfer_destination.replace(Some(destination.clone()));
-        self.operation_destination_description
-            .replace(format!("Destination: {}", destination.display_path()));
+        self.set_operation_destination(OperationDestination::Folder(&destination));
         self.transfer_reveal.set(reveal);
         self.emit(BrowserEvent::TransferStarted {
             total: items.len(),
@@ -2446,7 +2453,7 @@ impl Browser {
         }
         let Some(provider) = self.operation_provider.borrow().clone() else {
             self.emit(BrowserEvent::OperationFailed {
-                message: "File operations are unavailable".to_owned(),
+                message: crate::i18n::tr("File operations are unavailable"),
                 password_failure: None,
             });
             return;
@@ -2457,12 +2464,11 @@ impl Browser {
         };
         self.deletion_operation.set(true);
         self.deletion_permanent.set(permanent);
-        self.operation_destination_description
-            .replace(if permanent {
-                "Permanent deletion".to_owned()
-            } else {
-                "Destination: Trash".to_owned()
-            });
+        self.set_operation_destination(if permanent {
+            OperationDestination::PermanentDeletion
+        } else {
+            OperationDestination::Trash
+        });
         self.operation_backgroundable.set(true);
         self.operation_description.replace(
             entries
@@ -2488,7 +2494,7 @@ impl Browser {
         }
         let Some(provider) = self.operation_provider.borrow().clone() else {
             self.emit(BrowserEvent::OperationFailed {
-                message: "File operations are unavailable".to_owned(),
+                message: crate::i18n::tr("File operations are unavailable"),
                 password_failure: None,
             });
             return;
@@ -3121,7 +3127,7 @@ impl Browser {
         }
         let Some(provider) = self.operation_provider.borrow().clone() else {
             self.emit(BrowserEvent::OperationFailed {
-                message: "File operations are unavailable".to_owned(),
+                message: crate::i18n::tr("File operations are unavailable"),
                 password_failure: None,
             });
             return;
@@ -3132,8 +3138,7 @@ impl Browser {
         self.archive_operation.set(true);
         self.operation_backgroundable.set(true);
         self.operation_description.replace(archive_name.clone());
-        self.operation_destination_description
-            .replace(format!("Destination: {}", destination.display_path()));
+        self.set_operation_destination(OperationDestination::Folder(&destination));
         let refresh = HashSet::from([destination.clone()]);
         let load = provider.compress(
             CompressRequest {
@@ -3159,7 +3164,7 @@ impl Browser {
     ) {
         let Some(provider) = self.operation_provider.borrow().clone() else {
             self.emit(BrowserEvent::OperationFailed {
-                message: "File operations are unavailable".to_owned(),
+                message: crate::i18n::tr("File operations are unavailable"),
                 password_failure: None,
             });
             return;
@@ -3189,6 +3194,32 @@ impl Browser {
         }
         let load = self.operation_load.take();
         drop(load);
+    }
+
+    fn set_operation_destination(&self, destination: OperationDestination<'_>) {
+        let (description, label) = match destination {
+            OperationDestination::Folder(location) => {
+                let path = location.display_path();
+                (
+                    rust_i18n::t!("Destination: %{path}", path = path).into_owned(),
+                    format!("→ {path}"),
+                )
+            }
+            OperationDestination::Trash => (
+                crate::i18n::tr("Destination: Trash"),
+                format!("→ {}", crate::i18n::tr("Trash")),
+            ),
+            OperationDestination::PermanentDeletion => {
+                let text = crate::i18n::tr("Permanent deletion");
+                (text.clone(), text)
+            }
+        };
+        self.operation_destination_description.replace(description);
+        self.operation_destination_label.replace(label);
+    }
+
+    pub(crate) fn operation_destination_label(&self) -> String {
+        self.operation_destination_label.borrow().clone()
     }
 
     fn try_begin_operation(&self) -> Option<OperationRequestId> {
@@ -3246,6 +3277,7 @@ impl Browser {
         self.operation_cancel_requested.set(false);
         self.operation_description.borrow_mut().clear();
         self.operation_destination_description.borrow_mut().clear();
+        self.operation_destination_label.borrow_mut().clear();
         self.current_operation.set(Some(request_id));
         request_id
     }
@@ -4414,7 +4446,7 @@ fn location_from_input_with_home(
     }
     if input.starts_with('~') {
         return Err(LocationValidationError::UnsupportedShorthand(
-            "Only ~ and ~/ paths are supported for the current user's home directory.".to_owned(),
+            "Only ~ and ~/ paths are supported for the current user's home directory.",
         ));
     }
     if !is_uri_like(input) {
@@ -4430,10 +4462,9 @@ fn location_from_input_with_home(
         normalized.as_str(),
         "smb" | "sftp" | "ftp" | "ftps" | "dav" | "davs" | "trash" | "network" | "recent"
     ) {
-        return Err(LocationValidationError::UnsupportedScheme(format!(
-            "The {scheme}:// scheme isn't supported. Use an absolute local path or one of: \
-             smb://, sftp://, ftp://, ftps://, dav://, davs://, or recent:///."
-        )));
+        return Err(LocationValidationError::UnsupportedScheme(
+            scheme.to_owned(),
+        ));
     }
     validate_uri_credentials(input)?;
     let uri = format!("{normalized}{}", &input[scheme_end..]);

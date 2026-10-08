@@ -454,6 +454,25 @@ fn copy_with_big_buf_stops_when_cancelled() {
 }
 
 #[test]
+fn copy_with_big_buf_reports_os_write_failures_without_the_errno() {
+    struct FullDisk;
+    impl std::io::Write for FullDisk {
+        fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+            Err(std::io::Error::from_raw_os_error(libc::EFBIG))
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let error = copy_with_big_buf(&b"payload"[..], &mut FullDisk, &AtomicBool::new(false))
+        .expect_err("failed write must stop the copy");
+    assert_eq!(
+        error,
+        ArchiveError::Failed("The file is too large for this file system".to_owned())
+    );
+}
+
+#[test]
 fn cancelling_extraction_from_started_waits_for_the_worker_and_reports_pending_output()
 -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
@@ -573,10 +592,10 @@ fn extraction_failures_stop_progress_and_preserve_error_distinctions() -> Result
         ),
         ("missing.zip", "No such file"),
         ("unreadable.zip", "Permission denied"),
-        ("destination.zip", "Not a directory"),
+        ("destination.zip", "Not a folder"),
         ("unknown.iso", "Unsupported archive format"),
-        ("folder.zip", "Not an archive: `folder.zip`"),
-        ("passwords.zip", "Not an archive: `passwords.zip`"),
+        ("folder.zip", "Not an archive: “folder.zip”"),
+        ("passwords.zip", "Not an archive: “passwords.zip”"),
     ] {
         let archive = root.path().join(name);
         if matches!(name, "folder.zip" | "passwords.zip") {
@@ -908,7 +927,7 @@ fn failed_multi_root_extraction_keeps_partial_output_in_the_archive_folder()
         assert_eq!(
             *message,
             format!(
-                "Refusing unsafe archive path: {unsafe_member}. Extracted entries remain in `{stem}`."
+                "Refusing unsafe archive path: {unsafe_member}. Extracted entries remain in “{stem}”."
             ),
             "{name}"
         );
@@ -1111,7 +1130,7 @@ fn gzip_trailer_failure_is_reported_through_the_provider() -> Result<(), Box<dyn
     };
     assert_eq!(
         *message,
-        format!("{INVALID_ARCHIVE} Extracted entries remain in `content`.")
+        format!("{INVALID_ARCHIVE} Extracted entries remain in “content”.")
     );
     assert_eq!(entry_names(destination.path())?, ["content"]);
     assert_eq!(

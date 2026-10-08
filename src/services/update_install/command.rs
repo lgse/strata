@@ -33,10 +33,14 @@ pub(super) fn run(
                 std::thread::sleep(Duration::from_millis(10));
             }
             Err(error) => {
-                return Err(InstallStop::Failed(format!(
-                    "Could not run {:?}: {error}",
-                    command.get_program()
-                )));
+                return Err(InstallStop::Failed(
+                    rust_i18n::t!(
+                        "Could not run “%{program}”: %{error}",
+                        program = command.get_program().to_string_lossy(),
+                        error = crate::services::io_error_detail(&error)
+                    )
+                    .into_owned(),
+                ));
             }
         }
     };
@@ -44,28 +48,31 @@ pub(super) fn run(
         let mut stdout = child
             .stdout
             .take()
-            .ok_or_else(|| "Missing verification stdout".to_owned())?;
+            .ok_or_else(|| crate::i18n::tr("Missing verification stdout"))?;
         let mut stderr = child
             .stderr
             .take()
-            .ok_or_else(|| "Missing verification stderr".to_owned())?;
+            .ok_or_else(|| crate::i18n::tr("Missing verification stderr"))?;
         rustix::fs::fcntl_setfl(&stdout, rustix::fs::OFlags::NONBLOCK)
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| crate::services::io_error_message(&error.into()))?;
         rustix::fs::fcntl_setfl(&stderr, rustix::fs::OFlags::NONBLOCK)
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| crate::services::io_error_message(&error.into()))?;
         let mut out = Vec::new();
         let mut err = Vec::new();
         let deadline = Instant::now() + timeout;
         loop {
             cancel.check()?;
             if Instant::now() >= deadline {
-                return Err(InstallStop::Failed(
-                    "Update verification timed out".to_owned(),
-                ));
+                return Err(InstallStop::Failed(crate::i18n::tr(
+                    "Update verification timed out",
+                )));
             }
             drain(&mut stdout, &mut out)?;
             drain(&mut stderr, &mut err)?;
-            if let Some(status) = child.try_wait().map_err(|error| error.to_string())? {
+            if let Some(status) = child
+                .try_wait()
+                .map_err(|error| crate::services::io_error_message(&error))?
+            {
                 drain(&mut stdout, &mut out)?;
                 drain(&mut stderr, &mut err)?;
                 return Ok(Output {
@@ -91,15 +98,19 @@ fn drain(reader: &mut impl Read, output: &mut Vec<u8>) -> Result<(), InstallStop
             Ok(0) => return Ok(()),
             Ok(count) => {
                 if output.len() + count > MAX_OUTPUT {
-                    return Err(InstallStop::Failed(
-                        "Update verification produced too much output".to_owned(),
-                    ));
+                    return Err(InstallStop::Failed(crate::i18n::tr(
+                        "Update verification produced too much output",
+                    )));
                 }
                 output.extend_from_slice(&buffer[..count]);
             }
             Err(error) if error.kind() == io::ErrorKind::WouldBlock => return Ok(()),
             Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
-            Err(error) => return Err(InstallStop::Failed(error.to_string())),
+            Err(error) => {
+                return Err(InstallStop::Failed(crate::services::io_error_message(
+                    &error,
+                )));
+            }
         }
     }
 }

@@ -70,6 +70,7 @@ control that might be midway through synchronization.
 | Element glow | Shared semantic glow color is applied by `ThemeManager` when the appearance preferences change, before Settings opens and live across windows, dialogs, menus, and rebuilt views. Focus outlines and ordinary depth shadows are preserved. The video preview's ambient light, and the band it needs around the frame, follow the same switch live. |
 | Reduced motion | Set before any window is constructed; animation helpers read the current process-wide value. |
 | Theme, Omarchy following/variant, text size | `ThemeManager` applies shared CSS when theme selection, Omarchy following, Omarchy variant, text size, or element glow change; controls and theme-card selections bind to preferences through `ThemeManager::bind_theme_preference`. Newly saved custom themes appear in other open theme pages. Missing themes/Omarchy use the existing fallback policy. |
+| Language | Initialized before application UI from the saved manual language or system locale priorities. The selection and Restart button synchronize across Settings windows, but the running interface keeps its startup language until a full restart. This deliberate restart-to-apply exception avoids rebuilding active browsers, dialogs, and operations. |
 | Interface renderer | GTK selects the renderer at process startup. The saved GTK default or Cairo choice is read before GTK initializes; GTK default is selected for new installs. The control and Restart button synchronize across Settings windows, but changes take effect only after restarting Strata (via the button or after fully quitting and reopening). An explicit `GSK_RENDERER` always overrides the saved choice. |
 | Keybinding hints | Navigation hints and the shortcuts button bind immediately and live. When hidden, the status bar appears only while the clipboard badge or F1 reference needs it; otherwise the empty bar is hidden. |
 | Thumbnail workers | Browser construction binds the shared decoder limit before Settings opens. Changes apply across windows and rebuilt views; lowering the limit lets active work finish and retires excess idle supervisors. |
@@ -169,6 +170,36 @@ choice applies at startup and live across windows and previews, including after
 Omarchy changes themes. It is remembered but inactive when following is off.
 Missing or invalid saved values fall back to Original without resetting other
 preferences.
+
+## Language
+
+**Settings → General → Language** offers **Auto-detect** (the default) and
+English, French, German, Spanish, Japanese, Brazilian Portuguese, Korean,
+Vietnamese, Italian, and Russian. Language names use their native spelling so
+the selector remains recognizable after an accidental choice. Save a manual
+choice as `language = "fr"`, for example, or `language = "auto"` to follow the
+system again. Missing and unknown language values recover to Auto-detect.
+
+Changes are saved immediately and synchronize across Settings windows. Use
+**Restart now**, or fully quit all Strata windows and reopen it, to apply the
+new language. Until then, existing and newly opened application UI retains the
+startup language. Changing language never rebuilds an active browser or resets
+its navigation, selection, filters, or ongoing operations.
+
+Auto-detect reads the colon-separated GNU `LANGUAGE` priority list, then the
+message locale selected by the first nonempty `LC_ALL`, `LC_MESSAGES`, or `LANG`.
+An explicit `C` or `POSIX` message locale means English and suppresses
+`LANGUAGE`. Encoding and modifier suffixes are ignored; regional variants use
+the supported base language (all Portuguese variants use Brazilian Portuguese).
+Unsupported languages fall back to English. Strata does not modify the desktop
+locale or the environment inherited by launched programs. System/provider error
+messages, externally supplied content, and toolkit-owned strings can therefore
+remain in the system language. Filenames, paths, user-defined names, scripts,
+and protocol identifiers are not translated.
+
+Translations are compiled into the binary with `rust-i18n`; installing system
+locale packages is not required. See [Internationalization](internationalization.md)
+for catalog and contributor guidance.
 
 ## Interface renderer
 

@@ -23,8 +23,8 @@ use gtk::glib;
 use crate::services::INCORRECT_ARCHIVE_PASSWORD;
 
 use super::{
-    ArchiveError, MAYBE_BAD_PASSWORD, PASSWORD_REQUIRED, archive_failed, archive_read_failed,
-    check_archive_cancelled, copy_with_big_buf,
+    ArchiveError, MAYBE_BAD_PASSWORD, PASSWORD_REQUIRED, archive_failed, archive_io_failed,
+    archive_read_failed, check_archive_cancelled, copy_with_big_buf,
     extraction::{
         ArchiveOutcome, ExtractionSession, MAX_SYMLINK_TARGET_BYTES, MemberContent, MemberMetadata,
     },
@@ -39,12 +39,18 @@ pub(super) use rar::extract_rar;
 mod tests;
 
 const INVALID_ARCHIVE: &str = "This file is not a valid archive or is damaged.";
+const UNSUPPORTED_ARCHIVE: &str =
+    "This archive uses a compression method or feature that Strata does not support.";
+
+fn invalid_archive() -> ArchiveError {
+    archive_failed(crate::i18n::tr(INVALID_ARCHIVE))
+}
 
 pub(super) fn zip_error(error: zip::result::ZipError) -> ArchiveError {
     use zip::result::ZipError;
     match error {
-        ZipError::InvalidArchive(_) => archive_failed(INVALID_ARCHIVE),
-        ZipError::Io(error) => archive_failed(archive_read_error(error, false)),
+        ZipError::InvalidArchive(_) => invalid_archive(),
+        ZipError::Io(error) => archive_io_failed(&archive_read_error(error, false)),
         // ZIP's password check is a definite rejection, unlike a failed CRC or HMAC.
         ZipError::InvalidPassword => {
             ArchiveError::IncorrectPassword(INCORRECT_ARCHIVE_PASSWORD.to_owned())
@@ -52,8 +58,19 @@ pub(super) fn zip_error(error: zip::result::ZipError) -> ArchiveError {
         ZipError::UnsupportedArchive(ZipError::PASSWORD_REQUIRED) => {
             ArchiveError::PasswordRequired(PASSWORD_REQUIRED.to_owned())
         }
-        error => archive_failed(error),
+        error @ (ZipError::UnsupportedArchive(_) | ZipError::CompressionMethodNotSupported(_)) => {
+            unsupported_archive(&error)
+        }
+        error => {
+            tracing::warn!(%error, "unexpected ZIP decoder error");
+            invalid_archive()
+        }
     }
+}
+
+fn unsupported_archive(error: &dyn std::fmt::Display) -> ArchiveError {
+    tracing::warn!(%error, "unsupported archive feature");
+    archive_failed(crate::i18n::tr(UNSUPPORTED_ARCHIVE))
 }
 
 fn sevenz_decode_error(error: sevenz_rust2::Error) -> ArchiveError {
@@ -66,13 +83,21 @@ fn sevenz_decode_error(error: sevenz_rust2::Error) -> ArchiveError {
         | Error::BadTerminatedUnpackInfo
         | Error::BadTerminatedPackInfo(_)
         | Error::BadTerminatedSubStreamsInfo
-        | Error::BadTerminatedHeader(_) => archive_failed(INVALID_ARCHIVE),
+        | Error::BadTerminatedHeader(_) => invalid_archive(),
         Error::PasswordRequired => ArchiveError::PasswordRequired(PASSWORD_REQUIRED.to_owned()),
         Error::MaybeBadPassword(_) => {
             ArchiveError::IncorrectPassword(MAYBE_BAD_PASSWORD.to_owned())
         }
-        Error::Io(error, _) => archive_failed(archive_read_error(error, false)),
-        error => archive_failed(error),
+        Error::Io(error, _) => archive_io_failed(&archive_read_error(error, false)),
+        Error::FileOpen(error, _) => archive_io_failed(&error),
+        error @ (Error::UnsupportedCompressionMethod(_)
+        | Error::Unsupported(_)
+        | Error::ExternalUnsupported
+        | Error::UnsupportedVersion { .. }) => unsupported_archive(&error),
+        error => {
+            tracing::warn!(%error, "unexpected 7z decoder error");
+            invalid_archive()
+        }
     }
 }
 
@@ -120,7 +145,7 @@ fn archive_read_error(error: std::io::Error, decrypting: bool) -> std::io::Error
         || invalid_tar
         || invalid_gzip
     {
-        std::io::Error::new(ErrorKind::InvalidData, INVALID_ARCHIVE)
+        std::io::Error::new(ErrorKind::InvalidData, crate::i18n::tr(INVALID_ARCHIVE))
     } else {
         error
     }
@@ -252,12 +277,12 @@ impl<R: BufRead> GzipMembers<R> {
             check_archive_cancelled(cancelled)?;
             let chunk = rest
                 .fill_buf()
-                .map_err(|error| archive_failed(archive_read_error(error, false)))?;
+                .map_err(|error| archive_read_failed(archive_read_error(error, false)))?;
             if chunk.is_empty() {
                 return Ok(());
             }
             if chunk.iter().any(|byte| *byte != 0) {
-                return Err(archive_failed(INVALID_ARCHIVE));
+                return Err(invalid_archive());
             }
             let length = chunk.len();
             rest.consume(length);
@@ -392,7 +417,7 @@ pub(super) fn extract_tar(
 ) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
     let mut session = ExtractionSession::open(dest_dir, archive_name, progress, cancelled)?;
     session.record_hard_link_targets();
-    let file = std::fs::File::open(archive_path).map_err(archive_failed)?;
+    let file = std::fs::File::open(archive_path).map_err(|error| archive_io_failed(&error))?;
     let reader = if gzip {
         TarInput::Gzip(GzipMembers::new(BufReader::with_capacity(32 * 1024, file)))
     } else {
@@ -403,7 +428,7 @@ pub(super) fn extract_tar(
     let result = (|| {
         for entry in archive
             .entries()
-            .map_err(|error| archive_failed(archive_read_error(error, false)))?
+            .map_err(|error| archive_read_failed(archive_read_error(error, false)))?
         {
             if let Err(error) = session.check_cancelled() {
                 remaining = entry.ok().and_then(|entry| {
@@ -415,7 +440,7 @@ pub(super) fn extract_tar(
                 return Err(error);
             }
             let mut entry =
-                entry.map_err(|error| archive_failed(archive_read_error(error, false)))?;
+                entry.map_err(|error| archive_read_failed(archive_read_error(error, false)))?;
             // tar-rs consumes per-entry extended headers itself, but a pax
             // global header (the first member of every `git archive` tarball)
             // is yielded as an ordinary entry. It carries no file.
@@ -428,7 +453,7 @@ pub(super) fn extract_tar(
             ) {
                 continue;
             }
-            let name = entry.path().map_err(archive_failed)?;
+            let name = entry.path().map_err(|error| archive_io_failed(&error))?;
             let entry_type = entry.header().entry_type();
             if entry_type.is_dir() && name == Path::new(".") {
                 continue;
@@ -444,7 +469,10 @@ pub(super) fn extract_tar(
             let stored_link = entry.link_name_bytes().map(Cow::into_owned);
             let link_name = || {
                 stored_link.as_deref().ok_or_else(|| {
-                    archive_failed(format!("Archive member `{name}` has no link target"))
+                    archive_failed(rust_i18n::t!(
+                        "Archive member “%{name}” has no link target",
+                        name = name
+                    ))
                 })
             };
             let mut reader = ArchiveReader::new(&mut entry);
@@ -455,13 +483,15 @@ pub(super) fn extract_tar(
                     MemberContent::HardLink(Path::new(OsStr::from_bytes(link_name()?)))
                 }
                 tar::EntryType::Fifo => {
-                    return Err(archive_failed(format!(
-                        "Archive member `{name}` is a FIFO and cannot be extracted"
+                    return Err(archive_failed(rust_i18n::t!(
+                        "Archive member “%{name}” is a FIFO and cannot be extracted",
+                        name = name
                     )));
                 }
                 tar::EntryType::Char | tar::EntryType::Block => {
-                    return Err(archive_failed(format!(
-                        "Archive member `{name}` is a device and cannot be extracted"
+                    return Err(archive_failed(rust_i18n::t!(
+                        "Archive member “%{name}” is a device and cannot be extracted",
+                        name = name
                     )));
                 }
                 _ => MemberContent::File(&mut reader, Some(declared_size)),

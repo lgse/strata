@@ -38,11 +38,11 @@ fn child_summary(directory: &ArchiveDirectory) -> (usize, usize) {
         })
 }
 
-fn crumb_name(directory: &ArchiveDirectory) -> &str {
+fn crumb_name(directory: &ArchiveDirectory) -> String {
     if directory.name.is_empty() {
-        ROOT_LABEL
+        crate::i18n::tr(ROOT_LABEL)
     } else {
-        &directory.name
+        directory.name.clone()
     }
 }
 
@@ -178,7 +178,7 @@ impl ArchiveBrowser {
             .build();
         root.append(&list_scroll);
 
-        let empty = gtk::Label::new(Some("This folder is empty"));
+        let empty = gtk::Label::new(Some(&crate::i18n::tr("This folder is empty")));
         empty.add_css_class("preview-archive-empty");
         empty.set_halign(gtk::Align::Center);
         empty.set_valign(gtk::Align::Center);
@@ -299,12 +299,15 @@ impl ArchiveBrowser {
         self.rebuild_rows();
         let (files, folders) = child_summary(directory);
         let summary = match (files, folders) {
-            (0, 0) => "Empty folder".to_owned(),
-            (1, 0) => "1 file".to_owned(),
-            (files, 0) => format!("{files} files"),
-            (0, 1) => "1 folder".to_owned(),
-            (0, folders) => format!("{folders} folders"),
-            _ => format!("{files} files, {folders} folders"),
+            (0, 0) => crate::i18n::tr("Empty folder"),
+            (files, 0) => crate::i18n::count("files", files),
+            (0, folders) => crate::i18n::count("folders", folders),
+            _ => rust_i18n::t!(
+                "%{files}, %{folders}",
+                files = crate::i18n::count("files", files),
+                folders = crate::i18n::count("folders", folders)
+            )
+            .into_owned(),
         };
         self.count.set_text(&summary);
         if had_focus {
@@ -319,7 +322,7 @@ impl ArchiveBrowser {
             let back = gtk::Button::new();
             let back_icon = primary_icon(icons::ARROW_LEFT, 14);
             back.set_child(Some(&back_icon));
-            back.set_tooltip_text(Some("Go up one level"));
+            back.set_tooltip_text(Some(&crate::i18n::tr("Go up one level")));
             back.add_css_class("preview-archive-crumb");
             let navigate = self.navigate.clone();
             back.connect_clicked(move |_| navigate(depth - 1));
@@ -337,7 +340,7 @@ impl ArchiveBrowser {
             }
         }
         let mut labels = Vec::with_capacity(descending.len() + 1);
-        labels.push(ROOT_LABEL.to_owned());
+        labels.push(crate::i18n::tr(ROOT_LABEL));
         labels.extend(descending.iter().map(|child| child.name.clone()));
         for (position, label) in labels.iter().enumerate() {
             if position == depth {

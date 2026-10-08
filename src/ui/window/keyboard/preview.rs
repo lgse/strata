@@ -296,7 +296,8 @@ impl Dispatcher {
         } else if let Some(target) = preview_target(entry) {
             self.preview.show(target, browser.active_depth());
         } else {
-            self.shortcuts.show_feedback("Nothing to preview");
+            self.shortcuts
+                .show_feedback(&crate::i18n::tr("Nothing to preview"));
         }
         true
     }
@@ -320,7 +321,8 @@ impl Dispatcher {
             return;
         }
         let Some(target) = preview_target(entry) else {
-            self.shortcuts.show_feedback("Nothing to preview");
+            self.shortcuts
+                .show_feedback(&crate::i18n::tr("Nothing to preview"));
             return;
         };
         self.preview.show(target, browser.active_depth());

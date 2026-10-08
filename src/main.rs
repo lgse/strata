@@ -1,9 +1,17 @@
 // SPDX-License-Identifier: MIT
 
+// build.rs embeds data/locales; this path holds no catalogs, so the macro adds none itself.
+rust_i18n::i18n!(
+    "src/i18n/no-catalogs",
+    fallback = "en",
+    backend = crate::i18n::Catalogs::compiled()
+);
+
 mod adapters;
 mod app;
 mod assets;
 mod build_info;
+mod i18n;
 mod logging;
 mod media;
 mod metrics;

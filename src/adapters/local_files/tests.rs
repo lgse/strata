@@ -123,6 +123,10 @@ fn validation_accepts_readable_directories_and_rejects_files_and_missing_paths()
         Err(LocationValidationError::NotDirectory)
     );
     assert_eq!(
+        source.validate_location(&Location::local(file.join("child"))),
+        Err(LocationValidationError::NotDirectory)
+    );
+    assert_eq!(
         source.validate_location(&Location::local(&missing)),
         Err(LocationValidationError::Missing)
     );

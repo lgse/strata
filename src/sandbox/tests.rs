@@ -916,9 +916,9 @@ fn archive_parse_infra_failures_report_renderer_failure() {
     )
     .err()
     .expect("missing image input must fail");
-    assert!(
-        error.starts_with("Unable to open preview input: "),
-        "non-archive operations keep their own message, got {error:?}"
+    assert_eq!(
+        error, "No such file or folder",
+        "non-archive operations keep their own message"
     );
 }
 

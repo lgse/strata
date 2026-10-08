@@ -62,19 +62,6 @@ pub enum BuildKind {
     Rc,
 }
 
-impl BuildKind {
-    /// The user-facing label shown in the UI.
-    pub fn label(self) -> &'static str {
-        match self {
-            BuildKind::Stable => "Stable",
-            BuildKind::Nightly => "Nightly",
-            BuildKind::Alpha => "Alpha",
-            BuildKind::Beta => "Beta",
-            BuildKind::Rc => "Release candidate",
-        }
-    }
-}
-
 /// A comparable ordinal for a prerelease build.
 ///
 /// For an RC, `primary` is the candidate number and `suffix` is always

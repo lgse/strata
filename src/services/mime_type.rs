@@ -43,10 +43,6 @@ pub fn entry_type(entry: &FileEntry) -> EntryType {
     }
 }
 
-pub fn entry_type_description(entry: &FileEntry) -> String {
-    entry_type(entry).description().to_owned()
-}
-
 pub fn mime_type_for_name(name: &str) -> EntryType {
     let description = mime_description_for_name(name);
     if description == OTHER_TYPE_NAME {

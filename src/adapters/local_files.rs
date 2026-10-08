@@ -253,7 +253,8 @@ fn map_validation_error(error: std::io::Error) -> LocationValidationError {
     match error.kind() {
         ErrorKind::NotFound => LocationValidationError::Missing,
         ErrorKind::PermissionDenied => LocationValidationError::Inaccessible,
-        _ => LocationValidationError::Unavailable(error.to_string()),
+        ErrorKind::NotADirectory => LocationValidationError::NotDirectory,
+        _ => LocationValidationError::Unavailable(crate::services::io_error_detail(&error)),
     }
 }
 
@@ -269,7 +270,9 @@ fn uri_validation_result(
                 location.uri_value().unwrap_or_default(),
             ))
         } else {
-            LocationValidationError::Unavailable(sanitize_failure_message(&error.to_string()))
+            LocationValidationError::Unavailable(sanitize_failure_message(
+                &crate::services::gio_error_detail(&error),
+            ))
         }
     })?;
     match info.file_type() {
@@ -540,7 +543,7 @@ fn scan_native_directory(
 ) -> NativeEnumeration {
     let children = match fs::read_dir(path) {
         Ok(children) => children,
-        Err(error) => return NativeEnumeration::Failed(error.to_string()),
+        Err(error) => return NativeEnumeration::Failed(crate::services::io_error_message(&error)),
     };
     let hidden_names = native_hidden_names(path);
     let mut entries = Vec::with_capacity(1024);
@@ -555,7 +558,9 @@ fn scan_native_directory(
         }
         let child = match child {
             Ok(child) => child,
-            Err(error) => return NativeEnumeration::Failed(error.to_string()),
+            Err(error) => {
+                return NativeEnumeration::Failed(crate::services::io_error_message(&error));
+            }
         };
         let native_name = child.file_name();
         let is_hidden = is_hidden_name(&native_name, &hidden_names);
@@ -566,7 +571,9 @@ fn scan_native_directory(
         let file_type = match child.file_type() {
             Ok(file_type) => file_type,
             Err(error) if error.kind() == ErrorKind::NotFound => continue,
-            Err(error) => return NativeEnumeration::Failed(error.to_string()),
+            Err(error) => {
+                return NativeEnumeration::Failed(crate::services::io_error_message(&error));
+            }
         };
         let path = child.path();
         let kind = native_kind(file_type, &path);
@@ -1039,7 +1046,7 @@ impl FileSource for LocalFileSource {
         let file = gio::File::for_uri(
             location
                 .uri_value()
-                .ok_or_else(|| LocationValidationError::Unavailable("invalid URI".into()))?,
+                .ok_or(LocationValidationError::InvalidUri)?,
         );
         uri_validation_result(
             location,

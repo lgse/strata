@@ -88,20 +88,25 @@ impl SearchDialog {
             20,
         ));
         let field = gtk::Entry::builder()
-            .placeholder_text("Search files and folders…")
+            .placeholder_text(crate::i18n::tr("Search files and folders…"))
             .hexpand(true)
             .build();
         field.add_css_class("search-field");
         search_bar.append(&field);
         let indexing_spinner = gtk::Spinner::new();
         indexing_spinner.add_css_class("search-indexing-spinner");
-        crate::ui::accessibility::set_description(&indexing_spinner, Some("Indexing files…"));
+        crate::ui::accessibility::set_description(
+            &indexing_spinner,
+            Some(&crate::i18n::tr("Indexing files…")),
+        );
         indexing_spinner.set_valign(gtk::Align::Center);
         indexing_spinner.set_visible(false);
         search_bar.append(&indexing_spinner);
         panel.append(&search_bar);
 
-        let status = gtk::Label::new(Some("Type to search Home and mounted local drives"));
+        let status = gtk::Label::new(Some(&crate::i18n::tr(
+            "Type to search Home and mounted local drives",
+        )));
         status.add_css_class("search-status");
         status.set_wrap(true);
 
@@ -132,14 +137,20 @@ impl SearchDialog {
 
         let footer = gtk::Box::new(gtk::Orientation::Horizontal, 18);
         footer.add_css_class("search-footer");
-        let navigation = gtk::Label::new(Some("↑↓  navigate"));
+        // Key hints shorten in narrow windows so "Partial results" stays visible.
+        let hint_label = |text: &str| {
+            let label = gtk::Label::new(Some(text));
+            label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+            label
+        };
+        let navigation = hint_label(&crate::i18n::tr("↑↓  navigate"));
         let open = gtk::Box::new(gtk::Orientation::Horizontal, 5);
         open.set_valign(gtk::Align::Center);
         open.append(&crate::assets::primary_icon(
             crate::assets::icons::CORNER_DOWN_LEFT,
             13,
         ));
-        open.append(&gtk::Label::new(Some("open")));
+        open.append(&hint_label(&crate::i18n::tr("open")));
         navigation.add_css_class("search-hint");
         open.add_css_class("search-hint");
         footer.append(&navigation);
@@ -150,7 +161,9 @@ impl SearchDialog {
             crate::assets::icons::FOLDER_OPEN,
             13,
         ));
-        reveal_hint.append(&gtk::Label::new(Some("Alt+Enter  open containing folder")));
+        reveal_hint.append(&hint_label(&crate::i18n::tr(
+            "Alt+Enter  open containing folder",
+        )));
         reveal_hint.add_css_class("search-hint");
         footer.append(&reveal_hint);
         let truncated_hint = gtk::Box::new(gtk::Orientation::Horizontal, 4);
@@ -158,7 +171,7 @@ impl SearchDialog {
             crate::assets::icons::TRIANGLE_ALERT,
             14,
         ));
-        truncated_hint.append(&gtk::Label::new(Some("Partial results")));
+        truncated_hint.append(&gtk::Label::new(Some(&crate::i18n::tr("Partial results"))));
         truncated_hint.add_css_class("search-hint");
         truncated_hint.add_css_class("search-hint-warning");
         truncated_hint.set_hexpand(true);
@@ -320,7 +333,7 @@ impl SearchDialog {
         self.state.history.borrow_mut().take();
         self.state
             .field
-            .set_placeholder_text(Some("Search files and folders…"));
+            .set_placeholder_text(Some(&crate::i18n::tr("Search files and folders…")));
         let locations = roots
             .iter()
             .map(|root| root.display().to_string())
@@ -328,8 +341,9 @@ impl SearchDialog {
             .join("\n");
         crate::ui::accessibility::set_description(
             &self.state.field,
-            Some(&format!(
-                "Search locations:\n{locations}\nRemote shares are not included."
+            Some(&rust_i18n::t!(
+                "Search locations:\n%{locations}\nRemote shares are not included.",
+                locations = locations
             )),
         );
         self.state.field.set_sensitive(!roots.is_empty());
@@ -337,9 +351,9 @@ impl SearchDialog {
         self.state.results.set_visible_child_name("status");
         self.state.field.set_text("");
         self.state.status.set_visible(true);
-        self.state
-            .status
-            .set_text("Type to search Home and mounted local drives");
+        self.state.status.set_text(&crate::i18n::tr(
+            "Type to search Home and mounted local drives",
+        ));
         self.state.truncated_hint.set_visible(false);
         self.state.indexing_spinner.set_visible(true);
         self.state.indexing_spinner.start();
@@ -350,7 +364,7 @@ impl SearchDialog {
         if roots.is_empty() {
             self.state
                 .status
-                .set_text("No local search locations available.");
+                .set_text(&crate::i18n::tr("No local search locations available."));
             self.state.indexing_spinner.stop();
             self.state.indexing_spinner.set_visible(false);
             self.state.layer.grab_focus();
@@ -411,10 +425,10 @@ impl SearchDialog {
         self.state.history.replace(Some(history));
         self.state
             .field
-            .set_placeholder_text(Some("Jump to a folder…"));
+            .set_placeholder_text(Some(&crate::i18n::tr("Jump to a folder…")));
         crate::ui::accessibility::set_description(
             &self.state.field,
-            Some("Folders previously visited in Strata"),
+            Some(&crate::i18n::tr("Folders previously visited in Strata")),
         );
         self.state.field.set_sensitive(true);
         clear_results(&self.state);
@@ -454,11 +468,11 @@ fn begin_query(state: &Rc<SearchState>, query: &str) {
         clear_results(state);
         state.results.set_visible_child_name("status");
         state.status.set_text(
-            "Type to search Home and mounted local drives\nFuzzy matching · try a name or path fragment",
+            &crate::i18n::tr("Type to search Home and mounted local drives\nFuzzy matching · try a name or path fragment"),
         );
     } else if state.visible_results.borrow().is_empty() {
         state.results.set_visible_child_name("status");
-        state.status.set_text("Searching…");
+        state.status.set_text(&crate::i18n::tr("Searching…"));
     }
     if let Some(search) = state.search.borrow().as_ref() {
         search.query(query);
@@ -585,7 +599,7 @@ fn render_results(
         } else {
             "No matching files or folders"
         };
-        state.status.set_text(message);
+        state.status.set_text(&crate::i18n::tr(message));
     }
 
     if results_changed

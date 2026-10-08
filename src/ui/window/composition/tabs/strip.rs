@@ -52,7 +52,7 @@ impl TabStrip {
         widget.add_css_class("tab-strip");
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         row.set_accessible_role(gtk::AccessibleRole::TabList);
-        accessibility::set_label(&row, "Tabs");
+        accessibility::set_label(&row, &crate::i18n::tr("Tabs"));
         let actions = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         actions.set_valign(gtk::Align::Center);
         let end = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -184,7 +184,10 @@ impl TabStrip {
         content.append(&label);
         content.append(&hint);
         select.set_child(Some(&content));
-        let close = layout::header_action(crate::assets::icons::X, "Close tab (Ctrl+W)");
+        let close = layout::header_action(
+            crate::assets::icons::X,
+            &crate::i18n::tr("Close tab (Ctrl+W)"),
+        );
         close.remove_css_class("header-action");
         let close_icons = gtk::Stack::new();
         close_icons.set_halign(gtk::Align::Center);
@@ -216,7 +219,7 @@ impl TabStrip {
             }
         });
         close.add_controller(close_hover);
-        accessibility::set_label(&close, "Close tab");
+        accessibility::set_label(&close, &crate::i18n::tr("Close tab"));
         close.add_css_class("tab-close");
         widget.append(&select);
         widget.append(&close);

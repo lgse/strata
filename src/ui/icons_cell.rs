@@ -107,7 +107,7 @@ pub(super) fn ensure_rename_field(card: &impl IsA<gtk::Widget>) -> Option<gtk::E
     let labels = card.last_child()?.downcast::<gtk::Box>().ok()?;
     let field = gtk::Entry::new();
     field.add_css_class("inline-rename");
-    crate::ui::accessibility::set_label(&field, "Rename");
+    crate::ui::accessibility::set_label(&field, &crate::i18n::tr("Rename"));
     field.set_width_chars(1);
     field.set_hexpand(true);
     gtk::prelude::EntryExt::set_alignment(&field, 0.5);

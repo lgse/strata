@@ -939,7 +939,7 @@ fn zip_member_lying_about_its_size_is_refused_before_it_expands() -> Result<(), 
         .expect_err("a member exceeding its declared size should fail");
 
     assert!(
-        error.contains("`zeros.bin` declared 16 bytes but produced more"),
+        error.contains("“zeros.bin” declared 16 bytes but produced more"),
         "{error}"
     );
     assert!(
@@ -961,7 +961,7 @@ fn zip_member_declaring_more_than_it_contains_is_refused() -> Result<(), Box<dyn
         .expect_err("a member shorter than its declared size should fail");
 
     assert!(
-        error.contains("`note.txt` declared 1000 bytes but produced 5 bytes"),
+        error.contains("“note.txt” declared 1,000 bytes but produced 5 bytes"),
         "{error}"
     );
     assert!(
@@ -1080,7 +1080,7 @@ fn gzip_trailer_mismatch_fails_after_the_last_member() -> Result<(), Box<dyn Err
         );
 
         let kept = format!(
-            "{} Extracted entries remain in `content`.",
+            "{} Extracted entries remain in “content”.",
             super::INVALID_ARCHIVE
         );
         assert!(
@@ -1134,7 +1134,7 @@ fn truncated_gzip_trailer_is_damaged() -> Result<(), Box<dyn Error>> {
     );
 
     let kept = format!(
-        "{} Extracted entries remain in `content`.",
+        "{} Extracted entries remain in “content”.",
         super::INVALID_ARCHIVE
     );
     assert!(
@@ -1216,7 +1216,7 @@ fn corrupt_members_are_removed_without_losing_completed_or_existing_files()
         let progress = Arc::new(AtomicUsize::new(0));
         let result = decode_fixture(&archive, destination.path(), format, None, &progress);
         let kept = format!(
-            "{} Extracted entries remain in `archive`.",
+            "{} Extracted entries remain in “archive”.",
             super::INVALID_ARCHIVE
         );
         assert!(
@@ -1243,12 +1243,17 @@ fn corrupt_members_are_removed_without_losing_completed_or_existing_files()
 fn error_translation_preserves_passwords_unsupported_formats_and_io_failures() {
     use sevenz_rust2::Error as SevenZError;
     use zip::result::ZipError;
-    for error in [
-        ZipError::UnsupportedArchive("unsupported encryption"),
-        ZipError::CompressionMethodNotSupported(99),
-        ZipError::FileNotFound,
+    for (error, expected) in [
+        (
+            ZipError::UnsupportedArchive("unsupported encryption"),
+            super::UNSUPPORTED_ARCHIVE,
+        ),
+        (
+            ZipError::CompressionMethodNotSupported(99),
+            super::UNSUPPORTED_ARCHIVE,
+        ),
+        (ZipError::FileNotFound, super::INVALID_ARCHIVE),
     ] {
-        let expected = error.to_string();
         assert_eq!(super::zip_error(error).to_string(), expected);
     }
     assert_eq!(
@@ -1290,11 +1295,21 @@ fn error_translation_preserves_passwords_unsupported_formats_and_io_failures() {
         SevenZError::UnsupportedVersion { major: 9, minor: 0 },
         SevenZError::UnsupportedCompressionMethod("unknown".into()),
         SevenZError::Unsupported("unsupported encryption".into()),
-        SevenZError::FileNotFound,
-        SevenZError::Other("unknown decoder failure".into()),
     ] {
-        let expected = error.to_string();
-        assert_eq!(super::sevenz_decode_error(error).to_string(), expected);
+        assert_eq!(
+            super::sevenz_decode_error(error).to_string(),
+            super::UNSUPPORTED_ARCHIVE
+        );
+    }
+    for error in [
+        SevenZError::FileNotFound,
+        SevenZError::Other("Broken or unsupported archive: no Header".into()),
+        SevenZError::Other("Cannot handle next_header_size 576".into()),
+    ] {
+        assert_eq!(
+            super::sevenz_decode_error(error).to_string(),
+            super::INVALID_ARCHIVE
+        );
     }
     for kind in [
         io::ErrorKind::PermissionDenied,
@@ -1884,7 +1899,7 @@ fn unsupported_tar_members_are_refused_with_their_name() -> Result<(), Box<dyn E
             };
             assert!(message.contains(name), "{context}: {message}");
             assert!(
-                message.contains("remain in `special`"),
+                message.contains("remain in “special”"),
                 "{context}: {message}"
             );
             assert_eq!(fs::read(output.join("ok.txt"))?, b"ok", "{context}");
@@ -2182,7 +2197,7 @@ fn every_gzip_member_of_a_tar_gz_is_read_and_verified() -> Result<(), Box<dyn Er
 
         if corrupt_second_member {
             let kept = format!(
-                "{} Extracted entries remain in `content`.",
+                "{} Extracted entries remain in “content”.",
                 super::INVALID_ARCHIVE
             );
             assert!(
@@ -2242,7 +2257,7 @@ fn zero_padding_after_the_last_gzip_member_is_not_damage() -> Result<(), Box<dyn
             );
         } else {
             let kept = format!(
-                "{} Extracted entries remain in `content`.",
+                "{} Extracted entries remain in “content”.",
                 super::INVALID_ARCHIVE
             );
             assert!(
@@ -2363,7 +2378,7 @@ fn damage_in_an_unencrypted_member_is_not_a_password_failure() -> Result<(), Box
     assert_eq!(
         result.map(|_| ()),
         Err(ArchiveError::Failed(format!(
-            "{} Extracted entries remain in `mixed`.",
+            "{} Extracted entries remain in “mixed”.",
             super::INVALID_ARCHIVE
         )))
     );

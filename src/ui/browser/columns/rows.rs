@@ -93,7 +93,7 @@ pub(super) fn column_rows(
             .build();
         let rename = gtk::Entry::new();
         rename.add_css_class("inline-rename");
-        crate::ui::accessibility::set_label(&rename, "Rename");
+        crate::ui::accessibility::set_label(&rename, &crate::i18n::tr("Rename"));
         rename.set_hexpand(true);
         rename.set_width_chars(1);
         rename.set_visible(false);

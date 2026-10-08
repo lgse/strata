@@ -99,8 +99,8 @@ fn transport_button(icon: &str, name: &str, tooltip: &str) -> gtk::Button {
     let button = gtk::Button::new();
     button.add_css_class("preview-media-button");
     button.set_child(Some(&crate::assets::primary_icon(icon, 18)));
-    button.set_tooltip_text(Some(tooltip));
-    crate::ui::accessibility::set_label(&button, name);
+    button.set_tooltip_text(Some(&crate::i18n::tr(tooltip)));
+    crate::ui::accessibility::set_label(&button, &crate::i18n::tr(name));
     button
 }
 
@@ -131,7 +131,7 @@ impl VideoView {
         frame.add_overlay(&picture);
         frame.set_focusable(true);
         frame.set_can_target(true);
-        crate::ui::accessibility::set_label(&frame, "Video frame");
+        crate::ui::accessibility::set_label(&frame, &crate::i18n::tr("Video frame"));
         let placeholder = frame::Placeholder::new();
         frame.add_overlay(&placeholder);
         let bubble_cell = gtk::Picture::new();
@@ -190,8 +190,8 @@ impl VideoView {
         play.add_css_class("preview-media-center");
         play.add_css_class("preview-video-play");
         play.set_child(Some(&play_icon));
-        play.set_tooltip_text(Some("Play/Pause (Ctrl+Alt+Space)"));
-        crate::ui::accessibility::set_label(&play, "Play or pause");
+        play.set_tooltip_text(Some(&crate::i18n::tr("Play/Pause (Ctrl+Alt+Space)")));
+        crate::ui::accessibility::set_label(&play, &crate::i18n::tr("Play or pause"));
         let buttons = gtk::Box::new(gtk::Orientation::Horizontal, 10);
         buttons.set_valign(gtk::Align::Center);
         buttons.append(&previous);

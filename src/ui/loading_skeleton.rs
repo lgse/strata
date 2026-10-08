@@ -23,7 +23,9 @@ pub(super) fn container() -> gtk::Box {
     container.add_css_class("loading-skeleton");
     container.set_can_target(false);
     container.set_focusable(false);
-    container.update_property(&[gtk::accessible::Property::Label("Loading directory")]);
+    container.update_property(&[gtk::accessible::Property::Label(&crate::i18n::tr(
+        "Loading directory",
+    ))]);
     container
 }
 

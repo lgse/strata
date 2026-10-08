@@ -14,7 +14,7 @@ pub(in crate::ui) fn pane_new_folder_button(
     depth: usize,
 ) -> gtk::Button {
     let button = gtk::Button::builder()
-        .tooltip_text("New Folder (Ctrl+Shift+N)")
+        .tooltip_text(crate::i18n::tr("New Folder (Ctrl+Shift+N)"))
         .build();
     button.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::FOLDER_PLUS,
@@ -31,7 +31,9 @@ pub(in crate::ui) fn pane_new_folder_button(
             button.set_visible(false);
         }
     }
-    button.update_property(&[gtk::accessible::Property::Label("New Folder")]);
+    button.update_property(&[gtk::accessible::Property::Label(&crate::i18n::tr(
+        "New Folder",
+    ))]);
     button.connect_clicked(move |_| {
         if let Some(state) = state.upgrade()
             && let Some(location) = state.browser.location_at(depth)
@@ -43,7 +45,9 @@ pub(in crate::ui) fn pane_new_folder_button(
 }
 
 pub(in crate::ui) fn pane_refresh_button(browser: &Rc<Browser>, depth: usize) -> gtk::Button {
-    let button = gtk::Button::builder().tooltip_text("Refresh (F5)").build();
+    let button = gtk::Button::builder()
+        .tooltip_text(crate::i18n::tr("Refresh (F5)"))
+        .build();
     button.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::REFRESH,
     )));
@@ -64,7 +68,7 @@ pub(in crate::ui) fn pane_refresh_button(browser: &Rc<Browser>, depth: usize) ->
 pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gtk::MenuButton {
     let content = gtk::Box::new(gtk::Orientation::Vertical, 2);
     content.add_css_class("column-menu");
-    let heading = gtk::Label::new(Some("SORT BY"));
+    let heading = gtk::Label::new(Some(&crate::i18n::tr("SORT BY")));
     heading.set_xalign(0.0);
     heading.add_css_class("menu-heading");
     content.append(&heading);
@@ -96,13 +100,13 @@ pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gt
         if (key == SortKey::DeviceOrder && !camera_photos) || (key == SortKey::Recency && !recent) {
             continue;
         }
-        let (option, check) = menu_option(label, preferences.sort_key == key);
+        let (option, check) = menu_option(&crate::i18n::tr(label), preferences.sort_key == key);
         if key == SortKey::DeviceOrder {
             crate::ui::accessibility::set_description(
                 &option,
-                Some(
+                Some(&crate::i18n::tr(
                     "Append photos as the device lists them; not necessarily chronological. Selecting this reloads the library.",
-                ),
+                )),
             );
         }
         selected_checks.borrow_mut().push((key, check));
@@ -126,7 +130,7 @@ pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gt
     let folders_state = if !recent {
         content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
         let (folders_first, folders_check) =
-            menu_option("Folders first", preferences.folders_first);
+            menu_option(&crate::i18n::tr("Folders first"), preferences.folders_first);
         let folders_enabled = Rc::new(Cell::new(preferences.folders_first));
         let weak_browser = Rc::downgrade(browser);
         let folders_enabled_for_click = folders_enabled.clone();
@@ -196,7 +200,7 @@ pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gt
         }
     });
     let button = gtk::MenuButton::builder()
-        .tooltip_text("Choose sort field")
+        .tooltip_text(crate::i18n::tr("Choose sort field"))
         .popover(&popover)
         .build();
     button.set_child(Some(&crate::assets::chrome_icon(
@@ -280,18 +284,18 @@ fn sync_sort_direction_toggle(
             crate::assets::icons::ARROW_UP_NARROW_WIDE
         },
     );
-    button.set_tooltip_text(Some(if device_order {
+    button.set_tooltip_text(Some(&crate::i18n::tr(if device_order {
         "Device order follows discovery; choose a sort field to reverse its direction"
     } else if descending {
         "Descending — click to reverse"
     } else {
         "Ascending — click to reverse"
-    }));
+    })));
 }
 
 pub(in crate::ui) fn empty_trash_button(browser: &Rc<Browser>) -> gtk::Button {
     let button = gtk::Button::builder()
-        .tooltip_text("Empty Trash")
+        .tooltip_text(crate::i18n::tr("Empty Trash"))
         .visible(false)
         .build();
     button.set_child(Some(&crate::assets::chrome_icon(

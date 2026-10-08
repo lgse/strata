@@ -92,12 +92,12 @@ fn footer_tracks_modes_and_shields_files_while_open() {
         let depth = view.browser().active_depth().expect("active directory");
         view.browser().set_selection(depth, &[0, 1, 2], Some(2));
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-        while footer.count.text() != "1 folder, 2 files selected (6 B)"
+        while footer.count.text() != "1 folder, 2 files selected"
             && std::time::Instant::now() < deadline
         {
             settle();
         }
-        assert_eq!(footer.count.text(), "1 folder, 2 files selected (6 B)");
+        assert_eq!(footer.count.text(), "1 folder, 2 files selected");
         assert!(footer.count.tooltip_text().is_none());
         let folder = (0..3)
             .find(|position| {
@@ -112,6 +112,11 @@ fn footer_tracks_modes_and_shields_files_while_open() {
         view.browser().set_selection(depth, &[folder], Some(folder));
         assert_eq!(footer.count.text(), "1 folder selected");
         view.browser().set_selection(depth, &[file], Some(file));
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while footer.count.text() != "1 file selected (3 B)" && std::time::Instant::now() < deadline
+        {
+            settle();
+        }
         assert_eq!(footer.count.text(), "1 file selected (3 B)");
         view.browser().set_selection(depth, &[], None);
         assert_eq!(footer.count.text(), "3 items");
@@ -171,6 +176,7 @@ fn footer_tracks_modes_and_shields_files_while_open() {
         Some(glib::Propagation::Stop)
     );
     assert!(footer.session.is_open());
+    settle();
     assert!(footer.panel.child_focus(gtk::DirectionType::TabForward));
     footer.search.grab_focus();
     assert_eq!(
@@ -251,6 +257,36 @@ impl ShortcutFooter {
         );
         assert_eq!(self.more.is_visible(), visible);
     }
+}
+
+#[test]
+fn localized_reference_translates_key_context_but_not_keycaps() {
+    crate::test_support::gtk_test(
+        "ui::shortcut_footer::tests::localized_reference_translates_key_context_but_not_keycaps",
+        || {
+            let manager = super::super::preferences::PreferenceManager::shared();
+            // The shared manager applies the saved startup language first.
+            rust_i18n::set_locale("de");
+            manager.set_tenxer_mode(true);
+            let footer = ShortcutFooter::new(BrowserMode::Columns);
+            footer.bind_preferences(&manager);
+            settle();
+            let labels = reference_labels(&footer);
+            let preview = crate::i18n::tr("Enter its preview; keys move into the drawer");
+            assert!(reference_pairs(&labels, "l / → auf einer Datei", &preview));
+            assert!(labels.iter().any(|label| label == "g g"));
+            assert!(
+                labels
+                    .iter()
+                    .any(|label| label == "Tab in Gehe zu › / Verschieben nach › / Kopieren nach ›")
+            );
+            footer.search.set_text("auf einer Datei");
+            settle();
+            let matches = reference_labels(&footer);
+            assert!(reference_pairs(&matches, "l / → auf einer Datei", &preview));
+            assert!(!matches.iter().any(|label| label == "g g"));
+        },
+    );
 }
 
 #[test]

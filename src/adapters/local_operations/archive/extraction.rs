@@ -22,7 +22,8 @@ use std::{
 use crate::model::Location;
 
 use super::{
-    ArchiveError, COPY_BUF, archive_failed, archive_read_failed, check_archive_cancelled,
+    ArchiveError, COPY_BUF, archive_failed, archive_io_failed, archive_read_failed,
+    check_archive_cancelled,
     destination::{
         ExtractNameResolver, ExtractionDestination, process_umask, sanitized_archive_path,
     },
@@ -196,9 +197,13 @@ impl<'a> ExtractionSession<'a> {
     /// Sequential formats that cannot cheaply sum headers rely on per-member checks.
     pub(super) fn preflight_claimed_size(&self, claimed: u128) -> Result<(), ArchiveError> {
         match self.remaining() {
-            Some(available) if claimed > u128::from(available) => Err(archive_failed(format!(
-                "Archive declared size ({claimed} bytes) exceeds the {available} bytes of free space at the destination"
-            ))),
+            Some(available) if claimed > u128::from(available) => {
+                Err(archive_failed(rust_i18n::t!(
+                    "Archive declared size (%{claimed}) exceeds the free space at the destination (%{available})",
+                    claimed = crate::i18n::file_size(u64::try_from(claimed).unwrap_or(u64::MAX)),
+                    available = crate::i18n::file_size(available)
+                )))
+            }
             _ => Ok(()),
         }
     }
@@ -210,8 +215,11 @@ impl<'a> ExtractionSession<'a> {
 
     fn ensure_member_fits(&self, name: &str, declared: u64) -> Result<(), ArchiveError> {
         match self.remaining() {
-            Some(available) if declared > available => Err(archive_failed(format!(
-                "Archive member `{name}` declared {declared} bytes, but only {available} bytes are free at the destination"
+            Some(available) if declared > available => Err(archive_failed(rust_i18n::t!(
+                "Archive member “%{name}” declared %{declared}, but only %{available} is free at the destination",
+                name = name,
+                declared = crate::i18n::file_size(declared),
+                available = crate::i18n::file_size(available)
             ))),
             _ => Ok(()),
         }
@@ -231,9 +239,10 @@ impl<'a> ExtractionSession<'a> {
             .and_then(|path| self.created_names.get(&path))
             .cloned()
             .ok_or_else(|| {
-                archive_failed(format!(
-                    "Archive member `{name}` is a hard link to `{}`, which was not extracted",
-                    target.display()
+                archive_failed(rust_i18n::t!(
+                    "Archive member “%{name}” is a hard link to “%{target}”, which was not extracted",
+                    name = name,
+                    target = target.display()
                 ))
             })
     }
@@ -301,8 +310,10 @@ impl<'a> ExtractionSession<'a> {
                         .set_file_times(&file, modified)
                         .map(|()| copied)
                         .map_err(|error| {
-                            archive_failed(format!(
-                                "Could not restore the modification time of `{name}`: {error}"
+                            archive_failed(rust_i18n::t!(
+                                "Could not restore the modification time of “%{path}”: %{error}",
+                                path = name,
+                                error = crate::services::io_error_detail(&error.into())
                             ))
                         }),
                     None => Ok(copied),
@@ -408,10 +419,7 @@ impl<'a> ExtractionSession<'a> {
                     .collect();
                 let name = name.to_string_lossy().into_owned();
                 restore_directory_metadata(directory, published).map_err(|error| {
-                    ArchiveError::Failed(append_sentence(
-                        &error,
-                        &format!("Extracted entries remain in `{name}`."),
-                    ))
+                    ArchiveError::Failed(append_sentence(&error, &entries_remain_in(&name)))
                 })?;
                 Ok(ArchiveOutcome::Completed(Some(name)))
             }
@@ -485,10 +493,7 @@ impl Drop for ExtractionSession<'_> {
 
 fn failure_message(message: String, kept: Result<Option<String>, String>) -> String {
     match kept {
-        Ok(Some(folder)) => append_sentence(
-            &message,
-            &format!("Extracted entries remain in `{folder}`."),
-        ),
+        Ok(Some(folder)) => append_sentence(&message, &entries_remain_in(&folder)),
         Ok(None) => message,
         Err(error) => append_sentence(&message, &error),
     }
@@ -539,8 +544,9 @@ fn restore_directory_metadata(
 
 fn validate_link_target(name: &str, target: &[u8]) -> Result<(), ArchiveError> {
     if target.is_empty() || target.len() as u64 > MAX_SYMLINK_TARGET_BYTES || target.contains(&0) {
-        return Err(archive_failed(format!(
-            "Archive member `{name}` has an invalid symbolic link target"
+        return Err(archive_failed(rust_i18n::t!(
+            "Archive member “%{name}” has an invalid symbolic link target",
+            name = name
         )));
     }
     Ok(())
@@ -550,7 +556,7 @@ fn remove_empty(parent: &ExtractionDestination, staging: &Staging) -> Result<(),
     match parent.remove_empty_staging(&staging.name) {
         Ok(true) => Ok(()),
         Ok(false) => Err(staging_kept(
-            "Some extracted entries were not published",
+            &crate::i18n::tr("Some extracted entries were not published"),
             staging,
         )),
         Err(error) => Err(archive_failed(error)),
@@ -584,22 +590,21 @@ fn keep_or_remove(
 }
 
 fn staging_kept_message(error: &str, staging: &Staging) -> String {
-    append_sentence(
-        error,
-        &format!(
-            "Extracted entries remain in `{}`.",
-            staging.name.to_string_lossy()
-        ),
-    )
+    append_sentence(error, &entries_remain_in(&staging.name.to_string_lossy()))
+}
+
+fn entries_remain_in(folder: &str) -> String {
+    rust_i18n::t!("Extracted entries remain in “%{folder}”.", folder = folder).into_owned()
 }
 
 fn append_sentence(message: &str, sentence: &str) -> String {
-    let separator = if message.ends_with(['.', '!', '?']) {
-        " "
+    if message.ends_with('。') {
+        format!("{message}{sentence}")
+    } else if message.ends_with(['.', '!', '?']) {
+        format!("{message} {sentence}")
     } else {
-        ". "
-    };
-    format!("{message}{separator}{sentence}")
+        rust_i18n::t!("%{first}. %{second}", first = message, second = sentence).into_owned()
+    }
 }
 
 fn staging_kept(error: &str, staging: &Staging) -> ArchiveError {
@@ -607,20 +612,27 @@ fn staging_kept(error: &str, staging: &Staging) -> ArchiveError {
 }
 
 fn declared_size_exceeded(name: &str, declared: u64) -> ArchiveError {
-    archive_failed(format!(
-        "Archive member `{name}` declared {declared} bytes but produced more"
+    archive_failed(rust_i18n::t!(
+        "Archive member “%{name}” declared %{declared} but produced more",
+        name = name,
+        declared = crate::i18n::count_u64("bytes", declared)
     ))
 }
 
 fn declared_size_short(name: &str, declared: u64, actual: u64) -> ArchiveError {
-    archive_failed(format!(
-        "Archive member `{name}` declared {declared} bytes but produced {actual} bytes"
+    archive_failed(rust_i18n::t!(
+        "Archive member “%{name}” declared %{declared} but produced %{actual}",
+        name = name,
+        declared = crate::i18n::count_u64("bytes", declared),
+        actual = crate::i18n::count_u64("bytes", actual)
     ))
 }
 
 fn destination_full(name: &str, available: u64) -> ArchiveError {
-    archive_failed(format!(
-        "Not enough free space at the destination to extract `{name}` ({available} bytes available)"
+    archive_failed(rust_i18n::t!(
+        "Not enough free space at the destination to extract “%{name}” (%{available} available)",
+        name = name,
+        available = crate::i18n::file_size(available)
     ))
 }
 
@@ -667,7 +679,9 @@ fn copy_member(
         if n == 0 {
             break;
         }
-        writer.write_all(&buf[..n]).map_err(archive_failed)?;
+        writer
+            .write_all(&buf[..n])
+            .map_err(|error| archive_io_failed(&error))?;
         copied = copied.saturating_add(n as u64);
     }
     if let Some(declared) = declared_size

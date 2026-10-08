@@ -24,7 +24,7 @@ fn install_click_rejected_by_the_guard_keeps_the_row_usable() {
             let guard = install_guard();
             let row = update_check_row_with(
                 manager,
-                release_notes_card("Available release", ""),
+                release_notes_card(ReleaseNotesKind::Available, "Available release", ""),
                 guard.clone(),
                 UpdateMethod::InPlace,
                 installer.launcher(),
@@ -61,6 +61,25 @@ fn install_click_rejected_by_the_guard_keeps_the_row_usable() {
             assert_eq!(button.label().as_deref(), Some("Check now"));
             assert!(button.is_sensitive());
             assert!(!guard.get(), "a failed install releases the guard");
+        },
+    );
+}
+
+#[test]
+fn release_dates_follow_the_app_language() {
+    gtk_test(
+        "ui::settings::tests::updates::release_dates_follow_the_app_language",
+        || {
+            for (locale, expected) in [
+                ("en", "Sep 20, 2026"),
+                ("de", "20. Sept. 2026"),
+                ("ja", "2026年9月20日"),
+                ("ru", "20 сент. 2026 г."),
+            ] {
+                rust_i18n::set_locale(locale);
+                assert_eq!(release_date("2026-09-20T12:00:00Z"), expected, "{locale}");
+            }
+            assert_eq!(release_date("2026-09-20Tunknown"), "2026-09-20");
         },
     );
 }

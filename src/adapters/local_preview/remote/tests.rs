@@ -43,7 +43,7 @@ fn cancellation_and_write_failure_stop_the_transfer() {
     struct FullDisk;
     impl Write for FullDisk {
         fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
-            Err(std::io::Error::other("disk full"))
+            Err(std::io::ErrorKind::StorageFull.into())
         }
         fn flush(&mut self) -> std::io::Result<()> {
             Ok(())
@@ -51,7 +51,7 @@ fn cancellation_and_write_failure_stop_the_transfer() {
     }
     let error = copy_bounded(&stream, &mut FullDisk, 100, &gio::Cancellable::new())
         .expect_err("write failure");
-    assert!(error.contains("disk full"));
+    assert_eq!(error, "There is not enough space on the device");
 }
 
 #[test]

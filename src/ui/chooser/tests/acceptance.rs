@@ -1356,6 +1356,88 @@ fn recursive_folder_selection_navigates_without_accepting() {
 }
 
 #[test]
+fn localized_overwrite_warning_preserves_caller_labels_and_cancelled_file() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::acceptance::localized_overwrite_warning_preserves_caller_labels_and_cancelled_file",
+        || {
+            fn find<T: IsA<gtk::Widget> + glib::object::IsClass>(
+                root: &gtk::Widget,
+                predicate: &impl Fn(&T) -> bool,
+            ) -> Option<T> {
+                if let Some(widget) = root.downcast_ref::<T>()
+                    && predicate(widget)
+                {
+                    return Some(widget.clone());
+                }
+                let mut child = root.first_child();
+                while let Some(widget) = child {
+                    child = widget.next_sibling();
+                    if let Some(found) = find(&widget, predicate) {
+                        return Some(found);
+                    }
+                }
+                None
+            }
+            crate::ui::prepare_portal_ui();
+            let preferences = PreferenceManager::shared();
+            preferences.set_browser_mode(BrowserMode::List);
+            rust_i18n::set_locale("fr");
+            let root = tempfile::tempdir().expect("fixture");
+            let path = root.path().join("Language");
+            std::fs::write(&path, "original contents").expect("existing destination");
+            let result = Rc::new(RefCell::new(None));
+            let received = result.clone();
+            let mut req = request(root.path().to_path_buf());
+            req.title = "Language".into();
+            req.accept_label = "Open".into();
+            req.kind = ChooserKind::SaveFile {
+                current_name: Some("Language".into()),
+            };
+            let state = build_chooser(req, Arc::new(AtomicBool::new(false)), move |value| {
+                received.replace(Some(value));
+            })
+            .expect("chooser");
+            assert_eq!(state.window.title().as_deref(), Some("Language"));
+            assert_eq!(state.accept_button.label().as_deref(), Some("Open"));
+            state.accept_button.emit_clicked();
+            let warning = "Le fichier de destination existe déjà. Continuer peut l’écraser.";
+            wait_until(|| {
+                find(state.window.upcast_ref(), &|label: &gtk::Label| {
+                    label
+                        .text()
+                        .split_whitespace()
+                        .eq(warning.split_whitespace())
+                })
+                .is_some()
+            });
+            let dialog = find(state.window.upcast_ref(), &|widget: &gtk::Box| {
+                widget.has_css_class("action-dialog")
+            })
+            .expect("overwrite dialog");
+            assert!(
+                find(dialog.upcast_ref(), &|label: &gtk::Label| label.text()
+                    == "Language")
+                .is_some()
+            );
+            find(dialog.upcast_ref(), &|button: &gtk::Button| {
+                button.label().as_deref() == Some("Annuler") && button.is_visible()
+            })
+            .expect("localized cancellation")
+            .emit_clicked();
+            assert!(
+                result.borrow().is_none(),
+                "cancelling overwrite must not accept the request"
+            );
+            assert_eq!(
+                std::fs::read_to_string(&path).expect("preserved file"),
+                "original contents"
+            );
+            state.cancel();
+        },
+    );
+}
+
+#[test]
 fn save_file_ignores_load_cursor() {
     crate::test_support::gtk_test(
         "ui::chooser::tests::acceptance::save_file_ignores_load_cursor",

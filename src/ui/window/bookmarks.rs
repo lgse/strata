@@ -32,7 +32,7 @@ pub(super) fn watch_sidebar(state: &Rc<SidebarState>) -> BookmarkWatch {
                 }
                 show_error_dialog(
                     &state.view.widget(),
-                    "Unable to update pinned folders",
+                    &crate::i18n::tr("Unable to update pinned folders"),
                     &error,
                 );
                 true

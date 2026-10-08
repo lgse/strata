@@ -110,20 +110,56 @@ fn permanent_delete_confirmation_is_actionable_while_summary_loads() {
     crate::test_support::gtk_test(
         "ui::browser::trash::tests::permanent_delete_confirmation_is_actionable_while_summary_loads",
         || {
-            let fixture = tempfile::tempdir().expect("fixture");
-            let original = fixture.path().join("original.txt");
-            let (entry, _) = trashed_entry(fixture.path(), "pending", &original);
-            let view = view();
-            let window = window(&view);
+            for (locale, confirm_text, cancel_text, warning) in [
+                (
+                    "en",
+                    "Permanently delete 1 item",
+                    "Cancel",
+                    "This item will be permanently deleted. This action cannot be undone.",
+                ),
+                (
+                    "fr",
+                    "Supprimer définitivement 1 élément",
+                    "Annuler",
+                    "Cet élément sera supprimé définitivement. Cette action est irréversible.",
+                ),
+            ] {
+                let fixture = tempfile::tempdir().expect("fixture");
+                let original = fixture.path().join("original.txt");
+                let (entry, _) = trashed_entry(fixture.path(), "Language", &original);
+                let physical = entry.thumbnail_path.clone().expect("physical trash file");
+                let view = view();
+                let window = window(&view);
+                rust_i18n::set_locale(locale);
+                view.state.show_delete_confirmation(vec![entry]);
 
-            view.state.show_delete_confirmation(vec![entry]);
-
-            let confirm = find_widget(window.upcast_ref(), &|button: &gtk::Button| {
-                button.label().as_deref() == Some("Permanently delete 1 item")
-            })
-            .expect("permanent delete confirmation");
-            assert!(confirm.is_sensitive());
-            window.close();
+                let confirm = find_widget(window.upcast_ref(), &|button: &gtk::Button| {
+                    button.label().as_deref() == Some(confirm_text)
+                })
+                .expect("permanent delete confirmation");
+                assert!(confirm.is_sensitive());
+                assert!(
+                    find_widget(window.upcast_ref(), &|label: &gtk::Label| {
+                        label
+                            .text()
+                            .split_whitespace()
+                            .eq(warning.split_whitespace())
+                    })
+                    .is_some(),
+                    "localized consequence warning: {locale}"
+                );
+                assert!(
+                    find_widget(window.upcast_ref(), &|label: &gtk::Label| label.text()
+                        == "Language")
+                    .is_some(),
+                    "filename must not become a translation key"
+                );
+                button(window.upcast_ref(), cancel_text)
+                    .expect("localized cancel")
+                    .emit_clicked();
+                assert!(physical.exists(), "cancelling must preserve the file");
+                window.close();
+            }
         },
     );
 }

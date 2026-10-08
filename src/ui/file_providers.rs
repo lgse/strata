@@ -534,7 +534,7 @@ fn notify(owner: &glib::WeakRef<gtk::Widget>, message: &str) {
     let Some(owner) = owner.upgrade() else {
         return;
     };
-    super::modal::show_information_dialog(&owner, "File availability", message);
+    super::modal::show_information_dialog(&owner, &crate::i18n::tr("File availability"), message);
 }
 /// The caller owns the epoch: rebuilding/closing a menu cancels its old watcher.
 pub(super) fn watch_menu(
