@@ -649,7 +649,7 @@
   "Python 3 + FFmpeg with the libmp3lame encoder": "Python 3 + FFmpeg com o codificador libmp3lame",
   "Python 3 + ImageMagick (magick or convert)": "Python 3 + ImageMagick (magick ou convert)",
   "Python 3 + Linux renameat2 support; no extra packages": "Python 3 + suporte a renameat2 do Linux; sem pacotes extras",
-  "Python 3 only; no extra packages": "Apenas Python 3; sem pacotes extras",
+  "Python 3 only; no extra packages": "Python 3; sem pacotes extras",
   "Python and Bash actions must not declare a program; the interpreter comes from the script": "Ações Python e Bash não devem declarar um programa; o interpretador vem do script",
   "Quick format": "Formatação rápida",
   "Quick preview": "Prévia rápida",

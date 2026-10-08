@@ -432,7 +432,7 @@
   "Hide": "Скрыть",
   "Hide Hidden Files": "Скрыть скрытые файлы",
   "Home / ~/.config": "Домашняя папка / ~/.config",
-  "Home directory": "Домашний каталог",
+  "Home directory": "Домашняя папка",
   "Hyprland %{command} failed: %{output}": "Ошибка Hyprland %{command}: %{output}",
   "I/O error: %{error}": "Ошибка ввода-вывода: %{error}",
   "Icons navigation": "Навигация по значкам",

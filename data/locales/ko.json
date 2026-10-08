@@ -649,7 +649,7 @@
   "Python 3 + FFmpeg with the libmp3lame encoder": "Python 3 + libmp3lame 인코더가 포함된 FFmpeg",
   "Python 3 + ImageMagick (magick or convert)": "Python 3 + ImageMagick(magick 또는 convert)",
   "Python 3 + Linux renameat2 support; no extra packages": "Python 3 + Linux renameat2 지원, 추가 패키지 없음",
-  "Python 3 only; no extra packages": "Python 3만 필요, 추가 패키지 없음",
+  "Python 3 only; no extra packages": "Python 3만, 추가 패키지 없음",
   "Python and Bash actions must not declare a program; the interpreter comes from the script": "Python 및 Bash 동작에는 프로그램을 지정할 수 없습니다. 인터프리터는 스크립트에서 정해집니다",
   "Quick format": "빠른 포맷",
   "Quick preview": "빠른 미리 보기",

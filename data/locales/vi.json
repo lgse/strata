@@ -649,7 +649,7 @@
   "Python 3 + FFmpeg with the libmp3lame encoder": "Python 3 + FFmpeg có bộ mã hóa libmp3lame",
   "Python 3 + ImageMagick (magick or convert)": "Python 3 + ImageMagick (magick hoặc convert)",
   "Python 3 + Linux renameat2 support; no extra packages": "Python 3 + hỗ trợ renameat2 của Linux; không cần gói bổ sung",
-  "Python 3 only; no extra packages": "Chỉ cần Python 3; không cần gói bổ sung",
+  "Python 3 only; no extra packages": "Python 3; không cần gói bổ sung",
   "Python and Bash actions must not declare a program; the interpreter comes from the script": "Hành động Python và Bash không được khai báo chương trình; trình thông dịch được xác định từ tập lệnh",
   "Quick format": "Định dạng nhanh",
   "Quick preview": "Xem trước nhanh",
