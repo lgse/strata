@@ -129,3 +129,53 @@ fn english_fallback_keeps_missing_messages_readable() {
         "A message not yet translated"
     );
 }
+
+#[test]
+fn file_sizes_use_the_language_decimal_separator_and_unit_symbols() {
+    for (locale, bytes, expected) in [
+        ("en", 999, "999 B"),
+        ("en", 1_500, "1.5 kB"),
+        ("en", 2_000, "2 kB"),
+        ("en", 999_960, "1 MB"),
+        ("de", 1_500, "1,5 kB"),
+        ("de", 30_800_000_000, "30,8 GB"),
+        ("fr", 6, "6 o"),
+        ("fr", 1_500, "1,5 ko"),
+        ("fr", 30_800_000_000, "30,8 Go"),
+        ("ru", 37, "37 Б"),
+        ("ru", 1_500, "1,5 кБ"),
+        ("ru", 12_300_000, "12,3 МБ"),
+        ("ja", 1_500, "1.5 kB"),
+    ] {
+        assert_eq!(file_size_in(locale, bytes), expected, "{locale}/{bytes}");
+    }
+    assert_eq!(transfer_rate_in("en", 1_000), "1 kB/s");
+    assert_eq!(transfer_rate_in("ru", 128_500_000), "128,5 МБ/с");
+}
+
+#[test]
+fn counts_and_numbers_group_digits_by_language() {
+    assert_eq!(count_in("en", "files", 3_000), "3,000 files");
+    assert_eq!(count_in("en", "files", 999), "999 files");
+    assert_eq!(count_in("de", "files", 3_000), "3.000 Dateien");
+    assert_eq!(count_in("es", "files", 3_000), "3000 archivos");
+    assert_eq!(count_in("es", "files", 60_000), "60.000 archivos");
+    assert_eq!(count_in("fr", "files", 60_000), "60\u{202f}000 fichiers");
+    assert_eq!(count_in("ru", "files", 60_000), "60\u{a0}000 файлов");
+    assert_eq!(decimal_in("de", 1_234_567.3, 1), "1.234.567,3");
+    assert_eq!(decimal_in("en", 400.0, 1), "400.0");
+}
+
+#[test]
+fn durations_use_the_language_units() {
+    for (locale, seconds, expected) in [
+        ("en", 0, "0s"),
+        ("en", 125, "2m 5s"),
+        ("en", 3_725, "1h 2m"),
+        ("de", 2, "2 s"),
+        ("ru", 125, "2 мин 5 с"),
+        ("ja", 3_725, "1時間2分"),
+    ] {
+        assert_eq!(duration_in(locale, seconds), expected, "{locale}/{seconds}");
+    }
+}

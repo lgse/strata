@@ -443,5 +443,53 @@
     "vi": "%{count} thay đổi",
     "it": "%{count} modifiche",
     "ru": "%{count} изменения"
+  },
+  "counts.chars_remaining.one": {
+    "en": "%{count} char remaining",
+    "fr": "%{count} caractère restant",
+    "de": "%{count} Zeichen übrig",
+    "es": "Queda %{count} carácter",
+    "ja": "残り %{count} 文字",
+    "pt-BR": "%{count} caractere restante",
+    "ko": "%{count}자 남음",
+    "vi": "Còn lại %{count} ký tự",
+    "it": "%{count} carattere rimanente",
+    "ru": "Остался %{count} символ"
+  },
+  "counts.chars_remaining.other": {
+    "en": "%{count} chars remaining",
+    "fr": "%{count} caractères restants",
+    "de": "%{count} Zeichen übrig",
+    "es": "Quedan %{count} caracteres",
+    "ja": "残り %{count} 文字",
+    "pt-BR": "%{count} caracteres restantes",
+    "ko": "%{count}자 남음",
+    "vi": "Còn lại %{count} ký tự",
+    "it": "%{count} caratteri rimanenti",
+    "ru": "Осталось %{count} символов"
+  },
+  "counts.chars_remaining.few": {
+    "en": "%{count} chars remaining",
+    "fr": "%{count} caractères restants",
+    "de": "%{count} Zeichen übrig",
+    "es": "Quedan %{count} caracteres",
+    "ja": "残り %{count} 文字",
+    "pt-BR": "%{count} caracteres restantes",
+    "ko": "%{count}자 남음",
+    "vi": "Còn lại %{count} ký tự",
+    "it": "%{count} caratteri rimanenti",
+    "ru": "Осталось %{count} символа"
+  },
+  "counts.chars_remaining.many": {
+    "en": "%{count} chars remaining",
+    "fr": "%{count} caractères restants",
+    "de": "%{count} Zeichen übrig",
+    "es": "Quedan %{count} caracteres",
+    "ja": "残り %{count} 文字",
+    "pt-BR": "%{count} caracteres restantes",
+    "ko": "%{count}자 남음",
+    "vi": "Còn lại %{count} ký tự",
+    "it": "%{count} caratteri rimanenti",
+    "ru": "Осталось %{count} символов"
   }
 }

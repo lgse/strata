@@ -153,9 +153,164 @@ pub(crate) fn count(kind: &str, count: usize) -> String {
 }
 
 pub(crate) fn count_u64(kind: &str, count: u64) -> String {
-    let locale = rust_i18n::locale();
-    let category = plural_category(&locale, count);
-    rust_i18n::t!(&format!("counts.{kind}.{category}"), count = count).into_owned()
+    count_in(&rust_i18n::locale(), kind, count)
+}
+
+fn count_in(locale: &str, kind: &str, count: u64) -> String {
+    let category = plural_category(locale, count);
+    rust_i18n::t!(
+        &format!("counts.{kind}.{category}"),
+        locale = locale,
+        count = integer_in(locale, count)
+    )
+    .into_owned()
+}
+
+fn decimal_separator(locale: &str) -> &'static str {
+    match locale {
+        "en" | "ja" | "ko" => ".",
+        _ => ",",
+    }
+}
+
+fn group_separator(locale: &str) -> &'static str {
+    match locale {
+        "en" | "ja" | "ko" => ",",
+        "fr" => "\u{202f}",
+        "ru" => "\u{a0}",
+        _ => ".",
+    }
+}
+
+fn group_digits(locale: &str, digits: &str) -> String {
+    // Spanish leaves four-digit numbers ungrouped.
+    let minimum = if locale == "es" { 5 } else { 4 };
+    if digits.len() < minimum {
+        return digits.to_owned();
+    }
+    let separator = group_separator(locale);
+    let mut grouped = String::with_capacity(digits.len() + digits.len() / 3 * separator.len());
+    for (index, digit) in digits.chars().enumerate() {
+        if index > 0 && (digits.len() - index).is_multiple_of(3) {
+            grouped.push_str(separator);
+        }
+        grouped.push(digit);
+    }
+    grouped
+}
+
+/// Formats a whole number with the language's digit grouping.
+pub(crate) fn integer(value: u64) -> String {
+    integer_in(&rust_i18n::locale(), value)
+}
+
+fn integer_in(locale: &str, value: u64) -> String {
+    group_digits(locale, &value.to_string())
+}
+
+/// Formats `value` with exactly `decimals` fraction digits in the language's notation.
+pub(crate) fn decimal(value: f64, decimals: usize) -> String {
+    decimal_in(&rust_i18n::locale(), value, decimals)
+}
+
+fn decimal_in(locale: &str, value: f64, decimals: usize) -> String {
+    let text = format!("{:.*}", decimals, value.abs());
+    let (whole, fraction) = text.split_once('.').unwrap_or((&text, ""));
+    let mut formatted = String::new();
+    if value < 0.0 {
+        formatted.push('-');
+    }
+    formatted.push_str(&group_digits(locale, whole));
+    if !fraction.is_empty() {
+        formatted.push_str(decimal_separator(locale));
+        formatted.push_str(fraction);
+    }
+    formatted
+}
+
+const SIZE_UNITS: [&str; 5] = [
+    "%{size} B",
+    "%{size} kB",
+    "%{size} MB",
+    "%{size} GB",
+    "%{size} TB",
+];
+
+/// Divides `bytes` into the largest decimal unit whose threshold it meets after
+/// rounding to one decimal, returning the rounded value and the unit index.
+fn rounded_size_and_unit(bytes: u64, unit_count: usize) -> (f64, usize) {
+    if bytes < 1_000 {
+        return (bytes as f64, 0);
+    }
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1_000.0 && unit + 1 < unit_count {
+        value /= 1_000.0;
+        unit += 1;
+    }
+    let rounded = (value * 10.0).round() / 10.0;
+    if rounded >= 1_000.0 && unit + 1 < unit_count {
+        (rounded / 1_000.0, unit + 1)
+    } else {
+        (rounded, unit)
+    }
+}
+
+/// The one shared byte-size presentation: decimal units, at most one fraction
+/// digit, and the language's decimal separator and unit symbols.
+pub(crate) fn file_size(bytes: u64) -> String {
+    file_size_in(&rust_i18n::locale(), bytes)
+}
+
+fn file_size_in(locale: &str, bytes: u64) -> String {
+    let (value, unit) = rounded_size_and_unit(bytes, SIZE_UNITS.len());
+    let decimals = usize::from(value.fract() != 0.0);
+    rust_i18n::t!(
+        SIZE_UNITS[unit],
+        locale = locale,
+        size = decimal_in(locale, value, decimals)
+    )
+    .into_owned()
+}
+
+/// A byte rate such as "1.5 MB/s".
+pub(crate) fn transfer_rate(bytes_per_second: u64) -> String {
+    transfer_rate_in(&rust_i18n::locale(), bytes_per_second)
+}
+
+fn transfer_rate_in(locale: &str, bytes_per_second: u64) -> String {
+    rust_i18n::t!(
+        "%{size}/s",
+        locale = locale,
+        size = file_size_in(locale, bytes_per_second)
+    )
+    .into_owned()
+}
+
+/// A compact whole-second duration such as "45s", "2m 5s" or "1h 3m".
+pub(crate) fn duration(seconds: u64) -> String {
+    duration_in(&rust_i18n::locale(), seconds)
+}
+
+fn duration_in(locale: &str, seconds: u64) -> String {
+    let text = if seconds < 60 {
+        rust_i18n::t!("%{seconds}s", locale = locale, seconds = seconds)
+    } else if seconds < 3_600 {
+        rust_i18n::t!(
+            "%{minutes}m %{seconds}s",
+            locale = locale,
+            minutes = seconds / 60,
+            seconds = seconds % 60
+        )
+    } else {
+        rust_i18n::t!(
+            "%{hours}h %{minutes}m",
+            locale = locale,
+            hours = integer_in(locale, seconds / 3_600),
+            minutes = seconds % 3_600 / 60
+        )
+    };
+    text.into_owned()
 }
 
 #[cfg(test)]

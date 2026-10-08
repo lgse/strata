@@ -1,0 +1,4 @@
+[env]
+# Unoptimized builds initialize every compiled-in translation in one stack frame,
+# which outgrows libtest's default 2 MiB test-thread stack.
+RUST_MIN_STACK = "8388608"
