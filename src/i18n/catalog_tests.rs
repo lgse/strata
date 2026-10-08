@@ -29,7 +29,7 @@ fn catalogs_cover_all_languages_and_preserve_interpolation() {
             .collect::<BTreeSet<_>>(),
         LOCALES.into_iter().collect()
     );
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("locales");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("data/locales");
     for folder in [&root, &root.join("messages")] {
         let english = catalog(&folder.join("en.json"));
         assert!(!english.is_empty());

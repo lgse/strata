@@ -8,11 +8,11 @@ user-defined names, or the locale environment inherited by other programs.
 
 ## Catalogs
 
-- `locales/<locale>.json`: common controls, settings, and interface messages.
-- `locales/messages/<locale>.json`: formatted messages and shortcut descriptions.
-- `locales/counts.json`: whole count messages and compact relative-time messages,
+- `data/locales/<locale>.json`: common controls, settings, and interface messages.
+- `data/locales/messages/<locale>.json`: formatted messages and shortcut descriptions.
+- `data/locales/counts.json`: whole count messages and compact relative-time messages,
   using rust-i18n's multilingual `_version: 2` format.
-- `locales/dates.json`: month/weekday names and date presentation patterns,
+- `data/locales/dates.json`: month/weekday names and date presentation patterns,
   also multilingual. ISO 8601 remains language-independent.
 
 Locales are `en`, `fr`, `de`, `es`, `ja`, `pt-BR`, `ko`, `vi`, `it`, and `ru`.

@@ -1,7 +1,16 @@
-use std::{env, path::PathBuf, process::Command};
+use std::{
+    env,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 fn main() {
-    println!("cargo::rerun-if-changed=locales");
+    println!("cargo::rerun-if-changed=data/locales");
+    // rust-i18n silently embeds no translations when its catalog directory is absent.
+    assert!(
+        Path::new("data/locales/en.json").is_file(),
+        "translation catalogs are missing from data/locales"
+    );
     glib_build_tools::compile_resources(&["data"], "data/strata.gresource.xml", "strata.gresource");
 
     println!("cargo::rerun-if-env-changed=STRATA_BUILD_COMMIT");

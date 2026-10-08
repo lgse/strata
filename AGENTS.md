@@ -207,7 +207,7 @@ pass before merge.
   placeholders, tooltips, accessibility names/descriptions, dialogs, help text,
   errors, notifications, and status/progress messages.
 - Follow `docs/internationalization.md` and update the matching catalogs under
-  `locales/`. English fallback is a runtime safeguard, not permission to leave
+  `data/locales/`. English fallback is a runtime safeguard, not permission to leave
   translations missing or copy English into other languages as a placeholder.
 - Translate complete messages with named placeholders and the appropriate plural
   forms. Preserve placeholder names, markup, paths, commands, and keybindings;
