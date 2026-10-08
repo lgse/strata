@@ -861,7 +861,9 @@ fn transfer_size(
                     gio::IOErrorEnum::Failed,
                     &format!(
                         "{} is too large for a FAT32 drive (maximum file size: 4 GiB). Use an exFAT or another large-file-capable drive instead.",
-                        file.basename().unwrap_or_default().to_string_lossy()
+                        transfer_source_name(&file)
+                            .unwrap_or_default()
+                            .to_string_lossy()
                     ),
                 ));
             }
@@ -995,18 +997,18 @@ fn transfer_is_noop(source: &gio::File, destination: &gio::File, target: &gio::F
     source.equal(target) || source.equal(destination) || destination.has_prefix(source)
 }
 
+pub(crate) fn transfer_source_name(source: &gio::File) -> Option<OsString> {
+    crate::model::transfer_file_name(source)
+}
+
 fn default_transfer_target(
     source: &gio::File,
     destination: &gio::File,
     fat_family: bool,
     used_names: &mut HashSet<OsString>,
 ) -> Option<(PathBuf, gio::File)> {
-    let name = source.basename()?;
-    let name = PathBuf::from(fat_family_child_name(
-        name.as_os_str(),
-        fat_family,
-        used_names,
-    ));
+    let name = transfer_source_name(source)?;
+    let name = PathBuf::from(fat_family_child_name(&name, fat_family, used_names));
     let target = destination.child(&name);
     Some((name, target))
 }
@@ -1930,8 +1932,7 @@ fn copy_recursively_with_progress(
             let track_bytes = source_size.is_none_or(|size| size >= BYTE_PROGRESS_MIN_FILE_SIZE);
             let file_progress = progress.as_ref().map(|progress| {
                 progress.begin_file(
-                    source
-                        .basename()
+                    transfer_source_name(&source)
                         .unwrap_or_default()
                         .to_string_lossy()
                         .into_owned(),
@@ -2251,6 +2252,258 @@ async fn move_restore_path(
     .await
 }
 
+enum RestorePathOutcome {
+    Done,
+    Linked(LocalFileIdentity),
+    RequiresExclusiveCopy(LocalFileIdentity),
+}
+
+struct RestoreCopyEntry {
+    parent: Arc<OwnedFd>,
+    name: OsString,
+    identity: Option<LocalFileIdentity>,
+}
+
+type RestoreCopyJournal = Rc<RefCell<Vec<RestoreCopyEntry>>>;
+
+async fn discard_restore_copy(journal: RestoreCopyJournal) -> Result<(), glib::Error> {
+    let entries = std::mem::take(&mut *journal.borrow_mut());
+    run_local_fs_step(move || {
+        let mut failure = None;
+        for entry in entries.into_iter().rev() {
+            let result = (|| {
+                // mkdirat/symlinkat return no handle; a later lookup cannot prove creation ownership.
+                let identity = entry.identity.ok_or_else(|| format!(
+                    "Partial entry {} was retained because its creation could not be verified atomically",
+                    entry.name.to_string_lossy(),
+                ))?;
+                let stat = rustix::fs::statat(
+                    &entry.parent,
+                    &entry.name,
+                    rustix::fs::AtFlags::SYMLINK_NOFOLLOW,
+                )
+                .map_err(|error| error.to_string())?;
+                ensure_expected_local_identity(&entry.name, &stat, Some(identity))?;
+                rustix::fs::unlinkat(
+                    &entry.parent,
+                    &entry.name,
+                    rustix::fs::AtFlags::empty(),
+                )
+                .map_err(|error| error.to_string())
+            })();
+            if let Err(error) = result {
+                failure.get_or_insert(error);
+            }
+        }
+        failure.map_or(Ok(()), Err)
+    })
+    .await
+}
+
+async fn copy_restore_metadata(
+    source: OwnedFd,
+    target: OwnedFd,
+    stat: rustix::fs::Stat,
+    cancellable: gio::Cancellable,
+) -> Result<(), glib::Error> {
+    run_local_fs_step(move || {
+        if cancellable.is_cancelled() {
+            return Err("Restore cancelled".to_owned());
+        }
+        let source = std::fs::File::from(source);
+        let target = std::fs::File::from(target);
+        let target_stat = rustix::fs::fstat(&target).map_err(|error| error.to_string())?;
+        if stat.st_uid != target_stat.st_uid || stat.st_gid != target_stat.st_gid {
+            rustix::fs::fchown(
+                &target,
+                Some(rustix::process::Uid::from_raw(stat.st_uid)),
+                Some(rustix::process::Gid::from_raw(stat.st_gid)),
+            )
+            .map_err(|error| error.to_string())?;
+        }
+        rustix::fs::fchmod(&target, rustix::fs::Mode::from_raw_mode(stat.st_mode))
+            .map_err(|error| error.to_string())?;
+        let size = match rustix::fs::flistxattr(&source, &mut [0u8; 0][..]) {
+            Ok(size) => size,
+            Err(rustix::io::Errno::OPNOTSUPP) => 0,
+            Err(error) => return Err(error.to_string()),
+        };
+        if size > 0 {
+            let mut names = vec![0; size];
+            let count = rustix::fs::flistxattr(&source, &mut names[..])
+                .map_err(|error| error.to_string())?;
+            for name in names[..count]
+                .split(|byte| *byte == 0)
+                .filter(|name| !name.is_empty())
+            {
+                let name = OsStr::from_bytes(name);
+                let size = rustix::fs::fgetxattr(&source, name, &mut [0u8; 0][..])
+                    .map_err(|error| error.to_string())?;
+                let mut value = vec![0; size];
+                let count = rustix::fs::fgetxattr(&source, name, &mut value[..])
+                    .map_err(|error| error.to_string())?;
+                rustix::fs::fsetxattr(
+                    &target,
+                    name,
+                    &value[..count],
+                    rustix::fs::XattrFlags::empty(),
+                )
+                .map_err(|error| error.to_string())?;
+            }
+        }
+        let times = rustix::fs::Timestamps {
+            last_access: rustix::fs::Timespec {
+                tv_sec: stat.st_atime as _,
+                tv_nsec: stat.st_atime_nsec as _,
+            },
+            last_modification: rustix::fs::Timespec {
+                tv_sec: stat.st_mtime as _,
+                tv_nsec: stat.st_mtime_nsec as _,
+            },
+        };
+        rustix::fs::futimens(&target, &times).map_err(|error| error.to_string())
+    })
+    .await
+}
+
+fn copy_restore_entry(
+    source_parent: Arc<OwnedFd>,
+    source_name: OsString,
+    target_parent: Arc<OwnedFd>,
+    target_name: OsString,
+    expected: Option<LocalFileIdentity>,
+    cancellable: gio::Cancellable,
+    journal: RestoreCopyJournal,
+) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
+    Box::pin(async move {
+        cancellable.set_error_if_cancelled()?;
+        let parent = source_parent.clone();
+        let name = source_name.clone();
+        let (source, source_stat) = run_local_fs_step(move || {
+            let snapshot =
+                rustix::fs::statat(&parent, &name, rustix::fs::AtFlags::SYMLINK_NOFOLLOW)
+                    .map_err(|error| error.to_string())?;
+            ensure_expected_local_identity(&name, &snapshot, expected)?;
+            let source = open_local_copy_source(&parent, &name)?;
+            let stat = match &source {
+                LocalCopySource::File(file) => rustix::fs::fstat(file),
+                LocalCopySource::Directory { handle, .. } => rustix::fs::fstat(handle),
+                LocalCopySource::Symlink(_) => {
+                    rustix::fs::statat(&parent, &name, rustix::fs::AtFlags::SYMLINK_NOFOLLOW)
+                }
+            }
+            .map_err(|error| error.to_string())?;
+            ensure_expected_local_identity(
+                &name,
+                &stat,
+                Some(LocalFileIdentity::from_stat(&snapshot)),
+            )?;
+            Ok((source, snapshot))
+        })
+        .await?;
+        match source {
+            LocalCopySource::Directory { handle, children } => {
+                let parent = target_parent.clone();
+                let name = target_name.clone();
+                run_local_fs_step(move || {
+                    rustix::fs::mkdirat(&parent, &name, rustix::fs::Mode::from_raw_mode(0o700))
+                        .map_err(|error| {
+                            if error == rustix::io::Errno::EXIST {
+                                "something already exists at the destination".to_owned()
+                            } else {
+                                error.to_string()
+                            }
+                        })
+                })
+                .await?;
+                journal.borrow_mut().push(RestoreCopyEntry {
+                    parent: target_parent.clone(),
+                    name: target_name.clone(),
+                    identity: None,
+                });
+                let target = run_local_fs_step(move || {
+                    open_local_child_directory(&target_parent, &target_name)
+                })
+                .await?;
+                let target = Arc::new(target);
+                let source = Arc::new(handle);
+                for name in children {
+                    copy_restore_entry(
+                        source.clone(),
+                        name.clone(),
+                        target.clone(),
+                        name,
+                        None,
+                        cancellable.clone(),
+                        journal.clone(),
+                    )
+                    .await?;
+                }
+                copy_restore_metadata(
+                    rustix::io::dup(&source).map_err(io_error)?,
+                    rustix::io::dup(&target).map_err(io_error)?,
+                    source_stat,
+                    cancellable,
+                )
+                .await
+            }
+            LocalCopySource::Symlink(link) => {
+                let parent = target_parent.clone();
+                let name = target_name.clone();
+                run_local_fs_step(move || {
+                    rustix::fs::symlinkat(link, &parent, &name).map_err(|error| error.to_string())
+                })
+                .await?;
+                journal.borrow_mut().push(RestoreCopyEntry {
+                    parent: target_parent,
+                    name: target_name,
+                    identity: None,
+                });
+                Ok(())
+            }
+            LocalCopySource::File(file) => {
+                let parent = target_parent.clone();
+                let name = target_name.clone();
+                let target = run_local_fs_step(move || {
+                    rustix::fs::openat(
+                        &parent,
+                        name,
+                        rustix::fs::OFlags::WRONLY
+                            | rustix::fs::OFlags::CREATE
+                            | rustix::fs::OFlags::EXCL
+                            | rustix::fs::OFlags::CLOEXEC,
+                        rustix::fs::Mode::from_raw_mode(0o600),
+                    )
+                    .map_err(|error| error.to_string())
+                })
+                .await?;
+                let identity = rustix::fs::fstat(&target).map_err(io_error)?;
+                journal.borrow_mut().push(RestoreCopyEntry {
+                    parent: target_parent,
+                    name: target_name,
+                    identity: Some(LocalFileIdentity::from_stat(&identity)),
+                });
+                let input =
+                    gio_unix::InputStream::take_fd(rustix::io::dup(&file).map_err(io_error)?);
+                let output =
+                    gio_unix::OutputStream::take_fd(rustix::io::dup(&target).map_err(io_error)?);
+                await_cancellable(&output, &cancellable, move |output, cancellable, result| {
+                    output.splice_async(
+                        &input,
+                        gio::OutputStreamSpliceFlags::CLOSE_SOURCE
+                            | gio::OutputStreamSpliceFlags::CLOSE_TARGET,
+                        glib::Priority::DEFAULT,
+                        Some(cancellable),
+                        move |outcome| result.resolve(outcome),
+                    );
+                })
+                .await?;
+                copy_restore_metadata(file.into(), target, source_stat, cancellable).await
+            }
+        }
+    })
+}
+
 async fn move_restore_path_with(
     source_path: PathBuf,
     target_path: PathBuf,
@@ -2289,34 +2542,130 @@ async fn move_restore_path_with(
             .await?;
 
     let display_name = source_name.to_string_lossy().into_owned();
-    gio::spawn_blocking(move || {
-            if cancellable.is_cancelled() {
-                return Err(rustix::io::Errno::CANCELED);
+    let source_parent = Arc::new(source_parent);
+    let target_parent = Arc::new(target_parent);
+    let blocking_source_parent = source_parent.clone();
+    let blocking_target_parent = target_parent.clone();
+    let blocking_source_name = source_name.clone();
+    let blocking_target_name = target_name.clone();
+    let blocking_cancellable = cancellable.clone();
+    let outcome = gio::spawn_blocking(move || {
+        let source_parent = blocking_source_parent;
+        let target_parent = blocking_target_parent;
+        let source_name = blocking_source_name;
+        let target_name = blocking_target_name;
+        if blocking_cancellable.is_cancelled() {
+            return Err(rustix::io::Errno::CANCELED);
+        }
+        let source_stat = rustix::fs::statat(
+            &source_parent,
+            &source_name,
+            rustix::fs::AtFlags::SYMLINK_NOFOLLOW,
+        )?;
+        let source_identity = LocalFileIdentity::from_stat(&source_stat);
+        // Never fall back to an unflagged rename: the no-clobber check must be atomic.
+        let renamed = rename(
+            &source_parent,
+            &source_name,
+            &target_parent,
+            &target_name,
+            rustix::fs::RenameFlags::NOREPLACE,
+        );
+        match renamed {
+            Ok(()) => Ok(RestorePathOutcome::Done),
+            Err(
+                rustix::io::Errno::INVAL | rustix::io::Errno::NOSYS | rustix::io::Errno::OPNOTSUPP,
+            ) => {
+                if blocking_cancellable.is_cancelled() {
+                    return Err(rustix::io::Errno::CANCELED);
+                }
+                let current = rustix::fs::statat(
+                    &source_parent,
+                    &source_name,
+                    rustix::fs::AtFlags::SYMLINK_NOFOLLOW,
+                )?;
+                if LocalFileIdentity::from_stat(&current) != source_identity {
+                    return Err(rustix::io::Errno::STALE);
+                }
+                let is_directory = rustix::fs::FileType::from_raw_mode(source_stat.st_mode)
+                    == rustix::fs::FileType::Directory;
+                if !is_directory {
+                    match rustix::fs::linkat(
+                        &source_parent,
+                        &source_name,
+                        &target_parent,
+                        &target_name,
+                        rustix::fs::AtFlags::empty(),
+                    ) {
+                        Ok(()) => return Ok(RestorePathOutcome::Linked(source_identity)),
+                        Err(rustix::io::Errno::EXIST) => return Err(rustix::io::Errno::EXIST),
+                        Err(
+                            rustix::io::Errno::PERM
+                            | rustix::io::Errno::NOSYS
+                            | rustix::io::Errno::OPNOTSUPP
+                            | rustix::io::Errno::XDEV,
+                        ) => {}
+                        Err(error) => return Err(error),
+                    }
+                }
+                Ok(RestorePathOutcome::RequiresExclusiveCopy(source_identity))
             }
-            // Never fall back to an unflagged rename: the no-clobber check must be atomic.
-            rename(
-                &source_parent,
-                &source_name,
-                &target_parent,
-                &target_name,
-                rustix::fs::RenameFlags::NOREPLACE,
-            )
-        })
-        .await
-        .map_err(|_| io_error("Restore task panicked"))?
-        .map_err(|error| match error {
-            rustix::io::Errno::XDEV => {
-                io_error(format!("Could not restore {display_name} across volumes"))
-            }
-            rustix::io::Errno::EXIST => io_error(format!(
+            Err(error) => Err(error),
+        }
+    })
+    .await
+    .map_err(|_| io_error("Restore task panicked"))?;
+
+    let (source_identity, needs_copy) = match outcome {
+        Ok(RestorePathOutcome::Done) => return Ok(()),
+        Ok(RestorePathOutcome::Linked(identity)) => (identity, false),
+        Ok(RestorePathOutcome::RequiresExclusiveCopy(identity)) => (identity, true),
+        Err(rustix::io::Errno::XDEV) => {
+            return Err(io_error(format!(
+                "Could not restore {display_name} across volumes"
+            )));
+        }
+        Err(rustix::io::Errno::EXIST) => {
+            return Err(io_error(format!(
                 "Could not restore {display_name}: something already exists at the destination"
-            )),
-            rustix::io::Errno::INVAL | rustix::io::Errno::NOSYS | rustix::io::Errno::OPNOTSUPP => io_error(format!(
-                "Could not restore {display_name}: this filesystem does not support atomic no-replace renames. The item remains in Trash. Copy it to a destination you choose instead."
-            )),
-            rustix::io::Errno::CANCELED => cancelled_local_operation(),
-            error => io_error(format!("Could not restore {display_name}: {error}")),
-        })
+            )));
+        }
+        Err(rustix::io::Errno::CANCELED) => return Err(cancelled_local_operation()),
+        Err(error) => {
+            return Err(io_error(format!(
+                "Could not restore {display_name}: {error}"
+            )));
+        }
+    };
+
+    if needs_copy {
+        let journal = Rc::new(RefCell::new(Vec::new()));
+        let copied = copy_restore_entry(
+            source_parent.clone(),
+            source_name.clone(),
+            target_parent.clone(),
+            target_name.clone(),
+            Some(source_identity),
+            cancellable.clone(),
+            journal.clone(),
+        )
+        .await;
+        let copied = if copied.is_err() {
+            let cleanup = discard_restore_copy(journal).await;
+            copied.map_err(|error| copy_failure_after_cleanup(error, cleanup))
+        } else {
+            copied
+        };
+        copied.map_err(|error| io_error(format!("Could not restore {display_name}: {error}")))?;
+    }
+    let parent = rustix::io::dup(&source_parent).map_err(io_error)?;
+    let cleanup =
+        permanently_delete_local(parent, source_name, Some(source_identity), cancellable).await;
+    cleanup.map_err(|error| {
+        io_error(format!(
+            "The item was restored, but its trash copy could not be removed: {error}"
+        ))
+    })
 }
 
 async fn move_restore(
@@ -2363,8 +2712,7 @@ async fn move_local(
             // than claiming an equivalent guarantee.
             let move_progress = progress.as_ref().map(|progress| {
                 progress.begin_file(
-                    source
-                        .basename()
+                    transfer_source_name(&source)
                         .unwrap_or_default()
                         .to_string_lossy()
                         .into_owned(),

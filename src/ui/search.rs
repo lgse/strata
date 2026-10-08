@@ -646,7 +646,7 @@ fn result_row(state: &Rc<SearchState>, item: &SearchItem) -> gtk::ListBoxRow {
     let fallback = if item.is_directory {
         crate::assets::icons::FOLDER
     } else {
-        crate::assets::icons::DOCUMENTS
+        crate::ui::browser::icon_for_name(&item.name)
     };
     super::thumbnail::show_customized_icon(&icon, &item.path, fallback, 19);
     content.append(&icon);
@@ -761,20 +761,20 @@ fn refresh_visible_thumbnails(state: &SearchState) {
             else {
                 continue;
             };
+            let fallback = if item.is_directory {
+                crate::assets::icons::FOLDER
+            } else {
+                crate::ui::browser::icon_for_name(&item.name)
+            };
             if visible && requested.insert(item.path.clone()) {
-                changes.push((image, Some(item.path.clone()), item.is_directory));
+                changes.push((image, Some(item.path.clone()), fallback));
             } else if !visible && requested.remove(&item.path) {
-                changes.push((image, None, item.is_directory));
+                changes.push((image, None, fallback));
             }
         }
         changes
     };
-    for (image, path, is_directory) in changes {
-        let fallback = if is_directory {
-            crate::assets::icons::FOLDER
-        } else {
-            crate::assets::icons::DOCUMENTS
-        };
+    for (image, path, fallback) in changes {
         if let Some(path) = path {
             super::thumbnail::set_thumbnail_or_icon_for_path(&image, &path, fallback, 19, 32);
         } else {

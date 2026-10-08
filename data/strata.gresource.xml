@@ -31,6 +31,48 @@
     <file>icons/scalable/actions/strata-file-archive.svg</file>
     <file>icons/scalable/actions/strata-file-braces.svg</file>
     <file>icons/scalable/actions/strata-file-code.svg</file>
+    <file>icons/scalable/actions/strata-lang-astro.svg</file>
+    <file>icons/scalable/actions/strata-lang-c.svg</file>
+    <file>icons/scalable/actions/strata-lang-clojure.svg</file>
+    <file>icons/scalable/actions/strata-lang-crystal.svg</file>
+    <file>icons/scalable/actions/strata-lang-cpp.svg</file>
+    <file>icons/scalable/actions/strata-lang-csharp.svg</file>
+    <file>icons/scalable/actions/strata-lang-css.svg</file>
+    <file>icons/scalable/actions/strata-lang-dart.svg</file>
+    <file>icons/scalable/actions/strata-lang-elixir.svg</file>
+    <file>icons/scalable/actions/strata-lang-elm.svg</file>
+    <file>icons/scalable/actions/strata-lang-erlang.svg</file>
+    <file>icons/scalable/actions/strata-lang-fsharp.svg</file>
+    <file>icons/scalable/actions/strata-lang-go.svg</file>
+    <file>icons/scalable/actions/strata-lang-graphql.svg</file>
+    <file>icons/scalable/actions/strata-lang-groovy.svg</file>
+    <file>icons/scalable/actions/strata-lang-haskell.svg</file>
+    <file>icons/scalable/actions/strata-lang-html.svg</file>
+    <file>icons/scalable/actions/strata-lang-java.svg</file>
+    <file>icons/scalable/actions/strata-lang-js.svg</file>
+    <file>icons/scalable/actions/strata-lang-julia.svg</file>
+    <file>icons/scalable/actions/strata-lang-jupyter.svg</file>
+    <file>icons/scalable/actions/strata-lang-kotlin.svg</file>
+    <file>icons/scalable/actions/strata-lang-lua.svg</file>
+    <file>icons/scalable/actions/strata-lang-nixos.svg</file>
+    <file>icons/scalable/actions/strata-lang-nim.svg</file>
+    <file>icons/scalable/actions/strata-lang-ocaml.svg</file>
+    <file>icons/scalable/actions/strata-lang-perl.svg</file>
+    <file>icons/scalable/actions/strata-lang-php.svg</file>
+    <file>icons/scalable/actions/strata-lang-python.svg</file>
+    <file>icons/scalable/actions/strata-lang-qt.svg</file>
+    <file>icons/scalable/actions/strata-lang-r.svg</file>
+    <file>icons/scalable/actions/strata-lang-racket.svg</file>
+    <file>icons/scalable/actions/strata-lang-ruby.svg</file>
+    <file>icons/scalable/actions/strata-lang-rust.svg</file>
+    <file>icons/scalable/actions/strata-lang-scala.svg</file>
+    <file>icons/scalable/actions/strata-lang-solidity.svg</file>
+    <file>icons/scalable/actions/strata-lang-svelte.svg</file>
+    <file>icons/scalable/actions/strata-lang-swift.svg</file>
+    <file>icons/scalable/actions/strata-lang-terraform.svg</file>
+    <file>icons/scalable/actions/strata-lang-ts.svg</file>
+    <file>icons/scalable/actions/strata-lang-vue.svg</file>
+    <file>icons/scalable/actions/strata-lang-zig.svg</file>
     <file>icons/scalable/actions/strata-file-plus.svg</file>
     <file>icons/scalable/actions/strata-file-spreadsheet.svg</file>
     <file>icons/scalable/actions/strata-file-terminal.svg</file>

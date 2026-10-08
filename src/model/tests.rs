@@ -321,6 +321,57 @@ fn transfer_targets_keep_the_item_name_under_the_destination() {
 }
 
 #[test]
+fn trash_transfer_targets_decode_only_virtual_root_names() {
+    use std::os::unix::ffi::OsStrExt;
+
+    let destination = Location::local("/home/user/Documents");
+    for (uri, expected) in [
+        ("trash:///report.txt", b"report.txt".as_slice()),
+        (
+            "trash:///%5Cmnt%5CData%5C.Trash-1000%5Cfiles%5CSAMPLED.2",
+            b"SAMPLED.2",
+        ),
+        (
+            "trash:///%5Cmnt%5CData%5C.Trash-1000%5Cfiles%5Ca%2520b.txt",
+            b"a b.txt",
+        ),
+        (
+            "trash:///%5Cmnt%5CData%5C.Trash-1000%5Cfiles%5Ca%255Cb.txt",
+            b"a\\b.txt",
+        ),
+        (
+            "trash:///%5Cmnt%5CData%5C.Trash-1000%5Cfiles%5Ca%2560b%2525.txt",
+            b"a`b%.txt",
+        ),
+        (
+            "trash:///%5Cmnt%5CData%5C.Trash-1000%5Cfiles%5Ca%25FF.txt",
+            b"a\xff.txt",
+        ),
+        ("trash:///foo%5Cbar.txt", b"foo\\bar.txt"),
+        (
+            "trash:///foo%5C.Trash-1000%5Cbar.txt",
+            b"foo\\.Trash-1000\\bar.txt",
+        ),
+        ("trash:///%60%5Cbar.txt", b"\\bar.txt"),
+        ("trash:///%60%60bar.txt", b"`bar.txt"),
+        ("trash:///folder/%60%60bar.txt", b"``bar.txt"),
+        ("trash:///folder/%5Cbar.txt", b"\\bar.txt"),
+    ] {
+        let source = Location::uri(uri);
+        let expected = std::ffi::OsStr::from_bytes(expected);
+        assert_eq!(
+            source.transfer_target(&destination),
+            destination.child(expected),
+            "{uri}"
+        );
+    }
+    for leaf in ["", ".", "..", "%252Fescape", "%2500", "%25invalid"] {
+        let source = Location::uri(format!("trash:///%5Cmnt%5Cfiles%5C{leaf}"));
+        assert_eq!(source.transfer_target(&destination), None, "{leaf}");
+    }
+}
+
+#[test]
 fn children_reject_names_that_would_escape_the_parent() {
     let parent = Location::local("/home/user");
 

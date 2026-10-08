@@ -303,7 +303,12 @@ fn transfer_collisions_detect_existing_destination_items() -> Result<(), Box<dyn
         transfer_collision(&Location::local(&source), &Location::local(&destination)).is_none()
     );
     assert!(transfer_collision(&Location::local(&source), &Location::local(&source_dir)).is_none());
+    let trash_source = Location::uri("trash:///%5Cmnt%5CData%5C.Trash-1000%5Cfiles%5Cphoto.jpg");
+    assert!(transfer_collision(&trash_source, &Location::local(&destination)).is_none());
     std::fs::write(destination.join("photo.jpg"), b"old")?;
+    let trash_collision = transfer_collision(&trash_source, &Location::local(&destination))
+        .expect("an external trash file collision");
+    assert!(!trash_collision.mergeable);
     let collision = transfer_collision(&Location::local(&source), &Location::local(&destination))
         .expect("a file collision");
     assert!(!collision.mergeable, "a file collision cannot merge");
