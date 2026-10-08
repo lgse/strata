@@ -812,7 +812,7 @@ fn empty_is_distinct_from_loading_and_error() {
     state.navigate(location("/empty"), RequestId(1));
     assert_eq!(state.columns[0].load_state, LoadState::Loading);
 
-    assert_eq!(state.finish(RequestId(1), false, None, None), Some(0));
+    assert_eq!(state.finish(RequestId(1), false, None, None), Some((0, false)));
     assert_eq!(state.columns[0].load_state, LoadState::Empty);
 }
 
@@ -821,7 +821,7 @@ fn truncated_load_state_survives_until_reload() {
     let mut state = NavigationState::default();
     state.navigate(location("/partial"), RequestId(1));
 
-    assert_eq!(state.finish(RequestId(1), true, None, None), Some(0));
+    assert_eq!(state.finish(RequestId(1), true, None, None), Some((0, false)));
     assert!(state.columns[0].truncated);
 
     state.reload_column(0, RequestId(2));
@@ -835,7 +835,7 @@ fn reload_clears_the_resolved_delete_capability() {
 
     assert_eq!(
         state.finish(RequestId(1), false, None, Some(false)),
-        Some(0)
+        Some((0, false))
     );
     assert_eq!(state.can_delete_at(0), Some(false));
 
@@ -928,6 +928,64 @@ fn reload_drops_selection_members_that_left_the_listing() {
 
     assert_eq!(state.selected_positions(0), [0]);
     assert_eq!(state.active_focus(), Some((0, Some(0))));
+}
+
+#[test]
+fn reload_moves_a_removed_cursor_to_its_neighbour() {
+    let mut failures = Vec::new();
+    // A burst restarts the reload before the first one lists anything.
+    for (cursor, remaining, expected, reloads) in [
+        (2, &["alpha", "bravo"][..], Some(1), 1),
+        (1, &["alpha", "charlie"][..], Some(1), 1),
+        (0, &[][..], None, 1),
+        (1, &["alpha", "charlie"][..], Some(1), 2),
+    ] {
+        let mut state = NavigationState::default();
+        listing_without_a_load_cursor(&mut state);
+        assert!(state.set_selection(0, &[cursor], Some(cursor)));
+
+        for reload in 0..reloads {
+            state.reload_column(0, RequestId(2 + reload));
+        }
+        state.install_snapshot(
+            RequestId(1 + reloads),
+            remaining
+                .iter()
+                .map(|name| named_entry(&format!("/fixture/{name}"), name))
+                .collect(),
+        );
+
+        if state.active_focus() != Some((0, expected))
+            || !state.selected_positions(0).is_empty()
+        {
+            failures.push(format!(
+                "cursor on entry {cursor}, {remaining:?} remain after {reloads} reloads: focus {:?} \
+                 and selection {:?}, expected cursor {expected:?} with nothing selected",
+                state.active_focus(),
+                state.selected_positions(0)
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn reload_leaves_no_neighbour_cursor_beside_an_open_child_column() {
+    let mut state = NavigationState::default();
+    listing_without_a_load_cursor(&mut state);
+    assert!(state.set_selection(0, &[1], Some(1)));
+    assert!(state.descend(0, location("/fixture/bravo"), RequestId(2)));
+
+    state.reload_column(0, RequestId(3));
+    state.install_snapshot(
+        RequestId(3),
+        vec![
+            named_entry("/fixture/alpha", "alpha"),
+            named_entry("/fixture/charlie", "charlie"),
+        ],
+    );
+
+    assert_eq!(state.columns[0].selected, None);
 }
 
 #[test]

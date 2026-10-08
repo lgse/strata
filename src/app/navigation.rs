@@ -224,6 +224,9 @@ pub struct ColumnState {
     preferences: ViewPreferences,
     request_id: RequestId,
     select_first_on_load: bool,
+    /// Cursor position before a reload; the cursor moves to its neighbour when the
+    /// entry is gone.
+    reload_cursor: Option<usize>,
     // Auto-selection must not redirect paste into the first folder.
     load_cursor: Option<Location>,
 }
@@ -386,6 +389,7 @@ impl NavigationState {
                 can_delete: None,
                 request_id,
                 select_first_on_load: false,
+                reload_cursor: None,
                 load_cursor: None,
             })
             .collect();
@@ -462,6 +466,7 @@ impl NavigationState {
             can_delete: None,
             request_id,
             select_first_on_load: false,
+            reload_cursor: None,
             load_cursor: None,
         });
     }
@@ -653,6 +658,8 @@ impl NavigationState {
                 column.load_cursor = Some(location);
             }
         }
+        // The listing is complete, and its selection is published before `finish`.
+        column.complete_load_selection();
         Some(depth)
     }
 
@@ -1057,6 +1064,9 @@ impl NavigationState {
     }
 
     pub fn reload_column(&mut self, depth: usize, request_id: RequestId) -> Option<Location> {
+        // An open child column belongs to the cursor's folder; another entry must not
+        // take over the cursor beside it.
+        let child_open = depth + 1 < self.columns.len();
         let column = self.columns.get_mut(depth)?;
         column.selection_target = column
             .selected
@@ -1067,6 +1077,10 @@ impl NavigationState {
         column.selected_locations = column.pending_selection.clone().into();
         column.entries = Vec::new();
         column.invalidate_entry_indexes();
+        // A reload that restarts before the previous one listed anything keeps its cursor.
+        column.reload_cursor = (!child_open)
+            .then(|| column.selected.or(column.reload_cursor))
+            .flatten();
         column.selected = None;
         column.load_state = LoadState::Loading;
         column.truncated = false;
@@ -1227,14 +1241,17 @@ impl NavigationState {
         self.columns.get(depth)?.can_delete
     }
 
+    /// Returns the finished depth and whether completing the listing moved the cursor,
+    /// which batch loads have not published yet.
     pub fn finish(
         &mut self,
         request_id: RequestId,
         truncated: bool,
         can_trash: Option<bool>,
         can_delete: Option<bool>,
-    ) -> Option<usize> {
+    ) -> Option<(usize, bool)> {
         let (depth, column) = self.column_for_request_mut(request_id)?;
+        let cursor_moved = column.complete_load_selection();
         column.select_first_on_load = false;
         column.retain_selected_locations(false);
         column.pending_selection.clear();
@@ -1246,13 +1263,12 @@ impl NavigationState {
         } else {
             LoadState::Ready
         };
-        Some(depth)
+        Some((depth, cursor_moved))
     }
 
     pub fn fail(&mut self, request_id: RequestId, message: String) -> Option<usize> {
         let (depth, column) = self.column_for_request_mut(request_id)?;
-        column.pending_reveal.clear();
-        column.selection_from_reveal = false;
+        column.drop_load_intents();
         column.load_state = LoadState::Error(message);
         Some(depth)
     }
@@ -1340,8 +1356,7 @@ impl NavigationState {
         };
         let location = column.entries[position].location.clone();
         let filled = column.load_cursor.is_none() && column.selected_locations.contains(&location);
-        column.pending_reveal.clear();
-        column.selection_from_reveal = false;
+        column.drop_load_intents();
         if column.load_cursor.is_some() {
             column.selected_locations.clear();
             column.load_cursor = None;
@@ -1372,8 +1387,7 @@ impl NavigationState {
         column.selected = Some(focused);
         column.selection_anchor = Some(column.entries[focused].location.clone());
         column.load_cursor = None;
-        column.pending_reveal.clear();
-        column.selection_from_reveal = false;
+        column.drop_load_intents();
         self.active_column = Some(depth);
         Some(focused)
     }
@@ -1456,8 +1470,7 @@ impl NavigationState {
         let cursor = column
             .selected
             .filter(|position| order.contains(position))?;
-        column.pending_reveal.clear();
-        column.selection_from_reveal = false;
+        column.drop_load_intents();
         if column.load_cursor.is_some() {
             column.selected_locations.clear();
             column.load_cursor = None;
@@ -2235,8 +2248,7 @@ fn place_cursor(column: &mut ColumnState, position: usize) -> bool {
     let mut cleared = false;
     if moved {
         // A resolved reveal still waiting for more batches must not pull the cursor back.
-        column.pending_reveal.clear();
-        column.selection_from_reveal = false;
+        column.drop_load_intents();
     }
     if moved && column.load_cursor.is_some() {
         column.selected_locations.clear();
@@ -2326,6 +2338,31 @@ impl ColumnState {
         .then_some(position)
     }
 
+    /// A user selection or a failed load supersedes whatever the load meant to select.
+    fn drop_load_intents(&mut self) {
+        self.pending_reveal.clear();
+        self.selection_from_reveal = false;
+        self.reload_cursor = None;
+    }
+
+    /// The fallback that needs the complete listing: the neighbour of a reloaded cursor
+    /// whose entry is gone. The neighbour only takes the cursor; nothing gets selected.
+    /// Returns whether it moved the cursor.
+    fn complete_load_selection(&mut self) -> bool {
+        let before = self.selected;
+        if let Some(previous) = self.reload_cursor.take()
+            && self.selected.is_none()
+            && self.pending_reveal.is_empty()
+            && !self.entries.is_empty()
+        {
+            self.selected = self.visible_neighbor(previous.min(self.entries.len() - 1));
+            if self.selected.is_some() {
+                self.selection_target = None;
+            }
+        }
+        self.selected != before
+    }
+
     fn resolve_pending_reveal(&mut self) {
         if self.pending_reveal.is_empty() {
             return;
@@ -2352,6 +2389,7 @@ impl ColumnState {
         self.selection_target = None;
         self.load_cursor = None;
         self.selection_from_reveal = true;
+        self.reload_cursor = None;
     }
 
     fn restore_pending_selection(&mut self) {
@@ -2380,8 +2418,7 @@ impl ColumnState {
 fn adopt_selected_locations(column: &mut ColumnState, locations: HashSet<Location>, commit: bool) {
     if commit {
         column.load_cursor = None;
-        column.pending_reveal.clear();
-        column.selection_from_reveal = false;
+        column.drop_load_intents();
     }
     column.selected_locations = locations.into();
 }
