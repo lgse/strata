@@ -48,25 +48,45 @@ filenames, user-defined actions/themes, script output, or document contents.
 Join already translated list items with `i18n::list`, which uses the language's
 separator, rather than `join(", ")`. French values use a no-break space (U+00A0)
 inside « » and before ":", and a narrow no-break space (U+202F) before ";", "?"
-and "!", so lines never break between the mark and its word.
+and "!", so lines never break between the mark and its word. Japanese values use
+the ASCII colon (": " mid-line, ":" at the end of a line), never "：", so nested
+templates such as `%{name}: %{error}` never mix styles. Quote names inserted into
+a sentence with the language's quotation marks (en “…”, de „…“, fr « … », ru «…»,
+ja 「…」, and the style each other catalog already uses), never Markdown backticks.
 
 Translate each string exactly once. The shared modal builders (`modal_layout`,
 `message_dialog_layout`) display their title, subtitle, and confirm label as given,
 so callers pass translated text. Do not pre-wrap dialog text:
-`controls::dialog_text` only normalizes spacing and keeps explicit line and
-paragraph breaks, and dialog labels use `WrapMode::WordChar` so Pango breaks
-scripts without spaces at valid positions. Do not compare translated text to
+`controls::dialog_text` only normalizes ASCII spaces and tabs (no-break spaces are
+kept) and keeps explicit line and paragraph breaks, and dialog labels use
+`WrapMode::WordChar` so Pango breaks scripts without spaces at valid positions.
+Call `controls::keep_words_whole` on wrapping labels that show translated
+sentences: it disables inserted hyphens and keeps short Korean words unbroken,
+since Pango otherwise breaks between any two Hangul syllables. A dialog whose
+action row holds several translated buttons should call
+`controls::stack_actions_when_constrained`, which stacks the buttons vertically
+once the dialog is narrowed to the window. Do not compare translated text to
 choose behavior; pass an explicit kind instead. Keep internal or diagnostic errors
 that are never shown to users in English.
 
 Show I/O failures through `services::io_error_message` (`std::io::Error`, including
 rustix errnos converted with `.into()`) or `services::gio_error_message`
-(`glib::Error`), usually as the `%{error}` value of a translated sentence. They
-translate common failure kinds and otherwise fall back to the system or GIO text;
-`io_error_message` drops the `(os error N)` suffix and internal temporary paths.
-When an error type's
-`Display` is used in logs or tests, add a localized `user_message()` for the UI
-rather than changing `Display`.
+(`glib::Error`). They translate common failure kinds and otherwise fall back to
+the system or GIO text; `io_error_message` drops the `(os error N)` suffix and
+internal temporary paths. These return standalone, capitalized text. When the
+reason continues a sentence after a colon, as the `%{error}` value of a template
+such as "Could not open “%{path}”: %{error}", use `services::io_error_detail`,
+`services::gio_error_detail`, or `services::error_detail` for an already
+localized reason: they lower-case the first letter in French, Spanish, Italian,
+Brazilian Portuguese, Russian and Vietnamese, and leave acronyms such as "HTTP"
+alone. Network failures go through `NetworkError`
+(`src/services/network_error.rs`), which reduces a `ureq` error to
+language-neutral data: an HTTP status, an English catalog reason, or
+untranslatable library text. Store that value, not a formatted sentence, in
+caches or anywhere else it may be shown later, and localize it with `message()`
+or `detail()` when it is displayed. When an error type's `Display` is used in logs
+or tests, add a localized `user_message()` for the UI rather than changing
+`Display`.
 
 `i18n::count` selects the supported languages' integer plural categories.
 Russian distinguishes one/few/many, French and Brazilian Portuguese use the
@@ -78,7 +98,10 @@ Format numbers shown to users with the shared helpers rather than `format!`:
 `i18n::integer` and `i18n::decimal` apply the language's digit grouping and
 decimal separator (`count` already groups its number), `i18n::file_size` and
 `i18n::transfer_rate` produce byte sizes and rates with localized unit symbols,
-and `i18n::duration` produces compact elapsed times such as "2m 5s".
+`i18n::percent` produces whole percentages with the language's spacing (a narrow
+no-break space in French, a no-break space in German), and `i18n::duration`
+produces compact elapsed times such as "2m 5s". Exact byte counts use the
+`bytes` count message.
 
 Settings search indexes the translated title as well as the English title and
 aliases. Stable source IDs remain independent of displayed language; do not use
@@ -92,6 +115,23 @@ toolkit-owned controls may follow their provider or system language. Do not
 rewrite the process environment to translate them: spawned commands must retain
 the user's locale. Translations should be reviewed by native speakers, particularly longer
 help text and destructive-operation confirmations.
+
+### Accepted limitations
+
+The following text is outside Strata's catalogs or deliberately English:
+
+- GTK toolkit-owned text, such as the color chooser's "Custom", "Cancel" and swatch
+  names, GtkNotebook "Page N", and the password entry's "Show Text". GTK translates
+  these from the process locale, not Strata's language setting.
+- GIO and MIME descriptions, such as content-type names in Properties and the List
+  Type column, and Open With application descriptions.
+- External release notes, which are written upstream and shown verbatim.
+- Library parser details, such as a TOML syntax diagnostic after Strata's
+  translated prefix.
+- The custom-action starter template, whose comments and docstring are code that
+  users edit.
+- Internal worker, task-panic, decoder and renderer diagnostics that appear only
+  when a background thread or helper fails internally.
 
 GTK uses Fontconfig fallback for characters absent from the selected font.
 Japanese and Korean require installed CJK fonts, such as Noto Sans CJK (commonly
