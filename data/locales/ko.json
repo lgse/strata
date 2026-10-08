@@ -709,6 +709,7 @@
   "Restart now": "지금 다시 시작",
   "Restart to apply interface renderer": "인터페이스 렌더러를 적용하려면 다시 시작",
   "Restore": "복원",
+  "Restore cancelled": "복원이 취소되었습니다",
   "Restore default": "기본값 복원",
   "Restore items": "항목 복원",
   "Restore the home directory as default": "홈 디렉터리를 기본값으로 복원",

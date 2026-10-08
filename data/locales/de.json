@@ -709,6 +709,7 @@
   "Restart now": "Jetzt neu starten",
   "Restart to apply interface renderer": "Neu starten, um das Darstellungs-Backend anzuwenden",
   "Restore": "Wiederherstellen",
+  "Restore cancelled": "Wiederherstellung abgebrochen",
   "Restore default": "Standard wiederherstellen",
   "Restore items": "Elemente wiederherstellen",
   "Restore the home directory as default": "Persönlichen Ordner als Standard wiederherstellen",

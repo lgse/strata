@@ -709,6 +709,7 @@
   "Restart now": "今すぐ再起動",
   "Restart to apply interface renderer": "インターフェースレンダラーを適用するため再起動",
   "Restore": "復元",
+  "Restore cancelled": "復元をキャンセルしました",
   "Restore default": "デフォルトに戻す",
   "Restore items": "項目を復元",
   "Restore the home directory as default": "ホームディレクトリをデフォルトに戻す",

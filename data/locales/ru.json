@@ -709,6 +709,7 @@
   "Restart now": "Перезапустить сейчас",
   "Restart to apply interface renderer": "Перезапустить для применения средства отрисовки интерфейса",
   "Restore": "Восстановить",
+  "Restore cancelled": "Восстановление отменено",
   "Restore default": "Восстановить значение по умолчанию",
   "Restore items": "Восстановить элементы",
   "Restore the home directory as default": "Восстановить домашнюю папку по умолчанию",
