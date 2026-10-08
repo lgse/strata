@@ -163,6 +163,13 @@ Clear the input, or press Escape in the input or on a focused result, to restore
 the directory listing with focus on its cursor. **Ctrl+K** global fuzzy search is
 unchanged.
 
+Results follow the watched folders live: the open folder, and in Columns every open
+column. A matching file that another program creates or renames there appears within
+about a second, and a deleted one leaves the results as soon as the listing drops it.
+With [Include subfolders](preferences.md#filter-scope) on, changes in folders below
+those reach the results on **F5**, Auto-refresh, the rescan after a burst of external
+changes, or when the filter is cleared and opened again.
+
 ## Preview while filtering
 
 In the browser and file chooser, **Down** from the Ctrl+F input focuses the selected result, or the first result if none is selected. **Up/Down** then navigate the results; **Up** from the first result returns to the input without clearing the query. **Ctrl+F** also returns to the input. With no matches, Down leaves focus in the input.
@@ -171,7 +178,7 @@ In the browser and file chooser, **Down** from the Ctrl+F input focuses the sele
 
 While the input is focused, Space types into the query if no result is selected. **Shift+Space** inserts a space there even with a result selected. Space opens a selected folder in every view without opening or loading the preview pane; unsupported files do not open a preview.
 
-With a result focused, the first **Escape** dismisses the filter even while its quick preview is open; a second Escape closes the preview. **Ctrl+1/2/3** keep focus in the filter: in the input with the caret after the query, or on the focused result. With a query typed and focus elsewhere, the results take focus once they show. Loading or refreshing the folder never moves focus out of the input or its results.
+With a result focused, the first **Escape** dismisses the filter even while its quick preview is open; a second Escape closes the preview. **Ctrl+1/2/3** keep focus in the filter: in the input with the caret after the query, or on the focused result. With a query typed and focus elsewhere, the results take focus once they show. Loading or refreshing the folder never moves focus out of the input or its results. Neither does another program changing the folder, and that also holds for the [10xer](10xer-mode.md) **f** and **s** prompts.
 
 ## Navigating an archive preview
 

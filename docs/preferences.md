@@ -282,6 +282,10 @@ on by default. Turn it off to match only immediate files and folders, without
 redundant path subtitles. The choice applies to pane filtering in Columns, Icons,
 and List views, not global search.
 Changing it refreshes active filters across windows and is saved for next launch.
+With it on, changes that other programs make in subfolders of the watched folders
+reach active filters on F5, Auto-refresh, or when the filter is opened again; changes
+in a watched folder show within about a second (see
+[Filename patterns while filtering](keyboard-navigation.md#filename-patterns-while-filtering)).
 [10xer mode](10xer-mode.md) does not use it: there **f** filters only the
 current folder and **s** always searches below it.
 
