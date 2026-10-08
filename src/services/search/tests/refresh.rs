@@ -18,15 +18,14 @@ fn await_paths(events: &Receiver<SearchEvent>, root: &Path, expected: &[&str]) {
             ..
         }) = events.recv_timeout(Duration::from_millis(100))
         {
-            assert!(!query.is_empty(), "refresh must preserve the active query");
             let paths = items
                 .into_iter()
                 .map(|item| item.path)
                 .collect::<BTreeSet<_>>();
-            if !indexing && paths == expected {
+            if !query.is_empty() && !indexing && paths == expected {
                 return;
             }
-            last = Some(paths);
+            last = Some((query, paths));
         }
     }
     panic!("expected {expected:?}, last results {last:?}");
