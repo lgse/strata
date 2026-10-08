@@ -584,3 +584,66 @@ fn returning_to_a_visited_directory_restores_the_icons_cursor() {
         },
     );
 }
+
+fn columns_reload_case(owner: Owner, trigger: Trigger) -> Result<(), String> {
+    let fixture = KeyboardFixture::new();
+    let browser = fixture.view.browser();
+    let loads = load_counter(&browser);
+    select_named(&fixture, "b.txt");
+    if !settles(|| focus_shows(&fixture, "b.txt")) {
+        return Err(format!(
+            "setup: b.txt never took focus; focus is on {}",
+            describe_focus(&fixture)
+        ));
+    }
+    if owner == Owner::FilterEntry
+        && (!fixture.press(Key::f, ModifierType::CONTROL_MASK) || !fixture.view.filter_has_focus())
+    {
+        return Err(format!(
+            "setup: Ctrl+F did not focus the field; focus is on {}",
+            describe_focus(&fixture)
+        ));
+    }
+    reload(&fixture, trigger, &loads)?;
+    let mut failures = Vec::new();
+    if focused_name(&browser) != "b.txt" {
+        failures.push(format!(
+            "the cursor is on {:?}, not b.txt",
+            focused_name(&browser)
+        ));
+    }
+    match owner {
+        Owner::Items if !settles(|| focus_shows(&fixture, "b.txt")) => failures.push(format!(
+            "focus is on {}, not the b.txt row",
+            describe_focus(&fixture)
+        )),
+        Owner::FilterEntry if !fixture.view.filter_has_focus() => failures.push(format!(
+            "the filter field lost focus to {}",
+            describe_focus(&fixture)
+        )),
+        _ => {}
+    }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures.join("; "))
+    }
+}
+
+#[test]
+fn a_reload_keeps_the_columns_list_focused() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::reload_cursor::a_reload_keeps_the_columns_list_focused",
+        || {
+            let mut failures = Vec::new();
+            for owner in [Owner::Items, Owner::FilterEntry] {
+                for trigger in [Trigger::F5, Trigger::AutoRefresh] {
+                    if let Err(error) = columns_reload_case(owner, trigger) {
+                        failures.push(format!("{owner:?} {trigger:?}: {error}"));
+                    }
+                }
+            }
+            report(failures);
+        },
+    );
+}
