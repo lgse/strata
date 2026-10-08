@@ -517,8 +517,8 @@ fn show_candidate_hint(shortcuts: &ShortcutFooter) {
         Some((index, count)) => Some(
             rust_i18n::t!(
                 "%{position} of %{count}",
-                position = index + 1,
-                count = count
+                position = crate::i18n::integer((index + 1) as u64),
+                count = crate::i18n::integer(count as u64)
             )
             .into_owned(),
         ),

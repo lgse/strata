@@ -31,7 +31,7 @@ const CHECK_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 const PREVIEW_PAGE_SIZE: u32 = 30;
 
 impl BuildKind {
-    /// [`BuildKind::label`] in the app language, for display.
+    /// The build kind's name in the app language, for display.
     pub(crate) fn localized_label(self) -> String {
         crate::i18n::tr(match self {
             BuildKind::Stable => "Stable",

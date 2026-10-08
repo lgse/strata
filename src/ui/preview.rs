@@ -3150,14 +3150,14 @@ impl ListingPosition {
         if self.results {
             rust_i18n::t!(
                 "%{position} of %{count} in results",
-                position = self.position,
-                count = self.count
+                position = crate::i18n::integer(self.position as u64),
+                count = crate::i18n::integer(self.count as u64)
             )
         } else {
             rust_i18n::t!(
                 "%{position} of %{count} in folder",
-                position = self.position,
-                count = self.count
+                position = crate::i18n::integer(self.position as u64),
+                count = crate::i18n::integer(self.count as u64)
             )
         }
         .into_owned()
@@ -3220,8 +3220,8 @@ fn print_progress_for_page(completed: i32, total: i32) -> (String, f64) {
     (
         rust_i18n::t!(
             "Rendering page %{completed} of %{total}",
-            completed = completed,
-            total = total
+            completed = crate::i18n::integer(completed as u64),
+            total = crate::i18n::integer(total as u64)
         )
         .into_owned(),
         f64::from(completed) / f64::from(total),

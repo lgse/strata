@@ -1100,7 +1100,7 @@ fn path_error(action: &str, path: &Path, error: io::Error) -> String {
             path = path,
             error = error
         ),
-        "inspect" => {
+        "inspect" | "inspect the installed Strata executable" | "inspect running processes" => {
             rust_i18n::t!(
                 "Could not inspect %{path}: %{error}",
                 path = path,
