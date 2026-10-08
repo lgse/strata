@@ -18,7 +18,23 @@ use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::rc::{Rc, Weak};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
+
+static FILE_DRAG_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+pub(in crate::ui) fn file_drag_active() -> bool {
+    FILE_DRAG_ACTIVE.load(Ordering::Relaxed)
+}
+
+pub(in crate::ui) fn track_file_drag(source: &gtk::DragSource) {
+    source.connect_drag_begin(|_, _| FILE_DRAG_ACTIVE.store(true, Ordering::Relaxed));
+    source.connect_drag_end(|_, _, _| FILE_DRAG_ACTIVE.store(false, Ordering::Relaxed));
+    source.connect_drag_cancel(|_, _, _| {
+        FILE_DRAG_ACTIVE.store(false, Ordering::Relaxed);
+        false
+    });
+}
 
 const DRAG_PROXY_PADDING: f64 = 3.0;
 const DRAG_PROXY_STACK_OFFSET: f64 = 5.0;
@@ -1021,7 +1037,7 @@ fn set_location_files_clipboard(locations: &[Location]) -> bool {
 /// NFS can round-trip through the clipboard with a different but equivalent
 /// representation, and strict `PathBuf` equality alone would degrade a cut to
 /// a copy.
-pub(super) fn locations_equal(left: &Location, right: &Location) -> bool {
+pub(in crate::ui) fn locations_equal(left: &Location, right: &Location) -> bool {
     left == right || gio_file_for_location(left).equal(&gio_file_for_location(right))
 }
 

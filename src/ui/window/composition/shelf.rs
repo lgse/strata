@@ -11,14 +11,18 @@ use std::{
 use gtk::{gdk, gio, glib, prelude::*};
 
 use crate::{
-    adapters::location_for_file,
+    app::BrowserEvent,
     assets::{self, icons},
     model::Location,
     services::DropCommit,
     ui::browser::paths::is_trash_location,
     ui::browser::{
-        BrowserView, WeakBrowserView, file_drag_locations, locations_from_file_list_value,
-        show_error_dialog,
+        BrowserView, WeakBrowserView, context_menu_option, file_drag_locations, icon_for_name,
+        locations_equal, locations_from_file_list_value, show_error_dialog,
+    },
+    ui::thumbnail::{self, ThumbnailSlot},
+    ui::{
+        controls, scrolling::popover::dismiss_on_outside_scroll, shortcut_reference::ContextHint,
     },
 };
 
@@ -45,26 +49,42 @@ impl Shelf {
         self.locations.borrow().clone()
     }
 
-    fn add(&self, incoming: impl IntoIterator<Item = Location>) -> usize {
+    fn add(&self, incoming: impl IntoIterator<Item = Location>) -> bool {
         let mut locations = self.locations.borrow_mut();
-        let mut added = 0;
+        let mut accepted = false;
+        let mut changed = false;
         for location in incoming {
-            if !location.is_recent_location() && !locations.contains(&location) {
+            if location.is_recent_location() {
+                continue;
+            }
+            accepted = true;
+            if !locations
+                .iter()
+                .any(|item| locations_equal(item, &location))
+            {
                 locations.push(location);
-                added += 1;
+                changed = true;
             }
         }
         drop(locations);
-        if added != 0 {
+        if changed {
             self.notify();
         }
-        added
+        accepted
     }
 
     fn remove(&self, location: &Location) {
+        self.remove_many(std::slice::from_ref(location));
+    }
+
+    fn remove_many(&self, removed: &[Location]) {
         let mut locations = self.locations.borrow_mut();
         let before = locations.len();
-        locations.retain(|item| item != location);
+        locations.retain(|item| {
+            !removed
+                .iter()
+                .any(|location| locations_equal(item, location))
+        });
         let removed = locations.len() != before;
         drop(locations);
         if removed {
@@ -101,11 +121,24 @@ struct FloatingShelf {
 pub(super) fn install(
     window: &gtk::ApplicationWindow,
     browser: &BrowserView,
-    button: &gtk::Button,
+    actions: &gio::SimpleActionGroup,
 ) {
     let Some(application) = window.application() else {
         return;
     };
+    let shelf = Rc::downgrade(&Shelf::shared());
+    browser.browser().observe(move |event| {
+        let event = match event {
+            BrowserEvent::BackgroundOperation { event, .. } => event.as_ref(),
+            event => event,
+        };
+        if let BrowserEvent::TransferFinished { moved_locations } = event
+            && !moved_locations.is_empty()
+            && let Some(shelf) = shelf.upgrade()
+        {
+            shelf.remove_many(moved_locations);
+        }
+    });
     FLOATING.with(|slot| {
         if slot.borrow().is_none() {
             let active_browser = Rc::new(RefCell::new(Some(browser.downgrade())));
@@ -115,7 +148,7 @@ pub(super) fn install(
                 .title("Strata Shelf")
                 .decorated(false)
                 .resizable(false)
-                .default_width(420)
+                .default_width(240)
                 .child(&view.widget)
                 .build();
             floating.set_transient_for(Some(window));
@@ -134,7 +167,9 @@ pub(super) fn install(
                     let Some(controller) = weak.upgrade() else {
                         return glib::ControlFlow::Break;
                     };
-                    if let Some(position) = receive.try_iter().last() {
+                    if let Some(position) = receive.latest()
+                        && crate::ui::browser::file_drag_active()
+                    {
                         controller.show(Some(position));
                     }
                     glib::ControlFlow::Continue
@@ -143,16 +178,22 @@ pub(super) fn install(
             slot.replace(Some(controller));
         }
     });
-    button.connect_clicked({
+    let action = gio::SimpleAction::new("show-shelf", None);
+    action.connect_activate({
         let browser = browser.downgrade();
-        move |_| {
+        let window = window.downgrade();
+        move |_, _| {
             let shelf = FLOATING.with(|slot| slot.borrow().clone());
-            if let Some(shelf) = shelf {
+            if let Some(shelf) = shelf
+                && let Some(window) = window.upgrade()
+            {
                 shelf.active_browser.replace(Some(browser.clone()));
+                shelf.window.set_transient_for(Some(&window));
                 shelf.show(None);
             }
         }
     });
+    actions.add_action(&action);
 }
 
 pub(super) fn set_active(window: &gtk::ApplicationWindow, browser: &BrowserView) {
@@ -163,10 +204,7 @@ pub(super) fn set_active(window: &gtk::ApplicationWindow, browser: &BrowserView)
     }
 }
 
-pub(super) fn owner_closed(window: &gtk::ApplicationWindow) {
-    let Some(application) = window.application() else {
-        return;
-    };
+pub(super) fn owner_closed(window: &gtk::ApplicationWindow, application: &gtk::Application) {
     let next = application
         .windows()
         .into_iter()
@@ -181,7 +219,16 @@ pub(super) fn owner_closed(window: &gtk::ApplicationWindow) {
     });
     if let Some(shelf) = shelf {
         if let Some(next) = next {
-            shelf.window.set_transient_for(Some(&next));
+            if shelf
+                .window
+                .transient_for()
+                .as_ref()
+                .is_none_or(|owner| owner == window.upcast_ref::<gtk::Window>())
+            {
+                shelf.window.set_visible(false);
+                shelf.active_browser.take();
+                shelf.window.set_transient_for(Some(&next));
+            }
         } else {
             shelf.window.destroy();
         }
@@ -197,8 +244,11 @@ impl FloatingShelf {
         let position = position.or_else(|| hyprland.cursor());
         if let Some((x, y)) = position {
             // Hyprland positions transient windows, while Wayland prevents GTK from placing them.
+            let window = self.window.downgrade();
             glib::timeout_add_local_once(Duration::from_millis(40), move || {
-                hyprland.move_shelf(x.saturating_sub(155), y.saturating_add(28));
+                if window.upgrade().is_some_and(|window| window.is_visible()) {
+                    hyprland.move_shelf(x.saturating_sub(115), y.saturating_sub(105));
+                }
             });
         }
     }
@@ -216,16 +266,12 @@ impl ShelfView {
         widget.add_css_class("file-shelf");
         let bar = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         bar.add_css_class("file-shelf-bar");
-        let title = gtk::Label::new(Some("Shelf (0)"));
-        title.add_css_class("file-shelf-title");
-        title.set_xalign(0.0);
-        title.set_hexpand(true);
-        bar.append(&title);
         let close = gtk::Button::new();
         close.set_child(Some(&assets::primary_icon(icons::X, 16)));
         close.set_tooltip_text(Some("Hide shelf"));
         crate::ui::accessibility::set_label(&close, "Hide shelf");
-        close.add_css_class("shortcut-footer-button");
+        controls::pane_header_action(&close);
+        close.add_css_class("file-shelf-control");
         close.connect_clicked({
             let widget = widget.downgrade();
             move |_| {
@@ -239,34 +285,92 @@ impl ShelfView {
             }
         });
         bar.append(&close);
+        let handle = gtk::WindowHandle::new();
+        handle.set_hexpand(true);
+        handle.set_child(Some(&gtk::Box::new(gtk::Orientation::Horizontal, 0)));
+        handle.set_cursor_from_name(Some("grab"));
+        crate::ui::accessibility::set_label(&handle, "Move shelf");
+        crate::ui::accessibility::set_description(&handle, Some("Drag to move the shelf"));
+        bar.append(&handle);
+        let menu = gtk::MenuButton::new();
+        menu.set_child(Some(&assets::primary_icon(icons::ELLIPSIS, 16)));
+        menu.set_direction(gtk::ArrowType::None);
+        controls::pane_header_action(&menu);
+        menu.add_css_class("file-shelf-control");
+        menu.set_tooltip_text(Some("Shelf actions"));
+        crate::ui::accessibility::set_label(&menu, "Shelf actions");
+        bar.append(&menu);
         widget.append(&bar);
-        let hint = gtk::Label::new(Some(
-            "Drop files here, then drag them out or transfer below",
-        ));
+
+        let preview = gtk::Overlay::new();
+        preview.add_css_class("file-shelf-preview");
+        crate::ui::accessibility::set_label(&preview, "Shelf preview");
+        let (back_card, back) = preview_card(96);
+        back_card.add_css_class("file-shelf-preview-back");
+        preview.set_child(Some(&back_card));
+        let (middle_card, middle) = preview_card(96);
+        middle_card.add_css_class("file-shelf-preview-middle");
+        preview.add_overlay(&middle_card);
+        let (front_card, front) = preview_card(96);
+        front_card.add_css_class("file-shelf-preview-front");
+        preview.add_overlay(&front_card);
+        let drag = gtk::DragSource::builder()
+            .actions(gdk::DragAction::COPY | gdk::DragAction::MOVE)
+            .build();
+        drag.connect_prepare({
+            let shelf = shelf.clone();
+            move |_, _, _| file_drag_locations(&shelf.locations())
+        });
+        preview.add_controller(drag);
+        widget.append(&preview);
+
+        let hint = gtk::Label::new(Some("Drop files here"));
         hint.add_css_class("file-shelf-hint");
-        hint.set_xalign(0.0);
+        hint.set_wrap(true);
+        hint.set_justify(gtk::Justification::Center);
         widget.append(&hint);
+
+        let count = gtk::MenuButton::builder().label("0 items").build();
+        count.set_direction(gtk::ArrowType::None);
+        controls::pane_header_action(&count);
+        count.add_css_class("file-shelf-count");
+        count.set_halign(gtk::Align::Center);
+        crate::ui::accessibility::set_description(&count, Some("Show individual shelf items"));
+        widget.append(&count);
+        let viewer = gtk::Popover::new();
+        viewer.set_has_arrow(false);
+        viewer.set_position(gtk::PositionType::Bottom);
+        viewer.add_css_class("column-popover");
+        viewer.add_css_class("file-shelf-viewer");
+        dismiss_on_outside_scroll(&viewer);
+        crate::ui::accessibility::set_label(&viewer, "Shelf items");
+        count.set_popover(Some(&viewer));
         let scroll = gtk::ScrolledWindow::new();
         scroll.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
-        scroll.set_max_content_height(220);
+        scroll.set_max_content_height(300);
         scroll.set_propagate_natural_height(true);
-        let list = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let list = gtk::FlowBox::new();
+        list.set_selection_mode(gtk::SelectionMode::None);
+        list.set_min_children_per_line(3);
+        list.set_max_children_per_line(3);
+        list.add_css_class("file-shelf-items");
         scroll.set_child(Some(&list));
-        widget.append(&scroll);
-        let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        actions.add_css_class("file-shelf-actions");
-        let clear = gtk::Button::with_label("Clear shelf");
-        clear.add_css_class("shortcut-footer-button");
+        viewer.set_child(Some(&scroll));
+        viewer.add_controller(shelf_drop_target(shelf.clone()));
+        let action_popover = gtk::Popover::new();
+        action_popover.set_has_arrow(false);
+        action_popover.add_css_class("column-popover");
+        dismiss_on_outside_scroll(&action_popover);
+        menu.set_popover(Some(&action_popover));
+        let actions = gtk::Box::new(gtk::Orientation::Vertical, 4);
+        actions.add_css_class("column-menu");
+        let clear = context_menu_option(icons::X, "Clear shelf", ContextHint::None);
         clear.connect_clicked({
             let shelf = shelf.clone();
             move |_| shelf.clear()
         });
         actions.append(&clear);
-        let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        spacer.set_hexpand(true);
-        actions.append(&spacer);
-        let add = gtk::Button::with_label("Add selection");
-        add.add_css_class("shortcut-footer-button");
+        let add = context_menu_option(icons::PLUS, "Add selection", ContextHint::None);
         add.connect_clicked({
             let shelf = shelf.clone();
             let active_browser = active_browser.clone();
@@ -287,14 +391,12 @@ impl ShelfView {
             }
         });
         actions.append(&add);
-        let copy = gtk::Button::with_label("Copy here");
-        copy.add_css_class("shortcut-footer-button");
-        let move_button = gtk::Button::with_label("Move here");
-        move_button.add_css_class("shortcut-footer-button");
+        let copy = context_menu_option(icons::COPY, "Copy here", ContextHint::None);
+        let move_button = context_menu_option(icons::FOLDER_INPUT, "Move here", ContextHint::None);
         for (button, commit) in [(&copy, DropCommit::Copy), (&move_button, DropCommit::Move)] {
             let active_browser = active_browser.clone();
             let shelf = shelf.clone();
-            button.connect_clicked(move |button| {
+            button.connect_clicked(move |_| {
                 let Some(browser) = active_browser
                     .borrow()
                     .as_ref()
@@ -307,7 +409,7 @@ impl ShelfView {
                 };
                 if destination.is_recent_location() || is_trash_location(&destination) {
                     show_error_dialog(
-                        button,
+                        &browser.widget(),
                         "Unable to transfer",
                         "Choose a regular folder as the destination.",
                     );
@@ -318,76 +420,26 @@ impl ShelfView {
         }
         actions.append(&copy);
         actions.append(&move_button);
-        widget.append(&actions);
+        action_popover.set_child(Some(&actions));
+        for button in [&clear, &add, &copy, &move_button] {
+            let popover = action_popover.downgrade();
+            button.connect_clicked(move |_| {
+                if let Some(popover) = popover.upgrade() {
+                    popover.popdown();
+                }
+            });
+        }
 
-        let formats = gdk::ContentFormats::builder()
-            .add_type(gdk::FileList::static_type())
-            .add_mime_type("text/uri-list")
-            .build();
-        let drop_target = gtk::DropTargetAsync::new(Some(formats), gdk::DragAction::COPY);
-        drop_target.set_propagation_phase(gtk::PropagationPhase::Capture);
-        drop_target.connect_drag_enter(|target, drop, _, _| {
-            if let Some(widget) = target.widget() {
-                widget.add_css_class("drop-destination");
-            }
-            if drop.actions().contains(gdk::DragAction::COPY) {
-                gdk::DragAction::COPY
-            } else {
-                gdk::DragAction::empty()
-            }
-        });
-        drop_target.connect_drag_leave(|target, _| {
-            if let Some(widget) = target.widget() {
-                widget.remove_css_class("drop-destination");
-            }
-        });
-        drop_target.connect_drop({
-            let shelf = shelf.clone();
-            let hint = hint.downgrade();
-            move |target, drop, _, _| {
-                if let Some(widget) = target.widget() {
-                    widget.remove_css_class("drop-destination");
-                }
-                if !drop.actions().contains(gdk::DragAction::COPY) {
-                    return false;
-                }
-                let drop = drop.clone();
-                let shelf = shelf.clone();
-                let hint = hint.clone();
-                glib::MainContext::default().spawn_local(async move {
-                    let locations = drop
-                        .read_value_future(gdk::FileList::static_type(), glib::Priority::DEFAULT)
-                        .await
-                        .ok()
-                        .and_then(|value| locations_from_file_list_value(&value));
-                    let locations = match locations {
-                        Some(locations) => Some(locations),
-                        None => read_uri_list(&drop).await,
-                    };
-                    if let Some(locations) = locations.filter(|locations| !locations.is_empty()) {
-                        shelf.add(locations);
-                        if let Some(hint) = hint.upgrade() {
-                            hint.remove_css_class("file-shelf-error");
-                            hint.set_label("Drop files here, then drag them out or transfer below");
-                        }
-                        drop.finish(gdk::DragAction::COPY);
-                    } else {
-                        if let Some(hint) = hint.upgrade() {
-                            hint.add_css_class("file-shelf-error");
-                            hint.set_label("Could not add these files to the shelf");
-                        }
-                        drop.finish(gdk::DragAction::empty());
-                    }
-                });
-                true
-            }
-        });
-        widget.add_controller(drop_target);
+        widget.add_controller(shelf_drop_target(shelf.clone()));
 
         let refresh: Rc<dyn Fn()> = Rc::new({
             let shelf = Rc::downgrade(&shelf);
             let list = list.downgrade();
-            let title = title.downgrade();
+            let count = count.downgrade();
+            let hint = hint.downgrade();
+            let front = front.downgrade();
+            let middle = middle.downgrade();
+            let back = back.downgrade();
             let clear = clear.downgrade();
             let copy = copy.downgrade();
             let move_button = move_button.downgrade();
@@ -395,14 +447,22 @@ impl ShelfView {
                 let (
                     Some(shelf),
                     Some(list),
-                    Some(title),
+                    Some(count),
+                    Some(hint),
+                    Some(front),
+                    Some(middle),
+                    Some(back),
                     Some(clear),
                     Some(copy),
                     Some(move_button),
                 ) = (
                     shelf.upgrade(),
                     list.upgrade(),
-                    title.upgrade(),
+                    count.upgrade(),
+                    hint.upgrade(),
+                    front.upgrade(),
+                    middle.upgrade(),
+                    back.upgrade(),
                     clear.upgrade(),
                     copy.upgrade(),
                     move_button.upgrade(),
@@ -411,26 +471,46 @@ impl ShelfView {
                     return;
                 };
                 while let Some(row) = list.first_child() {
+                    thumbnail::cancel_thumbnails_in(&row);
                     list.remove(&row);
                 }
                 let locations = shelf.locations();
-                title.set_label(&format!("Shelf ({})", locations.len()));
+                count.set_label(&format!(
+                    "{} item{}",
+                    locations.len(),
+                    if locations.len() == 1 { "" } else { "s" }
+                ));
+                for (index, image) in [&front, &middle, &back].into_iter().enumerate() {
+                    if let Some(location) = locations.iter().rev().nth(index) {
+                        if let Some(card) = image.parent() {
+                            card.set_visible(true);
+                        }
+                        set_shelf_preview(image, location);
+                    } else {
+                        thumbnail::show_fallback_icon(image, icons::BOX, 64);
+                        if let Some(card) = image.parent() {
+                            card.set_visible(index == 0);
+                        }
+                    }
+                }
                 let has_items = !locations.is_empty();
+                hint.set_visible(!has_items);
+                count.set_sensitive(has_items);
                 clear.set_sensitive(has_items);
                 copy.set_sensitive(has_items);
                 move_button.set_sensitive(has_items);
                 for location in locations {
-                    let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-                    row.add_css_class("file-shelf-row");
+                    let row = gtk::Box::new(gtk::Orientation::Vertical, 6);
+                    row.add_css_class("file-shelf-item");
                     let name = location
                         .file_name()
                         .map(|name| name.to_string_lossy().into_owned())
                         .unwrap_or_else(|| location.display_path());
-                    let label = gtk::Label::new(Some(&name));
-                    label.set_xalign(0.0);
-                    label.set_hexpand(true);
-                    label.set_ellipsize(gtk::pango::EllipsizeMode::End);
-                    row.append(&label);
+                    crate::ui::accessibility::set_label(&row, &name);
+                    let (card, image) = preview_card(72);
+                    set_shelf_preview(&image, &location);
+                    let thumbnail = gtk::Overlay::new();
+                    thumbnail.set_child(Some(&card));
                     let remove = gtk::Button::new();
                     remove.set_child(Some(&assets::primary_icon(icons::X, 15)));
                     remove.set_tooltip_text(Some(&format!("Remove {name} from shelf")));
@@ -438,13 +518,24 @@ impl ShelfView {
                         &remove,
                         &format!("Remove {name} from shelf"),
                     );
-                    remove.add_css_class("shortcut-footer-button");
+                    controls::pane_header_action(&remove);
+                    remove.add_css_class("file-shelf-control");
+                    remove.set_halign(gtk::Align::End);
+                    remove.set_valign(gtk::Align::Start);
                     remove.connect_clicked({
                         let shelf = shelf.clone();
                         let location = location.clone();
                         move |_| shelf.remove(&location)
                     });
-                    row.append(&remove);
+                    thumbnail.add_overlay(&remove);
+                    row.append(&thumbnail);
+                    let label = gtk::Label::new(Some(&name));
+                    label.set_max_width_chars(15);
+                    label.set_wrap(true);
+                    label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+                    label.set_lines(2);
+                    label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+                    row.append(&label);
                     let drag = gtk::DragSource::builder()
                         .actions(gdk::DragAction::COPY | gdk::DragAction::MOVE)
                         .build();
@@ -453,7 +544,7 @@ impl ShelfView {
                         move |_, _, _| file_drag_locations(std::slice::from_ref(&location))
                     });
                     row.add_controller(drag);
-                    list.append(&row);
+                    list.insert(&row, -1);
                 }
             }
         });
@@ -466,37 +557,46 @@ impl ShelfView {
     }
 }
 
-async fn read_uri_list(drop: &gdk::Drop) -> Option<Vec<Location>> {
-    let (stream, _) = drop
-        .read_future(&["text/uri-list"], glib::Priority::DEFAULT)
-        .await
-        .ok()?;
-    let mut bytes = Vec::new();
-    loop {
-        let (data, size) = stream
-            .read_future(vec![0_u8; 4096], glib::Priority::DEFAULT)
-            .await
-            .ok()?;
-        bytes.extend_from_slice(&data[..size]);
-        if bytes.len() > 1024 * 1024 {
-            return None;
-        }
-        if size == 0 {
-            break;
-        }
-    }
-    let text = std::str::from_utf8(&bytes).ok()?;
-    let locations = locations_from_uri_list(text);
-    (!locations.is_empty()).then_some(locations)
+fn shelf_drop_target(shelf: Rc<Shelf>) -> gtk::DropTarget {
+    let target = gtk::DropTarget::new(gdk::FileList::static_type(), gdk::DragAction::COPY);
+    target.set_propagation_phase(gtk::PropagationPhase::Capture);
+    target.connect_accept(|_, drop| {
+        // The selected Wayland action may belong to the previous destination.
+        drop.formats().contains_type(gdk::FileList::static_type())
+            || drop.formats().contain_mime_type("text/uri-list")
+    });
+    target.connect_enter(|_, _, _| gdk::DragAction::COPY);
+    target.connect_motion(|_, _, _| gdk::DragAction::COPY);
+    target.connect_drop(move |_, value, _, _| {
+        locations_from_file_list_value(value).is_some_and(|locations| shelf.add(locations))
+    });
+    target
 }
 
-fn locations_from_uri_list(text: &str) -> Vec<Location> {
-    text.lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty() && !line.starts_with('#'))
-        .filter_map(|uri| glib::Uri::parse_scheme(uri).map(|_| gio::File::for_uri(uri)))
-        .filter_map(|file| location_for_file(&file))
-        .collect()
+fn preview_card(size: i32) -> (gtk::Box, ThumbnailSlot) {
+    let image = ThumbnailSlot::new(size);
+    let card = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    card.set_halign(gtk::Align::Center);
+    card.set_valign(gtk::Align::Center);
+    card.add_css_class("file-shelf-preview-card");
+    card.append(&image);
+    (card, image)
+}
+
+fn set_shelf_preview(image: &ThumbnailSlot, location: &Location) {
+    let name = location
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned());
+    let icon = if location.native_path().is_some_and(|path| path.is_dir()) {
+        icons::FOLDER
+    } else {
+        name.as_deref().map_or(icons::DOCUMENTS, icon_for_name)
+    };
+    if let Some(path) = location.native_path() {
+        thumbnail::set_thumbnail_or_icon_for_path(image, path, icon, 64, 96);
+    } else {
+        thumbnail::show_fallback_icon(image, icon, 64);
+    }
 }
 
 #[cfg(test)]

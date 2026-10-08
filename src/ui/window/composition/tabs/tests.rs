@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+use super::super::shelf;
 use super::*;
 use crate::test_support::gtk_test;
 
@@ -468,6 +469,276 @@ fn closing_tabs_releases_observers_and_keeps_other_contexts_alive() {
             tabs.close(1);
             assert_eq!(tabs.active.get(), active);
             assert_eq!(tabs.tabs.borrow().len(), 1);
+            window.destroy();
+        },
+    );
+}
+
+#[test]
+fn closing_the_shelf_owner_preserves_staged_files_for_another_window() {
+    gtk_test(
+        "ui::window::composition::tabs::tests::closing_the_shelf_owner_preserves_staged_files_for_another_window",
+        || {
+            let application = application();
+            for (action, source_remains) in [("Copy here", true), ("Move here", false)] {
+                let root = tempfile::tempdir().expect("shelf owner fixture");
+                let first_folder = root.path().join("first");
+                let second_folder = root.path().join("second");
+                std::fs::create_dir(&first_folder).expect("first destination folder");
+                std::fs::create_dir(&second_folder).expect("second destination folder");
+                let (first, first_tabs) = open_in(&application);
+                let (second, second_tabs) = open_in(&application);
+                let closed_browser = first_tabs.active_browser();
+                load(&closed_browser, Location::local(&first_folder));
+                load(
+                    &second_tabs.active_browser(),
+                    Location::local(&second_folder),
+                );
+                shelf::set_active(&first, &closed_browser);
+                gtk::prelude::WidgetExt::activate_action(&first, "win.show-shelf", None)
+                    .expect("open shelf from first window");
+                let floating = application
+                    .windows()
+                    .into_iter()
+                    .find(|window| window.title().as_deref() == Some("Strata Shelf"))
+                    .expect("floating shelf");
+                let card = floating.child().expect("shelf card");
+                let target = card
+                    .observe_controllers()
+                    .iter::<glib::Object>()
+                    .filter_map(Result::ok)
+                    .find_map(|controller| controller.downcast::<gtk::DropTarget>().ok())
+                    .expect("shelf drop target");
+                let path = root.path().join("staged.txt");
+                std::fs::write(&path, "staged bytes").expect("staged source file");
+                let files = gtk::gdk::FileList::from_array(&[gio::File::for_path(&path)]);
+                let files = glib::BoxedValue(files.to_value());
+                assert!(target.emit_by_name::<bool>("drop", &[&files, &0.0f64, &0.0f64]));
+                first.close();
+                wait_until(|| !first.is_realized());
+                assert_eq!(
+                    floating.transient_for(),
+                    Some(second.clone().upcast::<gtk::Window>())
+                );
+                if !floating.is_visible() {
+                    gtk::prelude::WidgetExt::activate_action(&second, "win.show-shelf", None)
+                        .expect("reopen shelf from second window");
+                }
+                let caption_matches = |widget: &gtk::Widget| {
+                    widget
+                        .downcast_ref::<gtk::Label>()
+                        .is_some_and(|label| label.text() == action)
+                };
+                let actions = find_widget(&card, &|widget| {
+                    widget
+                        .downcast_ref::<gtk::MenuButton>()
+                        .and_then(|menu| menu.popover())
+                        .and_then(|popover| popover.child())
+                        .is_some_and(|child| find_widget(&child, &caption_matches).is_some())
+                })
+                .expect("shelf actions menu")
+                .downcast::<gtk::MenuButton>()
+                .expect("shelf menu button")
+                .popover()
+                .expect("shelf actions popover");
+                actions.popup();
+                let command =
+                    find_widget(&actions.child().expect("shelf actions"), &caption_matches)
+                        .expect("transfer command");
+                let command = command
+                    .ancestor(gtk::Button::static_type())
+                    .expect("transfer button");
+                assert!(command.activate(), "activate {action}");
+                let expected_count = if source_remains { "1 item" } else { "0 items" };
+                wait_until(|| {
+                    second_folder.join("staged.txt").exists()
+                        && !second_tabs
+                            .active_browser()
+                            .browser()
+                            .has_background_operations()
+                        && find_widget(&card, &|widget| {
+                            widget
+                                .downcast_ref::<gtk::MenuButton>()
+                                .is_some_and(|button| {
+                                    button.label().as_deref() == Some(expected_count)
+                                })
+                        })
+                        .is_some()
+                });
+                assert!(!first_folder.join("staged.txt").exists());
+                assert_eq!(
+                    std::fs::read_to_string(second_folder.join("staged.txt"))
+                        .expect("transferred bytes"),
+                    "staged bytes",
+                );
+                assert_eq!(path.exists(), source_remains, "{action} source retention");
+                if source_remains {
+                    assert_eq!(
+                        std::fs::read_to_string(path).expect("retained source bytes"),
+                        "staged bytes"
+                    );
+                }
+                let clear_caption = |widget: &gtk::Widget| {
+                    widget
+                        .downcast_ref::<gtk::Label>()
+                        .is_some_and(|label| label.text() == "Clear shelf")
+                };
+                let clear = find_widget(&actions.child().expect("shelf actions"), &clear_caption)
+                    .expect("clear shelf command");
+                clear
+                    .ancestor(gtk::Button::static_type())
+                    .expect("clear shelf button")
+                    .emit_by_name::<()>("clicked", &[]);
+                second.close();
+                wait_until(|| !second.is_realized());
+            }
+        },
+    );
+}
+
+#[test]
+fn shelf_retains_unmoved_items_after_failed_and_cancelled_transfers() {
+    gtk_test(
+        "ui::window::composition::tabs::tests::shelf_retains_unmoved_items_after_failed_and_cancelled_transfers",
+        || {
+            use crate::{
+                services::{CancelledOperation, OperationEvent, PasteItem, TransferConflict},
+                test_support::operations::HeldOperations,
+            };
+            let (window, tabs) = open();
+            let root = tempfile::tempdir().expect("partial transfer fixture");
+            let view = tabs.active_browser();
+            load(&view, Location::local(root.path()));
+            gtk::prelude::WidgetExt::activate_action(&window, "win.show-shelf", None)
+                .expect("open shelf");
+            let floating = window
+                .application()
+                .expect("shelf application")
+                .windows()
+                .into_iter()
+                .find(|window| window.title().as_deref() == Some("Strata Shelf"))
+                .expect("floating shelf");
+            let card = floating.child().expect("shelf card");
+            let target = card
+                .observe_controllers()
+                .iter::<glib::Object>()
+                .filter_map(Result::ok)
+                .find_map(|controller| controller.downcast::<gtk::DropTarget>().ok())
+                .expect("shelf drop target");
+            let operations = Rc::new(HeldOperations::default());
+            let browser = view.browser();
+            browser.set_operation_provider(operations.clone());
+            for (completed_count, cancelled) in [(0, false), (1, false), (1, true)] {
+                let first = root.path().join("first.txt");
+                let second = root.path().join("second.txt");
+                std::fs::write(&first, "first").expect("first staged file");
+                std::fs::write(&second, "second").expect("second staged file");
+                let files = gdk::FileList::from_array(&[
+                    gio::File::for_path(&first),
+                    gio::File::for_path(&second),
+                ]);
+                let files = glib::BoxedValue(files.to_value());
+                assert!(target.emit_by_name::<bool>("drop", &[&files, &0.0f64, &0.0f64]));
+                let sources = [Location::local(&first), Location::local(&second)];
+                browser.transfer(
+                    Location::local(root.path().join("destination")),
+                    sources
+                        .iter()
+                        .cloned()
+                        .map(|source| PasteItem {
+                            source,
+                            conflict: TransferConflict::FailIfExists,
+                        })
+                        .collect(),
+                    true,
+                    false,
+                );
+                let id = browser.last_started_operation().expect("started transfer");
+                assert!(
+                    find_widget(&card, &|widget| {
+                        widget
+                            .downcast_ref::<gtk::MenuButton>()
+                            .is_some_and(|button| button.label().as_deref() == Some("2 items"))
+                    })
+                    .is_some(),
+                    "starting a move must not discard staged entries"
+                );
+                let completed = sources[..completed_count]
+                    .iter()
+                    .map(|source| {
+                        Location::uri(
+                            crate::adapters::gio_file_for_location(source)
+                                .uri()
+                                .to_string(),
+                        )
+                    })
+                    .collect();
+                let event = if cancelled {
+                    OperationEvent::Cancelled {
+                        request_id: id,
+                        result: CancelledOperation {
+                            completed,
+                            not_attempted: sources[completed_count..].to_vec(),
+                            ..Default::default()
+                        },
+                    }
+                } else {
+                    OperationEvent::TransferFailed {
+                        request_id: id,
+                        completed_locations: completed,
+                        message: "fixture transfer failure".into(),
+                    }
+                };
+                operations.emit(id, event);
+                let expected_count = if completed_count == 0 {
+                    "2 items"
+                } else {
+                    "1 item"
+                };
+                assert!(
+                    find_widget(&card, &|widget| {
+                        widget
+                            .downcast_ref::<gtk::MenuButton>()
+                            .is_some_and(|button| button.label().as_deref() == Some(expected_count))
+                    })
+                    .is_some()
+                );
+                let remaining_name = second
+                    .file_name()
+                    .expect("unmoved filename")
+                    .to_str()
+                    .expect("UTF-8 fixture name");
+                assert!(
+                    find_widget(&card, &|widget| {
+                        widget
+                            .downcast_ref::<gtk::Label>()
+                            .is_some_and(|label| label.text() == remaining_name)
+                    })
+                    .is_some(),
+                    "unmoved entries remain available"
+                );
+                if completed_count > 0 {
+                    assert!(
+                        find_widget(&card, &|widget| {
+                            widget
+                                .downcast_ref::<gtk::Label>()
+                                .is_some_and(|label| label.text() == "first.txt")
+                        })
+                        .is_none(),
+                        "confirmed moved entries must be removed"
+                    );
+                }
+                let clear = find_widget(&card, &|widget| {
+                    widget
+                        .downcast_ref::<gtk::Label>()
+                        .is_some_and(|label| label.text() == "Clear shelf")
+                })
+                .expect("clear shelf command");
+                clear
+                    .ancestor(gtk::Button::static_type())
+                    .expect("clear shelf button")
+                    .emit_by_name::<()>("clicked", &[]);
+            }
             window.destroy();
         },
     );

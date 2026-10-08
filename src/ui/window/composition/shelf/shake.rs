@@ -11,6 +11,17 @@ use std::{
 
 const POLL: Duration = Duration::from_millis(55);
 
+pub(super) struct ShakeListener {
+    positions: Receiver<(i32, i32)>,
+    _stop: mpsc::Sender<()>,
+}
+
+impl ShakeListener {
+    pub(super) fn latest(&self) -> Option<(i32, i32)> {
+        self.positions.try_iter().last()
+    }
+}
+
 #[derive(Clone)]
 pub(super) struct Hyprland {
     socket: PathBuf,
@@ -64,14 +75,22 @@ impl Hyprland {
         Some(response)
     }
 
-    pub(super) fn listen(self) -> Receiver<(i32, i32)> {
+    pub(super) fn listen(self) -> ShakeListener {
         let (send, receive) = mpsc::sync_channel(1);
+        let (stop, stopped) = mpsc::channel::<()>();
         thread::spawn(move || {
             let started = Instant::now();
             let mut shake = Shake::default();
             loop {
-                if let Some((x, y)) = self.cursor()
-                    && shake.sample(x, y, started.elapsed())
+                if !crate::ui::browser::file_drag_active() {
+                    shake.reset();
+                } else if let Some((x, y)) = self.cursor()
+                    && shake.sample_drag(
+                        x,
+                        y,
+                        started.elapsed(),
+                        crate::ui::browser::file_drag_active(),
+                    )
                     && matches!(
                         send.try_send((x, y)),
                         Err(mpsc::TrySendError::Disconnected(_))
@@ -79,10 +98,18 @@ impl Hyprland {
                 {
                     break;
                 }
-                thread::sleep(POLL);
+                if !matches!(
+                    stopped.recv_timeout(POLL),
+                    Err(mpsc::RecvTimeoutError::Timeout)
+                ) {
+                    break;
+                }
             }
         });
-        receive
+        ShakeListener {
+            positions: receive,
+            _stop: stop,
+        }
     }
 }
 
@@ -97,6 +124,18 @@ struct Shake {
 }
 
 impl Shake {
+    fn sample_drag(&mut self, x: i32, y: i32, now: Duration, drag_active: bool) -> bool {
+        if !drag_active {
+            self.reset();
+            return false;
+        }
+        self.sample(x, y, now)
+    }
+
+    fn reset(&mut self) {
+        *self = Self::default();
+    }
+
     fn sample(&mut self, x: i32, y: i32, now: Duration) -> bool {
         let previous = self.previous.replace((x, y, now));
         let Some((px, py, then)) = previous else {
@@ -135,30 +174,4 @@ impl Shake {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::Shake;
-    use std::time::Duration;
-
-    #[test]
-    fn horizontal_shake_opens_once_but_normal_motion_does_not() {
-        let mut shake = Shake::default();
-        for (index, x) in [0, 60, 15, 80].into_iter().enumerate() {
-            assert!(!shake.sample(x, 100, Duration::from_millis(index as u64 * 80)));
-        }
-        assert!(shake.sample(20, 100, Duration::from_millis(320)));
-        assert!(!shake.sample(80, 100, Duration::from_millis(400)));
-        assert!(!shake.sample(30, 100, Duration::from_millis(480)));
-    }
-
-    #[test]
-    fn vertical_and_slow_changes_do_not_trigger() {
-        let mut shake = Shake::default();
-        for (index, x) in [0, 50, 10, 60, 0, 80].into_iter().enumerate() {
-            assert!(!shake.sample(
-                x,
-                index as i32 * 100,
-                Duration::from_millis(index as u64 * 220)
-            ));
-        }
-    }
-}
+mod tests;

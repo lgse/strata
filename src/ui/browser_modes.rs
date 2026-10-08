@@ -3736,6 +3736,7 @@ fn install_list_drag_drop(
         .actions(gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE)
         .build();
     drag.set_propagation_phase(gtk::PropagationPhase::Capture);
+    super::browser::track_file_drag(&drag);
     let dragged_item = item.downgrade();
     let browser_for_drag = browser.clone();
     let map_for_drag = position_map.clone();

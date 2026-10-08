@@ -451,6 +451,7 @@ fn install_result_interactions(
         .actions(gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE)
         .propagation_phase(gtk::PropagationPhase::Capture)
         .build();
+    crate::ui::browser::track_file_drag(&drag);
     let weak_item = item.downgrade();
     let weak_widget = widget.downgrade();
     let selection_for_drag = selection.clone();

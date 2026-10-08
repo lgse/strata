@@ -29,7 +29,6 @@ pub(super) struct Header {
     pub(super) sidebar_toggle: gtk::ToggleButton,
     pub(super) search: gtk::Button,
     pub(super) settings: gtk::Button,
-    pub(super) shelf: gtk::Button,
     pub(super) close: gtk::Button,
 }
 
@@ -75,8 +74,6 @@ impl Header {
         let appearance =
             build_appearance_menu(browser, &browser.browser(), preferences.clone(), preview);
         let settings = header_action(icons::SETTINGS, "Settings");
-        let shelf = header_action(icons::BOX, "Show floating shelf");
-        crate::ui::accessibility::set_label(&shelf, "Show floating shelf");
         let close = header_action(icons::X, "Close window");
         let closing_window = window.downgrade();
         close.connect_clicked(move |_| {
@@ -92,7 +89,6 @@ impl Header {
         actions.append(&search);
         actions.append(&appearance);
         actions.append(&settings);
-        actions.append(&shelf);
         actions.append(&close);
         let content = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         content.set_hexpand(true);
@@ -107,7 +103,6 @@ impl Header {
             sidebar_toggle,
             search,
             settings,
-            shelf,
             close,
             actions,
             new_tab,

@@ -3243,40 +3243,88 @@ entry.preview-command-entry selection {
   background: @strata_surface;
   color: @strata_text;
   border: 1px solid @strata_border;
-  border-radius: 10px;
-  box-shadow: 0 8px 24px alpha(@strata_glow, 0.35);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px alpha(@strata_glow, 0.35);
   padding: 8px;
+  min-width: 210px;
 }
 
-.file-shelf.drop-destination {
-  background: alpha(@strata_accent, 0.14);
+.file-shelf:drop(active),
+.file-shelf-viewer:drop(active) > contents {
   border-color: @strata_accent;
+  background: alpha(@strata_accent, 0.14);
 }
 
 .file-shelf-bar {
-  padding: 0 4px;
+  padding: 0 2px 6px;
 }
 
-.file-shelf-title {
-  font-weight: 600;
+button.file-shelf-control.column-header-action,
+.file-shelf-control.column-header-action > button {
+  border-radius: 999px;
+  padding: 0;
+}
+
+.file-shelf-preview {
+  min-height: 120px;
+  color: @strata_text;
+}
+
+.file-shelf-preview-card {
+  background: @strata_surface;
+  color: @strata_text;
+  border: 1px solid @strata_border;
+  border-radius: 6px;
+  padding: 4px;
+  box-shadow: 0 2px 6px alpha(@strata_glow, 0.2);
+}
+
+.file-shelf-preview-back {
+  transform: translate(-13px, -8px) rotate(-9deg);
+}
+
+.file-shelf-preview-middle {
+  transform: translate(12px, -4px) rotate(7deg);
+}
+
+.file-shelf-preview-front {
+  transform: translate(0, 4px);
 }
 
 .file-shelf-hint {
   color: @strata_dim_text;
-  padding: 2px 4px 8px;
+  padding: 6px 4px 4px;
+  font-size: 0.9em;
 }
 
-.file-shelf-hint.file-shelf-error {
-  color: @strata_danger;
+.file-shelf-count.column-header-action > button {
+  background: @strata_highlight;
+  border-radius: 999px;
+  padding: 2px 12px;
 }
 
-.file-shelf-row {
+.file-shelf-items {
+  padding: 8px;
+}
+
+.file-shelf-items > flowboxchild {
+  background: @strata_surface;
+  color: @strata_text;
+  border-radius: 8px;
   padding: 4px;
-  border-bottom: 1px solid alpha(@strata_border, 0.5);
 }
 
-.file-shelf-actions {
-  padding-top: 6px;
+.file-shelf-items > flowboxchild:hover {
+  background: alpha(@strata_accent, 0.15);
+}
+
+.file-shelf-items > flowboxchild:focus-visible {
+  outline: 2px solid @strata_accent;
+}
+
+.file-shelf-item {
+  color: @strata_text;
+  padding: 4px;
 }
 
 .shortcut-footer {

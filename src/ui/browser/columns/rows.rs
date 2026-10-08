@@ -147,6 +147,7 @@ pub(super) fn column_rows(
                 .actions(gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE)
                 .build();
             drag.set_propagation_phase(gtk::PropagationPhase::Capture);
+            crate::ui::browser::track_file_drag(&drag);
             let weak_state_for_drag = weak_state.clone();
             let dragged_item = item.downgrade();
             let map_for_drag = map_for_hover.clone();

@@ -589,6 +589,7 @@ const DEFAULT_ACCELS: &[(&str, &[&str])] = &[
     ("win.jump-folder", &["<Control><Shift>k"]),
     ("win.open-terminal", &["<Primary><Alt>t"]),
     ("win.refresh", &["F5"]),
+    ("win.show-shelf", &["<Primary><Shift>space"]),
     ("win.toggle-arrow-scope", &["<Primary>backslash"]),
 ];
 

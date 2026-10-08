@@ -90,12 +90,17 @@ impl TabWindow {
             }
         });
         let retained = state.clone();
+        let application = window
+            .application()
+            .map(|application| application.downgrade());
         window.connect_unrealize(move |window| {
             PreferenceManager::shared().release_bindings_within(window);
             for tab in retained.tabs.take() {
                 tab.content.dispose();
             }
-            super::shelf::owner_closed(window);
+            if let Some(application) = application.as_ref().and_then(glib::WeakRef::upgrade) {
+                super::shelf::owner_closed(window, &application);
+            }
             for name in [
                 "search",
                 "jump-folder",

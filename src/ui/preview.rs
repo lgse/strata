@@ -3961,6 +3961,7 @@ fn install_preview_drag(widget: &impl IsA<gtk::Widget>, state: &Rc<PreviewState>
         .actions(gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE)
         .build();
     drag.set_propagation_phase(gtk::PropagationPhase::Capture);
+    super::browser::track_file_drag(&drag);
     let weak = Rc::downgrade(state);
     drag.connect_prepare(move |source, _, _| {
         let state = weak.upgrade()?;

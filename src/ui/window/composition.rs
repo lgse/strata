@@ -43,7 +43,8 @@ impl WindowContent {
         let header = layout::Header::new(window, &browser, &preview, preferences);
         let sidebar = super::build_sidebar(browser.clone(), preferences.clone(), false);
         let root = layout::browser_layout(&browser, &preview, &sidebar, &header);
-        shelf::install(window, &browser, &header.shelf);
+        let actions = gio::SimpleActionGroup::new();
+        shelf::install(window, &browser, &actions);
         let footer = layout::FooterBinding::new(window, &root, &browser, preferences);
         input::install_mouse_history(&root, &browser);
         crate::ui::scrolling::install_autoscroll_stop(&root);
@@ -59,7 +60,7 @@ impl WindowContent {
             overlay,
             blurred_root,
             footer,
-            actions: gio::SimpleActionGroup::new(),
+            actions,
             key_controllers: RefCell::new(Vec::new()),
         }
     }
