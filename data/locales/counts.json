@@ -146,7 +146,7 @@
   },
   "%{items} selected": {
     "en": "%{items} selected",
-    "fr": "Sélection : %{items}",
+    "fr": "Sélection : %{items}",
     "de": "%{items} ausgewählt",
     "es": "Selección: %{items}",
     "ja": "%{items}を選択",
@@ -262,7 +262,7 @@
     "ko": "작업 %{count}개 실행 중",
     "vi": "Đang chạy %{count} tác vụ",
     "it": "%{count} attività in esecuzione",
-    "ru": "Выполняется %{count} задача"
+    "ru": "Выполняется %{count} задание"
   },
   "counts.jobs_running.other": {
     "en": "%{count} jobs running",
@@ -274,7 +274,7 @@
     "ko": "작업 %{count}개 실행 중",
     "vi": "Đang chạy %{count} tác vụ",
     "it": "%{count} attività in esecuzione",
-    "ru": "Выполняется %{count} задач"
+    "ru": "Выполняется %{count} заданий"
   },
   "counts.jobs_running.few": {
     "en": "%{count} jobs running",
@@ -286,7 +286,7 @@
     "ko": "작업 %{count}개 실행 중",
     "vi": "Đang chạy %{count} tác vụ",
     "it": "%{count} attività in esecuzione",
-    "ru": "Выполняются %{count} задачи"
+    "ru": "Выполняются %{count} задания"
   },
   "counts.jobs_running.many": {
     "en": "%{count} jobs running",
@@ -298,7 +298,7 @@
     "ko": "작업 %{count}개 실행 중",
     "vi": "Đang chạy %{count} tác vụ",
     "it": "%{count} attività in esecuzione",
-    "ru": "Выполняется %{count} задач"
+    "ru": "Выполняется %{count} заданий"
   },
   "counts.jobs_finished.one": {
     "en": "%{count} job finished",
@@ -310,7 +310,7 @@
     "ko": "작업 %{count}개 완료",
     "vi": "Đã hoàn tất %{count} tác vụ",
     "it": "%{count} attività completata",
-    "ru": "%{count} задача завершена"
+    "ru": "%{count} задание завершено"
   },
   "counts.jobs_finished.other": {
     "en": "%{count} jobs finished",
@@ -322,7 +322,7 @@
     "ko": "작업 %{count}개 완료",
     "vi": "Đã hoàn tất %{count} tác vụ",
     "it": "%{count} attività completate",
-    "ru": "%{count} задач завершено"
+    "ru": "%{count} заданий завершено"
   },
   "counts.jobs_finished.few": {
     "en": "%{count} jobs finished",
@@ -334,7 +334,7 @@
     "ko": "작업 %{count}개 완료",
     "vi": "Đã hoàn tất %{count} tác vụ",
     "it": "%{count} attività completate",
-    "ru": "%{count} задачи завершены"
+    "ru": "%{count} задания завершены"
   },
   "counts.jobs_finished.many": {
     "en": "%{count} jobs finished",
@@ -346,7 +346,7 @@
     "ko": "작업 %{count}개 완료",
     "vi": "Đã hoàn tất %{count} tác vụ",
     "it": "%{count} attività completate",
-    "ru": "%{count} задач завершено"
+    "ru": "%{count} заданий завершено"
   },
   "counts.selected_items.one": {
     "en": "%{count} selected item",
@@ -494,7 +494,7 @@
   },
   "counts.selected_of_items.one": {
     "en": "%{selected} of %{count} item selected.",
-    "fr": "Sélection : %{selected} sur %{count} élément.",
+    "fr": "Sélection : %{selected} sur %{count} élément.",
     "de": "%{selected} von %{count} Element ausgewählt.",
     "es": "Selección: %{selected} de %{count} elemento.",
     "ja": "%{count}個の項目中%{selected}個を選択。",
@@ -506,7 +506,7 @@
   },
   "counts.selected_of_items.few": {
     "en": "%{selected} of %{count} items selected.",
-    "fr": "Sélection : %{selected} sur %{count} éléments.",
+    "fr": "Sélection : %{selected} sur %{count} éléments.",
     "de": "%{selected} von %{count} Elementen ausgewählt.",
     "es": "Selección: %{selected} de %{count} elementos.",
     "ja": "%{count}個の項目中%{selected}個を選択。",
@@ -518,7 +518,7 @@
   },
   "counts.selected_of_items.many": {
     "en": "%{selected} of %{count} items selected.",
-    "fr": "Sélection : %{selected} sur %{count} éléments.",
+    "fr": "Sélection : %{selected} sur %{count} éléments.",
     "de": "%{selected} von %{count} Elementen ausgewählt.",
     "es": "Selección: %{selected} de %{count} elementos.",
     "ja": "%{count}個の項目中%{selected}個を選択。",
@@ -530,7 +530,7 @@
   },
   "counts.selected_of_items.other": {
     "en": "%{selected} of %{count} items selected.",
-    "fr": "Sélection : %{selected} sur %{count} éléments.",
+    "fr": "Sélection : %{selected} sur %{count} éléments.",
     "de": "%{selected} von %{count} Elementen ausgewählt.",
     "es": "Selección: %{selected} de %{count} elementos.",
     "ja": "%{count}個の項目中%{selected}個を選択。",
