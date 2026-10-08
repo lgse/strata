@@ -24,7 +24,6 @@ pub(super) fn choice_menu<T: Copy + PartialEq + 'static>(
         .build();
     button.add_css_class("form-control");
     button.add_css_class("settings-choice");
-    crate::ui::accessibility::set_description(&button, Some(&crate::i18n::tr(title)));
     super::super::accessibility::set_label(&button, &crate::i18n::tr(title));
     let labels = choices.to_vec();
     manager.bind_preference(&button, read, move |widget, value| {
@@ -34,9 +33,10 @@ pub(super) fn choice_menu<T: Copy + PartialEq + 'static>(
             "choice menu value is not one of its listed choices"
         );
         if let Some(button) = widget.downcast_ref::<gtk::MenuButton>() {
-            button.set_label(&crate::i18n::tr(
-                label.map_or(labels[0].0, |(label, _)| *label),
-            ));
+            show_choice_value(
+                button,
+                &crate::i18n::tr(label.map_or(labels[0].0, |(label, _)| *label)),
+            );
         }
     });
     for &(label, value) in choices {
@@ -58,6 +58,13 @@ pub(super) fn choice_menu<T: Copy + PartialEq + 'static>(
         menu.append(&option);
     }
     button
+}
+
+/// A choice keeps its row title as its accessible name, so the value it shows
+/// is announced as the description.
+pub(super) fn show_choice_value(button: &gtk::MenuButton, value: &str) {
+    button.set_label(value);
+    crate::ui::accessibility::set_description(button, Some(value));
 }
 
 pub(super) fn bind_number(

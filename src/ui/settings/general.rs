@@ -17,7 +17,7 @@ use crate::{
 
 use super::{
     ResponsiveActivationRow, append_heading,
-    bindings::{bind_choice, bind_switch},
+    bindings::{bind_choice, bind_switch, show_choice_value},
     page_content, scrollable_page, settings_option,
 };
 
@@ -164,14 +164,10 @@ fn append_date_format_option(content: &gtk::Box, manager: &Rc<PreferenceManager>
         .build();
     button.add_css_class("form-control");
     button.add_css_class("settings-choice");
-    crate::ui::accessibility::set_description(
-        &button,
-        Some(&crate::i18n::tr("Modified date format")),
-    );
     crate::ui::accessibility::set_label(&button, &crate::i18n::tr("Modified date format"));
     manager.bind_preference(&button, PreferenceManager::date_format, |widget, format| {
         if let Some(button) = widget.downcast_ref::<gtk::MenuButton>() {
-            button.set_label(&crate::i18n::tr(date_format_label(format)));
+            show_choice_value(button, &crate::i18n::tr(date_format_label(format)));
         }
     });
     let mut examples = Vec::new();
@@ -891,7 +887,7 @@ fn video_preview_option(
         video_preview_control_state(manager.hardware_accelerated_video_previews());
     let (acceleration_row, toggle) =
         settings_option("Hardware-accelerated video previews", description, active);
-    let backend = video_preview_backend_control(manager, "Decoding backend", backend_sensitive);
+    let backend = video_preview_backend_control(manager, backend_sensitive);
     backend.add_css_class("settings-choice");
     toggle.set_sensitive(toggle_sensitive);
     let backend_row = super::control_row("Decoding backend", "", &backend);
@@ -905,7 +901,6 @@ fn video_preview_option(
 
 fn video_preview_backend_control(
     manager: &Rc<PreferenceManager>,
-    description: &str,
     backend_sensitive: bool,
 ) -> gtk::MenuButton {
     let selected_backend = manager.video_preview_backend();
@@ -938,10 +933,10 @@ fn video_preview_backend_control(
     backend.add_css_class("form-control");
     backend.set_sensitive(backend_sensitive);
     backend.set_valign(gtk::Align::Center);
-    backend.update_property(&[
-        gtk::accessible::Property::Label(&crate::i18n::tr("Video preview hardware backend")),
-        gtk::accessible::Property::Description(&crate::i18n::tr(description)),
-    ]);
+    crate::ui::accessibility::set_label(
+        &backend,
+        &crate::i18n::tr("Video preview hardware backend"),
+    );
     bind_video_preview_backend_menu(manager, &backend, options);
     backend
 }
@@ -956,7 +951,10 @@ fn bind_video_preview_backend_menu(
         PreferenceManager::video_preview_backend,
         |widget, selected| {
             if let Some(button) = widget.downcast_ref::<gtk::MenuButton>() {
-                button.set_label(&crate::i18n::tr(video_preview_backend_label(selected)));
+                show_choice_value(
+                    button,
+                    &crate::i18n::tr(video_preview_backend_label(selected)),
+                );
             }
         },
     );
