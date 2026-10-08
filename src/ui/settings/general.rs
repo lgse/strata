@@ -610,7 +610,9 @@ fn append_sidebar_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
         button.add_css_class("sidebar-place-chip");
         let content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         content.append(&crate::assets::primary_icon(icon, 16));
-        content.append(&gtk::Label::new(Some(&crate::i18n::tr(label))));
+        let label = gtk::Label::new(Some(&crate::i18n::tr(label)));
+        label.add_css_class("settings-word-wrap");
+        content.append(&label);
         button.set_child(Some(&content));
         button.update_property(&[
             gtk::accessible::Property::Label(&crate::i18n::tr(switch.title)),

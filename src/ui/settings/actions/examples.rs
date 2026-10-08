@@ -277,6 +277,7 @@ fn note(text: &str) -> gtk::Label {
     label.set_xalign(0.0);
     label.set_wrap(true);
     label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    crate::ui::controls::keep_words_whole(&label);
     label.set_max_width_chars(52);
     label.add_css_class("settings-option-description");
     label

@@ -322,7 +322,8 @@ fn is_hangul_syllable(character: char) -> bool {
     ('\u{ac00}'..='\u{d7a3}').contains(&character)
 }
 
-/// Byte ranges of the short space-separated words that contain Hangul. Pango allows a line
+/// Byte ranges of the short space-separated words that contain Hangul, and of the particle
+/// ending a longer word with the character before it. Pango allows a line
 /// break between any two Hangul syllables, but Korean wraps only between words.
 pub(super) fn korean_word_ranges(text: &str) -> Vec<Range<usize>> {
     let mut ranges = Vec::new();
@@ -342,9 +343,38 @@ pub(super) fn korean_word_ranges(text: &str) -> Vec<Range<usize>> {
             && word.chars().any(is_hangul_syllable)
         {
             ranges.push(word_start..index);
+        } else if let Some(attached) = attached_particle_start(word) {
+            ranges.push(word_start + attached..index);
         }
     }
     ranges
+}
+
+const MAX_PARTICLE_CHARS: usize = 6;
+
+/// For a long word ending in a particle such as "을(를)", "(으)로" or "에서", the byte offset
+/// of the character the particle attaches to, so the two stay on one line.
+fn attached_particle_start(word: &str) -> Option<usize> {
+    let is_particle_char = |character: char| {
+        is_hangul_syllable(character) || matches!(character, '(' | ')' | ':' | ',' | '.')
+    };
+    let mut suffix_start = word.len();
+    let mut suffix_chars = 0;
+    for (index, character) in word.char_indices().rev() {
+        if !is_particle_char(character) {
+            break;
+        }
+        suffix_start = index;
+        suffix_chars += 1;
+    }
+    let suffix = &word[suffix_start..];
+    if suffix_chars > MAX_PARTICLE_CHARS || !suffix.chars().any(is_hangul_syllable) {
+        return None;
+    }
+    word[..suffix_start]
+        .char_indices()
+        .next_back()
+        .map(|(index, _)| index)
 }
 
 pub(super) fn no_break_attribute(range: Range<usize>) -> gtk::pango::Attribute {

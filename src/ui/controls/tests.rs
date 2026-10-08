@@ -106,3 +106,13 @@ fn korean_words_are_kept_whole_except_long_runs() {
     assert!(korean_word_ranges(&"가나다".repeat(5)).is_empty());
     assert!(korean_word_ranges("Cannot create “readonly”").is_empty());
 }
+
+#[test]
+fn particles_after_long_names_stay_with_their_last_character() {
+    let text = "переноса_строк.txt을(를) /home/user/fx/readonly에서: archive.tar.gz.";
+    let words = korean_word_ranges(text)
+        .into_iter()
+        .map(|range| &text[range])
+        .collect::<Vec<_>>();
+    assert_eq!(words, ["t을(를)", "y에서:"]);
+}

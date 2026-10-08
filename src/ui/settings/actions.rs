@@ -655,6 +655,7 @@ impl EditorForm {
         root.add_css_class("settings-action-editor");
         let error = form_error_label();
         error.set_wrap(true);
+        crate::ui::controls::keep_words_whole(&error);
         error.set_max_width_chars(44);
         error.set_hexpand(true);
         error.set_valign(gtk::Align::Center);
