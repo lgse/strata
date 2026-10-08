@@ -404,6 +404,7 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
             assert!(!manager.show_keybinding_hints());
             assert!(manager.reduce_motion());
             assert!(!manager.element_glow());
+            assert!(manager.list_expandable_folders());
             let windows = [gtk::Window::new(), gtk::Window::new()];
             for enabled in [false, true, false] {
                 manager.set_element_glow(enabled);
@@ -474,7 +475,12 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
             assert_eq!(manager.browser_mode(), BrowserMode::List);
             assert_eq!(manager.browser_density(), BrowserDensity::Airy);
             assert!(manager.group_by_type());
-            for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
+            for mode in [
+                BrowserMode::Columns,
+                BrowserMode::Icons,
+                BrowserMode::List,
+                BrowserMode::Tree,
+            ] {
                 let activation = manager.click_activation(mode);
                 assert_eq!(activation.files, ClickCount::One);
                 assert_eq!(
@@ -741,6 +747,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_show_keybinding_hints(true),
                 |m| m.set_reduce_motion(false),
                 |m| m.set_element_glow(true),
+                |m| m.set_list_expandable_folders(false),
                 |m| m.set_omarchy_variant(OmarchyVariant::HighContrast),
                 |m| m.set_browser_mode(BrowserMode::Icons),
                 |m| m.set_browser_density(BrowserDensity::Compact),
@@ -763,6 +770,12 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                     m.set_click_activation(
                         BrowserMode::List,
                         crate::ui::browser_modes::ClickActivation::default_for(BrowserMode::List),
+                    )
+                },
+                |m| {
+                    m.set_click_activation(
+                        BrowserMode::Tree,
+                        crate::ui::browser_modes::ClickActivation::default_for(BrowserMode::Tree),
                     )
                 },
                 |m| m.set_sidebar_order(default_sidebar_order()),

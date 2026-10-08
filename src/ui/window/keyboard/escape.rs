@@ -29,6 +29,7 @@ impl Dispatcher {
             || self.view.clear_listing_filter()
             || self.view.dismiss_find_highlight()
             || self.view.leave_visual()
+            || self.view.dismiss_tree_selection()
             || self.close_open_preview(browser)
             || self.clear_selection(browser)
     }

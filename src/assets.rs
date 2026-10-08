@@ -111,6 +111,7 @@ pub mod icons {
     pub const LIBRARY: &str = "strata-library";
     pub const LIST: &str = "strata-list";
     pub const LIST_CHECKS: &str = "strata-list-checks";
+    pub const TREE: &str = "strata-list-tree";
     pub const LOCK: &str = "strata-lock";
     pub const LOCK_OPEN: &str = "strata-lock-open";
     pub const KEY: &str = "strata-key";

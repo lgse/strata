@@ -347,6 +347,7 @@ impl FooterBinding {
         let shortcuts = ShortcutFooter::new(browser.view_mode());
         shortcuts.bind_preferences(preferences);
         shortcuts.observe_browser(&browser.browser());
+        shortcuts.observe_tree_view(browser);
         let jobs = crate::ui::jobs::JobsIndicator::new();
         jobs.bind_window(window);
         shortcuts.set_activity(jobs.widget());

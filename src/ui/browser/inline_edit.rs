@@ -252,10 +252,23 @@ impl ViewState {
                 .borrow()
                 .get(depth)
                 .map(|column| column.list.clone().upcast()),
-            BrowserMode::List => self
+            BrowserMode::List => {
+                if self.mode_views.borrow().is_tree_active() {
+                    self.mode_views
+                        .borrow()
+                        .tree_rename_view()
+                        .map(|view| view.upcast())
+                } else {
+                    self.mode_views
+                        .borrow()
+                        .list_rename_view(depth)
+                        .map(|view| view.upcast())
+                }
+            }
+            BrowserMode::Tree => self
                 .mode_views
                 .borrow()
-                .list_rename_view(depth)
+                .tree_rename_view()
                 .map(|view| view.upcast()),
             BrowserMode::Icons => self.mode_views.borrow().icons_rename_view(depth),
         }
@@ -1123,10 +1136,43 @@ impl ViewState {
         true
     }
 
+    /// Opens the inline editor on the tree's focused row. The column model
+    /// never loads nested branches, so the entry comes from tree rows.
+    fn begin_tree_rename(self: &Rc<Self>) -> bool {
+        self.cancel_click_rename();
+        let views = self.mode_views.borrow();
+        let Some(entry) = views.tree_focused_entry() else {
+            self.cancel_new_entry();
+            return false;
+        };
+        drop(views);
+        if is_trash_location(&entry.location) {
+            return false;
+        }
+        let taking_over = self
+            .pending_new_entry
+            .borrow()
+            .as_ref()
+            .is_some_and(|pending| pending.created.borrow().as_ref() == Some(&entry.location));
+        if !taking_over {
+            self.cancel_new_entry();
+        }
+        let started = self.mode_views.borrow().tree_begin_rename(&entry);
+        if started && taking_over {
+            self.pending_new_entry.take();
+        }
+        started
+    }
+
     pub(super) fn begin_rename(self: &Rc<Self>) -> bool {
         self.cancel_click_rename();
         if self.rename_operation_pending() {
             return false;
+        }
+        // Tree rows resolve through the pane's own caches; the column model
+        // never loads nested branches.
+        if self.mode_views.borrow().is_tree_active() {
+            return self.begin_tree_rename();
         }
         self.sync_mode_selection();
         let Some((depth, source_position, entry)) = self.browser.rename_item() else {

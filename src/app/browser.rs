@@ -1159,6 +1159,13 @@ impl Browser {
         self.state.borrow().active_location()
     }
 
+    /// The file source backing directory loads. Views that lazily expand
+    /// hierarchy outside the entered column path (the tree view) enumerate
+    /// through the same source rather than the column loading pipeline.
+    pub fn file_source(&self) -> Rc<dyn FileSource> {
+        self.source.clone()
+    }
+
     pub(crate) fn navigation_generation(&self) -> u64 {
         self.validation_generation.get()
     }

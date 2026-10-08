@@ -91,7 +91,8 @@ pub(super) use crate::ui::browser::context_menu::{
 pub(super) use crate::ui::browser::desktop::{launch_terminal, open_location_at};
 pub(super) use crate::ui::browser::entry::{
     FOLDER_TYPE_GROUP, OTHER_TYPE_GROUP, entry_filter, entry_icon, entry_model_value,
-    format_file_size, icon_for_name, metadata_needs_fill, model_type_group, rounded_size_and_unit,
+    format_file_size, icon_for_name, metadata_needs_fill, model_is_hidden, model_type_group,
+    rounded_size_and_unit, with_filter_terms,
 };
 pub(crate) use crate::ui::browser::file_commands::{
     ConflictFocus, CreateRefusal, PinChange, TargetCommand, Yank, can_rename,
@@ -541,7 +542,12 @@ impl BrowserView {
         });
         let source_generation = Rc::new(Cell::new(0u64));
         let multiple_selection = Rc::new(Cell::new(multiple));
-        let mode_views = ModeViews::new(&scroller, browser.clone(), multiple_selection.clone());
+        let mode_views = ModeViews::new(
+            &scroller,
+            browser.clone(),
+            multiple_selection.clone(),
+            browser.file_source(),
+        );
         overlay.set_child(Some(&mode_views.widget()));
         let pending_submit = Rc::new(RefCell::new(None::<Rc<dyn Fn()>>));
         let pending_submit_cb = pending_submit.clone();
@@ -1027,6 +1033,7 @@ impl BrowserView {
                 let mode = match stack.visible_child_name().as_deref() {
                     Some("icons") => BrowserMode::Icons,
                     Some("list") => BrowserMode::List,
+                    Some("tree") => state.upgrade().map_or(BrowserMode::Tree, |s| s.mode.get()),
                     _ => BrowserMode::Columns,
                 };
                 if let Some(state) = state.upgrade() {
@@ -1041,6 +1048,14 @@ impl BrowserView {
         if mode == previous {
             return;
         }
+        // Carry root-row tree selection back into the column model so
+        // switching presentations never silently drops it.
+        let tree = self.state.mode_views.borrow().active_tree();
+        if let Some(tree) = tree {
+            let (positions, focused) = tree.export_root_selection();
+            let focused = focused.or_else(|| positions.last().copied());
+            self.state.browser.set_selection(0, &positions, focused);
+        }
         if mode == BrowserMode::Columns {
             self.state.cancel_peek();
             self.state.peek_anchor.take();
@@ -1051,12 +1066,12 @@ impl BrowserView {
         self.state.mode.set(mode);
         let filter = match previous {
             BrowserMode::Columns => self.state.capture_active_column_filter(),
-            BrowserMode::Icons | BrowserMode::List => {
+            BrowserMode::Icons | BrowserMode::List | BrowserMode::Tree => {
                 self.state.mode_views.borrow().capture_active_filter()
             }
         };
-        self.state.mode_views.borrow().show_mode(mode);
         self.state.mode_views.borrow_mut().prepare_mode(mode);
+        self.state.mode_views.borrow().show_mode(mode);
         if mode == BrowserMode::Columns {
             self.state.rebuild_columns_from(0);
             self.state.restore_active_column_filter(&filter);
@@ -1068,7 +1083,7 @@ impl BrowserView {
         }
         match previous {
             BrowserMode::Columns => self.state.truncate(0),
-            BrowserMode::Icons | BrowserMode::List => self
+            BrowserMode::Icons | BrowserMode::List | BrowserMode::Tree => self
                 .state
                 .mode_views
                 .borrow_mut()
@@ -1119,6 +1134,15 @@ impl BrowserView {
     }
 
     pub fn activate_focused(&self) {
+        if self.in_tree_mode() {
+            // Activation navigates and emits browser events; keep the
+            // mode_views borrow scoped to fetching the pane clone.
+            let tree = self.state.mode_views.borrow().active_tree();
+            if let Some(tree) = tree {
+                tree.activate_focused();
+            }
+            return;
+        }
         if self.view_mode() != BrowserMode::Columns {
             self.state.browser.activate_focused_in_place();
         } else {
@@ -1127,6 +1151,11 @@ impl BrowserView {
     }
 
     pub(in crate::ui) fn activate_directory_on_space(&self) -> bool {
+        if self.in_tree_mode() {
+            // Space is tree-local (expand folder / preview file), handled by
+            // the tree's own key controller.
+            return false;
+        }
         if let Some(entry) = self.selected_search_result() {
             if entry.is_directory() {
                 self.state.browser.navigate(entry.location);
@@ -1152,12 +1181,34 @@ impl BrowserView {
         self.state.mode_views.borrow().resume_native_selection()
     }
 
+    /// Footer/status refresh hook for tree selection changes, which never
+    /// reach the Browser event stream.
+    pub fn connect_tree_selection_changed(&self, handler: Rc<dyn Fn()>) {
+        self.state
+            .mode_views
+            .borrow()
+            .connect_tree_selection_changed(handler);
+    }
+
     pub fn navigate_left(&self) {
+        if self.in_tree_mode() {
+            self.state.mode_views.borrow().tree_collapse_focused();
+            return;
+        }
         if self.view_mode() != BrowserMode::Columns {
             self.state.browser.parent();
         } else {
             self.state.browser.focus_parent();
         }
+    }
+
+    /// Tree outline keys for normal-mode arrows.
+    pub fn expand_tree_row(&self) -> bool {
+        self.state.mode_views.borrow().tree_expand_focused()
+    }
+
+    pub fn collapse_tree_row(&self) -> bool {
+        self.state.mode_views.borrow().tree_collapse_focused()
     }
 
     pub fn synchronize_native_selection(&self, extend: bool) {
@@ -1428,6 +1479,11 @@ impl BrowserView {
     }
 
     fn new_entry_parent(&self) -> Option<(usize, Location)> {
+        // Tree creation targets the focused folder without touching the
+        // column stack, which always stays on the tree root.
+        if self.in_tree_mode() {
+            return self.tree_destination().map(|location| (0, location));
+        }
         let depth = if self.view_mode() == BrowserMode::Columns {
             new_folder_destination_depth(
                 self.state.focused_column_depth(),
@@ -1510,6 +1566,10 @@ impl BrowserView {
 
     fn paste_location(&self) -> Option<Location> {
         self.state.sync_mode_selection();
+        if self.in_tree_mode() {
+            let selected = self.tree_command_entries().unwrap_or_default();
+            return paste_destination(&selected, self.tree_destination(), false);
+        }
         let selected = if self.state.browser.selected_count() == 1 {
             self.state.browser.selected_entries()
         } else {
@@ -1529,7 +1589,8 @@ impl BrowserView {
     pub fn copy_selection(&self) -> bool {
         let entries = self.selected_search_results().unwrap_or_else(|| {
             self.state.sync_mode_selection();
-            self.state.browser.transfer_entries()
+            self.tree_command_entries()
+                .unwrap_or_else(|| self.state.browser.transfer_entries())
         });
         if entries.is_empty() {
             return false;
@@ -1540,7 +1601,9 @@ impl BrowserView {
 
     pub fn duplicate_selection(&self) -> bool {
         self.state.sync_mode_selection();
-        let entries = self.state.browser.transfer_entries();
+        let entries = self
+            .tree_command_entries()
+            .unwrap_or_else(|| self.state.browser.transfer_entries());
         let Some((destination, sources)) = duplicate_transfer(&entries) else {
             return false;
         };
@@ -1551,7 +1614,8 @@ impl BrowserView {
     pub fn cut_selection(&self) -> bool {
         let entries = self.selected_search_results().unwrap_or_else(|| {
             self.state.sync_mode_selection();
-            self.state.browser.transfer_entries()
+            self.tree_command_entries()
+                .unwrap_or_else(|| self.state.browser.transfer_entries())
         });
         if entries.is_empty() {
             return false;
@@ -1561,9 +1625,14 @@ impl BrowserView {
 
     pub fn copy_path(&self) -> bool {
         self.state.sync_mode_selection();
-        let entries = self.state.browser.selected_entries();
+        let entries = self
+            .tree_command_entries()
+            .unwrap_or_else(|| self.state.browser.selected_entries());
         if entries.is_empty() {
-            let Some(entry) = self.state.browser.focused_entry() else {
+            let Some(entry) = self
+                .tree_focused_entry()
+                .or_else(|| self.state.browser.focused_entry())
+            else {
                 return false;
             };
             copy_locations(&[entry]);
@@ -1575,7 +1644,10 @@ impl BrowserView {
 
     pub fn pin_focused(&self) {
         self.state.sync_mode_selection();
-        let Some(entry) = self.state.browser.focused_entry() else {
+        let Some(entry) = self
+            .tree_focused_entry()
+            .or_else(|| self.state.browser.focused_entry())
+        else {
             return;
         };
         let status = self
@@ -1611,6 +1683,9 @@ impl BrowserView {
 
     pub fn select_focused_pane(&self) -> bool {
         self.keyboard_navigation();
+        if self.in_tree_mode() {
+            return self.state.mode_views.borrow().tree_select_all();
+        }
         let Some(depth) = self.focused_listing_depth() else {
             return false;
         };
@@ -1620,6 +1695,9 @@ impl BrowserView {
 
     pub fn invert_focused_pane(&self) -> bool {
         self.keyboard_navigation();
+        if self.in_tree_mode() {
+            return self.state.mode_views.borrow().tree_invert_selection();
+        }
         let Some(depth) = self.focused_listing_depth() else {
             return false;
         };
@@ -1632,6 +1710,9 @@ impl BrowserView {
             return toggled;
         }
         self.keyboard_navigation();
+        if self.in_tree_mode() {
+            return self.state.mode_views.borrow().tree_toggle_selection();
+        }
         let Some(depth) = self.focused_listing_depth() else {
             return false;
         };
@@ -1652,6 +1733,9 @@ impl BrowserView {
             return toggled;
         }
         self.keyboard_navigation();
+        if self.in_tree_mode() {
+            return self.state.mode_views.borrow().tree_toggle_visual();
+        }
         let Some(depth) = self.focused_listing_depth() else {
             return false;
         };
@@ -1668,7 +1752,18 @@ impl BrowserView {
     }
 
     pub fn leave_visual(&self) -> bool {
-        self.leave_result_visual() || self.state.browser.leave_visual()
+        let tree_active =
+            self.in_tree_mode() && self.state.mode_views.borrow().tree_visual_active();
+        if tree_active {
+            self.state.mode_views.borrow().tree_clear_visual();
+        }
+        self.leave_result_visual() || self.state.browser.leave_visual() || tree_active
+    }
+
+    /// Clears tree marks and ranges for Escape. Reports whether anything was
+    /// held; the column selection is already empty in tree mode.
+    pub fn dismiss_tree_selection(&self) -> bool {
+        self.in_tree_mode() && self.state.mode_views.borrow().tree_clear_selection()
     }
 
     pub(in crate::ui) fn end_tenxer_session(&self) {
@@ -1814,10 +1909,52 @@ impl BrowserView {
         }
     }
 
+    pub(in crate::ui) fn in_tree_mode(&self) -> bool {
+        self.state.mode_views.borrow().is_tree_active()
+    }
+
+    /// Verb targets resolved from tree rows at any level. `Some` exactly in
+    /// tree mode; mirrors `command_entries` fill-or-cursor semantics.
+    pub(in crate::ui) fn tree_command_entries(&self) -> Option<Vec<FileEntry>> {
+        if !self.in_tree_mode() {
+            return None;
+        }
+        self.state.mode_views.borrow().tree_command_entries()
+    }
+
+    pub(in crate::ui) fn tree_focused_entry(&self) -> Option<FileEntry> {
+        if !self.in_tree_mode() {
+            return None;
+        }
+        self.state.mode_views.borrow().tree_focused_entry()
+    }
+
+    /// Tree selection without cursor fallback, for status counts.
+    pub(in crate::ui) fn tree_selected_entries(&self) -> Option<Vec<FileEntry>> {
+        let views = self.state.mode_views.try_borrow().ok()?;
+        views
+            .is_tree_active()
+            .then(|| views.tree_selected_entries())
+            .flatten()
+    }
+
+    /// Paste/create destination: the focused folder itself, else its parent.
+    fn tree_destination(&self) -> Option<Location> {
+        if !self.in_tree_mode() {
+            return None;
+        }
+        self.state.mode_views.borrow().tree_destination()
+    }
+
     pub fn open_terminal(&self) {
         self.state.sync_mode_selection();
-        let selected = self.state.browser.selected_entries();
+        let selected = self
+            .tree_command_entries()
+            .unwrap_or_else(|| self.state.browser.selected_entries());
         let location = selected_terminal_location(&selected).or_else(|| {
+            if self.in_tree_mode() {
+                return self.tree_destination();
+            }
             let mode = self.view_mode();
             let depth = if mode == BrowserMode::Columns {
                 self.state.destination_depth()
@@ -1857,12 +1994,17 @@ impl BrowserView {
             return true;
         }
         self.state.sync_mode_selection();
-        let selected = self.state.browser.selected_entries();
+        let selected = self
+            .tree_command_entries()
+            .unwrap_or_else(|| self.state.browser.selected_entries());
         if selected.len() > 1 {
             self.state.show_selection_properties(selected);
             return true;
         }
-        let Some(entry) = self.state.browser.focused_entry() else {
+        let Some(entry) = self
+            .tree_focused_entry()
+            .or_else(|| self.state.browser.focused_entry())
+        else {
             return false;
         };
         self.state.show_entry_properties(entry);
@@ -1876,6 +2018,8 @@ impl BrowserView {
     pub fn confirm_delete(&self, permanent: bool) -> bool {
         self.state.sync_mode_selection();
         let entries = if let Some(entries) = self.selected_search_results() {
+            entries
+        } else if let Some(entries) = self.tree_command_entries() {
             entries
         } else if self.view_mode() == BrowserMode::Columns {
             self.focused_listing_depth()
@@ -2029,7 +2173,7 @@ impl BrowserView {
                         })
                 })
             }
-            BrowserMode::Icons | BrowserMode::List => {
+            BrowserMode::Icons | BrowserMode::List | BrowserMode::Tree => {
                 self.state.mode_views.borrow().filter_has_focus()
             }
         }
@@ -2142,6 +2286,14 @@ impl BrowserView {
             return false;
         };
         let page = super::scrolling::page(&view, &scroll);
+        if self.in_tree_mode() {
+            self.keyboard_navigation();
+            let views = self.state.mode_views.borrow();
+            if extend {
+                return views.tree_page_extend(direction, page.items.max(1));
+            }
+            return views.tree_move_focus(direction, page.items.max(1));
+        }
         self.state.mode_views.borrow().suppress_focus_scroll();
         if extend {
             let order = self
@@ -2206,6 +2358,15 @@ impl BrowserView {
         }
         self.keyboard_navigation();
         let steps = steps.max(1);
+        // The tree owns its cursor: the column model only ever loads the
+        // tree root, so Browser cursor moves would wander invisibly.
+        if self.in_tree_mode() {
+            self.state
+                .mode_views
+                .borrow()
+                .tree_move_focus(direction, steps);
+            return;
+        }
         // Filter results replace the directory; its hidden cursor stays put.
         if self.step_filter_results(direction, steps, true) {
             return;
@@ -2282,6 +2443,14 @@ impl BrowserView {
     /// Moves the focus to the first or last visible entry of the active pane, for
     /// `Ctrl+Up` and `Ctrl+Down`.
     pub fn jump_selection(&self, direction: i32) -> bool {
+        if self.in_tree_mode() {
+            self.keyboard_navigation();
+            return self
+                .state
+                .mode_views
+                .borrow()
+                .tree_move_focus(direction, usize::MAX);
+        }
         let focused = self.state.overlay.root().and_then(|root| root.focus());
         let Some((view, scroll)) = focused
             .as_ref()
@@ -2303,6 +2472,14 @@ impl BrowserView {
     }
 
     pub fn jump_parked_selection(&self, direction: i32) -> bool {
+        if self.in_tree_mode() {
+            return self.item_view_has_focus()
+                && self
+                    .state
+                    .mode_views
+                    .borrow()
+                    .tree_move_focus(direction, usize::MAX);
+        }
         if !self.item_view_has_focus()
             || !self
                 .state

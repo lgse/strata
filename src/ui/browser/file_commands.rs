@@ -71,6 +71,9 @@ impl BrowserView {
             }
             return self.selected_search_result().into_iter().collect();
         }
+        if let Some(entries) = self.tree_command_entries() {
+            return entries;
+        }
         self.state.sync_mode_selection();
         self.focused_listing_depth()
             .map(|depth| self.state.browser.command_entries(depth))
@@ -91,6 +94,9 @@ impl BrowserView {
     pub fn focused_target(&self) -> Option<FileEntry> {
         if self.selected_search_results().is_some() {
             return self.selected_search_result();
+        }
+        if let Some(entry) = self.tree_focused_entry() {
+            return Some(entry);
         }
         self.state.sync_mode_selection();
         self.focused_listing_depth()

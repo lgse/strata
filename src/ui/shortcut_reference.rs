@@ -164,6 +164,7 @@ fn navigation_title(mode: BrowserMode) -> &'static str {
         BrowserMode::Columns => "Columns navigation",
         BrowserMode::Icons => "Icons navigation",
         BrowserMode::List => "List navigation",
+        BrowserMode::Tree => "Tree navigation",
     }
 }
 
@@ -186,6 +187,11 @@ fn default_navigation(mode: BrowserMode) -> Vec<(&'static str, &'static str)> {
         BrowserMode::List => vec![
             ("↑ / ↓", "Move between file rows"),
             ("←", "Focus the visible sidebar"),
+            ("Backspace", "Go to the parent folder"),
+        ],
+        BrowserMode::Tree => vec![
+            ("↑ / ↓", "Move between tree rows"),
+            ("→ / ←", "Expand / collapse the focused folder"),
             ("Backspace", "Go to the parent folder"),
         ],
     };
@@ -222,6 +228,12 @@ fn tenxer_navigation(mode: BrowserMode, chooser: bool) -> Vec<(&'static str, &'s
                 "l / → on a file",
                 "Enter its preview; keys move into the drawer",
             ),
+        ],
+        BrowserMode::Tree => vec![
+            ("j / k / ↑ / ↓", "Next / previous row"),
+            ("l / →", "Expand the focused folder"),
+            ("h / ←", "Collapse, or move to the parent row"),
+            ("Backspace / Alt+↑", "Go to the parent folder"),
         ],
         BrowserMode::Icons => vec![
             ("h / j / k / l / ↑ ↓ ← →", "Move spatially between tiles"),

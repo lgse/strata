@@ -85,6 +85,8 @@ pub(in crate::ui) struct Preferences {
     reduce_motion: bool,
     #[serde(default = "default_enabled")]
     element_glow: bool,
+    #[serde(default)]
+    list_expandable_folders: bool,
     #[serde(default = "default_browser_mode")]
     browser_mode: String,
     #[serde(default = "default_browser_density")]
@@ -103,6 +105,10 @@ pub(in crate::ui) struct Preferences {
     list_file_clicks: u8,
     #[serde(default = "default_double_clicks", rename = "explorer_folder_clicks")]
     list_folder_clicks: u8,
+    #[serde(default = "default_file_clicks")]
+    tree_file_clicks: u8,
+    #[serde(default = "default_double_clicks")]
+    tree_folder_clicks: u8,
     #[serde(default = "default_sidebar_order")]
     sidebar_order: Vec<String>,
     #[serde(default = "default_enabled")]
@@ -225,6 +231,7 @@ impl Default for Preferences {
             show_keybinding_hints: true,
             reduce_motion: false,
             element_glow: true,
+            list_expandable_folders: false,
             browser_mode: default_browser_mode(),
             browser_density: default_browser_density(),
             group_by_type: false,
@@ -234,6 +241,8 @@ impl Default for Preferences {
             icons_folder_clicks: default_double_clicks(),
             list_file_clicks: default_file_clicks(),
             list_folder_clicks: default_double_clicks(),
+            tree_file_clicks: default_file_clicks(),
+            tree_folder_clicks: default_double_clicks(),
             sidebar_order: default_sidebar_order(),
             sidebar_show_home: true,
             sidebar_show_trash: true,
@@ -293,6 +302,7 @@ fn browser_mode_from_stored(value: &str) -> super::browser_modes::BrowserMode {
     match value {
         "icons" | "grid" => super::browser_modes::BrowserMode::Icons,
         "list" | "explorer" => super::browser_modes::BrowserMode::List,
+        "tree" => super::browser_modes::BrowserMode::Tree,
         _ => super::browser_modes::BrowserMode::Columns,
     }
 }
@@ -302,6 +312,7 @@ fn stored_browser_mode(mode: super::browser_modes::BrowserMode) -> &'static str 
         super::browser_modes::BrowserMode::Columns => "columns",
         super::browser_modes::BrowserMode::Icons => "icons",
         super::browser_modes::BrowserMode::List => "list",
+        super::browser_modes::BrowserMode::Tree => "tree",
     }
 }
 
@@ -617,6 +628,15 @@ impl PreferenceManager {
 
     pub fn set_render_documents_by_default(&self, enabled: bool) {
         self.preferences.borrow_mut().render_documents_by_default = enabled;
+        self.save_preferences();
+    }
+
+    pub fn list_expandable_folders(&self) -> bool {
+        self.preferences.borrow().list_expandable_folders
+    }
+
+    pub fn set_list_expandable_folders(&self, enabled: bool) {
+        self.preferences.borrow_mut().list_expandable_folders = enabled;
         self.save_preferences();
     }
 
@@ -1138,6 +1158,7 @@ impl PreferenceManager {
                 preferences.icons_folder_clicks,
             ),
             BrowserMode::List => (preferences.list_file_clicks, preferences.list_folder_clicks),
+            BrowserMode::Tree => (preferences.tree_file_clicks, preferences.tree_folder_clicks),
         };
         let defaults = ClickActivation::default_for(mode);
         ClickActivation {
@@ -1168,6 +1189,10 @@ impl PreferenceManager {
             BrowserMode::List => {
                 preferences.list_file_clicks = files;
                 preferences.list_folder_clicks = folders;
+            }
+            BrowserMode::Tree => {
+                preferences.tree_file_clicks = files;
+                preferences.tree_folder_clicks = folders;
             }
         }
         drop(preferences);

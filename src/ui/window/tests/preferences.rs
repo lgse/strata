@@ -493,6 +493,7 @@ fn browsing_preferences_stay_saved_but_unused_until_exit() {
             manager.set_type_to_search(true);
             manager.set_arrow_navigation_scoped(true);
             manager.set_columns_mirror_selection(true);
+            manager.set_list_expandable_folders(true);
             let open = OpenWindow::open();
             let directory = load_folder(&open);
             assert!(open.content.browser.columns_mirror_selection_enabled());
@@ -522,6 +523,7 @@ fn browsing_preferences_stay_saved_but_unused_until_exit() {
                 "Keep arrows in file list",
                 "Include subfolders",
                 "Mirror columns selection",
+                "Expandable folders in list view",
             ] {
                 let switch = switch_named(open.content.overlay(), title);
                 assert!(switch.is_active() && switch.is_sensitive());
@@ -534,12 +536,17 @@ fn browsing_preferences_stay_saved_but_unused_until_exit() {
             settle();
             assert!(manager.type_to_search());
             assert!(manager.arrow_navigation_scoped());
+            assert!(manager.list_expandable_folders());
             assert!(
                 open.content.browser.columns_mirror_selection_enabled(),
                 "10xer Columns keep saved mirroring"
             );
             assert_ne!(
                 description_named(open.content.overlay(), "Mirror columns selection"),
+                UNUSED_SUBTITLE
+            );
+            assert_ne!(
+                description_named(open.content.overlay(), "Expandable folders in list view"),
                 UNUSED_SUBTITLE
             );
             for title in [
@@ -587,6 +594,7 @@ fn browsing_preferences_stay_saved_but_unused_until_exit() {
                 "Keep arrows in file list",
                 "Include subfolders",
                 "Mirror columns selection",
+                "Expandable folders in list view",
             ] {
                 assert_ne!(
                     description_named(open.content.overlay(), title),
@@ -610,6 +618,8 @@ fn browsing_preferences_stay_saved_but_unused_until_exit() {
                     .any(|button| button.is_active()),
                 "type to search filters again after leaving 10xer"
             );
+            manager.set_list_expandable_folders(false);
+            manager.set_arrow_navigation_scoped(false);
             drop(directory);
         },
     );
@@ -695,6 +705,111 @@ fn ctrl_f_cannot_activate_hidden_filter_or_displace_existing_column_filter() {
             manager.set_tenxer_mode(false);
             settle();
             assert!(first_revealer.reveals_child());
+        },
+    );
+}
+
+#[test]
+fn saved_list_expandable_folders_restores_and_updates_across_windows() {
+    gtk_test(
+        "ui::window::tests::preferences::saved_list_expandable_folders_restores_and_updates_across_windows",
+        || {
+            write_settings("list_expandable_folders = true\n");
+            let manager = PreferenceManager::shared();
+            assert!(manager.list_expandable_folders());
+
+            let first = OpenWindow::open();
+            let second = OpenWindow::open();
+            assert!(settings_closed(&first));
+            assert!(settings_closed(&second));
+
+            let directory = load_folder(&first);
+            second
+                .content
+                .browser
+                .navigate_location(crate::model::Location::local(directory.path()));
+            wait_until(|| !column_loading(&second, 0));
+
+            first.content.browser.set_view_mode(BrowserMode::List);
+            second.content.browser.set_view_mode(BrowserMode::List);
+            wait_until(|| !column_loading(&first, 0));
+            wait_until(|| !column_loading(&second, 0));
+
+            assert!(first.content.browser.in_tree_mode());
+            assert!(second.content.browser.in_tree_mode());
+
+            manager.set_tenxer_mode(true);
+            settle();
+
+            assert!(
+                manager.list_expandable_folders(),
+                "saved preference preserved"
+            );
+            assert!(
+                first.content.browser.in_tree_mode(),
+                "tree mode remains active in 10xer mode"
+            );
+            assert!(
+                second.content.browser.in_tree_mode(),
+                "tree mode remains active in 10xer mode"
+            );
+
+            first.content.settings_button().emit_clicked();
+            second.content.settings_button().emit_clicked();
+            settle();
+
+            assert_ne!(
+                description_named(first.content.overlay(), "Expandable folders in list view"),
+                UNUSED_SUBTITLE
+            );
+            assert_ne!(
+                description_named(second.content.overlay(), "Expandable folders in list view"),
+                UNUSED_SUBTITLE
+            );
+
+            manager.set_tenxer_mode(false);
+            settle();
+
+            assert!(first.content.browser.in_tree_mode());
+            assert!(second.content.browser.in_tree_mode());
+            assert_ne!(
+                description_named(first.content.overlay(), "Expandable folders in list view"),
+                UNUSED_SUBTITLE
+            );
+
+            let first_switch =
+                switch_named(first.content.overlay(), "Expandable folders in list view");
+            let second_switch =
+                switch_named(second.content.overlay(), "Expandable folders in list view");
+            assert!(first_switch.is_active());
+            assert!(second_switch.is_active());
+
+            second_switch.set_active(false);
+            settle();
+
+            assert!(!manager.list_expandable_folders());
+            assert!(!first_switch.is_active());
+            assert!(!second_switch.is_active());
+            assert!(!first.content.browser.in_tree_mode());
+            assert!(!second.content.browser.in_tree_mode());
+
+            let saved = std::fs::read_to_string(settings_file()).expect("saved settings");
+            assert!(saved.contains("list_expandable_folders = false"), "{saved}");
+
+            first_switch.set_active(true);
+            settle();
+
+            assert!(manager.list_expandable_folders());
+            assert!(first_switch.is_active());
+            assert!(second_switch.is_active());
+            assert!(first.content.browser.in_tree_mode());
+            assert!(second.content.browser.in_tree_mode());
+
+            let saved = std::fs::read_to_string(settings_file()).expect("saved settings");
+            assert!(saved.contains("list_expandable_folders = true"), "{saved}");
+
+            manager.set_list_expandable_folders(false);
+            drop(directory);
         },
     );
 }

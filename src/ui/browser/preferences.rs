@@ -65,6 +65,14 @@ impl BrowserView {
                 if primed.replace(true) && !enabled {
                     view.end_tenxer_session();
                 }
+                view.state.mode_views.borrow_mut().refresh_list_mode();
+            },
+        );
+        self.bind_view_preference(
+            manager,
+            PreferenceManager::list_expandable_folders,
+            |view, _| {
+                view.state.mode_views.borrow_mut().refresh_list_mode();
             },
         );
         let interactive = self.state.interactive;

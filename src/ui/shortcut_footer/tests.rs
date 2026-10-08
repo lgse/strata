@@ -86,6 +86,7 @@ fn footer_tracks_modes_and_shields_files_while_open() {
                 BrowserMode::Columns => "COLUMNS NAVIGATION",
                 BrowserMode::Icons => "ICONS NAVIGATION",
                 BrowserMode::List => "LIST NAVIGATION",
+                BrowserMode::Tree => "TREE NAVIGATION",
             }
         );
         assert!(footer.widget().is_visible());

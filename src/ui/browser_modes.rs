@@ -29,6 +29,7 @@ use crate::{
 mod events;
 mod list_factory;
 mod navigation;
+pub(super) mod tree;
 
 use list_factory::{ListFactory, refresh_list_section};
 
@@ -38,7 +39,7 @@ const DEFAULT_ICONS_THUMBNAIL_SIZE: i32 = 64;
 const FALLBACK_ICONS_COLUMN_WIDTH: i32 = 120;
 
 #[derive(Clone)]
-struct ListColumnLayout {
+pub(super) struct ListColumnLayout {
     widths: Rc<Vec<Cell<i32>>>,
     cells: Rc<Vec<RefCell<Vec<glib::WeakRef<gtk::Widget>>>>>,
     name_manually_resized: Rc<Cell<bool>>,
@@ -107,6 +108,7 @@ pub enum BrowserMode {
     Columns,
     Icons,
     List,
+    Tree,
 }
 
 impl BrowserMode {
@@ -158,7 +160,7 @@ impl ClickActivation {
             files: ClickCount::Two,
             folders: match mode {
                 BrowserMode::Columns => ClickCount::One,
-                BrowserMode::Icons | BrowserMode::List => ClickCount::Two,
+                BrowserMode::Icons | BrowserMode::List | BrowserMode::Tree => ClickCount::Two,
             },
         }
     }
@@ -289,9 +291,9 @@ impl PaneSection {
     }
 }
 
-type ListSorting = Rc<HeadingSort>;
+pub(super) type ListSorting = Rc<HeadingSort>;
 
-struct HeadingSort {
+pub(super) struct HeadingSort {
     current: Cell<(SortKey, SortDirection)>,
     arrows: RefCell<Vec<(SortKey, gtk::Image)>>,
 }
@@ -384,14 +386,18 @@ pub struct ModeViews {
     stack: gtk::Stack,
     icons_root: gtk::Box,
     list_root: gtk::Box,
+    tree_page: gtk::Box,
     icons_panes: Vec<Pane>,
     list_pane: Option<Pane>,
+    tree_pane: Option<tree::TreePane>,
     list_navigation: RefCell<navigation::ListNavigation>,
     browser: Rc<Browser>,
+    source: Rc<dyn crate::services::FileSource>,
     single_click_previews: Rc<Cell<bool>>,
     multiple_selection: Rc<Cell<bool>>,
     icons_click_activation: Rc<Cell<ClickActivation>>,
     list_click_activation: Rc<Cell<ClickActivation>>,
+    tree_click_activation: Rc<Cell<ClickActivation>>,
     transfer_handler: TransferHandlerSlot,
     clipboard_marks: Rc<RefCell<ClipboardMarks>>,
     context_state: Rc<RefCell<Option<Weak<super::browser::ViewState>>>>,
@@ -415,6 +421,7 @@ impl ModeViews {
         columns: &gtk::ScrolledWindow,
         browser: Rc<Browser>,
         multiple_selection: Rc<Cell<bool>>,
+        source: Rc<dyn crate::services::FileSource>,
     ) -> Self {
         let icons_root = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         icons_root.add_css_class("mode-icons");
@@ -452,26 +459,38 @@ impl ModeViews {
         stack.add_named(columns, Some("columns"));
         stack.add_named(&icons_scroll, Some("icons"));
         stack.add_named(&list_scroll, Some("list"));
+        let tree_page = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        tree_page.set_hexpand(true);
+        tree_page.set_vexpand(true);
+        stack.add_named(&tree_page, Some("tree"));
         stack.set_visible_child_name("columns");
 
+        let single_click_previews = Rc::new(Cell::new(true));
+        let icons_click_activation =
+            Rc::new(Cell::new(ClickActivation::default_for(BrowserMode::Icons)));
+        let list_click_activation =
+            Rc::new(Cell::new(ClickActivation::default_for(BrowserMode::List)));
+        let tree_click_activation =
+            Rc::new(Cell::new(ClickActivation::default_for(BrowserMode::Tree)));
+        let clipboard_marks = Rc::new(RefCell::new(ClipboardMarks::new()));
         Self {
             stack,
             icons_root,
             list_root,
+            tree_page,
             icons_panes: Vec::new(),
             list_pane: None,
+            tree_pane: None,
             list_navigation: RefCell::new(navigation::ListNavigation::default()),
             browser,
-            single_click_previews: Rc::new(Cell::new(true)),
+            source,
+            single_click_previews,
             multiple_selection,
-            icons_click_activation: Rc::new(Cell::new(ClickActivation::default_for(
-                BrowserMode::Icons,
-            ))),
-            list_click_activation: Rc::new(Cell::new(ClickActivation::default_for(
-                BrowserMode::List,
-            ))),
+            icons_click_activation,
+            list_click_activation,
+            tree_click_activation,
             transfer_handler: Rc::new(RefCell::new(None)),
-            clipboard_marks: Rc::new(RefCell::new(ClipboardMarks::new())),
+            clipboard_marks,
             context_state: Rc::new(RefCell::new(None)),
             new_folder_state: RefCell::new(None),
             active_rename: Rc::new(RefCell::new(None)),
@@ -496,19 +515,36 @@ impl ModeViews {
             pane.filter.changed(gtk::FilterChange::Different);
             pane.search.set_show_hidden(show_hidden);
         }
+        if let Some(tree) = self.tree_pane.as_ref() {
+            tree.set_show_hidden(show_hidden);
+        }
     }
 
     pub fn mode(&self) -> BrowserMode {
         self.mode
     }
 
+    pub fn is_expandable_tree_active(&self) -> bool {
+        let prefs = super::preferences::PreferenceManager::shared();
+        prefs.list_expandable_folders()
+    }
+
+    pub fn is_tree_active(&self) -> bool {
+        self.mode == BrowserMode::Tree
+            || (self.mode == BrowserMode::List && self.is_expandable_tree_active())
+    }
+
     /// The marquee of the pane nearest the window's start edge, so chrome outside the
     /// panes can run a drag into whichever view the current mode shows.
     pub(super) fn leading_marquee(&self) -> Option<super::marquee::Marquee> {
+        if self.is_tree_active() {
+            return None;
+        }
         let pane = match self.mode {
             BrowserMode::Columns => return None,
             BrowserMode::Icons => self.icons_panes.first(),
             BrowserMode::List => self.list_pane.as_ref(),
+            BrowserMode::Tree => return None,
         }?;
         pane.search
             .active_marquee()
@@ -516,10 +552,14 @@ impl ModeViews {
     }
 
     fn single_pane(&self) -> Option<&Pane> {
+        if self.is_tree_active() {
+            return None;
+        }
         match self.mode {
             BrowserMode::Columns => None,
             BrowserMode::Icons => self.icons_panes.first(),
             BrowserMode::List => self.list_pane.as_ref(),
+            BrowserMode::Tree => None,
         }
     }
 
@@ -643,10 +683,17 @@ impl ModeViews {
     }
 
     pub fn selected_positions(&self) -> Option<(usize, Vec<usize>)> {
+        // The tree resolves verbs from its own row caches (including nested
+        // branches the column model never loads), so it never mirrors GTK
+        // selection back into the Browser fill.
+        if self.is_tree_active() {
+            return None;
+        }
         let pane = match self.mode {
             BrowserMode::Columns => return None,
             BrowserMode::Icons => self.icons_panes.first(),
             BrowserMode::List => self.list_pane.as_ref(),
+            BrowserMode::Tree => return None,
         }?;
         let mut positions: Vec<usize> = pane
             .item_sections()
@@ -720,6 +767,29 @@ impl ModeViews {
                 });
             }
         }
+        if let Some(tree) = self.tree_pane.as_ref() {
+            tree.bound_items().borrow_mut().retain(|bound| {
+                let (Some(item), Some(_widget)) = (bound.item.upgrade(), bound.widget.upgrade())
+                else {
+                    return false;
+                };
+                let Some(entry) = item
+                    .item()
+                    .and_downcast::<gtk::TreeListRow>()
+                    .and_then(|row| row.item())
+                    .and_then(|child| tree.entry_for_child(&child))
+                else {
+                    return true;
+                };
+                if (entry.location == *old_location
+                    || new_location.is_some_and(|location| location == &entry.location))
+                    && let Some(label) = bound.rename_label.upgrade()
+                {
+                    labels.push(label);
+                }
+                true
+            });
+        }
         labels
     }
 
@@ -753,6 +823,11 @@ impl ModeViews {
             if let Some(field) = pane.filter_entry.as_ref() {
                 field.set_text("");
             }
+        }
+        if depth == 0
+            && let Some(tree) = self.tree_pane.as_ref()
+        {
+            tree.set_filter_query(String::new());
         }
     }
 
@@ -812,10 +887,16 @@ impl ModeViews {
     }
 
     pub fn begin_search_rename(&self, depth: usize, entry: &FileEntry) -> bool {
+        // The tree opens its editor through begin_tree_rename with the
+        // focused row's entry, which the column model never loads.
+        if self.is_tree_active() {
+            return false;
+        }
         let pane = match self.mode {
             BrowserMode::Columns => return false,
             BrowserMode::Icons => self.icons_panes.iter().find(|pane| pane.depth == depth),
             BrowserMode::List => self.list_pane.as_ref().filter(|pane| pane.depth == depth),
+            BrowserMode::Tree => return false,
         };
         let Some(pane) = pane else {
             return false;
@@ -835,10 +916,15 @@ impl ModeViews {
 
     pub fn begin_rename(&self, depth: usize, source_position: usize, entry: &FileEntry) -> bool {
         self.cancel_rename();
+        // See begin_search_rename: tree renames start from focused rows.
+        if self.is_tree_active() {
+            return false;
+        }
         let pane = match self.mode {
             BrowserMode::Columns => return false,
             BrowserMode::Icons => self.icons_panes.iter().find(|pane| pane.depth == depth),
             BrowserMode::List => self.list_pane.as_ref().filter(|pane| pane.depth == depth),
+            BrowserMode::Tree => return false,
         };
         let Some(pane) = pane else {
             return false;
@@ -893,6 +979,58 @@ impl ModeViews {
                 }
             }));
         }
+        super::collection_edit::begin(
+            &self.active_rename,
+            entry.clone(),
+            target,
+            self.rename_submit(),
+        )
+    }
+
+    pub(in crate::ui) fn tree_rename_view(&self) -> Option<gtk::Widget> {
+        self.tree_pane
+            .as_ref()
+            .filter(|_| self.is_tree_active())
+            .map(|tree| tree.rename_view())
+    }
+
+    /// Opens the inline editor on the visible tree row showing `entry`.
+    /// Unlike `begin_rename`, the row may live in a branch the column model
+    /// never loads, so lookup runs against tree rows by location.
+    pub fn begin_tree_rename(&self, entry: &FileEntry) -> bool {
+        self.cancel_rename();
+        let Some(tree) = self.tree_pane.as_ref().filter(|_| self.is_tree_active()) else {
+            return false;
+        };
+        let Some((widgets, row, collection)) = tree.rename_target_for(&entry.location) else {
+            return false;
+        };
+        let mut target = super::collection_edit::EditTarget::from(widgets);
+        self.bind_rename_cancellation(&mut target, &entry.location);
+        let state = self.context_state.borrow().clone().unwrap_or_default();
+        let generation = state
+            .upgrade()
+            .map(|state| state.rename_reveal_generation());
+        let row = row.downgrade();
+        let scroll = collection
+            .ancestor(gtk::ScrolledWindow::static_type())
+            .and_downcast::<gtk::ScrolledWindow>()
+            .map(|scroll| scroll.downgrade());
+        target.reveal = Some(Rc::new(move |_| {
+            if state
+                .upgrade()
+                .map(|state| state.rename_reveal_generation())
+                != generation
+            {
+                return;
+            }
+            if let (Some(row), Some(scroll)) = (
+                row.upgrade(),
+                scroll.as_ref().and_then(|scroll| scroll.upgrade()),
+            ) {
+                super::browser::reveal_rename_row(&row, &scroll, None);
+            }
+        }));
         super::collection_edit::begin(
             &self.active_rename,
             entry.clone(),
@@ -995,6 +1133,12 @@ impl ModeViews {
 
     pub fn item_view_has_focus(&self) -> bool {
         let focused = self.stack.root().and_then(|root| root.focus());
+        if self.is_tree_active() {
+            return self
+                .tree_pane
+                .as_ref()
+                .is_some_and(|tree| tree.item_view_has_focus());
+        }
         self.icons_panes
             .iter()
             .chain(self.list_pane.iter())
@@ -1017,10 +1161,16 @@ impl ModeViews {
     }
 
     pub fn show_filter_with_query(&self, query: Option<&str>) -> bool {
+        // The tree has no filter chrome; explicit filter requests stay with
+        // the pane modes.
+        if self.is_tree_active() {
+            return false;
+        }
         let pane = match self.mode {
             BrowserMode::Columns => None,
             BrowserMode::Icons => self.icons_panes.first(),
             BrowserMode::List => self.list_pane.as_ref(),
+            BrowserMode::Tree => None,
         };
         let Some(pane) = pane else {
             return false;
@@ -1077,6 +1227,16 @@ impl ModeViews {
     }
 
     pub(crate) fn capture_active_filter(&self) -> super::browser::ActivePaneFilter {
+        if self.is_tree_active() {
+            return self
+                .tree_pane
+                .as_ref()
+                .map(|tree| super::browser::ActivePaneFilter {
+                    query: tree.filter_query_text(),
+                    revealed: false,
+                })
+                .unwrap_or_default();
+        }
         let Some(depth) = self.browser.active_depth() else {
             return super::browser::ActivePaneFilter::default();
         };
@@ -1097,6 +1257,12 @@ impl ModeViews {
     }
 
     pub(crate) fn restore_active_filter(&self, filter: &super::browser::ActivePaneFilter) {
+        if self.is_tree_active() {
+            if let Some(tree) = self.tree_pane.as_ref() {
+                tree.set_filter_query(filter.query.clone());
+            }
+            return;
+        }
         let Some(depth) = self.browser.active_depth() else {
             return;
         };
@@ -1155,7 +1321,14 @@ impl ModeViews {
         match mode {
             BrowserMode::Columns => {}
             BrowserMode::Icons => self.prepare_icons(),
-            BrowserMode::List => self.prepare_list(),
+            BrowserMode::List => {
+                if self.is_expandable_tree_active() {
+                    self.prepare_tree();
+                } else {
+                    self.prepare_list();
+                }
+            }
+            BrowserMode::Tree => self.prepare_tree(),
         }
     }
 
@@ -1219,8 +1392,28 @@ impl ModeViews {
         self.stack.set_visible_child_name(match mode {
             BrowserMode::Columns => "columns",
             BrowserMode::Icons => "icons",
-            BrowserMode::List => "list",
+            BrowserMode::List => {
+                if self.is_expandable_tree_active() {
+                    "tree"
+                } else {
+                    "list"
+                }
+            }
+            BrowserMode::Tree => "tree",
         });
+    }
+
+    pub fn refresh_list_mode(&mut self) {
+        if self.mode == BrowserMode::List {
+            self.show_mode(BrowserMode::List);
+            if self.is_expandable_tree_active() {
+                self.deactivate_list();
+                self.prepare_tree();
+            } else {
+                self.deactivate_tree();
+                self.prepare_list();
+            }
+        }
     }
 
     pub fn clear_inactive_mode(&mut self, mode: BrowserMode) {
@@ -1230,7 +1423,11 @@ impl ModeViews {
         match mode {
             BrowserMode::Columns => {}
             BrowserMode::Icons => self.deactivate_icons(),
-            BrowserMode::List => self.deactivate_list(),
+            BrowserMode::List => {
+                self.deactivate_list();
+                self.deactivate_tree();
+            }
+            BrowserMode::Tree => self.deactivate_tree(),
         }
     }
 
@@ -1246,6 +1443,93 @@ impl ModeViews {
         }
     }
 
+    fn deactivate_tree(&self) {
+        if let Some(tree) = self.tree_pane.as_ref() {
+            tree.clear_visual();
+            tree.deactivate();
+        }
+    }
+
+    fn prepare_tree(&mut self) {
+        if self.tree_pane.is_none() {
+            self.recreate_tree_pane();
+        }
+        if let Some(state) = self.context_state.borrow().as_ref().and_then(Weak::upgrade)
+            && let Some(tree) = self.tree_pane.as_ref()
+        {
+            tree.install_context_menus(&state);
+        }
+        self.rebuild_tree();
+        // Carry the column selection into the fresh outline for root rows.
+        if let Some(depth) = self.browser.active_depth()
+            && depth == 0
+            && let Some(tree) = self.tree_pane.as_ref()
+        {
+            tree.sync_root_selection(&self.browser.selected_positions(0));
+        }
+    }
+
+    /// Rebuilds the mirrored root from depth 0. The pane itself is recreated
+    /// when the root's trash state flips, so context-menu chrome baked at
+    /// install time never goes stale across navigation.
+    fn rebuild_tree(&mut self) {
+        let location = self.browser.location_at(0);
+        let current = self
+            .tree_pane
+            .as_ref()
+            .and_then(|tree| tree.root_location());
+        if location != current {
+            let trash_changed = location
+                .as_ref()
+                .is_some_and(super::browser::paths::is_trash_location)
+                != current
+                    .as_ref()
+                    .is_some_and(super::browser::paths::is_trash_location);
+            if trash_changed {
+                self.recreate_tree_pane();
+            }
+        }
+        let Some(tree) = self.tree_pane.clone() else {
+            return;
+        };
+        match location {
+            Some(location) => {
+                let entries = self
+                    .browser
+                    .with_column_entries(0, |entries| entries.to_vec())
+                    .unwrap_or_default();
+                tree.set_root(Some(location), entries.into_iter().map(Rc::new).collect());
+                let positions = self.browser.selected_positions(0);
+                tree.sync_root_selection(&positions);
+                if let Some(state) = self.context_state.borrow().as_ref().and_then(Weak::upgrade) {
+                    tree.install_context_menus(&state);
+                }
+            }
+            None => {
+                tree.set_root(None, Vec::new());
+                tree.sync_root_selection(&[]);
+            }
+        }
+    }
+
+    fn recreate_tree_pane(&mut self) {
+        if let Some(old) = self.tree_pane.take() {
+            self.tree_page.remove(&old.widget());
+        }
+        let tree = tree::TreePane::new(
+            &self.browser,
+            self.source.clone(),
+            self.single_click_previews.clone(),
+            self.tree_click_activation.clone(),
+            self.clipboard_marks.clone(),
+        );
+        if let Some(state) = self.context_state.borrow().as_ref().and_then(Weak::upgrade) {
+            tree.set_state(Rc::downgrade(&state));
+        }
+        self.tree_page.append(&tree.widget());
+        self.tree_pane = Some(tree);
+    }
+
     pub fn set_single_click_previews(&self, enabled: bool) {
         self.single_click_previews.set(enabled);
     }
@@ -1254,7 +1538,11 @@ impl ModeViews {
         match mode {
             BrowserMode::Columns => {}
             BrowserMode::Icons => self.icons_click_activation.set(activation),
-            BrowserMode::List => self.list_click_activation.set(activation),
+            BrowserMode::List => {
+                self.list_click_activation.set(activation);
+                self.tree_click_activation.set(activation);
+            }
+            BrowserMode::Tree => self.tree_click_activation.set(activation),
         }
     }
 
@@ -1267,7 +1555,10 @@ impl ModeViews {
     }
 
     pub fn set_context_state(&self, state: Weak<super::browser::ViewState>) {
-        self.context_state.replace(Some(state));
+        self.context_state.replace(Some(state.clone()));
+        if let Some(tree) = self.tree_pane.as_ref() {
+            tree.set_state(state);
+        }
     }
 
     pub fn connect_search_selection_changed(
@@ -1282,6 +1573,9 @@ impl ModeViews {
         for pane in self.icons_panes.iter().chain(self.list_pane.iter()) {
             refresh_mark_pane(pane, &self.browser, marks);
         }
+        if let Some(tree) = self.tree_pane.as_ref() {
+            tree.refresh_marks();
+        }
     }
 
     pub fn set_density(&mut self, density: BrowserDensity) {
@@ -1293,6 +1587,15 @@ impl ModeViews {
             root.remove_css_class("density-compact");
             root.remove_css_class("density-airy");
             root.add_css_class(match density {
+                BrowserDensity::Compact => "density-compact",
+                BrowserDensity::Airy => "density-airy",
+            });
+        }
+        if let Some(tree) = self.tree_pane.as_ref() {
+            let widget = tree.widget();
+            widget.remove_css_class("density-compact");
+            widget.remove_css_class("density-airy");
+            widget.add_css_class(match density {
                 BrowserDensity::Compact => "density-compact",
                 BrowserDensity::Airy => "density-airy",
             });
@@ -1325,10 +1628,14 @@ impl ModeViews {
     }
 
     fn visible_panes(&self) -> Vec<&Pane> {
+        if self.is_tree_active() {
+            return Vec::new();
+        }
         match self.mode {
             BrowserMode::Columns => Vec::new(),
             BrowserMode::Icons => self.icons_panes.iter().collect(),
             BrowserMode::List => self.list_pane.iter().collect(),
+            BrowserMode::Tree => Vec::new(),
         }
     }
 
@@ -1548,6 +1855,14 @@ impl ModeViews {
             }
             pane.search.refresh_result_highlights(find);
         }
+        if let Some(tree) = self.tree_pane.as_ref() {
+            let query = tree.filter_query_text();
+            for bound in tree.bound_items().borrow().iter() {
+                if let Some(label) = bound.rename_label.upgrade() {
+                    super::browser::find::highlight_listing_name(&label, find, &query);
+                }
+            }
+        }
     }
 
     pub fn view_position_in(&self, view: &gtk::Widget, depth: usize, source: usize) -> Option<u32> {
@@ -1564,6 +1879,24 @@ impl ModeViews {
 
     pub fn focus_visible_pane(&self, depth: usize) {
         if self.rename_is_active() {
+            return;
+        }
+        if self.is_tree_active() {
+            if depth == 0
+                && let Some(tree) = self.tree_pane.as_ref()
+            {
+                let position = self
+                    .browser
+                    .focused_item()
+                    .filter(|(focused_depth, _, _)| *focused_depth == 0)
+                    .and_then(|(_, source, _)| tree.flat_position_for_source(source));
+                match position {
+                    Some(position) => tree.focus_position(position),
+                    None => {
+                        tree.focus_view();
+                    }
+                }
+            }
             return;
         }
         let Some(pane) = self
@@ -1639,9 +1972,104 @@ impl ModeViews {
             .collect()
     }
 
+    /// Owned tree pane for callers that emit browser events: clone it out so
+    /// the mode_views borrow drops before the call re-enters handle().
+    /// Other wrappers return a neutral value unless tree mode is active, so
+    /// `BrowserView` arms stay one-liners.
+    pub(in crate::ui) fn active_tree(&self) -> Option<tree::TreePane> {
+        self.tree_pane.clone().filter(|_| self.is_tree_active())
+    }
+
+    pub(in crate::ui) fn tree_command_entries(&self) -> Option<Vec<FileEntry>> {
+        Some(self.active_tree()?.command_entries())
+    }
+
+    /// Selection only, without the cursor fallback: footer counts.
+    pub(in crate::ui) fn tree_selected_entries(&self) -> Option<Vec<FileEntry>> {
+        let selected = self.active_tree()?.selected_entries();
+        Some(selected)
+    }
+
+    pub(in crate::ui) fn tree_focused_entry(&self) -> Option<FileEntry> {
+        self.active_tree()?.focused_entry()
+    }
+
+    pub(in crate::ui) fn tree_destination(&self) -> Option<Location> {
+        self.active_tree()?.focused_directory()
+    }
+
+    pub(in crate::ui) fn tree_move_focus(&self, direction: i32, steps: usize) -> bool {
+        self.active_tree()
+            .is_some_and(|tree| tree.move_focus(direction, steps))
+    }
+
+    pub(in crate::ui) fn tree_collapse_focused(&self) -> bool {
+        self.active_tree()
+            .is_some_and(|tree| tree.collapse_focused())
+    }
+
+    pub(in crate::ui) fn tree_expand_focused(&self) -> bool {
+        self.active_tree().is_some_and(|tree| tree.expand_focused())
+    }
+
+    pub(in crate::ui) fn tree_toggle_selection(&self) -> bool {
+        self.active_tree()
+            .is_some_and(|tree| tree.toggle_focused_selection())
+    }
+
+    pub(in crate::ui) fn tree_select_all(&self) -> bool {
+        self.active_tree()
+            .is_some_and(|tree| tree.select_all_visible())
+    }
+
+    pub(in crate::ui) fn tree_invert_selection(&self) -> bool {
+        self.active_tree().is_some_and(|tree| tree.invert_visible())
+    }
+
+    pub(in crate::ui) fn tree_toggle_visual(&self) -> bool {
+        self.active_tree().is_some_and(|tree| tree.toggle_visual())
+    }
+
+    pub(in crate::ui) fn tree_visual_active(&self) -> bool {
+        self.active_tree().is_some_and(|tree| tree.visual_active())
+    }
+
+    pub(in crate::ui) fn tree_clear_visual(&self) {
+        if let Some(tree) = self.active_tree() {
+            tree.clear_visual();
+        }
+    }
+
+    pub(in crate::ui) fn tree_clear_selection(&self) -> bool {
+        self.active_tree()
+            .is_some_and(|tree| tree.clear_selection())
+    }
+
+    pub(in crate::ui) fn tree_page_extend(&self, direction: i32, items: usize) -> bool {
+        self.active_tree().is_some_and(|tree| {
+            tree.ensure_visual_anchor();
+            tree.move_focus(direction, items)
+        })
+    }
+
+    pub(in crate::ui) fn tree_begin_rename(&self, entry: &FileEntry) -> bool {
+        self.active_tree()
+            .is_some_and(|_| self.begin_tree_rename(entry))
+    }
+
+    pub(in crate::ui) fn connect_tree_selection_changed(&self, handler: Rc<dyn Fn()>) {
+        if let Some(tree) = self.tree_pane.as_ref() {
+            tree.connect_selection_changed(handler);
+        }
+    }
+
     fn panes_at(&self, depth: usize) -> Vec<&Pane> {
+        if self.is_tree_active() {
+            return Vec::new();
+        }
         match self.mode {
             BrowserMode::Columns => Vec::new(),
+            BrowserMode::Tree => Vec::new(),
             BrowserMode::Icons => self
                 .icons_panes
                 .iter()
@@ -1697,6 +2125,9 @@ impl ModeViews {
         depth: usize,
         position: Option<usize>,
     ) -> Option<crate::ui::browser::ContextMenuTarget> {
+        if self.is_tree_active() {
+            return self.tree_context_menu_target();
+        }
         let pane = self.panes_at(depth).into_iter().next()?;
         if pane.search.selected_entries().is_some() {
             if let Some(target) = pane.search.context_menu_target() {
@@ -1749,6 +2180,53 @@ impl ModeViews {
         self.icons_panes.clear();
     }
 
+    /// Keyboard menu-key target for the tree: the focused row's trigger and
+    /// anchor point.
+    fn tree_context_menu_target(&self) -> Option<crate::ui::browser::ContextMenuTarget> {
+        let tree = self.tree_pane.as_ref()?;
+        let trigger = tree.item_trigger()?;
+        let focused = self.stack.root().and_then(|root| root.focus());
+        let widget = tree.bound_items().borrow().iter().find_map(|bound| {
+            let widget = bound.widget.upgrade()?;
+            if focused.as_ref().is_some_and(|focused| {
+                widget == *focused || widget.is_ancestor(focused) || focused.is_ancestor(&widget)
+            }) {
+                Some(widget)
+            } else {
+                None
+            }
+        })?;
+        let view = tree.rename_view();
+        widget.compute_bounds(&view).map(|bounds| {
+            (
+                trigger,
+                f64::from(bounds.center().x()),
+                f64::from(bounds.center().y()),
+            )
+        })
+    }
+
+    /// Selection-aware verb targets for tree context menus. The column model
+    /// never loads nested branches, so membership resolves against tree rows.
+    pub(in crate::ui) fn tree_menu_entries(&self, target: Option<&Location>) -> Vec<FileEntry> {
+        let Some(tree) = self.tree_pane.as_ref() else {
+            return Vec::new();
+        };
+        let selected = tree.selected_entries();
+        if let Some(location) = target {
+            if selected.iter().any(|entry| entry.location == *location) {
+                return selected;
+            }
+            if let Some(entry) = tree.entry_for_location(location) {
+                return vec![entry];
+            }
+        }
+        if !selected.is_empty() {
+            return selected;
+        }
+        tree.focused_entry().into_iter().collect()
+    }
+
     fn clear_list(&mut self) {
         self.list_navigation.borrow_mut().cancel();
         if let Some(pane) = self.list_pane.as_ref() {
@@ -1796,6 +2274,10 @@ impl ModeViews {
     }
 
     fn rebuild_list(&mut self) {
+        if self.is_expandable_tree_active() {
+            self.rebuild_tree();
+            return;
+        }
         let Some(depth) = self.browser.active_depth() else {
             self.clear_list();
             return;
@@ -2754,7 +3236,7 @@ fn density_icons_columns(density: BrowserDensity) -> u32 {
     }
 }
 
-fn list_headings(
+pub(super) fn list_headings(
     browser: &Rc<Browser>,
     depth: usize,
     columns: ListColumnLayout,
@@ -2854,7 +3336,7 @@ fn list_headings(
     (headings, sorting)
 }
 
-fn register_list_column_cell(
+pub(super) fn register_list_column_cell(
     columns: &ListColumnLayout,
     index: usize,
     widget: &impl IsA<gtk::Widget>,
@@ -4610,7 +5092,7 @@ fn clear_box(container: &gtk::Box) {
     }
 }
 
-fn assemble_list_row() -> gtk::Box {
+pub(super) fn assemble_list_row() -> gtk::Box {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     row.add_css_class("list-row");
     let name_cell = gtk::Box::new(gtk::Orientation::Horizontal, 12);
@@ -4641,7 +5123,7 @@ fn assemble_list_row() -> gtk::Box {
     row
 }
 
-fn list_row_parts(
+pub(super) fn list_row_parts(
     row: &gtk::Box,
 ) -> Option<(
     super::thumbnail::ThumbnailSlot,
@@ -4783,11 +5265,11 @@ fn entry_size(entry: &FileEntry) -> String {
     }
 }
 
-fn entry_type(entry: &FileEntry) -> String {
+pub(super) fn entry_type(entry: &FileEntry) -> String {
     crate::services::entry_type_description(entry)
 }
 
-fn entry_mode(entry: &FileEntry) -> String {
+pub(super) fn entry_mode(entry: &FileEntry) -> String {
     match entry.mode {
         MetadataValue::Known(mode) => super::browser::format_permissions(mode),
         MetadataValue::Unknown | MetadataValue::Unavailable => String::new(),

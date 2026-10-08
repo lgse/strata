@@ -256,6 +256,12 @@ fn append_browsing_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) 
             write: PreferenceManager::set_columns_mirror_selection,
         },
         PreferenceSwitch {
+            title: "Expandable folders in list view",
+            description: "Show disclosure chevrons next to folders in list view to expand subfolders inline.",
+            read: PreferenceManager::list_expandable_folders,
+            write: PreferenceManager::set_list_expandable_folders,
+        },
+        PreferenceSwitch {
             title: "10xer mode",
             description: crate::ui::tenxer_mode::MODE_DESCRIPTION,
             read: PreferenceManager::tenxer_mode,

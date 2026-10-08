@@ -110,6 +110,7 @@ pub(super) fn view_name(mode: BrowserMode) -> &'static str {
         BrowserMode::Columns => "Columns view",
         BrowserMode::Icons => "Icons view",
         BrowserMode::List => "List view",
+        BrowserMode::Tree => "Tree view",
     }
 }
 

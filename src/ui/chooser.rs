@@ -2111,6 +2111,7 @@ fn chooser_footer(
     let footer = ShortcutFooter::new(view.view_mode());
     footer.bind_preferences(preferences);
     footer.observe_browser(&view.browser());
+    footer.observe_tree_view(view);
     let updated = footer.clone();
     view.connect_view_mode_changed(move |mode| updated.set_mode(mode));
     let holder = gtk::Box::new(gtk::Orientation::Vertical, 0);

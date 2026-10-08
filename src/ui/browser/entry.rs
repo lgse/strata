@@ -169,7 +169,10 @@ pub(super) fn entry_matches(value: &str, show_hidden: bool, query: &str) -> bool
         })
 }
 
-pub(super) fn with_filter_terms<R>(query: &str, apply: impl FnOnce(&mut PathMatcher) -> R) -> R {
+pub(in crate::ui) fn with_filter_terms<R>(
+    query: &str,
+    apply: impl FnOnce(&mut PathMatcher) -> R,
+) -> R {
     FILTER_TERMS.with_borrow_mut(|cached| {
         if cached.as_ref().is_none_or(|(cached, _)| cached != query) {
             *cached = Some((query.to_owned(), PathMatcher::new(&PathQuery::parse(query))));

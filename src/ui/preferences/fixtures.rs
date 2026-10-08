@@ -25,6 +25,7 @@ pub(in crate::ui) fn non_default_preferences() -> Preferences {
         show_keybinding_hints: false,
         reduce_motion: true,
         element_glow: false,
+        list_expandable_folders: true,
         browser_mode: "list".into(),
         browser_density: "airy".into(),
         group_by_type: true,
@@ -34,6 +35,8 @@ pub(in crate::ui) fn non_default_preferences() -> Preferences {
         icons_folder_clicks: 1,
         list_file_clicks: 1,
         list_folder_clicks: 1,
+        tree_file_clicks: 1,
+        tree_folder_clicks: 1,
         sidebar_order: vec![
             "recent".into(),
             "network".into(),

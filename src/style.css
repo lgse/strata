@@ -4615,6 +4615,7 @@ textview > popover.menu button.model:focus-visible,
 
 .file-row,
 .list-row,
+.tree-row,
 .preview-archive-row {
   outline: 1px solid transparent;
   outline-offset: -1px;
@@ -5751,6 +5752,32 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 .density-airy .file-row > .file-row-content {
   margin-bottom: 4px;
   margin-top: 4px;
+}
+
+treeexpander {
+  border-spacing: 4px;
+}
+
+treeexpander image {
+  color: @strata_dim_text;
+  min-width: 16px;
+  min-height: 16px;
+  margin-left: 2px;
+  margin-right: 2px;
+  transition: color 140ms ease-out;
+}
+
+treeexpander image:hover {
+  color: @strata_text;
+}
+
+.file-list-mode row:selected treeexpander image,
+.file-list-mode row:selected:hover treeexpander image {
+  color: @strata_text;
+}
+
+.tree-row {
+  min-height: 26px;
 }
 
 /* Settings uses its own grouped,

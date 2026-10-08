@@ -152,10 +152,42 @@ impl Dispatcher {
         {
             return Some(Propagation::Stop);
         }
+        if let Some(result) = self.tree_arrow_navigation(event) {
+            return Some(result);
+        }
         self.single_pane_navigation(event)
             .or_else(|| self.item_commands(browser, event))
             .or_else(|| self.selection_navigation(browser, event))
             .or_else(|| self.directory_navigation(browser, event))
+    }
+
+    /// Tree-local Left/Right: collapse/expand instead of pane navigation.
+    /// Runs before single-pane arrows so the tree keeps its outline keys.
+    fn tree_arrow_navigation(&self, event: &KeyEvent) -> Option<Propagation> {
+        if !self.view.in_tree_mode() || !self.view.item_view_has_focus() {
+            return None;
+        }
+        if !event.without(
+            Modifiers::CONTROL_MASK
+                | Modifiers::ALT_MASK
+                | Modifiers::SUPER_MASK
+                | Modifiers::SHIFT_MASK,
+        ) {
+            return None;
+        }
+        match event.key {
+            Key::Right | Key::KP_Right => {
+                self.view.keyboard_navigation();
+                self.view.expand_tree_row();
+                Some(Propagation::Stop)
+            }
+            Key::Left | Key::KP_Left => {
+                self.view.keyboard_navigation();
+                self.view.collapse_tree_row();
+                Some(Propagation::Stop)
+            }
+            _ => None,
+        }
     }
 
     fn single_pane_navigation(&self, event: &KeyEvent) -> KeyResult {
@@ -201,7 +233,10 @@ impl Dispatcher {
             && self.view.cross_type_group(direction, false)
         {
             Propagation::Stop
-        } else if event.vim_navigation {
+        } else if event.vim_navigation
+            || (self.view.in_tree_mode()
+                && event.without(Modifiers::CONTROL_MASK | Modifiers::SHIFT_MASK))
+        {
             crate::ui::focus_navigation::activate_native_arrow(&self.window, event.key);
             Propagation::Stop
         } else {
@@ -239,10 +274,14 @@ impl Dispatcher {
                     .without(Modifiers::SHIFT_MASK | Modifiers::SUPER_MASK)
                     && self.view.activate_directory_on_space();
                 if !activated_directory {
-                    self.preview.toggle(
-                        preview_target(browser.focused_entry()),
-                        browser.active_depth(),
-                    );
+                    // Tree focus never lands in the column model, so its
+                    // preview target resolves from tree rows first.
+                    let focused = self
+                        .view
+                        .tree_focused_entry()
+                        .or_else(|| browser.focused_entry());
+                    self.preview
+                        .toggle(preview_target(focused), browser.active_depth());
                 }
             }
             Key::BackSpace => self.view.navigate_up(),
@@ -279,14 +318,34 @@ impl Dispatcher {
             (Key::Right, true) => browser.forward(),
             (Key::Up, true) => browser.parent(),
             (Key::Home, true) => browser.navigate(Location::local(home_directory())),
-            (Key::j | Key::Down, false) => browser.move_selection(1),
-            (Key::k | Key::Up, false) => browser.move_selection(-1),
+            (Key::j, false) => {
+                // Vim keys bypass single-pane native handling, so route them
+                // into the outline; arrows keep native tree movement.
+                if self.view.in_tree_mode() {
+                    self.view.move_displayed_cursor(1, 1);
+                } else {
+                    browser.move_selection(1);
+                }
+            }
+            (Key::Down, false) => browser.move_selection(1),
+            (Key::k, false) => {
+                if self.view.in_tree_mode() {
+                    self.view.move_displayed_cursor(-1, 1);
+                } else {
+                    browser.move_selection(-1);
+                }
+            }
+            (Key::Up, false) => browser.move_selection(-1),
             (Key::h | Key::Left, false) => self.navigate_left(event),
             (Key::Right, false) if self.view.view_mode() == BrowserMode::Columns => {
                 browser.enter_focused_directory();
             }
             (Key::l | Key::Return | Key::KP_Enter, false) => self.view.activate_focused(),
-            (Key::Escape, false) => browser.escape(),
+            (Key::Escape, false) => {
+                if !self.view.dismiss_tree_selection() {
+                    browser.escape();
+                }
+            }
             _ => return None,
         }
         Some(Propagation::Stop)
@@ -542,6 +601,27 @@ impl Dispatcher {
     }
 
     fn tenxer_plain(&self, browser: &Rc<Browser>, key: Key) -> bool {
+        // Outline keys stay tree-local in and out of visual mode: h
+        // collapses, l expands. Focus moves extend the anchored range
+        // through the tree's own visual tracking. Enter opens, Backspace
+        // still climbs to the parent folder.
+        if self.view.in_tree_mode() {
+            match key {
+                Key::h | Key::Left | Key::KP_Left => {
+                    self.view.keyboard_navigation();
+                    if self.view.collapse_tree_row() {
+                        return true;
+                    }
+                }
+                Key::l | Key::Right | Key::KP_Right => {
+                    self.view.keyboard_navigation();
+                    if self.view.expand_tree_row() {
+                        return true;
+                    }
+                }
+                _ => {}
+            }
+        }
         match key {
             key if swallowed_on_hits(key) && self.view.listing_search_active() => {}
             Key::j | Key::Down | Key::KP_Down => self.view.move_displayed_cursor(1, 1),

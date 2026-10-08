@@ -285,7 +285,9 @@ impl Dispatcher {
         let entry = if self.view.selected_search_results().is_some() {
             self.view.selected_search_result()
         } else {
-            browser.focused_entry()
+            self.view
+                .tree_focused_entry()
+                .or_else(|| browser.focused_entry())
         };
         if entry.as_ref().is_none_or(|entry| entry.is_directory()) {
             return false;
@@ -309,7 +311,9 @@ impl Dispatcher {
         let entry = if search {
             self.view.selected_search_result()
         } else {
-            browser.focused_entry()
+            self.view
+                .tree_focused_entry()
+                .or_else(|| browser.focused_entry())
         };
         if let Some(directory) = entry.as_ref().filter(|entry| entry.is_directory()) {
             if search {

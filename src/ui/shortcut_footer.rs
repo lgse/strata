@@ -55,6 +55,7 @@ pub(super) struct ShortcutFooter {
     filter_source: FilterSource,
     filter_retry: Rc<Cell<bool>>,
     observed: Rc<RefCell<std::rc::Weak<crate::app::Browser>>>,
+    tree_view: Rc<RefCell<Option<crate::ui::browser::WeakBrowserView>>>,
     reference_scope: Rc<Cell<ReferenceScope>>,
 }
 
@@ -813,6 +814,7 @@ impl ShortcutFooter {
             filter_source: Rc::new(RefCell::new(None)),
             filter_retry: Rc::new(Cell::new(false)),
             observed: Rc::new(RefCell::new(std::rc::Weak::new())),
+            tree_view: Rc::new(RefCell::new(None)),
             reference_scope,
         };
         let keys = gtk::EventControllerKey::new();
@@ -970,6 +972,16 @@ impl ShortcutFooter {
         });
     }
 
+    /// Tree selection never reaches the Browser event stream, so the footer
+    /// observes the view directly for count updates in tree mode.
+    pub(in crate::ui) fn observe_tree_view(&self, view: &crate::ui::browser::BrowserView) {
+        self.tree_view.replace(Some(view.downgrade()));
+        let footer = self.clone();
+        view.connect_tree_selection_changed(std::rc::Rc::new(move || {
+            footer.schedule_filter_refresh();
+        }));
+    }
+
     /// Reports `source`'s filter in place of the directory count while one is
     /// active. Call [`Self::refresh_filter`] when it changes.
     pub(in crate::ui) fn observe_filter(
@@ -1004,8 +1016,21 @@ impl ShortcutFooter {
         self.current
             .set(status.as_ref().and_then(|status| status.current.as_deref()));
         let browser = self.observed.borrow().upgrade();
+        // Tree selection lives outside the column model; the count shows it
+        // in tree mode and the Browser fill everywhere else.
+        let tree_selected = self
+            .tree_view
+            .borrow()
+            .as_ref()
+            .and_then(|view| view.upgrade())
+            .and_then(|view| view.tree_selected_entries());
         if let Some(browser) = browser {
-            update_item_count(&self.count, &browser, status.as_ref());
+            update_item_count(
+                &self.count,
+                &browser,
+                status.as_ref(),
+                tree_selected.as_deref(),
+            );
             // A range over results is theirs; the hidden directory's never shows.
             let visual = match status.as_ref() {
                 Some(status) if status.visual.is_some() => status.visual,
@@ -1771,6 +1796,7 @@ fn update_item_count(
     label: &gtk::Label,
     browser: &Rc<crate::app::Browser>,
     filter: Option<&FilterStatus>,
+    tree_selected: Option<&[crate::model::FileEntry]>,
 ) {
     if let Some(filter) = filter {
         let noun = if filter.total() == 1 { "item" } else { "items" };
@@ -1787,6 +1813,28 @@ fn update_item_count(
         return;
     };
     let counts = browser.column_entry_counts(depth).unwrap_or_default();
+    if let Some(selected) = tree_selected {
+        let noun = if counts.total == 1 { "item" } else { "items" };
+        if selected.is_empty() {
+            label.set_label(&format!("{} {noun}", counts.total));
+            crate::ui::accessibility::set_description(
+                label,
+                Some(&file_folder_breakdown(counts.files, counts.folders)),
+            );
+        } else {
+            label.set_label(&selection_details(selected));
+            crate::ui::accessibility::set_description(
+                label,
+                Some(&format!(
+                    "{} of {} {noun} selected. Size includes selected files only; folder contents are not counted.",
+                    selected.len(),
+                    counts.total
+                )),
+            );
+        }
+        label.set_visible(true);
+        return;
+    }
     let selected_len = browser.selected_count();
     if selected_len > 0 && selected_len <= 64 {
         for position in browser.selected_positions(depth) {

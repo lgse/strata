@@ -790,12 +790,14 @@ pub(super) fn build_appearance_menu(
         current_mode == BrowserMode::List,
         true,
     );
+    let group_sensitive =
+        |mode: BrowserMode, expandable: bool| mode.supports_type_grouping() && !expandable;
     let grouped = preferences.group_by_type();
     let (group_by_type, group_check, _) = appearance_option(
         crate::assets::icons::LIST_CHECKS,
         "Group by file type",
         grouped,
-        current_mode.supports_type_grouping(),
+        group_sensitive(current_mode, preferences.list_expandable_folders()),
     );
     crate::ui::accessibility::set_description(
         &group_by_type,
@@ -806,6 +808,19 @@ pub(super) fn build_appearance_menu(
         PreferenceManager::group_by_type,
         |widget, enabled| widget.set_visible(enabled),
     );
+    {
+        let view_weak = view.downgrade();
+        let group_by_type = group_by_type.clone();
+        preferences.bind_preference(
+            &group_by_type,
+            PreferenceManager::list_expandable_folders,
+            move |widget, expandable| {
+                if let Some(view) = view_weak.upgrade() {
+                    widget.set_sensitive(group_sensitive(view.view_mode(), expandable));
+                }
+            },
+        );
+    }
     {
         let preferences = preferences.clone();
         let popover_weak = popover_weak.clone();
@@ -844,11 +859,13 @@ pub(super) fn build_appearance_menu(
         let list_check = list_check.clone();
         let group_by_type = group_by_type.clone();
         let button_icon = button_icon.clone();
+        let preferences = preferences.clone();
         view.connect_view_mode_changed(move |mode| {
             columns_check.set_visible(mode == BrowserMode::Columns);
             icons_check.set_visible(mode == BrowserMode::Icons);
             list_check.set_visible(mode == BrowserMode::List);
-            group_by_type.set_sensitive(mode.supports_type_grouping());
+            group_by_type
+                .set_sensitive(group_sensitive(mode, preferences.list_expandable_folders()));
             crate::assets::set_primary_icon(&button_icon, browser_mode_icon(mode));
         });
     }
@@ -1060,6 +1077,7 @@ fn browser_mode_icon(mode: BrowserMode) -> &'static str {
         BrowserMode::Columns => crate::assets::icons::COLUMNS,
         BrowserMode::Icons => crate::assets::icons::ICONS,
         BrowserMode::List => crate::assets::icons::LIST,
+        BrowserMode::Tree => crate::assets::icons::TREE,
     }
 }
 

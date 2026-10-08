@@ -1817,12 +1817,22 @@ pub(super) fn context_entries(
         };
     }
     if let Some((None, entry)) = target.borrow().as_ref() {
+        if state.mode_views.borrow().is_tree_active() {
+            return state
+                .mode_views
+                .borrow()
+                .tree_menu_entries(Some(&entry.location));
+        }
         return vec![entry.clone()];
     }
     state.sync_mode_selection();
     let entries = state.browser.selected_entries();
     let target = target.borrow();
     let Some((_, target)) = target.as_ref() else {
+        if state.mode_views.borrow().is_tree_active() {
+            drop(target);
+            return state.mode_views.borrow().tree_menu_entries(None);
+        }
         return entries;
     };
     if entries
