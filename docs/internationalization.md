@@ -21,7 +21,9 @@ for grammatical count forms and calendar data, and for an English word that need
 a different translation in one context. Those context keys are prefixed with their
 use and their English value is the plain word: `completion.complete`,
 `chooser.filter`, `permissions.group`, `archive.format`, `properties.pinned`,
-`release_channel.preview`, `build_kind.nightly`, and `action_icon.*`. All catalogs
+`release_channel.preview`, `build_kind.nightly`, and `action_icon.*`.
+`settings_keywords.<target id>` keys hold space-separated search synonyms for a
+Settings search target; their English value is the English alias list. All catalogs
 are build inputs; changing only a translation still rebuilds the embedded
 translations.
 
@@ -42,13 +44,27 @@ command, path, and accelerator. Escape untrusted values before inserting them
 into markup, just as for an untranslated markup string. Never translate inserted
 filenames, user-defined actions/themes, script output, or document contents.
 Join already translated list items with `i18n::list`, which uses the language's
-separator, rather than `join(", ")`.
+separator, rather than `join(", ")`. French values use a no-break space (U+00A0)
+inside « » and before ":", and a narrow no-break space (U+202F) before ";", "?"
+and "!", so lines never break between the mark and its word.
 
 Translate each string exactly once. The shared modal builders (`modal_layout`,
 `message_dialog_layout`) display their title, subtitle, and confirm label as given,
-so callers pass translated text. Do not compare translated text to choose
-behavior; pass an explicit kind instead. Keep internal or diagnostic errors that
-are never shown to users in English.
+so callers pass translated text. Do not pre-wrap dialog text:
+`controls::dialog_text` only normalizes spacing and keeps explicit line and
+paragraph breaks, and dialog labels use `WrapMode::WordChar` so Pango breaks
+scripts without spaces at valid positions. Do not compare translated text to
+choose behavior; pass an explicit kind instead. Keep internal or diagnostic errors
+that are never shown to users in English.
+
+Show I/O failures through `services::io_error_message` (`std::io::Error`, including
+rustix errnos converted with `.into()`) or `services::gio_error_message`
+(`glib::Error`), usually as the `%{error}` value of a translated sentence. They
+translate common failure kinds and otherwise fall back to the system or GIO text;
+`io_error_message` drops the `(os error N)` suffix and internal temporary paths.
+When an error type's
+`Display` is used in logs or tests, add a localized `user_message()` for the UI
+rather than changing `Display`.
 
 `i18n::count` selects the supported languages' integer plural categories.
 Russian distinguishes one/few/many, French and Brazilian Portuguese use the
@@ -69,10 +85,10 @@ Shortcut descriptions are translated when rendered and searched, while keycaps
 retain their accelerator spelling. Key-column contexts in the F1 reference are
 `%{keys} …` message templates, so translators can place the untranslated keycaps.
 
-External release notes, system/GIO descriptions and errors, and toolkit-owned
-controls may follow their provider or system language. Do not rewrite the
-process environment to translate them: spawned commands must retain the user's
-locale. Translations should be reviewed by native speakers, particularly longer
+External release notes, system/GIO descriptions, uncommon system errors, and
+toolkit-owned controls may follow their provider or system language. Do not
+rewrite the process environment to translate them: spawned commands must retain
+the user's locale. Translations should be reviewed by native speakers, particularly longer
 help text and destructive-operation confirmations.
 
 GTK uses Fontconfig fallback for characters absent from the selected font.
