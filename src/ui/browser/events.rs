@@ -41,6 +41,7 @@ impl ViewState {
                 | BrowserEvent::EntriesPublished { .. }
                 | BrowserEvent::EntriesSpliced { .. }
                 | BrowserEvent::SortingStarted { .. }
+                | BrowserEvent::ColumnReloading { .. }
                 | BrowserEvent::ColumnReloaded { .. }
                 | BrowserEvent::ColumnRefreshing { .. }
                 | BrowserEvent::HiddenToggled { .. }
@@ -617,7 +618,7 @@ impl ViewState {
                 self.refresh_destination_style();
                 self.mirror_focused_folder(*depth, *position);
             }
-            BrowserEvent::PreviewRequested { .. } => {}
+            BrowserEvent::ColumnReloading { .. } | BrowserEvent::PreviewRequested { .. } => {}
             BrowserEvent::ExtractRequested { entry } => {
                 if self.interactive {
                     self.extract_entry(entry.clone());

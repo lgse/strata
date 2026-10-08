@@ -40,6 +40,25 @@ struct PanePosition {
     viewport: Viewport,
 }
 
+/// Where keyboard focus was when a reload started.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum FocusOwner {
+    /// Elsewhere, or on filter results: the reload restores the viewport only.
+    Outside,
+    Items,
+    FilterEntry,
+}
+
+/// Where a restore may move focus, judged when the directory finished loading.
+#[derive(Clone, Copy, Default)]
+pub(super) struct RestoreFocus {
+    /// `ModeViews::listing_may_take_focus`.
+    pub(super) listing: bool,
+    /// The pane's filter field still has focus, or GTK already moved focus off it while
+    /// the reload hid it; a reload that started in the field returns there.
+    pub(super) filter_entry: bool,
+}
+
 #[derive(Clone)]
 enum PendingRestore {
     History {
@@ -47,12 +66,27 @@ enum PendingRestore {
         /// An explicit navigation, or the listing being left held focus or nothing did.
         takes_focus: bool,
     },
+    /// The model restores selection and cursor by identity across a reload; the view
+    /// brings back the viewport and the focus.
+    Reload { viewport: Viewport, focus: FocusOwner },
+}
+
+impl PendingRestore {
+    fn viewport(&self) -> Viewport {
+        match self {
+            Self::History { position, .. } => position.viewport,
+            Self::Reload { viewport, .. } => *viewport,
+        }
+    }
 }
 
 #[derive(Default)]
 pub(super) struct PaneNavigation {
     history: VecDeque<(Location, PanePosition)>,
     pending: Option<PendingRestore>,
+    /// The restore being applied. While it settles, leaving or reloading saves its
+    /// target rather than a half-restored viewport.
+    applying: Option<PendingRestore>,
     restoring: Rc<Cell<bool>>,
     input: Option<(glib::WeakRef<gtk::Widget>, gtk::EventControllerLegacy)>,
     leaving_with_focus: bool,
@@ -66,11 +100,19 @@ impl PaneNavigation {
     pub(super) fn cancel(&mut self) {
         self.restoring.set(false);
         self.pending = None;
+        self.applying = None;
     }
 
     /// The directory loaded and the restored viewport is settling.
     pub(super) fn is_settling(&self) -> bool {
         self.is_restoring() && self.pending.is_none()
+    }
+
+    fn settling_viewport(&self) -> Option<Viewport> {
+        self.applying
+            .as_ref()
+            .filter(|_| self.is_settling())
+            .map(PendingRestore::viewport)
     }
 
     /// Whether a pending history restore may move focus into the listing it rebuilds.
@@ -91,18 +133,51 @@ impl PaneNavigation {
     }
 
     pub(super) fn capture(&mut self, pane: &Pane, browser: &Browser, mode: BrowserMode) {
-        // Leaving during a load/layout must not replace a complete saved visit.
-        if self.is_restoring() {
-            return;
-        }
-        let Some((location, position)) = capture_position(pane, browser, mode) else {
+        let Some((location, mut position)) = capture_position(pane, browser, mode) else {
             return;
         };
+        if let Some(target) = self.settling_viewport() {
+            position.viewport = target;
+        }
         self.history.retain(|(saved, _)| *saved != location);
         self.history.push_back((location, position));
         if self.history.len() > HISTORY_LIMIT {
             self.history.pop_front();
         }
+    }
+
+    pub(super) fn capture_reload(
+        &mut self,
+        pane: &Pane,
+        browser: &Browser,
+        mode: BrowserMode,
+        focus: FocusOwner,
+    ) {
+        // During a burst of reloads the first capture wins.
+        if self.is_restoring() {
+            if self.pending.is_some() {
+                return;
+            }
+            if let Some(applying) = self.applying.take() {
+                self.pending = Some(match applying {
+                    PendingRestore::History { position, .. } => PendingRestore::Reload {
+                        viewport: position.viewport,
+                        focus,
+                    },
+                    reload @ PendingRestore::Reload { .. } => reload,
+                });
+                self.arm_input_cancel(pane);
+                return;
+            }
+        }
+        if loaded_location(pane, browser).is_none() {
+            return;
+        }
+        let Some(viewport) = Viewport::capture(pane, mode) else {
+            return;
+        };
+        self.pending = Some(PendingRestore::Reload { viewport, focus });
+        self.arm_input_cancel(pane);
     }
 
     pub(super) fn prepare(&mut self, pane: &Pane, snapshot: &BrowserColumnSnapshot) {
@@ -157,34 +232,45 @@ impl PaneNavigation {
         self.input = Some((pane.shell.upcast_ref::<gtk::Widget>().downgrade(), input));
     }
 
-    /// Restores a pending position after its directory loaded and returns whether one
-    /// was pending. Focus moves only when `may_take_focus`; selection, cursor and
-    /// viewport come back regardless.
+    /// Restores a pending position after its directory loaded. Returns the focus
+    /// owner the restore honoured, or `None` when nothing was pending. Focus moves
+    /// only as `allowed` permits; selection, cursor and viewport come back regardless.
     pub(super) fn restore(
         &mut self,
         pane: &Pane,
         browser: &Browser,
         mode: BrowserMode,
-        may_take_focus: bool,
-    ) -> bool {
-        let Some(PendingRestore::History {
-            position,
-            takes_focus,
-        }) = self.pending.take().filter(|_| self.is_restoring())
-        else {
-            return false;
-        };
+        allowed: RestoreFocus,
+    ) -> Option<FocusOwner> {
+        let pending = self.pending.take().filter(|_| self.is_restoring())?;
         let Some((vertical, horizontal)) = adjustments(pane, mode) else {
             self.cancel();
-            return false;
+            return None;
         };
-        let saved = position.viewport;
-        let focused = restore_selection(pane, browser, &position);
+        let (saved, focus, focused, may_take_focus) = match &pending {
+            PendingRestore::History {
+                position,
+                takes_focus,
+            } => (
+                position.viewport,
+                FocusOwner::Items,
+                restore_selection(pane, browser, position),
+                allowed.listing && *takes_focus,
+            ),
+            PendingRestore::Reload { viewport, focus } => (
+                *viewport,
+                *focus,
+                restore_reloaded_selection(pane, browser),
+                allowed.listing || (*focus == FocusOwner::FilterEntry && allowed.filter_entry),
+            ),
+        };
+        self.applying = Some(pending);
+
         let view = &pane.section.view;
         let cursor = focused.and_then(|source| {
             view_position_for_source(&pane.model, Some(&pane.section.view_model), source)
         });
-        let grabs_items = may_take_focus && takes_focus;
+        let grabs_items = focus == FocusOwner::Items && may_take_focus;
         // Bind the cursor before restoring the viewport; focusing it afterwards
         // would otherwise reveal it at a different vertical offset.
         if grabs_items {
@@ -192,6 +278,11 @@ impl PaneNavigation {
             if let Some(cursor) = cursor {
                 focus_collection_item(view, cursor);
             }
+        } else if focus == FocusOwner::FilterEntry
+            && may_take_focus
+            && let Some(entry) = &pane.filter_entry
+        {
+            super::super::browser::refocus_filter_entry(entry);
         }
         let restoring = self.restoring.clone();
         let items = pane.section.bound_items.clone();
@@ -243,7 +334,7 @@ impl PaneNavigation {
                 glib::ControlFlow::Continue
             }
         });
-        true
+        Some(focus)
     }
 }
 
@@ -312,6 +403,21 @@ fn restore_selection(pane: &Pane, browser: &Browser, saved: &PanePosition) -> Op
     browser.set_selection(pane.depth, &positions, focused);
     if let Some(anchor) = anchor.or(focused) {
         browser.set_selection_anchor(pane.depth, anchor);
+    }
+    set_selections(pane, &positions);
+    focused
+}
+
+/// The model already restored selection, cursor and anchor; the rebuilt view takes
+/// them over, including GTK's Shift range origin.
+fn restore_reloaded_selection(pane: &Pane, browser: &Browser) -> Option<usize> {
+    let positions = browser.selected_positions(pane.depth);
+    let focused = browser
+        .focused_item()
+        .filter(|(depth, _, _)| *depth == pane.depth)
+        .map(|(_, position, _)| position);
+    if let Some(anchor) = browser.selection_anchor_position(pane.depth).or(focused) {
+        reset_native_range_origin(pane, anchor);
     }
     set_selections(pane, &positions);
     focused

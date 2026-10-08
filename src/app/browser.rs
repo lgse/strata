@@ -109,6 +109,11 @@ pub enum BrowserEvent {
     NavigationStarting {
         history: bool,
     },
+    /// The column at `depth` is about to be cleared for a reload; its entries,
+    /// selection and cursor are still readable.
+    ColumnReloading {
+        depth: usize,
+    },
     Reset,
     ColumnsTruncated {
         len: usize,
@@ -4264,6 +4269,10 @@ impl Browser {
     }
 
     fn refresh_column_with_reveal(self: &Rc<Self>, depth: usize, targets: Option<Vec<Location>>) {
+        // An explicit target outranks any position a view would restore after the reload.
+        if targets.is_none() && self.location_at(depth).is_some() {
+            self.emit(BrowserEvent::ColumnReloading { depth });
+        }
         let request_id = self.new_request_id();
         let location = {
             let mut state = self.state.borrow_mut();

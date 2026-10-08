@@ -3,7 +3,9 @@
 use gtk::{gio, prelude::*};
 
 use super::{
-    BrowserMode, ModeViews, Pane, STATUS_PAGE, pane_contains_focus, reconnect_pane_model,
+    BrowserMode, ModeViews, Pane, STATUS_PAGE,
+    navigation::{FocusOwner, RestoreFocus}, pane_contains_focus, reconnect_pane_model,
+    reload_focus_fell_back,
     replace_entries, select_all, set_selections, show_count, update_bound_icons_metadata,
     update_bound_list_metadata,
 };
@@ -41,6 +43,17 @@ impl ModeViews {
                 navigation.leave(takes_focus);
                 if let Some(pane) = pane {
                     navigation.capture(pane, &self.browser, self.mode);
+                }
+            }
+            BrowserEvent::ColumnReloading { depth } => {
+                if let Some(pane) = self.mode_pane(*depth) {
+                    let focus = self.focus_owner(pane);
+                    self.pane_navigation.borrow_mut().capture_reload(
+                        pane,
+                        &self.browser,
+                        self.mode,
+                        focus,
+                    );
                 }
             }
             BrowserEvent::Reset => {
@@ -221,7 +234,18 @@ impl ModeViews {
             BrowserEvent::SortingFinished { depth } => {
                 self.update_panes(*depth, Pane::finish_sorting)
             }
-            BrowserEvent::ColumnReloaded { depth } => self.update_panes(*depth, Pane::reload_rows),
+            BrowserEvent::ColumnReloaded { depth } => {
+                // A reload that reveals a target is not announced; the target wins.
+                if self.mode_pane(*depth).is_some()
+                    && self
+                        .browser
+                        .column_snapshot(*depth)
+                        .is_some_and(|snapshot| snapshot.reveal_pending)
+                {
+                    self.pane_navigation.borrow_mut().cancel();
+                }
+                self.update_panes(*depth, Pane::reload_rows);
+            }
             BrowserEvent::LoadFinished { depth, truncated } => {
                 let restore_cursor = self
                     .panes_at(*depth)
@@ -232,19 +256,25 @@ impl ModeViews {
                     pane.finish_loading(*truncated, defer_empty, &positions)
                 });
                 // After the rows are back, so focus parked on the pane surface counts.
-                let restored = self.mode_pane(*depth).is_some_and(|pane| {
+                let restored = self.mode_pane(*depth).and_then(|pane| {
                     // A hidden tab never takes focus.
-                    let may_take_focus = !self.rename_is_active()
-                        && pane.shell.is_mapped()
-                        && self.listing_may_take_focus(*depth);
+                    let allowed = if self.rename_is_active() || !pane.shell.is_mapped() {
+                        RestoreFocus::default()
+                    } else {
+                        RestoreFocus {
+                            listing: self.listing_may_take_focus(*depth),
+                            filter_entry: self.focus_owner(pane) == FocusOwner::FilterEntry
+                                || reload_focus_fell_back(pane),
+                        }
+                    };
                     self.pane_navigation.borrow_mut().restore(
                         pane,
                         &self.browser,
                         self.mode,
-                        may_take_focus,
+                        allowed,
                     )
                 });
-                if !restored && restore_cursor {
+                if restored.is_none() && restore_cursor {
                     self.focus_visible_pane(*depth);
                 }
             }

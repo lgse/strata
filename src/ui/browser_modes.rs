@@ -1682,6 +1682,18 @@ impl ModeViews {
         self.panes_at(depth).into_iter().next()
     }
 
+    /// Filter results count as outside: they belong to the filter session, which a
+    /// reload restores only the viewport for.
+    fn focus_owner(&self, pane: &Pane) -> navigation::FocusOwner {
+        let focused = pane.stack.root().and_then(|root| root.focus());
+        match pane_filter_focus(pane, focused.as_ref()) {
+            Some(FilterFocus::Entry) => navigation::FocusOwner::FilterEntry,
+            Some(FilterFocus::Results) => navigation::FocusOwner::Outside,
+            None if pane_holds_keyboard_focus(pane) => navigation::FocusOwner::Items,
+            None => navigation::FocusOwner::Outside,
+        }
+    }
+
     fn panes_at(&self, depth: usize) -> Vec<&Pane> {
         match self.mode {
             BrowserMode::Columns => Vec::new(),
@@ -1933,6 +1945,17 @@ fn pane_holds_keyboard_focus(pane: &Pane) -> bool {
         .is_some_and(|entry| widget_has_focus(entry, focused.as_ref()))
         || pane.search.has_item_focus(focused.as_ref());
     !filter_session && pane_contains_focus(pane)
+}
+
+/// Where GTK leaves focus it moved off a pane a reload hid: nowhere, on a widget that
+/// left the window, on the pane surface, or on a container around the pane.
+fn reload_focus_fell_back(pane: &Pane) -> bool {
+    let Some(focused) = pane.stack.root().and_then(|root| root.focus()) else {
+        return true;
+    };
+    focused.root().is_none()
+        || focused == *pane.stack.upcast_ref::<gtk::Widget>()
+        || pane.stack.is_ancestor(&focused)
 }
 
 fn install_tab_landing(view: &gtk::Widget, state: Option<Weak<super::browser::ViewState>>) {

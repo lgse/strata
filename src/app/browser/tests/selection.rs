@@ -106,6 +106,49 @@ fn reload_active_preserves_a_multi_selection() {
 }
 
 #[test]
+fn reloading_a_column_announces_before_clearing_it() {
+    for reveal in [false, true] {
+        let browser = Browser::new(Rc::new(RestoredSortingSource));
+        browser.navigate(Location::local("/fixture"));
+        browser.set_selection(0, &[0, 1], Some(1));
+        let observed = Rc::new(RefCell::new(Vec::new()));
+        let weak = Rc::downgrade(&browser);
+        let events = observed.clone();
+        browser.observe(move |event| match event {
+            BrowserEvent::ColumnReloading { depth } => {
+                let browser = weak.upgrade().expect("browser");
+                events.borrow_mut().push(format!(
+                    "reloading {depth}: {} selected, cursor {:?}",
+                    browser.selected_entries().len(),
+                    browser.focused_item().map(|(depth, position, _)| (depth, position))
+                ));
+            }
+            BrowserEvent::ColumnReloaded { depth } => {
+                events.borrow_mut().push(format!("reloaded {depth}"));
+            }
+            _ => {}
+        });
+
+        if reveal {
+            browser.reveal_locations(
+                Location::local("/fixture"),
+                vec![Location::local("/fixture/unlisted")],
+            );
+        } else {
+            browser.reload_active();
+        }
+
+        // An explicit target outranks a restored position, so nothing is announced.
+        let expected: &[&str] = if reveal {
+            &["reloaded 0"]
+        } else {
+            &["reloading 0: 2 selected, cursor Some((0, 1))", "reloaded 0"]
+        };
+        assert_eq!(*observed.borrow(), expected, "reveal {reveal}");
+    }
+}
+
+#[test]
 fn removals_preserve_neighbor_selection_without_refocusing_unrelated_entries() {
     for (names, focused, removed, expected, focus_changed) in [
         (vec!["alpha", "bravo", "charlie"], 1, "bravo", Some(1), true),
