@@ -32,7 +32,7 @@ impl ViewState {
     pub(super) fn handle(self: &Rc<Self>, event: &BrowserEvent) {
         if matches!(
             event,
-            BrowserEvent::NavigationStarting
+            BrowserEvent::NavigationStarting { .. }
                 | BrowserEvent::Reset
                 | BrowserEvent::ColumnsTruncated { .. }
                 | BrowserEvent::ColumnsRelocated { .. }
@@ -57,7 +57,7 @@ impl ViewState {
                 return;
             }
             BrowserEvent::SelectionSynced { .. } => return,
-            BrowserEvent::NavigationStarting => {
+            BrowserEvent::NavigationStarting { .. } => {
                 self.forget_listing_search();
                 self.suppress_scroll_after_drop.set(false);
                 self.drop_active_depths.set(None);

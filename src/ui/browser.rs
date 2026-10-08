@@ -1554,8 +1554,8 @@ impl BrowserView {
         cancel_source(&self.state.pending_peek);
         self.state.browser.close_peek();
         // Capture-phase keys run before the pane sees the event that would cancel
-        // an in-progress history restore, so the command has to cancel it first.
-        self.state.mode_views.borrow_mut().cancel_list_restore();
+        // an in-progress restore, so the command has to cancel it first.
+        self.state.mode_views.borrow_mut().cancel_pending_restore();
         self.state.sync_mode_selection();
         self.state.cancel_tab_location_hold();
         self.state.refresh_destination_style();

@@ -386,7 +386,7 @@ pub struct ModeViews {
     list_root: gtk::Box,
     icons_panes: Vec<Pane>,
     list_pane: Option<Pane>,
-    list_navigation: RefCell<navigation::ListNavigation>,
+    pane_navigation: RefCell<navigation::PaneNavigation>,
     browser: Rc<Browser>,
     single_click_previews: Rc<Cell<bool>>,
     multiple_selection: Rc<Cell<bool>>,
@@ -460,7 +460,7 @@ impl ModeViews {
             list_root,
             icons_panes: Vec::new(),
             list_pane: None,
-            list_navigation: RefCell::new(navigation::ListNavigation::default()),
+            pane_navigation: RefCell::new(navigation::PaneNavigation::default()),
             browser,
             single_click_previews: Rc::new(Cell::new(true)),
             multiple_selection,
@@ -934,6 +934,17 @@ impl ModeViews {
             .any(|pane| pane_holds_keyboard_focus(pane))
     }
 
+    /// Whether a background update of the listing of `depth` may move focus: nothing in
+    /// the window has it, or that listing already holds it. A focused widget that left
+    /// the window, like a row a reload removed, leaves nothing focused.
+    pub(in crate::ui) fn listing_may_take_focus(&self, depth: usize) -> bool {
+        self.stack
+            .root()
+            .and_then(|root| root.focus())
+            .is_none_or(|focused| focused.root().is_none())
+            || self.listing_holds_focus(depth)
+    }
+
     pub fn selected_search_result(&self) -> Option<FileEntry> {
         self.single_pane()?.search.selected_entry()
     }
@@ -1157,8 +1168,8 @@ impl ModeViews {
         true
     }
 
-    pub fn cancel_list_restore(&mut self) {
-        self.list_navigation.borrow_mut().cancel();
+    pub fn cancel_pending_restore(&mut self) {
+        self.pane_navigation.borrow_mut().cancel();
     }
 
     pub fn prepare_mode(&mut self, mode: BrowserMode) {
@@ -1166,7 +1177,7 @@ impl ModeViews {
             return;
         }
         self.cancel_rename();
-        self.list_navigation.borrow_mut().cancel();
+        self.pane_navigation.borrow_mut().cancel();
         self.mode = mode;
         match mode {
             BrowserMode::Columns => {}
@@ -1666,6 +1677,11 @@ impl ModeViews {
             .collect()
     }
 
+    /// The Icons or List pane showing `depth`.
+    fn mode_pane(&self, depth: usize) -> Option<&Pane> {
+        self.panes_at(depth).into_iter().next()
+    }
+
     fn panes_at(&self, depth: usize) -> Vec<&Pane> {
         match self.mode {
             BrowserMode::Columns => Vec::new(),
@@ -1769,6 +1785,7 @@ impl ModeViews {
     }
 
     fn clear_icons(&mut self) {
+        self.pane_navigation.borrow_mut().cancel();
         for pane in &self.icons_panes {
             detach_pane_models(pane);
         }
@@ -1777,7 +1794,7 @@ impl ModeViews {
     }
 
     fn clear_list(&mut self) {
-        self.list_navigation.borrow_mut().cancel();
+        self.pane_navigation.borrow_mut().cancel();
         if let Some(pane) = self.list_pane.as_ref() {
             detach_pane_models(pane);
         }
@@ -1820,6 +1837,7 @@ impl ModeViews {
         pane.folder_context_trigger = self.install_context_menu(&pane);
         self.icons_root.append(&pane.shell);
         apply_snapshot(&pane, &snapshot, &self.browser);
+        self.pane_navigation.borrow_mut().prepare(&pane, &snapshot);
         self.icons_panes.push(pane);
     }
 
@@ -1855,7 +1873,7 @@ impl ModeViews {
         pane.folder_context_trigger = self.install_context_menu(&pane);
         self.list_root.append(&pane.shell);
         apply_snapshot(&pane, &snapshot, &self.browser);
-        self.list_navigation.borrow_mut().prepare(&pane, &snapshot);
+        self.pane_navigation.borrow_mut().prepare(&pane, &snapshot);
         self.list_pane = Some(pane);
     }
 }

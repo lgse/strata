@@ -28,13 +28,19 @@ impl ModeViews {
 
     fn handle_structure_event(&mut self, event: &BrowserEvent) -> bool {
         match event {
-            BrowserEvent::NavigationStarting => {
-                if self.mode == BrowserMode::List
-                    && let Some(pane) = self.list_pane.as_ref()
-                {
-                    self.list_navigation
-                        .borrow_mut()
-                        .capture(pane, &self.browser);
+            BrowserEvent::NavigationStarting { history } => {
+                let pane = self.single_pane();
+                // An explicit navigation focuses the new listing, as a first visit does.
+                // Back, Forward and Up leave focus on a header button or the sidebar, but
+                // focus inside the pane, its filter included, goes away with it.
+                let takes_focus = !history
+                    || pane.is_none_or(|pane| {
+                        pane_contains_focus(pane) || self.listing_may_take_focus(pane.depth)
+                    });
+                let mut navigation = self.pane_navigation.borrow_mut();
+                navigation.leave(takes_focus);
+                if let Some(pane) = pane {
+                    navigation.capture(pane, &self.browser, self.mode);
                 }
             }
             BrowserEvent::Reset => {
@@ -225,25 +231,27 @@ impl ModeViews {
                 self.update_panes(*depth, |pane| {
                     pane.finish_loading(*truncated, defer_empty, &positions)
                 });
-                if self.mode == BrowserMode::List
-                    && let Some(pane) = self.list_pane.as_ref().filter(|pane| pane.depth == *depth)
-                {
-                    self.list_navigation
-                        .borrow_mut()
-                        .restore(pane, &self.browser);
-                }
-                if restore_cursor {
+                // After the rows are back, so focus parked on the pane surface counts.
+                let restored = self.mode_pane(*depth).is_some_and(|pane| {
+                    // A hidden tab never takes focus.
+                    let may_take_focus = !self.rename_is_active()
+                        && pane.shell.is_mapped()
+                        && self.listing_may_take_focus(*depth);
+                    self.pane_navigation.borrow_mut().restore(
+                        pane,
+                        &self.browser,
+                        self.mode,
+                        may_take_focus,
+                    )
+                });
+                if !restored && restore_cursor {
                     self.focus_visible_pane(*depth);
                 }
             }
             BrowserEvent::LoadFailed { depth, message } => {
                 self.update_panes(*depth, |pane| pane.fail_loading(message));
-                if self
-                    .list_pane
-                    .as_ref()
-                    .is_some_and(|pane| pane.depth == *depth)
-                {
-                    self.list_navigation.borrow_mut().cancel();
+                if self.mode_pane(*depth).is_some() {
+                    self.pane_navigation.borrow_mut().cancel();
                 }
             }
             _ => return false,
@@ -282,8 +290,35 @@ impl ModeViews {
     }
 
     fn handle_selection_event(&self, event: &BrowserEvent) {
-        if self.mode == BrowserMode::List && self.list_navigation.borrow().is_restoring() {
-            return;
+        if self.mode != BrowserMode::Columns && self.pane_navigation.borrow().is_restoring() {
+            let (takes_focus, settling) = {
+                let navigation = self.pane_navigation.borrow();
+                (navigation.history_takes_focus(), navigation.is_settling())
+            };
+            let depth = match event {
+                BrowserEvent::FocusChanged { depth, .. } => depth,
+                // Rows that change after the load, a re-sort for one, outdate the saved
+                // viewport.
+                BrowserEvent::SelectionSetChanged { .. } if settling => {
+                    self.pane_navigation.borrow_mut().cancel();
+                    return self.handle_selection_event(event);
+                }
+                _ => return,
+            };
+            if takes_focus {
+                // The rebuilt listing takes over focus from the one being left, as it
+                // does when there is no position to restore.
+                if !self.cursor_keeps_focus.get() {
+                    self.focus_visible_pane(*depth);
+                }
+                return;
+            }
+            // A restore that left focus elsewhere must not swallow a later request to
+            // focus the listing; one that holds focus keeps its viewport.
+            if !settling || self.listing_holds_focus(*depth) {
+                return;
+            }
+            self.pane_navigation.borrow_mut().cancel();
         }
         match event {
             BrowserEvent::SelectionSetChanged {
