@@ -88,7 +88,7 @@ fn color_field_row(
     let label = gtk::Label::new(Some(&label_text));
     label.set_xalign(0.0);
     let dialog = gtk::ColorDialog::builder()
-        .title(rust_i18n::t!("Choose %{label_text}", label_text = label_text).into_owned())
+        .title(rust_i18n::t!("%{label_text} color", label_text = label_text).into_owned())
         .with_alpha(false)
         .build();
     let picker = gtk::ColorDialogButton::new(Some(dialog));
@@ -157,7 +157,11 @@ fn save_error_text(error: &std::io::Error) -> String {
     if error.kind() == std::io::ErrorKind::InvalidInput {
         crate::i18n::tr(&error.to_string())
     } else {
-        rust_i18n::t!("Could not save the theme: %{error}", error = error).into_owned()
+        rust_i18n::t!(
+            "Could not save the theme: %{error}",
+            error = crate::services::io_error_message(error)
+        )
+        .into_owned()
     }
 }
 

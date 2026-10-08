@@ -361,7 +361,7 @@ fn resolve_availability(
                     arguments,
                 }),
                 None => ActionAvailability::Unavailable {
-                    reason: ActionStoreError::MissingProgram(program.to_owned()).to_string(),
+                    reason: ActionStoreError::MissingProgram(program.to_owned()).user_message(),
                 },
             })
         }
@@ -413,7 +413,7 @@ fn resolve_availability(
                     family,
                 }),
                 None => ActionAvailability::Unavailable {
-                    reason: ActionStoreError::MissingInterpreter(program).to_string(),
+                    reason: ActionStoreError::MissingInterpreter(program).user_message(),
                 },
             })
         }

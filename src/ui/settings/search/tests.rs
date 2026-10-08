@@ -23,12 +23,23 @@ fn localized_setting_titles_keep_stable_search_targets() {
                 }
             }
             rust_i18n::set_locale("de");
-            for query in ["10xer", "Modus"] {
+            for (query, id) in [
+                ("10xer", "tenxer"),
+                ("Modus", "tenxer"),
+                ("Doppelklick", "opening"),
+                ("double click", "opening"),
+            ] {
                 assert!(
-                    find_matches(&normalized(query)).ids.contains("tenxer"),
+                    find_matches(&normalized(query)).ids.contains(id),
                     "de: {query}"
                 );
             }
+            rust_i18n::set_locale("ja");
+            assert!(
+                find_matches(&normalized("ダブルクリック"))
+                    .ids
+                    .contains("opening")
+            );
         },
     );
 }

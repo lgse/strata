@@ -325,8 +325,9 @@ fn score(query: &str, target: &Target) -> Option<i32> {
     let localized_title = normalized(&crate::i18n::tr(target.title));
     let title = format!("{source_title} {localized_title}");
     let aliases = normalized(&format!(
-        "{} {} {} settings {}",
+        "{} {} {} {} settings {}",
         target.aliases,
+        localized_keywords(target),
         target.page,
         crate::i18n::tr(page_title(target.page)),
         crate::i18n::tr("Settings"),
@@ -353,6 +354,17 @@ fn score(query: &str, target: &Target) -> Option<i32> {
                 0
             },
     )
+}
+
+/// Semantic keys; a missing entry adds nothing, since the English aliases are always searched.
+fn localized_keywords(target: &Target) -> String {
+    let key = format!("settings_keywords.{}", target.id);
+    let keywords = crate::i18n::tr(&key);
+    if keywords == key {
+        String::new()
+    } else {
+        keywords
+    }
 }
 
 fn page_title(page: &str) -> &'static str {

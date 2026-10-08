@@ -13,7 +13,6 @@ use crate::model::{
 };
 use crate::services::{
     ActionHandle, ActionLoadFailure, ActionRegistry, ActionScript, ActionWriteRequest,
-    actions::ActionStoreError,
 };
 use crate::ui::{
     actions::{ACTION_ICON_CHOICES, action_icon, is_known_action_icon},
@@ -256,7 +255,7 @@ impl PageState {
                 definition: definition.clone(),
                 script,
             })
-            .map_err(|error| store_error_message(&error))?;
+            .map_err(|error| error.user_message())?;
         PageState::render(self);
         Ok(())
     }
@@ -268,7 +267,7 @@ impl PageState {
                 show_error_dialog(
                     button,
                     &crate::i18n::tr("Unable to read the action"),
-                    &store_error_message(&error),
+                    &error.user_message(),
                 );
                 return;
             }
@@ -376,7 +375,7 @@ impl PageState {
                 EditorMode::Create => state
                     .registry
                     .create(&ActionWriteRequest { definition, script })
-                    .map_err(|error| store_error_message(&error)),
+                    .map_err(|error| error.user_message()),
                 EditorMode::Edit => state.save(&definition, script),
             };
             match result {
@@ -399,7 +398,7 @@ impl PageState {
                 show_error_dialog(
                     button,
                     &crate::i18n::tr("Unable to duplicate the action"),
-                    &store_error_message(&error),
+                    &error.user_message(),
                 );
                 return;
             }
@@ -424,7 +423,7 @@ impl PageState {
             show_error_dialog(
                 button,
                 &crate::i18n::tr("Unable to duplicate the action"),
-                &store_error_message(&error),
+                &error.user_message(),
             );
         }
     }
@@ -463,7 +462,7 @@ impl PageState {
                     show_error_dialog(
                         &anchor,
                         &crate::i18n::tr("Unable to import the action"),
-                        &store_error_message(&error),
+                        &error.user_message(),
                     );
                 }
             }
@@ -497,7 +496,7 @@ impl PageState {
                 Err(error) => show_error_dialog(
                     &anchor,
                     &crate::i18n::tr("Unable to export the action"),
-                    &store_error_message(&error),
+                    &error.user_message(),
                 ),
             }
         });
@@ -547,7 +546,7 @@ impl PageState {
                 Err(error) => show_error_dialog(
                     &failure_anchor,
                     &crate::i18n::tr("Unable to delete the action"),
-                    &store_error_message(&error),
+                    &error.user_message(),
                 ),
             }
         });
@@ -570,7 +569,7 @@ fn problem_row(failure: &ActionLoadFailure) -> gtk::Box {
     let title = gtk::Label::new(Some(&rust_i18n::t!(
         "%{name}: %{error}",
         name = failure.directory,
-        error = store_error_message(&failure.error)
+        error = failure.error.user_message()
     )));
     title.set_xalign(0.0);
     title.set_wrap(true);
@@ -1576,47 +1575,6 @@ fn copy_name(name: &str) -> String {
         .chars()
         .take(crate::model::MAX_ACTION_NAME_CHARS)
         .collect()
-}
-
-/// Localized counterpart of `ActionStoreError`'s English `Display`, which stays for logs.
-fn store_error_message(error: &ActionStoreError) -> String {
-    use rust_i18n::t;
-    match error {
-        ActionStoreError::Invalid(error) => return error.user_message(),
-        ActionStoreError::Io(message) => return message.clone(),
-        ActionStoreError::AlreadyExists(name) => {
-            t!("An action named “%{name}” already exists", name = name)
-        }
-        ActionStoreError::NotFound(id) => t!("The action “%{id}” no longer exists", id = id),
-        ActionStoreError::IdMismatch {
-            declared,
-            directory,
-        } => t!(
-            "The manifest declares id “%{declared}”, but its folder is named “%{directory}”; they must match",
-            declared = declared,
-            directory = directory
-        ),
-        ActionStoreError::NotARegularFile(name) => t!(
-            "“%{name}” must be a regular file, not a link or directory",
-            name = name
-        ),
-        ActionStoreError::MissingEntrypoint(name) => t!(
-            "The script “%{name}” is missing beside action.toml",
-            name = name
-        ),
-        ActionStoreError::MissingProgram(program) => {
-            t!("“%{program}” was not found on your PATH", program = program)
-        }
-        ActionStoreError::MissingInterpreter(program) => t!(
-            "The interpreter “%{program}” was not found. Install it, or point the action at an interpreter that exists",
-            program = program
-        ),
-        ActionStoreError::NotAnActionDirectory(path) => t!(
-            "“%{path}” does not contain an action.toml file",
-            path = path
-        ),
-    }
-    .into_owned()
 }
 
 /// Semantic keys; a missing entry falls back to the slug instead of the key.
