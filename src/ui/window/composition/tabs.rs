@@ -90,10 +90,16 @@ impl TabWindow {
             }
         });
         let retained = state.clone();
+        let application = window
+            .application()
+            .map(|application| application.downgrade());
         window.connect_unrealize(move |window| {
             PreferenceManager::shared().release_bindings_within(window);
             for tab in retained.tabs.take() {
                 tab.content.dispose();
+            }
+            if let Some(application) = application.as_ref().and_then(glib::WeakRef::upgrade) {
+                super::shelf::owner_closed(window, &application);
             }
             for name in [
                 "search",
@@ -111,10 +117,12 @@ impl TabWindow {
         });
         let weak = Rc::downgrade(&state);
         window.connect_is_active_notify(move |window| {
-            if !window.is_active()
-                && let Some(state) = weak.upgrade()
-            {
-                state.show_hints(false);
+            if let Some(state) = weak.upgrade() {
+                if window.is_active() {
+                    super::shelf::set_active(window, &state.active_browser());
+                } else {
+                    state.show_hints(false);
+                }
             }
         });
         state
@@ -206,6 +214,7 @@ impl TabWindow {
             previous.content.browser.cancel_location_edit();
         }
         self.active.set(id);
+        super::shelf::set_active(&window, &tab.content.browser);
         self.stack.set_visible_child(&tab.content.overlay);
         tab.content.activate_actions(&window);
         self.refresh_chrome();

@@ -350,7 +350,30 @@ toggle/dismissal path between the header button and window action, reading prefe
 at dispatch. `settings` owns update notices and a single lazily created Settings layer
 per window; both Settings entry points reuse it and the process-wide install guard.
 Preferences take effect before Settings opens. Destruction disconnects the clipboard
-subscription, browser observers, and sidebar monitors.
+subscription, browser observers, and sidebar monitors. `composition/shelf.rs` owns a
+session-only floating file shelf shared across regular tabs and windows, not the chooser.
+On Hyprland a small IPC worker detects a horizontal cursor shake only during a Strata
+file drag and positions the transient near the pointer. The `win.show-shelf` window action
+provides manual activation with Ctrl+Shift+Space; it targets the invoking window's active
+tab without a dedicated toolbar button. Other compositors and external-app drags retain
+this application-local shortcut (not a desktop-global hotkey or tray integration). The primary shelf is a
+compact stack using the shared thumbnail pipeline. The header's native window handle moves
+the shelf without compositor modifier keys; dragging the stack transfers files instead.
+The count opens an attached thumbnail viewer and the overflow control opens shelf actions.
+A COPY-only GTK file drop target on both card and viewer deserializes native file lists and
+URI lists, stages location references, and lets GTK complete or cancel the protocol. Accept
+file formats before action negotiation: GDK may initially report the previous destination's
+selected MOVE action. Never acknowledge MOVE after merely staging references. Deduplication
+and removal use the clipboard's GIO location equivalence, keeping distinct symlink paths.
+Virtual-only drops are rejected; valid duplicate drops succeed without rebuilding item widgets.
+Controls and popovers reuse pane-header and context-menu styling. Rebuilding the viewer
+cancels pending thumbnails, and dropping the shake subscription stops its worker even idle.
+Window cleanup captures a weak application reference before GTK clears it during destruction;
+a stale destination is hidden and invalidated without clearing staged files. Drag-out and
+explicit Copy/Move here reuse the browser's file-transfer path. Each regular browser's
+transfer completion removes only confirmed moved references from the shared shelf,
+including partially completed transfers. Copies and failed or cancelled items remain
+staged; removal never deletes the destination file.
 
 `ui/window/sidebar.rs` assembles the sidebar shell and connects its preferences,
 browser events, and device monitors. Shared place-row bindings retain explicit direct

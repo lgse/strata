@@ -500,6 +500,7 @@ const DEFAULT_TOOLS: &[(&str, &str)] = &[
     ("Ctrl+F", "Filter the current pane"),
     ("Ctrl+K", "Open global search"),
     ("Ctrl+Shift+K", "Jump to a recent folder"),
+    ("Ctrl+Shift+Space", "Open the floating shelf"),
     ("Alt+Enter", "Open containing folder (global search)"),
     ("Ctrl+L", "Edit the location"),
     ("Ctrl+T", "New tab"),
@@ -589,6 +590,7 @@ fn tenxer_tools(mode: BrowserMode, chooser: bool) -> Vec<(&'static str, &'static
                 "Select a tab (hold Ctrl+Shift for numbers)",
             ),
             ("Ctrl+K", "Open global search"),
+            ("Ctrl+Shift+Space", "Open the floating shelf"),
             ("Alt+Enter", "Open containing folder (global search)"),
         ]);
     }

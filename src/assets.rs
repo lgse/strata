@@ -37,6 +37,7 @@ pub mod icons {
     pub const DOCUMENTS: &str = "strata-file-text";
     pub const DOWNLOADS: &str = "strata-download";
     pub const EJECT: &str = "strata-eject";
+    pub const ELLIPSIS: &str = "strata-ellipsis";
     pub const EYE: &str = "strata-eye";
     pub const EYE_OFF: &str = "strata-eye-off";
     pub const EXTERNAL_LINK: &str = "strata-external-link";
