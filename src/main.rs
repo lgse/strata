@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-rust_i18n::i18n!("data/locales", fallback = "en");
+// build.rs embeds data/locales; this path holds no catalogs, so the macro adds none itself.
+rust_i18n::i18n!(
+    "src/i18n/no-catalogs",
+    fallback = "en",
+    backend = crate::i18n::Catalogs::compiled()
+);
 
 mod adapters;
 mod app;
@@ -129,7 +134,6 @@ fn run_udiskie_hook(arguments: &[OsString]) -> gtk::glib::ExitCode {
 }
 
 fn main() -> gtk::glib::ExitCode {
-    i18n::load_catalogs();
     let arguments: Vec<OsString> = std::env::args_os().collect();
     match launch_mode(&arguments) {
         LaunchMode::BrowserWorker => {

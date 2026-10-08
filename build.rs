@@ -1,16 +1,14 @@
 use std::{
     env,
+    fmt::Write as _,
+    fs,
     path::{Path, PathBuf},
     process::Command,
 };
 
 fn main() {
     println!("cargo::rerun-if-changed=data/locales");
-    // rust-i18n silently embeds no translations when its catalog directory is absent.
-    assert!(
-        Path::new("data/locales/en.json").is_file(),
-        "translation catalogs are missing from data/locales"
-    );
+    write_translation_catalogs();
     glib_build_tools::compile_resources(&["data"], "data/strata.gresource.xml", "strata.gresource");
 
     println!("cargo::rerun-if-env-changed=STRATA_BUILD_COMMIT");
@@ -45,6 +43,28 @@ fn main() {
         })
         .unwrap_or_else(|| "stable".to_owned());
     println!("cargo::rustc-env=STRATA_BUILD_KIND={build_kind}");
+}
+
+/// Embeds the catalogs as static tables. rust-i18n's own `i18n!` loader emits one
+/// statement per message, and that unoptimized frame overflows 2 MiB thread stacks.
+fn write_translation_catalogs() {
+    let catalogs = rust_i18n_support::load_locales("data/locales", |_| false);
+    // load_locales silently returns nothing when the catalog directory is absent.
+    assert!(
+        catalogs.contains_key("en"),
+        "translation catalogs are missing from data/locales"
+    );
+    let mut source = String::from("pub(crate) static CATALOGS: &[(&str, &[(&str, &str)])] = &[\n");
+    for (locale, messages) in &catalogs {
+        writeln!(source, "({locale:?}, &[").expect("format catalog");
+        for (key, text) in messages {
+            writeln!(source, "({key:?}, {text:?}),").expect("format catalog");
+        }
+        source.push_str("]),\n");
+    }
+    source.push_str("];\n");
+    let output = Path::new(&env::var_os("OUT_DIR").expect("OUT_DIR")).join("catalogs.rs");
+    fs::write(output, source).expect("write translation catalogs");
 }
 
 fn git_commit() -> Option<String> {

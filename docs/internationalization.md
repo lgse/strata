@@ -24,8 +24,10 @@ use and their English value is the plain word: `completion.complete`,
 `release_channel.preview`, `build_kind.nightly`, and `action_icon.*`.
 `settings_keywords.<target id>` keys hold space-separated search synonyms for a
 Settings search target; their English value is the English alias list. All catalogs
-are build inputs; changing only a translation still rebuilds the embedded
-translations.
+are build inputs: `build.rs` embeds them as static tables served by the
+`i18n::Catalogs` backend, so changing only a translation still rebuilds them. Do not
+point `i18n!` at `data/locales`; its per-message initializer needs megabytes of
+stack in unoptimized builds and overflows worker and test threads.
 
 ## Adding or changing text
 

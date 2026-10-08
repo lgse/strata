@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 /// The saved choice is separate from the process locale: changes apply on restart.
@@ -110,10 +112,34 @@ pub(crate) fn detected_locale() -> &'static str {
     )
 }
 
-/// Builds the compiled-in catalogs now, on the calling thread. Unoptimized builds
-/// need more stack for this than a worker thread such as the D-Bus executor has.
-pub(crate) fn load_catalogs() {
-    let _ = rust_i18n::available_locales!();
+mod compiled {
+    include!(concat!(env!("OUT_DIR"), "/catalogs.rs"));
+}
+
+/// Translation backend over the tables that build.rs generates from `data/locales`.
+pub(crate) struct Catalogs(HashMap<&'static str, HashMap<&'static str, &'static str>>);
+
+impl Catalogs {
+    pub(crate) fn compiled() -> Self {
+        Self(
+            compiled::CATALOGS
+                .iter()
+                .map(|&(locale, messages)| (locale, messages.iter().copied().collect()))
+                .collect(),
+        )
+    }
+}
+
+impl rust_i18n::Backend for Catalogs {
+    fn available_locales(&self) -> Vec<&str> {
+        let mut locales: Vec<&str> = self.0.keys().copied().collect();
+        locales.sort_unstable();
+        locales
+    }
+
+    fn translate(&self, locale: &str, key: &str) -> Option<&str> {
+        self.0.get(locale)?.get(key).copied()
+    }
 }
 
 /// English source messages are keys; missing translations retain readable English.

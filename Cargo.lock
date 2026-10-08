@@ -2890,6 +2890,7 @@ dependencies = [
  "ring",
  "rquickjs",
  "rust-i18n",
+ "rust-i18n-support",
  "rustix",
  "rustls",
  "seccompiler",

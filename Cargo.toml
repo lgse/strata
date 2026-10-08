@@ -78,6 +78,7 @@ rustls = { version = "0.23", default-features = false, features = ["std", "ring"
 
 [build-dependencies]
 glib-build-tools = "0.22.8"
+rust-i18n-support = "3.1.5"
 
 [profile.release]
 # Whole-program optimization for the hot listing/sort/insert paths. Build
