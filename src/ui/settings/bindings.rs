@@ -28,12 +28,14 @@ pub(super) fn choice_menu<T: Copy + PartialEq + 'static>(
     super::super::accessibility::set_label(&button, &crate::i18n::tr(title));
     let labels = choices.to_vec();
     manager.bind_preference(&button, read, move |widget, value| {
+        let label = labels.iter().find(|(_, candidate)| *candidate == value);
+        debug_assert!(
+            label.is_some(),
+            "choice menu value is not one of its listed choices"
+        );
         if let Some(button) = widget.downcast_ref::<gtk::MenuButton>() {
             button.set_label(&crate::i18n::tr(
-                labels
-                    .iter()
-                    .find(|(_, candidate)| *candidate == value)
-                    .map_or(labels[0].0, |(label, _)| *label),
+                label.map_or(labels[0].0, |(label, _)| *label),
             ));
         }
     });

@@ -371,6 +371,48 @@ fn multiple_invalid_preferences_do_not_block_later_valid_entries() {
 }
 
 #[test]
+fn unlisted_auto_refresh_intervals_round_up_on_load_and_set() {
+    gtk_test(
+        "ui::preferences::tests::preferences::unlisted_auto_refresh_intervals_round_up_on_load_and_set",
+        || {
+            for (stored, expected) in [
+                (0, 0),
+                (1, 60),
+                (59, 60),
+                (60, 60),
+                (61, 300),
+                (120, 300),
+                (601, 600),
+                (3600, 600),
+            ] {
+                assert_recovered_preferences_survive_save(
+                    |saved| {
+                        saved.insert("auto_refresh_interval".into(), i64::from(stored).into());
+                    },
+                    Preferences {
+                        auto_refresh_interval: expected,
+                        ..non_default_preferences()
+                    },
+                );
+            }
+
+            seed_saved_preferences_for_test();
+            let manager = PreferenceManager::shared();
+            for (requested, expected) in [(45, 60), (u32::MAX, 600), (300, 300), (0, 0)] {
+                manager.set_auto_refresh_interval(requested);
+                assert_eq!(manager.auto_refresh_interval(), expected);
+                assert_eq!(
+                    read_preferences()
+                        .expect("saved preferences")
+                        .auto_refresh_interval,
+                    expected
+                );
+            }
+        },
+    );
+}
+
+#[test]
 fn fresh_preferences_select_tokyo_night_before_settings_opens() {
     gtk_test(
         "ui::preferences::tests::preferences::fresh_preferences_select_tokyo_night_before_settings_opens",

@@ -149,3 +149,70 @@ fn tenxer_experimental_label_follows_the_mode_across_windows() {
         },
     );
 }
+
+fn auto_refresh_choice(page: &gtk::Widget) -> gtk::MenuButton {
+    let mut pending = vec![page.clone()];
+    while let Some(widget) = pending.pop() {
+        if let Ok(button) = widget.clone().downcast::<gtk::MenuButton>()
+            && let Some(popover) = button.popover()
+            && page_text(popover.upcast_ref()).contains("10 min")
+        {
+            return button;
+        }
+        let mut child = widget.first_child();
+        while let Some(next) = child {
+            child = next.next_sibling();
+            pending.push(next);
+        }
+    }
+    panic!("the General page has no auto-refresh choice");
+}
+
+fn auto_refresh_label_mismatch(
+    manager: &PreferenceManager,
+    choice: &gtk::MenuButton,
+    route: &str,
+) -> Option<String> {
+    let interval = manager.auto_refresh_interval();
+    let label = choice.label().unwrap_or_default();
+    let expected = crate::ui::preferences::AUTO_REFRESH_CHOICES
+        .iter()
+        .find(|(_, choice)| *choice == interval)
+        .map(|(label, _)| *label);
+    (expected != Some(label.as_str())).then(|| {
+        format!("{route}: Settings shows {label:?} while the browser refreshes every {interval} s")
+    })
+}
+
+#[test]
+fn auto_refresh_choice_never_says_off_while_a_refresh_interval_runs() {
+    gtk_test(
+        "ui::settings::tests::general::auto_refresh_choice_never_says_off_while_a_refresh_interval_runs",
+        || {
+            crate::ui::preferences::fixtures::seed_saved_preferences_for_test();
+            let path = crate::ui::preferences::config_directory().join("settings.toml");
+            let saved = std::fs::read_to_string(&path).expect("seeded preferences");
+            assert!(saved.contains("auto_refresh_interval = 600"));
+            std::fs::write(
+                &path,
+                saved.replace("auto_refresh_interval = 600", "auto_refresh_interval = 1"),
+            )
+            .expect("hand-edited interval");
+
+            let manager = PreferenceManager::shared();
+            let (page, _, _) = general_page(manager.clone());
+            let choice = auto_refresh_choice(&page);
+            let mut mismatches = Vec::new();
+            mismatches.extend(auto_refresh_label_mismatch(&manager, &choice, "loaded 1"));
+            for secs in [45, 120, 3600] {
+                manager.set_auto_refresh_interval(secs);
+                mismatches.extend(auto_refresh_label_mismatch(
+                    &manager,
+                    &choice,
+                    &format!("set to {secs}"),
+                ));
+            }
+            assert!(mismatches.is_empty(), "{mismatches:#?}");
+        },
+    );
+}

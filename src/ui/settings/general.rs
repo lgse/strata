@@ -697,7 +697,7 @@ fn append_auto_refresh_option(content: &gtk::Box, manager: &Rc<PreferenceManager
     let control = super::bindings::choice_menu(
         manager,
         "Auto-refresh folder",
-        &[("Off", 0), ("1 min", 60), ("5 min", 300), ("10 min", 600)],
+        &crate::ui::preferences::AUTO_REFRESH_CHOICES,
         PreferenceManager::auto_refresh_interval,
         PreferenceManager::set_auto_refresh_interval,
     );

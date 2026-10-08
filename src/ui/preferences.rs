@@ -387,6 +387,29 @@ fn normalized_volume(volume: f64) -> f64 {
     }
 }
 
+/// The Settings menu's choices are the only intervals the browser runs.
+pub(in crate::ui) const AUTO_REFRESH_CHOICES: [(&str, u32); 4] =
+    [("Off", 0), ("1 min", 60), ("5 min", 300), ("10 min", 600)];
+
+// `normalized_auto_refresh_interval` picks the first choice at or above a value.
+const _: () = {
+    let mut index = 1;
+    while index < AUTO_REFRESH_CHOICES.len() {
+        assert!(AUTO_REFRESH_CHOICES[index - 1].1 < AUTO_REFRESH_CHOICES[index].1);
+        index += 1;
+    }
+};
+
+/// Unlisted intervals round up to the next choice so a hand-written value keeps
+/// auto-refresh on without reloading faster than the fastest menu option.
+fn normalized_auto_refresh_interval(secs: u32) -> u32 {
+    AUTO_REFRESH_CHOICES
+        .iter()
+        .map(|(_, interval)| *interval)
+        .find(|interval| *interval >= secs)
+        .unwrap_or(AUTO_REFRESH_CHOICES[AUTO_REFRESH_CHOICES.len() - 1].1)
+}
+
 pub(in crate::ui) fn is_valid_send_to_relative_path(path: &Path) -> bool {
     let mut components = path.components();
     matches!(components.next(), Some(Component::Normal(_)))
@@ -423,6 +446,8 @@ impl PreferenceManager {
             Preferences::default()
         });
         preferences.preview_volume = normalized_volume(preferences.preview_volume);
+        preferences.auto_refresh_interval =
+            normalized_auto_refresh_interval(preferences.auto_refresh_interval);
         preferences.thumbnail_workers = preferences
             .thumbnail_workers
             .clamp(1, crate::sandbox::browser::MAX_WORKERS);
@@ -931,7 +956,8 @@ impl PreferenceManager {
     }
 
     pub fn set_auto_refresh_interval(&self, secs: u32) {
-        self.preferences.borrow_mut().auto_refresh_interval = secs;
+        self.preferences.borrow_mut().auto_refresh_interval =
+            normalized_auto_refresh_interval(secs);
         self.save_preferences();
     }
 
