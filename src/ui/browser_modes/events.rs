@@ -4,10 +4,9 @@ use gtk::{gio, prelude::*};
 
 use super::{
     BrowserMode, ModeViews, Pane, STATUS_PAGE,
-    navigation::{FocusOwner, RestoreFocus}, pane_contains_focus, reconnect_pane_model,
-    reload_focus_fell_back,
-    replace_entries, select_all, set_selections, show_count, update_bound_icons_metadata,
-    update_bound_list_metadata,
+    navigation::{FocusOwner, RestoreFocus},
+    pane_contains_focus, reconnect_pane_model, reload_focus_fell_back, replace_entries, select_all,
+    set_selections, show_count, update_bound_icons_metadata, update_bound_list_metadata,
 };
 use crate::{
     app::{Browser, BrowserEvent, EntryInsertion, EntrySplice, SelectionUpdate},

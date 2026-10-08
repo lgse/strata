@@ -692,11 +692,7 @@ impl FileSource for FolderTree {
 
 fn folder_browser(
     tree: FolderTree,
-) -> (
-    Rc<Browser>,
-    Rc<RefCell<Vec<BrowserEvent>>>,
-    Rc<FolderTree>,
-) {
+) -> (Rc<Browser>, Rc<RefCell<Vec<BrowserEvent>>>, Rc<FolderTree>) {
     let tree = Rc::new(tree);
     let browser = Browser::new(tree.clone());
     let events = Rc::new(RefCell::new(Vec::new()));
@@ -738,7 +734,10 @@ fn returning_to_an_ancestor_selects_the_folder_you_came_from() {
     };
     let mut failures = Vec::new();
     for (shape, enter) in [
-        ("single column", &single as &dyn Fn(&Rc<Browser>) -> (usize, Location)),
+        (
+            "single column",
+            &single as &dyn Fn(&Rc<Browser>) -> (usize, Location),
+        ),
         ("nested", &nested),
     ] {
         for route in [
@@ -808,7 +807,10 @@ fn returning_to_a_non_ancestor_keeps_the_first_entry() {
 
     assert_eq!(browser.active_location(), Some(Location::local("/a")));
     assert_eq!(focused_location(&browser), Some(Location::local("/a/a1")));
-    assert_eq!(super::location_input::selected_locations(&browser), vec![Location::local("/a/a1")]);
+    assert_eq!(
+        super::location_input::selected_locations(&browser),
+        vec![Location::local("/a/a1")]
+    );
 }
 
 #[test]
@@ -825,20 +827,43 @@ fn a_missing_or_hidden_came_from_child_falls_back_quietly() {
             (&format!("{docs}/.b2"), &["inner"]),
         ]));
         browser.navigate(tree_location(&docs));
-        pump_until(|| browser.column_snapshot(0).is_some_and(|snapshot| !snapshot.loading));
+        pump_until(|| {
+            browser
+                .column_snapshot(0)
+                .is_some_and(|snapshot| !snapshot.loading)
+        });
         browser.navigate(tree_location(&format!("{docs}/{child}")));
-        pump_until(|| browser.column_snapshot(0).is_some_and(|snapshot| !snapshot.loading));
+        pump_until(|| {
+            browser
+                .column_snapshot(0)
+                .is_some_and(|snapshot| !snapshot.loading)
+        });
         tree.list(&docs, docs_after_leaving);
         events.borrow_mut().clear();
 
         browser.back();
-        pump_until(|| browser.column_snapshot(0).is_some_and(|snapshot| !snapshot.loading));
+        pump_until(|| {
+            browser
+                .column_snapshot(0)
+                .is_some_and(|snapshot| !snapshot.loading)
+        });
         let case = format!("{docs}, {child}");
         let first = tree_location(&format!("{docs}/a1"));
-        assert_eq!(browser.active_location(), Some(tree_location(&docs)), "{case}");
+        assert_eq!(
+            browser.active_location(),
+            Some(tree_location(&docs)),
+            "{case}"
+        );
         assert_eq!(focused_location(&browser), Some(first.clone()), "{case}");
-        assert_eq!(super::location_input::selected_locations(&browser), vec![first], "{case}");
-        assert!(!browser.preferences().show_hidden, "{case}: hidden files stay hidden");
+        assert_eq!(
+            super::location_input::selected_locations(&browser),
+            vec![first],
+            "{case}"
+        );
+        assert!(
+            !browser.preferences().show_hidden,
+            "{case}: hidden files stay hidden"
+        );
         let cursor = browser.focused_item().map(|(_, position, _)| position);
         let events = events.borrow();
         assert!(
@@ -884,7 +909,11 @@ fn a_remote_reload_announces_the_neighbour_cursor_of_an_inactive_column() {
     assert!(
         events.borrow().iter().any(|event| matches!(
             event,
-            BrowserEvent::SelectionSetChanged { depth: 1, focused: 1, .. }
+            BrowserEvent::SelectionSetChanged {
+                depth: 1,
+                focused: 1,
+                ..
+            }
         )),
         "the child column's cursor moves to z and is published"
     );

@@ -234,7 +234,9 @@ fn bind_footer_filter(dispatcher: &Dispatcher) {
         shortcuts.prompt_has_focus()
             && matches!(
                 shortcuts.open_prompt_kind(),
-                Some(crate::ui::tenxer_mode::Prompt::Filter | crate::ui::tenxer_mode::Prompt::Search)
+                Some(
+                    crate::ui::tenxer_mode::Prompt::Filter | crate::ui::tenxer_mode::Prompt::Search
+                )
             )
     }));
     let shortcuts = dispatcher.shortcuts.clone();

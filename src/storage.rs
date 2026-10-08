@@ -35,12 +35,25 @@ struct Destination {
 /// `Display` is English for logs and tests; [`Self::message`] is for the UI.
 #[derive(Debug)]
 pub(crate) enum DestinationError {
-    NonRegular { path: PathBuf },
-    MissingTarget { link: PathBuf, target: PathBuf },
-    TooManyLinks { path: PathBuf },
-    NotOwned { symlink: bool, path: PathBuf },
+    NonRegular {
+        path: PathBuf,
+    },
+    MissingTarget {
+        link: PathBuf,
+        target: PathBuf,
+    },
+    TooManyLinks {
+        path: PathBuf,
+    },
+    NotOwned {
+        symlink: bool,
+        path: PathBuf,
+    },
     /// A link's target may live elsewhere, so the error names the file that failed.
-    AtTarget { target: PathBuf, error: io::Error },
+    AtTarget {
+        target: PathBuf,
+        error: io::Error,
+    },
 }
 
 impl fmt::Display for DestinationError {

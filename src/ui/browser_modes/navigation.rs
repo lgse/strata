@@ -68,7 +68,10 @@ enum PendingRestore {
     },
     /// The model restores selection and cursor by identity across a reload; the view
     /// brings back the viewport and the focus.
-    Reload { viewport: Viewport, focus: FocusOwner },
+    Reload {
+        viewport: Viewport,
+        focus: FocusOwner,
+    },
 }
 
 impl PendingRestore {

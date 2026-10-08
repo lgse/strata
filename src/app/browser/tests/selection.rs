@@ -120,7 +120,9 @@ fn reloading_a_column_announces_before_clearing_it() {
                 events.borrow_mut().push(format!(
                     "reloading {depth}: {} selected, cursor {:?}",
                     browser.selected_entries().len(),
-                    browser.focused_item().map(|(depth, position, _)| (depth, position))
+                    browser
+                        .focused_item()
+                        .map(|(depth, position, _)| (depth, position))
                 ));
             }
             BrowserEvent::ColumnReloaded { depth } => {

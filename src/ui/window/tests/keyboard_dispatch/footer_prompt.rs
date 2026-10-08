@@ -1413,8 +1413,7 @@ fn outside_deletion_case(mode: BrowserMode, prompt: Prompt) -> Result<(), String
     wait_until(|| entry_count(&browser) == 6);
     // Focus that must stay put has no settle condition.
     pump(300);
-    if !fixture.shortcuts.prompt_has_focus()
-        || fixture.shortcuts.open_prompt_kind() != Some(prompt)
+    if !fixture.shortcuts.prompt_has_focus() || fixture.shortcuts.open_prompt_kind() != Some(prompt)
     {
         return Err(format!(
             "the deletion took focus from the prompt (open prompt {:?})",

@@ -343,7 +343,10 @@ fn external_directory_changes_refresh_only_indexes_covering_the_directory() {
     let (flat, flat_events) = filter(root.to_path_buf(), false);
     let (_deep, deep_events) = filter(root.to_path_buf(), true);
     let (unrelated, _unrelated_events) = filter(root.join("other"), true);
-    let rows: [(Change, &str, Option<&[&str]>, &[&str]); 3] = [
+    // A change, the folder it lands in, the flat index's expected hits (None when it
+    // should not refresh) and the recursive index's expected hits.
+    type Row<'a> = (Change, &'a str, Option<&'a [&'a str]>, &'a [&'a str]);
+    let rows: [Row; 3] = [
         (
             Change::Create("needle-top.txt"),
             "",
@@ -447,7 +450,10 @@ fn external_moves_restart_only_indexes_whose_root_moved() {
         parent_walking,
         "renames below a root must not restart its walk"
     );
-    assert!(rescans_requested(&moved) > moved_idle, "the moved root restarts");
+    assert!(
+        rescans_requested(&moved) > moved_idle,
+        "the moved root restarts"
+    );
     drop(traversal);
     await_paths(&parent_events, root, &["needle.txt", "new/needle.txt"]);
     await_paths(&moved_events, root, &["new/needle.txt"]);

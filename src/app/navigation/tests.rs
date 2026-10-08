@@ -812,7 +812,10 @@ fn empty_is_distinct_from_loading_and_error() {
     state.navigate(location("/empty"), RequestId(1));
     assert_eq!(state.columns[0].load_state, LoadState::Loading);
 
-    assert_eq!(state.finish(RequestId(1), false, None, None), Some((0, false)));
+    assert_eq!(
+        state.finish(RequestId(1), false, None, None),
+        Some((0, false))
+    );
     assert_eq!(state.columns[0].load_state, LoadState::Empty);
 }
 
@@ -821,7 +824,10 @@ fn truncated_load_state_survives_until_reload() {
     let mut state = NavigationState::default();
     state.navigate(location("/partial"), RequestId(1));
 
-    assert_eq!(state.finish(RequestId(1), true, None, None), Some((0, false)));
+    assert_eq!(
+        state.finish(RequestId(1), true, None, None),
+        Some((0, false))
+    );
     assert!(state.columns[0].truncated);
 
     state.reload_column(0, RequestId(2));
@@ -955,9 +961,7 @@ fn reload_moves_a_removed_cursor_to_its_neighbour() {
                 .collect(),
         );
 
-        if state.active_focus() != Some((0, expected))
-            || !state.selected_positions(0).is_empty()
-        {
+        if state.active_focus() != Some((0, expected)) || !state.selected_positions(0).is_empty() {
             failures.push(format!(
                 "cursor on entry {cursor}, {remaining:?} remain after {reloads} reloads: focus {:?} \
                  and selection {:?}, expected cursor {expected:?} with nothing selected",
@@ -1063,7 +1067,8 @@ fn preferred_location_on_load_selects_the_child_when_it_arrives() {
             }
             Delivery::LaterBatch => {
                 state.apply_batch(RequestId(1), vec![docs("a1")]);
-                if !state.selected_positions(0).is_empty() || state.active_focus() != Some((0, None))
+                if !state.selected_positions(0).is_empty()
+                    || state.active_focus() != Some((0, None))
                 {
                     failures.push(format!(
                         "{delivery:?}: the first batch selected {:?} before b2 arrived",

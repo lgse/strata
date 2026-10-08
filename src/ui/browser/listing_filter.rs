@@ -680,7 +680,10 @@ impl BrowserView {
     }
 
     pub(in crate::ui) fn set_footer_filter_focus(&self, has_focus: Rc<dyn Fn() -> bool>) {
-        self.state.listing_filter.footer_focus.replace(Some(has_focus));
+        self.state
+            .listing_filter
+            .footer_focus
+            .replace(Some(has_focus));
     }
 
     pub(in crate::ui) fn connect_filter_results_changed(&self, handler: Rc<dyn Fn()>) {

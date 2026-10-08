@@ -1414,10 +1414,7 @@ impl Browser {
             (
                 Some((directory, targets)),
                 LoadSelection::FirstEntry | LoadSelection::Nothing | LoadSelection::Prefer(_),
-            ) if directory == location =>
-            {
-                LoadSelection::Target(targets)
-            }
+            ) if directory == location => LoadSelection::Target(targets),
             (_, selection) => selection,
         };
         self.bump_navigation_generation();
@@ -3610,7 +3607,10 @@ impl Browser {
         let active_depth = loads.len().checked_sub(1);
         if let Some(depth) = active_depth {
             match preferred {
-                Some(child) => self.state.borrow_mut().prefer_location_on_load(depth, child),
+                Some(child) => self
+                    .state
+                    .borrow_mut()
+                    .prefer_location_on_load(depth, child),
                 None => self.select_first_on_load(depth),
             }
         }
