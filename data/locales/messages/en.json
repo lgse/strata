@@ -797,6 +797,8 @@
   "This installation is managed by its package manager.": "This installation is managed by its package manager.",
   "This installation is managed by pacman; install updates through a full system update.": "This installation is managed by pacman; install updates through a full system update.",
   "This is not an encrypted volume": "This is not an encrypted volume",
+  "This item can be restored from Trash.": "This item can be restored from Trash.",
+  "This item will be permanently deleted. This action cannot be undone.": "This item will be permanently deleted. This action cannot be undone.",
   "This model exceeds the 2 million triangle preview limit. Try a lower-detail version.": "This model exceeds the 2 million triangle preview limit. Try a lower-detail version.",
   "This release has no signed update manifest. Choose a newer release or download it manually.": "This release has no signed update manifest. Choose a newer release or download it manually.",
   "This runs “%{value1}” on %{value2}.": "This runs “%{value1}” on %{value2}.",

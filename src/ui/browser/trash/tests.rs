@@ -115,13 +115,13 @@ fn permanent_delete_confirmation_is_actionable_while_summary_loads() {
                     "en",
                     "Permanently delete 1 item",
                     "Cancel",
-                    "These items will be permanently deleted. This action cannot be undone.",
+                    "This item will be permanently deleted. This action cannot be undone.",
                 ),
                 (
                     "fr",
                     "Supprimer définitivement 1 élément",
                     "Annuler",
-                    "Ces éléments seront supprimés définitivement. Cette action est irréversible.",
+                    "Cet élément sera supprimé définitivement. Cette action est irréversible.",
                 ),
             ] {
                 let fixture = tempfile::tempdir().expect("fixture");

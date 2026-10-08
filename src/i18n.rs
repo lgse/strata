@@ -127,6 +127,15 @@ pub(crate) fn list(items: impl IntoIterator<Item = String>) -> String {
     list_in(&rust_i18n::locale(), items)
 }
 
+/// Uppercases the first character, for lower-case list fragments that start a sentence.
+pub(crate) fn capitalize_first(text: String) -> String {
+    let mut chars = text.chars();
+    match chars.next() {
+        Some(first) if !first.is_uppercase() => first.to_uppercase().chain(chars).collect(),
+        _ => text,
+    }
+}
+
 fn list_in(locale: &str, items: impl IntoIterator<Item = String>) -> String {
     items
         .into_iter()

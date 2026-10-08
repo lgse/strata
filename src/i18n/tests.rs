@@ -102,6 +102,15 @@ fn lists_use_the_language_separator() {
     assert_eq!(list_in("en", items()), "2 folders, 3 files, 1 link");
     assert_eq!(list_in("ja", items()), "2 folders、3 files、1 link");
     assert_eq!(list_in("en", []), "");
+    assert_eq!(
+        capitalize_first("с ошибкой: 1 элемент, не обработано: 0 элементов".to_owned()),
+        "С ошибкой: 1 элемент, не обработано: 0 элементов"
+    );
+    assert_eq!(
+        capitalize_first("thất bại 2 mục".to_owned()),
+        "Thất bại 2 mục"
+    );
+    assert_eq!(capitalize_first("0 件完了".to_owned()), "0 件完了");
 }
 
 #[test]

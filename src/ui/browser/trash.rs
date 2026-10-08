@@ -538,9 +538,14 @@ impl ViewState {
             {
                 match destination {
                     Ok(destination) => resolved.push((entry, destination)),
-                    Err(error) => {
-                        errors.push(format!("{}: {}", entry.display_name, error.user_message()))
-                    }
+                    Err(error) => errors.push(
+                        rust_i18n::t!(
+                            "%{name}: %{error}",
+                            name = entry.display_name.as_str(),
+                            error = error.user_message()
+                        )
+                        .into_owned(),
+                    ),
                 }
             }
             let Some(state) = weak.upgrade() else {
@@ -860,10 +865,11 @@ impl ViewState {
             .build();
         file_scroller.add_css_class("delete-confirmation-list");
         layout.body.append(&file_scroller);
-        let explanation = message_dialog_description(&crate::i18n::tr(if trash {
-            "These items can be restored from Trash."
-        } else {
-            "These items will be permanently deleted. This action cannot be undone."
+        let explanation = message_dialog_description(&crate::i18n::tr(match (trash, count) {
+            (true, 1) => "This item can be restored from Trash.",
+            (true, _) => "These items can be restored from Trash.",
+            (false, 1) => "This item will be permanently deleted. This action cannot be undone.",
+            (false, _) => "These items will be permanently deleted. This action cannot be undone.",
         }));
         layout.body.append(&explanation);
         let content = layout.content;

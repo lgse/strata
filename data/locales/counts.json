@@ -548,9 +548,9 @@
     "ja": "%{count} 件完了",
     "pt-BR": "%{count} item concluído",
     "ko": "%{count}개 완료",
-    "vi": "Hoàn tất %{count} mục",
+    "vi": "hoàn tất %{count} mục",
     "it": "%{count} elemento completato",
-    "ru": "Выполнено: %{count} элемент"
+    "ru": "выполнено: %{count} элемент"
   },
   "counts.items_completed.few": {
     "en": "%{count} items completed",
@@ -560,9 +560,9 @@
     "ja": "%{count} 件完了",
     "pt-BR": "%{count} itens concluídos",
     "ko": "%{count}개 완료",
-    "vi": "Hoàn tất %{count} mục",
+    "vi": "hoàn tất %{count} mục",
     "it": "%{count} elementi completati",
-    "ru": "Выполнено: %{count} элемента"
+    "ru": "выполнено: %{count} элемента"
   },
   "counts.items_completed.many": {
     "en": "%{count} items completed",
@@ -572,9 +572,9 @@
     "ja": "%{count} 件完了",
     "pt-BR": "%{count} itens concluídos",
     "ko": "%{count}개 완료",
-    "vi": "Hoàn tất %{count} mục",
+    "vi": "hoàn tất %{count} mục",
     "it": "%{count} elementi completati",
-    "ru": "Выполнено: %{count} элементов"
+    "ru": "выполнено: %{count} элементов"
   },
   "counts.items_completed.other": {
     "en": "%{count} items completed",
@@ -584,9 +584,9 @@
     "ja": "%{count} 件完了",
     "pt-BR": "%{count} itens concluídos",
     "ko": "%{count}개 완료",
-    "vi": "Hoàn tất %{count} mục",
+    "vi": "hoàn tất %{count} mục",
     "it": "%{count} elementi completati",
-    "ru": "Выполнено: %{count} элементов"
+    "ru": "выполнено: %{count} элементов"
   },
   "counts.items_failed.one": {
     "en": "%{count} item failed",
@@ -596,9 +596,9 @@
     "ja": "%{count} 件失敗",
     "pt-BR": "%{count} item com falha",
     "ko": "%{count}개 실패",
-    "vi": "Thất bại %{count} mục",
+    "vi": "thất bại %{count} mục",
     "it": "%{count} elemento non riuscito",
-    "ru": "С ошибкой: %{count} элемент"
+    "ru": "с ошибкой: %{count} элемент"
   },
   "counts.items_failed.few": {
     "en": "%{count} items failed",
@@ -608,9 +608,9 @@
     "ja": "%{count} 件失敗",
     "pt-BR": "%{count} itens com falha",
     "ko": "%{count}개 실패",
-    "vi": "Thất bại %{count} mục",
+    "vi": "thất bại %{count} mục",
     "it": "%{count} elementi non riusciti",
-    "ru": "С ошибкой: %{count} элемента"
+    "ru": "с ошибкой: %{count} элемента"
   },
   "counts.items_failed.many": {
     "en": "%{count} items failed",
@@ -620,9 +620,9 @@
     "ja": "%{count} 件失敗",
     "pt-BR": "%{count} itens com falha",
     "ko": "%{count}개 실패",
-    "vi": "Thất bại %{count} mục",
+    "vi": "thất bại %{count} mục",
     "it": "%{count} elementi non riusciti",
-    "ru": "С ошибкой: %{count} элементов"
+    "ru": "с ошибкой: %{count} элементов"
   },
   "counts.items_failed.other": {
     "en": "%{count} items failed",
@@ -632,9 +632,9 @@
     "ja": "%{count} 件失敗",
     "pt-BR": "%{count} itens com falha",
     "ko": "%{count}개 실패",
-    "vi": "Thất bại %{count} mục",
+    "vi": "thất bại %{count} mục",
     "it": "%{count} elementi non riusciti",
-    "ru": "С ошибкой: %{count} элементов"
+    "ru": "с ошибкой: %{count} элементов"
   },
   "counts.items_not_attempted.one": {
     "en": "%{count} item not attempted",
@@ -644,9 +644,9 @@
     "ja": "%{count} 件未処理",
     "pt-BR": "%{count} item não processado",
     "ko": "%{count}개 처리 안 됨",
-    "vi": "Chưa xử lý %{count} mục",
+    "vi": "chưa xử lý %{count} mục",
     "it": "%{count} elemento non elaborato",
-    "ru": "Не обработано: %{count} элемент"
+    "ru": "не обработано: %{count} элемент"
   },
   "counts.items_not_attempted.few": {
     "en": "%{count} items not attempted",
@@ -656,9 +656,9 @@
     "ja": "%{count} 件未処理",
     "pt-BR": "%{count} itens não processados",
     "ko": "%{count}개 처리 안 됨",
-    "vi": "Chưa xử lý %{count} mục",
+    "vi": "chưa xử lý %{count} mục",
     "it": "%{count} elementi non elaborati",
-    "ru": "Не обработано: %{count} элемента"
+    "ru": "не обработано: %{count} элемента"
   },
   "counts.items_not_attempted.many": {
     "en": "%{count} items not attempted",
@@ -668,9 +668,9 @@
     "ja": "%{count} 件未処理",
     "pt-BR": "%{count} itens não processados",
     "ko": "%{count}개 처리 안 됨",
-    "vi": "Chưa xử lý %{count} mục",
+    "vi": "chưa xử lý %{count} mục",
     "it": "%{count} elementi non elaborati",
-    "ru": "Не обработано: %{count} элементов"
+    "ru": "не обработано: %{count} элементов"
   },
   "counts.items_not_attempted.other": {
     "en": "%{count} items not attempted",
@@ -680,9 +680,9 @@
     "ja": "%{count} 件未処理",
     "pt-BR": "%{count} itens não processados",
     "ko": "%{count}개 처리 안 됨",
-    "vi": "Chưa xử lý %{count} mục",
+    "vi": "chưa xử lý %{count} mục",
     "it": "%{count} elementi non elaborati",
-    "ru": "Не обработано: %{count} элементов"
+    "ru": "не обработано: %{count} элементов"
   },
   "counts.rendering_triangles.one": {
     "en": "Rendering %{count} triangle…",

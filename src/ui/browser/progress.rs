@@ -181,11 +181,11 @@ pub(in crate::ui::browser) fn cancelled_operation_summary(
 ) -> String {
     rust_i18n::t!(
         "%{results}.\n\nCompleted changes were not reverted.",
-        results = crate::i18n::list([
+        results = crate::i18n::capitalize_first(crate::i18n::list([
             crate::i18n::count("items_completed", completed),
             crate::i18n::count("items_failed", failed),
             crate::i18n::count("items_not_attempted", not_attempted),
-        ])
+        ]))
     )
     .into_owned()
 }
@@ -674,7 +674,10 @@ impl FileProgressState {
                 .get()
                 .and_then(|snapshot| snapshot.total_files)
                 .unwrap_or(self.file_operation_progress.get().1);
-            compact.count.set_text(&format!("{total}/{total}"));
+            let total_text = crate::i18n::integer(total as u64);
+            compact
+                .count
+                .set_text(&format!("{total_text}/{total_text}"));
             compact.count.set_visible(total > 0);
             compact.completed(title);
         }
