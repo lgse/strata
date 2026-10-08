@@ -110,6 +110,12 @@ pub(crate) fn detected_locale() -> &'static str {
     )
 }
 
+/// Builds the compiled-in catalogs now, on the calling thread. Unoptimized builds
+/// need more stack for this than a worker thread such as the D-Bus executor has.
+pub(crate) fn load_catalogs() {
+    let _ = rust_i18n::available_locales!();
+}
+
 /// English source messages are keys; missing translations retain readable English.
 /// Call only at presentation boundaries, never for paths, protocol values or user content.
 pub(crate) fn tr(message: &str) -> String {

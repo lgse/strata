@@ -129,6 +129,7 @@ fn run_udiskie_hook(arguments: &[OsString]) -> gtk::glib::ExitCode {
 }
 
 fn main() -> gtk::glib::ExitCode {
+    i18n::load_catalogs();
     let arguments: Vec<OsString> = std::env::args_os().collect();
     match launch_mode(&arguments) {
         LaunchMode::BrowserWorker => {
