@@ -75,7 +75,7 @@
   "%{name} was stopped by signal %{signal}": "%{name} se detuvo por la señal %{signal}",
   "%{name}: %{error}": "%{name}: %{error}",
   "%{name}: %{status}": "%{name}: %{status}",
-  "%{name}: This location doesn't support Trash. Delete permanently instead.": "%{name}: Esta ubicación no admite la papelera. Elimínalo de forma permanente.",
+  "%{name}: This location doesn't support Trash. Delete permanently instead.": "%{name}: esta ubicación no admite la papelera. Elimínalo de forma permanente.",
   "%{package} is not available in the AUR": "%{package} no está disponible en AUR",
   "%{path} is not available in the loaded folder.": "%{path} no está disponible en la carpeta cargada.",
   "%{percent} downloaded": "%{percent} descargado",

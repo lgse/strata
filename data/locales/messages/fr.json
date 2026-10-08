@@ -479,7 +479,7 @@
   "List view": "Vue en liste",
   "Loading directory": "Chargement du répertoire",
   "Looking for compatible applications…": "Recherche d’applications compatibles…",
-  "Managed by Omarchy. Turn off Follow Omarchy to pick a theme manually.": "Géré par Omarchy. Désactivez Suivre Omarchy pour choisir un thème manuellement.",
+  "Managed by Omarchy. Turn off Follow Omarchy to pick a theme manually.": "Géré par Omarchy. Désactivez « Suivre Omarchy » pour choisir un thème manuellement.",
   "Mermaid diagram unavailable: %{message}": "Diagramme Mermaid indisponible : %{message}",
   "Missing tools": "Outils manquants",
   "Missing verification stderr": "Sortie d’erreur de vérification manquante",

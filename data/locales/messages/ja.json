@@ -798,7 +798,7 @@
   "This build is no longer offered on your update channel — check for updates again.": "このビルドは更新チャンネルで提供されなくなりました。もう一度更新を確認してください。",
   "This directory has more entries than could be loaded; showing a partial listing.": "このディレクトリには読み込み可能数を超える項目があります。一部の一覧を表示しています。",
   "This file is not a valid archive or is damaged.": "このファイルは有効なアーカイブではないか、破損しています。",
-  "This image is %{value1}, which the selected filter does not accept. Convert it to PNG?": "この画像は %{value1}で、選択したフィルターでは使用できません。PNG に変換しますか？",
+  "This image is %{value1}, which the selected filter does not accept. Convert it to PNG?": "この画像は%{value1}で、選択したフィルターでは使用できません。PNGに変換しますか？",
   "This install tracks the %{channel} release channel.": "このインストールは %{channel} リリースチャンネルを追跡します。",
   "This installation is managed by Omarchy; install updates with `omarchy update`.": "このインストールは Omarchy によって管理されています。更新は `omarchy update` でインストールしてください。",
   "This installation is managed by its package manager.": "このインストールはパッケージマネージャーによって管理されています。",

@@ -75,7 +75,7 @@
   "%{name} was stopped by signal %{signal}": "%{name} đã bị dừng bởi tín hiệu %{signal}",
   "%{name}: %{error}": "%{name}: %{error}",
   "%{name}: %{status}": "%{name}: %{status}",
-  "%{name}: This location doesn't support Trash. Delete permanently instead.": "%{name}: Vị trí này không hỗ trợ Thùng rác. Hãy xóa vĩnh viễn.",
+  "%{name}: This location doesn't support Trash. Delete permanently instead.": "%{name}: vị trí này không hỗ trợ Thùng rác. Hãy xóa vĩnh viễn.",
   "%{package} is not available in the AUR": "%{package} không có trên AUR",
   "%{path} is not available in the loaded folder.": "%{path} không có trong thư mục đã tải.",
   "%{percent} downloaded": "Đã tải xuống %{percent}",
