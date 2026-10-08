@@ -73,19 +73,40 @@ Copy/cut use the selection in the focused column, never a hovered row. In Column
 
 Background selection updates from directory loading must not move keyboard focus to an inactive column.
 
-## Returning to an Icons or List directory
+## Returning to a visited directory
 
 Icons and List remember the selection, keyboard cursor, and scroll position of the
-last 128 directories left in that browser. Back, Forward, and Up restore each
-visited directory after its entries load, including nested parents. Arrow-key
-navigation continues from the restored row. Entries are matched by location,
-not their previous row numbers; deleted entries are not selected accidentally.
-This is temporary browsing state, not a saved preference. New input in the file view
-cancels an in-progress restoration.
+last 128 directories left in that browser. Every route back to a visited directory
+restores it after its entries load, including nested parents: Back, Forward, Up,
+breadcrumbs, and typed paths. Arrow-key navigation continues from the restored row.
+Entries are matched by location, not their previous row numbers; deleted entries are
+not selected accidentally. The selection and cursor carry over between Icons and
+List; the exact scroll position comes back only in the view it was left in (and, for
+Icons, at the same width), otherwise the cursor is scrolled into view. This is
+temporary browsing state, not a saved preference. New input in the file view cancels
+an in-progress restoration. Back, Forward and Up move keyboard focus into the restored
+listing only when focus was inside the pane being left, its Ctrl+F field included:
+from a header button or with the sidebar focused, they restore the selection and
+leave focus where it is. Sidebar places, breadcrumbs and typed paths focus the
+listing, as on a first visit.
+
+In Columns, Back, Forward, Up and breadcrumbs that return to an ancestor of the
+current directory select the folder you came from, with the cursor on it, and leave
+its column closed. When that folder is gone or hidden, the first visible entry is
+selected instead; hidden files stay hidden. Icons and List do the same when they
+have no remembered position for the ancestor.
 
 A navigation that names a target — a typed file path, a Ctrl+K result opened with
 Enter or Alt+Enter, Open file location, or an `org.freedesktop.FileManager1`
 request — selects that target instead of restoring the remembered position.
+
+## Refreshing a directory
+
+F5, the pane's Refresh button, Auto-refresh, and the rescan after a burst of
+external changes keep the selection, the keyboard cursor and the keyboard focus in
+every view: a focused row stays focused, and a focused Ctrl+F field keeps focus and
+its text. Icons and List also keep the scroll position. When the item under the
+cursor is gone, the cursor moves to the item now in its place without selecting it.
 
 ## Creating files and folders
 
