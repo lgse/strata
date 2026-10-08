@@ -2337,7 +2337,7 @@ impl ViewState {
                 let clicked_crumb = crumb.clone();
                 button.connect_clicked(move |_| {
                     if let Some(state) = clicked_weak.upgrade() {
-                        state.browser.navigate(clicked_crumb.clone());
+                        state.browser.navigate_to_ancestor(clicked_crumb.clone());
                     }
                 });
                 let spring_navigate: Rc<dyn Fn(Location)> = {
@@ -2505,7 +2505,7 @@ impl ViewState {
                     popover.popdown();
                 }
                 if let Some(state) = weak_self.upgrade() {
-                    state.browser.navigate(target_crumb.clone());
+                    state.browser.navigate_to_ancestor(target_crumb.clone());
                 }
             });
 

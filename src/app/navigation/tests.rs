@@ -1039,6 +1039,106 @@ fn parent_removes_the_deepest_committed_column() {
     assert_eq!(parent.locations(), &[location("/home")]);
 }
 
+#[derive(Clone, Copy, Debug)]
+enum Delivery {
+    Snapshot,
+    OneBatch,
+    LaterBatch,
+}
+
+#[test]
+fn preferred_location_on_load_selects_the_child_when_it_arrives() {
+    let docs = |name: &str| named_entry(&format!("/docs/{name}"), name);
+    let mut failures = Vec::new();
+    for delivery in [Delivery::Snapshot, Delivery::OneBatch, Delivery::LaterBatch] {
+        let mut state = NavigationState::default();
+        state.navigate(location("/docs"), RequestId(1));
+        state.prefer_location_on_load(0, location("/docs/b2"));
+        match delivery {
+            Delivery::Snapshot => {
+                state.install_snapshot(RequestId(1), vec![docs("a1"), docs("b2"), docs("c3")]);
+            }
+            Delivery::OneBatch => {
+                state.apply_batch(RequestId(1), vec![docs("a1"), docs("b2"), docs("c3")]);
+            }
+            Delivery::LaterBatch => {
+                state.apply_batch(RequestId(1), vec![docs("a1")]);
+                if !state.selected_positions(0).is_empty() || state.active_focus() != Some((0, None))
+                {
+                    failures.push(format!(
+                        "{delivery:?}: the first batch selected {:?} before b2 arrived",
+                        state.selected_positions(0)
+                    ));
+                }
+                state.apply_batch(RequestId(1), vec![docs("b2"), docs("c3")]);
+            }
+        }
+        if state.selected_positions(0) != [1]
+            || state.active_focus() != Some((0, Some(1)))
+            || state.selection_anchor_position(0) != Some(1)
+        {
+            failures.push(format!(
+                "{delivery:?}: selection {:?}, cursor {:?}, anchor {:?}; expected b2 (1)",
+                state.selected_positions(0),
+                state.active_focus(),
+                state.selection_anchor_position(0)
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn preferred_location_falls_back_to_the_first_visible_entry() {
+    let docs = |name: &str| named_entry(&format!("/docs/{name}"), name);
+    let mut failures = Vec::new();
+    for (reason, preferred, listing) in [
+        ("missing", "/docs/b2", vec![docs("a1"), docs("c3")]),
+        (
+            "hidden",
+            "/docs/.b2",
+            vec![hidden_entry("/docs/.b2", ".b2"), docs("a1"), docs("c3")],
+        ),
+    ] {
+        let first_visible = listing.iter().position(|entry| !entry.is_hidden);
+        for batched in [false, true] {
+            let mut state = NavigationState::default();
+            state.navigate(location("/docs"), RequestId(1));
+            state.prefer_location_on_load(0, location(preferred));
+            if batched {
+                state.apply_batch(RequestId(1), listing.clone());
+                if !state.selected_positions(0).is_empty() {
+                    failures.push(format!(
+                        "{reason}, batched: selected {:?} before the listing completed",
+                        state.selected_positions(0)
+                    ));
+                }
+                state.finish(RequestId(1), false, None, None);
+            } else {
+                state.install_snapshot(RequestId(1), listing.clone());
+            }
+            let case = format!("{reason}, batched {batched}");
+            if state.active_focus() != Some((0, first_visible))
+                || state.selected_positions(0) != first_visible.into_iter().collect::<Vec<_>>()
+            {
+                failures.push(format!(
+                    "{case}: cursor {:?} and selection {:?}, expected the first visible entry",
+                    state.active_focus(),
+                    state.selected_positions(0)
+                ));
+            }
+            if state.reveal_pending(0)
+                || state
+                    .take_unresolved_location_reveal(0, RequestId(1))
+                    .is_some()
+            {
+                failures.push(format!("{case}: the preferred entry became a reveal"));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
 fn hidden_entry(path: &str, name: &str) -> FileEntry {
     FileEntry {
         thumbnail_path: None,

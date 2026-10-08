@@ -66,6 +66,8 @@ enum LoadSelection {
     Nothing,
     FirstEntry,
     Target(Vec<Location>),
+    /// Selected if it is listed, otherwise the first visible entry; never revealed.
+    Prefer(Location),
 }
 
 fn load_selection(select_first: bool) -> LoadSelection {
@@ -80,6 +82,7 @@ fn select_on_load(state: &mut NavigationState, depth: usize, selection: LoadSele
     match selection {
         LoadSelection::FirstEntry => state.select_first_on_load(depth),
         LoadSelection::Target(targets) => state.select_locations_on_load(depth, targets),
+        LoadSelection::Prefer(location) => state.prefer_location_on_load(depth, location),
         LoadSelection::Nothing => {}
     }
 }
@@ -1269,6 +1272,28 @@ impl Browser {
         self.navigate_for_selection(location, load_selection(select_first));
     }
 
+    /// Navigates to an ancestor of the current directory and selects the folder the
+    /// current directory sits in, or the first entry when it is not an ancestor.
+    pub fn navigate_to_ancestor(self: &Rc<Self>, location: Location) {
+        let selection = self
+            .came_from_child(&location)
+            .map_or(LoadSelection::FirstEntry, LoadSelection::Prefer);
+        self.navigate_for_selection(location, selection);
+    }
+
+    /// The entry of `destination` on the way down to the current directory.
+    fn came_from_child(&self, destination: &Location) -> Option<Location> {
+        let path = self.state.borrow().current_path()?;
+        let mut location = path.locations().last()?.clone();
+        while let Some(parent) = location.parent() {
+            if parent == *destination {
+                return Some(location);
+            }
+            location = parent;
+        }
+        None
+    }
+
     /// Targets override remembered positions; the first listed target takes the cursor.
     /// Returns true only for an in-place selection that needs no subsequent load.
     pub fn reveal_locations(self: &Rc<Self>, directory: Location, targets: Vec<Location>) -> bool {
@@ -1384,8 +1409,10 @@ impl Browser {
             return;
         }
         let selection = match (self.deferred_reveal.take(), selection) {
-            (Some((directory, targets)), LoadSelection::FirstEntry | LoadSelection::Nothing)
-                if directory == location =>
+            (
+                Some((directory, targets)),
+                LoadSelection::FirstEntry | LoadSelection::Nothing | LoadSelection::Prefer(_),
+            ) if directory == location =>
             {
                 LoadSelection::Target(targets)
             }
@@ -3549,6 +3576,10 @@ impl Browser {
         {
             return;
         }
+        let preferred = path
+            .locations()
+            .last()
+            .and_then(|destination| self.came_from_child(destination));
         self.bump_navigation_generation();
         self.emit(BrowserEvent::NavigationStarting { history: true });
         self.close_peek();
@@ -3570,7 +3601,10 @@ impl Browser {
 
         let active_depth = loads.len().checked_sub(1);
         if let Some(depth) = active_depth {
-            self.select_first_on_load(depth);
+            match preferred {
+                Some(child) => self.state.borrow_mut().prefer_location_on_load(depth, child),
+                None => self.select_first_on_load(depth),
+            }
         }
         self.emit(BrowserEvent::Reset);
         for (depth, (location, request_id)) in loads.into_iter().enumerate() {

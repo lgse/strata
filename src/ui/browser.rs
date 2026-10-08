@@ -1376,7 +1376,7 @@ impl BrowserView {
                     .location_at(0)
                     .and_then(|location| location.parent())
                 {
-                    self.state.browser.navigate(parent);
+                    self.state.browser.navigate_to_ancestor(parent);
                 }
             }
             Some(depth) => self.state.browser.close_column(depth),
