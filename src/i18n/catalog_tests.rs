@@ -21,6 +21,31 @@ fn catalog(path: &Path) -> serde_json::Map<String, serde_json::Value> {
         .clone()
 }
 
+fn is_context_key(key: &str) -> bool {
+    key.contains('.')
+        && key.split('.').all(|part| {
+            !part.is_empty()
+                && part.chars().all(|character| {
+                    character.is_ascii_lowercase() || character.is_ascii_digit() || character == '_'
+                })
+        })
+}
+
+#[test]
+fn english_context_keys_have_english_text() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("data/locales");
+    let mut checked = 0;
+    for folder in [&root, &root.join("messages")] {
+        for (key, value) in catalog(&folder.join("en.json")) {
+            if is_context_key(&key) {
+                checked += 1;
+                assert_ne!(value.as_str(), Some(key.as_str()), "{}", folder.display());
+            }
+        }
+    }
+    assert!(checked > 0);
+}
+
 #[test]
 fn catalogs_cover_all_languages_and_preserve_interpolation() {
     assert_eq!(

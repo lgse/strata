@@ -89,11 +89,15 @@ fn sevenz_decode_error(error: sevenz_rust2::Error) -> ArchiveError {
             ArchiveError::IncorrectPassword(MAYBE_BAD_PASSWORD.to_owned())
         }
         Error::Io(error, _) => archive_io_failed(&archive_read_error(error, false)),
+        Error::FileOpen(error, _) => archive_io_failed(&error),
         error @ (Error::UnsupportedCompressionMethod(_)
         | Error::Unsupported(_)
         | Error::ExternalUnsupported
         | Error::UnsupportedVersion { .. }) => unsupported_archive(&error),
-        error => archive_failed(error),
+        error => {
+            tracing::warn!(%error, "unexpected 7z decoder error");
+            invalid_archive()
+        }
     }
 }
 
@@ -273,7 +277,7 @@ impl<R: BufRead> GzipMembers<R> {
             check_archive_cancelled(cancelled)?;
             let chunk = rest
                 .fill_buf()
-                .map_err(|error| archive_failed(archive_read_error(error, false)))?;
+                .map_err(|error| archive_read_failed(archive_read_error(error, false)))?;
             if chunk.is_empty() {
                 return Ok(());
             }
@@ -424,7 +428,7 @@ pub(super) fn extract_tar(
     let result = (|| {
         for entry in archive
             .entries()
-            .map_err(|error| archive_failed(archive_read_error(error, false)))?
+            .map_err(|error| archive_read_failed(archive_read_error(error, false)))?
         {
             if let Err(error) = session.check_cancelled() {
                 remaining = entry.ok().and_then(|entry| {
@@ -436,7 +440,7 @@ pub(super) fn extract_tar(
                 return Err(error);
             }
             let mut entry =
-                entry.map_err(|error| archive_failed(archive_read_error(error, false)))?;
+                entry.map_err(|error| archive_read_failed(archive_read_error(error, false)))?;
             // tar-rs consumes per-entry extended headers itself, but a pax
             // global header (the first member of every `git archive` tarball)
             // is yielded as an ordinary entry. It carries no file.
@@ -449,7 +453,7 @@ pub(super) fn extract_tar(
             ) {
                 continue;
             }
-            let name = entry.path().map_err(archive_failed)?;
+            let name = entry.path().map_err(|error| archive_io_failed(&error))?;
             let entry_type = entry.header().entry_type();
             if entry_type.is_dir() && name == Path::new(".") {
                 continue;

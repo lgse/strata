@@ -137,14 +137,20 @@ impl SearchDialog {
 
         let footer = gtk::Box::new(gtk::Orientation::Horizontal, 18);
         footer.add_css_class("search-footer");
-        let navigation = gtk::Label::new(Some(&crate::i18n::tr("↑↓  navigate")));
+        // Key hints shorten in narrow windows so "Partial results" stays visible.
+        let hint_label = |text: &str| {
+            let label = gtk::Label::new(Some(text));
+            label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+            label
+        };
+        let navigation = hint_label(&crate::i18n::tr("↑↓  navigate"));
         let open = gtk::Box::new(gtk::Orientation::Horizontal, 5);
         open.set_valign(gtk::Align::Center);
         open.append(&crate::assets::primary_icon(
             crate::assets::icons::CORNER_DOWN_LEFT,
             13,
         ));
-        open.append(&gtk::Label::new(Some(&crate::i18n::tr("open"))));
+        open.append(&hint_label(&crate::i18n::tr("open")));
         navigation.add_css_class("search-hint");
         open.add_css_class("search-hint");
         footer.append(&navigation);
@@ -155,9 +161,9 @@ impl SearchDialog {
             crate::assets::icons::FOLDER_OPEN,
             13,
         ));
-        reveal_hint.append(&gtk::Label::new(Some(&crate::i18n::tr(
+        reveal_hint.append(&hint_label(&crate::i18n::tr(
             "Alt+Enter  open containing folder",
-        ))));
+        )));
         reveal_hint.add_css_class("search-hint");
         footer.append(&reveal_hint);
         let truncated_hint = gtk::Box::new(gtk::Orientation::Horizontal, 4);

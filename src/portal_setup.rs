@@ -212,7 +212,7 @@ fn restore_folder_handler(
         return Ok(None);
     }
     let target = previous.map(str::to_owned).or_else(nautilus).ok_or_else(|| {
-        crate::i18n::tr("No previous folder handler was recorded and Nautilus was not detected. Choose another default file manager first, then retry Restore previous.")
+        crate::i18n::tr("No previous folder handler was recorded and Nautilus was not detected. Choose another default file manager first, then retry Restore default.")
     })?;
     restore(&target)?;
     Ok(Some(target))

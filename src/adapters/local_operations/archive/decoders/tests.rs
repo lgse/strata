@@ -1303,10 +1303,13 @@ fn error_translation_preserves_passwords_unsupported_formats_and_io_failures() {
     }
     for error in [
         SevenZError::FileNotFound,
-        SevenZError::Other("unknown decoder failure".into()),
+        SevenZError::Other("Broken or unsupported archive: no Header".into()),
+        SevenZError::Other("Cannot handle next_header_size 576".into()),
     ] {
-        let expected = error.to_string();
-        assert_eq!(super::sevenz_decode_error(error).to_string(), expected);
+        assert_eq!(
+            super::sevenz_decode_error(error).to_string(),
+            super::INVALID_ARCHIVE
+        );
     }
     for kind in [
         io::ErrorKind::PermissionDenied,

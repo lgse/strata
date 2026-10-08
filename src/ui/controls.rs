@@ -368,13 +368,42 @@ fn attached_particle_start(word: &str) -> Option<usize> {
         suffix_chars += 1;
     }
     let suffix = &word[suffix_start..];
-    if suffix_chars > MAX_PARTICLE_CHARS || !suffix.chars().any(is_hangul_syllable) {
+    if suffix_chars > MAX_PARTICLE_CHARS {
+        return parenthesised_particle_start(word);
+    }
+    if !suffix.chars().any(is_hangul_syllable) {
         return None;
     }
-    word[..suffix_start]
+    previous_char_start(word, suffix_start)
+}
+
+fn previous_char_start(word: &str, index: usize) -> Option<usize> {
+    word[..index]
         .char_indices()
         .next_back()
         .map(|(index, _)| index)
+}
+
+/// In a word that is all Hangul, a trailing "X(Y)" or "(X)Y" particle such as "을(를)" or
+/// "(으)로" is the only recognizable boundary, so keep it with the syllable before it.
+fn parenthesised_particle_start(word: &str) -> Option<usize> {
+    let is_short_hangul = |text: &str, min: usize| {
+        (min..=2).contains(&text.chars().count()) && text.chars().all(is_hangul_syllable)
+    };
+    let trimmed = word.trim_end_matches([':', ',', '.']);
+    let close = trimmed.rfind(')')?;
+    let open = trimmed[..close].rfind('(')?;
+    let after = &trimmed[close + 1..];
+    if !is_short_hangul(&trimmed[open + 1..close], 1) || !is_short_hangul(after, 0) {
+        return None;
+    }
+    let particle = if after.is_empty() {
+        previous_char_start(word, open)
+            .filter(|&index| word[index..open].chars().all(is_hangul_syllable))?
+    } else {
+        open
+    };
+    previous_char_start(word, particle)
 }
 
 pub(super) fn no_break_attribute(range: Range<usize>) -> gtk::pango::Attribute {

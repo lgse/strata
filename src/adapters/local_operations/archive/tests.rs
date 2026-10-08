@@ -454,6 +454,25 @@ fn copy_with_big_buf_stops_when_cancelled() {
 }
 
 #[test]
+fn copy_with_big_buf_reports_os_write_failures_without_the_errno() {
+    struct FullDisk;
+    impl std::io::Write for FullDisk {
+        fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+            Err(std::io::Error::from_raw_os_error(libc::EFBIG))
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let error = copy_with_big_buf(&b"payload"[..], &mut FullDisk, &AtomicBool::new(false))
+        .expect_err("failed write must stop the copy");
+    assert_eq!(
+        error,
+        ArchiveError::Failed("The file is too large for this file system".to_owned())
+    );
+}
+
+#[test]
 fn cancelling_extraction_from_started_waits_for_the_worker_and_reports_pending_output()
 -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT

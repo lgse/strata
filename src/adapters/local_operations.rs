@@ -4889,7 +4889,10 @@ async fn run_merge_undo(
                 return;
             }
             Err(error) => {
-                errors.push(item_error(&location.display_name(), error));
+                errors.push(item_error(
+                    &location.display_name(),
+                    crate::services::gio_error_detail(&error),
+                ));
                 failed_locations.push(location.clone());
                 None
             }
@@ -4971,7 +4974,10 @@ async fn run_merge_undo(
                 return;
             }
             Err(error) => {
-                errors.push(item_error(&location.display_name(), error));
+                errors.push(item_error(
+                    &location.display_name(),
+                    crate::services::gio_error_detail(&error),
+                ));
                 failed_locations.push(location.clone());
                 Vec::new()
             }
@@ -6234,7 +6240,10 @@ impl OperationProvider for LocalOperationProvider {
                             if was_cancelled(&error) {
                                 cancelled = true;
                             } else {
-                                errors.push(item_error(&entry.display_name, error));
+                                errors.push(item_error(
+                                    &entry.display_name,
+                                    crate::services::gio_error_detail(&error),
+                                ));
                             }
                             failed_locations.push(entry.source.clone());
                             None
