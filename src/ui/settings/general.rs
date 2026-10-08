@@ -145,10 +145,10 @@ fn append_language_option(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
 }
 
 fn append_date_format_option(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
-    const CHOICES: [(&str, crate::util::DateFormat); 3] = [
-        ("Relative", crate::util::DateFormat::Relative),
-        ("ISO 8601", crate::util::DateFormat::Iso8601),
-        ("Long", crate::util::DateFormat::Long),
+    const CHOICES: [crate::util::DateFormat; 3] = [
+        crate::util::DateFormat::Relative,
+        crate::util::DateFormat::Iso8601,
+        crate::util::DateFormat::Long,
     ];
     let menu = gtk::Box::new(gtk::Orientation::Vertical, 2);
     menu.add_css_class("column-menu");
@@ -171,18 +171,15 @@ fn append_date_format_option(content: &gtk::Box, manager: &Rc<PreferenceManager>
     crate::ui::accessibility::set_label(&button, &crate::i18n::tr("Modified date format"));
     manager.bind_preference(&button, PreferenceManager::date_format, |widget, format| {
         if let Some(button) = widget.downcast_ref::<gtk::MenuButton>() {
-            button.set_label(&crate::i18n::tr(match format {
-                crate::util::DateFormat::Relative => "Relative",
-                crate::util::DateFormat::Iso8601 => "ISO 8601",
-                crate::util::DateFormat::Long => "Long",
-            }));
+            button.set_label(&crate::i18n::tr(date_format_label(format)));
         }
     });
     let mut examples = Vec::new();
-    for (name, format) in CHOICES {
+    for format in CHOICES {
+        let name = crate::i18n::tr(date_format_label(format));
         let copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
         copy.set_hexpand(true);
-        let title = gtk::Label::new(Some(&crate::i18n::tr(name)));
+        let title = gtk::Label::new(Some(&name));
         title.set_xalign(0.0);
         let example = gtk::Label::new(None);
         example.set_xalign(0.0);
@@ -194,9 +191,15 @@ fn append_date_format_option(content: &gtk::Box, manager: &Rc<PreferenceManager>
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
         row.append(&copy);
         row.append(&check);
-        let option = gtk::Button::builder().child(&row).build();
+        let option = gtk::Button::builder()
+            .child(&row)
+            .accessible_role(gtk::AccessibleRole::MenuItemRadio)
+            .build();
         option.add_css_class("column-menu-option");
         option.set_has_frame(false);
+        // The derived name would also read the example date.
+        crate::ui::accessibility::set_label(&option, &name);
+        crate::ui::accessibility::sync_checked_with_icon(&option, &check);
         manager.bind_preference(
             &check,
             PreferenceManager::date_format,
@@ -211,14 +214,16 @@ fn append_date_format_option(content: &gtk::Box, manager: &Rc<PreferenceManager>
             }
         });
         menu.append(&option);
-        examples.push((example, format));
+        examples.push((option, example, format));
     }
     let examples = Rc::new(examples);
     let refresh = {
         let examples = examples.clone();
         move || {
-            for (label, format) in examples.iter() {
-                label.set_text(&crate::util::modified_date_example(*format));
+            for (option, label, format) in examples.iter() {
+                let example = crate::util::modified_date_example(*format);
+                label.set_text(&example);
+                crate::ui::accessibility::set_description(option, Some(&example));
             }
         }
     };
@@ -229,6 +234,14 @@ fn append_date_format_option(content: &gtk::Box, manager: &Rc<PreferenceManager>
         "How file modified times appear in lists and details.",
         &button,
     ));
+}
+
+fn date_format_label(format: crate::util::DateFormat) -> &'static str {
+    match format {
+        crate::util::DateFormat::Relative => "Relative",
+        crate::util::DateFormat::Iso8601 => "ISO 8601",
+        crate::util::DateFormat::Long => "Long",
+    }
 }
 
 fn append_thumbnail_workers_option(content: &gtk::Box, manager: &Rc<PreferenceManager>) {

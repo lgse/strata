@@ -47,15 +47,14 @@ def viewport(strata, directory=None):
 def open_panel(strata, panel):
     if panel == "sort":
         strata.pointer.click(strata.header_button("Choose sort field"))
-        label = "Folders first"
+        role, label = "check menu item", "Folders first"
     elif panel == "appearance":
         strata.open_appearance_menu()
-        label = "Compact"
+        role, label = "radio menu item", "Compact"
     else:
         toggle = strata.window.find(role="toggle button", name="Thumbnail size")
         assert toggle is not None and toggle.activate(), "thumbnail menu must be actionable"
-        label = "Small"
-    role = "label" if panel == "thumbnail" else "button"
+        role, label = "label", "Small"
     return strata.wait(
         lambda: strata.window.find(role=role, name=label),
         f"the {panel} panel to open",

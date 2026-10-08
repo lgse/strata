@@ -41,15 +41,15 @@ def test_shortcut_round_trip_preserves_selection_and_updates_the_appearance_menu
 
         strata.open_appearance_menu()
         for candidate in MODES:
-            option = strata.window.find(role="button", name=candidate)
+            option = strata.window.find(role="radio menu item", name=candidate)
             assert option is not None
-            assert _has_check_mark(option) == (candidate == mode), (mode, candidate)
-        grouping = strata.window.find(role="button", name="Group by file type")
+            assert option.has_state("checked") == (candidate == mode), (mode, candidate)
+        grouping = strata.window.find(role="check menu item", name="Group by file type")
         assert grouping is not None
         assert ("sensitive" in grouping.states) == (mode == "List")
         strata.keyboard.press("Escape")
         strata.wait(
-            lambda: strata.window.find(role="button", name="Columns") is None,
+            lambda: strata.window.find(role="radio menu item", name="Columns") is None,
             "the appearance menu to close",
         )
 
@@ -145,12 +145,3 @@ def test_list_column_resize_tracks_the_pointer_without_an_initial_jump(strata):
             lambda: abs(cell.screen_bounds().width - (before.width - 12)) <= 2,
             f"the {label} column to shrink by the pointer's 12-pixel movement",
         )
-
-
-def _has_check_mark(option) -> bool:
-    """A chosen appearance option shows a trailing check image."""
-
-    images = option.find_all(role="image")
-    # The leading image is the option's own icon; a visible second image is the
-    # check mark.
-    return len(images) > 1

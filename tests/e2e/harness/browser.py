@@ -484,7 +484,7 @@ class Strata:
 
         def opened() -> Node | None:
             nonlocal clicked
-            menu = self.window.find(role="button", name="Columns")
+            menu = self.window.find(role="radio menu item", name="Columns")
             if (
                 menu is None
                 and time.monotonic() - clicked > MENU_RETRY_INTERVAL
@@ -502,7 +502,7 @@ class Strata:
 
         self.open_appearance_menu()
         option = self.wait(
-            lambda: self.window.find(role="button", name=VIEW_MENU_LABELS[mode]),
+            lambda: self.window.find(role="radio menu item", name=VIEW_MENU_LABELS[mode]),
             f"the {mode} option",
         )
         self.pointer.click(option)

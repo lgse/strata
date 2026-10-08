@@ -386,6 +386,9 @@ Rules the suite holds itself to:
   not waits on application state.
 - **Assert on the filesystem as well as the window.** Every file operation
   checks the resulting tree, not only the listing.
+- **Read chosen states from AT-SPI.** Check, radio and toggle controls expose
+  `checked` or `pressed` (`node.has_state("checked")`); never infer them from
+  check-icon children.
 - **Run one scenario per presentation where it matters.** `harness.modes`
   supplies the `ALL_MODES` parameterization.
 

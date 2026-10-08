@@ -257,6 +257,18 @@ pub(super) fn form_check_button(label: &str) -> gtk::CheckButton {
 }
 
 pub(super) fn menu_option(label: &str, selected: bool) -> (gtk::Button, gtk::Image) {
+    checkable_menu_option(label, selected, gtk::AccessibleRole::MenuItemRadio)
+}
+
+pub(super) fn check_menu_option(label: &str, selected: bool) -> (gtk::Button, gtk::Image) {
+    checkable_menu_option(label, selected, gtk::AccessibleRole::MenuItemCheckbox)
+}
+
+fn checkable_menu_option(
+    label: &str,
+    selected: bool,
+    role: gtk::AccessibleRole,
+) -> (gtk::Button, gtk::Image) {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     let check = crate::assets::primary_icon(crate::assets::icons::CHECK, 16);
     check.set_visible(selected);
@@ -265,9 +277,13 @@ pub(super) fn menu_option(label: &str, selected: bool) -> (gtk::Button, gtk::Ima
     label.set_hexpand(true);
     row.append(&label);
     row.append(&check);
-    let option = gtk::Button::builder().child(&row).build();
+    let option = gtk::Button::builder()
+        .child(&row)
+        .accessible_role(role)
+        .build();
     option.add_css_class("column-menu-option");
     option.set_has_frame(false);
+    super::accessibility::sync_checked_with_icon(&option, &check);
     (option, check)
 }
 
