@@ -2924,11 +2924,7 @@ fn constrain_page_text(widget: &gtk::Widget) {
                 && !label.has_css_class("settings-control-label"),
         );
         // Segmented choices break only between words so labels never split mid-word.
-        label.set_wrap_mode(if label.has_css_class("segmented-control-label") {
-            gtk::pango::WrapMode::Word
-        } else {
-            gtk::pango::WrapMode::WordChar
-        });
+        label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     }
     if let Some(entry) = widget.downcast_ref::<gtk::Entry>() {
         entry.set_width_chars(1);
