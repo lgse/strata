@@ -319,6 +319,10 @@ mod responsive_bin {
         pub compact_navigation: Cell<bool>,
         pub compact_content: Cell<bool>,
         pub typography_scale: Cell<f64>,
+        // Matrix widths below which the translated choices were seen squeezed: side by side,
+        // or with each label beside its control.
+        pub activation_side_by_side_min: Cell<i32>,
+        pub activation_inline_options_min: Cell<i32>,
         pub navigation: RefCell<Option<gtk::Box>>,
         pub navigation_heading: RefCell<Option<gtk::Label>>,
         pub navigation_labels: RefCell<Vec<gtk::Label>>,
@@ -412,10 +416,13 @@ mod responsive_bin {
             let available_activation_width = child_width - if compact { 100 } else { 330 };
             let scaled_activation_width = MIN_SIDE_BY_SIDE_ACTIVATION_WIDTH as f64
                 + (self.typography_scale.get() - 1.0).max(0.0) * 320.0;
-            let activation_compact =
-                f64::from(available_activation_width) < scaled_activation_width;
-            let stack_activation_options =
-                available_activation_width < STACK_ACTIVATION_OPTIONS_BREAKPOINT;
+            let matrix_width = activation_matrix_width(&self.responsive_activation_rows.borrow());
+            let activation_compact = f64::from(available_activation_width)
+                < scaled_activation_width
+                || matrix_width < self.activation_side_by_side_min.get();
+            let stack_activation_options = available_activation_width
+                < STACK_ACTIVATION_OPTIONS_BREAKPOINT
+                || matrix_width < self.activation_inline_options_min.get();
             for responsive_row in self.responsive_activation_rows.borrow().iter() {
                 responsive_row.row.set_orientation(if activation_compact {
                     gtk::Orientation::Vertical
@@ -455,6 +462,39 @@ mod responsive_bin {
             let y = ((height - child_height) / 2) as f32;
             let transform = gtk::gsk::Transform::new().translate(&gtk::graphene::Point::new(x, y));
             child.allocate(child_width, child_height, baseline, Some(transform));
+            self.stack_squeezed_activation_choices(activation_compact, stack_activation_options);
+        }
+    }
+
+    impl ResponsiveBin {
+        /// Long translated choices can need more room than the fixed breakpoints allow; once
+        /// a choice gets less than its natural width, stack the matrix further at this width.
+        fn stack_squeezed_activation_choices(&self, compact: bool, stacked_options: bool) {
+            if compact && stacked_options {
+                return;
+            }
+            let rows = self.responsive_activation_rows.borrow();
+            let squeezed = rows.iter().filter(|row| row.row.is_mapped()).any(|row| {
+                row.options
+                    .iter()
+                    .filter_map(|option| option.last_child())
+                    .any(|control| choice_label_wraps(&control))
+            });
+            if !squeezed {
+                return;
+            }
+            let threshold = activation_matrix_width(&rows) + 1;
+            if compact {
+                self.activation_inline_options_min.set(threshold);
+            } else {
+                self.activation_side_by_side_min.set(threshold);
+            }
+            let bin = self.obj().downgrade();
+            glib::idle_add_local_once(move || {
+                if let Some(bin) = bin.upgrade() {
+                    bin.queue_allocate();
+                }
+            });
         }
     }
 }
@@ -492,6 +532,8 @@ impl ResponsiveBin {
                 .downcast_ref::<ResponsiveBin>()
                 .expect("settings bin");
             bin.imp().typography_scale.set(scale);
+            bin.imp().activation_side_by_side_min.set(0);
+            bin.imp().activation_inline_options_min.set(0);
             bin.queue_allocate();
         });
         bin
@@ -527,6 +569,26 @@ impl ResponsiveBin {
             .borrow_mut()
             .push((row, button));
     }
+}
+
+/// Whether a segmented control gives any choice less than its one-line width.
+fn choice_label_wraps(control: &gtk::Widget) -> bool {
+    let mut choice = control.first_child();
+    while let Some(button) = choice {
+        choice = button.next_sibling();
+        if let Some(label) = button.downcast_ref::<gtk::Button>().and_then(|b| b.child())
+            && label.width() < label.measure(gtk::Orientation::Horizontal, -1).1
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn activation_matrix_width(rows: &[ResponsiveActivationRow]) -> i32 {
+    rows.first()
+        .and_then(|row| row.row.parent())
+        .map_or(0, |matrix| matrix.width())
 }
 
 fn reflow_settings(
@@ -2958,8 +3020,11 @@ fn constrain_page_text(widget: &gtk::Widget) {
                 && !label.has_css_class("menu-heading")
                 && !label.has_css_class("settings-control-label"),
         );
-        // Segmented choices break only between words so labels never split mid-word.
-        label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+        label.set_wrap_mode(if label.has_css_class("settings-word-wrap") {
+            gtk::pango::WrapMode::Word
+        } else {
+            gtk::pango::WrapMode::WordChar
+        });
         crate::ui::controls::keep_words_whole(label);
     }
     if let Some(entry) = widget.downcast_ref::<gtk::Entry>() {

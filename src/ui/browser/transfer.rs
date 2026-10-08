@@ -12,7 +12,7 @@ use crate::ui::browser::entry::item_count_label;
 use crate::ui::browser::paths::{can_remove_location, compact_display_path, is_trash_location};
 use crate::ui::controls::{
     ModalTone, focus_button, form_check_button, message_dialog_description, message_dialog_layout,
-    wrap_button_label,
+    stack_actions_when_constrained, wrap_button_label,
 };
 use crate::ui::modal::{ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog};
 use gtk::prelude::*;
@@ -1018,6 +1018,7 @@ impl ViewState {
         for button in [&layout.cancel, &skip, &keep_both, &merge, &layout.confirm] {
             wrap_button_label(button);
         }
+        stack_actions_when_constrained(&layout);
         let content = layout.content;
         let cancel = layout.cancel;
         let replace = layout.confirm;

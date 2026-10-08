@@ -87,6 +87,11 @@ fn color_field_row(
     let label_text = crate::i18n::tr(label_text);
     let label = gtk::Label::new(Some(&label_text));
     label.set_xalign(0.0);
+    label.set_hexpand(true);
+    // The grid is homogeneous, so a character-wrapping label would shrink every field.
+    label.add_css_class("settings-word-wrap");
+    label.set_wrap(true);
+    label.set_wrap_mode(gtk::pango::WrapMode::Word);
     let dialog = gtk::ColorDialog::builder()
         .title(rust_i18n::t!("%{label_text} color", label_text = label_text).into_owned())
         .with_alpha(false)

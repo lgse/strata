@@ -456,6 +456,25 @@ pub(super) fn message_dialog_layout(
     layout
 }
 
+/// Stacks the action buttons once the dialog is narrowed to the window, so a row of
+/// long translated labels cannot push the primary button out of view.
+pub(super) fn stack_actions_when_constrained(layout: &ModalLayout) {
+    let actions = layout.actions.downgrade();
+    layout.content.connect_css_classes_notify(move |content| {
+        let Some(actions) = actions.upgrade() else {
+            return;
+        };
+        let orientation = if content.has_css_class("modal-constrained") {
+            gtk::Orientation::Vertical
+        } else {
+            gtk::Orientation::Horizontal
+        };
+        if actions.orientation() != orientation {
+            actions.set_orientation(orientation);
+        }
+    });
+}
+
 pub(super) fn modal_layout_with_tone(
     icon: &str,
     title: &str,
