@@ -141,7 +141,7 @@ impl ResultWidgets {
             thumbnail::set_thumbnail_or_icon_for_path(
                 &self.icon,
                 &result.path,
-                crate::assets::icons::DOCUMENTS,
+                browser::icon_for_name(&result.name),
                 size,
                 size,
             );

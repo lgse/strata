@@ -45,3 +45,6 @@ darcula = "darcula"
 Strata = "Strata"
 WRONLY = "WRONLY"
 gir = "gir"
+# Verbatim file extensions.
+mak = "mak"
+edn = "edn"

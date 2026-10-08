@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-use super::super::{move_restore_path, move_restore_path_with};
+use super::super::{
+    copy_restore_entry, discard_restore_copy, move_restore_path, move_restore_path_with,
+};
 use super::*;
 use rustix::{fs::RenameFlags, io::Errno};
 use std::os::unix::fs::symlink;
@@ -35,7 +37,7 @@ fn unsupported_restore_rename_never_downgrades_atomicity() -> Result<(), Box<dyn
                 .expect_err("unsupported atomic operation")
                 .to_string();
             assert!(
-                message.contains("does not support atomic no-replace"),
+                message.contains("something already exists at the destination"),
                 "{message}"
             );
             assert!(!message.contains("across volumes"));
@@ -50,6 +52,288 @@ fn unsupported_restore_rename_never_downgrades_atomicity() -> Result<(), Box<dyn
             );
         }
     }
+    Ok(())
+}
+
+#[test]
+fn unsupported_restore_rename_safely_restores_when_destination_available()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT.lock()?;
+    for error in [Errno::INVAL, Errno::NOSYS, Errno::OPNOTSUPP] {
+        for directory in [false, true] {
+            let fixture = tempfile::tempdir()?;
+            let source = fixture.path().join("source");
+            let destination = fixture.path().join("destination");
+            if directory {
+                fs::create_dir(&source)?;
+                fs::write(source.join("contents"), b"original")?;
+            } else {
+                fs::write(&source, b"original")?;
+            }
+            let result = glib::MainContext::default().block_on(move_restore_path_with(
+                source.clone(),
+                destination.clone(),
+                fixture.path().to_path_buf(),
+                gio::Cancellable::new(),
+                move |_, _, _, _, flags| {
+                    assert_eq!(flags, RenameFlags::NOREPLACE);
+                    Err(error)
+                },
+            ));
+            assert!(result.is_ok(), "restore should succeed: {result:?}");
+            assert!(!source.exists(), "source should be removed from trash");
+            if directory {
+                assert_eq!(fs::read(destination.join("contents"))?, b"original");
+            } else {
+                assert_eq!(fs::read(&destination)?, b"original");
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn unsupported_restore_keeps_both_parents_pinned() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT.lock()?;
+    let allowed = tempfile::tempdir()?;
+    let outside = tempfile::tempdir()?;
+    let source_parent = allowed.path().join("trash");
+    let target_parent = allowed.path().join("documents");
+    fs::create_dir(&source_parent)?;
+    fs::create_dir(&target_parent)?;
+    let source = source_parent.join("report");
+    fs::create_dir(&source)?;
+    fs::write(source.join("contents"), b"original")?;
+    fs::create_dir(outside.path().join("report"))?;
+    fs::write(outside.path().join("report/contents"), b"unrelated")?;
+    let retained_source = allowed.path().join("old-trash");
+    let retained_target = allowed.path().join("old-documents");
+    let old_source = retained_source.clone();
+    let old_target = retained_target.clone();
+    let escaped = outside.path().to_path_buf();
+    glib::MainContext::default().block_on(move_restore_path_with(
+        source,
+        target_parent.join("report"),
+        allowed.path().to_path_buf(),
+        gio::Cancellable::new(),
+        move |_, _, _, _, _| {
+            fs::rename(&source_parent, old_source).expect("move source parent");
+            fs::rename(&target_parent, old_target).expect("move destination parent");
+            symlink(&escaped, &source_parent).expect("redirect source parent");
+            symlink(&escaped, &target_parent).expect("redirect destination parent");
+            Err(Errno::INVAL)
+        },
+    ))?;
+    assert_eq!(
+        fs::read(retained_target.join("report/contents"))?,
+        b"original"
+    );
+    assert!(!retained_source.join("report").exists());
+    assert_eq!(
+        fs::read(outside.path().join("report/contents"))?,
+        b"unrelated"
+    );
+    Ok(())
+}
+
+#[test]
+fn unsupported_restore_preserves_a_replaced_source() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT.lock()?;
+    let fixture = tempfile::tempdir()?;
+    let source = fixture.path().join("source");
+    let original = fixture.path().join("original");
+    let destination = fixture.path().join("destination");
+    fs::write(&source, b"original")?;
+    let raced_source = source.clone();
+    let retained = original.clone();
+    let result = glib::MainContext::default().block_on(move_restore_path_with(
+        source.clone(),
+        destination.clone(),
+        fixture.path().to_path_buf(),
+        gio::Cancellable::new(),
+        move |_, _, _, _, _| {
+            fs::rename(&raced_source, retained).expect("retain original source");
+            fs::write(&raced_source, b"replacement").expect("replace source");
+            Err(Errno::INVAL)
+        },
+    ));
+    assert!(result.is_err());
+    assert_eq!(fs::read(source)?, b"replacement");
+    assert_eq!(fs::read(original)?, b"original");
+    assert!(!destination.exists());
+    Ok(())
+}
+
+#[test]
+fn restore_exclusive_copy_handles_files_links_and_partial_failure() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT.lock()?;
+    let fixture = tempfile::tempdir()?;
+    let source = fixture.path().join("source");
+    fs::create_dir(&source)?;
+    fs::write(source.join("contents"), b"original")?;
+    symlink("missing", source.join("link"))?;
+    let parent = std::sync::Arc::new(super::super::open_local_parent_directory(fixture.path())?);
+    glib::MainContext::default().block_on(copy_restore_entry(
+        parent.clone(),
+        "source".into(),
+        parent.clone(),
+        "destination".into(),
+        None,
+        gio::Cancellable::new(),
+        Rc::new(RefCell::new(Vec::new())),
+    ))?;
+    assert_eq!(
+        fs::read(fixture.path().join("destination/contents"))?,
+        b"original"
+    );
+    assert_eq!(
+        fs::read_link(fixture.path().join("destination/link"))?,
+        Path::new("missing")
+    );
+    fs::write(fixture.path().join("occupied"), b"unrelated")?;
+    assert!(
+        glib::MainContext::default()
+            .block_on(copy_restore_entry(
+                parent.clone(),
+                "source".into(),
+                parent,
+                "occupied".into(),
+                None,
+                gio::Cancellable::new(),
+                Rc::new(RefCell::new(Vec::new())),
+            ))
+            .is_err()
+    );
+    assert_eq!(fs::read(fixture.path().join("occupied"))?, b"unrelated");
+    rustix::fs::mknodat(
+        rustix::fs::CWD,
+        source.join("fifo"),
+        rustix::fs::FileType::Fifo,
+        rustix::fs::Mode::from_raw_mode(0o600),
+        0,
+    )?;
+    let result = glib::MainContext::default().block_on(move_restore_path_with(
+        source.clone(),
+        fixture.path().join("incomplete"),
+        fixture.path().to_path_buf(),
+        gio::Cancellable::new(),
+        |_, _, _, _, _| Err(Errno::INVAL),
+    ));
+    let message = result.expect_err("unsupported copy source").to_string();
+    assert!(
+        message.contains("incomplete copy could not be removed"),
+        "{message}"
+    );
+    assert!(fixture.path().join("incomplete").is_dir());
+    assert!(!fixture.path().join("incomplete/contents").exists());
+    assert_eq!(fs::read(source.join("contents"))?, b"original");
+    assert!(fs::symlink_metadata(source.join("fifo")).is_ok());
+    Ok(())
+}
+
+#[test]
+fn restore_copy_rechecks_the_opened_source_before_creating_output() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT.lock()?;
+    let fixture = tempfile::tempdir()?;
+    let source = fixture.path().join("source");
+    fs::write(&source, b"original")?;
+    let identity = glib::MainContext::default().block_on(super::super::local_file_identity(
+        &gio::File::for_path(&source),
+    ))?;
+    fs::rename(&source, fixture.path().join("original"))?;
+    fs::write(&source, b"replacement")?;
+    let parent = std::sync::Arc::new(super::super::open_local_parent_directory(fixture.path())?);
+    let result = glib::MainContext::default().block_on(copy_restore_entry(
+        parent.clone(),
+        "source".into(),
+        parent,
+        "destination".into(),
+        identity,
+        gio::Cancellable::new(),
+        Rc::new(RefCell::new(Vec::new())),
+    ));
+    assert!(result.is_err());
+    assert!(!fixture.path().join("destination").exists());
+    assert_eq!(fs::read(source)?, b"replacement");
+    assert_eq!(fs::read(fixture.path().join("original"))?, b"original");
+    Ok(())
+}
+
+#[test]
+fn restore_copy_rollback_preserves_foreign_and_replaced_entries() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT.lock()?;
+    let fixture = tempfile::tempdir()?;
+    let source = fixture.path().join("source");
+    fs::create_dir(&source)?;
+    fs::write(source.join("contents"), b"original")?;
+    let parent = std::sync::Arc::new(super::super::open_local_parent_directory(fixture.path())?);
+    let journal = Rc::new(RefCell::new(Vec::new()));
+    glib::MainContext::default().block_on(copy_restore_entry(
+        parent.clone(),
+        "source".into(),
+        parent,
+        "destination".into(),
+        None,
+        gio::Cancellable::new(),
+        journal.clone(),
+    ))?;
+    let destination = fixture.path().join("destination");
+    fs::write(destination.join("foreign"), b"unrelated")?;
+    fs::rename(
+        destination.join("contents"),
+        fixture.path().join("old-copy"),
+    )?;
+    fs::write(destination.join("contents"), b"replacement")?;
+    assert!(
+        glib::MainContext::default()
+            .block_on(discard_restore_copy(journal))
+            .is_err()
+    );
+    assert_eq!(fs::read(destination.join("foreign"))?, b"unrelated");
+    assert_eq!(fs::read(destination.join("contents"))?, b"replacement");
+    assert_eq!(fs::read(source.join("contents"))?, b"original");
+    Ok(())
+}
+
+#[test]
+fn restore_directory_copy_preserves_permissions_times_and_xattrs() -> Result<(), Box<dyn Error>> {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT.lock()?;
+    let fixture = tempfile::tempdir()?;
+    let source = fixture.path().join("source");
+    fs::create_dir(&source)?;
+    fs::write(source.join("contents"), b"original")?;
+    fs::set_permissions(&source, fs::Permissions::from_mode(0o750))?;
+    let source_file = fs::File::open(&source)?;
+    let modified = SystemTime::UNIX_EPOCH + Duration::from_secs(1_600_000_000);
+    let accessed = SystemTime::UNIX_EPOCH + Duration::from_secs(1_500_000_000);
+    source_file.set_times(
+        fs::FileTimes::new()
+            .set_accessed(accessed)
+            .set_modified(modified),
+    )?;
+    rustix::fs::fsetxattr(
+        &source_file,
+        "user.strata-test",
+        b"metadata",
+        rustix::fs::XattrFlags::empty(),
+    )?;
+    let destination = fixture.path().join("destination");
+    glib::MainContext::default().block_on(move_restore_path_with(
+        source.clone(),
+        destination.clone(),
+        fixture.path().to_path_buf(),
+        gio::Cancellable::new(),
+        |_, _, _, _, _| Err(Errno::INVAL),
+    ))?;
+    assert!(!source.exists());
+    assert_eq!(fs::metadata(&destination)?.mode() & 0o777, 0o750);
+    assert_eq!(fs::metadata(&destination)?.modified()?, modified);
+    assert_eq!(fs::metadata(&destination)?.accessed()?, accessed);
+    let target = fs::File::open(destination)?;
+    let mut value = [0u8; 32];
+    let count = rustix::fs::fgetxattr(&target, "user.strata-test", &mut value[..])?;
+    assert_eq!(&value[..count], b"metadata");
     Ok(())
 }
 

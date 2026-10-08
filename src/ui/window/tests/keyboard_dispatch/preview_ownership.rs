@@ -459,6 +459,7 @@ fn tenxer_preview_owns_document_keys_until_returned() {
                 move_to_named(&fixture, &browser, "long.txt");
                 fixture.press(Key::l, ModifierType::empty());
                 wait_until(|| preview_has_focus(&fixture));
+                wait_document(&fixture);
             };
             for (key, modifiers) in [
                 (Key::BackSpace, ModifierType::empty()),
@@ -468,7 +469,7 @@ fn tenxer_preview_owns_document_keys_until_returned() {
                 assert!(fixture.press(key, modifiers), "{key:?}");
                 wait_loaded(&browser, 0);
                 assert_ne!(browser.active_location(), origin, "{key:?} goes up");
-                assert!(fixture.view.item_view_has_focus(), "{key:?}");
+                wait_until(|| fixture.view.item_view_has_focus());
                 fixture.press(Key::H, ModifierType::SHIFT_MASK);
                 wait_loaded(&browser, 0);
                 assert_eq!(browser.active_location(), origin);
