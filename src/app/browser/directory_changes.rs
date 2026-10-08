@@ -44,6 +44,10 @@ impl Browser {
         if self.location_at(depth).as_ref() != Some(watched) {
             return;
         }
+        // A rescan reloads the column, which refreshes the indexes itself.
+        if !matches!(&change, DirectoryChange::Rescan) {
+            Self::refresh_search_indexes_for(watched, Some(&change));
+        }
         let removed = (!watched.is_recent_root())
             .then(|| removed_location(&change).cloned())
             .flatten();
@@ -68,6 +72,23 @@ impl Browser {
         if let Some(removed) = removed {
             self.retire_recent_target(&removed);
         }
+    }
+
+    /// Keeps pane filters, and any search sharing their index, in step with the listing
+    /// of `watched`. A move also rebases indexes rooted at or below the moved entry.
+    pub(super) fn refresh_search_indexes_for(watched: &Location, change: Option<&DirectoryChange>) {
+        if watched.is_recent_root() {
+            return;
+        }
+        let Some(directory) = watched.native_path() else {
+            return;
+        };
+        if let Some(DirectoryChange::Move { from, entry }) = change
+            && let (Some(from), Some(to)) = (from.native_path(), entry.location.native_path())
+        {
+            crate::services::rebase_search_indexes(from, to, crate::services::RenameScope::Moved);
+        }
+        crate::services::refresh_search_indexes_for_directory(directory);
     }
 
     pub(super) fn retire_recent_target(self: &Rc<Self>, removed: &Location) {

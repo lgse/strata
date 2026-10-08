@@ -22,6 +22,8 @@ use super::{
 
 pub(crate) const RESULT_LIMIT: usize = 100;
 const PUBLISH_INTERVAL: Duration = Duration::from_millis(50);
+/// The shortest gap between the starts of two rescans of one index for outside changes.
+const MIN_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 
 // Keep tool configuration searchable while pruning generated subtrees.
 const GENERATED_TREE_GLOBS: [&str; 14] = [
@@ -263,6 +265,8 @@ struct SharedIndex {
     refresh_requested: AtomicUsize,
     refresh: Mutex<RefreshState>,
     refresh_owner: Option<(Weak<SharedIndex>, usize)>,
+    /// `build_root_overrides` per root, kept for the scope checks of outside changes.
+    walk_overrides: Mutex<HashMap<PathBuf, Arc<ignore::overrides::Override>>>,
 }
 
 struct RefreshState {
@@ -271,6 +275,11 @@ struct RefreshState {
     hidden: bool,
     recursive: bool,
     exclusions: SearchExclusions,
+    /// A rescan arrived while a walk ran: walk once more after it publishes.
+    rerun: bool,
+    /// The next walk only rescans unchanged roots, so it waits out `MIN_REFRESH_INTERVAL`.
+    throttled: bool,
+    last_walk: Option<Instant>,
 }
 
 impl SharedIndex {
@@ -292,8 +301,12 @@ impl SharedIndex {
                 hidden: false,
                 recursive: false,
                 exclusions: SearchExclusions::default(),
+                rerun: false,
+                throttled: false,
+                last_walk: None,
             }),
             refresh_owner: None,
+            walk_overrides: Mutex::new(HashMap::new()),
             lifecycle: Mutex::new(IndexLifecycle {
                 active_sessions: 1,
                 retired: false,
@@ -359,6 +372,15 @@ impl SharedIndex {
                             || owner.refresh_requested.load(Ordering::Acquire) != *generation
                     })
                 })
+    }
+
+    fn walk_overrides(&self, root: &Path) -> Arc<ignore::overrides::Override> {
+        self.walk_overrides
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .entry(root.to_path_buf())
+            .or_insert_with(|| Arc::new(build_root_overrides(root)))
+            .clone()
     }
 
     fn is_retired(&self) -> bool {
@@ -635,6 +657,20 @@ fn index_scoped(
 }
 
 pub(crate) fn refresh_search_indexes_for_rename(from: &Path, to: &Path) {
+    rebase_search_indexes(from, to, RenameScope::Related);
+}
+
+/// Which indexes a rename from `from` to `to` restarts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RenameScope {
+    /// Every index with a root at, above or below either path.
+    Related,
+    /// Only indexes with a root at or below `from`, which move to `to`. Callers rescan
+    /// the folder that held the entry themselves, so a plain file rename coalesces.
+    Moved,
+}
+
+pub(crate) fn rebase_search_indexes(from: &Path, to: &Path, scope: RenameScope) {
     let Some(registry) = SHARED_INDEXES.get() else {
         return;
     };
@@ -643,12 +679,16 @@ pub(crate) fn refresh_search_indexes_for_rename(from: &Path, to: &Path) {
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     registry.retain(|(_, index)| index.strong_count() > 0);
     for ((roots, hidden, recursive, exclusions), index) in registry.iter_mut() {
-        if !roots.iter().any(|root| {
-            from.starts_with(root)
-                || to.starts_with(root)
-                || root.starts_with(from)
-                || root.starts_with(to)
-        }) {
+        let affected = roots.iter().any(|root| match scope {
+            RenameScope::Related => {
+                from.starts_with(root)
+                    || to.starts_with(root)
+                    || root.starts_with(from)
+                    || root.starts_with(to)
+            }
+            RenameScope::Moved => root.starts_with(from),
+        });
+        if !affected {
             continue;
         }
         for root in roots.iter_mut() {
@@ -659,15 +699,93 @@ pub(crate) fn refresh_search_indexes_for_rename(from: &Path, to: &Path) {
         let mut seen = HashSet::new();
         roots.retain(|root| seen.insert(root.clone()));
         if let Some(index) = index.upgrade() {
+            index
+                .walk_overrides
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .retain(|root, _| roots.contains(root));
             request_index_refresh(
                 index,
                 roots.clone(),
                 *hidden,
                 *recursive,
                 exclusions.clone(),
+                RefreshMode::Restart,
             );
         }
     }
+}
+
+/// Rescans every live index whose walk lists the entries of `directory` (see
+/// `walk_lists_directory`). Rescans coalesce (`RefreshMode::Coalesce`).
+pub(crate) fn refresh_search_indexes_for_directory(directory: &Path) {
+    let Some(registry) = SHARED_INDEXES.get() else {
+        return;
+    };
+    let mut registry = registry
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    registry.retain(|(_, index)| index.strong_count() > 0);
+    for ((roots, hidden, recursive, exclusions), index) in registry.iter() {
+        let Some(index) = index.upgrade() else {
+            continue;
+        };
+        if roots.iter().any(|root| {
+            walk_lists_directory(&index, root, directory, *recursive, *hidden, exclusions)
+        }) {
+            request_index_refresh(
+                index,
+                roots.clone(),
+                *hidden,
+                *recursive,
+                exclusions.clone(),
+                RefreshMode::Coalesce,
+            );
+        }
+    }
+}
+
+/// Whether an index walk of `root` lists the entries of `directory`. A flat walk lists
+/// only `root`; a recursive one skips what `build_index` prunes: excluded and generated
+/// folders, hidden ones unless `hidden`, and folders at `MAX_INDEX_DEPTH` or deeper.
+fn walk_lists_directory(
+    index: &SharedIndex,
+    root: &Path,
+    directory: &Path,
+    recursive: bool,
+    hidden: bool,
+    exclusions: &SearchExclusions,
+) -> bool {
+    if !recursive {
+        return directory == root;
+    }
+    let Ok(relative) = directory.strip_prefix(root) else {
+        return false;
+    };
+    if relative.components().count() >= MAX_INDEX_DEPTH {
+        return false;
+    }
+    let name = directory.file_name().unwrap_or_default().to_string_lossy();
+    if exclusions.is_excluded(directory, &name, true) {
+        return false;
+    }
+    let overrides = index.walk_overrides(root);
+    let no_hidden_names = HashSet::new();
+    let mut path = root.to_path_buf();
+    relative.components().all(|component| {
+        path.push(component);
+        (hidden || !is_hidden_name(component.as_os_str(), &no_hidden_names))
+            && !overrides.matched(&path, true).is_ignore()
+    })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RefreshMode {
+    /// The roots may have changed: cancel a running walk and start over at once.
+    Restart,
+    /// The same roots changed on disk: let a running walk publish, then walk once more,
+    /// at most once per `MIN_REFRESH_INTERVAL`.
+    Coalesce,
 }
 
 fn request_index_refresh(
@@ -676,20 +794,27 @@ fn request_index_refresh(
     hidden: bool,
     recursive: bool,
     exclusions: SearchExclusions,
+    mode: RefreshMode,
 ) {
     let mut refresh = index
         .refresh
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if mode == RefreshMode::Coalesce && refresh.running {
+        refresh.rerun = true;
+        return;
+    }
     index.refresh_requested.fetch_add(1, Ordering::AcqRel);
     refresh.roots = roots;
     refresh.hidden = hidden;
     refresh.recursive = recursive;
     refresh.exclusions = exclusions;
+    refresh.throttled = mode == RefreshMode::Coalesce;
     if refresh.running {
         return;
     }
     refresh.running = true;
+    refresh.rerun = false;
     drop(refresh);
     for attempt in 0..2 {
         let worker_index = index.clone();
@@ -717,6 +842,9 @@ fn request_index_refresh(
 
 fn refresh_index(index: &Arc<SharedIndex>) {
     loop {
+        if !wait_out_refresh_interval(index) {
+            return;
+        }
         // Bound replacement memory/traversal across overlapping scopes, not just per index.
         let traversal = REFRESH_TRAVERSAL
             .lock()
@@ -730,6 +858,9 @@ fn refresh_index(index: &Arc<SharedIndex>) {
                 refresh.running = false;
                 return;
             }
+            refresh.last_walk = Some(Instant::now());
+            // This walk already lists every change requested so far.
+            refresh.rerun = false;
             (
                 index.refresh_requested.load(Ordering::Acquire),
                 refresh.roots.clone(),
@@ -789,11 +920,43 @@ fn refresh_index(index: &Arc<SharedIndex>) {
             state.revision = revision;
             drop(state);
             index.broadcast_change();
+            if refresh.rerun {
+                refresh.throttled = true;
+                continue;
+            }
             refresh.running = false;
             return;
         }
         drop(refresh);
         drop(traversal);
+    }
+}
+
+/// Sleeps until `MIN_REFRESH_INTERVAL` after the previous walk started, unless a
+/// `RefreshMode::Restart` ends the wait. False once the index retired.
+fn wait_out_refresh_interval(index: &SharedIndex) -> bool {
+    const SLICE: Duration = Duration::from_millis(20);
+    loop {
+        let wait = {
+            let mut refresh = index
+                .refresh
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if index.is_retired() {
+                refresh.running = false;
+                return false;
+            }
+            refresh
+                .last_walk
+                .filter(|_| refresh.throttled)
+                .map_or(Duration::ZERO, |started| {
+                    MIN_REFRESH_INTERVAL.saturating_sub(started.elapsed())
+                })
+        };
+        if wait.is_zero() {
+            return true;
+        }
+        std::thread::sleep(wait.min(SLICE));
     }
 }
 

@@ -4289,6 +4289,7 @@ impl Browser {
         let Some(location) = location else {
             return;
         };
+        Self::refresh_search_indexes_for(&location, None);
         self.preserving_refreshes.borrow_mut().insert(depth);
         self.emit(BrowserEvent::ColumnRefreshing { depth });
         let handle = self.request_directory(depth, location, request_id);
@@ -4321,6 +4322,7 @@ impl Browser {
         let Some(location) = location else {
             return;
         };
+        Self::refresh_search_indexes_for(&location, None);
         self.emit(BrowserEvent::ColumnReloaded { depth });
         let handle = self.request_directory(depth, location, request_id);
         if let Some(load) = self.loads.borrow_mut().get_mut(depth) {
