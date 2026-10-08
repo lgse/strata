@@ -382,18 +382,13 @@ impl JobsIndicator {
         window.insert_action_group("jobs", Some(&group));
         if let Some(window) = window.as_ref().downcast_ref::<gtk::Window>() {
             let service = self.state.service.clone();
-            window.connect_close_request(move |window| {
-                let last_window = window.application()
-                    .is_some_and(|application| application.windows().len() == 1);
-                if last_window && service.running_count() + service.queued_count() > 0 {
-                    crate::ui::modal::show_error_dialog(
-                        window,
-                        &crate::i18n::tr("Background jobs are still active"),
-                        &crate::i18n::tr("Wait for Jobs to finish, or cancel them in the Jobs dashboard before closing the last window. Cancellation does not undo file changes."),
-                    );
-                    return glib::Propagation::Stop;
-                }
-                glib::Propagation::Proceed
+            crate::ui::close_guard::install(window, move |closing_application| {
+                (closing_application && service.running_count() + service.queued_count() > 0).then(|| {
+                    crate::ui::close_guard::CloseBlocker {
+                        title: crate::i18n::tr("Background jobs are still active"),
+                        detail: crate::i18n::tr("Wait for Jobs to finish, or cancel them in the Jobs dashboard before closing the last window. Cancellation does not undo file changes."),
+                    }
+                })
             });
         }
     }

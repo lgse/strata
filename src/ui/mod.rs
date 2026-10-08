@@ -6,6 +6,7 @@ mod blur;
 mod browser;
 mod browser_modes;
 mod chooser;
+mod close_guard;
 mod collection_edit;
 mod collection_interaction;
 mod controls;

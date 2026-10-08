@@ -54,11 +54,12 @@ impl FormatProgress {
         )));
         if let Some(window) = state.overlay.root().and_downcast::<gtk::Window>() {
             let weak = Rc::downgrade(&state);
-            window.connect_close_request(move |window| {
-                if let Some(state) = weak.upgrade() && !state.finished.get() {
-                    crate::ui::window::show_error_dialog(window, &crate::i18n::tr("Drive formatting is still active"), &crate::i18n::tr("Wait until formatting finishes before closing this window. Do not unplug the drive."));
-                    glib::Propagation::Stop
-                } else { glib::Propagation::Proceed }
+            crate::ui::close_guard::install(&window, move |_| {
+                let state = weak.upgrade()?;
+                (!state.finished.get()).then(|| crate::ui::close_guard::CloseBlocker {
+                    title: crate::i18n::tr("Drive formatting is still active"),
+                    detail: crate::i18n::tr("Wait until formatting finishes before closing this window. Do not unplug the drive."),
+                })
             });
             let weak = Rc::downgrade(&state);
             window.connect_unrealize(move |_| {

@@ -96,21 +96,27 @@ fn restart_honors_window_close_guards() {
             application
                 .register(None::<&gio::Cancellable>)
                 .expect("register isolated application");
-            let window = gtk::ApplicationWindow::builder()
-                .application(&application)
-                .build();
+            let windows: Vec<_> = (0..2)
+                .map(|_| {
+                    gtk::ApplicationWindow::builder()
+                        .application(&application)
+                        .build()
+                })
+                .collect();
             let busy = Rc::new(std::cell::Cell::new(true));
             let guard = busy.clone();
-            window.connect_close_request(move |_| {
-                if guard.get() {
-                    glib::Propagation::Stop
-                } else {
-                    glib::Propagation::Proceed
-                }
+            // Jobs only refuse for the window whose close would exit the application.
+            crate::ui::close_guard::install(&windows[1], move |closing_application| {
+                (closing_application && guard.get()).then(|| crate::ui::close_guard::CloseBlocker {
+                    title: "Busy".to_owned(),
+                    detail: String::new(),
+                })
             });
-            window.present();
+            for window in &windows {
+                window.present();
+            }
             assert!(!close_windows_for_restart(&application));
-            assert_eq!(application.windows().len(), 1);
+            assert_eq!(application.windows().len(), 2);
             busy.set(false);
             assert!(close_windows_for_restart(&application));
         },

@@ -2148,15 +2148,35 @@ fn restart(application: Option<&gtk::Application>) {
     let Some(mut waiter) = restart_waiter(&current_exe, std::process::id()) else {
         return;
     };
-    // Use the normal close path so active transfers, jobs and formatting can
-    // refuse a restart. Do not leave a waiter behind when closing is blocked.
-    if !close_windows_for_restart(application) || waiter.spawn().is_err() {
+    if restart_blocker_shown(application) {
+        return;
+    }
+    let Ok(mut waiter) = waiter.spawn() else {
+        return;
+    };
+    // Do not leave a waiter behind when an unregistered close handler refuses.
+    if !close_windows_for_restart(application) {
+        let _ = waiter.kill();
+        let _ = waiter.wait();
         return;
     }
     application.quit();
 }
 
+/// Checks every window before closing any, so a refusal cannot leave some closed.
+fn restart_blocker_shown(application: &gtk::Application) -> bool {
+    let Some((window, blocker)) = crate::ui::close_guard::application_blocker(application) else {
+        return false;
+    };
+    window.present();
+    blocker.show(&window);
+    true
+}
+
 fn close_windows_for_restart(application: &gtk::Application) -> bool {
+    if restart_blocker_shown(application) {
+        return false;
+    }
     for window in application.windows() {
         window.close();
     }
