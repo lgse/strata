@@ -125,6 +125,7 @@ fn update_notice() -> (gtk::Box, gtk::Button, gtk::Label) {
     label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     label.set_lines(3);
     label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    crate::ui::controls::keep_words_whole(&label);
     content.append(&dot);
     content.append(&label);
     content.append(&crate::assets::primary_icon(

@@ -89,4 +89,20 @@ fn dialog_text_keeps_paragraphs_and_unspaced_scripts_intact() {
     );
     let long_run = "アーカイブ".repeat(30);
     assert_eq!(dialog_text(&long_run), long_run);
+    assert_eq!(
+        dialog_text("Impossible de créer « a\u{a0}b »\u{a0}:  1\u{202f}234\u{2007}éléments"),
+        "Impossible de créer « a\u{a0}b »\u{a0}: 1\u{202f}234\u{2007}éléments"
+    );
+}
+
+#[test]
+fn korean_words_are_kept_whole_except_long_runs() {
+    let text = "다음 중 하나를 설치하세요: readonly에 a b";
+    let words = korean_word_ranges(text)
+        .into_iter()
+        .map(|range| &text[range])
+        .collect::<Vec<_>>();
+    assert_eq!(words, ["다음", "하나를", "설치하세요:", "readonly에"]);
+    assert!(korean_word_ranges(&"가나다".repeat(5)).is_empty());
+    assert!(korean_word_ranges("Cannot create “readonly”").is_empty());
 }

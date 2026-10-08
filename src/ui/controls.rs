@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use std::{cell::Cell, rc::Rc, time::Duration};
+use std::{cell::Cell, ops::Range, rc::Rc, time::Duration};
 
 use gtk::prelude::*;
 
@@ -286,7 +286,11 @@ pub(super) fn dialog_text(text: &str) -> String {
     let mut normalized = String::new();
     let mut pending_blank = false;
     for line in text.lines() {
-        let words = line.split_whitespace().collect::<Vec<_>>();
+        // No-break spaces (U+00A0, U+202F, U+2007) are typography, not spacing to normalize.
+        let words = line
+            .split([' ', '\t'])
+            .filter(|word| !word.is_empty())
+            .collect::<Vec<_>>();
         if words.is_empty() {
             pending_blank = !normalized.is_empty();
             continue;
@@ -306,8 +310,74 @@ pub(super) fn message_dialog_description(text: &str) -> gtk::Label {
     label.set_max_width_chars(MESSAGE_DIALOG_WIDTH_CHARS as i32);
     label.set_wrap(true);
     label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    keep_words_whole(&label);
     label.set_xalign(0.0);
     label
+}
+
+// Longer runs of Hangul, such as file names, stay breakable so they cannot widen a dialog.
+const MAX_KEPT_HANGUL_WORD_CHARS: usize = 12;
+
+fn is_hangul_syllable(character: char) -> bool {
+    ('\u{ac00}'..='\u{d7a3}').contains(&character)
+}
+
+/// Byte ranges of the short space-separated words that contain Hangul. Pango allows a line
+/// break between any two Hangul syllables, but Korean wraps only between words.
+pub(super) fn korean_word_ranges(text: &str) -> Vec<Range<usize>> {
+    let mut ranges = Vec::new();
+    let mut start = None;
+    for (index, character) in text.char_indices().chain([(text.len(), ' ')]) {
+        if !character.is_whitespace() {
+            start.get_or_insert(index);
+            continue;
+        }
+        let Some(word_start) = start.take() else {
+            continue;
+        };
+        let word = &text[word_start..index];
+        let length = word.chars().count();
+        if length > 1
+            && length <= MAX_KEPT_HANGUL_WORD_CHARS
+            && word.chars().any(is_hangul_syllable)
+        {
+            ranges.push(word_start..index);
+        }
+    }
+    ranges
+}
+
+pub(super) fn no_break_attribute(range: Range<usize>) -> gtk::pango::Attribute {
+    let mut attribute = gtk::pango::AttrInt::new_allow_breaks(false);
+    attribute.set_start_index(range.start as u32);
+    attribute.set_end_index(range.end as u32);
+    attribute.into()
+}
+
+fn apply_word_break_attributes(label: &gtk::Label) {
+    let attributes = label
+        .attributes()
+        .and_then(|attributes| attributes.copy())
+        .unwrap_or_default();
+    let _removed = attributes.filter(|attribute| {
+        matches!(
+            attribute.type_(),
+            gtk::pango::AttrType::AllowBreaks | gtk::pango::AttrType::InsertHyphens
+        )
+    });
+    attributes.insert(gtk::pango::AttrInt::new_insert_hyphens(false));
+    for range in korean_word_ranges(&label.text()) {
+        attributes.insert(no_break_attribute(range));
+    }
+    label.set_attributes(Some(&attributes));
+}
+
+/// Keeps a wrapping label from splitting Korean words or adding hyphens where Pango
+/// has to break inside a word (as in a path before a Korean particle). The text itself,
+/// and therefore the accessible name, stays unchanged.
+pub(super) fn keep_words_whole(label: &gtk::Label) {
+    apply_word_break_attributes(label);
+    label.connect_label_notify(apply_word_break_attributes);
 }
 
 pub(super) struct ModalLayout {
@@ -381,6 +451,7 @@ pub(super) fn message_dialog_layout(
         label.set_max_width_chars(MESSAGE_DIALOG_WIDTH_CHARS as i32);
         label.set_wrap(true);
         label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+        keep_words_whole(label);
     }
     layout
 }

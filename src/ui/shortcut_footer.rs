@@ -721,15 +721,11 @@ impl ShortcutFooter {
         content.append(&body);
         let footer_note = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         footer_note.add_css_class("shortcut-reference-footer");
-        // Keep each hint together and wrap only after a separator, never before one.
         let note_text = crate::i18n::tr(
             "Ctrl+B categories · Ctrl+F search · Ctrl+L list · arrows/hjkl move · Tab cycle · Esc close",
-        )
-        .split(" · ")
-        .map(|hint| hint.replace(' ', "\u{a0}"))
-        .collect::<Vec<_>>()
-        .join("\u{a0}· ");
+        );
         let note = gtk::Label::new(Some(&note_text));
+        note.set_attributes(Some(&hint_note_attributes(&note_text)));
         note.set_wrap(true);
         note.add_css_class("shortcut-reference-note");
         note.set_hexpand(true);
@@ -1547,6 +1543,22 @@ impl ShortcutFooter {
             || (key == gdk::Key::grave && modifiers.contains(gdk::ModifierType::SHIFT_MASK));
         tilde && (reference_open || !self.prompt_has_focus())
     }
+}
+
+/// Keeps each hint, with the separator that follows it, on one line so the note wraps
+/// only after a "·", never inside a hint such as "arrows/hjkl move".
+fn hint_note_attributes(note: &str) -> gtk::pango::AttrList {
+    const SEPARATOR: &str = " · ";
+    let attributes = gtk::pango::AttrList::new();
+    let mut start = 0;
+    while start < note.len() {
+        let end = note[start..].find(SEPARATOR).map_or(note.len(), |offset| {
+            start + offset + SEPARATOR.trim_end().len()
+        });
+        attributes.insert(super::controls::no_break_attribute(start..end));
+        start = end + 1;
+    }
+    attributes
 }
 
 fn category_buttons(categories: &gtk::Box) -> Vec<gtk::Button> {

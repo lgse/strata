@@ -12,7 +12,7 @@ use crate::{
     ui::{
         controls::{
             FormTextField, ModalLayout, ModalTone, ProgressSummary, form_check_button, form_label,
-            modal_layout, progress_summary, properties_action,
+            keep_words_whole, modal_layout, progress_summary, properties_action,
         },
         missing_tools::{MissingTool, show_missing_tools},
         modal::{ModalHost, dismiss_modal_layer, modal_layer, remember_modal_focus},
@@ -617,6 +617,7 @@ fn show_label_dialog_for_identity(
     hint.set_xalign(0.0);
     hint.set_wrap(true);
     hint.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    keep_words_whole(&hint);
     shell.layout.body.append(&hint);
     let error = inline_error();
     error.set_max_width_chars(26);

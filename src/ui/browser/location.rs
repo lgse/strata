@@ -13,7 +13,8 @@ use crate::ui::browser::clipboard::{
 use crate::ui::browser::{BrowserView, ViewState, file_drop_action};
 use crate::ui::controls::{
     ModalTone, dialog_text, focus_button, form_entry, form_label, form_password_entry,
-    message_dialog_description, message_dialog_layout, modal_layout, segmented_control,
+    keep_words_whole, message_dialog_description, message_dialog_layout, modal_layout,
+    segmented_control,
 };
 use crate::ui::modal::{
     ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog, submit_on_enter,
@@ -313,6 +314,7 @@ fn show_authentication_dialog(
     explanation.set_max_width_chars(AUTHENTICATION_TEXT_WIDTH_CHARS);
     explanation.set_wrap(true);
     explanation.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    keep_words_whole(&explanation);
     explanation.set_xalign(0.0);
     layout.body.append(&explanation);
     if authentication_failed {
@@ -323,6 +325,7 @@ fn show_authentication_dialog(
         error.set_max_width_chars(AUTHENTICATION_TEXT_WIDTH_CHARS);
         error.set_wrap(true);
         error.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+        keep_words_whole(&error);
         error.set_xalign(0.0);
         layout.body.append(&error);
     }

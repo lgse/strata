@@ -2960,6 +2960,7 @@ fn constrain_page_text(widget: &gtk::Widget) {
         );
         // Segmented choices break only between words so labels never split mid-word.
         label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+        crate::ui::controls::keep_words_whole(label);
     }
     if let Some(entry) = widget.downcast_ref::<gtk::Entry>() {
         entry.set_width_chars(1);
