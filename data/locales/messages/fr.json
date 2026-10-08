@@ -313,7 +313,7 @@
   "Replace existing file?": "Remplacer le fichier existant ?",
   "Replace existing files?": "Remplacer les fichiers existants ?",
   "Replace your %{value1} draft with %{value2}? Code can be undone in the editor.": "Remplacer votre brouillon %{value1} par %{value2} ? Le code peut être annulé dans l’éditeur.",
-  "Reported %{value1} created.": "%{value1} créé a été signalé.",
+  "Reported %{value1} created.": "Création signalée : %{value1}.",
   "Requires: %{value1}": "Requiert : %{value1}",
   "Reset thumbnail workers": "Réinitialiser le nombre de processus de miniatures",
   "Restore %{value1}": "Restaurer %{value1}",

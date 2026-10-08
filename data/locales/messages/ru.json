@@ -392,7 +392,7 @@
   "This image is %{value1}, which the selected filter does not accept. Convert it to PNG?": "Это изображение имеет формат %{value1}, который не принимает выбранный фильтр. Преобразовать его в PNG?",
   "This install tracks the %{channel} release channel.": "Эта установка отслеживает канал выпуска %{channel}.",
   "This installation is managed by its package manager.": "Эта установка управляется менеджером пакетов.",
-  "This runs “%{value1}” on %{value2}.": "Команда «%{value1}» будет запущена на %{value2}.",
+  "This runs “%{value1}” on %{value2}.": "Команда «%{value1}» будет запущена для %{value2}.",
   "Those credentials weren’t accepted. Check %{value1} and try again.": "Эти учётные данные не приняты. Проверьте %{value1} и повторите попытку.",
   "Toggle %{subject} %{permission} permission": "Переключить разрешение %{permission} для %{subject}",
   "Toggle 10xer mode": "Переключить режим 10xer",

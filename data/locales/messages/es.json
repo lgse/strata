@@ -313,7 +313,7 @@
   "Replace existing file?": "¿Reemplazar el archivo existente?",
   "Replace existing files?": "¿Reemplazar los archivos existentes?",
   "Replace your %{value1} draft with %{value2}? Code can be undone in the editor.": "¿Reemplazar tu borrador de %{value1} por %{value2}? El código se puede deshacer en el editor.",
-  "Reported %{value1} created.": "Se creó el informe %{value1}.",
+  "Reported %{value1} created.": "Se informó de la creación de %{value1}.",
   "Requires: %{value1}": "Requiere: %{value1}",
   "Reset thumbnail workers": "Restablecer los procesos de miniaturas",
   "Restore %{value1}": "Restaurar %{value1}",
@@ -448,6 +448,6 @@
   "open": "abrir",
   "“%{id}” was imported disabled. Review its script, then enable it.": "«%{id}» se importó desactivada. Revisa su script y luego actívala.",
   "“%{name}” is already pinned": "«%{name}» ya está fijado",
-  "“%{name}” is an executable file. Only run programs you trust.": "«%{name}» es un archivo ejecutable. Ejecute solo programas de confianza.",
+  "“%{name}” is an executable file. Only run programs you trust.": "«%{name}» es un archivo ejecutable. Ejecuta solo programas de confianza.",
   "“%{name}” isn’t pinned": "«%{name}» no está fijado"
 }

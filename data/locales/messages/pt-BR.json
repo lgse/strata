@@ -313,7 +313,7 @@
   "Replace existing file?": "Substituir o arquivo existente?",
   "Replace existing files?": "Substituir os arquivos existentes?",
   "Replace your %{value1} draft with %{value2}? Code can be undone in the editor.": "Substituir seu rascunho de %{value1} por %{value2}? O código pode ser desfeito no editor.",
-  "Reported %{value1} created.": "Relatório %{value1} criado.",
+  "Reported %{value1} created.": "Criação de %{value1} informada.",
   "Requires: %{value1}": "Requer: %{value1}",
   "Reset thumbnail workers": "Redefinir processos de miniaturas",
   "Restore %{value1}": "Restaurar %{value1}",
