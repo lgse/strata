@@ -160,3 +160,31 @@ def test_language_selection_and_auto_detection_apply_after_relaunch(strata):
         lambda: strata.window.find(role="button", name="Settings"),
         "Auto-detect returns to the isolated C.UTF-8 environment's English UI",
     )
+
+
+@pytest.fixture
+def symlinked_settings(test_environment):
+    """Replace the seeded settings.toml with a dotfiles-style symlink before Strata starts."""
+    target = test_environment.root / "dotfiles" / "settings.toml"
+    target.parent.mkdir()
+    test_environment.settings_path.replace(target)
+    test_environment.settings_path.symlink_to(target)
+    return target
+
+
+@pytest.mark.preferences(folder_peeking=False)
+def test_preferences_save_through_a_symlinked_settings_file(symlinked_settings, strata):
+    assert strata.environment.settings_path.is_symlink()
+    _open_settings(strata, strata.window)
+    toggle = _switch(strata.window, "Folder peeking")
+    assert toggle is not None and toggle.activate()
+    strata.wait(
+        lambda: strata.environment.read_preferences().get("folder_peeking") == "true",
+        "Folder peeking to be saved through the symlink",
+    )
+    assert strata.environment.settings_path.is_symlink()
+    assert symlinked_settings.read_text() == strata.environment.settings_path.read_text()
+    strata.application.stop()
+    strata.application.start()
+    _open_settings(strata, strata.window)
+    assert _switch(strata.window, "Folder peeking").has_state("checked")
