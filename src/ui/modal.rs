@@ -321,12 +321,36 @@ fn overlay_has_modal_layer(overlay: &gtk::Overlay) -> bool {
     false
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum MessageKind {
+    Error,
+    PartialFailure,
+    Information,
+}
+
 pub(super) fn show_error_dialog(parent: &impl IsA<gtk::Widget>, message: &str, detail: &str) {
     show_error_dialog_after_close(parent, message, detail, Rc::new(|| {}));
 }
 
+/// Reports an operation that finished while some items failed.
+pub(super) fn show_partial_failure_dialog(parent: &impl IsA<gtk::Widget>, detail: &str) {
+    show_message_dialog(
+        parent,
+        &crate::i18n::tr("Completed with errors"),
+        detail,
+        MessageKind::PartialFailure,
+        Rc::new(|| {}),
+    );
+}
+
 pub(super) fn show_information_dialog(parent: &impl IsA<gtk::Widget>, message: &str, detail: &str) {
-    show_message_dialog(parent, message, detail, false, Rc::new(|| {}));
+    show_message_dialog(
+        parent,
+        message,
+        detail,
+        MessageKind::Information,
+        Rc::new(|| {}),
+    );
 }
 
 pub(super) fn show_error_dialog_after_close(
@@ -335,16 +359,17 @@ pub(super) fn show_error_dialog_after_close(
     detail: &str,
     on_close: Rc<dyn Fn()>,
 ) {
-    show_message_dialog(parent, message, detail, true, on_close);
+    show_message_dialog(parent, message, detail, MessageKind::Error, on_close);
 }
 
 fn show_message_dialog(
     parent: &impl IsA<gtk::Widget>,
     message: &str,
     detail: &str,
-    error: bool,
+    kind: MessageKind,
     on_close: Rc<dyn Fn()>,
 ) {
+    let error = kind != MessageKind::Information;
     let Some(ModalHost {
         overlay: window_overlay,
         blurred_root,
@@ -374,13 +399,11 @@ fn show_message_dialog(
             crate::assets::icons::INFO
         },
         message,
-        if !error {
-            "Reported by the file provider"
-        } else if message == "Completed with errors" {
-            "Some items could not be processed"
-        } else {
-            "The operation could not be completed"
-        },
+        &crate::i18n::tr(match kind {
+            MessageKind::Information => "Reported by the file provider",
+            MessageKind::PartialFailure => "Some items could not be processed",
+            MessageKind::Error => "The operation could not be completed",
+        }),
         &crate::i18n::tr("Close"),
         if error {
             ModalTone::Danger

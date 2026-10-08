@@ -37,12 +37,12 @@ pub(super) enum ReleaseKind {
 }
 
 impl ReleaseKind {
-    fn title(self) -> &'static str {
-        match self {
+    fn title(self) -> String {
+        crate::i18n::tr(match self {
             Self::Unmount => "Unmounting",
             Self::Eject => "Ejecting",
             Self::Lock => "Locking volume",
-        }
+        })
     }
 
     fn icon(self) -> &'static str {
@@ -242,10 +242,11 @@ pub(super) fn unmatched_pending(live: &[DeviceIds]) -> Vec<ReleaseKey> {
 
 pub(super) fn pending_device_shell(row: &gtk::Button) -> gtk::Box {
     row.set_sensitive(false);
-    row.update_property(&[gtk::accessible::Property::Label(RELEASE_ROW_TOOLTIP)]);
+    let busy_label = crate::i18n::tr(RELEASE_ROW_TOOLTIP);
+    row.update_property(&[gtk::accessible::Property::Label(&busy_label)]);
     let spinner = gtk::Spinner::new();
     spinner.add_css_class("sidebar-device-spinner");
-    spinner.update_property(&[gtk::accessible::Property::Label(RELEASE_ROW_TOOLTIP)]);
+    spinner.update_property(&[gtk::accessible::Property::Label(&busy_label)]);
     spinner.set_hexpand(false);
     spinner.set_halign(gtk::Align::Center);
     spinner.set_valign(gtk::Align::Center);
@@ -490,8 +491,10 @@ pub(super) fn note_unmount_progress(
 
 fn body_for_progress(message: Option<&str>) -> String {
     match message.map(str::trim).filter(|message| !message.is_empty()) {
-        Some(message) => format!("{message}\nDo not unplug it."),
-        None => RELEASE_BODY.to_owned(),
+        Some(message) => {
+            rust_i18n::t!("%{message}\nDo not unplug it.", message = message).into_owned()
+        }
+        None => crate::i18n::tr(RELEASE_BODY),
     }
 }
 
@@ -655,14 +658,10 @@ pub(super) fn present_release_overlay(parent: &gtk::Widget, key: &ReleaseKey) {
     let Some(host) = ModalHost::blurred_for(parent) else {
         return;
     };
-    let layout = modal_layout(
-        kind.icon(),
-        kind.title(),
-        &display_name,
-        &crate::i18n::tr("Hide"),
-    );
+    let title = kind.title();
+    let layout = modal_layout(kind.icon(), &title, &display_name, &crate::i18n::tr("Hide"));
     layout.content.add_css_class("compact");
-    layout.set_loading(true, Some(kind.title()));
+    layout.set_loading(true, Some(&title));
     layout.cancel.set_visible(false);
     let body = message_dialog_description(&body_for_progress(progress.as_deref()));
     layout.body.append(&body);
@@ -807,7 +806,7 @@ fn apply_decision(key: &ReleaseKey, decision: ReleaseDecision) {
                     entry.error_count = entry.error_count.saturating_add(1);
                 }
             });
-            show_error_dialog(parent, title, message);
+            show_error_dialog(parent, &crate::i18n::tr(title), message);
         }
     }
     if decision.clear_pending {
@@ -822,9 +821,10 @@ fn show_safe_to_remove(overlay: &ReleaseOverlay, display_name: &str) {
     overlay.loading.stop();
     overlay.loading.set_visible(false);
     crate::ui::accessibility::set_description(&overlay.loading, None);
-    overlay
-        .body
-        .set_text(&format!("{display_name} can be unplugged."));
+    overlay.body.set_text(&rust_i18n::t!(
+        "%{display_name} can be unplugged.",
+        display_name = display_name
+    ));
     overlay.confirm.set_label(&crate::i18n::tr("Close"));
 }
 

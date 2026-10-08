@@ -55,9 +55,11 @@ pub(super) fn show_missing_tools(
     missing.set_selectable(true);
     layout.body.append(&missing);
     if let Some(command) = install_command(PackageManager::detect(), tools) {
-        layout.body.append(&message_dialog_description(
-            "Run this command in a terminal, then try the action again:",
-        ));
+        layout
+            .body
+            .append(&message_dialog_description(&crate::i18n::tr(
+                "Run this command in a terminal, then try the action again:",
+            )));
         layout.body.append(&copyable_command(&command));
     } else {
         layout.body.append(&message_dialog_description(

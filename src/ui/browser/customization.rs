@@ -43,14 +43,26 @@ fn show_custom_color_modal(
         popover.popdown();
     }
 
-    let item_title = if item_label == "folder" {
-        "Folder"
+    let folder = item_label == "folder";
+    let (title, choose_subtitle, editor_subtitle) = if folder {
+        (
+            "Custom Folder Color",
+            "Choose a color for this folder",
+            "Customize folder color",
+        )
     } else {
-        "File"
+        (
+            "Custom File Color",
+            "Choose a color for this file",
+            "Customize file color",
+        )
     };
-    let title = format!("Custom {item_title} Color");
-    let subtitle = format!("Choose a color for this {item_label}");
-    let layout = modal_layout(preview_icon, &title, &subtitle, &crate::i18n::tr("Apply"));
+    let layout = modal_layout(
+        preview_icon,
+        &crate::i18n::tr(title),
+        &crate::i18n::tr(choose_subtitle),
+        &crate::i18n::tr("Apply"),
+    );
     layout.close.set_visible(false);
 
     let modal_icon = layout.icon.clone();
@@ -97,11 +109,11 @@ fn show_custom_color_modal(
     chooser.connect_notify_local(Some("show-editor"), move |c, _| {
         let in_editor = c.property::<bool>("show-editor");
         back_btn.set_visible(in_editor);
-        if in_editor {
-            subtitle_label.set_text(&format!("Customize {item_label} color"));
+        subtitle_label.set_text(&crate::i18n::tr(if in_editor {
+            editor_subtitle
         } else {
-            subtitle_label.set_text(&format!("Choose a color for this {item_label}"));
-        }
+            choose_subtitle
+        }));
     });
 
     let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
@@ -181,7 +193,7 @@ pub(in crate::ui) fn show_customize_modal(
     };
     let layout = modal_layout(
         crate::assets::icons::PALETTE,
-        item_kind,
+        &crate::i18n::tr(item_kind),
         &item_name,
         &crate::i18n::tr("Done"),
     );

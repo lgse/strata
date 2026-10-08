@@ -77,8 +77,10 @@ impl InstallSource {
 }
 
 impl ManagedInstall {
-    pub fn manager(&self) -> &str {
-        self.manager.as_deref().unwrap_or(UNNAMED_MANAGER)
+    pub fn manager(&self) -> String {
+        self.manager
+            .clone()
+            .unwrap_or_else(|| crate::i18n::tr(UNNAMED_MANAGER))
     }
 
     pub fn package(&self) -> Option<&str> {
@@ -95,8 +97,15 @@ impl ManagedInstall {
 
     pub fn ownership_summary(&self) -> String {
         match self.package() {
-            Some(package) => format!("Installed by {} as {package}.", self.manager()),
-            None => format!("Installed by {}.", self.manager()),
+            Some(package) => rust_i18n::t!(
+                "Installed by %{manager} as %{package}.",
+                manager = self.manager(),
+                package = package
+            )
+            .into_owned(),
+            None => {
+                rust_i18n::t!("Installed by %{manager}.", manager = self.manager()).into_owned()
+            }
         }
     }
 
@@ -116,17 +125,27 @@ impl ManagedInstall {
 
     fn update_instruction_with(&self, available: impl Fn(&str) -> bool + Copy) -> String {
         if let Some(command) = self.update_command.as_deref() {
-            return format!("Update Strata with: {command}");
+            return rust_i18n::t!("Update Strata with: %{command}", command = command).into_owned();
         }
         if let Some((helper, package)) = self.aur_update_target_with(available) {
-            return format!("Update Strata with: {helper} -Syu {package}");
+            return rust_i18n::t!(
+                "Update Strata with: %{command}",
+                command = format!("{helper} -Syu {package}")
+            )
+            .into_owned();
         }
         if let (Some(helper), Some(package)) = (self.aur_helpers.first(), self.package()) {
-            return format!(
-                "Update Strata with an AUR helper, for example: {helper} -Syu {package}"
-            );
+            return rust_i18n::t!(
+                "Update Strata with an AUR helper, for example: %{command}",
+                command = format!("{helper} -Syu {package}")
+            )
+            .into_owned();
         }
-        format!("Update Strata through {}.", self.manager())
+        rust_i18n::t!(
+            "Update Strata through %{manager}.",
+            manager = self.manager()
+        )
+        .into_owned()
     }
 
     pub fn tracked_channel(&self) -> Option<Channel> {
@@ -140,9 +159,13 @@ impl ManagedInstall {
 
     pub fn alternate_instruction(&self) -> Option<String> {
         let alternate = self.alternate_package()?;
-        Some(format!(
-            "Other release channels are published as {alternate}."
-        ))
+        Some(
+            rust_i18n::t!(
+                "Other release channels are published as %{package}.",
+                package = alternate
+            )
+            .into_owned(),
+        )
     }
 
     fn normalized(self) -> Self {

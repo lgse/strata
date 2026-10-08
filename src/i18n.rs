@@ -116,6 +116,26 @@ pub(crate) fn tr(message: &str) -> String {
     rust_i18n::t!(message).into_owned()
 }
 
+/// Joins already translated items with the language's list separator.
+pub(crate) fn list(items: impl IntoIterator<Item = String>) -> String {
+    list_in(&rust_i18n::locale(), items)
+}
+
+fn list_in(locale: &str, items: impl IntoIterator<Item = String>) -> String {
+    items
+        .into_iter()
+        .reduce(|first, second| {
+            rust_i18n::t!(
+                "%{first}, %{second}",
+                locale = locale,
+                first = first,
+                second = second
+            )
+            .into_owned()
+        })
+        .unwrap_or_default()
+}
+
 fn plural_category(locale: &str, count: u64) -> &'static str {
     match locale {
         "ja" | "ko" | "vi" => "other",

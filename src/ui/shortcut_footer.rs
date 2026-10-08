@@ -1819,7 +1819,7 @@ fn update_item_count(
             let items = if parts.is_empty() {
                 crate::i18n::count("items", selected_len)
             } else {
-                parts.join(", ")
+                crate::i18n::list(parts)
             };
             let text = rust_i18n::t!("%{items} selected", items = items);
             label.set_label(&text);
@@ -1869,7 +1869,8 @@ fn selection_details(entries: &[crate::model::FileEntry]) -> String {
     if files > 0 {
         parts.push(crate::i18n::count("files", files));
     }
-    let mut text = rust_i18n::t!("%{items} selected", items = parts.join(", ")).into_owned();
+    let mut text =
+        rust_i18n::t!("%{items} selected", items = crate::i18n::list(parts)).into_owned();
     if files > 0 {
         let mut bytes = 0u64;
         let mut known = 0;

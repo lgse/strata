@@ -260,11 +260,7 @@ impl ViewState {
                     self.settle_pending_delete_dissolve();
                 }
                 if entries.is_empty() {
-                    show_error_dialog(
-                        &self.overlay,
-                        &crate::i18n::tr("Completed with errors"),
-                        message,
-                    );
+                    crate::ui::modal::show_partial_failure_dialog(&self.overlay, message);
                 } else if *has_non_retryable_failures || self.browser.has_foreground_operation() {
                     let weak = Rc::downgrade(self);
                     crate::ui::modal::show_delete_error_dialog(
@@ -338,13 +334,12 @@ impl ViewState {
         if finished {
             match event {
                 BrowserEvent::TransferCompleted => {
-                    progress.complete_file_operation_progress("Copy complete")
+                    progress.complete_file_operation_progress(&crate::i18n::tr("Copy complete"))
                 }
-                BrowserEvent::ArchiveCompleted { .. } => {
-                    progress.complete_file_operation_progress("Compression complete")
-                }
+                BrowserEvent::ArchiveCompleted { .. } => progress
+                    .complete_file_operation_progress(&crate::i18n::tr("Compression complete")),
                 BrowserEvent::DeletionFinished { succeeded: true } => {
-                    progress.complete_file_operation_progress("Deletion complete")
+                    progress.complete_file_operation_progress(&crate::i18n::tr("Deletion complete"))
                 }
                 _ => progress.dismiss_file_operation_progress(),
             }

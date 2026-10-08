@@ -36,6 +36,14 @@ can reorder values. Preserve every placeholder name, markup tag/attribute, URL,
 command, path, and accelerator. Escape untrusted values before inserting them
 into markup, just as for an untranslated markup string. Never translate inserted
 filenames, user-defined actions/themes, script output, or document contents.
+Join already translated list items with `i18n::list`, which uses the language's
+separator, rather than `join(", ")`.
+
+Translate each string exactly once. The shared modal builders (`modal_layout`,
+`message_dialog_layout`) display their title, subtitle, and confirm label as given,
+so callers pass translated text. Do not compare translated text to choose
+behavior; pass an explicit kind instead. Keep internal or diagnostic errors that
+are never shown to users in English.
 
 `i18n::count` selects the supported languages' integer plural categories.
 Russian distinguishes one/few/many, French and Brazilian Portuguese use the

@@ -24,7 +24,7 @@ fn install_click_rejected_by_the_guard_keeps_the_row_usable() {
             let guard = install_guard();
             let row = update_check_row_with(
                 manager,
-                release_notes_card("Available release", ""),
+                release_notes_card(ReleaseNotesKind::Available, "Available release", ""),
                 guard.clone(),
                 UpdateMethod::InPlace,
                 installer.launcher(),

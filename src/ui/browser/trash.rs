@@ -294,11 +294,17 @@ impl ViewState {
             return false;
         };
 
-        let layout = modal_layout(crate::assets::icons::TRASH, title, "", action);
-        layout.set_loading(true, Some(title));
+        let title = crate::i18n::tr(title);
+        let layout = modal_layout(
+            crate::assets::icons::TRASH,
+            &title,
+            "",
+            &crate::i18n::tr(action),
+        );
+        layout.set_loading(true, Some(&title));
         layout.subtitle.set_visible(false);
         layout.confirm.set_visible(false);
-        let explanation = message_dialog_description(detail);
+        let explanation = message_dialog_description(&crate::i18n::tr(detail));
         layout.body.append(&explanation);
         let content = layout.content;
         let cancel = layout.cancel;
@@ -450,9 +456,8 @@ impl ViewState {
                         // keep this operation's own state bounded too.
                         finish_browser.refresh_columns_at(&Location::uri("trash:///"));
                         if outcome.failed > 0 {
-                            show_error_dialog(
+                            crate::ui::modal::show_partial_failure_dialog(
                                 &error_overlay,
-                                &crate::i18n::tr("Completed with errors"),
                                 &empty_trash_error_summary(&outcome),
                             );
                         }

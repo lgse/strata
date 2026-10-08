@@ -360,9 +360,9 @@ pub(super) fn show_drive_properties(
     let Some(shell) = modal_shell(
         parent,
         assets::icons::INFO,
-        "Properties",
+        &crate::i18n::tr("Properties"),
         &name,
-        "Close",
+        &crate::i18n::tr("Close"),
         false,
     ) else {
         return;
@@ -402,7 +402,7 @@ pub(super) fn show_drive_properties(
 
     add_row("System name", &name);
     if let Some(id) = target.label_id() {
-        let label = add_row("Strata label", "Not set");
+        let label = add_row("Strata label", &crate::i18n::tr("Not set"));
         super::super::preferences::PreferenceManager::shared().bind_preference(
             &label,
             move |manager| manager.device_label(&id),
@@ -410,7 +410,11 @@ pub(super) fn show_drive_properties(
                 widget
                     .downcast_ref::<gtk::Label>()
                     .expect("Strata label value")
-                    .set_text(value.as_deref().unwrap_or("Not set"))
+                    .set_text(
+                        &value
+                            .as_deref()
+                            .map_or_else(|| crate::i18n::tr("Not set"), str::to_owned),
+                    )
             },
         );
     }
@@ -466,7 +470,7 @@ pub(super) fn show_drive_properties(
                 .map(|path| path.display().to_string())
                 .unwrap_or_else(|| "—".to_owned());
             add_row("Mount point", &location);
-            add_row("Status", "Mounted");
+            add_row("Status", &crate::i18n::tr("Mounted"));
             let usage = root
                 .path()
                 .and_then(|path| drive_ops::usage_for_path(&path));
@@ -486,19 +490,19 @@ pub(super) fn show_drive_properties(
                 }
                 (Some(total), None) => {
                     add_row("Capacity", &human_size(total));
-                    add_row("Used", "Unavailable");
+                    add_row("Used", &crate::i18n::tr("Unavailable"));
                 }
                 (None, _) => {
-                    add_row("Capacity", "Unavailable");
+                    add_row("Capacity", &crate::i18n::tr("Unavailable"));
                 }
             }
         }
         None => {
-            add_row("Status", "Not mounted");
+            add_row("Status", &crate::i18n::tr("Not mounted"));
             if let Some(total) = total_bytes {
                 add_row("Capacity", &human_size(total));
             }
-            add_row("Used", "Unavailable (not mounted)");
+            add_row("Used", &crate::i18n::tr("Unavailable (not mounted)"));
         }
     }
 
@@ -594,9 +598,9 @@ fn show_label_dialog_for_identity(
     let Some(shell) = modal_shell(
         parent,
         assets::icons::PENCIL,
-        "Set label",
+        &crate::i18n::tr("Set label"),
         system_name,
-        "Save label",
+        &crate::i18n::tr("Save label"),
         false,
     ) else {
         return;
@@ -760,7 +764,7 @@ pub(super) fn show_format_dialog(parent: &gtk::Widget, volume: &gio::Volume) {
     if !missing.is_empty() {
         show_missing_tools(
             parent,
-            "Formatting drives requires additional filesystem tools.",
+            &crate::i18n::tr("Formatting drives requires additional filesystem tools."),
             &missing,
         );
         return;
@@ -772,15 +776,15 @@ pub(super) fn show_format_dialog(parent: &gtk::Widget, volume: &gio::Volume) {
         .and_then(drive_ops::filesystem_label_for_device);
     let device = block_device
         .map(|path| path.display().to_string())
-        .unwrap_or_else(|| "unknown device".to_owned());
+        .unwrap_or_else(|| crate::i18n::tr("unknown device"));
     let subtitle = format!("{name} ({device})");
     let volume = volume.clone();
     let Some(shell) = modal_shell(
         parent,
         assets::icons::TRIANGLE_ALERT,
-        "Format Drive",
+        &crate::i18n::tr("Format Drive"),
         &subtitle,
-        "Continue",
+        &crate::i18n::tr("Continue"),
         true,
     ) else {
         return;
@@ -887,12 +891,12 @@ pub(super) fn show_format_dialog(parent: &gtk::Widget, volume: &gio::Volume) {
             let size = drive_ops::block_device_for_volume(&volume)
                 .and_then(|device| drive_ops::device_size_bytes(&device))
                 .map(human_size)
-                .unwrap_or_else(|| "unknown size".to_owned());
-            summary.set_text(&rust_i18n::t!("Drive: %{value1} (%{value2}, %{value3})\nFilesystem: %{value4}\nLabel: %{value5}\nMode: %{value6}", value1 = name, value2 = device, value3 = size, value4 = fs_type.label(), value5 = if label.is_empty() { "(none)" } else { &label }, value6 = if quick_check.is_active() {
+                .unwrap_or_else(|| crate::i18n::tr("unknown size"));
+            summary.set_text(&rust_i18n::t!("Drive: %{value1} (%{value2}, %{value3})\nFilesystem: %{value4}\nLabel: %{value5}\nMode: %{value6}", value1 = name, value2 = device, value3 = size, value4 = fs_type.label(), value5 = if label.is_empty() { crate::i18n::tr("(none)") } else { label.clone() }, value6 = crate::i18n::tr(if quick_check.is_active() {
                     "Quick format"
                 } else {
                     "Full format"
-                }));
+                })));
             step1.set_visible(false);
             step2.set_visible(true);
             confirm_btn.set_label(&crate::i18n::tr("Format"));

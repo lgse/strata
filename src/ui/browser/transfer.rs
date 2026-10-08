@@ -250,10 +250,10 @@ impl ViewState {
         let layout = message_dialog_layout(
             crate::assets::icons::COPY,
             &crate::i18n::tr("Copy or move?"),
-            &format!(
-                "{} to {}",
-                item_count_label(count),
-                compact_display_path(&destination)
+            &rust_i18n::t!(
+                "%{items} to %{destination}",
+                items = item_count_label(count),
+                destination = compact_display_path(&destination)
             ),
             &crate::i18n::tr("Copy"),
             ModalTone::Accent,

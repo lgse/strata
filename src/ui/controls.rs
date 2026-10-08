@@ -353,7 +353,7 @@ impl ModalLayout {
     }
 }
 
-/// Builds the shared structure and styling for an action modal.
+/// Builds the shared structure and styling for an action modal from already translated text.
 pub(super) fn modal_layout(
     icon: &str,
     title: &str,
@@ -458,7 +458,7 @@ pub(super) fn modal_layout_with_tone(
     spacer.set_hexpand(true);
     let cancel = gtk::Button::with_label(&crate::i18n::tr("Cancel"));
     cancel.add_css_class("action-dialog-cancel");
-    let confirm = gtk::Button::with_label(&crate::i18n::tr(confirm_label));
+    let confirm = gtk::Button::with_label(confirm_label);
     confirm.add_css_class("action-dialog-confirm");
     if tone == ModalTone::Danger {
         confirm.add_css_class("danger");

@@ -395,5 +395,53 @@
     "vi": "%{count} mục đã chọn",
     "it": "%{count} elementi selezionati",
     "ru": "%{count} выбранных элементов"
+  },
+  "counts.changes.one": {
+    "en": "%{count} change",
+    "fr": "%{count} modification",
+    "de": "%{count} Änderung",
+    "es": "%{count} cambio",
+    "ja": "%{count} 件の変更",
+    "pt-BR": "%{count} alteração",
+    "ko": "변경 사항 %{count}개",
+    "vi": "%{count} thay đổi",
+    "it": "%{count} modifica",
+    "ru": "%{count} изменение"
+  },
+  "counts.changes.few": {
+    "en": "%{count} changes",
+    "fr": "%{count} modifications",
+    "de": "%{count} Änderungen",
+    "es": "%{count} cambios",
+    "ja": "%{count} 件の変更",
+    "pt-BR": "%{count} alterações",
+    "ko": "변경 사항 %{count}개",
+    "vi": "%{count} thay đổi",
+    "it": "%{count} modifiche",
+    "ru": "%{count} изменения"
+  },
+  "counts.changes.many": {
+    "en": "%{count} changes",
+    "fr": "%{count} modifications",
+    "de": "%{count} Änderungen",
+    "es": "%{count} cambios",
+    "ja": "%{count} 件の変更",
+    "pt-BR": "%{count} alterações",
+    "ko": "변경 사항 %{count}개",
+    "vi": "%{count} thay đổi",
+    "it": "%{count} modifiche",
+    "ru": "%{count} изменений"
+  },
+  "counts.changes.other": {
+    "en": "%{count} changes",
+    "fr": "%{count} modifications",
+    "de": "%{count} Änderungen",
+    "es": "%{count} cambios",
+    "ja": "%{count} 件の変更",
+    "pt-BR": "%{count} alterações",
+    "ko": "변경 사항 %{count}개",
+    "vi": "%{count} thay đổi",
+    "it": "%{count} modifiche",
+    "ru": "%{count} изменения"
   }
 }

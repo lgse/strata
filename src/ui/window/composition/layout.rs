@@ -69,12 +69,12 @@ impl Header {
         }
         let location = browser.location_widget();
         location.set_hexpand(true);
-        let search = header_action(icons::SEARCH, "Search (Ctrl+K)");
+        let search = header_action(icons::SEARCH, &crate::i18n::tr("Search (Ctrl+K)"));
         crate::ui::tenxer_mode::hide_while_enabled(&search);
         let appearance =
             build_appearance_menu(browser, &browser.browser(), preferences.clone(), preview);
-        let settings = header_action(icons::SETTINGS, "Settings");
-        let close = header_action(icons::X, "Close window");
+        let settings = header_action(icons::SETTINGS, &crate::i18n::tr("Settings"));
+        let close = header_action(icons::X, &crate::i18n::tr("Close window"));
         let closing_window = window.downgrade();
         close.connect_clicked(move |_| {
             if let Some(window) = closing_window.upgrade() {
@@ -83,7 +83,7 @@ impl Header {
         });
         let actions = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         actions.add_css_class("header-actions");
-        let new_tab = header_action(icons::PLUS, "New tab (Ctrl+T)");
+        let new_tab = header_action(icons::PLUS, &crate::i18n::tr("New tab (Ctrl+T)"));
         crate::ui::accessibility::set_label(&new_tab, &crate::i18n::tr("New tab"));
         actions.append(&new_tab);
         actions.append(&search);
@@ -111,11 +111,7 @@ impl Header {
 }
 
 pub(super) fn header_action(icon: &str, tooltip: &str) -> gtk::Button {
-    let tooltip = tooltip.rsplit_once(" (").map_or_else(
-        || crate::i18n::tr(tooltip),
-        |(label, shortcut)| format!("{} ({shortcut}", crate::i18n::tr(label)),
-    );
-    let button = gtk::Button::builder().tooltip_text(&tooltip).build();
+    let button = gtk::Button::builder().tooltip_text(tooltip).build();
     button.set_child(Some(&assets::chrome_icon(icon)));
     button.add_css_class("header-action");
     button.set_cursor_from_name(Some("pointer"));

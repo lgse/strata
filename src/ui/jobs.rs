@@ -739,6 +739,7 @@ fn job_controls(
 }
 
 fn job_button(label: &str, icon: &str) -> gtk::Button {
+    let label = &crate::i18n::tr(label);
     let image = crate::assets::primary_icon(icon, crate::assets::CHROME_ICON_PX);
     image.set_halign(gtk::Align::Center);
     image.set_valign(gtk::Align::Center);

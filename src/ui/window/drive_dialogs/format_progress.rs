@@ -88,7 +88,7 @@ impl FormatProgress {
                 self.card
                     .info
                     .set_text(&crate::i18n::tr("The drive was formatted successfully."));
-                self.card.completed("Format complete");
+                self.card.completed(&crate::i18n::tr("Format complete"));
             }
             Err(error) => {
                 self.dismiss();

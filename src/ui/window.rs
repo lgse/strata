@@ -769,7 +769,7 @@ pub(super) fn build_appearance_menu(
     // a screen reader reads the entire menu back as the button's label.
     super::accessibility::set_label(&button, &crate::i18n::tr("Appearance"));
     let popover_weak = popover.downgrade();
-    append_menu_heading(&content, "VIEW");
+    append_menu_heading(&content, &crate::i18n::tr("VIEW"));
     let current_mode = view.view_mode();
     let button_icon = crate::assets::chrome_icon(browser_mode_icon(current_mode));
     let (columns, columns_check, _) = appearance_option(
@@ -919,7 +919,7 @@ pub(super) fn build_appearance_menu(
     content.append(&preview_toggle);
 
     content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
-    append_menu_heading(&content, "DENSITY");
+    append_menu_heading(&content, &crate::i18n::tr("DENSITY"));
     let current_density = preferences.browser_density();
     let hidden_files_shown = preferences.sort_preferences().show_hidden;
     let (compact, compact_check, _) = appearance_option(
@@ -968,7 +968,7 @@ pub(super) fn build_appearance_menu(
     content.append(&airy);
 
     content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
-    append_menu_heading(&content, "TEXT SIZE");
+    append_menu_heading(&content, &crate::i18n::tr("TEXT SIZE"));
     let text_controls = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     text_controls.add_css_class("appearance-text-size");
     let sample = gtk::Label::new(Some("Aa"));
@@ -3822,7 +3822,7 @@ fn sidebar_button(icon: &str, name: &str) -> gtk::Button {
 
 fn sidebar_eject_button(action: MediaRelease, on_release: impl Fn() + 'static) -> gtk::Button {
     let button = gtk::Button::builder()
-        .tooltip_text(media_release_label(action))
+        .tooltip_text(crate::i18n::tr(media_release_label(action)))
         .build();
     button.set_child(Some(&crate::assets::primary_icon(
         crate::assets::icons::EJECT,

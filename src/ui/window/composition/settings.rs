@@ -175,10 +175,10 @@ fn update_tooltip(release: &ReleaseMetadata, method: UpdateMethod) -> String {
         UpdateMethod::Aur => rust_i18n::t!(
             "Strata v%{value1} is available through %{value2}",
             value1 = release.version,
-            value2 = InstallSource::detect()
-                .managed()
-                .map(ManagedInstall::manager)
-                .unwrap_or("your package manager")
+            value2 = InstallSource::detect().managed().map_or_else(
+                || crate::i18n::tr("your package manager"),
+                ManagedInstall::manager
+            )
         )
         .into_owned(),
         UpdateMethod::Omarchy => rust_i18n::t!(

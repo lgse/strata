@@ -211,11 +211,12 @@ impl PageState {
             };
             image.set_halign(gtk::Align::Center);
             image.set_valign(gtk::Align::Center);
+            let label = crate::i18n::tr(label);
             let button = gtk::Button::builder()
                 .child(&image)
-                .tooltip_text(label)
+                .tooltip_text(&label)
                 .build();
-            crate::ui::accessibility::set_label(&button, label);
+            crate::ui::accessibility::set_label(&button, &label);
             button.add_css_class("settings-action-button");
             button.add_css_class("settings-action-icon-button");
             if handler == ActionRowAction::Delete {
@@ -299,18 +300,15 @@ impl PageState {
         let Some(host) = ModalHost::blurred_for(anchor) else {
             return;
         };
-        let title = match mode {
-            EditorMode::Create => "New action",
-            EditorMode::Edit => "Edit action",
+        let (title, confirm) = match mode {
+            EditorMode::Create => ("New action", "Create action"),
+            EditorMode::Edit => ("Edit action", "Save changes"),
         };
         let layout = modal_layout(
             action_icon(action.definition.icon.as_deref()),
-            title,
+            &crate::i18n::tr(title),
             &crate::i18n::tr("Saved as action.toml under ~/.config/strata/actions/<id>"),
-            match mode {
-                EditorMode::Create => "Create action",
-                EditorMode::Edit => "Save changes",
-            },
+            &crate::i18n::tr(confirm),
         );
         layout.content.add_css_class("settings-action-dialog");
         if let Some(icon) = layout.close.child() {
@@ -453,9 +451,10 @@ impl PageState {
                     tracing::info!(action = %id, "imported a custom action");
                     show_notice(
                         &anchor,
-                        "Action imported",
-                        &format!(
-                            "“{id}” was imported disabled. Review its script, then enable it."
+                        &crate::i18n::tr("Action imported"),
+                        &rust_i18n::t!(
+                            "“%{id}” was imported disabled. Review its script, then enable it.",
+                            id = id
                         ),
                     );
                 }
@@ -489,9 +488,11 @@ impl PageState {
                 return;
             };
             match registry.export(&id, &path) {
-                Ok(target) => {
-                    show_notice(&anchor, "Action exported", &target.display().to_string())
-                }
+                Ok(target) => show_notice(
+                    &anchor,
+                    &crate::i18n::tr("Action exported"),
+                    &target.display().to_string(),
+                ),
                 Err(error) => show_error_dialog(
                     &anchor,
                     &crate::i18n::tr("Unable to export the action"),
@@ -512,9 +513,11 @@ impl PageState {
             &crate::i18n::tr("Delete"),
             ModalTone::Danger,
         );
-        layout.body.append(&message_dialog_description(
-            "The action folder and its script are removed from your actions directory.",
-        ));
+        layout
+            .body
+            .append(&message_dialog_description(&crate::i18n::tr(
+                "The action folder and its script are removed from your actions directory.",
+            )));
         let content = layout.content;
         let layer = modal_layer(&content, &host.overlay, host.blurred_root.clone(), None);
         for button in [&layout.close, &layout.cancel] {

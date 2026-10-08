@@ -97,6 +97,14 @@ fn plural_categories_cover_russian_teens_and_invariant_asian_forms() {
 }
 
 #[test]
+fn lists_use_the_language_separator() {
+    let items = || ["2 folders", "3 files", "1 link"].map(str::to_owned);
+    assert_eq!(list_in("en", items()), "2 folders, 3 files, 1 link");
+    assert_eq!(list_in("ja", items()), "2 folders、3 files、1 link");
+    assert_eq!(list_in("en", []), "");
+}
+
+#[test]
 fn interpolation_preserves_user_text_without_retranslating_or_expanding_it() {
     let filename = "Language %{value2} <&> 日本語.txt";
     assert_eq!(

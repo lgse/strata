@@ -184,7 +184,10 @@ impl TabStrip {
         content.append(&label);
         content.append(&hint);
         select.set_child(Some(&content));
-        let close = layout::header_action(crate::assets::icons::X, "Close tab (Ctrl+W)");
+        let close = layout::header_action(
+            crate::assets::icons::X,
+            &crate::i18n::tr("Close tab (Ctrl+W)"),
+        );
         close.remove_css_class("header-action");
         let close_icons = gtk::Stack::new();
         close_icons.set_halign(gtk::Align::Center);

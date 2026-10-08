@@ -143,7 +143,7 @@ fn authentication_retry_message(flags: gio::AskPasswordFlags, message: &str) -> 
     } else {
         rust_i18n::t!(
             "Those credentials weren’t accepted. Check %{value1} and try again.",
-            value1 = fields.join(", ")
+            value1 = crate::i18n::list(fields.into_iter().map(crate::i18n::tr))
         )
         .into_owned()
     }
@@ -299,11 +299,11 @@ fn show_authentication_dialog(
     let secret_label = password_field_label(message);
     let layout = modal_layout(
         crate::assets::icons::KEY,
-        if secret_label == "Passphrase" {
+        &crate::i18n::tr(if secret_label == "Passphrase" {
             "Passphrase required"
         } else {
             "Authentication required"
-        },
+        }),
         &crate::i18n::tr("Authenticate to access this volume or location"),
         &crate::i18n::tr("Connect"),
     );

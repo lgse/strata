@@ -311,7 +311,7 @@ impl ViewState {
             crate::assets::icons::PACKAGE_PLUS,
             &title,
             &subtitle,
-            "Compress",
+            &crate::i18n::tr("Compress"),
             Some(Rc::new(move || {
                 dirty_name.text() != compress_default_name
                     || !dirty_password.text().is_empty()
@@ -529,9 +529,9 @@ impl ViewState {
         let dirty_password = password_entry.clone();
         let (body, confirm, dismiss) = self.build_archive_modal(
             crate::assets::icons::FILE_ARCHIVE,
-            "Extract",
+            &crate::i18n::tr("Extract"),
             &entry.display_name,
-            "Extract",
+            &crate::i18n::tr("Extract"),
             Some(Rc::new(move || !dirty_password.text().is_empty())),
         );
 

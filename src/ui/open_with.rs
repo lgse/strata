@@ -644,15 +644,15 @@ pub(super) fn show(
         root.set_blurred(true);
     }
 
-    let subtitle = if files.len() == 1 {
+    let subtitle = crate::i18n::tr(if files.len() == 1 {
         "Choose an application to open this item"
     } else {
         "Choose an application to open these items"
-    };
+    });
     let layout = modal_layout(
         crate::assets::icons::EXTERNAL_LINK,
         &crate::i18n::tr("Open With"),
-        subtitle,
+        &subtitle,
         &crate::i18n::tr("Open"),
     );
     layout.content.add_css_class("open-with-dialog");

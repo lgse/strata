@@ -224,7 +224,12 @@ impl FileProgressState {
             return;
         };
 
-        let layout = modal_layout(icon, title_text, subtitle_text, &crate::i18n::tr("Cancel"));
+        let layout = modal_layout(
+            icon,
+            &crate::i18n::tr(title_text),
+            &crate::i18n::tr(subtitle_text),
+            &crate::i18n::tr("Cancel"),
+        );
         layout.content.add_css_class("compact");
         layout.close.set_visible(false);
         layout.cancel.set_visible(false);

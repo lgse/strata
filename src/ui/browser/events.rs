@@ -875,11 +875,7 @@ impl ViewState {
                         return;
                     };
                     if retryable_entries.is_empty() {
-                        show_error_dialog(
-                            &state.overlay,
-                            &crate::i18n::tr("Completed with errors"),
-                            &message,
-                        );
+                        crate::ui::modal::show_partial_failure_dialog(&state.overlay, &message);
                     } else if has_non_retryable_failures {
                         let weak_state = Rc::downgrade(&state);
                         show_delete_error_dialog(

@@ -46,10 +46,14 @@ impl FilesystemType {
             if character.is_ascii_control() {
                 Some(crate::i18n::tr("Labels cannot contain control characters."))
             } else if forbidden.contains(character) {
-                Some(format!(
-                    "{} labels cannot contain “{character}”.",
-                    self.label()
-                ))
+                Some(
+                    rust_i18n::t!(
+                        "%{filesystem} labels cannot contain “%{character}”.",
+                        filesystem = self.label(),
+                        character = character
+                    )
+                    .into_owned(),
+                )
             } else {
                 None
             }

@@ -53,11 +53,11 @@ pub(in crate::ui::window) fn go_target(key: Key, pins: &[Location]) -> Option<Go
         Key::t => place(Location::uri("trash:///"), false),
         Key::n => place(Location::uri("network:///"), true),
         Key::r => place(Location::uri("recent:///"), false),
-        Key::d => user_folder(glib::UserDirectory::Downloads, "Downloads"),
-        Key::k => user_folder(glib::UserDirectory::Documents, "Documents"),
-        Key::m => user_folder(glib::UserDirectory::Music, "Music"),
-        Key::p => user_folder(glib::UserDirectory::Pictures, "Pictures"),
-        Key::v => user_folder(glib::UserDirectory::Videos, "Videos"),
+        Key::d => user_folder(glib::UserDirectory::Downloads, "No Downloads folder"),
+        Key::k => user_folder(glib::UserDirectory::Documents, "No Documents folder"),
+        Key::m => user_folder(glib::UserDirectory::Music, "No Music folder"),
+        Key::p => user_folder(glib::UserDirectory::Pictures, "No Pictures folder"),
+        Key::v => user_folder(glib::UserDirectory::Videos, "No Videos folder"),
         _ => {
             let number = pin_number(key)?;
             Some(match pins.get(number - 1) {
@@ -81,18 +81,18 @@ fn config_folder() -> Option<GoTarget> {
             validate: false,
         }
     } else {
-        GoTarget::Missing("No .config folder".into())
+        GoTarget::Missing(crate::i18n::tr("No .config folder"))
     })
 }
 
-fn user_folder(directory: glib::UserDirectory, name: &str) -> Option<GoTarget> {
+fn user_folder(directory: glib::UserDirectory, missing: &str) -> Option<GoTarget> {
     Some(
         match glib::user_special_dir(directory).filter(|path| path.is_dir()) {
             Some(path) => GoTarget::Place {
                 location: Location::local(path),
                 validate: false,
             },
-            None => GoTarget::Missing(rust_i18n::t!("No %{name} folder", name = name).into_owned()),
+            None => GoTarget::Missing(crate::i18n::tr(missing)),
         },
     )
 }
@@ -217,16 +217,27 @@ impl Dispatcher {
                     .position(|pinned| *pinned == location)
                     .filter(|index| *index < 9)
                 {
-                    Some(index) => format!("Pinned \u{201c}{name}\u{201d} as g {}", index + 1),
-                    None => format!("Pinned \u{201c}{name}\u{201d}"),
+                    Some(index) => rust_i18n::t!(
+                        "Pinned “%{name}” as g %{number}",
+                        name = name,
+                        number = index + 1
+                    )
+                    .into_owned(),
+                    None => rust_i18n::t!("Pinned “%{name}”", name = name).into_owned(),
                 }
             }
-            PinChange::Unpinned(name) => format!("Unpinned \u{201c}{name}\u{201d}"),
-            PinChange::AlreadyPinned(name) => {
-                format!("\u{201c}{name}\u{201d} is already pinned")
+            PinChange::Unpinned(name) => {
+                rust_i18n::t!("Unpinned “%{name}”", name = name).into_owned()
             }
-            PinChange::NotPinned(name) => format!("\u{201c}{name}\u{201d} isn\u{2019}t pinned"),
-            PinChange::Refused(name) => format!("Can\u{2019}t pin \u{201c}{name}\u{201d}"),
+            PinChange::AlreadyPinned(name) => {
+                rust_i18n::t!("“%{name}” is already pinned", name = name).into_owned()
+            }
+            PinChange::NotPinned(name) => {
+                rust_i18n::t!("“%{name}” isn’t pinned", name = name).into_owned()
+            }
+            PinChange::Refused(name) => {
+                rust_i18n::t!("Can’t pin “%{name}”", name = name).into_owned()
+            }
             PinChange::Nothing if pin => crate::i18n::tr("Nothing to pin"),
             PinChange::Nothing => crate::i18n::tr("Nothing to unpin"),
         };

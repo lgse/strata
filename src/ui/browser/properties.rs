@@ -415,7 +415,7 @@ impl ViewState {
         let layout = modal_layout(
             icon_name,
             &name,
-            if is_directory { "Folder" } else { "File" },
+            &crate::i18n::tr(if is_directory { "Folder" } else { "File" }),
             &crate::i18n::tr("Close"),
         );
         if let Some(path) = location.native_path() {

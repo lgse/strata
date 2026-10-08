@@ -923,8 +923,9 @@ fn updates_page(
     }
 
     let available_notes = release_notes_card(
-        "Available release",
-        "Check for updates to see the latest release notes.",
+        ReleaseNotesKind::Available,
+        &crate::i18n::tr("Available release"),
+        &crate::i18n::tr("Check for updates to see the latest release notes."),
     );
     let UpdateCheckRow {
         row: update_row,
@@ -976,11 +977,12 @@ fn append_channel_option(
 fn append_current_release_notes(preferences: &gtk::Box) {
     append_heading(preferences, "RELEASE NOTES");
     let current_notes = release_notes_card(
+        ReleaseNotesKind::Current,
         &rust_i18n::t!(
             "What's new in v%{value1}",
             value1 = crate::build_info::installed_version()
         ),
-        "Loading release notes…",
+        &crate::i18n::tr("Loading release notes…"),
     );
     current_notes.container.remove(&current_notes.title);
     current_notes.container.remove(&current_notes.summary);
@@ -1122,7 +1124,7 @@ fn channel_option(manager: Rc<PreferenceManager>, managed: Option<&ManagedInstal
                 widget
                     .downcast_ref::<gtk::Label>()
                     .expect("channel description binding")
-                    .set_text(channel_description(channel));
+                    .set_text(&crate::i18n::tr(channel_description(channel)));
             },
         );
     }
@@ -1263,8 +1265,15 @@ fn set_release_note_blocks(notes: &gtk::Box, blocks: &[DocumentBlock]) {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ReleaseNotesKind {
+    Current,
+    Available,
+}
+
 #[derive(Clone)]
 struct ReleaseNotesCard {
+    kind: ReleaseNotesKind,
     container: gtk::Box,
     title: gtk::Label,
     summary: gtk::Label,
@@ -1273,7 +1282,7 @@ struct ReleaseNotesCard {
     fallback: gtk::LinkButton,
 }
 
-fn release_notes_card(title: &str, initial: &str) -> ReleaseNotesCard {
+fn release_notes_card(kind: ReleaseNotesKind, title: &str, initial: &str) -> ReleaseNotesCard {
     let container = gtk::Box::new(gtk::Orientation::Vertical, 8);
     container.add_css_class("release-notes-card");
     let title_label = gtk::Label::new(Some(title));
@@ -1307,6 +1316,7 @@ fn release_notes_card(title: &str, initial: &str) -> ReleaseNotesCard {
     container.append(&notes);
     container.append(&fallback);
     ReleaseNotesCard {
+        kind,
         container,
         title: title_label,
         summary,
@@ -1321,23 +1331,14 @@ fn release_notes_card(title: &str, initial: &str) -> ReleaseNotesCard {
 /// release notes and update surfaces must visibly label prerelease software.
 fn show_release_notes(card: &ReleaseNotesCard, release: &ReleaseMetadata) {
     card.container.set_visible(true);
-    let current_release = card.title.text().starts_with("What's new in");
-    card.title.set_text(&format!(
-        "{} · v{}",
-        card.title
-            .text()
-            .split('·')
-            .next()
-            .unwrap_or("Release")
-            .trim(),
-        release.version
-    ));
-    if current_release {
-        card.title.set_text(&rust_i18n::t!(
-            "What's new in v%{value1}",
-            value1 = release.version
-        ));
-    }
+    card.title.set_text(&match card.kind {
+        ReleaseNotesKind::Current => {
+            rust_i18n::t!("What's new in v%{value1}", value1 = release.version)
+        }
+        ReleaseNotesKind::Available => {
+            rust_i18n::t!("Available release · v%{version}", version = release.version)
+        }
+    });
     let changes = release
         .note_blocks
         .iter()
@@ -1350,8 +1351,13 @@ fn show_release_notes(card: &ReleaseNotesCard, release: &ReleaseMetadata) {
     card.summary.set_text(&match (changes, published) {
         (0, None) => crate::i18n::tr("Release notes"),
         (0, Some(date)) => rust_i18n::t!("Published %{date}", date = date).into_owned(),
-        (count, None) => format!("{count} changes"),
-        (count, Some(date)) => format!("{count} changes · published {date}"),
+        (count, None) => crate::i18n::count("changes", count),
+        (count, Some(date)) => rust_i18n::t!(
+            "%{changes} · published %{date}",
+            changes = crate::i18n::count("changes", count),
+            date = date
+        )
+        .into_owned(),
     });
     if release.kind == BuildKind::Stable {
         card.badge.set_visible(false);
@@ -1362,7 +1368,7 @@ fn show_release_notes(card: &ReleaseNotesCard, release: &ReleaseMetadata) {
     if release.notes.trim().is_empty() {
         set_release_notes_message(
             &card.notes,
-            "No release notes were provided for this release.",
+            &crate::i18n::tr("No release notes were provided for this release."),
         );
     } else {
         set_release_note_blocks(&card.notes, &release.note_blocks);
@@ -1385,7 +1391,9 @@ fn load_current_release_notes(card: &ReleaseNotesCard) {
                     .set_text(&crate::i18n::tr("Release notes unavailable for this build"));
                 set_release_notes_message(
                     &card.notes,
-                    "Release notes are unavailable because this version’s tag was not found.",
+                    &crate::i18n::tr(
+                        "Release notes are unavailable because this version’s tag was not found.",
+                    ),
                 );
                 card.fallback.set_uri(&url);
                 card.fallback.set_visible(true);
@@ -1408,7 +1416,9 @@ fn load_current_release_notes(card: &ReleaseNotesCard) {
                     .set_text(&crate::i18n::tr("Couldn’t load release notes"));
                 set_release_notes_message(
                     &card.notes,
-                    "Couldn’t load release notes because the request ended unexpectedly.",
+                    &crate::i18n::tr(
+                        "Couldn’t load release notes because the request ended unexpectedly.",
+                    ),
                 );
                 glib::ControlFlow::Break
             }
@@ -1737,9 +1747,9 @@ fn update_check_row_with(
                         CHECK_IN_FLIGHT.set(false);
                         title.set_text(&crate::i18n::tr("Couldn’t check for updates"));
                         crate::assets::set_primary_icon(&status_icon, icons::TRIANGLE_ALERT);
-                        status.set_markup(
+                        status.set_markup(&crate::i18n::tr(
                             "Couldn't check for updates · <a href=\"https://github.com/lgse/strata/releases/latest\">View releases on GitHub</a>",
-                        );
+                        ));
                         available_notes.container.set_visible(false);
                         button.set_sensitive(true);
                         checking.set(false);
@@ -2246,12 +2256,12 @@ fn build_update_dialog(
             value1 = crate::build_info::installed_version(),
             value2 = release.version
         ),
-        match update_method {
+        &crate::i18n::tr(match update_method {
             UpdateMethod::InPlace => "Download update",
             UpdateMethod::Aur => aur_action,
             UpdateMethod::Omarchy => "Open Omarchy Update",
             UpdateMethod::Pacman => "Close",
-        },
+        }),
     );
     layout.content.add_css_class("update-dialog");
     layout.content.set_size_request(560, -1);
@@ -2274,7 +2284,9 @@ fn build_update_dialog(
     if release.notes.trim().is_empty() {
         set_release_notes_message(
             &notes,
-            "No release notes were provided. Review this release on GitHub before continuing.",
+            &crate::i18n::tr(
+                "No release notes were provided. Review this release on GitHub before continuing.",
+            ),
         );
     } else {
         set_release_note_blocks(&notes, &release.note_blocks);
@@ -2303,14 +2315,12 @@ fn build_update_dialog(
             .unwrap_or_else(|| {
                 crate::i18n::tr("This installation is managed by its package manager.")
             }),
-        UpdateMethod::Omarchy => {
-            "This installation is managed by Omarchy. Run “omarchy update” to install it."
-                .to_owned()
-        }
-        UpdateMethod::Pacman => {
-            "This installation is managed by pacman. Install it through a full system update."
-                .to_owned()
-        }
+        UpdateMethod::Omarchy => crate::i18n::tr(
+            "This installation is managed by Omarchy. Run “omarchy update” to install it.",
+        ),
+        UpdateMethod::Pacman => crate::i18n::tr(
+            "This installation is managed by pacman. Install it through a full system update.",
+        ),
     };
     let status = gtk::Label::new(Some(&status_message));
     status.add_css_class("update-dialog-status");
@@ -2745,15 +2755,24 @@ fn installed_version_status(
     };
     match update_method {
         UpdateMethod::InPlace => version,
-        UpdateMethod::Aur => format!(
-            "{version} · Managed by {}",
-            InstallSource::detect()
-                .managed()
-                .map(ManagedInstall::manager)
-                .unwrap_or("a package manager")
-        ),
-        UpdateMethod::Omarchy => format!("{version} · Managed by Omarchy"),
-        UpdateMethod::Pacman => format!("{version} · Managed by pacman"),
+        UpdateMethod::Aur => match InstallSource::detect().managed() {
+            Some(managed) => rust_i18n::t!(
+                "%{version} · Managed by %{manager}",
+                version = version,
+                manager = managed.manager()
+            ),
+            None => rust_i18n::t!(
+                "%{version} · Managed by a package manager",
+                version = version
+            ),
+        }
+        .into_owned(),
+        UpdateMethod::Omarchy => {
+            rust_i18n::t!("%{version} · Managed by Omarchy", version = version).into_owned()
+        }
+        UpdateMethod::Pacman => {
+            rust_i18n::t!("%{version} · Managed by pacman", version = version).into_owned()
+        }
     }
 }
 
@@ -2781,12 +2800,14 @@ fn update_check_message(result: &UpdateCheck, update_method: UpdateMethod) -> St
             rust_i18n::t!("Up to date — version %{value1}", value1 = crate::build_info::installed_version()).into_owned()
         }
         UpdateCheck::Available { release, .. } => {
-            let instruction = match update_method {
-                UpdateMethod::InPlace | UpdateMethod::Aur => "",
-                UpdateMethod::Omarchy => " · Run “omarchy update” to install",
-                UpdateMethod::Pacman => " · Install through a full system update",
-            };
-            rust_i18n::t!("Update available: <a href=\"%{value1}\">v%{value2}</a>%{instruction}", value1 = glib::markup_escape_text(&release.url), value2 = glib::markup_escape_text(&release.version), instruction = instruction).into_owned()
+            let url = glib::markup_escape_text(&release.url);
+            let version = glib::markup_escape_text(&release.version);
+            match update_method {
+                UpdateMethod::InPlace | UpdateMethod::Aur => rust_i18n::t!("Update available: <a href=\"%{value1}\">v%{value2}</a>", value1 = url, value2 = version),
+                UpdateMethod::Omarchy => rust_i18n::t!("Update available: <a href=\"%{value1}\">v%{value2}</a> · Run “omarchy update” to install", value1 = url, value2 = version),
+                UpdateMethod::Pacman => rust_i18n::t!("Update available: <a href=\"%{value1}\">v%{value2}</a> · Install through a full system update", value1 = url, value2 = version),
+            }
+            .into_owned()
         }
         UpdateCheck::Failed(message) => rust_i18n::t!("Couldn't check for updates: %{value1} · <a href=\"https://github.com/lgse/strata/releases/latest\">View releases on GitHub</a>", value1 = glib::markup_escape_text(message)).into_owned(),
     }
