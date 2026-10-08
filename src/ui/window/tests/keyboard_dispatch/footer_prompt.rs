@@ -1387,3 +1387,63 @@ fn tenxer_search_hit_keys_peek_preview_and_yield_to_chords() {
         },
     );
 }
+
+/// Another program deletes the cursor's file, one of the hits, while the **f** or **s**
+/// prompt filters the listing.
+fn outside_deletion_case(mode: BrowserMode, prompt: Prompt) -> Result<(), String> {
+    let fixture = KeyboardFixture::new();
+    seed_filter_tree(&fixture);
+    enable_tenxer(&fixture);
+    fixture.view.set_view_mode(mode);
+    let browser = fixture.view.browser();
+    wait_loaded(&browser, 0);
+    select_named(&fixture, "alpha-report.txt");
+    let (key, expected): (Key, &[&str]) = if prompt == Prompt::Filter {
+        (Key::f, &IMMEDIATE_REPORTS)
+    } else {
+        (Key::s, &ALL_REPORTS)
+    };
+    if !fixture.press(key, ModifierType::empty()) || !fixture.shortcuts.prompt_has_focus() {
+        return Err("setup: the prompt did not open with focus".to_owned());
+    }
+    fixture.shortcuts.prompt().set_text("report");
+    wait_results(&fixture, expected);
+    std::fs::remove_file(fixture._directory.path().join("alpha-report.txt"))
+        .expect("delete the hit");
+    wait_until(|| entry_count(&browser) == 6);
+    // Focus that must stay put has no settle condition.
+    pump(300);
+    if !fixture.shortcuts.prompt_has_focus()
+        || fixture.shortcuts.open_prompt_kind() != Some(prompt)
+    {
+        return Err(format!(
+            "the deletion took focus from the prompt (open prompt {:?})",
+            fixture.shortcuts.open_prompt_kind()
+        ));
+    }
+    if fixture.shortcuts.prompt_text() != "report" {
+        return Err(format!(
+            "the prompt text became {:?}",
+            fixture.shortcuts.prompt_text()
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn tenxer_filter_prompts_keep_focus_through_an_outside_deletion() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::footer_prompt::tenxer_filter_prompts_keep_focus_through_an_outside_deletion",
+        || {
+            let mut failures = Vec::new();
+            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
+                for prompt in [Prompt::Filter, Prompt::Search] {
+                    if let Err(error) = outside_deletion_case(mode, prompt) {
+                        failures.push(format!("{mode:?} {prompt:?}: {error}"));
+                    }
+                }
+            }
+            assert!(failures.is_empty(), "\n{}", failures.join("\n"));
+        },
+    );
+}

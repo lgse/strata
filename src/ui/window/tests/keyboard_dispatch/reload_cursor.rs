@@ -71,11 +71,8 @@ fn report(failures: Vec<String>) {
 /// `f00`..`f11`, then `bulk` files listed after them.
 fn twelve_files(fixture: &KeyboardFixture, bulk: usize) {
     for index in 0..12 {
-        std::fs::write(
-            fixture._directory.path().join(format!("f{index:02}")),
-            b"x",
-        )
-        .expect("fixture file");
+        std::fs::write(fixture._directory.path().join(format!("f{index:02}")), b"x")
+            .expect("fixture file");
     }
     for index in 0..bulk {
         std::fs::write(
@@ -91,8 +88,17 @@ fn twelve_files(fixture: &KeyboardFixture, bulk: usize) {
     }
 }
 
+/// What the user does while the reload is still loading.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum During {
+    Nothing,
+    /// Escape dismisses the focused filter, so the listing takes focus instead.
+    Escape,
+}
+
 /// One refresh scenario: where focus is, whether the cursor's file survives, what
-/// starts the reload, and how many more files the listing holds.
+/// starts the reload, how many more files the listing holds, and what happens while
+/// it loads.
 #[derive(Clone, Copy, Debug)]
 struct RefreshCase {
     owner: Owner,
@@ -101,18 +107,68 @@ struct RefreshCase {
     /// Enough files that the reload spans a frame, so GTK moves focus off the hidden
     /// pane before the load finishes.
     bulk: usize,
+    during: During,
 }
 
 const REFRESH_CASES: &[RefreshCase] = &[
-    RefreshCase { owner: Owner::Items, cursor_kept: true, trigger: Trigger::F5, bulk: 0 },
-    RefreshCase { owner: Owner::Items, cursor_kept: false, trigger: Trigger::F5, bulk: 0 },
-    RefreshCase { owner: Owner::FilterEntry, cursor_kept: true, trigger: Trigger::AutoRefresh, bulk: 0 },
+    RefreshCase {
+        owner: Owner::Items,
+        cursor_kept: true,
+        trigger: Trigger::F5,
+        bulk: 0,
+        during: During::Nothing,
+    },
+    RefreshCase {
+        owner: Owner::Items,
+        cursor_kept: false,
+        trigger: Trigger::F5,
+        bulk: 0,
+        during: During::Nothing,
+    },
+    RefreshCase {
+        owner: Owner::FilterEntry,
+        cursor_kept: true,
+        trigger: Trigger::AutoRefresh,
+        bulk: 0,
+        during: During::Nothing,
+    },
     // The timer ticks after the monitor has already reported a deletion as a live
     // change, so only an immediate reload lists the folder without the cursor's entry.
-    RefreshCase { owner: Owner::FilterEntry, cursor_kept: false, trigger: Trigger::RefreshButton, bulk: 0 },
-    RefreshCase { owner: Owner::FilterEntry, cursor_kept: true, trigger: Trigger::F5, bulk: 5000 },
-    RefreshCase { owner: Owner::Sidebar, cursor_kept: true, trigger: Trigger::F5, bulk: 0 },
-    RefreshCase { owner: Owner::Sidebar, cursor_kept: false, trigger: Trigger::F5, bulk: 0 },
+    RefreshCase {
+        owner: Owner::FilterEntry,
+        cursor_kept: false,
+        trigger: Trigger::RefreshButton,
+        bulk: 0,
+        during: During::Nothing,
+    },
+    RefreshCase {
+        owner: Owner::FilterEntry,
+        cursor_kept: true,
+        trigger: Trigger::F5,
+        bulk: 5000,
+        during: During::Nothing,
+    },
+    RefreshCase {
+        owner: Owner::Sidebar,
+        cursor_kept: true,
+        trigger: Trigger::F5,
+        bulk: 0,
+        during: During::Nothing,
+    },
+    RefreshCase {
+        owner: Owner::Sidebar,
+        cursor_kept: false,
+        trigger: Trigger::F5,
+        bulk: 0,
+        during: During::Nothing,
+    },
+    RefreshCase {
+        owner: Owner::FilterEntry,
+        cursor_kept: true,
+        trigger: Trigger::RefreshButton,
+        bulk: 5000,
+        during: During::Escape,
+    },
 ];
 
 /// Counts finished loads of the first column so a reload can be awaited.
@@ -127,7 +183,12 @@ fn load_counter(browser: &crate::app::Browser) -> Rc<Cell<usize>> {
     loads
 }
 
-fn reload(fixture: &KeyboardFixture, trigger: Trigger, loads: &Cell<usize>) -> Result<(), String> {
+fn reload(
+    fixture: &KeyboardFixture,
+    trigger: Trigger,
+    loads: &Cell<usize>,
+    during: During,
+) -> Result<(), String> {
     let before = loads.get();
     match trigger {
         Trigger::F5 => {
@@ -135,6 +196,11 @@ fn reload(fixture: &KeyboardFixture, trigger: Trigger, loads: &Cell<usize>) -> R
         }
         Trigger::RefreshButton => fixture.view.refresh(),
         Trigger::AutoRefresh => fixture.view.set_auto_refresh_interval(1),
+    }
+    if during == During::Escape
+        && (loads.get() != before || !fixture.press(Key::Escape, ModifierType::empty()))
+    {
+        return Err("setup: Escape did not dismiss the filter while the folder loaded".to_owned());
     }
     let reloaded = settles(|| loads.get() > before);
     if trigger == Trigger::AutoRefresh {
@@ -155,6 +221,7 @@ fn refresh_case(mode: BrowserMode, case: RefreshCase) -> Result<(), String> {
         cursor_kept,
         trigger,
         bulk,
+        during,
     } = case;
     let fixture = KeyboardFixture::new();
     let browser = fixture.view.browser();
@@ -171,7 +238,8 @@ fn refresh_case(mode: BrowserMode, case: RefreshCase) -> Result<(), String> {
     let field = match owner {
         Owner::Items => None,
         Owner::FilterEntry => {
-            if !fixture.press(Key::f, ModifierType::CONTROL_MASK) || !fixture.view.filter_has_focus()
+            if !fixture.press(Key::f, ModifierType::CONTROL_MASK)
+                || !fixture.view.filter_has_focus()
             {
                 return Err(format!(
                     "setup: Ctrl+F did not focus the field; focus is on {}",
@@ -198,7 +266,7 @@ fn refresh_case(mode: BrowserMode, case: RefreshCase) -> Result<(), String> {
     if !cursor_kept {
         std::fs::remove_file(fixture._directory.path().join("f05")).expect("remove f05");
     }
-    reload(&fixture, trigger, &loads)?;
+    reload(&fixture, trigger, &loads, during)?;
 
     let mut failures = Vec::new();
     let (cursor, selection) = if cursor_kept {
@@ -218,6 +286,11 @@ fn refresh_case(mode: BrowserMode, case: RefreshCase) -> Result<(), String> {
             selected_names(&browser)
         ));
     }
+    let owner = if during == During::Escape {
+        Owner::Items
+    } else {
+        owner
+    };
     match owner {
         Owner::Items => {
             if !settles(|| focus_shows(&fixture, cursor)) {
@@ -322,8 +395,7 @@ fn history_button(fixture: &KeyboardFixture, index: usize) -> Result<gtk::Button
             && button
                 .parent()
                 .is_some_and(|parent| parent.has_css_class("list-navigation"))
-            && std::iter::successors(button.prev_sibling(), |widget| widget.prev_sibling())
-                .count()
+            && std::iter::successors(button.prev_sibling(), |widget| widget.prev_sibling()).count()
                 == index
     })
     .ok_or_else(|| format!("setup: no history button {index} in the pane header"))
@@ -335,7 +407,10 @@ fn settled_value(adjustment: &gtk::Adjustment) -> f64 {
         pump(16);
         let mut samples = samples.borrow_mut();
         samples.push(adjustment.value());
-        samples.len() >= 3 && samples[samples.len() - 3..].windows(2).all(|pair| pair[0] == pair[1])
+        samples.len() >= 3
+            && samples[samples.len() - 3..]
+                .windows(2)
+                .all(|pair| pair[0] == pair[1])
     });
     adjustment.value()
 }
@@ -382,7 +457,7 @@ fn capture_during_settle_case(during: DuringSettle) -> Result<(), String> {
             wait_loaded(&browser, 0);
             back(&fixture)?;
         }
-        DuringSettle::Reload => reload(&fixture, Trigger::RefreshButton, &loads)?,
+        DuringSettle::Reload => reload(&fixture, Trigger::RefreshButton, &loads, During::Nothing)?,
     }
     let viewport = wait_for_viewport(&fixture).ok_or("no scrollable list after the return")?;
     let restored = settled_value(&viewport);
@@ -422,7 +497,10 @@ enum Return {
     Breadcrumb,
 }
 
-fn mapped_button(widget: &gtk::Widget, matches: &dyn Fn(&gtk::Button) -> bool) -> Option<gtk::Button> {
+fn mapped_button(
+    widget: &gtk::Widget,
+    matches: &dyn Fn(&gtk::Button) -> bool,
+) -> Option<gtk::Button> {
     if widget.is_mapped()
         && let Some(button) = widget.downcast_ref::<gtk::Button>()
         && matches(button)
@@ -468,7 +546,8 @@ fn icons_return_case(
             fixture.press(Key::Up, ModifierType::ALT_MASK);
         }
         Return::FilterAltUp | Return::FilterAltLeft => {
-            if !fixture.press(Key::f, ModifierType::CONTROL_MASK) || !fixture.view.filter_has_focus()
+            if !fixture.press(Key::f, ModifierType::CONTROL_MASK)
+                || !fixture.view.filter_has_focus()
             {
                 return Err(format!(
                     "setup: Ctrl+F did not focus the field; focus is on {}",
@@ -499,15 +578,16 @@ fn icons_return_case(
                             .parent()
                             .is_some_and(|parent| parent.has_css_class("list-navigation"))
                 }
-                _ => button.has_css_class("breadcrumb") && button.label().as_deref() == Some(&parent),
+                _ => {
+                    button.has_css_class("breadcrumb") && button.label().as_deref() == Some(&parent)
+                }
             })
             .ok_or_else(|| format!("setup: no {route:?} to click"))?;
             button.grab_focus();
             button.emit_clicked();
         }
     }
-    if !settles(|| browser.active_location() == Some(Location::local(fixture._directory.path())))
-    {
+    if !settles(|| browser.active_location() == Some(Location::local(fixture._directory.path()))) {
         return Err(format!("{route:?} did not return to the parent"));
     }
     wait_loaded(&browser, 0);
@@ -576,7 +656,9 @@ fn returning_to_a_visited_directory_restores_the_icons_cursor() {
                 icons_return_case(leave_in, return_in, route)
                     .err()
                     .map(|error| {
-                        format!("left {leave_in:?}, returned in {return_in:?} by {route:?}: {error}")
+                        format!(
+                            "left {leave_in:?}, returned in {return_in:?} by {route:?}: {error}"
+                        )
                     })
             })
             .collect();
@@ -604,7 +686,7 @@ fn columns_reload_case(owner: Owner, trigger: Trigger) -> Result<(), String> {
             describe_focus(&fixture)
         ));
     }
-    reload(&fixture, trigger, &loads)?;
+    reload(&fixture, trigger, &loads, During::Nothing)?;
     let mut failures = Vec::new();
     if focused_name(&browser) != "b.txt" {
         failures.push(format!(

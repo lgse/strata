@@ -104,7 +104,9 @@ impl Browser {
                     .state
                     .borrow_mut()
                     .apply_directory_change(depth, &watched, change);
-                self.publish_live_change(depth, application, false);
+                self.publish_external_change(|| {
+                    self.publish_live_change(depth, application, false);
+                });
             }
         }
     }
@@ -155,10 +157,19 @@ impl Browser {
             .state
             .borrow_mut()
             .apply_directory_change(depth, watched, change);
-        self.publish_live_change(depth, application, focused_was_removed);
+        self.publish_external_change(|| {
+            self.publish_live_change(depth, application, focused_was_removed);
+        });
         if let Some((from, to)) = relocation {
             self.relocate_open_columns(&from, &to);
         }
+    }
+
+    /// Marks the `FocusChanged` that `publish` emits as following an outside change.
+    pub(super) fn publish_external_change(&self, publish: impl FnOnce()) {
+        let was = self.external_change_focus.replace(true);
+        publish();
+        self.external_change_focus.set(was);
     }
 
     pub(super) fn publish_live_change(

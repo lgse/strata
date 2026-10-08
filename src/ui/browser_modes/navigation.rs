@@ -72,6 +72,18 @@ enum PendingRestore {
 }
 
 impl PendingRestore {
+    /// Typing in the filter field during a reload that started there edits the query;
+    /// it must not abandon handing focus back to the field once GTK moved it off.
+    fn keeps_filter_typing(&self) -> bool {
+        matches!(
+            self,
+            Self::Reload {
+                focus: FocusOwner::FilterEntry,
+                ..
+            }
+        )
+    }
+
     fn viewport(&self) -> Viewport {
         match self {
             Self::History { position, .. } => position.viewport,
@@ -88,6 +100,8 @@ pub(super) struct PaneNavigation {
     /// target rather than a half-restored viewport.
     applying: Option<PendingRestore>,
     restoring: Rc<Cell<bool>>,
+    /// The pending restore was applied and its viewport is settling.
+    applied: Rc<Cell<bool>>,
     input: Option<(glib::WeakRef<gtk::Widget>, gtk::EventControllerLegacy)>,
     leaving_with_focus: bool,
 }
@@ -159,14 +173,16 @@ impl PaneNavigation {
                 return;
             }
             if let Some(applying) = self.applying.take() {
-                self.pending = Some(match applying {
+                let pending = match applying {
                     PendingRestore::History { position, .. } => PendingRestore::Reload {
                         viewport: position.viewport,
                         focus,
                     },
                     reload @ PendingRestore::Reload { .. } => reload,
-                });
-                self.arm_input_cancel(pane);
+                };
+                let filter_typing = pending.keeps_filter_typing();
+                self.pending = Some(pending);
+                self.arm_input_cancel(pane, filter_typing);
                 return;
             }
         }
@@ -176,8 +192,10 @@ impl PaneNavigation {
         let Some(viewport) = Viewport::capture(pane, mode) else {
             return;
         };
-        self.pending = Some(PendingRestore::Reload { viewport, focus });
-        self.arm_input_cancel(pane);
+        let pending = PendingRestore::Reload { viewport, focus };
+        let filter_typing = pending.keeps_filter_typing();
+        self.pending = Some(pending);
+        self.arm_input_cancel(pane, filter_typing);
     }
 
     pub(super) fn prepare(&mut self, pane: &Pane, snapshot: &BrowserColumnSnapshot) {
@@ -199,12 +217,29 @@ impl PaneNavigation {
                 takes_focus: self.leaving_with_focus,
             });
         if self.pending.is_some() {
-            self.arm_input_cancel(pane);
+            self.arm_input_cancel(pane, false);
         }
     }
 
-    /// Pointer and key input in the pane abandons the restore.
-    fn arm_input_cancel(&mut self, pane: &Pane) {
+    /// The pane's own filter dismissed the field that a pending reload would hand focus
+    /// back to; the listing that took focus gets it instead.
+    pub(super) fn filter_dismissed(&mut self) {
+        for restore in [self.pending.as_mut(), self.applying.as_mut()]
+            .into_iter()
+            .flatten()
+        {
+            if let PendingRestore::Reload { focus, .. } = restore
+                && *focus == FocusOwner::FilterEntry
+            {
+                *focus = FocusOwner::Items;
+            }
+        }
+    }
+
+    /// Pointer and key input in the pane abandons the restore. With `filter_typing`, keys
+    /// typed into the filter field before the reload finishes are exempt, except those
+    /// that move focus on.
+    fn arm_input_cancel(&mut self, pane: &Pane, filter_typing: bool) {
         if let Some((widget, input)) = self.input.take()
             && let Some(widget) = widget.upgrade()
         {
@@ -213,17 +248,27 @@ impl PaneNavigation {
         // Stops the previous restore's settle loop.
         self.restoring.set(false);
         self.restoring = Rc::new(Cell::new(true));
+        self.applied = Rc::new(Cell::new(false));
         let restoring = self.restoring.clone();
+        let applied = self.applied.clone();
+        let field = pane
+            .filter_entry
+            .as_ref()
+            .filter(|_| filter_typing)
+            .map(|entry| entry.downgrade());
         let input = gtk::EventControllerLegacy::new();
         input.set_propagation_phase(gtk::PropagationPhase::Capture);
-        input.connect_event(move |_, event| {
-            if matches!(
-                event.event_type(),
-                gtk::gdk::EventType::KeyPress
-                    | gtk::gdk::EventType::ButtonPress
-                    | gtk::gdk::EventType::Scroll
-                    | gtk::gdk::EventType::TouchBegin
-            ) {
+        input.connect_event(move |input, event| {
+            let cancels = match event.event_type() {
+                gtk::gdk::EventType::ButtonPress
+                | gtk::gdk::EventType::Scroll
+                | gtk::gdk::EventType::TouchBegin => true,
+                gtk::gdk::EventType::KeyPress => {
+                    applied.get() || moves_focus(event) || !focus_within(input, field.as_ref())
+                }
+                _ => false,
+            };
+            if cancels {
                 restoring.set(false);
             }
             glib::Propagation::Proceed
@@ -265,6 +310,7 @@ impl PaneNavigation {
             ),
         };
         self.applying = Some(pending);
+        self.applied.set(true);
 
         let view = &pane.section.view;
         let cursor = focused.and_then(|source| {
@@ -336,6 +382,35 @@ impl PaneNavigation {
         });
         Some(focus)
     }
+}
+
+/// Whether keyboard focus is in `field`, the pane's filter entry.
+fn focus_within(
+    input: &gtk::EventControllerLegacy,
+    field: Option<&glib::WeakRef<gtk::Entry>>,
+) -> bool {
+    let Some(field) = field.and_then(glib::WeakRef::upgrade) else {
+        return false;
+    };
+    input
+        .widget()
+        .and_then(|widget| widget.root())
+        .and_then(|root| root.focus())
+        .is_some_and(|focused| {
+            focused == *field.upcast_ref::<gtk::Widget>() || focused.is_ancestor(&field)
+        })
+}
+
+/// Tab moves focus through GTK, past the commands that cancel a restore themselves.
+fn moves_focus(event: &gtk::gdk::Event) -> bool {
+    event
+        .downcast_ref::<gtk::gdk::KeyEvent>()
+        .is_some_and(|key| {
+            matches!(
+                key.keyval(),
+                gtk::gdk::Key::Tab | gtk::gdk::Key::ISO_Left_Tab | gtk::gdk::Key::KP_Tab
+            )
+        })
 }
 
 /// The pane's directory, once it loaded without an error; a load still in progress

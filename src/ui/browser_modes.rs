@@ -1154,6 +1154,7 @@ impl ModeViews {
         if let Some(button) = pane.filter_button.as_ref() {
             button.set_active(false);
         }
+        self.pane_navigation.borrow_mut().filter_dismissed();
         // Show the listing now rather than after the debounce, so focus lands on it.
         if pane.search.replaces_listing() {
             pane.search.flush_query();

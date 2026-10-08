@@ -603,6 +603,7 @@ impl ViewState {
                         && self.mode_views.borrow().mode() == BrowserMode::Columns
                         && self.browser.active_depth() == Some(*depth)
                         && !self.suppress_scroll_after_drop.get()
+                        && !self.outside_change_keeps_focus()
                     {
                         column.focus_surface();
                     }

@@ -27,6 +27,8 @@ pub(super) struct FilterState {
     /// first result.
     focus_on_arrival: Cell<bool>,
     notify_scheduled: Cell<bool>,
+    /// Whether a footer prompt that filters this browser, 10xer's **f** or **s**, has focus.
+    footer_focus: RefCell<Option<Rc<dyn Fn() -> bool>>>,
 }
 
 impl FilterState {
@@ -416,6 +418,21 @@ impl ViewState {
             .find_map(|column| column_filter_focus(column, &focused))
     }
 
+    pub(in crate::ui) fn footer_filter_has_focus(&self) -> bool {
+        self.listing_filter
+            .footer_focus
+            .borrow()
+            .as_ref()
+            .is_some_and(|has_focus| has_focus())
+    }
+
+    /// An outside change never pulls focus out of a focused filter: the pane's field or
+    /// results, or a footer prompt that filters the listing.
+    pub(super) fn outside_change_keeps_focus(&self) -> bool {
+        self.browser.focus_follows_external_change()
+            && (self.filter_focus().is_some() || self.footer_filter_has_focus())
+    }
+
     fn filter_depth(&self) -> Option<usize> {
         if self.mode.get() == BrowserMode::Columns {
             self.focused_column_depth()
@@ -660,6 +677,10 @@ impl BrowserView {
         self.filter_target()
             .and_then(|target| target.hits())
             .is_some_and(|hits| hits.selection.select_item(position, false))
+    }
+
+    pub(in crate::ui) fn set_footer_filter_focus(&self, has_focus: Rc<dyn Fn() -> bool>) {
+        self.state.listing_filter.footer_focus.replace(Some(has_focus));
     }
 
     pub(in crate::ui) fn connect_filter_results_changed(&self, handler: Rc<dyn Fn()>) {
