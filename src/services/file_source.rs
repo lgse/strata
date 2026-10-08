@@ -119,6 +119,12 @@ impl LocationValidationError {
 /// Localized text for an I/O failure. An unrecognized OS error gets a generic reason and its
 /// system text is logged; errors built by Strata or a library keep their own message.
 pub(crate) fn io_error_message(error: &std::io::Error) -> String {
+    if let Some(link) = error
+        .get_ref()
+        .and_then(|inner| inner.downcast_ref::<crate::storage::DestinationError>())
+    {
+        return link.message();
+    }
     match io_error_reason(error) {
         Some(reason) => crate::i18n::tr(reason),
         None if error.raw_os_error().is_some() => {
