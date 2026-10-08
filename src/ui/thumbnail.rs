@@ -978,7 +978,7 @@ async fn run_render_job(job: ThumbnailJob) {
         let cancellation = job.cancellation.clone();
         background::render(move || render_thumbnail(&path, kind, &cancellation))
             .await
-            .map_err(|_| crate::i18n::tr("Thumbnail worker failed"))
+            .map_err(|_| "Thumbnail worker failed".to_owned())
             .and_then(|result| result)
             .map(|png| (png, true))
     };

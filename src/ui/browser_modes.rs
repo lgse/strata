@@ -4789,7 +4789,10 @@ fn entry_size(entry: &FileEntry) -> String {
 }
 
 fn entry_type(entry: &FileEntry) -> String {
-    crate::i18n::tr(&crate::services::entry_type_description(entry))
+    match crate::services::entry_type(entry) {
+        crate::services::EntryType::Known(description) => description,
+        kind => crate::i18n::tr(kind.description()),
+    }
 }
 
 fn entry_mode(entry: &FileEntry) -> String {

@@ -61,7 +61,7 @@ pub(super) async fn render(path: &Path, cancellation: &Cancellation) -> Result<V
     let cancelled = async {
         loop {
             if cancellation.is_cancelled() {
-                return Err(crate::i18n::tr("Camera thumbnail cancelled"));
+                return Err("Camera thumbnail cancelled".to_owned());
             }
             glib::timeout_future(Duration::from_millis(20)).await;
         }
@@ -71,7 +71,7 @@ pub(super) async fn render(path: &Path, cancellation: &Cancellation) -> Result<V
         futures_lite::future::race(download, cancelled),
     )
     .await
-    .map_err(|_| crate::i18n::tr("Camera thumbnail timed out"))??;
+    .map_err(|_| "Camera thumbnail timed out".to_owned())??;
     let cancellation = cancellation.clone();
     // Camera preview icons are compressed, untrusted inputs too. Only the
     // sandbox's normalized PNG is handed to GTK, never the original icon bytes.
@@ -88,7 +88,7 @@ pub(super) async fn render(path: &Path, cancellation: &Cancellation) -> Result<V
             .map(|thumbnail| thumbnail.png)
     })
     .await
-    .map_err(|_| crate::i18n::tr("Camera thumbnail worker failed"))?
+    .map_err(|_| "Camera thumbnail worker failed".to_owned())?
 }
 
 // gio 0.22 treats load_finish's optional content type as a non-null GString.

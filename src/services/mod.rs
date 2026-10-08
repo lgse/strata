@@ -54,7 +54,7 @@ pub use jobs::{
 pub(crate) use listeners::ListenerGuard;
 pub use mime_type::{
     BROKEN_LINK_TYPE_NAME, EntryType, FOLDER_TYPE_NAME, OTHER_TYPE_NAME, entry_type,
-    entry_type_description, mime_description_for_name,
+    mime_description_for_name,
 };
 pub(crate) use model_preview::ModelRender;
 pub use model_preview::{ModelFormat, ModelPalette};

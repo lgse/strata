@@ -76,12 +76,12 @@ fn submit<T: Send + 'static>(
             .try_send(Box::new(move || {
                 let _ = send.send(task());
             }))
-            .map_err(|_| crate::i18n::tr("Thumbnail executor is unavailable"))
+            .map_err(|_| "Thumbnail executor is unavailable".to_owned())
     });
     async move {
         submitted?;
         receive
             .await
-            .map_err(|_| crate::i18n::tr("Thumbnail task failed"))
+            .map_err(|_| "Thumbnail task failed".to_owned())
     }
 }

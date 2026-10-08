@@ -76,7 +76,7 @@ impl PcmOutput {
             pipeline.use_clock(clock);
         }
         let max_time_ns = u64::try_from(lookahead.as_nanos())
-            .map_err(|_| crate::i18n::tr("PCM lookahead exceeds the clock range"))?;
+            .map_err(|_| "PCM lookahead exceeds the clock range".to_owned())?;
         let max_bytes = (u128::from(max_time_ns) * u128::from(SAMPLE_RATE * FRAME_BYTES as u64)
             / 1_000_000_000) as u64;
         let source = AppSrc::builder().build();
