@@ -308,6 +308,10 @@ impl ViewState {
                     set_column_busy(column, false);
                     update_empty_trash_sensitivity(column, count);
                 }
+                // Hits whose files left the folder, whoever removed them.
+                if splices.iter().any(|splice| splice.removed > 0) {
+                    self.prune_stale_search_results();
+                }
                 self.note_pending_rename_splices(*depth, splices);
                 self.reveal_pending_transfer_at(*depth);
                 if self.pending_archive_destination.borrow().is_some() {
