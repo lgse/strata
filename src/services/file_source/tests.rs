@@ -1,9 +1,27 @@
 // SPDX-License-Identifier: MIT
 
 use super::{
-    LocationValidationError, UriCredentials, backend_unavailable_message, sanitize_uri_credentials,
-    validate_uri_credentials,
+    LocationValidationError, UriCredentials, backend_unavailable_message, error_detail_in,
+    sanitize_uri_credentials, validate_uri_credentials,
 };
+
+#[test]
+fn error_details_continue_in_lower_case_only_where_the_language_does() {
+    for (locale, reason, expected) in [
+        ("fr", "Délai dépassé", "délai dépassé"),
+        ("ru", "Доступ запрещён", "доступ запрещён"),
+        (
+            "vi",
+            "Quyền truy cập bị từ chối",
+            "quyền truy cập bị từ chối",
+        ),
+        ("pt-BR", "HTTP 404", "HTTP 404"),
+        ("de", "Zugriff verweigert", "Zugriff verweigert"),
+        ("en", "Permission denied", "Permission denied"),
+    ] {
+        assert_eq!(error_detail_in(locale, reason.to_owned()), expected);
+    }
+}
 
 #[test]
 fn embedded_uri_credentials_are_rejected() {

@@ -754,6 +754,7 @@
   "The saved password is locked in the password manager. Unlock the keyring and try again.": "Сохранённый пароль заблокирован в менеджере паролей. Разблокируйте связку ключей и повторите попытку.",
   "The script declares “%{declared}”, which does not match the %{runtime} runtime": "Сценарий объявляет «%{declared}», что не соответствует среде выполнения %{runtime}",
   "The script “%{name}” is missing beside action.toml": "Сценарий «%{name}» отсутствует рядом с action.toml",
+  "The server returned HTTP %{code}": "Сервер вернул HTTP %{code}",
   "The shortcut executable path must be UTF-8": "Путь к исполняемому файлу для комбинации клавиш должен быть в кодировке UTF-8",
   "The signed manifest contains invalid or duplicate artifacts": "Подписанный манифест содержит недопустимые или повторяющиеся артефакты",
   "The signed manifest does not contain this architecture's update": "Подписанный манифест не содержит обновления для этой архитектуры",

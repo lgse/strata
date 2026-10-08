@@ -754,6 +754,7 @@
   "The saved password is locked in the password manager. Unlock the keyring and try again.": "Mật khẩu đã lưu đang bị khóa trong trình quản lý mật khẩu. Hãy mở khóa chuỗi khóa rồi thử lại.",
   "The script declares “%{declared}”, which does not match the %{runtime} runtime": "Tập lệnh khai báo “%{declared}”, không khớp với môi trường chạy %{runtime}",
   "The script “%{name}” is missing beside action.toml": "Thiếu tập lệnh “%{name}” cạnh action.toml",
+  "The server returned HTTP %{code}": "Máy chủ trả về HTTP %{code}",
   "The shortcut executable path must be UTF-8": "Đường dẫn tệp thực thi của phím tắt phải là UTF-8",
   "The signed manifest contains invalid or duplicate artifacts": "Tệp kê khai đã ký chứa tạo phẩm không hợp lệ hoặc trùng lặp",
   "The signed manifest does not contain this architecture's update": "Tệp kê khai đã ký không chứa bản cập nhật cho kiến trúc này",

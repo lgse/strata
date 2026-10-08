@@ -754,6 +754,7 @@
   "The saved password is locked in the password manager. Unlock the keyring and try again.": "The saved password is locked in the password manager. Unlock the keyring and try again.",
   "The script declares “%{declared}”, which does not match the %{runtime} runtime": "The script declares “%{declared}”, which does not match the %{runtime} runtime",
   "The script “%{name}” is missing beside action.toml": "The script “%{name}” is missing beside action.toml",
+  "The server returned HTTP %{code}": "The server returned HTTP %{code}",
   "The shortcut executable path must be UTF-8": "The shortcut executable path must be UTF-8",
   "The signed manifest contains invalid or duplicate artifacts": "The signed manifest contains invalid or duplicate artifacts",
   "The signed manifest does not contain this architecture's update": "The signed manifest does not contain this architecture's update",

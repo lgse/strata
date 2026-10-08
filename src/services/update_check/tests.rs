@@ -6,7 +6,7 @@ use std::{
 };
 
 use super::{
-    BuildKind, CHECK_INTERVAL, Channel, ReleaseResponse, ReleaseSummary, UpdateCheck,
+    BuildKind, CHECK_INTERVAL, Channel, NetworkError, ReleaseResponse, ReleaseSummary, UpdateCheck,
     UpdateCheckCache, Version, archive_name, cache_is_fresh, cached_releases, check_from_cache,
     fetch_package_update, from_cached_release, package_update_from_response, release_metadata,
     release_page_url, request_error_message, request_json_conditional, select_cached_update,
@@ -293,7 +293,8 @@ fn cache(channel: Channel, checked_at: u64) -> UpdateCheckCache {
         checked_at,
         etag: None,
         releases: Vec::new(),
-        error: None,
+        legacy_error: None,
+        failure: None,
     }
 }
 
@@ -384,12 +385,28 @@ fn a_cached_update_reuses_its_resolved_commit() {
 #[test]
 fn a_cached_failure_remains_a_failure() {
     let mut cache = cache(Channel::Stable, 1_000);
-    cache.error = Some("Network request failed".to_owned());
+    cache.failure = Some(NetworkError::from_ureq(&ureq::Error::Io(
+        std::io::Error::from_raw_os_error(libc::ECONNREFUSED),
+    )));
+    let restored: UpdateCheckCache =
+        toml::from_str(&toml::to_string_pretty(&cache).expect("cache should serialize"))
+            .expect("cache should deserialize");
 
+    assert!(cache_is_fresh(&restored, Channel::Stable, false, 1_000));
     assert_eq!(
-        check_from_cache(&cache, Channel::Stable, &version("v0.8.0")),
-        UpdateCheck::Failed("Network request failed".to_owned())
+        check_from_cache(&restored, Channel::Stable, &version("v0.8.0")),
+        UpdateCheck::Failed("Network request failed: The connection was refused".to_owned())
     );
+}
+
+#[test]
+fn a_failure_cached_as_translated_text_is_stale() {
+    let cache: UpdateCheckCache = toml::from_str(
+        "channel = \"stable\"\nchecked_at = 1000\nerror = \"ошибка сетевого запроса\"\n",
+    )
+    .expect("an older cache should still parse");
+
+    assert!(!cache_is_fresh(&cache, Channel::Stable, false, 1_000));
 }
 
 #[test]

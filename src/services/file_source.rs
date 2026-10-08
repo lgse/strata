@@ -115,8 +115,21 @@ impl LocationValidationError {
 
 /// Localized text for common I/O failures; other errors keep the system's description.
 pub(crate) fn io_error_message(error: &std::io::Error) -> String {
+    match io_error_reason(error) {
+        Some(reason) => crate::i18n::tr(reason),
+        None => system_error_text(error),
+    }
+}
+
+/// [`io_error_message`] for the `%{error}` slot after a colon; see [`error_detail`].
+pub(crate) fn io_error_detail(error: &std::io::Error) -> String {
+    error_detail(io_error_message(error))
+}
+
+/// The English catalog message for a recognized I/O failure.
+pub(crate) fn io_error_reason(error: &std::io::Error) -> Option<&'static str> {
     use std::io::ErrorKind;
-    let message = match error.kind() {
+    Some(match error.kind() {
         ErrorKind::NotFound => "No such file or folder",
         ErrorKind::PermissionDenied => "Permission denied",
         ErrorKind::NotADirectory => "Not a folder",
@@ -131,13 +144,18 @@ pub(crate) fn io_error_message(error: &std::io::Error) -> String {
         ErrorKind::ResourceBusy => "The item is in use",
         ErrorKind::InvalidFilename => "The name is too long",
         ErrorKind::UnexpectedEof => "The file is truncated or damaged",
-        _ => return system_error_text(error),
-    };
-    crate::i18n::tr(message)
+        ErrorKind::ConnectionRefused => "The connection was refused",
+        ErrorKind::ConnectionReset => "The connection was reset",
+        ErrorKind::ConnectionAborted => "The connection was interrupted",
+        ErrorKind::HostUnreachable => "The server cannot be reached",
+        ErrorKind::NetworkUnreachable => "The network is unreachable",
+        ErrorKind::NetworkDown => "The network is down",
+        _ => return None,
+    })
 }
 
 /// System text without the errno suffix or a tempfile path, which can name internal staging files.
-fn system_error_text(error: &std::io::Error) -> String {
+pub(crate) fn system_error_text(error: &std::io::Error) -> String {
     let text = error.to_string();
     let text = match error.get_ref() {
         Some(_) => text
@@ -166,9 +184,41 @@ pub(crate) fn gio_error_message(error: &glib::Error) -> String {
         Some(IOErrorEnum::IsDirectory) => "The item is a folder",
         Some(IOErrorEnum::FilenameTooLong) => "The name is too long",
         Some(IOErrorEnum::Busy) => "The item is in use",
+        Some(IOErrorEnum::ConnectionRefused) => "The connection was refused",
+        Some(IOErrorEnum::HostUnreachable) => "The server cannot be reached",
+        Some(IOErrorEnum::NetworkUnreachable) => "The network is unreachable",
+        Some(IOErrorEnum::HostNotFound) => "Could not find the server",
         _ => return error.message().to_owned(),
     };
     crate::i18n::tr(message)
+}
+
+/// [`gio_error_message`] for the `%{error}` slot after a colon; see [`error_detail`].
+pub(crate) fn gio_error_detail(error: &glib::Error) -> String {
+    error_detail(gio_error_message(error))
+}
+
+/// Adapts a standalone, capitalized error reason for a `…: %{error}` slot. French, Spanish,
+/// Italian, Portuguese, Russian and Vietnamese continue in lower case after a colon; German
+/// capitalizes nouns, and English and CJK keep the text as is.
+pub(crate) fn error_detail(text: String) -> String {
+    error_detail_in(&rust_i18n::locale(), text)
+}
+
+fn error_detail_in(locale: &str, text: String) -> String {
+    if !matches!(locale, "fr" | "es" | "it" | "pt-BR" | "ru" | "vi") {
+        return text;
+    }
+    let mut chars = text.chars();
+    match (chars.next(), chars.next()) {
+        // A second capital marks an acronym such as "HTTP".
+        (Some(first), second)
+            if first.is_uppercase() && !second.is_some_and(char::is_uppercase) =>
+        {
+            first.to_lowercase().chain(text.chars().skip(1)).collect()
+        }
+        _ => text,
+    }
 }
 
 fn backend_package_hint(scheme: &str) -> Option<(&'static str, &'static str)> {

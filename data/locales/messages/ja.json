@@ -754,6 +754,7 @@
   "The saved password is locked in the password manager. Unlock the keyring and try again.": "保存済みパスワードはパスワードマネージャーでロックされています。キーリングのロックを解除してから、もう一度お試しください。",
   "The script declares “%{declared}”, which does not match the %{runtime} runtime": "スクリプトは「%{declared}」を宣言していますが、ランタイム %{runtime} と一致しません",
   "The script “%{name}” is missing beside action.toml": "action.toml と同じ場所にスクリプト「%{name}」がありません",
+  "The server returned HTTP %{code}": "サーバーが HTTP %{code}を返しました",
   "The shortcut executable path must be UTF-8": "ショートカットの実行ファイルのパスは UTF-8 である必要があります",
   "The signed manifest contains invalid or duplicate artifacts": "署名済みマニフェストに無効または重複した成果物が含まれています",
   "The signed manifest does not contain this architecture's update": "署名済みマニフェストにこのアーキテクチャ用の更新が含まれていません",

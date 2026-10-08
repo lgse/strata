@@ -754,6 +754,7 @@
   "The saved password is locked in the password manager. Unlock the keyring and try again.": "저장된 암호가 암호 관리자에서 잠겨 있습니다. 키링의 잠금을 해제한 후 다시 시도하세요.",
   "The script declares “%{declared}”, which does not match the %{runtime} runtime": "스크립트가 “%{declared}”을(를) 선언하지만 %{runtime} 런타임과 일치하지 않습니다",
   "The script “%{name}” is missing beside action.toml": "action.toml 옆에 스크립트 “%{name}”이(가) 없습니다",
+  "The server returned HTTP %{code}": "서버가 HTTP %{code} 오류를 반환했습니다",
   "The shortcut executable path must be UTF-8": "단축키 실행 파일 경로는 UTF-8이어야 합니다",
   "The signed manifest contains invalid or duplicate artifacts": "서명된 매니페스트에 잘못되었거나 중복된 아티팩트가 있습니다",
   "The signed manifest does not contain this architecture's update": "서명된 매니페스트에 이 아키텍처용 업데이트가 없습니다",

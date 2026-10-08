@@ -754,6 +754,7 @@
   "The saved password is locked in the password manager. Unlock the keyring and try again.": "Das gespeicherte Passwort ist im Passwortmanager gesperrt. Entsperren Sie den Schlüsselbund und versuchen Sie es erneut.",
   "The script declares “%{declared}”, which does not match the %{runtime} runtime": "Das Skript gibt „%{declared}“ an, was nicht zur Laufzeit %{runtime} passt",
   "The script “%{name}” is missing beside action.toml": "Das Skript „%{name}“ fehlt neben action.toml",
+  "The server returned HTTP %{code}": "Der Server hat HTTP %{code} zurückgegeben",
   "The shortcut executable path must be UTF-8": "Der Pfad der Programmdatei für das Tastenkürzel muss UTF-8 sein",
   "The signed manifest contains invalid or duplicate artifacts": "Das signierte Manifest enthält ungültige oder doppelte Artefakte",
   "The signed manifest does not contain this architecture's update": "Das signierte Manifest enthält kein Update für diese Architektur",

@@ -14,7 +14,9 @@ use super::update_install::{
     package_repository_version,
 };
 use super::{
-    DocumentBlock, parse_markdown,
+    DocumentBlock,
+    network_error::NetworkError,
+    parse_markdown,
     release_channel::{BuildKind, Channel, ReleaseSummary, Version, best_update, rollback_target},
 };
 
@@ -323,12 +325,16 @@ struct UpdateCheckCache {
     etag: Option<String>,
     #[serde(default)]
     releases: Vec<CachedRelease>,
+    /// Older versions cached the failure already translated; such a cache is stale.
+    #[serde(default, rename = "error", skip_serializing)]
+    legacy_error: Option<String>,
     #[serde(default)]
-    error: Option<String>,
+    failure: Option<NetworkError>,
 }
 
 fn cache_is_fresh(cache: &UpdateCheckCache, channel: Channel, force: bool, now: u64) -> bool {
     !force
+        && cache.legacy_error.is_none()
         && cache.channel == channel.as_str()
         && now.saturating_sub(cache.checked_at) < CHECK_INTERVAL.as_secs()
 }
@@ -460,8 +466,8 @@ fn check_from_cache(
     channel: Channel,
     installed: &Version,
 ) -> UpdateCheck {
-    match &cache.error {
-        Some(error) => UpdateCheck::Failed(error.clone()),
+    match &cache.failure {
+        Some(failure) => UpdateCheck::Failed(request_failure_message(failure)),
         None => select_cached_update(channel, installed, &cache.releases),
     }
 }
@@ -497,7 +503,8 @@ fn fetch_update(channel: Channel, installed: &Version, force: bool) -> UpdateChe
                     checked_at: now,
                     etag,
                     releases: cached_releases(&releases, &check),
-                    error: None,
+                    legacy_error: None,
+                    failure: None,
                 },
             );
             check
@@ -513,13 +520,15 @@ fn fetch_update(channel: Channel, installed: &Version, force: bool) -> UpdateChe
                     checked_at: now,
                     etag: same_channel.and_then(|cache| cache.etag.clone()),
                     releases: cached_releases.clone(),
-                    error: None,
+                    legacy_error: None,
+                    failure: None,
                 },
             );
             select_cached_update(channel, installed, &cached_releases)
         }
         ChannelFetch::Failed(error) => {
-            let message = request_error_message(&error);
+            let failure = NetworkError::from_ureq(&error);
+            let message = request_failure_message(&failure);
             // Keep prior data for conditional retries, but preserve the failure outcome.
             write_cache_file(
                 &path,
@@ -530,7 +539,8 @@ fn fetch_update(channel: Channel, installed: &Version, force: bool) -> UpdateChe
                     releases: same_channel
                         .map(|cache| cache.releases.clone())
                         .unwrap_or_default(),
-                    error: Some(message.clone()),
+                    legacy_error: None,
+                    failure: Some(failure),
                 },
             );
             UpdateCheck::Failed(message)
@@ -620,12 +630,20 @@ fn fetch_exact_release(tag: &str) -> ReleaseNotes {
 }
 
 fn request_error_message(error: &ureq::Error) -> String {
-    match error {
-        ureq::Error::StatusCode(403 | 429) => crate::i18n::tr("GitHub API rate limit reached"),
-        ureq::Error::StatusCode(code) => {
+    request_failure_message(&NetworkError::from_ureq(error))
+}
+
+fn request_failure_message(failure: &NetworkError) -> String {
+    match failure {
+        NetworkError::Status { code: 403 | 429 } => {
+            crate::i18n::tr("GitHub API rate limit reached")
+        }
+        NetworkError::Status { code } => {
             rust_i18n::t!("GitHub API returned HTTP %{code}", code = code).into_owned()
         }
-        _ => rust_i18n::t!("Network request failed: %{error}", error = error).into_owned(),
+        other => {
+            rust_i18n::t!("Network request failed: %{error}", error = other.detail()).into_owned()
+        }
     }
 }
 

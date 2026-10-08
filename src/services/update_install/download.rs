@@ -77,9 +77,11 @@ pub(super) fn describe_download_error(error: &ureq::Error) -> String {
         ureq::Error::Timeout(_) => {
             crate::i18n::tr("The download stalled — check your connection and try again")
         }
-        other => {
-            rust_i18n::t!("Could not download the update: %{error}", error = other).into_owned()
-        }
+        other => rust_i18n::t!(
+            "Could not download the update: %{error}",
+            error = crate::services::network_error::NetworkError::from_ureq(other).detail()
+        )
+        .into_owned(),
     }
 }
 
@@ -89,9 +91,11 @@ pub(super) fn describe_read_error(error: &io::Error) -> String {
         .and_then(|inner| inner.downcast_ref::<ureq::Error>())
     {
         Some(error) => describe_download_error(error),
-        None => {
-            rust_i18n::t!("Could not download the update: %{error}", error = error).into_owned()
-        }
+        None => rust_i18n::t!(
+            "Could not download the update: %{error}",
+            error = crate::services::network_error::NetworkError::from_io(error).detail()
+        )
+        .into_owned(),
     }
 }
 

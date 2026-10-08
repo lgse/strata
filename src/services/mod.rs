@@ -15,6 +15,7 @@ mod mime_type;
 pub(crate) mod model_preview;
 mod native_fs;
 mod navigation_history;
+mod network_error;
 mod operations;
 pub(crate) mod package_manager;
 mod path_match;
@@ -43,7 +44,10 @@ pub use file_source::{
     UriCredentials, backend_unavailable_message, sanitize_uri_credentials,
     validate_uri_credentials,
 };
-pub(crate) use file_source::{gio_error_message, io_error_message, sanitize_failure_message};
+pub(crate) use file_source::{
+    error_detail, gio_error_detail, gio_error_message, io_error_detail, io_error_message,
+    sanitize_failure_message,
+};
 pub use install_source::{InstallSource, ManagedInstall};
 pub(crate) use install_source::{ensure_self_managed, installed_executable};
 pub use jobs::{

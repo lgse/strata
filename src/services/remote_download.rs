@@ -15,7 +15,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use super::file_source::io_error_message;
+use super::{file_source::io_error_detail, network_error::NetworkError};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
@@ -91,7 +91,7 @@ fn fetch(
         .get(url)
         .header("User-Agent", "strata-file-manager")
         .call()
-        .map_err(|error| download_failed(&error.to_string()))?;
+        .map_err(|error| download_failed(&NetworkError::from_ureq(&error)))?;
     if response.status().is_redirection() {
         return Err(crate::i18n::tr(
             "The URL redirects elsewhere; paste the direct file URL instead",
@@ -119,7 +119,7 @@ fn fetch(
         .map_err(|error| {
             rust_i18n::t!(
                 "Could not create a temporary folder: %{error}",
-                error = io_error_message(&error)
+                error = io_error_detail(&error)
             )
             .into_owned()
         })?;
@@ -136,7 +136,7 @@ fn fetch(
         }
         let count = reader
             .read(&mut buffer)
-            .map_err(|error| download_failed(&error.to_string()))?;
+            .map_err(|error| download_failed(&NetworkError::from_io(&error)))?;
         if count == 0 {
             break;
         }
@@ -156,14 +156,18 @@ fn fetch(
     Ok(path)
 }
 
-fn download_failed(error: &str) -> String {
-    rust_i18n::t!("Could not download the file: %{error}", error = error).into_owned()
+fn download_failed(error: &NetworkError) -> String {
+    rust_i18n::t!(
+        "Could not download the file: %{error}",
+        error = error.detail()
+    )
+    .into_owned()
 }
 
 fn write_failed(error: &std::io::Error) -> String {
     rust_i18n::t!(
         "Could not write the download: %{error}",
-        error = io_error_message(error)
+        error = io_error_detail(error)
     )
     .into_owned()
 }

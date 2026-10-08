@@ -19,6 +19,7 @@ use serde::Deserialize;
 
 use crate::services::{InstallSource, ensure_self_managed, installed_executable};
 
+use super::network_error::NetworkError;
 use super::release_channel::Version;
 
 mod archive;
@@ -252,7 +253,11 @@ pub(super) fn aur_repository_version() -> Result<Version, String> {
         .build()
         .into();
     let mut response = agent.get(&url).call().map_err(|error| {
-        rust_i18n::t!("could not query the AUR: %{error}", error = error).into_owned()
+        rust_i18n::t!(
+            "could not query the AUR: %{error}",
+            error = NetworkError::from_ureq(&error).detail()
+        )
+        .into_owned()
     })?;
     let mut contents = String::new();
     response
@@ -261,7 +266,11 @@ pub(super) fn aur_repository_version() -> Result<Version, String> {
         .take(AUR_RESPONSE_LIMIT + 1)
         .read_to_string(&mut contents)
         .map_err(|error| {
-            rust_i18n::t!("could not read the AUR response: %{error}", error = error).into_owned()
+            rust_i18n::t!(
+                "could not read the AUR response: %{error}",
+                error = NetworkError::from_io(&error).detail()
+            )
+            .into_owned()
         })?;
     if contents.len() as u64 > AUR_RESPONSE_LIMIT {
         return Err(crate::i18n::tr("the AUR response exceeded the size limit"));
@@ -321,7 +330,7 @@ pub(super) fn omarchy_repository_version() -> Result<Version, String> {
     let mut response = agent.get(&database_url).call().map_err(|error| {
         rust_i18n::t!(
             "could not query the Omarchy repository: %{error}",
-            error = error
+            error = NetworkError::from_ureq(&error).detail()
         )
         .into_owned()
     })?;
@@ -334,7 +343,7 @@ pub(super) fn omarchy_repository_version() -> Result<Version, String> {
         .map_err(|error| {
             rust_i18n::t!(
                 "could not read the Omarchy repository: %{error}",
-                error = error
+                error = NetworkError::from_io(&error).detail()
             )
             .into_owned()
         })?;
@@ -812,7 +821,11 @@ fn fetch_update_metadata(
     cancel.check()?;
     let mut response = response.map_err(|error| match error {
         ureq::Error::StatusCode(404) => crate::i18n::tr("This release has no signed update manifest. Choose a newer release or download it manually."),
-        error => rust_i18n::t!("Could not download signed update metadata: %{error}", error = error).into_owned(),
+        error => rust_i18n::t!(
+            "Could not download signed update metadata: %{error}",
+            error = NetworkError::from_ureq(&error).detail()
+        )
+        .into_owned(),
     })?;
     read_metadata_body(&mut response, limit, cancel)
 }
