@@ -129,7 +129,7 @@ impl Completion {
         self.duration.set(duration);
         self.remaining.set(duration);
         if let Some(status) = self.widgets.status.upgrade() {
-            status.set_text("100%");
+            status.set_text(&crate::i18n::percent(100));
         }
         if let Some(progress) = self.widgets.progress.upgrade() {
             crate::ui::accessibility::set_description(

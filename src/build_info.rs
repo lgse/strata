@@ -2,7 +2,6 @@
 
 use crate::services::{BuildKind, Version};
 
-pub const DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const COMMIT: &str = env!("STRATA_BUILD_COMMIT");
 pub const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");

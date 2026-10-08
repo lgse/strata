@@ -13,7 +13,7 @@ fn pasted_images_preserve_collisions_and_dangling_symlinks() {
     std::fs::create_dir(dir.path().join("image (1).png")).expect("existing directory");
     std::fs::write(dir.path().join("image (2).png"), b"original").expect("existing image");
 
-    let path = write_pasted_image(dir.path(), b"pasted").expect("paste image");
+    let path = write_pasted_image(dir.path(), "image", b"pasted").expect("paste image");
 
     assert_eq!(path, dir.path().join("image (3).png"));
     assert_eq!(std::fs::read(path).expect("pasted image"), b"pasted");
@@ -35,7 +35,8 @@ fn concurrent_image_pastes_keep_every_payload() {
                 let barrier = &barrier;
                 scope.spawn(move || {
                     barrier.wait();
-                    let path = write_pasted_image(dir, &[value]).expect("concurrent paste");
+                    let path =
+                        write_pasted_image(dir, "image", &[value]).expect("concurrent paste");
                     (path, value)
                 })
             })
@@ -57,7 +58,7 @@ fn concurrent_image_pastes_keep_every_payload() {
 fn image_paste_reports_missing_destination() {
     let dir = tempfile::tempdir().expect("temporary directory");
     assert_eq!(
-        write_pasted_image(&dir.path().join("missing"), b"image")
+        write_pasted_image(&dir.path().join("missing"), "image", b"image")
             .expect_err("missing destination must fail")
             .kind(),
         std::io::ErrorKind::NotFound

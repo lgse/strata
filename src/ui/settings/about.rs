@@ -125,7 +125,7 @@ fn toolkit_version() -> String {
 }
 
 fn version_info() -> String {
-    rust_i18n::t!("Strata %{value1}\n%{value2}\nCommit: %{value3}\nToolkit: %{value4}\nAuthor: %{value5}\nLicense: MIT", value1 = crate::build_info::installed_version(), value2 = crate::build_info::DESCRIPTION, value3 = crate::build_info::COMMIT, value4 = toolkit_version(), value5 = crate::build_info::AUTHOR).into_owned()
+    rust_i18n::t!("Strata %{value1}\n%{value2}\nCommit: %{value3}\nToolkit: %{value4}\nAuthor: %{value5}\nLicense: MIT", value1 = crate::build_info::installed_version(), value2 = crate::i18n::tr("A keyboard-first file manager for Linux."), value3 = crate::build_info::COMMIT, value4 = toolkit_version(), value5 = crate::build_info::AUTHOR).into_owned()
 }
 
 fn append_about_detail(container: &gtk::Box, label: &str, value: &str) {

@@ -245,7 +245,7 @@ impl FileProgressState {
         layout.content.add_css_class("compact");
         layout.close.set_visible(false);
         layout.cancel.set_visible(false);
-        let status = gtk::Label::new(Some("0%"));
+        let status = gtk::Label::new(Some(&crate::i18n::percent(0)));
         status.add_css_class("modal-progress-status");
         status.set_xalign(0.0);
         let summary = progress_summary("Transferred");
