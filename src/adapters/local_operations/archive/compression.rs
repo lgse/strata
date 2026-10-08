@@ -413,9 +413,9 @@ fn visit_archive_entry<Fd: AsFd>(
     check_archive_cancelled(cancelled)?;
     let source = open_archive_source(parent, name).map_err(|error| {
         archive_failed(rust_i18n::t!(
-            "Could not compress %{path}: %{error}",
+            "Could not compress “%{path}”: %{error}",
             path = archive_path.display(),
-            error = error
+            error = crate::services::error_detail(error)
         ))
     })?;
     visit(archive_path, &source)?;

@@ -542,7 +542,7 @@ impl ViewState {
                         rust_i18n::t!(
                             "%{name}: %{error}",
                             name = entry.display_name.as_str(),
-                            error = error.user_message()
+                            error = crate::services::error_detail(error.user_message())
                         )
                         .into_owned(),
                     ),

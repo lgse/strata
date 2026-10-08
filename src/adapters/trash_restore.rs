@@ -449,7 +449,7 @@ async fn query_gio_trash_item(location: &Location) -> Result<GioTrashItem, Resto
             glib::Priority::DEFAULT,
         )
         .await
-        .map_err(|error| RestoreTargetError::system(error.to_string()))?;
+        .map_err(|error| RestoreTargetError::system(crate::services::gio_error_message(&error)))?;
     let Some(original) = info.attribute_byte_string("trash::orig-path") else {
         return Err(RestoreTargetError::new(
             "The original location is unavailable",

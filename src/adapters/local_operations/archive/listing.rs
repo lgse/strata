@@ -149,7 +149,8 @@ fn list_zip(
     password: Option<&str>,
     cancelled: &AtomicBool,
 ) -> Result<ArchiveListing, String> {
-    let file = File::open(archive_path).map_err(|error| error.to_string())?;
+    let file =
+        File::open(archive_path).map_err(|error| crate::services::io_error_message(&error))?;
     let mut central_directory = file.try_clone().map_err(|_| invalid_archive())?;
     let mut archive = zip::ZipArchive::new(file).map_err(zip_error)?;
     // zip indexes by name and silently overwrites duplicates. Refuse an incomplete preview.
@@ -257,7 +258,8 @@ fn list_7z(
     password: Option<&str>,
     cancelled: &AtomicBool,
 ) -> Result<ArchiveListing, String> {
-    let file = File::open(archive_path).map_err(|error| error.to_string())?;
+    let file =
+        File::open(archive_path).map_err(|error| crate::services::io_error_message(&error))?;
     let password = password
         .map(sevenz_rust2::Password::new)
         .unwrap_or_else(sevenz_rust2::Password::empty);
@@ -304,7 +306,8 @@ fn list_tar(
     gzip: bool,
     cancelled: &AtomicBool,
 ) -> Result<ArchiveListing, String> {
-    let file = File::open(archive_path).map_err(|error| error.to_string())?;
+    let file =
+        File::open(archive_path).map_err(|error| crate::services::io_error_message(&error))?;
     if gzip {
         if file.metadata().map(|metadata| metadata.len()).unwrap_or(0) > MAX_TAR_GZ_COMPRESSED_BYTES
         {

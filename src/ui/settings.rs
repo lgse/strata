@@ -2003,7 +2003,7 @@ fn update_check_row_with(
                     match message {
                         Some(message) => status_for_failed.set_text(&rust_i18n::t!(
                             "Couldn't install update: %{message}",
-                            message = message
+                            message = crate::services::error_detail(message)
                         )),
                         None => {
                             status_for_failed.set_text(&crate::i18n::tr("Couldn't install update"))
@@ -2724,7 +2724,7 @@ fn build_update_dialog(
                     Some(message) => {
                         status_for_failed.set_text(&rust_i18n::t!(
                             "Couldn’t install update: %{message}",
-                            message = message
+                            message = crate::services::error_detail(message)
                         ));
                         progress_for_failed.add_css_class("error");
                     }

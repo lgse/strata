@@ -35,9 +35,9 @@ pub(super) fn run(
             Err(error) => {
                 return Err(InstallStop::Failed(
                     rust_i18n::t!(
-                        "Could not run %{program}: %{error}",
-                        program = format!("{:?}", command.get_program()),
-                        error = error
+                        "Could not run “%{program}”: %{error}",
+                        program = command.get_program().to_string_lossy(),
+                        error = crate::services::io_error_detail(&error)
                     )
                     .into_owned(),
                 ));
@@ -54,9 +54,9 @@ pub(super) fn run(
             .take()
             .ok_or_else(|| crate::i18n::tr("Missing verification stderr"))?;
         rustix::fs::fcntl_setfl(&stdout, rustix::fs::OFlags::NONBLOCK)
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| crate::services::io_error_message(&error.into()))?;
         rustix::fs::fcntl_setfl(&stderr, rustix::fs::OFlags::NONBLOCK)
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| crate::services::io_error_message(&error.into()))?;
         let mut out = Vec::new();
         let mut err = Vec::new();
         let deadline = Instant::now() + timeout;
@@ -69,7 +69,10 @@ pub(super) fn run(
             }
             drain(&mut stdout, &mut out)?;
             drain(&mut stderr, &mut err)?;
-            if let Some(status) = child.try_wait().map_err(|error| error.to_string())? {
+            if let Some(status) = child
+                .try_wait()
+                .map_err(|error| crate::services::io_error_message(&error))?
+            {
                 drain(&mut stdout, &mut out)?;
                 drain(&mut stderr, &mut err)?;
                 return Ok(Output {
@@ -103,7 +106,11 @@ fn drain(reader: &mut impl Read, output: &mut Vec<u8>) -> Result<(), InstallStop
             }
             Err(error) if error.kind() == io::ErrorKind::WouldBlock => return Ok(()),
             Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
-            Err(error) => return Err(InstallStop::Failed(error.to_string())),
+            Err(error) => {
+                return Err(InstallStop::Failed(crate::services::io_error_message(
+                    &error,
+                )));
+            }
         }
     }
 }

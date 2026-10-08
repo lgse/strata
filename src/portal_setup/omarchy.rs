@@ -296,7 +296,7 @@ fn reload() -> Result<(), String> {
 
 fn hyprctl_error(argument: &str, error: impl std::fmt::Display) -> String {
     rust_i18n::t!(
-        "Could not run %{program}: %{error}",
+        "Could not run “%{program}”: %{error}",
         program = format!("hyprctl {argument}"),
         error = error
     )

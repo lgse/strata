@@ -62,13 +62,16 @@ impl VerifiedRelease {
         path: &Path,
         cancel: &InstallCancel,
     ) -> Result<(), InstallStop> {
-        let mut file = File::open(path).map_err(|error| error.to_string())?;
+        let mut file =
+            File::open(path).map_err(|error| crate::services::io_error_message(&error))?;
         let mut context = digest::Context::new(&digest::SHA256);
         let mut size = 0_u64;
         let mut buffer = [0_u8; 64 * 1024];
         loop {
             cancel.check()?;
-            let count = file.read(&mut buffer).map_err(|error| error.to_string())?;
+            let count = file
+                .read(&mut buffer)
+                .map_err(|error| crate::services::io_error_message(&error))?;
             if count == 0 {
                 break;
             }
@@ -93,7 +96,7 @@ impl VerifiedRelease {
             .map_err(|error| {
                 rust_i18n::t!(
                     "Could not read the update's source commit: %{error}",
-                    error = error
+                    error = crate::services::io_error_detail(&error)
                 )
                 .into_owned()
             })?;

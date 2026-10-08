@@ -237,7 +237,11 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
         if created_dest && let Err(e) = std::fs::create_dir_all(&dest_dir) {
             emit(OperationEvent::Failed {
                 request_id: request.id,
-                message: rust_i18n::t!("Could not create folder: %{error}", error = e).into_owned(),
+                message: rust_i18n::t!(
+                    "Could not create folder: %{error}",
+                    error = crate::services::io_error_detail(&e)
+                )
+                .into_owned(),
                 password_failure: None,
             });
             return;
@@ -258,7 +262,8 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
         let work_total = total.clone();
         let result = gio::spawn_blocking(move || match format {
             Some(ArchiveFormat::Zip) => {
-                let file = std::fs::File::open(&archive_path).map_err(|e| e.to_string())?;
+                let file = std::fs::File::open(&archive_path)
+                    .map_err(|e| crate::services::io_error_message(&e))?;
                 let mut archive = zip::ZipArchive::new(file).map_err(decoders::zip_error)?;
                 work_total.store(archive.len(), Ordering::Relaxed);
                 extract_zip_from_archive(
@@ -275,7 +280,8 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
                     .as_deref()
                     .map(sevenz_rust2::Password::from)
                     .unwrap_or_default();
-                let file = std::fs::File::open(&archive_path).map_err(|e| e.to_string())?;
+                let file = std::fs::File::open(&archive_path)
+                    .map_err(|e| crate::services::io_error_message(&e))?;
                 extract_7z_from_reader(
                     file,
                     &dest_dir,

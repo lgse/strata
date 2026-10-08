@@ -362,7 +362,7 @@ fn omarchy_repository_server(pacman_conf: &Path) -> Result<String, String> {
         .map_err(|error| {
             rust_i18n::t!(
                 "could not read the Omarchy repository configuration: %{error}",
-                error = error
+                error = crate::services::io_error_detail(&error)
             )
             .into_owned()
         })?;
@@ -452,7 +452,7 @@ fn package_repository_version_for(pacman: &Path, package: &str) -> Result<Versio
         .map_err(|error| {
             rust_i18n::t!(
                 "could not query the package repository: %{error}",
-                error = error
+                error = crate::services::io_error_detail(&error)
             )
             .into_owned()
         })?;
@@ -525,7 +525,8 @@ fn perform_install(
         }
     }
 
-    let current_exe = installed_executable().map_err(|error| error.to_string())?;
+    let current_exe =
+        installed_executable().map_err(|error| crate::services::io_error_message(&error))?;
     let exe_dir = current_exe
         .parent()
         .ok_or_else(|| crate::i18n::tr("Could not determine the install directory"))?;
@@ -561,7 +562,11 @@ fn stage_workdir(exe_dir: &Path) -> Result<tempfile::TempDir, String> {
         .prefix(".strata-update-")
         .tempdir_in(exe_dir)
         .map_err(|error| {
-            rust_i18n::t!("Could not stage the update: %{error}", error = error).into_owned()
+            rust_i18n::t!(
+                "Could not stage the update: %{error}",
+                error = crate::services::io_error_detail(&error)
+            )
+            .into_owned()
         })
 }
 
@@ -573,7 +578,11 @@ fn stage_binary_path(exe_dir: &Path) -> Result<tempfile::NamedTempFile, String> 
         .suffix(".tmp")
         .tempfile_in(exe_dir)
         .map_err(|error| {
-            rust_i18n::t!("Could not stage the new binary: %{error}", error = error).into_owned()
+            rust_i18n::t!(
+                "Could not stage the new binary: %{error}",
+                error = crate::services::io_error_detail(&error)
+            )
+            .into_owned()
         })
 }
 
@@ -605,7 +614,7 @@ fn try_install(
     let old_executable = fs::metadata(current_exe).map_err(|error| {
         rust_i18n::t!(
             "Could not inspect the installed binary: %{error}",
-            error = error
+            error = crate::services::io_error_detail(&error)
         )
         .into_owned()
     })?;
@@ -644,7 +653,7 @@ fn commit_replacement(
         return Err(InstallStop::Failed(
             rust_i18n::t!(
                 "Could not replace the installed binary: %{error}",
-                error = error
+                error = crate::services::io_error_detail(&error.error)
             )
             .into_owned(),
         ));
@@ -662,7 +671,7 @@ fn prepare_release_binary(
     release.verify_archive(archive_path, cancel)?;
     cancel.check()?;
     let extract_dir = workdir.join("extracted");
-    fs::create_dir_all(&extract_dir).map_err(|error| error.to_string())?;
+    fs::create_dir_all(&extract_dir).map_err(|error| crate::services::io_error_message(&error))?;
     let package = archive::extract_release_archive(archive_path, &extract_dir)?;
     verify_package_name(&package, request)?;
     release.verify_source_commit(&package)?;
@@ -681,7 +690,7 @@ fn stage_rollback(current_exe: &Path, exe_dir: &Path) -> Result<PathBuf, String>
     fs::copy(current_exe, staged.path()).map_err(|error| {
         rust_i18n::t!(
             "Could not preserve the current version: %{error}",
-            error = error
+            error = crate::services::io_error_detail(&error)
         )
         .into_owned()
     })?;
@@ -689,10 +698,10 @@ fn stage_rollback(current_exe: &Path, exe_dir: &Path) -> Result<PathBuf, String>
     staged
         .as_file()
         .sync_all()
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| crate::services::io_error_message(&error))?;
     staged
         .persist(&rollback)
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| crate::services::io_error_message(&error.error))?;
     sync_directory(exe_dir)?;
     Ok(rollback)
 }
@@ -703,7 +712,7 @@ fn sync_directory(directory: &Path) -> Result<(), String> {
         .map_err(|error| {
             rust_i18n::t!(
                 "Could not synchronize the install directory: %{error}",
-                error = error
+                error = crate::services::io_error_detail(&error)
             )
             .into_owned()
         })
@@ -714,7 +723,7 @@ fn restore_rollback(rollback: &Path, current_exe: &Path) -> Result<(), InstallSt
         InstallStop::Failed(
             rust_i18n::t!(
                 "The update failed and the previous version could not be restored: %{error}. Reinstall Strata from the release page.",
-                error = error
+                error = crate::services::io_error_detail(&error)
             )
             .into_owned(),
         )
@@ -728,13 +737,17 @@ fn restore_rollback(rollback: &Path, current_exe: &Path) -> Result<(), InstallSt
 fn stage_verified_binary(binary: &Path, directory: &Path) -> Result<tempfile::TempPath, String> {
     let staged = stage_binary_path(directory)?;
     fs::copy(binary, staged.path()).map_err(|error| {
-        rust_i18n::t!("Could not stage the new binary: %{error}", error = error).into_owned()
+        rust_i18n::t!(
+            "Could not stage the new binary: %{error}",
+            error = crate::services::io_error_detail(&error)
+        )
+        .into_owned()
     })?;
     set_executable(staged.path())?;
     staged
         .as_file()
         .sync_all()
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| crate::services::io_error_message(&error))?;
     // Linux refuses exec while any writable descriptor remains open (ETXTBSY).
     let staged = staged.into_temp_path();
     verify_staged_binary(&staged)?;
@@ -852,7 +865,7 @@ fn read_metadata_body(
         cancel.check()?;
         let read = reader.read(&mut buffer);
         cancel.check()?;
-        let count = read.map_err(|error| error.to_string())?;
+        let count = read.map_err(|error| describe_read_error(&error))?;
         if count == 0 {
             break;
         }
@@ -1008,9 +1021,10 @@ fn write_desktop_entry(
     if !staged_entry.is_file() {
         return Err(format!("the archive contains no {DESKTOP_ENTRY}"));
     }
-    let template = fs::read_to_string(&staged_entry).map_err(|error| error.to_string())?;
+    let template = fs::read_to_string(&staged_entry)
+        .map_err(|error| crate::services::io_error_message(&error))?;
     fs::write(entry_path, desktop_entry_with_exec(&template, executable))
-        .map_err(|error| error.to_string())
+        .map_err(|error| crate::services::io_error_message(&error))
 }
 
 fn write_application_icon(package_dir: &Path, data_home: &Path) -> Result<(), String> {
@@ -1019,10 +1033,10 @@ fn write_application_icon(package_dir: &Path, data_home: &Path) -> Result<(), St
         return Err(format!("the archive contains no {APPLICATION_ICON}"));
     }
     let icon_dir = data_home.join("icons/hicolor/scalable/apps");
-    fs::create_dir_all(&icon_dir).map_err(|error| error.to_string())?;
+    fs::create_dir_all(&icon_dir).map_err(|error| crate::services::io_error_message(&error))?;
     fs::copy(&staged_icon, icon_dir.join(APPLICATION_ICON))
         .map(|_copied| ())
-        .map_err(|error| error.to_string())
+        .map_err(|error| crate::services::io_error_message(&error))
 }
 
 /// Points the packaged entry's `Exec` line at the running install path, keeping
@@ -1118,7 +1132,11 @@ fn download_to_file_with(
 
     let mut reader = response.body_mut().as_reader();
     let mut file = fs::File::create(destination).map_err(|error| {
-        rust_i18n::t!("Could not save the update: %{error}", error = error).into_owned()
+        rust_i18n::t!(
+            "Could not save the update: %{error}",
+            error = crate::services::io_error_detail(&error)
+        )
+        .into_owned()
     })?;
     let mut downloaded = 0_u64;
     let mut buffer = [0_u8; 64 * 1024];
@@ -1140,7 +1158,11 @@ fn download_to_file_with(
             return Err(oversized_update());
         }
         file.write_all(&buffer[..count]).map_err(|error| {
-            rust_i18n::t!("Could not save the update: %{error}", error = error).into_owned()
+            rust_i18n::t!(
+                "Could not save the update: %{error}",
+                error = crate::services::io_error_detail(&error)
+            )
+            .into_owned()
         })?;
         let _sent = progress.send(UpdateInstall::Downloading { downloaded, total });
     }
@@ -1158,7 +1180,7 @@ fn set_executable(path: &Path) -> Result<(), String> {
     fs::set_permissions(path, fs::Permissions::from_mode(0o755)).map_err(|error| {
         rust_i18n::t!(
             "Could not mark the update executable: %{error}",
-            error = error
+            error = crate::services::io_error_detail(&error)
         )
         .into_owned()
     })

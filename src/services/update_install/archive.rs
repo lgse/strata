@@ -20,7 +20,7 @@ pub(super) fn extract_release_archive(
     let file = fs::File::open(archive).map_err(|error| {
         rust_i18n::t!(
             "Could not open the downloaded update: %{error}",
-            error = error
+            error = crate::services::io_error_detail(&error)
         )
         .into_owned()
     })?;
@@ -32,7 +32,7 @@ pub(super) fn extract_release_archive(
         .map_err(|error| {
             rust_i18n::t!(
                 "Could not read the downloaded update: %{error}",
-                error = error
+                error = crate::services::io_error_detail(&error)
             )
             .into_owned()
         })?;
@@ -43,7 +43,11 @@ pub(super) fn extract_release_archive(
 
     for entry in entries {
         let mut entry = entry.map_err(|error| {
-            rust_i18n::t!("Could not read the update: %{error}", error = error).into_owned()
+            rust_i18n::t!(
+                "Could not read the update: %{error}",
+                error = crate::services::io_error_detail(&error)
+            )
+            .into_owned()
         })?;
 
         count += 1;
@@ -60,7 +64,7 @@ pub(super) fn extract_release_archive(
             .map_err(|error| {
                 rust_i18n::t!(
                     "The update contains an unreadable path: %{error}",
-                    error = error
+                    error = crate::services::io_error_detail(&error)
                 )
                 .into_owned()
             })?
@@ -101,7 +105,11 @@ pub(super) fn extract_release_archive(
                 ));
             }
             fs::create_dir_all(&target).map_err(|error| {
-                rust_i18n::t!("Could not extract the update: %{error}", error = error).into_owned()
+                rust_i18n::t!(
+                    "Could not extract the update: %{error}",
+                    error = crate::services::io_error_detail(&error)
+                )
+                .into_owned()
             })?;
             continue;
         }
@@ -121,7 +129,11 @@ pub(super) fn extract_release_archive(
 
         if let Some(parent) = target.parent() {
             fs::create_dir_all(parent).map_err(|error| {
-                rust_i18n::t!("Could not extract the update: %{error}", error = error).into_owned()
+                rust_i18n::t!(
+                    "Could not extract the update: %{error}",
+                    error = crate::services::io_error_detail(&error)
+                )
+                .into_owned()
             })?;
         }
         write_entry(&mut entry, &target, size)?;
@@ -147,10 +159,18 @@ fn write_entry<R: Read>(entry: &mut R, target: &Path, size: u64) -> Result<(), S
         .create_new(true)
         .open(target)
         .map_err(|error| {
-            rust_i18n::t!("Could not extract the update: %{error}", error = error).into_owned()
+            rust_i18n::t!(
+                "Could not extract the update: %{error}",
+                error = crate::services::io_error_detail(&error)
+            )
+            .into_owned()
         })?;
     let copied = std::io::copy(&mut entry.take(size), &mut file).map_err(|error| {
-        rust_i18n::t!("Could not extract the update: %{error}", error = error).into_owned()
+        rust_i18n::t!(
+            "Could not extract the update: %{error}",
+            error = crate::services::io_error_detail(&error)
+        )
+        .into_owned()
     })?;
     if copied != size {
         return Err(crate::i18n::tr(

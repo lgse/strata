@@ -1243,12 +1243,17 @@ fn corrupt_members_are_removed_without_losing_completed_or_existing_files()
 fn error_translation_preserves_passwords_unsupported_formats_and_io_failures() {
     use sevenz_rust2::Error as SevenZError;
     use zip::result::ZipError;
-    for error in [
-        ZipError::UnsupportedArchive("unsupported encryption"),
-        ZipError::CompressionMethodNotSupported(99),
-        ZipError::FileNotFound,
+    for (error, expected) in [
+        (
+            ZipError::UnsupportedArchive("unsupported encryption"),
+            super::UNSUPPORTED_ARCHIVE,
+        ),
+        (
+            ZipError::CompressionMethodNotSupported(99),
+            super::UNSUPPORTED_ARCHIVE,
+        ),
+        (ZipError::FileNotFound, super::INVALID_ARCHIVE),
     ] {
-        let expected = error.to_string();
         assert_eq!(super::zip_error(error).to_string(), expected);
     }
     assert_eq!(
@@ -1290,6 +1295,13 @@ fn error_translation_preserves_passwords_unsupported_formats_and_io_failures() {
         SevenZError::UnsupportedVersion { major: 9, minor: 0 },
         SevenZError::UnsupportedCompressionMethod("unknown".into()),
         SevenZError::Unsupported("unsupported encryption".into()),
+    ] {
+        assert_eq!(
+            super::sevenz_decode_error(error).to_string(),
+            super::UNSUPPORTED_ARCHIVE
+        );
+    }
+    for error in [
         SevenZError::FileNotFound,
         SevenZError::Other("unknown decoder failure".into()),
     ] {

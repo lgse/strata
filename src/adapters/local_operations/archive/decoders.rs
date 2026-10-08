@@ -39,6 +39,8 @@ pub(super) use rar::extract_rar;
 mod tests;
 
 const INVALID_ARCHIVE: &str = "This file is not a valid archive or is damaged.";
+const UNSUPPORTED_ARCHIVE: &str =
+    "This archive uses a compression method or feature that Strata does not support.";
 
 fn invalid_archive() -> ArchiveError {
     archive_failed(crate::i18n::tr(INVALID_ARCHIVE))
@@ -56,8 +58,19 @@ pub(super) fn zip_error(error: zip::result::ZipError) -> ArchiveError {
         ZipError::UnsupportedArchive(ZipError::PASSWORD_REQUIRED) => {
             ArchiveError::PasswordRequired(PASSWORD_REQUIRED.to_owned())
         }
-        error => archive_failed(error),
+        error @ (ZipError::UnsupportedArchive(_) | ZipError::CompressionMethodNotSupported(_)) => {
+            unsupported_archive(&error)
+        }
+        error => {
+            tracing::warn!(%error, "unexpected ZIP decoder error");
+            invalid_archive()
+        }
     }
+}
+
+fn unsupported_archive(error: &dyn std::fmt::Display) -> ArchiveError {
+    tracing::warn!(%error, "unsupported archive feature");
+    archive_failed(crate::i18n::tr(UNSUPPORTED_ARCHIVE))
 }
 
 fn sevenz_decode_error(error: sevenz_rust2::Error) -> ArchiveError {
@@ -76,6 +89,10 @@ fn sevenz_decode_error(error: sevenz_rust2::Error) -> ArchiveError {
             ArchiveError::IncorrectPassword(MAYBE_BAD_PASSWORD.to_owned())
         }
         Error::Io(error, _) => archive_io_failed(&archive_read_error(error, false)),
+        error @ (Error::UnsupportedCompressionMethod(_)
+        | Error::Unsupported(_)
+        | Error::ExternalUnsupported
+        | Error::UnsupportedVersion { .. }) => unsupported_archive(&error),
         error => archive_failed(error),
     }
 }
