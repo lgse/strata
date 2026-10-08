@@ -295,6 +295,7 @@ fn closing_settings_returns_focus_to_a_focused_filter_field() {
 #[derive(Clone, Copy, Debug)]
 enum DialogOverSettings {
     ActionEditor,
+    SaveNotice,
     /// An error chained on a delete confirmation whose delete failed.
     FailedDelete,
     /// A delete confirmation whose delete re-rendered the row that opened it.
@@ -352,12 +353,17 @@ fn a_dialog_closed_over_settings_returns_focus_to_its_opener() {
         "ui::window::tests::keyboard_dispatch::overlay_focus::a_dialog_closed_over_settings_returns_focus_to_its_opener",
         || {
             let fixture = ComposedFolder::open();
+            let preferences = PreferenceManager::shared();
+            preferences.register_save_notice_window(fixture.window.upcast_ref());
+            assert!(settles(|| fixture.window.is_active()));
+            let settings_path = crate::ui::preferences::config_directory().join("settings.toml");
             let action_directory = crate::storage::config_directory()
                 .join("actions")
                 .join("focus-demo");
             let mut failures = Vec::new();
             for dialog in [
                 DialogOverSettings::ActionEditor,
+                DialogOverSettings::SaveNotice,
                 DialogOverSettings::FailedDelete,
                 DialogOverSettings::RerenderedDelete,
             ] {
@@ -370,8 +376,12 @@ fn a_dialog_closed_over_settings_returns_focus_to_its_opener() {
                 ));
                 let settings = fixture.layer("settings-backdrop").expect("Settings layer");
                 assert!(settles(|| settings.is_visible() && settings.is_mapped()));
+                let page = match dialog {
+                    DialogOverSettings::SaveNotice => "General",
+                    _ => "Actions",
+                };
                 descendant(&settings, &|widget| {
-                    widget.is::<gtk::Button>() && widget.widget_name() == "Actions"
+                    widget.is::<gtk::Button>() && widget.widget_name() == page
                 })
                 .and_downcast::<gtk::Button>()
                 .expect("Settings page")
@@ -390,6 +400,20 @@ fn a_dialog_closed_over_settings_returns_focus_to_its_opener() {
                         assert!(new_action.grab_focus());
                         new_action.emit_clicked();
                         Some(new_action.upcast::<gtk::Widget>())
+                    }
+                    DialogOverSettings::SaveNotice => {
+                        let switch = || {
+                            descendant(&settings, &|widget| {
+                                widget.is::<gtk::Switch>() && widget.is_mapped()
+                            })
+                        };
+                        assert!(settles(|| switch().is_some()), "a General switch");
+                        let switch = switch().expect("General switch");
+                        assert!(switch.grab_focus());
+                        std::fs::remove_file(&settings_path).expect("saved settings");
+                        std::fs::create_dir(&settings_path).expect("block the settings file");
+                        preferences.set_folder_peeking(!preferences.folder_peeking());
+                        Some(switch)
                     }
                     DialogOverSettings::FailedDelete | DialogOverSettings::RerenderedDelete => {
                         std::fs::create_dir_all(&action_directory).expect("action folder");
@@ -455,6 +479,9 @@ fn a_dialog_closed_over_settings_returns_focus_to_its_opener() {
                 }
                 press_escape_on(&settings);
                 assert!(settles(|| !settings.is_visible()));
+                if settings_path.is_dir() {
+                    std::fs::remove_dir(&settings_path).expect("repair the settings file");
+                }
             }
             assert!(
                 failures.is_empty(),

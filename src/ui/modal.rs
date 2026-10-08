@@ -640,6 +640,7 @@ pub(super) fn show_partial_failure_dialog(parent: &impl IsA<gtk::Widget>, detail
     show_message_dialog(
         parent,
         &crate::i18n::tr("Completed with errors"),
+        None,
         detail,
         MessageKind::PartialFailure,
         Rc::new(|| {}),
@@ -650,6 +651,7 @@ pub(super) fn show_information_dialog(parent: &impl IsA<gtk::Widget>, message: &
     show_message_dialog(
         parent,
         message,
+        None,
         detail,
         MessageKind::Information,
         Rc::new(|| {}),
@@ -662,12 +664,32 @@ pub(super) fn show_error_dialog_after_close(
     detail: &str,
     on_close: Rc<dyn Fn()>,
 ) {
-    show_message_dialog(parent, message, detail, MessageKind::Error, on_close);
+    show_message_dialog(parent, message, None, detail, MessageKind::Error, on_close);
+}
+
+/// [`show_error_dialog_after_close`] with `summary` under the title in place of
+/// the generic "The operation could not be completed".
+pub(super) fn show_error_dialog_with_summary(
+    parent: &impl IsA<gtk::Widget>,
+    message: &str,
+    summary: &str,
+    detail: &str,
+    on_close: Rc<dyn Fn()>,
+) {
+    show_message_dialog(
+        parent,
+        message,
+        Some(summary),
+        detail,
+        MessageKind::Error,
+        on_close,
+    );
 }
 
 fn show_message_dialog(
     parent: &impl IsA<gtk::Widget>,
     message: &str,
+    summary: Option<&str>,
     detail: &str,
     kind: MessageKind,
     on_close: Rc<dyn Fn()>,
@@ -702,11 +724,16 @@ fn show_message_dialog(
             crate::assets::icons::INFO
         },
         message,
-        &crate::i18n::tr(match kind {
-            MessageKind::Information => "Reported by the file provider",
-            MessageKind::PartialFailure => "Some items could not be processed",
-            MessageKind::Error => "The operation could not be completed",
-        }),
+        &summary.map_or_else(
+            || {
+                crate::i18n::tr(match kind {
+                    MessageKind::Information => "Reported by the file provider",
+                    MessageKind::PartialFailure => "Some items could not be processed",
+                    MessageKind::Error => "The operation could not be completed",
+                })
+            },
+            str::to_owned,
+        ),
         &crate::i18n::tr("Close"),
         if error {
             ModalTone::Danger

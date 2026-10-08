@@ -701,6 +701,8 @@
   "Strata %{value1}\n%{value2}\nCommit: %{value3}\nToolkit: %{value4}\nAuthor: %{value5}\nLicense: MIT": "Strata %{value1}\n%{value2}\nКоммит: %{value3}\nИнструментарий: %{value4}\nАвтор: %{value5}\nЛицензия: MIT",
   "Strata cannot display the password manager's deletion confirmation. Remove this volume's saved password in your password manager, then try Lock again.": "Strata не может показать подтверждение удаления из менеджера паролей. Удалите сохранённый пароль этого тома в менеджере паролей, затем повторите блокировку.",
   "Strata could not determine whether the destination is on the same device.": "Strata не удалось определить, находится ли место назначения на том же устройстве.",
+  "Strata couldn't read “%{path}” when it started: %{reason}. To keep the file as it is, Strata won't save over it. Fix or remove the file, then restart Strata.": "Strata не удалось прочитать «%{path}» при запуске: %{reason}. Чтобы сохранить файл без изменений, Strata не будет его перезаписывать. Исправьте или удалите файл, затем перезапустите Strata.",
+  "Strata couldn't write “%{path}”: %{reason}. It tries again with each change.": "Strata не удалось записать «%{path}»: %{reason}. Попытка повторяется при каждом изменении.",
   "Strata is not available in the Omarchy repository": "Strata нет в репозитории Omarchy",
   "Strata is up to date": "Установлена последняя версия Strata",
   "Strata labels hold at most 255 characters.": "Метки Strata могут содержать не более 255 символов.",

@@ -41,10 +41,19 @@ in sync with the change handler. Every setter goes through `save_preferences`,
 which deduplicates unchanged preferences and publishes changes through the same
 notification mechanism. Failed writes are logged with the path and reason, still
 apply in memory, and are retried on the next save, so a transient failure such as
-a full disk recovers once its cause is fixed. If an existing settings file cannot be read
+a full disk recovers once its cause is fixed. The first failure also opens a
+"Settings can't be saved" dialog with the path and reason, saying that changes
+last only until Strata closes. It appears once per failure streak, in the active
+browser window where the change was made, and again only after a save has
+succeeded and then failed. A failure while no browser window is active, such as
+a background Omarchy theme update, is only logged and leaves the notice for the
+next failure. If an existing settings file cannot be read
 or parsed as TOML, startup logs a warning and uses temporary defaults. Preference
 changes still apply in memory, but saving is disabled for that manager's lifetime
-to preserve the original file. Fix the file and restart Strata to resume saving.
+to preserve the original file. The first change made in a browser window then
+opens a "Settings file can't be read" dialog instead, once. Fix the file and restart
+Strata to resume saving. Portal file choosers never show these dialogs; their
+failures are only logged.
 Missing files allow normal first-run saves; invalid values in otherwise valid
 TOML still use the existing per-entry recovery.
 
@@ -347,6 +356,6 @@ and Icons. See
    Test both directions; a test that only saves and deserializes is insufficient.
 
 The regression suites also check no writes from opening Settings, no duplicate
-notifications, reentrant changes, listener cleanup, failed-write retries,
-symlinked settings files, chooser overrides, type-to-search keyboard behavior,
-and synchronized media controls. Run GTK tests on the private display described in `e2e-testing.md`.
+notifications, reentrant changes, listener cleanup, failed-write retries and
+notices, symlinked settings files, chooser overrides, type-to-search keyboard
+behavior, and synchronized media controls. Run GTK tests on the private display described in `e2e-testing.md`.

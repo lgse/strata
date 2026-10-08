@@ -263,3 +263,37 @@ fn miller_resizes_persist_across_windows_without_changing_the_other_scope() {
         },
     );
 }
+
+#[test]
+fn failed_chooser_saves_are_only_logged() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::column_widths::failed_chooser_saves_are_only_logged",
+        || {
+            seed_settings("list");
+            crate::ui::prepare_portal_ui();
+            let root = fixture_root();
+            let window = open_browser(root.path(), true);
+            wait_until(|| window.is_active());
+            let path = crate::ui::preferences::config_directory().join("settings.toml");
+            std::fs::remove_file(&path).expect("seeded settings");
+            std::fs::create_dir(&path).expect("block the settings file with a directory");
+            let before = saved_list(true);
+
+            let cells = resizable_list_headings(&window);
+            drag(&resize_drag(&resize_handle(&cells[1])), (0.0, 0.0), 80.0);
+            // The notice would open on an idle callback.
+            while gtk::glib::MainContext::default().iteration(false) {}
+
+            assert_ne!(
+                saved_list(true).mode,
+                before.mode,
+                "the resize still applies"
+            );
+            assert!(path.is_dir(), "the save failed");
+            assert!(
+                crate::ui::window::visible_modal_layer(&window).is_none(),
+                "the chooser shows no save notice"
+            );
+        },
+    );
+}

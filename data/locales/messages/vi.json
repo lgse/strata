@@ -701,6 +701,8 @@
   "Strata %{value1}\n%{value2}\nCommit: %{value3}\nToolkit: %{value4}\nAuthor: %{value5}\nLicense: MIT": "Strata %{value1}\n%{value2}\nCommit: %{value3}\nBộ công cụ: %{value4}\nTác giả: %{value5}\nGiấy phép: MIT",
   "Strata cannot display the password manager's deletion confirmation. Remove this volume's saved password in your password manager, then try Lock again.": "Strata không thể hiển thị hộp xác nhận xóa của trình quản lý mật khẩu. Hãy xóa mật khẩu đã lưu của phân vùng này trong trình quản lý mật khẩu, rồi thử Khóa lại.",
   "Strata could not determine whether the destination is on the same device.": "Strata không thể xác định đích có nằm trên cùng thiết bị hay không.",
+  "Strata couldn't read “%{path}” when it started: %{reason}. To keep the file as it is, Strata won't save over it. Fix or remove the file, then restart Strata.": "Strata không thể đọc “%{path}” khi khởi động: %{reason}. Để giữ nguyên tệp, Strata sẽ không ghi đè lên tệp này. Hãy sửa hoặc xóa tệp, sau đó khởi động lại Strata.",
+  "Strata couldn't write “%{path}”: %{reason}. It tries again with each change.": "Strata không thể ghi “%{path}”: %{reason}. Strata sẽ thử lại sau mỗi thay đổi.",
   "Strata is not available in the Omarchy repository": "Strata không có trong kho Omarchy",
   "Strata is up to date": "Strata đã là phiên bản mới nhất",
   "Strata labels hold at most 255 characters.": "Nhãn Strata chứa tối đa 255 ký tự.",

@@ -701,6 +701,8 @@
   "Strata %{value1}\n%{value2}\nCommit: %{value3}\nToolkit: %{value4}\nAuthor: %{value5}\nLicense: MIT": "Strata %{value1}\n%{value2}\nCommit : %{value3}\nBoîte à outils : %{value4}\nAuteur : %{value5}\nLicence : MIT",
   "Strata cannot display the password manager's deletion confirmation. Remove this volume's saved password in your password manager, then try Lock again.": "Strata ne peut pas afficher la confirmation de suppression du gestionnaire de mots de passe. Supprimez le mot de passe enregistré de ce volume dans votre gestionnaire de mots de passe, puis réessayez de verrouiller.",
   "Strata could not determine whether the destination is on the same device.": "Strata n’a pas pu déterminer si la destination se trouve sur le même périphérique.",
+  "Strata couldn't read “%{path}” when it started: %{reason}. To keep the file as it is, Strata won't save over it. Fix or remove the file, then restart Strata.": "Strata n’a pas pu lire « %{path} » au démarrage : %{reason}. Pour conserver le fichier tel quel, Strata ne l’écrasera pas. Corrigez ou supprimez le fichier, puis redémarrez Strata.",
+  "Strata couldn't write “%{path}”: %{reason}. It tries again with each change.": "Strata n’a pas pu écrire « %{path} » : %{reason}. Une nouvelle tentative a lieu à chaque modification.",
   "Strata is not available in the Omarchy repository": "Strata n’est pas disponible dans le dépôt Omarchy",
   "Strata is up to date": "Strata est à jour",
   "Strata labels hold at most 255 characters.": "Les libellés Strata sont limités à 255 caractères.",

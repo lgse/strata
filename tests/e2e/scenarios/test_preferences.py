@@ -188,3 +188,58 @@ def test_preferences_save_through_a_symlinked_settings_file(symlinked_settings, 
     strata.application.start()
     _open_settings(strata, strata.window)
     assert _switch(strata.window, "Folder peeking").has_state("checked")
+
+
+def _tab_to(strata, node):
+    for _ in range(60):
+        if node.has_state("focused"):
+            return
+        before = strata.focused_node()
+        strata.keyboard.press("Tab")
+        strata.wait(lambda: strata.focused_node() != before, "Tab to move focus", timeout=5)
+    raise AssertionError(f"Tab never reached {node}")
+
+
+@pytest.mark.parametrize(
+    ("problem", "title"),
+    [("write", "Settings can't be saved"), ("unreadable", "Settings file can't be read")],
+)
+@pytest.mark.preferences(folder_peeking=False)
+def test_unsaved_changes_show_one_notice_and_return_focus(strata, problem, title):
+    settings = strata.environment.settings_path
+    if problem == "unreadable":
+        strata.application.stop()
+        settings.write_bytes(settings.read_bytes() + b"\nthis is not valid toml [")
+        strata.application.start()
+    preserved = settings.read_bytes()
+    _open_settings(strata, strata.window)
+    if problem == "write":
+        settings.unlink()
+        settings.mkdir()
+
+    def notice():
+        return strata.window.find(role="dialog", name=title)
+
+    assert notice() is None, "startup changes nothing"
+    toggle = _switch(strata.window, "Folder peeking")
+    _tab_to(strata, toggle)
+    strata.keyboard.press("space")
+    text = " ".join(
+        node.text for _, node in strata.wait(notice, "the save notice").walk() if node.text
+    )
+    assert "Changes last only until Strata closes" in text
+    assert str(settings) in text.replace("\n", "")
+    assert toggle.has_state("checked")
+    strata.keyboard.press("Escape")
+    strata.wait(
+        lambda: notice() is None and toggle.has_state("focused"),
+        "the notice to close with focus back on the switch",
+    )
+
+    strata.keyboard.press("space")
+    strata.wait(lambda: not toggle.has_state("checked"), "the second change to apply")
+    assert notice() is None, "one notice per failure streak"
+    if problem == "write":
+        assert settings.is_dir()
+    else:
+        assert settings.read_bytes() == preserved
