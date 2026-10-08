@@ -574,6 +574,9 @@ fn append_theme_card(
     label.set_xalign(0.0);
     label.set_hexpand(true);
     label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    label.set_wrap(true);
+    label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    label.set_lines(2);
     content.append(&label);
     let kind = gtk::Label::new(Some(&crate::i18n::tr(if theme_is_light(&theme.tokens) {
         "LIGHT"

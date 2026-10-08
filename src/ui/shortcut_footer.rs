@@ -721,9 +721,15 @@ impl ShortcutFooter {
         content.append(&body);
         let footer_note = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         footer_note.add_css_class("shortcut-reference-footer");
-        let note = gtk::Label::new(Some(&crate::i18n::tr(
+        // Keep each hint together and wrap only after a separator, never before one.
+        let note_text = crate::i18n::tr(
             "Ctrl+B categories · Ctrl+F search · Ctrl+L list · arrows/hjkl move · Tab cycle · Esc close",
-        )));
+        )
+        .split(" · ")
+        .map(|hint| hint.replace(' ', "\u{a0}"))
+        .collect::<Vec<_>>()
+        .join("\u{a0}· ");
+        let note = gtk::Label::new(Some(&note_text));
         note.set_wrap(true);
         note.add_css_class("shortcut-reference-note");
         note.set_hexpand(true);
@@ -1749,7 +1755,11 @@ fn apply_experimental_label(tag: &gtk::Label, enabled: bool) {
     let name = crate::i18n::tr(crate::ui::tenxer_mode::TAG_NAME);
     let phrase = crate::i18n::tr(super::shortcut_reference::EXPERIMENTAL_LABEL);
     let announced = if enabled {
-        format!("{name} {phrase}")
+        rust_i18n::t!(
+            "%{mode} (experimental feature, under active development)",
+            mode = name
+        )
+        .into_owned()
     } else {
         name
     };

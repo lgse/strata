@@ -190,7 +190,7 @@ pub(super) fn clear_status(browser: &BrowserView) {
     }
 }
 
-fn connecting_status_container() -> (gtk::Box, gtk::Box) {
+pub(super) fn status_card() -> (gtk::Box, gtk::Box) {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     row.add_css_class("open-argument-status");
     row.add_css_class("open-argument-connecting");
@@ -208,7 +208,7 @@ pub(super) fn show_connecting_overlay(
 ) {
     clear_status(browser);
     let overlay = browser.overlay();
-    let (row, content) = connecting_status_container();
+    let (row, content) = status_card();
 
     let spinner = gtk::Spinner::new();
     spinner.start();
@@ -216,13 +216,14 @@ pub(super) fn show_connecting_overlay(
 
     let label = gtk::Label::new(Some(message));
     label.add_css_class("form-message");
-    // Wrap rather than push Cancel past the edge of a narrow pane.
+    // Wrap rather than push Cancel past the edge of a narrow pane, but only between words.
     label.set_wrap(true);
-    label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    label.set_wrap_mode(gtk::pango::WrapMode::Word);
     label.set_max_width_chars(40);
     content.append(&label);
 
     let cancel = gtk::Button::with_label(&crate::i18n::tr("Cancel"));
+    cancel.set_valign(gtk::Align::Center);
     content.append(&cancel);
     cancel.connect_clicked(move |_| on_cancel());
 

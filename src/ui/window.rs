@@ -2403,15 +2403,17 @@ impl SidebarState {
     }
 
     /// Keycaps name the second key of the **g** place chord while it is armed.
+    /// They stand in for the row icon so long place names are not truncated further.
     fn add_keycap(&self, row: &gtk::Button, key: &str) {
         let Some(content) = row.child().and_downcast::<gtk::Box>() else {
             return;
         };
         let keycap = gtk::Label::new(Some(key));
         keycap.add_css_class("sidebar-keycap");
-        keycap.set_visible(self.keycaps_shown.get() && !self.rail.get());
-        content.append(&keycap);
-        self.keycaps.borrow_mut().push(keycap);
+        keycap.set_valign(gtk::Align::Center);
+        content.insert_child_after(&keycap, content.first_child().as_ref());
+        self.keycaps.borrow_mut().push(keycap.clone());
+        sync_keycap(&keycap, self.keycaps_shown.get() && !self.rail.get());
     }
 
     pub(in crate::ui) fn show_place_keycaps(&self, shown: bool) {
@@ -2422,7 +2424,7 @@ impl SidebarState {
     fn sync_keycaps(&self) {
         let visible = self.keycaps_shown.get() && !self.rail.get();
         for keycap in self.keycaps.borrow().iter() {
-            keycap.set_visible(visible);
+            sync_keycap(keycap, visible);
         }
     }
 
@@ -3800,6 +3802,17 @@ fn customize_sidebar_folder_icon(row: &gtk::Button, location: &Location, icon: &
     }
 }
 
+fn sync_keycap(keycap: &gtk::Label, visible: bool) {
+    if let Some(icon) = keycap.prev_sibling() {
+        if visible && icon.is_visible() {
+            // Matching the icon's width keeps the place name from shifting.
+            keycap.set_width_request(icon.width());
+        }
+        icon.set_visible(!visible);
+    }
+    keycap.set_visible(visible);
+}
+
 fn sidebar_button(icon: &str, name: &str) -> gtk::Button {
     let content = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     let image = crate::assets::primary_icon(icon, 17);
@@ -4039,24 +4052,19 @@ fn navigate_to_gio_file(browser: &Rc<Browser>, file: &gio::File) {
     }
 }
 
-/// The sidebar update-notice pill's label text: `v{version} available` for a
-/// stable offer, or `v{version} ({label}) available` for a prerelease --
-/// e.g. `v0.5.0-rc.1 (Release candidate) available` -- so a preview build
-/// offer is never mistaken for an ordinary stable update at a glance.
+/// The sidebar update-notice pill's label text. A prerelease offer adds its
+/// build kind on its own line, so a preview build is never mistaken for an
+/// ordinary stable update and the long version cannot crowd the kind out.
 ///
 /// No channel guard belongs here: `check_for_updates` is already
 /// channel-filtered upstream, so a Stable user's `release` can never carry
 /// a prerelease kind in the first place.
 fn sidebar_update_label(release: &ReleaseMetadata) -> String {
+    let available = rust_i18n::t!("v%{version} available", version = release.version);
     if release.kind == BuildKind::Stable {
-        rust_i18n::t!("v%{version} available", version = release.version).into_owned()
+        available.into_owned()
     } else {
-        rust_i18n::t!(
-            "v%{version} (%{kind}) available",
-            version = release.version,
-            kind = release.kind.localized_label()
-        )
-        .into_owned()
+        format!("{available}\n{}", release.kind.localized_label())
     }
 }
 

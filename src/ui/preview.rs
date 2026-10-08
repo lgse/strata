@@ -1369,7 +1369,9 @@ impl PreviewState {
         let password = form_password_entry();
         password.set_show_peek_icon(true);
         password.set_placeholder_text(Some(&crate::i18n::tr("Password")));
-        password.set_width_chars(24);
+        // Narrow panes shrink the entry rather than overflowing the window.
+        password.set_width_chars(8);
+        password.set_max_width_chars(24);
         let unlock = gtk::Button::with_label(&crate::i18n::tr("Unlock"));
         unlock.add_css_class("suggested-action");
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
@@ -3606,7 +3608,7 @@ fn media_error_feedback(message: &str) -> (String, String, Option<&'static str>)
         crate::i18n::tr("Preview unavailable"),
         rust_i18n::t!(
             "Unable to play this media preview: %{message}",
-            message = message
+            message = crate::i18n::tr(message)
         )
         .into_owned(),
         None,

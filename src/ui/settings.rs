@@ -309,6 +309,7 @@ const COMPACT_CONTENT_BREAKPOINT: i32 = 1250;
 const MIN_SIDE_BY_SIDE_ACTIVATION_WIDTH: i32 = 620;
 const STACK_ACTIVATION_OPTIONS_BREAKPOINT: i32 = 350;
 const STACK_TEXT_SIZE_BREAKPOINT: i32 = 600;
+const STACK_EXCLUSION_INPUT_BREAKPOINT: i32 = 1000;
 
 mod responsive_bin {
     use super::*;
@@ -448,6 +449,7 @@ mod responsive_bin {
                 compact_content,
                 activation_compact,
                 logical_width < f64::from(STACK_TEXT_SIZE_BREAKPOINT),
+                logical_width < f64::from(STACK_EXCLUSION_INPUT_BREAKPOINT),
             );
             let x = ((width - child_width) / 2) as f32;
             let y = ((height - child_height) / 2) as f32;
@@ -532,6 +534,7 @@ fn reflow_settings(
     compact: bool,
     activation_compact: bool,
     stack_text_size: bool,
+    stack_exclusion_input: bool,
 ) {
     if widget.has_css_class("settings-dialog") {
         if compact {
@@ -614,16 +617,48 @@ fn reflow_settings(
         label.set_wrap(compact);
         label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     }
+    // Keep the exclusion placeholder readable instead of squeezing it beside translated buttons.
+    if widget.has_css_class("settings-exclusions-input")
+        && let Some(row) = widget.downcast_ref::<gtk::Box>()
+    {
+        let orientation = if stack_exclusion_input {
+            gtk::Orientation::Vertical
+        } else {
+            gtk::Orientation::Horizontal
+        };
+        if row.orientation() != orientation {
+            row.set_orientation(orientation);
+        }
+    }
     if widget.has_css_class("activation-header") {
         widget.set_visible(!activation_compact);
     }
     if widget.has_css_class("activation-inline-label") {
         widget.set_visible(activation_compact);
     }
+    // Beside the choices, keep long single-word view names whole; stacked, they have the full width.
+    if let Some(label) = widget.downcast_ref::<gtk::Label>()
+        && label.has_css_class("click-activation-title")
+    {
+        let mode = if activation_compact {
+            gtk::pango::WrapMode::WordChar
+        } else {
+            gtk::pango::WrapMode::Word
+        };
+        if label.wrap_mode() != mode {
+            label.set_wrap_mode(mode);
+        }
+    }
     let mut child = widget.first_child();
     while let Some(next) = child {
         child = next.next_sibling();
-        reflow_settings(&next, compact, activation_compact, stack_text_size);
+        reflow_settings(
+            &next,
+            compact,
+            activation_compact,
+            stack_text_size,
+            stack_exclusion_input,
+        );
     }
 }
 

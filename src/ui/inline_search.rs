@@ -596,6 +596,9 @@ pub(super) fn wrap(
     let results = gtk::Box::new(gtk::Orientation::Vertical, 4);
     let status = gtk::Label::new(None);
     status.add_css_class("status-message");
+    status.set_wrap(true);
+    status.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    status.set_justify(gtk::Justification::Center);
     results.append(&status);
     let recursive = Rc::new(Cell::new(false));
     let (collection, scroll, overlay) = build_collection(

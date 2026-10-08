@@ -791,6 +791,7 @@ fn click_activation_option(
     title.set_xalign(0.0);
     title.set_hexpand(true);
     title.add_css_class("settings-option-title");
+    title.add_css_class("click-activation-title");
     row.append(&title);
 
     let selected = |count| usize::from(count == ClickCount::Two);

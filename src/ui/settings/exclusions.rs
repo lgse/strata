@@ -41,6 +41,7 @@ pub(super) fn search_exclusions_control(manager: &Rc<PreferenceManager>) -> gtk:
     buttons_box.append(&add_btn);
 
     let input_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    input_row.add_css_class("settings-exclusions-input");
     input_row.append(&field);
     input_row.append(&buttons_box);
 
