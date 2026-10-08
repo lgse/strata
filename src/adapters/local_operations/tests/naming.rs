@@ -317,3 +317,49 @@ fn duplicating_multi_extension_file_uses_last_extension_for_candidate_name()
     );
     Ok(())
 }
+
+#[test]
+fn transfer_targets_resolve_trash_leaf_names() {
+    let destination = gio::File::for_path("/home/user/Documents");
+    let target_name = |source: &gio::File| {
+        let (_, target) = super::super::default_transfer_target(
+            source,
+            &destination,
+            false,
+            &mut HashSet::new(),
+        )?;
+        Some(
+            target
+                .path()?
+                .strip_prefix(destination.path()?)
+                .ok()?
+                .as_os_str()
+                .to_os_string(),
+        )
+    };
+    let local = gio::File::for_path("/home/user/notes.txt");
+    assert_eq!(target_name(&local), Some(OsString::from("notes.txt")));
+
+    let home_trash = gio::File::for_uri("trash:///report.txt");
+    assert_eq!(target_name(&home_trash), Some(OsString::from("report.txt")));
+
+    let external_trash =
+        gio::File::for_uri("trash:///%5Cmnt%5CData%5C.Trash-1000%5Cfiles%5CSAMPLED");
+    assert_eq!(
+        target_name(&external_trash),
+        Some(OsString::from("SAMPLED"))
+    );
+
+    let external_trash_numbered =
+        gio::File::for_uri("trash:///%5Cmnt%5CData%5C.Trash-1000%5Cfiles%5CSAMPLED.2");
+    assert_eq!(
+        target_name(&external_trash_numbered),
+        Some(OsString::from("SAMPLED.2"))
+    );
+
+    let home_trash_with_backslash = gio::File::for_uri("trash:///foo%5Cbar.txt");
+    assert_eq!(
+        target_name(&home_trash_with_backslash),
+        Some(OsString::from("foo\\bar.txt"))
+    );
+}

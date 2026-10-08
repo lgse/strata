@@ -180,10 +180,10 @@ pub(crate) fn transferable_drop_sources(dest: &Location, sources: &[Location]) -
         .iter()
         .filter(|location| {
             let source = gio_file(location);
-            let Some(name) = source.basename() else {
+            let Some(name) = location.file_name() else {
                 return false;
             };
-            let target = destination.child(name);
+            let target = destination.child(&name);
             !source.equal(&target)
                 && !source.equal(&destination)
                 && !destination.has_prefix(&source)

@@ -157,8 +157,8 @@ fn destination_name_candidates(path: &Path) -> Option<HashSet<DestinationNameKey
 fn transfer_collision(source: &Location, destination: &Location) -> Option<TransferCollision> {
     let source_file = gio_file_for_location(source);
     let destination_file = gio_file_for_location(destination);
-    let name = source_file.basename()?;
-    let target = destination_file.child(name);
+    let name = source.file_name()?;
+    let target = destination_file.child(&name);
     if source_file.equal(&target)
         || source_file.equal(&destination_file)
         || destination_file.has_prefix(&source_file)

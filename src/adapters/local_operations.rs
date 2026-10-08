@@ -880,7 +880,9 @@ fn transfer_size(
                 && size > limit
             {
                 return Err(fat32_file_too_large(
-                    &file.basename().unwrap_or_default().to_string_lossy(),
+                    &transfer_source_name(&file)
+                        .unwrap_or_default()
+                        .to_string_lossy(),
                 ));
             }
             return Ok(TransferEstimate {
@@ -1012,18 +1014,18 @@ fn transfer_is_noop(source: &gio::File, destination: &gio::File, target: &gio::F
     source.equal(target) || source.equal(destination) || destination.has_prefix(source)
 }
 
+pub(crate) fn transfer_source_name(source: &gio::File) -> Option<OsString> {
+    crate::model::transfer_file_name(source)
+}
+
 fn default_transfer_target(
     source: &gio::File,
     destination: &gio::File,
     fat_family: bool,
     used_names: &mut HashSet<OsString>,
 ) -> Option<(PathBuf, gio::File)> {
-    let name = source.basename()?;
-    let name = PathBuf::from(fat_family_child_name(
-        name.as_os_str(),
-        fat_family,
-        used_names,
-    ));
+    let name = transfer_source_name(source)?;
+    let name = PathBuf::from(fat_family_child_name(&name, fat_family, used_names));
     let target = destination.child(&name);
     Some((name, target))
 }
@@ -1980,8 +1982,7 @@ fn copy_recursively_with_progress(
             let track_bytes = source_size.is_none_or(|size| size >= BYTE_PROGRESS_MIN_FILE_SIZE);
             let file_progress = progress.as_ref().map(|progress| {
                 progress.begin_file(
-                    source
-                        .basename()
+                    transfer_source_name(&source)
                         .unwrap_or_default()
                         .to_string_lossy()
                         .into_owned(),
@@ -2428,8 +2429,7 @@ async fn move_local(
             // than claiming an equivalent guarantee.
             let move_progress = progress.as_ref().map(|progress| {
                 progress.begin_file(
-                    source
-                        .basename()
+                    transfer_source_name(&source)
                         .unwrap_or_default()
                         .to_string_lossy()
                         .into_owned(),
