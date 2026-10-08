@@ -4,6 +4,12 @@ Application-wide preferences live in `ui::preferences::Preferences`. The
 `ui::preferences::PreferenceManager` loads them once per application process and
 persists changes atomically to
 `$XDG_CONFIG_HOME/strata/settings.toml` (normally `~/.config/strata/settings.toml`).
+The file may be a symlink, for example into a dotfiles repository: Strata follows
+up to eight links owned by the current user to a regular file the user owns,
+replaces that target atomically in its own directory, keeps its permission bits
+and leaves the links in place. Links owned by another user, links to directories
+or missing targets, and longer chains are refused. A missing file is created
+with owner-only permissions; an existing one keeps its permission bits.
 It owns the serialized schema, change notifications, and widget bindings for every
 settings consumer, theme-related or not. `ui::theme::ThemeManager` separately owns
 the theme catalog, shared CSS application, custom themes, and Omarchy following;
@@ -33,8 +39,9 @@ current value immediately, then applies only
 changes to its selected value. There is no separate startup initializer to keep
 in sync with the change handler. Every setter goes through `save_preferences`,
 which deduplicates unchanged preferences and publishes changes through the same
-notification mechanism. Failed writes are logged, still apply in memory, and
-are retried on the next save attempt. If an existing settings file cannot be read
+notification mechanism. Failed writes are logged with the path and reason, still
+apply in memory, and are retried on the next save, so a transient failure such as
+a full disk recovers once its cause is fixed. If an existing settings file cannot be read
 or parsed as TOML, startup logs a warning and uses temporary defaults. Preference
 changes still apply in memory, but saving is disabled for that manager's lifetime
 to preserve the original file. Fix the file and restart Strata to resume saving.
@@ -341,5 +348,5 @@ and Icons. See
 
 The regression suites also check no writes from opening Settings, no duplicate
 notifications, reentrant changes, listener cleanup, failed-write retries,
-chooser overrides, type-to-search keyboard behavior, and synchronized media
-controls. Run GTK tests on the private display described in `e2e-testing.md`.
+symlinked settings files, chooser overrides, type-to-search keyboard behavior,
+and synchronized media controls. Run GTK tests on the private display described in `e2e-testing.md`.
