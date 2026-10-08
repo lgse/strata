@@ -2,6 +2,7 @@
   " (%{size} known; size incomplete)": " (đã biết %{size}; kích thước chưa đầy đủ)",
   " (size unavailable)": " (không có kích thước)",
   "%{changes} · published %{date}": "%{changes} · phát hành ngày %{date}",
+  "%{channels} ch": "%{channels} kênh",
   "%{completed} / %{items}": "%{completed} / %{items}",
   "%{completed} of %{items}": "Hoàn tất: %{completed} / %{items}",
   "%{count} failed": "Thất bại: %{count}",

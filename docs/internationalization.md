@@ -71,9 +71,13 @@ that are never shown to users in English.
 
 Show I/O failures through `services::io_error_message` (`std::io::Error`, including
 rustix errnos converted with `.into()`) or `services::gio_error_message`
-(`glib::Error`). They translate common failure kinds and otherwise fall back to
-the system or GIO text; `io_error_message` drops the `(os error N)` suffix and
-internal temporary paths. These return standalone, capitalized text. When the
+(`glib::Error`). They translate common failure kinds, matching raw errnos where
+`ErrorKind` has no stable variant. For any other OS error `io_error_message`
+shows a generic translated reason and logs the system text; an `io::Error` built
+with its own message keeps that message, and `gio_error_message` falls back to
+GIO's text. Never format an `io::Error` directly: its `Display` adds an
+`(os error N)` suffix and can name internal temporary paths. These return
+standalone, capitalized text. When the
 reason continues a sentence after a colon, as the `%{error}` value of a template
 such as "Could not open “%{path}”: %{error}", use `services::io_error_detail`,
 `services::gio_error_detail`, or `services::error_detail` for an already

@@ -2,6 +2,7 @@
   " (%{size} known; size incomplete)": " (известно %{size}; размер указан не полностью)",
   " (size unavailable)": " (размер недоступен)",
   "%{changes} · published %{date}": "%{changes} · опубликовано %{date}",
+  "%{channels} ch": "%{channels} кан.",
   "%{completed} / %{items}": "%{completed} / %{items}",
   "%{completed} of %{items}": "Выполнено: %{completed} · всего: %{items}",
   "%{count} failed": "Ошибок: %{count}",

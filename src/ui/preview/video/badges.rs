@@ -90,7 +90,11 @@ fn bit_depth(pixel_format: Option<&str>) -> Option<&'static str> {
 }
 
 fn frame_rate_label(rate: f64) -> String {
-    format!("{} fps", rate.round() as u32)
+    rust_i18n::t!(
+        "%{rate} fps",
+        rate = crate::i18n::integer(rate.round() as u64)
+    )
+    .into_owned()
 }
 
 fn codec_label(codec: &str) -> String {
@@ -138,7 +142,11 @@ fn channels_label(channels: Option<u32>, layout: Option<&str>) -> Option<String>
         // "5.1(side)" and "7.1(wide)" carry the speaker count before the variant.
         let compact = layout.split('(').next().unwrap_or(layout).trim();
         if matches!(compact, "mono" | "stereo") {
-            return Some(if compact == "mono" { "Mono" } else { "Stereo" }.into());
+            return Some(crate::i18n::tr(if compact == "mono" {
+                "Mono"
+            } else {
+                "Stereo"
+            }));
         }
         if compact
             .bytes()
@@ -149,11 +157,11 @@ fn channels_label(channels: Option<u32>, layout: Option<&str>) -> Option<String>
         }
     }
     Some(match channels? {
-        1 => "Mono".into(),
-        2 => "Stereo".into(),
+        1 => crate::i18n::tr("Mono"),
+        2 => crate::i18n::tr("Stereo"),
         6 => "5.1".into(),
         8 => "7.1".into(),
-        other => format!("{other} ch"),
+        other => rust_i18n::t!("%{channels} ch", channels = other).into_owned(),
     })
 }
 

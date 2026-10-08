@@ -113,13 +113,20 @@ impl LocationValidationError {
     }
 }
 
-/// Localized text for common I/O failures; other errors keep the system's description.
+/// Localized text for an I/O failure. An unrecognized OS error gets a generic reason and its
+/// system text is logged; errors built by Strata or a library keep their own message.
 pub(crate) fn io_error_message(error: &std::io::Error) -> String {
     match io_error_reason(error) {
         Some(reason) => crate::i18n::tr(reason),
+        None if error.raw_os_error().is_some() => {
+            tracing::debug!(error = %system_error_text(error), "unrecognized I/O error");
+            crate::i18n::tr(UNEXPECTED_SYSTEM_ERROR)
+        }
         None => system_error_text(error),
     }
 }
+
+const UNEXPECTED_SYSTEM_ERROR: &str = "An unexpected system error occurred";
 
 /// [`io_error_message`] for the `%{error}` slot after a colon; see [`error_detail`].
 pub(crate) fn io_error_detail(error: &std::io::Error) -> String {
@@ -129,6 +136,13 @@ pub(crate) fn io_error_detail(error: &std::io::Error) -> String {
 /// The English catalog message for a recognized I/O failure.
 pub(crate) fn io_error_reason(error: &std::io::Error) -> Option<&'static str> {
     use std::io::ErrorKind;
+    // These errnos have no stable `ErrorKind`.
+    match error.raw_os_error() {
+        Some(libc::ELOOP) => return Some("There are too many levels of symbolic links"),
+        Some(libc::EIO) => return Some("A device input/output error occurred"),
+        Some(libc::ENODEV | libc::ENXIO) => return Some("The device is not available"),
+        _ => {}
+    }
     Some(match error.kind() {
         ErrorKind::NotFound => "No such file or folder",
         ErrorKind::PermissionDenied => "Permission denied",
@@ -150,6 +164,9 @@ pub(crate) fn io_error_reason(error: &std::io::Error) -> Option<&'static str> {
         ErrorKind::HostUnreachable => "The server cannot be reached",
         ErrorKind::NetworkUnreachable => "The network is unreachable",
         ErrorKind::NetworkDown => "The network is down",
+        ErrorKind::NotConnected => "The location is no longer connected",
+        ErrorKind::StaleNetworkFileHandle => "The network file handle is no longer valid",
+        ErrorKind::ExecutableFileBusy => "The file is running and cannot be changed",
         _ => return None,
     })
 }
@@ -188,6 +205,8 @@ pub(crate) fn gio_error_message(error: &glib::Error) -> String {
         Some(IOErrorEnum::HostUnreachable) => "The server cannot be reached",
         Some(IOErrorEnum::NetworkUnreachable) => "The network is unreachable",
         Some(IOErrorEnum::HostNotFound) => "Could not find the server",
+        Some(IOErrorEnum::TooManyLinks) => "There are too many levels of symbolic links",
+        Some(IOErrorEnum::NotMounted) => "The location is not mounted",
         _ => return error.message().to_owned(),
     };
     crate::i18n::tr(message)

@@ -2,6 +2,7 @@
   " (%{size} known; size incomplete)": " (%{size} conhecidos; tamanho incompleto)",
   " (size unavailable)": " (tamanho indisponível)",
   "%{changes} · published %{date}": "%{changes} · publicada em %{date}",
+  "%{channels} ch": "%{channels} canais",
   "%{completed} / %{items}": "%{completed} / %{items}",
   "%{completed} of %{items}": "%{completed} de %{items}",
   "%{count} failed": "Falhas: %{count}",

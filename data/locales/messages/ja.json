@@ -2,6 +2,7 @@
   " (%{size} known; size incomplete)": "（既知 %{size}、サイズは不完全）",
   " (size unavailable)": "（サイズ不明）",
   "%{changes} · published %{date}": "%{changes} · %{date}公開",
+  "%{channels} ch": "%{channels}ch",
   "%{completed} / %{items}": "%{completed} / %{items}",
   "%{completed} of %{items}": "完了: %{completed} / %{items}",
   "%{count} failed": "失敗: %{count}",

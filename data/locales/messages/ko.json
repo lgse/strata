@@ -2,6 +2,7 @@
   " (%{size} known; size incomplete)": " (알려진 크기 %{size}, 전체 크기는 불완전함)",
   " (size unavailable)": " (크기를 알 수 없음)",
   "%{changes} · published %{date}": "%{changes} · %{date} 게시",
+  "%{channels} ch": "%{channels}채널",
   "%{completed} / %{items}": "%{items} 중 %{completed}개",
   "%{completed} of %{items}": "%{items} 중 %{completed}개 완료",
   "%{count} failed": "실패: %{count}",

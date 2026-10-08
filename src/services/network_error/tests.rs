@@ -39,7 +39,7 @@ fn a_ureq_error_wrapped_by_a_body_reader_is_unwrapped() {
 
 #[test]
 fn unknown_system_text_drops_the_errno_suffix() {
-    let error = io::Error::from_raw_os_error(libc::ETXTBSY);
+    let error = io::Error::from_raw_os_error(libc::EPROTO);
     let NetworkError::Detail { text } = NetworkError::from_io(&error) else {
         panic!("an unmapped error should keep its system text");
     };
