@@ -3,8 +3,11 @@
 
 from __future__ import annotations
 
+import time
+
 import pytest
 
+from harness.browser import MENU_RETRY_INTERVAL
 from harness.modes import ALL_MODES
 
 ROOT_ENTRIES = ["archive", "documents", "pictures", "readme.md", "todo.txt"]
@@ -128,3 +131,174 @@ def test_empty_directory_keeps_focus_and_tab_order(strata, mode, entry):
         "Shift+Tab to reach the control before the empty pane",
         timeout=5,
     )
+
+
+@pytest.mark.parametrize(
+    ("shortcut", "option", "role", "previous"),
+    [
+        ("ctrl+2", "Icons", "radio menu item", "Columns"),
+        ("ctrl+h", "Hidden files", "check menu item", None),
+    ],
+)
+def test_appearance_options_expose_the_chosen_option(strata, shortcut, option, role, previous):
+    problems = []
+
+    def check(label, node_role, expected, when):
+        node = strata.window.find(role=node_role, name=label)
+        if node is None:
+            problems.append(f"{when}: no {node_role} {label!r} in the Appearance menu")
+        elif node.has_state("checked") != expected:
+            problems.append(
+                f"{when}: {label!r} should {'' if expected else 'not '}be checked; "
+                f"states={sorted(node.states)}"
+            )
+        return node
+
+    strata.open_appearance_menu()
+    node = check(option, role, False, f"before {shortcut}")
+    if option == "Hidden files" and node is not None:
+        assert node.description == "Ctrl + H"
+    if previous is not None:
+        check(previous, role, True, f"before {shortcut}")
+    strata.keyboard.press("Escape")
+    strata.wait(
+        lambda: strata.window.find(role="radio menu item", name="Compact") is None,
+        "the Appearance menu to close",
+    )
+
+    strata.keyboard.press(shortcut)
+    if option == "Icons":
+        strata.wait_for_view("Icons")
+    else:
+        strata.wait(lambda: ".hidden.txt" in strata.entry_names(), "hidden files to show")
+
+    strata.open_appearance_menu()
+    check(option, role, True, f"after {shortcut}")
+    if previous is not None:
+        check(previous, role, False, f"after {shortcut}")
+    assert not problems, "\n".join(problems)
+
+
+PERMISSION_BITS = [
+    ("Owner read", 0o400),
+    ("Owner write", 0o200),
+    ("Owner execute", 0o100),
+    ("Others write", 0o002),
+]
+
+
+def test_permission_bits_expose_their_permission_and_state(strata):
+    path = strata.fixture.path("todo.txt")
+    strata.select_entry("todo.txt")
+    strata.keyboard.press("alt+Return")
+    dialog = strata.wait_for_dialog()
+
+    def bit(name):
+        return strata.wait(
+            lambda: dialog.find(role="toggle button", name=name, states={"sensitive"}),
+            f"the {name} bit",
+        )
+
+    mode = path.stat().st_mode
+    for name, mask in PERMISSION_BITS:
+        assert bit(name).has_state("pressed") == bool(mode & mask), (name, oct(mode))
+
+    for expected in (True, False):
+        strata.pointer.click(bit("Owner execute"))
+        strata.wait(
+            lambda: bool(path.stat().st_mode & 0o100) == expected,
+            f"owner execute to be {'set' if expected else 'cleared'} on disk",
+        )
+        strata.wait(
+            lambda: bit("Owner execute").has_state("pressed") == expected,
+            f"the Owner execute bit to report {'pressed' if expected else 'not pressed'}",
+        )
+
+
+def _open_general_settings(strata):
+    button = strata.window.find(role="button", name="Settings")
+    assert button is not None and button.activate()
+    strata.wait(
+        lambda: strata.window.find(role="button", name="Modified date format", rendered=False),
+        "the General settings page",
+    )
+
+
+def _settings_choice(strata, title):
+    """The choice button and GTK's inner focusable toggle, which mirrors its name."""
+
+    outer = strata.reveal(role="button", name=title)
+    return [outer, *outer.find_all(role="toggle button", name=title)]
+
+
+def _open_choice(strata, title, option):
+    """Open a choice's popover and return its `option`, retrying a click that a
+    late focus or scroll change swallowed."""
+
+    toggle = _settings_choice(strata, title)[-1]
+    strata.pointer.click(toggle)
+    clicked = time.monotonic()
+
+    def opened():
+        nonlocal clicked
+        node = strata.window.find(role="radio menu item", name=option)
+        if (
+            node is None
+            and time.monotonic() - clicked > MENU_RETRY_INTERVAL
+            and not (toggle.has_state("checked") or toggle.has_state("pressed"))
+        ):
+            strata.pointer.click(toggle)
+            clicked = time.monotonic()
+        return node
+
+    return strata.wait(opened, f"the {option!r} option of {title!r}")
+
+
+def _choice_value_problems(strata, title, value):
+    return [
+        f"{node.role} {title!r} shows {value!r} but is described as {node.description!r}"
+        for node in _settings_choice(strata, title)
+        if node.description != value
+    ]
+
+
+@pytest.mark.preferences(auto_refresh_interval=120)
+def test_settings_choice_buttons_expose_their_current_value(strata):
+    _open_general_settings(strata)
+    problems = []
+    for title, value in [
+        ("Drag & drop to another device", "Always ask"),
+        ("Modified date format", "Relative"),
+        ("Auto-refresh folder", "5 min"),
+        ("Video preview hardware backend", "Automatic"),
+    ]:
+        problems += _choice_value_problems(strata, title, value)
+    assert not problems, "\n".join(problems)
+
+    strata.pointer.click(_open_choice(strata, "Modified date format", "ISO 8601"))
+    strata.wait(
+        lambda: strata.environment.read_preferences().get("date_format") == '"iso"',
+        "the ISO 8601 date format to be saved",
+    )
+    strata.wait(
+        lambda: not _choice_value_problems(strata, "Modified date format", "ISO 8601"),
+        "the date format button to describe ISO 8601",
+    )
+
+
+@pytest.mark.parametrize(
+    ("title", "selected", "other"),
+    [
+        ("Modified date format", "Relative", "ISO 8601"),
+        ("Drag & drop to another device", "Always ask", "Always copy"),
+    ],
+)
+def test_settings_choice_options_expose_the_chosen_option(strata, title, selected, other):
+    _open_general_settings(strata)
+    _open_choice(strata, title, selected)
+    for label, expected in [(selected, True), (other, False)]:
+        option = strata.wait(
+            lambda label=label: strata.window.find(role="radio menu item", name=label),
+            f"the {label!r} option",
+        )
+        assert option.has_state("checked") == expected, (label, sorted(option.states))
