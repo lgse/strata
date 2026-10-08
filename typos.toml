@@ -14,9 +14,6 @@ extend-exclude = [
   "data/locales/**/pt-BR.json",
   "data/locales/**/ru.json",
   "data/locales/**/vi.json",
-  # Multilingual plural forms and calendar names.
-  "data/locales/counts.json",
-  "data/locales/dates.json",
   # Reproducible upstream MathJax bundle and npm dependency lock.
   "data/math-renderer.js",
   "packaging/math-renderer/package-lock.json",
@@ -29,6 +26,8 @@ extend-ignore-re = [
   '"relase chanel"',
   # French caption exercised by the restart-to-apply regression.
   '"Redémarrer maintenant"',
+  # Non-English values in the multilingual count and calendar catalogs.
+  '(?m)^\s*"(?:fr|de|es|ja|pt-BR|ko|vi|it|ru)": ".*"',
 ]
 
 [default.extend-words]
