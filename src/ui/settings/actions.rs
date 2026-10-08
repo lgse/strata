@@ -1564,7 +1564,9 @@ fn summary(action: &ActionHandle) -> String {
         parts.push(tr("disabled"));
     }
     if let Some(reason) = action.unavailable_reason() {
-        parts.push(reason.to_owned());
+        // A capitalized standalone reason continues the summary in lower case where the
+        // language does so after a separator.
+        parts.push(crate::services::error_detail(reason.to_owned()));
     }
     parts.join(" · ")
 }

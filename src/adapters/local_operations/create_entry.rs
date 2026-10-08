@@ -152,9 +152,9 @@ pub(super) fn start(
 
 fn creation_failed(name: &str, error: &glib::Error) -> String {
     rust_i18n::t!(
-        "Could not create %{name}: %{error}",
+        "Could not create “%{name}”: %{error}",
         name = name,
-        error = crate::services::gio_error_message(error)
+        error = crate::services::gio_error_detail(error)
     )
     .into_owned()
 }

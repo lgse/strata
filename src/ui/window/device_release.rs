@@ -539,7 +539,7 @@ pub(super) fn decide_gio(
             safe_to_remove: false,
         },
         Err(error) => {
-            let mut message = error.to_string();
+            let mut message = crate::services::gio_error_message(&error);
             if let Some(progress) = progress.map(str::trim).filter(|line| !line.is_empty()) {
                 message.push('\n');
                 message.push_str(progress);
@@ -902,7 +902,7 @@ where
                         left_at.as_ref(),
                         flush_root.as_deref(),
                     );
-                    decide_flush(kind, Err(error))
+                    decide_flush(kind, Err(crate::services::io_error_message(&error)))
                 }
                 Ok(()) => {
                     enter_releasing(&key);

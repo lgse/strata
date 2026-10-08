@@ -119,7 +119,7 @@ where
                             archive_failed(rust_i18n::t!(
                                 "Could not move %{name} to Trash: %{error}",
                                 name = requested_name,
-                                error = crate::services::gio_error_message(&error)
+                                error = crate::services::gio_error_detail(&error)
                             ))
                         })?;
                     Some(TrashedOriginal::from_metadata(&metadata))
@@ -137,7 +137,7 @@ where
                 if original.is_some() {
                     archive_failed(rust_i18n::t!(
                         "Could not publish the archive; the original is in Trash: %{error}",
-                        error = io_text(&error.error)
+                        error = crate::services::io_error_detail(&error.error)
                     ))
                 } else {
                     archive_creation_failed(destination, &error.error)
@@ -171,7 +171,7 @@ fn archive_creation_failed(destination: &Path, error: &io::Error) -> ArchiveErro
     archive_failed(rust_i18n::t!(
         "Could not create the archive in %{folder}: %{error}",
         folder = destination.display(),
-        error = io_text(error)
+        error = crate::services::io_error_detail(error)
     ))
 }
 
@@ -186,8 +186,23 @@ fn errno_text(error: rustix::io::Errno) -> String {
 fn zip_text(error: zip::result::ZipError) -> String {
     match error {
         zip::result::ZipError::Io(error) => io_text(&error),
-        error => error.to_string(),
+        error => encoder_failure(&error),
     }
+}
+
+fn sevenz_text(error: sevenz_rust2::Error) -> String {
+    match error {
+        sevenz_rust2::Error::Io(error, _) | sevenz_rust2::Error::FileOpen(error, _) => {
+            io_text(&error)
+        }
+        error => encoder_failure(&error),
+    }
+}
+
+/// Encoder diagnostics are untranslated library text, so they are only logged.
+fn encoder_failure(error: &dyn std::fmt::Display) -> String {
+    tracing::warn!(%error, "archive encoder failed");
+    crate::i18n::tr("The archive could not be written")
 }
 
 /// Returns `0o666` masked by the process umask from [`process_umask`].
@@ -788,7 +803,7 @@ pub(super) fn compress_7z(
     use sevenz_rust2::encoder_options::{AesEncoderOptions, EncoderOptions, Lzma2Options};
     compression_result(cancelled, || {
         let mut writer = sevenz_rust2::ArchiveWriter::new(CompressionIo::new(file, cancelled))
-            .map_err(|e| e.to_string())?;
+            .map_err(sevenz_text)?;
         let lzma2 = sevenz_rust2::EncoderConfiguration::new(sevenz_rust2::EncoderMethod::LZMA2)
             .with_options(EncoderOptions::Lzma2(Lzma2Options::from_level(6)));
         let copy = sevenz_rust2::EncoderConfiguration::new(sevenz_rust2::EncoderMethod::COPY);
@@ -866,7 +881,7 @@ pub(super) fn compress_7z(
             let has_reader = reader.is_some();
             writer
                 .push_archive_entry(entry, reader)
-                .map_err(archive_failed)?;
+                .map_err(|error| archive_failed(sevenz_text(error)))?;
             check_archive_cancelled(cancelled)?;
             if has_reader {
                 progress.fetch_add(1, Ordering::Relaxed);
@@ -874,7 +889,9 @@ pub(super) fn compress_7z(
             Ok(())
         })?;
         check_archive_cancelled(cancelled)?;
-        writer.finish().map_err(archive_failed)?;
+        writer
+            .finish()
+            .map_err(|error| archive_failed(io_text(&error)))?;
         Ok(())
     })
 }

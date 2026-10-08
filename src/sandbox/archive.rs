@@ -113,18 +113,18 @@ fn reap(child: &mut Child, cancelled: &AtomicBool) -> Result<(), String> {
 fn spawn(archive_path: &Path, password: Option<&str>) -> Result<Child, String> {
     let archive_path = archive_path
         .canonicalize()
-        .map_err(|error| format!("Unable to open RAR archive: {error}"))?;
-    let output = PrivateOutput::create().map_err(|error| error.to_string())?;
+        .map_err(|error| crate::services::io_error_message(&error))?;
+    let output =
+        PrivateOutput::create().map_err(|error| crate::services::io_error_message(&error))?;
     let current_executable = std::env::current_exe()
         .map_err(|error| format!("Unable to locate the Strata executable: {error}"))?;
     let running_executable = PathBuf::from(format!("/proc/{}/exe", std::process::id()));
     let executable =
         resolve_renderer_executable(&current_executable, &running_executable, output.path())?;
     let bwrap = crate::trusted_command::resolve("bwrap")
-        .map_err(|error| format!("Unable to start the RAR extraction sandbox: {error}"))?;
+        .map_err(|error| super::sandbox_unavailable(&error))?;
     let mut command = rar_extraction_command(&bwrap, &executable, &archive_path, password)?;
-    spawn_renderer(&mut command)
-        .map_err(|error| format!("Unable to start the RAR extraction sandbox: {error}"))
+    spawn_renderer(&mut command).map_err(|error| super::sandbox_start_failed(&error))
 }
 
 fn rar_extraction_command(

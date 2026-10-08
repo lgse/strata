@@ -159,7 +159,7 @@ fn save_error_text(error: &std::io::Error) -> String {
     } else {
         rust_i18n::t!(
             "Could not save the theme: %{error}",
-            error = crate::services::io_error_message(error)
+            error = crate::services::io_error_detail(error)
         )
         .into_owned()
     }

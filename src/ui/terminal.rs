@@ -199,7 +199,7 @@ impl Terminal {
         rust_i18n::t!(
             "Terminal “%{program}” could not be started: %{error}",
             program = program,
-            error = error
+            error = crate::services::io_error_detail(error)
         )
         .into_owned()
     }

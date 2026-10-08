@@ -296,7 +296,7 @@ impl LocalPreviewProvider {
                         emit(PreviewEvent::Failed {
                             request_id,
                             entry,
-                            message: error.to_string(),
+                            message: crate::services::gio_error_message(&error),
                         });
                         return;
                     }
@@ -789,7 +789,7 @@ impl LocalPreviewProvider {
                             emit(PreviewEvent::Failed {
                                 request_id,
                                 entry,
-                                message: error.to_string(),
+                                message: crate::services::gio_error_message(&error),
                             });
                             return;
                         }
@@ -829,12 +829,17 @@ async fn read_text(
         let path = path.to_path_buf();
         let result = gio::spawn_blocking(move || {
             use std::io::Read;
-            let file = std::fs::File::open(&path)
-                .map_err(|e| glib::Error::new(gio::IOErrorEnum::Failed, &e.to_string()))?;
+            let io_failure = |error: std::io::Error| {
+                glib::Error::new(
+                    gio::IOErrorEnum::Failed,
+                    &crate::services::io_error_message(&error),
+                )
+            };
+            let file = std::fs::File::open(&path).map_err(io_failure)?;
             let mut bytes = Vec::new();
             file.take(byte_limit as u64 + 1)
                 .read_to_end(&mut bytes)
-                .map_err(|e| glib::Error::new(gio::IOErrorEnum::Failed, &e.to_string()))?;
+                .map_err(io_failure)?;
             let truncated = bytes.len() > byte_limit;
             let sample = &bytes[..bytes.len().min(byte_limit)];
             Ok((decode_text_sample(sample), truncated))

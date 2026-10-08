@@ -155,7 +155,11 @@ impl DriveOpError {
             Self::InvalidLabel(reason) => {
                 rust_i18n::t!("Invalid label: %{reason}", reason = reason).into_owned()
             }
-            Self::Io(error) => rust_i18n::t!("I/O error: %{error}", error = error).into_owned(),
+            Self::Io(error) => rust_i18n::t!(
+                "I/O error: %{error}",
+                error = crate::services::io_error_detail(error)
+            )
+            .into_owned(),
         }
     }
 }

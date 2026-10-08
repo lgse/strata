@@ -253,8 +253,8 @@ fn request(
     if cancellation.is_cancelled() {
         return Err("Browser request cancelled".into());
     }
-    let file = open_source(path).map_err(|e| e.to_string())?;
-    let key = FileKey::read(path, &file).map_err(|e| e.to_string())?;
+    let file = open_source(path).map_err(|e| crate::services::io_error_message(&e))?;
+    let key = FileKey::read(path, &file).map_err(|e| crate::services::io_error_message(&e))?;
     let metadata_only = matches!(
         operation,
         Operation::ImageMetadata | Operation::MediaMetadata
@@ -770,7 +770,8 @@ impl ProcessWorker {
         let (socket, child_socket) = UnixStream::pair()?;
         socket.set_read_timeout(Some(super::WALL_TIME_LIMIT))?;
         socket.set_write_timeout(Some(super::WALL_TIME_LIMIT))?;
-        let bwrap = crate::trusted_command::resolve("bwrap").map_err(io::Error::other)?;
+        let bwrap = crate::trusted_command::resolve("bwrap")
+            .map_err(|error| io::Error::other(super::sandbox_unavailable(&error)))?;
         let mut command = super::runtime_command(&bwrap, true);
         command
             .args(["--ro-bind"])

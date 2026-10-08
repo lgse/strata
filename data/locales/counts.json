@@ -731,5 +731,53 @@
     "vi": "Đang kết xuất %{count} tam giác…",
     "it": "Rendering di %{count} triangoli…",
     "ru": "Отрисовка %{count} треугольников…"
+  },
+  "counts.bytes.one": {
+    "en": "%{count} byte",
+    "fr": "%{count} octet",
+    "de": "%{count} Byte",
+    "es": "%{count} byte",
+    "ja": "%{count} バイト",
+    "pt-BR": "%{count} byte",
+    "ko": "%{count}바이트",
+    "vi": "%{count} byte",
+    "it": "%{count} byte",
+    "ru": "%{count} байт"
+  },
+  "counts.bytes.few": {
+    "en": "%{count} bytes",
+    "fr": "%{count} octets",
+    "de": "%{count} Byte",
+    "es": "%{count} bytes",
+    "ja": "%{count} バイト",
+    "pt-BR": "%{count} bytes",
+    "ko": "%{count}바이트",
+    "vi": "%{count} byte",
+    "it": "%{count} byte",
+    "ru": "%{count} байта"
+  },
+  "counts.bytes.many": {
+    "en": "%{count} bytes",
+    "fr": "%{count} octets",
+    "de": "%{count} Byte",
+    "es": "%{count} bytes",
+    "ja": "%{count} バイト",
+    "pt-BR": "%{count} bytes",
+    "ko": "%{count}바이트",
+    "vi": "%{count} byte",
+    "it": "%{count} byte",
+    "ru": "%{count} байт"
+  },
+  "counts.bytes.other": {
+    "en": "%{count} bytes",
+    "fr": "%{count} octets",
+    "de": "%{count} Byte",
+    "es": "%{count} bytes",
+    "ja": "%{count} バイト",
+    "pt-BR": "%{count} bytes",
+    "ko": "%{count}바이트",
+    "vi": "%{count} byte",
+    "it": "%{count} byte",
+    "ru": "%{count} байта"
   }
 }

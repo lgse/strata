@@ -825,7 +825,7 @@ fn copy_failure_on_fat32(error: &glib::Error, fat32_destination: bool) -> (Optio
             rust_i18n::t!(
                 "%{description} Earlier completed copies may still be writing; wait for safe eject before unplugging. Details: %{error}",
                 description = description,
-                error = crate::services::gio_error_message(error)
+                error = crate::services::gio_error_detail(error)
             )
             .into_owned(),
         ),
@@ -1419,7 +1419,7 @@ fn open_local_child_directory<Fd: AsFd>(parent: &Fd, name: &OsStr) -> Result<Own
         rust_i18n::t!(
             "%{name} changed while it was being read: %{error}",
             name = name.to_string_lossy(),
-            error = os_error_text(error)
+            error = os_error_detail(error)
         )
         .into_owned()
     })
@@ -1464,7 +1464,7 @@ fn open_local_copy_source<Fd: AsFd>(parent: &Fd, name: &OsStr) -> Result<LocalCo
             rust_i18n::t!(
                 "Could not inspect %{name}: %{error}",
                 name = name.to_string_lossy(),
-                error = os_error_text(error)
+                error = os_error_detail(error)
             )
             .into_owned()
         },
@@ -1475,7 +1475,7 @@ fn open_local_copy_source<Fd: AsFd>(parent: &Fd, name: &OsStr) -> Result<LocalCo
                 rust_i18n::t!(
                     "Could not read link %{name}: %{error}",
                     name = name.to_string_lossy(),
-                    error = os_error_text(error)
+                    error = os_error_detail(error)
                 )
                 .into_owned()
             })?;
@@ -1508,7 +1508,7 @@ fn open_local_copy_source<Fd: AsFd>(parent: &Fd, name: &OsStr) -> Result<LocalCo
                 rust_i18n::t!(
                     "%{name} changed while it was being copied: %{error}",
                     name = name.to_string_lossy(),
-                    error = os_error_text(error)
+                    error = os_error_detail(error)
                 )
                 .into_owned()
             })?;
@@ -1516,7 +1516,7 @@ fn open_local_copy_source<Fd: AsFd>(parent: &Fd, name: &OsStr) -> Result<LocalCo
                 rust_i18n::t!(
                     "Could not inspect %{name}: %{error}",
                     name = name.to_string_lossy(),
-                    error = os_error_text(error)
+                    error = os_error_detail(error)
                 )
                 .into_owned()
             })?;
@@ -1637,7 +1637,7 @@ fn copy_failure_after_cleanup(
         Err(cleanup_error) => io_error(rust_i18n::t!(
             "%{error}; the incomplete copy could not be removed: %{cleanup_error}",
             error = crate::services::gio_error_message(&copy_error),
-            cleanup_error = crate::services::gio_error_message(&cleanup_error)
+            cleanup_error = crate::services::gio_error_detail(&cleanup_error)
         )),
     }
 }
@@ -2278,7 +2278,7 @@ fn move_local_path(
             error => io_error(rust_i18n::t!(
                 "Could not move %{name}: %{error}",
                 name = display_name,
-                error = os_error_text(error)
+                error = os_error_detail(error)
             )),
         })
     })
@@ -2380,7 +2380,7 @@ async fn move_restore_path_with(
             error => io_error(rust_i18n::t!(
                 "Could not restore %{name}: %{error}",
                 name = display_name,
-                error = os_error_text(error)
+                error = os_error_detail(error)
             )),
         })
 }
@@ -2498,7 +2498,7 @@ fn staging_failed(target_path: &Path, error: io::Error) -> glib::Error {
             .file_name()
             .unwrap_or(target_path.as_os_str())
             .to_string_lossy(),
-        error = os_error_text(error)
+        error = os_error_detail(error)
     ))
 }
 
@@ -2583,7 +2583,7 @@ async fn publish_staged_without_replace_with(
         Ok(()) => cleanup.map_err(|error| {
             io_error(rust_i18n::t!(
                 "The item was copied, but its staging copy could not be removed: %{error}",
-                error = crate::services::gio_error_message(&error)
+                error = crate::services::gio_error_detail(&error)
             ))
         }),
         Err(error) => Err(copy_failure_after_cleanup(error, cleanup)),
@@ -2596,6 +2596,10 @@ fn io_error(error: impl std::fmt::Display) -> glib::Error {
 
 fn os_error_text(error: impl Into<io::Error>) -> String {
     crate::services::io_error_message(&error.into())
+}
+
+fn os_error_detail(error: impl Into<io::Error>) -> String {
+    crate::services::io_error_detail(&error.into())
 }
 
 fn translated_io_error(message: &str) -> glib::Error {
@@ -2733,7 +2737,7 @@ async fn replace_local_with(
             Ok(Ok(())) => Ok(()),
             Ok(Err(error)) => Err(io_error(rust_i18n::t!(
                 "Could not safely replace the item: %{error}",
-                error = os_error_text(error)
+                error = os_error_detail(error)
             ))),
             Err(error) => Err(error),
         };
@@ -2777,7 +2781,7 @@ async fn publish_staged_replacement(
         .map_err(|error| {
             io_error(rust_i18n::t!(
                 "Could not finish placing the replacement item; the original is in Trash: %{error}",
-                error = crate::services::gio_error_message(&error)
+                error = crate::services::gio_error_detail(&error)
             ))
         })
 }
@@ -3018,7 +3022,7 @@ async fn merge_local_with(
                 &rust_i18n::t!(
                     "Could not move %{name} to Trash before merging: %{error}",
                     name = location.display_name(),
-                    error = crate::services::gio_error_message(&error)
+                    error = crate::services::gio_error_detail(&error)
                 ),
             ));
         }
@@ -3202,7 +3206,7 @@ fn ensure_local_delete_target_unchanged<ParentFd: AsFd, TargetFd: AsFd>(
             rust_i18n::t!(
                 "%{name} changed while it was being deleted: %{error}",
                 name = name.to_string_lossy(),
-                error = os_error_text(error)
+                error = os_error_detail(error)
             )
             .into_owned()
         },
@@ -3211,7 +3215,7 @@ fn ensure_local_delete_target_unchanged<ParentFd: AsFd, TargetFd: AsFd>(
         rust_i18n::t!(
             "Could not recheck %{name}: %{error}",
             name = name.to_string_lossy(),
-            error = os_error_text(error)
+            error = os_error_detail(error)
         )
         .into_owned()
     })?;
@@ -3238,7 +3242,7 @@ fn open_local_delete_target<Fd: AsFd>(
             rust_i18n::t!(
                 "Could not inspect %{name}: %{error}",
                 name = name.to_string_lossy(),
-                error = os_error_text(error)
+                error = os_error_detail(error)
             )
             .into_owned()
         },
@@ -3252,7 +3256,7 @@ fn open_local_delete_target<Fd: AsFd>(
             rust_i18n::t!(
                 "Could not delete %{name}: %{error}",
                 name = name.to_string_lossy(),
-                error = os_error_text(error)
+                error = os_error_detail(error)
             )
             .into_owned()
         })?;
@@ -3279,7 +3283,7 @@ fn open_local_delete_target<Fd: AsFd>(
         rust_i18n::t!(
             "%{name} changed while it was being deleted: %{error}",
             name = name.to_string_lossy(),
-            error = os_error_text(error)
+            error = os_error_detail(error)
         )
         .into_owned()
     })?;
@@ -3287,7 +3291,7 @@ fn open_local_delete_target<Fd: AsFd>(
         rust_i18n::t!(
             "Could not recheck %{name}: %{error}",
             name = name.to_string_lossy(),
-            error = os_error_text(error)
+            error = os_error_detail(error)
         )
         .into_owned()
     })?;
@@ -3589,7 +3593,7 @@ fn remove_local_delete_directory(
             rust_i18n::t!(
                 "Could not delete %{name}: %{error}",
                 name = name.to_string_lossy(),
-                error = os_error_text(error)
+                error = os_error_detail(error)
             )
             .into_owned(),
         );
@@ -3814,7 +3818,7 @@ fn copy_local_symlink(
         rust_i18n::t!(
             "Could not stage %{path}: %{error}",
             path = target_path.display(),
-            error = os_error_text(error)
+            error = os_error_detail(error)
         )
         .into_owned()
     })?;
@@ -3835,7 +3839,7 @@ fn symlink_recreate_failed(target_path: &Path, error: rustix::io::Errno) -> Stri
     rust_i18n::t!(
         "Could not recreate %{path}: %{error}",
         path = target_path.display(),
-        error = os_error_text(error)
+        error = os_error_detail(error)
     )
     .into_owned()
 }
@@ -3858,7 +3862,7 @@ fn open_local_parent_directory(parent_path: &Path) -> Result<OwnedFd, String> {
     .map_err(|error| {
         rust_i18n::t!(
             "Could not open the filesystem root: %{error}",
-            error = os_error_text(error)
+            error = os_error_detail(error)
         )
         .into_owned()
     })?;
@@ -3881,7 +3885,7 @@ fn open_local_parent_directory(parent_path: &Path) -> Result<OwnedFd, String> {
         rust_i18n::t!(
             "Could not safely open %{path}: %{error}",
             path = parent_path.display(),
-            error = os_error_text(error)
+            error = os_error_detail(error)
         )
         .into_owned()
     })
@@ -3901,7 +3905,7 @@ fn open_local_parent_beneath(parent_path: &Path, allowed_root: &Path) -> Result<
     .map_err(|error| {
         rust_i18n::t!(
             "Could not open the restore area: %{error}",
-            error = os_error_text(error)
+            error = os_error_detail(error)
         )
         .into_owned()
     })?;
@@ -3926,7 +3930,7 @@ fn open_local_parent_beneath(parent_path: &Path, allowed_root: &Path) -> Result<
         rust_i18n::t!(
             "Could not safely open restore destination %{path}: %{error}",
             path = parent_path.display(),
-            error = os_error_text(error)
+            error = os_error_detail(error)
         )
         .into_owned()
     })
@@ -3997,7 +4001,7 @@ async fn local_file_identity(file: &gio::File) -> Result<Option<LocalFileIdentit
                 rust_i18n::t!(
                     "Could not inspect %{path}: %{error}",
                     path = path.display(),
-                    error = os_error_text(error)
+                    error = os_error_detail(error)
                 )
                 .into_owned()
             })?;
@@ -4126,7 +4130,7 @@ fn deletion_error_message(name: &str, permanent: bool, error: &glib::Error) -> S
         )
         .into_owned()
     } else {
-        item_error(name, crate::services::gio_error_message(error))
+        item_error(name, crate::services::gio_error_detail(error))
     }
 }
 

@@ -575,8 +575,8 @@ fn extraction_failures_stop_progress_and_preserve_error_distinctions() -> Result
         ("unreadable.zip", "Permission denied"),
         ("destination.zip", "Not a folder"),
         ("unknown.iso", "Unsupported archive format"),
-        ("folder.zip", "Not an archive: `folder.zip`"),
-        ("passwords.zip", "Not an archive: `passwords.zip`"),
+        ("folder.zip", "Not an archive: “folder.zip”"),
+        ("passwords.zip", "Not an archive: “passwords.zip”"),
     ] {
         let archive = root.path().join(name);
         if matches!(name, "folder.zip" | "passwords.zip") {
@@ -908,7 +908,7 @@ fn failed_multi_root_extraction_keeps_partial_output_in_the_archive_folder()
         assert_eq!(
             *message,
             format!(
-                "Refusing unsafe archive path: {unsafe_member}. Extracted entries remain in `{stem}`."
+                "Refusing unsafe archive path: {unsafe_member}. Extracted entries remain in “{stem}”."
             ),
             "{name}"
         );
@@ -1111,7 +1111,7 @@ fn gzip_trailer_failure_is_reported_through_the_provider() -> Result<(), Box<dyn
     };
     assert_eq!(
         *message,
-        format!("{INVALID_ARCHIVE} Extracted entries remain in `content`.")
+        format!("{INVALID_ARCHIVE} Extracted entries remain in “content”.")
     );
     assert_eq!(entry_names(destination.path())?, ["content"]);
     assert_eq!(

@@ -253,7 +253,8 @@ fn map_validation_error(error: std::io::Error) -> LocationValidationError {
     match error.kind() {
         ErrorKind::NotFound => LocationValidationError::Missing,
         ErrorKind::PermissionDenied => LocationValidationError::Inaccessible,
-        _ => LocationValidationError::Unavailable(error.to_string()),
+        ErrorKind::NotADirectory => LocationValidationError::NotDirectory,
+        _ => LocationValidationError::Unavailable(crate::services::io_error_detail(&error)),
     }
 }
 
@@ -269,7 +270,9 @@ fn uri_validation_result(
                 location.uri_value().unwrap_or_default(),
             ))
         } else {
-            LocationValidationError::Unavailable(sanitize_failure_message(&error.to_string()))
+            LocationValidationError::Unavailable(sanitize_failure_message(
+                &crate::services::gio_error_detail(&error),
+            ))
         }
     })?;
     match info.file_type() {
@@ -1043,7 +1046,7 @@ impl FileSource for LocalFileSource {
         let file = gio::File::for_uri(
             location
                 .uri_value()
-                .ok_or_else(|| LocationValidationError::Unavailable("invalid URI".into()))?,
+                .ok_or(LocationValidationError::InvalidUri)?,
         );
         uri_validation_result(
             location,

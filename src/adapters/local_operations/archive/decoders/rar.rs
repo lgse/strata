@@ -77,9 +77,10 @@ impl Read for MemberBody<'_> {
     }
 }
 
+/// The helper has no locale, so its fixed English messages are translated here.
 fn archive_error(failure: Failure) -> ArchiveError {
     match failure.kind {
-        FailureKind::Other => archive_failed(failure.message),
+        FailureKind::Other => archive_failed(crate::i18n::tr(&failure.message)),
         FailureKind::PasswordRequired => ArchiveError::PasswordRequired(failure.message),
         FailureKind::IncorrectPassword => ArchiveError::IncorrectPassword(failure.message),
     }

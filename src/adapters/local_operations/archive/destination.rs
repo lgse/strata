@@ -124,6 +124,10 @@ fn errno_text(error: rustix::io::Errno) -> String {
     crate::services::io_error_message(&error.into())
 }
 
+fn errno_detail(error: rustix::io::Errno) -> String {
+    crate::services::io_error_detail(&error.into())
+}
+
 fn no_file_name() -> String {
     crate::i18n::tr("Archive entry has no file name")
 }
@@ -131,16 +135,16 @@ fn no_file_name() -> String {
 fn staging_removal_failed(error: rustix::io::Errno) -> String {
     rust_i18n::t!(
         "Could not remove the extraction staging folder: %{error}",
-        error = errno_text(error)
+        error = errno_detail(error)
     )
     .into_owned()
 }
 
 fn modification_time_failed(path: &Path, error: rustix::io::Errno) -> String {
     rust_i18n::t!(
-        "Could not restore the modification time of `%{path}`: %{error}",
+        "Could not restore the modification time of “%{path}”: %{error}",
         path = path.display(),
-        error = errno_text(error)
+        error = errno_detail(error)
     )
     .into_owned()
 }
@@ -213,7 +217,7 @@ impl ExtractionDestination {
         .map_err(|error| {
             rust_i18n::t!(
                 "Could not open the filesystem root: %{error}",
-                error = errno_text(error)
+                error = errno_detail(error)
             )
             .into_owned()
         })?;
@@ -234,7 +238,7 @@ impl ExtractionDestination {
         .map_err(|error| {
             rust_i18n::t!(
                 "Could not open extraction destination: %{error}",
-                error = errno_text(error)
+                error = errno_detail(error)
             )
             .into_owned()
         })?;
@@ -255,7 +259,7 @@ impl ExtractionDestination {
             match rustix::fs::mkdirat(&self.root, &name, rustix::fs::Mode::from_raw_mode(0o777)) {
                 Ok(()) => {}
                 Err(rustix::io::Errno::EXIST) => continue,
-                Err(error) => return Err(staging_creation_failed(&errno_text(error))),
+                Err(error) => return Err(staging_creation_failed(&errno_detail(error))),
             }
             let root = rustix::fs::openat(
                 &self.root,
@@ -270,7 +274,7 @@ impl ExtractionDestination {
                 let _ = rustix::fs::unlinkat(&self.root, &name, rustix::fs::AtFlags::REMOVEDIR);
                 rust_i18n::t!(
                     "Could not open the extraction staging folder: %{error}",
-                    error = errno_text(error)
+                    error = errno_detail(error)
                 )
                 .into_owned()
             })?;
@@ -317,7 +321,7 @@ impl ExtractionDestination {
         let stem = archive_stem(archive_name);
         if stem.contains('/') {
             return Err(
-                rust_i18n::t!("Invalid extraction folder name `%{name}`", name = stem).into_owned(),
+                rust_i18n::t!("Invalid extraction folder name “%{name}”", name = stem).into_owned(),
             );
         }
         for suffix in 0_u64.. {
@@ -342,9 +346,9 @@ impl ExtractionDestination {
                 ) => {}
                 Err(error) => {
                     return Err(rust_i18n::t!(
-                        "Could not publish the extracted entries as `%{name}`: %{error}",
+                        "Could not publish the extracted entries as “%{name}”: %{error}",
                         name = name,
-                        error = errno_text(error)
+                        error = errno_detail(error)
                     )
                     .into_owned());
                 }
@@ -390,9 +394,9 @@ impl ExtractionDestination {
                 ) => {}
                 Err(error) => {
                     return Err(rust_i18n::t!(
-                        "Could not publish `%{name}`: %{error}",
+                        "Could not publish “%{name}”: %{error}",
                         name = candidate.to_string_lossy(),
-                        error = errno_text(error)
+                        error = errno_detail(error)
                     )
                     .into_owned());
                 }
@@ -410,7 +414,7 @@ impl ExtractionDestination {
         let stat = rustix::fs::fstatvfs(&self.root).map_err(|error| {
             rust_i18n::t!(
                 "Could not inspect free space at the extraction destination: %{error}",
-                error = errno_text(error)
+                error = errno_detail(error)
             )
             .into_owned()
         })?;
@@ -438,7 +442,7 @@ impl ExtractionDestination {
                     return Err(rust_i18n::t!(
                         "Could not inspect extraction path %{name}: %{error}",
                         name = candidate.to_string_lossy(),
-                        error = errno_text(error)
+                        error = errno_detail(error)
                     )
                     .into_owned());
                 }
@@ -548,9 +552,9 @@ impl ExtractionDestination {
         let (parent, name, created) = self.prepare_leaf(path)?;
         rustix::fs::symlinkat(target, &parent, &name).map_err(|error| {
             rust_i18n::t!(
-                "Could not create symbolic link `%{path}`: %{error}",
+                "Could not create symbolic link “%{path}”: %{error}",
                 path = created.display(),
-                error = errno_text(error)
+                error = errno_detail(error)
             )
             .into_owned()
         })?;
@@ -579,7 +583,7 @@ impl ExtractionDestination {
     pub(super) fn create_hard_link(&self, path: &Path, target: &Path) -> Result<PathBuf, String> {
         let unavailable = |error: String| {
             rust_i18n::t!(
-                "Hard link `%{path}` refers to `%{target}`, which is not available in this extraction: %{error}",
+                "Hard link “%{path}” refers to “%{target}”, which is not available in this extraction: %{error}",
                 path = path.display(),
                 target = target.display(),
                 error = error
@@ -602,10 +606,10 @@ impl ExtractionDestination {
         )
         .map_err(|error| {
             rust_i18n::t!(
-                "Could not link `%{path}` to `%{target}`: %{error}",
+                "Could not link “%{path}” to “%{target}”: %{error}",
                 path = created.display(),
                 target = target.display(),
-                error = errno_text(error)
+                error = errno_detail(error)
             )
             .into_owned()
         })?;
@@ -620,7 +624,7 @@ impl ExtractionDestination {
     ) -> Result<(), String> {
         let directory = self.open_directory(path).map_err(|error| {
             rust_i18n::t!(
-                "Could not open `%{path}`: %{error}",
+                "Could not open “%{path}”: %{error}",
                 path = path.display(),
                 error = error
             )
@@ -630,9 +634,9 @@ impl ExtractionDestination {
             let mode = rustix::fs::Mode::from_raw_mode(permission_bits(mode) & !umask);
             best_effort((self.calls.chmod)(directory.as_fd(), mode)).map_err(|error| {
                 rust_i18n::t!(
-                    "Could not restore permissions on `%{path}`: %{error}",
+                    "Could not restore permissions on “%{path}”: %{error}",
                     path = path.display(),
-                    error = errno_text(error)
+                    error = errno_detail(error)
                 )
                 .into_owned()
             })?;
@@ -668,7 +672,7 @@ impl ExtractionDestination {
             rust_i18n::t!(
                 "Could not remove incomplete extraction %{path}: %{error}",
                 path = path.display(),
-                error = errno_text(error)
+                error = errno_detail(error)
             )
             .into_owned()
         })

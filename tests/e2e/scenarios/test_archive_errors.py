@@ -91,7 +91,7 @@ def _write_tar_gz_with_bad_trailer(path):
     pytest.param(
         "scatter.zip",
         _write_zip_with_absolute_member,
-        "Refusing unsafe archive path: /etc/evil.txt. Extracted entries remain in `scatter`.",
+        "Refusing unsafe archive path: /etc/evil.txt. Extracted entries remain in “scatter”.",
         "scatter",
         ["ok.txt", "second.txt"],
         id="scatter.zip",
@@ -99,7 +99,7 @@ def _write_tar_gz_with_bad_trailer(path):
     pytest.param(
         "trailer.tar.gz",
         _write_tar_gz_with_bad_trailer,
-        f"{INVALID_ARCHIVE} Extracted entries remain in `trailer`.",
+        f"{INVALID_ARCHIVE} Extracted entries remain in “trailer”.",
         "trailer",
         ["a.txt"],
         id="trailer.tar.gz",

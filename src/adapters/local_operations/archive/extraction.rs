@@ -199,9 +199,9 @@ impl<'a> ExtractionSession<'a> {
         match self.remaining() {
             Some(available) if claimed > u128::from(available) => {
                 Err(archive_failed(rust_i18n::t!(
-                    "Archive declared size (%{claimed} bytes) exceeds the %{available} bytes of free space at the destination",
-                    claimed = claimed,
-                    available = available
+                    "Archive declared size (%{claimed}) exceeds the free space at the destination (%{available})",
+                    claimed = crate::i18n::file_size(u64::try_from(claimed).unwrap_or(u64::MAX)),
+                    available = crate::i18n::file_size(available)
                 )))
             }
             _ => Ok(()),
@@ -216,10 +216,10 @@ impl<'a> ExtractionSession<'a> {
     fn ensure_member_fits(&self, name: &str, declared: u64) -> Result<(), ArchiveError> {
         match self.remaining() {
             Some(available) if declared > available => Err(archive_failed(rust_i18n::t!(
-                "Archive member `%{name}` declared %{declared} bytes, but only %{available} bytes are free at the destination",
+                "Archive member “%{name}” declared %{declared}, but only %{available} is free at the destination",
                 name = name,
-                declared = declared,
-                available = available
+                declared = crate::i18n::file_size(declared),
+                available = crate::i18n::file_size(available)
             ))),
             _ => Ok(()),
         }
@@ -240,7 +240,7 @@ impl<'a> ExtractionSession<'a> {
             .cloned()
             .ok_or_else(|| {
                 archive_failed(rust_i18n::t!(
-                    "Archive member `%{name}` is a hard link to `%{target}`, which was not extracted",
+                    "Archive member “%{name}” is a hard link to “%{target}”, which was not extracted",
                     name = name,
                     target = target.display()
                 ))
@@ -311,9 +311,9 @@ impl<'a> ExtractionSession<'a> {
                         .map(|()| copied)
                         .map_err(|error| {
                             archive_failed(rust_i18n::t!(
-                                "Could not restore the modification time of `%{path}`: %{error}",
+                                "Could not restore the modification time of “%{path}”: %{error}",
                                 path = name,
-                                error = crate::services::io_error_message(&error.into())
+                                error = crate::services::io_error_detail(&error.into())
                             ))
                         }),
                     None => Ok(copied),
@@ -545,7 +545,7 @@ fn restore_directory_metadata(
 fn validate_link_target(name: &str, target: &[u8]) -> Result<(), ArchiveError> {
     if target.is_empty() || target.len() as u64 > MAX_SYMLINK_TARGET_BYTES || target.contains(&0) {
         return Err(archive_failed(rust_i18n::t!(
-            "Archive member `%{name}` has an invalid symbolic link target",
+            "Archive member “%{name}” has an invalid symbolic link target",
             name = name
         )));
     }
@@ -594,18 +594,17 @@ fn staging_kept_message(error: &str, staging: &Staging) -> String {
 }
 
 fn entries_remain_in(folder: &str) -> String {
-    rust_i18n::t!("Extracted entries remain in `%{folder}`.", folder = folder).into_owned()
+    rust_i18n::t!("Extracted entries remain in “%{folder}”.", folder = folder).into_owned()
 }
 
 fn append_sentence(message: &str, sentence: &str) -> String {
-    let separator = if message.ends_with('。') {
-        ""
+    if message.ends_with('。') {
+        format!("{message}{sentence}")
     } else if message.ends_with(['.', '!', '?']) {
-        " "
+        format!("{message} {sentence}")
     } else {
-        ". "
-    };
-    format!("{message}{separator}{sentence}")
+        rust_i18n::t!("%{first}. %{second}", first = message, second = sentence).into_owned()
+    }
 }
 
 fn staging_kept(error: &str, staging: &Staging) -> ArchiveError {
@@ -614,26 +613,26 @@ fn staging_kept(error: &str, staging: &Staging) -> ArchiveError {
 
 fn declared_size_exceeded(name: &str, declared: u64) -> ArchiveError {
     archive_failed(rust_i18n::t!(
-        "Archive member `%{name}` declared %{declared} bytes but produced more",
+        "Archive member “%{name}” declared %{declared} but produced more",
         name = name,
-        declared = declared
+        declared = crate::i18n::count_u64("bytes", declared)
     ))
 }
 
 fn declared_size_short(name: &str, declared: u64, actual: u64) -> ArchiveError {
     archive_failed(rust_i18n::t!(
-        "Archive member `%{name}` declared %{declared} bytes but produced %{actual} bytes",
+        "Archive member “%{name}” declared %{declared} but produced %{actual}",
         name = name,
-        declared = declared,
-        actual = actual
+        declared = crate::i18n::count_u64("bytes", declared),
+        actual = crate::i18n::count_u64("bytes", actual)
     ))
 }
 
 fn destination_full(name: &str, available: u64) -> ArchiveError {
     archive_failed(rust_i18n::t!(
-        "Not enough free space at the destination to extract `%{name}` (%{available} bytes available)",
+        "Not enough free space at the destination to extract “%{name}” (%{available} available)",
         name = name,
-        available = available
+        available = crate::i18n::file_size(available)
     ))
 }
 

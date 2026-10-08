@@ -449,7 +449,7 @@ pub(super) fn extract_tar(
             let link_name = || {
                 stored_link.as_deref().ok_or_else(|| {
                     archive_failed(rust_i18n::t!(
-                        "Archive member `%{name}` has no link target",
+                        "Archive member “%{name}” has no link target",
                         name = name
                     ))
                 })
@@ -463,13 +463,13 @@ pub(super) fn extract_tar(
                 }
                 tar::EntryType::Fifo => {
                     return Err(archive_failed(rust_i18n::t!(
-                        "Archive member `%{name}` is a FIFO and cannot be extracted",
+                        "Archive member “%{name}” is a FIFO and cannot be extracted",
                         name = name
                     )));
                 }
                 tar::EntryType::Char | tar::EntryType::Block => {
                     return Err(archive_failed(rust_i18n::t!(
-                        "Archive member `%{name}` is a device and cannot be extracted",
+                        "Archive member “%{name}” is a device and cannot be extracted",
                         name = name
                     )));
                 }

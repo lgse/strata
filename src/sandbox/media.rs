@@ -140,16 +140,17 @@ fn spawn_helper(
     let input = source
         .path
         .canonicalize()
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| crate::services::io_error_message(&error))?;
     if !input.is_file() {
         return Err("Preview input is not a regular file".into());
     }
-    let output = PrivateOutput::create().map_err(|error| error.to_string())?;
+    let output =
+        PrivateOutput::create().map_err(|error| crate::services::io_error_message(&error))?;
     let current = std::env::current_exe().map_err(|error| error.to_string())?;
     let running = PathBuf::from(format!("/proc/{}/exe", std::process::id()));
     let executable = resolve_renderer_executable(&current, &running, output.path())?;
     let bwrap = crate::trusted_command::resolve("bwrap")
-        .map_err(|error| format!("Unable to start the preview sandbox: {error}"))?;
+        .map_err(|error| super::sandbox_unavailable(&error))?;
     let backend = if matches!(operation, ParseOperation::PreviewMedia(_)) {
         source.backend
     } else {
@@ -176,8 +177,8 @@ fn spawn_helper(
     if cancellation.is_cancelled() {
         return Err("Preview cancelled".into());
     }
-    let child = spawn_renderer(&mut command)
-        .map_err(|error| format!("Unable to start the preview sandbox: {error}"))?;
+    let child =
+        spawn_renderer(&mut command).map_err(|error| super::sandbox_start_failed(&error))?;
     Ok((child, output))
 }
 

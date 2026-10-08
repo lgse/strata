@@ -217,7 +217,7 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
             emit(OperationEvent::Failed {
                 request_id: request.id,
                 message: rust_i18n::t!(
-                    "Not an archive: `%{name}`",
+                    "Not an archive: “%{name}”",
                     name = request.entry.display_name
                 )
                 .into_owned(),
