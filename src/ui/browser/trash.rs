@@ -631,9 +631,11 @@ impl ViewState {
             .build();
         file_scroller.add_css_class("delete-confirmation-list");
         layout.body.append(&file_scroller);
-        let mut explanation = crate::i18n::tr(
-            "These items will be moved back to the original locations shown above.",
-        );
+        let mut explanation = crate::i18n::tr(if count == 1 {
+            "This item will be moved back to the original location shown above."
+        } else {
+            "These items will be moved back to the original locations shown above."
+        });
         if !skipped.is_empty() {
             explanation.push_str("\n\n");
             explanation.push_str(&restore_error_summary(&skipped));

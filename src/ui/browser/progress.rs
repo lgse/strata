@@ -128,21 +128,21 @@ fn transfer_progress_status(
     let (status, fraction) = match total_bytes {
         Some(0) if total_items > 0 => {
             let fraction = (completed_items as f64 / total_items as f64).clamp(0.0, 1.0);
-            (format!("{}%", (fraction * 100.0) as usize), Some(fraction))
+            (
+                crate::i18n::percent((fraction * 100.0) as usize),
+                Some(fraction),
+            )
         }
         Some(0) => (crate::i18n::tr("Preparing…"), None),
         Some(total) => {
             let fraction = (transferred_bytes as f64 / total as f64).clamp(0.0, 1.0);
             let percentage = (fraction * 100.0) as usize;
             (
-                format!(
-                    "{}%",
-                    if transferred_bytes > 0 {
-                        percentage.max(1)
-                    } else {
-                        percentage
-                    }
-                ),
+                crate::i18n::percent(if transferred_bytes > 0 {
+                    percentage.max(1)
+                } else {
+                    percentage
+                }),
                 Some(fraction),
             )
         }
@@ -605,7 +605,7 @@ impl FileProgressState {
         } else {
             0
         };
-        let new_status = format!("{pct}%");
+        let new_status = crate::i18n::percent(pct);
         let new_fraction = completed as f64 / total.max(1) as f64;
         if view.status.text() == new_status && view.progress.fraction() == new_fraction {
             return;

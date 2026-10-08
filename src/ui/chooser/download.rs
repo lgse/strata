@@ -136,9 +136,9 @@ impl DownloadProgress {
                 self.fraction.set(fraction);
                 self.ring.update_property(&[
                     gtk::accessible::Property::ValueNow(fraction * 100.0),
-                    gtk::accessible::Property::ValueText(&format!(
-                        "{}% downloaded",
-                        (fraction * 100.0) as usize
+                    gtk::accessible::Property::ValueText(&rust_i18n::t!(
+                        "%{percent} downloaded",
+                        percent = crate::i18n::percent((fraction * 100.0) as usize)
                     )),
                 ]);
                 self.ring.queue_draw();
@@ -149,8 +149,10 @@ impl DownloadProgress {
             None => {
                 self.spinner.start();
                 self.indicator.set_visible_child_name("unknown");
-                self.status
-                    .set_text(&format!("{} downloaded", format_file_size(downloaded)));
+                self.status.set_text(&rust_i18n::t!(
+                    "%{size} downloaded",
+                    size = format_file_size(downloaded)
+                ));
                 self.status.set_visible(true);
             }
         }

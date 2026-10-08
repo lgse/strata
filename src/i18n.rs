@@ -249,6 +249,20 @@ fn integer_in(locale: &str, value: u64) -> String {
     group_digits(locale, &value.to_string())
 }
 
+/// A whole percentage such as "42%", spaced as the language writes it.
+pub(crate) fn percent(value: usize) -> String {
+    percent_in(&rust_i18n::locale(), value)
+}
+
+fn percent_in(locale: &str, value: usize) -> String {
+    rust_i18n::t!(
+        "%{value}%",
+        locale = locale,
+        value = integer_in(locale, value as u64)
+    )
+    .into_owned()
+}
+
 /// Formats `value` with exactly `decimals` fraction digits in the language's notation.
 pub(crate) fn decimal(value: f64, decimals: usize) -> String {
     decimal_in(&rust_i18n::locale(), value, decimals)

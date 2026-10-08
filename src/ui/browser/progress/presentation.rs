@@ -52,7 +52,7 @@ impl FileProgressState {
         } else if transferring {
             view.transfer_percent.text().to_string()
         } else {
-            format!("{}%", (view.progress.fraction() * 100.0) as usize)
+            crate::i18n::percent((view.progress.fraction() * 100.0) as usize)
         };
         compact.status.set_text(&status);
         if self.transfer_cancel_requested.get() && transferring {

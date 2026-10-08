@@ -173,6 +173,9 @@ fn counts_and_numbers_group_digits_by_language() {
     assert_eq!(count_in("ru", "files", 60_000), "60\u{a0}000 файлов");
     assert_eq!(decimal_in("de", 1_234_567.3, 1), "1.234.567,3");
     assert_eq!(decimal_in("en", 400.0, 1), "400.0");
+    assert_eq!(percent_in("en", 42), "42%");
+    assert_eq!(percent_in("fr", 100), "100\u{202f}%");
+    assert_eq!(percent_in("de", 7), "7\u{a0}%");
 }
 
 #[test]
