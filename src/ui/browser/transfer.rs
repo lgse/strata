@@ -12,6 +12,7 @@ use crate::ui::browser::entry::item_count_label;
 use crate::ui::browser::paths::{can_remove_location, compact_display_path, is_trash_location};
 use crate::ui::controls::{
     ModalTone, focus_button, form_check_button, message_dialog_description, message_dialog_layout,
+    wrap_button_label,
 };
 use crate::ui::modal::{ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog};
 use gtk::prelude::*;
@@ -999,7 +1000,7 @@ impl ViewState {
         layout.body.append(&message_dialog_description(explanation));
         let apply_all = form_check_button(&crate::i18n::tr("Apply to All"));
         apply_all.set_visible(apply_to_all_visible);
-        layout.actions.prepend(&apply_all);
+        layout.body.append(&apply_all);
         let skip = gtk::Button::with_label(&crate::i18n::tr("Skip"));
         skip.add_css_class("action-dialog-cancel");
         skip.set_visible(skip_visible);
@@ -1014,6 +1015,9 @@ impl ViewState {
         merge.add_css_class("action-dialog-cancel");
         merge.set_visible(actions.merge);
         layout.actions.insert_child_after(&merge, Some(&keep_both));
+        for button in [&layout.cancel, &skip, &keep_both, &merge, &layout.confirm] {
+            wrap_button_label(button);
+        }
         let content = layout.content;
         let cancel = layout.cancel;
         let replace = layout.confirm;

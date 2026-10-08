@@ -76,3 +76,17 @@ fn character_counter_tracks_edits_and_character_limits() {
         },
     );
 }
+
+#[test]
+fn dialog_text_keeps_paragraphs_and_unspaced_scripts_intact() {
+    assert_eq!(
+        dialog_text("0 件完了、1 件未処理。\n\n完了した変更は元に戻されていません。"),
+        "0 件完了、1 件未処理。\n\n完了した変更は元に戻されていません。"
+    );
+    assert_eq!(
+        dialog_text("  Completed  with errors:\n\n\n• a.txt:  denied\n• b.txt\n"),
+        "Completed with errors:\n\n• a.txt: denied\n• b.txt"
+    );
+    let long_run = "アーカイブ".repeat(30);
+    assert_eq!(dialog_text(&long_run), long_run);
+}

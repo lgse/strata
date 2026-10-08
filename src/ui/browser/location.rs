@@ -12,9 +12,8 @@ use crate::ui::browser::clipboard::{
 };
 use crate::ui::browser::{BrowserView, ViewState, file_drop_action};
 use crate::ui::controls::{
-    ModalTone, focus_button, form_entry, form_label, form_password_entry,
+    ModalTone, dialog_text, focus_button, form_entry, form_label, form_password_entry,
     message_dialog_description, message_dialog_layout, modal_layout, segmented_control,
-    wrap_dialog_text,
 };
 use crate::ui::modal::{
     ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog, submit_on_enter,
@@ -309,23 +308,21 @@ fn show_authentication_dialog(
     );
     layout.content.add_css_class("wide");
     layout.body.add_css_class("authentication-body");
-    let explanation_text =
-        wrap_dialog_text(message.trim(), AUTHENTICATION_TEXT_WIDTH_CHARS as usize);
-    let explanation = gtk::Label::new(Some(&explanation_text));
+    let explanation = gtk::Label::new(Some(&dialog_text(message)));
     explanation.add_css_class("authentication-explanation");
     explanation.set_max_width_chars(AUTHENTICATION_TEXT_WIDTH_CHARS);
     explanation.set_wrap(true);
+    explanation.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     explanation.set_xalign(0.0);
     layout.body.append(&explanation);
     if authentication_failed {
-        let error_text = wrap_dialog_text(
-            &authentication_retry_message(flags, message),
-            AUTHENTICATION_TEXT_WIDTH_CHARS as usize,
-        );
-        let error = gtk::Label::new(Some(&error_text));
+        let error = gtk::Label::new(Some(&dialog_text(&authentication_retry_message(
+            flags, message,
+        ))));
         error.add_css_class("authentication-error");
         error.set_max_width_chars(AUTHENTICATION_TEXT_WIDTH_CHARS);
         error.set_wrap(true);
+        error.set_wrap_mode(gtk::pango::WrapMode::WordChar);
         error.set_xalign(0.0);
         layout.body.append(&error);
     }

@@ -241,6 +241,15 @@ pub(super) fn set_form_field_error(
     }
 }
 
+/// Lets a text button wrap between words so a crowded action row can shrink to the window.
+pub(super) fn wrap_button_label(button: &gtk::Button) {
+    if let Some(label) = button.child().and_downcast::<gtk::Label>() {
+        label.set_wrap(true);
+        label.set_wrap_mode(gtk::pango::WrapMode::Word);
+        label.set_justify(gtk::Justification::Center);
+    }
+}
+
 pub(super) fn form_check_button(label: &str) -> gtk::CheckButton {
     let button = gtk::CheckButton::with_label(label);
     button.add_css_class("form-check");
@@ -271,38 +280,28 @@ pub(super) enum ModalTone {
 
 pub(super) const MESSAGE_DIALOG_WIDTH_CHARS: usize = 64;
 
-pub(super) fn wrap_dialog_text(text: &str, max_chars: usize) -> String {
-    let mut wrapped = String::new();
-    let mut line_chars = 0;
-    for word in text.split_whitespace() {
-        let chunks = word
-            .chars()
-            .collect::<Vec<_>>()
-            .chunks(max_chars.max(1))
-            .map(|chunk| chunk.iter().collect::<String>())
-            .collect::<Vec<_>>();
-        for (index, chunk) in chunks.iter().enumerate() {
-            let chunk_chars = chunk.chars().count();
-            if line_chars > 0 && line_chars + 1 + chunk_chars > max_chars {
-                wrapped.push('\n');
-                line_chars = 0;
-            } else if line_chars > 0 {
-                wrapped.push(' ');
-                line_chars += 1;
-            }
-            wrapped.push_str(chunk);
-            line_chars += chunk_chars;
-            if index + 1 < chunks.len() {
-                wrapped.push('\n');
-                line_chars = 0;
-            }
+/// Normalizes spacing within each line but keeps explicit line and paragraph breaks;
+/// line wrapping is left to Pango so scripts without spaces break at valid positions.
+pub(super) fn dialog_text(text: &str) -> String {
+    let mut normalized = String::new();
+    let mut pending_blank = false;
+    for line in text.lines() {
+        let words = line.split_whitespace().collect::<Vec<_>>();
+        if words.is_empty() {
+            pending_blank = !normalized.is_empty();
+            continue;
         }
+        if !normalized.is_empty() {
+            normalized.push_str(if pending_blank { "\n\n" } else { "\n" });
+        }
+        normalized.push_str(&words.join(" "));
+        pending_blank = false;
     }
-    wrapped
+    normalized
 }
 
 pub(super) fn message_dialog_description(text: &str) -> gtk::Label {
-    let label = gtk::Label::new(Some(&wrap_dialog_text(text, MESSAGE_DIALOG_WIDTH_CHARS)));
+    let label = gtk::Label::new(Some(&dialog_text(text)));
     label.add_css_class("action-dialog-description");
     label.set_max_width_chars(MESSAGE_DIALOG_WIDTH_CHARS as i32);
     label.set_wrap(true);
@@ -371,8 +370,8 @@ pub(super) fn message_dialog_layout(
 ) -> ModalLayout {
     let layout = modal_layout_with_tone(
         icon,
-        &wrap_dialog_text(title, MESSAGE_DIALOG_WIDTH_CHARS),
-        &wrap_dialog_text(subtitle, MESSAGE_DIALOG_WIDTH_CHARS),
+        &dialog_text(title),
+        &dialog_text(subtitle),
         confirm_label,
         tone,
     );
