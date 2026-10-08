@@ -52,6 +52,11 @@ MODIFIER_KEYSYMS: dict[str, int] = {
 # synchronizes through `wait_until`.
 EVENT_GAP = 0.02
 POINTER_GAP = 0.05
+# A layout change caused by a press makes GTK synthesize a motion event one
+# frame later from the live X pointer state. If the server has already taken
+# the release but GTK has not read it, that motion lacks the button and
+# cancels the click, so hold for a few frames like a physical click.
+BUTTON_HOLD = 0.1
 # Comfortably inside GTK's default double-click time of 400ms.
 DOUBLE_CLICK_GAP = 0.09
 # Comfortably outside it, so two clicks read as two separate single clicks.
@@ -191,7 +196,7 @@ class Pointer:
             time.sleep(EVENT_GAP)
         try:
             self.connection.button(button, True)
-            time.sleep(EVENT_GAP)
+            time.sleep(BUTTON_HOLD)
             for modifier in reversed(held):
                 self.connection.key(modifier, False)
                 time.sleep(EVENT_GAP)
@@ -307,7 +312,7 @@ class Pointer:
 
         self.move_to(*at)
         for _ in range(clicks):
-            self._tap(5 if down else 4)
+            self._tap(5 if down else 4, hold=EVENT_GAP)
 
     def park(self, bounds: Bounds) -> None:
         """Move the pointer away so hover styling does not vary between runs."""
@@ -323,9 +328,9 @@ class Pointer:
         bounds = node.toplevel().screen_bounds()
         return bounds.x + bounds.width // 2, bounds.y + bounds.height - 8
 
-    def _tap(self, button: int) -> None:
+    def _tap(self, button: int, hold: float = BUTTON_HOLD) -> None:
         self.connection.button(button, True)
-        time.sleep(EVENT_GAP)
+        time.sleep(hold)
         self.connection.button(button, False)
         self._last_release = time.monotonic()
         time.sleep(EVENT_GAP)
