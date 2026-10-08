@@ -112,7 +112,7 @@ impl PreviewState {
             return;
         }
         self.clear_content();
-        self.title.set_text(PREVIEW_LABEL);
+        self.title.set_text(&crate::i18n::tr(PREVIEW_LABEL));
         crate::ui::accessibility::set_description(&self.title, None);
         self.icon.set_visible(false);
         self.metadata.set_visible(false);

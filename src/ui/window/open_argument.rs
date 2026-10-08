@@ -216,6 +216,10 @@ pub(super) fn show_connecting_overlay(
 
     let label = gtk::Label::new(Some(message));
     label.add_css_class("form-message");
+    // Wrap rather than push Cancel past the edge of a narrow pane.
+    label.set_wrap(true);
+    label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    label.set_max_width_chars(40);
     content.append(&label);
 
     let cancel = gtk::Button::with_label(&crate::i18n::tr("Cancel"));
@@ -234,15 +238,19 @@ fn show_connecting(weak: WeakBrowserView, generation: u64, request: Rc<OpenReque
         return;
     }
     let cancel_browser = browser.downgrade();
-    show_connecting_overlay(&browser, "Connecting to location…", move || {
-        request.abort();
-        if let Some(browser) = cancel_browser.upgrade() {
-            browser.browser().bump_navigation_generation();
-            browser.finish_navigation_cleanup();
-            clear_status(&browser);
-            browser.navigate_location(Location::local(super::home_directory()));
-        }
-    });
+    show_connecting_overlay(
+        &browser,
+        &crate::i18n::tr("Connecting to location…"),
+        move || {
+            request.abort();
+            if let Some(browser) = cancel_browser.upgrade() {
+                browser.browser().bump_navigation_generation();
+                browser.finish_navigation_cleanup();
+                clear_status(&browser);
+                browser.navigate_location(Location::local(super::home_directory()));
+            }
+        },
+    );
 }
 
 fn show_error(browser: &BrowserView, file: gio::File, location: Location) {

@@ -22,7 +22,9 @@ use crate::{
     },
 };
 
-use super::{blur::BlurBin, controls::form_password_entry, controls::modal_layout};
+use super::{
+    blur::BlurBin, browser::format_file_size, controls::form_password_entry, controls::modal_layout,
+};
 
 mod archive;
 pub(super) mod audio;
@@ -215,7 +217,7 @@ impl PreviewDrawer {
     pub fn new(provider: Rc<dyn PreviewProvider>, allow_external_open: bool) -> Self {
         let pane = super::accessibility::pane_box();
         pane.add_css_class("preview-pane");
-        super::accessibility::set_label(&pane, PREVIEW_LABEL);
+        super::accessibility::set_label(&pane, &crate::i18n::tr(PREVIEW_LABEL));
         pane.set_size_request(MIN_WIDTH, -1);
         pane.set_hexpand(true);
         pane.set_vexpand(true);
@@ -1311,14 +1313,18 @@ impl PreviewState {
                 self.cancel_loading();
                 self.current_request.set(Some(expected));
                 self.title.set_text(&entry.display_name);
+                // Failures carry English source messages: known ones have catalog
+                // entries, and system error text passes through unchanged.
+                let detail = crate::i18n::tr(&message);
                 if message == crate::services::INCORRECT_ARCHIVE_PASSWORD {
-                    self.render_archive_password_prompt(entry, Some(&message));
+                    self.render_archive_password_prompt(entry, Some(&detail));
                 } else {
                     self.current_request.set(None);
-                    if !self.show_audio_error("Preview unavailable", &message, None)
-                        && !self.show_video_error("Preview unavailable", &message, None)
+                    let title = crate::i18n::tr("Preview unavailable");
+                    if !self.show_audio_error(&title, &detail, None)
+                        && !self.show_video_error(&title, &detail, None)
                     {
-                        self.show_message("Preview unavailable", &message);
+                        self.show_message(&title, &detail);
                     }
                 }
             }
@@ -1349,11 +1355,15 @@ impl PreviewState {
         box_.append(&icon);
         let heading = gtk::Label::new(Some(&crate::i18n::tr("Password-protected archive")));
         heading.add_css_class("preview-feedback-title");
+        heading.set_wrap(true);
+        heading.set_justify(gtk::Justification::Center);
         box_.append(&heading);
         let detail = gtk::Label::new(Some(&crate::i18n::tr(
             "Enter the password to preview the archive contents",
         )));
         detail.add_css_class("preview-feedback-detail");
+        detail.set_wrap(true);
+        detail.set_justify(gtk::Justification::Center);
         box_.append(&detail);
 
         let password = form_password_entry();
@@ -1504,7 +1514,8 @@ impl PreviewState {
                         self.content
                             .append(&media_layout::section(&picture, &texture));
                     }
-                    Err(error) => self.show_message("Preview unavailable", &error.to_string()),
+                    Err(error) => self
+                        .show_message(&crate::i18n::tr("Preview unavailable"), &error.to_string()),
                 }
             }
             PreviewContent::SandboxedMedia { media: mut source } => {
@@ -1607,8 +1618,8 @@ impl PreviewState {
             }
             PreviewContent::Image | PreviewContent::Media => {
                 self.show_message(
-                    "Preview unavailable",
-                    "The sandboxed renderer returned no preview",
+                    &crate::i18n::tr("Preview unavailable"),
+                    &crate::i18n::tr("The sandboxed renderer returned no preview"),
                 );
             }
             PreviewContent::Pdf {
@@ -1627,8 +1638,8 @@ impl PreviewState {
             }
             PreviewContent::Unsupported => {
                 self.show_message(
-                    "No visual preview",
-                    "Metadata is available for this file type.",
+                    &crate::i18n::tr("No visual preview"),
+                    &crate::i18n::tr("Metadata is available for this file type."),
                 );
             }
         }
@@ -1750,7 +1761,8 @@ impl PreviewState {
         );
 
         if let Some(reason) = fallback_reason.as_deref() {
-            self.content.append(&document_notice(reason));
+            self.content
+                .append(&document_notice(&crate::i18n::tr(reason)));
         }
 
         let stack = gtk::Stack::builder()
@@ -1827,9 +1839,10 @@ impl PreviewState {
 
     fn update_document_view_action(&self) {
         let (label, icon) = document_view_action(self.document_view.get());
-        self.document_view_button.set_tooltip_text(Some(label));
+        let label = crate::i18n::tr(label);
+        self.document_view_button.set_tooltip_text(Some(&label));
         self.document_view_button
-            .update_property(&[gtk::accessible::Property::Label(label)]);
+            .update_property(&[gtk::accessible::Property::Label(&label)]);
         crate::assets::set_primary_icon(&self.document_view_icon, icon);
     }
 
@@ -2921,11 +2934,11 @@ impl PreviewState {
         let message = error.message();
         let (title, detail, command) = media_error_feedback(message);
         self.continue_playback.take();
-        if !self.show_audio_error(title, &detail, command)
-            && !self.show_video_error(title, &detail, command)
+        if !self.show_audio_error(&title, &detail, command)
+            && !self.show_video_error(&title, &detail, command)
         {
             self.show_message_with_icon(
-                title,
+                &title,
                 &detail,
                 Some(crate::assets::icons::TRIANGLE_ALERT),
                 command,
@@ -3134,12 +3147,20 @@ pub(super) struct ListingPosition {
 
 impl ListingPosition {
     pub(super) fn caption(self) -> String {
-        format!(
-            "{} of {} in {}",
-            self.position,
-            self.count,
-            if self.results { "results" } else { "folder" }
-        )
+        if self.results {
+            rust_i18n::t!(
+                "%{position} of %{count} in results",
+                position = self.position,
+                count = self.count
+            )
+        } else {
+            rust_i18n::t!(
+                "%{position} of %{count} in folder",
+                position = self.position,
+                count = self.count
+            )
+        }
+        .into_owned()
     }
 }
 
@@ -3282,8 +3303,9 @@ fn print_text(text: String, job_name: &str, parent: Option<&gtk::Window>) {
 
 fn show_print_error(parent: Option<&gtk::Window>, detail: &str) {
     let dialog = gtk::AlertDialog::builder()
-        .message("Unable to prepare file for printing")
-        .detail(detail)
+        .message(crate::i18n::tr("Unable to prepare file for printing"))
+        .detail(crate::i18n::tr(detail))
+        .buttons([crate::i18n::tr("Close")])
         .build();
     dialog.show(parent);
 }
@@ -3560,7 +3582,7 @@ pub(super) fn document_notice(message: &str) -> gtk::Label {
     notice
 }
 
-fn media_error_feedback(message: &str) -> (&'static str, String, Option<&'static str>) {
+fn media_error_feedback(message: &str) -> (String, String, Option<&'static str>) {
     let normalized = message.to_ascii_lowercase();
     if [
         "gstreamer",
@@ -3573,14 +3595,15 @@ fn media_error_feedback(message: &str) -> (&'static str, String, Option<&'static
     .any(|marker| normalized.contains(marker))
     {
         return (
-            "Additional media support required",
-            "On Arch or Omarchy, install the required GStreamer plugins, then restart Strata."
-                .to_owned(),
+            crate::i18n::tr("Additional media support required"),
+            crate::i18n::tr(
+                "On Arch or Omarchy, install the required GStreamer plugins, then restart Strata.",
+            ),
             Some(MEDIA_PLUGIN_INSTALL_COMMAND),
         );
     }
     (
-        "Preview unavailable",
+        crate::i18n::tr("Preview unavailable"),
         rust_i18n::t!(
             "Unable to play this media preview: %{message}",
             message = message
@@ -3594,7 +3617,9 @@ fn metadata_value(description: &str) -> gtk::Label {
     let value = gtk::Label::new(Some("—"));
     value.set_ellipsize(gtk::pango::EllipsizeMode::End);
     value.set_xalign(0.0);
-    value.update_property(&[gtk::accessible::Property::Description(description)]);
+    value.update_property(&[gtk::accessible::Property::Description(&crate::i18n::tr(
+        description,
+    ))]);
     value
 }
 
@@ -3927,21 +3952,6 @@ fn file_extension(entry: &FileEntry) -> &str {
         .and_then(|path| path.extension())
         .and_then(|extension| extension.to_str())
         .unwrap_or("file")
-}
-
-fn format_file_size(bytes: u64) -> String {
-    let units = ["B", "kB", "MB", "GB"];
-    let (value, unit) = super::browser::rounded_size_and_unit(bytes, &units);
-    if unit == 0 || value >= 10.0 {
-        let displayed = value.round();
-        if displayed >= 1_000.0 && unit + 1 < units.len() {
-            format!("{:.1} {}", displayed / 1_000.0, units[unit + 1])
-        } else {
-            format!("{displayed:.0} {}", units[unit])
-        }
-    } else {
-        format!("{value:.1} {}", units[unit])
-    }
 }
 
 fn sync_media_time(

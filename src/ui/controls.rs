@@ -91,7 +91,7 @@ impl FormTextField {
         let limit = entry.max_length();
         remaining.set_visible(limit > 0);
         let count = (limit as usize).saturating_sub(entry.text().chars().count());
-        remaining.set_text(&format!("{count} chars remaining"));
+        remaining.set_text(&crate::i18n::count("chars_remaining", count));
     }
 }
 
@@ -339,10 +339,9 @@ pub(super) fn focus_button(button: &gtk::Button) {
 impl ModalLayout {
     pub fn set_loading(&self, loading: bool, description: Option<&str>) {
         if loading {
-            crate::ui::accessibility::set_description(
-                &self.loading,
-                description.or(Some("Working…")),
-            );
+            let description =
+                description.map_or_else(|| crate::i18n::tr("Working…"), str::to_owned);
+            crate::ui::accessibility::set_description(&self.loading, Some(&description));
             self.loading.set_visible(true);
             self.loading.start();
         } else {
@@ -494,6 +493,11 @@ pub(super) fn segmented_control(
     let mut buttons = Vec::with_capacity(labels.len());
     for (index, label) in labels.iter().enumerate() {
         let button = gtk::ToggleButton::with_label(&crate::i18n::tr(label));
+        if let Some(label) = button.child().and_downcast::<gtk::Label>() {
+            // Wrapping containers may wrap choices, but never inside a word.
+            label.add_css_class("segmented-control-label");
+            label.set_wrap_mode(gtk::pango::WrapMode::Word);
+        }
         button.add_css_class("segmented-control-option");
         button.set_hexpand(true);
         if let Some(first) = buttons.first() {

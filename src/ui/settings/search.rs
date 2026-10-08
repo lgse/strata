@@ -78,6 +78,12 @@ const TARGETS: &[Target] = &[
         aliases: "browsing columns keyboard selection next pane folders",
     },
     Target {
+        id: "tenxer",
+        page: "general",
+        title: "10xer mode",
+        aliases: "browsing keyboard modal prompts footer commands experimental",
+    },
+    Target {
         id: "hints",
         page: "general",
         title: "Show F1 Shortcuts button",
@@ -318,7 +324,13 @@ fn score(query: &str, target: &Target) -> Option<i32> {
     let source_title = normalized(target.title);
     let localized_title = normalized(&crate::i18n::tr(target.title));
     let title = format!("{source_title} {localized_title}");
-    let aliases = normalized(&format!("{} {} settings", target.aliases, target.page));
+    let aliases = normalized(&format!(
+        "{} {} {} settings {}",
+        target.aliases,
+        target.page,
+        crate::i18n::tr(page_title(target.page)),
+        crate::i18n::tr("Settings"),
+    ));
     let mut total = 0;
     for query_word in query.split_whitespace() {
         let title_score = title
@@ -341,6 +353,16 @@ fn score(query: &str, target: &Target) -> Option<i32> {
                 0
             },
     )
+}
+
+fn page_title(page: &str) -> &'static str {
+    match page {
+        "general" => "General",
+        "actions" => "Actions",
+        "theme" => "Appearance",
+        "updates" => "Updates",
+        _ => "About",
+    }
 }
 
 #[derive(Default)]

@@ -198,9 +198,9 @@ fn show_trust_question_dialog(
     );
     let backend_message = message_dialog_description(&sanitize_failure_message(message));
     layout.body.append(&backend_message);
-    let warning = message_dialog_description(
+    let warning = message_dialog_description(&crate::i18n::tr(
         "If the server did not provide a fingerprint, verify it outside Strata before continuing.",
-    );
+    ));
     layout.body.append(&warning);
     layout.actions.remove(&layout.cancel);
     layout.actions.remove(&layout.confirm);
@@ -706,29 +706,20 @@ fn mount_failure_message(location: &Location, error: &glib::Error) -> Option<Str
 }
 
 fn transport_failure_message(error: &glib::Error) -> Option<String> {
-    let (kind, advice) = if error.matches(gio::IOErrorEnum::HostNotFound) {
-        (
-            "That host couldn’t be found.",
-            "Check the address and DNS settings.",
-        )
+    let message = if error.matches(gio::IOErrorEnum::HostNotFound) {
+        "That host couldn’t be found. Check the address and DNS settings."
     } else if error.matches(gio::IOErrorEnum::ConnectionRefused) {
-        (
-            "The host refused the connection.",
-            "Check the service and port.",
-        )
+        "The host refused the connection. Check the service and port."
     } else if error.matches(gio::IOErrorEnum::TimedOut) {
-        ("The connection timed out.", "Check the host and firewall.")
+        "The connection timed out. Check the host and firewall."
     } else if error.matches(gio::IOErrorEnum::HostUnreachable)
         || error.matches(gio::IOErrorEnum::NetworkUnreachable)
     {
-        (
-            "That host is unreachable.",
-            "Check your network connection.",
-        )
+        "That host is unreachable. Check your network connection."
     } else {
         return None;
     };
-    Some(format!("{kind} {advice}"))
+    Some(crate::i18n::tr(message))
 }
 
 fn mount_error_is_cancelled(error: &glib::Error) -> bool {
@@ -1324,7 +1315,7 @@ impl ViewState {
                             let _activity = BrowserView {
                                 state: state.clone(),
                             }
-                            .begin_global_activity("Connecting…");
+                            .begin_global_activity(crate::i18n::tr("Connecting…"));
                             let outcome = wait_for_foreign_volume_mount(&wait_volume).await;
                             drop(_activity);
                             let successor = match outcome {
@@ -1470,7 +1461,7 @@ impl ViewState {
                             let _activity = BrowserView {
                                 state: state.clone(),
                             }
-                            .begin_global_activity("Connecting…");
+                            .begin_global_activity(crate::i18n::tr("Connecting…"));
                             let outcome =
                                 wait_for_foreign_drive_start(&wait_drive, &wait_match).await;
                             drop(_activity);
@@ -1558,7 +1549,7 @@ impl ViewState {
                 show_error_dialog(
                     &self.overlay,
                     &crate::i18n::tr("Unable to open location"),
-                    &error.to_string(),
+                    &error.message(),
                 );
             }
         }
@@ -1617,7 +1608,7 @@ impl ViewState {
                 show_error_dialog(
                     &self.overlay,
                     &crate::i18n::tr("Unable to open directory"),
-                    &error.to_string(),
+                    &error.message(),
                 );
             }
         }
@@ -1909,11 +1900,13 @@ impl ViewState {
             &crate::i18n::tr("Hide"),
         );
         layout.content.add_css_class("compact");
-        layout.set_loading(true, Some("Unlocking volume"));
+        layout.set_loading(true, Some(&crate::i18n::tr("Unlocking volume")));
         layout.cancel.set_visible(false);
-        layout.body.append(&message_dialog_description(
-            "You can hide this and keep working. Unlocking will continue in the background.",
-        ));
+        layout
+            .body
+            .append(&message_dialog_description(&crate::i18n::tr(
+                "You can hide this and keep working. Unlocking will continue in the background.",
+            )));
         let content = layout.content;
         let close = layout.close;
         let hide = layout.confirm;
@@ -2071,7 +2064,7 @@ impl ViewState {
         let activity = BrowserView {
             state: self.clone(),
         }
-        .begin_global_activity("Connecting…");
+        .begin_global_activity(crate::i18n::tr("Connecting…"));
         // Keep GTK's native question handler for other schemes and devices;
         // SFTP host-key choices are rendered by Strata without answering automatically.
         let sftp_question = matches!(

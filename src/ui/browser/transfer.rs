@@ -260,8 +260,8 @@ impl ViewState {
         );
         layout
             .body
-            .append(&message_dialog_description(cross_volume_drop_description(
-                volume,
+            .append(&message_dialog_description(&crate::i18n::tr(
+                cross_volume_drop_description(volume),
             )));
         let move_button = gtk::Button::with_label(&crate::i18n::tr("Move"));
         move_button.add_css_class("action-dialog-cancel");
@@ -680,15 +680,18 @@ impl ViewState {
         // Merge stays copy-only: undoing a merged move cannot tell which
         // destination contents the source actually owned.
         let allow_merge = collision.mergeable && !move_sources;
+        let folder = compact_display_path(&destination);
         let explanation = if allow_merge {
-            format!(
-                "A folder named \u{201c}{name}\u{201d} already exists in {}. Merging combines the contents of both folders; incoming items overwrite items with the same name.",
-                compact_display_path(&destination)
+            rust_i18n::t!(
+                "A folder named “%{name}” already exists in %{folder}. Merging combines the contents of both folders; incoming items overwrite items with the same name.",
+                name = name,
+                folder = folder
             )
         } else {
-            format!(
-                "An item named \u{201c}{name}\u{201d} already exists in {}. Replacing it will overwrite its contents.",
-                compact_display_path(&destination)
+            rust_i18n::t!(
+                "An item named “%{name}” already exists in %{folder}. Replacing it will overwrite its contents.",
+                name = name,
+                folder = folder
             )
         };
         let state = self.clone();
@@ -911,11 +914,20 @@ impl ViewState {
         };
         let name = destination.display_name();
         let parent = destination.parent().unwrap_or_else(|| destination.clone());
-        let action = if redo { "Redoing" } else { "Undoing" };
-        let explanation = format!(
-            "An item named \u{201c}{name}\u{201d} already exists in {}. {action} the move will overwrite its contents.",
-            compact_display_path(&parent)
-        );
+        let folder = compact_display_path(&parent);
+        let explanation = if redo {
+            rust_i18n::t!(
+                "An item named “%{name}” already exists in %{folder}. Redoing the move will overwrite its contents.",
+                name = name,
+                folder = folder
+            )
+        } else {
+            rust_i18n::t!(
+                "An item named “%{name}” already exists in %{folder}. Undoing the move will overwrite its contents.",
+                name = name,
+                folder = folder
+            )
+        };
         let state = self.clone();
         let apply_to_all_visible = !collisions.is_empty();
         let skip_visible = !accepted.is_empty() || !collisions.is_empty();
@@ -1174,9 +1186,9 @@ impl ViewState {
             TransferDialogCompletion::CopyMove { move_sources: true }
         );
         let title = match &completion {
-            TransferDialogCompletion::SendTo { .. } => "Send to folder",
-            _ if move_sources => "Move to",
-            _ => "Copy to",
+            TransferDialogCompletion::SendTo { .. } => crate::i18n::tr("Send to folder"),
+            _ if move_sources => crate::i18n::tr("Move to"),
+            _ => crate::i18n::tr("Copy to"),
         };
         let validation_completion = completion.clone();
         let validate = Rc::new(move |path: &Path| {
@@ -1211,13 +1223,12 @@ impl ViewState {
         crate::ui::chooser::present_destination_chooser(
             crate::ui::chooser::DestinationRequest {
                 parent,
-                title: title.into(),
-                accept_label: if move_sources {
+                title,
+                accept_label: crate::i18n::tr(if move_sources {
                     "Move here"
                 } else {
                     "Copy here"
-                }
-                .into(),
+                }),
                 initial_directory: base,
                 root_limit,
                 allow_create,

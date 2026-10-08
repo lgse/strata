@@ -31,7 +31,7 @@ pub(super) fn about_page() -> gtk::Widget {
     heading.append(&name);
     let kind = crate::build_info::build_kind();
     if kind != services::BuildKind::Stable {
-        let badge = gtk::Label::new(Some(kind.label()));
+        let badge = gtk::Label::new(Some(&kind.localized_label()));
         badge.add_css_class("prerelease-badge");
         badge.set_valign(gtk::Align::Center);
         heading.append(&badge);
@@ -91,10 +91,11 @@ pub(super) fn about_page() -> gtk::Widget {
         let button = gtk::LinkButton::builder().uri(&uri).build();
         button.add_css_class("about-repository");
         super::search::tag(&button, label);
-        crate::ui::accessibility::set_label(&button, label);
+        let label = crate::i18n::tr(label);
+        crate::ui::accessibility::set_label(&button, &label);
         let row = super::wrap::WrapRow::new(16);
         row.append(&crate::assets::primary_icon(icon, 18));
-        let title = gtk::Label::new(Some(label));
+        let title = gtk::Label::new(Some(&label));
         title.set_xalign(0.0);
         title.set_hexpand(true);
         title.set_wrap(true);
@@ -131,7 +132,7 @@ fn append_about_detail(container: &gtk::Box, label: &str, value: &str) {
     let row = super::wrap::WrapRow::new(16);
     row.set_end_align(true);
     row.add_css_class("about-detail-row");
-    let label = gtk::Label::new(Some(label));
+    let label = gtk::Label::new(Some(&crate::i18n::tr(label)));
     label.add_css_class("about-detail-label");
     label.add_css_class("settings-control-label");
     label.set_xalign(0.0);

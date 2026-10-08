@@ -30,7 +30,7 @@ def test_cancel_compression_stops_before_publishing_and_allows_another_operation
     strata.pointer.click(dialog.find(role="toggle button", name=format))
     strata.pointer.click(strata.dialog_button("Compress"))
     cancel = strata.wait(
-        lambda: strata.window.find(role="button", name="Cancel Compressing items"),
+        lambda: strata.window.find(role="button", name="Cancel compressing"),
         "docked compression cancellation action",
     )
     strata.wait(lambda: strata.dialog() is None, "compression configuration dismissal")

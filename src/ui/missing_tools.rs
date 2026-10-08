@@ -46,11 +46,7 @@ pub(super) fn show_missing_tools(
     );
     layout.cancel.set_visible(false);
     layout.body.append(&message_dialog_description(explanation));
-    let names = tools
-        .iter()
-        .map(|tool| tool.name)
-        .collect::<Vec<_>>()
-        .join(", ");
+    let names = crate::i18n::list(tools.iter().map(|tool| tool.name.to_owned()));
     let missing = message_dialog_description(&rust_i18n::t!("Missing: %{names}", names = names));
     missing.set_selectable(true);
     layout.body.append(&missing);
@@ -62,9 +58,9 @@ pub(super) fn show_missing_tools(
             )));
         layout.body.append(&copyable_command(&command));
     } else {
-        layout.body.append(&message_dialog_description(
+        layout.body.append(&message_dialog_description(&crate::i18n::tr(
             "Install the packages providing these tools using your system's package manager, then try the action again.",
-        ));
+        )));
     }
 
     let layer = modal_layer(

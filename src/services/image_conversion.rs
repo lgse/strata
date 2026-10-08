@@ -115,20 +115,33 @@ pub(crate) fn convert(
         MediaPreviewBackend::Software,
         cancelled,
     )
-    .map_err(|error| format!("Could not convert to PNG: {error}. Try another image."))?;
+    .map_err(|error| {
+        rust_i18n::t!(
+            "Could not convert to PNG: %{error}. Try another image.",
+            error = crate::i18n::tr(&error)
+        )
+        .into_owned()
+    })?;
     if cancelled.is_cancelled() {
         return Err("Conversion cancelled".into());
     }
     let directory = tempfile::Builder::new()
         .prefix(super::remote_download::DOWNLOAD_PREFIX)
         .tempdir()
-        .map_err(|error| format!("Could not create a temporary folder: {error}"))?;
+        .map_err(|error| {
+            rust_i18n::t!(
+                "Could not create a temporary folder: %{error}",
+                error = error
+            )
+            .into_owned()
+        })?;
     let destination = directory
         .path()
         .join(name.file_name().ok_or("Invalid PNG filename")?);
     let mut file = fs::File::create(&destination).map_err(|error| error.to_string())?;
-    file.write_all(&output.data)
-        .map_err(|error| format!("Could not write the PNG: {error}"))?;
+    file.write_all(&output.data).map_err(|error| {
+        rust_i18n::t!("Could not write the PNG: %{error}", error = error).into_owned()
+    })?;
     if cancelled.is_cancelled() {
         return Err("Conversion cancelled".into());
     }

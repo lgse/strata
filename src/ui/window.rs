@@ -1102,7 +1102,7 @@ fn appearance_row(
     let check = crate::assets::primary_icon(crate::assets::icons::CHECK, 16);
     check.set_visible(checked);
     let option = crate::assets::primary_icon(icon, 17);
-    let label = gtk::Label::new(Some(label));
+    let label = gtk::Label::new(Some(&crate::i18n::tr(label)));
     label.set_xalign(0.0);
     label.set_hexpand(true);
     row.append(&option);
@@ -2140,7 +2140,7 @@ impl SidebarState {
     }
 
     fn append_heading(&self, text: &str) {
-        let heading = gtk::Label::new(Some(text));
+        let heading = gtk::Label::new(Some(&crate::i18n::tr(text)));
         heading.add_css_class("sidebar-heading");
         heading.set_xalign(0.0);
         self.widget.append(&heading);
@@ -3058,7 +3058,7 @@ fn release_device_volume(
                     let Some(mount) = mount else {
                         return Err(glib::Error::new(
                             gio::IOErrorEnum::Failed,
-                            "The volume is not mounted.",
+                            &crate::i18n::tr("The volume is not mounted."),
                         ));
                     };
                     mount
@@ -3069,7 +3069,7 @@ fn release_device_volume(
                     let Some(mount) = mount else {
                         return Err(glib::Error::new(
                             gio::IOErrorEnum::Failed,
-                            "The volume is not mounted.",
+                            &crate::i18n::tr("The volume is not mounted."),
                         ));
                     };
                     mount
@@ -3275,7 +3275,7 @@ fn request_encrypted_lock_showing(
                                 show_error_dialog(
                                     &parent_for_forget,
                                     &crate::i18n::tr("Couldn't forget the saved password"),
-                                    &error.to_string(),
+                                    &error.user_message(),
                                 );
                                 in_flight_for_forget.set(false);
                             }
@@ -3334,9 +3334,9 @@ fn confirm_forget_cached_password(
         &crate::i18n::tr("Forget and lock"),
         ModalTone::Danger,
     );
-    layout.body.append(&message_dialog_description(
+    layout.body.append(&message_dialog_description(&crate::i18n::tr(
         "This volume’s password is saved. Locking will forget it, and you’ll need to enter it again to unlock.",
-    ));
+    )));
     let content = layout.content;
     let close = layout.close;
     let cancel = layout.cancel;
@@ -3840,7 +3840,9 @@ fn sidebar_eject_button(action: MediaRelease, on_release: impl Fn() + 'static) -
 }
 
 fn sidebar_lock_button(action: EncryptedMediaAction, on_click: impl Fn() + 'static) -> gtk::Button {
-    let button = gtk::Button::builder().tooltip_text(action.label()).build();
+    let button = gtk::Button::builder()
+        .tooltip_text(crate::i18n::tr(action.label()))
+        .build();
     button.set_child(Some(&crate::assets::primary_icon(action.icon(), 14)));
     button.add_css_class("sidebar-eject");
     button.add_css_class("sidebar-device-action");
@@ -4047,9 +4049,14 @@ fn navigate_to_gio_file(browser: &Rc<Browser>, file: &gio::File) {
 /// a prerelease kind in the first place.
 fn sidebar_update_label(release: &ReleaseMetadata) -> String {
     if release.kind == BuildKind::Stable {
-        format!("v{} available", release.version)
+        rust_i18n::t!("v%{version} available", version = release.version).into_owned()
     } else {
-        format!("v{} ({}) available", release.version, release.kind.label())
+        rust_i18n::t!(
+            "v%{version} (%{kind}) available",
+            version = release.version,
+            kind = release.kind.localized_label()
+        )
+        .into_owned()
     }
 }
 

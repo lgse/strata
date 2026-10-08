@@ -17,8 +17,13 @@ user-defined names, or the locale environment inherited by other programs.
 
 Locales are `en`, `fr`, `de`, `es`, `ja`, `pt-BR`, `ko`, `vi`, `it`, and `ru`.
 JSON keys normally contain the original English message. Semantic keys are used
-for grammatical count forms and calendar data. All catalogs are build inputs;
-changing only a translation still rebuilds the embedded translations.
+for grammatical count forms and calendar data, and for an English word that needs
+a different translation in one context. Those context keys are prefixed with their
+use and their English value is the plain word: `completion.complete`,
+`chooser.filter`, `permissions.group`, `archive.format`, `properties.pinned`,
+`release_channel.preview`, `build_kind.nightly`, and `action_icon.*`. All catalogs
+are build inputs; changing only a translation still rebuilds the embedded
+translations.
 
 ## Adding or changing text
 
@@ -51,11 +56,18 @@ singular form for zero and one, and Japanese/Korean/Vietnamese use invariant
 forms. Keep counts as complete messages. Arbitrary fractional quantities require
 a separate design rather than reusing the integer helper.
 
+Format numbers shown to users with the shared helpers rather than `format!`:
+`i18n::integer` and `i18n::decimal` apply the language's digit grouping and
+decimal separator (`count` already groups its number), `i18n::file_size` and
+`i18n::transfer_rate` produce byte sizes and rates with localized unit symbols,
+and `i18n::duration` produces compact elapsed times such as "2m 5s".
+
 Settings search indexes the translated title as well as the English title and
 aliases. Stable source IDs remain independent of displayed language; do not use
 a translated label to dispatch an action, recognize a page, or sort type groups.
 Shortcut descriptions are translated when rendered and searched, while keycaps
-retain their accelerator spelling.
+retain their accelerator spelling. Key-column contexts in the F1 reference are
+`%{keys} …` message templates, so translators can place the untranslated keycaps.
 
 External release notes, system/GIO descriptions and errors, and toolkit-owned
 controls may follow their provider or system language. Do not rewrite the

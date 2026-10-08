@@ -94,16 +94,17 @@ impl RowWidgets {
         }
         if let Some(label) = self.log.upgrade() {
             let log = details_text(snapshot);
-            label.set_text(if log.is_empty() {
-                "No output yet."
+            label.set_text(&if log.is_empty() {
+                crate::i18n::tr("No output yet.")
             } else {
-                &log
+                log
             });
             crate::ui::accessibility::set_description(
                 &label,
                 snapshot
                     .log_truncated
-                    .then_some("Older output was discarded to bound memory"),
+                    .then(|| crate::i18n::tr("Older output was discarded to bound memory"))
+                    .as_deref(),
             );
         }
         if let Some(label) = self.created.upgrade() {
@@ -880,7 +881,8 @@ fn meta_label(snapshot: &JobSnapshot) -> String {
     if snapshot.mode == crate::model::ExecutionMode::PerItem && snapshot.progress.total_items > 0 {
         parts.push(format!(
             "{}/{}",
-            snapshot.progress.completed_items, snapshot.progress.total_items
+            crate::i18n::integer(snapshot.progress.completed_items as u64),
+            crate::i18n::integer(snapshot.progress.total_items as u64)
         ));
         if snapshot.progress.failed_items > 0 {
             parts.push(
@@ -891,7 +893,11 @@ fn meta_label(snapshot: &JobSnapshot) -> String {
     } else if let Some(script) = &snapshot.progress.script
         && let Some(total) = script.total.filter(|total| *total > 0)
     {
-        parts.push(format!("{}/{total}", script.completed));
+        parts.push(format!(
+            "{}/{}",
+            crate::i18n::integer(script.completed as u64),
+            crate::i18n::integer(total as u64)
+        ));
     }
     parts.push(compact_home(&snapshot.parent));
     parts.join(" · ")
@@ -907,14 +913,7 @@ fn compact_home(path: &std::path::Path) -> String {
 }
 
 fn format_elapsed(elapsed: Duration) -> String {
-    let seconds = elapsed.as_secs();
-    if seconds < 60 {
-        format!("{seconds}s")
-    } else if seconds < 3600 {
-        format!("{}m {:02}s", seconds / 60, seconds % 60)
-    } else {
-        format!("{}h {:02}m", seconds / 3600, (seconds % 3600) / 60)
-    }
+    crate::i18n::duration(elapsed.as_secs())
 }
 
 fn item_count(count: usize) -> String {

@@ -104,7 +104,9 @@ where
         let original = if conflict == TransferConflict::ReplaceExisting {
             match std::fs::symlink_metadata(archive_path) {
                 Ok(metadata) if metadata.is_dir() => {
-                    return Err(archive_failed("An archive cannot replace a folder"));
+                    return Err(archive_failed(crate::i18n::tr(
+                        "An archive cannot replace a folder",
+                    )));
                 }
                 Ok(metadata) => {
                     gio::File::for_path(archive_path)
@@ -123,8 +125,9 @@ where
             .map(|_| (requested_name.to_owned(), original))
             .map_err(|error| {
                 if original.is_some() {
-                    archive_failed(format!(
-                        "Could not publish the archive; the original is in Trash: {error}"
+                    archive_failed(rust_i18n::t!(
+                        "Could not publish the archive; the original is in Trash: %{error}",
+                        error = error
                     ))
                 } else {
                     archive_failed(error)
@@ -356,9 +359,10 @@ fn visit_archive_entry<Fd: AsFd>(
 ) -> Result<(), ArchiveError> {
     check_archive_cancelled(cancelled)?;
     let source = open_archive_source(parent, name).map_err(|error| {
-        archive_failed(format!(
-            "Could not compress {}: {error}",
-            archive_path.display()
+        archive_failed(rust_i18n::t!(
+            "Could not compress %{path}: %{error}",
+            path = archive_path.display(),
+            error = error
         ))
     })?;
     visit(archive_path, &source)?;
@@ -483,10 +487,11 @@ pub(super) fn compress_zip(
         };
         visit_archive_entries(entries, cancelled, &mut |path, source| {
             let name = path.to_str().ok_or_else(|| {
-                format!(
-                    "ZIP cannot preserve the non-UTF-8 name of {}. Use TAR instead.",
-                    path.display()
+                rust_i18n::t!(
+                    "ZIP cannot preserve the non-UTF-8 name of %{path}. Use TAR instead.",
+                    path = path.display()
                 )
+                .into_owned()
             })?;
             let (modified, mode) = source_metadata(source)?;
             match source {
@@ -497,10 +502,11 @@ pub(super) fn compress_zip(
                 }
                 ArchiveSource::Symlink { target, .. } => {
                     let target = target.to_str().ok_or_else(|| {
-                        format!(
-                            "ZIP cannot preserve the non-UTF-8 link target of {}. Use TAR instead.",
-                            path.display()
+                        rust_i18n::t!(
+                            "ZIP cannot preserve the non-UTF-8 link target of %{path}. Use TAR instead.",
+                            path = path.display()
                         )
+                        .into_owned()
                     })?;
                     writer
                         .add_symlink(name, target, zip_member_options(stored, modified, None)?)
@@ -758,16 +764,16 @@ pub(super) fn compress_7z(
         writer.set_content_methods(compressed_methods.clone());
         visit_archive_entries(entries, cancelled, &mut |path, source| {
             let name = path.to_str().ok_or_else(|| {
-                archive_failed(format!(
-                    "7z cannot preserve the non-UTF-8 name of {}. Use TAR instead.",
-                    path.display()
+                archive_failed(rust_i18n::t!(
+                    "7z cannot preserve the non-UTF-8 name of %{path}. Use TAR instead.",
+                    path = path.display()
                 ))
             })?;
             let (mut entry, file) = match source {
                 ArchiveSource::Symlink { .. } => {
-                    return Err(archive_failed(format!(
-                        "7z compression does not support symbolic links: {}. Use ZIP or TAR instead.",
-                        path.display()
+                    return Err(archive_failed(rust_i18n::t!(
+                        "7z compression does not support symbolic links: %{path}. Use ZIP or TAR instead.",
+                        path = path.display()
                     )));
                 }
                 ArchiveSource::Directory(file) => {

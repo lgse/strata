@@ -151,7 +151,8 @@ impl Dispatcher {
             Chord::Tabs => self.complete_tab(key),
         };
         if !completed {
-            self.shortcuts.show_feedback("Unknown chord");
+            self.shortcuts
+                .show_feedback(&crate::i18n::tr("Unknown chord"));
         }
         Some(Propagation::Stop)
     }
@@ -179,14 +180,16 @@ impl Dispatcher {
             GoTarget::FirstItem => self.view.move_displayed_cursor(-1, usize::MAX),
             GoTarget::HitFolder => {
                 if !self.view.reveal_listing_search_hit() {
-                    self.shortcuts.show_feedback("Nothing to reveal");
+                    self.shortcuts
+                        .show_feedback(&crate::i18n::tr("Nothing to reveal"));
                 }
             }
             GoTarget::Prompt => {
                 self.shortcuts.open_prompt(Prompt::Go);
             }
             GoTarget::Pin(_) if self.chooser.is_some() => {
-                self.shortcuts.show_feedback(super::chooser::UNAVAILABLE);
+                self.shortcuts
+                    .show_feedback(&crate::i18n::tr(super::chooser::UNAVAILABLE));
             }
             GoTarget::Pin(pin) => self.change_pin(pin),
             GoTarget::Place { location, .. } if self.refuse_remote_place(&location) => {}

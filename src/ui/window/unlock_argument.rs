@@ -113,7 +113,7 @@ fn start_unlock_wait(
         };
         let cancel_request = connecting_request.clone();
         let cancel_browser = browser.downgrade();
-        show_connecting_overlay(&browser, CONNECTING_MESSAGE, move || {
+        show_connecting_overlay(&browser, &crate::i18n::tr(CONNECTING_MESSAGE), move || {
             cancel_request.finish();
             if let Some(browser) = cancel_browser.upgrade() {
                 clear_status(&browser);
@@ -326,7 +326,7 @@ fn show_unlock_error(browser: &BrowserView, message: &str) {
     content.set_halign(gtk::Align::Center);
     content.set_valign(gtk::Align::Center);
 
-    let label = gtk::Label::new(Some(message));
+    let label = gtk::Label::new(Some(&crate::i18n::tr(message)));
     label.add_css_class("status-message");
     label.add_css_class("error");
     label.set_justify(gtk::Justification::Center);

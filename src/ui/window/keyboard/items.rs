@@ -473,20 +473,23 @@ impl Dispatcher {
             _ => return false,
         };
         if !filled {
-            self.shortcuts.show_feedback("Nothing to select");
+            self.shortcuts
+                .show_feedback(&crate::i18n::tr("Nothing to select"));
         }
         true
     }
 
     fn toggle_visual(&self, kind: VisualKind) {
         if !self.view.toggle_visual(kind) {
-            self.shortcuts.show_feedback("Nothing to select");
+            self.shortcuts
+                .show_feedback(&crate::i18n::tr("Nothing to select"));
         }
     }
 
     fn toggle_tenxer_cursor(&self) {
         if !self.view.toggle_cursor_and_advance() {
-            self.shortcuts.show_feedback("Nothing to select");
+            self.shortcuts
+                .show_feedback(&crate::i18n::tr("Nothing to select"));
         }
     }
 

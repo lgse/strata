@@ -17,43 +17,68 @@ pub(super) fn extract_release_archive(
     archive: &Path,
     destination: &Path,
 ) -> Result<PathBuf, String> {
-    let file = fs::File::open(archive)
-        .map_err(|error| format!("Could not open the downloaded update: {error}"))?;
+    let file = fs::File::open(archive).map_err(|error| {
+        rust_i18n::t!(
+            "Could not open the downloaded update: %{error}",
+            error = error
+        )
+        .into_owned()
+    })?;
     let decoder = flate2::read::GzDecoder::new(file);
     let mut tar = tar::Archive::new(decoder);
     let entries = tar
         .entries()
         .map(|entries| entries.raw(true))
-        .map_err(|error| format!("Could not read the downloaded update: {error}"))?;
+        .map_err(|error| {
+            rust_i18n::t!(
+                "Could not read the downloaded update: %{error}",
+                error = error
+            )
+            .into_owned()
+        })?;
 
     let mut package_dir: Option<String> = None;
     let mut extracted = 0_u64;
     let mut count = 0_usize;
 
     for entry in entries {
-        let mut entry = entry.map_err(|error| format!("Could not read the update: {error}"))?;
+        let mut entry = entry.map_err(|error| {
+            rust_i18n::t!("Could not read the update: %{error}", error = error).into_owned()
+        })?;
 
         count += 1;
         if count > MAX_ENTRIES {
-            return Err(format!(
-                "The update contains more than {MAX_ENTRIES} files and was rejected"
-            ));
+            return Err(rust_i18n::t!(
+                "The update contains more than %{count} files and was rejected",
+                count = MAX_ENTRIES
+            )
+            .into_owned());
         }
 
         let path = entry
             .path()
-            .map_err(|error| format!("The update contains an unreadable path: {error}"))?
+            .map_err(|error| {
+                rust_i18n::t!(
+                    "The update contains an unreadable path: %{error}",
+                    error = error
+                )
+                .into_owned()
+            })?
             .into_owned();
         let relative = safe_relative_path(&path)?;
         let package = relative
             .components()
             .next()
             .and_then(|component| component.as_os_str().to_str())
-            .ok_or_else(|| "The update contains a file outside its package directory".to_owned())?
+            .ok_or_else(|| {
+                crate::i18n::tr("The update contains a file outside its package directory")
+            })?
             .to_owned();
         match &package_dir {
             Some(existing) if *existing != package => {
-                return Err("The update contains more than one package directory".to_owned());
+                return Err(crate::i18n::tr(
+                    "The update contains more than one package directory",
+                ));
             }
             Some(_existing) => {}
             None => package_dir = Some(package),
@@ -61,44 +86,56 @@ pub(super) fn extract_release_archive(
 
         let kind = entry.header().entry_type();
         if !(kind.is_file() || kind.is_dir()) {
-            return Err(format!(
-                "The update contains an unsupported entry ({}) and was rejected",
-                describe_entry_type(kind)
-            ));
+            return Err(rust_i18n::t!(
+                "The update contains an unsupported entry (%{kind}) and was rejected",
+                kind = crate::i18n::tr(describe_entry_type(kind))
+            )
+            .into_owned());
         }
 
         let target = destination.join(&relative);
         if kind.is_dir() {
             if entry.size() != 0 {
-                return Err("The update contains a directory with file data".to_owned());
+                return Err(crate::i18n::tr(
+                    "The update contains a directory with file data",
+                ));
             }
-            fs::create_dir_all(&target)
-                .map_err(|error| format!("Could not extract the update: {error}"))?;
+            fs::create_dir_all(&target).map_err(|error| {
+                rust_i18n::t!("Could not extract the update: %{error}", error = error).into_owned()
+            })?;
             continue;
         }
 
         let size = entry.header().size().unwrap_or(u64::MAX);
         if size > MAX_ENTRY_BYTES {
-            return Err("The update contains an oversized file and was rejected".to_owned());
+            return Err(crate::i18n::tr(
+                "The update contains an oversized file and was rejected",
+            ));
         }
         extracted = extracted.saturating_add(size);
         if extracted > MAX_TOTAL_BYTES {
-            return Err("The update expands beyond its permitted size and was rejected".to_owned());
+            return Err(crate::i18n::tr(
+                "The update expands beyond its permitted size and was rejected",
+            ));
         }
 
         if let Some(parent) = target.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|error| format!("Could not extract the update: {error}"))?;
+            fs::create_dir_all(parent).map_err(|error| {
+                rust_i18n::t!("Could not extract the update: %{error}", error = error).into_owned()
+            })?;
         }
         write_entry(&mut entry, &target, size)?;
     }
 
     let package_dir = package_dir
         .map(|package| destination.join(package))
-        .ok_or_else(|| "The update archive is empty".to_owned())?;
+        .ok_or_else(|| crate::i18n::tr("The update archive is empty"))?;
     for required in REQUIRED_ENTRIES {
         if !package_dir.join(required).is_file() {
-            return Err(format!("The update archive contains no {required}"));
+            return Err(
+                rust_i18n::t!("The update archive contains no %{name}", name = required)
+                    .into_owned(),
+            );
         }
     }
     Ok(package_dir)
@@ -109,11 +146,16 @@ fn write_entry<R: Read>(entry: &mut R, target: &Path, size: u64) -> Result<(), S
         .write(true)
         .create_new(true)
         .open(target)
-        .map_err(|error| format!("Could not extract the update: {error}"))?;
-    let copied = std::io::copy(&mut entry.take(size), &mut file)
-        .map_err(|error| format!("Could not extract the update: {error}"))?;
+        .map_err(|error| {
+            rust_i18n::t!("Could not extract the update: %{error}", error = error).into_owned()
+        })?;
+    let copied = std::io::copy(&mut entry.take(size), &mut file).map_err(|error| {
+        rust_i18n::t!("Could not extract the update: %{error}", error = error).into_owned()
+    })?;
     if copied != size {
-        return Err("The update contains a truncated file and was rejected".to_owned());
+        return Err(crate::i18n::tr(
+            "The update contains a truncated file and was rejected",
+        ));
     }
     Ok(())
 }
@@ -129,12 +171,14 @@ fn safe_relative_path(path: &Path) -> Result<PathBuf, String> {
             }
             Component::CurDir => {}
             Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
-                return Err("The update contains a path outside its directory".to_owned());
+                return Err(crate::i18n::tr(
+                    "The update contains a path outside its directory",
+                ));
             }
         }
     }
     if depth == 0 {
-        return Err("The update contains an empty path".to_owned());
+        return Err(crate::i18n::tr("The update contains an empty path"));
     }
     Ok(relative)
 }

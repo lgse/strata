@@ -207,13 +207,18 @@ impl Completion {
             );
         }
         if let Some(meta) = self.widgets.meta.upgrade() {
-            let text = if self.pinned.get() {
-                " · pinned".to_owned()
+            let state = if self.pinned.get() {
+                crate::i18n::tr("pinned")
             } else if self.paused() {
-                " · paused".to_owned()
+                crate::i18n::tr("paused")
             } else {
-                format!(" · closing in {}s", left.as_secs_f64().ceil() as u64)
+                rust_i18n::t!(
+                    "closing in %{time}",
+                    time = crate::i18n::duration(left.as_secs_f64().ceil() as u64)
+                )
+                .into_owned()
             };
+            let text = format!(" · {state}");
             if meta.text() != text {
                 meta.set_text(&text);
             }

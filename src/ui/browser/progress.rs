@@ -64,6 +64,7 @@ pub(super) struct TransferProgressSnapshot {
 pub(super) struct FileProgressView {
     layer: RefCell<Option<gtk::Box>>,
     icon_name: String,
+    cancel_label: String,
     compact: Option<Rc<crate::ui::progress_dock::CompactProgress>>,
     overlay: gtk::Overlay,
     blurred_root: Option<BlurBin>,
@@ -98,14 +99,14 @@ fn transfer_progress_status(
     let items = if let Some(total_files) = total_files.filter(|total| *total > 0) {
         rust_i18n::t!(
             "%{completed} of %{items}",
-            completed = completed_files,
+            completed = crate::i18n::integer(completed_files as u64),
             items = crate::i18n::count("files", total_files)
         )
         .into_owned()
     } else if total_items > 0 {
         rust_i18n::t!(
             "%{completed} of %{items}",
-            completed = completed_items,
+            completed = crate::i18n::integer(completed_items as u64),
             items = crate::i18n::count("items", total_items)
         )
         .into_owned()
@@ -157,7 +158,7 @@ fn transfer_rate_status(rate: Option<f64>, transferred: u64, total: Option<u64>)
     let Some(rate) = rate.filter(|rate| rate.is_finite() && *rate > 0.0) else {
         return crate::i18n::tr("Calculating speed…");
     };
-    let speed = format!("{}/s", format_file_size(rate as u64));
+    let speed = crate::i18n::transfer_rate(rate as u64);
     let Some(remaining) = total.and_then(|total| total.checked_sub(transferred)) else {
         return speed;
     };
@@ -165,17 +166,28 @@ fn transfer_rate_status(rate: Option<f64>, transferred: u64, total: Option<u64>)
         return speed;
     }
     let seconds = (remaining as f64 / rate).ceil().max(1.0) as u64;
-    if seconds < 60 {
-        format!("{speed} · {seconds}s left")
-    } else if seconds < 3600 {
-        format!("{speed} · {}m {}s left", seconds / 60, seconds % 60)
-    } else {
-        format!(
-            "{speed} · {}h {}m left",
-            seconds / 3600,
-            seconds % 3600 / 60
-        )
-    }
+    rust_i18n::t!(
+        "%{speed} · %{time} left",
+        speed = speed,
+        time = crate::i18n::duration(seconds)
+    )
+    .into_owned()
+}
+
+pub(in crate::ui::browser) fn cancelled_operation_summary(
+    completed: usize,
+    failed: usize,
+    not_attempted: usize,
+) -> String {
+    rust_i18n::t!(
+        "%{results}.\n\nCompleted changes were not reverted.",
+        results = crate::i18n::list([
+            crate::i18n::count("items_completed", completed),
+            crate::i18n::count("items_failed", failed),
+            crate::i18n::count("items_not_attempted", not_attempted),
+        ])
+    )
+    .into_owned()
 }
 
 impl FileProgressState {
@@ -293,6 +305,7 @@ impl FileProgressState {
         self.file_progress_view.replace(Some(FileProgressView {
             layer: RefCell::new(layer),
             icon_name: icon.to_owned(),
+            cancel_label: presentation::cancel_accessible_label(title_text),
             compact: None,
             overlay: window_overlay,
             blurred_root,
@@ -632,7 +645,7 @@ impl FileProgressState {
         } else {
             view.status.set_text(&rust_i18n::t!(
                 "%{completed} / %{items}",
-                completed = completed,
+                completed = crate::i18n::integer(completed as u64),
                 items = crate::i18n::count("files", total)
             ));
             view.indeterminate.set(false);

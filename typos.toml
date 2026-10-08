@@ -28,6 +28,8 @@ extend-ignore-re = [
   '"Redémarrer maintenant"',
   # Non-English values in the multilingual count and calendar catalogs.
   '(?m)^\s*"(?:fr|de|es|ja|pt-BR|ko|vi|it|ru)": ".*"',
+  # Localized desktop-entry values.
+  '(?m)^\w+\[(?:fr|de|es|ja|pt_BR|ko|vi|it|ru)\]=.*$',
 ]
 
 [default.extend-words]

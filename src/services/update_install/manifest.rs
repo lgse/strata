@@ -74,14 +74,14 @@ impl VerifiedRelease {
             }
             size = size.saturating_add(count as u64);
             if size > self.artifact.size {
-                return Err("The update exceeds its signed size".to_owned().into());
+                return Err(crate::i18n::tr("The update exceeds its signed size").into());
             }
             context.update(&buffer[..count]);
         }
         if size != self.artifact.size || hex::encode(context.finish()) != self.artifact.sha256 {
-            return Err("The update does not match its signed size and checksum"
-                .to_owned()
-                .into());
+            return Err(
+                crate::i18n::tr("The update does not match its signed size and checksum").into(),
+            );
         }
         Ok(())
     }
@@ -90,9 +90,17 @@ impl VerifiedRelease {
         let mut contents = String::new();
         File::open(package.join("SOURCE_COMMIT"))
             .and_then(|file| file.take(128).read_to_string(&mut contents))
-            .map_err(|error| format!("Could not read the update's source commit: {error}"))?;
+            .map_err(|error| {
+                rust_i18n::t!(
+                    "Could not read the update's source commit: %{error}",
+                    error = error
+                )
+                .into_owned()
+            })?;
         if contents.len() >= 128 || contents.trim() != self.source_commit {
-            return Err("The packaged source commit does not match the signed manifest".to_owned());
+            return Err(crate::i18n::tr(
+                "The packaged source commit does not match the signed manifest",
+            ));
         }
         Ok(())
     }
@@ -103,8 +111,9 @@ pub(super) fn authenticate(
     signatures: &[u8],
     request: &InstallRequest,
 ) -> Result<VerifiedRelease, String> {
-    let keys: Vec<String> = serde_json::from_str(TRUSTED_KEYS_JSON)
-        .map_err(|error| format!("Invalid built-in release keys: {error}"))?;
+    let keys: Vec<String> = serde_json::from_str(TRUSTED_KEYS_JSON).map_err(|error| {
+        rust_i18n::t!("Invalid built-in release keys: %{error}", error = error).into_owned()
+    })?;
     let keys: Vec<&str> = keys.iter().map(String::as_str).collect();
     authenticate_with_keys(bytes, signatures, request, &keys)
 }
@@ -117,13 +126,14 @@ fn authenticate_with_keys(
 ) -> Result<VerifiedRelease, String> {
     super::verified_download_url(request)?;
     if bytes.len() as u64 > MAX_MANIFEST_BYTES || signatures.len() as u64 > MAX_SIGNATURES_BYTES {
-        return Err("The signed update metadata is too large".to_owned());
+        return Err(crate::i18n::tr("The signed update metadata is too large"));
     }
-    let signatures: Signatures = serde_json::from_slice(signatures)
-        .map_err(|error| format!("Invalid update signatures: {error}"))?;
+    let signatures: Signatures = serde_json::from_slice(signatures).map_err(|error| {
+        rust_i18n::t!("Invalid update signatures: %{error}", error = error).into_owned()
+    })?;
     if signatures.schema != 1 || signatures.signatures.is_empty() || signatures.signatures.len() > 8
     {
-        return Err("Unsupported update signature format".to_owned());
+        return Err(crate::i18n::tr("Unsupported update signature format"));
     }
     let message = [DOMAIN, bytes].concat();
     let verified = keys.iter().any(|key| {
@@ -147,11 +157,14 @@ fn authenticate_with_keys(
         })
     });
     if !verified {
-        return Err("No trusted release key signed this update manifest".to_owned());
+        return Err(crate::i18n::tr(
+            "No trusted release key signed this update manifest",
+        ));
     }
     // Verify the original bytes, not a reserialized JSON representation.
-    let manifest: Manifest = serde_json::from_slice(bytes)
-        .map_err(|error| format!("Invalid signed update manifest: {error}"))?;
+    let manifest: Manifest = serde_json::from_slice(bytes).map_err(|error| {
+        rust_i18n::t!("Invalid signed update manifest: %{error}", error = error).into_owned()
+    })?;
     if manifest.schema != 1
         || manifest.repository != REPOSITORY
         || manifest.tag != request.tag
@@ -159,12 +172,14 @@ fn authenticate_with_keys(
         || manifest.artifacts.is_empty()
         || manifest.artifacts.len() > 8
     {
-        return Err("The signed manifest does not identify the selected Strata release".to_owned());
+        return Err(crate::i18n::tr(
+            "The signed manifest does not identify the selected Strata release",
+        ));
     }
     let version = request
         .tag
         .strip_prefix('v')
-        .ok_or_else(|| "Invalid release tag".to_owned())?;
+        .ok_or_else(|| crate::i18n::tr("Invalid release tag"))?;
     let mut names = HashSet::new();
     let mut targets = HashSet::new();
     for artifact in &manifest.artifacts {
@@ -178,7 +193,9 @@ fn authenticate_with_keys(
             || !names.insert(&artifact.name)
             || !targets.insert(&artifact.target)
         {
-            return Err("The signed manifest contains invalid or duplicate artifacts".to_owned());
+            return Err(crate::i18n::tr(
+                "The signed manifest contains invalid or duplicate artifacts",
+            ));
         }
     }
     let artifact = manifest
@@ -189,7 +206,7 @@ fn authenticate_with_keys(
                 && artifact.target == format!("{}-unknown-linux-gnu", std::env::consts::ARCH)
         })
         .ok_or_else(|| {
-            "The signed manifest does not contain this architecture's update".to_owned()
+            crate::i18n::tr("The signed manifest does not contain this architecture's update")
         })?;
     Ok(VerifiedRelease {
         artifact,

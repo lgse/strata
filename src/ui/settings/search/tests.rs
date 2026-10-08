@@ -22,6 +22,13 @@ fn localized_setting_titles_keep_stable_search_targets() {
                     assert!(matches.ids.contains("language"));
                 }
             }
+            rust_i18n::set_locale("de");
+            for query in ["10xer", "Modus"] {
+                assert!(
+                    find_matches(&normalized(query)).ids.contains("tenxer"),
+                    "de: {query}"
+                );
+            }
         },
     );
 }

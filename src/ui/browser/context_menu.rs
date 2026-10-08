@@ -2040,13 +2040,13 @@ impl OpenWithSelection {
     }
 }
 
+/// `explanation` is an untranslated source message.
 fn set_open_with_explanation(button: &gtk::Button, explanation: Option<&str>) {
+    let explanation = explanation.map(crate::i18n::tr).unwrap_or_default();
     if let Some(option) = button.downcast_ref::<presentation::MenuOption>() {
-        option.set_menu_description(explanation.unwrap_or(""));
+        option.set_menu_description(explanation.as_str());
     }
-    button.update_property(&[gtk::accessible::Property::Description(
-        explanation.unwrap_or(""),
-    )]);
+    button.update_property(&[gtk::accessible::Property::Description(&explanation)]);
 }
 
 fn prepare_open_with(

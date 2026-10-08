@@ -196,9 +196,13 @@ impl<'a> ExtractionSession<'a> {
     /// Sequential formats that cannot cheaply sum headers rely on per-member checks.
     pub(super) fn preflight_claimed_size(&self, claimed: u128) -> Result<(), ArchiveError> {
         match self.remaining() {
-            Some(available) if claimed > u128::from(available) => Err(archive_failed(format!(
-                "Archive declared size ({claimed} bytes) exceeds the {available} bytes of free space at the destination"
-            ))),
+            Some(available) if claimed > u128::from(available) => {
+                Err(archive_failed(rust_i18n::t!(
+                    "Archive declared size (%{claimed} bytes) exceeds the %{available} bytes of free space at the destination",
+                    claimed = claimed,
+                    available = available
+                )))
+            }
             _ => Ok(()),
         }
     }
@@ -210,8 +214,11 @@ impl<'a> ExtractionSession<'a> {
 
     fn ensure_member_fits(&self, name: &str, declared: u64) -> Result<(), ArchiveError> {
         match self.remaining() {
-            Some(available) if declared > available => Err(archive_failed(format!(
-                "Archive member `{name}` declared {declared} bytes, but only {available} bytes are free at the destination"
+            Some(available) if declared > available => Err(archive_failed(rust_i18n::t!(
+                "Archive member `%{name}` declared %{declared} bytes, but only %{available} bytes are free at the destination",
+                name = name,
+                declared = declared,
+                available = available
             ))),
             _ => Ok(()),
         }
@@ -231,9 +238,10 @@ impl<'a> ExtractionSession<'a> {
             .and_then(|path| self.created_names.get(&path))
             .cloned()
             .ok_or_else(|| {
-                archive_failed(format!(
-                    "Archive member `{name}` is a hard link to `{}`, which was not extracted",
-                    target.display()
+                archive_failed(rust_i18n::t!(
+                    "Archive member `%{name}` is a hard link to `%{target}`, which was not extracted",
+                    name = name,
+                    target = target.display()
                 ))
             })
     }
@@ -408,10 +416,7 @@ impl<'a> ExtractionSession<'a> {
                     .collect();
                 let name = name.to_string_lossy().into_owned();
                 restore_directory_metadata(directory, published).map_err(|error| {
-                    ArchiveError::Failed(append_sentence(
-                        &error,
-                        &format!("Extracted entries remain in `{name}`."),
-                    ))
+                    ArchiveError::Failed(append_sentence(&error, &entries_remain_in(&name)))
                 })?;
                 Ok(ArchiveOutcome::Completed(Some(name)))
             }
@@ -485,10 +490,7 @@ impl Drop for ExtractionSession<'_> {
 
 fn failure_message(message: String, kept: Result<Option<String>, String>) -> String {
     match kept {
-        Ok(Some(folder)) => append_sentence(
-            &message,
-            &format!("Extracted entries remain in `{folder}`."),
-        ),
+        Ok(Some(folder)) => append_sentence(&message, &entries_remain_in(&folder)),
         Ok(None) => message,
         Err(error) => append_sentence(&message, &error),
     }
@@ -539,8 +541,9 @@ fn restore_directory_metadata(
 
 fn validate_link_target(name: &str, target: &[u8]) -> Result<(), ArchiveError> {
     if target.is_empty() || target.len() as u64 > MAX_SYMLINK_TARGET_BYTES || target.contains(&0) {
-        return Err(archive_failed(format!(
-            "Archive member `{name}` has an invalid symbolic link target"
+        return Err(archive_failed(rust_i18n::t!(
+            "Archive member `%{name}` has an invalid symbolic link target",
+            name = name
         )));
     }
     Ok(())
@@ -550,7 +553,7 @@ fn remove_empty(parent: &ExtractionDestination, staging: &Staging) -> Result<(),
     match parent.remove_empty_staging(&staging.name) {
         Ok(true) => Ok(()),
         Ok(false) => Err(staging_kept(
-            "Some extracted entries were not published",
+            &crate::i18n::tr("Some extracted entries were not published"),
             staging,
         )),
         Err(error) => Err(archive_failed(error)),
@@ -584,17 +587,17 @@ fn keep_or_remove(
 }
 
 fn staging_kept_message(error: &str, staging: &Staging) -> String {
-    append_sentence(
-        error,
-        &format!(
-            "Extracted entries remain in `{}`.",
-            staging.name.to_string_lossy()
-        ),
-    )
+    append_sentence(error, &entries_remain_in(&staging.name.to_string_lossy()))
+}
+
+fn entries_remain_in(folder: &str) -> String {
+    rust_i18n::t!("Extracted entries remain in `%{folder}`.", folder = folder).into_owned()
 }
 
 fn append_sentence(message: &str, sentence: &str) -> String {
-    let separator = if message.ends_with(['.', '!', '?']) {
+    let separator = if message.ends_with('。') {
+        ""
+    } else if message.ends_with(['.', '!', '?']) {
         " "
     } else {
         ". "
@@ -607,20 +610,27 @@ fn staging_kept(error: &str, staging: &Staging) -> ArchiveError {
 }
 
 fn declared_size_exceeded(name: &str, declared: u64) -> ArchiveError {
-    archive_failed(format!(
-        "Archive member `{name}` declared {declared} bytes but produced more"
+    archive_failed(rust_i18n::t!(
+        "Archive member `%{name}` declared %{declared} bytes but produced more",
+        name = name,
+        declared = declared
     ))
 }
 
 fn declared_size_short(name: &str, declared: u64, actual: u64) -> ArchiveError {
-    archive_failed(format!(
-        "Archive member `{name}` declared {declared} bytes but produced {actual} bytes"
+    archive_failed(rust_i18n::t!(
+        "Archive member `%{name}` declared %{declared} bytes but produced %{actual} bytes",
+        name = name,
+        declared = declared,
+        actual = actual
     ))
 }
 
 fn destination_full(name: &str, available: u64) -> ArchiveError {
-    archive_failed(format!(
-        "Not enough free space at the destination to extract `{name}` ({available} bytes available)"
+    archive_failed(rust_i18n::t!(
+        "Not enough free space at the destination to extract `%{name}` (%{available} bytes available)",
+        name = name,
+        available = available
     ))
 }
 

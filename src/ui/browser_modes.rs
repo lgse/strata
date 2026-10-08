@@ -1961,7 +1961,9 @@ pub(crate) fn filter_controls(tooltip: &str) -> (gtk::Entry, gtk::Revealer, gtk:
         .transition_type(gtk::RevealerTransitionType::SlideDown)
         .child(&row)
         .build();
-    let button = gtk::ToggleButton::builder().tooltip_text(tooltip).build();
+    let button = gtk::ToggleButton::builder()
+        .tooltip_text(crate::i18n::tr(tooltip))
+        .build();
     button.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::FUNNEL,
     )));
@@ -3019,7 +3021,7 @@ fn list_navigation(browser: &Rc<Browser>) -> gtk::Box {
         ),
     ] {
         let button = gtk::Button::builder()
-            .tooltip_text(tooltip)
+            .tooltip_text(crate::i18n::tr(tooltip))
             .sensitive(available)
             .build();
         button.set_child(Some(&crate::assets::chrome_icon(icon)));

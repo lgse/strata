@@ -33,10 +33,14 @@ pub(super) fn run(
                 std::thread::sleep(Duration::from_millis(10));
             }
             Err(error) => {
-                return Err(InstallStop::Failed(format!(
-                    "Could not run {:?}: {error}",
-                    command.get_program()
-                )));
+                return Err(InstallStop::Failed(
+                    rust_i18n::t!(
+                        "Could not run %{program}: %{error}",
+                        program = format!("{:?}", command.get_program()),
+                        error = error
+                    )
+                    .into_owned(),
+                ));
             }
         }
     };
@@ -59,9 +63,9 @@ pub(super) fn run(
         loop {
             cancel.check()?;
             if Instant::now() >= deadline {
-                return Err(InstallStop::Failed(
-                    "Update verification timed out".to_owned(),
-                ));
+                return Err(InstallStop::Failed(crate::i18n::tr(
+                    "Update verification timed out",
+                )));
             }
             drain(&mut stdout, &mut out)?;
             drain(&mut stderr, &mut err)?;
@@ -91,9 +95,9 @@ fn drain(reader: &mut impl Read, output: &mut Vec<u8>) -> Result<(), InstallStop
             Ok(0) => return Ok(()),
             Ok(count) => {
                 if output.len() + count > MAX_OUTPUT {
-                    return Err(InstallStop::Failed(
-                        "Update verification produced too much output".to_owned(),
-                    ));
+                    return Err(InstallStop::Failed(crate::i18n::tr(
+                        "Update verification produced too much output",
+                    )));
                 }
                 output.extend_from_slice(&buffer[..count]);
             }

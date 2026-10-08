@@ -13,6 +13,7 @@ use crate::model::{
 };
 use crate::services::{
     ActionHandle, ActionLoadFailure, ActionRegistry, ActionScript, ActionWriteRequest,
+    actions::ActionStoreError,
 };
 use crate::ui::{
     actions::{ACTION_ICON_CHOICES, action_icon, is_known_action_icon},
@@ -43,10 +44,10 @@ pub(super) fn actions_page() -> gtk::Widget {
     let content = page_content();
     content.add_css_class("settings-actions-page");
     append_heading(&content, "CUSTOM ACTIONS");
-    let description = gtk::Label::new(Some(
+    let description = gtk::Label::new(Some(&crate::i18n::tr(
         "Add your own scripts to the file and folder context menus. \
          Actions run with your permissions, so only enable scripts you trust.",
-    ));
+    )));
     description.set_xalign(0.0);
     description.set_wrap(true);
     description.add_css_class("settings-section-description");
@@ -255,7 +256,7 @@ impl PageState {
                 definition: definition.clone(),
                 script,
             })
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| store_error_message(&error))?;
         PageState::render(self);
         Ok(())
     }
@@ -267,7 +268,7 @@ impl PageState {
                 show_error_dialog(
                     button,
                     &crate::i18n::tr("Unable to read the action"),
-                    &error.to_string(),
+                    &store_error_message(&error),
                 );
                 return;
             }
@@ -375,7 +376,7 @@ impl PageState {
                 EditorMode::Create => state
                     .registry
                     .create(&ActionWriteRequest { definition, script })
-                    .map_err(|error| error.to_string()),
+                    .map_err(|error| store_error_message(&error)),
                 EditorMode::Edit => state.save(&definition, script),
             };
             match result {
@@ -398,7 +399,7 @@ impl PageState {
                 show_error_dialog(
                     button,
                     &crate::i18n::tr("Unable to duplicate the action"),
-                    &error.to_string(),
+                    &store_error_message(&error),
                 );
                 return;
             }
@@ -423,7 +424,7 @@ impl PageState {
             show_error_dialog(
                 button,
                 &crate::i18n::tr("Unable to duplicate the action"),
-                &error.to_string(),
+                &store_error_message(&error),
             );
         }
     }
@@ -462,7 +463,7 @@ impl PageState {
                     show_error_dialog(
                         &anchor,
                         &crate::i18n::tr("Unable to import the action"),
-                        &error.to_string(),
+                        &store_error_message(&error),
                     );
                 }
             }
@@ -496,7 +497,7 @@ impl PageState {
                 Err(error) => show_error_dialog(
                     &anchor,
                     &crate::i18n::tr("Unable to export the action"),
-                    &error.to_string(),
+                    &store_error_message(&error),
                 ),
             }
         });
@@ -546,7 +547,7 @@ impl PageState {
                 Err(error) => show_error_dialog(
                     &failure_anchor,
                     &crate::i18n::tr("Unable to delete the action"),
-                    &error.to_string(),
+                    &store_error_message(&error),
                 ),
             }
         });
@@ -566,7 +567,11 @@ enum ActionRowAction {
 fn problem_row(failure: &ActionLoadFailure) -> gtk::Box {
     let row = gtk::Box::new(gtk::Orientation::Vertical, 2);
     row.add_css_class("settings-option");
-    let title = gtk::Label::new(Some(&format!("{}: {}", failure.directory, failure.error)));
+    let title = gtk::Label::new(Some(&rust_i18n::t!(
+        "%{name}: %{error}",
+        name = failure.directory,
+        error = store_error_message(&failure.error)
+    )));
     title.set_xalign(0.0);
     title.set_wrap(true);
     title.set_wrap_mode(gtk::pango::WrapMode::WordChar);
@@ -825,11 +830,11 @@ impl EditorForm {
 
         crate::ui::accessibility::set_description(
             &id,
-            Some(if mode == EditorMode::Create {
+            Some(&crate::i18n::tr(if mode == EditorMode::Create {
                 "Folder name: lowercase letters, digits, and dashes. Leave blank to use the name."
             } else {
                 "The action id cannot change; duplicate it to create a variant."
-            }),
+            })),
         );
         let kind_row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         kind_row.append(&files);
@@ -1044,15 +1049,16 @@ impl EditorForm {
 
     fn apply_example(&self, example: &'static ActionExample) {
         let previous = self.last_example.get();
+        let tr = crate::i18n::tr;
         if self.name.text().is_empty()
-            || previous.is_some_and(|previous| self.name.text() == previous.name)
+            || previous.is_some_and(|previous| self.name.text() == tr(previous.name))
         {
-            self.name.set_text(example.name);
+            self.name.set_text(&tr(example.name));
         }
         if self.description.text().is_empty()
-            || previous.is_some_and(|previous| self.description.text() == previous.description)
+            || previous.is_some_and(|previous| self.description.text() == tr(previous.description))
         {
-            self.description.set_text(example.description);
+            self.description.set_text(&tr(example.description));
         }
         let runtime = example.runtime();
         let changed_runtime = self.selected_runtime.get() != runtime;
@@ -1099,7 +1105,11 @@ impl EditorForm {
     fn read(&self) -> Result<(ActionDefinition, Option<ActionScript>), String> {
         let name = self.name.text().trim().to_owned();
         if name.is_empty() {
-            return Err(self.invalid_field(GENERAL_TAB, &self.name, "Enter a name"));
+            return Err(self.invalid_field(
+                GENERAL_TAB,
+                &self.name,
+                crate::i18n::tr("Enter a name"),
+            ));
         }
         let id = match self.mode {
             EditorMode::Create => {
@@ -1116,7 +1126,7 @@ impl EditorForm {
             return Err(self.invalid_field(
                 BEHAVIOR_TAB,
                 &self.extensions,
-                "That is too many extensions",
+                crate::i18n::tr("That is too many extensions"),
             ));
         }
         let arguments = text_contents(&self.arguments);
@@ -1126,7 +1136,7 @@ impl EditorForm {
             return Err(self.invalid_field(
                 SCRIPT_TAB,
                 &self.arguments,
-                "That is too many arguments",
+                crate::i18n::tr("That is too many arguments"),
             ));
         }
         let mut kinds = Vec::new();
@@ -1140,7 +1150,7 @@ impl EditorForm {
             return Err(self.invalid_field(
                 BEHAVIOR_TAB,
                 &self.files,
-                "Choose Files, Folders, or both",
+                crate::i18n::tr("Choose Files, Folders, or both"),
             ));
         }
         let max_items = match self.max_items.text().trim() {
@@ -1149,20 +1159,24 @@ impl EditorForm {
                 self.invalid_field(
                     BEHAVIOR_TAB,
                     &self.max_items,
-                    "The maximum item count must be a number",
+                    crate::i18n::tr("The maximum item count must be a number"),
                 )
             })?),
         };
         let runtime = self.selected_runtime.get();
         let is_script = runtime != ActionRuntime::Command;
         if !is_script && self.program.text().trim().is_empty() {
-            return Err(self.invalid_field(SCRIPT_TAB, &self.program, "Enter the program to run"));
+            return Err(self.invalid_field(
+                SCRIPT_TAB,
+                &self.program,
+                crate::i18n::tr("Enter the program to run"),
+            ));
         }
         if is_script && self.entrypoint.text().trim().is_empty() {
             return Err(self.invalid_field(
                 SCRIPT_TAB,
                 &self.entrypoint,
-                "Enter a script file name",
+                crate::i18n::tr("Enter a script file name"),
             ));
         }
         let definition = ActionDefinition {
@@ -1234,7 +1248,7 @@ impl EditorForm {
                 }
                 _ => (SCRIPT_TAB, self.arguments.upcast_ref()),
             };
-            self.invalid_field(tab, field, error.to_string())
+            self.invalid_field(tab, field, error.user_message())
         })?;
         let script = match definition.run.script_entrypoint() {
             Some(entrypoint) => {
@@ -1277,29 +1291,38 @@ fn editor_page(tabs: &gtk::Notebook, title: &str) -> gtk::Box {
         .child(&page)
         .build();
     scroll.add_css_class("settings-content-scroll");
-    let label = gtk::Label::new(Some(title));
+    let label = gtk::Label::new(Some(&crate::i18n::tr(title)));
     tabs.append_page(&scroll, Some(&label));
     page
 }
 
+/// Takes English source text and translates it.
 fn label_control(control: &impl IsA<gtk::Widget>, title: &str, description: &str) {
     control.as_ref().update_property(&[
-        gtk::accessible::Property::Label(title),
-        gtk::accessible::Property::Description(description),
+        gtk::accessible::Property::Label(&crate::i18n::tr(title)),
+        gtk::accessible::Property::Description(&translate_optional(description)),
     ]);
+}
+
+fn translate_optional(text: &str) -> String {
+    if text.is_empty() {
+        String::new()
+    } else {
+        crate::i18n::tr(text)
+    }
 }
 
 fn field(title: &str, description: &str, control: &impl IsA<gtk::Widget>) -> gtk::Box {
     let row = gtk::Box::new(gtk::Orientation::Vertical, 8);
     row.add_css_class("settings-action-field");
     let heading = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-    let label = gtk::Label::new(Some(title));
+    let label = gtk::Label::new(Some(&crate::i18n::tr(title)));
     label.set_xalign(0.0);
     label.set_hexpand(true);
     label.add_css_class("settings-option-title");
     heading.append(&label);
     if !description.is_empty() {
-        let hint = gtk::Label::new(Some(description));
+        let hint = gtk::Label::new(Some(&crate::i18n::tr(description)));
         hint.set_xalign(1.0);
         hint.add_css_class("settings-option-description");
         heading.append(&hint);
@@ -1390,8 +1413,12 @@ fn icon_chooser(selected: &Rc<std::cell::RefCell<Option<String>>>) -> gtk::Box {
         let button = gtk::ToggleButton::new();
         button.add_css_class("settings-action-icon-choice");
         button.set_child(Some(&picker_icon(action_icon(Some(slug)))));
-        button.set_tooltip_text(Some(slug));
-        label_control(&button, &format!("{slug} icon"), "");
+        let icon_name = action_icon_name(slug);
+        button.set_tooltip_text(Some(&icon_name));
+        button.update_property(&[gtk::accessible::Property::Label(&rust_i18n::t!(
+            "%{icon} icon",
+            icon = icon_name
+        ))]);
         if let Some(first) = first.as_ref() {
             button.set_group(Some(first));
         } else {
@@ -1417,7 +1444,11 @@ fn icon_chooser(selected: &Rc<std::cell::RefCell<Option<String>>>) -> gtk::Box {
                     } else {
                         crate::assets::icons::PLUS
                     })));
-                    more.set_tooltip_text(Some(if is_more { slug } else { "More icons" }));
+                    more.set_tooltip_text(Some(&if is_more {
+                        action_icon_name(slug)
+                    } else {
+                        crate::i18n::tr("More icons")
+                    }));
                     if is_more {
                         more.add_css_class("selected");
                     } else {
@@ -1433,7 +1464,7 @@ fn icon_chooser(selected: &Rc<std::cell::RefCell<Option<String>>>) -> gtk::Box {
     if !quick.contains(&current) {
         more.set_child(Some(&picker_icon(action_icon(Some(current)))));
         more.add_css_class("selected");
-        more.set_tooltip_text(Some(current));
+        more.set_tooltip_text(Some(&action_icon_name(current)));
     }
     row.append(&more);
     row
@@ -1514,21 +1545,24 @@ fn python_template() -> String {
 }
 
 fn summary(action: &ActionHandle) -> String {
-    let mut parts = vec![action.definition.run.runtime.label().to_owned()];
+    let tr = crate::i18n::tr;
+    let mut parts = vec![action.definition.run.runtime.localized_label()];
     parts.push(match action.definition.run.mode {
-        ExecutionMode::PerItem => "per item".to_owned(),
-        ExecutionMode::WholeSelection => "whole selection".to_owned(),
+        ExecutionMode::PerItem => tr("per item"),
+        ExecutionMode::WholeSelection => tr("whole selection"),
     });
-    match action.definition.when.kinds.as_slice() {
-        [InputKind::File] => parts.push("files".to_owned()),
-        [InputKind::Folder] => parts.push("folders".to_owned()),
-        _ => parts.push("files and folders".to_owned()),
-    }
+    parts.push(match action.definition.when.kinds.as_slice() {
+        [InputKind::File] => tr("files"),
+        [InputKind::Folder] => tr("folders"),
+        _ => tr("files and folders"),
+    });
     if !action.definition.when.extensions.is_empty() {
-        parts.push(action.definition.when.extensions.join(", "));
+        parts.push(crate::i18n::list(
+            action.definition.when.extensions.iter().cloned(),
+        ));
     }
     if !action.definition.enabled {
-        parts.push("disabled".to_owned());
+        parts.push(tr("disabled"));
     }
     if let Some(reason) = action.unavailable_reason() {
         parts.push(reason.to_owned());
@@ -1537,11 +1571,59 @@ fn summary(action: &ActionHandle) -> String {
 }
 
 fn copy_name(name: &str) -> String {
-    let candidate = format!("{name} copy");
+    let candidate = rust_i18n::t!("%{name} copy", name = name);
     candidate
         .chars()
         .take(crate::model::MAX_ACTION_NAME_CHARS)
         .collect()
+}
+
+/// Localized counterpart of `ActionStoreError`'s English `Display`, which stays for logs.
+fn store_error_message(error: &ActionStoreError) -> String {
+    use rust_i18n::t;
+    match error {
+        ActionStoreError::Invalid(error) => return error.user_message(),
+        ActionStoreError::Io(message) => return message.clone(),
+        ActionStoreError::AlreadyExists(name) => {
+            t!("An action named “%{name}” already exists", name = name)
+        }
+        ActionStoreError::NotFound(id) => t!("The action “%{id}” no longer exists", id = id),
+        ActionStoreError::IdMismatch {
+            declared,
+            directory,
+        } => t!(
+            "The manifest declares id “%{declared}”, but its folder is named “%{directory}”; they must match",
+            declared = declared,
+            directory = directory
+        ),
+        ActionStoreError::NotARegularFile(name) => t!(
+            "“%{name}” must be a regular file, not a link or directory",
+            name = name
+        ),
+        ActionStoreError::MissingEntrypoint(name) => t!(
+            "The script “%{name}” is missing beside action.toml",
+            name = name
+        ),
+        ActionStoreError::MissingProgram(program) => {
+            t!("“%{program}” was not found on your PATH", program = program)
+        }
+        ActionStoreError::MissingInterpreter(program) => t!(
+            "The interpreter “%{program}” was not found. Install it, or point the action at an interpreter that exists",
+            program = program
+        ),
+        ActionStoreError::NotAnActionDirectory(path) => t!(
+            "“%{path}” does not contain an action.toml file",
+            path = path
+        ),
+    }
+    .into_owned()
+}
+
+/// Semantic keys; a missing entry falls back to the slug instead of the key.
+fn action_icon_name(slug: &str) -> String {
+    let key = format!("action_icon.{slug}");
+    let name = crate::i18n::tr(&key);
+    if name == key { slug.to_owned() } else { name }
 }
 
 fn unique_copy_id(registry: &ActionRegistry, id: &str) -> Result<String, String> {

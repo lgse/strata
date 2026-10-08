@@ -84,10 +84,10 @@ fn copy_recursively_fat_family(
 }
 
 use super::{
-    FAT32_MAX_FILE_SIZE, LocalDeleteRoot, LocalFileIdentity, LocalOperationProvider, MergeHooks,
-    MergePlan, MountTable, RestoreEntry, StageCopy, StageOverwrite, StagedOriginalLookup,
-    TRANSFER_PROGRESS_INTERVAL, TransferProgressTracker, TransferStop, await_cancellable,
-    copy_failure_after_cleanup, copy_failure_on_fat32, copy_new_recursively,
+    FAT32_MAX_FILE_SIZE, FailedAction, LocalDeleteRoot, LocalFileIdentity, LocalOperationProvider,
+    MergeHooks, MergePlan, MountTable, RestoreEntry, StageCopy, StageOverwrite,
+    StagedOriginalLookup, TRANSFER_PROGRESS_INTERVAL, TransferProgressTracker, TransferStop,
+    await_cancellable, copy_failure_after_cleanup, copy_failure_on_fat32, copy_new_recursively,
     copy_new_recursively_with_progress, copy_new_remote_file_with, copy_recursively,
     copy_recursively_with_progress, deletion_error_message, deletion_error_summary,
     duplicate_candidate_name, fat_sanitized_name, fat32_file_size_limit, home_trash_entries_at,

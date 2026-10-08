@@ -121,12 +121,14 @@ impl Dispatcher {
 
     fn yank(&self, cut: bool) {
         match self.view.yank_targets(cut) {
-            Yank::Nothing => self.shortcuts.show_feedback(if cut {
+            Yank::Nothing => self.shortcuts.show_feedback(&crate::i18n::tr(if cut {
                 "Nothing to cut"
             } else {
                 "Nothing to yank"
-            }),
-            Yank::Refused => self.shortcuts.show_feedback("Can\u{2019}t cut these items"),
+            })),
+            Yank::Refused => self
+                .shortcuts
+                .show_feedback(&crate::i18n::tr("Can’t cut these items")),
             Yank::Done => {}
         }
     }
@@ -135,13 +137,14 @@ impl Dispatcher {
         let shortcuts = self.shortcuts.clone();
         self.view.paste_preferring(
             focus,
-            Rc::new(move || shortcuts.show_feedback("Nothing to paste")),
+            Rc::new(move || shortcuts.show_feedback(&crate::i18n::tr("Nothing to paste"))),
         );
     }
 
     fn delete_targets(&self, permanent: bool) {
         if !self.view.confirm_targets_delete(permanent) {
-            self.shortcuts.show_feedback("Nothing to delete");
+            self.shortcuts
+                .show_feedback(&crate::i18n::tr("Nothing to delete"));
         }
     }
 
@@ -153,12 +156,13 @@ impl Dispatcher {
             return;
         }
         let Some(entry) = self.view.focused_target() else {
-            self.shortcuts.show_feedback("Nothing to rename");
+            self.shortcuts
+                .show_feedback(&crate::i18n::tr("Nothing to rename"));
             return;
         };
         if !crate::ui::browser::can_rename(&entry) {
             self.shortcuts
-                .show_feedback("Can\u{2019}t rename items here");
+                .show_feedback(&crate::i18n::tr("Can’t rename items here"));
             return;
         }
         let name = entry.display_name.clone();
@@ -176,7 +180,7 @@ impl Dispatcher {
     fn open_transfer_prompt(&self, kind: Prompt) {
         match self.view.transfer_targets(kind == Prompt::MoveTo) {
             Ok(targets) => self.open_destination_prompt(kind, targets),
-            Err(reason) => self.shortcuts.show_feedback(reason),
+            Err(reason) => self.shortcuts.show_feedback(&crate::i18n::tr(reason)),
         }
     }
 
@@ -189,10 +193,12 @@ impl Dispatcher {
     fn restore_targets(&self) {
         use crate::ui::browser::TargetCommand;
         match self.view.restore_targets() {
-            TargetCommand::Nothing => self.shortcuts.show_feedback("Nothing to restore"),
+            TargetCommand::Nothing => self
+                .shortcuts
+                .show_feedback(&crate::i18n::tr("Nothing to restore")),
             TargetCommand::Refused => self
                 .shortcuts
-                .show_feedback("Only items in Trash can be restored"),
+                .show_feedback(&crate::i18n::tr("Only items in Trash can be restored")),
             TargetCommand::Started => {}
         }
     }
@@ -202,7 +208,7 @@ impl Dispatcher {
             self.shortcuts.open_prompt(Prompt::Create);
         } else {
             self.shortcuts
-                .show_feedback("Can\u{2019}t create items here");
+                .show_feedback(&crate::i18n::tr("Can’t create items here"));
         }
     }
 
@@ -213,7 +219,8 @@ impl Dispatcher {
             _ => return false,
         };
         if !self.view.copy_target_text(names) {
-            self.shortcuts.show_feedback("Nothing to copy");
+            self.shortcuts
+                .show_feedback(&crate::i18n::tr("Nothing to copy"));
         }
         true
     }
@@ -250,7 +257,7 @@ impl Dispatcher {
                 ("e", "Extract here"),
                 ("E", "Extract to\u{2026}"),
             ]
-            .map(|(key, action)| (key.to_owned(), action.to_owned())),
+            .map(|(key, action)| (key.to_owned(), crate::i18n::tr(action))),
         );
         self.armed_actions.replace(Some(ArmedActions {
             ids: numbered
@@ -276,7 +283,8 @@ impl Dispatcher {
         };
         let numbered = self.view.numbered_actions();
         if numbered.targets != armed.targets {
-            self.shortcuts.show_feedback("Selection changed");
+            self.shortcuts
+                .show_feedback(&crate::i18n::tr("Selection changed"));
             return true;
         }
         let Some(action) = numbered.actions.get(slot - 1).cloned() else {
@@ -285,7 +293,8 @@ impl Dispatcher {
             return true;
         };
         if armed.ids.get(slot - 1).map(String::as_str) != Some(action.id()) {
-            self.shortcuts.show_feedback("Actions changed");
+            self.shortcuts
+                .show_feedback(&crate::i18n::tr("Actions changed"));
             return true;
         }
         self.view.run_numbered_action(numbered, action);
@@ -298,23 +307,25 @@ impl Dispatcher {
             Key::t => {
                 if !self.view.open_focused_folder_terminal() {
                     self.shortcuts
-                        .show_feedback("Can\u{2019}t open a terminal here");
+                        .show_feedback(&crate::i18n::tr("Can’t open a terminal here"));
                 }
             }
             Key::c => match self.view.compress_targets() {
-                TargetCommand::Nothing => self.shortcuts.show_feedback("Nothing to compress"),
+                TargetCommand::Nothing => self
+                    .shortcuts
+                    .show_feedback(&crate::i18n::tr("Nothing to compress")),
                 TargetCommand::Refused => self
                     .shortcuts
-                    .show_feedback("Can\u{2019}t compress these items"),
+                    .show_feedback(&crate::i18n::tr("Can’t compress these items")),
                 TargetCommand::Started => {}
             },
             Key::e => match self.view.extract_target() {
                 Ok(entry) => self.view.extract_here(entry),
-                Err(reason) => self.shortcuts.show_feedback(reason),
+                Err(reason) => self.shortcuts.show_feedback(&crate::i18n::tr(reason)),
             },
             Key::E => match self.view.extract_target() {
                 Ok(entry) => self.open_destination_prompt(Prompt::ExtractTo, vec![entry]),
-                Err(reason) => self.shortcuts.show_feedback(reason),
+                Err(reason) => self.shortcuts.show_feedback(&crate::i18n::tr(reason)),
             },
             _ => return false,
         }
@@ -337,12 +348,14 @@ impl Dispatcher {
                 })
         });
         let shortcuts = self.shortcuts.clone();
-        let report = Rc::new(move |reason: &str| shortcuts.show_feedback(reason));
+        let report = Rc::new(move |reason: &str| shortcuts.show_feedback(&crate::i18n::tr(reason)));
         match self.view.open_targets_with(current, report) {
             Some(task) => {
                 self.open_with.task.replace(Some(task));
             }
-            None => self.shortcuts.show_feedback("Nothing to open"),
+            None => self
+                .shortcuts
+                .show_feedback(&crate::i18n::tr("Nothing to open")),
         }
     }
 }

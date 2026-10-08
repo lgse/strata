@@ -30,6 +30,19 @@ const CHECK_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 /// reach is older than one it can.
 const PREVIEW_PAGE_SIZE: u32 = 30;
 
+impl BuildKind {
+    /// [`BuildKind::label`] in the app language, for display.
+    pub(crate) fn localized_label(self) -> String {
+        crate::i18n::tr(match self {
+            BuildKind::Stable => "Stable",
+            BuildKind::Nightly => "build_kind.nightly",
+            BuildKind::Alpha => "Alpha",
+            BuildKind::Beta => "Beta",
+            BuildKind::Rc => "Release candidate",
+        })
+    }
+}
+
 /// Everything the update/rollback dialogs need to identify and describe a
 /// release before installing it: what build it is, its exact tag and
 /// display version, where it was published, and its rendered notes.
@@ -560,9 +573,9 @@ fn package_update_from_response(available: &Version, response: &ReleaseResponse)
         release.version == *available && (!release.prerelease || accepts_prerelease)
     }) {
         Some(summary) => available_check(&summary),
-        None => UpdateCheck::Failed(
-            "package repository version has no matching stable release".to_owned(),
-        ),
+        None => UpdateCheck::Failed(crate::i18n::tr(
+            "package repository version has no matching stable release",
+        )),
     }
 }
 
@@ -608,9 +621,11 @@ fn fetch_exact_release(tag: &str) -> ReleaseNotes {
 
 fn request_error_message(error: &ureq::Error) -> String {
     match error {
-        ureq::Error::StatusCode(403 | 429) => "GitHub API rate limit reached".to_owned(),
-        ureq::Error::StatusCode(code) => format!("GitHub API returned HTTP {code}"),
-        _ => format!("Network request failed: {error}"),
+        ureq::Error::StatusCode(403 | 429) => crate::i18n::tr("GitHub API rate limit reached"),
+        ureq::Error::StatusCode(code) => {
+            rust_i18n::t!("GitHub API returned HTTP %{code}", code = code).into_owned()
+        }
+        _ => rust_i18n::t!("Network request failed: %{error}", error = error).into_owned(),
     }
 }
 

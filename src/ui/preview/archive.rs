@@ -38,11 +38,11 @@ fn child_summary(directory: &ArchiveDirectory) -> (usize, usize) {
         })
 }
 
-fn crumb_name(directory: &ArchiveDirectory) -> &str {
+fn crumb_name(directory: &ArchiveDirectory) -> String {
     if directory.name.is_empty() {
-        ROOT_LABEL
+        crate::i18n::tr(ROOT_LABEL)
     } else {
-        &directory.name
+        directory.name.clone()
     }
 }
 
@@ -340,7 +340,7 @@ impl ArchiveBrowser {
             }
         }
         let mut labels = Vec::with_capacity(descending.len() + 1);
-        labels.push(ROOT_LABEL.to_owned());
+        labels.push(crate::i18n::tr(ROOT_LABEL));
         labels.extend(descending.iter().map(|child| child.name.clone()));
         for (position, label) in labels.iter().enumerate() {
             if position == depth {

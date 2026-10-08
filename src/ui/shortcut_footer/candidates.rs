@@ -10,6 +10,7 @@ use gtk::{glib, prelude::*};
 
 type ActivateListener = Rc<dyn Fn(PathBuf)>;
 
+/// Untranslated catalog keys for the legend's actions.
 #[derive(Clone, Copy, Debug, Default)]
 pub(in crate::ui) struct CandidateKeys {
     pub(in crate::ui) enter: &'static str,
@@ -105,12 +106,15 @@ impl Candidates {
 
     // Preserve explicit selection across batches, but let the default follow ranking.
     pub(super) fn set(&self, paths: Vec<PathBuf>, keys: CandidateKeys) {
-        let tab = keys.tab.map_or_else(String::new, |tab| {
-            format!("<b>Tab</b> {}   ", glib::markup_escape_text(tab))
-        });
+        let action = |message: &str| glib::markup_escape_text(&crate::i18n::tr(message));
+        let tab = keys
+            .tab
+            .map_or_else(String::new, |tab| format!("<b>Tab</b> {}   ", action(tab)));
         self.keys.set_markup(&format!(
-            "<b>\u{2191}\u{2193}</b> Choose   {tab}<b>\u{21b5}</b> {}   <b>Esc</b> Cancel",
-            glib::markup_escape_text(keys.enter)
+            "<b>\u{2191}\u{2193}</b> {}   {tab}<b>\u{21b5}</b> {}   <b>Esc</b> {}",
+            action("Choose"),
+            action(keys.enter),
+            action("Cancel")
         ));
         while let Some(row) = self.list.first_child() {
             self.list.remove(&row);

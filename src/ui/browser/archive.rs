@@ -323,7 +323,7 @@ impl ViewState {
         body.append(&name_label);
         body.append(&name_entry);
 
-        let format_label = form_label(&crate::i18n::tr("Format"));
+        let format_label = form_label(&crate::i18n::tr("archive.format"));
         let (format_control, format_options) =
             segmented_control(&["ZIP", "7Z", "TAR.GZ", "TAR"], 0);
         let selected_format = Rc::new(Cell::new(ArchiveFormat::Zip));
@@ -398,7 +398,10 @@ impl ViewState {
             let archive_name = normalized_archive_name(&name, format);
             if let Err(message) = validate_basename(&archive_name) {
                 name_for_confirm.add_css_class("error");
-                crate::ui::accessibility::set_description(&name_for_confirm, Some(message));
+                crate::ui::accessibility::set_description(
+                    &name_for_confirm,
+                    Some(&crate::i18n::tr(message)),
+                );
                 name_for_confirm.grab_focus();
                 return;
             }
@@ -496,8 +499,8 @@ impl ViewState {
         crate::ui::chooser::present_destination_chooser(
             crate::ui::chooser::DestinationRequest {
                 parent,
-                title: "Extract to".into(),
-                accept_label: "Extract here".into(),
+                title: crate::i18n::tr("Extract to"),
+                accept_label: crate::i18n::tr("Extract here"),
                 initial_directory: base,
                 root_limit: None,
                 allow_create: true,
@@ -505,7 +508,7 @@ impl ViewState {
                     if path.is_dir() {
                         Ok(path.to_path_buf())
                     } else {
-                        Err("Choose an existing folder.".into())
+                        Err(crate::i18n::tr("Choose an existing folder."))
                     }
                 }),
             },

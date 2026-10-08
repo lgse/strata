@@ -50,7 +50,7 @@ pub(super) fn install(button: &gtk::MenuButton, form: Weak<EditorForm>) {
         .build();
     scroll.add_css_class("context-menu-scroll");
     body.append(&scroll);
-    let empty = note("No templates match your search.");
+    let empty = note(&crate::i18n::tr("No templates match your search."));
     list.append(&empty);
     let confirmation = gtk::Box::new(gtk::Orientation::Vertical, 8);
     confirmation.add_css_class("action-library-footer");
@@ -79,7 +79,7 @@ pub(super) fn install(button: &gtk::MenuButton, form: Weak<EditorForm>) {
             };
             if form.replaces_draft(example.runtime()) {
                 pending.set(Some(example));
-                question.set_text(&rust_i18n::t!("Replace your %{value1} draft with %{value2}? Code can be undone in the editor.", value1 = example.runtime().label(), value2 = example.name));
+                question.set_text(&rust_i18n::t!("Replace your %{value1} draft with %{value2}? Code can be undone in the editor.", value1 = example.runtime().label(), value2 = crate::i18n::tr(example.name)));
                 confirmation.set_visible(true);
             } else {
                 popover.popdown();
@@ -132,7 +132,7 @@ pub(super) fn install(button: &gtk::MenuButton, form: Weak<EditorForm>) {
     }
     let mut group = None::<gtk::ToggleButton>;
     for name in categories {
-        let chip = gtk::ToggleButton::with_label(name);
+        let chip = gtk::ToggleButton::with_label(&crate::i18n::tr(name));
         chip.add_css_class("action-library-category");
         chip.set_group(group.as_ref());
         if group.is_none() {
@@ -219,23 +219,29 @@ fn matches(example: &ActionExample, query: &str, category: &str) -> bool {
     if category != "All" && example.category != category {
         return false;
     }
-    let text = format!(
-        "{} {} {} {} {} {}",
+    let fields = [
         example.name,
         example.description,
         example.requirements,
         example.category,
         example.inputs,
-        example.runtime().label()
-    )
-    .to_lowercase();
+    ];
+    // English stays searchable alongside the displayed language.
+    let text = fields
+        .iter()
+        .flat_map(|field| [(*field).to_owned(), crate::i18n::tr(field)])
+        .chain([example.runtime().label().to_owned()])
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase();
     query.split_whitespace().all(|word| text.contains(word))
 }
 
 fn template_row(example: &ActionExample) -> gtk::Button {
     let content = gtk::Box::new(gtk::Orientation::Vertical, 4);
     let heading = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-    let title = gtk::Label::new(Some(example.name));
+    let name = crate::i18n::tr(example.name);
+    let title = gtk::Label::new(Some(&name));
     title.set_xalign(0.0);
     title.set_hexpand(true);
     title.add_css_class("action-library-title");
@@ -245,21 +251,23 @@ fn template_row(example: &ActionExample) -> gtk::Button {
     heading.append(&title);
     heading.append(&language);
     content.append(&heading);
-    content.append(&note(example.description));
-    content.append(&note(example.inputs));
+    let inputs = crate::i18n::tr(example.inputs);
+    let requirement_text = crate::i18n::tr(example.requirements);
+    content.append(&note(&crate::i18n::tr(example.description)));
+    content.append(&note(&inputs));
     let requirements = note(&rust_i18n::t!(
         "Requires: %{value1}",
-        value1 = example.requirements
+        value1 = requirement_text
     ));
     requirements.add_css_class("action-library-requirements");
     content.append(&requirements);
     let button = gtk::Button::builder().child(&content).build();
     button.add_css_class("column-menu-option");
     button.add_css_class("action-library-template");
-    accessibility::set_label(&button, example.name);
+    accessibility::set_label(&button, &name);
     crate::ui::accessibility::set_description(
         &button,
-        Some(&format!("{} · {}", example.requirements, example.inputs)),
+        Some(&format!("{requirement_text} · {inputs}")),
     );
     button
 }

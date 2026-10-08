@@ -94,7 +94,7 @@ pub(super) fn compress(request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)
         if let Err(message) = validate_basename(&request.archive_name) {
             emit(OperationEvent::Failed {
                 request_id: request.id,
-                message: message.to_owned(),
+                message: crate::i18n::tr(message),
                 password_failure: None,
             });
             return;
@@ -109,7 +109,7 @@ pub(super) fn compress(request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)
         if entries.is_empty() {
             emit(OperationEvent::Failed {
                 request_id: request.id,
-                message: "Nothing to compress".to_owned(),
+                message: crate::i18n::tr("Nothing to compress"),
                 password_failure: None,
             });
             return;
@@ -185,7 +185,7 @@ pub(super) fn compress(request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)
             )),
             Err(error) => emit(OperationEvent::Failed {
                 request_id: request.id,
-                message: error.to_string(),
+                message: error.user_message(),
                 password_failure: None,
             }),
         }
@@ -216,7 +216,11 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
         {
             emit(OperationEvent::Failed {
                 request_id: request.id,
-                message: format!("Not an archive: `{}`", request.entry.display_name),
+                message: rust_i18n::t!(
+                    "Not an archive: `%{name}`",
+                    name = request.entry.display_name
+                )
+                .into_owned(),
                 password_failure: None,
             });
             return;
@@ -233,7 +237,7 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
         if created_dest && let Err(e) = std::fs::create_dir_all(&dest_dir) {
             emit(OperationEvent::Failed {
                 request_id: request.id,
-                message: format!("Could not create folder: {e}"),
+                message: rust_i18n::t!("Could not create folder: %{error}", error = e).into_owned(),
                 password_failure: None,
             });
             return;
@@ -298,9 +302,9 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
                 &work_cancelled,
             ),
             #[cfg(not(feature = "rar"))]
-            Some(ArchiveFormat::Rar) => Err(archive_failed(
-                "RAR support is disabled in this build.".to_owned(),
-            )),
+            Some(ArchiveFormat::Rar) => Err(archive_failed(crate::i18n::tr(
+                "RAR support is disabled in this build.",
+            ))),
             #[cfg(feature = "rar")]
             Some(ArchiveFormat::Rar) => extract_rar(
                 &archive_path,
@@ -310,8 +314,9 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
                 &work_progress,
                 &work_cancelled,
             ),
-            None => Err(archive_failed(format!(
-                "Unsupported archive format: {display_name}"
+            None => Err(archive_failed(rust_i18n::t!(
+                "Unsupported archive format: %{name}",
+                name = display_name
             ))),
         })
         .await;
@@ -349,7 +354,7 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
             Ok(Err(error)) => emit(OperationEvent::Failed {
                 request_id: request.id,
                 password_failure: error.password_failure(),
-                message: error.to_string(),
+                message: error.user_message(),
             }),
             Err(_) => emit(OperationEvent::Failed {
                 request_id: request.id,
@@ -383,6 +388,18 @@ enum ArchiveError {
 }
 
 impl ArchiveError {
+    /// Failures are localized where they are built; password and
+    /// cancellation messages are shared constants translated here.
+    fn user_message(&self) -> String {
+        match self {
+            Self::Cancelled => crate::i18n::tr(ARCHIVE_CANCELLED),
+            Self::PasswordRequired(message) | Self::IncorrectPassword(message) => {
+                crate::i18n::tr(message)
+            }
+            Self::Failed(message) => message.clone(),
+        }
+    }
+
     fn password_failure(&self) -> Option<PasswordFailure> {
         match self {
             Self::PasswordRequired(_) => Some(PasswordFailure::Required),

@@ -13,7 +13,6 @@ use crate::ui::browser::columns::{
     select_all_in_column, set_column_busy, set_column_selections, set_filter_placeholder,
     stop_column_spinner, touch_source_model, update_empty_trash_sensitivity,
 };
-use crate::ui::browser::entry::item_count_label;
 use crate::ui::browser::location::MountStrategy;
 use crate::ui::browser::peek::append_peek_entries;
 use crate::ui::browser::transfer::FinishedSendToCompletion;
@@ -904,11 +903,10 @@ impl ViewState {
                 self.pending_send_to_completion.take();
                 self.finished_send_to_completion.take();
                 let affected_locations = affected_locations.clone();
-                let message = format!(
-                    "{} completed, {} failed, and {} not attempted.\n\nCompleted changes were not reverted.",
-                    item_count_label(*completed),
-                    item_count_label(*failed),
-                    item_count_label(*not_attempted),
+                let message = super::progress::cancelled_operation_summary(
+                    *completed,
+                    *failed,
+                    *not_attempted,
                 );
                 let weak = Rc::downgrade(self);
                 self.dismiss_file_operation_progress_then(move || {
@@ -962,7 +960,7 @@ impl ViewState {
                         show_error_dialog(
                             &self.overlay,
                             &crate::i18n::tr("Unable to open location"),
-                            &error.to_string(),
+                            &error.message(),
                         );
                     }
                 }
@@ -970,9 +968,9 @@ impl ViewState {
             BrowserEvent::LocationRevealFailed { location } => show_error_dialog(
                 &self.overlay,
                 &crate::i18n::tr("Unable to select file"),
-                &format!(
-                    "{} is not available in the loaded folder.",
-                    location.display_path()
+                &rust_i18n::t!(
+                    "%{path} is not available in the loaded folder.",
+                    path = location.display_path()
                 ),
             ),
             BrowserEvent::ArchiveStarted { total } => {

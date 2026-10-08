@@ -19,6 +19,20 @@ pub(super) enum ForgetCachedPasswordError {
     Failed(String),
 }
 
+impl ForgetCachedPasswordError {
+    pub(super) fn user_message(&self) -> String {
+        match self {
+            Self::NeedsConfirmation => crate::i18n::tr(
+                "Strata cannot display the password manager's deletion confirmation. Remove this volume's saved password in your password manager, then try Lock again.",
+            ),
+            Self::ItemLocked => crate::i18n::tr(
+                "The saved password is locked in the password manager. Unlock the keyring and try again.",
+            ),
+            Self::Failed(message) => message.clone(),
+        }
+    }
+}
+
 impl fmt::Display for ForgetCachedPasswordError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

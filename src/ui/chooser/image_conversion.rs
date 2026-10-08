@@ -49,7 +49,9 @@ impl ChooserState {
                 && self.image_target(&path, ImageKind::Png).is_some()
                 && self.image_target(&path, ImageKind::Jpeg).is_none()
             {
-                self.show_error("This download is not a supported image. Choose a JPEG, BMP, static WebP, GIF or PNG image.");
+                self.show_error(&crate::i18n::tr(
+                    "This download is not a supported image. Choose a JPEG, BMP, static WebP, GIF or PNG image.",
+                ));
             } else {
                 self.finish_remote(path);
             }
@@ -113,8 +115,8 @@ impl ChooserState {
             }),
         );
         if let Some(progress) = self.download_progress.borrow().as_ref() {
-            progress.set_name("Image");
-            progress.set_activity(activity);
+            progress.set_name(&crate::i18n::tr("Image"));
+            progress.set_activity(&crate::i18n::tr(activity));
         }
         self.accept_button.set_sensitive(false);
         let (sender, receiver) = std::sync::mpsc::channel();
@@ -141,7 +143,9 @@ impl ChooserState {
                 || state.filename.as_ref().map(|entry| entry.text()) != name
             {
                 state.cancel_download();
-                state.show_error("The name or filter changed. Press Open to try again.");
+                state.show_error(&crate::i18n::tr(
+                    "The name or filter changed. Press Open to try again.",
+                ));
                 return glib::ControlFlow::Break;
             }
             let result = match receiver.try_recv() {
@@ -156,7 +160,8 @@ impl ChooserState {
             state.accept_button.set_sensitive(true);
             match result {
                 Ok(value) => done(&state, value),
-                Err(message) => state.show_error(&message),
+                // Workers return English source messages; unknown ones pass through.
+                Err(message) => state.show_error(&crate::i18n::tr(&message)),
             }
             glib::ControlFlow::Break
         });
@@ -172,7 +177,9 @@ impl ChooserState {
             return;
         }
         if visible_modal_layer(&self.window).is_some() {
-            self.show_error("Close the current dialog, then press Open to convert the image.");
+            self.show_error(&crate::i18n::tr(
+                "Close the current dialog, then press Open to convert the image.",
+            ));
             return;
         }
         let Some(overlay) = self.window.child().and_downcast::<gtk::Overlay>() else {
@@ -215,7 +222,9 @@ impl ChooserState {
             if state.selected_filter() != filter
                 || state.filename.as_ref().map(|entry| entry.text()) != name
             {
-                state.show_error("The name or filter changed. Press Open to try again.");
+                state.show_error(&crate::i18n::tr(
+                    "The name or filter changed. Press Open to try again.",
+                ));
                 return;
             }
             let path = path.clone();

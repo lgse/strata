@@ -12,11 +12,15 @@ use quick_xml::{
 };
 use resvg::tiny_skia::{Color, Pixmap};
 
+const _: () = assert!(
+    MAX_MODEL_TRIANGLES == 2_000_000,
+    "update the triangle limit message and its catalog entry"
+);
+
+// The preview pane translates this exact text, so it must not embed runtime values.
 fn triangle_limit_message() -> String {
-    format!(
-        "This model exceeds the {} million triangle preview limit. Try a lower-detail version.",
-        MAX_MODEL_TRIANGLES as f64 / 1_000_000.
-    )
+    "This model exceeds the 2 million triangle preview limit. Try a lower-detail version."
+        .to_owned()
 }
 const MULTIPART_MODEL_MESSAGE: &str = "Multipart model detected. Unable to render preview.";
 

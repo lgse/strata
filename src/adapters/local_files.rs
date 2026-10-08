@@ -540,7 +540,7 @@ fn scan_native_directory(
 ) -> NativeEnumeration {
     let children = match fs::read_dir(path) {
         Ok(children) => children,
-        Err(error) => return NativeEnumeration::Failed(error.to_string()),
+        Err(error) => return NativeEnumeration::Failed(crate::services::io_error_message(&error)),
     };
     let hidden_names = native_hidden_names(path);
     let mut entries = Vec::with_capacity(1024);
@@ -555,7 +555,9 @@ fn scan_native_directory(
         }
         let child = match child {
             Ok(child) => child,
-            Err(error) => return NativeEnumeration::Failed(error.to_string()),
+            Err(error) => {
+                return NativeEnumeration::Failed(crate::services::io_error_message(&error));
+            }
         };
         let native_name = child.file_name();
         let is_hidden = is_hidden_name(&native_name, &hidden_names);
@@ -566,7 +568,9 @@ fn scan_native_directory(
         let file_type = match child.file_type() {
             Ok(file_type) => file_type,
             Err(error) if error.kind() == ErrorKind::NotFound => continue,
-            Err(error) => return NativeEnumeration::Failed(error.to_string()),
+            Err(error) => {
+                return NativeEnumeration::Failed(crate::services::io_error_message(&error));
+            }
         };
         let path = child.path();
         let kind = native_kind(file_type, &path);

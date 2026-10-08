@@ -258,7 +258,7 @@ pub(in crate::ui) fn update_basename_validation(field: &gtk::Entry) -> bool {
         }
         Some(message) => {
             field.add_css_class("error");
-            crate::ui::accessibility::set_description(field, Some(message));
+            crate::ui::accessibility::set_description(field, Some(&crate::i18n::tr(message)));
             false
         }
     }

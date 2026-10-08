@@ -146,6 +146,20 @@ impl std::fmt::Display for DriveOpError {
     }
 }
 
+impl DriveOpError {
+    pub(super) fn user_message(&self) -> String {
+        match self {
+            Self::CommandFailed(message) => message.clone(),
+            Self::DeviceNotFound => crate::i18n::tr("Could not identify the drive's block device"),
+            Self::Cancelled => crate::i18n::tr("Operation cancelled"),
+            Self::InvalidLabel(reason) => {
+                rust_i18n::t!("Invalid label: %{reason}", reason = reason).into_owned()
+            }
+            Self::Io(error) => rust_i18n::t!("I/O error: %{error}", error = error).into_owned(),
+        }
+    }
+}
+
 impl std::error::Error for DriveOpError {}
 
 impl From<std::io::Error> for DriveOpError {
@@ -393,7 +407,7 @@ pub(super) fn report_result(
                 "Unable to update %{display_name}",
                 display_name = display_name
             ),
-            &error.to_string(),
+            &error.user_message(),
         ),
     }
 }

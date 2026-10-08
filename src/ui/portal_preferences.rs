@@ -232,7 +232,9 @@ impl SettingsIntegrationStatus {
         }
         if SETUP_RUNNING.replace(true) {
             self.message(
-                "Another integration change is running. Try again when it finishes.",
+                &crate::i18n::tr(
+                    "Another integration change is running. Try again when it finishes.",
+                ),
                 true,
             );
             return;
@@ -287,7 +289,7 @@ impl IntegrationIndicator {
     fn new(parent: &gtk::Box, name: &'static str) -> Self {
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         let icon = crate::assets::primary_icon(icons::X, 16);
-        let label = gtk::Label::new(Some(name));
+        let label = gtk::Label::new(Some(&crate::i18n::tr(name)));
         label.set_xalign(0.0);
         label.set_wrap(true);
         row.append(&icon);
@@ -305,12 +307,7 @@ impl IntegrationIndicator {
         if let Some(row) = self.row.upgrade() {
             row.set_visible(configured.is_some());
             if let Some(configured) = configured {
-                let status = if configured {
-                    "Configured"
-                } else {
-                    "Not configured"
-                };
-                let description = format!("{}: {status}", self.name);
+                let description = indicator_description(self.name, configured);
                 row.update_property(&[gtk::accessible::Property::Label(&description)]);
                 if let Some(icon) = self.icon.upgrade() {
                     crate::assets::set_primary_icon(
@@ -321,4 +318,17 @@ impl IntegrationIndicator {
             }
         }
     }
+}
+
+pub(crate) fn indicator_description(name: &str, configured: bool) -> String {
+    rust_i18n::t!(
+        "%{name}: %{status}",
+        name = crate::i18n::tr(name),
+        status = crate::i18n::tr(if configured {
+            "Configured"
+        } else {
+            "Not configured"
+        })
+    )
+    .into_owned()
 }

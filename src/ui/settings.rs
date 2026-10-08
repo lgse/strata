@@ -1091,15 +1091,37 @@ fn automatic_updates_option(manager: &Rc<PreferenceManager>, method: UpdateMetho
 }
 
 const RELEASE_CHANNEL_TITLE: &str = "Release channel";
+const STABLE_CHANNEL: &str = "Stable";
+// The release channel, distinct from the file-preview sense of "Preview".
+const PREVIEW_CHANNEL: &str = "release_channel.preview";
+const NIGHTLY_CHANNEL: &str = "Nightly";
+
+fn channel_label(channel: Channel) -> String {
+    crate::i18n::tr(match channel {
+        Channel::Stable => STABLE_CHANNEL,
+        Channel::Preview => PREVIEW_CHANNEL,
+        Channel::Nightly => NIGHTLY_CHANNEL,
+    })
+}
+
+/// The manifest's channel id, shown by its localized name when Strata knows it.
+fn managed_channel_label(managed: &ManagedInstall) -> Option<String> {
+    let id = managed.channel()?;
+    Some(
+        managed
+            .tracked_channel()
+            .map_or_else(|| id.to_owned(), channel_label),
+    )
+}
 
 fn channel_option(manager: Rc<PreferenceManager>, managed: Option<&ManagedInstall>) -> gtk::Box {
     let control = bindings::choice_menu(
         &manager,
         RELEASE_CHANNEL_TITLE,
         &[
-            ("Stable", Channel::Stable),
-            ("Preview", Channel::Preview),
-            ("Nightly", Channel::Nightly),
+            (STABLE_CHANNEL, Channel::Stable),
+            (PREVIEW_CHANNEL, Channel::Preview),
+            (NIGHTLY_CHANNEL, Channel::Nightly),
         ],
         PreferenceManager::release_channel,
         PreferenceManager::set_release_channel,
@@ -1140,7 +1162,7 @@ fn channel_description(channel: Channel) -> &'static str {
 }
 
 fn managed_channel_description(managed: &ManagedInstall) -> String {
-    let tracked = match managed.channel() {
+    let tracked = match managed_channel_label(managed) {
         Some(channel) => rust_i18n::t!(
             "This install tracks the %{channel} release channel.",
             channel = channel
@@ -1344,10 +1366,7 @@ fn show_release_notes(card: &ReleaseNotesCard, release: &ReleaseMetadata) {
         .iter()
         .filter(|block| matches!(block, DocumentBlock::ListItem { .. }))
         .count();
-    let published = release
-        .published_at
-        .as_deref()
-        .and_then(|date| date.split('T').next());
+    let published = release.published_at.as_deref().map(release_date);
     card.summary.set_text(&match (changes, published) {
         (0, None) => crate::i18n::tr("Release notes"),
         (0, Some(date)) => rust_i18n::t!("Published %{date}", date = date).into_owned(),
@@ -1362,7 +1381,7 @@ fn show_release_notes(card: &ReleaseNotesCard, release: &ReleaseMetadata) {
     if release.kind == BuildKind::Stable {
         card.badge.set_visible(false);
     } else {
-        card.badge.set_text(release.kind.label());
+        card.badge.set_text(&release.kind.localized_label());
         card.badge.set_visible(true);
     }
     if release.notes.trim().is_empty() {
@@ -1454,7 +1473,7 @@ fn managed_install_row(managed: &ManagedInstall) -> gtk::Box {
 
 fn managed_install_summary(managed: &ManagedInstall) -> String {
     let mut lines = vec![managed.ownership_summary()];
-    if let Some(channel) = managed.channel() {
+    if let Some(channel) = managed_channel_label(managed) {
         lines.push(
             rust_i18n::t!(
                 "Tracking the %{channel} release channel.",
@@ -1766,7 +1785,7 @@ fn update_check_row_with(
     button.connect_clicked(move |button| {
         if update_method == UpdateMethod::Aur && managed_update_available.get() {
             match launch_aur_update() {
-                Ok(message) => status.set_text(message),
+                Ok(message) => status.set_text(&message),
                 Err(error) => status.set_text(&rust_i18n::t!(
                     "Couldn’t open AUR update: %{error}",
                     error = error
@@ -2066,7 +2085,7 @@ fn apply_install_progress(
                 progress.pulse();
                 status.set_text(&rust_i18n::t!(
                     "Downloading update… %{value1} MB",
-                    value1 = format!("{:.1}", downloaded as f64 / 1_048_576.0)
+                    value1 = crate::i18n::decimal(downloaded as f64 / 1_048_576.0, 1)
                 ));
             }
         }
@@ -2077,7 +2096,7 @@ fn apply_install_progress(
         }
         InstallProgress::Finalizing => {
             progress.set_fraction(1.0);
-            status.set_text(FINALIZING_STATUS);
+            status.set_text(&crate::i18n::tr(FINALIZING_STATUS));
         }
     }
 }
@@ -2270,7 +2289,7 @@ fn build_update_dialog(
     // channel it is, its precise tag, the source commit, and when it was
     // published.
     if release.kind != BuildKind::Stable {
-        let badge = gtk::Label::new(Some(release.kind.label()));
+        let badge = gtk::Label::new(Some(&release.kind.localized_label()));
         badge.add_css_class("prerelease-badge");
         badge.set_xalign(0.0);
         badge.set_halign(gtk::Align::Start);
@@ -2358,7 +2377,7 @@ fn build_update_dialog(
         move || {
             phase.set(UpdateDialogPhase::Finalizing);
             progress.set_fraction(1.0);
-            status.set_text(FINALIZING_STATUS);
+            status.set_text(&crate::i18n::tr(FINALIZING_STATUS));
             set_dismissible(false);
         }
     });
@@ -2554,14 +2573,14 @@ fn build_update_dialog(
                         status_for_progress.set_text(&rust_i18n::t!(
                             "Downloading… %{value1}%  (%{value2} of %{value3} MB)",
                             value1 = format!("{:.0}", fraction * 100.0),
-                            value2 = format!("{:.1}", downloaded as f64 / 1_048_576.0),
-                            value3 = format!("{:.1}", total as f64 / 1_048_576.0)
+                            value2 = crate::i18n::decimal(downloaded as f64 / 1_048_576.0, 1),
+                            value3 = crate::i18n::decimal(total as f64 / 1_048_576.0, 1)
                         ));
                     } else {
                         progress_for_progress.pulse();
                         status_for_progress.set_text(&rust_i18n::t!(
                             "Downloading… %{value1} MB",
-                            value1 = format!("{:.1}", downloaded as f64 / 1_048_576.0)
+                            value1 = crate::i18n::decimal(downloaded as f64 / 1_048_576.0, 1)
                         ));
                     }
                 }
@@ -2652,25 +2671,25 @@ fn aur_update_command(terminal: &terminal::Terminal, helper: &str, package: &str
     terminal.exec_command(&[helper, "-Syu", package])
 }
 
-fn launch_aur_update() -> Result<&'static str, String> {
+fn launch_aur_update() -> Result<String, String> {
     let managed = InstallSource::detect()
         .managed()
-        .ok_or_else(|| "missing package metadata".to_owned())?;
+        .ok_or_else(|| crate::i18n::tr("missing package metadata"))?;
     if let Some((helper, package)) = managed.aur_update_target() {
         let Some(terminal) = terminal::Terminal::resolve() else {
             return Err(terminal::no_terminal_message());
         };
         return aur_update_command(&terminal, helper, package)
             .spawn()
-            .map(|_child| "AUR update opened in your terminal.")
+            .map(|_child| crate::i18n::tr("AUR update opened in your terminal."))
             .map_err(|error| terminal.launch_failure(&error));
     }
     let package = managed
         .package()
-        .ok_or_else(|| "missing AUR package name".to_owned())?;
+        .ok_or_else(|| crate::i18n::tr("missing AUR package name"))?;
     let uri = format!("https://aur.archlinux.org/packages/{package}");
     gio::AppInfo::launch_default_for_uri(&uri, None::<&gio::AppLaunchContext>)
-        .map(|()| "AUR package page opened.")
+        .map(|()| crate::i18n::tr("AUR package page opened."))
         .map_err(|error| error.to_string())
 }
 
@@ -2692,12 +2711,29 @@ fn or_unknown(value: Option<String>) -> String {
     value.unwrap_or_else(|| crate::i18n::tr("Unknown"))
 }
 
+/// Formats a GitHub `published_at` timestamp as a date in the app language,
+/// keeping the raw value when it cannot be parsed.
+fn release_date(published_at: &str) -> String {
+    let Ok(date) = glib::DateTime::from_iso8601(published_at, None) else {
+        return published_at
+            .split('T')
+            .next()
+            .unwrap_or(published_at)
+            .to_owned();
+    };
+    let date = date.to_local().unwrap_or(date);
+    crate::util::localized_date(&date, &crate::i18n::tr("dates.older"))
+}
+
 fn release_detail_rows(release: &ReleaseMetadata) -> [(&'static str, String); 4] {
     [
-        ("Channel", release.kind.label().to_owned()),
+        ("Channel", release.kind.localized_label()),
         ("Tag", release.tag.clone()),
         ("Commit", or_unknown(release.commit.clone())),
-        ("Published", or_unknown(release.published_at.clone())),
+        (
+            "Published",
+            or_unknown(release.published_at.as_deref().map(release_date)),
+        ),
     ]
 }
 
@@ -2711,7 +2747,7 @@ fn update_dialog_details(release: &ReleaseMetadata) -> gtk::Box {
     for (label, value) in release_detail_rows(release) {
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         row.add_css_class("update-dialog-detail-row");
-        let label_widget = gtk::Label::new(Some(label));
+        let label_widget = gtk::Label::new(Some(&crate::i18n::tr(label)));
         label_widget.add_css_class("update-dialog-detail-label");
         label_widget.set_xalign(0.0);
         label_widget.set_hexpand(true);
@@ -2749,7 +2785,7 @@ fn installed_version_status(
         rust_i18n::t!(
             "Version %{version} · %{value1}",
             version = version,
-            value1 = kind.label()
+            value1 = kind.localized_label()
         )
         .into_owned()
     };
@@ -2887,7 +2923,12 @@ fn constrain_page_text(widget: &gtk::Widget) {
                 && !label.has_css_class("menu-heading")
                 && !label.has_css_class("settings-control-label"),
         );
-        label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+        // Segmented choices break only between words so labels never split mid-word.
+        label.set_wrap_mode(if label.has_css_class("segmented-control-label") {
+            gtk::pango::WrapMode::Word
+        } else {
+            gtk::pango::WrapMode::WordChar
+        });
     }
     if let Some(entry) = widget.downcast_ref::<gtk::Entry>() {
         entry.set_width_chars(1);

@@ -38,9 +38,13 @@ pub enum LocationValidationError {
     NotMounted(Location),
     Mountable(Location),
     Unavailable(String),
-    UnsupportedShorthand(String),
+    /// An English source message, translated by [`LocationValidationError::message`].
+    UnsupportedShorthand(&'static str),
     UnsupportedScheme(String),
+    /// A chooser policy refusal, held as an English source message.
+    Refused(&'static str),
     EmbeddedCredential,
+    /// Already localized by [`backend_unavailable_message`].
     BackendUnavailable(String),
 }
 
@@ -60,9 +64,14 @@ impl fmt::Display for LocationValidationError {
             Self::Unavailable(message) => {
                 write!(formatter, "Unable to open that location: {message}")
             }
-            Self::UnsupportedShorthand(message) | Self::UnsupportedScheme(message) => {
+            Self::UnsupportedShorthand(message) | Self::Refused(message) => {
                 formatter.write_str(message)
             }
+            Self::UnsupportedScheme(scheme) => write!(
+                formatter,
+                "The {scheme}:// scheme isn't supported. Use an absolute local path or one of: \
+                 smb://, sftp://, ftp://, ftps://, dav://, davs://, or recent:///."
+            ),
             Self::EmbeddedCredential => formatter.write_str(
                 "Passwords typed into the address bar aren't accepted. Enter the address \
                  without a password, you'll be prompted to sign in securely.",
@@ -72,27 +81,77 @@ impl fmt::Display for LocationValidationError {
     }
 }
 
-fn backend_package_hint(scheme: &str) -> Option<&'static str> {
+impl LocationValidationError {
+    /// Localized text for dialogs; `Display` stays English.
+    pub fn message(&self) -> String {
+        use crate::i18n::tr;
+        match self {
+            Self::Empty => tr("Enter a location."),
+            Self::InvalidUri => tr("Enter a valid URI."),
+            Self::NotAbsolute => tr("Enter an absolute path."),
+            Self::Missing => tr("That location does not exist."),
+            Self::NotDirectory => tr("That location is not a directory."),
+            Self::Inaccessible => tr("You do not have permission to open that location."),
+            Self::NotMounted(_) => tr("That location is not mounted yet."),
+            Self::Mountable(_) => tr("That location needs to be mounted first."),
+            Self::Unavailable(message) => rust_i18n::t!(
+                "Unable to open that location: %{error}",
+                error = message
+            )
+            .into_owned(),
+            Self::UnsupportedShorthand(message) | Self::Refused(message) => tr(message),
+            Self::UnsupportedScheme(scheme) => rust_i18n::t!(
+                "The %{scheme}:// scheme isn't supported. Use an absolute local path or one of: smb://, sftp://, ftp://, ftps://, dav://, davs://, or recent:///.",
+                scheme = scheme
+            )
+            .into_owned(),
+            Self::EmbeddedCredential => tr(
+                "Passwords typed into the address bar aren't accepted. Enter the address without a password, you'll be prompted to sign in securely.",
+            ),
+            Self::BackendUnavailable(message) => message.clone(),
+        }
+    }
+}
+
+/// Localized text for common I/O failures; other errors keep the system's description.
+pub(crate) fn io_error_message(error: &std::io::Error) -> String {
+    use std::io::ErrorKind;
+    let message = match error.kind() {
+        ErrorKind::NotFound => "No such file or folder",
+        ErrorKind::PermissionDenied => "Permission denied",
+        ErrorKind::NotADirectory => "Not a folder",
+        ErrorKind::StorageFull => "There is not enough space on the device",
+        ErrorKind::ReadOnlyFilesystem => "The file system is read-only",
+        ErrorKind::TimedOut => "The operation timed out",
+        _ => return error.to_string(),
+    };
+    crate::i18n::tr(message)
+}
+
+fn backend_package_hint(scheme: &str) -> Option<(&'static str, &'static str)> {
     match scheme.to_ascii_lowercase().as_str() {
-        "smb" => Some("gvfs-smb or gvfs-backends"),
-        "sftp" | "ftp" | "ftps" | "dav" | "davs" => Some("gvfs or gvfs-backends"),
+        "smb" => Some(("gvfs-smb", "gvfs-backends")),
+        "sftp" | "ftp" | "ftps" | "dav" | "davs" => Some(("gvfs", "gvfs-backends")),
         _ => None,
     }
 }
 
+/// Localized, because every caller presents it directly.
 pub fn backend_unavailable_message(uri: &str) -> String {
     let scheme = uri.split("://").next().unwrap_or(uri);
     match backend_package_hint(scheme) {
-        Some(packages) => format!(
-            "The {scheme}:// backend isn't installed. Install your distribution's GVfs \
-             {scheme} backend, commonly packaged as {packages}, then try again."
+        Some((package, alternative)) => rust_i18n::t!(
+            "The %{scheme}:// backend isn't installed. Install your distribution's GVfs %{scheme} backend, commonly packaged as %{package} or %{alternative}, then try again.",
+            scheme = scheme,
+            package = package,
+            alternative = alternative
         ),
-        None => format!(
-            "The {scheme}:// backend isn't installed on this system, so {scheme}:// \
-             locations can't be opened. Install the matching GVfs backend from your \
-             distribution, then try again."
+        None => rust_i18n::t!(
+            "The %{scheme}:// backend isn't installed on this system, so %{scheme}:// locations can't be opened. Install the matching GVfs backend from your distribution, then try again.",
+            scheme = scheme
         ),
     }
+    .into_owned()
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

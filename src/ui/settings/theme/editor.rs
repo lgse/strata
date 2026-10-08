@@ -84,7 +84,8 @@ fn color_field_row(
     values: &Rc<RefCell<ThemeTokens>>,
 ) -> gtk::Box {
     let field_row = gtk::Box::new(gtk::Orientation::Horizontal, 7);
-    let label = gtk::Label::new(Some(label_text));
+    let label_text = crate::i18n::tr(label_text);
+    let label = gtk::Label::new(Some(&label_text));
     label.set_xalign(0.0);
     let dialog = gtk::ColorDialog::builder()
         .title(rust_i18n::t!("Choose %{label_text}", label_text = label_text).into_owned())
@@ -143,12 +144,21 @@ fn editor_actions(manager: Rc<ThemeManager>, form: ThemeEditorForm) -> gtk::Box 
                 revealer.set_reveal_child(false);
             }
             Err(message) => {
-                error.set_text(&message.to_string());
+                error.set_text(&save_error_text(&message));
                 error.set_visible(true);
             }
         }
     });
     actions
+}
+
+fn save_error_text(error: &std::io::Error) -> String {
+    // Validation errors carry an English catalog key; other errors come from the OS.
+    if error.kind() == std::io::ErrorKind::InvalidInput {
+        crate::i18n::tr(&error.to_string())
+    } else {
+        rust_i18n::t!("Could not save the theme: %{error}", error = error).into_owned()
+    }
 }
 
 #[derive(Clone, Copy)]

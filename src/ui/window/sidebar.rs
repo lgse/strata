@@ -120,6 +120,10 @@ fn update_notice() -> (gtk::Box, gtk::Button, gtk::Label) {
     label.add_css_class("sidebar-update-label");
     label.set_xalign(0.0);
     label.set_hexpand(true);
+    // Prerelease offers and longer translations need a second line to keep "available".
+    label.set_wrap(true);
+    label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    label.set_lines(2);
     label.set_ellipsize(gtk::pango::EllipsizeMode::End);
     content.append(&dot);
     content.append(&label);

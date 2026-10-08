@@ -216,7 +216,7 @@ fn ensure_modified_date_timer() {
     });
 }
 
-fn localized_date(date: &glib::DateTime, pattern: &str) -> String {
+pub(crate) fn localized_date(date: &glib::DateTime, pattern: &str) -> String {
     // GLib's named months follow the process locale, not the saved app language.
     let pattern = pattern
         .replace(

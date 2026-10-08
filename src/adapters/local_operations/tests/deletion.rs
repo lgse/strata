@@ -224,15 +224,19 @@ fn deletion_error_summaries_are_bounded_and_report_the_failure_count() {
         .map(|index| format!("item-{index}: denied"))
         .collect::<Vec<_>>();
 
-    let summary = deletion_error_summary(&errors);
+    let summary = deletion_error_summary(&errors, true);
 
     assert!(summary.starts_with("10 items could not be deleted"));
     assert!(summary.contains("• item-1: denied"));
     assert!(summary.contains("• item-8: denied"));
     assert!(!summary.contains("• item-9: denied"));
-    assert!(summary.ends_with("…and 2 more"));
+    assert!(summary.ends_with("… and 2 more items"));
     assert!(
-        operation_error_summary(&errors[..1], "restored")
+        deletion_error_summary(&errors[..1], false)
+            .starts_with("1 item could not be moved to Trash")
+    );
+    assert!(
+        operation_error_summary(&errors[..1], FailedAction::Restore)
             .starts_with("1 item could not be restored")
     );
 }

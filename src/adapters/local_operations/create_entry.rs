@@ -35,7 +35,7 @@ pub(super) fn start(
                 Err(message) => {
                     emit(OperationEvent::Failed {
                         request_id: id,
-                        message: message.to_owned(),
+                        message: crate::i18n::tr(message),
                         password_failure: None,
                     });
                     return;
@@ -44,7 +44,7 @@ pub(super) fn start(
             let Some(location) = location_for_file(&file) else {
                 emit(OperationEvent::Failed {
                     request_id: id,
-                    message: "The new item has an invalid URI".to_owned(),
+                    message: crate::i18n::tr("The new item has an invalid URI"),
                     password_failure: None,
                 });
                 return;
@@ -124,7 +124,8 @@ pub(super) fn start(
                 Err(error) if error.matches(gio::IOErrorEnum::Exists) => {
                     emit(OperationEvent::Failed {
                         request_id: id,
-                        message: format!("\u{201c}{candidate}\u{201d} already exists"),
+                        message: rust_i18n::t!("“%{name}” already exists", name = candidate)
+                            .into_owned(),
                         password_failure: None,
                     });
                 }

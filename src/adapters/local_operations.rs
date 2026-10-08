@@ -88,6 +88,14 @@ fn blocking_join_message(error: Box<dyn std::any::Any + Send>) -> String {
         .unwrap_or_else(|| "filesystem sync panicked".to_owned())
 }
 
+fn device_flush_failure(error: &str) -> String {
+    rust_i18n::t!(
+        "The device could not finish writing: %{error}. Earlier writes may still be pending; wait for safe eject before unplugging.",
+        error = error
+    )
+    .into_owned()
+}
+
 pub(crate) fn sync_filesystem(root: &Path) -> io::Result<()> {
     let handle = rustix::fs::open(
         root,
@@ -379,9 +387,7 @@ async fn flush_removable_writes(
         emit(OperationEvent::TransferFailed {
             request_id,
             completed_locations: completed.to_vec(),
-            message: format!(
-                "The device could not finish writing: {error}. Earlier writes may still be pending; wait for safe eject before unplugging."
-            ),
+            message: device_flush_failure(&error),
         });
         return false;
     }
@@ -428,9 +434,7 @@ async fn flush_written_roots(
             Ok(Err(error)) => error.to_string(),
             Err(error) => blocking_join_message(error),
         };
-        return Err(format!(
-            "The device could not finish writing: {error}. Earlier writes may still be pending; wait for safe eject before unplugging."
-        ));
+        return Err(device_flush_failure(&error));
     }
     Ok(())
 }
@@ -810,14 +814,21 @@ fn copy_failure_on_fat32(error: &glib::Error, fat32_destination: bool) -> (Optio
         return (Some(error.to_string()), false);
     }
     let description = if error.message().contains("File too large") {
-        "A file is too large for this FAT32 drive (maximum file size: 4 GiB). Use an exFAT or another large-file-capable drive instead.".to_owned()
+        crate::i18n::tr(
+            "A file is too large for this FAT32 drive (maximum file size: 4 GiB). Use an exFAT or another large-file-capable drive instead.",
+        )
     } else {
         error.to_string()
     };
     (
-        Some(format!(
-            "{description} Earlier completed copies may still be writing; wait for safe eject before unplugging. Details: {error}"
-        )),
+        Some(
+            rust_i18n::t!(
+                "%{description} Earlier completed copies may still be writing; wait for safe eject before unplugging. Details: %{error}",
+                description = description,
+                error = error
+            )
+            .into_owned(),
+        ),
         true,
     )
 }
@@ -1431,8 +1442,16 @@ enum LocalCopySource {
 }
 
 fn open_local_copy_source<Fd: AsFd>(parent: &Fd, name: &OsStr) -> Result<LocalCopySource, String> {
-    let stat = rustix::fs::statat(parent, name, rustix::fs::AtFlags::SYMLINK_NOFOLLOW)
-        .map_err(|error| format!("Could not inspect {}: {error}", name.to_string_lossy()))?;
+    let stat = rustix::fs::statat(parent, name, rustix::fs::AtFlags::SYMLINK_NOFOLLOW).map_err(
+        |error| {
+            rust_i18n::t!(
+                "Could not inspect %{name}: %{error}",
+                name = name.to_string_lossy(),
+                error = error
+            )
+            .into_owned()
+        },
+    )?;
     match rustix::fs::FileType::from_raw_mode(stat.st_mode) {
         rustix::fs::FileType::Symlink => {
             let link = rustix::fs::readlinkat(parent, name, Vec::new()).map_err(|error| {
@@ -1470,7 +1489,12 @@ fn open_local_copy_source<Fd: AsFd>(parent: &Fd, name: &OsStr) -> Result<LocalCo
                 )
             })?;
             let opened = rustix::fs::fstat(&file).map_err(|error| {
-                format!("Could not inspect {}: {error}", name.to_string_lossy())
+                rust_i18n::t!(
+                    "Could not inspect %{name}: %{error}",
+                    name = name.to_string_lossy(),
+                    error = error
+                )
+                .into_owned()
             })?;
             if rustix::fs::FileType::from_raw_mode(opened.st_mode)
                 != rustix::fs::FileType::RegularFile
@@ -2222,7 +2246,11 @@ fn move_local_path(
             rustix::io::Errno::XDEV | rustix::io::Errno::INVAL => {
                 glib::Error::new(gio::IOErrorEnum::WouldRecurse, "Cannot move directly")
             }
-            error => io_error(format!("Could not move {display_name}: {error}")),
+            error => io_error(rust_i18n::t!(
+                "Could not move %{name}: %{error}",
+                name = display_name,
+                error = error
+            )),
         })
     })
 }
@@ -2305,17 +2333,24 @@ async fn move_restore_path_with(
         .await
         .map_err(|_| io_error("Restore task panicked"))?
         .map_err(|error| match error {
-            rustix::io::Errno::XDEV => {
-                io_error(format!("Could not restore {display_name} across volumes"))
-            }
-            rustix::io::Errno::EXIST => io_error(format!(
-                "Could not restore {display_name}: something already exists at the destination"
+            rustix::io::Errno::XDEV => io_error(rust_i18n::t!(
+                "Could not restore %{name} across volumes",
+                name = display_name
             )),
-            rustix::io::Errno::INVAL | rustix::io::Errno::NOSYS | rustix::io::Errno::OPNOTSUPP => io_error(format!(
-                "Could not restore {display_name}: this filesystem does not support atomic no-replace renames. The item remains in Trash. Copy it to a destination you choose instead."
+            rustix::io::Errno::EXIST => io_error(rust_i18n::t!(
+                "Could not restore %{name}: something already exists at the destination",
+                name = display_name
+            )),
+            rustix::io::Errno::INVAL | rustix::io::Errno::NOSYS | rustix::io::Errno::OPNOTSUPP => io_error(rust_i18n::t!(
+                "Could not restore %{name}: this filesystem does not support atomic no-replace renames. The item remains in Trash. Copy it to a destination you choose instead.",
+                name = display_name
             )),
             rustix::io::Errno::CANCELED => cancelled_local_operation(),
-            error => io_error(format!("Could not restore {display_name}: {error}")),
+            error => io_error(rust_i18n::t!(
+                "Could not restore %{name}: %{error}",
+                name = display_name,
+                error = error
+            )),
         })
 }
 
@@ -2334,9 +2369,9 @@ async fn move_restore(
     {
         return move_restore_path(source_path, target_path, allowed_root, cancellable).await;
     }
-    Err(io_error(
+    Err(io_error(crate::i18n::tr(
         "Trash restore requires a local source and destination",
-    ))
+    )))
 }
 
 async fn move_local(
@@ -3106,8 +3141,14 @@ fn ensure_local_delete_target_unchanged<ParentFd: AsFd, TargetFd: AsFd>(
             )
         },
     )?;
-    let opened = rustix::fs::fstat(target)
-        .map_err(|error| format!("Could not recheck {}: {error}", name.to_string_lossy()))?;
+    let opened = rustix::fs::fstat(target).map_err(|error| {
+        rust_i18n::t!(
+            "Could not recheck %{name}: %{error}",
+            name = name.to_string_lossy(),
+            error = error
+        )
+        .into_owned()
+    })?;
     if named.st_dev != opened.st_dev || named.st_ino != opened.st_ino {
         return Err(format!(
             "{} changed while it was being deleted",
@@ -3125,15 +3166,29 @@ fn open_local_delete_target<Fd: AsFd>(
     name: &OsStr,
     expected: Option<LocalFileIdentity>,
 ) -> Result<LocalDeleteStep, String> {
-    let stat = rustix::fs::statat(parent, name, rustix::fs::AtFlags::SYMLINK_NOFOLLOW)
-        .map_err(|error| format!("Could not inspect {}: {error}", name.to_string_lossy()))?;
+    let stat = rustix::fs::statat(parent, name, rustix::fs::AtFlags::SYMLINK_NOFOLLOW).map_err(
+        |error| {
+            rust_i18n::t!(
+                "Could not inspect %{name}: %{error}",
+                name = name.to_string_lossy(),
+                error = error
+            )
+            .into_owned()
+        },
+    )?;
     ensure_expected_local_identity(name, &stat, expected)?;
     if !matches!(
         rustix::fs::FileType::from_raw_mode(stat.st_mode),
         rustix::fs::FileType::Directory
     ) {
-        rustix::fs::unlinkat(parent, name, rustix::fs::AtFlags::empty())
-            .map_err(|error| format!("Could not delete {}: {error}", name.to_string_lossy()))?;
+        rustix::fs::unlinkat(parent, name, rustix::fs::AtFlags::empty()).map_err(|error| {
+            rust_i18n::t!(
+                "Could not delete %{name}: %{error}",
+                name = name.to_string_lossy(),
+                error = error
+            )
+            .into_owned()
+        })?;
         return Ok(LocalDeleteStep::Removed);
     }
     // RESOLVE_NO_SYMLINKS (stronger than O_NOFOLLOW) plus RESOLVE_BENEATH and
@@ -3159,8 +3214,14 @@ fn open_local_delete_target<Fd: AsFd>(
             name.to_string_lossy()
         )
     })?;
-    let opened = rustix::fs::fstat(&handle)
-        .map_err(|error| format!("Could not recheck {}: {error}", name.to_string_lossy()))?;
+    let opened = rustix::fs::fstat(&handle).map_err(|error| {
+        rust_i18n::t!(
+            "Could not recheck %{name}: %{error}",
+            name = name.to_string_lossy(),
+            error = error
+        )
+        .into_owned()
+    })?;
     ensure_expected_local_identity(name, &opened, expected)?;
     let mut children = Vec::new();
     for entry in rustix::fs::Dir::read_from(&handle).map_err(|error| error.to_string())? {
@@ -3455,10 +3516,14 @@ fn remove_local_delete_directory(
     }
     if let Err(error) = rustix::fs::unlinkat(parent.as_ref(), &name, rustix::fs::AtFlags::REMOVEDIR)
     {
-        queue.fail(format!(
-            "Could not delete {}: {error}",
-            name.to_string_lossy()
-        ));
+        queue.fail(
+            rust_i18n::t!(
+                "Could not delete %{name}: %{error}",
+                name = name.to_string_lossy(),
+                error = error
+            )
+            .into_owned(),
+        );
         return;
     }
     complete_local_delete_job(queue, completion);
@@ -3738,7 +3803,7 @@ fn open_local_parent_beneath(parent_path: &Path, allowed_root: &Path) -> Result<
     }
     let relative = parent_path
         .strip_prefix(allowed_root)
-        .map_err(|_| "The restore destination is outside the trash volume".to_owned())?;
+        .map_err(|_| crate::i18n::tr("The restore destination is outside the trash volume"))?;
     retry_local_open(|| {
         rustix::fs::openat2(
             &root,
@@ -3885,27 +3950,51 @@ fn permanently_delete_maybe_local_if_unchanged(
     permanently_delete(file, directory, cancellable)
 }
 
-fn operation_error_summary(errors: &[String], action: &str) -> String {
-    let mut summary = format!(
-        "{} could not be {action}. The remaining items were processed.",
-        if errors.len() == 1 {
-            "1 item".to_owned()
-        } else {
-            format!("{} items", errors.len())
-        }
-    );
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FailedAction {
+    Delete,
+    Trash,
+    Restore,
+}
+
+/// `OperationEvent` carries display text, so the summary is localized here.
+fn operation_error_summary(errors: &[String], action: FailedAction) -> String {
+    let items = crate::i18n::count("items", errors.len());
+    let mut summary = match action {
+        FailedAction::Delete => rust_i18n::t!(
+            "%{items} could not be deleted. The remaining items were processed.",
+            items = items
+        ),
+        FailedAction::Trash => rust_i18n::t!(
+            "%{items} could not be moved to Trash. The remaining items were processed.",
+            items = items
+        ),
+        FailedAction::Restore => rust_i18n::t!(
+            "%{items} could not be restored. The remaining items were processed.",
+            items = items
+        ),
+    }
+    .into_owned();
     for error in errors.iter().take(8) {
         summary.push_str("\n\n• ");
         summary.push_str(error);
     }
     if errors.len() > 8 {
-        summary.push_str(&format!("\n\n…and {} more", errors.len() - 8));
+        summary.push_str("\n\n");
+        summary.push_str(&crate::i18n::count("more_items", errors.len() - 8));
     }
     summary
 }
 
-fn deletion_error_summary(errors: &[String]) -> String {
-    operation_error_summary(errors, "deleted")
+fn deletion_error_summary(errors: &[String], permanent: bool) -> String {
+    operation_error_summary(
+        errors,
+        if permanent {
+            FailedAction::Delete
+        } else {
+            FailedAction::Trash
+        },
+    )
 }
 
 /// Backends without Trash support (most remote filesystems, including SMB)
@@ -3913,7 +4002,11 @@ fn deletion_error_summary(errors: &[String]) -> String {
 /// that specific case instead of the raw GIO error text.
 fn deletion_error_message(name: &str, permanent: bool, error: &glib::Error) -> String {
     if !permanent && error.matches(gio::IOErrorEnum::NotSupported) {
-        format!("{name}: This location doesn't support Trash. Delete permanently instead.")
+        rust_i18n::t!(
+            "%{name}: This location doesn't support Trash. Delete permanently instead.",
+            name = name
+        )
+        .into_owned()
     } else {
         format!("{name}: {error}")
     }
@@ -4058,7 +4151,7 @@ async fn trashed_entries_for_originals(
     {
         return Err(glib::Error::new(
             gio::IOErrorEnum::NotFound,
-            "One or more recently trashed items are no longer available",
+            &crate::i18n::tr("One or more recently trashed items are no longer available"),
         ));
     }
     Ok(original_locations
@@ -4141,12 +4234,17 @@ async fn restore_trash_entry(
         {
             return Err(glib::Error::new(
                 gio::IOErrorEnum::Failed,
-                "The original location changed and no longer matches the confirmed destination",
+                &crate::i18n::tr(
+                    "The original location changed and no longer matches the confirmed destination",
+                ),
             ));
         }
         Ok(plan) => plan,
         Err(error) => {
-            return Err(glib::Error::new(gio::IOErrorEnum::Failed, error.message()));
+            return Err(glib::Error::new(
+                gio::IOErrorEnum::Failed,
+                &error.user_message(),
+            ));
         }
     };
     if let Some(parent) = plan.destination.parent() {
@@ -4179,7 +4277,7 @@ fn trashed_merge_original(
         entries.into_iter().next().ok_or_else(|| {
             glib::Error::new(
                 gio::IOErrorEnum::NotFound,
-                "The original is no longer in Trash",
+                &crate::i18n::tr("The original is no longer in Trash"),
             )
         })
     })
@@ -4402,7 +4500,7 @@ async fn run_merge_undo(
             deleted_locations: completed_locations,
             retryable_locations: Vec::new(),
             has_non_retryable_failures: true,
-            message: deletion_error_summary(&errors),
+            message: deletion_error_summary(&errors, true),
         });
     }
 }
@@ -4475,7 +4573,7 @@ fn home_trash_entries_at(
             display_name: source_path
                 .file_name()
                 .map(|name| name.to_string_lossy().into_owned())
-                .unwrap_or_else(|| "Trashed item".to_owned()),
+                .unwrap_or_else(|| crate::i18n::tr("Trashed item")),
             original_target: Some(Location::local(&original_path)),
             trash_info: Some(info_path),
             confirmed_destination: None,
@@ -4706,7 +4804,7 @@ async fn run_deletion(
             deleted_locations,
             retryable_locations,
             has_non_retryable_failures,
-            message: deletion_error_summary(&errors),
+            message: deletion_error_summary(&errors, permanent),
         });
     }
 }
@@ -4740,7 +4838,7 @@ impl OperationProvider for LocalOperationProvider {
             if let Err(message) = validate_basename(&request.new_name) {
                 emit(OperationEvent::Failed {
                     request_id: request.id,
-                    message: message.to_owned(),
+                    message: crate::i18n::tr(message),
                     password_failure: None,
                 });
                 return;
@@ -5558,7 +5656,11 @@ impl OperationProvider for LocalOperationProvider {
                     Err(error) => {
                         emit(OperationEvent::Failed {
                             request_id: request.id,
-                            message: format!("Unable to find items in Trash: {error}"),
+                            message: rust_i18n::t!(
+                                "Unable to find items in Trash: %{error}",
+                                error = error
+                            )
+                            .into_owned(),
                             password_failure: None,
                         });
                         return;
@@ -5668,7 +5770,7 @@ impl OperationProvider for LocalOperationProvider {
                     request_id: request.id,
                     restored_locations,
                     restored,
-                    message: operation_error_summary(&errors, "restored"),
+                    message: operation_error_summary(&errors, FailedAction::Restore),
                 });
             }
         });

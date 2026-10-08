@@ -92,7 +92,7 @@ fn plural_categories_cover_russian_teens_and_invariant_asian_forms() {
     );
     assert_eq!(
         rust_i18n::t!("counts.files.other", locale = "ja", count = 3),
-        "3 個のファイル"
+        "3個のファイル"
     );
 }
 

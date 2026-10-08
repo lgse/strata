@@ -30,25 +30,49 @@ use crate::{
 const MAX_RESTORE_PATH_BYTES: usize = 4096;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+enum RestoreTargetErrorKind {
+    /// English catalog key describing why the restore was refused.
+    Reason(&'static str),
+    /// System error text, shown verbatim.
+    System(String),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct RestoreTargetError {
-    message: String,
+    kind: RestoreTargetErrorKind,
 }
 
 impl RestoreTargetError {
-    fn new(message: impl Into<String>) -> Self {
+    fn new(reason: &'static str) -> Self {
         Self {
-            message: message.into(),
+            kind: RestoreTargetErrorKind::Reason(reason),
+        }
+    }
+
+    fn system(message: String) -> Self {
+        Self {
+            kind: RestoreTargetErrorKind::System(message),
         }
     }
 
     pub(crate) fn message(&self) -> &str {
-        &self.message
+        match &self.kind {
+            RestoreTargetErrorKind::Reason(reason) => reason,
+            RestoreTargetErrorKind::System(message) => message,
+        }
+    }
+
+    pub(crate) fn user_message(&self) -> String {
+        match &self.kind {
+            RestoreTargetErrorKind::Reason(reason) => crate::i18n::tr(reason),
+            RestoreTargetErrorKind::System(message) => message.clone(),
+        }
     }
 }
 
 impl std::fmt::Display for RestoreTargetError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(&self.message)
+        formatter.write_str(self.message())
     }
 }
 
@@ -425,7 +449,7 @@ async fn query_gio_trash_item(location: &Location) -> Result<GioTrashItem, Resto
             glib::Priority::DEFAULT,
         )
         .await
-        .map_err(|error| RestoreTargetError::new(error.to_string()))?;
+        .map_err(|error| RestoreTargetError::system(error.to_string()))?;
     let Some(original) = info.attribute_byte_string("trash::orig-path") else {
         return Err(RestoreTargetError::new(
             "The original location is unavailable",

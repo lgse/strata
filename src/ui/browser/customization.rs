@@ -282,8 +282,9 @@ pub(in crate::ui) fn show_customize_modal(
             .map(|&(icon_name, label)| {
                 let button = gtk::Button::new();
                 button.add_css_class("customize-icon-button");
-                button.set_tooltip_text(Some(label));
-                button.update_property(&[gtk::accessible::Property::Label(label)]);
+                let label = crate::i18n::tr(label);
+                button.set_tooltip_text(Some(&label));
+                button.update_property(&[gtk::accessible::Property::Label(&label)]);
                 button.set_child(Some(&crate::assets::primary_icon(icon_name, 20)));
                 if initial_icon.as_deref() == Some(icon_name) {
                     button.add_css_class("active");
@@ -302,9 +303,9 @@ pub(in crate::ui) fn show_customize_modal(
         |emoji| rust_i18n::t!("Emoji  %{emoji}", emoji = emoji).into_owned(),
     ));
     emoji_button.add_css_class("customize-emoji-button");
-    emoji_button.update_property(&[gtk::accessible::Property::Description(
+    emoji_button.update_property(&[gtk::accessible::Property::Description(&crate::i18n::tr(
         "Choose any emoji for this item",
-    )]);
+    ))]);
     let emoji_chooser = gtk::EmojiChooser::new();
     emoji_chooser.add_css_class("customize-emoji-chooser");
     emoji_chooser.set_parent(&emoji_button);
@@ -450,7 +451,7 @@ fn build_folder_color_bar(
         dot.set_has_frame(false);
         dot.add_css_class("folder-color-dot");
         dot.add_css_class(color.css_class());
-        dot.set_tooltip_text(Some(color.name()));
+        dot.set_tooltip_text(Some(&crate::i18n::tr(color.name())));
         let check = gtk::Image::from_icon_name(crate::assets::icons::CHECK_ON_PRIMARY);
         check.set_pixel_size(10);
         check.set_visible(false);

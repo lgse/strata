@@ -383,7 +383,7 @@ fn launch_with_recent_registration(
     if !launcher.supports_uris() && requires_uri_handlers(files) {
         return Err(glib::Error::new(
             gio::IOErrorEnum::NotSupported,
-            "This application cannot open files at this location",
+            &crate::i18n::tr("This application cannot open files at this location"),
         ));
     }
     launcher.launch(files, context)?;
@@ -580,7 +580,7 @@ fn create_section_header(title: &str) -> gtk::ListBoxRow {
     row.set_focusable(false);
     row.set_can_focus(false);
 
-    let label = gtk::Label::new(Some(title));
+    let label = gtk::Label::new(Some(&crate::i18n::tr(title)));
     label.add_css_class("open-with-heading");
     label.set_xalign(0.0);
     row.set_child(Some(&label));
@@ -804,7 +804,7 @@ pub(super) fn show(
     if !has_apps {
         search_entry.set_visible(false);
         list_scroll.set_visible(false);
-        let empty = gtk::Label::new(Some(context.empty_message()));
+        let empty = gtk::Label::new(Some(&crate::i18n::tr(context.empty_message())));
         empty.add_css_class("open-with-empty");
         empty.set_wrap(true);
         empty.set_xalign(0.5);

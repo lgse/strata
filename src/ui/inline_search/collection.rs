@@ -690,7 +690,7 @@ pub(super) fn build_collection(
         }
     };
     view.add_css_class("search-results");
-    crate::ui::accessibility::set_label(&view, SEARCH_RESULTS_LABEL);
+    crate::ui::accessibility::set_label(&view, &crate::i18n::tr(SEARCH_RESULTS_LABEL));
     if let ResultKind::Icons { thumbnail_size } = &kind {
         let last_size = Cell::new(thumbnail_size.get());
         let thumbnail_size = thumbnail_size.clone();

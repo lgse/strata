@@ -145,13 +145,13 @@ pub(super) fn source_document(
             (true, true) => {
                 "Long source lines are split into virtual rows for responsive scrolling; file reading was limited to the first 1 MB. Copy preserves the complete loaded text and original line breaks."
             }
-            (true, false) => "Preview limited to the first 1 MB.",
+            (true, false) => "Preview limited to the first 1 MB",
             (false, true) => {
                 "Long source lines are split into virtual rows for responsive scrolling. Copy preserves the complete text and original line breaks."
             }
             (false, false) => unreachable!(),
         };
-        let notice = gtk::Label::new(Some(message));
+        let notice = gtk::Label::new(Some(&crate::i18n::tr(message)));
         notice.add_css_class("preview-note");
         notice.set_wrap(true);
         container.append(&notice);

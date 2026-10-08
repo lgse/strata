@@ -42,6 +42,7 @@ pub(in crate::ui::browser) struct FileProgressState {
     pub(super) dock_only: Cell<bool>,
     pub(super) task_description: RefCell<String>,
     pub(super) destination_description: RefCell<String>,
+    pub(super) destination_label: RefCell<String>,
 }
 
 impl FileProgressState {
@@ -68,6 +69,7 @@ impl FileProgressState {
             dock_only: Cell::new(false),
             task_description: RefCell::new(String::new()),
             destination_description: RefCell::new(String::new()),
+            destination_label: RefCell::new(String::new()),
         }
     }
 }
@@ -138,6 +140,9 @@ impl ViewState {
         progress
             .destination_description
             .replace(self.browser.operation_destination_description());
+        progress
+            .destination_label
+            .replace(self.browser.operation_destination_label());
         progress
             .task_description
             .replace(self.browser.operation_description());
@@ -319,13 +324,10 @@ impl ViewState {
                     self.settle_pending_delete_dissolve();
                 }
                 self.browser.refresh_after_cancellation(affected_locations);
-                let message = format!(
-                    "{completed} completed, {failed} failed, and {not_attempted} not attempted.\n\nCompleted changes were not reverted."
-                );
                 show_error_dialog(
                     &self.overlay,
                     &crate::i18n::tr("Operation cancelled"),
-                    &message,
+                    &super::cancelled_operation_summary(*completed, *failed, *not_attempted),
                 );
                 true
             }

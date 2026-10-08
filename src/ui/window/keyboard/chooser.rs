@@ -61,7 +61,7 @@ impl Dispatcher {
             policy.multiple,
             self.view.item_view_has_focus(),
         )?;
-        self.shortcuts.show_feedback(reason);
+        self.shortcuts.show_feedback(&crate::i18n::tr(reason));
         Some(Propagation::Stop)
     }
 
@@ -69,7 +69,7 @@ impl Dispatcher {
         if self.chooser.is_none() || opens_here(location) {
             return false;
         }
-        self.shortcuts.show_feedback(LOCAL_ONLY);
+        self.shortcuts.show_feedback(&crate::i18n::tr(LOCAL_ONLY));
         true
     }
 

@@ -593,7 +593,7 @@ fn render_results(
         } else {
             "No matching files or folders"
         };
-        state.status.set_text(message);
+        state.status.set_text(&crate::i18n::tr(message));
     }
 
     if results_changed

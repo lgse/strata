@@ -283,7 +283,7 @@ impl ViewState {
             .build();
         content.set_size_request(PEEK_WIDTH, -1);
         content.set_overflow(gtk::Overflow::Hidden);
-        crate::ui::accessibility::set_label(&content, PEEK_LABEL);
+        crate::ui::accessibility::set_label(&content, &crate::i18n::tr(PEEK_LABEL));
 
         let header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         header.add_css_class("column-header");

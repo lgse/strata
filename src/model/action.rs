@@ -74,6 +74,14 @@ impl ActionRuntime {
         }
     }
 
+    /// Python and Bash are proper names; only the generic command runtime is translated.
+    pub fn localized_label(self) -> String {
+        match self {
+            Self::Command => crate::i18n::tr("Command"),
+            Self::Python | Self::Bash => self.label().to_owned(),
+        }
+    }
+
     /// The default interpreter looked up on `PATH` when a script has no usable shebang.
     pub const fn default_interpreter(self) -> Option<&'static str> {
         match self {
@@ -336,6 +344,105 @@ impl fmt::Display for ActionError {
                 runtime.label()
             ),
         }
+    }
+}
+
+impl ActionError {
+    /// The localized form shown in Settings; `Display` stays English for logs.
+    pub fn user_message(&self) -> String {
+        use rust_i18n::t;
+        match self {
+            Self::Toml(message) => t!(
+                "The action file is not valid TOML: %{error}",
+                error = message
+            ),
+            Self::Serialize(message) => {
+                t!("Unable to write the action file: %{error}", error = message)
+            }
+            Self::UnsupportedSchema { found } => t!(
+                "This action uses schema version %{found}, but this Strata build supports %{supported}",
+                found = found,
+                supported = ACTION_SCHEMA_VERSION
+            ),
+            Self::InvalidId(id) => t!(
+                "The action id “%{id}” must start with a lowercase letter or digit and use only lowercase letters, digits, dots, dashes, or underscores",
+                id = id
+            ),
+            Self::InvalidName => t!(
+                "Enter a name of 1–%{max} characters without control characters",
+                max = MAX_ACTION_NAME_CHARS
+            ),
+            Self::InvalidDescription => t!(
+                "Descriptions are limited to %{max} characters",
+                max = MAX_ACTION_DESCRIPTION_CHARS
+            ),
+            Self::InvalidIcon => {
+                t!("Icons must be a Lucide icon name of lowercase letters, digits, and dashes")
+            }
+            Self::MissingEntrypoint => t!("A Python or Bash action needs an entrypoint script"),
+            Self::UnexpectedEntrypoint => {
+                t!("Command actions must not declare an entrypoint script")
+            }
+            Self::MissingProgram => t!("A command action needs a program"),
+            Self::UnexpectedProgram => t!(
+                "Python and Bash actions must not declare a program; the interpreter comes from the script"
+            ),
+            Self::InvalidEntrypoint(name) => t!(
+                "“%{name}” must be a plain file name beside action.toml without a path or leading dash",
+                name = name
+            ),
+            Self::InvalidProgram(name) => t!(
+                "“%{name}” is not a usable program name: it cannot be empty, start with a dash, or contain a NUL byte",
+                name = name
+            ),
+            Self::TooManyArguments => t!(
+                "Commands accept at most %{max} arguments",
+                max = MAX_ARGUMENTS
+            ),
+            Self::ArgumentTooLong => t!(
+                "Arguments are limited to %{max} characters",
+                max = MAX_ARGUMENT_CHARS
+            ),
+            Self::InvalidArgument(argument) => t!(
+                "“%{argument}” is not a usable argument. Write literal text, or one of {path}, {paths}, or {parent} on its own",
+                argument = argument
+            ),
+            Self::PathTokenInPerItem => {
+                t!("{path} is for per-item actions; use {paths} for a whole selection")
+            }
+            Self::PathsTokenInWholeSelection => {
+                t!("{paths} is for whole-selection actions; use {path} for a per-item action")
+            }
+            Self::InvalidExtension(extension) => t!(
+                "“%{extension}” is not a usable extension: write it without a dot, for example “png”",
+                extension = extension
+            ),
+            Self::InvalidMimeType(mime) => t!(
+                "“%{mime}” is not a usable content type: write “image/png” or “image/*”",
+                mime = mime
+            ),
+            Self::TooManyConditions("extensions") => t!(
+                "At most %{max} extensions can be listed",
+                max = MAX_EXTENSIONS
+            ),
+            Self::TooManyConditions(_) => t!(
+                "At most %{max} content types can be listed",
+                max = MAX_MIME_TYPES
+            ),
+            Self::InvalidItemRange => t!(
+                "Item counts must be at least 1, at most %{max}, and max_items cannot be smaller than min_items",
+                max = MAX_ITEMS_PER_ACTION
+            ),
+            Self::InvalidShebang => t!(
+                "The script starts with “#!” but does not name a program, so the interpreter is unknown"
+            ),
+            Self::ShebangMismatch { declared, runtime } => t!(
+                "The script declares “%{declared}”, which does not match the %{runtime} runtime",
+                declared = declared,
+                runtime = runtime.localized_label()
+            ),
+        }
+        .into_owned()
     }
 }
 

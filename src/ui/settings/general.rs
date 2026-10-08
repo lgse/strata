@@ -613,8 +613,8 @@ fn append_sidebar_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
         content.append(&gtk::Label::new(Some(&crate::i18n::tr(label))));
         button.set_child(Some(&content));
         button.update_property(&[
-            gtk::accessible::Property::Label(switch.title),
-            gtk::accessible::Property::Description(switch.description),
+            gtk::accessible::Property::Label(&crate::i18n::tr(switch.title)),
+            gtk::accessible::Property::Description(&crate::i18n::tr(switch.description)),
         ]);
         super::bindings::bind_toggle(manager, &button, switch.read, switch.write);
         chips.append(&button);
@@ -700,9 +700,12 @@ fn append_click_activation(
     let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     spacer.set_hexpand(true);
     header.append(&spacer);
-    for text in ["FILES", "FOLDERS"] {
+    // Keep the column headings over controls that grow for longer translations.
+    let columns = [(); 2].map(|_| gtk::SizeGroup::new(gtk::SizeGroupMode::Horizontal));
+    for (text, column) in ["FILES", "FOLDERS"].into_iter().zip(&columns) {
         let label = gtk::Label::new(Some(&crate::i18n::tr(text)));
         label.set_width_chars(17);
+        column.add_widget(&label);
         header.append(&label);
     }
     activation_options.append(&header);
@@ -712,6 +715,9 @@ fn append_click_activation(
         ("List view", BrowserMode::List),
     ] {
         let (row, options) = bind_click_activation_row(manager, label, mode);
+        for (option, column) in options.iter().zip(&columns) {
+            column.add_widget(option);
+        }
         activation_options.append(&row);
         responsive_activation_rows.push(ResponsiveActivationRow { row, options });
     }
@@ -873,7 +879,9 @@ fn video_preview_backend_control(
         .build();
     popover.add_css_class("column-popover");
     let backend = gtk::MenuButton::builder()
-        .label(video_preview_backend_label(selected_backend))
+        .label(crate::i18n::tr(video_preview_backend_label(
+            selected_backend,
+        )))
         .always_show_arrow(true)
         .popover(&popover)
         .build();
@@ -882,7 +890,7 @@ fn video_preview_backend_control(
     backend.set_valign(gtk::Align::Center);
     backend.update_property(&[
         gtk::accessible::Property::Label(&crate::i18n::tr("Video preview hardware backend")),
-        gtk::accessible::Property::Description(description),
+        gtk::accessible::Property::Description(&crate::i18n::tr(description)),
     ]);
     bind_video_preview_backend_menu(manager, &backend, options);
     backend

@@ -16,11 +16,10 @@ use chord_panel::ChordPanel;
 use super::{
     browser::FilterStatus,
     browser_modes::BrowserMode,
-    shortcut_reference::{ChooserScope, ReferenceScope},
+    shortcut_reference::{ChooserScope, ReferenceScope, Shortcut},
     tenxer_mode::{Chord, Prompt},
 };
 
-type Shortcut = (&'static str, &'static str);
 type ChordListener = Box<dyn Fn(Option<Chord>)>;
 type PromptResetListeners = Rc<RefCell<Vec<Box<dyn Fn()>>>>;
 /// `None` while the view is busy rebuilding; the footer then retries on idle.
@@ -127,7 +126,7 @@ impl ChordIndicator {
             chord
                 .options()
                 .iter()
-                .map(|(key, action)| ((*key).to_owned(), (*action).to_owned()))
+                .map(|(key, action)| ((*key).to_owned(), crate::i18n::tr(action)))
                 .collect::<Vec<_>>()
         });
         self.set_with(chord, rows.unwrap_or_default());
@@ -540,8 +539,8 @@ impl PromptBar {
         // Undo history could otherwise bring back typed credentials.
         self.entry.set_enable_undo(kind != Prompt::Go);
         self.kind.set(Some(kind));
-        self.label.set_text(kind.label());
-        super::accessibility::set_label(&self.entry, kind.name());
+        self.label.set_text(&kind.label());
+        super::accessibility::set_label(&self.entry, &crate::i18n::tr(kind.name()));
         self.entry.set_text(text);
         self.bar.set_visible(true);
         stack.set_visible_child(&self.bar);
@@ -622,8 +621,9 @@ impl ShortcutFooter {
         paste.set_visible(false);
         let tag = gtk::Label::new(Some(crate::ui::tenxer_mode::TAG_TEXT));
         tag.add_css_class("tenxer-tag");
-        crate::ui::accessibility::set_description(&tag, Some(crate::ui::tenxer_mode::TAG_NAME));
-        super::accessibility::set_label(&tag, crate::ui::tenxer_mode::TAG_NAME);
+        let tag_name = crate::i18n::tr(crate::ui::tenxer_mode::TAG_NAME);
+        crate::ui::accessibility::set_description(&tag, Some(&tag_name));
+        super::accessibility::set_label(&tag, &tag_name);
         tag.set_visible(false);
         let chord = gtk::Label::new(None);
         chord.add_css_class("shortcut-footer-chord-pill");
@@ -673,7 +673,7 @@ impl ShortcutFooter {
         spacer.set_hexpand(true);
         status.insert_child_after(&current.root, Some(&more));
         status.insert_child_after(&spacer, Some(&current.root));
-        let content = super::accessibility::dialog_box("Keyboard shortcuts");
+        let content = super::accessibility::dialog_box(&crate::i18n::tr("Keyboard shortcuts"));
         content.add_css_class("shortcut-reference-panel");
         content.set_halign(gtk::Align::Center);
         content.set_valign(gtk::Align::Center);
@@ -1001,8 +1001,12 @@ impl ShortcutFooter {
         };
         match status.as_ref() {
             Some(status) => {
-                let label = if status.search { "search" } else { "filter" };
-                self.filter.set_text(&format!("{label}: {}", status.query));
+                let mark = if status.search {
+                    rust_i18n::t!("search: %{query}", query = status.query)
+                } else {
+                    rust_i18n::t!("filter: %{query}", query = status.query)
+                };
+                self.filter.set_text(&mark);
                 crate::ui::accessibility::set_description(&self.filter, Some(&status.query));
                 self.filter.set_visible(true);
             }
@@ -1716,11 +1720,14 @@ fn render_reference(
         let rows: Vec<_> = section
             .rows
             .into_iter()
-            .filter(|(key, action)| {
+            .filter(|shortcut| {
                 query.is_empty()
-                    || key.to_lowercase().contains(&query)
-                    || action.to_lowercase().contains(&query)
-                    || crate::i18n::tr(action).to_lowercase().contains(&query)
+                    || shortcut.keys.to_lowercase().contains(&query)
+                    || shortcut.key_text().to_lowercase().contains(&query)
+                    || shortcut.action.to_lowercase().contains(&query)
+                    || crate::i18n::tr(shortcut.action)
+                        .to_lowercase()
+                        .contains(&query)
             })
             .collect();
         if !rows.is_empty() {
@@ -1739,15 +1746,16 @@ fn render_reference(
 fn apply_experimental_label(tag: &gtk::Label, enabled: bool) {
     tag.set_text(crate::ui::tenxer_mode::TAG_TEXT);
     tag.set_visible(enabled);
-    let phrase = super::shortcut_reference::EXPERIMENTAL_LABEL;
+    let name = crate::i18n::tr(crate::ui::tenxer_mode::TAG_NAME);
+    let phrase = crate::i18n::tr(super::shortcut_reference::EXPERIMENTAL_LABEL);
     let announced = if enabled {
-        format!("{} {phrase}", crate::ui::tenxer_mode::TAG_NAME)
+        format!("{name} {phrase}")
     } else {
-        crate::ui::tenxer_mode::TAG_NAME.to_owned()
+        name
     };
     tag.update_property(&[
         gtk::accessible::Property::Label(&announced),
-        gtk::accessible::Property::Description(if enabled { phrase } else { "" }),
+        gtk::accessible::Property::Description(if enabled { &phrase } else { "" }),
     ]);
 }
 
@@ -1759,9 +1767,14 @@ fn update_visual_mode(label: &gtk::Label, visual: Option<crate::app::VisualKind>
         Some(crate::app::VisualKind::Unset) => ("UNSET", "Visual unset"),
         None => ("", ""),
     };
+    let (text, name) = if text.is_empty() {
+        (String::new(), String::new())
+    } else {
+        (crate::i18n::tr(text), crate::i18n::tr(name))
+    };
     if label.text() != text {
-        label.set_text(text);
-        super::accessibility::set_label(label, name);
+        label.set_text(&text);
+        super::accessibility::set_label(label, &name);
     }
     label.set_visible(!text.is_empty());
 }
@@ -1832,12 +1845,17 @@ fn update_item_count(
             let selected = browser.selected_entries();
             label.set_label(&selection_details(&selected));
         }
+        // The plural form follows the total; the selected count fills in afterwards.
+        let selection = rust_i18n::replace_patterns(
+            &crate::i18n::count("selected_of_items", counts.total),
+            &["selected"],
+            &[crate::i18n::integer(selected_len as u64)],
+        );
         crate::ui::accessibility::set_description(
             label,
             Some(&rust_i18n::t!(
-                "%{selected} of %{items} selected. Size includes selected files only; folder contents are not counted.",
-                selected = selected_len,
-                items = crate::i18n::count("items", counts.total)
+                "%{selection} Size includes selected files only; folder contents are not counted.",
+                selection = selection
             )),
         );
     } else {
@@ -1967,7 +1985,7 @@ fn append_section(parent: &gtk::Box, title: &str, shortcuts: &[Shortcut], compac
     let grid = gtk::Grid::new();
     grid.set_column_spacing(48);
     grid.set_row_spacing(12);
-    for (index, (key, action)) in shortcuts.iter().enumerate() {
+    for (index, shortcut) in shortcuts.iter().enumerate() {
         let row = gtk::Box::new(
             if compact {
                 gtk::Orientation::Vertical
@@ -1978,7 +1996,7 @@ fn append_section(parent: &gtk::Box, title: &str, shortcuts: &[Shortcut], compac
         );
         row.add_css_class("shortcut-reference-row");
         let action = gtk::Label::builder()
-            .label(crate::i18n::tr(action))
+            .label(crate::i18n::tr(shortcut.action))
             .xalign(0.0)
             .hexpand(true)
             .wrap(true)
@@ -1989,7 +2007,7 @@ fn append_section(parent: &gtk::Box, title: &str, shortcuts: &[Shortcut], compac
             action.set_max_width_chars(22);
         }
         row.append(&action);
-        let keys = gtk::Label::new(Some(key));
+        let keys = gtk::Label::new(Some(&shortcut.key_text()));
         keys.add_css_class("shortcut-reference-key");
         keys.set_halign(gtk::Align::Start);
         keys.set_wrap(compact);

@@ -211,28 +211,15 @@ fn show_inline_error(label: &gtk::Label, message: &str) {
     label.set_visible(true);
 }
 
-fn human_size(bytes: u64) -> String {
-    const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
-    let mut value = bytes as f64;
-    let mut unit = 0;
-    while value >= 1000.0 && unit + 1 < UNITS.len() {
-        value /= 1000.0;
-        unit += 1;
-    }
-    if unit == 0 {
-        format!("{bytes} {}", UNITS[unit])
-    } else {
-        format!("{value:.1} {}", UNITS[unit])
-    }
-}
-
 fn capacity_summary(total: u64, available: u64) -> ProgressSummary {
     let used = total.saturating_sub(available);
     let fraction = used as f64 / total.max(1) as f64;
     let summary = progress_summary("Used");
-    summary
-        .amount
-        .set_text(&format!("{} / {}", human_size(used), human_size(total)));
+    summary.amount.set_text(&format!(
+        "{} / {}",
+        crate::i18n::file_size(used),
+        crate::i18n::file_size(total)
+    ));
     summary.percent.set_visible(false);
     summary.progress.set_fraction(fraction);
     summary
@@ -481,15 +468,15 @@ pub(super) fn show_drive_properties(
             match (total, usage) {
                 (Some(total), Some((_, available))) => {
                     let used = total.saturating_sub(available);
-                    add_row("Capacity", &human_size(total));
-                    add_row("Used", &human_size(used));
-                    add_row("Free", &human_size(available));
+                    add_row("Capacity", &crate::i18n::file_size(total));
+                    add_row("Used", &crate::i18n::file_size(used));
+                    add_row("Free", &crate::i18n::file_size(available));
                     let summary = capacity_summary(total, available);
                     summary.widget.set_margin_top(8);
                     grid.attach(&summary.widget, 0, row, 2, 1);
                 }
                 (Some(total), None) => {
-                    add_row("Capacity", &human_size(total));
+                    add_row("Capacity", &crate::i18n::file_size(total));
                     add_row("Used", &crate::i18n::tr("Unavailable"));
                 }
                 (None, _) => {
@@ -500,7 +487,7 @@ pub(super) fn show_drive_properties(
         None => {
             add_row("Status", &crate::i18n::tr("Not mounted"));
             if let Some(total) = total_bytes {
-                add_row("Capacity", &human_size(total));
+                add_row("Capacity", &crate::i18n::file_size(total));
             }
             add_row("Used", &crate::i18n::tr("Unavailable (not mounted)"));
         }
@@ -730,7 +717,7 @@ fn format_filesystem_selector(
         .iter()
         .map(|fs| {
             if current == Some(fs.label()) {
-                format!("{} (current)", fs.label())
+                rust_i18n::t!("%{filesystem} (current)", filesystem = fs.label()).into_owned()
             } else {
                 fs.label().to_owned()
             }
@@ -890,7 +877,7 @@ pub(super) fn show_format_dialog(parent: &gtk::Widget, volume: &gio::Volume) {
             }
             let size = drive_ops::block_device_for_volume(&volume)
                 .and_then(|device| drive_ops::device_size_bytes(&device))
-                .map(human_size)
+                .map(crate::i18n::file_size)
                 .unwrap_or_else(|| crate::i18n::tr("unknown size"));
             summary.set_text(&rust_i18n::t!("Drive: %{value1} (%{value2}, %{value3})\nFilesystem: %{value4}\nLabel: %{value5}\nMode: %{value6}", value1 = name, value2 = device, value3 = size, value4 = fs_type.label(), value5 = if label.is_empty() { crate::i18n::tr("(none)") } else { label.clone() }, value6 = crate::i18n::tr(if quick_check.is_active() {
                     "Quick format"

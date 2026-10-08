@@ -40,10 +40,14 @@ mod tests;
 
 const INVALID_ARCHIVE: &str = "This file is not a valid archive or is damaged.";
 
+fn invalid_archive() -> ArchiveError {
+    archive_failed(crate::i18n::tr(INVALID_ARCHIVE))
+}
+
 pub(super) fn zip_error(error: zip::result::ZipError) -> ArchiveError {
     use zip::result::ZipError;
     match error {
-        ZipError::InvalidArchive(_) => archive_failed(INVALID_ARCHIVE),
+        ZipError::InvalidArchive(_) => invalid_archive(),
         ZipError::Io(error) => archive_failed(archive_read_error(error, false)),
         // ZIP's password check is a definite rejection, unlike a failed CRC or HMAC.
         ZipError::InvalidPassword => {
@@ -66,7 +70,7 @@ fn sevenz_decode_error(error: sevenz_rust2::Error) -> ArchiveError {
         | Error::BadTerminatedUnpackInfo
         | Error::BadTerminatedPackInfo(_)
         | Error::BadTerminatedSubStreamsInfo
-        | Error::BadTerminatedHeader(_) => archive_failed(INVALID_ARCHIVE),
+        | Error::BadTerminatedHeader(_) => invalid_archive(),
         Error::PasswordRequired => ArchiveError::PasswordRequired(PASSWORD_REQUIRED.to_owned()),
         Error::MaybeBadPassword(_) => {
             ArchiveError::IncorrectPassword(MAYBE_BAD_PASSWORD.to_owned())
@@ -120,7 +124,7 @@ fn archive_read_error(error: std::io::Error, decrypting: bool) -> std::io::Error
         || invalid_tar
         || invalid_gzip
     {
-        std::io::Error::new(ErrorKind::InvalidData, INVALID_ARCHIVE)
+        std::io::Error::new(ErrorKind::InvalidData, crate::i18n::tr(INVALID_ARCHIVE))
     } else {
         error
     }
@@ -257,7 +261,7 @@ impl<R: BufRead> GzipMembers<R> {
                 return Ok(());
             }
             if chunk.iter().any(|byte| *byte != 0) {
-                return Err(archive_failed(INVALID_ARCHIVE));
+                return Err(invalid_archive());
             }
             let length = chunk.len();
             rest.consume(length);

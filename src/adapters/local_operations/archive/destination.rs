@@ -84,7 +84,7 @@ pub(super) fn sanitized_archive_path(name: impl AsRef<OsStr>) -> Result<PathBuf,
         .map(|byte| if *byte == b'\\' { b'/' } else { *byte })
         .collect();
     if normalized.is_empty() || normalized.starts_with(b"/") {
-        return Err(format!("Refusing unsafe archive path: {name}"));
+        return Err(unsafe_archive_path(&name));
     }
 
     let mut path = PathBuf::new();
@@ -95,7 +95,7 @@ pub(super) fn sanitized_archive_path(name: impl AsRef<OsStr>) -> Result<PathBuf,
                 path.pop();
             }
             bytes if bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' => {
-                return Err(format!("Refusing unsafe archive path: {name}"));
+                return Err(unsafe_archive_path(&name));
             }
             _ => path.push(OsStr::from_bytes(component)),
         }
@@ -104,6 +104,18 @@ pub(super) fn sanitized_archive_path(name: impl AsRef<OsStr>) -> Result<PathBuf,
         return Err(format!("Refusing empty archive path: {name}"));
     }
     Ok(path)
+}
+
+fn unsafe_archive_path(name: &str) -> String {
+    rust_i18n::t!("Refusing unsafe archive path: %{name}", name = name).into_owned()
+}
+
+fn staging_creation_failed(error: impl std::fmt::Display) -> String {
+    rust_i18n::t!(
+        "Could not create the extraction staging folder: %{error}",
+        error = error
+    )
+    .into_owned()
 }
 
 /// Returns `name` with ` ({index})` inserted before the extension.
@@ -178,7 +190,13 @@ impl ExtractionDestination {
             rustix::fs::Mode::empty(),
             rustix::fs::ResolveFlags::IN_ROOT | rustix::fs::ResolveFlags::NO_MAGICLINKS,
         )
-        .map_err(|error| format!("Could not open extraction destination: {error}"))?;
+        .map_err(|error| {
+            rust_i18n::t!(
+                "Could not open extraction destination: %{error}",
+                error = error
+            )
+            .into_owned()
+        })?;
         Ok(Self {
             root,
             calls: MetadataCalls::SYSTEM,
@@ -196,11 +214,7 @@ impl ExtractionDestination {
             match rustix::fs::mkdirat(&self.root, &name, rustix::fs::Mode::from_raw_mode(0o777)) {
                 Ok(()) => {}
                 Err(rustix::io::Errno::EXIST) => continue,
-                Err(error) => {
-                    return Err(format!(
-                        "Could not create the extraction staging folder: {error}"
-                    ));
-                }
+                Err(error) => return Err(staging_creation_failed(error)),
             }
             let root = rustix::fs::openat(
                 &self.root,
@@ -213,12 +227,16 @@ impl ExtractionDestination {
             )
             .map_err(|error| {
                 let _ = rustix::fs::unlinkat(&self.root, &name, rustix::fs::AtFlags::REMOVEDIR);
-                format!("Could not open the extraction staging folder: {error}")
+                rust_i18n::t!(
+                    "Could not open the extraction staging folder: %{error}",
+                    error = error
+                )
+                .into_owned()
             })?;
             let calls = self.calls;
             return Ok((OsString::from(name), Self { root, calls }));
         }
-        Err("Could not create the extraction staging folder: no unused name".to_owned())
+        Err(staging_creation_failed(crate::i18n::tr("no unused name")))
     }
 
     pub(super) fn remove_empty_staging(&self, staging: &OsStr) -> Result<bool, String> {

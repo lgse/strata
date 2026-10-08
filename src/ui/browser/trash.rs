@@ -30,18 +30,20 @@ pub(super) struct TrashLoadingView {
 }
 
 fn empty_trash_error_summary(outcome: &EmptyTrashOutcome) -> String {
-    let mut summary = format!(
-        "{} could not be deleted. The remaining items were processed.",
-        item_count_label(outcome.failed)
-    );
+    let mut summary = rust_i18n::t!(
+        "%{items} could not be deleted. The remaining items were processed.",
+        items = item_count_label(outcome.failed)
+    )
+    .into_owned();
     for error in &outcome.errors {
         summary.push_str("\n\n• ");
         summary.push_str(error);
     }
     if outcome.failed > outcome.errors.len() {
-        summary.push_str(&format!(
-            "\n\n…and {} more",
-            outcome.failed - outcome.errors.len()
+        summary.push_str("\n\n");
+        summary.push_str(&crate::i18n::count(
+            "more_items",
+            outcome.failed - outcome.errors.len(),
         ));
     }
     summary
@@ -93,7 +95,8 @@ fn restore_error_summary(errors: &[String]) -> String {
             summary.push_str(error);
         }
         if errors.len() > 8 {
-            summary.push_str(&format!("\n\n…and {} more", errors.len() - 8));
+            summary.push_str("\n\n");
+            summary.push_str(&crate::i18n::count("more_items", errors.len() - 8));
         }
     }
     summary
@@ -535,7 +538,9 @@ impl ViewState {
             {
                 match destination {
                     Ok(destination) => resolved.push((entry, destination)),
-                    Err(error) => errors.push(format!("{}: {error}", entry.display_name)),
+                    Err(error) => {
+                        errors.push(format!("{}: {}", entry.display_name, error.user_message()))
+                    }
                 }
             }
             let Some(state) = weak.upgrade() else {

@@ -851,7 +851,8 @@ where
     if release_is_pending(&key) {
         return false;
     }
-    let activity = view.map(|view| view.begin_global_activity("Writing to device…"));
+    let activity =
+        view.map(|view| view.begin_global_activity(crate::i18n::tr("Writing to device…")));
     let inserted = with_releases(|releases| {
         if releases.iter().any(|entry| keys_match(&entry.key, &key)) {
             return false;

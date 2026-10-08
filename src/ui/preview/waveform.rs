@@ -233,10 +233,10 @@ impl Waveform {
                 gtk::accessible::Property::ValueMin(0.0),
                 gtk::accessible::Property::ValueMax((duration.max(0) / 1_000_000) as f64),
                 gtk::accessible::Property::ValueNow(second as f64),
-                gtk::accessible::Property::ValueText(&format!(
-                    "{} of {}",
-                    clock(timestamp),
-                    clock(duration)
+                gtk::accessible::Property::ValueText(&rust_i18n::t!(
+                    "%{elapsed} of %{duration}",
+                    elapsed = clock(timestamp),
+                    duration = clock(duration)
                 )),
             ]);
         }

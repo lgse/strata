@@ -83,21 +83,21 @@ impl FileProgressState {
                         self.file_operation_progress.get().1,
                     )
                 };
-                format!("{completed}/{total}")
+                format!(
+                    "{}/{}",
+                    crate::i18n::integer(completed as u64),
+                    crate::i18n::integer(total as u64)
+                )
             });
         compact.count.set_text(count.as_deref().unwrap_or_default());
         compact.count.set_visible(count.is_some());
         let destination = self.destination_description.borrow();
+        let label = self.destination_label.borrow();
         compact
             .destination
-            .set_text(&match destination.strip_prefix("Destination: ") {
-                Some(path) => format!("→ {path}"),
-                None => destination.to_string(),
-            });
+            .set_text(if destination.is_empty() { "" } else { &label });
         crate::ui::accessibility::set_description(&compact.destination, Some(&destination));
-        compact
-            .destination
-            .set_visible(!self.destination_description.borrow().is_empty());
+        compact.destination.set_visible(!destination.is_empty());
         let meta = if transferring {
             view.transfer_rate.text()
         } else {
@@ -113,9 +113,20 @@ impl FileProgressState {
         compact
             .cancel
             .set_tooltip_text(Some(&crate::i18n::tr("Cancel operation")));
-        crate::ui::accessibility::set_label(
-            &compact.cancel,
-            &rust_i18n::t!("Cancel %{value1}", value1 = view.title.text()),
-        );
+        crate::ui::accessibility::set_label(&compact.cancel, &view.cancel_label);
     }
+}
+
+/// `title` is the untranslated progress title passed by the operation.
+pub(super) fn cancel_accessible_label(title: &str) -> String {
+    crate::i18n::tr(match title {
+        "Copying items" => "Cancel copying",
+        "Moving items" => "Cancel moving",
+        "Deleting items" => "Cancel deleting",
+        "Restoring items" => "Cancel restoring",
+        "Compressing items" => "Cancel compressing",
+        "Processing archive…" => "Cancel archive processing",
+        "Emptying Trash" => "Cancel emptying Trash",
+        _ => "Cancel operation",
+    })
 }
