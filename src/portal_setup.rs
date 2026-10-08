@@ -1079,6 +1079,7 @@ fn remove_if_exists(path: &Path) -> Result<(), String> {
 
 fn path_error(action: &str, path: &Path, error: io::Error) -> String {
     let path = path.display();
+    let error = crate::services::io_error_message(&error);
     match action {
         "create" => rust_i18n::t!(
             "Could not create %{path}: %{error}",

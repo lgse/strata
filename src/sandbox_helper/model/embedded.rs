@@ -137,12 +137,7 @@ impl Package {
         use crate::services::model_preview::MAX_MODEL_XML_BYTES;
         let i = self.model.ok_or("3MF package has no model")?;
         let file = self.archive.by_index(i).map_err(|_| "Invalid 3MF model")?;
-        let limit_message = || {
-            format!(
-                "The unpacked 3MF model exceeds the {} MiB preview limit.",
-                MAX_MODEL_XML_BYTES / (1024 * 1024)
-            )
-        };
+        let limit_message = || super::UNPACKED_LIMIT_MESSAGE.to_owned();
         if file.size() > MAX_MODEL_XML_BYTES {
             return Err(limit_message());
         }

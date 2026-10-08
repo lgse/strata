@@ -324,12 +324,26 @@ fn an_unrelated_trash_failure_is_not_retryable() {
 }
 
 #[test]
-fn other_deletion_failures_keep_the_raw_error() {
-    let error = glib::Error::new(gio::IOErrorEnum::PermissionDenied, "access denied");
+fn other_deletion_failures_name_the_item_and_reason() {
+    for (code, raw, expected) in [
+        (
+            gio::IOErrorEnum::PermissionDenied,
+            "Unable to trash file /tmp/secret.txt: access denied",
+            "secret.txt: Permission denied",
+        ),
+        (
+            gio::IOErrorEnum::Failed,
+            "disk exploded",
+            "secret.txt: disk exploded",
+        ),
+    ] {
+        let error = glib::Error::new(code, raw);
 
-    let message = deletion_error_message("secret.txt", false, &error);
-
-    assert_eq!(message, "secret.txt: access denied");
+        assert_eq!(
+            deletion_error_message("secret.txt", false, &error),
+            expected
+        );
+    }
 }
 
 #[test]

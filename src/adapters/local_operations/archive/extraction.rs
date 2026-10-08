@@ -22,7 +22,8 @@ use std::{
 use crate::model::Location;
 
 use super::{
-    ArchiveError, COPY_BUF, archive_failed, archive_read_failed, check_archive_cancelled,
+    ArchiveError, COPY_BUF, archive_failed, archive_io_failed, archive_read_failed,
+    check_archive_cancelled,
     destination::{
         ExtractNameResolver, ExtractionDestination, process_umask, sanitized_archive_path,
     },
@@ -309,8 +310,10 @@ impl<'a> ExtractionSession<'a> {
                         .set_file_times(&file, modified)
                         .map(|()| copied)
                         .map_err(|error| {
-                            archive_failed(format!(
-                                "Could not restore the modification time of `{name}`: {error}"
+                            archive_failed(rust_i18n::t!(
+                                "Could not restore the modification time of `%{path}`: %{error}",
+                                path = name,
+                                error = crate::services::io_error_message(&error.into())
                             ))
                         }),
                     None => Ok(copied),
@@ -677,7 +680,9 @@ fn copy_member(
         if n == 0 {
             break;
         }
-        writer.write_all(&buf[..n]).map_err(archive_failed)?;
+        writer
+            .write_all(&buf[..n])
+            .map_err(|error| archive_io_failed(&error))?;
         copied = copied.saturating_add(n as u64);
     }
     if let Some(declared) = declared_size

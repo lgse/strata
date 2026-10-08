@@ -123,7 +123,50 @@ pub(crate) fn io_error_message(error: &std::io::Error) -> String {
         ErrorKind::StorageFull => "There is not enough space on the device",
         ErrorKind::ReadOnlyFilesystem => "The file system is read-only",
         ErrorKind::TimedOut => "The operation timed out",
-        _ => return error.to_string(),
+        ErrorKind::AlreadyExists => "An item with that name already exists",
+        ErrorKind::DirectoryNotEmpty => "The folder is not empty",
+        ErrorKind::IsADirectory => "The item is a folder",
+        ErrorKind::FileTooLarge => "The file is too large for this file system",
+        ErrorKind::QuotaExceeded => "The disk quota has been exceeded",
+        ErrorKind::ResourceBusy => "The item is in use",
+        ErrorKind::InvalidFilename => "The name is too long",
+        ErrorKind::UnexpectedEof => "The file is truncated or damaged",
+        _ => return system_error_text(error),
+    };
+    crate::i18n::tr(message)
+}
+
+/// System text without the errno suffix or a tempfile path, which can name internal staging files.
+fn system_error_text(error: &std::io::Error) -> String {
+    let text = error.to_string();
+    let text = match error.get_ref() {
+        Some(_) => text
+            .split_once(" at path \"")
+            .map_or(text.as_str(), |(head, _)| head),
+        None => text.as_str(),
+    };
+    match text.rsplit_once(" (os error ") {
+        Some((head, tail)) if tail.ends_with(')') => head.to_owned(),
+        _ => text.to_owned(),
+    }
+}
+
+/// Localized text for common GIO failures; other errors keep GIO's description.
+pub(crate) fn gio_error_message(error: &glib::Error) -> String {
+    use gtk::gio::IOErrorEnum;
+    let message = match error.kind::<IOErrorEnum>() {
+        Some(IOErrorEnum::NotFound) => "No such file or folder",
+        Some(IOErrorEnum::PermissionDenied) => "Permission denied",
+        Some(IOErrorEnum::NotDirectory) => "Not a folder",
+        Some(IOErrorEnum::NoSpace) => "There is not enough space on the device",
+        Some(IOErrorEnum::ReadOnly) => "The file system is read-only",
+        Some(IOErrorEnum::TimedOut) => "The operation timed out",
+        Some(IOErrorEnum::Exists) => "An item with that name already exists",
+        Some(IOErrorEnum::NotEmpty) => "The folder is not empty",
+        Some(IOErrorEnum::IsDirectory) => "The item is a folder",
+        Some(IOErrorEnum::FilenameTooLong) => "The name is too long",
+        Some(IOErrorEnum::Busy) => "The item is in use",
+        _ => return error.message().to_owned(),
     };
     crate::i18n::tr(message)
 }

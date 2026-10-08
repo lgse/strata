@@ -1123,7 +1123,7 @@ fn a_failed_directory_restore_leaves_restored_directories_writable() -> Result<(
         message,
         format!(
             "Could not restore the modification time of `top/ro`: {}",
-            rustix::io::Errno::IO
+            crate::services::io_error_message(&rustix::io::Errno::IO.into())
         )
     );
     assert!(root.path().read_dir()?.next().is_none());

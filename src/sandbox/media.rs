@@ -198,7 +198,7 @@ fn render(
     if result.is_err() {
         terminate(&mut child);
     }
-    result.map_err(|error| error.to_string())
+    result.map_err(|error| crate::services::io_error_message(&error))
 }
 
 fn consume(
@@ -324,7 +324,7 @@ fn render_peaks(
     if result.is_err() {
         terminate(&mut child);
     }
-    result.map_err(|error| error.to_string())
+    result.map_err(|error| crate::services::io_error_message(&error))
 }
 
 fn consume_peaks(
@@ -436,7 +436,7 @@ fn render_storyboard(
     if result.is_err() {
         terminate(&mut child);
     }
-    result.map_err(|error| error.to_string())
+    result.map_err(|error| crate::services::io_error_message(&error))
 }
 
 fn consume_storyboard(

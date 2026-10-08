@@ -573,7 +573,7 @@ fn extraction_failures_stop_progress_and_preserve_error_distinctions() -> Result
         ),
         ("missing.zip", "No such file"),
         ("unreadable.zip", "Permission denied"),
-        ("destination.zip", "Not a directory"),
+        ("destination.zip", "Not a folder"),
         ("unknown.iso", "Unsupported archive format"),
         ("folder.zip", "Not an archive: `folder.zip`"),
         ("passwords.zip", "Not an archive: `passwords.zip`"),

@@ -381,7 +381,7 @@ async fn flush_removable_writes(
         let synced = gio::spawn_blocking(move || flush_filesystem(&root)).await;
         let error = match synced {
             Ok(Ok(())) => continue,
-            Ok(Err(error)) => error.to_string(),
+            Ok(Err(error)) => os_error_text(error),
             Err(error) => blocking_join_message(error),
         };
         emit(OperationEvent::TransferFailed {
@@ -410,7 +410,7 @@ async fn flush_removable_destination(path: &Path) -> Result<(), glib::Error> {
         let synced = gio::spawn_blocking(move || flush_filesystem(&root)).await;
         match synced {
             Ok(Ok(())) => {}
-            Ok(Err(error)) => return Err(io_error(error)),
+            Ok(Err(error)) => return Err(io_error(os_error_text(error))),
             Err(error) => return Err(io_error(blocking_join_message(error))),
         }
     }
@@ -431,7 +431,7 @@ async fn flush_written_roots(
         let result = gio::spawn_blocking(move || flush_filesystem(&root)).await;
         let error = match result {
             Ok(Ok(())) => continue,
-            Ok(Err(error)) => error.to_string(),
+            Ok(Err(error)) => os_error_text(error),
             Err(error) => blocking_join_message(error),
         };
         return Err(device_flush_failure(&error));
@@ -811,25 +811,36 @@ fn copy_failure_on_fat32(error: &glib::Error, fat32_destination: bool) -> (Optio
         return (None, false);
     }
     if !fat32_destination {
-        return (Some(error.to_string()), false);
+        return (Some(crate::services::gio_error_message(error)), false);
     }
     let description = if error.message().contains("File too large") {
         crate::i18n::tr(
             "A file is too large for this FAT32 drive (maximum file size: 4 GiB). Use an exFAT or another large-file-capable drive instead.",
         )
     } else {
-        error.to_string()
+        crate::services::gio_error_message(error)
     };
     (
         Some(
             rust_i18n::t!(
                 "%{description} Earlier completed copies may still be writing; wait for safe eject before unplugging. Details: %{error}",
                 description = description,
-                error = error
+                error = crate::services::gio_error_message(error)
             )
             .into_owned(),
         ),
         true,
+    )
+}
+
+/// Size probes never fail with NoSpace on their own, so the code marks this refusal.
+fn fat32_file_too_large(name: &str) -> glib::Error {
+    glib::Error::new(
+        gio::IOErrorEnum::NoSpace,
+        &rust_i18n::t!(
+            "%{name} is too large for a FAT32 drive (maximum file size: 4 GiB). Use an exFAT or another large-file-capable drive instead.",
+            name = name
+        ),
     )
 }
 
@@ -868,12 +879,8 @@ fn transfer_size(
                 && let (Some(limit), Some(size)) = (max_file_size, size)
                 && size > limit
             {
-                return Err(glib::Error::new(
-                    gio::IOErrorEnum::Failed,
-                    &format!(
-                        "{} is too large for a FAT32 drive (maximum file size: 4 GiB). Use an exFAT or another large-file-capable drive instead.",
-                        file.basename().unwrap_or_default().to_string_lossy()
-                    ),
+                return Err(fat32_file_too_large(
+                    &file.basename().unwrap_or_default().to_string_lossy(),
                 ));
             }
             return Ok(TransferEstimate {
@@ -977,8 +984,7 @@ async fn transfer_sizes(
             let size = match task.await {
                 Ok(Ok(size)) => Some(size),
                 Ok(Err(error))
-                    if was_cancelled(&error)
-                        || error.message().contains(" is too large for a FAT32 drive ") =>
+                    if was_cancelled(&error) || error.matches(gio::IOErrorEnum::NoSpace) =>
                 {
                     return Err(error);
                 }
@@ -1091,26 +1097,31 @@ async fn copy_new_local_regular_file(
         cancellable.set_error_if_cancelled()?;
         let source_path = source
             .path()
-            .ok_or_else(|| io_error("Copy source must be a local path"))?;
+            .ok_or_else(|| translated_io_error("Copy source must be a local path"))?;
         let source_parent_path = source_path
             .parent()
-            .ok_or_else(|| io_error("Cannot copy the filesystem root"))?;
+            .ok_or_else(|| translated_io_error("Cannot copy the filesystem root"))?;
         let source_name = source_path
             .file_name()
-            .ok_or_else(|| io_error("Invalid copy source"))?;
+            .ok_or_else(|| translated_io_error("Invalid copy source"))?;
         let source_parent = open_local_parent_directory(source_parent_path).map_err(io_error)?;
         let source_file =
             match open_local_copy_source(&source_parent, source_name).map_err(io_error)? {
                 LocalCopySource::File(file) => file,
-                _ => return Err(io_error("Copy source is no longer a regular file")),
+                _ => {
+                    return Err(translated_io_error(
+                        "Copy source is no longer a regular file",
+                    ));
+                }
             };
         let target_path = target
             .path()
-            .ok_or_else(|| io_error("Copy destination must be a local path"))?;
+            .ok_or_else(|| translated_io_error("Copy destination must be a local path"))?;
         let target_parent = target_path
             .parent()
-            .ok_or_else(|| io_error("The destination has no parent directory"))?;
-        let staged = StagedSibling::create(target_parent, false).map_err(io_error)?;
+            .ok_or_else(|| translated_io_error("The destination has no parent directory"))?;
+        let staged = StagedSibling::create(target_parent, false)
+            .map_err(|error| staging_failed(&target_path, error))?;
         let source_ref = gio::File::for_path(format!("/proc/self/fd/{}", source_file.as_raw_fd()));
         let staged_file = gio::File::for_path(staged.path());
         source_ref.copy(
@@ -1246,7 +1257,9 @@ fn duplicate_target(
             return Ok(candidate);
         }
     }
-    Err(io_error("Could not find an unused duplicate name"))
+    Err(translated_io_error(
+        "Could not find an unused duplicate name",
+    ))
 }
 
 const FAT_INVALID_BYTES: &[u8] = b"\"*/:<>?\\|";
@@ -1401,17 +1414,19 @@ fn open_local_child_directory<Fd: AsFd>(parent: &Fd, name: &OsStr) -> Result<Own
         )
     })
     .map_err(|error| {
-        format!(
-            "{} changed while it was being read: {error}",
-            name.to_string_lossy()
+        rust_i18n::t!(
+            "%{name} changed while it was being read: %{error}",
+            name = name.to_string_lossy(),
+            error = os_error_text(error)
         )
+        .into_owned()
     })
 }
 
 fn local_directory_children<Fd: AsFd>(handle: &Fd) -> Result<Vec<OsString>, String> {
     let mut children = Vec::new();
-    for entry in rustix::fs::Dir::read_from(handle).map_err(|error| error.to_string())? {
-        let entry = entry.map_err(|error| error.to_string())?;
+    for entry in rustix::fs::Dir::read_from(handle).map_err(os_error_text)? {
+        let entry = entry.map_err(os_error_text)?;
         let entry_name = entry.file_name();
         if entry_name == c"." || entry_name == c".." {
             continue;
@@ -1447,7 +1462,7 @@ fn open_local_copy_source<Fd: AsFd>(parent: &Fd, name: &OsStr) -> Result<LocalCo
             rust_i18n::t!(
                 "Could not inspect %{name}: %{error}",
                 name = name.to_string_lossy(),
-                error = error
+                error = os_error_text(error)
             )
             .into_owned()
         },
@@ -1455,7 +1470,12 @@ fn open_local_copy_source<Fd: AsFd>(parent: &Fd, name: &OsStr) -> Result<LocalCo
     match rustix::fs::FileType::from_raw_mode(stat.st_mode) {
         rustix::fs::FileType::Symlink => {
             let link = rustix::fs::readlinkat(parent, name, Vec::new()).map_err(|error| {
-                format!("Could not read link {}: {error}", name.to_string_lossy())
+                rust_i18n::t!(
+                    "Could not read link %{name}: %{error}",
+                    name = name.to_string_lossy(),
+                    error = os_error_text(error)
+                )
+                .into_owned()
             })?;
             Ok(LocalCopySource::Symlink(OsString::from_vec(
                 link.into_bytes(),
@@ -1483,33 +1503,37 @@ fn open_local_copy_source<Fd: AsFd>(parent: &Fd, name: &OsStr) -> Result<LocalCo
                     | rustix::fs::ResolveFlags::NO_MAGICLINKS,
             )
             .map_err(|error| {
-                format!(
-                    "{} changed while it was being copied: {error}",
-                    name.to_string_lossy()
+                rust_i18n::t!(
+                    "%{name} changed while it was being copied: %{error}",
+                    name = name.to_string_lossy(),
+                    error = os_error_text(error)
                 )
+                .into_owned()
             })?;
             let opened = rustix::fs::fstat(&file).map_err(|error| {
                 rust_i18n::t!(
                     "Could not inspect %{name}: %{error}",
                     name = name.to_string_lossy(),
-                    error = error
+                    error = os_error_text(error)
                 )
                 .into_owned()
             })?;
             if rustix::fs::FileType::from_raw_mode(opened.st_mode)
                 != rustix::fs::FileType::RegularFile
             {
-                return Err(format!(
-                    "{} changed while it was being copied",
-                    name.to_string_lossy()
-                ));
+                return Err(rust_i18n::t!(
+                    "%{name} changed while it was being copied",
+                    name = name.to_string_lossy()
+                )
+                .into_owned());
             }
             Ok(LocalCopySource::File(std::fs::File::from(file)))
         }
-        _ => Err(format!(
-            "Cannot copy {}: it is not a regular file, directory, or symbolic link",
-            name.to_string_lossy()
-        )),
+        _ => Err(rust_i18n::t!(
+            "Cannot copy %{name}: it is not a regular file, directory, or symbolic link",
+            name = name.to_string_lossy()
+        )
+        .into_owned()),
     }
 }
 
@@ -1570,7 +1594,7 @@ async fn create_remote_file_stage(
 ) -> Result<gio::File, glib::Error> {
     let parent = target
         .parent()
-        .ok_or_else(|| io_error("The destination has no parent directory"))?;
+        .ok_or_else(|| translated_io_error("The destination has no parent directory"))?;
     let stage = parent.child(format!(".strata-copy-{}", glib::uuid_string_random()));
     let stream = match await_cancellable(&stage, cancellable, |stage, cancellable, result| {
         stage.create_async(
@@ -1608,8 +1632,10 @@ fn copy_failure_after_cleanup(
 ) -> glib::Error {
     match cleanup_result {
         Ok(()) => copy_error,
-        Err(cleanup_error) => io_error(format!(
-            "{copy_error}; the incomplete copy could not be removed: {cleanup_error}"
+        Err(cleanup_error) => io_error(rust_i18n::t!(
+            "%{error}; the incomplete copy could not be removed: %{cleanup_error}",
+            error = crate::services::gio_error_message(&copy_error),
+            cleanup_error = crate::services::gio_error_message(&cleanup_error)
         )),
     }
 }
@@ -1665,7 +1691,7 @@ fn copy_recursively_local(
             LocalCopySource::Symlink(link_target) => {
                 let target_path = target
                     .path()
-                    .ok_or_else(|| io_error("Copy destination must be a local path"))?;
+                    .ok_or_else(|| translated_io_error("Copy destination must be a local path"))?;
                 run_local_fs_step(move || {
                     copy_local_symlink(&link_target, &target_path, options.overwrite_existing)
                 })
@@ -1822,10 +1848,10 @@ fn copy_recursively_local_path(
 ) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
     Box::pin(async move {
         let Some(parent_path) = source_path.parent().map(Path::to_path_buf) else {
-            return Err(io_error("Cannot copy the filesystem root"));
+            return Err(translated_io_error("Cannot copy the filesystem root"));
         };
         let Some(name) = source_path.file_name().map(OsStr::to_os_string) else {
-            return Err(io_error("Invalid copy source"));
+            return Err(translated_io_error("Invalid copy source"));
         };
         let source_parent = parent_path.clone();
         let target_parent = target
@@ -2089,9 +2115,9 @@ async fn copy_new_recursively_on_filesystem(
             .file_type();
         let parent = target_path
             .parent()
-            .ok_or_else(|| io_error("The destination has no parent directory"))?;
+            .ok_or_else(|| translated_io_error("The destination has no parent directory"))?;
         let staged = StagedSibling::create(parent, source_type == gio::FileType::Directory)
-            .map_err(io_error)?;
+            .map_err(|error| staging_failed(&target_path, error))?;
         if let Err(error) = copy_recursively_with_progress(
             source,
             gio::File::for_path(staged.path()),
@@ -2213,16 +2239,18 @@ fn move_local_path(
             ));
         }
         let Some(source_parent_path) = source_path.parent().map(Path::to_path_buf) else {
-            return Err(io_error("Cannot move the filesystem root"));
+            return Err(translated_io_error("Cannot move the filesystem root"));
         };
         let Some(source_name) = source_path.file_name().map(OsStr::to_os_string) else {
-            return Err(io_error("Invalid move source"));
+            return Err(translated_io_error("Invalid move source"));
         };
         let Some(target_parent_path) = target_path.parent().map(Path::to_path_buf) else {
-            return Err(io_error("The move destination has no parent directory"));
+            return Err(translated_io_error(
+                "The move destination has no parent directory",
+            ));
         };
         let Some(target_name) = target_path.file_name().map(OsStr::to_os_string) else {
-            return Err(io_error("Invalid move destination"));
+            return Err(translated_io_error("Invalid move destination"));
         };
 
         let source_parent =
@@ -2249,7 +2277,7 @@ fn move_local_path(
             error => io_error(rust_i18n::t!(
                 "Could not move %{name}: %{error}",
                 name = display_name,
-                error = error
+                error = os_error_text(error)
             )),
         })
     })
@@ -2298,16 +2326,18 @@ async fn move_restore_path_with(
         return Err(cancelled_local_operation());
     }
     let Some(source_parent_path) = source_path.parent().map(Path::to_path_buf) else {
-        return Err(io_error("Cannot restore the filesystem root"));
+        return Err(translated_io_error("Cannot restore the filesystem root"));
     };
     let Some(source_name) = source_path.file_name().map(OsStr::to_os_string) else {
-        return Err(io_error("Invalid restore source"));
+        return Err(translated_io_error("Invalid restore source"));
     };
     let Some(target_parent_path) = target_path.parent().map(Path::to_path_buf) else {
-        return Err(io_error("The restore destination has no parent directory"));
+        return Err(translated_io_error(
+            "The restore destination has no parent directory",
+        ));
     };
     let Some(target_name) = target_path.file_name().map(OsStr::to_os_string) else {
-        return Err(io_error("Invalid restore destination"));
+        return Err(translated_io_error("Invalid restore destination"));
     };
 
     let source_parent =
@@ -2349,7 +2379,7 @@ async fn move_restore_path_with(
             error => io_error(rust_i18n::t!(
                 "Could not restore %{name}: %{error}",
                 name = display_name,
-                error = error
+                error = os_error_text(error)
             )),
         })
 }
@@ -2460,6 +2490,18 @@ impl StagedSibling {
     }
 }
 
+/// The staging name is internal, so the error names the item being written instead.
+fn staging_failed(target_path: &Path, error: io::Error) -> glib::Error {
+    io_error(rust_i18n::t!(
+        "Could not copy %{name}: %{error}",
+        name = target_path
+            .file_name()
+            .unwrap_or(target_path.as_os_str())
+            .to_string_lossy(),
+        error = os_error_text(error)
+    ))
+}
+
 async fn discard_incomplete_staged(staged: StagedSibling) -> Result<(), glib::Error> {
     match gio::spawn_blocking(move || match staged {
         StagedSibling::File(path) => path.close(),
@@ -2467,7 +2509,7 @@ async fn discard_incomplete_staged(staged: StagedSibling) -> Result<(), glib::Er
     })
     .await
     {
-        Ok(result) => result.map_err(io_error),
+        Ok(result) => result.map_err(|error| io_error(os_error_text(error))),
         Err(error) => Err(io_error(blocking_join_message(error))),
     }
 }
@@ -2533,14 +2575,15 @@ async fn publish_staged_without_replace_with(
                 copied
             }
         }
-        Ok(Err(error)) => Err(io_error(error)),
+        Ok(Err(error)) => Err(io_error(os_error_text(error))),
         Err(error) => Err(io_error(blocking_join_message(error))),
     };
     let cleanup = discard_incomplete_staged(staged).await;
     match result {
         Ok(()) => cleanup.map_err(|error| {
-            io_error(format!(
-                "The item was copied, but its staging copy could not be removed: {error}"
+            io_error(rust_i18n::t!(
+                "The item was copied, but its staging copy could not be removed: %{error}",
+                error = crate::services::gio_error_message(&error)
             ))
         }),
         Err(error) => Err(copy_failure_after_cleanup(error, cleanup)),
@@ -2549,6 +2592,14 @@ async fn publish_staged_without_replace_with(
 
 fn io_error(error: impl std::fmt::Display) -> glib::Error {
     glib::Error::new(gio::IOErrorEnum::Failed, &error.to_string())
+}
+
+fn os_error_text(error: impl Into<io::Error>) -> String {
+    crate::services::io_error_message(&error.into())
+}
+
+fn translated_io_error(message: &str) -> glib::Error {
+    io_error(crate::i18n::tr(message))
 }
 
 type StageCopy = Rc<
@@ -2575,18 +2626,18 @@ async fn replace_local_with(
     if source.path().is_none() {
         return Err(glib::Error::new(
             gio::IOErrorEnum::NotSupported,
-            "Safe replacement is unavailable for this source",
+            &crate::i18n::tr("Safe replacement is unavailable for this source"),
         ));
     }
     let target_path = target.path().ok_or_else(|| {
         glib::Error::new(
             gio::IOErrorEnum::NotSupported,
-            "Safe replacement is unavailable at this destination",
+            &crate::i18n::tr("Safe replacement is unavailable at this destination"),
         )
     })?;
     let parent = target_path
         .parent()
-        .ok_or_else(|| io_error("The destination has no parent directory"))?;
+        .ok_or_else(|| translated_io_error("The destination has no parent directory"))?;
     let source_type = await_cancellable(&source, &cancellable, |source, cancellable, result| {
         source.query_info_async(
             "standard::type",
@@ -2614,13 +2665,14 @@ async fn replace_local_with(
     if source_is_directory != target_is_directory {
         return Err(glib::Error::new(
             gio::IOErrorEnum::NotSupported,
-            "A file and a folder cannot safely replace one another",
+            &crate::i18n::tr("A file and a folder cannot safely replace one another"),
         ));
     }
 
     let source_identity = local_file_identity(&source).await?;
     let target_identity = local_file_identity(&target).await?;
-    let staged = StagedSibling::create(parent, source_is_directory).map_err(io_error)?;
+    let staged = StagedSibling::create(parent, source_is_directory)
+        .map_err(|error| staging_failed(&target_path, error))?;
     let staged_file = gio::File::for_path(staged.path());
     if let Err(error) = copy_to_stage(
         source.clone(),
@@ -2679,8 +2731,9 @@ async fn replace_local_with(
         .map_err(|_| io_error("The replacement worker stopped unexpectedly"));
         let exchanged = match exchanged {
             Ok(Ok(())) => Ok(()),
-            Ok(Err(error)) => Err(io_error(format!(
-                "Could not safely replace the item: {error}"
+            Ok(Err(error)) => Err(io_error(rust_i18n::t!(
+                "Could not safely replace the item: %{error}",
+                error = os_error_text(error)
             ))),
             Err(error) => Err(error),
         };
@@ -2689,7 +2742,11 @@ async fn replace_local_with(
             return Err(copy_failure_after_cleanup(error, cleanup));
         }
 
-        let staged_file = gio::File::for_path(staged.keep().map_err(io_error)?);
+        let staged_file = gio::File::for_path(
+            staged
+                .keep()
+                .map_err(|error| io_error(os_error_text(error)))?,
+        );
         permanently_delete_maybe_local_if_unchanged(
             staged_file,
             target_is_directory,
@@ -2718,8 +2775,9 @@ async fn publish_staged_replacement(
     publish_staged_without_replace(staged, target_path, gio::Cancellable::new())
         .await
         .map_err(|error| {
-            io_error(format!(
-                "Could not finish placing the replacement item; the original is in Trash: {error}"
+            io_error(rust_i18n::t!(
+                "Could not finish placing the replacement item; the original is in Trash: %{error}",
+                error = crate::services::gio_error_message(&error)
             ))
         })
 }
@@ -2881,13 +2939,17 @@ fn classify_merge<'a>(
                     Some(gio::FileType::Directory) => {
                         return Err(glib::Error::new(
                             gio::IOErrorEnum::NotSupported,
-                            "A file and a folder cannot safely replace one another",
+                            &crate::i18n::tr(
+                                "A file and a folder cannot safely replace one another",
+                            ),
                         ));
                     }
                     Some(_) if source_is_directory => {
                         return Err(glib::Error::new(
                             gio::IOErrorEnum::NotSupported,
-                            "A file and a folder cannot safely replace one another",
+                            &crate::i18n::tr(
+                                "A file and a folder cannot safely replace one another",
+                            ),
                         ));
                     }
                     Some(_) => {
@@ -2935,7 +2997,7 @@ async fn merge_local_with(
         if file_type != gio::FileType::Directory {
             return Err(glib::Error::new(
                 gio::IOErrorEnum::NotSupported,
-                "Only folders can be merged",
+                &crate::i18n::tr("Only folders can be merged"),
             ));
         }
     }
@@ -2953,9 +3015,10 @@ async fn merge_local_with(
             });
             return Err(glib::Error::new(
                 gio::IOErrorEnum::Failed,
-                &format!(
-                    "Could not move {} to Trash before merging: {error}",
-                    location.display_name()
+                &rust_i18n::t!(
+                    "Could not move %{name} to Trash before merging: %{error}",
+                    name = location.display_name(),
+                    error = crate::services::gio_error_message(&error)
                 ),
             ));
         }
@@ -3119,10 +3182,11 @@ fn ensure_expected_local_identity(
     expected: Option<LocalFileIdentity>,
 ) -> Result<(), String> {
     if expected.is_some_and(|expected| expected != LocalFileIdentity::from_stat(stat)) {
-        return Err(format!(
-            "{} changed while the operation was in progress",
-            name.to_string_lossy()
-        ));
+        return Err(rust_i18n::t!(
+            "%{name} changed while the operation was in progress",
+            name = name.to_string_lossy()
+        )
+        .into_owned());
     }
     Ok(())
 }
@@ -3135,25 +3199,28 @@ fn ensure_local_delete_target_unchanged<ParentFd: AsFd, TargetFd: AsFd>(
 ) -> Result<(), String> {
     let named = rustix::fs::statat(parent, name, rustix::fs::AtFlags::SYMLINK_NOFOLLOW).map_err(
         |error| {
-            format!(
-                "{} changed while it was being deleted: {error}",
-                name.to_string_lossy()
+            rust_i18n::t!(
+                "%{name} changed while it was being deleted: %{error}",
+                name = name.to_string_lossy(),
+                error = os_error_text(error)
             )
+            .into_owned()
         },
     )?;
     let opened = rustix::fs::fstat(target).map_err(|error| {
         rust_i18n::t!(
             "Could not recheck %{name}: %{error}",
             name = name.to_string_lossy(),
-            error = error
+            error = os_error_text(error)
         )
         .into_owned()
     })?;
     if named.st_dev != opened.st_dev || named.st_ino != opened.st_ino {
-        return Err(format!(
-            "{} changed while it was being deleted",
-            name.to_string_lossy()
-        ));
+        return Err(rust_i18n::t!(
+            "%{name} changed while it was being deleted",
+            name = name.to_string_lossy()
+        )
+        .into_owned());
     }
     Ok(())
 }
@@ -3171,7 +3238,7 @@ fn open_local_delete_target<Fd: AsFd>(
             rust_i18n::t!(
                 "Could not inspect %{name}: %{error}",
                 name = name.to_string_lossy(),
-                error = error
+                error = os_error_text(error)
             )
             .into_owned()
         },
@@ -3185,7 +3252,7 @@ fn open_local_delete_target<Fd: AsFd>(
             rust_i18n::t!(
                 "Could not delete %{name}: %{error}",
                 name = name.to_string_lossy(),
-                error = error
+                error = os_error_text(error)
             )
             .into_owned()
         })?;
@@ -3209,23 +3276,25 @@ fn open_local_delete_target<Fd: AsFd>(
         )
     })
     .map_err(|error| {
-        format!(
-            "{} changed while it was being deleted: {error}",
-            name.to_string_lossy()
+        rust_i18n::t!(
+            "%{name} changed while it was being deleted: %{error}",
+            name = name.to_string_lossy(),
+            error = os_error_text(error)
         )
+        .into_owned()
     })?;
     let opened = rustix::fs::fstat(&handle).map_err(|error| {
         rust_i18n::t!(
             "Could not recheck %{name}: %{error}",
             name = name.to_string_lossy(),
-            error = error
+            error = os_error_text(error)
         )
         .into_owned()
     })?;
     ensure_expected_local_identity(name, &opened, expected)?;
     let mut children = Vec::new();
-    for entry in rustix::fs::Dir::read_from(&handle).map_err(|error| error.to_string())? {
-        let entry = entry.map_err(|error| error.to_string())?;
+    for entry in rustix::fs::Dir::read_from(&handle).map_err(os_error_text)? {
+        let entry = entry.map_err(os_error_text)?;
         let entry_name = entry.file_name();
         if entry_name == c"." || entry_name == c".." {
             continue;
@@ -3520,7 +3589,7 @@ fn remove_local_delete_directory(
             rust_i18n::t!(
                 "Could not delete %{name}: %{error}",
                 name = name.to_string_lossy(),
-                error = error
+                error = os_error_text(error)
             )
             .into_owned(),
         );
@@ -3729,20 +3798,26 @@ fn copy_local_symlink(
 ) -> Result<(), String> {
     let parent_path = target_path
         .parent()
-        .ok_or_else(|| "The symlink destination has no parent directory".to_owned())?;
+        .ok_or_else(|| crate::i18n::tr("The symlink destination has no parent directory"))?;
     let target_name = target_path
         .file_name()
-        .ok_or_else(|| "Invalid symlink destination".to_owned())?;
+        .ok_or_else(|| crate::i18n::tr("Invalid symlink destination"))?;
     let parent = open_local_parent_directory(parent_path)?;
 
     if !overwrite_existing {
         return rustix::fs::symlinkat(link_target, &parent, target_name)
-            .map_err(|error| format!("Could not recreate {}: {error}", target_path.display()));
+            .map_err(|error| symlink_recreate_failed(target_path, error));
     }
 
     let staged_name = format!(".strata-symlink-{}", glib::uuid_string_random());
-    rustix::fs::symlinkat(link_target, &parent, &staged_name)
-        .map_err(|error| format!("Could not stage {}: {error}", target_path.display()))?;
+    rustix::fs::symlinkat(link_target, &parent, &staged_name).map_err(|error| {
+        rust_i18n::t!(
+            "Could not stage %{path}: %{error}",
+            path = target_path.display(),
+            error = os_error_text(error)
+        )
+        .into_owned()
+    })?;
     let result = rustix::fs::renameat_with(
         &parent,
         &staged_name,
@@ -3753,7 +3828,16 @@ fn copy_local_symlink(
     if result.is_err() {
         let _ = rustix::fs::unlinkat(&parent, &staged_name, rustix::fs::AtFlags::empty());
     }
-    result.map_err(|error| format!("Could not recreate {}: {error}", target_path.display()))
+    result.map_err(|error| symlink_recreate_failed(target_path, error))
+}
+
+fn symlink_recreate_failed(target_path: &Path, error: rustix::io::Errno) -> String {
+    rust_i18n::t!(
+        "Could not recreate %{path}: %{error}",
+        path = target_path.display(),
+        error = os_error_text(error)
+    )
+    .into_owned()
 }
 
 /// Resolves ordinary parent aliases in one kernel lookup and pins the directory.
@@ -3762,17 +3846,25 @@ fn copy_local_symlink(
 /// `/` permits absolute symlink targets without allowing procfs magic links.
 fn open_local_parent_directory(parent_path: &Path) -> Result<OwnedFd, String> {
     if !parent_path.is_absolute() {
-        return Err("A local operation target must use an absolute path".to_owned());
+        return Err(crate::i18n::tr(
+            "A local operation target must use an absolute path",
+        ));
     }
     let root = rustix::fs::open(
         c"/",
         rustix::fs::OFlags::PATH | rustix::fs::OFlags::DIRECTORY | rustix::fs::OFlags::CLOEXEC,
         rustix::fs::Mode::empty(),
     )
-    .map_err(|error| format!("Could not open the filesystem root: {error}"))?;
+    .map_err(|error| {
+        rust_i18n::t!(
+            "Could not open the filesystem root: %{error}",
+            error = os_error_text(error)
+        )
+        .into_owned()
+    })?;
     let relative = parent_path
         .strip_prefix(Path::new("/"))
-        .map_err(|_| "A local operation target must use an absolute path".to_owned())?;
+        .map_err(|_| crate::i18n::tr("A local operation target must use an absolute path"))?;
     if relative.as_os_str().is_empty() {
         return Ok(root);
     }
@@ -3785,19 +3877,34 @@ fn open_local_parent_directory(parent_path: &Path) -> Result<OwnedFd, String> {
             rustix::fs::ResolveFlags::IN_ROOT | rustix::fs::ResolveFlags::NO_MAGICLINKS,
         )
     })
-    .map_err(|error| format!("Could not safely open {}: {error}", parent_path.display()))
+    .map_err(|error| {
+        rust_i18n::t!(
+            "Could not safely open %{path}: %{error}",
+            path = parent_path.display(),
+            error = os_error_text(error)
+        )
+        .into_owned()
+    })
 }
 
 fn open_local_parent_beneath(parent_path: &Path, allowed_root: &Path) -> Result<OwnedFd, String> {
     if !parent_path.is_absolute() || !allowed_root.is_absolute() {
-        return Err("A restore destination must use an absolute path".to_owned());
+        return Err(crate::i18n::tr(
+            "A restore destination must use an absolute path",
+        ));
     }
     let root = rustix::fs::open(
         allowed_root,
         rustix::fs::OFlags::PATH | rustix::fs::OFlags::DIRECTORY | rustix::fs::OFlags::CLOEXEC,
         rustix::fs::Mode::empty(),
     )
-    .map_err(|error| format!("Could not open the restore area: {error}"))?;
+    .map_err(|error| {
+        rust_i18n::t!(
+            "Could not open the restore area: %{error}",
+            error = os_error_text(error)
+        )
+        .into_owned()
+    })?;
     if parent_path == allowed_root {
         return Ok(root);
     }
@@ -3816,10 +3923,12 @@ fn open_local_parent_beneath(parent_path: &Path, allowed_root: &Path) -> Result<
         )
     })
     .map_err(|error| {
-        format!(
-            "Could not safely open restore destination {}: {error}",
-            parent_path.display()
+        rust_i18n::t!(
+            "Could not safely open restore destination %{path}: %{error}",
+            path = parent_path.display(),
+            error = os_error_text(error)
         )
+        .into_owned()
     })
 }
 
@@ -3842,10 +3951,12 @@ fn permanently_delete_local_path_if_unchanged_with_worker_count(
 ) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
     Box::pin(async move {
         let Some(parent_path) = path.parent().map(Path::to_path_buf) else {
-            return Err(io_error("Cannot permanently delete the filesystem root"));
+            return Err(translated_io_error(
+                "Cannot permanently delete the filesystem root",
+            ));
         };
         let Some(name) = path.file_name().map(OsStr::to_os_string) else {
-            return Err(io_error("Invalid delete target"));
+            return Err(translated_io_error("Invalid delete target"));
         };
         let parent =
             run_local_delete_step(move || open_local_parent_directory(&parent_path)).await?;
@@ -3876,13 +3987,20 @@ async fn local_file_identity(file: &gio::File) -> Result<Option<LocalFileIdentit
     run_local_delete_step(move || {
         let parent_path = path
             .parent()
-            .ok_or_else(|| "Cannot inspect the filesystem root".to_owned())?;
+            .ok_or_else(|| crate::i18n::tr("Cannot inspect the filesystem root"))?;
         let name = path
             .file_name()
-            .ok_or_else(|| "Invalid local filesystem target".to_owned())?;
+            .ok_or_else(|| crate::i18n::tr("Invalid local filesystem target"))?;
         let parent = open_local_parent_directory(parent_path)?;
         let stat = rustix::fs::statat(&parent, name, rustix::fs::AtFlags::SYMLINK_NOFOLLOW)
-            .map_err(|error| format!("Could not inspect {}: {error}", path.display()))?;
+            .map_err(|error| {
+                rust_i18n::t!(
+                    "Could not inspect %{path}: %{error}",
+                    path = path.display(),
+                    error = os_error_text(error)
+                )
+                .into_owned()
+            })?;
         Ok(LocalFileIdentity::from_stat(&stat))
     })
     .await
@@ -3895,7 +4013,7 @@ async fn ensure_local_file_identity(
 ) -> Result<(), glib::Error> {
     let current = local_file_identity(file).await?;
     if current != expected {
-        return Err(io_error(
+        return Err(translated_io_error(
             "The target changed while the operation was in progress",
         ));
     }
@@ -4008,8 +4126,12 @@ fn deletion_error_message(name: &str, permanent: bool, error: &glib::Error) -> S
         )
         .into_owned()
     } else {
-        format!("{name}: {error}")
+        item_error(name, crate::services::gio_error_message(error))
     }
+}
+
+fn item_error(name: &str, error: impl std::fmt::Display) -> String {
+    rust_i18n::t!("%{name}: %{error}", name = name, error = error).into_owned()
 }
 
 impl TrashedOriginal {
@@ -4393,7 +4515,7 @@ async fn run_merge_undo(
                 return;
             }
             Err(error) => {
-                errors.push(format!("{}: {error}", location.display_name()));
+                errors.push(item_error(&location.display_name(), error));
                 failed_locations.push(location.clone());
                 None
             }
@@ -4475,7 +4597,7 @@ async fn run_merge_undo(
                 return;
             }
             Err(error) => {
-                errors.push(format!("{}: {error}", location.display_name()));
+                errors.push(item_error(&location.display_name(), error));
                 failed_locations.push(location.clone());
                 Vec::new()
             }
@@ -4852,6 +4974,7 @@ impl OperationProvider for LocalOperationProvider {
                     gio::File::for_uri(request.entry.location.uri_value().unwrap_or_default())
                 });
             let item = request.entry.location.clone();
+            let new_name = request.new_name.clone();
             let affected_locations = item.parent().into_iter().collect();
             if operation_cancellable.is_cancelled() {
                 emit(cancelled_event(
@@ -4891,7 +5014,11 @@ impl OperationProvider for LocalOperationProvider {
                 }
                 Err(error) => emit(OperationEvent::Failed {
                     request_id: request.id,
-                    message: error.to_string(),
+                    message: if error.matches(gio::IOErrorEnum::Exists) {
+                        rust_i18n::t!("“%{name}” already exists", name = new_name).into_owned()
+                    } else {
+                        crate::services::gio_error_message(&error)
+                    },
                     password_failure: None,
                 }),
             }
@@ -4970,7 +5097,7 @@ impl OperationProvider for LocalOperationProvider {
                         emit(OperationEvent::TransferFailed {
                             request_id: request.id,
                             completed_locations: Vec::new(),
-                            message: error.to_string(),
+                            message: crate::services::gio_error_message(&error),
                         });
                         return;
                     }
@@ -5094,8 +5221,12 @@ impl OperationProvider for LocalOperationProvider {
                     emit(OperationEvent::Failed {
                         request_id: request.id,
                         message: match flush_error {
-                            Some(error) => format!("A clipboard item has no file name. {error}"),
-                            None => "A clipboard item has no file name".to_owned(),
+                            Some(error) => rust_i18n::t!(
+                                "A clipboard item has no file name. %{error}",
+                                error = error
+                            )
+                            .into_owned(),
+                            None => crate::i18n::tr("A clipboard item has no file name"),
                         },
                         password_failure: None,
                     });
@@ -5135,7 +5266,8 @@ impl OperationProvider for LocalOperationProvider {
                     {
                         Ok(info) => info.file_type() == gio::FileType::Directory,
                         Err(error) => {
-                            let failure = (!was_cancelled(&error)).then(|| error.to_string());
+                            let failure = (!was_cancelled(&error))
+                                .then(|| crate::services::gio_error_message(&error));
                             stop_transfer(
                                 &written_paths,
                                 &emit,
@@ -5164,7 +5296,8 @@ impl OperationProvider for LocalOperationProvider {
                     ) {
                         Ok(target) => target,
                         Err(error) => {
-                            let failure = (!was_cancelled(&error)).then(|| error.to_string());
+                            let failure = (!was_cancelled(&error))
+                                .then(|| crate::services::gio_error_message(&error));
                             stop_transfer(
                                 &written_paths,
                                 &emit,
@@ -5370,7 +5503,7 @@ impl OperationProvider for LocalOperationProvider {
                         emit(OperationEvent::TransferFailed {
                             request_id: request.id,
                             completed_locations: Vec::new(),
-                            message: error.to_string(),
+                            message: crate::services::gio_error_message(&error),
                         });
                         return;
                     }
@@ -5433,7 +5566,8 @@ impl OperationProvider for LocalOperationProvider {
                     .await
                 };
                 if let Err(error) = result {
-                    let failure = (!was_cancelled(&error)).then(|| error.to_string());
+                    let failure = (!was_cancelled(&error))
+                        .then(|| crate::services::gio_error_message(&error));
                     stop_transfer(
                         &restored_paths,
                         &emit,
@@ -5503,7 +5637,7 @@ impl OperationProvider for LocalOperationProvider {
                         emit(OperationEvent::TransferFailed {
                             request_id: request.id,
                             completed_locations: completed,
-                            message: error.to_string(),
+                            message: crate::services::gio_error_message(&error),
                         });
                     }
                     return;
@@ -5554,7 +5688,7 @@ impl OperationProvider for LocalOperationProvider {
                 )),
                 Err(error) => emit(OperationEvent::Failed {
                     request_id: request.id,
-                    message: error.to_string(),
+                    message: crate::services::gio_error_message(&error),
                     password_failure: None,
                 }),
             }
@@ -5726,7 +5860,7 @@ impl OperationProvider for LocalOperationProvider {
                             if was_cancelled(&error) {
                                 cancelled = true;
                             } else {
-                                errors.push(format!("{}: {error}", entry.display_name));
+                                errors.push(item_error(&entry.display_name, error));
                             }
                             failed_locations.push(entry.source.clone());
                             None

@@ -98,7 +98,7 @@ pub(super) fn start(
                     {
                         emit(OperationEvent::Failed {
                             request_id: id,
-                            message: error.to_string(),
+                            message: creation_failed(&candidate, &error),
                             password_failure: None,
                         });
                         return;
@@ -140,7 +140,7 @@ pub(super) fn start(
                 }
                 Err(error) => emit(OperationEvent::Failed {
                     request_id: id,
-                    message: error.to_string(),
+                    message: creation_failed(&candidate, &error),
                     password_failure: None,
                 }),
             }
@@ -148,4 +148,13 @@ pub(super) fn start(
         }
     });
     cancellation_handle(cancellable)
+}
+
+fn creation_failed(name: &str, error: &glib::Error) -> String {
+    rust_i18n::t!(
+        "Could not create %{name}: %{error}",
+        name = name,
+        error = crate::services::gio_error_message(error)
+    )
+    .into_owned()
 }

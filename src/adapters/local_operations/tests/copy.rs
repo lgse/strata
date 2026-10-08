@@ -284,7 +284,7 @@ fn failed_incomplete_copy_cleanup_is_reported_as_a_failure() {
     let error = copy_failure_after_cleanup(
         glib::Error::new(gio::IOErrorEnum::Cancelled, "injected cancellation"),
         Err(glib::Error::new(
-            gio::IOErrorEnum::PermissionDenied,
+            gio::IOErrorEnum::Failed,
             "injected cleanup failure",
         )),
     );

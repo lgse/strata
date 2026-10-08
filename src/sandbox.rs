@@ -431,10 +431,11 @@ fn parse_sandboxed(
             ) {
                 "The image exceeds the 32 MiB conversion limit. Choose a smaller image.".to_owned()
             } else if matches!(operation, ParseOperation::PreviewModel(_)) {
-                format!(
-                    "This model file exceeds the {} MiB preview limit. Try a smaller or lower-detail version.",
-                    MAX_MODEL_INPUT_BYTES / (1024 * 1024)
-                )
+                const _: () = assert!(
+                    MAX_MODEL_INPUT_BYTES == 128 * 1024 * 1024,
+                    "update the model size limit message and its catalog entry"
+                );
+                "This model file exceeds the 128 MiB preview limit. Try a smaller or lower-detail version.".to_owned()
             } else {
                 "Preview input exceeds the supported size limit".to_owned()
             },

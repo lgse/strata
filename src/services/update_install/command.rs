@@ -48,11 +48,11 @@ pub(super) fn run(
         let mut stdout = child
             .stdout
             .take()
-            .ok_or_else(|| "Missing verification stdout".to_owned())?;
+            .ok_or_else(|| crate::i18n::tr("Missing verification stdout"))?;
         let mut stderr = child
             .stderr
             .take()
-            .ok_or_else(|| "Missing verification stderr".to_owned())?;
+            .ok_or_else(|| crate::i18n::tr("Missing verification stderr"))?;
         rustix::fs::fcntl_setfl(&stdout, rustix::fs::OFlags::NONBLOCK)
             .map_err(|error| error.to_string())?;
         rustix::fs::fcntl_setfl(&stderr, rustix::fs::OFlags::NONBLOCK)

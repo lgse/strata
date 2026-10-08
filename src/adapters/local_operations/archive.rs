@@ -86,7 +86,7 @@ pub(super) fn compress(request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)
         let Some(dest_dir) = request.destination.native_path().map(Path::to_path_buf) else {
             emit(OperationEvent::Failed {
                 request_id: request.id,
-                message: "Archive destination must be a local path".to_owned(),
+                message: crate::i18n::tr("Archive destination must be a local path"),
                 password_failure: None,
             });
             return;
@@ -159,9 +159,9 @@ pub(super) fn compress(request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)
                     ArchiveFormat::Tar => {
                         compress_tar(file, &entries, None, &work_progress, &work_cancelled)
                     }
-                    ArchiveFormat::Rar => Err(ArchiveError::Failed(
-                        "RAR compression is not supported".to_owned(),
-                    )),
+                    ArchiveFormat::Rar => Err(ArchiveError::Failed(crate::i18n::tr(
+                        "RAR compression is not supported",
+                    ))),
                 }
             },
         )
@@ -205,7 +205,7 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
         let Some(archive_path) = request.entry.location.native_path().map(Path::to_path_buf) else {
             emit(OperationEvent::Failed {
                 request_id: request.id,
-                message: "Archive must be a local file".to_owned(),
+                message: crate::i18n::tr("Archive must be a local file"),
                 password_failure: None,
             });
             return;
@@ -228,7 +228,7 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
         let Some(dest_dir) = request.destination.native_path().map(Path::to_path_buf) else {
             emit(OperationEvent::Failed {
                 request_id: request.id,
-                message: "Extract destination must be a local path".to_owned(),
+                message: crate::i18n::tr("Extract destination must be a local path"),
                 password_failure: None,
             });
             return;
@@ -358,7 +358,7 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
             }),
             Err(_) => emit(OperationEvent::Failed {
                 request_id: request.id,
-                message: "Extraction task panicked".to_owned(),
+                message: crate::i18n::tr("Extraction stopped unexpectedly"),
                 password_failure: None,
             }),
         }
@@ -444,8 +444,12 @@ fn archive_read_failed(error: std::io::Error) -> ArchiveError {
         .and_then(|inner| inner.downcast_ref::<ArchiveError>())
     {
         Some(inner) => inner.clone(),
-        None => archive_failed(error),
+        None => archive_io_failed(&error),
     }
+}
+
+fn archive_io_failed(error: &std::io::Error) -> ArchiveError {
+    archive_failed(crate::services::io_error_message(error))
 }
 
 /// Returns [`ArchiveError::Cancelled`] when the `cancelled` flag is set.
