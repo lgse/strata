@@ -840,7 +840,7 @@
   "The image exceeds the 32 MiB conversion limit. Choose a smaller image.": "Hình ảnh vượt quá giới hạn chuyển đổi 32 MiB. Hãy chọn hình ảnh nhỏ hơn.",
   "The maximum item count must be a number": "Số mục tối đa phải là một con số",
   "The name or filter changed. Press Open to try again.": "Tên hoặc bộ lọc đã thay đổi. Nhấn Mở để thử lại.",
-  "The operation could not be completed": "Strata không thể hoàn thành hành động này",
+  "The operation could not be completed": "Đã xảy ra lỗi",
   "The operation could not be confirmed.": "Không thể xác nhận thao tác.",
   "The operation timed out": "Thao tác đã hết thời gian chờ",
   "The preview renderer timed out": "Trình kết xuất xem trước đã hết thời gian chờ",

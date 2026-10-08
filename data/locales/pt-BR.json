@@ -840,7 +840,7 @@
   "The image exceeds the 32 MiB conversion limit. Choose a smaller image.": "A imagem excede o limite de conversão de 32 MiB. Escolha uma imagem menor.",
   "The maximum item count must be a number": "O máximo de itens deve ser um número",
   "The name or filter changed. Press Open to try again.": "O nome ou o filtro mudou. Clique em Abrir para tentar novamente.",
-  "The operation could not be completed": "O Strata não conseguiu finalizar esta ação",
+  "The operation could not be completed": "Ocorreu um erro",
   "The operation could not be confirmed.": "Não foi possível confirmar a operação.",
   "The operation timed out": "A operação expirou",
   "The preview renderer timed out": "O renderizador de prévia expirou",

@@ -434,7 +434,7 @@
   "No compatible applications were found": "Nessuna applicazione compatibile trovata",
   "No compatible applications were found.": "Non sono state trovate applicazioni compatibili.",
   "No free action name is available for “%{id}”": "Non è disponibile alcun nome di azione libero per “%{id}”",
-  "No items": "Nessun elemento",
+  "No items": "Vuota",
   "No local search locations available.": "Nessun percorso di ricerca locale disponibile.",
   "No matches for “%{query}”": "Nessuna corrispondenza per “%{query}”",
   "No matching actions": "Nessuna azione corrispondente",
