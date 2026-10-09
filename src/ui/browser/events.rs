@@ -94,6 +94,12 @@ impl ViewState {
                 }
             }
             BrowserEvent::ColumnsRelocated { from_depth } => {
+                if self
+                    .listing_search_depth()
+                    .is_some_and(|depth| depth >= *from_depth)
+                {
+                    self.forget_listing_search();
+                }
                 if self.mode_views.borrow().mode() == BrowserMode::Columns {
                     let refocus = self
                         .focused_column_depth()

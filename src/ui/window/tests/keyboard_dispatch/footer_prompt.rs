@@ -1150,6 +1150,90 @@ fn tenxer_search_survives_view_rebuilds_and_ends_with_the_mode() {
     );
 }
 
+#[derive(Debug, Clone, Copy)]
+enum RenamedFolder {
+    /// The folder the search runs in.
+    Searched(BrowserMode),
+    /// A hit folder opened beside the search, holding focus when it is renamed.
+    OpenedHit,
+}
+
+#[test]
+fn tenxer_search_ends_only_when_an_outside_rename_moves_its_folder() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::footer_prompt::tenxer_search_ends_only_when_an_outside_rename_moves_its_folder",
+        || {
+            let fixture = KeyboardFixture::new();
+            seed_filter_tree(&fixture);
+            let preferences = enable_tenxer(&fixture);
+            preferences.set_filter_include_subfolders(false);
+            let browser = fixture.view.browser();
+            let root = fixture._directory.path().to_path_buf();
+
+            // The root search runs first, before the other cases add folders below it.
+            for case in [
+                RenamedFolder::OpenedHit,
+                RenamedFolder::Searched(BrowserMode::List),
+                RenamedFolder::Searched(BrowserMode::Columns),
+            ] {
+                let (mode, searched, renamed) = match case {
+                    RenamedFolder::Searched(mode) => {
+                        let folder = root.join(format!("{mode:?}-open"));
+                        std::fs::create_dir(&folder).expect("open folder");
+                        std::fs::write(folder.join("gamma-report.txt"), b"filter")
+                            .expect("fixture file");
+                        (mode, folder.clone(), folder)
+                    }
+                    RenamedFolder::OpenedHit => {
+                        (BrowserMode::Columns, root.clone(), root.join("reports"))
+                    }
+                };
+                fixture.view.set_view_mode(mode);
+                browser.navigate(Location::local(&searched));
+                wait_until(|| browser.location_at(0) == Some(Location::local(&searched)));
+                wait_loaded(&browser, 0);
+                focus_files(&fixture);
+                commit_filter(&fixture, "gamma");
+                commit_search(&fixture, "report");
+                if matches!(case, RenamedFolder::OpenedHit) {
+                    wait_results(&fixture, &ALL_REPORTS);
+                    fixture.view.open_hit_column(0, Location::local(&renamed));
+                    wait_loaded(&browser, 1);
+                    browser.set_active_column(1);
+                    browser.focus_active();
+                    pump(50);
+                }
+
+                let moved = renamed.with_file_name(format!("{case:?}-moved"));
+                std::fs::rename(&renamed, &moved).expect("rename the open folder");
+                let depth = usize::from(matches!(case, RenamedFolder::OpenedHit));
+                wait_until(|| browser.location_at(depth) == Some(Location::local(&moved)));
+                wait_loaded(&browser, depth);
+                pump(100);
+                browser.set_active_column(0);
+                focus_files(&fixture);
+
+                let kept = matches!(case, RenamedFolder::OpenedHit);
+                assert_eq!(fixture.view.listing_search_active(), kept, "{case:?}");
+                assert_eq!(
+                    fixture.view.listing_filter().as_deref(),
+                    kept.then_some("gamma"),
+                    "{case:?}: the search keeps the filter it replaced only while it lasts"
+                );
+                if kept {
+                    assert!(fixture.view.dismiss_listing_search(), "{case:?}");
+                } else {
+                    assert!(
+                        !fixture.view.dismiss_listing_search(),
+                        "{case:?}: the search ended with its folder"
+                    );
+                }
+                fixture.view.clear_listing_filter();
+            }
+        },
+    );
+}
+
 #[test]
 fn tenxer_go_hit_folder_reveals_the_cursor_hit() {
     crate::test_support::gtk_test(
