@@ -18,7 +18,8 @@ use crate::{
     ui::{
         browser_modes::{BrowserDensity, BrowserMode, ClickCount},
         preferences::fixtures::{
-            non_default_preferences, seed_omarchy_for_test, seed_saved_preferences_for_test,
+            non_default_preferences, seed_omarchy_colors_for_test, seed_omarchy_for_test,
+            seed_saved_preferences_for_test,
         },
         theme::ThemeManager,
     },
@@ -973,6 +974,38 @@ fn assert_theme_colors(widget: &impl IsA<gtk::Widget>, tokens: &crate::ui::theme
             "{name}"
         );
     }
+}
+
+#[test]
+fn omarchy_colors_in_gtk_only_hex_forms_apply_to_css_and_icons() {
+    gtk_test(
+        "ui::preferences::tests::preferences::omarchy_colors_in_gtk_only_hex_forms_apply_to_css_and_icons",
+        || {
+            seed_omarchy_colors_for_test(
+                "background = '#112233'\nforeground = '#ddeeff'\naccent = '#000aaafff'\nselection = '#1111222233338888'\n",
+            );
+            let themes = ThemeManager::shared();
+            assert!(themes.follows_omarchy());
+            let tokens = themes.appearance_tokens();
+            assert_eq!(tokens.accent, "#00aaff");
+            assert_eq!(tokens.highlight, "#11223388");
+            let window = gtk::Window::new();
+            for (name, expected) in [
+                ("strata_accent", "#00aaff"),
+                ("strata_highlight", "#11223388"),
+            ] {
+                #[expect(deprecated, reason = "GTK has no replacement for named CSS colors")]
+                let applied = window.style_context().lookup_color(name);
+                assert_eq!(
+                    applied,
+                    Some(gtk::gdk::RGBA::parse(expected).expect("canonical color")),
+                    "{name}"
+                );
+            }
+            assert_eq!(crate::assets::primary_icon_color(), "#00aaff");
+            window.close();
+        },
+    );
 }
 
 fn wait_for_theme(mut ready: impl FnMut() -> bool) {
