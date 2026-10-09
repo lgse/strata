@@ -65,7 +65,7 @@ pub(super) fn theme_editor(manager: Rc<ThemeManager>) -> ThemeEditor {
                 }
             }
             preview.syncing.set(false);
-            preview.applied.set(false);
+            preview.applied.set(None);
             values.replace(tokens);
             name.set_text("");
             error.set_visible(false);
@@ -87,10 +87,9 @@ pub(super) fn theme_editor(manager: Rc<ThemeManager>) -> ThemeEditor {
         let revealer = revealer.clone();
         let preview = preview.clone();
         Rc::new(move || {
-            // The preview is process-wide: an editor that never previewed must not end
-            // one that another window's editor started.
-            if preview.applied.get() {
-                manager.cancel_preview();
+            // The preview is process-wide: only end the one this editor started.
+            if let Some(generation) = preview.applied.take() {
+                manager.cancel_preview_from(generation);
             }
             if revealer.reveals_child() {
                 reset();
@@ -117,12 +116,12 @@ pub(super) fn theme_editor(manager: Rc<ThemeManager>) -> ThemeEditor {
     }
 }
 
-/// `syncing` mutes the pickers while a reset sets them; `applied` records that this
-/// editor started the current preview.
+/// `syncing` mutes the pickers while a reset sets them; `applied` holds the generation
+/// of the preview this editor last started.
 #[derive(Clone, Default)]
 struct PreviewState {
     syncing: Rc<Cell<bool>>,
-    applied: Rc<Cell<bool>>,
+    applied: Rc<Cell<Option<u64>>>,
 }
 
 fn starter_tokens(manager: &ThemeManager) -> ThemeTokens {
@@ -197,8 +196,9 @@ fn color_field_row(
             return;
         }
         *field.slot(&mut values_for_color.borrow_mut()) = color_to_hex(&picker.rgba().to_string());
-        manager_for_color.preview(&values_for_color.borrow());
-        preview.applied.set(true);
+        if let Some(generation) = manager_for_color.preview(&values_for_color.borrow()) {
+            preview.applied.set(Some(generation));
+        }
     });
     field_row.append(&picker);
     field_row.append(&label);
@@ -238,7 +238,7 @@ fn editor_actions(manager: Rc<ThemeManager>, form: ThemeEditorForm) -> gtk::Box 
         match manager.save_custom_theme(tokens) {
             Ok(_) => {
                 // Saving selects the theme, which ends the preview.
-                preview.applied.set(false);
+                preview.applied.set(None);
                 error.set_visible(false);
                 revealer.set_reveal_child(false);
             }

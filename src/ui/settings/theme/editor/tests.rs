@@ -194,29 +194,36 @@ fn dismissing_the_editor_discards_the_preview_and_resets_the_form() {
 }
 
 #[test]
-fn dismissing_an_untouched_editor_keeps_another_editors_preview() {
+fn dismissing_an_editor_keeps_another_editors_preview() {
     gtk_test(
-        "ui::settings::theme::editor::tests::dismissing_an_untouched_editor_keeps_another_editors_preview",
+        "ui::settings::theme::editor::tests::dismissing_an_editor_keeps_another_editors_preview",
         || {
             let manager = ThemeManager::shared();
             manager.set_follow_omarchy(false);
             manager.select_theme("azure-glow");
-            let editing = theme_editor(manager.clone());
-            let untouched = theme_editor(manager.clone());
-            (editing.reveal)();
-            (untouched.reveal)();
-            accent_picker(&editing.fields).set_rgba(&gdk::RGBA::parse("#13579b").expect("fixture"));
-            assert!(manager.is_previewing());
+            for superseded in [false, true] {
+                let editing = theme_editor(manager.clone());
+                let other = theme_editor(manager.clone());
+                (editing.reveal)();
+                (other.reveal)();
+                if superseded {
+                    accent_picker(&other.fields)
+                        .set_rgba(&gdk::RGBA::parse("#2468ac").expect("fixture"));
+                }
+                accent_picker(&editing.fields)
+                    .set_rgba(&gdk::RGBA::parse("#13579b").expect("fixture"));
+                assert!(manager.is_previewing());
 
-            (untouched.dismiss)();
-            assert!(
-                manager.is_previewing(),
-                "another window's preview stays applied"
-            );
-            assert!(!untouched.revealer.reveals_child());
+                (other.dismiss)();
+                assert!(
+                    manager.is_previewing(),
+                    "superseded: {superseded}: another window's preview stays applied"
+                );
+                assert!(!other.revealer.reveals_child());
 
-            (editing.dismiss)();
-            assert!(!manager.is_previewing());
+                (editing.dismiss)();
+                assert!(!manager.is_previewing(), "superseded: {superseded}");
+            }
         },
     );
 }

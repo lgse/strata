@@ -173,6 +173,7 @@ pub struct ThemeManager {
     omarchy_monitors: RefCell<Vec<gio::FileMonitor>>,
     pending_omarchy_refresh: RefCell<Option<glib::SourceId>>,
     preview: RefCell<Option<ThemeTokens>>,
+    preview_generation: Cell<u64>,
     appearance: RefCell<AppearancePreferences>,
     theme_listeners: ThemeListeners,
     active_model_palette: Cell<crate::services::ModelPalette>,
@@ -213,6 +214,7 @@ impl ThemeManager {
             omarchy_monitors: RefCell::new(Vec::new()),
             pending_omarchy_refresh: RefCell::new(None),
             preview: RefCell::new(None),
+            preview_generation: Cell::new(0),
             appearance: RefCell::new(appearance),
             theme_listeners: ThemeListeners::default(),
             active_model_palette: Cell::new(crate::services::ModelPalette {
@@ -292,16 +294,26 @@ impl ThemeManager {
 
     /// Applies `tokens` until [`Self::cancel_preview`] or a theme selection; appearance
     /// changes in the meantime re-apply the preview rather than the saved theme.
-    pub fn preview(&self, tokens: &ThemeTokens) {
-        if validate_tokens(tokens).is_ok() {
-            self.preview.replace(Some(tokens.clone()));
-            self.apply_tokens(tokens, None);
-        }
+    /// Returns the preview's generation for [`Self::cancel_preview_from`].
+    pub fn preview(&self, tokens: &ThemeTokens) -> Option<u64> {
+        validate_tokens(tokens).ok()?;
+        self.preview.replace(Some(tokens.clone()));
+        self.preview_generation
+            .set(self.preview_generation.get().wrapping_add(1));
+        self.apply_tokens(tokens, None);
+        Some(self.preview_generation.get())
     }
 
     pub fn cancel_preview(&self) {
         if self.preview.take().is_some() {
             self.apply_selected();
+        }
+    }
+
+    /// Cancels the preview only if no later one has replaced it.
+    pub fn cancel_preview_from(&self, generation: u64) {
+        if self.preview_generation.get() == generation {
+            self.cancel_preview();
         }
     }
 
