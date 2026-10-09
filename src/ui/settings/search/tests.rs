@@ -370,3 +370,141 @@ fn global_search_routes_every_target_to_its_page() {
         },
     );
 }
+
+fn tagged_or_inside_tag(widget: &gtk::Widget, page: &gtk::Widget) -> bool {
+    let mut current = Some(widget.clone());
+    while let Some(widget) = current {
+        if widget.widget_name().starts_with("settings-search-") {
+            return true;
+        }
+        if &widget == page {
+            return false;
+        }
+        current = widget.parent();
+    }
+    false
+}
+
+fn describe(widget: &gtk::Widget) -> String {
+    let text = descendants(widget)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
+        .map(|label| label.text().to_string())
+        .find(|text| !text.is_empty())
+        .unwrap_or_default();
+    format!("{} {text:?}", widget.type_().name())
+}
+
+#[test]
+fn every_page_row_is_registered_for_search() {
+    crate::test_support::gtk_test(
+        "ui::settings::search::tests::every_page_row_is_registered_for_search",
+        || {
+            crate::ui::prepare_portal_ui();
+            // One loaded action and one load failure, so the Actions list and its
+            // problems section both have rows.
+            let actions = crate::storage::config_directory().join("actions");
+            std::fs::create_dir_all(actions.join("demo")).expect("action folder");
+            std::fs::write(
+                actions.join("demo/action.toml"),
+                "schema_version = 1\nid = \"demo\"\nname = \"Demo\"\nenabled = true\nmenu = \"top\"\n\n[when]\nextensions = [\"png\"]\n\n[run]\nruntime = \"command\"\nprogram = \"true\"\nargs = [\"{paths}\"]\n",
+            )
+            .expect("action manifest");
+            std::fs::create_dir_all(actions.join("broken")).expect("broken action folder");
+            let manager = PreferenceManager::shared();
+            let pages = [
+                ("general", super::super::general_page(manager.clone()).0),
+                (
+                    "theme",
+                    super::super::theme_page(
+                        manager.clone(),
+                        crate::ui::theme::ThemeManager::shared(),
+                    )
+                    .widget,
+                ),
+                ("actions", super::super::actions::actions_page()),
+                (
+                    "updates",
+                    super::super::updates_page(
+                        manager.clone(),
+                        Rc::new(|_| {}),
+                        super::super::install_guard(),
+                        crate::services::UpdateMethod::InPlace,
+                    )
+                    .0,
+                ),
+                ("about", super::super::about_page()),
+            ];
+            assert_eq!(
+                pages.iter().map(|(page, _)| *page).collect::<Vec<_>>(),
+                super::super::NAVIGATION
+                    .iter()
+                    .map(|entry| entry.page)
+                    .collect::<Vec<_>>(),
+                "build every navigation page"
+            );
+            let (_, actions_page) = pages
+                .iter()
+                .find(|(page, _)| *page == "actions")
+                .expect("Actions page");
+            for fixture in ["Demo", "actions/broken"] {
+                assert!(
+                    descendants(actions_page)
+                        .iter()
+                        .filter(|row| row.has_css_class("settings-option"))
+                        .flat_map(descendants)
+                        .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
+                        .any(|label| label.text().contains(fixture)),
+                    "Actions page shows a row for the {fixture} fixture"
+                );
+            }
+            let mut failures = Vec::new();
+            for target in TARGETS {
+                let on_page = pages.iter().any(|(page, root)| {
+                    *page == target.page
+                        && descendants(root)
+                            .iter()
+                            .any(|widget| tagged(widget, target.id))
+                });
+                if !on_page {
+                    failures.push(format!(
+                        "target {} ({:?}) is not tagged on page {}",
+                        target.id, target.title, target.page
+                    ));
+                }
+            }
+            for (page, root) in &pages {
+                for row in descendants(root)
+                    .into_iter()
+                    .filter(|widget| widget.has_css_class("settings-option"))
+                {
+                    if !tagged_or_inside_tag(&row, root) {
+                        failures.push(format!("{page}: unregistered row {}", describe(&row)));
+                    }
+                }
+                let content = descendants(root)
+                    .into_iter()
+                    .find(|widget| widget.has_css_class("settings-preferences"))
+                    .expect("page content");
+                for block in children(&content) {
+                    let untagged = !descendants(&block)
+                        .iter()
+                        .any(|widget| widget.widget_name().starts_with("settings-search-"));
+                    if untagged
+                        && !block.has_css_class("menu-heading")
+                        && !block.has_css_class("settings-section-description")
+                        && !block.has_css_class("settings-search-page-empty")
+                    {
+                        failures.push(format!("{page}: unregistered block {}", describe(&block)));
+                    }
+                }
+            }
+            assert!(
+                failures.is_empty(),
+                "{} registration gaps:\n{}",
+                failures.len(),
+                failures.join("\n")
+            );
+        },
+    );
+}
