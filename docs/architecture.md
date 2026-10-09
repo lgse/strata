@@ -323,6 +323,28 @@ state and routing borrows before synchronous observer dispatch, allowing observe
 navigate safely. Sorting, metadata scheduling, and cancellation remain in the browser
 controller; event routing does not change those policies.
 
+A folder's own directory monitor reports its deletion, its rename, and its move alike, as
+the removal of the folder itself. A column whose parent column is its parent folder leaves
+that report to the parent column's monitor, which sees the departure as a change to one of
+its entries; any other column, including the depth-0 folder, is checked in
+`directory_changes.rs`. A folder that validates again (deleted and recreated) reloads in
+place, which renews its monitor. A missing depth-0 folder is looked up in its parent by
+the identity it had when it loaded: device, inode and, where the filesystem records it,
+birth time, queried off the main thread (`FileSource::query_location_identity`). The birth
+time keeps a new folder that reuses the inode from passing for a rename. Found there
+(`find_by_identity`), the folder was renamed in place: the search indexes are rebased and
+the open columns relocate (`ColumnsRelocated`), as for an in-app rename. Not found, with a
+parent that cannot be listed, or before its identity is known, it departed: the nearest
+existing ancestor that the source allows is restored without a history entry, or the
+folder shows its read error when there is none. Backends without identities treat every
+rename as a departure. A folder or ancestor that cannot be reached (unmounted, offline, or
+not permitted) stays as it is. A monitor can lose the removal report, when a burst of
+changes turns its batch into a rescan or when a reload supersedes the check, so a failed
+reload of a depth-0 folder that loaded before runs the same check; it leaves the read
+error in place unless the folder is confirmed gone. A departure that arrives during a
+deletion, restoration, or transfer waits with the operation's other changes, which apply
+first.
+
 ### Browser staged publication
 
 `app/browser/publication.rs` owns staged row publication on the same `Browser`, not a
@@ -417,7 +439,7 @@ shared Settings/F1 presentation; default F1 navigation remains view-specific.
 
 ### File source
 
-Enumerates locations, retrieves metadata, watches changes, and reports supported actions. Begin with local files. Avoid designing a universal remote filesystem API before a second backend exists.
+Enumerates locations, retrieves metadata, watches changes, identifies folders across renames, and reports supported actions. Begin with local files. Avoid designing a universal remote filesystem API before a second backend exists.
 
 ### Operation service
 

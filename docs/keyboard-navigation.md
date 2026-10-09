@@ -69,7 +69,7 @@ Pressing blank column content focuses that directory, including empty directorie
 
 **Shift+Up/Down** extends the selection from the range anchor by one item, **Shift+Page Up/Page Down** by one page. After Escape clears the selection, the range starts at the cursor.
 
-Copy/cut use the selection in the focused column, never a hovered row. In Columns, Delete/Shift+Delete with no selected items does nothing: an open parent-path marker is not an implicit deletion target. The separate List/Icons parent-deletion fallback is tracked in #300. Delete in a location without Trash support, or after a Trash attempt fails because Trash is unsupported, opens the permanent-deletion confirmation with Cancel focused and the reason stated; Shift+Delete is unchanged.
+Copy/cut use the selection in the focused column, never a hovered row. In Columns, Delete/Shift+Delete with no selected items does nothing: an open parent-path marker is not an implicit deletion target. In List and Icons, Delete acts on the selection only. Delete in a location without Trash support, or after a Trash attempt fails because Trash is unsupported, opens the permanent-deletion confirmation with Cancel focused and the reason stated; Shift+Delete is unchanged.
 
 Background selection updates from directory loading must not move keyboard focus to an inactive column.
 
@@ -171,6 +171,11 @@ about a second, and a deleted one leaves the results as soon as the listing drop
 With [Include subfolders](preferences.md#filter-scope) on, changes in folders below
 those reach the results on **F5**, Auto-refresh, the rescan after a burst of external
 changes, or when the filter is cleared and opened again.
+When another program renames the open folder itself, the view follows it and a filter
+typed in that folder ends, while filters and **Ctrl+K** searches rooted above it follow
+the rename. When the open folder is deleted or moved into another folder, the view
+returns to its nearest parent that still exists, or reloads the folder if it already
+exists again; either way the filter ends. Neither adds a history entry.
 
 ## Preview while filtering
 
