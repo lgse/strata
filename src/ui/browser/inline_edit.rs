@@ -29,7 +29,7 @@ pub(super) struct PendingRename {
     old_name: String,
     new_name: String,
     generation: u64,
-    monitor_has_new_location: bool,
+    monitor_reported_rename: bool,
     reveal_generation: u64,
     scroll_value: Option<f64>,
     source_position: Option<usize>,
@@ -138,6 +138,14 @@ pub(in crate::ui) fn set_rename_label(label: &gtk::Widget, name: &str) {
     } else if let Some(label) = label.downcast_ref::<gtk::Label>() {
         label.set_label(name);
     }
+}
+
+/// A directory monitor that started with hidden files off reports a rename to a dot
+/// name as the old name's removal, so the new name never reaches the listing.
+fn is_dot_name(location: &Location) -> bool {
+    location
+        .file_name()
+        .is_some_and(|name| name.as_encoded_bytes().first() == Some(&b'.'))
 }
 
 fn pending_rename_matches(pending: &PendingRename, location: &Location) -> bool {
@@ -379,7 +387,7 @@ impl ViewState {
             old_name: entry.display_name.clone(),
             new_name,
             generation,
-            monitor_has_new_location: false,
+            monitor_reported_rename: false,
             reveal_generation: self.rename_reveal_generation.get(),
             source_position: self.browser.rename_item().map(|(_, position, _)| position),
             scroll_value: self.browser.active_depth().and_then(|depth| {
@@ -458,25 +466,41 @@ impl ViewState {
             let Some(new_location) = pending.new_location.as_ref() else {
                 return;
             };
-            if pending.old_location.parent().as_ref() != Some(&snapshot.location)
-                || !splices
-                    .iter()
-                    .flat_map(|splice| splice.entries.iter())
-                    .any(|entry| &entry.location == new_location)
+            if pending.old_location.parent().as_ref() != Some(&snapshot.location) {
+                return;
+            }
+            let listed = splices
+                .iter()
+                .flat_map(|splice| splice.entries.iter())
+                .any(|entry| &entry.location == new_location);
+            if listed {
+                for entry in splices.iter().flat_map(|splice| &splice.entries) {
+                    if &entry.location == new_location {
+                        crate::ui::thumbnail::preserve_renamed_thumbnail(
+                            &pending.old_location,
+                            entry,
+                        );
+                    }
+                }
+            } else if !(is_dot_name(new_location)
+                && !self.listing_contains(depth, snapshot.count, &pending.old_location))
             {
                 return;
             }
-            for entry in splices.iter().flat_map(|splice| &splice.entries) {
-                if &entry.location == new_location {
-                    crate::ui::thumbnail::preserve_renamed_thumbnail(&pending.old_location, entry);
-                }
-            }
-            pending.monitor_has_new_location = true;
+            pending.monitor_reported_rename = true;
             matches!(&pending.state, PendingRenameState::AwaitingRefresh { .. })
         };
         if completed {
             self.pending_rename.take();
         }
+    }
+
+    fn listing_contains(&self, depth: usize, count: usize, location: &Location) -> bool {
+        self.browser
+            .with_entries(depth, 0..count, |entries| {
+                entries.iter().any(|entry| &entry.location == location)
+            })
+            .unwrap_or(false)
     }
 
     pub(super) fn reconcile_pending_rename(&self) {
@@ -601,7 +625,7 @@ impl ViewState {
             .pending_rename
             .borrow()
             .as_ref()
-            .is_some_and(|pending| pending.monitor_has_new_location);
+            .is_some_and(|pending| pending.monitor_reported_rename);
         if observed {
             self.pending_rename.take();
         } else {
