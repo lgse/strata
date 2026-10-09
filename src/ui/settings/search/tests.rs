@@ -106,8 +106,36 @@ fn descendants(widget: &gtk::Widget) -> Vec<gtk::Widget> {
 fn item(layer: &gtk::Widget, id: &str) -> gtk::Widget {
     descendants(layer)
         .into_iter()
-        .find(|widget| widget.widget_name() == format!("settings-search-{id}"))
+        .find(|widget| tagged(widget, id))
         .expect("searchable setting")
+}
+
+fn tagged(widget: &gtk::Widget, id: &str) -> bool {
+    widget.widget_name() == format!("settings-search-{id}")
+}
+
+fn settings_layer(manager: &Rc<PreferenceManager>) -> (gtk::Widget, gtk::Entry, gtk::Stack) {
+    let button = gtk::Button::with_label("Settings");
+    let root = BlurBin::new(&button);
+    let layer = super::super::build_layer(
+        &button,
+        &root,
+        manager.clone(),
+        Rc::new(|_| {}),
+        super::super::install_guard(),
+    );
+    layer.set_visible(true);
+    let layer: gtk::Widget = layer.upcast();
+    let entry = descendants(&layer)
+        .into_iter()
+        .find(|widget| widget.has_css_class("settings-global-search-entry"))
+        .and_then(|widget| widget.downcast::<gtk::Entry>().ok())
+        .expect("global search");
+    let stack = descendants(&layer)
+        .into_iter()
+        .find_map(|widget| widget.downcast::<gtk::Stack>().ok())
+        .expect("settings pages");
+    (layer, entry, stack)
 }
 
 #[test]
@@ -118,49 +146,32 @@ fn global_search_navigates_filters_lazy_pages_and_restores_without_editing_prefe
             crate::ui::prepare_portal_ui();
             let manager = PreferenceManager::shared();
             let original = manager.folder_peeking();
-            let button = gtk::Button::with_label("Settings");
-            let root = BlurBin::new(&button);
-            let layer = super::super::build_layer(
-                &button,
-                &root,
-                manager.clone(),
-                Rc::new(|_| {}),
-                super::super::install_guard(),
-            );
-            layer.set_visible(true);
-            let entry = descendants(layer.upcast_ref())
-                .into_iter()
-                .find(|widget| widget.has_css_class("settings-global-search-entry"))
-                .and_then(|widget| widget.downcast::<gtk::Entry>().ok())
-                .expect("global search");
-            let stack = descendants(layer.upcast_ref())
-                .into_iter()
-                .find_map(|widget| widget.downcast::<gtk::Stack>().ok())
-                .expect("settings pages");
+            let (layer, entry, stack) = settings_layer(&manager);
+            let layer = &layer;
             assert!(stack.child_by_name("theme").is_none());
             entry.set_text("folder peeking");
             assert_eq!(stack.visible_child_name().as_deref(), Some("general"));
-            assert!(item(layer.upcast_ref(), "peeking").is_visible());
-            assert!(!item(layer.upcast_ref(), "previews").is_visible());
+            assert!(item(layer, "peeking").is_visible());
+            assert!(!item(layer, "previews").is_visible());
             entry.set_text("autoplay");
             assert_eq!(stack.visible_child_name().as_deref(), Some("general"));
-            assert!(item(layer.upcast_ref(), "preview-autoplay").is_visible());
-            assert!(!item(layer.upcast_ref(), "peeking").is_visible());
+            assert!(item(layer, "preview-autoplay").is_visible());
+            assert!(!item(layer, "peeking").is_visible());
             entry.set_text("window buttons");
             assert_eq!(stack.visible_child_name().as_deref(), Some("general"));
             for id in ["window-minimize", "window-maximize", "window-close"] {
-                assert!(item(layer.upcast_ref(), id).is_visible());
+                assert!(item(layer, id).is_visible());
             }
-            assert!(!item(layer.upcast_ref(), "previews").is_visible());
+            assert!(!item(layer, "previews").is_visible());
             entry.set_text("restore");
-            assert!(item(layer.upcast_ref(), "window-maximize").is_visible());
-            assert!(!item(layer.upcast_ref(), "window-minimize").is_visible());
-            assert!(!item(layer.upcast_ref(), "window-close").is_visible());
+            assert!(item(layer, "window-maximize").is_visible());
+            assert!(!item(layer, "window-minimize").is_visible());
+            assert!(!item(layer, "window-close").is_visible());
             entry.set_text("tezt size");
             assert_eq!(stack.visible_child_name().as_deref(), Some("theme"));
-            assert!(item(layer.upcast_ref(), "text").is_visible());
-            assert!(!item(layer.upcast_ref(), "motion").is_visible());
-            assert!(!item(layer.upcast_ref(), "themes").is_visible());
+            assert!(item(layer, "text").is_visible());
+            assert!(!item(layer, "motion").is_visible());
+            assert!(!item(layer, "themes").is_visible());
             entry.set_text("unfindablequantumsetting");
             assert_eq!(
                 stack.visible_child_name().as_deref(),
@@ -168,9 +179,9 @@ fn global_search_navigates_filters_lazy_pages_and_restores_without_editing_prefe
             );
             entry.set_text("");
             assert_eq!(stack.visible_child_name().as_deref(), Some("general"));
-            assert!(item(layer.upcast_ref(), "previews").is_visible());
-            assert!(item(layer.upcast_ref(), "themes").is_visible());
-            assert!(item(layer.upcast_ref(), "motion").is_visible());
+            assert!(item(layer, "previews").is_visible());
+            assert!(item(layer, "themes").is_visible());
+            assert!(item(layer, "motion").is_visible());
             assert_eq!(manager.folder_peeking(), original);
         },
     );

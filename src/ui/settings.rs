@@ -834,25 +834,21 @@ pub fn build_layer(
     let built: Rc<RefCell<std::collections::HashSet<&'static str>>> =
         Rc::new(RefCell::new(["general", "about"].into_iter().collect()));
     let dismiss_hooks = DismissHooks::default();
-    let nav_buttons: Rc<RefCell<Vec<gtk::Button>>> = Rc::new(RefCell::new(Vec::new()));
-    for (label, icon, name) in [
-        ("General", icons::SLIDERS, "general"),
-        ("Appearance", icons::PALETTE, "theme"),
-        ("Actions", icons::PLAY, "actions"),
-        ("Updates", icons::DOWNLOADS, "updates"),
-        ("About", icons::INFO, "about"),
-    ] {
+    let nav_buttons: Rc<RefCell<Vec<(gtk::Button, &'static str)>>> =
+        Rc::new(RefCell::new(Vec::new()));
+    for entry in &NAVIGATION {
+        let name = entry.page;
         let active = name == "general";
-        let (button, navigation_label, navigation_content) = navigation_button(icon, label);
+        let (button, navigation_label, navigation_content) = navigation_button(entry);
         responsive_for_nav.add_navigation(navigation_label, navigation_content);
         if active {
             button.add_css_class("settings-nav-active");
         }
-        nav_buttons.borrow_mut().push(button.clone());
+        nav_buttons.borrow_mut().push((button.clone(), name));
         let buttons = nav_buttons.clone();
         let stack = stack.clone();
         let title = title.clone();
-        let page_title = label.to_owned();
+        let page_title = entry.label;
         let built = built.clone();
         let preferences = preferences.clone();
         let update_notice = update_notice.clone();
@@ -862,7 +858,7 @@ pub fn build_layer(
         let search_state = settings_search.state.clone();
         let dismiss_hooks = dismiss_hooks.clone();
         button.connect_clicked(move |clicked| {
-            for candidate in buttons.borrow().iter() {
+            for (candidate, _) in buttons.borrow().iter() {
                 if candidate == clicked {
                     candidate.add_css_class("settings-nav-active");
                 } else {
@@ -912,7 +908,7 @@ pub fn build_layer(
                 }
             }
             stack.set_visible_child_name(name);
-            title.set_text(&crate::i18n::tr(&page_title));
+            title.set_text(&crate::i18n::tr(page_title));
         });
         navigation.append(&button);
     }
@@ -2973,37 +2969,75 @@ fn update_check_message(result: &UpdateCheck, update_method: UpdateMethod) -> St
     }
 }
 
-fn navigation_button(icon: &str, label: &str) -> (gtk::Button, gtk::Label, gtk::Box) {
+struct NavigationEntry {
+    page: &'static str,
+    label: &'static str,
+    subtitle: &'static str,
+    icon: &'static str,
+    accessible_label: Option<&'static str>,
+}
+
+/// Settings pages in navigation order. Search finds page titles here and routes
+/// to the button built from each entry.
+static NAVIGATION: [NavigationEntry; 5] = [
+    NavigationEntry {
+        page: "general",
+        label: "General",
+        subtitle: "Browsing, search, files",
+        icon: icons::SLIDERS,
+        accessible_label: None,
+    },
+    NavigationEntry {
+        page: "theme",
+        label: "Appearance",
+        subtitle: "Theme, text, motion",
+        icon: icons::PALETTE,
+        accessible_label: Some("Appearance settings"),
+    },
+    NavigationEntry {
+        page: "actions",
+        label: "Actions",
+        subtitle: "Custom actions",
+        icon: icons::PLAY,
+        accessible_label: None,
+    },
+    NavigationEntry {
+        page: "updates",
+        label: "Updates",
+        subtitle: "Channel, release notes",
+        icon: icons::DOWNLOADS,
+        accessible_label: None,
+    },
+    NavigationEntry {
+        page: "about",
+        label: "About",
+        subtitle: "Version and links",
+        icon: icons::INFO,
+        accessible_label: None,
+    },
+];
+
+fn navigation_button(entry: &NavigationEntry) -> (gtk::Button, gtk::Label, gtk::Box) {
+    let label = entry.label;
     let content = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-    let icon_image = crate::assets::primary_icon(icon, 18);
-    let subtitle = match label {
-        "General" => "Browsing, search, files",
-        "Appearance" => "Theme, text, motion",
-        "Updates" => "Channel, release notes",
-        "Actions" => "Custom actions",
-        _ => "Version and links",
-    };
+    let icon_image = crate::assets::primary_icon(entry.icon, 18);
     let text = gtk::Label::new(None);
     text.set_markup(&format!(
         "{}\n<span size=\"small\" weight=\"normal\">{}</span>",
         glib::markup_escape_text(&crate::i18n::tr(label)),
-        glib::markup_escape_text(&crate::i18n::tr(subtitle))
+        glib::markup_escape_text(&crate::i18n::tr(entry.subtitle))
     ));
     text.set_xalign(0.0);
     text.add_css_class("settings-nav-copy");
     content.append(&icon_image);
     content.append(&text);
     let button = gtk::Button::builder().child(&content).build();
-    button.set_widget_name(label);
+    button.set_widget_name(entry.page);
     button.set_has_frame(false);
     button.set_cursor_from_name(Some("pointer"));
     super::accessibility::set_label(
         &button,
-        &crate::i18n::tr(if label == "Appearance" {
-            "Appearance settings"
-        } else {
-            label
-        }),
+        &crate::i18n::tr(entry.accessible_label.unwrap_or(label)),
     );
     (button, text, content)
 }

@@ -377,8 +377,8 @@ fn a_dialog_closed_over_settings_returns_focus_to_its_opener() {
                 let settings = fixture.layer("settings-backdrop").expect("Settings layer");
                 assert!(settles(|| settings.is_visible() && settings.is_mapped()));
                 let page = match dialog {
-                    DialogOverSettings::SaveNotice => "General",
-                    _ => "Actions",
+                    DialogOverSettings::SaveNotice => "general",
+                    _ => "actions",
                 };
                 descendant(&settings, &|widget| {
                     widget.is::<gtk::Button>() && widget.widget_name() == page
