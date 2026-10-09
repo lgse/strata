@@ -1827,7 +1827,7 @@ impl SidebarState {
             Err(error) => show_error_dialog(
                 &self.view.widget(),
                 &crate::i18n::tr("Unable to update pinned folders"),
-                &error.to_string(),
+                &crate::services::io_error_message(&error),
             ),
         }
     }
@@ -4159,7 +4159,7 @@ fn save_pinned_places(places: &[(Location, String)]) -> std::io::Result<()> {
         std::fs::create_dir_all(parent)?;
     }
     let contents = serialize_pinned_places(places);
-    crate::storage::atomic_write(&path, contents.as_bytes())
+    crate::storage::atomic_write_config(&path, contents.as_bytes())
 }
 
 fn serialize_pinned_places(places: &[(Location, String)]) -> String {

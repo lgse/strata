@@ -252,8 +252,12 @@ fn editor_actions(manager: Rc<ThemeManager>, form: ThemeEditorForm) -> gtk::Box 
 }
 
 fn save_error_text(error: &std::io::Error) -> String {
-    // Validation errors carry an English catalog key; other errors come from the OS.
-    if error.kind() == std::io::ErrorKind::InvalidInput {
+    // Validation errors carry an English catalog key; other errors come from the OS
+    // or from refusing the theme file's destination.
+    let refused_destination = error
+        .get_ref()
+        .is_some_and(|inner| inner.is::<crate::storage::DestinationError>());
+    if error.kind() == std::io::ErrorKind::InvalidInput && !refused_destination {
         crate::i18n::tr(&error.to_string())
     } else {
         rust_i18n::t!(

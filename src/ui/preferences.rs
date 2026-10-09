@@ -1445,11 +1445,13 @@ impl PreferenceManager {
             }
             let value =
                 toml::to_string_pretty(&*self.preferences.borrow()).map_err(io::Error::other)?;
-            crate::storage::atomic_write(&path, value.as_bytes())
+            crate::storage::atomic_write_config(&path, value.as_bytes())
         })();
         match result {
             Ok(()) => self.persistence_dirty.set(false),
-            Err(error) => tracing::warn!(%error, "unable to save preference"),
+            Err(error) => {
+                tracing::warn!(%error, path = %path.display(), "unable to save preference")
+            }
         }
         if changed {
             self.changes.notify(self);

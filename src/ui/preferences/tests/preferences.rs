@@ -312,6 +312,50 @@ fn missing_settings_allow_first_run_saves() {
 }
 
 #[test]
+fn symlinked_settings_save_through_to_the_target() {
+    gtk_test(
+        "ui::preferences::tests::preferences::symlinked_settings_save_through_to_the_target",
+        || {
+            seed_saved_preferences_for_test();
+            let config_home = std::env::var_os("XDG_CONFIG_HOME").expect("isolated config home");
+            let target = Path::new(&config_home)
+                .parent()
+                .expect("sandbox root")
+                .join("dotfiles/settings.toml");
+            fs::create_dir_all(target.parent().expect("dotfiles directory"))
+                .expect("dotfiles directory");
+            fs::rename(settings_path(), &target).expect("move settings into dotfiles");
+            std::os::unix::fs::symlink(&target, settings_path()).expect("dotfiles link");
+
+            let manager = PreferenceManager::load();
+            assert!(manager.folder_peeking());
+            manager.set_folder_peeking(false);
+
+            assert!(
+                !manager.persistence_dirty.get(),
+                "the save through the link must not stay pending"
+            );
+            assert!(
+                fs::symlink_metadata(settings_path())
+                    .expect("settings link")
+                    .file_type()
+                    .is_symlink()
+            );
+            assert_eq!(
+                fs::read_link(settings_path()).expect("settings link"),
+                target
+            );
+            let saved: Preferences =
+                toml::from_str(&fs::read_to_string(&target).expect("dotfiles settings"))
+                    .expect("dotfiles settings parse");
+            assert!(!saved.folder_peeking);
+            drop(manager);
+            assert!(!PreferenceManager::load().folder_peeking());
+        },
+    );
+}
+
+#[test]
 fn malformed_preferences_survive_startup_and_an_unrelated_save() {
     gtk_test(
         "ui::preferences::tests::preferences::malformed_preferences_survive_startup_and_an_unrelated_save",

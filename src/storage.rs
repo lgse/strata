@@ -147,10 +147,6 @@ pub(crate) fn atomic_write(path: &Path, contents: &[u8]) -> io::Result<()> {
 /// in its own directory while the links stay untouched; every link and the
 /// target must belong to the effective user. An existing destination keeps
 /// its permission bits, and a new one is created owner-only.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "configuration writers switch to it in the next commit")
-)]
 pub(crate) fn atomic_write_config(path: &Path, contents: &[u8]) -> io::Result<()> {
     atomic_write_with(path, LinkPolicy::FollowUserOwned, |file| {
         file.write_all(contents)
