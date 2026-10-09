@@ -244,6 +244,21 @@ fn bind_footer_filter(dispatcher: &Dispatcher) {
     dispatcher
         .view
         .connect_search_selection_changed(Rc::new(move || shortcuts.schedule_filter_refresh()));
+    // Over a fill, motion and Space move the result cursor by focus alone, and
+    // GTK may land that focus after the selection change has been reported. In
+    // Columns the footer also follows the focused column.
+    let shortcuts = dispatcher.shortcuts.clone();
+    let handler = dispatcher
+        .window
+        .connect_focus_widget_notify(move |_| shortcuts.schedule_filter_refresh());
+    // A closed tab's view unrealizes while its window lives on.
+    let window = dispatcher.window.downgrade();
+    let handler = Cell::new(Some(handler));
+    dispatcher.view.widget().connect_unrealize(move |_| {
+        if let (Some(window), Some(handler)) = (window.upgrade(), handler.take()) {
+            window.disconnect(handler);
+        }
+    });
 }
 
 fn bind_prompt_hints(dispatcher: &Dispatcher) {
