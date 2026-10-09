@@ -380,7 +380,7 @@
     "ja": "%Y年%-m月%-d日 %H:%M",
     "pt-BR": "%-d de %B de %Y, %H:%M",
     "ko": "%Y년 %-m월 %-d일 %H:%M",
-    "vi": "%-d %B %Y, %H:%M",
+    "vi": "%-d %B, %Y, %H:%M",
     "it": "%-d %B %Y, %H:%M",
     "ru": "%-d %B %Y г., %H:%M"
   },

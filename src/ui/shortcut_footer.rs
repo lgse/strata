@@ -160,6 +160,9 @@ enum ReferenceArea {
     Results,
 }
 
+/// Space kept between the compact reference panel and the window edges, borders included.
+const REFERENCE_MARGIN: i32 = 56;
+
 #[derive(Clone)]
 struct ReferenceLayout {
     header: glib::WeakRef<gtk::Box>,
@@ -196,7 +199,8 @@ impl ReferenceLayout {
         else {
             return;
         };
-        if let Some(footer) = self.footer.upgrade() {
+        let footer = self.footer.upgrade();
+        if let Some(footer) = &footer {
             footer.set_max_width_chars(((window.width() - 80) / 9).max(10));
         }
         let compact = window.width() < 1480;
@@ -247,17 +251,39 @@ impl ReferenceLayout {
         if compact || changed {
             reflow_categories(&categories, compact, (window.width() - 104).max(1));
         }
+        let width = (window.width() - 80).max(1);
         sidebar.set_height_request(-1);
         sidebar.set_propagate_natural_height(compact);
-        sidebar.set_max_content_height((window.height() / 4).clamp(60, 160));
+        sidebar.set_min_content_height(-1);
+        let max_sidebar_height = (window.height() / 4).clamp(60, 160);
+        sidebar.set_max_content_height(max_sidebar_height);
         sidebar.set_vexpand(!compact);
         scroll.set_width_request(if compact {
-            (window.width() - 80).max(1)
+            width
         } else {
             (window.width() - 340).clamp(1, 1200)
         });
-        scroll
-            .set_height_request((window.height() - if compact { 300 } else { 160 }).clamp(1, 620));
+        let mut results_height = window.height() - if compact { 300 } else { 160 };
+        if compact {
+            // Wrapped hints and chip rows take their height from the results, not the chips.
+            let sidebar_height = categories
+                .measure(gtk::Orientation::Vertical, width)
+                .1
+                .min(max_sidebar_height);
+            sidebar.set_min_content_height(sidebar_height);
+            let natural_height =
+                |widget: &gtk::Widget| widget.measure(gtk::Orientation::Vertical, width).1;
+            let footer_height = footer
+                .as_ref()
+                .and_then(|footer| footer.parent())
+                .map_or(0, |footer| natural_height(&footer));
+            let chrome = REFERENCE_MARGIN
+                + natural_height(header.upcast_ref())
+                + sidebar_height
+                + footer_height;
+            results_height = results_height.min(window.height() - chrome);
+        }
+        scroll.set_height_request(results_height.clamp(1, 620));
         if changed {
             render_reference(
                 &reference,

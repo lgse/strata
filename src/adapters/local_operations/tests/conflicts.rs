@@ -19,6 +19,27 @@ fn transfers_into_the_same_location_or_a_descendant_are_noops() {
 }
 
 #[test]
+fn transfer_noops_resolve_aliased_destinations_but_not_symlink_sources()
+-> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let docs = root.path().join("docs");
+    fs::create_dir_all(docs.join("Backup"))?;
+    let link = root.path().join("link");
+    std::os::unix::fs::symlink(&docs, &link)?;
+    let docs = gio::File::for_path(&docs);
+    let link = gio::File::for_path(&link);
+    let aliased_backup = link.child("Backup");
+
+    assert!(transfer_is_noop(
+        &docs,
+        &aliased_backup,
+        &aliased_backup.child("docs")
+    ));
+    assert!(!transfer_is_noop(&link, &docs, &docs.child("link")));
+    Ok(())
+}
+
+#[test]
 fn each_transfer_item_keeps_its_own_conflict_decision() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()

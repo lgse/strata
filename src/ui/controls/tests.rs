@@ -116,3 +116,17 @@ fn particles_after_long_names_stay_with_their_last_character() {
         .collect::<Vec<_>>();
     assert_eq!(words, ["t을(를)", "y에서:"]);
 }
+
+#[test]
+fn parenthesised_particles_after_long_hangul_names_stay_with_the_syllable_before_them() {
+    let name = "한국어로된아주긴파일이름입니다확".repeat(2);
+    for (particle, kept) in [("을(를)", "확을(를)"), ("(으)로:", "확(으)로:")] {
+        let text = format!("{name}{particle} 삭제");
+        let words = korean_word_ranges(&text)
+            .into_iter()
+            .map(|range| &text[range])
+            .collect::<Vec<_>>();
+        assert_eq!(words, [kept, "삭제"]);
+    }
+    assert!(korean_word_ranges(&"가나다".repeat(5)).is_empty());
+}

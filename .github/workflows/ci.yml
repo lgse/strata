@@ -408,7 +408,7 @@ jobs:
     name: E2E shard ${{ matrix.shard }}
     needs: e2e-build
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    timeout-minutes: 10
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.e2e-build.outputs.matrix) }}

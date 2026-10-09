@@ -126,6 +126,8 @@ pub mod icons {
     pub const PENCIL: &str = "strata-pencil";
     pub const PIN: &str = "strata-pin";
     pub const PLAY: &str = "strata-play";
+    pub const MAXIMIZE: &str = "strata-maximize";
+    pub const MINIMIZE: &str = "strata-minimize";
     pub const SKIP_BACK: &str = "strata-skip-back";
     pub const SKIP_FORWARD: &str = "strata-skip-forward";
     pub const MINUS: &str = "strata-minus";

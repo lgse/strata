@@ -1011,7 +1011,38 @@ fn validated_child(parent: &gio::File, name: &str) -> Result<gio::File, &'static
 }
 
 fn transfer_is_noop(source: &gio::File, destination: &gio::File, target: &gio::File) -> bool {
-    source.equal(target) || source.equal(destination) || destination.has_prefix(source)
+    source.equal(target)
+        || source.equal(destination)
+        || destination.has_prefix(source)
+        || target_is_within_source(source, target) == Some(true)
+}
+
+/// Compares device/inode identities so symlink, bind-mount, and
+/// case-insensitive aliases of the source are caught. A symlink source keeps
+/// its own identity, so moving a link into the folder it targets is allowed.
+/// `None` means an ancestor could not be inspected.
+fn target_is_within_source(source: &gio::File, target: &gio::File) -> Option<bool> {
+    use std::os::unix::fs::MetadataExt;
+
+    let (Some(source_path), Some(target_path)) = (source.path(), target.path()) else {
+        return Some(false);
+    };
+    let identity = |metadata: &std::fs::Metadata| (metadata.dev(), metadata.ino());
+    let source_identity = identity(&std::fs::symlink_metadata(source_path).ok()?);
+    if std::fs::symlink_metadata(&target_path)
+        .is_ok_and(|metadata| identity(&metadata) == source_identity)
+    {
+        return Some(true);
+    }
+    for ancestor in target_path.ancestors().skip(1) {
+        match std::fs::metadata(ancestor) {
+            Ok(metadata) if identity(&metadata) == source_identity => return Some(true),
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => return None,
+        }
+    }
+    Some(false)
 }
 
 pub(crate) fn transfer_source_name(source: &gio::File) -> Option<OsString> {
@@ -2194,6 +2225,11 @@ async fn move_local_with_progress(
     let result = attempt_move(source.clone(), target.clone(), cancellable.clone()).await;
     match result {
         Err(error) if error.matches(gio::IOErrorEnum::WouldRecurse) => {
+            if target_is_within_source(&source, &target) != Some(false) {
+                return Err(io_error(crate::i18n::tr(
+                    "Can\u{2019}t put a folder inside itself",
+                )));
+            }
             copy_new_recursively_with_progress(
                 source.clone(),
                 target,
@@ -4889,7 +4925,10 @@ async fn run_merge_undo(
                 return;
             }
             Err(error) => {
-                errors.push(item_error(&location.display_name(), error));
+                errors.push(item_error(
+                    &location.display_name(),
+                    crate::services::gio_error_detail(&error),
+                ));
                 failed_locations.push(location.clone());
                 None
             }
@@ -4971,7 +5010,10 @@ async fn run_merge_undo(
                 return;
             }
             Err(error) => {
-                errors.push(item_error(&location.display_name(), error));
+                errors.push(item_error(
+                    &location.display_name(),
+                    crate::services::gio_error_detail(&error),
+                ));
                 failed_locations.push(location.clone());
                 Vec::new()
             }
@@ -6234,7 +6276,10 @@ impl OperationProvider for LocalOperationProvider {
                             if was_cancelled(&error) {
                                 cancelled = true;
                             } else {
-                                errors.push(item_error(&entry.display_name, error));
+                                errors.push(item_error(
+                                    &entry.display_name,
+                                    crate::services::gio_error_detail(&error),
+                                ));
                             }
                             failed_locations.push(entry.source.clone());
                             None

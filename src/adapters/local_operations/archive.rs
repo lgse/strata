@@ -525,11 +525,13 @@ fn copy_with_big_buf(
     let mut total = 0;
     loop {
         check_archive_cancelled(cancelled)?;
-        let n = reader.read(&mut buf).map_err(archive_failed)?;
+        let n = reader.read(&mut buf).map_err(archive_read_failed)?;
         if n == 0 {
             break;
         }
-        writer.write_all(&buf[..n]).map_err(archive_failed)?;
+        writer
+            .write_all(&buf[..n])
+            .map_err(|error| archive_io_failed(&error))?;
         total += n as u64;
     }
     Ok(total)

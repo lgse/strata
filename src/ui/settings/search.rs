@@ -150,6 +150,24 @@ const TARGETS: &[Target] = &[
         aliases: "performance gpu thumbnails decoding backend automatic va api vulkan software",
     },
     Target {
+        id: "window-minimize",
+        page: "general",
+        title: "Show minimize button",
+        aliases: "window buttons header top bar titlebar controls hide",
+    },
+    Target {
+        id: "window-maximize",
+        page: "general",
+        title: "Show maximize button",
+        aliases: "window buttons header top bar titlebar controls restore hide",
+    },
+    Target {
+        id: "window-close",
+        page: "general",
+        title: "Show close button",
+        aliases: "window buttons header top bar titlebar controls hide",
+    },
+    Target {
         id: "desktop",
         page: "general",
         title: "Desktop integration",
