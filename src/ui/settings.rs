@@ -1578,6 +1578,7 @@ fn load_current_release_notes(card: &ReleaseNotesCard) {
 fn managed_install_row(managed: &ManagedInstall) -> gtk::Box {
     let row = gtk::Box::new(gtk::Orientation::Vertical, 2);
     row.add_css_class("settings-option");
+    search::tag(&row, "Check for updates");
     let title = gtk::Label::new(Some(&crate::i18n::tr("Package-managed installation")));
     title.set_xalign(0.0);
     title.add_css_class("settings-option-title");

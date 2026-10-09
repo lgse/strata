@@ -276,3 +276,94 @@ fn luks_keeps_desktop_heading_and_hides_portal_row() {
         },
     );
 }
+
+fn nav(layer: &gtk::Widget, page: &str) -> gtk::Button {
+    descendants(layer)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
+        .find(|button| button.widget_name() == page)
+        .unwrap_or_else(|| panic!("navigation button for {page}"))
+}
+
+/// Whether `widget` and every ancestor up to its stack page are visible.
+fn shown_on_page(widget: &gtk::Widget) -> bool {
+    let mut current = Some(widget.clone());
+    while let Some(widget) = current {
+        if widget
+            .parent()
+            .is_some_and(|parent| parent.is::<gtk::Stack>())
+        {
+            return true;
+        }
+        if !widget.is_visible() {
+            return false;
+        }
+        current = widget.parent();
+    }
+    false
+}
+
+#[test]
+fn global_search_routes_every_target_to_its_page() {
+    crate::test_support::gtk_test(
+        "ui::settings::search::tests::global_search_routes_every_target_to_its_page",
+        || {
+            crate::ui::prepare_portal_ui();
+            let (layer, entry, stack) = settings_layer(&PreferenceManager::shared());
+            let title = descendants(&layer)
+                .into_iter()
+                .find(|widget| widget.has_css_class("settings-title"))
+                .and_then(|widget| widget.downcast::<gtk::Label>().ok())
+                .expect("settings title");
+            let mut failures = Vec::new();
+            for target in TARGETS {
+                entry.set_text(target.title);
+                let mut fail = |problem: String| {
+                    failures.push(format!("{:?} ({}): {problem}", target.title, target.id));
+                };
+                let shown = stack.visible_child_name();
+                if shown.as_deref() != Some(target.page) {
+                    fail(format!("opened page {shown:?}, expected {}", target.page));
+                }
+                let expected_title = page_title(target.page).map(crate::i18n::tr);
+                if expected_title.as_deref() != Some(title.text().as_str()) {
+                    fail(format!(
+                        "title {:?}, expected {expected_title:?}",
+                        title.text()
+                    ));
+                }
+                let matches = find_matches(&normalized(target.title));
+                for page in super::super::NAVIGATION.iter().map(|entry| entry.page) {
+                    let visible = nav(&layer, page).is_visible();
+                    if visible != matches.pages.contains(page) {
+                        fail(format!("{page} navigation button visible={visible}"));
+                    }
+                }
+                // Updates builds asynchronously; every_page_row_is_registered_for_search
+                // builds it directly.
+                if target.page == "updates" {
+                    continue;
+                }
+                match descendants(&layer)
+                    .into_iter()
+                    .find(|widget| tagged(widget, target.id))
+                {
+                    None => fail("no tagged row in the built pages".into()),
+                    Some(row)
+                        if !shown_on_page(&row)
+                            && !row.has_css_class("settings-search-unavailable") =>
+                    {
+                        fail("matching row is hidden".into());
+                    }
+                    Some(_) => {}
+                }
+            }
+            assert!(
+                failures.is_empty(),
+                "{} routing failures:\n{}",
+                failures.len(),
+                failures.join("\n")
+            );
+        },
+    );
+}
