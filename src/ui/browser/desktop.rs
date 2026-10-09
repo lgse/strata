@@ -43,6 +43,24 @@ pub(in crate::ui) fn open_location_at(
     let location = location.clone();
     let browser = Rc::downgrade(browser);
     glib::MainContext::default().spawn_local(async move {
+        match read_web_link(&file).await {
+            Ok(Some(link)) => {
+                let result =
+                    gio::AppInfo::launch_default_for_uri_future(&link.address, Some(&context))
+                        .await;
+                if let Some(parent) = parent.upgrade() {
+                    report_open_result(&location, &parent, result);
+                }
+                return;
+            }
+            Err(error) => {
+                if let Some(parent) = parent.upgrade() {
+                    report_open_result(&location, &parent, Err(error));
+                }
+                return;
+            }
+            Ok(None) => {}
+        }
         match resolve_default_application(&file).await {
             Ok((content_type, Some(app))) => {
                 let result = crate::ui::open_with::launch_at(
@@ -74,6 +92,49 @@ pub(in crate::ui) fn open_location_at(
         }
     });
 }
+
+async fn read_web_link(file: &gio::File) -> Result<Option<crate::services::WebLink>, glib::Error> {
+    if !file.basename().is_some_and(|name| {
+        name.extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("desktop"))
+    }) {
+        return Ok(None);
+    }
+    let info = file
+        .query_info_future(
+            "standard::type",
+            gio::FileQueryInfoFlags::NONE,
+            glib::Priority::DEFAULT,
+        )
+        .await?;
+    if info.file_type() != gio::FileType::Regular {
+        return Ok(None);
+    }
+    let invalid = || {
+        glib::Error::new(
+            gio::IOErrorEnum::InvalidData,
+            &crate::i18n::tr("This web-link shortcut is invalid or uses an unsupported address."),
+        )
+    };
+    let stream = file.read_future(glib::Priority::DEFAULT).await?;
+    let result = stream
+        .read_all_future(vec![0u8; 64 * 1024 + 1], glib::Priority::DEFAULT)
+        .await;
+    stream.close_future(glib::Priority::DEFAULT).await?;
+    let (bytes, count, error) = result.map_err(|(_, error)| error)?;
+    if let Some(error) = error {
+        return Err(error);
+    }
+    if count > 64 * 1024 {
+        return Err(invalid());
+    }
+    let text = std::str::from_utf8(&bytes[..count]).map_err(|_| invalid())?;
+    crate::services::WebLink::from_desktop_entry(text).map_err(|_| invalid())
+}
+
+#[cfg(test)]
+mod tests;
 
 async fn resolve_default_application(
     file: &gio::File,

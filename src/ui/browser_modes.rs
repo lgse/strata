@@ -22,7 +22,6 @@ pub(super) use super::icons_cell::{
 use crate::{
     app::{Browser, BrowserColumnSnapshot},
     model::{FileEntry, Location, MetadataValue, SortDirection, SortKey},
-    services::DropCommit,
     ui::browser::{ClipboardMark, ClipboardMarks, FilterFocus, mark_in, paths::is_trash_location},
 };
 
@@ -98,7 +97,7 @@ impl ListColumnLayout {
     }
 }
 
-type TransferHandler = Rc<dyn Fn(Location, Vec<Location>, DropCommit)>;
+type TransferHandler = Rc<dyn Fn(Location, super::browser::DropRequest)>;
 type TransferHandlerSlot = Rc<RefCell<Option<TransferHandler>>>;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -3805,7 +3804,8 @@ fn install_mode_directory_drop_target(
     } = super::browser::prepare_file_drop_target({
         let destination = destination.clone();
         move || Some(destination.clone())
-    });
+    })
+    .attach_to(widget);
     let state_for_enter = drop_state.clone();
     drop.connect_enter(move |target, _, _| {
         super::browser::file_drop_action(target, &state_for_enter)
@@ -3815,17 +3815,17 @@ fn install_mode_directory_drop_target(
         super::browser::file_drop_action(target, &state_for_motion)
     });
     drop.connect_drop(move |target, value, _, _| {
-        let Some(sources) = super::browser::locations_from_file_list_value(value) else {
+        let Some(request) =
+            super::browser::DropRequest::from_value(target, value, &destination, &drop_state)
+        else {
             return false;
         };
         let Some(handler) = transfer_handler.borrow().clone() else {
             return false;
         };
-        let commit = super::browser::file_drop_commit(target, &destination, &sources, &drop_state);
-        handler(destination.clone(), sources, commit);
+        handler(destination.clone(), request);
         true
     });
-    widget.add_controller(drop);
 }
 
 #[expect(
@@ -3947,7 +3947,7 @@ fn install_list_drag_drop(
     let super::browser::PreparedFileDrop {
         target: drop,
         state: drop_state,
-    } = super::browser::prepare_file_drop_target(dest_for_row);
+    } = super::browser::prepare_file_drop_target(dest_for_row).attach_to(row);
     let spring_navigate: Rc<dyn Fn(Location)> = {
         let browser = browser.clone();
         Rc::new(move |location| {
@@ -4014,29 +4014,6 @@ fn install_list_drag_drop(
             row.remove_css_class("drop-destination");
         }
     });
-    let accepted_item = item.downgrade();
-    let browser_for_accept = browser.clone();
-    let map_for_accept = position_map.clone();
-    drop.connect_accept(move |_, offered| {
-        let Some(browser) = browser_for_accept.upgrade() else {
-            return false;
-        };
-        let Some(accepted_item) = accepted_item.upgrade() else {
-            return false;
-        };
-        let position = accepted_item.position();
-        let position = map_for_accept.as_ref().map_or(
-            (position != gtk::INVALID_LIST_POSITION).then_some(position as usize),
-            |(map, view)| source_position_for_view(map, Some(view), position),
-        );
-        position.is_some()
-            && browser
-                .entry_at(depth, position.unwrap_or_default())
-                .is_some_and(|entry| entry.is_directory() && !is_trash_location(&entry.location))
-            && offered
-                .formats()
-                .contains_type(gtk::gdk::FileList::static_type())
-    });
     let dropped_row = row.downgrade();
     drop.connect_drop(move |target, value, _, _| {
         if let Some(row) = dropped_row.upgrade() {
@@ -4046,17 +4023,17 @@ fn install_list_drag_drop(
         let Some(destination) = drop_state.destination() else {
             return false;
         };
-        let Some(sources) = super::browser::locations_from_file_list_value(value) else {
+        let Some(request) =
+            super::browser::DropRequest::from_value(target, value, &destination, &drop_state)
+        else {
             return false;
         };
         let Some(handler) = transfer_handler.borrow().clone() else {
             return false;
         };
-        let commit = super::browser::file_drop_commit(target, &destination, &sources, &drop_state);
-        handler(destination, sources, commit);
+        handler(destination, request);
         true
     });
-    row.add_controller(drop);
 }
 
 #[derive(Clone)]

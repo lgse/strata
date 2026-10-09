@@ -10,10 +10,7 @@ use gtk::{gdk, glib, prelude::*};
 
 use crate::ui::{
     accessibility,
-    browser::{
-        BrowserView, PreparedFileDrop, file_drop_action, file_drop_commit,
-        locations_from_file_list_value, prepare_file_drop_target,
-    },
+    browser::{BrowserView, PreparedFileDrop, file_drop_action, prepare_file_drop_target},
     motion,
 };
 
@@ -403,7 +400,8 @@ fn install_reordering(state: &Rc<TabWindow>, id: u64, widget: &gtk::Button, labe
     let target = gtk::DropTarget::new(String::static_type(), gdk::DragAction::MOVE);
     target.connect_accept(|_, drop| {
         let formats = drop.formats();
-        formats.contains_type(String::static_type())
+        drop.drag().is_some()
+            && formats.contains_type(String::static_type())
             && !formats.contains_type(gdk::FileList::static_type())
             && !formats.contain_mime_type("text/uri-list")
     });
@@ -434,7 +432,8 @@ fn install_file_drop(state: &Rc<TabWindow>, id: u64, widget: &gtk::Box, browser:
         state: drop_state,
     } = prepare_file_drop_target(move || {
         destination_browser.upgrade()?.browser().active_location()
-    });
+    })
+    .attach_to(widget);
     let hover = Rc::new(Cell::new(0_u64));
     let enter_hover = hover.clone();
     let weak = Rc::downgrade(state);
@@ -476,18 +475,16 @@ fn install_file_drop(state: &Rc<TabWindow>, id: u64, widget: &gtk::Box, browser:
         let Some(destination) = browser.browser().active_location() else {
             return false;
         };
-        let Some(sources) =
-            locations_from_file_list_value(value).filter(|sources| !sources.is_empty())
+        let Some(request) =
+            crate::ui::browser::DropRequest::from_value(target, value, &destination, &drop_state)
         else {
             return false;
         };
         if file_drop_action(target, &drop_state).is_empty() {
             return false;
         }
-        let commit = file_drop_commit(target, &destination, &sources, &drop_state);
         state.select(id);
-        browser.commit_file_drop(destination, sources, commit);
+        browser.commit_drop(destination, request);
         true
     });
-    widget.add_controller(target);
 }

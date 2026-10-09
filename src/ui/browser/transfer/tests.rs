@@ -2657,7 +2657,7 @@ fn drop_open_preference_applies_before_settings_and_live_across_views() {
                         } else {
                             Location::local(fixture.path())
                         };
-                        assert_eq!(view.browser().active_location(), Some(expected));
+                        assert_eq!(view.browser().active_location(), Some(expected.clone()));
                         if enabled && mode == BrowserMode::Columns {
                             assert_eq!(
                                 view.browser().location_at(0),
@@ -2666,6 +2666,73 @@ fn drop_open_preference_applies_before_settings_and_live_across_views() {
                             assert_eq!(
                                 view.browser().location_at(1),
                                 Some(Location::local(&destination))
+                            );
+                        }
+
+                        view.navigate_location(Location::local(fixture.path()));
+                        let destination_location = Location::local(&destination);
+                        let text = format!("text for view {index}");
+                        let content_at = |location: &Location| {
+                            let location_for_drop = location.clone();
+                            let prepared = super::super::prepare_file_drop_target(move || {
+                                Some(location_for_drop.clone())
+                            });
+                            let Some(super::super::DropRequest::Content(contents)) =
+                                super::super::DropRequest::from_value(
+                                    &prepared.target,
+                                    &text.to_value(),
+                                    location,
+                                    &prepared.state,
+                                )
+                            else {
+                                panic!("text drop request");
+                            };
+                            contents
+                        };
+                        glib::MainContext::default().block_on(view.state.save_dropped_content(
+                            destination_location.clone(),
+                            content_at(&destination_location),
+                        ));
+                        let name = format!("{}.txt", crate::i18n::tr("dropped_text.name"));
+                        assert_eq!(
+                            std::fs::read_to_string(destination.join(&name)).expect("dropped text"),
+                            text
+                        );
+                        assert_eq!(view.browser().active_location(), Some(expected));
+
+                        if enabled {
+                            let late_destination = fixture.path().join("late-destination");
+                            std::fs::create_dir(&late_destination).expect("late drop destination");
+                            view.navigate_location(Location::local(fixture.path()));
+                            wait_until(
+                                || {
+                                    view.browser().active_location()
+                                        == Some(Location::local(fixture.path()))
+                                },
+                                "return to drop origin",
+                            );
+                            let late_location = Location::local(&late_destination);
+                            let save = view.state.save_dropped_content(
+                                late_location.clone(),
+                                content_at(&late_location),
+                            );
+                            view.navigate_location(destination_location.clone());
+                            wait_until(
+                                || {
+                                    view.browser().active_location()
+                                        == Some(destination_location.clone())
+                                },
+                                "navigate away before drop completion",
+                            );
+                            glib::MainContext::default().block_on(save);
+                            assert_eq!(
+                                std::fs::read_to_string(late_destination.join(&name))
+                                    .expect("late dropped text"),
+                                text
+                            );
+                            assert_eq!(
+                                view.browser().active_location(),
+                                Some(destination_location)
                             );
                         }
                     }

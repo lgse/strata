@@ -209,6 +209,14 @@ pub(crate) struct PreparedFileDrop {
     pub state: Rc<FileDropState>,
 }
 
+impl PreparedFileDrop {
+    pub(crate) fn attach_to(self, widget: &impl IsA<gtk::Widget>) -> Self {
+        widget.add_controller(self.target.clone());
+        super::content_drop::install_binary_drop_target(widget, &self.target, &self.state);
+        self
+    }
+}
+
 pub(crate) const SPRING_LOAD_NAVIGATE_DELAY: Duration = Duration::from_millis(750);
 
 /// Reuses one classification for cursor feedback and the eventual transfer.
@@ -218,6 +226,7 @@ pub(crate) struct FileDropState {
     sources: RefCell<Option<Rc<[Location]>>>,
     classification: RefCell<Option<DropClassification>>,
     spring_load: RefCell<Option<SpringLoadPending>>,
+    pub(crate) forwarding_content: Cell<bool>,
 }
 
 struct SpringLoadPending {
@@ -248,6 +257,7 @@ impl FileDropState {
             sources: RefCell::new(None),
             classification: RefCell::new(None),
             spring_load: RefCell::new(None),
+            forwarding_content: Cell::new(false),
         }
     }
 
@@ -407,11 +417,7 @@ pub(crate) fn file_drag_hover_target(
     let destination = drop_state.destination()?;
     target
         .current_drop()
-        .filter(|offered| {
-            offered
-                .formats()
-                .contains_type(gtk::gdk::FileList::static_type())
-        })
+        .filter(|offered| super::supports_drop_formats(&offered.formats()))
         .map(|_| destination)
 }
 
@@ -449,8 +455,28 @@ pub(crate) fn prepare_file_drop_target(
         gtk::gdk::FileList::static_type(),
         gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE,
     );
+    drop.set_types(&[
+        gtk::gdk::Texture::static_type(),
+        gtk::gdk::FileList::static_type(),
+        String::static_type(),
+    ]);
     drop.set_preload(true);
     let state = Rc::new(FileDropState::new(Rc::new(destination)));
+    let state_for_accept = state.clone();
+    drop.connect_accept(move |_, offered| {
+        let formats = offered.formats();
+        if super::content_drop::binary_drop_format(&formats).is_some() {
+            return false;
+        }
+        // Strata's tab/place reorder drags are private strings, not saved text.
+        super::supports_drop_formats(&formats)
+            && state_for_accept.destination().is_some_and(|destination| {
+                !is_trash_location(&destination) && !destination.is_recent_location()
+            })
+            && (offered.drag().is_none()
+                || formats.contains_type(gtk::gdk::FileList::static_type())
+                || formats.contains_type(gtk::gdk::Texture::static_type()))
+    });
     let state_for_leave = state.clone();
     drop.connect_leave(move |_| state_for_leave.reset());
     let state_for_value = state.clone();
@@ -487,7 +513,8 @@ pub(super) fn install_directory_drop_target(
     } = prepare_file_drop_target({
         let destination = destination.clone();
         move || Some(destination.clone())
-    });
+    })
+    .attach_to(widget);
     let state_for_enter = drop_state.clone();
     drop.connect_enter(move |target, _, _| file_drop_action(target, &state_for_enter));
     let state_for_motion = drop_state.clone();
@@ -499,7 +526,6 @@ pub(super) fn install_directory_drop_target(
         };
         transfer_dropped_files(&state, target, value, destination.clone(), &drop_state)
     });
-    widget.add_controller(drop);
 }
 
 fn transfer_dropped_files(
@@ -509,14 +535,11 @@ fn transfer_dropped_files(
     destination: Location,
     drop_state: &Rc<FileDropState>,
 ) -> bool {
-    let Some(sources) = locations_from_file_list_value(value) else {
+    let Some(request) = super::DropRequest::from_value(target, value, &destination, drop_state)
+    else {
         return false;
     };
-    if sources.is_empty() {
-        return false;
-    }
-    let commit = file_drop_commit(target, &destination, &sources, drop_state);
-    state.commit_file_drop(destination, sources, commit);
+    state.commit_drop(destination, request);
     true
 }
 
@@ -536,7 +559,24 @@ pub(crate) fn file_drop_action(
     target: &gtk::DropTarget,
     state: &Rc<FileDropState>,
 ) -> gtk::gdk::DragAction {
+    if state.forwarding_content.get() {
+        return gtk::gdk::DragAction::COPY;
+    }
     let destination = state.destination();
+    if target
+        .value()
+        .as_ref()
+        .is_some_and(super::content_drop::is_content_value)
+    {
+        return if destination
+            .as_ref()
+            .is_some_and(super::content_drop::accepts_content_at)
+        {
+            gtk::gdk::DragAction::COPY
+        } else {
+            gtk::gdk::DragAction::empty()
+        };
+    }
     let sources = state.sources(target);
     drop_commit_action(classify_file_drop(
         target,

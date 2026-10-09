@@ -25,7 +25,7 @@ use crate::{
 use super::{
     browser::{
         BrowserView, PeekBehavior, PinStatus, PreparedFileDrop, WeakBrowserView,
-        arm_spring_load_navigation, file_drag_hover_target, file_drop_action, file_drop_commit,
+        arm_spring_load_navigation, file_drag_hover_target, file_drop_action,
         locations_from_file_list_value, prepare_file_drop_target, show_error_dialog,
     },
     browser_modes::{BrowserDensity, BrowserMode},
@@ -2660,7 +2660,8 @@ fn install_sidebar_file_drop(
     } = prepare_file_drop_target({
         let destination = destination.clone();
         move || Some(destination.clone())
-    });
+    })
+    .attach_to(row);
     drop.set_propagation_phase(gtk::PropagationPhase::Capture);
     let spring_navigate: Rc<dyn Fn(Location)> = {
         let view = view.downgrade();
@@ -2730,17 +2731,14 @@ fn install_sidebar_file_drop(
         let Some(view) = view.upgrade() else {
             return false;
         };
-        let Some(sources) = locations_from_file_list_value(value) else {
+        let Some(request) =
+            super::browser::DropRequest::from_value(target, value, &destination, &drop_state)
+        else {
             return false;
         };
-        if sources.is_empty() {
-            return false;
-        }
-        let commit = file_drop_commit(target, &destination, &sources, &drop_state);
-        view.commit_file_drop(destination.clone(), sources, commit);
+        view.commit_drop(destination.clone(), request);
         true
     });
-    row.add_controller(drop);
 }
 
 fn trash_file_drop_action(target: &gtk::DropTarget) -> gtk::gdk::DragAction {

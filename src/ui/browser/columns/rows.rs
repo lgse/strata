@@ -11,7 +11,7 @@ use crate::ui::{
         clipboard::{
             ClipboardMark, PreparedFileDrop, clipboard_mark, drag_actions_for_modifiers,
             drag_preview_icon, file_drag_content, file_drag_hover_target, file_drop_action,
-            file_drop_commit, locations_from_file_list_value, prepare_file_drop_target,
+            prepare_file_drop_target,
         },
         collection::{ViewMap, activate_recursive_search_result},
         entry::{
@@ -244,7 +244,7 @@ pub(super) fn column_rows(
             let PreparedFileDrop {
                 target: drop,
                 state: drop_state,
-            } = prepare_file_drop_target(dest_for_row);
+            } = prepare_file_drop_target(dest_for_row).attach_to(&row);
             let spring_navigate: Rc<dyn Fn(Location)> = {
                 let weak_state = weak_state.clone();
                 Rc::new(move |location| {
@@ -311,27 +311,6 @@ pub(super) fn column_rows(
                     row.remove_css_class("drop-destination");
                 }
             });
-            let weak_state_for_accept = weak_state.clone();
-            let accepted_item = item.downgrade();
-            let map_for_accept = map_for_hover.clone();
-            drop.connect_accept(move |_, offered| {
-                let Some(state) = weak_state_for_accept.upgrade() else {
-                    return false;
-                };
-                let Some(accepted_item) = accepted_item.upgrade() else {
-                    return false;
-                };
-                let entry = map_for_accept
-                    .source_position(accepted_item.position())
-                    .and_then(|position| state.browser.entry_at(depth, position));
-                entry.is_some_and(|entry| {
-                    entry.is_directory()
-                        && !is_trash_location(&entry.location)
-                        && offered
-                            .formats()
-                            .contains_type(gtk::gdk::FileList::static_type())
-                })
-            });
             let weak_state_for_drop = weak_state.clone();
             let dropped_row = row.downgrade();
             drop.connect_drop(move |target, value, _, _| {
@@ -347,17 +326,17 @@ pub(super) fn column_rows(
                 let Some(destination) = drop_state.destination() else {
                     return false;
                 };
-                let Some(sources) = locations_from_file_list_value(value) else {
+                let Some(request) =
+                    super::super::DropRequest::from_value(target, value, &destination, &drop_state)
+                else {
                     return false;
                 };
-                let commit = file_drop_commit(target, &destination, &sources, &drop_state);
                 slide_in_down(&dropped_row);
                 glib::timeout_add_local_once(Duration::from_millis(300), move || {
-                    state.commit_file_drop(destination, sources, commit);
+                    state.commit_drop(destination, request);
                 });
                 true
             });
-            row.add_controller(drop);
         }
 
         let selection_click = gtk::GestureClick::new();
