@@ -313,13 +313,9 @@ impl ViewState {
             let Some(position) = column.map.view_position(source_position) else {
                 return RenameRevealTarget::Stop;
             };
-            let row = column.bound_rows.borrow().iter().find_map(|bound| {
-                (bound.item.upgrade()?.position() == position)
-                    .then(|| bound.row.upgrade())
-                    .flatten()
-                    .filter(|row| row.is_mapped() && row.is_ancestor(&column.list))
-                    .map(|row| row.upcast::<gtk::Widget>())
-            });
+            let row = column
+                .shown_row_at(position)
+                .map(|(row, _)| row.upcast::<gtk::Widget>());
             (column.list.clone().upcast(), position, row, None)
         } else if context.mode == BrowserMode::Icons {
             let Some((collection, position, row)) = self
@@ -1219,26 +1215,15 @@ impl ViewState {
         // Prepare before checking allocation: it cancels deferred scrolling and lets GTK bind
         // the row needed by the editor.
         super::prepare_collection_inline_edit(column.list.upcast_ref(), filtered_position);
-        let bound_rows = column.bound_rows.borrow();
-        let bound = bound_rows.iter().find(|bound| {
-            bound
-                .item
-                .upgrade()
-                .is_some_and(|item| item.position() == filtered_position)
-        })?;
-        let row = bound.row.upgrade()?;
-        if !row.is_mapped()
-            || row.width() <= 0
-            || !row.is_ancestor(&column.list)
-            || column.presentation.stack.is_transition_running()
-        {
+        let (row, bound) = column.shown_row_at(filtered_position)?;
+        if row.width() <= 0 || column.presentation.stack.is_transition_running() {
             return None;
         }
         Some(ColumnsRenameTarget {
             row,
-            edit: bound.edit.clone(),
-            spacer: bound.spacer.clone(),
-            size: bound.size.clone(),
+            edit: bound.edit,
+            spacer: bound.spacer,
+            size: bound.size,
             scroll: column.listing_scroll.clone(),
         })
     }

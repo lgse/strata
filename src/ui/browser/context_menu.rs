@@ -1746,13 +1746,7 @@ fn focus_search_result(state: &ViewState, depth: usize, entry: &FileEntry) {
     let Some(position) = position else {
         return;
     };
-    let row = column.bound_rows.borrow().iter().find_map(|bound| {
-        let item = bound.item.upgrade()?;
-        (item.position() == position as u32)
-            .then(|| bound.row.upgrade())
-            .flatten()
-    });
-    if let Some(row) = row.filter(|row| row.is_mapped()) {
+    if let Some((row, _)) = column.shown_row_at(position as u32) {
         if !column.selection.is_selected(position as u32) {
             column.selection.select_item(position as u32, true);
         }
