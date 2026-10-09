@@ -1179,6 +1179,7 @@
   "settings_keywords.preview-autoplay": "duyệt video âm thanh phát tạm dừng tự động phát",
   "settings_keywords.previews": "duyệt xem nhanh xem trước chọn tệp được hỗ trợ nhấp",
   "settings_keywords.refresh": "hiệu năng hẹn giờ tải lại làm mới mạng chia sẻ theo dõi",
+  "settings_keywords.render-documents": "duyệt xem trước markdown md html kết xuất mã nguồn chế độ xem",
   "settings_keywords.renderer": "giao diện đồ họa kết xuất văn bản lỗi hiển thị hiệu năng khởi động lại",
   "settings_keywords.restore-tabs": "khởi động mở phiên mở lại thẻ khôi phục",
   "settings_keywords.search-exclusions": "tìm kiếm bộ lọc loại trừ thư mục bỏ qua",

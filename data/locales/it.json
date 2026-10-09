@@ -1179,6 +1179,7 @@
   "settings_keywords.preview-autoplay": "navigazione video audio suono riproduzione pausa automatica",
   "settings_keywords.previews": "navigazione anteprima rapida selezione file supportati clic",
   "settings_keywords.refresh": "prestazioni timer ricarica aggiorna rete condivisione monitoraggio",
+  "settings_keywords.render-documents": "navigazione anteprima markdown md html renderizzato sorgente vista",
   "settings_keywords.renderer": "aspetto grafica rendering testo artefatti prestazioni riavvio",
   "settings_keywords.restore-tabs": "avvio sessione riapri schede ripristina",
   "settings_keywords.search-exclusions": "ricerca filtro esclusioni escludi cartelle directory ignora",

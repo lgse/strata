@@ -1179,6 +1179,7 @@
   "settings_keywords.preview-autoplay": "탐색 동영상 비디오 오디오 소리 재생 일시 정지 자동 재생",
   "settings_keywords.previews": "탐색 빠른 미리 보기 선택 지원 파일 클릭",
   "settings_keywords.refresh": "성능 타이머 다시 불러오기 새로 고침 네트워크 공유 모니터",
+  "settings_keywords.render-documents": "탐색 미리 보기 markdown 마크다운 md html 렌더링 소스 보기",
   "settings_keywords.renderer": "모양 그래픽 렌더링 텍스트 아티팩트 성능 다시 시작",
   "settings_keywords.restore-tabs": "시작 실행 세션 다시 열기 탭 복원",
   "settings_keywords.search-exclusions": "검색 필터 제외 폴더 디렉터리 무시",

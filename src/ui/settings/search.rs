@@ -72,6 +72,12 @@ const TARGETS: &[Target] = &[
         aliases: "browsing video audio gif playback paused sound",
     },
     Target {
+        id: "render-documents",
+        page: "general",
+        title: "Render documents by default",
+        aliases: "browsing preview markdown md html rendered source view",
+    },
+    Target {
         id: "arrow-scope",
         page: "general",
         title: "Keep arrows in file list",

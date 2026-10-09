@@ -1179,6 +1179,7 @@
   "settings_keywords.preview-autoplay": "navigation vidéo audio son lecture pause automatique",
   "settings_keywords.previews": "navigation aperçu rapide sélection fichiers pris en charge clic",
   "settings_keywords.refresh": "performances minuterie recharger actualiser réseau partage surveillance",
+  "settings_keywords.render-documents": "navigation aperçu markdown md html rendu vue source",
   "settings_keywords.renderer": "apparence graphiques rendu texte artefacts performances redémarrer",
   "settings_keywords.restore-tabs": "démarrage lancement session rouvrir onglets restaurer",
   "settings_keywords.search-exclusions": "recherche filtre exclusions exclure dossiers répertoires ignorer",

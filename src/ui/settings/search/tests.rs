@@ -61,6 +61,8 @@ fn ranks_exact_labels_aliases_and_small_typing_errors() {
         ("copyright", "about", "license"),
         ("shortcuts button", "general", "hints"),
         ("keybindings", "general", "hints"),
+        ("render documents", "general", "render-documents"),
+        ("markdown", "general", "render-documents"),
     ] {
         let matches = find_matches(&normalized(query));
         assert_eq!(matches.best_page, Some(page), "{query}");
@@ -153,6 +155,7 @@ fn global_search_navigates_filters_lazy_pages_and_restores_without_editing_prefe
             assert_eq!(stack.visible_child_name().as_deref(), Some("general"));
             assert!(item(layer, "peeking").is_visible());
             assert!(!item(layer, "previews").is_visible());
+            assert!(!item(layer, "render-documents").is_visible());
             entry.set_text("autoplay");
             assert_eq!(stack.visible_child_name().as_deref(), Some("general"));
             assert!(item(layer, "preview-autoplay").is_visible());
