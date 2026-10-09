@@ -299,8 +299,6 @@ fn progress_modal_returns_focus_to_the_listing_when_dismissed() {
             view.state.dismiss_file_operation_progress();
             pump_until(|| crate::ui::window::visible_modal_layer(&window).is_none());
             assert!(crate::ui::window::visible_modal_layer(&window).is_none());
-            // The operation changes the listing, so the widget focused at opening is no
-            // safe target; the browser fallback takes focus instead.
             assert_eq!(focused_label(&window).as_deref(), Some("Listing"));
             window.close();
         },

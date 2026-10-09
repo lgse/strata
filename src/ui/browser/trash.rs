@@ -777,11 +777,9 @@ impl ViewState {
         self.browser.focus_active();
     }
 
-    /// Only an open column that reported it can delete but not trash counts as
-    /// unsupported. A read-only folder also reports `can_trash == Some(false)`,
-    /// so offering permanent deletion there would only fail; it, `None`, and an
-    /// entry outside the open columns keep the trash attempt and its
-    /// post-failure fallback (#179).
+    /// Only a column reporting delete-but-not-trash qualifies; read-only folders also
+    /// report no trash, so they, `None`, and entries outside open columns keep the
+    /// trash attempt and its fallback (#179).
     fn trash_unsupported_for(&self, entries: &[FileEntry]) -> bool {
         !entries.is_empty()
             && entries.iter().all(|entry| {
@@ -804,7 +802,6 @@ impl ViewState {
         self.show_delete_dialog(entries, DeleteDialog::Permanent);
     }
 
-    /// Confirms a permanent deletion that replaces a Trash the location lacks.
     pub(super) fn show_trash_unavailable_confirmation(self: &Rc<Self>, entries: Vec<FileEntry>) {
         self.show_delete_dialog(entries, DeleteDialog::TrashUnavailable);
     }

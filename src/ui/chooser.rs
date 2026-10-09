@@ -772,8 +772,6 @@ impl ChooserState {
         self.filename_edited.set(false);
     }
 
-    /// The destination name for the entry text: the recorded source's bytes while the
-    /// text still shows that source, otherwise the literal text the user typed.
     fn save_destination_name(&self, text: &str) -> OsString {
         match self.filename_source.borrow().as_deref() {
             Some(source) if source.to_string_lossy() == text => source.to_owned(),

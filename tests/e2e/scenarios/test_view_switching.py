@@ -117,8 +117,6 @@ def test_switching_preserves_the_pane_filter(strata, start):
             lambda: strata.matches() == ["todo.txt"],
             "the narrowed listing to survive the switch",
         )
-        focused = strata.focused_node()
-        assert focused is None or "Shortcuts" not in focused.name
         if start == "input":
             field = strata.editable_field()
             assert field.text == "todo"

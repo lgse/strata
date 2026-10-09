@@ -816,7 +816,7 @@ impl ViewState {
         }
     }
 
-    /// The directory rows return to the selection model unselected when a filter ends.
+    /// Reapplies the directory selection to rows that return unselected when a filter ends.
     fn resync_column_selection(&self, depth: usize) {
         let Ok(columns) = self.columns.try_borrow() else {
             return;

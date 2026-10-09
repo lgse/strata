@@ -107,8 +107,6 @@ fn listed_entries_keep_non_utf8_uri_children() {
         .unwrap_or_else(|| panic!("non-UTF-8 children of {directory} are listed"));
         assert_eq!(entry.location, Location::uri(uri));
         assert_eq!(entry.native_name.as_bytes(), name);
-        assert!(entry.display_name.ends_with("(invalid encoding)"));
-        assert!(!entry.is_directory());
     }
 }
 

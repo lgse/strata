@@ -305,7 +305,6 @@ fn unsupported_trash_fallback_explains_and_focuses_cancel() {
                     held.emit(id, unsupported(id));
                     if mixed {
                         wait_until(|| button(window.upcast_ref(), "Delete Permanently").is_some());
-                        // The error dialog only opens the confirmation, so it keeps its focus.
                         wait_until(|| {
                             focused_button_label(&window).as_deref() == Some("Delete Permanently")
                         });

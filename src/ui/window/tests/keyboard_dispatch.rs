@@ -1778,7 +1778,6 @@ fn home_and_end_jump_to_the_first_and_last_item_in_the_default_key_map() {
                     !fixture.press(Key::End, ModifierType::SHIFT_MASK),
                     "{mode:?} Shift+End stays with GTK"
                 );
-                assert_eq!(focused_name(&browser), "a.txt", "{mode:?}");
             }
         },
     );

@@ -162,11 +162,8 @@ pub(super) fn focus_beyond(scope: &gtk::Widget, direction: gtk::DirectionType) -
     false
 }
 
-/// Whether `focused` is a widget that was removed from `container`, such as a row a
-/// reload or re-sort replaced. GTK keeps the window's focus on it, and the focus chain
-/// through `container`, until the next paint moves focus to the next Tab stop. GTK
-/// does not clear a chain whose focus was detached, so the whole chain up to the
-/// window must lead to `container`.
+/// Whether `focused` was detached from `container` while the window's focus chain still
+/// runs through it (GTK moves focus at the next paint).
 pub(super) fn focus_removed_from(container: &gtk::Widget, focused: &gtk::Widget) -> bool {
     if focused.root().is_some() {
         return false;

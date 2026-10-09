@@ -104,9 +104,7 @@ fn forget_focus_origin(layer: &gtk::Widget) {
     });
 }
 
-/// Keeps focus that something else took while the overlay was closing; otherwise runs
-/// the explicit restore, else refocuses the origin while it is still on screen, else
-/// hands focus to the window fallback.
+/// Priority: focus taken meanwhile, explicit restore, on-screen origin, window fallback.
 fn restore_modal_focus(window: &gtk::Window, origin: &ModalFocusOrigin, allow_origin: bool) {
     if gtk::prelude::RootExt::focus(window).is_some_and(|focus| focus.is_mapped()) {
         return;
@@ -584,12 +582,8 @@ fn show_message_dialog(
     close.grab_focus();
 }
 
-/// Like [`show_error_dialog`], but for a `Completed with errors` delete
-/// result where every failure was caused by the destination not supporting
-/// Trash (issue #179): rather than a dead-end "Done" button, this offers an
-/// actionable "Delete Permanently" button that invokes `on_retry` -- the
-/// caller's job is to re-run the delete for just the retryable entries,
-/// e.g. via `show_trash_unavailable_confirmation(retryable_entries)`.
+/// For a delete that completed with errors, some of them Trash-unsupported: offers
+/// Delete Permanently for those entries via `on_retry` (#179).
 pub(super) fn show_delete_error_dialog(
     parent: &impl IsA<gtk::Widget>,
     detail: &str,

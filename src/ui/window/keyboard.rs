@@ -175,9 +175,7 @@ impl ChooserKeys {
         self.dispatcher.handle_chooser_key(&browser, key, modifiers)
     }
 
-    /// Hands the focused entry, or the selected search result, to the request
-    /// policy in either key map. Returns whether a non-folder entry was handed
-    /// over; on false the caller falls back to navigation.
+    /// Returns false for a folder or no entry so the caller can navigate instead.
     pub(in crate::ui) fn confirm_focused(&self) -> bool {
         self.browser
             .upgrade()

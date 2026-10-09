@@ -316,7 +316,6 @@ impl ModeViews {
     }
 
     fn update_selection(&self, depth: usize, selection: &SelectionUpdate, take_focus: bool) {
-        // A focused filter field or results page is not the view holding focus.
         let view_has_focus = self.listing_holds_focus(depth);
         let has_selection = match selection {
             SelectionUpdate::All => {
