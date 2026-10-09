@@ -1008,6 +1008,67 @@ fn omarchy_colors_in_gtk_only_hex_forms_apply_to_css_and_icons() {
     );
 }
 
+#[test]
+fn invalid_omarchy_palette_while_running_keeps_the_applied_palette() {
+    gtk_test(
+        "ui::preferences::tests::preferences::invalid_omarchy_palette_while_running_keeps_the_applied_palette",
+        || {
+            seed_saved_preferences_for_test();
+            seed_omarchy_for_test();
+            let mut preferences = non_default_preferences();
+            preferences.mode = "omarchy".into();
+            preferences.omarchy_variant = OmarchyVariant::Original;
+            fs::write(
+                settings_path(),
+                toml::to_string(&preferences).expect("Omarchy preference fixture"),
+            )
+            .expect("persist Omarchy mode");
+            let themes = ThemeManager::shared();
+            assert_eq!(crate::assets::primary_icon_color(), "#445566");
+            assert_eq!(themes.appearance_tokens().accent, "#445566");
+
+            seed_omarchy_colors_for_test(
+                "background = '#112233'\nforeground = '#ddeeff'\naccent = '0x7aa2f7'\n",
+            );
+            themes.refresh_omarchy_state();
+            assert!(themes.follows_omarchy());
+            assert!(themes.is_omarchy_available());
+            assert_eq!(crate::assets::primary_icon_color(), "#445566");
+            assert_eq!(themes.appearance_tokens().accent, "#445566");
+            let buffer = gtk::TextBuffer::new(None);
+            buffer.create_tag(Some("document-accent"), &[]);
+            crate::ui::theme::register_document_buffer(&buffer);
+            assert_eq!(
+                buffer
+                    .tag_table()
+                    .lookup("document-accent")
+                    .expect("document accent tag")
+                    .foreground_rgba(),
+                Some(gtk::gdk::RGBA::parse("#445566").expect("accent"))
+            );
+            let mut preview = themes.starter_tokens();
+            preview.accent = "#13579b".to_owned();
+            themes.preview(&preview).expect("valid preview");
+            assert_eq!(themes.appearance_tokens().accent, "#445566");
+            themes.cancel_preview();
+            themes.set_follow_omarchy(false);
+            themes.set_follow_omarchy(true);
+            assert!(themes.follows_omarchy());
+            assert_eq!(
+                themes.appearance_tokens(),
+                themes.starter_tokens(),
+                "a built-in theme applied since then replaces the remembered Omarchy palette"
+            );
+
+            fs::remove_file(crate::ui::theme::omarchy_state_dir().join("theme.name"))
+                .expect("remove Omarchy theme name");
+            themes.refresh_omarchy_state();
+            assert!(!themes.follows_omarchy());
+            assert_eq!(read_preferences().expect("saved theme mode").mode, "theme");
+        },
+    );
+}
+
 fn wait_for_theme(mut ready: impl FnMut() -> bool) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     while !ready() {

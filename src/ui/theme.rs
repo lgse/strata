@@ -174,6 +174,8 @@ pub struct ThemeManager {
     pending_omarchy_refresh: RefCell<Option<glib::SourceId>>,
     preview: RefCell<Option<ThemeTokens>>,
     preview_generation: Cell<u64>,
+    /// Omarchy state can be unreadable mid-switch while the window keeps these colors.
+    applied_omarchy_tokens: RefCell<Option<ThemeTokens>>,
     appearance: RefCell<AppearancePreferences>,
     theme_listeners: ThemeListeners,
     active_model_palette: Cell<crate::services::ModelPalette>,
@@ -215,6 +217,7 @@ impl ThemeManager {
             pending_omarchy_refresh: RefCell::new(None),
             preview: RefCell::new(None),
             preview_generation: Cell::new(0),
+            applied_omarchy_tokens: RefCell::new(None),
             appearance: RefCell::new(appearance),
             theme_listeners: ThemeListeners::default(),
             active_model_palette: Cell::new(crate::services::ModelPalette {
@@ -360,6 +363,7 @@ impl ThemeManager {
     pub fn appearance_tokens(&self) -> ThemeTokens {
         if self.follows_omarchy()
             && let Some(tokens) = load_omarchy_theme(self.preferences.omarchy_variant())
+                .or_else(|| self.applied_omarchy_tokens.borrow().clone())
         {
             return tokens;
         }
@@ -388,11 +392,13 @@ impl ThemeManager {
         }
         if self.follows_omarchy() {
             if let Some(tokens) = load_omarchy_theme(self.preferences.omarchy_variant()) {
+                self.applied_omarchy_tokens.replace(Some(tokens.clone()));
                 let palette = load_omarchy_source_palette();
                 self.apply_tokens(&tokens, palette.as_ref());
             }
             return;
         }
+        self.applied_omarchy_tokens.take();
         if let Some(tokens) = self.current_tokens() {
             self.apply_tokens(&tokens, None);
         }
@@ -515,29 +521,31 @@ impl ThemeManager {
                         return;
                     };
                     manager.pending_omarchy_refresh.borrow_mut().take();
-                    manager.monitor_omarchy();
-                    let available = load_omarchy_theme(OmarchyVariant::Original).is_some()
-                        || (manager.is_omarchy_available()
-                            && omarchy_state_dir().join("theme.name").is_file());
-                    let availability_changed =
-                        manager.omarchy_available.replace(available) != available;
-                    if !available && manager.follows_omarchy() {
-                        manager.preview.take();
-                        manager.preferences.set_theme_selection("theme", None);
-                        return;
-                    }
-                    if availability_changed {
-                        manager.preferences.notify_changes();
-                        return;
-                    }
-                    if manager.follows_omarchy() {
-                        manager.apply_selected();
-                        manager.preferences.notify_changes();
-                    }
+                    manager.refresh_omarchy_state();
                 });
                 manager.pending_omarchy_refresh.replace(Some(refresh));
             });
             self.omarchy_monitors.borrow_mut().push(monitor);
+        }
+    }
+
+    pub(in crate::ui) fn refresh_omarchy_state(self: &Rc<Self>) {
+        self.monitor_omarchy();
+        let available = load_omarchy_theme(OmarchyVariant::Original).is_some()
+            || (self.is_omarchy_available() && omarchy_state_dir().join("theme.name").is_file());
+        let availability_changed = self.omarchy_available.replace(available) != available;
+        if !available && self.follows_omarchy() {
+            self.preview.take();
+            self.preferences.set_theme_selection("theme", None);
+            return;
+        }
+        if availability_changed {
+            self.preferences.notify_changes();
+            return;
+        }
+        if self.follows_omarchy() {
+            self.apply_selected();
+            self.preferences.notify_changes();
         }
     }
 }
