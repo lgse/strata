@@ -997,6 +997,11 @@ impl BrowserView {
         self.state.pending_new_entry.borrow().is_some()
     }
 
+    /// A rename field is open or a new entry is waiting for its name field.
+    pub fn inline_edit_is_open(&self) -> bool {
+        self.state.inline_edit_is_open()
+    }
+
     /// Lets a marquee drag begin on blank chrome beside the file panes — the sidebar or
     /// the preview pane — and run into whichever view the current mode shows. The pane
     /// nearest the `edge` the surface sits on is the target, since that is the one such
@@ -1892,11 +1897,7 @@ impl BrowserView {
     }
 
     pub fn refresh(&self) {
-        if self.view_mode() == BrowserMode::Columns {
-            self.state.browser.refresh_all();
-        } else {
-            self.state.browser.reload_active();
-        }
+        self.state.refresh_browser();
     }
 
     pub fn set_auto_refresh_interval(&self, secs: u32) {
@@ -2553,17 +2554,22 @@ impl ViewState {
             let Some(state) = weak_state.upgrade() else {
                 return glib::ControlFlow::Break;
             };
-            if state.pending_new_entry.borrow().is_some()
-                || state.active_rename.borrow().is_some()
-                || state.rename_operation_pending()
-                || state.mode_views.borrow().rename_is_active()
-            {
+            // A submitted rename also waits for the listing to show its result.
+            if state.inline_edit_is_open() || state.rename_operation_pending() {
                 return glib::ControlFlow::Continue;
             }
             state.refresh_browser();
             glib::ControlFlow::Continue
         });
         self.auto_refresh.replace(Some(source));
+    }
+
+    /// A reload rebinds the rows an inline edit leases, which would discard the typed
+    /// name, so window commands and auto-refresh wait while this holds.
+    pub(super) fn inline_edit_is_open(&self) -> bool {
+        self.pending_new_entry.borrow().is_some()
+            || self.active_rename.borrow().is_some()
+            || self.mode_views.borrow().rename_is_active()
     }
 
     fn refresh_browser(&self) {

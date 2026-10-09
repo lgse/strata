@@ -793,7 +793,7 @@ impl Dispatcher {
     }
 
     fn inline_editing_active(&self) -> bool {
-        self.view.rename_is_active() || self.view.new_entry_is_active()
+        self.view.inline_edit_is_open()
     }
 
     fn native_menu_owns_input(&self) -> bool {
