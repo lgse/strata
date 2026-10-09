@@ -124,6 +124,17 @@ fn location_input_accepts_uri_schemes_for_local_and_remote_locations() {
         Some(Location::uri("sftp://user@host:2222/path"))
     );
 
+    let typed = Location::uri("smb://host/share/caf%C3%A9%20x");
+    assert_eq!(browser.navigate_input("smb://host/share/café x"), Ok(()));
+    assert_eq!(browser.active_location(), Some(typed.clone()));
+    assert_eq!(
+        typed
+            .child(std::ffi::OsStr::new("a"))
+            .and_then(|child| child.parent()),
+        Some(typed),
+        "typed text takes the encoded form of its listed children"
+    );
+
     assert_eq!(browser.navigate_input("/regular/absolute/path"), Ok(()));
     assert_eq!(
         browser.active_location(),

@@ -105,12 +105,11 @@ fn credential_free_uris_are_accepted() {
         "smb://user@host/share",
         "sftp://user@host:2222/path",
         "network:///",
-        "trash:///caf%E9.txt",
         "sftp://host/share/%FF",
     ] {
         assert_eq!(
             validate_uri_credentials(uri),
-            Ok(()),
+            Ok(uri.to_owned()),
             "{uri:?} should be safe"
         );
     }

@@ -4466,8 +4466,8 @@ fn location_from_input_with_home(
             scheme.to_owned(),
         ));
     }
-    validate_uri_credentials(input)?;
-    let uri = format!("{normalized}{}", &input[scheme_end..]);
+    // Typed text must take GIO's percent-encoded form to match listed children.
+    let uri = validate_uri_credentials(&format!("{normalized}{}", &input[scheme_end..]))?;
     Ok(Location::uri(uri))
 }
 

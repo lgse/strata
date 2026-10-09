@@ -349,11 +349,12 @@ pub(crate) fn sanitize_failure_message(message: &str) -> String {
         .collect()
 }
 
-/// Rejects URI password and authentication-parameter fields, including encoded delimiters.
-pub fn validate_uri_credentials(uri: &str) -> Result<(), LocationValidationError> {
+/// Rejects URI password and authentication-parameter fields, including encoded delimiters,
+/// and returns the URI in GIO's percent-encoded form.
+pub fn validate_uri_credentials(uri: &str) -> Result<String, LocationValidationError> {
     match sanitize_uri_credentials(uri)? {
         (_, Some(_)) => Err(LocationValidationError::EmbeddedCredential),
-        (_, None) => Ok(()),
+        (sanitized, None) => Ok(sanitized),
     }
 }
 
