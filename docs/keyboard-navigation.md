@@ -127,6 +127,8 @@ pane space), or moving keyboard focus away commits a valid name. Escape keeps
 the original name. Finishing with an empty or invalid name also keeps the
 original. Cancelling the initial rename does **not** delete the new item: it
 remains under its allocated default name. File contents are preserved.
+While a name is being edited, **F5**, **Ctrl+K**, **Ctrl+Shift+K**, **Ctrl+Alt+T**
+and **Ctrl+\\** do nothing; finish or cancel the edit first.
 
 Clicking inside the field continues editing. Existing files retain extension-aware
 selection (the stem is selected); folder names containing dots are selected in full.
@@ -306,6 +308,10 @@ had focus when Settings opened, for example with **Ctrl+,**: it gets focus back.
 
 Customize opens with focus on **Done**, so one **Escape** closes it. Closing its
 custom color dialog returns focus to the custom color button.
+
+While a dialog or Settings is open, **Ctrl+K**, **Ctrl+Shift+K**, **F5**,
+**Ctrl+Alt+T** and **Ctrl+\\** do nothing and the dialog keeps focus. **Ctrl+K** and
+**Ctrl+Shift+K** still close the search palette they opened.
 
 ## Opening and navigating the context menu
 
