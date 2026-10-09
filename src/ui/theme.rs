@@ -678,7 +678,7 @@ fn tokens_from_quattro(name: &str, source: &str, variant: OmarchyVariant) -> Opt
 
 fn source_palette_from_quattro(source: &str) -> Option<SourcePalette> {
     let values: toml::Value = toml::from_str(source).ok()?;
-    let get = |key: &str| values.get(key)?.as_str().map(str::to_owned);
+    let get = |key: &str| quattro_color(&values, key);
     Some(SourcePalette {
         statement: get("magenta").or_else(|| get("blue"))?,
         string: get("green")?,

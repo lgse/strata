@@ -397,6 +397,70 @@ magenta = "#666666"
 }
 
 #[test]
+fn quattro_syntax_palette_treats_unparsable_colors_as_missing() {
+    let base = [
+        ("blue", "#111111"),
+        ("cyan", "#222222"),
+        ("green", "#333333"),
+        ("yellow", "#444444"),
+        ("orange", "#555555"),
+        ("magenta", "#666666"),
+    ];
+    let source_with = |key: &str, value: &str| {
+        base.iter()
+            .map(|(name, color)| {
+                let color = if *name == key { value } else { color };
+                format!("{name} = \"{color}\"\n")
+            })
+            .collect::<String>()
+    };
+    type Field = fn(&super::SourcePalette) -> &str;
+    let statement: Field = |palette| &palette.statement;
+    let string: Field = |palette| &palette.string;
+    let constant: Field = |palette| &palette.constant;
+    let type_color: Field = |palette| &palette.type_color;
+    for (key, value, expected) in [
+        ("green", "invalid", None),
+        ("yellow", "invalid", None),
+        ("magenta", "0x666666", Some((statement, "#111111"))),
+        ("orange", "notacolor", Some((constant, "#444444"))),
+        ("cyan", "", Some((type_color, "#111111"))),
+        ("green", "#333333333", Some((string, "#333333"))),
+        (
+            "magenta",
+            "rgba(102,102,102,0.5)",
+            Some((statement, "#66666680")),
+        ),
+    ] {
+        let palette = source_palette_from_quattro(&source_with(key, value));
+        match expected {
+            None => assert!(palette.is_none(), "{key} = {value:?}"),
+            Some((field, color)) => assert_eq!(
+                palette.as_ref().map(field),
+                Some(color),
+                "{key} = {value:?}"
+            ),
+        }
+    }
+
+    let source = format!(
+        "background = \"#0a0f1a\"\nforeground = \"#a8dfff\"\naccent = \"#00aaff\"\n{}",
+        source_with("orange", "0x555555").replace("#666666", "notacolor")
+    );
+    let tokens = tokens_from_quattro("azure-glow", &source, super::OmarchyVariant::Original)
+        .expect("required Quattro colors are valid");
+    let xml = source_style_scheme_xml(&tokens, source_palette_from_quattro(&source).as_ref());
+    let values = scheme_color_values(&xml);
+    assert_eq!(values.len(), 12);
+    for value in values {
+        assert!(
+            value.starts_with('#') && value.len() == 7,
+            "scheme colors must be canonical #rrggbb, got {value}"
+        );
+    }
+}
+
+#[test]
 fn legacy_palette_without_quattro_semantics_is_not_detected() {
     assert!(
         tokens_from_quattro(
