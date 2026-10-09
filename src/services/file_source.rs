@@ -3,7 +3,11 @@
 #[cfg(test)]
 mod tests;
 
-use std::{fmt, rc::Rc, time::Duration};
+use std::{
+    fmt,
+    rc::Rc,
+    time::{Duration, SystemTime},
+};
 
 use crate::model::{
     FileEntry, GIO_URI_BUILD_FLAGS, GIO_URI_PARSE_FLAGS, Location, MetadataValue,
@@ -454,6 +458,27 @@ pub struct MetadataRequest {
     pub time_budget: Duration,
 }
 
+/// What a folder is on its filesystem, which a rename does not change.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LocationIdentity {
+    pub device: u64,
+    pub inode: u64,
+    /// Birth time, where the filesystem records one.
+    pub created: Option<SystemTime>,
+}
+
+impl LocationIdentity {
+    /// Filesystems reuse a deleted folder's inode, so a known birth time must agree too.
+    pub fn matches(&self, other: &Self) -> bool {
+        self.device == other.device
+            && self.inode == other.inode
+            && match (self.created, other.created) {
+                (Some(created), Some(other)) => created == other,
+                _ => true,
+            }
+    }
+}
+
 /// A cancellable directory load. Dropping it cancels any unfinished provider work.
 pub struct LoadHandle {
     cancel: Option<Box<dyn FnOnce()>>,
@@ -528,5 +553,28 @@ pub trait FileSource {
         _notify: Rc<dyn Fn(DirectoryChange)>,
     ) -> Option<LoadHandle> {
         None
+    }
+
+    /// Identifies the folder at `location` across renames. Emits `None` when the provider
+    /// cannot, or nothing is there.
+    fn query_location_identity(
+        &self,
+        _location: Location,
+        emit: Rc<dyn Fn(Option<LocationIdentity>)>,
+    ) -> LoadHandle {
+        emit(None);
+        LoadHandle::new(|| {})
+    }
+
+    /// Finds the folder in `parent` that matches `identity`, such as one renamed in place.
+    /// Emits `None` when nothing matches or `parent` cannot be listed.
+    fn find_by_identity(
+        &self,
+        _parent: Location,
+        _identity: LocationIdentity,
+        emit: Rc<dyn Fn(Option<Location>)>,
+    ) -> LoadHandle {
+        emit(None);
+        LoadHandle::new(|| {})
     }
 }

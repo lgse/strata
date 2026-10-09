@@ -84,6 +84,58 @@ struct RecordingFileSource {
 
 type WatchCallback = Rc<dyn Fn(DirectoryChange)>;
 
+/// Identities of fake folders, so a source can find a folder after a rename.
+#[derive(Default)]
+struct FolderIdentities(RefCell<HashMap<Location, LocationIdentity>>);
+
+impl FolderIdentities {
+    fn identify(&self, location: &Location) {
+        let mut identities = self.0.borrow_mut();
+        let born = identities.len() as u64 + 1;
+        identities.insert(
+            location.clone(),
+            LocationIdentity {
+                device: 1,
+                inode: born,
+                created: Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(born)),
+            },
+        );
+    }
+
+    /// A new folder at `to` that the filesystem gave the deleted `from` folder's inode.
+    fn reuse_inode(&self, from: &Location, to: &Location) {
+        let mut identities = self.0.borrow_mut();
+        let deleted = identities.remove(from).expect("an identified folder");
+        identities.insert(
+            to.clone(),
+            LocationIdentity {
+                created: Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_000)),
+                ..deleted
+            },
+        );
+    }
+
+    fn rename(&self, from: &Location, to: &Location) {
+        let mut identities = self.0.borrow_mut();
+        let identity = identities.remove(from).expect("an identified folder");
+        identities.insert(to.clone(), identity);
+    }
+
+    fn identity(&self, location: &Location) -> Option<LocationIdentity> {
+        self.0.borrow().get(location).copied()
+    }
+
+    fn find(&self, parent: &Location, identity: LocationIdentity) -> Option<Location> {
+        self.0
+            .borrow()
+            .iter()
+            .find(|(location, candidate)| {
+                identity.matches(candidate) && location.parent().as_ref() == Some(parent)
+            })
+            .map(|(location, _)| location.clone())
+    }
+}
+
 struct WatchingFileSource {
     notify: Rc<RefCell<Option<WatchCallback>>>,
 }
@@ -1015,6 +1067,9 @@ struct ScriptedSource {
     fill_calls: RefCell<Vec<FillCall>>,
     enumerate_calls: RefCell<Vec<(RequestId, DirectoryEmit)>>,
     manual_enumerate: bool,
+    missing: RefCell<HashSet<Location>>,
+    unreachable: RefCell<HashSet<Location>>,
+    identities: FolderIdentities,
 }
 
 impl ScriptedSource {
@@ -1027,6 +1082,9 @@ impl ScriptedSource {
             fill_calls: RefCell::new(Vec::new()),
             enumerate_calls: RefCell::new(Vec::new()),
             manual_enumerate: false,
+            missing: RefCell::new(HashSet::new()),
+            unreachable: RefCell::new(HashSet::new()),
+            identities: FolderIdentities::default(),
         }
     }
 
@@ -1122,8 +1180,33 @@ impl ScriptedSource {
 }
 
 impl FileSource for ScriptedSource {
-    fn validate_location(&self, _location: &Location) -> Result<(), LocationValidationError> {
-        Ok(())
+    fn query_location_identity(
+        &self,
+        location: Location,
+        emit: Rc<dyn Fn(Option<LocationIdentity>)>,
+    ) -> LoadHandle {
+        emit(self.identities.identity(&location));
+        LoadHandle::new(|| {})
+    }
+
+    fn find_by_identity(
+        &self,
+        parent: Location,
+        identity: LocationIdentity,
+        emit: Rc<dyn Fn(Option<Location>)>,
+    ) -> LoadHandle {
+        emit(self.identities.find(&parent, identity));
+        LoadHandle::new(|| {})
+    }
+
+    fn validate_location(&self, location: &Location) -> Result<(), LocationValidationError> {
+        if self.missing.borrow().contains(location) {
+            Err(LocationValidationError::Missing)
+        } else if self.unreachable.borrow().contains(location) {
+            Err(LocationValidationError::Unavailable("offline".into()))
+        } else {
+            Ok(())
+        }
     }
 
     fn supports_metadata_fill(&self, _location: &Location) -> bool {

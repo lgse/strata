@@ -7,10 +7,13 @@ mod operation_updates;
 
 struct TreeSource {
     root: Location,
+    renamed_root: RefCell<Option<Location>>,
+    missing: RefCell<Vec<Location>>,
     renamed: Cell<bool>,
     loads: RefCell<Vec<Location>>,
     watches: RefCell<Vec<Location>>,
     cancelled_watches: Rc<RefCell<Vec<Location>>>,
+    identities: FolderIdentities,
 }
 
 fn child(parent: &Location, name: &str) -> Location {
@@ -43,20 +46,26 @@ fn named(parent: &Location, name: &str, directory: bool) -> FileEntry {
 }
 
 impl FileSource for TreeSource {
-    fn validate_location(&self, _: &Location) -> Result<(), LocationValidationError> {
-        Ok(())
+    fn validate_location(&self, location: &Location) -> Result<(), LocationValidationError> {
+        if self.missing.borrow().contains(location) {
+            Err(LocationValidationError::Missing)
+        } else {
+            Ok(())
+        }
     }
 
     fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle {
         self.loads.borrow_mut().push(request.location.clone());
-        let entries = if request.location == self.root {
+        let entries = if request.location == self.root
+            || self.renamed_root.borrow().as_ref() == Some(&request.location)
+        {
             vec![
                 named(
-                    &self.root,
+                    &request.location,
                     if self.renamed.get() { "renamed" } else { "old" },
                     true,
                 ),
-                named(&self.root, "sibling.txt", false),
+                named(&request.location, "sibling.txt", false),
             ]
         } else if request.location.file_name().as_deref() == Some(std::ffi::OsStr::new("nested")) {
             vec![named(&request.location, "leaf.txt", false)]
@@ -83,6 +92,30 @@ impl FileSource for TreeSource {
             cancelled.borrow_mut().push(location)
         }))
     }
+
+    fn query_location_identity(
+        &self,
+        location: Location,
+        emit: Rc<dyn Fn(Option<LocationIdentity>)>,
+    ) -> LoadHandle {
+        let present = !self.missing.borrow().contains(&location);
+        emit(
+            present
+                .then(|| self.identities.identity(&location))
+                .flatten(),
+        );
+        LoadHandle::new(|| {})
+    }
+
+    fn find_by_identity(
+        &self,
+        parent: Location,
+        identity: LocationIdentity,
+        emit: Rc<dyn Fn(Option<Location>)>,
+    ) -> LoadHandle {
+        emit(self.identities.find(&parent, identity));
+        LoadHandle::new(|| {})
+    }
 }
 
 fn tree(remote: bool) -> (Rc<Browser>, Rc<TreeSource>) {
@@ -93,11 +126,15 @@ fn tree(remote: bool) -> (Rc<Browser>, Rc<TreeSource>) {
     };
     let source = Rc::new(TreeSource {
         root: root.clone(),
+        renamed_root: RefCell::new(None),
+        missing: RefCell::new(Vec::new()),
         renamed: Cell::new(false),
         loads: RefCell::new(Vec::new()),
         watches: RefCell::new(Vec::new()),
         cancelled_watches: Rc::new(RefCell::new(Vec::new())),
+        identities: FolderIdentities::default(),
     });
+    source.identities.identify(&root);
     let browser = Browser::new(source.clone());
     browser.navigate(root);
     browser.activate(0, 0);
@@ -209,4 +246,95 @@ fn external_directory_moves_relocate_only_the_open_suffix_and_ignore_stale_watch
         browser.location_at(2),
         Some(child(&entry.location, "nested"))
     );
+}
+
+#[test]
+fn an_external_root_rename_relocates_every_open_column_and_keeps_the_selection() {
+    let (browser, source) = tree(false);
+    let could_go_back = browser.can_go_back();
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    let renamed = Location::local("/fixture-renamed");
+    source.renamed_root.replace(Some(renamed.clone()));
+    source.identities.rename(&source.root, &renamed);
+    source.missing.borrow_mut().push(source.root.clone());
+    let old_paths = (0..3)
+        .map(|depth| browser.location_at(depth).expect("open column"))
+        .collect::<Vec<_>>();
+
+    browser.handle_directory_change(
+        0,
+        &source.root,
+        DirectoryChange::Remove(source.root.clone()),
+    );
+
+    assert_eq!(browser.location_at(0), Some(renamed.clone()));
+    assert_eq!(browser.location_at(1), Some(child(&renamed, "old")));
+    assert_eq!(
+        browser.location_at(2),
+        Some(child(&child(&renamed, "old"), "nested"))
+    );
+    assert_eq!(browser.active_depth(), Some(2));
+    assert_eq!(
+        browser.selected_entries()[0].location,
+        child(&child(&child(&renamed, "old"), "nested"), "leaf.txt")
+    );
+    assert!(
+        events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::ColumnsRelocated { from_depth: 0 }))
+    );
+    assert!(!events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::Reset
+            | BrowserEvent::NavigationStarting { .. }
+            | BrowserEvent::ColumnReloaded { .. }
+    )));
+    assert_eq!(browser.can_go_back(), could_go_back);
+    for old in old_paths {
+        assert!(source.cancelled_watches.borrow().contains(&old), "{old:?}");
+    }
+    let watches = source.watches.borrow();
+    assert_eq!(
+        watches[watches.len() - 3..],
+        [
+            renamed.clone(),
+            child(&renamed, "old"),
+            child(&child(&renamed, "old"), "nested")
+        ]
+    );
+}
+
+#[test]
+fn removing_the_root_with_open_child_columns_returns_to_the_nearest_existing_ancestor() {
+    let (browser, source) = tree(false);
+    let could_go_back = browser.can_go_back();
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    let open_child = child(&source.root, "old");
+    source
+        .missing
+        .borrow_mut()
+        .extend([source.root.clone(), open_child.clone()]);
+
+    // `rm -r` reports the open child and the root itself in one batch; the child's
+    // removal reloads the root before the root's own removal is handled.
+    for removed in [open_child, source.root.clone()] {
+        browser.handle_directory_change(0, &source.root, DirectoryChange::Remove(removed));
+    }
+
+    let columns = (0..)
+        .map_while(|depth| browser.location_at(depth))
+        .collect::<Vec<_>>();
+    assert_eq!(columns, [Location::local("/")]);
+    assert!(
+        events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::Reset))
+    );
+    assert_eq!(browser.can_go_back(), could_go_back);
 }

@@ -36,7 +36,8 @@ use crate::{
     },
     services::{
         DirectoryChange, DirectoryEvent, DirectoryRequest, FileSource, LoadHandle,
-        LocationValidationError, MetadataRequest, RemoteDownload, download_remote, remote_file_url,
+        LocationIdentity, LocationValidationError, MetadataRequest, RemoteDownload,
+        download_remote, remote_file_url,
     },
 };
 
@@ -216,6 +217,23 @@ impl FileSource for ChooserFileSource {
                 ));
             }),
         )
+    }
+
+    fn query_location_identity(
+        &self,
+        location: Location,
+        emit: Rc<dyn Fn(Option<LocationIdentity>)>,
+    ) -> LoadHandle {
+        self.source.query_location_identity(location, emit)
+    }
+
+    fn find_by_identity(
+        &self,
+        parent: Location,
+        identity: LocationIdentity,
+        emit: Rc<dyn Fn(Option<Location>)>,
+    ) -> LoadHandle {
+        self.source.find_by_identity(parent, identity, emit)
     }
 }
 
