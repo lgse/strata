@@ -243,9 +243,14 @@ fn widget_with_class(widget: &gtk::Widget, class: &str) -> Option<gtk::Widget> {
 }
 
 fn wait_until(condition: impl Fn() -> bool) {
+    wait_until_or(condition, || "keyboard fixture did not settle".to_owned());
+}
+
+/// Like [`wait_until`], with `report` describing what was seen on a timeout.
+fn wait_until_or(condition: impl Fn() -> bool, report: impl Fn() -> String) {
     let deadline = Instant::now() + Duration::from_secs(5);
     while !condition() {
-        assert!(Instant::now() < deadline, "keyboard fixture did not settle");
+        assert!(Instant::now() < deadline, "{}", report());
         glib::MainContext::default().iteration(false);
         std::thread::sleep(Duration::from_millis(2));
     }

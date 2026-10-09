@@ -249,7 +249,10 @@ shows the displayed result total in both default and 10xer mode, including
 **0 items** on a miss.
 Selecting results does not replace that total with the hidden directory's selection;
 its accessible description gives the result file/folder breakdown. Dismissing results restores the
-ordinary directory count or selection summary.
+ordinary directory count or selection summary. Until the search for a typed query
+reports back, the footer keeps describing the directory. The `filter:` / `search:`
+mark and the hit path at the footer's left end show only in 10xer mode, which
+hides the pane's filter input; the default map shows the total alone.
 
 With no selection in the ordinary listing, the footer shows the directory's item count. Selections show a folder/file breakdown, such as **1 folder, 2 files selected (64 MB)**. Sizes sum available metadata for selected files only; folder contents are not scanned or included. Missing file sizes are marked incomplete or unavailable.
 

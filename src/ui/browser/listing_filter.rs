@@ -42,6 +42,11 @@ pub(in crate::ui) struct FilterStatus {
     pub query: String,
     pub search: bool,
     pub current: Option<PathBuf>,
+    /// Whether results replace the listing. A typed query has not switched the
+    /// view until its debounce fires, a search has nothing to count until its
+    /// first batch, and a column on a non-local location narrows its own rows
+    /// in place; the counts below describe none of these.
+    pub displayed: bool,
     pub files: usize,
     pub folders: usize,
     pub visual: Option<VisualKind>,
@@ -194,6 +199,13 @@ impl Target {
                 .get()
                 .then(|| column.list.clone().upcast()),
             Self::Pane { search, .. } => search.results_view(),
+        }
+    }
+
+    fn awaiting_results(&self) -> bool {
+        match self {
+            Self::Column(column) => column.search_session.awaiting_results(),
+            Self::Pane { search, .. } => search.awaiting_results(),
         }
     }
 
@@ -357,6 +369,8 @@ fn filter_status(target: &Target, root: Option<&Path>) -> Option<FilterStatus> {
         query: query.to_string(),
         search,
         current,
+        displayed: target.results_view().is_some()
+            && !(results.is_empty() && target.awaiting_results()),
         files: results.len() - folders,
         folders,
         visual: None,

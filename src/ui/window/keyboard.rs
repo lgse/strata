@@ -206,7 +206,7 @@ fn release_preview_keys_on_mode_exit(
 }
 
 /// The **f** and **s** prompts filter and search as they are typed, and the
-/// footer reports the focused listing's filter or search while the mode is on.
+/// footer reports the focused listing's filter or search in every key map.
 fn bind_footer_filter(dispatcher: &Dispatcher) {
     let view = dispatcher.view.downgrade();
     dispatcher
@@ -223,9 +223,6 @@ fn bind_footer_filter(dispatcher: &Dispatcher) {
         });
     let view = dispatcher.view.downgrade();
     dispatcher.shortcuts.observe_filter(move || {
-        if !crate::ui::tenxer_mode::chrome_suppressed() {
-            return Some(None);
-        }
         view.upgrade()
             .map_or(Some(None), |view| view.filter_status())
     });

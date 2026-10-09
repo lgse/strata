@@ -646,6 +646,124 @@ fn tenxer_filter_commits_results_without_touching_the_hidden_directory() {
     );
 }
 
+fn wait_footer(fixture: &KeyboardFixture, what: &str, condition: impl Fn() -> bool) {
+    wait_until_or(condition, || {
+        format!(
+            "{what}: footer count {:?}, mark {:?}, hit {:?}",
+            fixture.shortcuts.count_text(),
+            fixture.shortcuts.filter_mark(),
+            fixture.shortcuts.current_hit(),
+        )
+    });
+}
+
+#[test]
+fn default_filter_shows_the_result_total_without_a_footer_mark() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::footer_prompt::default_filter_shows_the_result_total_without_a_footer_mark",
+        || {
+            let fixture = KeyboardFixture::new();
+            seed_filter_tree(&fixture);
+            let preferences = PreferenceManager::shared();
+            fixture.shortcuts.bind_preferences(&preferences);
+            assert!(!preferences.tenxer_mode());
+            preferences.set_filter_include_subfolders(false);
+            let browser = fixture.view.browser();
+
+            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
+                fixture.view.set_view_mode(mode);
+                wait_loaded(&browser, 0);
+                select_named(&fixture, "beta.txt");
+                focus_files(&fixture);
+                wait_footer(&fixture, &format!("{mode:?}: seed selection"), || {
+                    fixture.shortcuts.count_text().0 == "1 file selected (6 B)"
+                });
+                let directory_count = fixture.shortcuts.count_text();
+                assert_eq!(fixture.shortcuts.filter_mark(), None, "{mode:?}");
+
+                assert!(
+                    fixture.press(Key::f, ModifierType::CONTROL_MASK),
+                    "{mode:?}"
+                );
+                let entry = focused_entry(&fixture.window);
+                entry.set_text("report");
+                fixture.shortcuts.refresh_filter();
+                assert_eq!(
+                    fixture.shortcuts.count_text(),
+                    directory_count,
+                    "{mode:?}: a query still in its debounce describes the directory"
+                );
+                wait_results(&fixture, &IMMEDIATE_REPORTS);
+                wait_footer(
+                    &fixture,
+                    &format!("{mode:?}: the default map shows the displayed result total"),
+                    || fixture.shortcuts.count_text().0 == "3 items",
+                );
+                assert_eq!(
+                    fixture.shortcuts.filter_mark(),
+                    None,
+                    "{mode:?}: the default map shows the total only"
+                );
+
+                preferences.set_filter_include_subfolders(true);
+                fixture.shortcuts.refresh_filter();
+                assert_eq!(
+                    fixture.shortcuts.count_text(),
+                    directory_count,
+                    "{mode:?}: a restarted search counts nothing before its first batch"
+                );
+                wait_results(&fixture, &ALL_REPORTS);
+                wait_footer(&fixture, &format!("{mode:?}: the wider total"), || {
+                    fixture.shortcuts.count_text().0 == "4 items"
+                });
+                preferences.set_filter_include_subfolders(false);
+                wait_results(&fixture, &IMMEDIATE_REPORTS);
+                wait_footer(&fixture, &format!("{mode:?}: the narrower total"), || {
+                    fixture.shortcuts.count_text().0 == "3 items"
+                });
+
+                assert!(fixture.view.extend_result_selection(1), "{mode:?}");
+                pump(40);
+                assert_eq!(
+                    fixture.shortcuts.count_text().0,
+                    "3 items",
+                    "{mode:?}: selecting a result keeps the total"
+                );
+                assert_eq!(hidden_selection(&fixture), ["beta.txt"], "{mode:?}");
+
+                entry.set_text("zzz");
+                wait_footer(
+                    &fixture,
+                    &format!("{mode:?}: a miss reports 0 items"),
+                    || fixture.shortcuts.count_text().0 == "0 items",
+                );
+
+                preferences.set_tenxer_mode(true);
+                wait_footer(&fixture, &format!("{mode:?}: 10xer shows the mark"), || {
+                    fixture.shortcuts.filter_mark().as_deref() == Some("filter: zzz")
+                });
+                preferences.set_tenxer_mode(false);
+                wait_footer(
+                    &fixture,
+                    &format!("{mode:?}: leaving 10xer hides the mark, keeps the total"),
+                    || {
+                        fixture.shortcuts.filter_mark().is_none()
+                            && fixture.shortcuts.count_text().0 == "0 items"
+                    },
+                );
+
+                fixture.view.clear_listing_filter();
+                wait_until(|| fixture.view.listing_filter().is_none());
+                wait_footer(
+                    &fixture,
+                    &format!("{mode:?}: dismissing restores the selection summary"),
+                    || fixture.shortcuts.count_text() == directory_count,
+                );
+            }
+        },
+    );
+}
+
 fn fixture_name(fixture: &KeyboardFixture) -> &str {
     fixture
         ._directory
