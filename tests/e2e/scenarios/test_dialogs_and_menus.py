@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import shlex
 import shutil
+import time
 
 import pytest
 
@@ -691,3 +692,31 @@ def test_list_transfer_reveal_into_a_visited_folder_selects_the_copy(strata):
     strata.wait(lambda: (destination / "todo.txt").exists(), "transfer into the chosen destination")
     strata.wait_for_directory("documents")
     strata.wait_for_selection(["todo.txt"])
+
+
+@pytest.mark.preferences(arrow_navigation_scoped=True, single_click_previews=False)
+def test_window_shortcuts_stay_blocked_over_a_modal_dialog(strata):
+    default = "Permanently delete 1 item"
+    strata.select_entry("todo.txt")
+    strata.wait_for_focused_entry("todo.txt")
+    strata.keyboard.press("shift+Delete")
+    strata.wait_for_dialog()
+
+    def focused():
+        return strata.dialog_button(default).has_state("focused")
+
+    strata.wait(focused, "the default button to take focus")
+    for chord in ["ctrl+k", "ctrl+shift+k", "ctrl+\\"]:
+        strata.keyboard.press(chord)
+        # A wrongly routed accelerator acts within this window.
+        time.sleep(0.5)
+        assert strata.dialog() is not None, chord
+        assert strata.window.find(role="text", states={"editable"}) is None, f"{chord} opened a palette"
+        assert focused(), f"{chord}: focus is on {_describe_focus(strata)}"
+        assert strata.environment.read_preferences().get("arrow_navigation_scoped") == "true", chord
+
+    strata.keyboard.press("Escape")
+    strata.wait(lambda: strata.dialog() is None, "Escape to close the dialog")
+    strata.wait_for_focused_entry("todo.txt")
+    assert strata.window.find(role="text", states={"editable"}) is None
+    assert strata.fixture.path("todo.txt").exists()

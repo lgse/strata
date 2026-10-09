@@ -394,6 +394,66 @@ fn tab_inside_an_inline_rename_commits_and_leaves_the_list() {
     );
 }
 
+#[derive(Clone, Copy, Debug)]
+enum RowKey {
+    Rename,
+    ContextMenu,
+}
+
+#[test]
+fn row_keys_reach_the_row_after_a_reload_closes_a_columns_rename() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::pane_focus::row_keys_reach_the_row_after_a_reload_closes_a_columns_rename",
+        || {
+            let fixture = KeyboardFixture::new();
+            let browser = fixture.view.browser();
+            for key in [RowKey::Rename, RowKey::ContextMenu] {
+                select_named(&fixture, "a.txt");
+                assert!(fixture.press(Key::F2, ModifierType::empty()));
+                let field = fixture.view.active_rename_field().expect("rename field");
+                wait_until(|| focus(&fixture).is_some_and(|focused| focused.is_ancestor(&field)));
+                field.set_text("typed.txt");
+                // F5 waits for the edit, but a rescan of the directory reloads the
+                // column regardless and takes the field's row away.
+                browser.refresh_all();
+                wait_until(|| !fixture.view.rename_is_active());
+                wait_loaded(&browser, 0);
+                select_named(&fixture, "a.txt");
+                wait_until(|| {
+                    focus_shows(&fixture, "a.txt") && rendered_name(&fixture.view.widget(), "a.txt")
+                });
+
+                match key {
+                    RowKey::Rename => {
+                        assert!(
+                            fixture.press(Key::F2, ModifierType::empty()),
+                            "F2 after the reload did not start a rename"
+                        );
+                        let field = fixture.view.active_rename_field().expect("rename field");
+                        wait_until(|| {
+                            focus(&fixture).is_some_and(|focused| focused.is_ancestor(&field))
+                        });
+                        assert_eq!(field.text(), "a.txt");
+                        assert!(fixture.press(Key::Escape, ModifierType::empty()));
+                        wait_until(|| !fixture.view.rename_is_active());
+                    }
+                    RowKey::ContextMenu => {
+                        assert!(
+                            fixture.press(Key::Menu, ModifierType::empty()),
+                            "Menu after the reload did not open the item menu"
+                        );
+                        wait_until(|| visible_menu(fixture.window.upcast_ref()).is_some());
+                        visible_menu(fixture.window.upcast_ref())
+                            .expect("item menu")
+                            .popdown();
+                        wait_until(|| visible_menu(fixture.window.upcast_ref()).is_none());
+                    }
+                }
+            }
+        },
+    );
+}
+
 /// A reload hides the listing behind the grace page and, when slow, the loading page.
 /// GTK then moves focus off the hidden rows after the next paint; it must park on the
 /// pane surface and come back to the cursor row, never escape to the surrounding chrome.
