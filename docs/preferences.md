@@ -28,7 +28,13 @@ settings in `settings/search.rs`; `settings_option` tags ordinary rows, while
 custom sections use `search::tag`. Keep installation-specific availability
 separate with `search::set_available`, so clearing a query cannot reveal an
 unsupported release-channel selector. Lazy pages apply the latest query when
-they finish loading.
+they finish loading. Give each new target a `settings_keywords.<id>` entry in
+every catalog (see [Internationalization](internationalization.md)). Search
+routes to pages through the `NAVIGATION` table in `settings.rs`.
+`ui::settings::search::tests::every_page_row_is_registered_for_search` builds
+every page and fails on a row or section without a target. Register the row, or
+tag status-only content with its section's target (the managed-install row uses
+"Check for updates"), rather than exempting it.
 
 ## One initialization and update path
 
