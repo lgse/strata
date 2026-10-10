@@ -72,6 +72,12 @@ const TARGETS: &[Target] = &[
         aliases: "browsing video audio gif playback paused sound",
     },
     Target {
+        id: "render-documents",
+        page: "general",
+        title: "Render documents by default",
+        aliases: "browsing preview markdown md html rendered source view",
+    },
+    Target {
         id: "arrow-scope",
         page: "general",
         title: "Keep arrows in file list",
@@ -359,7 +365,9 @@ fn score(query: &str, target: &Target) -> Option<i32> {
         target.aliases,
         localized_keywords(target),
         target.page,
-        crate::i18n::tr(page_title(target.page)),
+        page_title(target.page)
+            .map(crate::i18n::tr)
+            .unwrap_or_default(),
         crate::i18n::tr("Settings"),
     ));
     let mut total = 0;
@@ -397,14 +405,11 @@ fn localized_keywords(target: &Target) -> String {
     }
 }
 
-fn page_title(page: &str) -> &'static str {
-    match page {
-        "general" => "General",
-        "actions" => "Actions",
-        "theme" => "Appearance",
-        "updates" => "Updates",
-        _ => "About",
-    }
+fn page_title(page: &str) -> Option<&'static str> {
+    super::NAVIGATION
+        .iter()
+        .find(|entry| entry.page == page)
+        .map(|entry| entry.label)
 }
 
 #[derive(Default)]
@@ -603,7 +608,7 @@ impl Search {
         &self,
         stack: &gtk::Stack,
         title: &gtk::Label,
-        buttons: &Rc<RefCell<Vec<gtk::Button>>>,
+        buttons: &Rc<RefCell<Vec<(gtk::Button, &'static str)>>>,
     ) {
         let empty = gtk::Label::new(Some(&crate::i18n::tr("No settings match your search.")));
         empty.set_wrap(true);
@@ -614,17 +619,7 @@ impl Search {
         let buttons = buttons
             .borrow()
             .iter()
-            .map(|button| {
-                (
-                    button.downgrade(),
-                    match button.widget_name().as_str() {
-                        "General" => "general",
-                        "Appearance" => "theme",
-                        "Updates" => "updates",
-                        _ => "about",
-                    },
-                )
-            })
+            .map(|(button, page)| (button.downgrade(), *page))
             .collect::<Vec<_>>();
         let state = self.state.clone();
         self.entry

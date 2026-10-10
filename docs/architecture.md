@@ -323,6 +323,28 @@ state and routing borrows before synchronous observer dispatch, allowing observe
 navigate safely. Sorting, metadata scheduling, and cancellation remain in the browser
 controller; event routing does not change those policies.
 
+A folder's own directory monitor reports its deletion, its rename, and its move alike, as
+the removal of the folder itself. A column whose parent column is its parent folder leaves
+that report to the parent column's monitor, which sees the departure as a change to one of
+its entries; any other column, including the depth-0 folder, is checked in
+`directory_changes.rs`. A folder that validates again (deleted and recreated) reloads in
+place, which renews its monitor. A missing depth-0 folder is looked up in its parent by
+the identity it had when it loaded: device, inode and, where the filesystem records it,
+birth time, queried off the main thread (`FileSource::query_location_identity`). The birth
+time keeps a new folder that reuses the inode from passing for a rename. Found there
+(`find_by_identity`), the folder was renamed in place: the search indexes are rebased and
+the open columns relocate (`ColumnsRelocated`), as for an in-app rename. Not found, with a
+parent that cannot be listed, or before its identity is known, it departed: the nearest
+existing ancestor that the source allows is restored without a history entry, or the
+folder shows its read error when there is none. Backends without identities treat every
+rename as a departure. A folder or ancestor that cannot be reached (unmounted, offline, or
+not permitted) stays as it is. A monitor can lose the removal report, when a burst of
+changes turns its batch into a rescan or when a reload supersedes the check, so a failed
+reload of a depth-0 folder that loaded before runs the same check; it leaves the read
+error in place unless the folder is confirmed gone. A departure that arrives during a
+deletion, restoration, or transfer waits with the operation's other changes, which apply
+first.
+
 ### Browser staged publication
 
 `app/browser/publication.rs` owns staged row publication on the same `Browser`, not a
@@ -378,8 +400,13 @@ focus traversal, transient dismissal, then item/directory navigation. The privat
 introducing another browser controller. A stage returning `None` continues through Strata's
 handlers; `Some(Propagation::Proceed)` ends dispatch and leaves the event to GTK. In
 particular, editable controls and native single-pane selection must not fall through to
-browser commands. The file chooser retains its separate, restricted keyboard policy
-when 10xer mode is off.
+browser commands. GTK runs the `DEFAULT_ACCELS` window accelerators (`ui/window.rs`) only
+after the dispatcher yields, which is exactly when a modal or an inline edit owns input, so
+`composition::add_guarded_window_action` installs their `win.*` actions with a gate: they
+do nothing while a modal layer other than the action's own (the search palette) is on top
+and not already closing, or while an inline rename field or new entry is open. The
+dispatcher yields on the same `BrowserView::inline_edit_is_open` predicate. The file
+chooser retains its separate, restricted keyboard policy when 10xer mode is off.
 
 When [10xer mode](10xer-mode.md) is on, that dispatcher runs its 10xer stages
 (`tenxer_keys` and the `keyboard/` modules) ahead of the default pipeline. The
@@ -412,7 +439,7 @@ shared Settings/F1 presentation; default F1 navigation remains view-specific.
 
 ### File source
 
-Enumerates locations, retrieves metadata, watches changes, and reports supported actions. Begin with local files. Avoid designing a universal remote filesystem API before a second backend exists.
+Enumerates locations, retrieves metadata, watches changes, identifies folders across renames, and reports supported actions. Begin with local files. Avoid designing a universal remote filesystem API before a second backend exists.
 
 ### Operation service
 

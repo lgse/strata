@@ -20,11 +20,18 @@ impl ViewState {
         })
     }
 
+    /// The focused column, or the one a pending click is opening, so the reserved
+    /// slot does not resize between the press and the open.
+    fn focused_depth(&self) -> Option<usize> {
+        self.pointer_opening_depth()
+            .map(|parent| parent.saturating_add(1))
+            .or_else(|| self.browser.active_depth())
+    }
+
     fn focused_column_span(&self) -> Option<ColumnSpan> {
         let count = self.columns.borrow().len();
         let depth = self
-            .browser
-            .active_depth()
+            .focused_depth()
             .filter(|depth| *depth < count)
             .or_else(|| count.checked_sub(1))?;
         self.column_span(depth)
@@ -32,6 +39,11 @@ impl ViewState {
 
     fn navigated_len(&self) -> usize {
         let count = self.columns.borrow().len();
+        // Columns beyond a folder a click is opening are about to close, so they
+        // borrow no preview space in the meantime.
+        if self.pointer_opening_depth().is_some() {
+            return count;
+        }
         self.browser
             .active_depth()
             .map_or(count, |depth| depth.saturating_add(1).min(count))
@@ -59,6 +71,10 @@ fn column_width(column: &ColumnView) -> i32 {
 }
 
 impl BrowserView {
+    pub(in crate::ui) fn pointer_opens(&self, depth: usize, location: &Location) -> bool {
+        self.state.pointer_opens(depth, location)
+    }
+
     pub(in crate::ui) fn is_resizing_columns(&self) -> bool {
         self.state.column_resizing.get()
     }

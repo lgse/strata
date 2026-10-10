@@ -415,6 +415,61 @@ fn remove_from_recent_is_gated_on_the_recent_location() {
     );
 }
 
+#[test]
+fn directory_rows_offer_the_open_in_submenu() {
+    crate::test_support::gtk_test(
+        "ui::browser::context_menu::tests::menus::directory_rows_offer_the_open_in_submenu",
+        || {
+            let manager = crate::ui::preferences::PreferenceManager::shared();
+            manager.set_tenxer_mode(false);
+            manager.set_type_to_search(false);
+            let fixture = tempfile::tempdir().expect("menu fixture");
+            let view = BrowserView::new(Rc::new(MenuSource), PeekBehavior::default());
+            view.set_operation_provider(Rc::new(crate::adapters::LocalOperationProvider));
+            let window = gtk::Window::builder()
+                .child(&view.widget())
+                .default_width(1000)
+                .default_height(850)
+                .build();
+            window.present();
+            view.browser().navigate(Location::local(fixture.path()));
+            wait_until(|| label(&view.widget(), "folder").is_some());
+
+            let menu = open_menu(&view, Some("folder"));
+            let labels = tree_label_texts(&menu);
+            for entry in ["Open", "Open in…", "New Tab", "New Window"] {
+                assert!(labels.iter().any(|text| text == entry), "{labels:?}");
+            }
+            for hint in ["Ctrl+Return", "Shift+Return"] {
+                assert!(labels.iter().any(|text| text == hint), "{labels:?}");
+            }
+            menu.popdown();
+            wait_until(|| !menu.is_mapped());
+
+            let menu = open_menu(&view, Some("notes.txt"));
+            let labels = tree_label_texts(&menu);
+            assert!(labels.iter().any(|text| text == "Open"), "{labels:?}");
+            for entry in ["Open in…", "New Tab", "New Window"] {
+                assert!(!labels.iter().any(|text| text == entry), "{labels:?}");
+            }
+            menu.popdown();
+
+            view.browser().clear_observer();
+            window.destroy();
+        },
+    );
+}
+
+/// Includes collapsed submenu entries, which stay in the widget tree.
+fn tree_label_texts(menu: &gtk::Popover) -> Vec<String> {
+    descendants(menu.upcast_ref())
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
+        .filter(|label| !label.text().is_empty())
+        .map(|label| label.text().to_string())
+        .collect()
+}
+
 fn label_texts(menu: &gtk::Popover) -> Vec<String> {
     descendants(menu.upcast_ref())
         .into_iter()

@@ -212,7 +212,8 @@ pub(super) fn browser_layout(
     let content = browser_split(browser, sidebar, &header.sidebar_toggle, preview);
     let preview_split = gtk::Paned::new(gtk::Orientation::Horizontal);
     preview_split.add_css_class("preview-split");
-    preview_split.set_wide_handle(false);
+    // The column beside the divider keeps its resize edge; the preview grip moves it.
+    preview_split.set_wide_handle(true);
     preview_split.set_resize_start_child(true);
     preview_split.set_resize_end_child(false);
     preview_split.set_shrink_start_child(false);

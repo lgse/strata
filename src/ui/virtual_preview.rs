@@ -209,7 +209,7 @@ fn virtual_preview(
     let selection = gtk::NoSelection::new(Some(model.clone()));
     let document_tags = (!source).then(document_tag_table);
     let factory = gtk::SignalListItemFactory::new();
-    factory.connect_setup(|_, item| {
+    factory.connect_setup(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
             return;
         };
@@ -217,6 +217,9 @@ fn virtual_preview(
         row.add_css_class("preview-virtual-row");
         row.set_size_request(-1, VIRTUAL_ROW_MIN_HEIGHT);
         row.set_hexpand(true);
+        if !source {
+            row.set_layout_manager(Some(super::preview::media_layout::ContentColumn::new()));
+        }
         item.set_child(Some(&row));
     });
 
@@ -263,7 +266,7 @@ fn virtual_preview(
             if let PreviewUnit::Document(unit) = unit {
                 bind_inline_math(&view, unit, index, &state_for_bind.media_cache);
             }
-            schedule_document_view_size(&view, row.width());
+            schedule_document_view_size(&view, rendered_width(row.width()));
         }
         let mut bound_rows = state_for_bind.bound.borrow_mut();
         bound_rows.retain(|_, bound| {
@@ -331,7 +334,7 @@ fn virtual_preview(
                     return;
                 };
                 for bound in state.bound.borrow().values() {
-                    size_document_row(bound, width);
+                    size_document_row(bound, rendered_width(width));
                 }
             });
     }
@@ -587,6 +590,10 @@ fn source_row_views(
         .downcast::<super::document_view::DocumentTextView>()
         .ok()?;
     Some((numbers, view))
+}
+
+fn rendered_width(width: i32) -> i32 {
+    width.min(super::preview::media_layout::MAX_CONTENT_WIDTH)
 }
 
 fn size_document_row(bound: &BoundRow, width: i32) {

@@ -15,12 +15,12 @@ use crate::{
     app::Browser,
     services::NavigationHistory,
     ui::{
-        browser::BrowserView, preview::PreviewDrawer, shortcut_footer::ShortcutFooter,
-        top_bar_navigation::TopBarNavigation,
+        browser::BrowserView, modal::is_closing_layer, preview::PreviewDrawer,
+        shortcut_footer::ShortcutFooter, top_bar_navigation::TopBarNavigation,
     },
 };
 
-use super::{SidebarState, SidebarView, TypeToSearch, visible_modal_layer};
+use super::{SidebarState, SidebarView, TypeToSearch, topmost_modal_layer, visible_modal_layer};
 
 mod chooser;
 pub(super) mod chords;
@@ -206,7 +206,7 @@ fn release_preview_keys_on_mode_exit(
 }
 
 /// The **f** and **s** prompts filter and search as they are typed, and the
-/// footer reports the focused listing's filter or search while the mode is on.
+/// footer reports the focused listing's filter or search in every key map.
 fn bind_footer_filter(dispatcher: &Dispatcher) {
     let view = dispatcher.view.downgrade();
     dispatcher
@@ -223,9 +223,6 @@ fn bind_footer_filter(dispatcher: &Dispatcher) {
         });
     let view = dispatcher.view.downgrade();
     dispatcher.shortcuts.observe_filter(move || {
-        if !crate::ui::tenxer_mode::chrome_suppressed() {
-            return Some(None);
-        }
         view.upgrade()
             .map_or(Some(None), |view| view.filter_status())
     });
@@ -247,6 +244,21 @@ fn bind_footer_filter(dispatcher: &Dispatcher) {
     dispatcher
         .view
         .connect_search_selection_changed(Rc::new(move || shortcuts.schedule_filter_refresh()));
+    // Over a fill, motion and Space move the result cursor by focus alone, and
+    // GTK may land that focus after the selection change has been reported. In
+    // Columns the footer also follows the focused column.
+    let shortcuts = dispatcher.shortcuts.clone();
+    let handler = dispatcher
+        .window
+        .connect_focus_widget_notify(move |_| shortcuts.schedule_filter_refresh());
+    // A closed tab's view unrealizes while its window lives on.
+    let window = dispatcher.window.downgrade();
+    let handler = Cell::new(Some(handler));
+    dispatcher.view.widget().connect_unrealize(move |_| {
+        if let (Some(window), Some(handler)) = (window.upgrade(), handler.take()) {
+            window.disconnect(handler);
+        }
+    });
 }
 
 fn bind_prompt_hints(dispatcher: &Dispatcher) {
@@ -739,7 +751,7 @@ impl Dispatcher {
     }
 
     fn input_owner(&self, browser: &Browser, key: Key, modifiers: Modifiers) -> KeyResult {
-        if let Some(layer) = visible_modal_layer(&self.window) {
+        if let Some(layer) = topmost_modal_layer(&self.window, &is_closing_layer) {
             let focus_is_inside = gtk::prelude::RootExt::focus(&self.window)
                 .is_some_and(|focus| focus == layer || focus.is_ancestor(&layer));
             self.shortcuts.cancel_chord();
@@ -747,6 +759,12 @@ impl Dispatcher {
                 layer.grab_focus();
                 return Some(Propagation::Stop);
             }
+            return Some(Propagation::Proceed);
+        }
+        if visible_modal_layer(&self.window).is_some() {
+            // A layer animating out has dropped focus; only window accelerators,
+            // which skip closing layers, may act until focus is restored.
+            self.shortcuts.cancel_chord();
             return Some(Propagation::Proceed);
         }
         if self.native_menu_owns_input() {
@@ -793,7 +811,7 @@ impl Dispatcher {
     }
 
     fn inline_editing_active(&self) -> bool {
-        self.view.rename_is_active() || self.view.new_entry_is_active()
+        self.view.inline_edit_is_open()
     }
 
     fn native_menu_owns_input(&self) -> bool {

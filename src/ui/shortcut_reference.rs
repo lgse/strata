@@ -106,6 +106,8 @@ pub(crate) enum ContextHint {
     PermanentDelete,
     Open,
     OpenMultiple,
+    OpenInNewTab,
+    OpenInNewWindow,
     Properties,
     ContainingFolder,
     NewFolder,
@@ -443,6 +445,10 @@ const DEFAULT_FILES: &[Shortcut] = &[
     row("Shift+PgUp / PgDn", "Extend selection by one page"),
     row("Ctrl+Space", "Toggle the focused item in the selection"),
     row("Alt+Enter", "Show item properties"),
+    row(
+        "Ctrl+Enter / Shift+Enter",
+        "Open the focused folder in a new tab / window",
+    ),
     row("Menu / Shift+F10", "Open the context menu"),
     row("y / p", "Copy path / pin a folder (type-to-search off)"),
 ];
@@ -477,6 +483,10 @@ const TENXER_FILES: &[Shortcut] = &[
     row("Ctrl+A", "Select all items in the focused pane"),
     row("Ctrl+R", "Invert the selection"),
     row("Alt+Enter", "Show item properties"),
+    row(
+        "Ctrl+Enter / Shift+Enter",
+        "Open the focused folder in a new tab / window",
+    ),
     row("Menu / Shift+F10", "Open the context menu"),
 ];
 
@@ -745,6 +755,8 @@ fn default_hint(hint: ContextHint, type_to_search: bool) -> &'static str {
         ContextHint::PermanentDelete => "Shift+Del",
         ContextHint::Open => "↵",
         ContextHint::OpenMultiple => "Enter",
+        ContextHint::OpenInNewTab => "Ctrl+Enter",
+        ContextHint::OpenInNewWindow => "Shift+Enter",
         ContextHint::Properties | ContextHint::ContainingFolder => "Alt+Enter",
         ContextHint::NewFolder => "Ctrl+Shift+N",
         ContextHint::SelectAll => "Ctrl+A",

@@ -4125,6 +4125,18 @@ impl PanePositions {
     }
 }
 
+fn open_entry_in_new(row: &glib::WeakRef<gtk::Widget>, location: &Location, action: &str) {
+    let Some(widget) = row.upgrade() else {
+        return;
+    };
+    let uri = crate::adapters::gio_file_for_location(location)
+        .uri()
+        .to_variant();
+    if let Err(error) = widget.activate_action(action, Some(&uri)) {
+        tracing::warn!(%error, action, "open-in-new location action unavailable");
+    }
+}
+
 #[expect(
     clippy::too_many_arguments,
     reason = "mode-specific click setup keeps these inputs explicit"
@@ -4144,6 +4156,41 @@ fn install_modified_selection_click(
     click.set_propagation_phase(gtk::PropagationPhase::Capture);
     let sequence = super::collection_interaction::PointerSequence::default();
     sequence.install(&click);
+    super::collection_interaction::install_row_middle_click(widget, item, {
+        let browser = browser.clone();
+        let row = widget.upcast_ref::<gtk::Widget>().downgrade();
+        let positions = positions.clone();
+        move |view_position, modifiers| {
+            let Some(browser) = browser.upgrade() else {
+                return;
+            };
+            let Some(source_position) = positions.source_position(view_position) else {
+                return;
+            };
+            let Some(entry) = browser.entry_at(depth, source_position) else {
+                return;
+            };
+            let control = modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK);
+            let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
+            match super::collection_interaction::middle_click_action(
+                entry.is_directory(),
+                control,
+                shift,
+            ) {
+                super::collection_interaction::MiddleClickAction::OpenTab => {
+                    open_entry_in_new(&row, &entry.location, "win.open-tab-at");
+                }
+                super::collection_interaction::MiddleClickAction::OpenWindow => {
+                    open_entry_in_new(&row, &entry.location, "win.open-window-at");
+                }
+                super::collection_interaction::MiddleClickAction::RevealParent => {
+                    if let Some(parent) = entry.location.parent() {
+                        browser.reveal_locations(parent, vec![entry.location]);
+                    }
+                }
+            }
+        }
+    });
     let item = item.downgrade();
     let weak_state_for_pressed = weak_state.clone();
     click.connect_pressed(move |gesture, _, x, y| {

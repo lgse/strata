@@ -77,7 +77,15 @@ fn icon_cache_distinguishes_logical_size_from_display_resolution() {
                 super::sized_icon_paintable(name, color, size, scale, super::IconContext::Grid)
                     .expect("render icon")
             };
-            for name in [icons::FOLDER, icons::FILE_CODE, icons::FILE_SPREADSHEET] {
+            for name in [
+                icons::FOLDER,
+                icons::FILE_CODE,
+                icons::FILE_SPREADSHEET,
+                icons::LANG_RUST,
+                icons::LANG_JS,
+                icons::LANG_CSHARP,
+                icons::LANG_JAVA,
+            ] {
                 let small = render(name, "#123456", 64, 2);
                 let large = render(name, "#123456", 128, 1);
                 let interface = super::primary_icon_texture_at(
@@ -187,15 +195,8 @@ fn cold_interface_icons_render_when_decoder_workers_cannot_start() {
                     "recoloring must request the new color variant"
                 );
                 let texture = recolored.downcast::<gtk::gdk::Texture>().expect("texture");
-                let stride = texture.width() as usize * 4;
-                let mut pixels = vec![0; stride * texture.height() as usize];
-                texture.download(&mut pixels, stride);
                 assert!(
-                    pixels
-                        .as_chunks::<4>()
-                        .0
-                        .iter()
-                        .any(|pixel| u32::from_ne_bytes(*pixel) >> 24 != 0),
+                    crate::test_support::texture_has_visible_pixels(&texture),
                     "bundled icon must render visible geometry: {name}"
                 );
             }

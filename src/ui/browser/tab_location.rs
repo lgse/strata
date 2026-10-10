@@ -19,6 +19,8 @@ pub(super) struct TabLocation {
 struct Pending {
     id: u64,
     phase: Phase,
+    /// The folder a click is opening, which becomes the focused column.
+    opening: Option<(usize, Location)>,
 }
 
 enum Phase {
@@ -36,6 +38,21 @@ pub(super) struct TabLocationHold {
 }
 
 impl TabLocationHold {
+    pub(super) fn opening(&self, depth: usize, location: Location) {
+        let Some(state) = self.state.upgrade() else {
+            return;
+        };
+        if let Some(pending) = state
+            .tab_location
+            .borrow_mut()
+            .pending
+            .as_mut()
+            .filter(|pending| pending.id == self.id)
+        {
+            pending.opening = Some((depth, location));
+        }
+    }
+
     pub(super) fn navigate(self, parent_depth: usize, action: impl FnOnce()) {
         let Some(state) = self.state.upgrade() else {
             return;
@@ -118,11 +135,30 @@ impl ViewState {
         location.pending = Some(Pending {
             id,
             phase: Phase::Pressed,
+            opening: None,
         });
         TabLocationHold {
             state: Rc::downgrade(self),
             id,
         }
+    }
+
+    pub(super) fn pointer_opening_depth(&self) -> Option<usize> {
+        self.tab_location
+            .borrow()
+            .pending
+            .as_ref()
+            .and_then(|pending| pending.opening.as_ref())
+            .map(|(depth, _)| *depth)
+    }
+
+    pub(super) fn pointer_opens(&self, depth: usize, location: &Location) -> bool {
+        self.tab_location
+            .borrow()
+            .pending
+            .as_ref()
+            .and_then(|pending| pending.opening.as_ref())
+            .is_some_and(|(opening_depth, opening)| *opening_depth == depth && opening == location)
     }
 
     pub(super) fn cancel_tab_location_hold(&self) {

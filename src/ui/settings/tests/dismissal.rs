@@ -163,7 +163,7 @@ fn closing_settings_cancels_the_theme_preview_and_collapses_the_editor() {
                 window.present();
                 layer.set_visible(true);
                 assert!(settles(|| layer.is_mapped()));
-                button_named(layer.upcast_ref(), "Appearance").emit_clicked();
+                button_named(layer.upcast_ref(), "theme").emit_clicked();
                 button_with_class(layer.upcast_ref(), "add-theme-card").emit_clicked();
                 let revealer = editor_revealer(layer.upcast_ref());
                 assert!(revealer.reveals_child());

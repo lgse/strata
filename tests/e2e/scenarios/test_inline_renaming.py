@@ -401,3 +401,33 @@ def test_repeated_renames_select_the_folder_name_or_file_stem(strata, mode, kind
         if kind == "file":
             assert strata.fixture.path(replacement).read_text() == "todo\n"
         original = replacement
+
+
+# F5 reloads the rows each mode leases differently; the other shortcuts never
+# touch the listing, so one mode covers them.
+WINDOW_ACCELERATOR_CASES = [
+    pytest.param("F5", mode.values[0], marks=mode.marks, id=f"f5-{mode.id}") for mode in ALL_MODES
+] + [
+    pytest.param(chord, "Columns", marks=pytest.mark.preferences(browser_mode="columns"), id=f"{name}-columns")
+    for chord, name in [("ctrl+\\", "ctrl-backslash"), ("ctrl+k", "ctrl-k")]
+]
+
+
+@pytest.mark.preferences(arrow_navigation_scoped=True, single_click_previews=False)
+@pytest.mark.parametrize("chord,mode", WINDOW_ACCELERATOR_CASES)
+def test_window_accelerators_leave_an_open_rename_alone(strata, chord, mode):
+    field, original = begin_edit(strata, "file", False)
+    strata.keyboard.type_text("abc")
+    strata.wait(lambda: field.text == "abc", "typing to replace the selection")
+    strata.keyboard.press(chord)
+    # Give a misrouted accelerator time to act before asserting nothing changed.
+    time.sleep(0.5)
+    editor = strata.window.find(role="text", name="Rename", states={"editable", "focused"})
+    assert editor is not None and editor.text == "abc", f"{chord} closed the rename or took its focus"
+    assert len(strata.window.find_all(role="text", states={"editable"})) == 1
+    assert strata.environment.read_preferences().get("arrow_navigation_scoped") == "true"
+    assert strata.fixture.path(original).exists()
+
+    strata.keyboard.press("Return")
+    strata.wait(lambda: strata.fixture.path("abc").exists(), "the typed name to be committed")
+    wait_for_edit_closed(strata)

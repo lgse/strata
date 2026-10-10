@@ -3028,7 +3028,7 @@ async fn replace_local_with(
     cancellable: gio::Cancellable,
     affected_locations: Option<&mut HashSet<Location>>,
     copy_to_stage: StageCopy,
-    on_replaced: &dyn Fn(),
+    on_replaced: &dyn Fn(Option<TrashedOriginal>),
 ) -> Result<(), glib::Error> {
     if let Some(locations) = affected_locations {
         locations.extend([&source, &target].into_iter().filter_map(location_for_file));
@@ -3125,7 +3125,10 @@ async fn replace_local_with(
         publish_staged_replacement(staged, target_path.clone()).await?;
         // A failed publication must not register an undo that would delete
         // a concurrent arrival. The original remains recoverable in Trash.
-        on_replaced();
+        on_replaced(target_identity.map(|identity| TrashedOriginal {
+            device: identity.device,
+            inode: identity.inode,
+        }));
     } else {
         let exchange_target = target_path.clone();
         let exchanged = gio::spawn_blocking(move || {
@@ -3199,7 +3202,7 @@ async fn replace_local_with_progress(
     cancellable: gio::Cancellable,
     affected_locations: Option<&mut HashSet<Location>>,
     progress: Option<Rc<TransferProgressTracker>>,
-    on_replaced: &dyn Fn(),
+    on_replaced: &dyn Fn(Option<TrashedOriginal>),
 ) -> Result<(), glib::Error> {
     let fat_family = target_is_fat_family(&target, &MountTable::current());
     replace_local_with(
@@ -3239,7 +3242,7 @@ async fn replace_local(
         cancellable,
         affected_locations,
         None,
-        &|| {},
+        &|_| {},
     )
     .await
 }
@@ -4965,9 +4968,11 @@ async fn run_merge_undo(
         .await
         .map(|info| info.file_type())
         .ok();
+        let mut trashed_identity = None;
         let result = match existing_type {
             None => Ok(()),
             Some(_) => {
+                let identity = local_trash_identity(&file);
                 let trashed =
                     await_cancellable(&file, &cancellable, |file, cancellable, result| {
                         file.trash_async(
@@ -4986,7 +4991,10 @@ async fn run_merge_undo(
                         )
                         .await
                     }
-                    result => result.map(|_| ()),
+                    result => {
+                        trashed_identity = identity;
+                        result.map(|_| ())
+                    }
                 }
             }
         };
@@ -4994,6 +5002,13 @@ async fn run_merge_undo(
             Ok(()) => {
                 if existing_type.is_some() {
                     super::bookmarks::deletion_completed(std::slice::from_ref(location));
+                }
+                if let Some(identity) = trashed_identity {
+                    emit(OperationEvent::ItemTrashed {
+                        request_id,
+                        location: location.clone(),
+                        identity,
+                    });
                 }
                 completed_locations.push(location.clone());
                 vec![location.clone()]
@@ -5130,6 +5145,11 @@ fn home_trash_entries_at(
         .collect()
 }
 
+/// Read before trashing: GIO does not say where in Trash an item went.
+fn local_trash_identity(file: &gio::File) -> Option<TrashedOriginal> {
+    file.path().as_deref().and_then(TrashedOriginal::at_path)
+}
+
 fn cancellation_handle(cancellable: gio::Cancellable) -> LoadHandle {
     LoadHandle::new(move || cancellable.cancel())
 }
@@ -5239,7 +5259,8 @@ async fn run_deletion(
                 let cancellable = cancellable.clone();
                 let task = context.spawn_local(async move {
                     let file = gio_file_for_location(&operation_target.location);
-                    if permanent {
+                    let identity = (!permanent).then(|| local_trash_identity(&file)).flatten();
+                    let result = if permanent {
                         if operation_target
                             .location
                             .uri_value()
@@ -5271,7 +5292,8 @@ async fn run_deletion(
                             );
                         })
                         .await
-                    }
+                    };
+                    (result, identity)
                 });
                 (target, task)
             })
@@ -5280,7 +5302,8 @@ async fn run_deletion(
         let mut chunk_cancelled = false;
         for (target, result) in join_local_tasks(tasks).await {
             completed_count += 1;
-            let result = result.unwrap_or_else(|_| Err(io_error("Delete worker failed")));
+            let (result, identity) =
+                result.unwrap_or_else(|_| (Err(io_error("Delete worker failed")), None));
             if let Err(error) = result {
                 if was_cancelled(&error) {
                     chunk_cancelled = true;
@@ -5298,6 +5321,13 @@ async fn run_deletion(
                 }
             } else {
                 super::bookmarks::deletion_completed(std::slice::from_ref(&target.location));
+                if let Some(identity) = identity {
+                    emit(OperationEvent::ItemTrashed {
+                        request_id,
+                        location: target.location.clone(),
+                        identity,
+                    });
+                }
                 deleted_locations.push(target.location.clone());
                 pending_progress_locations.push(target.location.clone());
             }
@@ -5782,7 +5812,14 @@ impl OperationProvider for LocalOperationProvider {
                         operation_cancellable.clone(),
                         Some(&mut affected_locations),
                         Some(progress.clone()),
-                        &move || {
+                        &move |identity| {
+                            if let (Some(target), Some(identity)) = (&replaced_target, identity) {
+                                emit(OperationEvent::ItemTrashed {
+                                    request_id: request.id,
+                                    location: target.clone(),
+                                    identity,
+                                });
+                            }
                             // Only copies get the restore-the-original undo
                             // entry; a replaced move keeps the move-back
                             // record and leaves the original in Trash.
@@ -5839,6 +5876,17 @@ impl OperationProvider for LocalOperationProvider {
                     )
                     .await;
                     return;
+                }
+                if request.move_sources
+                    && let Some(target) = &target_location
+                    && target != &item.source
+                {
+                    emit(OperationEvent::ItemMoved {
+                        request_id: request.id,
+                        from: item.source.clone(),
+                        to: target.clone(),
+                        merged: item.conflict == TransferConflict::Merge,
+                    });
                 }
                 completed.push(item.source.clone());
                 // A merge reports its written paths through Merged instead:
@@ -5969,7 +6017,15 @@ impl OperationProvider for LocalOperationProvider {
                         operation_cancellable.clone(),
                         Some(&mut affected_locations),
                         Some(progress.clone()),
-                        &|| {},
+                        &|identity| {
+                            if let Some(identity) = identity {
+                                emit(OperationEvent::ItemTrashed {
+                                    request_id: request.id,
+                                    location: item.record.original.clone(),
+                                    identity,
+                                });
+                            }
+                        },
                     )
                     .await
                 } else {
@@ -6003,6 +6059,12 @@ impl OperationProvider for LocalOperationProvider {
                     .await;
                     return;
                 }
+                emit(OperationEvent::ItemMoved {
+                    request_id: request.id,
+                    from: item.record.current.clone(),
+                    to: item.record.original.clone(),
+                    merged: false,
+                });
                 completed.push(item.record.current.clone());
                 progress.finish_item(
                     item_started_at,
@@ -6026,6 +6088,7 @@ impl OperationProvider for LocalOperationProvider {
             }
             for location in &request.cleanup_locations {
                 let file = gio_file_for_location(location);
+                let identity = local_trash_identity(&file);
                 let result = await_cancellable(
                     &file,
                     &operation_cancellable,
@@ -6057,6 +6120,13 @@ impl OperationProvider for LocalOperationProvider {
                         });
                     }
                     return;
+                }
+                if let Some(identity) = identity {
+                    emit(OperationEvent::ItemTrashed {
+                        request_id: request.id,
+                        location: location.clone(),
+                        identity,
+                    });
                 }
             }
             emit(OperationEvent::Pasted {

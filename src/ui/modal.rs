@@ -134,7 +134,7 @@ fn focus_first_control(root: &gtk::Widget) -> bool {
     false
 }
 
-fn is_closing_layer(widget: &gtk::Widget) -> bool {
+pub(in crate::ui) fn is_closing_layer(widget: &gtk::Widget) -> bool {
     widget.has_css_class("app-modal-layer") && widget.has_css_class("dismissing")
 }
 

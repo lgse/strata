@@ -36,7 +36,8 @@ use crate::{
     },
     services::{
         DirectoryChange, DirectoryEvent, DirectoryRequest, FileSource, LoadHandle,
-        LocationValidationError, MetadataRequest, RemoteDownload, download_remote, remote_file_url,
+        LocationIdentity, LocationValidationError, MetadataRequest, RemoteDownload,
+        download_remote, remote_file_url,
     },
 };
 
@@ -216,6 +217,23 @@ impl FileSource for ChooserFileSource {
                 ));
             }),
         )
+    }
+
+    fn query_location_identity(
+        &self,
+        location: Location,
+        emit: Rc<dyn Fn(Option<LocationIdentity>)>,
+    ) -> LoadHandle {
+        self.source.query_location_identity(location, emit)
+    }
+
+    fn find_by_identity(
+        &self,
+        parent: Location,
+        identity: LocationIdentity,
+        emit: Rc<dyn Fn(Option<Location>)>,
+    ) -> LoadHandle {
+        self.source.find_by_identity(parent, identity, emit)
     }
 }
 
@@ -1571,7 +1589,8 @@ fn build_chooser_hosted(
 
     let preview_split = gtk::Paned::new(gtk::Orientation::Horizontal);
     preview_split.add_css_class("preview-split");
-    preview_split.set_wide_handle(false);
+    // The column beside the divider keeps its resize edge; the preview grip moves it.
+    preview_split.set_wide_handle(true);
     preview_split.set_resize_start_child(true);
     preview_split.set_resize_end_child(false);
     preview_split.set_shrink_start_child(false);

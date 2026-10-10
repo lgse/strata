@@ -91,7 +91,7 @@ impl WindowContent {
         window: &gtk::ApplicationWindow,
         preferences: &Rc<PreferenceManager>,
     ) -> UpdateNoticeHandler {
-        search::install(self, preferences);
+        search::install(window, self, preferences);
         install_browser_actions(window, &self.actions, &self.browser, preferences);
         let notice = settings::install(window, self, preferences);
         let click_browser = self.browser.clone();
@@ -208,6 +208,35 @@ impl WindowContent {
     }
 }
 
+/// Adds a `win.<name>` action that does nothing while a modal layer other than
+/// `own_layer` is on top or an inline edit owns the listing. GTK runs window
+/// accelerators after the key dispatcher has yielded to those owners, so the check
+/// lives in the action rather than in the dispatcher.
+fn add_guarded_window_action(
+    window: &gtk::ApplicationWindow,
+    actions: &gio::SimpleActionGroup,
+    name: &str,
+    browser: &BrowserView,
+    own_layer: Option<gtk::Widget>,
+    run: impl Fn() + 'static,
+) {
+    let action = gio::SimpleAction::new(name, None);
+    let window = window.downgrade();
+    let browser = browser.clone();
+    action.connect_activate(move |_, _| {
+        let Some(window) = window.upgrade() else {
+            return;
+        };
+        if super::foreign_modal_visible(&window, own_layer.as_ref())
+            || browser.inline_edit_is_open()
+        {
+            return;
+        }
+        run();
+    });
+    actions.add_action(&action);
+}
+
 fn install_browser_actions(
     window: &gtk::ApplicationWindow,
     actions: &gio::SimpleActionGroup,
@@ -215,26 +244,25 @@ fn install_browser_actions(
     preferences: &Rc<PreferenceManager>,
 ) {
     let terminal_view = browser.clone();
-    let terminal_action = gio::SimpleAction::new("open-terminal", None);
-    terminal_action.connect_activate(move |_, _| {
+    add_guarded_window_action(window, actions, "open-terminal", browser, None, move || {
         terminal_view.open_terminal();
     });
-    actions.add_action(&terminal_action);
-
     let refresh_view = browser.clone();
-    let refresh_action = gio::SimpleAction::new("refresh", None);
-    refresh_action.connect_activate(move |_, _| {
+    add_guarded_window_action(window, actions, "refresh", browser, None, move || {
         refresh_view.refresh();
     });
-    actions.add_action(&refresh_action);
-
     let toggle_preferences = preferences.clone();
-    let toggle_action = gio::SimpleAction::new("toggle-arrow-scope", None);
-    toggle_action.connect_activate(move |_, _| {
-        let next = !toggle_preferences.arrow_navigation_scoped();
-        toggle_preferences.set_arrow_navigation_scoped(next);
-    });
-    actions.add_action(&toggle_action);
+    add_guarded_window_action(
+        window,
+        actions,
+        "toggle-arrow-scope",
+        browser,
+        None,
+        move || {
+            let next = !toggle_preferences.arrow_navigation_scoped();
+            toggle_preferences.set_arrow_navigation_scoped(next);
+        },
+    );
     // The set lives on the application, so it follows the saved mode rather
     // than whichever window was constructed or destroyed last.
     if let Some(application) = window.application() {

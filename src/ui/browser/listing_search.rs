@@ -171,6 +171,25 @@ impl BrowserView {
 }
 
 impl super::ViewState {
+    /// The column whose filter field the search borrowed.
+    pub(super) fn listing_search_depth(&self) -> Option<usize> {
+        let entry = self
+            .listing_search
+            .borrowed
+            .borrow()
+            .as_ref()?
+            .0
+            .upgrade()?;
+        if self.mode.get() != BrowserMode::Columns {
+            return self.browser.active_depth();
+        }
+        self.columns
+            .try_borrow()
+            .ok()?
+            .iter()
+            .position(|column| column.filter_entry == entry)
+    }
+
     /// Drops the search without restoring anything, for navigation and
     /// leaving the mode: its hits never outlive the folder they came from.
     pub(super) fn forget_listing_search(&self) {

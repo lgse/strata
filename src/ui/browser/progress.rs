@@ -387,6 +387,9 @@ impl FileProgressState {
             let (completed, total) = self.file_operation_progress.get();
             self.update_item_progress(completed, total);
         }
+        if let Some(on_present) = self.on_present.take() {
+            on_present();
+        }
     }
 
     pub(super) fn update_transfer_progress(
@@ -698,6 +701,7 @@ impl FileProgressState {
         if let Some(source) = self.pending_file_progress.take() {
             source.remove();
         }
+        self.on_present.take();
         self.file_operation_progress.set((0, 0));
         if let Some(source) = self.transfer_render_source.take() {
             source.remove();

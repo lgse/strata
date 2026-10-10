@@ -211,7 +211,9 @@ fn removals_preserve_neighbor_selection_without_refocusing_unrelated_entries() {
             .borrow()
             .iter()
             .filter_map(|event| match event {
-                BrowserEvent::FocusChanged { depth: 0, position } => Some(*position),
+                BrowserEvent::FocusChanged {
+                    depth: 0, position, ..
+                } => Some(*position),
                 _ => None,
             })
             .collect();

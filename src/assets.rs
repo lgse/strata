@@ -510,15 +510,52 @@ fn primary_icon_texture_at(
             1,
         );
     }
+    let source =
+        if name.starts_with("strata-lang-") && source.contains(&format!("fill=\"{color}\"")) {
+            outlined_brand_icon(source, name, color, logical_px, context)
+        } else {
+            compensate_icon_strokes(source, logical_px, context)
+        };
     texture_from_svg(
         &stroke_cache_name(name, logical_px, context),
         color,
         texture_px,
-        svg_at_texture_size(
-            compensate_icon_strokes(source, logical_px, context),
-            texture_px,
-        ),
+        svg_at_texture_size(source, texture_px),
     )
+}
+
+fn outlined_brand_icon(
+    source: String,
+    name: &str,
+    color: &str,
+    logical_px: i32,
+    context: IconContext,
+) -> String {
+    // These upstream glyphs use 128-unit view boxes; all other brands use 24.
+    let units = if matches!(
+        name,
+        icons::LANG_JS | icons::LANG_TS | icons::LANG_CSHARP | icons::LANG_JAVA
+    ) {
+        128.0
+    } else {
+        24.0
+    };
+    let padding = units / 12.0;
+    let extent = units + 2.0 * padding;
+    // Compensate for the padded view box so visible strokes match Lucide's weight.
+    let stroke = extent / 12.0 * icon_stroke_factor(logical_px, context);
+    source
+        .replacen(
+            &format!("viewBox=\"0 0 {units} {units}\""),
+            &format!("viewBox=\"-{padding} -{padding} {extent} {extent}\""),
+            1,
+        )
+        .replace(
+            &format!("fill=\"{color}\""),
+            &format!(
+                "fill=\"none\" stroke=\"{color}\" stroke-width=\"{stroke}\" stroke-linecap=\"round\" stroke-linejoin=\"round\""
+            ),
+        )
 }
 
 fn stroke_cache_name(name: &str, logical_px: i32, context: IconContext) -> String {
@@ -530,14 +567,17 @@ fn stroke_cache_name(name: &str, logical_px: i32, context: IconContext) -> Strin
     format!("{name}:{context}:stroke-size:{logical_px}")
 }
 
-fn compensate_icon_strokes(source: String, logical_px: i32, context: IconContext) -> String {
+fn icon_stroke_factor(logical_px: i32, context: IconContext) -> f64 {
     let weight = match context {
-        IconContext::Interface if logical_px <= 64 => return source,
         IconContext::Interface => 1.0,
         IconContext::Grid => 0.5,
     };
     // Logical size controls perceived weight; raster resolution only controls sharpness.
-    let factor = weight * (64.0 / f64::from(logical_px.max(64))).powf(0.35);
+    weight * (64.0 / f64::from(logical_px.max(64))).powf(0.35)
+}
+
+fn compensate_icon_strokes(source: String, logical_px: i32, context: IconContext) -> String {
+    let factor = icon_stroke_factor(logical_px, context);
     source
         .replace(
             "stroke-width=\"2\"",

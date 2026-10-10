@@ -200,6 +200,9 @@ pub(super) struct ViewState {
     /// True only while a column row gesture is writing the selection model.
     /// Focus echoes of the cursor are not pointer-owned.
     pointer_owns_selection: Cell<bool>,
+    folder_press: RefCell<Option<columns::FolderPress>>,
+    /// The depth whose column a sibling swap just removed, so its replacement fades in.
+    swap_slot: Cell<Option<usize>>,
     tab_location: RefCell<tab_location::TabLocation>,
     column_resizing: Cell<bool>,
     horizontal_scroll_generation: Rc<Cell<u64>>,
@@ -591,6 +594,8 @@ impl BrowserView {
             context_menu_focus: RefCell::new(None),
             input_ownership: RefCell::new(super::input_ownership::InputOwnership::default()),
             pointer_owns_selection: Cell::new(false),
+            folder_press: RefCell::new(None),
+            swap_slot: Cell::new(None),
             tab_location: RefCell::new(tab_location::TabLocation::default()),
             column_resizing: Cell::new(false),
             horizontal_scroll_generation: Rc::new(Cell::new(0)),
@@ -694,6 +699,8 @@ impl BrowserView {
             let columns = state.columns.borrow();
             columns.last().map(|column| column.marquee.clone())
         });
+        // Installed last so its capture press runs before the scroller's other gestures.
+        columns::install_double_click_guard(&state);
 
         state
             .mode_views
@@ -997,6 +1004,10 @@ impl BrowserView {
         self.state.pending_new_entry.borrow().is_some()
     }
 
+    pub fn inline_edit_is_open(&self) -> bool {
+        self.state.inline_edit_is_open()
+    }
+
     /// Lets a marquee drag begin on blank chrome beside the file panes — the sidebar or
     /// the preview pane — and run into whichever view the current mode shows. The pane
     /// nearest the `edge` the surface sits on is the target, since that is the one such
@@ -1077,7 +1088,9 @@ impl BrowserView {
                 .restore_active_filter(&filter);
         }
         match previous {
-            BrowserMode::Columns => self.state.truncate(0),
+            // The columns view is already hidden, so an exit animation here
+            // would never be seen.
+            BrowserMode::Columns => self.state.truncate_for_replacement(0),
             BrowserMode::Icons | BrowserMode::List => self
                 .state
                 .mode_views
@@ -1849,7 +1862,8 @@ impl BrowserView {
         } else {
             self.state.browser.select(depth, position);
         }
-        self.state.mirror_focused_folder(depth, Some(position));
+        self.state
+            .mirror_focused_folder(depth, Some(position), false);
         if let (Some(direction), Some((view, scroll))) = (key, collection) {
             let position = self.cursor_view_position(&view);
             super::scrolling::reveal_cursor(
@@ -1892,11 +1906,7 @@ impl BrowserView {
     }
 
     pub fn refresh(&self) {
-        if self.view_mode() == BrowserMode::Columns {
-            self.state.browser.refresh_all();
-        } else {
-            self.state.browser.reload_active();
-        }
+        self.state.refresh_browser();
     }
 
     pub fn set_auto_refresh_interval(&self, secs: u32) {
@@ -2288,7 +2298,8 @@ impl BrowserView {
         if let Some((depth, position)) = cursor()
             && Some((depth, position)) != before
         {
-            self.state.mirror_focused_folder(depth, Some(position));
+            self.state
+                .mirror_focused_folder(depth, Some(position), false);
         }
         if let Some((view, scroll)) = collection {
             let position = self.cursor_view_position(&view);
@@ -2553,17 +2564,22 @@ impl ViewState {
             let Some(state) = weak_state.upgrade() else {
                 return glib::ControlFlow::Break;
             };
-            if state.pending_new_entry.borrow().is_some()
-                || state.active_rename.borrow().is_some()
-                || state.rename_operation_pending()
-                || state.mode_views.borrow().rename_is_active()
-            {
+            // A submitted rename also waits for the listing to show its result.
+            if state.inline_edit_is_open() || state.rename_operation_pending() {
                 return glib::ControlFlow::Continue;
             }
             state.refresh_browser();
             glib::ControlFlow::Continue
         });
         self.auto_refresh.replace(Some(source));
+    }
+
+    /// A reload rebinds the rows an inline edit leases, which would discard the typed
+    /// name, so window commands and auto-refresh wait while this holds.
+    pub(super) fn inline_edit_is_open(&self) -> bool {
+        self.pending_new_entry.borrow().is_some()
+            || self.active_rename.borrow().is_some()
+            || self.mode_views.borrow().rename_is_active()
     }
 
     fn refresh_browser(&self) {

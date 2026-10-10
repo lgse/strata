@@ -220,6 +220,21 @@ def test_delete_moves_the_entry_to_trash(strata):
     )
 
 
+@pytest.mark.preferences(browser_mode="columns", list_folder_clicks=1)
+def test_trashing_an_open_folder_with_the_mouse_opens_the_folder_in_its_place(strata):
+    """#1497: the mirror follows a deletion even when the pointer made it."""
+    strata.fixture.populate({"aa-first": {"a.txt": "a\n"}, "aa-second": {"b.txt": "b\n"}})
+    root = strata.fixture.root.name
+    strata.pointer.click(strata.entry("aa-first"))
+    strata.wait(lambda: strata.pane_names()[-1] == "aa-first", "the clicked folder to open")
+
+    strata.open_context_menu("aa-first", root)
+    strata.choose_menu_item("Move to Trash")
+
+    strata.wait(lambda: not strata.fixture.path("aa-first").exists(), "the folder to move to the Trash")
+    strata.wait(lambda: strata.pane_names()[-1] == "aa-second", "the folder now in its place to open")
+
+
 @pytest.mark.parametrize("mode", COLUMNS_AND_ONE)
 def test_permanent_delete_requires_confirmation_and_can_be_cancelled(strata, mode):
     fixture = strata.fixture
@@ -458,7 +473,7 @@ def test_new_folder_with_selection_groups_items_and_names_it(strata, mode):
     assert not fixture.path("readme.md").exists()
     assert not fixture.path("todo.txt").exists()
     # The parent row's name is optimistic; the renamed child listing follows completion.
-    if mode == "columns":
+    if mode == "Columns":
         strata.entry("readme.md", "grouped")
         strata.entry("todo.txt", "grouped")
     strata.wait(
@@ -466,6 +481,13 @@ def test_new_folder_with_selection_groups_items_and_names_it(strata, mode):
         "the rename editor to release keyboard focus",
     )
     strata.click_entry("grouped", root)
+    if mode == "Columns":
+        # Clicking the open folder focuses its column; return to the parent.
+        strata.wait(
+            lambda: (pane := strata.focused_pane()) is not None and pane.name == "grouped",
+            "the open folder's column to take focus",
+        )
+        strata.keyboard.press("Left")
     strata.select_entry_with_keyboard("grouped")
 
     strata.keyboard.press("ctrl+z")

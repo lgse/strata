@@ -24,9 +24,9 @@ use crate::{
     model::{EntryKind, FileEntry, Location, MetadataValue},
     services::{
         DirectoryChange, DirectoryEvent, DirectoryRequest, FileSource, LoadHandle,
-        LocationValidationError, MetadataOutcome, MetadataRequest, MetadataUpdate, RequestId,
-        backend_unavailable_message, is_hidden_name, is_image_path, is_media_path,
-        native_hidden_names, native_kind, sanitize_failure_message,
+        LocationIdentity, LocationValidationError, MetadataOutcome, MetadataRequest,
+        MetadataUpdate, RequestId, backend_unavailable_message, is_hidden_name, is_image_path,
+        is_media_path, native_hidden_names, native_kind, sanitize_failure_message,
     },
 };
 
@@ -1427,7 +1427,7 @@ impl FileSource for LocalFileSource {
                 event,
             );
             let Some(change) =
-                change.and_then(|change| visible_monitor_change(change, include_hidden))
+                change.and_then(|change| visible_monitor_change(&watched, change, include_hidden))
             else {
                 return;
             };
@@ -1466,6 +1466,51 @@ impl FileSource for LocalFileSource {
             pending.borrow_mut().clear();
             let _cancelled = monitor.cancel();
         }))
+    }
+
+    fn query_location_identity(
+        &self,
+        location: Location,
+        emit: Rc<dyn Fn(Option<LocationIdentity>)>,
+    ) -> LoadHandle {
+        let Some(path) = location.native_path().map(Path::to_path_buf) else {
+            emit(None);
+            return LoadHandle::new(|| {});
+        };
+        // A hung network mount must not stall the window.
+        let task = glib::MainContext::default().spawn_local(async move {
+            let identity = gio::spawn_blocking(move || {
+                fs::symlink_metadata(&path)
+                    .ok()
+                    .and_then(|metadata| folder_identity(&metadata))
+            })
+            .await
+            .ok()
+            .flatten();
+            emit(identity);
+        });
+        LoadHandle::new(move || task.abort())
+    }
+
+    fn find_by_identity(
+        &self,
+        parent: Location,
+        identity: LocationIdentity,
+        emit: Rc<dyn Fn(Option<Location>)>,
+    ) -> LoadHandle {
+        let Some(directory) = parent.native_path().map(Path::to_path_buf) else {
+            emit(None);
+            return LoadHandle::new(|| {});
+        };
+        let task = glib::MainContext::default().spawn_local(async move {
+            let found =
+                gio::spawn_blocking(move || native_entry_with_identity(&directory, identity))
+                    .await
+                    .ok()
+                    .flatten();
+            emit(found.map(Location::local));
+        });
+        LoadHandle::new(move || task.abort())
     }
 }
 
@@ -1905,6 +1950,38 @@ fn log_directory_load_started(request_id: RequestId, location: &Location) {
     );
 }
 
+fn folder_identity(metadata: &fs::Metadata) -> Option<LocationIdentity> {
+    metadata.is_dir().then(|| LocationIdentity {
+        device: metadata.dev(),
+        inode: metadata.ino(),
+        created: metadata.created().ok(),
+    })
+}
+
+fn native_entry_with_identity(directory: &Path, identity: LocationIdentity) -> Option<PathBuf> {
+    use std::os::unix::fs::DirEntryExt;
+    let entries: Vec<fs::DirEntry> = fs::read_dir(directory).ok()?.flatten().collect();
+    let matches = |entry: &&fs::DirEntry| {
+        entry
+            .metadata()
+            .ok()
+            .and_then(|metadata| folder_identity(&metadata))
+            .is_some_and(|candidate| identity.matches(&candidate))
+    };
+    // Btrfs subvolumes, overlayfs and FUSE can list a different inode than stat reports.
+    entries
+        .iter()
+        .filter(|entry| entry.ino() == identity.inode)
+        .find(matches)
+        .or_else(|| {
+            entries
+                .iter()
+                .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+                .find(matches)
+        })
+        .map(fs::DirEntry::path)
+}
+
 fn monitor_location_is_hidden(location: &Location) -> bool {
     location
         .file_name()
@@ -1912,6 +1989,7 @@ fn monitor_location_is_hidden(location: &Location) -> bool {
 }
 
 fn visible_monitor_change(
+    watched: &Location,
     change: PendingMonitorChange,
     include_hidden: bool,
 ) -> Option<PendingMonitorChange> {
@@ -1919,6 +1997,10 @@ fn visible_monitor_change(
         return Some(change);
     }
     match change {
+        // The open folder's own departure counts even when its name is hidden.
+        PendingMonitorChange::Remove(location) if location == *watched => {
+            Some(PendingMonitorChange::Remove(location))
+        }
         PendingMonitorChange::Upsert(location) if monitor_location_is_hidden(&location) => None,
         PendingMonitorChange::Remove(location) if monitor_location_is_hidden(&location) => None,
         PendingMonitorChange::Move { from, to } => {

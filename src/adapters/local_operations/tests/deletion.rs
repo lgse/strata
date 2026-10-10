@@ -853,3 +853,48 @@ fn an_already_cancelled_recursive_delete_preserves_the_root() -> Result<(), Box<
     fs::remove_dir_all(root)?;
     Ok(())
 }
+
+#[test]
+fn trashing_reports_each_items_identity_and_a_permanent_delete_reports_none() {
+    crate::test_support::gtk_test(
+        "adapters::local_operations::tests::deletion::trashing_reports_each_items_identity_and_a_permanent_delete_reports_none",
+        || {
+            for permanent in [false, true] {
+                let root = tempfile::tempdir().expect("root");
+                let folder = root.path().join("folder");
+                fs::create_dir(&folder).expect("folder");
+                let identity = TrashedOriginal::at_path(&folder).expect("identity");
+                let events = Rc::new(RefCell::new(Vec::new()));
+                let emitted = events.clone();
+                let _operation = LocalOperationProvider.delete(
+                    DeleteRequest {
+                        id: OperationRequestId(95),
+                        entries: vec![directory_entry(&folder)],
+                        permanent,
+                    },
+                    Rc::new(move |event| emitted.borrow_mut().push(event)),
+                );
+                wait_for_operation(&events, |event| {
+                    matches!(
+                        event,
+                        OperationEvent::Deleted { .. } | OperationEvent::CompletedWithErrors { .. }
+                    )
+                });
+
+                let events = events.borrow();
+                assert!(matches!(
+                    events.last(),
+                    Some(OperationEvent::Deleted { .. })
+                ));
+                assert_eq!(
+                    trashed_items(&events),
+                    if permanent {
+                        Vec::new()
+                    } else {
+                        vec![(Location::local(&folder), identity)]
+                    }
+                );
+            }
+        },
+    );
+}

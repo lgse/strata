@@ -36,6 +36,7 @@ mod preview;
 mod progress_dock;
 mod raw_details;
 mod recent_apps;
+mod resize_feedback;
 mod scrolling;
 mod search;
 mod search_session;

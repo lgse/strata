@@ -66,11 +66,16 @@ pub(super) fn install_autoscroll(scroll: &gtk::ScrolledWindow, overlay: &gtk::Ov
             gesture.set_state(gtk::EventSequenceState::Claimed);
             return;
         }
+        // Rows claim middle-click for open/reveal, so autoscroll only starts over
+        // the view's own background (empty space or gutter), never over an item.
         let over_text = gesture
             .widget()
             .and_then(|widget| widget.pick(x, y, gtk::PickFlags::DEFAULT))
             .is_some_and(|widget| is_text_target(&widget));
-        if over_text || !state_for_press.start((x, y)) {
+        let over_background = gesture
+            .widget()
+            .is_some_and(|widget| crate::ui::pointer::is_background(&widget, x, y));
+        if over_text || !over_background || !state_for_press.start((x, y)) {
             return;
         }
         gesture.set_state(gtk::EventSequenceState::Claimed);
@@ -511,3 +516,6 @@ fn rows_per_page(page_size: f64, item_height: f64) -> usize {
     let rows = (page_size / item_height).floor().max(1.0) as usize;
     rows.saturating_sub(1).max(1)
 }
+
+#[cfg(test)]
+mod tests;

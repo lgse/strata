@@ -695,7 +695,17 @@ pub(super) fn vim_focus_direction(key: gtk::gdk::Key) -> Option<gtk::DirectionTy
 }
 
 pub(super) fn visible_modal_layer(window: &impl IsA<gtk::Window>) -> Option<gtk::Widget> {
-    fn visible_layer(root: &gtk::Widget) -> Option<gtk::Widget> {
+    topmost_modal_layer(window, &|_| false)
+}
+
+fn topmost_modal_layer(
+    window: &impl IsA<gtk::Window>,
+    skip: &dyn Fn(&gtk::Widget) -> bool,
+) -> Option<gtk::Widget> {
+    fn visible_layer(
+        root: &gtk::Widget,
+        skip: &dyn Fn(&gtk::Widget) -> bool,
+    ) -> Option<gtk::Widget> {
         if !root.is_visible()
             || !root.is_child_visible()
             || root.opacity() == 0.0
@@ -704,7 +714,7 @@ pub(super) fn visible_modal_layer(window: &impl IsA<gtk::Window>) -> Option<gtk:
             return None;
         }
         if root.has_css_class("app-modal-layer") {
-            return Some(root.clone());
+            return (!skip(root)).then(|| root.clone());
         }
         let mut child = root.last_child();
         while let Some(widget) = child {
@@ -712,7 +722,7 @@ pub(super) fn visible_modal_layer(window: &impl IsA<gtk::Window>) -> Option<gtk:
             if root.has_css_class("tab-context") && !widget.has_css_class("app-modal-layer") {
                 continue;
             }
-            if let Some(layer) = visible_layer(&widget) {
+            if let Some(layer) = visible_layer(&widget, skip) {
                 return Some(layer);
             }
         }
@@ -720,17 +730,28 @@ pub(super) fn visible_modal_layer(window: &impl IsA<gtk::Window>) -> Option<gtk:
     }
     let root = window.child()?;
     if root.has_css_class("tab-window") {
-        visible_layer(&root)
+        visible_layer(&root, skip)
     } else {
         let mut child = root.last_child();
         while let Some(widget) = child {
             child = widget.prev_sibling();
-            if widget.is_visible() && widget.has_css_class("app-modal-layer") {
+            if widget.is_visible() && widget.has_css_class("app-modal-layer") && !skip(&widget) {
                 return Some(widget);
             }
         }
         None
     }
+}
+
+/// True when the topmost visible modal layer is not `own`. An action that opens a
+/// modal passes its own layer so it can still toggle that layer closed. A layer that
+/// is animating out no longer owns input.
+pub(super) fn foreign_modal_visible(
+    window: &impl IsA<gtk::Window>,
+    own: Option<&gtk::Widget>,
+) -> bool {
+    topmost_modal_layer(window, &crate::ui::modal::is_closing_layer)
+        .is_some_and(|layer| own != Some(&layer))
 }
 
 pub(super) fn install_modal_focus_trap(window: &impl IsA<gtk::Window>) {

@@ -56,6 +56,7 @@ fn each_transfer_item_keeps_its_own_conflict_decision() -> Result<(), Box<dyn Er
     fs::write(sources.join("late.txt"), b"new late item")?;
     fs::write(destination.join("replace.txt"), b"old replacement")?;
     fs::write(destination.join("late.txt"), b"late arrival")?;
+    let replaced = TrashedOriginal::at_path(&destination.join("replace.txt")).ok_or("identity")?;
 
     let events = Rc::new(RefCell::new(Vec::new()));
     let emitted = events.clone();
@@ -96,6 +97,18 @@ fn each_transfer_item_keeps_its_own_conflict_decision() -> Result<(), Box<dyn Er
             ..
         }) if completed_locations == &[Location::local(sources.join("replace.txt"))]
     ));
+    assert_eq!(
+        item_moves(&events.borrow()),
+        [(
+            Location::local(sources.join("replace.txt")),
+            Location::local(destination.join("replace.txt"))
+        )]
+    );
+    assert_eq!(
+        trashed_items(&events.borrow()),
+        [(Location::local(destination.join("replace.txt")), replaced)],
+        "the replaced item went to Trash"
+    );
     assert_eq!(
         fs::read(destination.join("replace.txt"))?,
         b"new replacement"
@@ -153,6 +166,7 @@ fn cutting_in_the_same_folder_remains_a_noop() -> Result<(), Box<dyn Error>> {
         events.borrow().last(),
         Some(OperationEvent::Pasted { .. })
     ));
+    assert!(item_moves(&events.borrow()).is_empty());
     assert!(file.exists());
     assert!(directory.is_dir());
     assert!(!destination.join("document (1).txt").exists());
@@ -240,7 +254,7 @@ fn keeping_both_while_moving_renames_the_destination_instead_of_replacing_it()
     fs::write(&source, b"incoming")?;
     fs::write(destination.join("report.txt"), b"existing")?;
 
-    let created = run_paste_collecting_created(PasteRequest {
+    let events = run_paste(PasteRequest {
         id: OperationRequestId(75),
         destination: Location::local(&destination),
         items: vec![PasteItem {
@@ -248,9 +262,15 @@ fn keeping_both_while_moving_renames_the_destination_instead_of_replacing_it()
             conflict: TransferConflict::KeepBoth,
         }],
         move_sources: true,
-    })?;
+    });
 
-    assert!(created.into_iter().flatten().next().is_none());
+    assert_eq!(
+        item_moves(&events),
+        [(
+            Location::local(&source),
+            Location::local(destination.join("report (1).txt"))
+        )]
+    );
     assert_eq!(fs::read(destination.join("report.txt"))?, b"existing");
     assert_eq!(fs::read(destination.join("report (1).txt"))?, b"incoming");
     assert!(!source.exists());

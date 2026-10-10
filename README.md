@@ -57,7 +57,7 @@ Strata combines spatial Miller-column navigation with familiar Icons and List vi
 - **Everyday file operations:** create folders, rename, cut, copy, paste, trash, permanent delete, sorting, hidden files, pins, and history.
 - **Remote locations:** browse GIO/GVfs locations such as authenticated SMB shares and SFTP servers from the location field, with explicit host-key decisions.
 - **Adaptive appearance:** compact or airy density, six bundled themes, custom themes, and live Omarchy Quattro theme following.
-- **Updates in the app:** opt-in automatic checks, release notes, verified downloads, and in-place installation for release binaries.
+- **Updates in the app:** automatic update checks (on by default; turn them off in **Settings → Updates**), release notes, verified downloads, and in-place installation for release binaries.
 - **Custom actions:** add your own scripts to the file and folder context menus, with a manager in **Settings → Actions** and background progress in the Jobs dashboard. See [Custom actions](docs/custom-actions.md).
 - **System file chooser:** opt in through **Settings → General → System file chooser**, the installer, or `strata --install-portal`; see [portal setup](docs/portal-file-chooser.md).
 - **Encrypted-volume unlock:** opt in through the installer, **Settings → General → Desktop integration** on Omarchy, or `strata --install-udiskie-unlock`; restore with `strata --uninstall-udiskie-unlock` (Settings **Restore default** on Omarchy only).
@@ -659,7 +659,9 @@ Custom themes are stored as shareable TOML files in `~/.config/strata/themes/`. 
 
 Strata defaults to the **Stable** channel: only final tagged releases are ever offered, and a Stable install never receives, sees, or is notified about a prerelease.
 
-To try upcoming changes early, choose a channel in **Settings → Updates**. **Preview** receives curated alpha, beta, and release-candidate builds but excludes nightlies. **Nightly** receives every recognised prerelease, including daily development builds. The update dialog and release notes always identify the exact build kind.
+Strata checks for updates automatically by default: each time it starts, once its first window opens, and again when a window or **Settings → Updates** opens if no check has completed in the last 24 hours. Turning **Check for updates automatically** back on, or changing the channel, also runs a check. The check asks the update source for your installation: GitHub for release binaries and source builds, the AUR for AUR packages, the Omarchy package repository for Omarchy packages, or the local pacman sync database for other pacman packages. When a newer version is found, Strata also fetches that release's details from GitHub. Turning the switch off stops the automatic checks, discards the result of a check still running, hides any update notice already shown, and locks the channel. **Check now** still checks on demand, and the Updates page's release-notes card asks GitHub for the current version's notes when they are not already cached. Strata never downloads or installs an update without your confirmation.
+
+To try upcoming changes early, choose a channel in **Settings → Updates** (the channel is locked while automatic checks are off). **Preview** receives curated alpha, beta, and release-candidate builds but excludes nightlies. **Nightly** receives every recognised prerelease, including daily development builds. The update dialog and release notes always identify the exact build kind.
 
 When a prerelease installation selects **Stable**, the Updates card immediately offers the newest stable release as the channel target—even when that requires a semantic downgrade—and labels the action **Return to stable**. Preview and Nightly selections use the same card for ordinary forward updates, so channel changes never create a separate competing rollback card.
 

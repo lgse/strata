@@ -417,7 +417,8 @@ fn incremental_batch_publishes_final_selection_without_holding_state_borrows() {
             },
             BrowserEvent::FocusChanged {
                 depth: 0,
-                position: Some(0)
+                position: Some(0),
+                ..
             },
             BrowserEvent::RestorationFinished { succeeded: true },
         ]
