@@ -608,6 +608,8 @@ impl ViewState {
                         && self.browser.active_depth() == Some(*depth)
                         && !self.suppress_scroll_after_drop.get()
                         && !self.outside_change_keeps_focus()
+                        && (!self.browser.focus_follows_background_load()
+                            || self.column_may_take_focus())
                     {
                         column.focus_surface();
                     }

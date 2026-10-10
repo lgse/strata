@@ -337,7 +337,10 @@ impl ModeViews {
             if takes_focus {
                 // The rebuilt listing takes over focus from the one being left, as it
                 // does when there is no position to restore.
-                if !self.cursor_keeps_focus.get() && !self.outside_change_keeps_focus() {
+                if !self.cursor_keeps_focus.get()
+                    && !self.outside_change_keeps_focus()
+                    && self.background_load_may_take_focus(*depth)
+                {
                     self.focus_visible_pane(*depth);
                 }
                 return;
@@ -361,12 +364,19 @@ impl ModeViews {
             BrowserEvent::FocusChanged { depth, .. } => {
                 let positions = self.browser.selected_positions(*depth);
                 self.update_panes(*depth, |pane| set_selections(pane, &positions));
-                if !self.cursor_keeps_focus.get() && !self.outside_change_keeps_focus() {
+                if !self.cursor_keeps_focus.get()
+                    && !self.outside_change_keeps_focus()
+                    && self.background_load_may_take_focus(*depth)
+                {
                     self.focus_visible_pane(*depth);
                 }
             }
             _ => {}
         }
+    }
+
+    fn background_load_may_take_focus(&self, depth: usize) -> bool {
+        !self.browser.focus_follows_background_load() || self.listing_may_take_focus(depth)
     }
 
     /// An outside change never pulls focus out of a focused filter: the pane's field or

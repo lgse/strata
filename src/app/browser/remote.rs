@@ -198,7 +198,9 @@ impl Browser {
             focused,
             take_focus: false,
         });
+        let was = self.background_load_focus.replace(true);
         self.emit_suppressed_focus(depth, Some(focused));
+        self.background_load_focus.set(was);
     }
 
     fn finish_remote_if_drained(self: &Rc<Self>, depth: usize) {

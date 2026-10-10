@@ -729,3 +729,118 @@ fn a_reload_keeps_the_columns_list_focused() {
         },
     );
 }
+
+const SHARE: &str = "sftp://share.invalid/reload";
+
+/// A batch-loaded share whose listing tests can shrink between loads.
+struct ShrinkingShare(RefCell<Vec<&'static str>>);
+
+impl crate::services::FileSource for ShrinkingShare {
+    fn validate_location(
+        &self,
+        _location: &crate::model::Location,
+    ) -> Result<(), crate::services::LocationValidationError> {
+        Ok(())
+    }
+
+    fn enumerate(
+        &self,
+        request: crate::services::DirectoryRequest,
+        emit: Rc<dyn Fn(crate::services::DirectoryEvent)>,
+    ) -> LoadHandle {
+        let entries = self
+            .0
+            .borrow()
+            .iter()
+            .map(|name| crate::model::FileEntry {
+                location: crate::model::Location::uri(format!("{SHARE}/{name}")),
+                thumbnail_path: None,
+                native_name: (*name).into(),
+                display_name: (*name).into(),
+                kind: crate::model::EntryKind::File,
+                size: crate::model::MetadataValue::Unknown,
+                modified_unix_seconds: crate::model::MetadataValue::Unknown,
+                recent_unix_seconds: crate::model::MetadataValue::Unknown,
+                recent_uri: None,
+                mode: crate::model::MetadataValue::Unknown,
+                image_dimensions: crate::model::MetadataValue::Unknown,
+                child_count: crate::model::MetadataValue::Unknown,
+                duration_seconds: crate::model::MetadataValue::Unknown,
+                is_hidden: false,
+            })
+            .collect();
+        emit(crate::services::DirectoryEvent::Batch {
+            request_id: request.id,
+            entries,
+        });
+        emit(crate::services::DirectoryEvent::Finished {
+            request_id: request.id,
+            truncated: false,
+            can_trash: None,
+            can_delete: None,
+        });
+        LoadHandle::new(|| {})
+    }
+}
+
+fn remote_reload_case(mode: BrowserMode) -> Result<(), String> {
+    let source = Rc::new(ShrinkingShare(RefCell::new(vec![
+        "a.txt", "b.txt", "c.txt",
+    ])));
+    let view_source = source.clone();
+    let fixture = KeyboardFixture::with_parts(Rc::new(TextPreview), move || {
+        BrowserView::new(view_source, crate::ui::browser::PeekBehavior::default())
+    });
+    fixture.view.set_view_mode(mode);
+    let browser = fixture.view.browser();
+    let loads = load_counter(&browser);
+    let share = crate::model::Location::uri(SHARE);
+    browser.navigate(share.clone());
+    wait_until(|| browser.active_location().as_ref() == Some(&share));
+    wait_loaded(&browser, 0);
+    browser.select(0, 1);
+    fixture.press(
+        Key::b,
+        ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK,
+    );
+    if !settles(|| sidebar_has_focus(&fixture)) {
+        return Err("setup: Ctrl+Shift+B did not focus the sidebar".to_owned());
+    }
+    source.0.borrow_mut().retain(|name| *name != "b.txt");
+    reload(&fixture, Trigger::F5, &loads, During::Nothing)?;
+
+    let mut failures = Vec::new();
+    if focused_name(&browser) != "c.txt" {
+        failures.push(format!(
+            "the cursor is on {:?}, not c.txt",
+            focused_name(&browser)
+        ));
+    }
+    if !sidebar_has_focus(&fixture) {
+        failures.push(format!(
+            "the reload took focus from the sidebar to {}",
+            describe_focus(&fixture)
+        ));
+    }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures.join("; "))
+    }
+}
+
+#[test]
+fn a_remote_reload_moves_a_removed_cursor_without_taking_focus() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::reload_cursor::a_remote_reload_moves_a_removed_cursor_without_taking_focus",
+        || {
+            let mut failures = Vec::new();
+            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
+                if let Err(error) = remote_reload_case(mode) {
+                    failures.push(format!("{mode:?}: {error}"));
+                }
+            }
+            report(failures);
+        },
+    );
+}

@@ -948,6 +948,7 @@ pub struct Browser {
     chooser_mode: Cell<bool>,
     suppress_child_mirror: Cell<bool>,
     external_change_focus: Cell<bool>,
+    background_load_focus: Cell<bool>,
     observers: RefCell<Vec<Observer>>,
     preferences_observers: RefCell<Vec<PreferencesObserver>>,
 }
@@ -1014,6 +1015,7 @@ impl Browser {
             chooser_mode: Cell::new(false),
             suppress_child_mirror: Cell::new(false),
             external_change_focus: Cell::new(false),
+            background_load_focus: Cell::new(false),
             observers: RefCell::new(Vec::new()),
             preferences_observers: RefCell::new(Vec::new()),
         })
@@ -1671,6 +1673,12 @@ impl Browser {
     /// such as another program deleting the cursor's file, rather than a cursor move.
     pub(crate) fn focus_follows_external_change(&self) -> bool {
         self.external_change_focus.get()
+    }
+
+    /// Whether the `FocusChanged` being observed only moves a finished load's cursor,
+    /// so it must not pull focus from elsewhere in the window.
+    pub(crate) fn focus_follows_background_load(&self) -> bool {
+        self.background_load_focus.get()
     }
 
     pub fn commit_peek(self: &Rc<Self>) {

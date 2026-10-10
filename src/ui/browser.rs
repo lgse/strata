@@ -2750,6 +2750,15 @@ impl ViewState {
         })
     }
 
+    /// Like `ModeViews::listing_may_take_focus`, for any column.
+    fn column_may_take_focus(&self) -> bool {
+        self.overlay
+            .root()
+            .and_then(|root| root.focus())
+            .is_none_or(|focused| focused.root().is_none())
+            || self.focused_column_depth().is_some()
+    }
+
     fn select_all(&self, depth: usize) {
         if self.mode.get() != BrowserMode::Columns {
             self.browser.select_all(depth);
