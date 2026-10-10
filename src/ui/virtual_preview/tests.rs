@@ -120,6 +120,7 @@ fn cross_row_selection_copies_full_middle_units_from_the_model() {
         source("last line", "last line"),
     ]);
     let mut state = VirtualPreviewState {
+        list: Default::default(),
         tables: Default::default(),
         media_cache: crate::ui::document_media::MediaCache::new(None),
         units,
@@ -192,6 +193,7 @@ fn cross_row_selection_copies_full_middle_units_from_the_model() {
 fn selection_does_not_invent_newlines_between_line_chunks() {
     let units = Rc::new(vec![source("abcd", "abcd"), source("ef", "ef\n")]);
     let state = VirtualPreviewState {
+        list: Default::default(),
         units,
         wrapped: std::cell::Cell::new(false),
         selection: std::cell::Cell::new(Some(DocumentSelection {
@@ -209,6 +211,11 @@ fn selection_does_not_invent_newlines_between_line_chunks() {
         pressed_link: std::cell::RefCell::new(None),
     };
 
+    assert_eq!(selection_text(&state).as_deref(), Some("cde"));
+    let state = Rc::new(state);
+    let matches = state.find_matches("CDE");
+    assert_eq!(matches.len(), 1);
+    state.select_match(matches[0]);
     assert_eq!(selection_text(&state).as_deref(), Some("cde"));
 }
 
@@ -232,6 +239,7 @@ fn table_selection_is_atomic_and_copies_tsv() {
         last: true,
     })]);
     let state = VirtualPreviewState {
+        list: Default::default(),
         units,
         wrapped: std::cell::Cell::new(false),
         selection: std::cell::Cell::new(Some(DocumentSelection {

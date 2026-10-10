@@ -286,12 +286,28 @@ fn tenxer_preview_owns_document_keys_until_returned() {
                 assert_eq!(fixture.selected(), selection, "{mode:?}");
                 assert_eq!(browser.active_location(), origin, "{mode:?}");
 
+                fixture.press(Key::f, ModifierType::CONTROL_MASK);
+                let find = widget_with_class(&fixture.preview.widget(), "preview-find")
+                    .expect("preview find bar");
+                assert!(find.is_visible());
+                let focused =
+                    gtk::prelude::RootExt::focus(&fixture.window).expect("find entry focus");
+                assert!(focused.is_ancestor(&find));
+                fixture.press(Key::Escape, ModifierType::empty());
+                assert!(!find.is_visible());
+                assert!(fixture.preview.is_open() && preview_has_focus(&fixture));
+                assert_eq!(
+                    fixture.selected(),
+                    selection,
+                    "{mode:?} find keeps selection"
+                );
+
                 let top = document_scroll(&fixture);
                 for (key, modifiers) in [
                     (Key::j, ModifierType::empty()),
                     (Key::Down, ModifierType::empty()),
                     (Key::d, ModifierType::CONTROL_MASK),
-                    (Key::f, ModifierType::CONTROL_MASK),
+                    (Key::Page_Down, ModifierType::CONTROL_MASK),
                     (Key::Page_Down, ModifierType::empty()),
                     (Key::J, ModifierType::SHIFT_MASK),
                 ] {

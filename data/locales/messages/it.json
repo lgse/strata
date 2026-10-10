@@ -1,4 +1,12 @@
 {
+  "Close find": "Chiudi ricerca",
+  "Find in preview": "Cerca nell’anteprima",
+  "Find in preview (Ctrl+F)": "Cerca nell’anteprima (Ctrl+F)",
+  "Find in preview…": "Cerca nell’anteprima…",
+  "Match %{current} of %{total}": "Corrispondenza %{current} di %{total}",
+  "Next match": "Corrispondenza successiva",
+  "No matches": "Nessuna corrispondenza",
+  "Previous match": "Corrispondenza precedente",
   " (%{size} known; size incomplete)": " (%{size} nota; dimensione incompleta)",
   " (size unavailable)": " (dimensione non disponibile)",
   "%{changes} · published %{date}": "%{changes} · pubblicata il %{date}",

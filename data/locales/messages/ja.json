@@ -1,4 +1,12 @@
 {
+  "Close find": "検索を閉じる",
+  "Find in preview": "プレビュー内を検索",
+  "Find in preview (Ctrl+F)": "プレビュー内を検索 (Ctrl+F)",
+  "Find in preview…": "プレビュー内を検索…",
+  "Match %{current} of %{total}": "%{total} 件中 %{current} 件目",
+  "Next match": "次の一致",
+  "No matches": "一致する結果はありません",
+  "Previous match": "前の一致",
   " (%{size} known; size incomplete)": " (判明分 %{size}、一部サイズ不明)",
   " (size unavailable)": " (サイズ不明)",
   "%{changes} · published %{date}": "%{changes} · %{date}公開",

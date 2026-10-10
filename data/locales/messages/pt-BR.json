@@ -1,4 +1,12 @@
 {
+  "Close find": "Fechar busca",
+  "Find in preview": "Buscar na prévia",
+  "Find in preview (Ctrl+F)": "Buscar na prévia (Ctrl+F)",
+  "Find in preview…": "Buscar na prévia…",
+  "Match %{current} of %{total}": "Ocorrência %{current} de %{total}",
+  "Next match": "Próxima ocorrência",
+  "No matches": "Nenhuma ocorrência",
+  "Previous match": "Ocorrência anterior",
   " (%{size} known; size incomplete)": " (%{size} conhecidos; tamanho incompleto)",
   " (size unavailable)": " (tamanho indisponível)",
   "%{changes} · published %{date}": "%{changes} · publicada em %{date}",

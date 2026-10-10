@@ -1,4 +1,12 @@
 {
+  "Close find": "찾기 닫기",
+  "Find in preview": "미리보기에서 찾기",
+  "Find in preview (Ctrl+F)": "미리보기에서 찾기 (Ctrl+F)",
+  "Find in preview…": "미리보기에서 찾기…",
+  "Match %{current} of %{total}": "%{total}개 중 %{current}번째 일치",
+  "Next match": "다음 일치 항목",
+  "No matches": "일치하는 항목 없음",
+  "Previous match": "이전 일치 항목",
   " (%{size} known; size incomplete)": " (알려진 크기 %{size}, 전체 크기는 불완전함)",
   " (size unavailable)": " (크기를 알 수 없음)",
   "%{changes} · published %{date}": "%{changes} · %{date} 게시",

@@ -2378,6 +2378,18 @@ paned > separator {
   outline: none;
 }
 
+.preview-find {
+  background: @strata_surface;
+  color: @strata_text;
+  border-bottom: 1px solid alpha(@strata_border, 0.6);
+  padding: 6px 8px;
+}
+
+.preview-find-status {
+  color: @strata_dim_text;
+  font-size: 0.8em;
+}
+
 .preview-title {
   color: @strata_text;
   font-size: 0.9em;

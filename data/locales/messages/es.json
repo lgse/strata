@@ -1,4 +1,12 @@
 {
+  "Close find": "Cerrar búsqueda",
+  "Find in preview": "Buscar en la vista previa",
+  "Find in preview (Ctrl+F)": "Buscar en la vista previa (Ctrl+F)",
+  "Find in preview…": "Buscar en la vista previa…",
+  "Match %{current} of %{total}": "Coincidencia %{current} de %{total}",
+  "Next match": "Siguiente coincidencia",
+  "No matches": "Sin coincidencias",
+  "Previous match": "Coincidencia anterior",
   " (%{size} known; size incomplete)": " (%{size} conocidos; tamaño incompleto)",
   " (size unavailable)": " (tamaño no disponible)",
   "%{changes} · published %{date}": "%{changes} · publicada el %{date}",

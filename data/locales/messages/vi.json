@@ -1,4 +1,12 @@
 {
+  "Close find": "Đóng tìm kiếm",
+  "Find in preview": "Tìm trong bản xem trước",
+  "Find in preview (Ctrl+F)": "Tìm trong bản xem trước (Ctrl+F)",
+  "Find in preview…": "Tìm trong bản xem trước…",
+  "Match %{current} of %{total}": "Kết quả %{current} trên %{total}",
+  "Next match": "Kết quả tiếp theo",
+  "No matches": "Không có kết quả phù hợp",
+  "Previous match": "Kết quả trước",
   " (%{size} known; size incomplete)": " (đã biết %{size}; kích thước chưa đầy đủ)",
   " (size unavailable)": " (không có kích thước)",
   "%{changes} · published %{date}": "%{changes} · phát hành ngày %{date}",

@@ -71,6 +71,29 @@ impl Dispatcher {
             return Some(Propagation::Stop);
         }
         let surface = self.preview.surface(&focused);
+        if surface == PreviewSurface::Document
+            && !mods.intersects(Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
+            && ((mods.contains(Modifiers::SHIFT_MASK)
+                && matches!(
+                    key,
+                    Key::Left
+                        | Key::Right
+                        | Key::Up
+                        | Key::Down
+                        | Key::Home
+                        | Key::End
+                        | Key::KP_Left
+                        | Key::KP_Right
+                        | Key::KP_Up
+                        | Key::KP_Down
+                        | Key::KP_Home
+                        | Key::KP_End
+                ))
+                || (mods == Modifiers::CONTROL_MASK
+                    && matches!(key, Key::Home | Key::End | Key::KP_Home | Key::KP_End)))
+        {
+            return Some(Propagation::Proceed);
+        }
         if !mods.intersects(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK) {
             if matches!(key, Key::J | Key::K) {
                 if surface != PreviewSurface::Media {

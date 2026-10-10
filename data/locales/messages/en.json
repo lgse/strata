@@ -1,4 +1,12 @@
 {
+  "Close find": "Close find",
+  "Find in preview": "Find in preview",
+  "Find in preview (Ctrl+F)": "Find in preview (Ctrl+F)",
+  "Find in preview…": "Find in preview…",
+  "Match %{current} of %{total}": "Match %{current} of %{total}",
+  "Next match": "Next match",
+  "No matches": "No matches",
+  "Previous match": "Previous match",
   " (%{size} known; size incomplete)": " (%{size} known; size incomplete)",
   " (size unavailable)": " (size unavailable)",
   "%{changes} · published %{date}": "%{changes} · published %{date}",

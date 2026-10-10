@@ -1,4 +1,12 @@
 {
+  "Close find": "Suche schließen",
+  "Find in preview": "In der Vorschau suchen",
+  "Find in preview (Ctrl+F)": "In der Vorschau suchen (Ctrl+F)",
+  "Find in preview…": "In der Vorschau suchen…",
+  "Match %{current} of %{total}": "Treffer %{current} von %{total}",
+  "Next match": "Nächster Treffer",
+  "No matches": "Keine Treffer",
+  "Previous match": "Vorheriger Treffer",
   " (%{size} known; size incomplete)": " (%{size} bekannt; Größe unvollständig)",
   " (size unavailable)": " (Größe nicht verfügbar)",
   "%{changes} · published %{date}": "%{changes} · veröffentlicht am %{date}",

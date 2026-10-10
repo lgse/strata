@@ -29,6 +29,7 @@ use super::{
 mod archive;
 pub(super) mod audio;
 mod ease_in;
+mod find;
 mod keyboard;
 mod layout;
 pub(in crate::ui) use layout::separator_width;
@@ -158,6 +159,9 @@ struct PreviewState {
     document_view: Cell<DocumentView>,
     document_preview: RefCell<Option<DocumentPreview>>,
     source_preview: SourcePreviewView,
+    rendered_text: RefCell<Option<Rc<super::virtual_preview::VirtualPreviewState>>>,
+    find: find::PreviewFind,
+    find_button: gtk::Button,
     metadata: gtk::Box,
     raw_details: super::raw_details::RawDetails,
     raw_details_scroll: gtk::ScrolledWindow,
@@ -301,12 +305,18 @@ impl PreviewDrawer {
         heading.append(&metadata);
         header_handle.append(&heading);
         header.append(&header_handle);
+        let find_button =
+            find::icon_button("Find in preview (Ctrl+F)", crate::assets::icons::SEARCH);
+        find_button.set_visible(false);
         header.append(&document_view_button);
+        header.append(&find_button);
         header.append(&open);
         header.append(&print);
         header.append(&wrap);
         header.append(&close);
         pane.append(&header);
+        let find = find::PreviewFind::new();
+        pane.append(&find.widget);
 
         let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
         content.add_css_class("preview-content");
@@ -360,6 +370,9 @@ impl PreviewDrawer {
             document_view: Cell::new(DocumentView::Rendered),
             document_preview: RefCell::new(None),
             source_preview: SourcePreviewView::new(),
+            rendered_text: RefCell::new(None),
+            find,
+            find_button,
             metadata,
             raw_details,
             raw_details_scroll,
@@ -428,6 +441,7 @@ impl PreviewDrawer {
         });
         install_preview_drag(&header_handle, &state);
         state.install_keyboard_ownership();
+        state.install_find();
         let weak = Rc::downgrade(&state);
         document_view_button.connect_clicked(move |_| {
             let Some(state) = weak.upgrade() else {
@@ -818,6 +832,14 @@ impl PreviewState {
     }
 
     fn show(self: &Rc<Self>, entry: FileEntry, depth: Option<usize>) {
+        if self
+            .current
+            .borrow()
+            .as_ref()
+            .is_none_or(|current| current.location != entry.location)
+        {
+            self.reset_find();
+        }
         self.cancel_pending_show();
         self.retain_pending_playback(&entry);
         if self.handed_off.borrow().as_ref() != Some(&entry.location) {
@@ -1482,8 +1504,9 @@ impl PreviewState {
                 );
             }
             PreviewContent::Rendered { document, warnings } => {
-                let (view, _) =
+                let (view, state) =
                     super::virtual_preview::rendered_document(document, warnings, false, None);
+                self.rendered_text.replace(Some(state));
                 self.content.append(&view);
             }
             PreviewContent::Rasterized { png } | PreviewContent::Model { png, .. } => {
@@ -1645,6 +1668,7 @@ impl PreviewState {
                 );
             }
         }
+        self.refresh_find();
         self.hand_keys_to_document();
     }
 
@@ -1837,6 +1861,8 @@ impl PreviewState {
         preview.stack.set_visible_child_name(name);
         self.document_view.set(view);
         self.update_document_view_action();
+        drop(preview_guard);
+        self.refresh_find();
     }
 
     fn update_document_view_action(&self) {
@@ -2816,6 +2842,8 @@ impl PreviewState {
 
     fn reset_content(&self, keep: Option<MediaFamily>) {
         let owned = self.content_owns_keys();
+        self.detach_find();
+        self.rendered_text.borrow_mut().take();
         self.source_preview.cancel();
         self.source_preview.scroll.borrow_mut().take();
         self.source_preview.virtual_state.borrow_mut().take();
@@ -3431,7 +3459,7 @@ impl SourcePreviewView {
         super::theme::register_source_buffer(&buffer);
         let view = sourceview5::View::builder()
             .buffer(&buffer)
-            .cursor_visible(false)
+            .cursor_visible(true)
             .editable(false)
             .highlight_current_line(false)
             .left_margin(14)

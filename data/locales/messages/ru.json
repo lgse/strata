@@ -1,4 +1,12 @@
 {
+  "Close find": "Закрыть поиск",
+  "Find in preview": "Найти в предпросмотре",
+  "Find in preview (Ctrl+F)": "Найти в предпросмотре (Ctrl+F)",
+  "Find in preview…": "Найти в предпросмотре…",
+  "Match %{current} of %{total}": "Совпадение %{current} из %{total}",
+  "Next match": "Следующее совпадение",
+  "No matches": "Совпадений нет",
+  "Previous match": "Предыдущее совпадение",
   " (%{size} known; size incomplete)": " (известно %{size}; размер указан не полностью)",
   " (size unavailable)": " (размер недоступен)",
   "%{changes} · published %{date}": "%{changes} · опубликовано %{date}",
