@@ -307,7 +307,6 @@ fn run_paste_collecting_created(
     Ok(created)
 }
 
-/// Runs a paste that must succeed and returns every event it emitted.
 fn run_paste(request: PasteRequest) -> Vec<OperationEvent> {
     let events = Rc::new(RefCell::new(Vec::new()));
     let emitted = events.clone();

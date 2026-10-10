@@ -33,10 +33,8 @@ impl StagingLoad {
     }
 }
 
-/// What suggests that the open folder departed.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum DepartureEvidence {
-    /// Its monitor reported its removal.
     RemovalReport,
     /// Reloading it failed, which also covers a removal report that a monitor burst or a
     /// reload superseded. The read error stays unless the folder is confirmed gone.
@@ -251,13 +249,7 @@ impl Browser {
             }
             match found.filter(|found| *found != probed && browser.source.allows_navigation(found))
             {
-                Some(renamed) => {
-                    // The same two steps as an in-app rename of an open folder.
-                    if let (Some(from), Some(to)) = (probed.native_path(), renamed.native_path()) {
-                        crate::services::refresh_search_indexes_for_rename(from, to);
-                    }
-                    browser.relocate_open_columns(&probed, &renamed);
-                }
+                Some(renamed) => browser.follow_renamed_location(&probed, &renamed),
                 None => {
                     browser.leave_departed_directory(generation, depth, probed.clone(), evidence)
                 }

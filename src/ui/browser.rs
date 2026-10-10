@@ -997,7 +997,6 @@ impl BrowserView {
         self.state.pending_new_entry.borrow().is_some()
     }
 
-    /// A rename field is open or a new entry is waiting for its name field.
     pub fn inline_edit_is_open(&self) -> bool {
         self.state.inline_edit_is_open()
     }

@@ -420,7 +420,7 @@ def test_window_accelerators_leave_an_open_rename_alone(strata, chord, mode):
     strata.keyboard.type_text("abc")
     strata.wait(lambda: field.text == "abc", "typing to replace the selection")
     strata.keyboard.press(chord)
-    # A wrongly routed accelerator acts within this window.
+    # Give a misrouted accelerator time to act before asserting nothing changed.
     time.sleep(0.5)
     editor = strata.window.find(role="text", name="Rename", states={"editable", "focused"})
     assert editor is not None and editor.text == "abc", f"{chord} closed the rename or took its focus"

@@ -1028,8 +1028,7 @@ impl ShortcutFooter {
             },
             None => None,
         };
-        // The default map keeps the pane's filter field on screen, so only 10xer
-        // names the query and the hit under the cursor here.
+        // The default map keeps the pane's filter field on screen.
         let named = status
             .as_ref()
             .filter(|_| crate::ui::tenxer_mode::chrome_suppressed());

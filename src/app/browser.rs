@@ -2961,13 +2961,7 @@ impl Browser {
                         }
                         browser.publish_rename(&source_for_publish, renamed);
                     } else {
-                        if let (Some(from), Some(to)) = (
-                            source_for_publish.native_path(),
-                            target_for_publish.native_path(),
-                        ) {
-                            crate::services::refresh_search_indexes_for_rename(from, to);
-                        }
-                        browser.relocate_open_columns(&source_for_publish, &target_for_publish);
+                        browser.follow_renamed_location(&source_for_publish, &target_for_publish);
                     }
                 }
             }
@@ -3705,6 +3699,13 @@ impl Browser {
         }
         // The source parent need not still be open when the operation completes.
         self.relocate_open_columns(old, &entry.location);
+    }
+
+    fn follow_renamed_location(self: &Rc<Self>, from: &Location, to: &Location) {
+        if let (Some(old), Some(new)) = (from.native_path(), to.native_path()) {
+            crate::services::refresh_search_indexes_for_rename(old, new);
+        }
+        self.relocate_open_columns(from, to);
     }
 
     fn relocate_open_columns(self: &Rc<Self>, from: &Location, to: &Location) {

@@ -708,7 +708,7 @@ def test_window_shortcuts_stay_blocked_over_a_modal_dialog(strata):
     strata.wait(focused, "the default button to take focus")
     for chord in ["ctrl+k", "ctrl+shift+k", "ctrl+\\"]:
         strata.keyboard.press(chord)
-        # A wrongly routed accelerator acts within this window.
+        # Give a misrouted accelerator time to act before asserting nothing changed.
         time.sleep(0.5)
         assert strata.dialog() is not None, chord
         assert strata.window.find(role="text", states={"editable"}) is None, f"{chord} opened a palette"

@@ -85,7 +85,6 @@ impl SearchSession {
         self.0.worker.borrow().is_some()
     }
 
-    /// Whether the latest query has not delivered a batch yet.
     pub(super) fn awaiting_results(&self) -> bool {
         self.0.awaiting.get()
     }

@@ -189,8 +189,7 @@ fn item_maps(preferences: &mut Preferences) -> [&mut HashMap<String, String>; 2]
     ]
 }
 
-/// Spells `path` the way stored keys are spelled, so component-wise prefix
-/// checks never match `/a/doc` against `/a/docs2`.
+/// Stored keys are lossy UTF-8; compare paths in the same form.
 fn key_path(path: &Path) -> PathBuf {
     PathBuf::from(path.to_string_lossy().as_ref())
 }

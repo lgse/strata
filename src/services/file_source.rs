@@ -463,7 +463,6 @@ pub struct MetadataRequest {
 pub struct LocationIdentity {
     pub device: u64,
     pub inode: u64,
-    /// Birth time, where the filesystem records one.
     pub created: Option<SystemTime>,
 }
 
