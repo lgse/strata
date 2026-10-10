@@ -1377,8 +1377,15 @@ fn item_customizations_follow_relocations_and_removals() {
                 Option<crate::model::FolderColor>,
                 Option<&'static str>,
             );
+            type Case<'a> = (
+                &'a str,
+                &'a [Customization],
+                &'a [ItemStep],
+                &'a [Customization],
+                usize,
+            );
             // Notifications count the coalesced saves, one per step that changed something.
-            let cases: [(&str, &[Customization], &[ItemStep], &[Customization], usize); 10] = [
+            let cases: [Case<'_>; 10] = [
                 (
                     "a rename carries the root and descendants but not a look-alike sibling",
                     &customized_docs,
