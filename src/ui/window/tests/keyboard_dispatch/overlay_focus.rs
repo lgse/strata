@@ -94,6 +94,17 @@ fn settles(condition: impl Fn() -> bool) -> bool {
     true
 }
 
+fn window_key_claimed(window: &gtk::ApplicationWindow, key: Key, modifiers: ModifierType) -> bool {
+    let controllers = window.observe_controllers();
+    (0..controllers.n_items())
+        .filter_map(|index| {
+            controllers
+                .item(index)
+                .and_downcast::<gtk::EventControllerKey>()
+        })
+        .any(|keys| keys.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers]))
+}
+
 fn press_escape_on(layer: &gtk::Widget) {
     let controllers = layer.observe_controllers();
     let handled = (0..controllers.n_items())
@@ -520,6 +531,19 @@ impl WindowAccelerator {
         }
     }
 
+    fn shortcut(self) -> (Key, ModifierType) {
+        match self {
+            Self::Search => (Key::k, ModifierType::CONTROL_MASK),
+            Self::FolderJump => (
+                Key::K,
+                ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK,
+            ),
+            Self::Refresh => (Key::F5, ModifierType::empty()),
+            Self::Terminal => (Key::t, ModifierType::CONTROL_MASK | ModifierType::ALT_MASK),
+            Self::ArrowScope => (Key::backslash, ModifierType::CONTROL_MASK),
+        }
+    }
+
     fn ran(self, before: &AcceleratorEffects, after: &AcceleratorEffects) -> bool {
         match self {
             Self::Search | Self::FolderJump => after.palette_open != before.palette_open,
@@ -661,8 +685,14 @@ fn window_accelerator_actions_yield_to_modals_and_inline_edits() {
         let closing = gtk::Box::new(gtk::Orientation::Vertical, 0);
         closing.add_css_class("app-modal-layer");
         closing.add_css_class("dismissing");
+        closing.set_sensitive(false);
         fixture.content.overlay().add_overlay(&closing);
         for accelerator in WindowAccelerator::ALL {
+            let (key, modifiers) = accelerator.shortcut();
+            assert!(
+                !window_key_claimed(&fixture.window, key, modifiers),
+                "{accelerator:?} was swallowed by the closing dialog"
+            );
             let before = effects();
             activate(accelerator);
             wait_until(|| accelerator.ran(&before, &effects()));

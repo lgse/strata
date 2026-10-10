@@ -15,12 +15,12 @@ use crate::{
     app::Browser,
     services::NavigationHistory,
     ui::{
-        browser::BrowserView, preview::PreviewDrawer, shortcut_footer::ShortcutFooter,
-        top_bar_navigation::TopBarNavigation,
+        browser::BrowserView, modal::is_closing_layer, preview::PreviewDrawer,
+        shortcut_footer::ShortcutFooter, top_bar_navigation::TopBarNavigation,
     },
 };
 
-use super::{SidebarState, SidebarView, TypeToSearch, visible_modal_layer};
+use super::{SidebarState, SidebarView, TypeToSearch, topmost_modal_layer, visible_modal_layer};
 
 mod chooser;
 pub(super) mod chords;
@@ -751,7 +751,7 @@ impl Dispatcher {
     }
 
     fn input_owner(&self, browser: &Browser, key: Key, modifiers: Modifiers) -> KeyResult {
-        if let Some(layer) = visible_modal_layer(&self.window) {
+        if let Some(layer) = topmost_modal_layer(&self.window, &is_closing_layer) {
             let focus_is_inside = gtk::prelude::RootExt::focus(&self.window)
                 .is_some_and(|focus| focus == layer || focus.is_ancestor(&layer));
             self.shortcuts.cancel_chord();
@@ -759,6 +759,12 @@ impl Dispatcher {
                 layer.grab_focus();
                 return Some(Propagation::Stop);
             }
+            return Some(Propagation::Proceed);
+        }
+        if visible_modal_layer(&self.window).is_some() {
+            // A layer animating out has dropped focus; only window accelerators,
+            // which skip closing layers, may act until focus is restored.
+            self.shortcuts.cancel_chord();
             return Some(Propagation::Proceed);
         }
         if self.native_menu_owns_input() {
