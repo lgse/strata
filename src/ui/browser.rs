@@ -37,6 +37,7 @@ pub(super) mod camera_scroll;
 mod clipboard;
 mod collection;
 mod columns;
+mod content_drop;
 pub(super) mod context_menu;
 mod customization;
 pub(super) use customization::show_customize_modal;
@@ -75,7 +76,7 @@ pub(super) use crate::ui::browser::clipboard::{
 };
 pub(crate) use crate::ui::browser::clipboard::{
     PreparedFileDrop, arm_spring_load_navigation, drag_actions_for_modifiers,
-    file_drag_hover_target, file_drop_action, file_drop_commit, locations_from_file_list_value,
+    file_drag_hover_target, file_drop_action, locations_from_file_list_value,
     prepare_file_drop_target,
 };
 pub(crate) use crate::ui::browser::collection::{
@@ -111,6 +112,7 @@ pub use crate::ui::browser::properties::format_permissions;
 pub(super) use crate::ui::modal::{
     animate_in, animate_out, dismiss_modal_layer, modal_layer, show_error_dialog, slide_out,
 };
+pub(crate) use content_drop::{DropRequest, supports_drop_formats};
 
 type PinHandler = Rc<dyn Fn(Location, String)>;
 type UnpinHandler = Rc<dyn Fn(&Location)>;
@@ -707,13 +709,14 @@ impl BrowserView {
         }
         if interactive {
             let weak_state = Rc::downgrade(&state);
-            state.mode_views.borrow().set_transfer_handler(Rc::new(
-                move |destination, sources, commit| {
+            state
+                .mode_views
+                .borrow()
+                .set_transfer_handler(Rc::new(move |destination, request| {
                     if let Some(state) = weak_state.upgrade() {
-                        state.commit_file_drop(destination, sources, commit);
+                        state.commit_drop(destination, request);
                     }
-                },
-            ));
+                }));
         }
 
         // The observer owns the view state while its window is alive. The window clears
@@ -879,13 +882,8 @@ impl BrowserView {
         true
     }
 
-    pub fn commit_file_drop(
-        &self,
-        destination: Location,
-        sources: Vec<Location>,
-        commit: crate::services::DropCommit,
-    ) {
-        self.state.commit_file_drop(destination, sources, commit);
+    pub(crate) fn commit_drop(&self, destination: Location, request: DropRequest) {
+        self.state.commit_drop(destination, request);
     }
 
     pub(crate) fn reveal_location(&self, location: Location) {

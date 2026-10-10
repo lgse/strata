@@ -28,6 +28,8 @@ pub(crate) mod table;
 mod transfer_action;
 mod update_check;
 mod update_install;
+pub(crate) mod web_image;
+mod web_link;
 
 pub use actions::{
     ActionAvailability, ActionHandle, ActionLoadFailure, ActionProgram, ActionRegistry,
@@ -88,6 +90,7 @@ pub(crate) use transfer_action::{
     CrossVolumeDropStrategy, DropActionInput, DropCommit, DropOverride, TransferKind,
     VolumeIdentity, VolumeRelation, drop_commit, transferable_drop_sources, volume_relation,
 };
+pub(crate) use web_link::WebLink;
 // `best_update`, `rollback_target`, and `ReleaseSummary` are deliberately not
 // re-exported here: `rollback_target` is the never-downgrade bypass, and only
 // `update_check` (which imports them directly from `release_channel`) has any

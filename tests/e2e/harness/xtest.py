@@ -114,6 +114,7 @@ class XTestConnection:
             ctypes.POINTER(ctypes.c_uint),
         ]
         self._x11.XResizeWindow.argtypes = [Display, ctypes.c_ulong, ctypes.c_uint, ctypes.c_uint]
+        self._x11.XSetInputFocus.argtypes = [Display, ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong]
         self._x11.XGetWindowAttributes.argtypes = [
             Display, ctypes.c_ulong, ctypes.POINTER(WindowAttributes),
         ]
@@ -233,6 +234,15 @@ class XTestConnection:
 
         surface = self._surface(width, height)
         return surface[1:] if surface is not None else None
+
+    def focus_surface(self, width: int, height: int) -> None:
+        """Restore focus after an auxiliary app closes on the window-manager-free display."""
+
+        surface = self._surface(width, height)
+        if surface is None:
+            raise XTestError("no native surface matches the accessible window")
+        self._x11.XSetInputFocus(self._display, surface[0], 2, 0)
+        self.flush()
 
     def resize_surface(self, current_width: int, current_height: int, width: int, height: int) -> None:
         """Resize the native surface identified by accessible dimensions."""

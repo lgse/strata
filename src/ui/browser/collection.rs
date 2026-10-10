@@ -103,10 +103,7 @@ pub(crate) fn reveal_collection_after_layout(
     position: u32,
     visit_items: crate::ui::marquee::ItemVisitor,
 ) {
-    if view.is::<gtk::GridView>() {
-        focus_collection_item_when_allocated(view, position);
-        return;
-    }
+    let grid = view.is::<gtk::GridView>();
     if let Some(pending) = take_pending_reveal(view) {
         pending.remove();
     }
@@ -122,6 +119,18 @@ pub(crate) fn reveal_collection_after_layout(
                 view.downcast_ref::<gtk::GridView>()
                     .and_then(|grid| grid.model())
             });
+        // Grid focus requests are lost while its model is detached or a modal owns focus.
+        if grid
+            && (frame < 2
+                || view.height() <= 1
+                || selection
+                    .as_ref()
+                    .is_none_or(|model| model.n_items() <= position))
+            && frame < 30
+            && view.is_mapped()
+        {
+            return glib::ControlFlow::Continue;
+        }
         let Some(selection) = selection.filter(|model| model.is_selected(position)) else {
             take_pending_reveal(view);
             return glib::ControlFlow::Break;
@@ -132,6 +141,16 @@ pub(crate) fn reveal_collection_after_layout(
         }
         if frame < 2 || view.height() <= 1 {
             return glib::ControlFlow::Continue;
+        }
+        if grid {
+            if let Some(window) = view.root().and_downcast::<gtk::Window>()
+                && crate::ui::window::visible_modal_layer(&window).is_some()
+            {
+                return glib::ControlFlow::Continue;
+            }
+            focus_collection_item_when_allocated(view, position);
+            take_pending_reveal(view);
+            return glib::ControlFlow::Break;
         }
         let Some(scroll) = view
             .ancestor(gtk::ScrolledWindow::static_type())
@@ -826,3 +845,6 @@ pub(crate) fn cancel_source(source: &RefCell<Option<glib::SourceId>>) {
         source.remove();
     }
 }
+
+#[cfg(test)]
+mod tests;

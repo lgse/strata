@@ -2351,7 +2351,7 @@ impl ViewState {
                 let PreparedFileDrop {
                     target: drop,
                     state: drop_state,
-                } = prepare_file_drop_target(move || Some(crumb.clone()));
+                } = prepare_file_drop_target(move || Some(crumb.clone())).attach_to(&button);
                 let state_for_enter = drop_state.clone();
                 let navigate_for_enter = spring_navigate.clone();
                 drop.connect_enter(move |target, _, _| {
@@ -2386,18 +2386,15 @@ impl ViewState {
                     let Some(destination) = drop_state.destination() else {
                         return false;
                     };
-                    let Some(sources) = super::locations_from_file_list_value(value) else {
+                    let Some(request) =
+                        super::DropRequest::from_value(target, value, &destination, &drop_state)
+                    else {
                         return false;
                     };
-                    if sources.is_empty() {
-                        return false;
-                    }
-                    let commit =
-                        super::file_drop_commit(target, &destination, &sources, &drop_state);
-                    state.commit_file_drop(destination, sources, commit);
+                    state.commit_drop(destination, request);
                     true
                 });
-                button.add_controller(drop);
+
                 self.breadcrumbs.append(&button);
             }
         }
