@@ -12,7 +12,7 @@ use crate::ui::browser::collection::{
     search_result_navigation_position,
 };
 use crate::ui::browser::context_menu::{install_folder_context_menu, install_item_context_menu};
-use crate::ui::browser::entry::{entry_filter, entry_model_value, format_file_size};
+use crate::ui::browser::entry::{entry_filter, entry_model_value};
 use crate::ui::browser::find::{
     HitRanges, highlight_hit_name, highlight_listing_name, search_hit_ranges,
 };
@@ -358,13 +358,7 @@ impl ColumnView {
 }
 
 pub(super) fn column_size_text(entry: Option<&FileEntry>) -> String {
-    entry
-        .filter(|entry| !entry.is_directory())
-        .and_then(|entry| match entry.size {
-            crate::model::MetadataValue::Known(bytes) => Some(format_file_size(bytes)),
-            crate::model::MetadataValue::Unknown | crate::model::MetadataValue::Unavailable => None,
-        })
-        .unwrap_or_default()
+    entry.map_or_else(String::new, crate::ui::browser_modes::entry_size)
 }
 
 const COLUMN_SPINNER_DELAY: std::time::Duration = std::time::Duration::from_millis(120);
@@ -887,6 +881,49 @@ impl ViewState {
                 set_active_path_style(&row, active == Some(item.position()), immediate);
                 true
             });
+        }
+    }
+
+    pub(super) fn request_columns_folder_counts(&self) {
+        if self.mode_views.borrow().mode() != crate::ui::browser_modes::BrowserMode::Columns {
+            return;
+        }
+        let requests = self
+            .columns
+            .borrow()
+            .iter()
+            .enumerate()
+            .filter(|(_, column)| !column.recursive_search_active.get())
+            .flat_map(|(depth, column)| {
+                column
+                    .bound_rows
+                    .borrow()
+                    .iter()
+                    .filter_map(|bound| {
+                        let item = bound.item.upgrade()?;
+                        let row = bound.row.upgrade()?;
+                        let icon = row
+                            .first_child()
+                            .and_downcast::<crate::ui::thumbnail::ThumbnailSlot>()?;
+                        let position = column.map.source_position(item.position())?;
+                        let entry = self.browser.entry_at(depth, position)?;
+                        (entry.is_directory()
+                            && entry.child_count == crate::model::MetadataValue::Unknown)
+                            .then_some((depth, position, row, icon, entry.location))
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        for (depth, position, row, icon, location) in requests {
+            crate::ui::thumbnail::request_metadata(
+                &icon,
+                &row,
+                &self.browser,
+                depth,
+                position,
+                location,
+                true,
+            );
         }
     }
 

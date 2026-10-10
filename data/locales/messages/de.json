@@ -916,6 +916,7 @@
   "the AUR returned an invalid response: %{error}": "AUR hat eine ungültige Antwort zurückgegeben: %{error}",
   "udiskie configuration %{path} is not valid UTF-8": "Die udiskie-Konfiguration %{path} ist kein gültiges UTF-8",
   "v%{version} available": "v%{version} verfügbar",
+  "%{kind} · v%{version} available": "%{kind} · v%{version} verfügbar",
   "“%{argument}” is not a usable argument. Write literal text, or one of {path}, {paths}, or {parent} on its own": "„%{argument}“ ist kein verwendbares Argument. Schreiben Sie wörtlichen Text oder allein {path}, {paths} oder {parent}",
   "“%{extension}” is not a usable extension: write it without a dot, for example “png”": "„%{extension}“ ist keine verwendbare Erweiterung: Schreiben Sie sie ohne Punkt, zum Beispiel „png“",
   "“%{id}” was imported disabled. Review its script, then enable it.": "„%{id}“ wurde deaktiviert importiert. Prüfen Sie das Skript und aktivieren Sie die Aktion dann.",

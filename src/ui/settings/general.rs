@@ -331,6 +331,12 @@ fn append_browsing_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) 
             write: PreferenceManager::set_arrow_navigation_scoped,
         },
         PreferenceSwitch {
+            title: "Show sizes in Columns view",
+            description: "Show file sizes and folder item counts when hovering or selecting items in Columns view.",
+            read: PreferenceManager::columns_show_sizes,
+            write: PreferenceManager::set_columns_show_sizes,
+        },
+        PreferenceSwitch {
             title: "Mirror columns selection",
             description: "Show the selected folder's contents in the next pane as you move with the keyboard.",
             read: PreferenceManager::columns_mirror_selection,

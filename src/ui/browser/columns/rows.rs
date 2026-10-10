@@ -128,6 +128,20 @@ pub(super) fn column_rows(
         content.append(&path);
         middle.set_child(Some(&content));
         middle.add_overlay(&size);
+        let weak_rename = rename.downgrade();
+        crate::ui::preferences::PreferenceManager::shared().bind_preference(
+            &size,
+            crate::ui::preferences::PreferenceManager::columns_show_sizes,
+            move |widget, enabled| {
+                let Some(label) = widget.downcast_ref::<gtk::Label>() else {
+                    return;
+                };
+                let editing = weak_rename
+                    .upgrade()
+                    .is_some_and(|entry| entry.upcast_ref::<gtk::Widget>().is_visible());
+                label.set_visible(enabled && !editing && !label.label().is_empty());
+            },
+        );
         let chevron = crate::assets::primary_icon(crate::assets::icons::CHEVRON_RIGHT, 15);
         chevron.add_css_class("file-chevron");
         chevron.set_valign(gtk::Align::Center);
@@ -905,6 +919,7 @@ pub(super) fn column_rows(
             &icon,
             entry.as_ref().and_then(|e| e.location.native_path()),
         );
+        let show_sizes = crate::ui::preferences::PreferenceManager::shared().columns_show_sizes();
         if let Some(entry) = entry.as_ref() {
             let mode_active = state
                 .as_ref()
@@ -936,7 +951,10 @@ pub(super) fn column_rows(
                 && !scrolling_for_bind.get()
                 && let Some(state) = state.as_ref()
                 && let Some(position) = source_position
-                && metadata_needs_fill(entry)
+                && (metadata_needs_fill(entry)
+                    || (show_sizes
+                        && entry.is_directory()
+                        && entry.child_count == crate::model::MetadataValue::Unknown))
             {
                 crate::ui::thumbnail::request_metadata(
                     &icon,
@@ -945,7 +963,7 @@ pub(super) fn column_rows(
                     depth,
                     position,
                     entry.location.clone(),
-                    false,
+                    show_sizes && entry.is_directory(),
                 );
             }
         } else {
@@ -957,7 +975,7 @@ pub(super) fn column_rows(
         }
         let size_text = column_size_text(entry.as_ref());
         size.set_label(&size_text);
-        size.set_visible(!editing && !size_text.is_empty());
+        size.set_visible(show_sizes && !editing && !size_text.is_empty());
         crate::ui::accessibility::describe_entry(item, &label.label(), entry.as_ref());
     });
     let rows_for_unbind = bound_rows.clone();

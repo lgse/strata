@@ -63,6 +63,8 @@ pub(in crate::ui) struct Preferences {
     #[serde(default = "default_enabled")]
     columns_mirror_selection: bool,
     #[serde(default = "default_enabled")]
+    columns_show_sizes: bool,
+    #[serde(default = "default_enabled")]
     render_documents_by_default: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     hardware_accelerated_video_previews: Option<bool>,
@@ -224,6 +226,7 @@ impl Default for Preferences {
             folder_peeking: false,
             single_click_previews: true,
             columns_mirror_selection: true,
+            columns_show_sizes: true,
             render_documents_by_default: true,
             hardware_accelerated_video_previews: None,
             video_preview_backend: default_video_preview_backend(),
@@ -654,6 +657,15 @@ impl PreferenceManager {
 
     pub fn set_single_click_previews(&self, enabled: bool) {
         self.preferences.borrow_mut().single_click_previews = enabled;
+        self.save_preferences();
+    }
+
+    pub fn columns_show_sizes(&self) -> bool {
+        self.preferences.borrow().columns_show_sizes
+    }
+
+    pub fn set_columns_show_sizes(&self, enabled: bool) {
+        self.preferences.borrow_mut().columns_show_sizes = enabled;
         self.save_preferences();
     }
 

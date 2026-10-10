@@ -225,7 +225,12 @@ impl ViewState {
                                 let text = column_size_text(Some(entry));
                                 let actively_renaming = bound.edit.is_editing();
                                 size.set_label(&text);
-                                size.set_visible(!text.is_empty() && !actively_renaming);
+                                size.set_visible(
+                                    crate::ui::preferences::PreferenceManager::shared()
+                                        .columns_show_sizes()
+                                        && !text.is_empty()
+                                        && !actively_renaming,
+                                );
                             }
                             true
                         });

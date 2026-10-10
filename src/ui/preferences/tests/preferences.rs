@@ -92,6 +92,7 @@ fn older_preferences_keep_backward_compatible_behavior_defaults() {
     saved.remove("tenxer_mode");
     saved.remove("omarchy_variant");
     saved.remove("folder_peeking");
+    saved.remove("columns_show_sizes");
     saved.remove("language");
     let restored: Preferences = saved.try_into().expect("backward-compatible preferences");
     assert_eq!(
@@ -105,6 +106,7 @@ fn older_preferences_keep_backward_compatible_behavior_defaults() {
             tenxer_mode: false,
             omarchy_variant: OmarchyVariant::Original,
             folder_peeking: false,
+            columns_show_sizes: true,
             ..non_default_preferences()
         }
     );
@@ -662,6 +664,7 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
             assert!(manager.folder_peeking());
             assert!(!manager.single_click_previews());
             assert!(!manager.columns_mirror_selection());
+            assert!(!manager.columns_show_sizes());
             assert!(!manager.hardware_accelerated_video_previews());
             assert_eq!(manager.video_preview_backend(), MediaPreviewBackend::Vulkan);
             assert_eq!(
@@ -1008,6 +1011,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_folder_peeking(false),
                 |m| m.set_single_click_previews(true),
                 |m| m.set_columns_mirror_selection(true),
+                |m| m.set_columns_show_sizes(true),
                 |m| m.set_render_documents_by_default(true),
                 |m| m.set_hardware_accelerated_video_previews(true),
                 |m| m.set_video_preview_backend(MediaPreviewBackend::VaApi),

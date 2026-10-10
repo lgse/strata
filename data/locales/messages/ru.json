@@ -916,6 +916,7 @@
   "the AUR returned an invalid response: %{error}": "AUR вернул недопустимый ответ: %{error}",
   "udiskie configuration %{path} is not valid UTF-8": "Конфигурация udiskie %{path} не является допустимым текстом UTF-8",
   "v%{version} available": "Доступна v%{version}",
+  "%{kind} · v%{version} available": "%{kind} · доступна v%{version}",
   "“%{argument}” is not a usable argument. Write literal text, or one of {path}, {paths}, or {parent} on its own": "«%{argument}» нельзя использовать как аргумент. Укажите обычный текст или только один из {path}, {paths} или {parent}",
   "“%{extension}” is not a usable extension: write it without a dot, for example “png”": "«%{extension}» нельзя использовать как расширение: укажите его без точки, например «png»",
   "“%{id}” was imported disabled. Review its script, then enable it.": "«%{id}» импортировано в отключённом состоянии. Проверьте сценарий, затем включите действие.",

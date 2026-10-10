@@ -284,7 +284,7 @@ impl ListBinding {
                 self.depth,
                 position,
                 self.entry.location.clone(),
-                false,
+                self.entry.is_directory(),
             );
         }
     }

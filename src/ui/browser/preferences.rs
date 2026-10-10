@@ -43,6 +43,15 @@ impl BrowserView {
         );
         self.bind_view_preference(
             manager,
+            PreferenceManager::columns_show_sizes,
+            |view, enabled| {
+                if enabled {
+                    view.state.request_columns_folder_counts();
+                }
+            },
+        );
+        self.bind_view_preference(
+            manager,
             PreferenceManager::group_by_type,
             Self::set_group_by_type,
         );
