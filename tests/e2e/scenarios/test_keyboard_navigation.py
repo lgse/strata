@@ -151,6 +151,8 @@ def test_tenxer_sidebar_and_header_round_trips(strata):
 
     empty = strata.fixture.path("empty-sidebar")
     empty.mkdir()
+    # Clicks target rows by position, so the monitor must list the folder first.
+    strata.entry("empty-sidebar")
     for chord, mode in (("ctrl+1", "Columns"), ("ctrl+3", "List"), ("ctrl+2", "Icons")):
         strata.keyboard.press(chord)
         strata.wait_for_view(mode)
