@@ -120,11 +120,11 @@ fn update_notice() -> (gtk::Box, gtk::Button, gtk::Label) {
     label.add_css_class("sidebar-update-label");
     label.set_xalign(0.0);
     label.set_hexpand(true);
-    // A prerelease version can wrap to two lines above its build-kind line.
-    label.set_wrap(true);
-    label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
-    label.set_lines(3);
-    label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    label.set_wrap(false);
+    label.set_single_line_mode(true);
+    label.set_lines(1);
+    label.set_max_width_chars(1);
+    label.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
     crate::ui::controls::keep_words_whole(&label);
     content.append(&dot);
     content.append(&label);

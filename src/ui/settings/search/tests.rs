@@ -48,6 +48,8 @@ fn localized_setting_titles_keep_stable_search_targets() {
 fn ranks_exact_labels_aliases_and_small_typing_errors() {
     for (query, page, id) in [
         ("Folder peeking", "general", "peeking"),
+        ("Show sizes in Columns view", "general", "columns-sizes"),
+        ("miller", "general", "columns-sizes"),
         ("Autoplay media previews", "general", "preview-autoplay"),
         ("paused", "general", "preview-autoplay"),
         ("Items shown in sidebar", "general", "sidebar-places"),

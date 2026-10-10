@@ -13,6 +13,7 @@ pub(in crate::ui) fn non_default_preferences() -> Preferences {
         folder_peeking: true,
         single_click_previews: false,
         columns_mirror_selection: false,
+        columns_show_sizes: false,
         render_documents_by_default: false,
         hardware_accelerated_video_previews: Some(false),
         video_preview_backend: "vulkan".into(),

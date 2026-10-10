@@ -4277,6 +4277,7 @@ fn metadata_fill_position(
     position.filter(|_| {
         super::browser::metadata_needs_fill(entry)
             || (include_mode && entry.mode == MetadataValue::Unknown)
+            || (entry.is_directory() && entry.child_count == MetadataValue::Unknown)
             || (include_icon_details && icon_details_need_fill(entry))
     })
 }
@@ -4995,9 +4996,9 @@ fn list_metadata_label() -> gtk::Label {
     label
 }
 
-fn entry_size(entry: &FileEntry) -> String {
+pub(in crate::ui) fn entry_size(entry: &FileEntry) -> String {
     if entry.is_directory() {
-        return String::new();
+        return folder_item_info(entry).unwrap_or_default();
     }
     match entry.size {
         MetadataValue::Known(bytes) => super::browser::format_file_size(bytes),
@@ -5100,13 +5101,17 @@ fn format_duration(seconds: u64) -> String {
     }
 }
 
+fn folder_item_info(entry: &FileEntry) -> Option<String> {
+    match entry.child_count {
+        MetadataValue::Known(0) => Some(crate::i18n::tr("No items")),
+        MetadataValue::Known(count) => Some(crate::i18n::count_u64("items", count)),
+        MetadataValue::Unknown | MetadataValue::Unavailable => None,
+    }
+}
+
 fn entry_icons_item_info(entry: &FileEntry) -> Option<String> {
     if entry.is_directory() {
-        return match entry.child_count {
-            MetadataValue::Known(0) => Some(crate::i18n::tr("No items")),
-            MetadataValue::Known(count) => Some(crate::i18n::count_u64("items", count)),
-            MetadataValue::Unknown | MetadataValue::Unavailable => None,
-        };
+        return folder_item_info(entry);
     }
     if let MetadataValue::Known(seconds) = entry.duration_seconds {
         return Some(format_duration(seconds));

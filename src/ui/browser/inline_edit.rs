@@ -1273,7 +1273,10 @@ impl ViewState {
                 field.set_margin_end(0);
             }
             spacer.set_visible(true);
-            size.set_visible(!size.label().is_empty());
+            size.set_visible(
+                crate::ui::preferences::PreferenceManager::shared().columns_show_sizes()
+                    && !size.label().is_empty(),
+            );
         }));
         let state = Rc::downgrade(self);
         crate::ui::collection_edit::begin(

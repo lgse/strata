@@ -917,6 +917,7 @@
   "the AUR returned an invalid response: %{error}": "AUR が無効な応答を返しました: %{error}",
   "udiskie configuration %{path} is not valid UTF-8": "udiskie の設定 %{path} は有効な UTF-8 ではありません",
   "v%{version} available": "v%{version} が利用可能",
+  "%{kind} · v%{version} available": "%{kind} · v%{version} が利用可能",
   "“%{argument}” is not a usable argument. Write literal text, or one of {path}, {paths}, or {parent} on its own": "「%{argument}」は引数として使用できません。そのままのテキストか、{path}、{paths}、{parent} のいずれかを単独で記述してください",
   "“%{extension}” is not a usable extension: write it without a dot, for example “png”": "「%{extension}」は拡張子として使用できません。ドットなしで記述してください（例: 「png」）",
   "“%{id}” was imported disabled. Review its script, then enable it.": "「%{id}」は無効の状態でインポートされました。スクリプトを確認してから有効にしてください。",

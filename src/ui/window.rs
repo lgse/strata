@@ -861,6 +861,29 @@ pub(super) fn build_appearance_menu(
             }
         });
     }
+    let (column_sizes, column_sizes_check, _) = appearance_option(
+        crate::assets::icons::COLUMNS,
+        "Show sizes in Columns view",
+        preferences.columns_show_sizes(),
+        true,
+        gtk::AccessibleRole::MenuItemCheckbox,
+    );
+    column_sizes.set_visible(current_mode == BrowserMode::Columns);
+    preferences.bind_preference(
+        &column_sizes_check,
+        PreferenceManager::columns_show_sizes,
+        |widget, enabled| widget.set_visible(enabled),
+    );
+    {
+        let preferences = preferences.clone();
+        let popover_weak = popover_weak.clone();
+        column_sizes.connect_clicked(move |_| {
+            preferences.set_columns_show_sizes(!preferences.columns_show_sizes());
+            if let Some(popover) = popover_weak.upgrade() {
+                popover.popdown();
+            }
+        });
+    }
     for (button, mode) in [
         (&columns, BrowserMode::Columns),
         (&icons, BrowserMode::Icons),
@@ -892,12 +915,14 @@ pub(super) fn build_appearance_menu(
         let icons_check = icons_check.clone();
         let list_check = list_check.clone();
         let group_by_type = group_by_type.clone();
+        let column_sizes = column_sizes.clone();
         let button_icon = button_icon.clone();
         view.connect_view_mode_changed(move |mode| {
             columns_check.set_visible(mode == BrowserMode::Columns);
             icons_check.set_visible(mode == BrowserMode::Icons);
             list_check.set_visible(mode == BrowserMode::List);
             group_by_type.set_sensitive(mode.supports_type_grouping());
+            column_sizes.set_visible(mode == BrowserMode::Columns);
             crate::assets::set_primary_icon(&button_icon, browser_mode_icon(mode));
         });
     }
@@ -1046,6 +1071,7 @@ pub(super) fn build_appearance_menu(
 
     content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     content.append(&group_by_type);
+    content.append(&column_sizes);
     let (hidden, hidden_check, hidden_icon) = appearance_option_with_shortcut(
         if hidden_files_shown {
             crate::assets::icons::EYE
@@ -4112,19 +4138,21 @@ fn navigate_to_gio_file(browser: &Rc<Browser>, file: &gio::File) {
     }
 }
 
-/// The sidebar update-notice pill's label text. A prerelease offer adds its
-/// build kind on its own line, so a preview build is never mistaken for an
-/// ordinary stable update and the long version cannot crowd the kind out.
+/// Put prerelease identity first so ellipsizing a long version cannot hide it.
 ///
 /// No channel guard belongs here: `check_for_updates` is already
 /// channel-filtered upstream, so a Stable user's `release` can never carry
 /// a prerelease kind in the first place.
 fn sidebar_update_label(release: &ReleaseMetadata) -> String {
-    let available = rust_i18n::t!("v%{version} available", version = release.version);
     if release.kind == BuildKind::Stable {
-        available.into_owned()
+        rust_i18n::t!("v%{version} available", version = release.version).into_owned()
     } else {
-        format!("{available}\n{}", release.kind.localized_label())
+        rust_i18n::t!(
+            "%{kind} · v%{version} available",
+            kind = release.kind.localized_label(),
+            version = release.version,
+        )
+        .into_owned()
     }
 }
 

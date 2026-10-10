@@ -917,6 +917,7 @@
   "the AUR returned an invalid response: %{error}": "AUR trả về phản hồi không hợp lệ: %{error}",
   "udiskie configuration %{path} is not valid UTF-8": "Cấu hình udiskie %{path} không phải UTF-8 hợp lệ",
   "v%{version} available": "Đã có v%{version}",
+  "%{kind} · v%{version} available": "%{kind} · đã có v%{version}",
   "“%{argument}” is not a usable argument. Write literal text, or one of {path}, {paths}, or {parent} on its own": "“%{argument}” không phải đối số dùng được. Hãy viết văn bản nguyên văn, hoặc chỉ một trong {path}, {paths} hoặc {parent}",
   "“%{extension}” is not a usable extension: write it without a dot, for example “png”": "“%{extension}” không phải phần mở rộng dùng được: hãy viết không có dấu chấm, ví dụ “png”",
   "“%{id}” was imported disabled. Review its script, then enable it.": "“%{id}” đã được nhập ở trạng thái tắt. Hãy xem lại tập lệnh rồi bật nó lên.",
