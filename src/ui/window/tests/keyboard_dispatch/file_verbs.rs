@@ -355,7 +355,7 @@ fn tenxer_sort_chord_sorts_the_focused_pane_and_remembers_it_for_the_folder() {
             PreferenceManager::shared().set_remember_folder_views(true);
             let folder = browser.location_at(1).expect("sorted folder");
             let default = PreferenceManager::shared().default_sort();
-            let saved = || match PreferenceManager::shared().folder_sort(&folder) {
+            let saved = || match PreferenceManager::shared().resolve_folder_sort(&folder, false) {
                 crate::model::FolderSort::Saved(sort_key, sort_direction) => {
                     (sort_key, sort_direction)
                 }

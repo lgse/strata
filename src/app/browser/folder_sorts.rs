@@ -9,10 +9,10 @@ use gio::glib;
 
 use crate::{
     app::navigation::FolderSortResolver,
-    model::{FolderSort, Location, SortDirection, SortKey, ViewPreferences},
+    model::{FolderSort, SortKey, ViewPreferences},
 };
 
-use super::Browser;
+use super::{Browser, BrowserEvent};
 
 /// Who asked for a sort, carried with it until it finishes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -31,8 +31,6 @@ pub(super) struct SortResync {
     pending: Cell<bool>,
     first: Cell<Option<usize>>,
     scheduled: Cell<bool>,
-    /// The generation whose debounced apply has not run yet.
-    pub(super) debounce: Cell<Option<u64>>,
     /// Followed sorts that ran during this pass, so one that cannot reach its
     /// target, such as one abandoned for missing metadata, is not retried. A
     /// sort superseded before it ran is not recorded and is retried.
@@ -58,15 +56,6 @@ impl Browser {
     pub fn set_folder_sorts(self: &Rc<Self>, resolver: Option<FolderSortResolver>) {
         self.state.borrow_mut().set_folder_sorts(resolver);
         self.resync_column_sorts();
-    }
-
-    pub fn observe_folder_sorts(
-        &self,
-        observer: impl Fn(&Location, SortKey, SortDirection) + 'static,
-    ) {
-        self.folder_sort_observers
-            .borrow_mut()
-            .push(Rc::new(observer));
     }
 
     pub fn folder_sort_at(&self, depth: usize) -> FolderSort {
@@ -128,10 +117,9 @@ impl Browser {
         });
     }
 
+    /// A sort that has not applied yet would be superseded by the next one.
     fn sort_in_flight(&self) -> bool {
-        let pending = self.pending_sort.get().map(|(generation, _)| generation);
-        (pending.is_some() && self.sort_resync.debounce.get() == pending)
-            || self.sort_awaiting_fill.borrow().is_some()
+        self.pending_sort.get().is_some() && !self.pending_sort_applied.get()
     }
 
     /// A sort still in flight wakes this again when it finishes.
@@ -221,9 +209,10 @@ impl Browser {
         if !remembered || matches!(sorted.sort_key, SortKey::DeviceOrder | SortKey::Recency) {
             return;
         }
-        let observers = self.folder_sort_observers.borrow().clone();
-        for observer in &observers {
-            observer(&location, sorted.sort_key, sorted.sort_direction);
-        }
+        self.emit(BrowserEvent::FolderSortChosen {
+            location,
+            sort_key: sorted.sort_key,
+            sort_direction: sorted.sort_direction,
+        });
     }
 }

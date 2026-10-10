@@ -162,16 +162,12 @@ impl PreferenceManager {
         key_for_location(location)
     }
 
-    pub(in crate::ui) fn folder_sort(&self, location: &Location) -> FolderSort {
-        self.resolve_folder_sort(location, false)
-    }
-
-    /// Opening a folder is what counts as using it for the least-recently-used limit.
-    pub(in crate::ui) fn opened_folder_sort(&self, location: &Location) -> FolderSort {
-        self.resolve_folder_sort(location, true)
-    }
-
-    fn resolve_folder_sort(&self, location: &Location, opened: bool) -> FolderSort {
+    /// `opened` counts as using the folder for the least-recently-used limit.
+    pub(in crate::ui) fn resolve_folder_sort(
+        &self,
+        location: &Location,
+        opened: bool,
+    ) -> FolderSort {
         let Some(key) = self.remembered_key(location) else {
             return FolderSort::Unremembered;
         };

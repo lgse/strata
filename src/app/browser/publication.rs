@@ -134,7 +134,7 @@ impl Browser {
                     self.ensure_sorted_after_load(depth);
                 }
             }
-            PublishTerminal::SortingFinished => self.emit(BrowserEvent::SortingFinished { depth }),
+            PublishTerminal::SortingFinished => self.finish_sorting(depth),
         }
     }
 

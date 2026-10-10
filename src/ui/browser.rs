@@ -549,10 +549,6 @@ impl BrowserView {
         browser.observe_preferences(move |sorting| {
             preferences_for_sorting.set_sort_preferences(sorting);
         });
-        let preferences_for_folders = preferences.clone();
-        browser.observe_folder_sorts(move |location, sort_key, sort_direction| {
-            preferences_for_folders.set_folder_sort(location, sort_key, sort_direction);
-        });
         let source_generation = Rc::new(Cell::new(0u64));
         let multiple_selection = Rc::new(Cell::new(multiple));
         let mode_views = ModeViews::new(&scroller, browser.clone(), multiple_selection.clone());

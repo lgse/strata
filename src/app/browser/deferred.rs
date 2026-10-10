@@ -112,7 +112,7 @@ impl Browser {
         } else {
             self.sort_loads.borrow_mut().clear();
             if let Some((_, depth)) = self.pending_sort.take() {
-                self.emit(super::BrowserEvent::SortingFinished { depth });
+                self.finish_sorting(depth);
             }
         }
     }

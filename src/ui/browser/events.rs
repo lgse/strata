@@ -762,6 +762,17 @@ impl ViewState {
             BrowserEvent::LocationsRemoved { locations } => {
                 crate::ui::preferences::PreferenceManager::shared().remove_folder_views(locations);
             }
+            BrowserEvent::FolderSortChosen {
+                location,
+                sort_key,
+                sort_direction,
+            } => {
+                crate::ui::preferences::PreferenceManager::shared().set_folder_sort(
+                    location,
+                    *sort_key,
+                    *sort_direction,
+                );
+            }
             BrowserEvent::DeletionStarted { total } => {
                 let browser = self.browser.clone();
                 self.show_file_operation_progress(

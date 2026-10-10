@@ -7,6 +7,7 @@ use std::{
 };
 
 use super::*;
+use crate::adapters::RemovableRoot;
 
 fn local(path: &str) -> FolderKey {
     FolderKey::local(Path::new(path)).expect("valid local key")

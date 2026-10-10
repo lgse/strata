@@ -261,6 +261,12 @@ pub enum BrowserEvent {
     LocationsRemoved {
         locations: Vec<Location>,
     },
+    /// A sort chosen in a column whose folder keeps its own sort.
+    FolderSortChosen {
+        location: Location,
+        sort_key: SortKey,
+        sort_direction: SortDirection,
+    },
     DeletionStarted {
         total: usize,
     },
@@ -335,7 +341,6 @@ pub enum BrowserEvent {
 /// emission stays safe.
 type Observer = Rc<dyn Fn(&BrowserEvent)>;
 type PreferencesObserver = Rc<dyn Fn(ViewPreferences)>;
-type FolderSortObserver = Rc<dyn Fn(&Location, SortKey, SortDirection)>;
 type DeferredDirectoryChanges = HashMap<usize, Vec<(Location, DirectoryChange)>>;
 
 const MAX_INCREMENTAL_OPERATION_UPDATES: usize = 64;
@@ -960,6 +965,9 @@ pub struct Browser {
     redo_claim: RefCell<Option<(u64, UndoEntry)>>,
     next_request: Cell<u64>,
     pending_sort: Cell<Option<(u64, usize)>>,
+    /// A debounced sort stays pending after it reorders its column, until a newer
+    /// sort or a cancel replaces it; this tells that apart from one not yet applied.
+    pending_sort_applied: Cell<bool>,
     sort_generation: Cell<u64>,
     preferences: Cell<ViewPreferences>,
     chooser_mode: Cell<bool>,
@@ -968,7 +976,6 @@ pub struct Browser {
     background_load_focus: Cell<bool>,
     observers: RefCell<Vec<Observer>>,
     preferences_observers: RefCell<Vec<PreferencesObserver>>,
-    folder_sort_observers: RefCell<Vec<FolderSortObserver>>,
     sort_resync: folder_sorts::SortResync,
     self_weak: Weak<Browser>,
 }
@@ -1031,6 +1038,7 @@ impl Browser {
             redo_claim: RefCell::new(None),
             next_request: Cell::new(1),
             pending_sort: Cell::new(None),
+            pending_sort_applied: Cell::new(false),
             sort_generation: Cell::new(0),
             preferences: Cell::new(preferences),
             chooser_mode: Cell::new(false),
@@ -1039,7 +1047,6 @@ impl Browser {
             background_load_focus: Cell::new(false),
             observers: RefCell::new(Vec::new()),
             preferences_observers: RefCell::new(Vec::new()),
-            folder_sort_observers: RefCell::new(Vec::new()),
             sort_resync: folder_sorts::SortResync::default(),
             self_weak: self_weak.clone(),
         })
@@ -1854,7 +1861,6 @@ impl Browser {
             return;
         }
         let generation = self.begin_sort(depth);
-        self.sort_resync.debounce.set(Some(generation));
         let weak = Rc::downgrade(self);
         gio::glib::timeout_add_local_once(Duration::from_millis(16), move || {
             if let Some(browser) = weak.upgrade() {
@@ -1867,13 +1873,18 @@ impl Browser {
     fn begin_sort(&self, depth: usize) -> u64 {
         let generation = self.sort_generation.get().wrapping_add(1);
         self.sort_generation.set(generation);
+        self.pending_sort_applied.set(false);
         if let Some((_, previous_depth)) = self.pending_sort.replace(Some((generation, depth))) {
-            self.emit(BrowserEvent::SortingFinished {
-                depth: previous_depth,
-            });
+            self.finish_sorting(previous_depth);
         }
         self.emit(BrowserEvent::SortingStarted { depth });
         generation
+    }
+
+    /// Pairs each `SortingStarted`, and lets a queued re-sync sort its next column.
+    pub(super) fn finish_sorting(&self, depth: usize) {
+        self.emit(BrowserEvent::SortingFinished { depth });
+        self.wake_sort_resync();
     }
 
     fn apply_debounced_sort(
@@ -1886,13 +1897,12 @@ impl Browser {
         if self.pending_sort.get() != Some((generation, depth)) {
             return;
         }
-        self.sort_resync.debounce.set(None);
         let result = {
             let mut state = self.state.borrow_mut();
             let Some(mut preferences) = state.column_preferences(depth) else {
                 drop(state);
                 self.pending_sort.set(None);
-                self.emit(BrowserEvent::SortingFinished { depth });
+                self.finish_sorting(depth);
                 return;
             };
             update(&mut preferences);
@@ -1908,6 +1918,7 @@ impl Browser {
             }
             self.sort_resync.note_attempt(origin, depth, preferences);
             let result = state.apply_sort_preferences(depth, preferences);
+            self.pending_sort_applied.set(true);
             let request_id = state.request_id_for_depth(depth);
             let total = state.columns.get(depth).map(|column| column.entries.len());
             let take_focus = state.take_selection_from_reveal(depth);
@@ -1929,7 +1940,7 @@ impl Browser {
             self.publish_staged(depth, plan);
         } else {
             self.pending_sort.set(None);
-            self.emit(BrowserEvent::SortingFinished { depth });
+            self.finish_sorting(depth);
         }
     }
 
@@ -3965,7 +3976,7 @@ impl Browser {
         let Some(directory_request) = self.state.borrow().request_id_for_depth(depth) else {
             self.sort_resync.note_attempt(origin, depth, preferences);
             self.pending_sort.set(None);
-            self.emit(BrowserEvent::SortingFinished { depth });
+            self.finish_sorting(depth);
             return;
         };
         let fill_request = self.new_request_id();
@@ -4041,9 +4052,7 @@ impl Browser {
         }
         match outcome {
             Some(plan) => self.publish_staged(depth, plan),
-            _ => {
-                self.emit(BrowserEvent::SortingFinished { depth });
-            }
+            _ => self.finish_sorting(depth),
         }
     }
     /// Only `Complete` sorts: a partial pass is never published as correct, and
@@ -4095,7 +4104,7 @@ impl Browser {
             ?outcome,
             "metadata sort abandoned; prior order preserved"
         );
-        self.emit(BrowserEvent::SortingFinished { depth });
+        self.finish_sorting(depth);
     }
     fn cancel_pending_sort_for(&self, depth: usize) {
         let awaiting = *self.sort_awaiting_fill.borrow();
@@ -4112,7 +4121,7 @@ impl Browser {
             .is_some_and(|(_, pending_depth)| pending_depth == depth)
         {
             self.pending_sort.set(None);
-            self.emit(BrowserEvent::SortingFinished { depth });
+            self.finish_sorting(depth);
         }
     }
 
@@ -4521,13 +4530,9 @@ impl Browser {
     }
 
     fn emit(&self, event: BrowserEvent) {
-        let finished_sort = matches!(event, BrowserEvent::SortingFinished { .. });
         let observers = self.observers.borrow().clone();
         for observer in &observers {
             observer(&event);
-        }
-        if finished_sort {
-            self.wake_sort_resync();
         }
     }
 

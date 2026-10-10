@@ -30,7 +30,6 @@ mod save_notice;
 mod text_size;
 pub(in crate::ui) use bindings::notify_live;
 pub(crate) use folder_view_settings::flush_pending_folder_views;
-pub(in crate::ui) use folder_views::reread_mounts;
 pub use text_size::TextSize;
 
 thread_local! {

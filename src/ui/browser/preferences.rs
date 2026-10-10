@@ -103,24 +103,19 @@ impl BrowserView {
         );
         self.bind_view_preference(
             manager,
-            |manager| {
-                (
-                    manager.remember_folder_views(),
-                    manager.folder_sorts_revision(),
-                )
-            },
-            |view, (remember, _)| {
+            PreferenceManager::remember_folder_views,
+            |view, remember| {
                 view.browser().set_folder_sorts(remember.then(|| {
                     Rc::new(|location: &crate::model::Location, opened| {
-                        let manager = PreferenceManager::shared();
-                        if opened {
-                            manager.opened_folder_sort(location)
-                        } else {
-                            manager.folder_sort(location)
-                        }
+                        PreferenceManager::shared().resolve_folder_sort(location, opened)
                     }) as crate::app::FolderSortResolver
                 }));
             },
+        );
+        self.bind_view_preference(
+            manager,
+            PreferenceManager::folder_sorts_revision,
+            |view, _| view.browser().resync_column_sorts(),
         );
     }
 }

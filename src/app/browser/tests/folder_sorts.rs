@@ -28,7 +28,7 @@ fn remembering_browser(
     browser.set_folder_sorts(Some(resolver(saved)));
     let reported = Rc::new(RefCell::new(Vec::new()));
     let observed = reported.clone();
-    browser.observe_folder_sorts(move |location, sort_key, sort_direction| {
+    observe_chosen_sorts(&browser, move |location, sort_key, sort_direction| {
         observed
             .borrow_mut()
             .push((location.clone(), sort_key, sort_direction));
@@ -36,10 +36,26 @@ fn remembering_browser(
     (browser, reported)
 }
 
+fn observe_chosen_sorts(
+    browser: &Browser,
+    observer: impl Fn(&Location, SortKey, SortDirection) + 'static,
+) {
+    browser.observe(move |event| {
+        if let BrowserEvent::FolderSortChosen {
+            location,
+            sort_key,
+            sort_direction,
+        } = event
+        {
+            observer(location, *sort_key, *sort_direction);
+        }
+    });
+}
+
 /// Saves reported sorts the way the preference manager does.
 fn save_reported_sorts(browser: &Browser, saved: &SavedSorts) {
     let saved = saved.clone();
-    browser.observe_folder_sorts(move |location, sort_key, sort_direction| {
+    observe_chosen_sorts(browser, move |location, sort_key, sort_direction| {
         saved.borrow_mut().insert(
             location.clone(),
             FolderSort::Saved(sort_key, sort_direction),
@@ -292,6 +308,34 @@ fn a_resync_superseded_by_a_chosen_sort_is_retried() {
     pump_until_settled(&browser, || {
         sorting(&browser, 0) == Some((SortKey::Name, SortDirection::Descending))
             && sorting(&browser, 1) == Some((SortKey::Type, SortDirection::Descending))
+    });
+}
+
+#[test]
+fn a_resync_is_not_held_up_by_a_superseded_metadata_sort() {
+    let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let saved: SavedSorts = Rc::default();
+    let source = Rc::new(ScriptedSource::scripted(vec!["alpha", "beta"], vec![]));
+    let (browser, _) = remembering_browser(source, &saved);
+    browser.navigate(Location::local("/fixture"));
+    browser.descend(0, Location::local("/fixture/child"));
+    browser.set_sort(0, SortKey::Size, SortDirection::Ascending);
+    pump_until_settled(&browser, || browser.sort_awaiting_fill.borrow().is_some());
+    browser.set_sort(1, SortKey::Type, SortDirection::Descending);
+    pump_until_settled(&browser, || {
+        sorting(&browser, 1) == Some((SortKey::Type, SortDirection::Descending))
+    });
+
+    saved.borrow_mut().insert(
+        Location::local("/fixture/child"),
+        FolderSort::Saved(SortKey::Name, SortDirection::Descending),
+    );
+    browser.resync_column_sorts();
+
+    pump_until_settled(&browser, || {
+        sorting(&browser, 1) == Some((SortKey::Name, SortDirection::Descending))
     });
 }
 

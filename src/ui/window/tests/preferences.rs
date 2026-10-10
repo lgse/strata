@@ -867,7 +867,10 @@ fn saved_folder_sorts_and_icon_sizes_apply_before_settings_and_follow_changes_ac
 
             manager.reset_folder_sort(&sorted_location);
             manager.set_default_icons_size(128);
-            assert_eq!(manager.folder_sort(&sorted_location), FolderSort::Default);
+            assert_eq!(
+                manager.resolve_folder_sort(&sorted_location, false),
+                FolderSort::Default
+            );
             wait_until(|| icons_size(&first) == Some(128));
             manager.set_browser_mode(BrowserMode::Columns);
             wait_until(|| sorting(&second) == Some((SortKey::Name, SortDirection::Ascending)));
@@ -892,7 +895,10 @@ fn folder_settings_saved_by_another_process_are_merged_instead_of_overwritten() 
             open.content.browser.navigate_location(elsewhere.clone());
             wait_until(|| !column_loading(&open, 0));
             let manager = PreferenceManager::shared();
-            assert_eq!(manager.folder_sort(&elsewhere), FolderSort::Default);
+            assert_eq!(
+                manager.resolve_folder_sort(&elsewhere, false),
+                FolderSort::Default
+            );
 
             write_folder_views(&format!(
                 "version = 1\n[[folder]]\npath = \"{}\"\nsort = \"size\"\ndirection = \"descending\"\n",
@@ -905,7 +911,7 @@ fn folder_settings_saved_by_another_process_are_merged_instead_of_overwritten() 
             assert!(saved.contains(&here.display_path()), "{saved}");
             assert!(saved.contains(&elsewhere.display_path()), "{saved}");
             assert_eq!(
-                manager.folder_sort(&elsewhere),
+                manager.resolve_folder_sort(&elsewhere, false),
                 FolderSort::Saved(SortKey::Size, SortDirection::Descending)
             );
             wait_until(|| {
@@ -928,7 +934,10 @@ fn folder_settings_saved_by_another_process_are_merged_instead_of_overwritten() 
                 !folder_views_file().contains("[[folder]]"),
                 "forgetting also clears what another process saved"
             );
-            assert_eq!(manager.folder_sort(&elsewhere), FolderSort::Default);
+            assert_eq!(
+                manager.resolve_folder_sort(&elsewhere, false),
+                FolderSort::Default
+            );
         },
     );
 }

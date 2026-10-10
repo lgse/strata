@@ -16,7 +16,10 @@ use gtk::{
 };
 
 use crate::{
-    adapters::{LocalFileSource, LocalOperationProvider, RevealRequest, location_for_file},
+    adapters::{
+        LocalFileSource, LocalOperationProvider, RevealRequest, location_for_file,
+        mount_can_unplug, volume_can_unplug,
+    },
     app::{Browser, BrowserEvent},
     model::Location,
     services::{BuildKind, ReleaseMetadata, sanitize_uri_credentials},
@@ -2997,28 +3000,6 @@ fn release_kind(action: MediaRelease) -> device_release::ReleaseKind {
         MediaRelease::UnmountMount => device_release::ReleaseKind::Unmount,
         MediaRelease::EjectVolume | MediaRelease::EjectMount => device_release::ReleaseKind::Eject,
     }
-}
-
-pub(super) fn drive_can_unplug(drive: &gio::Drive) -> bool {
-    drive.is_removable() || drive.is_media_removable() || drive.can_eject()
-}
-
-pub(super) fn mount_can_unplug(mount: &gio::Mount) -> bool {
-    if mount.can_eject() {
-        return true;
-    }
-    mount
-        .drive()
-        .or_else(|| mount.volume().and_then(|volume| volume.drive()))
-        .is_some_and(|drive| drive_can_unplug(&drive))
-}
-
-pub(super) fn volume_can_unplug(volume: &gio::Volume) -> bool {
-    if volume.can_eject() {
-        return true;
-    }
-    volume.drive().is_some_and(|drive| drive_can_unplug(&drive))
-        || volume.get_mount().is_some_and(|mount| mount.can_eject())
 }
 
 fn release_unplug(

@@ -14,8 +14,8 @@ use super::super::icons_cell::{MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZ
 
 mod keys;
 #[cfg(test)]
-pub(in crate::ui) use keys::{RemovableRoot, key_for_path};
-pub(in crate::ui) use keys::{holds_mount_points, key_for_location, reread_mounts};
+pub(in crate::ui) use keys::key_for_path;
+pub(in crate::ui) use keys::{holds_mount_points, key_for_location};
 
 pub(in crate::ui) const FOLDER_VIEWS_LIMIT: usize = 5_000;
 const VERSION: i64 = 1;

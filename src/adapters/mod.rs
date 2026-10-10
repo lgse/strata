@@ -36,5 +36,8 @@ pub(crate) use local_operations::{
     sync_probe_len, sync_probe_observations,
 };
 pub use local_preview::LocalPreviewProvider;
-pub(crate) use volume::MountTable;
 pub(crate) use volume::{DropVolumeQuery, DropVolumes, lookup_drop_volumes};
+pub(crate) use volume::{
+    MountTable, RemovableRoot, invalidate_mount_snapshot, mount_can_unplug, volume_can_unplug,
+    with_mount_snapshot,
+};
