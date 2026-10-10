@@ -128,14 +128,23 @@ the original name. Finishing with an empty or invalid name also keeps the
 original. Cancelling the initial rename does **not** delete the new item: it
 remains under its allocated default name. File contents are preserved.
 
+In an inline rename, an empty local file named `docs/` becomes a folder named
+`docs`. `docs/note.txt` creates the folder if needed and an empty file inside it;
+existing real folders are reused. Each path component must be a valid name, and
+existing files, symlinks, and target-name collisions are not overwritten. A
+nonempty file is never converted. A folder renamed `docs/` is simply renamed
+`docs`. The 10xer footer create/rename prompts keep their own single-name rules.
+
 Clicking inside the field continues editing. Existing files retain extension-aware
 selection (the stem is selected); folder names containing dots are selected in full.
 
-Names containing `/` or NUL, `.`/`..`, and whitespace-only names (including
-Unicode whitespace) are invalid. Valid names are used exactly as typed,
+Names containing NUL, `.`/`..`, and whitespace-only names (including Unicode
+whitespace) are invalid; `/` is valid only as a separator in the empty-file
+inline workflow above. Valid names are used exactly as typed,
 including spaces around a nonblank name, hidden-file prefixes, and Unicode.
-Name conflicts, filesystem-specific limits, and permission errors retain the
-original item and report an error.
+Ordinary rename conflicts, filesystem-specific limits, and permission errors
+retain the original item and report an error. If a later step of an empty-file
+path conversion fails after its deletion, already-created folders may remain.
 
 ## Filename patterns while filtering
 

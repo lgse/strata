@@ -191,11 +191,29 @@ impl super::BrowserView {
     }
 }
 
+fn inline_path_name(
+    browser: &Rc<crate::app::Browser>,
+    entry: &FileEntry,
+    name: String,
+) -> Option<String> {
+    match name.strip_suffix('/') {
+        Some(base) if entry.is_directory() => Some(base.to_owned()),
+        Some(base) if browser.convert_empty_file_to_path(entry, base, true) => None,
+        None if name.contains('/') && browser.convert_empty_file_to_path(entry, &name, false) => {
+            None
+        }
+        _ => Some(name),
+    }
+}
+
 pub(in crate::ui) fn queue_rename(
     browser: &Rc<crate::app::Browser>,
     entry: FileEntry,
     name: String,
 ) {
+    let Some(name) = inline_path_name(browser, &entry, name) else {
+        return;
+    };
     if name == entry.display_name || validate_basename(&name).is_err() {
         browser.clear_group_folder();
         return;
@@ -1296,6 +1314,9 @@ impl ViewState {
     }
 
     fn submit_rename_entry(self: &Rc<Self>, entry: FileEntry, name: String) {
+        let Some(name) = inline_path_name(&self.browser, &entry, name) else {
+            return;
+        };
         let valid_change = name != entry.display_name && validate_basename(&name).is_ok();
         if !valid_change {
             self.browser.clear_group_folder();

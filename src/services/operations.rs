@@ -146,6 +146,8 @@ pub struct DeleteRequest {
     pub id: OperationRequestId,
     pub entries: Vec<FileEntry>,
     pub permanent: bool,
+    /// Refuse the deletion if the single native regular file is no longer empty.
+    pub empty_file_only: bool,
 }
 
 #[derive(Clone, Debug)]

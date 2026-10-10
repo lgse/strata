@@ -303,6 +303,94 @@ def test_leaving_a_valid_name_commits_it(strata, mode, kind, new, target):
         assert not (strata.environment.home / "renamed.item").exists()
 
 
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_new_file_trailing_slash_creates_folder(strata, mode):
+    field = start_creation(strata, "file")
+    original = strata.fixture.path("new file")
+    assert original.is_file() and original.read_bytes() == b""
+    strata.keyboard.type_text("docs/")
+    strata.wait(lambda: field.text == "docs/", "the folder name with a trailing slash")
+    assert not field.description, f"trailing slash warning: {field.description}"
+    strata.keyboard.press("Return")
+    wait_for_edit_closed(strata)
+    folder = strata.fixture.path("docs")
+    strata.wait(folder.is_dir, "the replacement folder")
+    assert not original.exists()
+    strata.entry("docs")
+
+
+def test_new_file_trailing_slash_can_reuse_its_own_name(strata):
+    field = start_creation(strata, "file")
+    original = strata.fixture.path("new file")
+    strata.keyboard.type_text("new file/")
+    strata.wait(lambda: field.text == "new file/", "the file name with a trailing slash")
+    strata.keyboard.press("Return")
+    wait_for_edit_closed(strata)
+    strata.wait(original.is_dir, "the folder replacing the empty file")
+
+
+def test_new_file_trailing_slash_rejects_collisions_and_embedded_slashes(strata):
+    original = strata.fixture.path("new file")
+    for proposed in ("archive/", "a//b"):
+        if not original.exists():
+            field = start_creation(strata, "file")
+        else:
+            strata.select_entry_with_keyboard("new file")
+            strata.keyboard.press("F2")
+            field = rename_field(strata)
+            strata.keyboard.press("ctrl+a")
+        strata.keyboard.type_text(proposed)
+        strata.wait(lambda: field.text == proposed, "the proposed name")
+        strata.keyboard.press("Return")
+        wait_for_edit_closed(strata)
+        assert original.is_file() and original.read_bytes() == b""
+        assert strata.fixture.path("archive").is_dir()
+        assert not strata.fixture.path("a").exists()
+
+
+@pytest.mark.parametrize("name", ["docs/note.txt", "archive/note.txt", "docs/sub/note.txt"])
+def test_new_file_path_creates_file_inside_folder(strata, name):
+    field = start_creation(strata, "file")
+    original = strata.fixture.path("new file")
+    strata.keyboard.type_text(name)
+    strata.wait(lambda: field.text == name, "a file path in the editor")
+    assert not field.description, f"path warning: {field.description}"
+    strata.keyboard.press("Return")
+    wait_for_edit_closed(strata)
+    strata.wait(lambda: strata.fixture.path(name).is_file(), "the nested file")
+    first, next_entry = name.split('/', 2)[:2]
+    strata.open_directory(first)
+    strata.entry(next_entry, directory=first)
+    assert not original.exists()
+
+
+@pytest.mark.parametrize("mode", COLUMNS_AND_ONE)
+def test_trailing_slash_on_new_folder_is_normal_rename(strata, mode):
+    field = start_creation(strata, "folder", via_menu=False)
+    original = strata.fixture.path("new folder")
+    strata.keyboard.type_text("notes/")
+    strata.wait(lambda: field.text == "notes/", "the folder name with a trailing slash")
+    strata.keyboard.press("Return")
+    wait_for_edit_closed(strata)
+    strata.wait(lambda: strata.fixture.path("notes").is_dir(), "the renamed folder")
+    assert not original.exists()
+
+
+def test_trailing_slash_never_removes_nonempty_files_or_colliding_names(strata):
+    for proposed in ("docs/", "archive/", "a/b"):
+        original = strata.fixture.path("todo.txt")
+        field, _ = begin_edit(strata, "file", False)
+        strata.keyboard.press("ctrl+a")
+        strata.keyboard.type_text(proposed)
+        strata.wait(lambda: field.text == proposed, "the proposed name")
+        strata.keyboard.press("Return")
+        wait_for_edit_closed(strata)
+        assert original.read_text() == "todo\n"
+        assert not strata.fixture.path("docs").exists()
+        assert not strata.fixture.path("a").exists()
+        assert strata.fixture.path("archive").is_dir()
+
+
 @pytest.mark.parametrize("kind", KINDS)
 def test_rename_and_undo_restores_the_original_item(strata, kind):
     if kind == "folder":

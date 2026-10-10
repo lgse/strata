@@ -26,7 +26,7 @@ def start_new_file(strata, select=True):
 
 @pytest.mark.parametrize("mode", ALL_MODES)
 def test_invalid_new_file_names_can_be_corrected(strata, mode):
-    name = "bad/name"
+    name = "bad//name"
     field = start_new_file(strata)
     original = strata.fixture.names()
     strata.keyboard.type_text(name)

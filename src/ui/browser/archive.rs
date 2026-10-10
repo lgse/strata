@@ -298,7 +298,7 @@ impl ViewState {
         let name_entry = form_entry();
         name_entry.set_text(&default_name);
         name_entry.connect_changed(|field| {
-            update_basename_validation(field);
+            update_basename_validation(field, false, false);
         });
         let password_entry = form_password_entry();
         password_entry.set_show_peek_icon(true);

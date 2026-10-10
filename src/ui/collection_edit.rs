@@ -6,7 +6,7 @@
 //! and its pending/error reconciliation remain in the browser's operation coordinator.
 
 use crate::{
-    model::{FileEntry, Location},
+    model::{EntryKind, FileEntry, Location},
     services::validate_basename,
 };
 use gtk::{glib, prelude::*};
@@ -162,8 +162,13 @@ pub(super) fn begin(
     field.set_sensitive(true);
     field.remove_css_class("error");
     crate::ui::accessibility::set_description(&field, None);
-    let changed = field.connect_changed(|field| {
-        update_basename_validation(field);
+    let allow_path = entry.kind == EntryKind::File
+        && entry.location.native_path().is_some_and(|path| {
+            path.symlink_metadata()
+                .is_ok_and(|metadata| metadata.is_file() && metadata.len() == 0)
+        });
+    let changed = field.connect_changed(move |field| {
+        update_basename_validation(field, true, allow_path);
     });
     let activate = submit.clone();
     let activated = field.connect_activate(move |field| activate(field));
@@ -240,17 +245,34 @@ pub(super) fn rename_stem_end(name: &str) -> i32 {
 }
 
 // Empty fields are an ordinary editing state, although they cannot be submitted.
-pub(super) fn basename_field_error(name: &str) -> Option<&'static str> {
+pub(super) fn basename_field_error(
+    name: &str,
+    allow_trailing_slash: bool,
+    allow_path: bool,
+) -> Option<&'static str> {
     if name.is_empty() {
-        None
+        return None;
+    }
+    let name = if allow_trailing_slash {
+        name.strip_suffix('/').unwrap_or(name)
+    } else {
+        name
+    };
+    if allow_path {
+        name.split('/')
+            .find_map(|part| validate_basename(part).err())
     } else {
         validate_basename(name).err()
     }
 }
 
-pub(in crate::ui) fn update_basename_validation(field: &gtk::Entry) -> bool {
+pub(in crate::ui) fn update_basename_validation(
+    field: &gtk::Entry,
+    allow_trailing_slash: bool,
+    allow_path: bool,
+) -> bool {
     let text = field.text();
-    match basename_field_error(text.as_str()) {
+    match basename_field_error(text.as_str(), allow_trailing_slash, allow_path) {
         None => {
             field.remove_css_class("error");
             crate::ui::accessibility::set_description(field, None);

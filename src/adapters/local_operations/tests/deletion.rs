@@ -263,6 +263,7 @@ fn large_deletion_progress_reports_every_completed_location() -> Result<(), Box<
             id: OperationRequestId(24),
             entries,
             permanent: true,
+            empty_file_only: false,
         },
         Rc::new(move |event| emitted.borrow_mut().push(event)),
     );
@@ -287,6 +288,38 @@ fn large_deletion_progress_reports_every_completed_location() -> Result<(), Box<
         .cloned()
         .collect::<HashSet<_>>();
     assert_eq!(reported, expected);
+    Ok(())
+}
+
+#[test]
+fn guarded_deletion_refuses_a_file_filled_after_submission() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let path = root.path().join("draft.txt");
+    fs::write(&path, [])?;
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.delete(
+        DeleteRequest {
+            id: OperationRequestId(25),
+            entries: vec![file_entry(&path)],
+            permanent: true,
+            empty_file_only: true,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    fs::write(&path, "keep")?;
+    while !events
+        .borrow()
+        .iter()
+        .any(|event| matches!(event, OperationEvent::CompletedWithErrors { .. }))
+    {
+        glib::MainContext::default().iteration(true);
+    }
+    assert_eq!(fs::read_to_string(&path)?, "keep");
+    assert!(events.borrow().iter().any(|event| matches!(event, OperationEvent::CompletedWithErrors { deleted_locations, .. } if deleted_locations.is_empty())));
     Ok(())
 }
 
@@ -373,6 +406,7 @@ fn provider_cleans_only_confirmed_pins_on_failure_and_cancellation() {
                         id: OperationRequestId(1372),
                         entries: vec![directory_entry(&first), directory_entry(&second)],
                         permanent: true,
+                        empty_file_only: false,
                     },
                     Rc::new(move |event| {
                         if cancel_after_first
@@ -435,6 +469,7 @@ fn cancelling_between_deletions_reports_completed_and_unattempted_items()
             id: OperationRequestId(7),
             entries: vec![file_entry(&first), file_entry(&second)],
             permanent: true,
+            empty_file_only: false,
         },
         Rc::new(move |event| {
             let cancel = matches!(event, OperationEvent::DeleteProgress { completed: 1, .. });
@@ -556,6 +591,7 @@ fn bookmark_cleanup_failure_preserves_the_successful_deletion_outcome() {
                     id: OperationRequestId(1372),
                     entries: vec![directory_entry(&gone)],
                     permanent: true,
+                    empty_file_only: false,
                 },
                 Rc::new(move |event| emitted.borrow_mut().push(event)),
             );
@@ -605,6 +641,7 @@ fn permanent_delete_removes_a_symlink_standing_in_for_a_directory_without_follow
             id: OperationRequestId(20),
             entries: vec![directory_entry(&decoy)],
             permanent: true,
+            empty_file_only: false,
         },
         Rc::new(move |event| emitted.borrow_mut().push(event)),
     );
@@ -654,6 +691,7 @@ fn permanent_delete_does_not_follow_a_symlink_nested_inside_the_tree() -> Result
             id: OperationRequestId(21),
             entries: vec![directory_entry(&root)],
             permanent: true,
+            empty_file_only: false,
         },
         Rc::new(move |event| emitted.borrow_mut().push(event)),
     );
@@ -697,6 +735,7 @@ fn permanent_delete_accepts_a_symlink_in_the_parent_path() -> Result<(), Box<dyn
             id: OperationRequestId(22),
             entries: vec![file_entry(&linked_parent.join("target.txt"))],
             permanent: true,
+            empty_file_only: false,
         },
         Rc::new(move |event| emitted.borrow_mut().push(event)),
     );

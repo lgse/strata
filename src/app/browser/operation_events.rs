@@ -144,16 +144,54 @@ impl Browser {
                 .get(&event_id)
                 .cloned();
             if let Some(job) = background {
+                let next = browser.completed_path_creation(event_id, &event);
                 browser.handle_background_operation(&context, event, job);
+                browser.queue_path_creation(next);
                 return;
             }
             if !browser.is_current_operation(event_id) {
                 return;
             }
             if !browser.publish_operation_progress(&event) {
+                let next = browser.completed_path_creation(event_id, &event);
                 browser.finish_operation(&context, event);
+                browser.queue_path_creation(next);
             }
         })
+    }
+
+    fn completed_path_creation(
+        &self,
+        id: OperationRequestId,
+        event: &OperationEvent,
+    ) -> Option<super::PendingPathCreation> {
+        if matches!(event, OperationEvent::DeleteProgress { .. }) {
+            return None;
+        }
+        let next = self.pending_path_creations.borrow_mut().remove(&id)?;
+        let succeeded = match (&next.source, event) {
+            (Some(source), OperationEvent::Deleted { locations, .. }) => locations.contains(source),
+            (None, OperationEvent::Created { .. } | OperationEvent::EntryCreated { .. }) => true,
+            _ => false,
+        };
+        succeeded.then_some(next)
+    }
+
+    fn queue_path_creation(self: &Rc<Self>, next: Option<super::PendingPathCreation>) {
+        let Some(next) = next else { return };
+        let weak = Rc::downgrade(self);
+        let mut next = Some(next);
+        gtk::glib::timeout_add_local(std::time::Duration::from_millis(25), move || {
+            let Some(browser) = weak.upgrade() else {
+                return gtk::glib::ControlFlow::Break;
+            };
+            // A docked delete may finish while another operation owns the foreground.
+            if browser.has_foreground_operation() {
+                return gtk::glib::ControlFlow::Continue;
+            }
+            browser.create_remaining_path(next.take().expect("path creation pending"));
+            gtk::glib::ControlFlow::Break
+        });
     }
 
     fn publish_operation_progress(self: &Rc<Self>, event: &OperationEvent) -> bool {

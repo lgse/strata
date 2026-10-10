@@ -5139,14 +5139,16 @@ struct DeletionTarget {
     location: Location,
     display_name: String,
     is_directory: bool,
+    empty_file_only: bool,
 }
 
 impl DeletionTarget {
-    fn from_entry(entry: &FileEntry) -> Self {
+    fn from_entry(entry: &FileEntry, empty_file_only: bool) -> Self {
         Self {
             location: entry.location.clone(),
             display_name: entry.display_name.clone(),
             is_directory: entry.is_directory(),
+            empty_file_only,
         }
     }
 
@@ -5167,6 +5169,7 @@ impl DeletionTarget {
             location: location.clone(),
             display_name: location.display_name(),
             is_directory,
+            empty_file_only: false,
         }
     }
 }
@@ -5239,6 +5242,15 @@ async fn run_deletion(
                 let cancellable = cancellable.clone();
                 let task = context.spawn_local(async move {
                     let file = gio_file_for_location(&operation_target.location);
+                    if operation_target.empty_file_only
+                        && !operation_target
+                            .location
+                            .native_path()
+                            .and_then(|path| path.symlink_metadata().ok())
+                            .is_some_and(|metadata| metadata.is_file() && metadata.len() == 0)
+                    {
+                        return Err(io_error("The file is no longer an empty regular file"));
+                    }
                     if permanent {
                         if operation_target
                             .location
@@ -6119,7 +6131,7 @@ impl OperationProvider for LocalOperationProvider {
             let targets = request
                 .entries
                 .iter()
-                .map(DeletionTarget::from_entry)
+                .map(|entry| DeletionTarget::from_entry(entry, request.empty_file_only))
                 .collect();
             run_deletion(
                 request.id,

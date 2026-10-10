@@ -885,6 +885,13 @@ struct SortingLoad {
     deltas: Vec<(Location, DirectoryChange)>,
 }
 
+struct PendingPathCreation {
+    parent: Location,
+    components: Vec<String>,
+    directory: bool,
+    source: Option<Location>,
+}
+
 pub struct Browser {
     source: Rc<dyn FileSource>,
     state: RefCell<NavigationState>,
@@ -939,6 +946,7 @@ pub struct Browser {
     /// source listing; a paste or explicit "move to" still shows where it landed.
     transfer_reveal: Cell<bool>,
     created_locations: RefCell<Vec<Location>>,
+    pending_path_creations: RefCell<HashMap<OperationRequestId, PendingPathCreation>>,
     merged_undo: RefCell<MergeUndoState>,
     undo_claim: RefCell<Option<(u64, UndoEntry)>>,
     redo_claim: RefCell<Option<(u64, UndoEntry)>>,
@@ -1006,6 +1014,7 @@ impl Browser {
             transfer_destination: RefCell::new(None),
             transfer_reveal: Cell::new(true),
             created_locations: RefCell::new(Vec::new()),
+            pending_path_creations: RefCell::new(HashMap::new()),
             merged_undo: RefCell::new(MergeUndoState::default()),
             undo_claim: RefCell::new(None),
             redo_claim: RefCell::new(None),
@@ -2336,6 +2345,16 @@ impl Browser {
         name: String,
         unique_name: bool,
     ) {
+        self.start_directory_creation(parent, name, unique_name, None);
+    }
+
+    fn start_directory_creation(
+        self: &Rc<Self>,
+        parent: Location,
+        name: String,
+        unique_name: bool,
+        next: Option<PendingPathCreation>,
+    ) {
         if parent.is_recent_location() {
             return;
         }
@@ -2356,6 +2375,11 @@ impl Browser {
         let Some(request_id) = self.try_begin_operation() else {
             return;
         };
+        if let Some(next) = next {
+            self.pending_path_creations
+                .borrow_mut()
+                .insert(request_id, next);
+        }
         let refresh_parent = parent.clone();
         let load = provider.create_directory(
             CreateDirectoryRequest {
@@ -2369,12 +2393,111 @@ impl Browser {
         self.install_operation_load(request_id, load);
     }
 
+    fn create_remaining_path(self: &Rc<Self>, pending: PendingPathCreation) {
+        let PendingPathCreation {
+            parent,
+            mut components,
+            directory,
+            ..
+        } = pending;
+        let name = components.remove(0);
+        if components.is_empty() {
+            self.create_exact_entry(parent, name, directory);
+            return;
+        }
+        let Some(child) = parent.child(std::ffi::OsStr::new(&name)) else {
+            return;
+        };
+        match child
+            .native_path()
+            .and_then(|path| path.symlink_metadata().ok())
+        {
+            Some(metadata) if metadata.is_dir() => {
+                self.create_remaining_path(PendingPathCreation {
+                    parent: child,
+                    components,
+                    directory,
+                    source: None,
+                })
+            }
+            None => self.start_directory_creation(
+                parent,
+                name,
+                false,
+                Some(PendingPathCreation {
+                    parent: child,
+                    components,
+                    directory,
+                    source: None,
+                }),
+            ),
+            _ => self.emit(BrowserEvent::OperationFailed {
+                message: "A path component is not a directory".to_owned(),
+                password_failure: None,
+            }),
+        }
+    }
+
     pub fn create_exact_entry(self: &Rc<Self>, parent: Location, name: String, directory: bool) {
         if directory {
             self.create_directory_with_naming(parent, name, false);
         } else {
             self.create_file_with_naming(parent, name, false);
         }
+    }
+
+    /// Replace an empty local file with a folder (`docs/`) or a file inside a
+    /// folder (`docs/note.txt`). Only the successful guarded delete advances
+    /// to creation; every component is validated before touching the source.
+    pub fn convert_empty_file_to_path(
+        self: &Rc<Self>,
+        entry: &FileEntry,
+        name: &str,
+        directory: bool,
+    ) -> bool {
+        if entry.kind != crate::model::EntryKind::File {
+            return false;
+        }
+        let Some(original_path) = entry.location.native_path() else {
+            return false;
+        };
+        if !std::fs::symlink_metadata(original_path)
+            .is_ok_and(|metadata| metadata.is_file() && metadata.len() == 0)
+        {
+            return false;
+        }
+        let components = name.split('/').map(str::to_owned).collect::<Vec<_>>();
+        if components
+            .iter()
+            .any(|part| validate_basename(part).is_err())
+        {
+            return false;
+        }
+        let Some(parent) = entry.location.parent() else {
+            return false;
+        };
+        let Some(mut path) = parent.native_path().map(Path::to_path_buf) else {
+            return false;
+        };
+        for (index, part) in components.iter().enumerate() {
+            path.push(part);
+            match path.symlink_metadata() {
+                Ok(metadata) if index + 1 < components.len() && metadata.is_dir() => {}
+                Ok(_) if index + 1 == components.len() && path == original_path => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                _ => return false,
+            }
+        }
+        self.delete_entries(
+            vec![entry.clone()],
+            true,
+            Some(PendingPathCreation {
+                parent,
+                components,
+                directory,
+                source: Some(entry.location.clone()),
+            }),
+        )
     }
 
     pub fn create_new_file(self: &Rc<Self>, parent: Location) {
@@ -2496,20 +2619,35 @@ impl Browser {
     }
 
     pub fn delete(self: &Rc<Self>, entries: Vec<FileEntry>, permanent: bool) {
+        self.delete_entries(entries, permanent, None);
+    }
+
+    fn delete_entries(
+        self: &Rc<Self>,
+        entries: Vec<FileEntry>,
+        permanent: bool,
+        conversion: Option<PendingPathCreation>,
+    ) -> bool {
         if entries.is_empty() {
-            return;
+            return false;
         }
         let Some(provider) = self.operation_provider.borrow().clone() else {
             self.emit(BrowserEvent::OperationFailed {
                 message: crate::i18n::tr("File operations are unavailable"),
                 password_failure: None,
             });
-            return;
+            return false;
         };
         let total = entries.len();
         let Some(request_id) = self.try_begin_operation() else {
-            return;
+            return false;
         };
+        let empty_file_only = conversion.is_some();
+        if let Some(conversion) = conversion {
+            self.pending_path_creations
+                .borrow_mut()
+                .insert(request_id, conversion);
+        }
         self.deletion_operation.set(true);
         self.deletion_permanent.set(permanent);
         self.set_operation_destination(if permanent {
@@ -2530,10 +2668,12 @@ impl Browser {
                 id: request_id,
                 entries,
                 permanent,
+                empty_file_only,
             },
             self.operation_callback(request_id, false, HashSet::new()),
         );
         self.install_operation_load(request_id, load);
+        true
     }
 
     pub fn restore(self: &Rc<Self>, items: Vec<RestoreTrashItem>) {
@@ -3298,6 +3438,9 @@ impl Browser {
             .set(self.next_request.get().saturating_add(1));
         self.last_started_operation.set(Some(request_id));
         let previous_operation = self.current_operation.take();
+        if let Some(id) = previous_operation {
+            self.pending_path_creations.borrow_mut().remove(&id);
+        }
         let previous_rename = self.rename_operation.take();
         self.operation_load.borrow_mut().take();
         if previous_operation == previous_rename

@@ -28,6 +28,141 @@ fn deleted_trash_entries_refresh_the_trash_root() {
 }
 
 #[test]
+fn trailing_slash_converts_only_empty_files_to_directories() {
+    let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("async test lock");
+    fn entry_at(path: &str, kind: EntryKind, size: MetadataValue<u64>) -> FileEntry {
+        FileEntry {
+            location: Location::local(path),
+            native_name: path.rsplit('/').next().unwrap_or(path).into(),
+            thumbnail_path: None,
+            display_name: path.rsplit('/').next().unwrap_or(path).into(),
+            kind,
+            size,
+            modified_unix_seconds: MetadataValue::Unknown,
+            recent_unix_seconds: MetadataValue::Unknown,
+            is_hidden: false,
+            mode: MetadataValue::Unknown,
+            image_dimensions: MetadataValue::Unknown,
+            child_count: MetadataValue::Unknown,
+            duration_seconds: MetadataValue::Unknown,
+            recent_uri: None,
+        }
+    }
+
+    let root = tempfile::tempdir().expect("fixture");
+    let empty_path = root.path().join("empty.txt");
+    let full_path = root.path().join("full.txt");
+    let folder_path = root.path().join("folder");
+    std::fs::write(&empty_path, []).expect("empty file");
+    std::fs::write(&full_path, "keep").expect("nonempty file");
+    std::fs::create_dir(&folder_path).expect("folder");
+    let at =
+        |path: &std::path::Path, kind, size| entry_at(path.to_str().expect("path"), kind, size);
+    let empty = at(&empty_path, EntryKind::File, MetadataValue::Known(0));
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+
+    assert!(!browser.convert_empty_file_to_path(&empty, "", true));
+    assert!(!browser.convert_empty_file_to_path(&empty, "a//b", false));
+    assert!(!browser.convert_empty_file_to_path(&empty, "a/../b", false));
+    std::fs::write(root.path().join("folder/existing"), "untouched").expect("collision");
+    assert!(!browser.convert_empty_file_to_path(&empty, "folder/existing", false));
+    std::os::unix::fs::symlink(&folder_path, root.path().join("linked")).expect("symlink");
+    assert!(!browser.convert_empty_file_to_path(&empty, "linked/child", false));
+    assert!(!browser.convert_empty_file_to_path(
+        &at(&full_path, EntryKind::File, MetadataValue::Known(4)),
+        "docs",
+        true
+    ));
+    assert!(!browser.convert_empty_file_to_path(
+        &at(&folder_path, EntryKind::Directory, MetadataValue::Unknown),
+        "docs",
+        true
+    ));
+    assert!(!browser.convert_empty_file_to_path(
+        &at(&full_path, EntryKind::File, MetadataValue::Known(0)),
+        "docs",
+        true
+    ));
+    std::fs::write(root.path().join("docs"), "occupied").expect("collision");
+    assert!(!browser.convert_empty_file_to_path(&empty, "docs", true));
+    std::fs::remove_file(root.path().join("docs")).expect("remove collision");
+    assert!(browser.convert_empty_file_to_path(&empty, "docs", true));
+    assert_eq!(browser.pending_path_creations.borrow().len(), 0);
+    assert_eq!(
+        browser.last_started_operation(),
+        Some(OperationRequestId(1))
+    );
+    while browser.last_started_operation() != Some(OperationRequestId(2)) {
+        glib::MainContext::default().iteration(true);
+    }
+    assert!(browser.convert_empty_file_to_path(
+        &at(&empty_path, EntryKind::File, MetadataValue::Unknown),
+        "unknown",
+        true
+    ));
+    while browser.last_started_operation() != Some(OperationRequestId(4)) {
+        glib::MainContext::default().iteration(true);
+    }
+    assert_eq!(std::fs::read(&full_path).expect("preserved"), b"keep");
+}
+
+#[test]
+fn conversion_ignores_unrelated_deletions_and_failed_own_request() {
+    let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("async test lock");
+    let root = tempfile::tempdir().expect("fixture");
+    let path = root.path().join("empty");
+    std::fs::write(&path, []).expect("empty file");
+    let mut empty = crate::test_support::operations::entry(Location::local(&path));
+    empty.size = MetadataValue::Known(0);
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let operations = Rc::new(crate::test_support::operations::HeldOperations::default());
+    browser.set_operation_provider(operations.clone());
+    assert!(browser.convert_empty_file_to_path(&empty, "docs", true));
+    let conversion_id = browser.last_started_operation().expect("conversion delete");
+    assert!(browser.background_file_operation(conversion_id));
+    browser.delete(
+        vec![crate::test_support::operations::entry(Location::local(
+            root.path().join("other"),
+        ))],
+        true,
+    );
+    let unrelated = browser.last_started_operation().expect("other delete");
+    operations.emit(
+        unrelated,
+        OperationEvent::Deleted {
+            request_id: unrelated,
+            locations: vec![],
+        },
+    );
+    assert!(
+        browser
+            .pending_path_creations
+            .borrow()
+            .contains_key(&conversion_id)
+    );
+    operations.emit(
+        conversion_id,
+        OperationEvent::Failed {
+            request_id: conversion_id,
+            message: "no deletion".into(),
+            password_failure: None,
+        },
+    );
+    while glib::MainContext::default().pending() {
+        glib::MainContext::default().iteration(false);
+    }
+    assert!(browser.pending_path_creations.borrow().is_empty());
+    assert_eq!(browser.last_started_operation(), Some(unrelated));
+    assert!(path.exists());
+    assert!(!root.path().join("docs").exists());
+}
+
+#[test]
 fn deletion_monitor_changes_publish_once_after_the_terminal_event() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     let watched = Location::local("/fixture");
