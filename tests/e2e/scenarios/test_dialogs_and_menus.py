@@ -720,3 +720,95 @@ def test_window_shortcuts_stay_blocked_over_a_modal_dialog(strata):
     strata.wait_for_focused_entry("todo.txt")
     assert strata.window.find(role="text", states={"editable"}) is None
     assert strata.fixture.path("todo.txt").exists()
+
+
+def _settings_has_key(strata, relative):
+    try:
+        text = strata.environment.settings_path.read_text()
+    except OSError:
+        return False
+    return f'"{strata.fixture.path(relative)}"' in text
+
+
+def _customize_red_code(strata, name, directory=None):
+    strata.open_context_menu(name, directory=directory)
+    strata.choose_menu_item("Customize…")
+    dialog = strata.wait_for_dialog()
+    red = dialog.find(role="button", name="Red")
+    assert red is not None, f"no Red color button\n{dialog.dump()}"
+    strata.pointer.click(red)
+    strata.pointer.click(strata.dialog_button("Code"))
+    strata.pointer.click(strata.dialog_button("Done"))
+    strata.wait(lambda: strata.dialog() is None, "the customize dialog to close")
+    strata.wait(
+        lambda: _settings_has_key(strata, name if directory is None else f"{directory}/{name}"),
+        f"the {name!r} customization to be saved",
+    )
+
+
+def test_customization_follows_rename_and_a_new_folder_at_the_old_path_is_plain(strata):
+    _customize_red_code(strata, "documents")
+
+    strata.open_context_menu("documents")
+    strata.choose_menu_item("Rename")
+    field = strata.editable_field()
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("docs2")
+    strata.wait(lambda: field.text == "docs2", "the new name to be typed")
+    strata.keyboard.press("Return")
+    strata.entry("docs2")
+
+    strata.wait(
+        lambda: _settings_has_key(strata, "docs2") and not _settings_has_key(strata, "documents"),
+        "the customization to follow the rename to docs2",
+    )
+
+    strata.fixture.path("documents").mkdir()
+    strata.entry("documents")
+    strata.open_context_menu("documents")
+    strata.choose_menu_item("Customize…")
+    strata.wait_for_dialog()
+    assert not strata.dialog_button("Clear").has_state("sensitive"), (
+        "a new folder at the old path inherited the customization"
+    )
+    strata.pointer.click(strata.dialog_button("Done"))
+    strata.wait(lambda: strata.dialog() is None, "the customize dialog to close")
+
+
+# Columns would open `pictures` beside the root and scroll `archive` under the sidebar.
+@pytest.mark.preferences(browser_mode="list")
+def test_customization_follows_a_cut_and_paste_move_and_leaves_with_trash(strata):
+    _customize_red_code(strata, "pictures")
+
+    strata.select_entry("pictures")
+    strata.keyboard.press("ctrl+x")
+    strata.open_directory("archive")
+    strata.paste_into("archive")
+    strata.wait(
+        lambda: strata.fixture.path("archive/pictures").is_dir()
+        and not strata.fixture.path("pictures").exists(),
+        "pictures to move into archive",
+    )
+    strata.wait(
+        lambda: _settings_has_key(strata, "archive/pictures")
+        and not _settings_has_key(strata, "pictures"),
+        "the customization to follow the move into archive",
+    )
+
+    strata.select_entry("pictures", directory="archive")
+    strata.keyboard.press("Delete")
+    strata.wait(
+        lambda: not strata.fixture.path("archive/pictures").exists(), "pictures to be trashed"
+    )
+    strata.wait(
+        lambda: not _settings_has_key(strata, "archive/pictures"),
+        "the customization to leave settings.toml with the trashed folder",
+    )
+    strata.keyboard.press("ctrl+z")
+    strata.wait(
+        lambda: strata.fixture.path("archive/pictures").is_dir(), "pictures to be restored"
+    )
+    strata.wait(
+        lambda: _settings_has_key(strata, "archive/pictures"),
+        "the customization to come back with the restored folder",
+    )
