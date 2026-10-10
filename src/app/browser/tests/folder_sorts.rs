@@ -11,7 +11,7 @@ type ReportedSorts = Rc<RefCell<Vec<(Location, SortKey, SortDirection)>>>;
 /// Unlisted locations behave like remembered folders without a saved sort.
 fn resolver(saved: &SavedSorts) -> FolderSortResolver {
     let saved = saved.clone();
-    Rc::new(move |location: &Location| {
+    Rc::new(move |location: &Location, _| {
         saved
             .borrow()
             .get(location)
@@ -34,6 +34,17 @@ fn remembering_browser(
             .push((location.clone(), sort_key, sort_direction));
     });
     (browser, reported)
+}
+
+/// Saves reported sorts the way the preference manager does.
+fn save_reported_sorts(browser: &Browser, saved: &SavedSorts) {
+    let saved = saved.clone();
+    browser.observe_folder_sorts(move |location, sort_key, sort_direction| {
+        saved.borrow_mut().insert(
+            location.clone(),
+            FolderSort::Saved(sort_key, sort_direction),
+        );
+    });
 }
 
 /// Leaves no re-sync queued on the shared default main context, and fails
@@ -169,7 +180,7 @@ fn a_resync_sort_abandoned_for_missing_metadata_keeps_the_order_without_retrying
     let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
         .expect("the async test lock should not be poisoned");
-    let (browser, _) = remembering_browser(Rc::new(FakeFileSource), &Rc::default());
+    let (browser, reported) = remembering_browser(Rc::new(FakeFileSource), &Rc::default());
     let events = Rc::new(RefCell::new(Vec::new()));
     let observed = events.clone();
     browser.observe(move |event| observed.borrow_mut().push(event.clone()));
@@ -187,6 +198,101 @@ fn a_resync_sort_abandoned_for_missing_metadata_keeps_the_order_without_retrying
     );
     assert_eq!(start_count(&events), 1);
     assert_eq!(finish_count(&events), 1);
+
+    browser.set_sort(0, SortKey::Type, SortDirection::Descending);
+    pump_until_settled(&browser, || {
+        sorting(&browser, 0) == Some((SortKey::Type, SortDirection::Descending))
+    });
+    assert_eq!(
+        reported.borrow().as_slice(),
+        [(
+            Location::local("/fixture"),
+            SortKey::Type,
+            SortDirection::Descending
+        )],
+        "a sort chosen after an abandoned re-sync is still saved"
+    );
+}
+
+#[test]
+fn opening_a_folder_whose_sort_waits_for_metadata_saves_nothing() {
+    let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let saved: SavedSorts = Rc::new(RefCell::new(HashMap::from([(
+        Location::local("/fixture"),
+        FolderSort::Saved(SortKey::Size, SortDirection::Ascending),
+    )])));
+    let source = Rc::new(ScriptedSource::manual(
+        vec![],
+        vec![FillAnswer::Complete(vec![("alpha", 100)])],
+    ));
+    let (browser, reported) = remembering_browser(source.clone(), &saved);
+
+    browser.navigate(Location::local("/fixture"));
+    let (request_id, emit) = source.enumerate_calls.borrow()[0].clone();
+    emit(DirectoryEvent::Batch {
+        request_id,
+        entries: vec![
+            staged_entry("beta", EntryKind::File, MetadataValue::Known(1), 1),
+            staged_entry("alpha", EntryKind::File, MetadataValue::Unknown, 1),
+        ],
+    });
+    emit(DirectoryEvent::MetadataIncomplete { request_id });
+    emit(DirectoryEvent::Finished {
+        request_id,
+        truncated: false,
+        can_trash: None,
+        can_delete: None,
+    });
+    pump_until_settled(&browser, || column_names(&browser, 0) == ["beta", "alpha"]);
+
+    assert!(
+        reported.borrow().is_empty(),
+        "the sort that ran after loading follows the saved one"
+    );
+}
+
+#[test]
+fn a_resync_superseded_by_a_chosen_sort_is_retried() {
+    let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let saved: SavedSorts = Rc::default();
+    let (browser, _) = remembering_browser(Rc::new(FakeFileSource), &saved);
+    save_reported_sorts(&browser, &saved);
+    let started = Rc::new(Cell::new(false));
+    let observed = started.clone();
+    browser.observe(move |event| {
+        if matches!(event, BrowserEvent::SortingStarted { depth: 0 }) {
+            observed.set(true);
+        }
+    });
+    browser.navigate(Location::local("/fixture"));
+    browser.descend(0, Location::local("/fixture/child"));
+
+    saved.borrow_mut().insert(
+        Location::local("/fixture"),
+        FolderSort::Saved(SortKey::Name, SortDirection::Descending),
+    );
+    started.set(false);
+    browser.resync_column_sorts();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let context = gtk::glib::MainContext::default();
+    while !started.get() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the re-sync never started"
+        );
+        if !context.iteration(false) {
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+    }
+    browser.set_sort(1, SortKey::Type, SortDirection::Descending);
+    pump_until_settled(&browser, || {
+        sorting(&browser, 0) == Some((SortKey::Name, SortDirection::Descending))
+            && sorting(&browser, 1) == Some((SortKey::Type, SortDirection::Descending))
+    });
 }
 
 #[test]

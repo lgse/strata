@@ -26,16 +26,19 @@ impl BrowserView {
                 super::super::thumbnail::set_worker_limit(workers);
             },
         );
+        // The folder is part of the value, so a size read before navigating
+        // cannot hide a later change.
+        let weak = Rc::downgrade(&self.state);
         self.bind_view_preference(
             manager,
-            |manager| {
-                (
-                    manager.icons_thumbnail_size(),
-                    manager.remember_folder_views(),
-                    manager.folder_views_revision(),
-                )
+            move |manager| {
+                let location = weak
+                    .upgrade()
+                    .and_then(|state| state.mode_views.borrow().icons_location());
+                let size = manager.icons_size_for(location.as_ref());
+                (location, size)
             },
-            |view, _| view.sync_icons_thumbnail_size(),
+            |view, (_, size)| view.apply_resolved_icons_size(size),
         );
         self.bind_view_preference(
             manager,
@@ -103,13 +106,18 @@ impl BrowserView {
             |manager| {
                 (
                     manager.remember_folder_views(),
-                    manager.folder_views_revision(),
+                    manager.folder_sorts_revision(),
                 )
             },
             |view, (remember, _)| {
                 view.browser().set_folder_sorts(remember.then(|| {
-                    Rc::new(|location: &crate::model::Location| {
-                        PreferenceManager::shared().folder_sort(location)
+                    Rc::new(|location: &crate::model::Location, opened| {
+                        let manager = PreferenceManager::shared();
+                        if opened {
+                            manager.opened_folder_sort(location)
+                        } else {
+                            manager.folder_sort(location)
+                        }
                     }) as crate::app::FolderSortResolver
                 }));
             },

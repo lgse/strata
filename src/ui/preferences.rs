@@ -30,6 +30,7 @@ mod save_notice;
 mod text_size;
 pub(in crate::ui) use bindings::notify_live;
 pub(crate) use folder_view_settings::flush_pending_folder_views;
+pub(in crate::ui) use folder_views::reread_mounts;
 pub use text_size::TextSize;
 
 thread_local! {
@@ -434,7 +435,7 @@ pub struct PreferenceManager {
     save_notices: save_notice::SaveNotices,
     /// Loaded on first use, from its own state file.
     folder_views: std::cell::OnceCell<folder_view_settings::FolderViewStore>,
-    folder_views_revision: Cell<u64>,
+    folder_sorts_revision: Cell<u64>,
     folder_save_notices: save_notice::SaveNotices,
 }
 
@@ -491,7 +492,7 @@ impl PreferenceManager {
             load_failure,
             save_notices: save_notice::SaveNotices::default(),
             folder_views: std::cell::OnceCell::new(),
-            folder_views_revision: Cell::new(0),
+            folder_sorts_revision: Cell::new(0),
             folder_save_notices: save_notice::SaveNotices::for_folder_views(),
             preferences: RefCell::new(preferences),
         })
@@ -1431,21 +1432,10 @@ impl PreferenceManager {
         let mut stored = self.preferences.borrow_mut();
         stored.show_hidden = preferences.show_hidden;
         stored.folders_first = preferences.folders_first;
-        let sort_key = match preferences.sort_key {
-            SortKey::DeviceOrder => None,
-            SortKey::Recency => None,
-            SortKey::Name => Some("name"),
-            SortKey::Size => Some("size"),
-            SortKey::Modified => Some("modified"),
-            SortKey::Type => Some("type"),
-        };
-        if let Some(sort_key) = sort_key {
+        if let Some(sort_key) = folder_views::stored_sort_key(preferences.sort_key) {
             stored.sort_key = sort_key.to_owned();
-            stored.sort_direction = match preferences.sort_direction {
-                SortDirection::Ascending => "ascending",
-                SortDirection::Descending => "descending",
-            }
-            .to_owned();
+            stored.sort_direction =
+                folder_views::stored_direction(preferences.sort_direction).to_owned();
         }
         drop(stored);
         self.save_preferences();
@@ -1538,21 +1528,9 @@ fn salvage_preferences(saved: toml::Table) -> Preferences {
 }
 
 fn sort_preferences(preferences: &Preferences) -> ViewPreferences {
-    let sorting = match (
-        preferences.sort_key.as_str(),
-        preferences.sort_direction.as_str(),
-    ) {
-        ("name", "ascending") => Some((SortKey::Name, SortDirection::Ascending)),
-        ("name", "descending") => Some((SortKey::Name, SortDirection::Descending)),
-        ("size", "ascending") => Some((SortKey::Size, SortDirection::Ascending)),
-        ("size", "descending") => Some((SortKey::Size, SortDirection::Descending)),
-        ("modified", "ascending") => Some((SortKey::Modified, SortDirection::Ascending)),
-        ("modified", "descending") => Some((SortKey::Modified, SortDirection::Descending)),
-        ("type", "ascending") => Some((SortKey::Type, SortDirection::Ascending)),
-        ("type", "descending") => Some((SortKey::Type, SortDirection::Descending)),
-        _ => None,
-    }
-    .unwrap_or((SortKey::Name, SortDirection::Ascending));
+    let sorting = folder_views::parse_sort_key(&preferences.sort_key)
+        .zip(folder_views::parse_direction(&preferences.sort_direction))
+        .unwrap_or((SortKey::Name, SortDirection::Ascending));
     ViewPreferences {
         show_hidden: preferences.show_hidden,
         folders_first: preferences.folders_first,

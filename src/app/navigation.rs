@@ -263,7 +263,9 @@ impl NavigationPath {
     }
 }
 
-pub type FolderSortResolver = Rc<dyn Fn(&Location) -> FolderSort>;
+/// Resolves a folder's sort. The flag is set when a column opens the folder,
+/// which counts as using it; re-syncing open columns does not.
+pub type FolderSortResolver = Rc<dyn Fn(&Location, bool) -> FolderSort>;
 
 #[derive(Default)]
 pub struct NavigationState {
@@ -1158,14 +1160,22 @@ impl NavigationState {
     }
 
     pub fn folder_sort(&self, location: &Location) -> FolderSort {
+        self.resolve_folder_sort(location, false)
+    }
+
+    fn resolve_folder_sort(&self, location: &Location, opened: bool) -> FolderSort {
         self.folder_sorts
             .as_ref()
-            .map_or(FolderSort::Unremembered, |resolve| resolve(location))
+            .map_or(FolderSort::Unremembered, |resolve| {
+                resolve(location, opened)
+            })
     }
 
     fn initial_preferences(&self, location: &Location) -> ViewPreferences {
         let mut preferences = self.preferences;
-        if let FolderSort::Saved(sort_key, sort_direction) = self.folder_sort(location) {
+        if let FolderSort::Saved(sort_key, sort_direction) =
+            self.resolve_folder_sort(location, true)
+        {
             preferences.sort_key = sort_key;
             preferences.sort_direction = sort_direction;
         }

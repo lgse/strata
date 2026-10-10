@@ -305,7 +305,12 @@ impl Browser {
         }
         completion.undoing = undoing.is_some() || redoing.is_some();
         completion.record_trash_undo(&event, push_pending_undo);
-        self.finish_transfer(&mut completion, &event);
+        let replayed = match (&undoing, &redoing) {
+            (Some((_, entry)), _) => Some((false, entry)),
+            (_, Some((_, entry))) => Some((true, entry)),
+            _ => None,
+        };
+        self.finish_transfer(&mut completion, &event, replayed);
         if completion.deleting {
             let removed = deleted_locations(&event);
             if !removed.is_empty() {
@@ -338,10 +343,12 @@ impl Browser {
         self.flush_deferred_file_operation_changes(changes, false)
     }
 
+    /// `replayed` is the undo (`false`) or redo (`true`) entry this operation replays.
     fn finish_transfer(
         self: &Rc<Self>,
         completion: &mut OperationCompletion,
         event: &OperationEvent,
+        replayed: Option<(bool, &UndoEntry)>,
     ) {
         let Some(moving) = completion.moving else {
             return;
@@ -374,18 +381,21 @@ impl Browser {
         for location in &moved {
             self.retire_recent_target(location);
         }
-        let relocations: Vec<(Location, Location)> = completion
-            .destination
-            .as_ref()
-            .map(|destination| {
-                moved
-                    .iter()
-                    .filter_map(|source| {
-                        Some((source.clone(), source.transfer_target(destination)?))
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+        let relocations = match replayed {
+            Some((redo, entry)) => replayed_relocations(redo, entry, &moved),
+            None => completion
+                .destination
+                .as_ref()
+                .map(|destination| {
+                    moved
+                        .iter()
+                        .filter_map(|source| {
+                            Some((source.clone(), source.transfer_target(destination)?))
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
+        };
         if !relocations.is_empty() {
             self.emit(BrowserEvent::LocationsRelocated { moves: relocations });
         }
@@ -644,6 +654,30 @@ fn moved_locations(event: &OperationEvent) -> Vec<Location> {
         } => completed_locations.clone(),
         _ => Vec::new(),
     }
+}
+
+/// Undo moves each record from `current` back to `original`, and redo the reverse.
+fn replayed_relocations(
+    redo: bool,
+    entry: &UndoEntry,
+    moved: &[Location],
+) -> Vec<(Location, Location)> {
+    let (UndoEntry::Move(records) | UndoEntry::Group { records, .. }) = entry else {
+        return Vec::new();
+    };
+    let moved: HashSet<&Location> = moved.iter().collect();
+    records
+        .iter()
+        .map(|record| {
+            if redo {
+                (&record.original, &record.current)
+            } else {
+                (&record.current, &record.original)
+            }
+        })
+        .filter(|(from, _)| moved.contains(from))
+        .map(|(from, to)| (from.clone(), to.clone()))
+        .collect()
 }
 
 fn deleted_locations(event: &OperationEvent) -> Vec<Location> {

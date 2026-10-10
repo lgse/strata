@@ -1180,6 +1180,13 @@ fn a_new_operation_clears_the_redo() {
 fn an_undone_move_can_be_redone() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let relocated = Rc::new(RefCell::new(Vec::new()));
+    let observed = relocated.clone();
+    browser.observe(move |event| {
+        if let BrowserEvent::LocationsRelocated { moves } = event {
+            observed.borrow_mut().extend(moves.iter().cloned());
+        }
+    });
     browser.transfer(
         Location::local("/fixture/archive"),
         vec![PasteItem {
@@ -1236,11 +1243,21 @@ fn an_undone_move_can_be_redone() {
         assert_eq!(
             &*requests.borrow(),
             &vec![vec![MoveRecord {
-                original: record.current,
-                current: record.original,
+                original: record.current.clone(),
+                current: record.original.clone(),
             }]]
         );
     });
+    let (original, moved) = (record.original, record.current);
+    assert_eq!(
+        relocated.borrow().as_slice(),
+        [
+            (original.clone(), moved.clone()),
+            (moved.clone(), original.clone()),
+            (original, moved),
+        ],
+        "the move, its undo, and its redo each carry folder settings along"
+    );
 }
 
 #[test]

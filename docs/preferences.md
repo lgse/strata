@@ -141,29 +141,37 @@ other folders' values alone, except those now equal to it, which are dropped.
 **Forget all folder settings** clears every saved value.
 
 Local folders are keyed by path and folders on removable drives by filesystem UUID
-plus their path inside the drive, so values survive remounting. Remote shares,
-Trash, Recent, Camera Photos, and paths that are not valid UTF-8 are not
-remembered: their sort stays with the open column, and a size change lasts while
-the folder is shown. Renames and moves performed in Strata, including undo and
-redo, carry a folder's values and those of the folders inside it; deleting or
-trashing in Strata, or opening a local folder that no longer exists, drops them.
+plus their path inside the drive, so values survive remounting; drives read through
+a FUSE driver for local disks (`fuseblk`, such as ntfs-3g or exfat-fuse) count as
+local. Remote shares, other FUSE filesystems, Trash, Recent, Camera Photos, and
+paths that are not valid UTF-8 are not remembered: their sort stays with the open
+column, and a size change lasts while the folder is shown. Renames and moves
+performed in Strata, including undo and redo, carry a folder's values and those of
+the folders inside it; deleting or trashing in Strata, including a deletion moved
+to the background, drops them. Opening a local folder that was deleted also
+drops them, but only when its parent still lists other entries and holds no mount
+points, so the folders of a drive that is not mounted yet keep their values.
 Changes made by other applications leave entries that the least-recently-used
-limit of 5,000 folders eventually evicts.
+limit of 5,000 folders eventually evicts; opening a folder counts as using it,
+while re-sorting open columns does not.
 
 Values live in `$XDG_STATE_HOME/strata/folder-views.toml` (normally
 `~/.local/state/strata/folder-views.toml`), never in `settings.toml` or in the
-folders themselves. The file is read on first use and written atomically when a
-value changes; slider drags are coalesced and pending use times are written when
-Strata quits. When another Strata process, such as the portal chooser, saved the
-file in the meantime, a save first merges in its values and applies this
-process's own changes on top, so neither process overwrites the other's folders. It follows the `settings.toml` recovery rules: a missing file starts
-empty; an unreadable file, invalid TOML, or an unknown `version` uses no saved
-values, logs a warning, and is never overwritten during that session, with a
-"Folder settings file can't be read" notice on the first change in a browser
-window; valid TOML keeps its valid entries and fields, clamps out-of-range sizes,
-and drops the rest on the next save; and a failed write keeps changes in memory,
-retries on the next change, and shows "Folder settings can't be saved" once per
-failure streak.
+folders themselves. The file is read on first use and written atomically half a
+second after a value changes, so a burst of changes such as a slider drag is one
+write and no write blocks the click that made it; pending changes and use times
+are written when Strata or the portal chooser quits. Each process watches the file
+and merges what another Strata process, such as the portal chooser, saves, so its
+open views follow those values and **Forget all folder settings** clears them too.
+A save also merges anything not yet picked up and applies this process's own
+changes on top, so neither process overwrites the other's folders. It follows the
+`settings.toml` recovery rules: a missing file starts empty; an unreadable file,
+invalid TOML, or an unknown `version` uses no saved values, logs a warning, and is
+never overwritten during that session, with a "Folder settings file can't be read"
+notice on the first change in a browser window; valid TOML keeps its valid entries
+and fields, clamps out-of-range sizes, and drops the rest on the next save; and a
+failed write keeps changes in memory, retries on the next change, and shows
+"Folder settings can't be saved" once per failure streak.
 
 ## Thumbnail workers
 

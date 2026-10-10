@@ -14,6 +14,16 @@ use crate::{
 
 use super::Browser;
 
+/// Who asked for a sort, carried with it until it finishes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum SortOrigin {
+    /// Chosen in this column: saved for its folder, or as the default when
+    /// sorts are not remembered per folder.
+    Chosen,
+    /// Follows a saved sort, the default, or a column load; saves nothing.
+    Followed,
+}
+
 /// Columns re-sort one at a time through the debounced sort path, which keeps
 /// a single pending sort; each finished sort wakes the next.
 #[derive(Default)]
@@ -23,11 +33,23 @@ pub(super) struct SortResync {
     scheduled: Cell<bool>,
     /// The generation whose debounced apply has not run yet.
     pub(super) debounce: Cell<Option<u64>>,
-    /// Sorts started here, which change nothing shared when they finish.
-    automatic: Cell<Option<u64>>,
-    /// Targets already tried in this pass: a sort abandoned for missing
-    /// metadata keeps the column's old order and is not retried.
+    /// Followed sorts that ran during this pass, so one that cannot reach its
+    /// target, such as one abandoned for missing metadata, is not retried. A
+    /// sort superseded before it ran is not recorded and is retried.
     attempted: RefCell<Vec<(usize, ViewPreferences)>>,
+}
+
+impl SortResync {
+    pub(super) fn note_attempt(
+        &self,
+        origin: SortOrigin,
+        depth: usize,
+        preferences: ViewPreferences,
+    ) {
+        if origin == SortOrigin::Followed && self.pending.get() {
+            self.attempted.borrow_mut().push((depth, preferences));
+        }
+    }
 }
 
 impl Browser {
@@ -123,18 +145,11 @@ impl Browser {
             self.sort_resync.attempted.borrow_mut().clear();
             return;
         };
-        self.sort_resync
-            .attempted
-            .borrow_mut()
-            .push((depth, target));
-        self.apply_column_preferences(depth, move |preferences| {
+        self.apply_column_preferences(depth, SortOrigin::Followed, move |preferences| {
             preferences.folders_first = target.folders_first;
             preferences.sort_key = target.sort_key;
             preferences.sort_direction = target.sort_direction;
         });
-        self.sort_resync
-            .automatic
-            .set(self.pending_sort.get().map(|(generation, _)| generation));
     }
 
     /// Columns still loading take their new preferences directly and sort when
@@ -153,17 +168,19 @@ impl Browser {
             let Some(target) = state.synchronized_preferences(depth) else {
                 continue;
             };
-            if state.column_preferences(depth) == Some(target)
-                || self
-                    .sort_resync
-                    .attempted
-                    .borrow()
-                    .contains(&(depth, target))
-            {
+            if state.column_preferences(depth) == Some(target) {
                 continue;
             }
             if state.columns[depth].load_state == crate::app::navigation::LoadState::Loading {
                 state.set_loading_column_preferences(depth, target);
+                continue;
+            }
+            if self
+                .sort_resync
+                .attempted
+                .borrow()
+                .contains(&(depth, target))
+            {
                 continue;
             }
             return Some((depth, target));
@@ -171,12 +188,9 @@ impl Browser {
         None
     }
 
-    /// Without per-folder sorting an explicit sort becomes the default for new
+    /// Without per-folder sorting a chosen sort becomes the default for new
     /// columns, as before; with it, only the column's folder is reported.
-    pub(super) fn record_sort(&self, depth: usize, generation: u64) {
-        if self.sort_resync.automatic.get() == Some(generation) {
-            return;
-        }
+    pub(super) fn record_sort(&self, depth: usize) {
         let (location, sorted, remembered) = {
             let mut state = self.state.borrow_mut();
             let Some(column) = state.columns.get(depth) else {

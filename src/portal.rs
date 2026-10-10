@@ -274,6 +274,7 @@ pub(crate) fn run() -> glib::ExitCode {
         return glib::ExitCode::FAILURE;
     }
     main_loop.run();
+    crate::ui::preferences::flush_pending_folder_views();
     if service_failed.load(Ordering::SeqCst) {
         glib::ExitCode::FAILURE
     } else {

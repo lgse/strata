@@ -8,19 +8,31 @@ use std::{
     time::Duration,
 };
 
-use gtk::glib;
+use gtk::{gio, glib, prelude::*};
 
 use crate::model::{FolderSort, Location, SortDirection, SortKey};
 
 use super::{
     MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE, PreferenceManager, SHARED_MANAGER,
-    folder_views::{FolderKey, FolderViews, key_for_location, stored_direction, stored_sort_key},
+    folder_views::{
+        FolderKey, FolderViews, folder_was_deleted, holds_mount_points, key_for_location,
+        stored_direction, stored_sort_key,
+    },
     save_notice::SaveProblem,
 };
 
 const FILE_NAME: &str = "folder-views.toml";
-/// Coalesces a thumbnail-size drag into one write.
+/// Coalesces bursts of changes, such as a thumbnail-size drag, into one write
+/// that stays off the click that made them.
 const SAVE_DELAY: Duration = Duration::from_millis(500);
+
+/// Which saved values a change can affect; only sorts re-sort open columns.
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum FolderValue {
+    Sort,
+    IconsSize,
+    Any,
+}
 
 pub(super) struct FolderViewStore {
     views: RefCell<FolderViews>,
@@ -32,6 +44,8 @@ pub(super) struct FolderViewStore {
     /// The file as this process last read or wrote it; anything else on disk was
     /// written by another Strata process and is merged before saving.
     synced: Cell<Option<FileStamp>>,
+    /// Merges what another Strata process, such as the portal chooser, saves.
+    _monitor: Option<gio::FileMonitor>,
 }
 
 type FileStamp = (u64, i64, i64, u64);
@@ -68,12 +82,26 @@ impl FolderViewStore {
             tracing::warn!(%error, path = %path.display(),
                 "unable to load folder settings; using none without saving; fix the file and restart Strata");
         }
+        let monitor = gio::File::for_path(&path)
+            .monitor_file(gio::FileMonitorFlags::NONE, gio::Cancellable::NONE)
+            .inspect_err(|error| {
+                tracing::debug!(%error, "unable to watch folder settings for other processes");
+            })
+            .ok();
+        if let Some(monitor) = &monitor {
+            monitor.connect_changed(|_, _, _, _| {
+                if let Some(manager) = SHARED_MANAGER.with(|shared| shared.borrow().upgrade()) {
+                    manager.merge_folder_views_saved_elsewhere();
+                }
+            });
+        }
         Self {
             views: RefCell::new(views),
             load_failure,
             dirty: Cell::new(false),
             save_timer: RefCell::new(None),
             synced: Cell::new(synced),
+            _monitor: monitor,
         }
     }
 
@@ -95,12 +123,6 @@ impl FolderViewStore {
         self.synced.set(Some(stamp));
         changed
     }
-}
-
-#[derive(Clone, Copy)]
-enum Save {
-    Now,
-    Soon,
 }
 
 pub(in crate::ui) fn folder_views_path() -> PathBuf {
@@ -128,9 +150,9 @@ impl PreferenceManager {
         self.save_preferences();
     }
 
-    /// Changes whenever a saved folder value changes, for bindings that resolve one.
-    pub(in crate::ui) fn folder_views_revision(&self) -> u64 {
-        self.folder_views_revision.get()
+    /// Changes whenever a saved folder sort may have changed, for bindings that resolve one.
+    pub(in crate::ui) fn folder_sorts_revision(&self) -> u64 {
+        self.folder_sorts_revision.get()
     }
 
     fn remembered_key(&self, location: &Location) -> Option<FolderKey> {
@@ -141,12 +163,21 @@ impl PreferenceManager {
     }
 
     pub(in crate::ui) fn folder_sort(&self, location: &Location) -> FolderSort {
+        self.resolve_folder_sort(location, false)
+    }
+
+    /// Opening a folder is what counts as using it for the least-recently-used limit.
+    pub(in crate::ui) fn opened_folder_sort(&self, location: &Location) -> FolderSort {
+        self.resolve_folder_sort(location, true)
+    }
+
+    fn resolve_folder_sort(&self, location: &Location, opened: bool) -> FolderSort {
         let Some(key) = self.remembered_key(location) else {
             return FolderSort::Unremembered;
         };
         let store = self.folder_view_store();
         let mut views = store.views.borrow_mut();
-        if views.touch(&key) {
+        if opened && views.touch(&key) {
             store.dirty.set(true);
         }
         match views.view(&key).sort {
@@ -180,7 +211,7 @@ impl PreferenceManager {
             return;
         };
         let sort = Some((sort_key, sort_direction)).filter(|sort| *sort != self.default_sort());
-        self.change_folder_views(Save::Now, |views| {
+        self.change_folder_views(FolderValue::Sort, |views| {
             views.update(&key, |view| view.sort = sort)
         });
     }
@@ -189,7 +220,7 @@ impl PreferenceManager {
         let Some(key) = self.remembered_key(location) else {
             return;
         };
-        self.change_folder_views(Save::Now, |views| {
+        self.change_folder_views(FolderValue::Sort, |views| {
             views.update(&key, |view| view.sort = None)
         });
     }
@@ -227,7 +258,7 @@ impl PreferenceManager {
         }
         self.save_preferences();
         let sort = Some((sort_key, sort_direction));
-        self.change_folder_views(Save::Now, |views| {
+        self.change_folder_views(FolderValue::Sort, |views| {
             views.update_all(|view| {
                 if view.sort == sort {
                     view.sort = None;
@@ -261,7 +292,7 @@ impl PreferenceManager {
             return;
         };
         let icons_size = (size != self.icons_thumbnail_size()).then_some(size);
-        self.change_folder_views(Save::Soon, |views| {
+        self.change_folder_views(FolderValue::IconsSize, |views| {
             views.update(&key, |view| view.icons_size = icons_size)
         });
     }
@@ -270,7 +301,7 @@ impl PreferenceManager {
         let Some(key) = self.remembered_key(location) else {
             return;
         };
-        self.change_folder_views(Save::Now, |views| {
+        self.change_folder_views(FolderValue::IconsSize, |views| {
             views.update(&key, |view| view.icons_size = None)
         });
     }
@@ -279,7 +310,7 @@ impl PreferenceManager {
     pub(in crate::ui) fn set_default_icons_size(&self, size: i32) {
         let size = size.clamp(MIN_ICONS_THUMBNAIL_SIZE, MAX_ICONS_THUMBNAIL_SIZE);
         self.set_icons_thumbnail_size(size);
-        self.change_folder_views(Save::Now, |views| {
+        self.change_folder_views(FolderValue::IconsSize, |views| {
             views.update_all(|view| {
                 if view.icons_size == Some(size) {
                     view.icons_size = None;
@@ -292,8 +323,12 @@ impl PreferenceManager {
         !self.folder_view_store().views.borrow().is_empty()
     }
 
+    /// Also clears what another Strata process saved and this one has not merged yet.
     pub(in crate::ui) fn forget_folder_views(&self) {
-        self.change_folder_views(Save::Now, FolderViews::clear);
+        let merged = self
+            .folder_view_store()
+            .merge_saved_elsewhere(&folder_views_path());
+        self.change_folder_views(FolderValue::Any, |views| views.clear() || merged);
     }
 
     /// Saved values follow a folder renamed or moved within Strata, whether or not
@@ -307,7 +342,7 @@ impl PreferenceManager {
         if moves.is_empty() {
             return;
         }
-        self.change_folder_views(Save::Now, |views| views.relocate(&moves));
+        self.change_folder_views(FolderValue::Any, |views| views.relocate(&moves));
     }
 
     pub(in crate::ui) fn remove_folder_views(&self, locations: &[Location]) {
@@ -318,23 +353,28 @@ impl PreferenceManager {
         if removals.is_empty() {
             return;
         }
-        self.change_folder_views(Save::Now, |views| views.relocate(&removals));
+        self.change_folder_views(FolderValue::Any, |views| views.relocate(&removals));
     }
 
-    /// A local folder that failed to open because it no longer exists forgets
-    /// its saved values and those of the folders inside it.
+    /// A local folder that failed to open because it was deleted forgets its
+    /// saved values and those of the folders inside it.
     pub(in crate::ui) fn forget_missing_folder(&self, location: &Location) {
-        let Some(key) = key_for_location(location) else {
+        let (Some(path), Some(key)) = (location.native_path(), key_for_location(location)) else {
             return;
         };
-        if self.folder_view_store().views.borrow().is_empty() {
+        if self.folder_view_store().views.borrow().is_empty()
+            || !folder_was_deleted(path, &key, holds_mount_points)
+        {
             return;
         }
-        let missing = location.native_path().is_some_and(|path| {
-            fs::metadata(path).is_err_and(|error| error.kind() == io::ErrorKind::NotFound)
-        });
-        if missing {
-            self.change_folder_views(Save::Now, |views| views.relocate(&[(key, None)]));
+        self.change_folder_views(FolderValue::Any, |views| views.relocate(&[(key, None)]));
+    }
+
+    fn merge_folder_views_saved_elsewhere(&self) {
+        if let Some(store) = self.folder_views.get()
+            && store.merge_saved_elsewhere(&folder_views_path())
+        {
+            self.publish_folder_views(FolderValue::Any);
         }
     }
 
@@ -346,17 +386,24 @@ impl PreferenceManager {
         }
     }
 
-    fn change_folder_views(&self, save: Save, change: impl FnOnce(&mut FolderViews) -> bool) {
+    fn change_folder_views(
+        &self,
+        changing: FolderValue,
+        change: impl FnOnce(&mut FolderViews) -> bool,
+    ) {
         let store = self.folder_view_store();
         if !change(&mut store.views.borrow_mut()) {
             return;
         }
-        self.folder_views_revision
-            .set(self.folder_views_revision.get().wrapping_add(1));
         store.dirty.set(true);
-        match save {
-            Save::Now => self.write_folder_views(store),
-            Save::Soon => self.schedule_folder_views_write(store),
+        self.schedule_folder_views_write(store);
+        self.publish_folder_views(changing);
+    }
+
+    fn publish_folder_views(&self, changed: FolderValue) {
+        if changed != FolderValue::IconsSize {
+            self.folder_sorts_revision
+                .set(self.folder_sorts_revision.get().wrapping_add(1));
         }
         self.changes.notify(self);
     }
@@ -403,11 +450,6 @@ impl PreferenceManager {
             let contents = store.views.borrow().to_toml()?;
             crate::storage::atomic_write(&path, contents.as_bytes())
         })();
-        if merged {
-            self.folder_views_revision
-                .set(self.folder_views_revision.get().wrapping_add(1));
-            self.changes.notify(self);
-        }
         match result {
             Ok(()) => {
                 store.views.borrow_mut().mark_saved();
@@ -423,6 +465,9 @@ impl PreferenceManager {
                     &crate::services::io_error_detail(&error),
                 );
             }
+        }
+        if merged {
+            self.publish_folder_views(FolderValue::Any);
         }
     }
 }

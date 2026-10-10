@@ -1183,15 +1183,11 @@ impl BrowserView {
             .set_group_by_type(enabled);
     }
 
-    /// Applies the Icons folder's saved size, or the default.
-    pub fn sync_icons_thumbnail_size(&self) {
-        let location = self.state.mode_views.borrow().icons_location();
-        let size =
-            super::preferences::PreferenceManager::shared().icons_size_for(location.as_ref());
+    pub fn apply_resolved_icons_size(&self, size: i32) {
         self.state
             .mode_views
             .borrow_mut()
-            .set_icons_thumbnail_size(size);
+            .apply_resolved_icons_size(size);
     }
 
     pub fn activate_focused(&self) {

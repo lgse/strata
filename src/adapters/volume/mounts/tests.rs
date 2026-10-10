@@ -99,6 +99,24 @@ fn prefix_matching_is_component_wise() {
 }
 
 #[test]
+fn fuse_drivers_for_local_drives_are_not_network_shares() {
+    let table = MountTable::parse(format!(
+        "{SAMPLE}70 22 8:33 / /run/media/user/USB rw,relatime shared:40 - fuseblk /dev/sdc1 rw\n"
+    ));
+    let usb = Path::new("/run/media/user/USB/photos");
+    assert!(table.is_remote_path(usb), "a FUSE daemon can still block");
+    assert!(!table.is_network_path(usb));
+    for share in [
+        "/mnt/nfs/docs",
+        "/run/user/1000/gvfs/share",
+        "/mnt/my share/docs",
+    ] {
+        assert!(table.is_network_path(Path::new(share)), "{share}");
+    }
+    assert!(!table.is_network_path(Path::new("/mnt/nfs/local/docs")));
+}
+
+#[test]
 fn network_and_fuse_filesystems_are_remote() {
     for fs_type in [
         "nfs",

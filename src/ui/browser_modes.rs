@@ -402,6 +402,9 @@ pub struct ModeViews {
     density: BrowserDensity,
     group_by_type: bool,
     icons_thumbnail_size: Rc<Cell<i32>>,
+    /// The size preferences gave the shown folder; a size changed on a folder
+    /// that is not remembered lasts until this changes.
+    icons_resolved_size: Cell<i32>,
     focus_before_header: RefCell<Option<glib::WeakRef<gtk::Widget>>>,
     /// Page Up/Down scrolls the viewport itself; skip the follow-up `scroll_to`
     /// that `FocusChanged` would otherwise schedule from stale GridView estimates.
@@ -480,6 +483,7 @@ impl ModeViews {
             density: BrowserDensity::Compact,
             group_by_type: false,
             icons_thumbnail_size: Rc::new(Cell::new(DEFAULT_ICONS_THUMBNAIL_SIZE)),
+            icons_resolved_size: Cell::new(DEFAULT_ICONS_THUMBNAIL_SIZE),
             focus_before_header: RefCell::new(None),
             suppress_focus_scroll: Cell::new(false),
             cursor_keeps_focus: Cell::new(false),
@@ -1338,7 +1342,13 @@ impl ModeViews {
         }
     }
 
-    pub fn set_icons_thumbnail_size(&mut self, size: i32) {
+    pub fn apply_resolved_icons_size(&mut self, size: i32) {
+        if self.icons_resolved_size.replace(size) != size {
+            self.set_icons_thumbnail_size(size);
+        }
+    }
+
+    fn set_icons_thumbnail_size(&mut self, size: i32) {
         if self.icons_thumbnail_size.replace(size) == size {
             return;
         }
@@ -1828,10 +1838,10 @@ impl ModeViews {
             return;
         };
         self.clear_icons();
-        self.icons_thumbnail_size.set(
-            crate::ui::preferences::PreferenceManager::shared()
-                .icons_size_for(Some(&snapshot.location)),
-        );
+        let size = crate::ui::preferences::PreferenceManager::shared()
+            .icons_size_for(Some(&snapshot.location));
+        self.icons_resolved_size.set(size);
+        self.icons_thumbnail_size.set(size);
         let mut pane = build_icons_pane(
             self.browser.clone(),
             ModeClickOptions {
@@ -2276,15 +2286,23 @@ fn append_icons_size_actions(
     }
     scale.connect_value_changed(move |_| sync());
     let scale_for_default = scale.downgrade();
+    let closing = popover.downgrade();
     make_default.connect_clicked(move |_| {
         if let Some(scale) = scale_for_default.upgrade() {
             crate::ui::preferences::PreferenceManager::shared()
                 .set_default_icons_size(scale.value().round() as i32);
         }
+        if let Some(popover) = closing.upgrade() {
+            popover.popdown();
+        }
     });
+    let closing = popover.downgrade();
     reset.connect_clicked(move |_| {
         if let Some(location) = remembered_location() {
             crate::ui::preferences::PreferenceManager::shared().reset_folder_icons_size(&location);
+        }
+        if let Some(popover) = closing.upgrade() {
+            popover.popdown();
         }
     });
 }

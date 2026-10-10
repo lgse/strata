@@ -2,7 +2,7 @@
 
 use std::{
     collections::{HashMap, HashSet},
-    io,
+    fs, io,
     path::{Component, Path, PathBuf},
 };
 
@@ -13,9 +13,9 @@ use crate::model::{SortDirection, SortKey};
 use super::super::icons_cell::{MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE};
 
 mod keys;
-pub(in crate::ui) use keys::key_for_location;
 #[cfg(test)]
 pub(in crate::ui) use keys::{RemovableRoot, key_for_path};
+pub(in crate::ui) use keys::{holds_mount_points, key_for_location, reread_mounts};
 
 pub(in crate::ui) const FOLDER_VIEWS_LIMIT: usize = 5_000;
 const VERSION: i64 = 1;
@@ -471,6 +471,26 @@ fn parse_entry(value: &toml::Value) -> Option<(FolderKey, Entry, bool)> {
         return None;
     }
     Some((key, Entry { view, used }, clean))
+}
+
+/// Only a folder missing from a parent that still holds other entries and no
+/// mount points counts as deleted. Folders of an unmounted drive instead vanish
+/// from an empty mount point, or together with the mount point from a directory
+/// of them such as /run/media/$USER, and keep their values.
+pub(in crate::ui) fn folder_was_deleted(
+    path: &Path,
+    key: &FolderKey,
+    holds_mount_points: impl Fn(&Path) -> bool,
+) -> bool {
+    if matches!(key, FolderKey::Volume { relative, .. } if relative.as_os_str().is_empty()) {
+        return false;
+    }
+    let Some(parent) = path.parent() else {
+        return false;
+    };
+    fs::symlink_metadata(path).is_err_and(|error| error.kind() == io::ErrorKind::NotFound)
+        && fs::read_dir(parent).is_ok_and(|mut entries| entries.next().is_some())
+        && !holds_mount_points(parent)
 }
 
 pub(in crate::ui) fn parse_sort_key(value: &str) -> Option<SortKey> {

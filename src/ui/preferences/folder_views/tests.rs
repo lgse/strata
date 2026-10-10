@@ -307,6 +307,38 @@ fn forgetting_drops_the_folder_and_its_descendants_only() {
 }
 
 #[test]
+fn only_a_folder_missing_beside_other_entries_and_no_mounts_counts_as_deleted() {
+    let root = tempfile::tempdir().expect("root folder");
+    let parent = root.path().join("projects");
+    std::fs::create_dir_all(parent.join("kept")).expect("sibling folder");
+    let mount_point = root.path().join("data");
+    std::fs::create_dir(&mount_point).expect("empty mount point");
+    let key = |path: &Path| FolderKey::local(path).expect("valid local key");
+    let no_mounts = |_: &Path| false;
+    let deleted = parent.join("gone");
+
+    assert!(folder_was_deleted(&deleted, &key(&deleted), no_mounts));
+    let kept = parent.join("kept");
+    assert!(!folder_was_deleted(&kept, &key(&kept), no_mounts));
+    for unmounted in [mount_point.join("photos"), mount_point.join("photos/2024")] {
+        assert!(
+            !folder_was_deleted(&unmounted, &key(&unmounted), no_mounts),
+            "{} is on a drive that is not mounted",
+            unmounted.display()
+        );
+    }
+    assert!(
+        !folder_was_deleted(&deleted, &key(&deleted), |directory| directory == parent),
+        "a directory of mount points loses a drive's folder when it is unmounted"
+    );
+    assert!(!folder_was_deleted(
+        &deleted,
+        &volume("1234-ABCD", ""),
+        no_mounts
+    ));
+}
+
+#[test]
 fn removable_paths_key_by_the_innermost_volume_and_unstorable_paths_have_no_key() {
     let roots = [
         RemovableRoot {

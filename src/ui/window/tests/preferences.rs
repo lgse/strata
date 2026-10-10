@@ -783,6 +783,8 @@ fn saved_folder_sorts_and_icon_sizes_apply_before_settings_and_follow_changes_ac
     gtk_test(
         "ui::window::tests::preferences::saved_folder_sorts_and_icon_sizes_apply_before_settings_and_follow_changes_across_windows",
         || {
+            use std::os::unix::ffi::OsStrExt;
+
             use crate::model::{FolderSort, Location, SortDirection, SortKey};
 
             let sorted = tempfile::tempdir().expect("sorted folder");
@@ -836,18 +838,32 @@ fn saved_folder_sorts_and_icon_sizes_apply_before_settings_and_follow_changes_ac
                 manager.default_sort(),
                 (SortKey::Name, SortDirection::Ascending)
             );
+            manager.flush_folder_views();
             assert!(folder_views_file().contains("sort = \"type\""));
 
             manager.set_browser_mode(BrowserMode::Icons);
             wait_until(|| icons_size(&first) == Some(192) && icons_size(&second) == Some(192));
-            show(&first, &Location::local(plain.path()));
+            let unremembered = plain
+                .path()
+                .join(std::ffi::OsStr::from_bytes(b"not-utf-8-\xff"));
+            std::fs::create_dir(&unremembered).expect("folder that is not remembered");
+            show(&first, &Location::local(&unremembered));
             wait_until(|| icons_size(&first) == Some(manager.icons_thumbnail_size()));
+            icons_scale(&first)
+                .expect("icons size slider")
+                .set_value(224.0);
             icons_scale(&second)
                 .expect("icons size slider")
                 .set_value(128.0);
             assert_eq!(manager.icons_size_for(Some(&sorted_location)), 128);
             settle();
-            assert_eq!(icons_size(&first), Some(manager.icons_thumbnail_size()));
+            assert_eq!(
+                icons_size(&first),
+                Some(224),
+                "another folder's change keeps a size that is not remembered"
+            );
+            show(&first, &Location::local(plain.path()));
+            wait_until(|| icons_size(&first) == Some(manager.icons_thumbnail_size()));
 
             manager.reset_folder_sort(&sorted_location);
             manager.set_default_icons_size(128);
@@ -883,6 +899,7 @@ fn folder_settings_saved_by_another_process_are_merged_instead_of_overwritten() 
                 elsewhere.display_path()
             ));
             manager.set_folder_sort(&here, SortKey::Type, SortDirection::Ascending);
+            manager.flush_folder_views();
 
             let saved = folder_views_file();
             assert!(saved.contains(&here.display_path()), "{saved}");
@@ -898,6 +915,20 @@ fn folder_settings_saved_by_another_process_are_merged_instead_of_overwritten() 
                     .column_preferences(0)
                     .is_some_and(|preferences| preferences.sort_key == SortKey::Size)
             });
+
+            manager.forget_folder_views();
+            manager.flush_folder_views();
+            write_folder_views(&format!(
+                "version = 1\n[[folder]]\npath = \"{}\"\nsort = \"type\"\ndirection = \"descending\"\n",
+                elsewhere.display_path()
+            ));
+            manager.forget_folder_views();
+            manager.flush_folder_views();
+            assert!(
+                !folder_views_file().contains("[[folder]]"),
+                "forgetting also clears what another process saved"
+            );
+            assert_eq!(manager.folder_sort(&elsewhere), FolderSort::Default);
         },
     );
 }

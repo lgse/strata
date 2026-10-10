@@ -2,6 +2,7 @@
 
 use std::cell::{Cell, RefCell};
 
+use super::super::{SortFill, SortOrigin};
 use super::*;
 use crate::{
     model::{EntryKind, FileEntry, Location, MetadataValue, SortKey, ViewPreferences},
@@ -359,11 +360,18 @@ fn sort_paths_capture_selection_before_preference_observers() {
         });
         fixture.browser.pending_sort.set(Some((17, 0)));
         if awaited {
+            fixture.browser.finish_awaited_sort(SortFill {
+                generation: 17,
+                depth: 0,
+                origin: SortOrigin::Chosen,
+                fill_request: RequestId(2),
+                directory_request: RequestId(1),
+                preferences: ViewPreferences::default(),
+            });
+        } else {
             fixture
                 .browser
-                .finish_awaited_sort(0, 17, ViewPreferences::default());
-        } else {
-            fixture.browser.apply_debounced_sort(0, 17, |_| {});
+                .apply_debounced_sort(0, 17, SortOrigin::Chosen, |_| {});
         }
         assert_eq!(fixture.browser.state.borrow().columns[0].selected, Some(0));
         {

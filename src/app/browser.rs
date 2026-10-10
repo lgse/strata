@@ -35,6 +35,7 @@ mod publication;
 mod remote;
 mod sorting;
 
+use folder_sorts::SortOrigin;
 use publication::{PublicationPlan, PublishTerminal, StagedPublish};
 use remote::RemoteState;
 
@@ -876,6 +877,7 @@ struct ViewportFill {
 struct SortFill {
     generation: u64,
     depth: usize,
+    origin: SortOrigin,
     fill_request: RequestId,
     directory_request: RequestId,
     preferences: ViewPreferences,
@@ -958,6 +960,7 @@ pub struct Browser {
     redo_claim: RefCell<Option<(u64, UndoEntry)>>,
     next_request: Cell<u64>,
     pending_sort: Cell<Option<(u64, usize)>>,
+    sort_generation: Cell<u64>,
     preferences: Cell<ViewPreferences>,
     chooser_mode: Cell<bool>,
     suppress_child_mirror: Cell<bool>,
@@ -1028,6 +1031,7 @@ impl Browser {
             redo_claim: RefCell::new(None),
             next_request: Cell::new(1),
             pending_sort: Cell::new(None),
+            sort_generation: Cell::new(0),
             preferences: Cell::new(preferences),
             chooser_mode: Cell::new(false),
             suppress_child_mirror: Cell::new(false),
@@ -1750,7 +1754,9 @@ impl Browser {
             self.refresh_column(depth);
             return;
         }
-        self.apply_column_preferences(depth, move |preferences| preferences.sort_key = sort_key);
+        self.apply_column_preferences(depth, SortOrigin::Chosen, move |preferences| {
+            preferences.sort_key = sort_key;
+        });
     }
 
     pub fn set_sort(
@@ -1770,14 +1776,14 @@ impl Browser {
             self.set_sort_key(depth, sort_key);
             return;
         }
-        self.apply_column_preferences(depth, move |preferences| {
+        self.apply_column_preferences(depth, SortOrigin::Chosen, move |preferences| {
             preferences.sort_key = sort_key;
             preferences.sort_direction = sort_direction;
         });
     }
 
     pub fn set_sort_direction(self: &Rc<Self>, depth: usize, sort_direction: SortDirection) {
-        self.apply_column_preferences(depth, move |preferences| {
+        self.apply_column_preferences(depth, SortOrigin::Chosen, move |preferences| {
             preferences.sort_direction = sort_direction;
         });
     }
@@ -1841,34 +1847,40 @@ impl Browser {
     fn apply_column_preferences(
         self: &Rc<Self>,
         depth: usize,
+        origin: SortOrigin,
         update: impl FnOnce(&mut ViewPreferences) + 'static,
     ) {
         if self.state.borrow().column_preferences(depth).is_none() {
             return;
         }
-        let generation = self
-            .pending_sort
-            .get()
-            .map_or(1, |(generation, _)| generation.saturating_add(1));
+        let generation = self.begin_sort(depth);
+        self.sort_resync.debounce.set(Some(generation));
+        let weak = Rc::downgrade(self);
+        gio::glib::timeout_add_local_once(Duration::from_millis(16), move || {
+            if let Some(browser) = weak.upgrade() {
+                browser.apply_debounced_sort(depth, generation, origin, update);
+            }
+        });
+    }
+
+    /// Generations never repeat, so a stale timer or fill can never pass for a newer sort.
+    fn begin_sort(&self, depth: usize) -> u64 {
+        let generation = self.sort_generation.get().wrapping_add(1);
+        self.sort_generation.set(generation);
         if let Some((_, previous_depth)) = self.pending_sort.replace(Some((generation, depth))) {
             self.emit(BrowserEvent::SortingFinished {
                 depth: previous_depth,
             });
         }
         self.emit(BrowserEvent::SortingStarted { depth });
-        self.sort_resync.debounce.set(Some(generation));
-        let weak = Rc::downgrade(self);
-        gio::glib::timeout_add_local_once(Duration::from_millis(16), move || {
-            if let Some(browser) = weak.upgrade() {
-                browser.apply_debounced_sort(depth, generation, update);
-            }
-        });
+        generation
     }
 
     fn apply_debounced_sort(
         self: &Rc<Self>,
         depth: usize,
         generation: u64,
+        origin: SortOrigin,
         update: impl FnOnce(&mut ViewPreferences),
     ) {
         if self.pending_sort.get() != Some((generation, depth)) {
@@ -1891,9 +1903,10 @@ impl Browser {
                 && !targets.is_empty()
             {
                 drop(state);
-                self.request_sort_fill(depth, generation, preferences, targets);
+                self.request_sort_fill(depth, generation, origin, preferences, targets);
                 return;
             }
+            self.sort_resync.note_attempt(origin, depth, preferences);
             let result = state.apply_sort_preferences(depth, preferences);
             let request_id = state.request_id_for_depth(depth);
             let total = state.columns.get(depth).map(|column| column.entries.len());
@@ -1909,7 +1922,9 @@ impl Browser {
                 })
             })
         };
-        self.record_sort(depth, generation);
+        if origin == SortOrigin::Chosen {
+            self.record_sort(depth);
+        }
         if let Some(plan) = result {
             self.publish_staged(depth, plan);
         } else {
@@ -3943,10 +3958,12 @@ impl Browser {
         self: &Rc<Self>,
         depth: usize,
         generation: u64,
+        origin: SortOrigin,
         preferences: ViewPreferences,
         targets: Vec<(usize, Location)>,
     ) {
         let Some(directory_request) = self.state.borrow().request_id_for_depth(depth) else {
+            self.sort_resync.note_attempt(origin, depth, preferences);
             self.pending_sort.set(None);
             self.emit(BrowserEvent::SortingFinished { depth });
             return;
@@ -3955,6 +3972,7 @@ impl Browser {
         self.sort_awaiting_fill.borrow_mut().replace(SortFill {
             generation,
             depth,
+            origin,
             fill_request,
             directory_request,
             preferences,
@@ -3985,12 +4003,14 @@ impl Browser {
         }
     }
 
-    fn finish_awaited_sort(
-        self: &Rc<Self>,
-        depth: usize,
-        generation: u64,
-        mut preferences: ViewPreferences,
-    ) {
+    fn finish_awaited_sort(self: &Rc<Self>, awaiting: SortFill) {
+        let SortFill {
+            depth,
+            generation,
+            origin,
+            mut preferences,
+            ..
+        } = awaiting;
         // Metadata can arrive after another window changes the application-wide visibility.
         preferences.show_hidden = self.preferences.get().show_hidden;
         self.sort_awaiting_fill.borrow_mut().take();
@@ -4001,6 +4021,7 @@ impl Browser {
             if self.pending_sort.get() != Some((generation, depth)) {
                 return;
             }
+            self.sort_resync.note_attempt(origin, depth, preferences);
             let outcome = state.apply_sort_preferences(depth, preferences);
             self.pending_sort.set(None);
             let take_focus = state.take_selection_from_reveal(depth);
@@ -4015,7 +4036,9 @@ impl Browser {
                 })
             })
         };
-        self.record_sort(depth, generation);
+        if origin == SortOrigin::Chosen {
+            self.record_sort(depth);
+        }
         match outcome {
             Some(plan) => self.publish_staged(depth, plan),
             _ => {
@@ -4031,11 +4054,17 @@ impl Browser {
             && awaiting.fill_request == request_id
         {
             self.sort_loads.borrow_mut().remove(&awaiting.depth);
-            if outcome == MetadataOutcome::Complete
-                && self.pending_sort.get() == Some((awaiting.generation, awaiting.depth))
-            {
-                self.finish_awaited_sort(awaiting.depth, awaiting.generation, awaiting.preferences);
+            let current = self.pending_sort.get() == Some((awaiting.generation, awaiting.depth));
+            if outcome == MetadataOutcome::Complete && current {
+                self.finish_awaited_sort(awaiting);
             } else {
+                if current {
+                    self.sort_resync.note_attempt(
+                        awaiting.origin,
+                        awaiting.depth,
+                        awaiting.preferences,
+                    );
+                }
                 self.abandon_awaited_sort(awaiting.depth, awaiting.generation, outcome);
             }
             return;
@@ -4100,22 +4129,19 @@ impl Browser {
         if !needs {
             return;
         }
-        let generation = self
-            .pending_sort
-            .get()
-            .map_or(1, |(generation, _)| generation.saturating_add(1));
-        if let Some((_, previous_depth)) = self.pending_sort.replace(Some((generation, depth))) {
-            self.emit(BrowserEvent::SortingFinished {
-                depth: previous_depth,
-            });
-        }
-        self.emit(BrowserEvent::SortingStarted { depth });
+        let generation = self.begin_sort(depth);
         let targets = self
             .state
             .borrow()
             .column_unknown_metadata(depth)
             .unwrap_or_default();
-        self.request_sort_fill(depth, generation, preferences, targets);
+        self.request_sort_fill(
+            depth,
+            generation,
+            SortOrigin::Followed,
+            preferences,
+            targets,
+        );
     }
 
     fn flush_metadata_fills(self: &Rc<Self>) {

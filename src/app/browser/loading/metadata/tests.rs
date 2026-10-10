@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use super::super::super::ViewportFill;
+use super::super::super::{SortOrigin, ViewportFill};
 use super::super::tests::Fixture;
 use super::*;
 use crate::{
@@ -34,6 +34,7 @@ fn install_fill(fixture: &Fixture, full_sort: bool) -> RequestId {
         fixture.browser.sort_awaiting_fill.replace(Some(SortFill {
             generation: 1,
             depth: 0,
+            origin: SortOrigin::Chosen,
             fill_request: request_id,
             directory_request: fixture.request(),
             preferences: fixture.browser.preferences(),
