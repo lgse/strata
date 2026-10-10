@@ -84,7 +84,7 @@ impl CompactProgress {
         title.set_hexpand(true);
         title.add_css_class("job-name");
         header.append(&title);
-        let status = gtk::Label::builder().xalign(1.0).build();
+        let status = gtk::Label::builder().xalign(0.0).build();
         status.add_css_class("job-status");
         let pin = gtk::ToggleButton::new();
         pane_header_action(&pin);
@@ -124,7 +124,7 @@ impl CompactProgress {
         let progress = gtk::ProgressBar::new();
         progress.add_css_class("modal-progress");
         root.append(&progress);
-        let footer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        let footer = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         let complete = gtk::Button::with_label(&crate::i18n::tr("Complete"));
         complete.add_css_class("job-action");
         complete.add_css_class("progress-complete");
@@ -135,13 +135,19 @@ impl CompactProgress {
         );
         complete.set_visible(false);
         footer.append(&complete);
+        status.set_valign(gtk::Align::Start);
+        footer.append(&status);
         let meta = wrapped_label(42);
         meta.set_hexpand(true);
         meta.add_css_class("job-meta");
         footer.append(&meta);
-        status.set_valign(gtk::Align::Start);
-        status.set_margin_start(8);
-        footer.append(&status);
+        let total_percent = gtk::Label::builder()
+            .label(crate::i18n::percent(100))
+            .xalign(1.0)
+            .valign(gtk::Align::Start)
+            .build();
+        total_percent.add_css_class("job-meta");
+        footer.append(&total_percent);
         root.append(&footer);
         list.append(&root);
         let completion = completion::Completion::new(completion::Widgets {

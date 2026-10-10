@@ -44,6 +44,15 @@ fn has_label(root: &gtk::Widget, text: &str) -> bool {
     })
 }
 
+fn has_progress_status(root: &gtk::Widget, text: &str) -> bool {
+    descendants(root).into_iter().any(|widget| {
+        widget.has_css_class("job-status")
+            && widget
+                .downcast::<gtk::Label>()
+                .is_ok_and(|label| label.text() == text)
+    })
+}
+
 fn wait_until(ready: impl Fn() -> bool) {
     let expired = Rc::new(Cell::new(false));
     let timeout_expired = expired.clone();
@@ -97,6 +106,7 @@ fn format_feedback_reports_success_failure_and_authorization_cancellation() {
                 );
                 wait_until(|| started.get());
                 assert!(has_label(overlay.upcast_ref(), "Formatting drive"));
+                assert!(has_progress_status(overlay.upcast_ref(), "…"));
                 assert!(
                     !blur.imp().blurred.get(),
                     "format card must not blur browsing"
@@ -133,7 +143,7 @@ fn format_feedback_reports_success_failure_and_authorization_cancellation() {
                             overlay.upcast_ref(),
                             "Click the drive in the sidebar to mount it."
                         ));
-                        assert!(has_label(overlay.upcast_ref(), "100%"));
+                        assert!(has_progress_status(overlay.upcast_ref(), "100%"));
                         assert!(!has_label(overlay.upcast_ref(), "Done"));
                         let complete = descendants(overlay.upcast_ref())
                             .into_iter()
