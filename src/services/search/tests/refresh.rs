@@ -300,6 +300,7 @@ fn refreshed_index_rejects_late_original_batches_and_rescores_smaller_snapshots(
         false,
         true,
         SearchExclusions::default(),
+        RefreshMode::Restart,
     );
     await_paths(&events, root, &["needle-renamed.txt"]);
     let mut late_batch = vec![SearchItem::new(root.join("needle.txt"), root, false)];
@@ -308,4 +309,205 @@ fn refreshed_index_rejects_late_original_batches_and_rescores_smaller_snapshots(
     await_paths(&events, root, &["needle-renamed.txt"]);
     handle.query("renamed");
     await_paths(&events, root, &["needle-renamed.txt"]);
+}
+
+fn revision(handle: &SearchHandle) -> usize {
+    handle
+        .index
+        .state
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .revision
+}
+
+fn rescans_requested(handle: &SearchHandle) -> usize {
+    handle.index.refresh_requested.load(Ordering::Acquire)
+}
+
+#[test]
+fn external_directory_changes_refresh_only_indexes_covering_the_directory() {
+    enum Change {
+        Create(&'static str),
+        Delete(&'static str),
+    }
+    let fixture = tempfile::tempdir().expect("fixture");
+    let root = fixture.path();
+    fs::create_dir(root.join("sub")).expect("sub");
+    fs::create_dir(root.join("other")).expect("other");
+    let filter = |root: PathBuf, recursive: bool| {
+        let (handle, events) = index_filter(root, false, recursive);
+        handle.query("needle");
+        await_paths(&events, fixture.path(), &[]);
+        (handle, events)
+    };
+    let (flat, flat_events) = filter(root.to_path_buf(), false);
+    let (_deep, deep_events) = filter(root.to_path_buf(), true);
+    let (unrelated, _unrelated_events) = filter(root.join("other"), true);
+    // A change, the folder it lands in, the flat index's expected hits (None when it
+    // should not refresh) and the recursive index's expected hits.
+    type Row<'a> = (Change, &'a str, Option<&'a [&'a str]>, &'a [&'a str]);
+    let rows: [Row; 3] = [
+        (
+            Change::Create("needle-top.txt"),
+            "",
+            Some(&["needle-top.txt"]),
+            &["needle-top.txt"],
+        ),
+        (
+            Change::Create("sub/needle-deep.txt"),
+            "sub",
+            None,
+            &["needle-top.txt", "sub/needle-deep.txt"],
+        ),
+        (
+            Change::Delete("needle-top.txt"),
+            "",
+            Some(&[]),
+            &["sub/needle-deep.txt"],
+        ),
+    ];
+    for (change, directory, flat_expected, deep_expected) in rows {
+        let flat_requests = rescans_requested(&flat);
+        let unrelated_revision = revision(&unrelated);
+        let unrelated_requests = rescans_requested(&unrelated);
+        match change {
+            Change::Create(path) => fs::write(root.join(path), "body").expect("create"),
+            Change::Delete(path) => fs::remove_file(root.join(path)).expect("delete"),
+        }
+        refresh_search_indexes_for_directory(&root.join(directory));
+        await_paths(&deep_events, root, deep_expected);
+        match flat_expected {
+            Some(expected) => await_paths(&flat_events, root, expected),
+            None => assert_eq!(
+                rescans_requested(&flat),
+                flat_requests,
+                "a change below a flat filter's folder rescanned it"
+            ),
+        }
+        assert_eq!(rescans_requested(&unrelated), unrelated_requests);
+        assert_eq!(revision(&unrelated), unrelated_revision);
+    }
+}
+
+#[test]
+fn rescan_requests_during_a_refresh_join_it_without_cancelling_it() {
+    let fixture = tempfile::tempdir().expect("fixture");
+    let root = fixture.path();
+    fs::write(root.join("needle.txt"), "body").expect("file");
+    let (handle, events) = index_filter(root.to_path_buf(), false, true);
+    handle.query("needle");
+    await_paths(&events, root, &["needle.txt"]);
+    let traversal = REFRESH_TRAVERSAL
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    refresh_search_indexes_for_directory(root);
+    let walking = rescans_requested(&handle);
+    for name in ["needle-2.txt", "needle-3.txt"] {
+        fs::write(root.join(name), "body").expect("file");
+        refresh_search_indexes_for_directory(root);
+    }
+    assert_eq!(
+        rescans_requested(&handle),
+        walking,
+        "a rescan during a refresh must not cancel it"
+    );
+    drop(traversal);
+    await_paths(
+        &events,
+        root,
+        &["needle.txt", "needle-2.txt", "needle-3.txt"],
+    );
+}
+
+#[test]
+fn external_moves_restart_only_indexes_whose_root_moved() {
+    let fixture = tempfile::tempdir().expect("fixture");
+    let root = fixture.path();
+    fs::create_dir(root.join("old")).expect("folder");
+    fs::write(root.join("old/needle.txt"), "body").expect("file");
+    fs::write(root.join("needle.part"), "body").expect("file");
+    let (parent, parent_events) = index_filter(root.to_path_buf(), false, true);
+    let (moved, moved_events) = index_filter(root.join("old"), false, true);
+    parent.query("needle");
+    moved.query("needle");
+    await_paths(&parent_events, root, &["needle.part", "old/needle.txt"]);
+    await_paths(&moved_events, root, &["old/needle.txt"]);
+    let traversal = REFRESH_TRAVERSAL
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    refresh_search_indexes_for_directory(root);
+    let parent_walking = rescans_requested(&parent);
+    let moved_idle = rescans_requested(&moved);
+
+    // The monitor helper's order: rebase the moved roots, then rescan the folder.
+    for (from, to) in [("needle.part", "needle.txt"), ("old", "new")] {
+        fs::rename(root.join(from), root.join(to)).expect("rename");
+        rebase_search_indexes(&root.join(from), &root.join(to), RenameScope::Moved);
+        refresh_search_indexes_for_directory(root);
+    }
+    assert_eq!(
+        rescans_requested(&parent),
+        parent_walking,
+        "renames below a root must not restart its walk"
+    );
+    assert!(
+        rescans_requested(&moved) > moved_idle,
+        "the moved root restarts"
+    );
+    drop(traversal);
+    await_paths(&parent_events, root, &["needle.txt", "new/needle.txt"]);
+    await_paths(&moved_events, root, &["new/needle.txt"]);
+}
+
+#[test]
+fn external_changes_skip_folders_the_walk_prunes() {
+    let too_deep = (0..MAX_INDEX_DEPTH)
+        .map(|level| format!("d{level}"))
+        .collect::<PathBuf>();
+    let rows = [
+        (PathBuf::from("target/debug"), None, false),
+        (PathBuf::from("node_modules"), None, false),
+        (PathBuf::from(".config/app"), None, false),
+        (too_deep, None, false),
+        (PathBuf::from("private/notes"), Some("private"), false),
+        (PathBuf::from("private/notes"), None, true),
+        (PathBuf::from("sub/deeper"), Some("private"), true),
+    ];
+    for (directory, exclusion, listed) in rows {
+        let fixture = tempfile::tempdir().expect("fixture");
+        let root = fixture.path();
+        let exclusions = exclusion.map(str::to_owned).into_iter().collect();
+        let (handle, events) =
+            index_trees_with_exclusions(vec![root.to_path_buf()], false, exclusions);
+        handle.query("needle");
+        await_paths(&events, root, &[]);
+        let requested = rescans_requested(&handle);
+        refresh_search_indexes_for_directory(&root.join(&directory));
+        assert_eq!(
+            rescans_requested(&handle) > requested,
+            listed,
+            "{directory:?} with exclusion {exclusion:?}"
+        );
+    }
+}
+
+#[test]
+fn external_changes_rescore_every_session_sharing_the_index() {
+    let fixture = tempfile::tempdir().expect("fixture");
+    let root = fixture.path();
+    let (first, first_events) = index_filter(root.to_path_buf(), false, true);
+    let (second, second_events) = index_filter(root.to_path_buf(), false, true);
+    assert!(Arc::ptr_eq(&first.index, &second.index));
+    first.query("needle");
+    second.query("txt");
+    await_paths(&first_events, root, &[]);
+    await_paths(&second_events, root, &[]);
+    fs::write(root.join("needle-new.txt"), "body").expect("file");
+    refresh_search_indexes_for_directory(root);
+    await_paths(&first_events, root, &["needle-new.txt"]);
+    await_paths(&second_events, root, &["needle-new.txt"]);
+    fs::remove_file(root.join("needle-new.txt")).expect("delete");
+    refresh_search_indexes_for_directory(root);
+    await_paths(&first_events, root, &[]);
+    await_paths(&second_events, root, &[]);
 }

@@ -44,6 +44,10 @@ impl Browser {
         if self.location_at(depth).as_ref() != Some(watched) {
             return;
         }
+        // A rescan reloads the column, which refreshes the indexes itself.
+        if !matches!(&change, DirectoryChange::Rescan) {
+            Self::refresh_search_indexes_for(watched, Some(&change));
+        }
         let removed = (!watched.is_recent_root())
             .then(|| removed_location(&change).cloned())
             .flatten();
@@ -70,6 +74,23 @@ impl Browser {
         }
     }
 
+    /// Keeps pane filters, and any search sharing their index, in step with the listing
+    /// of `watched`. A move also rebases indexes rooted at or below the moved entry.
+    pub(super) fn refresh_search_indexes_for(watched: &Location, change: Option<&DirectoryChange>) {
+        if watched.is_recent_root() {
+            return;
+        }
+        let Some(directory) = watched.native_path() else {
+            return;
+        };
+        if let Some(DirectoryChange::Move { from, entry }) = change
+            && let (Some(from), Some(to)) = (from.native_path(), entry.location.native_path())
+        {
+            crate::services::rebase_search_indexes(from, to, crate::services::RenameScope::Moved);
+        }
+        crate::services::refresh_search_indexes_for_directory(directory);
+    }
+
     pub(super) fn retire_recent_target(self: &Rc<Self>, removed: &Location) {
         let recent = (0..)
             .map_while(|depth| self.location_at(depth).map(|location| (depth, location)))
@@ -83,7 +104,9 @@ impl Browser {
                     .state
                     .borrow_mut()
                     .apply_directory_change(depth, &watched, change);
-                self.publish_live_change(depth, application, false);
+                self.publish_external_change(|| {
+                    self.publish_live_change(depth, application, false);
+                });
             }
         }
     }
@@ -134,10 +157,19 @@ impl Browser {
             .state
             .borrow_mut()
             .apply_directory_change(depth, watched, change);
-        self.publish_live_change(depth, application, focused_was_removed);
+        self.publish_external_change(|| {
+            self.publish_live_change(depth, application, focused_was_removed);
+        });
         if let Some((from, to)) = relocation {
             self.relocate_open_columns(&from, &to);
         }
+    }
+
+    /// Marks the `FocusChanged` that `publish` emits as following an outside change.
+    pub(super) fn publish_external_change(&self, publish: impl FnOnce()) {
+        let was = self.external_change_focus.replace(true);
+        publish();
+        self.external_change_focus.set(was);
     }
 
     pub(super) fn publish_live_change(

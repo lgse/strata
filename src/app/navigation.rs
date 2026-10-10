@@ -224,6 +224,12 @@ pub struct ColumnState {
     preferences: ViewPreferences,
     request_id: RequestId,
     select_first_on_load: bool,
+    /// Soft load target: selected if it arrives, otherwise the first visible entry
+    /// once the listing is complete. Never reveals hidden files or reports failure.
+    preferred_on_load: Option<Location>,
+    /// Cursor position before a reload; the cursor moves to its neighbour when the
+    /// entry is gone.
+    reload_cursor: Option<usize>,
     // Auto-selection must not redirect paste into the first folder.
     load_cursor: Option<Location>,
 }
@@ -386,6 +392,8 @@ impl NavigationState {
                 can_delete: None,
                 request_id,
                 select_first_on_load: false,
+                preferred_on_load: None,
+                reload_cursor: None,
                 load_cursor: None,
             })
             .collect();
@@ -462,6 +470,8 @@ impl NavigationState {
             can_delete: None,
             request_id,
             select_first_on_load: false,
+            preferred_on_load: None,
+            reload_cursor: None,
             load_cursor: None,
         });
     }
@@ -472,8 +482,17 @@ impl NavigationState {
         }
     }
 
+    /// Sets the soft load target (`preferred_on_load`) without clearing what the load restores.
+    pub fn prefer_location_on_load(&mut self, depth: usize, location: Location) {
+        if let Some(column) = self.columns.get_mut(depth) {
+            column.preferred_on_load = Some(location);
+            column.select_first_on_load = false;
+        }
+    }
+
     pub fn select_locations_on_load(&mut self, depth: usize, targets: Vec<Location>) {
         if let Some(column) = self.columns.get_mut(depth) {
+            column.preferred_on_load = None;
             column.selected = None;
             column.selected_locations.clear();
             column.selection_anchor = None;
@@ -598,21 +617,9 @@ impl NavigationState {
         }
         column.resolve_pending_reveal();
         column.restore_pending_selection();
+        column.resolve_preferred_on_load();
         if column.select_first_on_load && !column.entries.is_empty() {
-            column.pending_selection.clear();
-            let first_visible = column
-                .entries
-                .iter()
-                .position(|entry| preferences.show_hidden || !entry.is_hidden);
-            if let Some(position) = first_visible {
-                let location = column.entries[position].location.clone();
-                column.selected = Some(position);
-                column.selected_locations.clear();
-                column.selected_locations.insert(location.clone());
-                column.selection_anchor = Some(location.clone());
-                column.select_first_on_load = false;
-                column.load_cursor = Some(location);
-            }
+            column.select_first_visible_entry();
         }
         Some((depth, insertions))
     }
@@ -637,22 +644,12 @@ impl NavigationState {
         }
         column.resolve_pending_reveal();
         column.restore_pending_selection();
+        column.resolve_preferred_on_load();
         if column.select_first_on_load && !column.entries.is_empty() {
-            column.pending_selection.clear();
-            let first_visible = column
-                .entries
-                .iter()
-                .position(|entry| column.preferences.show_hidden || !entry.is_hidden);
-            if let Some(position) = first_visible {
-                let location = column.entries[position].location.clone();
-                column.selected = Some(position);
-                column.selected_locations.clear();
-                column.selected_locations.insert(location.clone());
-                column.selection_anchor = Some(location.clone());
-                column.select_first_on_load = false;
-                column.load_cursor = Some(location);
-            }
+            column.select_first_visible_entry();
         }
+        // The listing is complete, and its selection is published before `finish`.
+        column.complete_load_selection();
         Some(depth)
     }
 
@@ -1057,6 +1054,9 @@ impl NavigationState {
     }
 
     pub fn reload_column(&mut self, depth: usize, request_id: RequestId) -> Option<Location> {
+        // An open child column belongs to the cursor's folder; another entry must not
+        // take over the cursor beside it.
+        let child_open = depth + 1 < self.columns.len();
         let column = self.columns.get_mut(depth)?;
         column.selection_target = column
             .selected
@@ -1067,6 +1067,10 @@ impl NavigationState {
         column.selected_locations = column.pending_selection.clone().into();
         column.entries = Vec::new();
         column.invalidate_entry_indexes();
+        // A reload that restarts before the previous one listed anything keeps its cursor.
+        column.reload_cursor = (!child_open)
+            .then(|| column.selected.or(column.reload_cursor))
+            .flatten();
         column.selected = None;
         column.load_state = LoadState::Loading;
         column.truncated = false;
@@ -1227,14 +1231,17 @@ impl NavigationState {
         self.columns.get(depth)?.can_delete
     }
 
+    /// Returns the finished depth and whether completing the listing moved the cursor,
+    /// which batch loads have not published yet.
     pub fn finish(
         &mut self,
         request_id: RequestId,
         truncated: bool,
         can_trash: Option<bool>,
         can_delete: Option<bool>,
-    ) -> Option<usize> {
+    ) -> Option<(usize, bool)> {
         let (depth, column) = self.column_for_request_mut(request_id)?;
+        let cursor_moved = column.complete_load_selection();
         column.select_first_on_load = false;
         column.retain_selected_locations(false);
         column.pending_selection.clear();
@@ -1246,13 +1253,12 @@ impl NavigationState {
         } else {
             LoadState::Ready
         };
-        Some(depth)
+        Some((depth, cursor_moved))
     }
 
     pub fn fail(&mut self, request_id: RequestId, message: String) -> Option<usize> {
         let (depth, column) = self.column_for_request_mut(request_id)?;
-        column.pending_reveal.clear();
-        column.selection_from_reveal = false;
+        column.drop_load_intents();
         column.load_state = LoadState::Error(message);
         Some(depth)
     }
@@ -1340,8 +1346,7 @@ impl NavigationState {
         };
         let location = column.entries[position].location.clone();
         let filled = column.load_cursor.is_none() && column.selected_locations.contains(&location);
-        column.pending_reveal.clear();
-        column.selection_from_reveal = false;
+        column.drop_load_intents();
         if column.load_cursor.is_some() {
             column.selected_locations.clear();
             column.load_cursor = None;
@@ -1372,8 +1377,7 @@ impl NavigationState {
         column.selected = Some(focused);
         column.selection_anchor = Some(column.entries[focused].location.clone());
         column.load_cursor = None;
-        column.pending_reveal.clear();
-        column.selection_from_reveal = false;
+        column.drop_load_intents();
         self.active_column = Some(depth);
         Some(focused)
     }
@@ -1456,8 +1460,7 @@ impl NavigationState {
         let cursor = column
             .selected
             .filter(|position| order.contains(position))?;
-        column.pending_reveal.clear();
-        column.selection_from_reveal = false;
+        column.drop_load_intents();
         if column.load_cursor.is_some() {
             column.selected_locations.clear();
             column.load_cursor = None;
@@ -2235,8 +2238,7 @@ fn place_cursor(column: &mut ColumnState, position: usize) -> bool {
     let mut cleared = false;
     if moved {
         // A resolved reveal still waiting for more batches must not pull the cursor back.
-        column.pending_reveal.clear();
-        column.selection_from_reveal = false;
+        column.drop_load_intents();
     }
     if moved && column.load_cursor.is_some() {
         column.selected_locations.clear();
@@ -2326,6 +2328,85 @@ impl ColumnState {
         .then_some(position)
     }
 
+    /// A user selection or a failed load supersedes whatever the load meant to select.
+    fn drop_load_intents(&mut self) {
+        self.pending_reveal.clear();
+        self.selection_from_reveal = false;
+        self.preferred_on_load = None;
+        self.reload_cursor = None;
+    }
+
+    /// Selects `position` as a load's automatic choice: cursor, single selection and
+    /// anchor, marked so a later cursor move does not carry it along.
+    fn select_loaded_entry(&mut self, position: usize) {
+        let location = self.entries[position].location.clone();
+        self.selected = Some(position);
+        self.selected_locations.clear();
+        self.selected_locations.insert(location.clone());
+        self.selection_anchor = Some(location.clone());
+        self.select_first_on_load = false;
+        self.load_cursor = Some(location);
+    }
+
+    fn select_first_visible_entry(&mut self) {
+        self.pending_selection.clear();
+        let show_hidden = self.preferences.show_hidden;
+        if let Some(position) = self
+            .entries
+            .iter()
+            .position(|entry| show_hidden || !entry.is_hidden)
+        {
+            self.select_loaded_entry(position);
+        }
+    }
+
+    /// An explicit target, or a selection the load already restored, wins over the
+    /// preferred entry.
+    fn resolve_preferred_on_load(&mut self) {
+        if !self.pending_reveal.is_empty() || self.selected.is_some() {
+            return;
+        }
+        let Some(preferred) = self.preferred_on_load.as_ref() else {
+            return;
+        };
+        let show_hidden = self.preferences.show_hidden;
+        let Some(position) = self
+            .entries
+            .iter()
+            .position(|entry| entry.location == *preferred && (show_hidden || !entry.is_hidden))
+        else {
+            return;
+        };
+        self.preferred_on_load = None;
+        self.pending_selection.clear();
+        self.select_loaded_entry(position);
+    }
+
+    /// Fallbacks that need the complete listing: the first visible entry for a preferred
+    /// entry that never arrived, and a cursor-only neighbour for a reloaded cursor whose
+    /// entry is gone. Returns whether the cursor moved.
+    fn complete_load_selection(&mut self) -> bool {
+        let before = self.selected;
+        if self.preferred_on_load.take().is_some()
+            && self.selected.is_none()
+            && self.pending_reveal.is_empty()
+            && !self.entries.is_empty()
+        {
+            self.select_first_visible_entry();
+        }
+        if let Some(previous) = self.reload_cursor.take()
+            && self.selected.is_none()
+            && self.pending_reveal.is_empty()
+            && !self.entries.is_empty()
+        {
+            self.selected = self.visible_neighbor(previous.min(self.entries.len() - 1));
+            if self.selected.is_some() {
+                self.selection_target = None;
+            }
+        }
+        self.selected != before
+    }
+
     fn resolve_pending_reveal(&mut self) {
         if self.pending_reveal.is_empty() {
             return;
@@ -2352,6 +2433,8 @@ impl ColumnState {
         self.selection_target = None;
         self.load_cursor = None;
         self.selection_from_reveal = true;
+        self.preferred_on_load = None;
+        self.reload_cursor = None;
     }
 
     fn restore_pending_selection(&mut self) {
@@ -2380,8 +2463,7 @@ impl ColumnState {
 fn adopt_selected_locations(column: &mut ColumnState, locations: HashSet<Location>, commit: bool) {
     if commit {
         column.load_cursor = None;
-        column.pending_reveal.clear();
-        column.selection_from_reveal = false;
+        column.drop_load_intents();
     }
     column.selected_locations = locations.into();
 }

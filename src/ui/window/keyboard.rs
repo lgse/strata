@@ -230,6 +230,16 @@ fn bind_footer_filter(dispatcher: &Dispatcher) {
             .map_or(Some(None), |view| view.filter_status())
     });
     let shortcuts = dispatcher.shortcuts.clone();
+    dispatcher.view.set_footer_filter_focus(Rc::new(move || {
+        shortcuts.prompt_has_focus()
+            && matches!(
+                shortcuts.open_prompt_kind(),
+                Some(
+                    crate::ui::tenxer_mode::Prompt::Filter | crate::ui::tenxer_mode::Prompt::Search
+                )
+            )
+    }));
+    let shortcuts = dispatcher.shortcuts.clone();
     dispatcher
         .view
         .connect_filter_results_changed(Rc::new(move || shortcuts.refresh_filter()));

@@ -3,6 +3,7 @@
 use gtk::prelude::*;
 
 mod layout;
+mod name_tooltip;
 
 pub(super) const MIN_ICONS_THUMBNAIL_SIZE: i32 = 32;
 pub(super) const MAX_ICONS_THUMBNAIL_SIZE: i32 = 256;
@@ -59,6 +60,7 @@ pub(super) fn new_card(slot: i32) -> gtk::Box {
     card.append(&icon_frame);
     card.append(&labels);
     layout::install(&card, &label);
+    name_tooltip::install(&card);
     set_slot(&card, slot);
     card
 }

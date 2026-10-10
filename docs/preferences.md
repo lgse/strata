@@ -4,6 +4,12 @@ Application-wide preferences live in `ui::preferences::Preferences`. The
 `ui::preferences::PreferenceManager` loads them once per application process and
 persists changes atomically to
 `$XDG_CONFIG_HOME/strata/settings.toml` (normally `~/.config/strata/settings.toml`).
+The file may be a symlink, for example into a dotfiles repository: Strata follows
+up to eight links owned by the current user to a regular file the user owns,
+replaces that target atomically in its own directory, keeps its permission bits
+and leaves the links in place. Links owned by another user, links to directories
+or missing targets, and longer chains are refused. A missing file is created
+with owner-only permissions; an existing one keeps its permission bits.
 It owns the serialized schema, change notifications, and widget bindings for every
 settings consumer, theme-related or not. `ui::theme::ThemeManager` separately owns
 the theme catalog, shared CSS application, custom themes, and Omarchy following;
@@ -33,11 +39,21 @@ current value immediately, then applies only
 changes to its selected value. There is no separate startup initializer to keep
 in sync with the change handler. Every setter goes through `save_preferences`,
 which deduplicates unchanged preferences and publishes changes through the same
-notification mechanism. Failed writes are logged, still apply in memory, and
-are retried on the next save attempt. If an existing settings file cannot be read
+notification mechanism. Failed writes are logged with the path and reason, still
+apply in memory, and are retried on the next save, so a transient failure such as
+a full disk recovers once its cause is fixed. The first failure also opens a
+"Settings can't be saved" dialog with the path and reason, saying that changes
+last only until Strata closes. It appears once per failure streak, in the active
+browser window where the change was made, and again only after a save has
+succeeded and then failed. A failure while no browser window is active, such as
+a background Omarchy theme update, is only logged and leaves the notice for the
+next failure. If an existing settings file cannot be read
 or parsed as TOML, startup logs a warning and uses temporary defaults. Preference
 changes still apply in memory, but saving is disabled for that manager's lifetime
-to preserve the original file. Fix the file and restart Strata to resume saving.
+to preserve the original file. The first change made in a browser window then
+opens a "Settings file can't be read" dialog instead, once. Fix the file and restart
+Strata to resume saving. Portal file choosers never show these dialogs; their
+failures are only logged.
 Missing files allow normal first-run saves; invalid values in otherwise valid
 TOML still use the existing per-entry recovery.
 
@@ -58,7 +74,7 @@ control that might be midway through synchronization.
 | Stored preferences | Consumer / application point |
 | --- | --- |
 | Default directory | New windows without an explicit target read the current choice before navigating, without opening Settings. Existing windows and explicit targets are unchanged. Missing directories fall back to home and clear the saved choice; Reset also restores home. |
-| Folder peeking, single-click previews, columns selection mirror, mode, density, grouping, per-mode click counts, auto-refresh | Every browser binds at construction, including lazily rebuilt view modes. Miller columns disallow folder-peek popovers regardless of the saved value; Icons and List retain the preference. The chooser explicitly disallows folder peeking and the columns selection mirror regardless of the saved values. |
+| Folder peeking, single-click previews, columns selection mirror, mode, density, grouping, per-mode click counts, auto-refresh | Every browser binds at construction, including lazily rebuilt view modes. Miller columns disallow folder-peek popovers regardless of the saved value; Icons and List retain the preference. The chooser explicitly disallows folder peeking and the columns selection mirror regardless of the saved values. Auto-refresh accepts only the Settings choices (Off, 1, 5 or 10 min); an unlisted saved interval is rounded up to the next choice (capped at 10 min) when loaded or set, and the repaired value is written on the next save. |
 | Hidden files | Shared across existing browsers and new columns. |
 | Open folder after dropping files | Drop dispatch reads the saved choice (off by default), including confirmation of cross-device drops. Successful drops reveal the destination only when enabled and the user is still at the transfer origin. Paste and Move/Copy to remain unchanged. |
 | Cross-device drag and drop | Drop dispatch reads the current Copy, Move, or Ask strategy; unresolved volume lookups follow the same cross-device policy. |
@@ -282,6 +298,10 @@ on by default. Turn it off to match only immediate files and folders, without
 redundant path subtitles. The choice applies to pane filtering in Columns, Icons,
 and List views, not global search.
 Changing it refreshes active filters across windows and is saved for next launch.
+With it on, changes that other programs make in subfolders of the watched folders
+reach active filters on F5, Auto-refresh, or when the filter is opened again; changes
+in a watched folder show within about a second (see
+[Filename patterns while filtering](keyboard-navigation.md#filename-patterns-while-filtering)).
 [10xer mode](10xer-mode.md) does not use it: there **f** filters only the
 current folder and **s** always searches below it.
 
@@ -336,6 +356,6 @@ and Icons. See
    Test both directions; a test that only saves and deserializes is insufficient.
 
 The regression suites also check no writes from opening Settings, no duplicate
-notifications, reentrant changes, listener cleanup, failed-write retries,
-chooser overrides, type-to-search keyboard behavior, and synchronized media
-controls. Run GTK tests on the private display described in `e2e-testing.md`.
+notifications, reentrant changes, listener cleanup, failed-write retries and
+notices, symlinked settings files, chooser overrides, type-to-search keyboard
+behavior, and synchronized media controls. Run GTK tests on the private display described in `e2e-testing.md`.

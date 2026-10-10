@@ -18,6 +18,37 @@ pub(super) fn set_description(widget: &impl IsA<gtk::Accessible>, description: O
     )]);
 }
 
+fn tristate(value: bool) -> gtk::AccessibleTristate {
+    if value {
+        gtk::AccessibleTristate::True
+    } else {
+        gtk::AccessibleTristate::False
+    }
+}
+
+pub(super) fn set_checked(widget: &impl IsA<gtk::Accessible>, checked: bool) {
+    widget.update_state(&[gtk::accessible::State::Checked(tristate(checked))]);
+}
+
+pub(super) fn set_pressed(widget: &impl IsA<gtk::Accessible>, pressed: bool) {
+    widget.update_state(&[gtk::accessible::State::Pressed(tristate(pressed))]);
+}
+
+/// Option rows show their chosen state by toggling a check icon from several
+/// places; mirroring the icon keeps the accessible state from drifting. The
+/// icon's own `visible` property is read because the closed popover hides
+/// every option's ancestors.
+pub(super) fn sync_checked_with_icon(option: &impl IsA<gtk::Widget>, check: &gtk::Image) {
+    let option = option.upcast_ref::<gtk::Widget>();
+    set_checked(option, check.get_visible());
+    let option = option.downgrade();
+    check.connect_visible_notify(move |check| {
+        if let Some(option) = option.upgrade() {
+            set_checked(&option, check.get_visible());
+        }
+    });
+}
+
 // Location controls require explicit accessible names.
 pub(super) const LOCATION_LABEL: &str = "Location (Ctrl+L)";
 pub(super) const LOCATION_CONFIRM_LABEL: &str = "Navigate (Enter)";

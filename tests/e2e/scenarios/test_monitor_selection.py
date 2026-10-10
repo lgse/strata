@@ -69,3 +69,23 @@ def test_keyboard_navigation_survives_background_insertion(strata, mode):
     strata.keyboard.press(NEXT_ENTRY_KEY[mode])
     strata.wait_for_focused_entry("004.txt")
     strata.wait_for_selection(["004.txt"])
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_keyboard_navigation_survives_a_rescan_burst(strata, mode):
+    strata.select_entry("003.txt")
+    strata.wait_for_focused_entry("003.txt")
+    # More changes than the monitor queues one by one (4,096), so the folder is
+    # rescanned rather than spliced.
+    for index in range(4200):
+        strata.fixture.path(f"zz-{index:04}.txt").write_text("burst\n")
+    strata.wait(
+        lambda: strata.window.find(
+            role="label",
+            predicate=lambda node: node.description.startswith("1 of 4,300 items selected"),
+        ),
+        "the status bar to count the whole burst with the selection kept",
+    )
+    strata.keyboard.press(NEXT_ENTRY_KEY[mode])
+    strata.wait_for_focused_entry("004.txt")
+    strata.wait_for_selection(["004.txt"])

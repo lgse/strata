@@ -1374,7 +1374,7 @@ impl BrowserView {
                     .location_at(0)
                     .and_then(|location| location.parent())
                 {
-                    self.state.browser.navigate(parent);
+                    self.state.browser.navigate_to_ancestor(parent);
                 }
             }
             Some(depth) => self.state.browser.close_column(depth),
@@ -1552,8 +1552,8 @@ impl BrowserView {
         cancel_source(&self.state.pending_peek);
         self.state.browser.close_peek();
         // Capture-phase keys run before the pane sees the event that would cancel
-        // an in-progress history restore, so the command has to cancel it first.
-        self.state.mode_views.borrow_mut().cancel_list_restore();
+        // an in-progress restore, so the command has to cancel it first.
+        self.state.mode_views.borrow_mut().cancel_pending_restore();
         self.state.sync_mode_selection();
         self.state.cancel_tab_location_hold();
         self.state.refresh_destination_style();
@@ -2746,6 +2746,15 @@ impl ViewState {
             focused == column.shell.clone().upcast::<gtk::Widget>()
                 || focused.is_ancestor(&column.shell)
         })
+    }
+
+    /// Like `ModeViews::listing_may_take_focus`, for any column.
+    fn column_may_take_focus(&self) -> bool {
+        self.overlay
+            .root()
+            .and_then(|root| root.focus())
+            .is_none_or(|focused| focused.root().is_none())
+            || self.focused_column_depth().is_some()
     }
 
     fn select_all(&self, depth: usize) {

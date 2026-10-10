@@ -73,19 +73,40 @@ Copy/cut use the selection in the focused column, never a hovered row. In Column
 
 Background selection updates from directory loading must not move keyboard focus to an inactive column.
 
-## Returning to an Icons or List directory
+## Returning to a visited directory
 
 Icons and List remember the selection, keyboard cursor, and scroll position of the
-last 128 directories left in that browser. Back, Forward, and Up restore each
-visited directory after its entries load, including nested parents. Arrow-key
-navigation continues from the restored row. Entries are matched by location,
-not their previous row numbers; deleted entries are not selected accidentally.
-This is temporary browsing state, not a saved preference. New input in the file view
-cancels an in-progress restoration.
+last 128 directories left in that browser. Every route back to a visited directory
+restores it after its entries load, including nested parents: Back, Forward, Up,
+breadcrumbs, and typed paths. Arrow-key navigation continues from the restored row.
+Entries are matched by location, not their previous row numbers; deleted entries are
+not selected accidentally. The selection and cursor carry over between Icons and
+List; the exact scroll position comes back only in the view it was left in (and, for
+Icons, at the same width), otherwise the cursor is scrolled into view. This is
+temporary browsing state, not a saved preference. New input in the file view cancels
+an in-progress restoration. Back, Forward and Up move keyboard focus into the restored
+listing only when focus was inside the pane being left, its Ctrl+F field included:
+from a header button or with the sidebar focused, they restore the selection and
+leave focus where it is. Sidebar places, breadcrumbs and typed paths focus the
+listing, as on a first visit.
+
+In Columns, Back, Forward, Up and breadcrumbs that return to an ancestor of the
+current directory select the folder you came from, with the cursor on it, and leave
+its column closed. When that folder is gone or hidden, the first visible entry is
+selected instead; hidden files stay hidden. Icons and List do the same when they
+have no remembered position for the ancestor.
 
 A navigation that names a target — a typed file path, a Ctrl+K result opened with
 Enter or Alt+Enter, Open file location, or an `org.freedesktop.FileManager1`
 request — selects that target instead of restoring the remembered position.
+
+## Refreshing a directory
+
+F5, the pane's Refresh button, Auto-refresh, and the rescan after a burst of
+external changes keep the selection, the keyboard cursor and the keyboard focus in
+every view: a focused row stays focused, and a focused Ctrl+F field keeps focus and
+its text. Icons and List also keep the scroll position. When the item under the
+cursor is gone, the cursor moves to the item now in its place without selecting it.
 
 ## Creating files and folders
 
@@ -142,6 +163,13 @@ Clear the input, or press Escape in the input or on a focused result, to restore
 the directory listing with focus on its cursor. **Ctrl+K** global fuzzy search is
 unchanged.
 
+Results follow the watched folders live: the open folder, and in Columns every open
+column. A matching file that another program creates or renames there appears within
+about a second, and a deleted one leaves the results as soon as the listing drops it.
+With [Include subfolders](preferences.md#filter-scope) on, changes in folders below
+those reach the results on **F5**, Auto-refresh, the rescan after a burst of external
+changes, or when the filter is cleared and opened again.
+
 ## Preview while filtering
 
 In the browser and file chooser, **Down** from the Ctrl+F input focuses the selected result, or the first result if none is selected. **Up/Down** then navigate the results; **Up** from the first result returns to the input without clearing the query. **Ctrl+F** also returns to the input. With no matches, Down leaves focus in the input.
@@ -150,7 +178,7 @@ In the browser and file chooser, **Down** from the Ctrl+F input focuses the sele
 
 While the input is focused, Space types into the query if no result is selected. **Shift+Space** inserts a space there even with a result selected. Space opens a selected folder in every view without opening or loading the preview pane; unsupported files do not open a preview.
 
-With a result focused, the first **Escape** dismisses the filter even while its quick preview is open; a second Escape closes the preview. **Ctrl+1/2/3** keep focus in the filter: in the input with the caret after the query, or on the focused result. With a query typed and focus elsewhere, the results take focus once they show. Loading or refreshing the folder never moves focus out of the input or its results.
+With a result focused, the first **Escape** dismisses the filter even while its quick preview is open; a second Escape closes the preview. **Ctrl+1/2/3** keep focus in the filter: in the input with the caret after the query, or on the focused result. With a query typed and focus elsewhere, the results take focus once they show. Loading or refreshing the folder never moves focus out of the input or its results. Neither does another program changing the folder, and that also holds for the [10xer](10xer-mode.md) **f** and **s** prompts.
 
 ## Navigating an archive preview
 

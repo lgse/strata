@@ -380,11 +380,19 @@ fn incremental_batch_publishes_final_selection_without_holding_state_borrows() {
     browser.select(0, 1);
     let complete = queue_until_terminal(&browser, true);
     let weak = Rc::downgrade(&browser);
+    let outside_focus = Rc::new(std::cell::Cell::new(None));
+    let observed_focus = outside_focus.clone();
     browser.observe(move |event| {
-        if matches!(event, BrowserEvent::EntriesSpliced { .. }) {
-            let browser = weak.upgrade().expect("live browser");
-            assert_eq!(column_names(&browser, 0), ["beta"]);
-            assert_eq!(browser.selected_positions(0), [0]);
+        let browser = weak.upgrade().expect("live browser");
+        match event {
+            BrowserEvent::EntriesSpliced { .. } => {
+                assert_eq!(column_names(&browser, 0), ["beta"]);
+                assert_eq!(browser.selected_positions(0), [0]);
+            }
+            BrowserEvent::FocusChanged { .. } => {
+                observed_focus.set(Some(browser.focus_follows_external_change()));
+            }
+            _ => {}
         }
     });
     events.borrow_mut().clear();
@@ -414,6 +422,11 @@ fn incremental_batch_publishes_final_selection_without_holding_state_borrows() {
             BrowserEvent::RestorationFinished { succeeded: true },
         ]
     ));
+    assert_eq!(
+        outside_focus.get(),
+        Some(true),
+        "deferred monitor changes must not pull focus out of a filter"
+    );
 }
 
 #[test]

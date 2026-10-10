@@ -291,3 +291,203 @@ fn closing_settings_returns_focus_to_a_focused_filter_field() {
         },
     );
 }
+
+#[derive(Clone, Copy, Debug)]
+enum DialogOverSettings {
+    ActionEditor,
+    SaveNotice,
+    /// An error chained on a delete confirmation whose delete failed.
+    FailedDelete,
+    /// A delete confirmation whose delete re-rendered the row that opened it.
+    RerenderedDelete,
+}
+
+const FOCUS_ACTION_MANIFEST: &str = "schema_version = 1\nid = \"focus-demo\"\n\
+    name = \"Focus demo\"\nmenu = \"top\"\n\n[when]\nextensions = [\"txt\"]\n\n\
+    [run]\nruntime = \"command\"\nprogram = \"/bin/sh\"\nargs = [\"-c\", \"true\"]\n";
+
+fn descendant(
+    widget: &gtk::Widget,
+    matches: &impl Fn(&gtk::Widget) -> bool,
+) -> Option<gtk::Widget> {
+    if matches(widget) {
+        return Some(widget.clone());
+    }
+    let mut child = widget.first_child();
+    while let Some(current) = child {
+        if let Some(found) = descendant(&current, matches) {
+            return Some(found);
+        }
+        child = current.next_sibling();
+    }
+    None
+}
+
+fn top_dialog(fixture: &ComposedFolder) -> Option<gtk::Widget> {
+    let mut child = fixture.content.overlay().last_child();
+    while let Some(widget) = child {
+        if widget.is_visible()
+            && widget.has_css_class("app-modal-layer")
+            && !widget.has_css_class("settings-backdrop")
+            && !widget.has_css_class("dismissing")
+        {
+            return Some(widget);
+        }
+        child = widget.prev_sibling();
+    }
+    None
+}
+
+/// Closes `layer` the way a key press does: GTK hides focus rings on the release
+/// of the key whose press disabled the focused control.
+fn close_by_key(fixture: &ComposedFolder, layer: &gtk::Widget, close: impl FnOnce()) {
+    fixture.window.set_focus_visible(true);
+    close();
+    fixture.window.set_focus_visible(false);
+    assert!(settles(|| layer.parent().is_none()), "the dialog closes");
+}
+
+#[test]
+fn a_dialog_closed_over_settings_returns_focus_to_its_opener() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::overlay_focus::a_dialog_closed_over_settings_returns_focus_to_its_opener",
+        || {
+            let fixture = ComposedFolder::open();
+            let preferences = PreferenceManager::shared();
+            preferences.register_save_notice_window(fixture.window.upcast_ref());
+            assert!(settles(|| fixture.window.is_active()));
+            let settings_path = crate::ui::preferences::config_directory().join("settings.toml");
+            let action_directory = crate::storage::config_directory()
+                .join("actions")
+                .join("focus-demo");
+            let mut failures = Vec::new();
+            for dialog in [
+                DialogOverSettings::ActionEditor,
+                DialogOverSettings::SaveNotice,
+                DialogOverSettings::FailedDelete,
+                DialogOverSettings::RerenderedDelete,
+            ] {
+                fixture.focus_cursor_row(BrowserMode::List);
+                assert!(press_phase(
+                    &fixture.window,
+                    gtk::PropagationPhase::Bubble,
+                    Key::comma,
+                    ModifierType::CONTROL_MASK,
+                ));
+                let settings = fixture.layer("settings-backdrop").expect("Settings layer");
+                assert!(settles(|| settings.is_visible() && settings.is_mapped()));
+                let page = match dialog {
+                    DialogOverSettings::SaveNotice => "General",
+                    _ => "Actions",
+                };
+                descendant(&settings, &|widget| {
+                    widget.is::<gtk::Button>() && widget.widget_name() == page
+                })
+                .and_downcast::<gtk::Button>()
+                .expect("Settings page")
+                .emit_clicked();
+                let opener = match dialog {
+                    DialogOverSettings::ActionEditor => {
+                        assert!(settles(|| widget_with_class(
+                            &settings,
+                            "settings-actions-create-button"
+                        )
+                        .is_some_and(|button| button.is_mapped())));
+                        let new_action =
+                            widget_with_class(&settings, "settings-actions-create-button")
+                                .and_downcast::<gtk::Button>()
+                                .expect("New action");
+                        assert!(new_action.grab_focus());
+                        new_action.emit_clicked();
+                        Some(new_action.upcast::<gtk::Widget>())
+                    }
+                    DialogOverSettings::SaveNotice => {
+                        let switch = || {
+                            descendant(&settings, &|widget| {
+                                widget.is::<gtk::Switch>() && widget.is_mapped()
+                            })
+                        };
+                        assert!(settles(|| switch().is_some()), "a General switch");
+                        let switch = switch().expect("General switch");
+                        assert!(switch.grab_focus());
+                        std::fs::remove_file(&settings_path).expect("saved settings");
+                        std::fs::create_dir(&settings_path).expect("block the settings file");
+                        preferences.set_folder_peeking(!preferences.folder_peeking());
+                        Some(switch)
+                    }
+                    DialogOverSettings::FailedDelete | DialogOverSettings::RerenderedDelete => {
+                        std::fs::create_dir_all(&action_directory).expect("action folder");
+                        std::fs::write(action_directory.join("action.toml"), FOCUS_ACTION_MANIFEST)
+                            .expect("action manifest");
+                        crate::ui::actions::shared().reload();
+                        let delete = || {
+                            let row = descendant(&settings, &|widget| {
+                                widget.has_css_class("settings-action-row") && widget.is_mapped()
+                            })?;
+                            descendant(&row, &|widget| {
+                                widget.has_css_class("settings-action-icon-button")
+                                    && widget.has_css_class("danger")
+                            })
+                        };
+                        assert!(settles(|| delete().is_some()), "the action row");
+                        let delete = delete()
+                            .and_downcast::<gtk::Button>()
+                            .expect("Delete action");
+                        if matches!(dialog, DialogOverSettings::FailedDelete) {
+                            std::fs::remove_dir_all(&action_directory)
+                                .expect("remove the action behind the row");
+                        }
+                        assert!(delete.grab_focus());
+                        delete.emit_clicked();
+                        assert!(
+                            settles(|| top_dialog(&fixture).is_some()),
+                            "{dialog:?} asks"
+                        );
+                        let confirmation = top_dialog(&fixture).expect("confirmation");
+                        let confirm = descendant(&confirmation, &|widget| {
+                            widget
+                                .downcast_ref::<gtk::Button>()
+                                .is_some_and(|button| button.label().as_deref() == Some("Delete"))
+                        })
+                        .and_downcast::<gtk::Button>()
+                        .expect("Delete confirmation");
+                        close_by_key(&fixture, &confirmation, || confirm.emit_clicked());
+                        matches!(dialog, DialogOverSettings::FailedDelete)
+                            .then(|| delete.upcast::<gtk::Widget>())
+                    }
+                };
+                if !matches!(dialog, DialogOverSettings::RerenderedDelete) {
+                    assert!(
+                        settles(|| top_dialog(&fixture).is_some()),
+                        "{dialog:?} opens"
+                    );
+                    let layer = top_dialog(&fixture).expect("dialog layer");
+                    pump(50);
+                    close_by_key(&fixture, &layer, || press_escape_on(&layer));
+                }
+                let restored = || match &opener {
+                    Some(opener) => opener.has_focus(),
+                    None => gtk::prelude::RootExt::focus(&fixture.window)
+                        .is_some_and(|focus| focus != settings && focus.is_ancestor(&settings)),
+                };
+                if !settles(restored) || !fixture.window.gets_focus_visible() {
+                    failures.push(format!(
+                        "{dialog:?}: focus is on {}, focus ring shown: {}",
+                        fixture.describe_focus(),
+                        fixture.window.gets_focus_visible()
+                    ));
+                }
+                press_escape_on(&settings);
+                assert!(settles(|| !settings.is_visible()));
+                if settings_path.is_dir() {
+                    std::fs::remove_dir(&settings_path).expect("repair the settings file");
+                }
+            }
+            assert!(
+                failures.is_empty(),
+                "a dialog closed over Settings must return focus to its opener:\n{}",
+                failures.join("\n")
+            );
+        },
+    );
+}

@@ -676,3 +676,73 @@ fn staged_load_completion_keeps_focus_in_the_filter_entry() {
         },
     );
 }
+
+/// Another program deletes the cursor's file, one of the hits, while the pane filter's
+/// field has focus.
+fn external_delete_case(mode: BrowserMode, recursive: bool) -> Result<(), String> {
+    let fixture = filtered_fixture(mode, recursive);
+    let browser = fixture.view.browser();
+    select_named(&fixture, "alpha-report.txt");
+    let expected: &[&str] = if recursive {
+        &ALL_REPORTS
+    } else {
+        &IMMEDIATE_REPORTS
+    };
+    let field = show_filter_with_results(&fixture, "report", expected)?;
+    std::fs::remove_file(fixture._directory.path().join("alpha-report.txt"))
+        .expect("delete the hit");
+    if !settles(|| entry_count(&browser) == 6) {
+        return Err("the monitor never removed the deleted file from the listing".to_owned());
+    }
+    // Focus that must stay put has no settle condition.
+    pump(300);
+    let mut failures = Vec::new();
+    if !fixture.view.filter_has_focus() {
+        failures.push(format!(
+            "the deletion took focus from the field to {}",
+            describe_focus(&fixture)
+        ));
+    }
+    if field.text() != "report" {
+        failures.push(format!("the filter text became {:?}", field.text()));
+    }
+    // An in-place Columns filter narrows the listing itself, which drops the row.
+    let separate_results = !(mode == BrowserMode::Columns && !recursive);
+    if separate_results && !settles(|| result_names(&fixture) == expected[1..]) {
+        failures.push(format!(
+            "the hits are {:?}, not {:?}",
+            result_names(&fixture),
+            &expected[1..]
+        ));
+    }
+    match focus_first_result(&fixture, &field) {
+        Ok(()) if hit_cursor(&fixture).as_deref() == Some("alpha-report.txt") => {
+            failures.push("Down focused the deleted hit".to_owned());
+        }
+        Ok(()) => {}
+        Err(error) => failures.push(error),
+    }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures.join("; "))
+    }
+}
+
+#[test]
+fn an_outside_deletion_keeps_focus_in_the_filter_entry() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::filter_focus::an_outside_deletion_keeps_focus_in_the_filter_entry",
+        || {
+            let mut failures = Vec::new();
+            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
+                for recursive in [false, true] {
+                    if let Err(error) = external_delete_case(mode, recursive) {
+                        failures.push(format!("{mode:?}, subfolders {recursive}: {error}"));
+                    }
+                }
+            }
+            report(failures);
+        },
+    );
+}

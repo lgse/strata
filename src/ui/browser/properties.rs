@@ -199,13 +199,20 @@ fn permission_row(parent: &gtk::Box, label: &str) -> PermissionRow {
     identity.set_xalign(0.0);
     let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     spacer.set_hexpand(true);
-    let read = gtk::Button::with_label("—");
-    let write = gtk::Button::with_label("—");
-    let execute = gtk::Button::with_label("—");
-    for permission in [&read, &write, &execute] {
-        permission.add_css_class("properties-permission-bit");
-        permission.set_sensitive(false);
-    }
+    // Not a real toggle button: a click requests a chmod, the pressed state
+    // follows the requested mode, and it rolls back if the chmod fails.
+    let bit = || {
+        let button = gtk::Button::builder()
+            .label("—")
+            .accessible_role(gtk::AccessibleRole::ToggleButton)
+            .build();
+        // The visible `r`/`w`/`x` label would otherwise name the bit.
+        button.reset_relation(gtk::AccessibleRelation::LabelledBy);
+        button.add_css_class("properties-permission-bit");
+        button.set_sensitive(false);
+        button
+    };
+    let [read, write, execute] = [bit(), bit(), bit()];
     row.append(&title);
     row.append(&identity);
     row.append(&spacer);
@@ -231,6 +238,7 @@ fn set_permission_row(row: &PermissionRow, mode: u32, shift: u32) {
         } else {
             permission.remove_css_class("enabled");
         }
+        crate::ui::accessibility::set_pressed(permission, enabled);
     }
 }
 
@@ -660,36 +668,37 @@ impl ViewState {
             rows: [owner.clone(), group.clone(), others.clone()],
             executable: executable.clone(),
         };
-        for (row, masks, descriptions) in [
+        for (row, masks, bits) in [
             (
                 &owner,
                 [0o400, 0o200, 0o100],
                 [
-                    "Toggle owner read permission",
-                    "Toggle owner write permission",
-                    "Toggle owner execute permission",
+                    ("Owner read", "Toggle owner read permission"),
+                    ("Owner write", "Toggle owner write permission"),
+                    ("Owner execute", "Toggle owner execute permission"),
                 ],
             ),
             (
                 &group,
                 [0o040, 0o020, 0o010],
                 [
-                    "Toggle group read permission",
-                    "Toggle group write permission",
-                    "Toggle group execute permission",
+                    ("Group read", "Toggle group read permission"),
+                    ("Group write", "Toggle group write permission"),
+                    ("Group execute", "Toggle group execute permission"),
                 ],
             ),
             (
                 &others,
                 [0o004, 0o002, 0o001],
                 [
-                    "Toggle others read permission",
-                    "Toggle others write permission",
-                    "Toggle others execute permission",
+                    ("Others read", "Toggle others read permission"),
+                    ("Others write", "Toggle others write permission"),
+                    ("Others execute", "Toggle others execute permission"),
                 ],
             ),
         ] {
-            for ((button, mask), description) in row.bits.iter().zip(masks).zip(descriptions) {
+            for ((button, mask), (label, description)) in row.bits.iter().zip(masks).zip(bits) {
+                crate::ui::accessibility::set_label(button, &crate::i18n::tr(label));
                 crate::ui::accessibility::set_description(
                     button,
                     Some(&crate::i18n::tr(description)),

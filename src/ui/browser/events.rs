@@ -32,7 +32,7 @@ impl ViewState {
     pub(super) fn handle(self: &Rc<Self>, event: &BrowserEvent) {
         if matches!(
             event,
-            BrowserEvent::NavigationStarting
+            BrowserEvent::NavigationStarting { .. }
                 | BrowserEvent::Reset
                 | BrowserEvent::ColumnsTruncated { .. }
                 | BrowserEvent::ColumnsRelocated { .. }
@@ -41,6 +41,7 @@ impl ViewState {
                 | BrowserEvent::EntriesPublished { .. }
                 | BrowserEvent::EntriesSpliced { .. }
                 | BrowserEvent::SortingStarted { .. }
+                | BrowserEvent::ColumnReloading { .. }
                 | BrowserEvent::ColumnReloaded { .. }
                 | BrowserEvent::ColumnRefreshing { .. }
                 | BrowserEvent::HiddenToggled { .. }
@@ -57,7 +58,7 @@ impl ViewState {
                 return;
             }
             BrowserEvent::SelectionSynced { .. } => return,
-            BrowserEvent::NavigationStarting => {
+            BrowserEvent::NavigationStarting { .. } => {
                 self.forget_listing_search();
                 self.suppress_scroll_after_drop.set(false);
                 self.drop_active_depths.set(None);
@@ -306,6 +307,10 @@ impl ViewState {
                     }
                     set_column_busy(column, false);
                     update_empty_trash_sensitivity(column, count);
+                }
+                // Hits whose files left the folder, whoever removed them.
+                if splices.iter().any(|splice| splice.removed > 0) {
+                    self.prune_stale_search_results();
                 }
                 self.note_pending_rename_splices(*depth, splices);
                 self.reveal_pending_transfer_at(*depth);
@@ -602,6 +607,9 @@ impl ViewState {
                         && self.mode_views.borrow().mode() == BrowserMode::Columns
                         && self.browser.active_depth() == Some(*depth)
                         && !self.suppress_scroll_after_drop.get()
+                        && !self.outside_change_keeps_focus()
+                        && (!self.browser.focus_follows_background_load()
+                            || self.column_may_take_focus())
                     {
                         column.focus_surface();
                     }
@@ -617,7 +625,7 @@ impl ViewState {
                 self.refresh_destination_style();
                 self.mirror_focused_folder(*depth, *position);
             }
-            BrowserEvent::PreviewRequested { .. } => {}
+            BrowserEvent::ColumnReloading { .. } | BrowserEvent::PreviewRequested { .. } => {}
             BrowserEvent::ExtractRequested { entry } => {
                 if self.interactive {
                     self.extract_entry(entry.clone());

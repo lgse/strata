@@ -66,6 +66,8 @@ enum LoadSelection {
     Nothing,
     FirstEntry,
     Target(Vec<Location>),
+    /// Selected if it is listed, otherwise the first visible entry; never revealed.
+    Prefer(Location),
 }
 
 fn load_selection(select_first: bool) -> LoadSelection {
@@ -80,6 +82,7 @@ fn select_on_load(state: &mut NavigationState, depth: usize, selection: LoadSele
     match selection {
         LoadSelection::FirstEntry => state.select_first_on_load(depth),
         LoadSelection::Target(targets) => state.select_locations_on_load(depth, targets),
+        LoadSelection::Prefer(location) => state.prefer_location_on_load(depth, location),
         LoadSelection::Nothing => {}
     }
 }
@@ -104,7 +107,16 @@ pub enum SelectionUpdate {
 #[derive(Clone, Debug)]
 pub enum BrowserEvent {
     /// The outgoing directory is still available for presentation-state capture.
-    NavigationStarting,
+    /// `history` marks a return to a recorded path: Back, Forward, Up, or a path an
+    /// external change or undo restores. Other routes navigate explicitly.
+    NavigationStarting {
+        history: bool,
+    },
+    /// The column at `depth` is about to be cleared for a reload; its entries,
+    /// selection and cursor are still readable.
+    ColumnReloading {
+        depth: usize,
+    },
     Reset,
     ColumnsTruncated {
         len: usize,
@@ -935,6 +947,8 @@ pub struct Browser {
     preferences: Cell<ViewPreferences>,
     chooser_mode: Cell<bool>,
     suppress_child_mirror: Cell<bool>,
+    external_change_focus: Cell<bool>,
+    background_load_focus: Cell<bool>,
     observers: RefCell<Vec<Observer>>,
     preferences_observers: RefCell<Vec<PreferencesObserver>>,
 }
@@ -1000,6 +1014,8 @@ impl Browser {
             preferences: Cell::new(preferences),
             chooser_mode: Cell::new(false),
             suppress_child_mirror: Cell::new(false),
+            external_change_focus: Cell::new(false),
+            background_load_focus: Cell::new(false),
             observers: RefCell::new(Vec::new()),
             preferences_observers: RefCell::new(Vec::new()),
         })
@@ -1260,6 +1276,28 @@ impl Browser {
         self.navigate_for_selection(location, load_selection(select_first));
     }
 
+    /// Navigates to an ancestor of the current directory and selects the folder the
+    /// current directory sits in, or the first entry when it is not an ancestor.
+    pub fn navigate_to_ancestor(self: &Rc<Self>, location: Location) {
+        let selection = self
+            .came_from_child(&location)
+            .map_or(LoadSelection::FirstEntry, LoadSelection::Prefer);
+        self.navigate_for_selection(location, selection);
+    }
+
+    /// The entry of `destination` on the way down to the current directory.
+    fn came_from_child(&self, destination: &Location) -> Option<Location> {
+        let path = self.state.borrow().current_path()?;
+        let mut location = path.locations().last()?.clone();
+        while let Some(parent) = location.parent() {
+            if parent == *destination {
+                return Some(location);
+            }
+            location = parent;
+        }
+        None
+    }
+
     /// Targets override remembered positions; the first listed target takes the cursor.
     /// Returns true only for an in-place selection that needs no subsequent load.
     pub fn reveal_locations(self: &Rc<Self>, directory: Location, targets: Vec<Location>) -> bool {
@@ -1375,11 +1413,10 @@ impl Browser {
             return;
         }
         let selection = match (self.deferred_reveal.take(), selection) {
-            (Some((directory, targets)), LoadSelection::FirstEntry | LoadSelection::Nothing)
-                if directory == location =>
-            {
-                LoadSelection::Target(targets)
-            }
+            (
+                Some((directory, targets)),
+                LoadSelection::FirstEntry | LoadSelection::Nothing | LoadSelection::Prefer(_),
+            ) if directory == location => LoadSelection::Target(targets),
             (_, selection) => selection,
         };
         self.bump_navigation_generation();
@@ -1387,7 +1424,7 @@ impl Browser {
             return;
         }
         if self.active_location().is_some() {
-            self.emit(BrowserEvent::NavigationStarting);
+            self.emit(BrowserEvent::NavigationStarting { history: false });
         }
         self.close_peek();
         self.loads.borrow_mut().clear();
@@ -1497,7 +1534,7 @@ impl Browser {
         if !self.source.allows_navigation(&location) || self.location_at(parent_depth).is_none() {
             return;
         }
-        self.emit(BrowserEvent::NavigationStarting);
+        self.emit(BrowserEvent::NavigationStarting { history: false });
         let request_id = self.new_request_id();
         let mut state = self.state.borrow_mut();
         if !state.descend(parent_depth, location.clone(), request_id) {
@@ -1630,6 +1667,17 @@ impl Browser {
 
     pub(crate) fn child_mirror_suppressed(&self) -> bool {
         self.suppress_child_mirror.get()
+    }
+
+    /// Whether the `FocusChanged` being observed comes from an outside change, not a cursor move.
+    pub(crate) fn focus_follows_external_change(&self) -> bool {
+        self.external_change_focus.get()
+    }
+
+    /// Whether the `FocusChanged` being observed only moves a finished load's cursor,
+    /// so it must not pull focus from elsewhere in the window.
+    pub(crate) fn focus_follows_background_load(&self) -> bool {
+        self.background_load_focus.get()
     }
 
     pub fn commit_peek(self: &Rc<Self>) {
@@ -3540,8 +3588,12 @@ impl Browser {
         {
             return;
         }
+        let preferred = path
+            .locations()
+            .last()
+            .and_then(|destination| self.came_from_child(destination));
         self.bump_navigation_generation();
-        self.emit(BrowserEvent::NavigationStarting);
+        self.emit(BrowserEvent::NavigationStarting { history: true });
         self.close_peek();
         self.loads.borrow_mut().clear();
         self.monitors.borrow_mut().clear();
@@ -3561,7 +3613,13 @@ impl Browser {
 
         let active_depth = loads.len().checked_sub(1);
         if let Some(depth) = active_depth {
-            self.select_first_on_load(depth);
+            match preferred {
+                Some(child) => self
+                    .state
+                    .borrow_mut()
+                    .prefer_location_on_load(depth, child),
+                None => self.select_first_on_load(depth),
+            }
         }
         self.emit(BrowserEvent::Reset);
         for (depth, (location, request_id)) in loads.into_iter().enumerate() {
@@ -4246,6 +4304,7 @@ impl Browser {
         let Some(location) = location else {
             return;
         };
+        Self::refresh_search_indexes_for(&location, None);
         self.preserving_refreshes.borrow_mut().insert(depth);
         self.emit(BrowserEvent::ColumnRefreshing { depth });
         let handle = self.request_directory(depth, location, request_id);
@@ -4260,6 +4319,10 @@ impl Browser {
     }
 
     fn refresh_column_with_reveal(self: &Rc<Self>, depth: usize, targets: Option<Vec<Location>>) {
+        // An explicit target outranks any position a view would restore after the reload.
+        if targets.is_none() && self.location_at(depth).is_some() {
+            self.emit(BrowserEvent::ColumnReloading { depth });
+        }
         let request_id = self.new_request_id();
         let location = {
             let mut state = self.state.borrow_mut();
@@ -4274,6 +4337,7 @@ impl Browser {
         let Some(location) = location else {
             return;
         };
+        Self::refresh_search_indexes_for(&location, None);
         self.emit(BrowserEvent::ColumnReloaded { depth });
         let handle = self.request_directory(depth, location, request_id);
         if let Some(load) = self.loads.borrow_mut().get_mut(depth) {

@@ -75,8 +75,9 @@ rustix errnos converted with `.into()`) or `services::gio_error_message`
 (`glib::Error`). They translate common failure kinds, matching raw errnos where
 `ErrorKind` has no stable variant. For any other OS error `io_error_message`
 shows a generic translated reason and logs the system text; an `io::Error` built
-with its own message keeps that message, and `gio_error_message` falls back to
-GIO's text. Never format an `io::Error` directly: its `Display` adds an
+with its own message keeps that message, except a `storage::DestinationError`
+(an atomic write that refused its destination), which is shown through its
+localized `message()`, and `gio_error_message` falls back to GIO's text. Never format an `io::Error` directly: its `Display` adds an
 `(os error N)` suffix and can name internal temporary paths. These return
 standalone, capitalized text. When the
 reason continues a sentence after a colon, as the `%{error}` value of a template

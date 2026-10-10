@@ -334,30 +334,25 @@ impl ThemeManager {
         }
         let directory = themes_directory();
         fs::create_dir_all(&directory)?;
+        // Never replace a file already there, even one that did not load: it may be
+        // a broken or newly linked dotfile the user still wants.
         let mut id = base.clone();
         let mut suffix = 2;
-        while self.themes.borrow().iter().any(|theme| theme.id == id) {
+        while self.themes.borrow().iter().any(|theme| theme.id == id)
+            || fs::symlink_metadata(directory.join(format!("{id}.toml"))).is_ok()
+        {
             id = format!("{base}-{suffix}");
             suffix += 1;
         }
         let path = directory.join(format!("{id}.toml"));
         let value = toml::to_string_pretty(&tokens).map_err(io::Error::other)?;
-        crate::storage::atomic_write(&path, value.as_bytes())?;
+        crate::storage::atomic_write_config(&path, value.as_bytes())?;
 
-        let mut themes = self.themes.borrow_mut();
-        if let Some(theme) = themes
-            .iter_mut()
-            .find(|theme| theme.id == id && theme.custom)
-        {
-            theme.tokens = tokens;
-        } else {
-            themes.push(Theme {
-                id: id.clone(),
-                tokens,
-                custom: true,
-            });
-        }
-        drop(themes);
+        self.themes.borrow_mut().push(Theme {
+            id: id.clone(),
+            tokens,
+            custom: true,
+        });
         self.select_theme(&id);
         Ok(id)
     }

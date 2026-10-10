@@ -7,7 +7,7 @@ use std::{
 
 use crate::{model::FileEntry, services::RequestId};
 
-use super::{Browser, BrowserEvent, loading::LoadCompletion};
+use super::{Browser, BrowserEvent, SelectionUpdate, loading::LoadCompletion};
 
 pub(super) enum RemoteTerminal {
     Finished {
@@ -180,6 +180,29 @@ impl Browser {
         }
     }
 
+    /// A batch load's last batch went out before completion picked a fallback entry.
+    fn publish_completed_selection(&self, depth: usize) {
+        // The column's own cursor: it need not be the active column.
+        let Some(focused) = self
+            .state
+            .borrow()
+            .columns
+            .get(depth)
+            .and_then(|column| column.selected)
+        else {
+            return;
+        };
+        self.emit(BrowserEvent::SelectionSetChanged {
+            depth,
+            selection: SelectionUpdate::Positions(self.selected_positions(depth)),
+            focused,
+            take_focus: false,
+        });
+        let was = self.background_load_focus.replace(true);
+        self.emit_suppressed_focus(depth, Some(focused));
+        self.background_load_focus.set(was);
+    }
+
     fn finish_remote_if_drained(self: &Rc<Self>, depth: usize) {
         let terminal = {
             let mut remote = self.remote.borrow_mut();
@@ -203,7 +226,10 @@ impl Browser {
                     .state
                     .borrow_mut()
                     .finish(request_id, truncated, can_trash, can_delete);
-                if let Some(depth) = finished {
+                if let Some((depth, cursor_moved)) = finished {
+                    if cursor_moved {
+                        self.publish_completed_selection(depth);
+                    }
                     self.emit(BrowserEvent::LoadFinished { depth, truncated });
                     self.report_unresolved_location_reveal(depth, request_id);
                     self.ensure_sorted_after_load(depth);

@@ -204,3 +204,149 @@ fn ambiguous_filesystem_notifications_fall_back_to_reload() {
             .any(|event| matches!(event, BrowserEvent::ColumnReloaded { depth: 0 }))
     );
 }
+
+fn await_result_paths(
+    events: &std::sync::mpsc::Receiver<crate::services::SearchEvent>,
+    expected: &[std::path::PathBuf],
+) -> Result<(), String> {
+    let expected = expected
+        .iter()
+        .cloned()
+        .collect::<std::collections::BTreeSet<_>>();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let mut last = None;
+    while std::time::Instant::now() < deadline {
+        if let Ok(crate::services::SearchEvent::Results {
+            items, indexing, ..
+        }) = events.recv_timeout(std::time::Duration::from_millis(100))
+        {
+            let paths = items
+                .into_iter()
+                .map(|item| item.path)
+                .collect::<std::collections::BTreeSet<_>>();
+            if !indexing && paths == expected {
+                return Ok(());
+            }
+            last = Some(paths);
+        }
+    }
+    Err(format!("expected {expected:?}, last results {last:?}"))
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ExternalChange {
+    Upsert,
+    Remove,
+    Rescan,
+    /// A rescan deferred during an in-app operation reloads the column in place.
+    RescanAfterOperation,
+}
+
+#[test]
+fn watched_directory_changes_refresh_the_filter_index_for_that_directory() {
+    let mut failures = Vec::new();
+    for change in [
+        ExternalChange::Upsert,
+        ExternalChange::Remove,
+        ExternalChange::Rescan,
+        ExternalChange::RescanAfterOperation,
+    ] {
+        let fixture = tempfile::tempdir().expect("fixture");
+        let dir = fixture.path().to_path_buf();
+        let needle = dir.join("needle.txt");
+        if matches!(change, ExternalChange::Remove) {
+            std::fs::write(&needle, "body").expect("needle");
+        }
+        let notify = Rc::new(RefCell::new(None::<WatchCallback>));
+        let browser = Browser::new(Rc::new(WatchingFileSource {
+            notify: notify.clone(),
+        }));
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let observed = events.clone();
+        browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+        browser.navigate(Location::local(&dir));
+        let (handle, results) = crate::services::index_filter(dir.clone(), false, false);
+        handle.query("needle");
+        let initial = if matches!(change, ExternalChange::Remove) {
+            vec![needle.clone()]
+        } else {
+            Vec::new()
+        };
+        await_result_paths(&results, &initial).expect("the initial filter results");
+        events.borrow_mut().clear();
+        let callback = notify
+            .borrow()
+            .clone()
+            .expect("the directory watcher should be installed");
+
+        let expected = match change {
+            ExternalChange::Upsert => {
+                std::fs::write(&needle, "body").expect("needle");
+                callback(DirectoryChange::Upsert(fixture_entry(
+                    needle.to_str().expect("utf-8 fixture"),
+                )));
+                vec![needle.clone()]
+            }
+            ExternalChange::Remove => {
+                std::fs::remove_file(&needle).expect("remove needle");
+                callback(DirectoryChange::Remove(Location::local(&needle)));
+                Vec::new()
+            }
+            ExternalChange::Rescan => {
+                std::fs::write(&needle, "body").expect("needle");
+                callback(DirectoryChange::Rescan);
+                assert!(
+                    events
+                        .borrow()
+                        .iter()
+                        .any(|event| matches!(event, BrowserEvent::ColumnReloaded { depth: 0 })),
+                    "a Rescan reloads the column"
+                );
+                vec![needle.clone()]
+            }
+            ExternalChange::RescanAfterOperation => {
+                std::fs::write(&needle, "body").expect("needle");
+                browser.refresh_operation_columns(&[0]);
+                vec![needle.clone()]
+            }
+        };
+        if let Err(error) = await_result_paths(&results, &expected) {
+            failures.push(format!("{change:?}: {error}"));
+        }
+        drop(handle);
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn external_renames_rebase_filter_indexes_rooted_at_the_renamed_folder() {
+    let fixture = tempfile::tempdir().expect("fixture");
+    let dir = fixture.path().to_path_buf();
+    let old = dir.join("old");
+    let new = dir.join("new");
+    std::fs::create_dir(&old).expect("old folder");
+    std::fs::write(old.join("needle.txt"), "body").expect("needle");
+    let notify = Rc::new(RefCell::new(None::<WatchCallback>));
+    let browser = Browser::new(Rc::new(WatchingFileSource {
+        notify: notify.clone(),
+    }));
+    browser.navigate(Location::local(&dir));
+    let (handle, results) = crate::services::index_filter(old.clone(), false, true);
+    handle.query("needle");
+    await_result_paths(&results, &[old.join("needle.txt")]).expect("the initial filter results");
+    let callback = notify
+        .borrow()
+        .clone()
+        .expect("the directory watcher should be installed");
+
+    std::fs::rename(&old, &new).expect("rename folder");
+    let mut entry = fixture_entry(new.to_str().expect("utf-8 fixture"));
+    entry.kind = EntryKind::Directory;
+    callback(DirectoryChange::Move {
+        from: Location::local(&old),
+        entry,
+    });
+
+    await_result_paths(&results, &[new.join("needle.txt")])
+        .expect("the filter index to follow the renamed folder");
+}

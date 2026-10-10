@@ -24,6 +24,7 @@ pub(in crate::ui) const SEND_TO_RECENT_DESTINATIONS_LIMIT: usize = 3;
 mod bindings;
 #[cfg(test)]
 pub(in crate::ui) mod fixtures;
+mod save_notice;
 mod text_size;
 pub(in crate::ui) use bindings::notify_live;
 pub use text_size::TextSize;
@@ -387,6 +388,29 @@ fn normalized_volume(volume: f64) -> f64 {
     }
 }
 
+/// The Settings menu's choices are the only intervals the browser runs.
+pub(in crate::ui) const AUTO_REFRESH_CHOICES: [(&str, u32); 4] =
+    [("Off", 0), ("1 min", 60), ("5 min", 300), ("10 min", 600)];
+
+// `normalized_auto_refresh_interval` picks the first choice at or above a value.
+const _: () = {
+    let mut index = 1;
+    while index < AUTO_REFRESH_CHOICES.len() {
+        assert!(AUTO_REFRESH_CHOICES[index - 1].1 < AUTO_REFRESH_CHOICES[index].1);
+        index += 1;
+    }
+};
+
+/// Unlisted intervals round up to the next choice so a hand-written value keeps
+/// auto-refresh on without reloading faster than the fastest menu option.
+fn normalized_auto_refresh_interval(secs: u32) -> u32 {
+    AUTO_REFRESH_CHOICES
+        .iter()
+        .map(|(_, interval)| *interval)
+        .find(|interval| *interval >= secs)
+        .unwrap_or(AUTO_REFRESH_CHOICES[AUTO_REFRESH_CHOICES.len() - 1].1)
+}
+
 pub(in crate::ui) fn is_valid_send_to_relative_path(path: &Path) -> bool {
     let mut components = path.components();
     matches!(components.next(), Some(Component::Normal(_)))
@@ -399,7 +423,9 @@ pub struct PreferenceManager {
     startup_locale: &'static str,
     changes: bindings::PreferenceChanges,
     persistence_dirty: Cell<bool>,
-    persistence_enabled: bool,
+    /// Why saving is off for this session: the file existed but could not be read.
+    load_failure: Option<io::Error>,
+    save_notices: save_notice::SaveNotices,
 }
 
 impl PreferenceManager {
@@ -415,14 +441,17 @@ impl PreferenceManager {
     }
 
     fn load() -> Rc<Self> {
-        let loaded = read_preferences();
-        let persistence_enabled = loaded.is_ok();
-        let mut preferences = loaded.unwrap_or_else(|error| {
-            tracing::warn!(%error, path = %settings_path().display(),
-                "unable to load settings; using temporary defaults without saving; fix the file and restart Strata");
-            Preferences::default()
-        });
+        let (mut preferences, load_failure) = match read_preferences() {
+            Ok(preferences) => (preferences, None),
+            Err(error) => {
+                tracing::warn!(%error, path = %settings_path().display(),
+                    "unable to load settings; using temporary defaults without saving; fix the file and restart Strata");
+                (Preferences::default(), Some(error))
+            }
+        };
         preferences.preview_volume = normalized_volume(preferences.preview_volume);
+        preferences.auto_refresh_interval =
+            normalized_auto_refresh_interval(preferences.auto_refresh_interval);
         preferences.thumbnail_workers = preferences
             .thumbnail_workers
             .clamp(1, crate::sandbox::browser::MAX_WORKERS);
@@ -449,7 +478,8 @@ impl PreferenceManager {
             startup_interface_renderer: preferences.interface_renderer,
             changes: bindings::PreferenceChanges::new(preferences.clone()),
             persistence_dirty: Cell::new(false),
-            persistence_enabled,
+            load_failure,
+            save_notices: save_notice::SaveNotices::default(),
             preferences: RefCell::new(preferences),
         })
     }
@@ -520,6 +550,12 @@ impl PreferenceManager {
     /// published. Observers run before widget bindings.
     pub(in crate::ui) fn observe(&self, observer: Rc<dyn Fn()>) {
         self.changes.observe(observer);
+    }
+
+    /// Lets `window` show the notice when changes cannot be saved. Windows that
+    /// never register, such as the portal chooser, leave failures to the log.
+    pub(in crate::ui) fn register_save_notice_window(&self, window: &gtk::Window) {
+        self.save_notices.register(window);
     }
 
     /// Republishes current preferences without a stored change, for runtime state
@@ -931,7 +967,8 @@ impl PreferenceManager {
     }
 
     pub fn set_auto_refresh_interval(&self, secs: u32) {
-        self.preferences.borrow_mut().auto_refresh_interval = secs;
+        self.preferences.borrow_mut().auto_refresh_interval =
+            normalized_auto_refresh_interval(secs);
         self.save_preferences();
     }
 
@@ -1405,28 +1442,43 @@ impl PreferenceManager {
         if !changed && !self.persistence_dirty.get() {
             return;
         }
-        if !self.persistence_enabled {
+        let path = settings_path();
+        if let Some(error) = &self.load_failure {
             if changed {
                 self.changes.notify(self);
+                self.save_notices.report(
+                    save_notice::SaveProblem::UnreadableAtStartup,
+                    &path,
+                    &crate::services::io_error_detail(error),
+                );
             }
             return;
         }
         self.persistence_dirty.set(true);
-        let path = settings_path();
         let result = (|| -> io::Result<()> {
             if let Some(parent) = path.parent() {
                 fs::create_dir_all(parent)?;
             }
             let value =
                 toml::to_string_pretty(&*self.preferences.borrow()).map_err(io::Error::other)?;
-            crate::storage::atomic_write(&path, value.as_bytes())
+            crate::storage::atomic_write_config(&path, value.as_bytes())
         })();
-        match result {
-            Ok(()) => self.persistence_dirty.set(false),
-            Err(error) => tracing::warn!(%error, "unable to save preference"),
+        if result.is_ok() {
+            self.persistence_dirty.set(false);
+            self.save_notices.saved();
         }
         if changed {
             self.changes.notify(self);
+        }
+        // Reported after bindings apply, and whether or not anything changed,
+        // because a retry with an unchanged value can fail too.
+        if let Err(error) = result {
+            tracing::warn!(%error, path = %path.display(), "unable to save preference");
+            self.save_notices.report(
+                save_notice::SaveProblem::WriteFailed,
+                &path,
+                &crate::services::io_error_detail(&error),
+            );
         }
     }
 }

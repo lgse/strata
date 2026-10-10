@@ -6,9 +6,10 @@ mod text_size;
 use std::collections::HashSet;
 
 use super::{
-    Theme, ThemeTokens, azure_tokens, blend, builtins, color_to_hex, is_omarchy_theme_event,
-    merge_builtin_and_custom_themes, slugify, source_palette_from_quattro, source_style_scheme_xml,
-    title_case_slug, tokens_from_quattro, validate_tokens,
+    Theme, ThemeManager, ThemeTokens, azure_tokens, blend, builtins, color_to_hex,
+    is_omarchy_theme_event, merge_builtin_and_custom_themes, slugify, source_palette_from_quattro,
+    source_style_scheme_xml, themes_directory, title_case_slug, tokens_from_quattro,
+    validate_tokens,
 };
 use crate::test_support::gtk_test;
 
@@ -67,6 +68,72 @@ fn custom_themes_replace_bundled_themes_with_the_same_id() {
     assert_eq!(themes.len(), 1);
     assert!(themes[0].custom);
     assert_eq!(themes[0].tokens.name, "My Dracula");
+}
+
+#[test]
+fn saving_a_custom_theme_never_overwrites_an_existing_theme_file() {
+    gtk_test(
+        "ui::theme::tests::saving_a_custom_theme_never_overwrites_an_existing_theme_file",
+        || {
+            let directory = themes_directory();
+            let dotfiles = directory
+                .parent()
+                .expect("config directory")
+                .join("dotfiles");
+            std::fs::create_dir_all(&directory).expect("themes directory");
+            std::fs::create_dir_all(&dotfiles).expect("dotfiles directory");
+            let mut tokens = azure_tokens();
+            tokens.name = "Ocean Blue".to_owned();
+            let valid = toml::to_string_pretty(&tokens).expect("theme file");
+            std::fs::write(directory.join("ocean-blue.toml"), "not a theme").expect("broken theme");
+            std::fs::write(dotfiles.join("broken.toml"), "name = [").expect("broken dotfile");
+            std::os::unix::fs::symlink(
+                dotfiles.join("broken.toml"),
+                directory.join("ocean-blue-2.toml"),
+            )
+            .expect("link to a broken dotfile");
+            std::os::unix::fs::symlink(
+                dotfiles.join("missing.toml"),
+                directory.join("ocean-blue-3.toml"),
+            )
+            .expect("dangling link");
+            let manager = ThemeManager::shared();
+            std::fs::write(dotfiles.join("valid.toml"), &valid).expect("valid dotfile");
+            std::os::unix::fs::symlink(
+                dotfiles.join("valid.toml"),
+                directory.join("ocean-blue-4.toml"),
+            )
+            .expect("link added after startup");
+
+            let id = manager.save_custom_theme(tokens).expect("saved theme");
+
+            assert_eq!(id, "ocean-blue-5");
+            assert!(directory.join("ocean-blue-5.toml").is_file());
+            assert_eq!(
+                std::fs::read_to_string(directory.join("ocean-blue.toml")).expect("broken theme"),
+                "not a theme"
+            );
+            for (link, target) in [
+                ("ocean-blue-2.toml", "broken.toml"),
+                ("ocean-blue-3.toml", "missing.toml"),
+                ("ocean-blue-4.toml", "valid.toml"),
+            ] {
+                assert_eq!(
+                    std::fs::read_link(directory.join(link)).expect("theme link"),
+                    dotfiles.join(target)
+                );
+            }
+            assert_eq!(
+                std::fs::read_to_string(dotfiles.join("broken.toml")).expect("broken dotfile"),
+                "name = ["
+            );
+            assert!(!dotfiles.join("missing.toml").exists());
+            assert_eq!(
+                std::fs::read_to_string(dotfiles.join("valid.toml")).expect("valid dotfile"),
+                valid
+            );
+        },
+    );
 }
 
 #[test]

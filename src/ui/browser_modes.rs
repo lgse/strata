@@ -385,7 +385,7 @@ pub struct ModeViews {
     list_root: gtk::Box,
     icons_panes: Vec<Pane>,
     list_pane: Option<Pane>,
-    list_navigation: RefCell<navigation::ListNavigation>,
+    pane_navigation: RefCell<navigation::PaneNavigation>,
     browser: Rc<Browser>,
     single_click_previews: Rc<Cell<bool>>,
     multiple_selection: Rc<Cell<bool>>,
@@ -459,7 +459,7 @@ impl ModeViews {
             list_root,
             icons_panes: Vec::new(),
             list_pane: None,
-            list_navigation: RefCell::new(navigation::ListNavigation::default()),
+            pane_navigation: RefCell::new(navigation::PaneNavigation::default()),
             browser,
             single_click_previews: Rc::new(Cell::new(true)),
             multiple_selection,
@@ -933,6 +933,17 @@ impl ModeViews {
             .any(|pane| pane_holds_keyboard_focus(pane))
     }
 
+    /// Whether a background update of the listing of `depth` may move focus: nothing in
+    /// the window has it, or that listing already holds it. A focused widget that left
+    /// the window, like a row a reload removed, leaves nothing focused.
+    pub(in crate::ui) fn listing_may_take_focus(&self, depth: usize) -> bool {
+        self.stack
+            .root()
+            .and_then(|root| root.focus())
+            .is_none_or(|focused| focused.root().is_none())
+            || self.listing_holds_focus(depth)
+    }
+
     pub fn selected_search_result(&self) -> Option<FileEntry> {
         self.single_pane()?.search.selected_entry()
     }
@@ -1142,6 +1153,7 @@ impl ModeViews {
         if let Some(button) = pane.filter_button.as_ref() {
             button.set_active(false);
         }
+        self.pane_navigation.borrow_mut().filter_dismissed();
         // Show the listing now rather than after the debounce, so focus lands on it.
         if pane.search.replaces_listing() {
             pane.search.flush_query();
@@ -1156,8 +1168,8 @@ impl ModeViews {
         true
     }
 
-    pub fn cancel_list_restore(&mut self) {
-        self.list_navigation.borrow_mut().cancel();
+    pub fn cancel_pending_restore(&mut self) {
+        self.pane_navigation.borrow_mut().cancel();
     }
 
     pub fn prepare_mode(&mut self, mode: BrowserMode) {
@@ -1165,7 +1177,7 @@ impl ModeViews {
             return;
         }
         self.cancel_rename();
-        self.list_navigation.borrow_mut().cancel();
+        self.pane_navigation.borrow_mut().cancel();
         self.mode = mode;
         match mode {
             BrowserMode::Columns => {}
@@ -1665,6 +1677,23 @@ impl ModeViews {
             .collect()
     }
 
+    /// The Icons or List pane showing `depth`.
+    fn mode_pane(&self, depth: usize) -> Option<&Pane> {
+        self.panes_at(depth).into_iter().next()
+    }
+
+    /// Filter results count as outside: they belong to the filter session, which a
+    /// reload restores only the viewport for.
+    fn focus_owner(&self, pane: &Pane) -> navigation::FocusOwner {
+        let focused = pane.stack.root().and_then(|root| root.focus());
+        match pane_filter_focus(pane, focused.as_ref()) {
+            Some(FilterFocus::Entry) => navigation::FocusOwner::FilterEntry,
+            Some(FilterFocus::Results) => navigation::FocusOwner::Outside,
+            None if pane_holds_keyboard_focus(pane) => navigation::FocusOwner::Items,
+            None => navigation::FocusOwner::Outside,
+        }
+    }
+
     fn panes_at(&self, depth: usize) -> Vec<&Pane> {
         match self.mode {
             BrowserMode::Columns => Vec::new(),
@@ -1768,6 +1797,7 @@ impl ModeViews {
     }
 
     fn clear_icons(&mut self) {
+        self.pane_navigation.borrow_mut().cancel();
         for pane in &self.icons_panes {
             detach_pane_models(pane);
         }
@@ -1776,7 +1806,7 @@ impl ModeViews {
     }
 
     fn clear_list(&mut self) {
-        self.list_navigation.borrow_mut().cancel();
+        self.pane_navigation.borrow_mut().cancel();
         if let Some(pane) = self.list_pane.as_ref() {
             detach_pane_models(pane);
         }
@@ -1819,6 +1849,7 @@ impl ModeViews {
         pane.folder_context_trigger = self.install_context_menu(&pane);
         self.icons_root.append(&pane.shell);
         apply_snapshot(&pane, &snapshot, &self.browser);
+        self.pane_navigation.borrow_mut().prepare(&pane, &snapshot);
         self.icons_panes.push(pane);
     }
 
@@ -1854,7 +1885,7 @@ impl ModeViews {
         pane.folder_context_trigger = self.install_context_menu(&pane);
         self.list_root.append(&pane.shell);
         apply_snapshot(&pane, &snapshot, &self.browser);
-        self.list_navigation.borrow_mut().prepare(&pane, &snapshot);
+        self.pane_navigation.borrow_mut().prepare(&pane, &snapshot);
         self.list_pane = Some(pane);
     }
 }
@@ -1914,6 +1945,17 @@ fn pane_holds_keyboard_focus(pane: &Pane) -> bool {
         .is_some_and(|entry| widget_has_focus(entry, focused.as_ref()))
         || pane.search.has_item_focus(focused.as_ref());
     !filter_session && pane_contains_focus(pane)
+}
+
+/// Where GTK leaves focus it moved off a pane a reload hid: nowhere, on a widget that
+/// left the window, on the pane surface, or on a container around the pane.
+fn reload_focus_fell_back(pane: &Pane) -> bool {
+    let Some(focused) = pane.stack.root().and_then(|root| root.focus()) else {
+        return true;
+    };
+    focused.root().is_none()
+        || focused == *pane.stack.upcast_ref::<gtk::Widget>()
+        || pane.stack.is_ancestor(&focused)
 }
 
 fn install_tab_landing(view: &gtk::Widget, state: Option<Weak<super::browser::ViewState>>) {

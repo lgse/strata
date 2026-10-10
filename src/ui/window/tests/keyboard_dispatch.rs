@@ -26,6 +26,7 @@ mod overlay_focus;
 mod pane_focus;
 mod place_chords;
 mod preview_ownership;
+mod reload_cursor;
 mod video_clips;
 
 use crate::ui::{

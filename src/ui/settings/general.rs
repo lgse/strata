@@ -17,7 +17,7 @@ use crate::{
 
 use super::{
     ResponsiveActivationRow, append_heading,
-    bindings::{bind_choice, bind_switch},
+    bindings::{bind_choice, bind_switch, show_choice_value},
     page_content, scrollable_page, settings_option,
 };
 
@@ -145,10 +145,10 @@ fn append_language_option(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
 }
 
 fn append_date_format_option(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
-    const CHOICES: [(&str, crate::util::DateFormat); 3] = [
-        ("Relative", crate::util::DateFormat::Relative),
-        ("ISO 8601", crate::util::DateFormat::Iso8601),
-        ("Long", crate::util::DateFormat::Long),
+    const CHOICES: [crate::util::DateFormat; 3] = [
+        crate::util::DateFormat::Relative,
+        crate::util::DateFormat::Iso8601,
+        crate::util::DateFormat::Long,
     ];
     let menu = gtk::Box::new(gtk::Orientation::Vertical, 2);
     menu.add_css_class("column-menu");
@@ -164,25 +164,18 @@ fn append_date_format_option(content: &gtk::Box, manager: &Rc<PreferenceManager>
         .build();
     button.add_css_class("form-control");
     button.add_css_class("settings-choice");
-    crate::ui::accessibility::set_description(
-        &button,
-        Some(&crate::i18n::tr("Modified date format")),
-    );
     crate::ui::accessibility::set_label(&button, &crate::i18n::tr("Modified date format"));
     manager.bind_preference(&button, PreferenceManager::date_format, |widget, format| {
         if let Some(button) = widget.downcast_ref::<gtk::MenuButton>() {
-            button.set_label(&crate::i18n::tr(match format {
-                crate::util::DateFormat::Relative => "Relative",
-                crate::util::DateFormat::Iso8601 => "ISO 8601",
-                crate::util::DateFormat::Long => "Long",
-            }));
+            show_choice_value(button, &crate::i18n::tr(date_format_label(format)));
         }
     });
     let mut examples = Vec::new();
-    for (name, format) in CHOICES {
+    for format in CHOICES {
+        let name = crate::i18n::tr(date_format_label(format));
         let copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
         copy.set_hexpand(true);
-        let title = gtk::Label::new(Some(&crate::i18n::tr(name)));
+        let title = gtk::Label::new(Some(&name));
         title.set_xalign(0.0);
         let example = gtk::Label::new(None);
         example.set_xalign(0.0);
@@ -194,9 +187,15 @@ fn append_date_format_option(content: &gtk::Box, manager: &Rc<PreferenceManager>
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
         row.append(&copy);
         row.append(&check);
-        let option = gtk::Button::builder().child(&row).build();
+        let option = gtk::Button::builder()
+            .child(&row)
+            .accessible_role(gtk::AccessibleRole::MenuItemRadio)
+            .build();
         option.add_css_class("column-menu-option");
         option.set_has_frame(false);
+        // The derived name would also read the example date.
+        crate::ui::accessibility::set_label(&option, &name);
+        crate::ui::accessibility::sync_checked_with_icon(&option, &check);
         manager.bind_preference(
             &check,
             PreferenceManager::date_format,
@@ -211,14 +210,16 @@ fn append_date_format_option(content: &gtk::Box, manager: &Rc<PreferenceManager>
             }
         });
         menu.append(&option);
-        examples.push((example, format));
+        examples.push((option, example, format));
     }
     let examples = Rc::new(examples);
     let refresh = {
         let examples = examples.clone();
         move || {
-            for (label, format) in examples.iter() {
-                label.set_text(&crate::util::modified_date_example(*format));
+            for (option, label, format) in examples.iter() {
+                let example = crate::util::modified_date_example(*format);
+                label.set_text(&example);
+                crate::ui::accessibility::set_description(option, Some(&example));
             }
         }
     };
@@ -229,6 +230,14 @@ fn append_date_format_option(content: &gtk::Box, manager: &Rc<PreferenceManager>
         "How file modified times appear in lists and details.",
         &button,
     ));
+}
+
+fn date_format_label(format: crate::util::DateFormat) -> &'static str {
+    match format {
+        crate::util::DateFormat::Relative => "Relative",
+        crate::util::DateFormat::Iso8601 => "ISO 8601",
+        crate::util::DateFormat::Long => "Long",
+    }
 }
 
 fn append_thumbnail_workers_option(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
@@ -697,7 +706,7 @@ fn append_auto_refresh_option(content: &gtk::Box, manager: &Rc<PreferenceManager
     let control = super::bindings::choice_menu(
         manager,
         "Auto-refresh folder",
-        &[("Off", 0), ("1 min", 60), ("5 min", 300), ("10 min", 600)],
+        &crate::ui::preferences::AUTO_REFRESH_CHOICES,
         PreferenceManager::auto_refresh_interval,
         PreferenceManager::set_auto_refresh_interval,
     );
@@ -878,7 +887,7 @@ fn video_preview_option(
         video_preview_control_state(manager.hardware_accelerated_video_previews());
     let (acceleration_row, toggle) =
         settings_option("Hardware-accelerated video previews", description, active);
-    let backend = video_preview_backend_control(manager, "Decoding backend", backend_sensitive);
+    let backend = video_preview_backend_control(manager, backend_sensitive);
     backend.add_css_class("settings-choice");
     toggle.set_sensitive(toggle_sensitive);
     let backend_row = super::control_row("Decoding backend", "", &backend);
@@ -892,7 +901,6 @@ fn video_preview_option(
 
 fn video_preview_backend_control(
     manager: &Rc<PreferenceManager>,
-    description: &str,
     backend_sensitive: bool,
 ) -> gtk::MenuButton {
     let selected_backend = manager.video_preview_backend();
@@ -925,10 +933,10 @@ fn video_preview_backend_control(
     backend.add_css_class("form-control");
     backend.set_sensitive(backend_sensitive);
     backend.set_valign(gtk::Align::Center);
-    backend.update_property(&[
-        gtk::accessible::Property::Label(&crate::i18n::tr("Video preview hardware backend")),
-        gtk::accessible::Property::Description(&crate::i18n::tr(description)),
-    ]);
+    crate::ui::accessibility::set_label(
+        &backend,
+        &crate::i18n::tr("Video preview hardware backend"),
+    );
     bind_video_preview_backend_menu(manager, &backend, options);
     backend
 }
@@ -943,7 +951,10 @@ fn bind_video_preview_backend_menu(
         PreferenceManager::video_preview_backend,
         |widget, selected| {
             if let Some(button) = widget.downcast_ref::<gtk::MenuButton>() {
-                button.set_label(&crate::i18n::tr(video_preview_backend_label(selected)));
+                show_choice_value(
+                    button,
+                    &crate::i18n::tr(video_preview_backend_label(selected)),
+                );
             }
         },
     );

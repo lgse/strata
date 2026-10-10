@@ -235,14 +235,14 @@ fn replace_bindings(
         )
         .into_owned()
     })?;
-    crate::storage::atomic_write(path, updated.as_bytes())
+    crate::storage::atomic_write_config(path, updated.as_bytes())
         .map_err(|error| path_error("write", path, error))?;
     if let Err(error) = validate() {
-        crate::storage::atomic_write(path, original.as_bytes()).map_err(|rollback| {
+        crate::storage::atomic_write_config(path, original.as_bytes()).map_err(|rollback| {
             rust_i18n::t!(
                 "%{error}; rollback failed: %{rollback}. Backup: %{path}",
                 error = error,
-                rollback = rollback,
+                rollback = crate::services::io_error_detail(&rollback),
                 path = backup_path.display()
             )
             .into_owned()

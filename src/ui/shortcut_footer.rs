@@ -982,7 +982,7 @@ impl ShortcutFooter {
         browser.observe(move |event| {
             if matches!(
                 event,
-                crate::app::BrowserEvent::NavigationStarting
+                crate::app::BrowserEvent::NavigationStarting { .. }
                     | crate::app::BrowserEvent::SelectionSetChanged { .. }
             ) {
                 footer.clear_feedback();

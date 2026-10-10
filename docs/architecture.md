@@ -72,8 +72,11 @@ receive incremental updates. Shared browser effects in `ui/browser/events.rs` st
 before alternate-mode dispatch. Browser notifications remain synchronous: pane/query
 updates must release `ModeViews` borrows before notifying observers. Load completion
 returns a selection-restoration action; the caller releases `ModeViews` before
-applying it, with the saved position already taken out of `ListNavigation`. Footer
+applying it, with the saved position already taken out of `PaneNavigation`. Footer
 and selection observers therefore see restored state without dropped events.
+`NavigationStarting` and `ColumnReloading` are the two pre-mutation capture events:
+the outgoing directory, or a column about to be cleared for a reload, is still
+readable when they arrive.
 
 Pane helpers share string-model splicing, but authoritative entry borrows end before GTK
 notifications. Reload detaches selection/filter models without detaching the collection

@@ -333,7 +333,7 @@ def test_sorting_by_size_reorders_the_files(strata, root):
     strata.pointer.click(strata.header_button("Choose sort field"))
     strata.pointer.click(
         strata.wait(
-            lambda: strata.window.find(role="button", name="Size"),
+            lambda: strata.window.find(role="radio menu item", name="Size"),
             "the Size sort option",
         )
     )

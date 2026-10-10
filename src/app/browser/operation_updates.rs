@@ -192,8 +192,11 @@ impl Browser {
                 let depth = batch.depth;
                 self.drain_publish(depth);
                 let application = batch.apply(&mut self.state.borrow_mut());
+                // The monitor reported these while the operation ran.
                 if let Some(publication) = application {
-                    self.publish_operation_batch(depth, publication);
+                    self.publish_external_change(|| {
+                        self.publish_operation_batch(depth, publication);
+                    });
                 }
             }
         }

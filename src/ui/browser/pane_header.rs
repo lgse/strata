@@ -3,7 +3,7 @@
 use crate::app::Browser;
 use crate::model::{SortDirection, SortKey};
 use crate::ui::browser::ViewState;
-use crate::ui::controls::menu_option;
+use crate::ui::controls::{check_menu_option, menu_option};
 use gtk::glib;
 use gtk::prelude::*;
 use std::cell::{Cell, RefCell};
@@ -130,7 +130,7 @@ pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gt
     let folders_state = if !recent {
         content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
         let (folders_first, folders_check) =
-            menu_option(&crate::i18n::tr("Folders first"), preferences.folders_first);
+            check_menu_option(&crate::i18n::tr("Folders first"), preferences.folders_first);
         let folders_enabled = Rc::new(Cell::new(preferences.folders_first));
         let weak_browser = Rc::downgrade(browser);
         let folders_enabled_for_click = folders_enabled.clone();
