@@ -263,7 +263,7 @@ fn superseded_operations_still_report_each_location_they_changed() {
     // A restore sets no kind: its events describe themselves.
     let cases: Vec<(&str, Option<OperationKind>, Script, Vec<LocationChange>)> = vec![
         (
-            "a move whose window closed before its terminal event",
+            "a move that has not reported its end",
             Some(OperationKind::Move),
             Box::new(|request_id| vec![item_moved(request_id, false)]),
             vec![relocated(&item, &landed)],
