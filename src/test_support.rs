@@ -104,6 +104,18 @@ pub(crate) fn captured_event<'a>(output: &'a str, message: &str) -> &'a str {
         .unwrap_or_else(|| panic!("missing {message:?} event in:\n{output}"))
 }
 
+pub(crate) fn texture_has_visible_pixels(texture: &gtk::gdk::Texture) -> bool {
+    use gtk::prelude::*;
+    let stride = texture.width() as usize * 4;
+    let mut pixels = vec![0; stride * texture.height() as usize];
+    texture.download(&mut pixels, stride);
+    pixels
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .any(|pixel| u32::from_ne_bytes(*pixel) >> 24 != 0)
+}
+
 /// GTK initialization is thread-affine; each UI test gets a process and disposable preferences.
 pub(crate) fn gtk_test(name: &str, run: impl FnOnce()) {
     gtk_test_with_env(name, std::iter::empty::<(&str, &std::ffi::OsStr)>(), run);

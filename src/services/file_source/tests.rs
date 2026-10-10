@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 use super::{
-    LocationValidationError, UriCredentials, backend_unavailable_message, error_detail_in,
-    io_error_message, sanitize_uri_credentials, validate_uri_credentials,
+    LocationIdentity, LocationValidationError, UriCredentials, backend_unavailable_message,
+    error_detail_in, io_error_message, sanitize_uri_credentials, validate_uri_credentials,
 };
 
 #[test]
@@ -212,4 +212,27 @@ fn default_fill_reports_unsupported_synchronously() {
             outcome: MetadataOutcome::Unsupported,
         }]
     ));
+}
+
+#[test]
+fn folder_identities_match_only_while_known_birth_times_agree() {
+    let born = |seconds| Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(seconds));
+    let identity = |inode, created| LocationIdentity {
+        device: 1,
+        inode,
+        created,
+    };
+    let mut failures = Vec::new();
+    for (candidate, expected) in [
+        (identity(7, born(10)), true),
+        // The inode of a deleted folder, reused by a new one.
+        (identity(7, born(20)), false),
+        (identity(7, None), true),
+        (identity(8, born(10)), false),
+    ] {
+        if identity(7, born(10)).matches(&candidate) != expected {
+            failures.push(format!("{candidate:?} should match: {expected}"));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }

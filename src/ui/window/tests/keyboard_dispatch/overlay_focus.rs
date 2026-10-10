@@ -94,6 +94,17 @@ fn settles(condition: impl Fn() -> bool) -> bool {
     true
 }
 
+fn window_key_claimed(window: &gtk::ApplicationWindow, key: Key, modifiers: ModifierType) -> bool {
+    let controllers = window.observe_controllers();
+    (0..controllers.n_items())
+        .filter_map(|index| {
+            controllers
+                .item(index)
+                .and_downcast::<gtk::EventControllerKey>()
+        })
+        .any(|keys| keys.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers]))
+}
+
 fn press_escape_on(layer: &gtk::Widget) {
     let controllers = layer.observe_controllers();
     let handled = (0..controllers.n_items())
@@ -377,8 +388,8 @@ fn a_dialog_closed_over_settings_returns_focus_to_its_opener() {
                 let settings = fixture.layer("settings-backdrop").expect("Settings layer");
                 assert!(settles(|| settings.is_visible() && settings.is_mapped()));
                 let page = match dialog {
-                    DialogOverSettings::SaveNotice => "General",
-                    _ => "Actions",
+                    DialogOverSettings::SaveNotice => "general",
+                    _ => "actions",
                 };
                 descendant(&settings, &|widget| {
                     widget.is::<gtk::Button>() && widget.widget_name() == page
@@ -488,6 +499,246 @@ fn a_dialog_closed_over_settings_returns_focus_to_its_opener() {
                 "a dialog closed over Settings must return focus to its opener:\n{}",
                 failures.join("\n")
             );
+        },
+    );
+}
+
+#[derive(Clone, Copy, Debug)]
+enum WindowAccelerator {
+    Search,
+    FolderJump,
+    Refresh,
+    Terminal,
+    ArrowScope,
+}
+
+impl WindowAccelerator {
+    const ALL: [Self; 5] = [
+        Self::Search,
+        Self::FolderJump,
+        Self::Refresh,
+        Self::Terminal,
+        Self::ArrowScope,
+    ];
+
+    fn action(self) -> &'static str {
+        match self {
+            Self::Search => "win.search",
+            Self::FolderJump => "win.jump-folder",
+            Self::Refresh => "win.refresh",
+            Self::Terminal => "win.open-terminal",
+            Self::ArrowScope => "win.toggle-arrow-scope",
+        }
+    }
+
+    fn shortcut(self) -> (Key, ModifierType) {
+        match self {
+            Self::Search => (Key::k, ModifierType::CONTROL_MASK),
+            Self::FolderJump => (
+                Key::K,
+                ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK,
+            ),
+            Self::Refresh => (Key::F5, ModifierType::empty()),
+            Self::Terminal => (Key::t, ModifierType::CONTROL_MASK | ModifierType::ALT_MASK),
+            Self::ArrowScope => (Key::backslash, ModifierType::CONTROL_MASK),
+        }
+    }
+
+    fn ran(self, before: &AcceleratorEffects, after: &AcceleratorEffects) -> bool {
+        match self {
+            Self::Search | Self::FolderJump => after.palette_open != before.palette_open,
+            Self::Refresh => after.reloads != before.reloads,
+            Self::Terminal => after.children != before.children,
+            Self::ArrowScope => after.arrows_scoped != before.arrows_scoped,
+        }
+    }
+
+    /// Running the action again undoes it: the palette closes, the preference flips back.
+    fn toggles(self) -> bool {
+        matches!(self, Self::Search | Self::FolderJump | Self::ArrowScope)
+    }
+}
+
+#[derive(Debug, PartialEq)]
+struct AcceleratorEffects {
+    palette_open: bool,
+    reloads: usize,
+    arrows_scoped: bool,
+    children: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum InputOwner {
+    Dialog,
+    Rename(BrowserMode),
+}
+
+#[test]
+fn window_accelerator_actions_yield_to_modals_and_inline_edits() {
+    const NAME: &str = "ui::window::tests::keyboard_dispatch::overlay_focus::window_accelerator_actions_yield_to_modals_and_inline_edits";
+    // `sleep` stands in for the terminal so win.open-terminal shows up as a child process.
+    crate::test_support::gtk_test_with_env(NAME, [("TERMINAL", "sleep 5")], || {
+        let fixture = ComposedFolder::open();
+        let browser = &fixture.content.browser;
+        let preferences = PreferenceManager::shared();
+        let reloads = Rc::new(Cell::new(0usize));
+        let counted = reloads.clone();
+        browser.browser().observe(move |event| {
+            if matches!(
+                event,
+                BrowserEvent::ColumnReloaded { .. } | BrowserEvent::ColumnRefreshing { .. }
+            ) {
+                counted.set(counted.get() + 1);
+            }
+        });
+        let effects = || AcceleratorEffects {
+            palette_open: fixture
+                .layer("search-backdrop")
+                .is_some_and(|layer| layer.is_visible()),
+            reloads: reloads.get(),
+            arrows_scoped: preferences.arrow_navigation_scoped(),
+            children: child_commands(),
+        };
+        let activate = |accelerator: WindowAccelerator| {
+            let action = accelerator.action();
+            gtk::prelude::WidgetExt::activate_action(&fixture.window, action, None)
+                .unwrap_or_else(|error| panic!("{action}: {error}"));
+        };
+        let focus_is_in = |widget: &gtk::Widget| {
+            gtk::prelude::RootExt::focus(&fixture.window)
+                .is_some_and(|focus| &focus == widget || focus.is_ancestor(widget))
+        };
+
+        for owner in [
+            InputOwner::Dialog,
+            InputOwner::Rename(BrowserMode::Columns),
+            InputOwner::Rename(BrowserMode::List),
+            InputOwner::Rename(BrowserMode::Icons),
+        ] {
+            let mode = match owner {
+                InputOwner::Rename(mode) => mode,
+                InputOwner::Dialog => BrowserMode::Columns,
+            };
+            fixture.focus_cursor_row(mode);
+            let owned: gtk::Widget = match owner {
+                InputOwner::Dialog => {
+                    let dialog = gtk::Box::new(gtk::Orientation::Vertical, 0);
+                    dialog.set_focusable(true);
+                    dialog.add_css_class("app-modal-layer");
+                    fixture.content.overlay().add_overlay(&dialog);
+                    dialog.grab_focus();
+                    dialog.upcast()
+                }
+                InputOwner::Rename(_) => {
+                    wait_until(|| browser.rename_is_active() || browser.begin_rename());
+                    let field = browser.active_rename_field().expect("rename field");
+                    field.set_text("kept.txt");
+                    field.upcast()
+                }
+            };
+            wait_until(|| focus_is_in(&owned));
+            let before = effects();
+            for accelerator in WindowAccelerator::ALL {
+                activate(accelerator);
+                pump(150);
+                assert_eq!(effects(), before, "{owner:?}: {accelerator:?} ran");
+                assert!(
+                    focus_is_in(&owned),
+                    "{owner:?}: {accelerator:?} took focus to {}",
+                    fixture.describe_focus()
+                );
+                if let Some(field) = owned.downcast_ref::<gtk::Entry>() {
+                    assert!(browser.rename_is_active(), "{owner:?}: {accelerator:?}");
+                    assert_eq!(field.text(), "kept.txt", "{owner:?}: {accelerator:?}");
+                    assert!(fixture._directory.path().join("b.txt").exists());
+                }
+            }
+            match owner {
+                InputOwner::Dialog => fixture.content.overlay().remove_overlay(&owned),
+                InputOwner::Rename(_) => assert!(browser.cancel_rename()),
+            }
+        }
+
+        // A new folder owns the listing from the request until its name field opens.
+        fixture.focus_cursor_row(BrowserMode::Columns);
+        let before = effects();
+        browser.create_new_folder();
+        for accelerator in WindowAccelerator::ALL {
+            assert!(browser.new_entry_is_active(), "{accelerator:?}");
+            activate(accelerator);
+            assert!(
+                !accelerator.ran(&before, &effects()),
+                "{accelerator:?} ran during folder creation"
+            );
+        }
+        wait_until(|| browser.rename_is_active());
+        pump(150);
+        assert_eq!(
+            effects(),
+            before,
+            "an accelerator ran during folder creation"
+        );
+        assert!(browser.cancel_rename());
+
+        fixture.focus_cursor_row(BrowserMode::Columns);
+        // A dialog still animating out after Escape no longer owns input.
+        let closing = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        closing.add_css_class("app-modal-layer");
+        closing.add_css_class("dismissing");
+        closing.set_sensitive(false);
+        fixture.content.overlay().add_overlay(&closing);
+        for accelerator in WindowAccelerator::ALL {
+            let (key, modifiers) = accelerator.shortcut();
+            assert!(
+                !window_key_claimed(&fixture.window, key, modifiers),
+                "{accelerator:?} was swallowed by the closing dialog"
+            );
+            let before = effects();
+            activate(accelerator);
+            wait_until(|| accelerator.ran(&before, &effects()));
+            if accelerator.toggles() {
+                activate(accelerator);
+                wait_until(|| !accelerator.ran(&before, &effects()));
+            }
+        }
+        fixture.content.overlay().remove_overlay(&closing);
+    });
+}
+
+#[test]
+fn a_rename_to_a_hidden_name_lets_the_next_rename_start() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::overlay_focus::a_rename_to_a_hidden_name_lets_the_next_rename_start",
+        || {
+            // Directory monitors drop hidden names only when the folder opens with
+            // hidden files off, as it does by default.
+            PreferenceManager::seed_saved_preferences_for_test();
+            let preferences = PreferenceManager::shared();
+            let mut sort = preferences.sort_preferences();
+            sort.show_hidden = false;
+            preferences.set_sort_preferences(sort);
+            for mode in [BrowserMode::Columns, BrowserMode::List] {
+                let fixture = ComposedFolder::open();
+                let browser = &fixture.content.browser;
+                assert!(!browser.browser().preferences().show_hidden);
+                fixture.focus_cursor_row(mode);
+                wait_until(|| browser.rename_is_active() || browser.begin_rename());
+                let field = browser.active_rename_field().expect("rename field");
+                field.set_text(".hidden-b.txt");
+                field.emit_activate();
+                let directory = fixture._directory.path();
+                wait_until(|| {
+                    directory.join(".hidden-b.txt").exists()
+                        && !rendered_name(&browser.widget(), "b.txt")
+                });
+
+                // The listing never shows the new name; the rename settles anyway.
+                fixture.focus_cursor_row(mode);
+                wait_until(|| browser.begin_rename());
+                let field = browser.active_rename_field().expect("rename field");
+                assert_eq!(field.text(), "c.txt", "{mode:?}");
+                assert!(browser.cancel_rename());
+            }
         },
     );
 }

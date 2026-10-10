@@ -22,6 +22,7 @@ mod folder_jump;
 mod footer_prompt;
 mod go_prompt;
 mod mode_exit;
+mod open_in_new;
 mod overlay_focus;
 mod pane_focus;
 mod place_chords;
@@ -243,9 +244,14 @@ fn widget_with_class(widget: &gtk::Widget, class: &str) -> Option<gtk::Widget> {
 }
 
 fn wait_until(condition: impl Fn() -> bool) {
+    wait_until_or(condition, || "keyboard fixture did not settle".to_owned());
+}
+
+/// Like [`wait_until`], with `report` describing what was seen on a timeout.
+fn wait_until_or(condition: impl Fn() -> bool, report: impl Fn() -> String) {
     let deadline = Instant::now() + Duration::from_secs(5);
     while !condition() {
-        assert!(Instant::now() < deadline, "keyboard fixture did not settle");
+        assert!(Instant::now() < deadline, "{}", report());
         glib::MainContext::default().iteration(false);
         std::thread::sleep(Duration::from_millis(2));
     }
@@ -975,6 +981,7 @@ fn press_file_row(widget: &gtk::Widget, name: &str) -> bool {
         controllers
             .item(index)
             .and_then(|controller| controller.downcast::<gtk::GestureClick>().ok())
+            .filter(|click| click.button() == 1)
     }) else {
         return false;
     };

@@ -2337,7 +2337,8 @@ paned > separator {
 }
 
 /* Share the column's edge without GTK's wider default handle overhang. */
-.preview-split > separator {
+.preview-split > separator,
+.preview-split > separator.wide {
   background: mix(@strata_bg, @strata_border, 0.6);
   background-image: none;
   border: none;
@@ -2347,8 +2348,18 @@ paned > separator {
   min-width: 1px;
 }
 
-.preview-split > separator:hover {
+.preview-split > separator:hover,
+.preview-split > separator.resize-hover {
   background: @strata_accent;
+}
+
+.preview-resize-grip {
+  background: transparent;
+}
+
+.preview-resize-grip:hover,
+.preview-resize-grip.resize-hover {
+  background: alpha(@strata_accent, 0.18);
 }
 
 .preview-pane {
@@ -3119,6 +3130,34 @@ paned > separator {
   padding: 24px;
 }
 
+.preview-minimum-outline {
+  background: alpha(@strata_accent, 0.08);
+  border: 2px dashed @strata_accent;
+  border-radius: 6px;
+}
+
+.preview-minimum-outline,
+.resize-caption {
+  transition: opacity 150ms ease-out;
+}
+
+.preview-minimum-outline.fading,
+.resize-caption.fading {
+  opacity: 0;
+}
+
+.resize-caption {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: @strata_accent;
+  color: @strata_bg;
+  font-weight: 600;
+}
+
+.preview-minimum-outline > .resize-caption {
+  margin-top: 12px;
+}
+
 .preview-feedback-icon {
   margin-bottom: 5px;
 }
@@ -3531,6 +3570,15 @@ button.shortcut-footer-button:disabled {
 
 .directory-column.column-entering {
   animation: column-enter 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes column-swap {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.directory-column.column-swapping {
+  animation: column-swap 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .directory-column:focus-within .column-header {

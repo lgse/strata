@@ -14,11 +14,12 @@ use crate::{
     services::{
         ArchiveFormat, CompressRequest, CreateDirectoryRequest, CreateFileRequest, DeleteRequest,
         DirectoryChange, DirectoryRequest, ExtractRequest, FileSource, LoadHandle,
-        LocationValidationError, MetadataOutcome, MetadataRequest, MoveRecord, OperationEvent,
-        OperationProvider, OperationRequestId, PasswordFailure, PasteItem, PasteRequest,
-        RenameRecord, RenameRequest, RequestId, RestoreRequest, RestoreSource, RestoreTrashItem,
-        TransferConflict, TrashedOriginal, UndoCopyRequest, UndoMergeRequest, UndoMoveItem,
-        UndoMoveRequest, UndoRenameRequest, validate_basename, validate_uri_credentials,
+        LocationIdentity, LocationValidationError, MetadataOutcome, MetadataRequest, MoveRecord,
+        OperationEvent, OperationProvider, OperationRequestId, PasswordFailure, PasteItem,
+        PasteRequest, RenameRecord, RenameRequest, RequestId, RestoreRequest, RestoreSource,
+        RestoreTrashItem, TransferConflict, TrashedOriginal, UndoCopyRequest, UndoMergeRequest,
+        UndoMoveItem, UndoMoveRequest, UndoRenameRequest, validate_basename,
+        validate_uri_credentials,
     },
 };
 
@@ -120,6 +121,8 @@ pub enum BrowserEvent {
     Reset,
     ColumnsTruncated {
         len: usize,
+        /// A sibling's `ColumnAdded` at `len` follows immediately.
+        replacing: bool,
     },
     ColumnAdded {
         depth: usize,
@@ -190,6 +193,8 @@ pub enum BrowserEvent {
     FocusChanged {
         depth: usize,
         position: Option<usize>,
+        /// A deletion, not the user, moved focus here.
+        triggered_by_removal: bool,
     },
     SelectionSetChanged {
         depth: usize,
@@ -246,6 +251,24 @@ pub enum BrowserEvent {
     TransferCancellationPending,
     TransferFinished {
         moved_locations: Vec<Location>,
+    },
+    /// An item an operation of this browser renamed or moved, published as it
+    /// lands, even when a later operation superseded that one. `merged` means
+    /// `to` is an existing folder the item was merged into.
+    ItemRelocated {
+        from: Location,
+        to: Location,
+        merged: bool,
+    },
+    /// An item an operation of this browser removed from `location`.
+    /// `trash_identity` identifies an item moved to Trash; others were deleted.
+    ItemRemoved {
+        location: Location,
+        trash_identity: Option<TrashedOriginal>,
+    },
+    /// An item an operation of this browser brought back from Trash to `location`.
+    ItemRestored {
+        location: Location,
     },
     DeletionStarted {
         total: usize,
@@ -890,6 +913,11 @@ pub struct Browser {
     state: RefCell<NavigationState>,
     loads: RefCell<Vec<LoadHandle>>,
     monitors: RefCell<Vec<Option<LoadHandle>>>,
+    /// The depth-0 folder's identity when it loaded, which finds it after a rename.
+    root_identity: RefCell<Option<(Location, LocationIdentity)>>,
+    root_identity_query: RefCell<Option<LoadHandle>>,
+    /// The current step of the one departure check that runs at a time.
+    departure_probe: RefCell<Option<LoadHandle>>,
     metadata_pending: RefCell<HashMap<usize, Vec<ViewportTarget>>>,
     metadata_idle: RefCell<Option<gio::glib::SourceId>>,
     staging: RefCell<HashMap<usize, StagingLoad>>,
@@ -965,6 +993,9 @@ impl Browser {
             state: RefCell::new(NavigationState::with_preferences(preferences)),
             loads: RefCell::new(Vec::new()),
             monitors: RefCell::new(Vec::new()),
+            root_identity: RefCell::new(None),
+            root_identity_query: RefCell::new(None),
+            departure_probe: RefCell::new(None),
             metadata_pending: RefCell::new(HashMap::new()),
             metadata_idle: RefCell::new(None),
             staging: RefCell::new(HashMap::new()),
@@ -1443,6 +1474,7 @@ impl Browser {
         self.emit(BrowserEvent::FocusChanged {
             depth: 0,
             position: None,
+            triggered_by_removal: false,
         });
         self.start_load(0, location, request_id);
     }
@@ -1550,7 +1582,10 @@ impl Browser {
         self.loads.borrow_mut().truncate(retained);
         self.monitors.borrow_mut().truncate(retained);
         self.truncate_deferred_from(retained);
-        self.emit(BrowserEvent::ColumnsTruncated { len: retained });
+        self.emit(BrowserEvent::ColumnsTruncated {
+            len: retained,
+            replacing: true,
+        });
         self.emit(BrowserEvent::ColumnAdded {
             depth: retained,
             location: location.clone(),
@@ -1558,6 +1593,7 @@ impl Browser {
         self.emit(BrowserEvent::FocusChanged {
             depth: retained,
             position: None,
+            triggered_by_removal: false,
         });
         self.start_load(retained, location, request_id);
     }
@@ -1638,7 +1674,10 @@ impl Browser {
             self.loads.borrow_mut().truncate(len);
             self.monitors.borrow_mut().truncate(len);
             self.truncate_deferred_from(len);
-            self.emit(BrowserEvent::ColumnsTruncated { len });
+            self.emit(BrowserEvent::ColumnsTruncated {
+                len,
+                replacing: false,
+            });
             self.emit_suppressed_focus(depth, position);
         }
     }
@@ -1654,14 +1693,21 @@ impl Browser {
             self.loads.borrow_mut().truncate(depth);
             self.monitors.borrow_mut().truncate(depth);
             self.truncate_deferred_from(depth);
-            self.emit(BrowserEvent::ColumnsTruncated { len: depth });
+            self.emit(BrowserEvent::ColumnsTruncated {
+                len: depth,
+                replacing: false,
+            });
             self.emit_suppressed_focus(parent_depth, position);
         }
     }
 
     fn emit_suppressed_focus(&self, depth: usize, position: Option<usize>) {
         let was = self.suppress_child_mirror.replace(true);
-        self.emit(BrowserEvent::FocusChanged { depth, position });
+        self.emit(BrowserEvent::FocusChanged {
+            depth,
+            position,
+            triggered_by_removal: false,
+        });
         self.suppress_child_mirror.set(was);
     }
 
@@ -1926,6 +1972,7 @@ impl Browser {
             self.emit(BrowserEvent::FocusChanged {
                 depth,
                 position: Some(position),
+                triggered_by_removal: false,
             });
         }
     }
@@ -1993,6 +2040,7 @@ impl Browser {
             self.emit(BrowserEvent::FocusChanged {
                 depth,
                 position: Some(position),
+                triggered_by_removal: false,
             });
         }
     }
@@ -2009,6 +2057,7 @@ impl Browser {
                 self.emit(BrowserEvent::FocusChanged {
                     depth,
                     position: Some(position),
+                    triggered_by_removal: false,
                 });
             }
         }
@@ -2297,20 +2346,22 @@ impl Browser {
         let publish = Rc::new(move |event: OperationEvent| {
             if matches!(&event, OperationEvent::Renamed { request_id: id } if *id == request_id)
                 && let Some(browser) = weak.upgrade()
-                && browser.is_current_operation(request_id)
                 && let Some(location) = new_location.as_ref()
                 && location != &old_location
             {
-                push_pending_undo(UndoEntry::Rename(RenameRecord {
-                    original: old_location.clone(),
-                    current: location.clone(),
-                    native_name: original_native_name.clone(),
-                    display_name: original_display_name.clone(),
-                    is_hidden: original_is_hidden,
-                }));
-                let mut renamed = renamed.clone();
-                renamed.location = location.clone();
-                browser.publish_rename(&old_location, renamed);
+                browser.publish_relocation(&old_location, location);
+                if browser.is_current_operation(request_id) {
+                    push_pending_undo(UndoEntry::Rename(RenameRecord {
+                        original: old_location.clone(),
+                        current: location.clone(),
+                        native_name: original_native_name.clone(),
+                        display_name: original_display_name.clone(),
+                        is_hidden: original_is_hidden,
+                    }));
+                    let mut renamed = renamed.clone();
+                    renamed.location = location.clone();
+                    browser.publish_rename(&old_location, renamed);
+                }
             }
             emit(event);
         });
@@ -2914,30 +2965,26 @@ impl Browser {
         let publish = Rc::new(move |event: OperationEvent| {
             if matches!(&event, OperationEvent::Renamed { request_id: id } if *id == request_id)
                 && let Some(browser) = weak.upgrade()
-                && browser.is_current_operation(request_id)
             {
-                if let Some(mut renamed) = browser.entry_at_location(&source_for_publish) {
-                    renamed.location = target_for_publish.clone();
-                    if redo {
-                        if let Some(name) = target_for_publish.file_name() {
-                            renamed.is_hidden = name.to_string_lossy().starts_with('.');
-                            renamed.native_name = name;
+                browser.publish_relocation(&source_for_publish, &target_for_publish);
+                if browser.is_current_operation(request_id) {
+                    if let Some(mut renamed) = browser.entry_at_location(&source_for_publish) {
+                        renamed.location = target_for_publish.clone();
+                        if redo {
+                            if let Some(name) = target_for_publish.file_name() {
+                                renamed.is_hidden = name.to_string_lossy().starts_with('.');
+                                renamed.native_name = name;
+                            }
+                            renamed.display_name = target_for_publish.display_name();
+                        } else {
+                            renamed.native_name = native_name.clone();
+                            renamed.display_name = display_name.clone();
+                            renamed.is_hidden = is_hidden;
                         }
-                        renamed.display_name = target_for_publish.display_name();
+                        browser.publish_rename(&source_for_publish, renamed);
                     } else {
-                        renamed.native_name = native_name.clone();
-                        renamed.display_name = display_name.clone();
-                        renamed.is_hidden = is_hidden;
+                        browser.follow_renamed_location(&source_for_publish, &target_for_publish);
                     }
-                    browser.publish_rename(&source_for_publish, renamed);
-                } else {
-                    if let (Some(from), Some(to)) = (
-                        source_for_publish.native_path(),
-                        target_for_publish.native_path(),
-                    ) {
-                        crate::services::refresh_search_indexes_for_rename(from, to);
-                    }
-                    browser.relocate_open_columns(&source_for_publish, &target_for_publish);
                 }
             }
             emit(event);
@@ -3392,14 +3439,16 @@ impl Browser {
     }
 
     pub fn activate(self: &Rc<Self>, depth: usize, position: usize) {
-        if self
-            .entry_at(depth, position)
-            .is_some_and(|entry| entry.is_directory() && self.is_open_child(depth, &entry.location))
-        {
-            self.close_column(depth + 1);
+        let open_child = self.entry_at(depth, position).is_some_and(|entry| {
+            entry.is_directory() && self.is_open_child(depth, &entry.location)
+        });
+        self.select(depth, position);
+        if open_child {
+            // Reopening lands where opening did, without picking a child entry.
+            self.set_active_column(depth + 1);
+            self.focus_active();
             return;
         }
-        self.select(depth, position);
         self.activate_focused_with_selection(false);
     }
 
@@ -3469,6 +3518,7 @@ impl Browser {
             self.emit(BrowserEvent::FocusChanged {
                 depth,
                 position: Some(position),
+                triggered_by_removal: false,
             });
         }
     }
@@ -3480,6 +3530,7 @@ impl Browser {
             self.emit(BrowserEvent::FocusChanged {
                 depth,
                 position: Some(position),
+                triggered_by_removal: false,
             });
         }
     }
@@ -3529,14 +3580,22 @@ impl Browser {
     pub fn focus_parent(&self) {
         let focus = self.state.borrow_mut().focus_parent();
         if let Some((depth, position)) = focus {
-            self.emit(BrowserEvent::FocusChanged { depth, position });
+            self.emit(BrowserEvent::FocusChanged {
+                depth,
+                position,
+                triggered_by_removal: false,
+            });
         }
     }
 
     fn focus_child(&self) {
         let focus = self.state.borrow_mut().focus_child();
         if let Some((depth, position)) = focus {
-            self.emit(BrowserEvent::FocusChanged { depth, position });
+            self.emit(BrowserEvent::FocusChanged {
+                depth,
+                position,
+                triggered_by_removal: false,
+            });
         }
     }
 
@@ -3633,8 +3692,17 @@ impl Browser {
             self.emit(BrowserEvent::FocusChanged {
                 depth,
                 position: None,
+                triggered_by_removal: false,
             });
         }
+    }
+
+    fn publish_relocation(&self, from: &Location, to: &Location) {
+        self.emit(BrowserEvent::ItemRelocated {
+            from: from.clone(),
+            to: to.clone(),
+            merged: false,
+        });
     }
 
     fn publish_rename(self: &Rc<Self>, old: &Location, entry: FileEntry) {
@@ -3666,6 +3734,13 @@ impl Browser {
         }
         // The source parent need not still be open when the operation completes.
         self.relocate_open_columns(old, &entry.location);
+    }
+
+    fn follow_renamed_location(self: &Rc<Self>, from: &Location, to: &Location) {
+        if let (Some(old), Some(new)) = (from.native_path(), to.native_path()) {
+            crate::services::refresh_search_indexes_for_rename(old, new);
+        }
+        self.relocate_open_columns(from, to);
     }
 
     fn relocate_open_columns(self: &Rc<Self>, from: &Location, to: &Location) {
@@ -3707,8 +3782,37 @@ impl Browser {
         let handle = self.request_directory(depth, location.clone(), request_id);
         self.loads.borrow_mut().push(handle);
 
+        if depth == 0 {
+            self.query_root_identity(location.clone());
+        }
         let monitor = self.install_monitor(depth, location);
         self.monitors.borrow_mut().push(monitor);
+    }
+
+    fn query_root_identity(self: &Rc<Self>, location: Location) {
+        if self
+            .root_identity
+            .borrow()
+            .as_ref()
+            .is_some_and(|(known, _)| *known != location)
+        {
+            self.root_identity.take();
+        }
+        let weak: Weak<Self> = Rc::downgrade(self);
+        let queried = location.clone();
+        let emit = Rc::new(move |identity: Option<LocationIdentity>| {
+            // A folder that vanished before its reload keeps the identity it loaded with.
+            if let Some(identity) = identity
+                && let Some(browser) = weak.upgrade()
+                && browser.location_at(0).as_ref() == Some(&queried)
+            {
+                browser
+                    .root_identity
+                    .replace(Some((queried.clone(), identity)));
+            }
+        });
+        let query = self.source.query_location_identity(location, emit);
+        self.root_identity_query.replace(Some(query));
     }
 
     fn install_monitor(self: &Rc<Self>, depth: usize, location: Location) -> Option<LoadHandle> {

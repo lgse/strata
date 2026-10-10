@@ -1005,8 +1005,9 @@ impl ShortcutFooter {
         });
     }
 
-    /// Reports `source`'s filter in place of the directory count while one is
-    /// active. Call [`Self::refresh_filter`] when it changes.
+    /// Reports `source`'s filter in place of the directory count while its
+    /// results are displayed, in every key map; the query mark and hit path
+    /// show only in 10xer mode. Call [`Self::refresh_filter`] when it changes.
     pub(in crate::ui) fn observe_filter(
         &self,
         source: impl Fn() -> Option<Option<FilterStatus>> + 'static,
@@ -1027,7 +1028,11 @@ impl ShortcutFooter {
             },
             None => None,
         };
-        match status.as_ref() {
+        // The default map keeps the pane's filter field on screen.
+        let named = status
+            .as_ref()
+            .filter(|_| crate::ui::tenxer_mode::chrome_suppressed());
+        match named {
             Some(status) => {
                 let mark = if status.search {
                     rust_i18n::t!("search: %{query}", query = status.query)
@@ -1041,7 +1046,7 @@ impl ShortcutFooter {
             None => self.filter.set_visible(false),
         }
         self.current
-            .set(status.as_ref().and_then(|status| status.current.as_deref()));
+            .set(named.and_then(|status| status.current.as_deref()));
         let browser = self.observed.borrow().upgrade();
         if let Some(browser) = browser {
             update_item_count(&self.count, &browser, status.as_ref());
@@ -1841,7 +1846,7 @@ fn update_item_count(
     browser: &Rc<crate::app::Browser>,
     filter: Option<&FilterStatus>,
 ) {
-    if let Some(filter) = filter {
+    if let Some(filter) = filter.filter(|filter| filter.displayed) {
         label.set_label(&crate::i18n::count("items", filter.total()));
         crate::ui::accessibility::set_description(
             label,

@@ -461,6 +461,11 @@ impl InlineSearch {
         collection.item(collection.current_position()?)
     }
 
+    pub(in crate::ui) fn awaiting_results(&self) -> bool {
+        self.showing_results()
+            .is_some_and(|state| state.session.awaiting_results())
+    }
+
     pub(in crate::ui) fn results_view(&self) -> Option<gtk::Widget> {
         Some(self.showing_results()?.collection.view.clone())
     }

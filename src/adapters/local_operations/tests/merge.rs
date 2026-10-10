@@ -613,6 +613,7 @@ fn check_merge_undo_restores_staged_originals_and_removes_created() -> Result<()
         &bookmarks,
         format!("{}{}{}", pin(&shared), pin(&incoming), pin(&stays)),
     )?;
+    let incoming_identity = TrashedOriginal::at_path(&incoming).ok_or("identity")?;
     let staged = staged_trash_fixture(root.path(), "shared.txt", &shared, b"old")?;
     let staged_path = staged
         .source
@@ -646,6 +647,10 @@ fn check_merge_undo_restores_staged_originals_and_removes_created() -> Result<()
         "the staged original is restored"
     );
     assert!(!incoming.exists(), "the merge-created file is removed");
+    assert_eq!(
+        trashed_items(&events.borrow()),
+        [(Location::local(&incoming), incoming_identity)]
+    );
     assert!(!staged_path.exists(), "the staged copy left the fake trash");
     assert_eq!(fs::read(&stays)?, b"keep me");
     assert!(target.exists(), "the destination folder itself survives");

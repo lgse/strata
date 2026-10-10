@@ -24,6 +24,7 @@ pub(in crate::ui) const SEND_TO_RECENT_DESTINATIONS_LIMIT: usize = 3;
 mod bindings;
 #[cfg(test)]
 pub(in crate::ui) mod fixtures;
+mod item_customizations;
 mod save_notice;
 mod text_size;
 pub(in crate::ui) use bindings::notify_live;
@@ -426,6 +427,7 @@ pub struct PreferenceManager {
     /// Why saving is off for this session: the file existed but could not be read.
     load_failure: Option<io::Error>,
     save_notices: save_notice::SaveNotices,
+    item_customizations: item_customizations::ItemCustomizationState,
 }
 
 impl PreferenceManager {
@@ -480,6 +482,7 @@ impl PreferenceManager {
             persistence_dirty: Cell::new(false),
             load_failure,
             save_notices: save_notice::SaveNotices::default(),
+            item_customizations: Default::default(),
             preferences: RefCell::new(preferences),
         })
     }

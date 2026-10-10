@@ -8,7 +8,10 @@ use crate::{
     services::DirectoryChange,
 };
 
-use super::{Browser, BrowserEvent, DeferredDirectoryChanges, SelectionUpdate};
+use super::{
+    Browser, BrowserEvent, DeferredDirectoryChanges, SelectionUpdate,
+    directory_changes::{DepartureEvidence, removed_location},
+};
 
 type DirectoryChanges = Vec<(Location, DirectoryChange)>;
 
@@ -175,9 +178,23 @@ impl Browser {
                 .changes
                 .retain(|(_, change)| !matches!(change, DirectoryChange::Rescan));
         }
-        if batch.changes.is_empty() {
-            return;
+        let depth = batch.depth;
+        let current = self.location_at(depth);
+        let reported = batch.changes.len();
+        batch.changes.retain(|(watched, change)| {
+            Some(watched) != current.as_ref() || removed_location(change) != Some(watched)
+        });
+        let departed = current.filter(|_| batch.changes.len() != reported);
+        if !batch.changes.is_empty() {
+            self.apply_operation_batch(batch);
         }
+        // Checked last, so a folder that turns out to stay keeps an up-to-date listing.
+        if let Some(departed) = departed {
+            self.check_departed_directory(depth, departed, DepartureEvidence::RemovalReport);
+        }
+    }
+
+    fn apply_operation_batch(self: &Rc<Self>, batch: OperationBatch) {
         // Classify each depth after earlier batches and their observers have run.
         let action = batch.action(&self.state.borrow());
         match action {
@@ -219,6 +236,7 @@ impl Browser {
             self.emit(BrowserEvent::FocusChanged {
                 depth,
                 position: publication.focused,
+                triggered_by_removal: false,
             });
         }
     }

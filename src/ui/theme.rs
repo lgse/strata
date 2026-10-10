@@ -174,6 +174,8 @@ pub struct ThemeManager {
     pending_omarchy_refresh: RefCell<Option<glib::SourceId>>,
     preview: RefCell<Option<ThemeTokens>>,
     preview_generation: Cell<u64>,
+    /// Omarchy state can be unreadable mid-switch while the window keeps these colors.
+    applied_omarchy_tokens: RefCell<Option<ThemeTokens>>,
     appearance: RefCell<AppearancePreferences>,
     theme_listeners: ThemeListeners,
     active_model_palette: Cell<crate::services::ModelPalette>,
@@ -215,6 +217,7 @@ impl ThemeManager {
             pending_omarchy_refresh: RefCell::new(None),
             preview: RefCell::new(None),
             preview_generation: Cell::new(0),
+            applied_omarchy_tokens: RefCell::new(None),
             appearance: RefCell::new(appearance),
             theme_listeners: ThemeListeners::default(),
             active_model_palette: Cell::new(crate::services::ModelPalette {
@@ -360,6 +363,7 @@ impl ThemeManager {
     pub fn appearance_tokens(&self) -> ThemeTokens {
         if self.follows_omarchy()
             && let Some(tokens) = load_omarchy_theme(self.preferences.omarchy_variant())
+                .or_else(|| self.applied_omarchy_tokens.borrow().clone())
         {
             return tokens;
         }
@@ -388,11 +392,13 @@ impl ThemeManager {
         }
         if self.follows_omarchy() {
             if let Some(tokens) = load_omarchy_theme(self.preferences.omarchy_variant()) {
+                self.applied_omarchy_tokens.replace(Some(tokens.clone()));
                 let palette = load_omarchy_source_palette();
                 self.apply_tokens(&tokens, palette.as_ref());
             }
             return;
         }
+        self.applied_omarchy_tokens.take();
         if let Some(tokens) = self.current_tokens() {
             self.apply_tokens(&tokens, None);
         }
@@ -409,9 +415,8 @@ impl ThemeManager {
 
     fn apply_tokens(&self, tokens: &ThemeTokens, source_palette: Option<&SourcePalette>) {
         let color = |value: &str| {
-            let rgba = gdk::RGBA::parse(value).unwrap_or(gdk::RGBA::BLACK);
-            let channel = |value: f32| (value * 255.).round() as u32;
-            (channel(rgba.red()) << 16) | (channel(rgba.green()) << 8) | channel(rgba.blue())
+            let [red, green, blue] = parse_rgb_channels(value).unwrap_or_default();
+            (u32::from(red) << 16) | (u32::from(green) << 8) | u32::from(blue)
         };
         self.active_model_palette
             .set(crate::services::ModelPalette {
@@ -436,9 +441,10 @@ impl ThemeManager {
         ));
         apply_interface_font(root_font_px);
         crate::assets::set_interface_icon_scale(root_font_px / 13.0);
-        crate::assets::set_primary_icon_color(&tokens.accent);
-        crate::assets::set_text_icon_color(&tokens.text);
-        crate::assets::set_danger_icon_color(&tokens.danger);
+        // SVG strokes accept fewer color forms than GTK does.
+        crate::assets::set_primary_icon_color(&color_to_hex(&tokens.accent));
+        crate::assets::set_text_icon_color(&color_to_hex(&tokens.text));
+        crate::assets::set_danger_icon_color(&color_to_hex(&tokens.danger));
         super::thumbnail::refresh_all_customized_icons();
         stage_source_style_scheme(tokens, source_palette);
         style_document_buffers(tokens);
@@ -515,29 +521,31 @@ impl ThemeManager {
                         return;
                     };
                     manager.pending_omarchy_refresh.borrow_mut().take();
-                    manager.monitor_omarchy();
-                    let available = load_omarchy_theme(OmarchyVariant::Original).is_some()
-                        || (manager.is_omarchy_available()
-                            && omarchy_state_dir().join("theme.name").is_file());
-                    let availability_changed =
-                        manager.omarchy_available.replace(available) != available;
-                    if !available && manager.follows_omarchy() {
-                        manager.preview.take();
-                        manager.preferences.set_theme_selection("theme", None);
-                        return;
-                    }
-                    if availability_changed {
-                        manager.preferences.notify_changes();
-                        return;
-                    }
-                    if manager.follows_omarchy() {
-                        manager.apply_selected();
-                        manager.preferences.notify_changes();
-                    }
+                    manager.refresh_omarchy_state();
                 });
                 manager.pending_omarchy_refresh.replace(Some(refresh));
             });
             self.omarchy_monitors.borrow_mut().push(monitor);
+        }
+    }
+
+    pub(in crate::ui) fn refresh_omarchy_state(self: &Rc<Self>) {
+        self.monitor_omarchy();
+        let available = load_omarchy_theme(OmarchyVariant::Original).is_some()
+            || (self.is_omarchy_available() && omarchy_state_dir().join("theme.name").is_file());
+        let availability_changed = self.omarchy_available.replace(available) != available;
+        if !available && self.follows_omarchy() {
+            self.preview.take();
+            self.preferences.set_theme_selection("theme", None);
+            return;
+        }
+        if availability_changed {
+            self.preferences.notify_changes();
+            return;
+        }
+        if self.follows_omarchy() {
+            self.apply_selected();
+            self.preferences.notify_changes();
         }
     }
 }
@@ -615,8 +623,12 @@ fn load_custom_themes() -> Vec<Theme> {
         .filter_map(|entry| {
             let id = entry.path().file_stem()?.to_string_lossy().into_owned();
             let source = fs::read_to_string(entry.path()).ok()?;
-            let tokens: ThemeTokens = toml::from_str(&source).ok()?;
+            let mut tokens: ThemeTokens = toml::from_str(&source).ok()?;
             validate_tokens(&tokens).ok()?;
+            // Canonical in memory only; the user's file stays as written.
+            for color in tokens.color_fields_mut() {
+                *color = canonical_color(color)?;
+            }
             Some(Theme {
                 id,
                 tokens,
@@ -642,13 +654,7 @@ fn load_omarchy_source_palette() -> Option<SourcePalette> {
 
 fn tokens_from_quattro(name: &str, source: &str, variant: OmarchyVariant) -> Option<ThemeTokens> {
     let values: toml::Value = toml::from_str(source).ok()?;
-    let get = |key: &str| {
-        values
-            .get(key)
-            .and_then(toml::Value::as_str)
-            .filter(|value| gdk::RGBA::parse(*value).is_ok())
-            .map(str::to_owned)
-    };
+    let get = |key: &str| quattro_color(&values, key);
     let source_background = get("background")?;
     let text = get("foreground")?;
     let accent = get("accent")?;
@@ -680,7 +686,7 @@ fn tokens_from_quattro(name: &str, source: &str, variant: OmarchyVariant) -> Opt
 
 fn source_palette_from_quattro(source: &str) -> Option<SourcePalette> {
     let values: toml::Value = toml::from_str(source).ok()?;
-    let get = |key: &str| values.get(key)?.as_str().map(str::to_owned);
+    let get = |key: &str| quattro_color(&values, key);
     Some(SourcePalette {
         statement: get("magenta").or_else(|| get("blue"))?,
         string: get("green")?,
@@ -688,6 +694,12 @@ fn source_palette_from_quattro(source: &str) -> Option<SourcePalette> {
         type_color: get("cyan").or_else(|| get("blue"))?,
         preprocessor: get("yellow")?,
     })
+}
+
+/// Quattro values reach GTK CSS, GtkSourceView XML and SVG strokes, so a value GTK
+/// cannot parse is treated as missing; callers decide whether that is fatal.
+fn quattro_color(values: &toml::Value, key: &str) -> Option<String> {
+    canonical_color(values.get(key)?.as_str()?)
 }
 
 fn default_danger() -> String {
@@ -698,32 +710,11 @@ fn validate_tokens(tokens: &ThemeTokens) -> Result<(), &'static str> {
     if tokens.name.trim().is_empty() {
         return Err("Enter a theme name");
     }
-    for color in [
-        &tokens.background,
-        &tokens.surface,
-        &tokens.text,
-        &tokens.accent,
-        &tokens.danger,
-        &tokens.muted,
-        &tokens.highlight,
-        &tokens.border,
-        &tokens.dim_text,
-    ]
-    .into_iter()
-    .chain(
-        [
-            tokens.syntax_keyword.as_ref(),
-            tokens.syntax_string.as_ref(),
-            tokens.syntax_constant.as_ref(),
-            tokens.syntax_type.as_ref(),
-            tokens.syntax_preprocessor.as_ref(),
-        ]
-        .into_iter()
-        .flatten(),
-    ) {
-        if gdk::RGBA::parse(color).is_err() {
-            return Err("Every color must be a valid CSS color");
-        }
+    if tokens
+        .color_fields()
+        .any(|color| gdk::RGBA::parse(color).is_err())
+    {
+        return Err("Every color must be a valid CSS color");
     }
     Ok(())
 }
@@ -918,6 +909,77 @@ fn resolved_source_palette(tokens: &ThemeTokens, palette: Option<&SourcePalette>
 }
 
 impl ThemeTokens {
+    // Exhaustive destructuring makes a new field fail to compile until it is classified.
+    fn color_fields(&self) -> impl Iterator<Item = &String> {
+        let Self {
+            name: _,
+            background,
+            surface,
+            text,
+            accent,
+            danger,
+            muted,
+            highlight,
+            border,
+            dim_text,
+            syntax_keyword,
+            syntax_string,
+            syntax_constant,
+            syntax_type,
+            syntax_preprocessor,
+        } = self;
+        [
+            background, surface, text, accent, danger, muted, highlight, border, dim_text,
+        ]
+        .into_iter()
+        .chain(
+            [
+                syntax_keyword,
+                syntax_string,
+                syntax_constant,
+                syntax_type,
+                syntax_preprocessor,
+            ]
+            .into_iter()
+            .flatten(),
+        )
+    }
+
+    fn color_fields_mut(&mut self) -> impl Iterator<Item = &mut String> {
+        let Self {
+            name: _,
+            background,
+            surface,
+            text,
+            accent,
+            danger,
+            muted,
+            highlight,
+            border,
+            dim_text,
+            syntax_keyword,
+            syntax_string,
+            syntax_constant,
+            syntax_type,
+            syntax_preprocessor,
+        } = self;
+        [
+            background, surface, text, accent, danger, muted, highlight, border, dim_text,
+        ]
+        .into_iter()
+        .chain(
+            [
+                syntax_keyword,
+                syntax_string,
+                syntax_constant,
+                syntax_type,
+                syntax_preprocessor,
+            ]
+            .into_iter()
+            .flatten(),
+        )
+    }
+
     pub(super) fn initialize_syntax_colors(&mut self) {
         let palette = resolved_source_palette(self, None);
         self.syntax_keyword = Some(palette.statement);
@@ -1021,13 +1083,30 @@ fn tokens_css(tokens: &ThemeTokens, root_font_px: f64) -> String {
 /// Parses colours GTK accepts (`#rgb`, `#rrggbb`, `rgb(...)`, names) into 8-bit
 /// channels. Strata emits these channels as `#rrggbb` in GtkSourceView schemes.
 pub(crate) fn parse_rgb_channels(value: &str) -> Option<[u8; 3]> {
+    parse_rgba_channels(value).map(|[red, green, blue, _]| [red, green, blue])
+}
+
+fn parse_rgba_channels(value: &str) -> Option<[u8; 4]> {
     let color = gdk::RGBA::parse(value).ok()?;
     let channel = |component: f32| (f64::from(component).clamp(0.0, 1.0) * 255.0).round() as u8;
     Some([
         channel(color.red()),
         channel(color.green()),
         channel(color.blue()),
+        channel(color.alpha()),
     ])
+}
+
+/// Rewrites a color GTK can parse as `#rrggbb`, or `#rrggbbaa` when translucent.
+/// `gdk::RGBA::parse` also accepts 9-, 12- and 16-digit hex, which GTK CSS rejects.
+fn canonical_color(value: &str) -> Option<String> {
+    let [red, green, blue, alpha] = parse_rgba_channels(value)?;
+    let rgb = hex_from_channels([red, green, blue]);
+    Some(if alpha == u8::MAX {
+        rgb
+    } else {
+        format!("{rgb}{alpha:02x}")
+    })
 }
 
 fn hex_from_channels(channels: [u8; 3]) -> String {

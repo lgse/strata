@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import shutil
+
 import pytest
 
 from harness.modes import COLUMNS_AND_ONE
@@ -305,3 +307,103 @@ def test_an_unreadable_location_reports_an_error(strata):
         strata.wait(lambda: strata.dialog() is None, "the dialog to close")
     finally:
         blocked.chmod(0o755)
+
+
+# Columns opens a child folder as a second pane, whose parent pane already watches it;
+# typing the path makes the folder the root (depth 0) column, like List and Icons.
+OPEN_FOLDER_ROUTES = [
+    pytest.param(
+        "List", False, marks=pytest.mark.preferences(browser_mode="list"), id="list"
+    ),
+    pytest.param(
+        "Columns",
+        False,
+        marks=pytest.mark.preferences(browser_mode="columns"),
+        id="columns-child",
+    ),
+    pytest.param(
+        "Columns",
+        True,
+        marks=pytest.mark.preferences(browser_mode="columns"),
+        id="columns-root",
+    ),
+]
+
+
+def _open_folder(strata, name, as_root):
+    if not as_root:
+        strata.open_directory(name)
+        return
+    target = strata.fixture.path(name)
+    strata.keyboard.press("ctrl+l")
+    field = strata.editable_field()
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text(str(target))
+    strata.wait(lambda: field.text == str(target), "typed location")
+    strata.keyboard.press("Return")
+    strata.wait_for_directory(name)
+    assert strata.pane_names() == [name]
+
+
+# A move into another folder is a deletion for the browser; the Rust tests own its other routes.
+DEPARTURES = [
+    pytest.param(*route.values, "delete", marks=route.marks, id=f"{route.id}-delete")
+    for route in OPEN_FOLDER_ROUTES
+] + [
+    pytest.param(
+        "List",
+        False,
+        "move-into-another-folder",
+        marks=pytest.mark.preferences(browser_mode="list"),
+        id="list-move-into-another-folder",
+    )
+]
+
+
+@pytest.mark.parametrize("mode, as_root, departure", DEPARTURES)
+def test_deleting_the_open_folder_returns_to_its_parent(strata, mode, as_root, departure):
+    _open_folder(strata, "documents", as_root)
+    strata.entry("notes.txt")
+
+    if departure == "delete":
+        shutil.rmtree(strata.fixture.path("documents"))
+    else:
+        strata.fixture.path("documents").rename(strata.fixture.path("archive/documents"))
+
+    strata.wait_for_directory(strata.fixture.root.name)
+    strata.wait_for_entry_gone("documents")
+    strata.entry("pictures")
+    strata.fixture.path("documents").mkdir()
+    strata.entry("documents")
+
+
+@pytest.mark.parametrize("mode, as_root", OPEN_FOLDER_ROUTES)
+def test_renaming_the_open_folder_follows_it(strata, mode, as_root):
+    _open_folder(strata, "documents", as_root)
+    strata.select_entry("report.md")
+
+    strata.fixture.path("documents").rename(strata.fixture.path("documents-moved"))
+
+    strata.wait_for_directory("documents-moved")
+    strata.wait_for_selection(["report.md"])
+    (strata.fixture.path("documents-moved") / "after-rename.txt").write_text("new\n")
+    strata.entry("after-rename.txt")
+    if mode == "Columns" and not as_root:
+        assert strata.pane_names()[0] == strata.fixture.root.name
+
+
+@pytest.mark.preferences(browser_mode="columns")
+def test_deleting_the_open_root_closes_its_child_columns(strata):
+    strata.fixture.path("documents/drafts").mkdir()
+    (strata.fixture.path("documents/drafts") / "draft.txt").write_text("draft\n")
+    _open_folder(strata, "documents", as_root=True)
+    strata.open_directory("drafts")
+    strata.entry("draft.txt")
+
+    shutil.rmtree(strata.fixture.path("documents"))
+
+    strata.wait(
+        lambda: strata.pane_names() == [strata.fixture.root.name],
+        "the path to collapse to the fixture root",
+    )
+    strata.entry("pictures")

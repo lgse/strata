@@ -16,7 +16,13 @@ impl ColumnSpan {
 
     pub fn reveal_target(self, current: f64, page_size: f64, lower: f64, upper: f64) -> f64 {
         let maximum = (upper - page_size).max(lower);
-        if self.left >= current && self.right <= current + page_size {
+        // A column wider than the viewport is as visible as it gets while it fills it.
+        let visible = if self.width() > page_size {
+            self.left <= current && current + page_size <= self.right
+        } else {
+            self.left >= current && self.right <= current + page_size
+        };
+        if visible {
             return current.clamp(lower, maximum);
         }
         (self.right + self.trailing - page_size)
@@ -106,6 +112,10 @@ impl ViewState {
             }
             origin_for_press.set(Some((x, y)));
             let target = weak.upgrade().and_then(|state| {
+                // A clipped column's resize edge still resizes it.
+                if resize_edge(&state, x, y).is_some() {
+                    return None;
+                }
                 let target = state.clipped_column(x, y)?;
                 let surface = gesture.widget()?;
                 let picked = surface.pick(x, y, gtk::PickFlags::DEFAULT)?;

@@ -646,6 +646,124 @@ fn tenxer_filter_commits_results_without_touching_the_hidden_directory() {
     );
 }
 
+fn wait_footer(fixture: &KeyboardFixture, what: &str, condition: impl Fn() -> bool) {
+    wait_until_or(condition, || {
+        format!(
+            "{what}: footer count {:?}, mark {:?}, hit {:?}",
+            fixture.shortcuts.count_text(),
+            fixture.shortcuts.filter_mark(),
+            fixture.shortcuts.current_hit(),
+        )
+    });
+}
+
+#[test]
+fn default_filter_shows_the_result_total_without_a_footer_mark() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::footer_prompt::default_filter_shows_the_result_total_without_a_footer_mark",
+        || {
+            let fixture = KeyboardFixture::new();
+            seed_filter_tree(&fixture);
+            let preferences = PreferenceManager::shared();
+            fixture.shortcuts.bind_preferences(&preferences);
+            assert!(!preferences.tenxer_mode());
+            preferences.set_filter_include_subfolders(false);
+            let browser = fixture.view.browser();
+
+            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
+                fixture.view.set_view_mode(mode);
+                wait_loaded(&browser, 0);
+                select_named(&fixture, "beta.txt");
+                focus_files(&fixture);
+                wait_footer(&fixture, &format!("{mode:?}: seed selection"), || {
+                    fixture.shortcuts.count_text().0 == "1 file selected (6 B)"
+                });
+                let directory_count = fixture.shortcuts.count_text();
+                assert_eq!(fixture.shortcuts.filter_mark(), None, "{mode:?}");
+
+                assert!(
+                    fixture.press(Key::f, ModifierType::CONTROL_MASK),
+                    "{mode:?}"
+                );
+                let entry = focused_entry(&fixture.window);
+                entry.set_text("report");
+                fixture.shortcuts.refresh_filter();
+                assert_eq!(
+                    fixture.shortcuts.count_text(),
+                    directory_count,
+                    "{mode:?}: a query still in its debounce describes the directory"
+                );
+                wait_results(&fixture, &IMMEDIATE_REPORTS);
+                wait_footer(
+                    &fixture,
+                    &format!("{mode:?}: the default map shows the displayed result total"),
+                    || fixture.shortcuts.count_text().0 == "3 items",
+                );
+                assert_eq!(
+                    fixture.shortcuts.filter_mark(),
+                    None,
+                    "{mode:?}: the default map shows the total only"
+                );
+
+                preferences.set_filter_include_subfolders(true);
+                fixture.shortcuts.refresh_filter();
+                assert_eq!(
+                    fixture.shortcuts.count_text(),
+                    directory_count,
+                    "{mode:?}: a restarted search counts nothing before its first batch"
+                );
+                wait_results(&fixture, &ALL_REPORTS);
+                wait_footer(&fixture, &format!("{mode:?}: the wider total"), || {
+                    fixture.shortcuts.count_text().0 == "4 items"
+                });
+                preferences.set_filter_include_subfolders(false);
+                wait_results(&fixture, &IMMEDIATE_REPORTS);
+                wait_footer(&fixture, &format!("{mode:?}: the narrower total"), || {
+                    fixture.shortcuts.count_text().0 == "3 items"
+                });
+
+                assert!(fixture.view.extend_result_selection(1), "{mode:?}");
+                pump(40);
+                assert_eq!(
+                    fixture.shortcuts.count_text().0,
+                    "3 items",
+                    "{mode:?}: selecting a result keeps the total"
+                );
+                assert_eq!(hidden_selection(&fixture), ["beta.txt"], "{mode:?}");
+
+                entry.set_text("zzz");
+                wait_footer(
+                    &fixture,
+                    &format!("{mode:?}: a miss reports 0 items"),
+                    || fixture.shortcuts.count_text().0 == "0 items",
+                );
+
+                preferences.set_tenxer_mode(true);
+                wait_footer(&fixture, &format!("{mode:?}: 10xer shows the mark"), || {
+                    fixture.shortcuts.filter_mark().as_deref() == Some("filter: zzz")
+                });
+                preferences.set_tenxer_mode(false);
+                wait_footer(
+                    &fixture,
+                    &format!("{mode:?}: leaving 10xer hides the mark, keeps the total"),
+                    || {
+                        fixture.shortcuts.filter_mark().is_none()
+                            && fixture.shortcuts.count_text().0 == "0 items"
+                    },
+                );
+
+                fixture.view.clear_listing_filter();
+                wait_until(|| fixture.view.listing_filter().is_none());
+                wait_footer(
+                    &fixture,
+                    &format!("{mode:?}: dismissing restores the selection summary"),
+                    || fixture.shortcuts.count_text() == directory_count,
+                );
+            }
+        },
+    );
+}
+
 fn fixture_name(fixture: &KeyboardFixture) -> &str {
     fixture
         ._directory
@@ -800,11 +918,7 @@ fn tenxer_search_covers_the_current_tree_and_restores_the_filter() {
                         .selected_search_result()
                         .expect("cursor hit")
                         .display_name;
-                    let path = if name == "deep-report.txt" {
-                        "reports/deep-report.txt".to_string()
-                    } else {
-                        name
-                    };
+                    let path = hit_path(&name);
                     wait_until(|| {
                         fixture.shortcuts.current_hit() == Some((path.clone(), path.clone()))
                     });
@@ -1036,6 +1150,90 @@ fn tenxer_search_survives_view_rebuilds_and_ends_with_the_mode() {
     );
 }
 
+#[derive(Debug, Clone, Copy)]
+enum RenamedFolder {
+    /// The folder the search runs in.
+    Searched(BrowserMode),
+    /// A hit folder opened beside the search, holding focus when it is renamed.
+    OpenedHit,
+}
+
+#[test]
+fn tenxer_search_ends_only_when_an_outside_rename_moves_its_folder() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::footer_prompt::tenxer_search_ends_only_when_an_outside_rename_moves_its_folder",
+        || {
+            let fixture = KeyboardFixture::new();
+            seed_filter_tree(&fixture);
+            let preferences = enable_tenxer(&fixture);
+            preferences.set_filter_include_subfolders(false);
+            let browser = fixture.view.browser();
+            let root = fixture._directory.path().to_path_buf();
+
+            // The root search runs first, before the other cases add folders below it.
+            for case in [
+                RenamedFolder::OpenedHit,
+                RenamedFolder::Searched(BrowserMode::List),
+                RenamedFolder::Searched(BrowserMode::Columns),
+            ] {
+                let (mode, searched, renamed) = match case {
+                    RenamedFolder::Searched(mode) => {
+                        let folder = root.join(format!("{mode:?}-open"));
+                        std::fs::create_dir(&folder).expect("open folder");
+                        std::fs::write(folder.join("gamma-report.txt"), b"filter")
+                            .expect("fixture file");
+                        (mode, folder.clone(), folder)
+                    }
+                    RenamedFolder::OpenedHit => {
+                        (BrowserMode::Columns, root.clone(), root.join("reports"))
+                    }
+                };
+                fixture.view.set_view_mode(mode);
+                browser.navigate(Location::local(&searched));
+                wait_until(|| browser.location_at(0) == Some(Location::local(&searched)));
+                wait_loaded(&browser, 0);
+                focus_files(&fixture);
+                commit_filter(&fixture, "gamma");
+                commit_search(&fixture, "report");
+                if matches!(case, RenamedFolder::OpenedHit) {
+                    wait_results(&fixture, &ALL_REPORTS);
+                    fixture.view.open_hit_column(0, Location::local(&renamed));
+                    wait_loaded(&browser, 1);
+                    browser.set_active_column(1);
+                    browser.focus_active();
+                    pump(50);
+                }
+
+                let moved = renamed.with_file_name(format!("{case:?}-moved"));
+                std::fs::rename(&renamed, &moved).expect("rename the open folder");
+                let depth = usize::from(matches!(case, RenamedFolder::OpenedHit));
+                wait_until(|| browser.location_at(depth) == Some(Location::local(&moved)));
+                wait_loaded(&browser, depth);
+                pump(100);
+                browser.set_active_column(0);
+                focus_files(&fixture);
+
+                let kept = matches!(case, RenamedFolder::OpenedHit);
+                assert_eq!(fixture.view.listing_search_active(), kept, "{case:?}");
+                assert_eq!(
+                    fixture.view.listing_filter().as_deref(),
+                    kept.then_some("gamma"),
+                    "{case:?}: the search keeps the filter it replaced only while it lasts"
+                );
+                if kept {
+                    assert!(fixture.view.dismiss_listing_search(), "{case:?}");
+                } else {
+                    assert!(
+                        !fixture.view.dismiss_listing_search(),
+                        "{case:?}: the search ended with its folder"
+                    );
+                }
+                fixture.view.clear_listing_filter();
+            }
+        },
+    );
+}
+
 #[test]
 fn tenxer_go_hit_folder_reveals_the_cursor_hit() {
     crate::test_support::gtk_test(
@@ -1115,14 +1313,7 @@ fn hit_names(order: &[String], positions: &[usize]) -> Vec<String> {
 /// order; Icons focus the hit directly.
 pub(super) fn cursor_to_hit(fixture: &KeyboardFixture, name: &str) {
     if fixture.view.view_mode() == BrowserMode::Icons {
-        let path = fixture
-            ._directory
-            .path()
-            .join(if name == "deep-report.txt" {
-                "reports/deep-report.txt"
-            } else {
-                name
-            });
+        let path = fixture._directory.path().join(hit_path(name));
         assert!(fixture.view.focus_search_result(&path), "{name}");
     } else {
         assert!(fixture.press(Key::g, ModifierType::empty()));
@@ -1135,6 +1326,24 @@ pub(super) fn cursor_to_hit(fixture: &KeyboardFixture, name: &str) {
         }
     }
     wait_until(|| hit_cursor(fixture).as_deref() == Some(name));
+}
+
+/// The path, relative to the fixture root, of a seeded hit.
+fn hit_path(name: &str) -> String {
+    if name == "deep-report.txt" {
+        "reports/deep-report.txt".into()
+    } else {
+        name.into()
+    }
+}
+
+fn wait_footer_hit(fixture: &KeyboardFixture, mode: BrowserMode, after: &str, name: &str) {
+    let path = hit_path(name);
+    wait_footer(
+        fixture,
+        &format!("{mode:?} after {after}: cursor on {path:?}"),
+        || fixture.shortcuts.current_hit() == Some((path.clone(), path.clone())),
+    );
 }
 
 #[test]
@@ -1172,6 +1381,7 @@ fn tenxer_search_hits_fill_and_range_apart_from_the_hidden_directory() {
 
                 assert!(fixture.press(Key::G, shift));
                 wait_until(|| hit_cursor(&fixture) == at(3));
+                wait_footer_hit(&fixture, mode, "G", &order[3]);
                 for key in [Key::Home, Key::Page_Up] {
                     assert!(fixture.press(key, none));
                     assert!(fixture.press(Key::u, ModifierType::CONTROL_MASK));
@@ -1181,6 +1391,7 @@ fn tenxer_search_hits_fill_and_range_apart_from_the_hidden_directory() {
                 assert!(fixture.press(Key::g, none));
                 assert!(fixture.press(Key::g, none));
                 wait_until(|| hit_cursor(&fixture) == at(0));
+                wait_footer_hit(&fixture, mode, "g g", &order[0]);
                 for key in [Key::End, Key::Page_Down] {
                     assert!(fixture.press(key, none));
                     pump(20);
@@ -1189,9 +1400,11 @@ fn tenxer_search_hits_fill_and_range_apart_from_the_hidden_directory() {
 
                 assert!(fixture.press(Key::space, none));
                 wait_until(|| hit_cursor(&fixture) == at(1));
+                wait_footer_hit(&fixture, mode, "first Space", &order[1]);
                 assert_eq!(selected_result_names(&fixture), hit_names(&order, &[0]));
                 assert!(fixture.press(Key::space, none));
                 wait_until(|| hit_cursor(&fixture) == at(2));
+                wait_footer_hit(&fixture, mode, "second Space (fill)", &order[2]);
                 assert_eq!(selected_result_names(&fixture), hit_names(&order, &[0, 1]));
                 assert!(
                     !fixture.preview.is_enabled(),
@@ -1203,11 +1416,22 @@ fn tenxer_search_hits_fill_and_range_apart_from_the_hidden_directory() {
                     "4 items",
                     "{mode:?}: the footer keeps the hit total"
                 );
+                assert!(fixture.sidebar_toggle.grab_focus(), "{mode:?}");
+                pump(50);
+                assert_eq!(
+                    fixture.shortcuts.current_hit().map(|(path, _)| path),
+                    Some(hit_path(&order[2])),
+                    "{mode:?}: focus outside the hits keeps the cursor's hit"
+                );
+                assert!(fixture.view.focus_results_cursor(), "{mode:?}");
+                wait_until(|| hit_cursor(&fixture) == at(2));
 
                 if mode == BrowserMode::Icons {
                     // Spatial moves keep the fill wherever the grid puts the cursor.
                     assert!(fixture.press(Key::h, none));
                     pump(20);
+                    let cursor = hit_cursor(&fixture).expect("cursor");
+                    wait_footer_hit(&fixture, mode, "h over the fill", &cursor);
                     assert_eq!(selected_result_names(&fixture), hit_names(&order, &[0, 1]));
                     assert!(fixture.press(Key::v, none));
                     wait_until(|| fixture.shortcuts.visual_text().as_deref() == Some("VISUAL"));
@@ -1217,9 +1441,11 @@ fn tenxer_search_hits_fill_and_range_apart_from_the_hidden_directory() {
                 } else {
                     assert!(fixture.press(Key::j, none));
                     wait_until(|| hit_cursor(&fixture) == at(3));
+                    wait_footer_hit(&fixture, mode, "j over the fill", &order[3]);
                     assert_eq!(selected_result_names(&fixture), hit_names(&order, &[0, 1]));
                     assert!(fixture.press(Key::k, none));
                     wait_until(|| hit_cursor(&fixture) == at(2));
+                    wait_footer_hit(&fixture, mode, "k over the fill", &order[2]);
 
                     assert!(fixture.press(Key::v, none));
                     wait_until(|| fixture.shortcuts.visual_text().as_deref() == Some("VISUAL"));
@@ -1229,12 +1455,14 @@ fn tenxer_search_hits_fill_and_range_apart_from_the_hidden_directory() {
                     );
                     assert!(fixture.press(Key::j, none));
                     wait_until(|| hit_cursor(&fixture) == at(3));
+                    wait_footer_hit(&fixture, mode, "j in a v range", &order[3]);
                     assert_eq!(
                         selected_result_names(&fixture),
                         hit_names(&order, &[0, 1, 2, 3])
                     );
                     assert!(fixture.press(Key::k, none));
                     wait_until(|| hit_cursor(&fixture) == at(2));
+                    wait_footer_hit(&fixture, mode, "k in a v range", &order[2]);
                     assert_eq!(
                         selected_result_names(&fixture),
                         hit_names(&order, &[0, 1, 2])
@@ -1250,6 +1478,7 @@ fn tenxer_search_hits_fill_and_range_apart_from_the_hidden_directory() {
 
                     assert!(fixture.press(Key::k, none));
                     wait_until(|| hit_cursor(&fixture) == at(1));
+                    wait_footer_hit(&fixture, mode, "k after Escape", &order[1]);
                     assert!(fixture.press(Key::V, shift));
                     wait_until(|| fixture.shortcuts.visual_text().as_deref() == Some("UNSET"));
                     assert_eq!(selected_result_names(&fixture), hit_names(&order, &[0, 2]));
@@ -1274,6 +1503,8 @@ fn tenxer_search_hits_fill_and_range_apart_from_the_hidden_directory() {
                 assert!(fixture.view.extend_result_selection(extra as u32));
                 assert!(fixture.press(Key::space, none));
                 wait_until(|| selected_result_names(&fixture) == expected);
+                let cursor = hit_cursor(&fixture).expect("cursor");
+                wait_footer_hit(&fixture, mode, "final Space", &cursor);
 
                 assert_eq!(
                     hidden_selection(&fixture),

@@ -46,6 +46,15 @@ fn anchor_at(state: &std::rc::Weak<ViewState>, depth: usize, map: &ViewMap, row:
     }
 }
 
+fn open_row_in_new(state: &Rc<ViewState>, location: &Location, action: &str) {
+    let uri = crate::adapters::gio_file_for_location(location)
+        .uri()
+        .to_variant();
+    if let Err(error) = state.overlay.activate_action(action, Some(&uri)) {
+        tracing::warn!(%error, action, "open-in-new location action unavailable");
+    }
+}
+
 pub(super) struct ColumnRows {
     pub(super) factory: gtk::SignalListItemFactory,
     pub(super) bound_rows: Rc<RefCell<Vec<BoundRow>>>,
@@ -441,6 +450,20 @@ pub(super) fn column_rows(
                 && let Some(entry) =
                     source_position.and_then(|position| state.browser.entry_at(depth, position))
             {
+                if !filtered
+                    && !control
+                    && !shift
+                    && entry.is_directory()
+                    && let Some(position) = source_position
+                {
+                    state.folder_press.replace(Some(super::FolderPress {
+                        at: std::time::Instant::now(),
+                        point: press,
+                        depth,
+                        position,
+                        location: entry.location.clone(),
+                    }));
+                }
                 let activate = !filtered
                     && should_activate_single_click(
                         press_count,
@@ -449,12 +472,14 @@ pub(super) fn column_rows(
                         control,
                         shift,
                         preserve_group,
-                    )
-                    && !state.browser.is_open_child(depth, &entry.location);
+                    );
                 let location_hold = (!search_active_for_click.get()
                     && entry.is_directory()
                     && (activate || (filtered && press_count == 1 && !control && !shift)))
                     .then(|| state.hold_tab_location());
+                if activate && let Some(hold) = &location_hold {
+                    hold.opening(depth, entry.location.clone());
+                }
                 (activate, location_hold)
             } else {
                 (false, None)
@@ -548,6 +573,7 @@ pub(super) fn column_rows(
             {
                 let entry = state.browser.entry_at(depth, source_position);
                 if let Some(entry) = entry.as_ref() {
+                    let reopening = state.browser.is_open_child(depth, &entry.location);
                     let slow_click_rename = press_count == 1
                         && selected_before
                         && selected_count_before == 1
@@ -559,7 +585,7 @@ pub(super) fn column_rows(
                                 | gtk::gdk::ModifierType::META_MASK,
                         )
                         && !preserve_group
-                        && !activate
+                        && (!activate || reopening)
                         && !state.browser.is_chooser_mode()
                         && !is_trash_location(&entry.location)
                         && gesture
@@ -568,6 +594,7 @@ pub(super) fn column_rows(
                             .is_some_and(|(row, label)| {
                                 crate::ui::pointer::hits_name_label(&row, label.upcast_ref(), x, y)
                             });
+                    let activate = activate && !slow_click_rename;
                     rename_position_for_press.set(if slow_click_rename {
                         Some(source_position)
                     } else {
@@ -671,7 +698,7 @@ pub(super) fn column_rows(
                             state.browser.preview(depth, pending.position);
                         }
                     } else {
-                        let activate = || state.browser.activate(depth, pending.position);
+                        let activate = || state.activate_column_entry(depth, pending.position);
                         if let Some(hold) = pending.location_hold.take() {
                             hold.navigate(depth, activate);
                         } else {
@@ -737,6 +764,53 @@ pub(super) fn column_rows(
         if let Some(drag) = &content_drag {
             drag.group_with(&selection_click);
         }
+        crate::ui::collection_interaction::install_row_middle_click(
+            row.upcast_ref::<gtk::Widget>(),
+            item,
+            {
+                let weak_state = weak_state.clone();
+                let map = map_for_hover.clone();
+                let search_active = search_active_for_factory.clone();
+                let search_results = search_results_for_factory.clone();
+                move |position, modifiers| {
+                    let Some(state) = weak_state.upgrade() else {
+                        return;
+                    };
+                    let entry = if search_active.get() {
+                        search_results
+                            .borrow()
+                            .get(position as usize)
+                            .map(crate::ui::browser::search_result_entry)
+                    } else {
+                        map.source_position(position).and_then(|source_position| {
+                            state.browser.entry_at(depth, source_position)
+                        })
+                    };
+                    let Some(entry) = entry else {
+                        return;
+                    };
+                    let control = modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK);
+                    let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
+                    match crate::ui::collection_interaction::middle_click_action(
+                        entry.is_directory(),
+                        control,
+                        shift,
+                    ) {
+                        crate::ui::collection_interaction::MiddleClickAction::OpenTab => {
+                            open_row_in_new(&state, &entry.location, "win.open-tab-at");
+                        }
+                        crate::ui::collection_interaction::MiddleClickAction::OpenWindow => {
+                            open_row_in_new(&state, &entry.location, "win.open-window-at");
+                        }
+                        crate::ui::collection_interaction::MiddleClickAction::RevealParent => {
+                            if let Some(parent) = entry.location.parent() {
+                                state.reveal_locations(parent, vec![entry.location], false);
+                            }
+                        }
+                    }
+                }
+            },
+        );
         let weak_item = glib::WeakRef::new();
         weak_item.set(Some(item));
         let weak_row = glib::WeakRef::new();

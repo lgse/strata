@@ -61,6 +61,8 @@ fn ranks_exact_labels_aliases_and_small_typing_errors() {
         ("copyright", "about", "license"),
         ("shortcuts button", "general", "hints"),
         ("keybindings", "general", "hints"),
+        ("render documents", "general", "render-documents"),
+        ("markdown", "general", "render-documents"),
     ] {
         let matches = find_matches(&normalized(query));
         assert_eq!(matches.best_page, Some(page), "{query}");
@@ -106,8 +108,36 @@ fn descendants(widget: &gtk::Widget) -> Vec<gtk::Widget> {
 fn item(layer: &gtk::Widget, id: &str) -> gtk::Widget {
     descendants(layer)
         .into_iter()
-        .find(|widget| widget.widget_name() == format!("settings-search-{id}"))
+        .find(|widget| tagged(widget, id))
         .expect("searchable setting")
+}
+
+fn tagged(widget: &gtk::Widget, id: &str) -> bool {
+    widget.widget_name() == format!("settings-search-{id}")
+}
+
+fn settings_layer(manager: &Rc<PreferenceManager>) -> (gtk::Widget, gtk::Entry, gtk::Stack) {
+    let button = gtk::Button::with_label("Settings");
+    let root = BlurBin::new(&button);
+    let layer = super::super::build_layer(
+        &button,
+        &root,
+        manager.clone(),
+        Rc::new(|_| {}),
+        super::super::install_guard(),
+    );
+    layer.set_visible(true);
+    let layer: gtk::Widget = layer.upcast();
+    let entry = descendants(&layer)
+        .into_iter()
+        .find(|widget| widget.has_css_class("settings-global-search-entry"))
+        .and_then(|widget| widget.downcast::<gtk::Entry>().ok())
+        .expect("global search");
+    let stack = descendants(&layer)
+        .into_iter()
+        .find_map(|widget| widget.downcast::<gtk::Stack>().ok())
+        .expect("settings pages");
+    (layer, entry, stack)
 }
 
 #[test]
@@ -118,49 +148,33 @@ fn global_search_navigates_filters_lazy_pages_and_restores_without_editing_prefe
             crate::ui::prepare_portal_ui();
             let manager = PreferenceManager::shared();
             let original = manager.folder_peeking();
-            let button = gtk::Button::with_label("Settings");
-            let root = BlurBin::new(&button);
-            let layer = super::super::build_layer(
-                &button,
-                &root,
-                manager.clone(),
-                Rc::new(|_| {}),
-                super::super::install_guard(),
-            );
-            layer.set_visible(true);
-            let entry = descendants(layer.upcast_ref())
-                .into_iter()
-                .find(|widget| widget.has_css_class("settings-global-search-entry"))
-                .and_then(|widget| widget.downcast::<gtk::Entry>().ok())
-                .expect("global search");
-            let stack = descendants(layer.upcast_ref())
-                .into_iter()
-                .find_map(|widget| widget.downcast::<gtk::Stack>().ok())
-                .expect("settings pages");
+            let (layer, entry, stack) = settings_layer(&manager);
+            let layer = &layer;
             assert!(stack.child_by_name("theme").is_none());
             entry.set_text("folder peeking");
             assert_eq!(stack.visible_child_name().as_deref(), Some("general"));
-            assert!(item(layer.upcast_ref(), "peeking").is_visible());
-            assert!(!item(layer.upcast_ref(), "previews").is_visible());
+            assert!(item(layer, "peeking").is_visible());
+            assert!(!item(layer, "previews").is_visible());
+            assert!(!item(layer, "render-documents").is_visible());
             entry.set_text("autoplay");
             assert_eq!(stack.visible_child_name().as_deref(), Some("general"));
-            assert!(item(layer.upcast_ref(), "preview-autoplay").is_visible());
-            assert!(!item(layer.upcast_ref(), "peeking").is_visible());
+            assert!(item(layer, "preview-autoplay").is_visible());
+            assert!(!item(layer, "peeking").is_visible());
             entry.set_text("window buttons");
             assert_eq!(stack.visible_child_name().as_deref(), Some("general"));
             for id in ["window-minimize", "window-maximize", "window-close"] {
-                assert!(item(layer.upcast_ref(), id).is_visible());
+                assert!(item(layer, id).is_visible());
             }
-            assert!(!item(layer.upcast_ref(), "previews").is_visible());
+            assert!(!item(layer, "previews").is_visible());
             entry.set_text("restore");
-            assert!(item(layer.upcast_ref(), "window-maximize").is_visible());
-            assert!(!item(layer.upcast_ref(), "window-minimize").is_visible());
-            assert!(!item(layer.upcast_ref(), "window-close").is_visible());
+            assert!(item(layer, "window-maximize").is_visible());
+            assert!(!item(layer, "window-minimize").is_visible());
+            assert!(!item(layer, "window-close").is_visible());
             entry.set_text("tezt size");
             assert_eq!(stack.visible_child_name().as_deref(), Some("theme"));
-            assert!(item(layer.upcast_ref(), "text").is_visible());
-            assert!(!item(layer.upcast_ref(), "motion").is_visible());
-            assert!(!item(layer.upcast_ref(), "themes").is_visible());
+            assert!(item(layer, "text").is_visible());
+            assert!(!item(layer, "motion").is_visible());
+            assert!(!item(layer, "themes").is_visible());
             entry.set_text("unfindablequantumsetting");
             assert_eq!(
                 stack.visible_child_name().as_deref(),
@@ -168,9 +182,9 @@ fn global_search_navigates_filters_lazy_pages_and_restores_without_editing_prefe
             );
             entry.set_text("");
             assert_eq!(stack.visible_child_name().as_deref(), Some("general"));
-            assert!(item(layer.upcast_ref(), "previews").is_visible());
-            assert!(item(layer.upcast_ref(), "themes").is_visible());
-            assert!(item(layer.upcast_ref(), "motion").is_visible());
+            assert!(item(layer, "previews").is_visible());
+            assert!(item(layer, "themes").is_visible());
+            assert!(item(layer, "motion").is_visible());
             assert_eq!(manager.folder_peeking(), original);
         },
     );
@@ -261,6 +275,235 @@ fn luks_keeps_desktop_heading_and_hides_portal_row() {
             assert!(
                 !directory.is_visible(),
                 "luks should hide Default directory"
+            );
+        },
+    );
+}
+
+fn nav(layer: &gtk::Widget, page: &str) -> gtk::Button {
+    descendants(layer)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
+        .find(|button| button.widget_name() == page)
+        .unwrap_or_else(|| panic!("navigation button for {page}"))
+}
+
+/// Whether `widget` and every ancestor up to its stack page are visible.
+fn shown_on_page(widget: &gtk::Widget) -> bool {
+    let mut current = Some(widget.clone());
+    while let Some(widget) = current {
+        if widget
+            .parent()
+            .is_some_and(|parent| parent.is::<gtk::Stack>())
+        {
+            return true;
+        }
+        if !widget.is_visible() {
+            return false;
+        }
+        current = widget.parent();
+    }
+    false
+}
+
+#[test]
+fn global_search_routes_every_target_to_its_page() {
+    crate::test_support::gtk_test(
+        "ui::settings::search::tests::global_search_routes_every_target_to_its_page",
+        || {
+            crate::ui::prepare_portal_ui();
+            let (layer, entry, stack) = settings_layer(&PreferenceManager::shared());
+            let title = descendants(&layer)
+                .into_iter()
+                .find(|widget| widget.has_css_class("settings-title"))
+                .and_then(|widget| widget.downcast::<gtk::Label>().ok())
+                .expect("settings title");
+            let mut failures = Vec::new();
+            for target in TARGETS {
+                entry.set_text(target.title);
+                let mut fail = |problem: String| {
+                    failures.push(format!("{:?} ({}): {problem}", target.title, target.id));
+                };
+                let shown = stack.visible_child_name();
+                if shown.as_deref() != Some(target.page) {
+                    fail(format!("opened page {shown:?}, expected {}", target.page));
+                }
+                let expected_title = page_title(target.page).map(crate::i18n::tr);
+                if expected_title.as_deref() != Some(title.text().as_str()) {
+                    fail(format!(
+                        "title {:?}, expected {expected_title:?}",
+                        title.text()
+                    ));
+                }
+                let matches = find_matches(&normalized(target.title));
+                for page in super::super::NAVIGATION.iter().map(|entry| entry.page) {
+                    let visible = nav(&layer, page).is_visible();
+                    if visible != matches.pages.contains(page) {
+                        fail(format!("{page} navigation button visible={visible}"));
+                    }
+                }
+                // Updates builds asynchronously; every_page_row_is_registered_for_search
+                // builds it directly.
+                if target.page == "updates" {
+                    continue;
+                }
+                match descendants(&layer)
+                    .into_iter()
+                    .find(|widget| tagged(widget, target.id))
+                {
+                    None => fail("no tagged row in the built pages".into()),
+                    Some(row)
+                        if !shown_on_page(&row)
+                            && !row.has_css_class("settings-search-unavailable") =>
+                    {
+                        fail("matching row is hidden".into());
+                    }
+                    Some(_) => {}
+                }
+            }
+            assert!(
+                failures.is_empty(),
+                "{} routing failures:\n{}",
+                failures.len(),
+                failures.join("\n")
+            );
+        },
+    );
+}
+
+fn tagged_or_inside_tag(widget: &gtk::Widget, page: &gtk::Widget) -> bool {
+    let mut current = Some(widget.clone());
+    while let Some(widget) = current {
+        if widget.widget_name().starts_with("settings-search-") {
+            return true;
+        }
+        if &widget == page {
+            return false;
+        }
+        current = widget.parent();
+    }
+    false
+}
+
+fn describe(widget: &gtk::Widget) -> String {
+    let text = descendants(widget)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
+        .map(|label| label.text().to_string())
+        .find(|text| !text.is_empty())
+        .unwrap_or_default();
+    format!("{} {text:?}", widget.type_().name())
+}
+
+#[test]
+fn every_page_row_is_registered_for_search() {
+    crate::test_support::gtk_test(
+        "ui::settings::search::tests::every_page_row_is_registered_for_search",
+        || {
+            crate::ui::prepare_portal_ui();
+            // One loaded action and one load failure, so the Actions list and its
+            // problems section both have rows.
+            let actions = crate::storage::config_directory().join("actions");
+            std::fs::create_dir_all(actions.join("demo")).expect("action folder");
+            std::fs::write(
+                actions.join("demo/action.toml"),
+                "schema_version = 1\nid = \"demo\"\nname = \"Demo\"\nenabled = true\nmenu = \"top\"\n\n[when]\nextensions = [\"png\"]\n\n[run]\nruntime = \"command\"\nprogram = \"true\"\nargs = [\"{paths}\"]\n",
+            )
+            .expect("action manifest");
+            std::fs::create_dir_all(actions.join("broken")).expect("broken action folder");
+            let manager = PreferenceManager::shared();
+            let pages = [
+                ("general", super::super::general_page(manager.clone()).0),
+                (
+                    "theme",
+                    super::super::theme_page(
+                        manager.clone(),
+                        crate::ui::theme::ThemeManager::shared(),
+                    )
+                    .widget,
+                ),
+                ("actions", super::super::actions::actions_page()),
+                (
+                    "updates",
+                    super::super::updates_page(
+                        manager.clone(),
+                        Rc::new(|_| {}),
+                        super::super::install_guard(),
+                        crate::services::UpdateMethod::InPlace,
+                    )
+                    .0,
+                ),
+                ("about", super::super::about_page()),
+            ];
+            assert_eq!(
+                pages.iter().map(|(page, _)| *page).collect::<Vec<_>>(),
+                super::super::NAVIGATION
+                    .iter()
+                    .map(|entry| entry.page)
+                    .collect::<Vec<_>>(),
+                "build every navigation page"
+            );
+            let (_, actions_page) = pages
+                .iter()
+                .find(|(page, _)| *page == "actions")
+                .expect("Actions page");
+            for fixture in ["Demo", "actions/broken"] {
+                assert!(
+                    descendants(actions_page)
+                        .iter()
+                        .filter(|row| row.has_css_class("settings-option"))
+                        .flat_map(descendants)
+                        .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
+                        .any(|label| label.text().contains(fixture)),
+                    "Actions page shows a row for the {fixture} fixture"
+                );
+            }
+            let mut failures = Vec::new();
+            for target in TARGETS {
+                let on_page = pages.iter().any(|(page, root)| {
+                    *page == target.page
+                        && descendants(root)
+                            .iter()
+                            .any(|widget| tagged(widget, target.id))
+                });
+                if !on_page {
+                    failures.push(format!(
+                        "target {} ({:?}) is not tagged on page {}",
+                        target.id, target.title, target.page
+                    ));
+                }
+            }
+            for (page, root) in &pages {
+                for row in descendants(root)
+                    .into_iter()
+                    .filter(|widget| widget.has_css_class("settings-option"))
+                {
+                    if !tagged_or_inside_tag(&row, root) {
+                        failures.push(format!("{page}: unregistered row {}", describe(&row)));
+                    }
+                }
+                let content = descendants(root)
+                    .into_iter()
+                    .find(|widget| widget.has_css_class("settings-preferences"))
+                    .expect("page content");
+                for block in children(&content) {
+                    let untagged = !descendants(&block)
+                        .iter()
+                        .any(|widget| widget.widget_name().starts_with("settings-search-"));
+                    if untagged
+                        && !block.has_css_class("menu-heading")
+                        && !block.has_css_class("settings-section-description")
+                        && !block.has_css_class("settings-search-page-empty")
+                    {
+                        failures.push(format!("{page}: unregistered block {}", describe(&block)));
+                    }
+                }
+            }
+            assert!(
+                failures.is_empty(),
+                "{} registration gaps:\n{}",
+                failures.len(),
+                failures.join("\n")
             );
         },
     );
