@@ -49,14 +49,12 @@ Only the glyph outlines are used. Each SVG was rewritten to a single path filled
 
 - Project: <https://github.com/devicons/devicon>
 - License: MIT
-- Included assets: language glyphs under `data/icons/scalable/actions/strata-lang-{js,ts,csharp}.svg`
+- Included assets: language glyphs under `data/icons/scalable/actions/strata-lang-{js,ts,csharp,java}.svg`
 - Full license: [`data/licenses/Devicons-MIT.txt`](data/licenses/Devicons-MIT.txt)
 
 Only the glyph outlines are used. Each SVG was rewritten to a single path filled with Strata's symbolic foreground placeholder so the existing recolor pipeline tints it with the theme accent; no brand colors are bundled.
 
-## Java file glyph
-
-`data/icons/scalable/actions/strata-lang-java.svg` is a custom stroked coffee glyph contributed under Strata's [MIT license](LICENSE), not a Simple Icons or Devicons asset. Its stroke uses the symbolic foreground placeholder for live theme recoloring.
+The Java glyph preserves the path from Devicon's `icons/java/java-plain.svg` (Git blob `8d3c663a4c1469fcf30e9b41e5cdfae7677aa1e4`), with its fill changed to the theme foreground placeholder. Language file icons are rendered as padded stroke contours; their upstream path geometry is retained.
 
 ## Tinted Theming schemes
 
