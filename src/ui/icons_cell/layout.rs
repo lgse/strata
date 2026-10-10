@@ -61,8 +61,8 @@ fn preferred_caption_width(label: &gtk::Inscription) -> i32 {
     (chars + gtk::pango::SCALE - 1) / gtk::pango::SCALE + label_insets(label).0
 }
 
-fn caption_extent(label: &gtk::Inscription, width: i32) -> (i32, i32) {
-    let (horizontal, vertical) = label_insets(label);
+fn caption_layout(label: &gtk::Inscription, width: i32) -> gtk::pango::Layout {
+    let horizontal = label_insets(label).0;
     let layout = label.create_pango_layout(label.text().as_deref());
     layout.set_attributes(label.attributes().as_ref());
     layout.set_width(
@@ -74,8 +74,19 @@ fn caption_extent(label: &gtk::Inscription, width: i32) -> (i32, i32) {
     layout.set_alignment(gtk::pango::Alignment::Center);
     layout.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
     layout.set_height(-ICONS_CARD_LABEL_LINES);
-    let (text_width, text_height) = layout.pixel_size();
+    layout
+}
+
+fn caption_extent(label: &gtk::Inscription, width: i32) -> (i32, i32) {
+    let (horizontal, vertical) = label_insets(label);
+    let (text_width, text_height) = caption_layout(label, width).pixel_size();
     (text_width + horizontal, text_height + vertical)
+}
+
+pub(super) fn caption_truncated(label: &gtk::Inscription) -> bool {
+    label
+        .parent()
+        .is_some_and(|caption| caption_layout(label, caption.width()).is_ellipsized())
 }
 
 fn reserved_caption_height(label: &gtk::Inscription, width: i32) -> i32 {
