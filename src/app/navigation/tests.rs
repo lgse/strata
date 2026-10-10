@@ -939,11 +939,11 @@ fn reload_drops_selection_members_that_left_the_listing() {
 #[test]
 fn reload_moves_a_removed_cursor_to_its_neighbour() {
     let mut failures = Vec::new();
-    // A burst restarts the reload before the first one lists anything.
     for (cursor, remaining, expected, reloads) in [
         (2, &["alpha", "bravo"][..], Some(1), 1),
         (1, &["alpha", "charlie"][..], Some(1), 1),
         (0, &[][..], None, 1),
+        // A burst restarts the reload before the first one lists anything.
         (1, &["alpha", "charlie"][..], Some(1), 2),
     ] {
         let mut state = NavigationState::default();

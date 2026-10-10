@@ -1669,8 +1669,7 @@ impl Browser {
         self.suppress_child_mirror.get()
     }
 
-    /// Whether the `FocusChanged` being observed follows a change made outside the app,
-    /// such as another program deleting the cursor's file, rather than a cursor move.
+    /// Whether the `FocusChanged` being observed comes from an outside change, not a cursor move.
     pub(crate) fn focus_follows_external_change(&self) -> bool {
         self.external_change_focus.get()
     }

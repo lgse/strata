@@ -120,7 +120,6 @@ impl PaneNavigation {
         self.applying = None;
     }
 
-    /// The directory loaded and the restored viewport is settling.
     pub(super) fn is_settling(&self) -> bool {
         self.is_restoring() && self.pending.is_none()
     }
@@ -132,7 +131,6 @@ impl PaneNavigation {
             .map(PendingRestore::viewport)
     }
 
-    /// Whether a pending history restore may move focus into the listing it rebuilds.
     pub(super) fn history_takes_focus(&self) -> bool {
         matches!(
             self.pending,

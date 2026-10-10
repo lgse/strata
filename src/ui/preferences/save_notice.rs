@@ -8,12 +8,11 @@ use std::{
 
 use gtk::{glib, prelude::*};
 
-/// Why preference changes are not reaching the settings file.
 #[derive(Clone, Copy, Debug)]
 pub(super) enum SaveProblem {
     /// Writing failed; each later change tries again.
     WriteFailed,
-    /// The file could not be read at startup, so saving stays off to keep it (#721).
+    /// The file could not be read at startup, so saving stays off to keep it.
     UnreadableAtStartup,
 }
 
@@ -27,7 +26,6 @@ enum Streak {
 }
 
 /// Tells the user once per failure streak that changes are not being saved.
-/// Only browser windows register, so portal chooser failures are only logged.
 #[derive(Default)]
 pub(super) struct SaveNotices {
     windows: RefCell<Vec<glib::WeakRef<gtk::Window>>>,

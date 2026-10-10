@@ -17,7 +17,7 @@ const MAX_LINK_HOPS: usize = 8;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum LinkPolicy {
-    /// Never follow a final-component symlink (#15): caches, state, installers.
+    /// Never follow a final-component symlink: caches, state, installers.
     Reject,
     /// User-edited configuration that dotfiles setups often symlink: follow a
     /// chain of links owned by the effective user to a regular file they own.
@@ -31,7 +31,6 @@ struct Destination {
     mode: Option<u32>,
 }
 
-/// Why an atomic write refused its destination.
 /// `Display` is English for logs and tests; [`Self::message`] is for the UI.
 #[derive(Debug)]
 pub(crate) enum DestinationError {
@@ -98,7 +97,7 @@ impl std::error::Error for DestinationError {
 }
 
 impl DestinationError {
-    /// Localized, standalone text; [`crate::services::io_error_message`] uses it.
+    /// Localized, standalone text for the UI.
     pub(crate) fn message(&self) -> String {
         match self {
             Self::NonRegular { path } => rust_i18n::t!(

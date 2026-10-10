@@ -10,8 +10,6 @@ enum Owner {
     Sidebar,
 }
 
-/// What starts the reload: the F5 key, the pane's Refresh button, or a tick of the
-/// auto-refresh timer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Trigger {
     F5,
@@ -96,9 +94,6 @@ enum During {
     Escape,
 }
 
-/// One refresh scenario: where focus is, whether the cursor's file survives, what
-/// starts the reload, how many more files the listing holds, and what happens while
-/// it loads.
 #[derive(Clone, Copy, Debug)]
 struct RefreshCase {
     owner: Owner,
@@ -171,7 +166,6 @@ const REFRESH_CASES: &[RefreshCase] = &[
     },
 ];
 
-/// Counts finished loads of the first column so a reload can be awaited.
 fn load_counter(browser: &crate::app::Browser) -> Rc<Cell<usize>> {
     let loads = Rc::new(Cell::new(0));
     let counted = loads.clone();

@@ -23,7 +23,6 @@ struct ModalFocusOrigin {
     allow_widget: bool,
 }
 
-/// What a layer needs to hand focus back when it closes, whatever opened it.
 #[derive(Default)]
 struct LayerFocus {
     /// The focused widget when the layer was added. A layer closed while another
@@ -90,11 +89,10 @@ fn rearm_focus_ring(window: &gtk::Window, layer: &LayerFocus) {
     }
 }
 
-/// Returns focus to the widget that opened a layer closed over `under`, a modal
-/// that stays open (such as a dialog over Settings), unless something inside it
-/// already took focus. Without a usable opener, for example a row the closing
-/// dialog's action re-rendered, the first focusable control in `under` takes it.
-/// The window's restore order applies only once no modal is left.
+/// Returns focus to the opener of a layer closed over `under`, a modal that stays
+/// open, unless something inside `under` already took focus. Without a usable opener,
+/// such as a row the dialog's action re-rendered, `under`'s first focusable control
+/// takes it. The window's restore order applies only once no modal is left.
 fn restore_focus_under(window: &gtk::Window, under: &gtk::Widget, layer: &LayerFocus) {
     let live = gtk::prelude::RootExt::focus(window)
         .is_some_and(|focus| focus.is_mapped() && focus != *under);

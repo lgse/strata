@@ -660,7 +660,6 @@ pub(crate) fn refresh_search_indexes_for_rename(from: &Path, to: &Path) {
     rebase_search_indexes(from, to, RenameScope::Related);
 }
 
-/// Which indexes a rename from `from` to `to` restarts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum RenameScope {
     /// Every index with a root at, above or below either path.
@@ -716,8 +715,7 @@ pub(crate) fn rebase_search_indexes(from: &Path, to: &Path, scope: RenameScope) 
     }
 }
 
-/// Rescans every live index whose walk lists the entries of `directory` (see
-/// `walk_lists_directory`). Rescans coalesce (`RefreshMode::Coalesce`).
+/// Rescans, coalescing, every live index whose walk lists the entries of `directory`.
 pub(crate) fn refresh_search_indexes_for_directory(directory: &Path) {
     let Some(registry) = SHARED_INDEXES.get() else {
         return;

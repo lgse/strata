@@ -482,8 +482,7 @@ impl NavigationState {
         }
     }
 
-    /// Selects `location` when it arrives without clearing what the load restores;
-    /// falls back to the first visible entry once the listing is complete.
+    /// Sets the soft load target (`preferred_on_load`) without clearing what the load restores.
     pub fn prefer_location_on_load(&mut self, depth: usize, location: Location) {
         if let Some(column) = self.columns.get_mut(depth) {
             column.preferred_on_load = Some(location);
@@ -2383,10 +2382,9 @@ impl ColumnState {
         self.select_loaded_entry(position);
     }
 
-    /// The fallbacks that need the complete listing: the first visible entry for a
-    /// preferred entry that never arrived, and the neighbour of a reloaded cursor whose
-    /// entry is gone. The neighbour only takes the cursor; nothing gets selected.
-    /// Returns whether either fallback moved the cursor.
+    /// Fallbacks that need the complete listing: the first visible entry for a preferred
+    /// entry that never arrived, and a cursor-only neighbour for a reloaded cursor whose
+    /// entry is gone. Returns whether the cursor moved.
     fn complete_load_selection(&mut self) -> bool {
         let before = self.selected;
         if self.preferred_on_load.take().is_some()

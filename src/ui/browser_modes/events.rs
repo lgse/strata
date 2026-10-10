@@ -379,8 +379,6 @@ impl ModeViews {
         !self.browser.focus_follows_background_load() || self.listing_may_take_focus(depth)
     }
 
-    /// An outside change never pulls focus out of a focused filter: the pane's field or
-    /// results, or a footer prompt that filters the listing.
     fn outside_change_keeps_focus(&self) -> bool {
         self.browser.focus_follows_external_change()
             && (self.filter_focus().is_some()
