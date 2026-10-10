@@ -13,6 +13,7 @@ use crate::ui::browser::columns::{
     select_all_in_column, set_column_busy, set_column_selections, set_filter_placeholder,
     stop_column_spinner, touch_source_model, update_empty_trash_sensitivity,
 };
+use crate::ui::browser::customization;
 use crate::ui::browser::location::MountStrategy;
 use crate::ui::browser::peek::append_peek_entries;
 use crate::ui::browser::transfer::FinishedSendToCompletion;
@@ -747,6 +748,16 @@ impl ViewState {
                 }
                 self.dismiss_file_operation_progress();
                 self.prune_stale_search_results();
+            }
+            BrowserEvent::ItemRelocated { from, to, merged } => {
+                customization::relocate_item_customizations(from, to, *merged)
+            }
+            BrowserEvent::ItemRemoved {
+                location,
+                trash_identity,
+            } => customization::forget_item_customizations(location, *trash_identity),
+            BrowserEvent::ItemRestored { location } => {
+                customization::restore_item_customizations(location)
             }
             BrowserEvent::DeletionStarted { total } => {
                 let browser = self.browser.clone();

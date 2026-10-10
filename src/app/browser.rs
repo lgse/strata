@@ -248,6 +248,24 @@ pub enum BrowserEvent {
     TransferFinished {
         moved_locations: Vec<Location>,
     },
+    /// An item an operation of this browser renamed or moved, published as it
+    /// lands, even when a later operation superseded that one. `merged` means
+    /// `to` is an existing folder the item was merged into.
+    ItemRelocated {
+        from: Location,
+        to: Location,
+        merged: bool,
+    },
+    /// An item an operation of this browser removed from `location`.
+    /// `trash_identity` identifies an item moved to Trash; others were deleted.
+    ItemRemoved {
+        location: Location,
+        trash_identity: Option<TrashedOriginal>,
+    },
+    /// An item an operation of this browser brought back from Trash to `location`.
+    ItemRestored {
+        location: Location,
+    },
     DeletionStarted {
         total: usize,
     },
@@ -2306,20 +2324,22 @@ impl Browser {
         let publish = Rc::new(move |event: OperationEvent| {
             if matches!(&event, OperationEvent::Renamed { request_id: id } if *id == request_id)
                 && let Some(browser) = weak.upgrade()
-                && browser.is_current_operation(request_id)
                 && let Some(location) = new_location.as_ref()
                 && location != &old_location
             {
-                push_pending_undo(UndoEntry::Rename(RenameRecord {
-                    original: old_location.clone(),
-                    current: location.clone(),
-                    native_name: original_native_name.clone(),
-                    display_name: original_display_name.clone(),
-                    is_hidden: original_is_hidden,
-                }));
-                let mut renamed = renamed.clone();
-                renamed.location = location.clone();
-                browser.publish_rename(&old_location, renamed);
+                browser.publish_relocation(&old_location, location);
+                if browser.is_current_operation(request_id) {
+                    push_pending_undo(UndoEntry::Rename(RenameRecord {
+                        original: old_location.clone(),
+                        current: location.clone(),
+                        native_name: original_native_name.clone(),
+                        display_name: original_display_name.clone(),
+                        is_hidden: original_is_hidden,
+                    }));
+                    let mut renamed = renamed.clone();
+                    renamed.location = location.clone();
+                    browser.publish_rename(&old_location, renamed);
+                }
             }
             emit(event);
         });
@@ -2923,30 +2943,32 @@ impl Browser {
         let publish = Rc::new(move |event: OperationEvent| {
             if matches!(&event, OperationEvent::Renamed { request_id: id } if *id == request_id)
                 && let Some(browser) = weak.upgrade()
-                && browser.is_current_operation(request_id)
             {
-                if let Some(mut renamed) = browser.entry_at_location(&source_for_publish) {
-                    renamed.location = target_for_publish.clone();
-                    if redo {
-                        if let Some(name) = target_for_publish.file_name() {
-                            renamed.is_hidden = name.to_string_lossy().starts_with('.');
-                            renamed.native_name = name;
+                browser.publish_relocation(&source_for_publish, &target_for_publish);
+                if browser.is_current_operation(request_id) {
+                    if let Some(mut renamed) = browser.entry_at_location(&source_for_publish) {
+                        renamed.location = target_for_publish.clone();
+                        if redo {
+                            if let Some(name) = target_for_publish.file_name() {
+                                renamed.is_hidden = name.to_string_lossy().starts_with('.');
+                                renamed.native_name = name;
+                            }
+                            renamed.display_name = target_for_publish.display_name();
+                        } else {
+                            renamed.native_name = native_name.clone();
+                            renamed.display_name = display_name.clone();
+                            renamed.is_hidden = is_hidden;
                         }
-                        renamed.display_name = target_for_publish.display_name();
+                        browser.publish_rename(&source_for_publish, renamed);
                     } else {
-                        renamed.native_name = native_name.clone();
-                        renamed.display_name = display_name.clone();
-                        renamed.is_hidden = is_hidden;
+                        if let (Some(from), Some(to)) = (
+                            source_for_publish.native_path(),
+                            target_for_publish.native_path(),
+                        ) {
+                            crate::services::refresh_search_indexes_for_rename(from, to);
+                        }
+                        browser.relocate_open_columns(&source_for_publish, &target_for_publish);
                     }
-                    browser.publish_rename(&source_for_publish, renamed);
-                } else {
-                    if let (Some(from), Some(to)) = (
-                        source_for_publish.native_path(),
-                        target_for_publish.native_path(),
-                    ) {
-                        crate::services::refresh_search_indexes_for_rename(from, to);
-                    }
-                    browser.relocate_open_columns(&source_for_publish, &target_for_publish);
                 }
             }
             emit(event);
@@ -3644,6 +3666,14 @@ impl Browser {
                 position: None,
             });
         }
+    }
+
+    fn publish_relocation(&self, from: &Location, to: &Location) {
+        self.emit(BrowserEvent::ItemRelocated {
+            from: from.clone(),
+            to: to.clone(),
+            merged: false,
+        });
     }
 
     fn publish_rename(self: &Rc<Self>, old: &Location, entry: FileEntry) {

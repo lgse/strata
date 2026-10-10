@@ -693,6 +693,17 @@ impl OperationProvider for ImmediateOperationProvider {
                     .then(|| item.source.transfer_target(&request.destination))
                     .flatten(),
             });
+            if request.move_sources
+                && let Some(target) = item.source.transfer_target(&request.destination)
+                && target != item.source
+            {
+                emit(OperationEvent::ItemMoved {
+                    request_id: request.id,
+                    from: item.source.clone(),
+                    to: target,
+                    merged: item.conflict == TransferConflict::Merge,
+                });
+            }
         }
         emit(OperationEvent::Pasted {
             request_id: request.id,
@@ -716,6 +727,14 @@ impl OperationProvider for ImmediateOperationProvider {
                     .collect(),
             )
         });
+        for item in &request.items {
+            emit(OperationEvent::ItemMoved {
+                request_id: request.id,
+                from: item.record.current.clone(),
+                to: item.record.original.clone(),
+                merged: false,
+            });
+        }
         emit(OperationEvent::Pasted {
             request_id: request.id,
             locations: request
@@ -1291,6 +1310,59 @@ fn scripted_browser(
     let observed = events.clone();
     browser.observe(move |event| observed.borrow_mut().push(event.clone()));
     (browser, events, source)
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum LocationChange {
+    Relocated {
+        from: Location,
+        to: Location,
+        merged: bool,
+    },
+    Removed {
+        location: Location,
+        trash_identity: Option<TrashedOriginal>,
+    },
+    Restored(Location),
+}
+
+fn location_changes(events: &[BrowserEvent]) -> Vec<LocationChange> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            BrowserEvent::ItemRelocated { from, to, merged } => Some(LocationChange::Relocated {
+                from: from.clone(),
+                to: to.clone(),
+                merged: *merged,
+            }),
+            BrowserEvent::ItemRemoved {
+                location,
+                trash_identity,
+            } => Some(LocationChange::Removed {
+                location: location.clone(),
+                trash_identity: *trash_identity,
+            }),
+            BrowserEvent::ItemRestored { location } => {
+                Some(LocationChange::Restored(location.clone()))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+fn relocated(from: &Location, to: &Location) -> LocationChange {
+    LocationChange::Relocated {
+        from: from.clone(),
+        to: to.clone(),
+        merged: false,
+    }
+}
+
+fn removed(location: &Location) -> LocationChange {
+    LocationChange::Removed {
+        location: location.clone(),
+        trash_identity: None,
+    }
 }
 
 /// The deadline only turns a hang into a deterministic failure.

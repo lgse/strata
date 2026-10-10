@@ -1461,6 +1461,11 @@ pub(super) fn refresh_customized_icons(paths: &[PathBuf]) {
     refresh_tracked_images(|path| paths.iter().any(|candidate| candidate == path));
 }
 
+pub(super) fn refresh_customized_icons_within(roots: &[PathBuf]) {
+    refresh_tracked_icons(|tracked| roots.iter().any(|root| tracked.path.starts_with(root)));
+    refresh_tracked_images(|path| roots.iter().any(|root| path.starts_with(root)));
+}
+
 pub(super) fn refresh_all_customized_icons() {
     refresh_tracked_icons(|_| true);
     refresh_tracked_images(|_| true);

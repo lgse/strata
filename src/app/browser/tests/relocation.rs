@@ -208,6 +208,13 @@ fn successful_open_directory_rename_preserves_parent_and_descendant_selections()
             );
             assert_eq!(browser.selected_positions(1), [0]);
             assert_eq!(browser.selected_positions(2), [0]);
+            assert_eq!(
+                location_changes(&events.borrow()),
+                [
+                    relocated(&restored, &renamed),
+                    relocated(&renamed, &restored)
+                ]
+            );
         }
     }
 }
@@ -292,6 +299,10 @@ fn an_external_root_rename_relocates_every_open_column_and_keeps_the_selection()
             | BrowserEvent::NavigationStarting { .. }
             | BrowserEvent::ColumnReloaded { .. }
     )));
+    assert!(
+        location_changes(&events.borrow()).is_empty(),
+        "item customizations do not follow changes made outside Strata"
+    );
     assert_eq!(browser.can_go_back(), could_go_back);
     for old in old_paths {
         assert!(source.cancelled_watches.borrow().contains(&old), "{old:?}");
@@ -337,4 +348,32 @@ fn removing_the_root_with_open_child_columns_returns_to_the_nearest_existing_anc
             .any(|event| matches!(event, BrowserEvent::Reset))
     );
     assert_eq!(browser.can_go_back(), could_go_back);
+}
+
+#[test]
+fn a_rename_superseded_by_another_operation_still_reports_its_relocation() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let operations = Rc::new(crate::test_support::operations::HeldOperations::default());
+    browser.set_operation_provider(operations.clone());
+    let old = Location::local("/fixture/docs");
+    let rename = browser
+        .rename(fixture_entry("/fixture/docs"), "docs2".into())
+        .expect("rename started");
+    browser.delete(vec![fixture_entry("/fixture/other.txt")], false);
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+
+    operations.emit(rename, OperationEvent::Renamed { request_id: rename });
+
+    assert_eq!(
+        location_changes(&events.borrow()),
+        [relocated(&old, &Location::local("/fixture/docs2"))]
+    );
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::RenameCompleted { .. }))
+    );
 }

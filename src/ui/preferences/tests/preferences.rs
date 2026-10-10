@@ -1322,3 +1322,243 @@ fn saved_date_format_renders_before_settings_and_updates_bound_labels() {
         },
     );
 }
+
+#[derive(Clone, Copy)]
+enum ItemStep {
+    Relocate {
+        from: &'static str,
+        to: Option<&'static str>,
+        merged: bool,
+    },
+    Forget {
+        root: &'static str,
+        trashed: bool,
+    },
+    Restore(&'static str),
+    /// Puts a different folder at `path`, keeping the original alive elsewhere.
+    ReplaceOnDisk(&'static str),
+}
+
+#[test]
+fn item_customizations_follow_relocations_and_removals() {
+    gtk_test(
+        "ui::preferences::tests::preferences::item_customizations_follow_relocations_and_removals",
+        || {
+            use crate::assets::icons::{FILE_CODE, PICTURES};
+            use crate::model::FolderColor::{Blue, Green, Red};
+            use ItemStep::{Forget, Relocate, ReplaceOnDisk, Restore};
+
+            seed_saved_preferences_for_test();
+            let manager = PreferenceManager::shared();
+            let notifications = Rc::new(std::cell::Cell::new(0));
+            let counted = notifications.clone();
+            manager.observe(Rc::new(move || counted.set(counted.get() + 1)));
+            let relocate = |from, to| Relocate {
+                from,
+                to: Some(to),
+                merged: false,
+            };
+            let trash = |root| Forget {
+                root,
+                trashed: true,
+            };
+            let customized_docs = [
+                ("docs", Some(Red), Some(FILE_CODE)),
+                ("docs/inner", Some(Blue), None),
+                ("docs2", Some(Green), None),
+            ];
+            let forgotten_docs = [
+                ("docs", None, None),
+                ("docs/inner", None, None),
+                ("docs2", Some(Green), None),
+            ];
+            type Customization = (
+                &'static str,
+                Option<crate::model::FolderColor>,
+                Option<&'static str>,
+            );
+            // Notifications count the coalesced saves, one per step that changed something.
+            let cases: [(&str, &[Customization], &[ItemStep], &[Customization], usize); 10] = [
+                (
+                    "a rename carries the root and descendants but not a look-alike sibling",
+                    &customized_docs,
+                    &[relocate("docs", "notes")],
+                    &[
+                        ("notes", Some(Red), Some(FILE_CODE)),
+                        ("notes/inner", Some(Blue), None),
+                        ("docs", None, None),
+                        ("docs/inner", None, None),
+                        ("docs2", Some(Green), None),
+                    ],
+                    1,
+                ),
+                (
+                    "a move drops stale keys at and under its destination",
+                    &[
+                        ("docs", Some(Red), Some(FILE_CODE)),
+                        ("dest/docs", Some(Green), Some(PICTURES)),
+                        ("dest/docs/old", Some(Blue), None),
+                    ],
+                    &[relocate("docs", "dest/docs")],
+                    &[
+                        ("dest/docs", Some(Red), Some(FILE_CODE)),
+                        ("dest/docs/old", None, None),
+                        ("docs", None, None),
+                    ],
+                    1,
+                ),
+                (
+                    "a merge keeps the destination root and carries descendants over it",
+                    &[
+                        ("docs", Some(Red), Some(FILE_CODE)),
+                        ("docs/inner", Some(Blue), None),
+                        ("dest/docs", Some(Green), Some(PICTURES)),
+                        ("dest/docs/inner", Some(Red), None),
+                    ],
+                    &[Relocate {
+                        from: "docs",
+                        to: Some("dest/docs"),
+                        merged: true,
+                    }],
+                    &[
+                        ("dest/docs", Some(Green), Some(PICTURES)),
+                        ("dest/docs/inner", Some(Blue), None),
+                        ("docs", None, None),
+                        ("docs/inner", None, None),
+                    ],
+                    1,
+                ),
+                (
+                    "a repeated relocation is a no-op",
+                    &customized_docs,
+                    &[relocate("docs", "notes"), relocate("docs", "notes")],
+                    &[
+                        ("notes", Some(Red), Some(FILE_CODE)),
+                        ("notes/inner", Some(Blue), None),
+                        ("docs", None, None),
+                    ],
+                    1,
+                ),
+                (
+                    "a move off local storage drops the keys",
+                    &customized_docs,
+                    &[Relocate {
+                        from: "docs",
+                        to: None,
+                        merged: false,
+                    }],
+                    &forgotten_docs,
+                    1,
+                ),
+                (
+                    "the trashed item restored at its path gets its keys back",
+                    &customized_docs,
+                    &[trash("docs"), Restore("docs")],
+                    &customized_docs,
+                    2,
+                ),
+                (
+                    "another item restored at the trashed path gets nothing",
+                    &customized_docs,
+                    &[trash("docs"), ReplaceOnDisk("docs"), Restore("docs")],
+                    &forgotten_docs,
+                    1,
+                ),
+                (
+                    "a later trashed item with the same identity supersedes the kept keys",
+                    &customized_docs,
+                    &[trash("docs"), trash("docs"), Restore("docs")],
+                    &forgotten_docs,
+                    1,
+                ),
+                (
+                    "a permanent delete keeps nothing to restore",
+                    &customized_docs,
+                    &[
+                        Forget {
+                            root: "docs",
+                            trashed: false,
+                        },
+                        Restore("docs"),
+                    ],
+                    &forgotten_docs,
+                    1,
+                ),
+                (
+                    "uncustomized items change nothing",
+                    &[("docs2", Some(Green), None)],
+                    &[relocate("docs", "notes"), trash("docs"), Restore("docs")],
+                    &[("docs2", Some(Green), None)],
+                    0,
+                ),
+            ];
+
+            let settle = || {
+                let context = glib::MainContext::default();
+                while context.pending() {
+                    context.iteration(false);
+                }
+            };
+            for (case, seed, steps, expected, notified) in cases {
+                let root = tempfile::tempdir().expect("case root");
+                let path = |relative: &str| root.path().join(relative);
+                fs::create_dir_all(path("docs")).expect("docs folder");
+                for (relative, color, icon) in seed {
+                    fs::create_dir_all(path(relative)).expect("customized folder");
+                    manager.set_folder_color(&path(relative), color.map(FolderColorValue::Preset));
+                    manager.set_custom_icon(&path(relative), *icon);
+                }
+                settle();
+                notifications.set(0);
+
+                for step in steps {
+                    match *step {
+                        Relocate { from, to, merged } => manager.relocate_item_customizations(
+                            &path(from),
+                            to.map(path).as_deref(),
+                            merged,
+                        ),
+                        Forget { root, trashed } => manager.forget_item_customizations(
+                            &path(root),
+                            trashed
+                                .then(|| crate::services::TrashedOriginal::at_path(&path(root)))
+                                .flatten(),
+                        ),
+                        Restore(root) => manager.restore_item_customizations(&path(root)),
+                        ReplaceOnDisk(relative) => {
+                            fs::rename(path(relative), root.path().join("kept-alive"))
+                                .expect("move the original aside");
+                            fs::create_dir(path(relative)).expect("another folder");
+                        }
+                    }
+                    settle();
+                }
+
+                assert_eq!(notifications.get(), notified, "{case}: notifications");
+                let saved = read_preferences().expect("saved preferences");
+                for (relative, color, icon) in expected {
+                    let path = path(relative);
+                    let key = path.to_string_lossy().into_owned();
+                    assert_eq!(
+                        manager.folder_color(&path),
+                        color.map(FolderColorValue::Preset),
+                        "{case}: color of {relative}"
+                    );
+                    assert_eq!(
+                        manager.custom_icon(&path).as_deref(),
+                        *icon,
+                        "{case}: icon of {relative}"
+                    );
+                    assert_eq!(
+                        (
+                            saved.folder_colors.contains_key(&key),
+                            saved.custom_icons.contains_key(&key)
+                        ),
+                        (color.is_some(), icon.is_some()),
+                        "{case}: saved keys of {relative}"
+                    );
+                }
+            }
+        },
+    );
+}

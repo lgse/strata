@@ -141,6 +141,28 @@ fn terminal_transfer(events: &[OperationEvent]) -> Option<&OperationEvent> {
     })
 }
 
+fn item_moves(events: &[OperationEvent]) -> Vec<(Location, Location)> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            OperationEvent::ItemMoved { from, to, .. } => Some((from.clone(), to.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
+fn trashed_items(events: &[OperationEvent]) -> Vec<(Location, TrashedOriginal)> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            OperationEvent::ItemTrashed {
+                location, identity, ..
+            } => Some((location.clone(), *identity)),
+            _ => None,
+        })
+        .collect()
+}
+
 fn pump_until_transfer(events: &RefCell<Vec<OperationEvent>>) {
     let start = Instant::now();
     while terminal_transfer(&events.borrow()).is_none() {
@@ -273,6 +295,20 @@ fn drive_until_transfer_settles(events: &Rc<RefCell<Vec<OperationEvent>>>) {
 fn run_paste_collecting_created(
     request: PasteRequest,
 ) -> Result<Vec<Option<Location>>, Box<dyn Error>> {
+    let created = run_paste(request)
+        .iter()
+        .filter_map(|event| match event {
+            OperationEvent::TransferProgress {
+                created_location, ..
+            } => Some(created_location.clone()),
+            _ => None,
+        })
+        .collect();
+    Ok(created)
+}
+
+/// Runs a paste that must succeed and returns every event it emitted.
+fn run_paste(request: PasteRequest) -> Vec<OperationEvent> {
     let events = Rc::new(RefCell::new(Vec::new()));
     let emitted = events.clone();
     let _operation = LocalOperationProvider.paste(
@@ -287,21 +323,11 @@ fn run_paste_collecting_created(
         )
     });
 
-    let created = events
-        .borrow()
-        .iter()
-        .filter_map(|event| match event {
-            OperationEvent::TransferProgress {
-                created_location, ..
-            } => Some(created_location.clone()),
-            _ => None,
-        })
-        .collect();
     assert!(matches!(
         events.borrow().last(),
         Some(OperationEvent::Pasted { .. })
     ));
-    Ok(created)
+    events.take()
 }
 
 fn sequential_delete_local(
