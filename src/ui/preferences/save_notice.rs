@@ -2,6 +2,7 @@
 
 use std::{
     cell::{Cell, RefCell},
+    fs, io,
     path::Path,
     rc::Rc,
 };
@@ -9,7 +10,7 @@ use std::{
 use gtk::{glib, prelude::*};
 
 #[derive(Clone, Copy, Debug)]
-pub(super) enum SaveProblem {
+enum SaveProblem {
     /// Writing failed; each later change tries again.
     WriteFailed,
     /// The file could not be read at startup, so saving stays off to keep it.
@@ -54,14 +55,40 @@ impl SaveNotices {
         windows.push(window.downgrade());
     }
 
-    pub(super) fn saved(&self) {
+    /// Creates the file's directory and writes it with `write`, one of the
+    /// atomic writers in `crate::storage`. Success ends a failure streak; a
+    /// failure is returned for `write_failed`.
+    pub(super) fn write(
+        &self,
+        path: &Path,
+        contents: &str,
+        write: fn(&Path, &[u8]) -> io::Result<()>,
+    ) -> io::Result<()> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        write(path, contents.as_bytes())?;
         self.streak.set(Streak::Armed);
+        Ok(())
+    }
+
+    pub(super) fn write_failed(&self, path: &Path, error: &io::Error) {
+        let subject = match self.subject {
+            SaveSubject::Settings => "preference",
+            SaveSubject::FolderViews => "folder settings",
+        };
+        tracing::warn!(%error, path = %path.display(), "unable to save {subject}");
+        self.report(SaveProblem::WriteFailed, path, error);
+    }
+
+    pub(super) fn unreadable_at_startup(&self, path: &Path, error: &io::Error) {
+        self.report(SaveProblem::UnreadableAtStartup, path, error);
     }
 
     /// Shows the notice in the active browser window, where the change was made.
     /// With no active browser window the change did not come from the user there
     /// (a timer, or a chooser), so the streak stays armed for the next failure.
-    pub(super) fn report(&self, problem: SaveProblem, path: &Path, reason: &str) {
+    fn report(&self, problem: SaveProblem, path: &Path, error: &io::Error) {
         if self.streak.get() != Streak::Armed {
             return;
         }
@@ -75,7 +102,12 @@ impl SaveNotices {
             return;
         };
         self.streak.set(Streak::Pending);
-        let (title, detail) = notice_text(self.subject, problem, path, reason);
+        let (title, detail) = notice_text(
+            self.subject,
+            problem,
+            path,
+            &crate::services::io_error_detail(error),
+        );
         let streak = self.streak.clone();
         let window = window.downgrade();
         // Opened after the failing setter returns rather than inside its call stack.

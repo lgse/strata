@@ -135,8 +135,7 @@ impl Browser {
         };
         self.apply_column_preferences(depth, SortOrigin::Followed, move |preferences| {
             preferences.folders_first = target.folders_first;
-            preferences.sort_key = target.sort_key;
-            preferences.sort_direction = target.sort_direction;
+            preferences.set_sort(target.sort());
         });
     }
 
@@ -180,7 +179,7 @@ impl Browser {
     /// columns, as before; with it, only the column's folder is reported.
     pub(super) fn record_sort(&self, depth: usize) {
         let (location, sorted, remembered) = {
-            let mut state = self.state.borrow_mut();
+            let state = self.state.borrow();
             let Some(column) = state.columns.get(depth) else {
                 return;
             };
@@ -192,15 +191,12 @@ impl Browser {
                 return;
             };
             if !state.remembers_folder_sorts() {
-                if sorted.sort_key != SortKey::DeviceOrder {
-                    let mut defaults = self.preferences.get();
-                    defaults.sort_key = sorted.sort_key;
-                    defaults.sort_direction = sorted.sort_direction;
-                    self.preferences.set(defaults);
-                    state.set_default_preferences(defaults);
-                }
                 drop(state);
-                self.notify_preferences_observers();
+                self.update_defaults(|defaults| {
+                    if sorted.sort_key != SortKey::DeviceOrder {
+                        defaults.set_sort(sorted.sort());
+                    }
+                });
                 return;
             }
             let remembered = state.folder_sort(&location) != FolderSort::Unremembered;

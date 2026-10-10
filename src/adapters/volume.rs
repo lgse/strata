@@ -380,3 +380,10 @@ pub(crate) fn volume_can_unplug(volume: &gio::Volume) -> bool {
     volume.drive().is_some_and(|drive| drive_can_unplug(&drive))
         || volume.get_mount().is_some_and(|mount| mount.can_eject())
 }
+
+pub(crate) fn mount_is_removable(mount: &gio::Mount) -> bool {
+    mount_can_unplug(mount)
+        || mount
+            .volume()
+            .is_some_and(|volume| volume_can_unplug(&volume))
+}

@@ -7,7 +7,7 @@ use crate::{
     model::Location,
 };
 
-use super::FolderKey;
+use super::{FolderKey, local_path};
 
 /// `None` for locations that are not remembered: non-native, remote, or paths
 /// that cannot be stored.
@@ -28,9 +28,7 @@ pub(in crate::ui) fn holds_mount_points(directory: &Path) -> bool {
 
 /// The innermost removable root wins, so a drive mounted inside another keeps its own key.
 pub(in crate::ui) fn key_for_path(path: &Path, removable: &[RemovableRoot]) -> Option<FolderKey> {
-    let FolderKey::Path(path) = FolderKey::local(path)? else {
-        return None;
-    };
+    let path = local_path(path)?;
     match removable
         .iter()
         .filter(|root| path.starts_with(&root.path))

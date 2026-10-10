@@ -2245,38 +2245,55 @@ fn append_icons_size_actions(
     popover: &gtk::Popover,
     scale: &gtk::Scale,
 ) {
-    let actions = gtk::Box::new(gtk::Orientation::Vertical, 2);
-    actions.add_css_class("column-menu");
-    let make_default =
-        crate::ui::controls::menu_action(&crate::i18n::tr("Make this the default size"));
-    let reset = crate::ui::controls::menu_action(&crate::i18n::tr("Reset to default size"));
-    actions.append(&make_default);
-    actions.append(&reset);
-    content.append(&actions);
-
     let remembered_location = {
         let browser = Rc::downgrade(browser);
         move || {
-            let browser = browser.upgrade()?;
-            (browser.folder_sort_at(depth) != crate::model::FolderSort::Unremembered)
-                .then(|| browser.location_at(depth))
-                .flatten()
+            let location = browser.upgrade()?.location_at(depth)?;
+            crate::ui::preferences::PreferenceManager::shared()
+                .remembers(&location)
+                .then_some(location)
         }
     };
-    let sync = {
-        let remembered_location = remembered_location.clone();
-        let actions = actions.downgrade();
+    let make_default = {
         let scale = scale.downgrade();
         move || {
-            let (Some(actions), Some(scale)) = (actions.upgrade(), scale.upgrade()) else {
+            if let Some(scale) = scale.upgrade() {
+                crate::ui::preferences::PreferenceManager::shared()
+                    .set_default_icons_size(scale.value().round() as i32);
+            }
+        }
+    };
+    let reset = {
+        let remembered_location = remembered_location.clone();
+        move || {
+            if let Some(location) = remembered_location() {
+                crate::ui::preferences::PreferenceManager::shared()
+                    .reset_folder_icons_size(&location);
+            }
+        }
+    };
+    let actions = crate::ui::controls::DefaultActions::new(
+        popover,
+        (
+            &crate::i18n::tr("Make this the default size"),
+            &crate::i18n::tr("Reset to default size"),
+        ),
+        make_default,
+        reset,
+    );
+    actions.widget().add_css_class("column-menu");
+    content.append(actions.widget());
+
+    let sync = {
+        let scale = scale.downgrade();
+        move || {
+            let Some(scale) = scale.upgrade() else {
                 return;
             };
-            actions.set_visible(
-                remembered_location().is_some()
-                    && scale.value().round() as i32
-                        != crate::ui::preferences::PreferenceManager::shared()
-                            .icons_thumbnail_size(),
-            );
+            let differs = remembered_location().is_some()
+                && scale.value().round() as i32
+                    != crate::ui::preferences::PreferenceManager::shared().icons_thumbnail_size();
+            actions.set_visible(differs, differs);
         }
     };
     sync();
@@ -2285,26 +2302,6 @@ fn append_icons_size_actions(
         popover.connect_map(move |_| sync());
     }
     scale.connect_value_changed(move |_| sync());
-    let scale_for_default = scale.downgrade();
-    let closing = popover.downgrade();
-    make_default.connect_clicked(move |_| {
-        if let Some(scale) = scale_for_default.upgrade() {
-            crate::ui::preferences::PreferenceManager::shared()
-                .set_default_icons_size(scale.value().round() as i32);
-        }
-        if let Some(popover) = closing.upgrade() {
-            popover.popdown();
-        }
-    });
-    let closing = popover.downgrade();
-    reset.connect_clicked(move |_| {
-        if let Some(location) = remembered_location() {
-            crate::ui::preferences::PreferenceManager::shared().reset_folder_icons_size(&location);
-        }
-        if let Some(popover) = closing.upgrade() {
-            popover.popdown();
-        }
-    });
 }
 
 fn disable_scale_long_press_zoom(scale: &gtk::Scale) {

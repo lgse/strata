@@ -16,9 +16,8 @@ use super::{
     MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE, PreferenceManager, SHARED_MANAGER,
     folder_views::{
         FolderKey, FolderViews, folder_was_deleted, holds_mount_points, key_for_location,
-        stored_direction, stored_sort_key,
     },
-    save_notice::SaveProblem,
+    read_state_file, store_sort,
 };
 
 const FILE_NAME: &str = "folder-views.toml";
@@ -64,18 +63,18 @@ impl FolderViewStore {
     fn load() -> Self {
         let path = folder_views_path();
         let synced = file_stamp(&path);
-        let (views, load_failure) = match fs::read_to_string(&path) {
-            Ok(contents) => match FolderViews::parse(&contents) {
-                Ok((views, repaired)) => {
-                    if repaired {
-                        tracing::warn!(path = %path.display(),
-                            "folder settings file has invalid entries; keeping the valid ones");
-                    }
-                    (views, None)
+        let loaded = read_state_file(&path).and_then(|contents| match contents {
+            Some(contents) => FolderViews::parse(&contents),
+            None => Ok((FolderViews::default(), false)),
+        });
+        let (views, load_failure) = match loaded {
+            Ok((views, repaired)) => {
+                if repaired {
+                    tracing::warn!(path = %path.display(),
+                        "folder settings file has invalid entries; keeping the valid ones");
                 }
-                Err(error) => (FolderViews::default(), Some(error)),
-            },
-            Err(error) if error.kind() == io::ErrorKind::NotFound => (FolderViews::default(), None),
+                (views, None)
+            }
             Err(error) => (FolderViews::default(), Some(error)),
         };
         if let Some(error) = &load_failure {
@@ -162,6 +161,10 @@ impl PreferenceManager {
         key_for_location(location)
     }
 
+    pub(in crate::ui) fn remembers(&self, location: &Location) -> bool {
+        self.remembered_key(location).is_some()
+    }
+
     /// `opened` counts as using the folder for the least-recently-used limit.
     pub(in crate::ui) fn resolve_folder_sort(
         &self,
@@ -200,7 +203,7 @@ impl PreferenceManager {
         sort_key: SortKey,
         sort_direction: SortDirection,
     ) {
-        if stored_sort_key(sort_key).is_none() {
+        if sort_key.stored_name().is_none() {
             return;
         }
         let Some(key) = self.remembered_key(location) else {
@@ -222,8 +225,7 @@ impl PreferenceManager {
     }
 
     pub(in crate::ui) fn default_sort(&self) -> (SortKey, SortDirection) {
-        let preferences = self.sort_preferences();
-        (preferences.sort_key, preferences.sort_direction)
+        self.sort_preferences().sort()
     }
 
     pub(in crate::ui) fn default_sort_key(&self) -> SortKey {
@@ -244,13 +246,11 @@ impl PreferenceManager {
 
     /// Folders whose saved sort now matches the default stop storing it.
     pub(in crate::ui) fn set_default_sort(&self, sort_key: SortKey, sort_direction: SortDirection) {
-        let Some(stored_key) = stored_sort_key(sort_key) else {
+        if !store_sort(
+            &mut self.preferences.borrow_mut(),
+            (sort_key, sort_direction),
+        ) {
             return;
-        };
-        {
-            let mut preferences = self.preferences.borrow_mut();
-            preferences.sort_key = stored_key.to_owned();
-            preferences.sort_direction = stored_direction(sort_direction).to_owned();
         }
         self.save_preferences();
         let sort = Some((sort_key, sort_direction));
@@ -431,36 +431,22 @@ impl PreferenceManager {
         }
         let path = folder_views_path();
         if let Some(error) = &store.load_failure {
-            self.folder_save_notices.report(
-                SaveProblem::UnreadableAtStartup,
-                &path,
-                &crate::services::io_error_detail(error),
-            );
+            self.folder_save_notices.unreadable_at_startup(&path, error);
             return;
         }
         let merged = store.merge_saved_elsewhere(&path);
-        let result = (|| -> io::Result<()> {
-            if let Some(parent) = path.parent() {
-                fs::create_dir_all(parent)?;
-            }
-            let contents = store.views.borrow().to_toml()?;
-            crate::storage::atomic_write(&path, contents.as_bytes())
-        })();
+        let contents = store.views.borrow().to_toml();
+        let result = contents.and_then(|contents| {
+            self.folder_save_notices
+                .write(&path, &contents, crate::storage::atomic_write)
+        });
         match result {
             Ok(()) => {
                 store.views.borrow_mut().mark_saved();
                 store.synced.set(file_stamp(&path));
                 store.dirty.set(false);
-                self.folder_save_notices.saved();
             }
-            Err(error) => {
-                tracing::warn!(%error, path = %path.display(), "unable to save folder settings");
-                self.folder_save_notices.report(
-                    SaveProblem::WriteFailed,
-                    &path,
-                    &crate::services::io_error_detail(&error),
-                );
-            }
+            Err(error) => self.folder_save_notices.write_failed(&path, &error),
         }
         if merged {
             self.publish_folder_views(FolderValue::Any);

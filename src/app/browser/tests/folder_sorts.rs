@@ -79,7 +79,7 @@ fn pump_until_settled(browser: &Browser, condition: impl Fn() -> bool) {
 fn sorting(browser: &Browser, depth: usize) -> Option<(SortKey, SortDirection)> {
     browser
         .column_preferences(depth)
-        .map(|preferences| (preferences.sort_key, preferences.sort_direction))
+        .map(|preferences| preferences.sort())
 }
 
 #[test]

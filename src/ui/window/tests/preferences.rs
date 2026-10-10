@@ -802,7 +802,7 @@ fn saved_folder_sorts_and_icon_sizes_apply_before_settings_and_follow_changes_ac
                     .browser
                     .browser()
                     .column_preferences(0)
-                    .map(|preferences| (preferences.sort_key, preferences.sort_direction))
+                    .map(|preferences| preferences.sort())
             };
             let show = |open: &OpenWindow, location: &Location| {
                 open.content.browser.navigate_location(location.clone());

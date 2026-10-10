@@ -1176,8 +1176,7 @@ impl NavigationState {
         if let FolderSort::Saved(sort_key, sort_direction) =
             self.resolve_folder_sort(location, true)
         {
-            preferences.sort_key = sort_key;
-            preferences.sort_direction = sort_direction;
+            preferences.set_sort((sort_key, sort_direction));
         }
         preferences_for_location(preferences, location)
     }
@@ -1194,13 +1193,9 @@ impl NavigationState {
         preferences.folders_first = self.preferences.folders_first;
         match self.folder_sort(&column.location) {
             FolderSort::Saved(sort_key, sort_direction) => {
-                preferences.sort_key = sort_key;
-                preferences.sort_direction = sort_direction;
+                preferences.set_sort((sort_key, sort_direction));
             }
-            FolderSort::Default => {
-                preferences.sort_key = self.preferences.sort_key;
-                preferences.sort_direction = self.preferences.sort_direction;
-            }
+            FolderSort::Default => preferences.set_sort(self.preferences.sort()),
             FolderSort::Unremembered => {}
         }
         Some(preferences)

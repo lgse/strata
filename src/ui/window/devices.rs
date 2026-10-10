@@ -211,15 +211,10 @@ fn root_is_writable_directory(root: &gio::File) -> bool {
 fn destination_for_mount(mount: &gio::Mount) -> Option<RemovableDestination> {
     let root_file = mount.root();
     let root = root_file.path()?;
-    let volume = mount.volume();
-    let removable = crate::adapters::mount_can_unplug(mount)
-        || volume
-            .as_ref()
-            .is_some_and(crate::adapters::volume_can_unplug);
     let facts = RemovableMountFacts {
         shadowed: mount.is_shadowed(),
         native_root: true,
-        removable,
+        removable: crate::adapters::mount_is_removable(mount),
         writable: root_is_writable_directory(&root_file),
         existing_directory: root.is_dir(),
     };

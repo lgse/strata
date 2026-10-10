@@ -4,7 +4,7 @@ use std::{cell::RefCell, path::PathBuf};
 
 use gtk::{gio, prelude::*};
 
-use super::{MountTable, mount_can_unplug, volume_can_unplug};
+use super::{MountTable, mount_is_removable};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct RemovableRoot {
@@ -67,13 +67,10 @@ fn read_mounts() -> MountSnapshot {
         .mounts()
         .iter()
         .filter(|mount| !mount.is_shadowed())
+        .filter(|mount| mount_is_removable(mount))
         .filter_map(|mount| {
-            let volume = mount.volume()?;
-            if !mount_can_unplug(mount) && !volume_can_unplug(&volume) {
-                return None;
-            }
             Some(RemovableRoot {
-                uuid: volume.uuid()?.to_string(),
+                uuid: mount.volume()?.uuid()?.to_string(),
                 path: mount.root().path()?,
             })
         })

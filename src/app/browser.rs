@@ -1797,15 +1797,19 @@ impl Browser {
 
     /// Folders-first is application-wide: every column re-sorts, `depth` first.
     pub fn set_folders_first(self: &Rc<Self>, depth: usize, folders_first: bool) {
-        let mut defaults = self.preferences.get();
-        if defaults.folders_first == folders_first {
+        if self.preferences.get().folders_first == folders_first {
             return;
         }
-        defaults.folders_first = folders_first;
+        self.update_defaults(|defaults| defaults.folders_first = folders_first);
+        self.resync_column_sorts_from(Some(depth));
+    }
+
+    fn update_defaults(&self, change: impl FnOnce(&mut ViewPreferences)) {
+        let mut defaults = self.preferences.get();
+        change(&mut defaults);
         self.preferences.set(defaults);
         self.state.borrow_mut().set_default_preferences(defaults);
         self.notify_preferences_observers();
-        self.resync_column_sorts_from(Some(depth));
     }
 
     pub fn apply_default_preferences(self: &Rc<Self>, preferences: ViewPreferences) {

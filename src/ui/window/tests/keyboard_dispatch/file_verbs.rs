@@ -312,8 +312,7 @@ fn sort(fixture: &KeyboardFixture, key: Key, shift: bool) {
 }
 
 fn sorting_of(browser: &crate::app::Browser, depth: usize) -> (SortKey, SortDirection) {
-    let preferences = browser.column_preferences(depth).expect("column");
-    (preferences.sort_key, preferences.sort_direction)
+    browser.column_preferences(depth).expect("column").sort()
 }
 
 #[test]

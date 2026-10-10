@@ -3,12 +3,12 @@
 use std::{
     collections::{HashMap, HashSet},
     fs, io,
-    path::{Component, Path, PathBuf},
+    path::{Component, Components, Path, PathBuf},
 };
 
 use serde::Serialize;
 
-use crate::model::{SortDirection, SortKey};
+use crate::model::{SortDirection, SortKey, rebase_path};
 
 use super::super::icons_cell::{MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE};
 
@@ -29,73 +29,63 @@ pub(in crate::ui) enum FolderKey {
 }
 
 impl FolderKey {
-    /// TOML keeps paths as strings, so non-UTF-8 paths are not remembered.
     pub(in crate::ui) fn local(path: &Path) -> Option<Self> {
-        let mut components = path.components();
-        let normal = matches!(components.next(), Some(Component::RootDir))
-            && components.all(|component| matches!(component, Component::Normal(_)));
-        (normal && path.to_str().is_some()).then(|| Self::Path(path.components().collect()))
+        local_path(path).map(Self::Path)
     }
 
     pub(in crate::ui) fn on_volume(uuid: &str, relative: &Path) -> Option<Self> {
         let uuid = uuid.trim();
-        let normal = relative
-            .components()
-            .all(|component| matches!(component, Component::Normal(_)));
-        (!uuid.is_empty() && normal && relative.to_str().is_some()).then(|| Self::Volume {
-            uuid: uuid.to_owned(),
-            relative: relative.components().collect(),
-        })
+        (!uuid.is_empty() && plain_names(relative.components()))
+            .then(|| Self::with_path(Some(uuid), relative.components().collect()))
+    }
+
+    fn with_path(uuid: Option<&str>, path: PathBuf) -> Self {
+        match uuid {
+            None => Self::Path(path),
+            Some(uuid) => Self::Volume {
+                uuid: uuid.to_owned(),
+                relative: path,
+            },
+        }
+    }
+
+    fn parts(&self) -> (Option<&str>, &Path) {
+        match self {
+            Self::Path(path) => (None, path),
+            Self::Volume { uuid, relative } => (Some(uuid), relative),
+        }
     }
 
     /// This folder, then each folder containing it on the same filesystem key.
     fn ancestors(&self) -> impl Iterator<Item = Self> + '_ {
-        let (uuid, path) = match self {
-            Self::Path(path) => (None, path),
-            Self::Volume { uuid, relative } => (Some(uuid), relative),
-        };
+        let (uuid, path) = self.parts();
         path.ancestors()
             .filter(move |ancestor| uuid.is_some() || !ancestor.as_os_str().is_empty())
-            .map(move |ancestor| match uuid {
-                None => Self::Path(ancestor.to_path_buf()),
-                Some(uuid) => Self::Volume {
-                    uuid: uuid.clone(),
-                    relative: ancestor.to_path_buf(),
-                },
-            })
-    }
-
-    fn suffix_within<'a>(&'a self, ancestor: &Self) -> Option<&'a Path> {
-        match (self, ancestor) {
-            (Self::Path(path), Self::Path(ancestor)) => path.strip_prefix(ancestor).ok(),
-            (
-                Self::Volume { uuid, relative },
-                Self::Volume {
-                    uuid: ancestor_uuid,
-                    relative: ancestor_relative,
-                },
-            ) if uuid == ancestor_uuid => relative.strip_prefix(ancestor_relative).ok(),
-            _ => None,
-        }
+            .map(move |ancestor| Self::with_path(uuid, ancestor.to_path_buf()))
     }
 
     fn rebased(&self, from: &Self, to: &Self) -> Option<Self> {
-        let suffix = self.suffix_within(from)?;
-        let join = |base: &Path| {
-            if suffix.as_os_str().is_empty() {
-                base.to_path_buf()
-            } else {
-                base.join(suffix)
-            }
-        };
-        Some(match to {
-            Self::Path(path) => Self::Path(join(path)),
-            Self::Volume { uuid, relative } => Self::Volume {
-                uuid: uuid.clone(),
-                relative: join(relative),
-            },
-        })
+        let (uuid, path) = self.parts();
+        let (from_uuid, from) = from.parts();
+        if uuid != from_uuid {
+            return None;
+        }
+        let (to_uuid, to) = to.parts();
+        Some(Self::with_path(to_uuid, rebase_path(path, from, to)?))
     }
+}
+
+/// TOML keeps paths as strings, so only UTF-8 paths of plain names are remembered.
+fn plain_names(mut components: Components<'_>) -> bool {
+    components.as_path().to_str().is_some()
+        && components.all(|component| matches!(component, Component::Normal(_)))
+}
+
+/// `path` normalized, when it is absolute and can be remembered.
+fn local_path(path: &Path) -> Option<PathBuf> {
+    let mut components = path.components();
+    (components.next() == Some(Component::RootDir) && plain_names(components))
+        .then(|| path.components().collect())
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -380,12 +370,12 @@ impl FolderViews {
                 let sort = entry
                     .view
                     .sort
-                    .and_then(|(key, direction)| Some((stored_sort_key(key)?, direction)));
+                    .and_then(|(key, direction)| Some((key.stored_name()?, direction)));
                 Some(StoredFolder {
                     volume,
                     path,
                     sort: sort.map(|(key, _)| key),
-                    direction: sort.map(|(_, direction)| stored_direction(direction)),
+                    direction: sort.map(|(_, direction)| direction.stored_name()),
                     icons_size: entry.view.icons_size,
                     used: entry.used,
                 })
@@ -433,11 +423,11 @@ fn parse_entry(value: &toml::Value) -> Option<(FolderKey, Entry, bool)> {
         (sort, direction) => {
             let sort = sort
                 .and_then(toml::Value::as_str)
-                .and_then(parse_sort_key)
+                .and_then(SortKey::from_stored)
                 .zip(
                     direction
                         .and_then(toml::Value::as_str)
-                        .and_then(parse_direction),
+                        .and_then(SortDirection::from_stored),
                 );
             clean &= sort.is_some();
             sort
@@ -491,42 +481,6 @@ pub(in crate::ui) fn folder_was_deleted(
     fs::symlink_metadata(path).is_err_and(|error| error.kind() == io::ErrorKind::NotFound)
         && fs::read_dir(parent).is_ok_and(|mut entries| entries.next().is_some())
         && !holds_mount_points(parent)
-}
-
-pub(in crate::ui) fn parse_sort_key(value: &str) -> Option<SortKey> {
-    match value {
-        "name" => Some(SortKey::Name),
-        "size" => Some(SortKey::Size),
-        "modified" => Some(SortKey::Modified),
-        "type" => Some(SortKey::Type),
-        _ => None,
-    }
-}
-
-pub(in crate::ui) fn parse_direction(value: &str) -> Option<SortDirection> {
-    match value {
-        "ascending" => Some(SortDirection::Ascending),
-        "descending" => Some(SortDirection::Descending),
-        _ => None,
-    }
-}
-
-/// Device order and Recency belong to one library and are never saved.
-pub(in crate::ui) fn stored_sort_key(key: SortKey) -> Option<&'static str> {
-    match key {
-        SortKey::Name => Some("name"),
-        SortKey::Size => Some("size"),
-        SortKey::Modified => Some("modified"),
-        SortKey::Type => Some("type"),
-        SortKey::DeviceOrder | SortKey::Recency => None,
-    }
-}
-
-pub(in crate::ui) fn stored_direction(direction: SortDirection) -> &'static str {
-    match direction {
-        SortDirection::Ascending => "ascending",
-        SortDirection::Descending => "descending",
-    }
 }
 
 #[cfg(test)]
