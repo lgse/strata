@@ -187,13 +187,14 @@ pub(super) fn header_action(icon: &str, tooltip: &str) -> gtk::Button {
 }
 
 pub(super) fn preview(browser: &BrowserView, preferences: &Rc<PreferenceManager>) -> PreviewDrawer {
-    let preferences = preferences.clone();
+    let backend = preferences.clone();
     let preview = PreviewDrawer::new(
         Rc::new(LocalPreviewProvider::new(Rc::new(move || {
-            preferences.media_preview_backend()
+            backend.media_preview_backend()
         }))),
         true,
     );
+    preview.bind_find_shortcut(preferences);
     preview.observe_browser(&browser.browser());
     preview
 }

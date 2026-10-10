@@ -977,7 +977,8 @@ def test_preview_find_navigates_content_without_filtering_files(strata, filename
     if not tenxer:
         strata.keyboard.press("Right")
     strata.wait(lambda: strata.focused_name() is None, "preview keyboard ownership")
-    strata.keyboard.press("ctrl+f")
+    find_key = "/" if tenxer else "ctrl+f"
+    strata.keyboard.press(find_key)
     field = strata.wait(lambda: strata.preview().find(role="text", name="Find in preview"), "preview find field")
     strata.keyboard.type_text("needle")
     strata.wait(lambda: strata.preview_shows("Match 1 of 2"), "first match")
@@ -997,7 +998,7 @@ def test_preview_find_navigates_content_without_filtering_files(strata, filename
     assert table_clipboard_text(strata) == "NEEDLE"
     assert strata.selected_names() == selected_before
     assert strata.entry_names() == entries_before
-    strata.keyboard.press("ctrl+f")
+    strata.keyboard.press(find_key)
     strata.wait(lambda: strata.preview().find(role="text", name="Find in preview"), "find to reopen")
     if filename.endswith(".md"):
         strata.pointer.click(strata.preview().find(role="button", name="View source"))
@@ -1016,7 +1017,7 @@ def test_preview_find_navigates_content_without_filtering_files(strata, filename
     selected_after = strata.selected_names()
     strata.keyboard.press("l" if tenxer else "space")
     strata.wait(lambda: strata.preview_shows("unrelated text"), "a different file preview")
-    strata.pointer.click(strata.preview().find(role="button", name="Find in preview (Ctrl+F)"))
+    strata.pointer.click(strata.preview().find(role="button", name=f"Find in preview ({'/' if tenxer else 'Ctrl+F'})"))
     field = strata.wait(lambda: strata.preview().find(role="text", name="Find in preview"), "find in the new preview")
     assert field.text == ""
     strata.keyboard.press("Escape")

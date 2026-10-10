@@ -116,7 +116,8 @@ drawer still open, and run there on the previewed item:
 - Folders: **Backspace**, **H** / **L**, **Alt+←** / **→** / **↑**, **g** places
   and **g +** / **g -**, **z** / **Z**. In a document or archive **g g** still goes to the top; every
   other **g** chord runs from the listing.
-- Prompts: **/**, **?**, **n** / **N**, **f**, **s**.
+- Prompts: **/** (except in a searchable document, where it opens find), **?**,
+  **n** / **N**, **f**, **s**.
 - Files: **o** / **Enter** (except where the surface uses **Enter**), **y**,
   **x**, **p** / **P**, **Y** / **X**, **d** / **D** / **Delete**, **a**,
   **r** / **F2**, **c**, **,**, **.**, **;**, **O**, **M** / **C**, **R**,
@@ -140,6 +141,7 @@ every other key is typed or edits the text.
 | **i** | Close the drawer | Close the drawer | Typed | Close the drawer |
 | **Home** / **G** / **End** | Top / bottom | First / last member | Caret (**G** typed) | Swallowed |
 | Paging keys | Scroll half / full page | Swallowed | Text editing | Swallowed |
+| **/** | Find in the document; see [document previews](document-previews.md#text-selection-and-find) | Listing search prompt | Typed | Listing search prompt |
 | **m** | Swallowed | Swallowed | Typed | Mute / unmute |
 | **<** / **>** | Swallowed | Swallowed | Typed | Previous / next file of the same type in the listing; playback continues |
 | **J** / **K** | Scroll | Scroll | Typed | Swallowed |

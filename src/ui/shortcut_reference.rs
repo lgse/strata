@@ -369,6 +369,9 @@ fn tenxer_preview(mode: BrowserMode, chooser: bool) -> Vec<Shortcut> {
     // Icons have no key that moves into the preview.
     if mode != BrowserMode::Icons {
         shortcuts.extend_from_slice(TENXER_PREVIEW_OWNED);
+        if !chooser {
+            shortcuts.push(within("%{keys} in the preview", "/", "Find in preview"));
+        }
     }
     shortcuts
 }

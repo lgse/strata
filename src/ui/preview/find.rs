@@ -310,10 +310,34 @@ impl PreviewState {
 }
 
 impl PreviewDrawer {
+    pub(in crate::ui) fn bind_find_shortcut(
+        &self,
+        preferences: &super::super::preferences::PreferenceManager,
+    ) {
+        let button = self.state.find_button.downgrade();
+        preferences.bind_preference(
+            &self.state.find_button,
+            super::super::preferences::PreferenceManager::tenxer_mode,
+            move |_, tenxer| {
+                let Some(button) = button.upgrade() else {
+                    return;
+                };
+                let label = rust_i18n::t!(
+                    "Find in preview (%{shortcut})",
+                    shortcut = if tenxer { "/" } else { "Ctrl+F" }
+                );
+                button.set_tooltip_text(Some(&label));
+                super::super::accessibility::set_label(&button, &label);
+            },
+        );
+    }
+
+    /// 10xer opens find with `/` so Ctrl+F keeps paging the document.
     pub(in crate::ui) fn handle_find_key(
         &self,
         key: gtk::gdk::Key,
         modifiers: gtk::gdk::ModifierType,
+        tenxer: bool,
     ) -> bool {
         use gtk::gdk::{Key, ModifierType as Modifiers};
         let focused = self.state.pane.root().and_then(|root| root.focus());
@@ -324,7 +348,15 @@ impl PreviewDrawer {
         }
         let control = modifiers.contains(Modifiers::CONTROL_MASK);
         let shift = modifiers.contains(Modifiers::SHIFT_MASK);
-        if control && !shift && matches!(key, Key::f | Key::F) {
+        let in_find = focused
+            .as_ref()
+            .is_some_and(|focus| focus.is_ancestor(&self.state.find.widget));
+        let opens = if tenxer {
+            !control && !in_find && matches!(key, Key::slash | Key::KP_Divide)
+        } else {
+            control && !shift && matches!(key, Key::f | Key::F)
+        };
+        if opens {
             return self.state.open_find();
         }
         if !self.state.find.widget.is_visible() {
@@ -334,9 +366,6 @@ impl PreviewDrawer {
             self.state.close_find();
             return true;
         }
-        let in_find = focused
-            .as_ref()
-            .is_some_and(|focus| focus.is_ancestor(&self.state.find.widget));
         if in_find && !control && matches!(key, Key::Return | Key::KP_Enter) {
             self.state.find.step(shift);
             return true;

@@ -308,8 +308,7 @@ impl PreviewDrawer {
         heading.append(&metadata);
         header_handle.append(&heading);
         header.append(&header_handle);
-        let find_button =
-            find::icon_button("Find in preview (Ctrl+F)", crate::assets::icons::SEARCH);
+        let find_button = find::icon_button("Find in preview", crate::assets::icons::SEARCH);
         find_button.set_visible(false);
         header.append(&document_view_button);
         header.append(&find_button);
