@@ -91,7 +91,7 @@ impl VisitRecorder {
     fn handle(&mut self, event: &BrowserEvent) -> Option<std::path::PathBuf> {
         match event {
             BrowserEvent::Reset => self.pending.clear(),
-            BrowserEvent::ColumnsTruncated { len } => self.pending.truncate(*len),
+            BrowserEvent::ColumnsTruncated { len, .. } => self.pending.truncate(*len),
             BrowserEvent::ColumnAdded { depth, location } => {
                 if self.pending.len() <= *depth {
                     self.pending.resize(depth + 1, None);

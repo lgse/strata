@@ -31,8 +31,8 @@ pub(super) mod audio;
 mod ease_in;
 mod keyboard;
 mod layout;
-pub(in crate::ui) use layout::separator_width;
-mod media_layout;
+pub(in crate::ui) use layout::{separator, separator_width};
+pub(in crate::ui) mod media_layout;
 #[cfg(test)]
 mod pdf_ranges_tests;
 mod pdf_text;
@@ -140,6 +140,7 @@ struct PreviewState {
     provider: Rc<dyn PreviewProvider>,
     revealer: gtk::Revealer,
     slot: gtk::Box,
+    resize_grip: gtk::Box,
     reserve_columns: Cell<bool>,
     // Dismissing content stops selection-following without reclaiming its column slot.
     enabled: Cell<bool>,
@@ -196,6 +197,8 @@ struct PreviewState {
     focus_archive_request: Cell<Option<PreviewRequestId>>,
     enabled_action: gio::SimpleAction,
     animating: Cell<bool>,
+    /// A closed preview's drawer is still sliding out.
+    closing: Cell<bool>,
     animation_generation: Rc<Cell<u64>>,
     keyboard_view: RefCell<Option<super::browser::WeakBrowserView>>,
     claim_on_resume: Cell<bool>,
@@ -336,13 +339,25 @@ impl PreviewDrawer {
             .build();
 
         let slot = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        // The pane keeps its resting width while the drawer slides, so clip it here.
+        slot.set_overflow(gtk::Overflow::Hidden);
         revealer.set_hexpand(true);
-        slot.append(&revealer);
+        let resize_grip = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        resize_grip.add_css_class("preview-resize-grip");
+        resize_grip.set_width_request(layout::RESIZE_GRIP_WIDTH);
+        resize_grip.set_halign(gtk::Align::Start);
+        resize_grip.set_cursor_from_name(Some("col-resize"));
+        let slot_overlay = gtk::Overlay::new();
+        slot_overlay.set_hexpand(true);
+        slot_overlay.set_child(Some(&revealer));
+        slot_overlay.add_overlay(&resize_grip);
+        slot.append(&slot_overlay);
 
         let state = Rc::new(PreviewState {
             provider,
             revealer,
             slot,
+            resize_grip,
             reserve_columns: Cell::new(true),
             enabled: Cell::new(false),
             dismissed: Cell::new(false),
@@ -397,6 +412,7 @@ impl PreviewDrawer {
                 &false.to_variant(),
             ),
             animating: Cell::new(false),
+            closing: Cell::new(false),
             animation_generation: Rc::new(Cell::new(0)),
             keyboard_view: RefCell::new(None),
             audio: RefCell::new(None),
@@ -576,6 +592,7 @@ impl PreviewDrawer {
             BrowserEvent::FocusChanged {
                 depth,
                 position: Some(position),
+                ..
             }
             | BrowserEvent::SelectionSynced {
                 depth,
@@ -598,6 +615,7 @@ impl PreviewDrawer {
             BrowserEvent::FocusChanged {
                 depth,
                 position: None,
+                ..
             }
             | BrowserEvent::SelectionSynced {
                 depth,
@@ -809,9 +827,16 @@ impl PreviewState {
         self.pending_show.replace(Some(source));
     }
 
-    // Mirroring also emits focus for the child beyond the active depth.
+    // Mirroring also emits focus for the child beyond the active depth. A folder that a
+    // click is opening becomes the focused column, so lending to it would only flicker.
     fn lend_slot_to_child(&self, browser: &Browser, depth: usize, entry: Option<&FileEntry>) {
+        let opening = entry.is_some_and(|entry| {
+            self.sizing
+                .browser()
+                .is_some_and(|view| view.pointer_opens(depth, &entry.location))
+        });
         let child_pane = self.browsing_columns()
+            && !opening
             && (entry.is_some_and(FileEntry::is_directory)
                 || browser.active_depth().is_some_and(|active| depth > active));
         self.child_pane.set(child_pane);
@@ -828,7 +853,8 @@ impl PreviewState {
         self.dismissed.set(false);
         self.child_pane.set(false);
         self.set_enabled(true);
-        let was_open = self.revealer.reveals_child() || self.sizing.is_suspended();
+        let reopening = self.closing.replace(false);
+        let was_open = (self.revealer.reveals_child() && !reopening) || self.sizing.is_suspended();
         let already_showing =
             self.current.borrow().as_ref() == Some(&entry) && self.current_request.get().is_some();
         let split = self.split.borrow().clone();
@@ -850,9 +876,10 @@ impl PreviewState {
         }
         if !was_open {
             self.current.replace(Some(entry.clone()));
-            self.show_panel();
             if let Some(split) = split.as_ref() {
-                self.animate_open(split);
+                self.animate_reveal(split, true, |_| {});
+            } else {
+                self.show_panel();
             }
         }
         if !was_open || !already_showing {
@@ -884,14 +911,36 @@ impl PreviewState {
                             || focused.is_ancestor(browser.root())
                     })
             });
+        // The preview closes now, so input such as the next Escape already
+        // reaches the files; only the drawer's slide out waits.
+        let restore_focus = tree_focused || self.hide_intent();
         if self.is_enabled() {
             self.dismissed.set(true);
         }
-        self.stop();
-        self.pane.set_size_request(MIN_WIDTH, -1);
-        if tree_focused && let Some(browser) = self.sizing.browser() {
+        self.set_enabled(false);
+        self.child_pane.set(false);
+        self.content.set_focusable(false);
+        self.set_keyboard_owner(false);
+        if restore_focus && let Some(browser) = self.sizing.browser() {
             browser.focus_file_view();
         }
+        if self.revealer.reveals_child()
+            && let Some(split) = self.split.borrow().clone()
+        {
+            self.closing.set(true);
+            self.animate_reveal(&split, false, |state| {
+                if state.closing.replace(false) {
+                    state.finish_close();
+                }
+            });
+        } else {
+            self.finish_close();
+        }
+    }
+
+    fn finish_close(&self) {
+        self.stop();
+        self.pane.set_size_request(MIN_WIDTH, -1);
     }
 
     fn print(self: &Rc<Self>) {
@@ -1975,6 +2024,7 @@ impl PreviewState {
             overlay.add_overlay(&text_area);
             overlay.add_overlay(&spinner);
             overlay.set_hexpand(true);
+            overlay.set_halign(gtk::Align::Center);
             overlay.set_size_request(-1, 560);
             item.set_child(Some(&overlay));
         });
@@ -3659,7 +3709,11 @@ fn pdf_zoom_after_scroll(current: f64, dy: f64) -> f64 {
 }
 
 fn pdf_page_width(scroll: &gtk::ScrolledWindow, zoom: f64) -> i32 {
-    let fit_width = scroll.width().saturating_sub(PDF_PAGE_GAP * 2).max(1);
+    let fit_width = scroll
+        .width()
+        .min(media_layout::MAX_CONTENT_WIDTH)
+        .saturating_sub(PDF_PAGE_GAP * 2)
+        .max(1);
     (f64::from(fit_width) * zoom).round() as i32
 }
 

@@ -435,6 +435,7 @@ impl Browser {
             self.emit(BrowserEvent::FocusChanged {
                 depth,
                 position: selected,
+                triggered_by_removal: focused_was_removed,
             });
         }
     }

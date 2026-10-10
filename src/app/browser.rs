@@ -121,6 +121,8 @@ pub enum BrowserEvent {
     Reset,
     ColumnsTruncated {
         len: usize,
+        /// A sibling's `ColumnAdded` at `len` follows immediately.
+        replacing: bool,
     },
     ColumnAdded {
         depth: usize,
@@ -191,6 +193,8 @@ pub enum BrowserEvent {
     FocusChanged {
         depth: usize,
         position: Option<usize>,
+        /// A deletion, not the user, moved focus here.
+        triggered_by_removal: bool,
     },
     SelectionSetChanged {
         depth: usize,
@@ -1470,6 +1474,7 @@ impl Browser {
         self.emit(BrowserEvent::FocusChanged {
             depth: 0,
             position: None,
+            triggered_by_removal: false,
         });
         self.start_load(0, location, request_id);
     }
@@ -1577,7 +1582,10 @@ impl Browser {
         self.loads.borrow_mut().truncate(retained);
         self.monitors.borrow_mut().truncate(retained);
         self.truncate_deferred_from(retained);
-        self.emit(BrowserEvent::ColumnsTruncated { len: retained });
+        self.emit(BrowserEvent::ColumnsTruncated {
+            len: retained,
+            replacing: true,
+        });
         self.emit(BrowserEvent::ColumnAdded {
             depth: retained,
             location: location.clone(),
@@ -1585,6 +1593,7 @@ impl Browser {
         self.emit(BrowserEvent::FocusChanged {
             depth: retained,
             position: None,
+            triggered_by_removal: false,
         });
         self.start_load(retained, location, request_id);
     }
@@ -1665,7 +1674,10 @@ impl Browser {
             self.loads.borrow_mut().truncate(len);
             self.monitors.borrow_mut().truncate(len);
             self.truncate_deferred_from(len);
-            self.emit(BrowserEvent::ColumnsTruncated { len });
+            self.emit(BrowserEvent::ColumnsTruncated {
+                len,
+                replacing: false,
+            });
             self.emit_suppressed_focus(depth, position);
         }
     }
@@ -1681,14 +1693,21 @@ impl Browser {
             self.loads.borrow_mut().truncate(depth);
             self.monitors.borrow_mut().truncate(depth);
             self.truncate_deferred_from(depth);
-            self.emit(BrowserEvent::ColumnsTruncated { len: depth });
+            self.emit(BrowserEvent::ColumnsTruncated {
+                len: depth,
+                replacing: false,
+            });
             self.emit_suppressed_focus(parent_depth, position);
         }
     }
 
     fn emit_suppressed_focus(&self, depth: usize, position: Option<usize>) {
         let was = self.suppress_child_mirror.replace(true);
-        self.emit(BrowserEvent::FocusChanged { depth, position });
+        self.emit(BrowserEvent::FocusChanged {
+            depth,
+            position,
+            triggered_by_removal: false,
+        });
         self.suppress_child_mirror.set(was);
     }
 
@@ -1953,6 +1972,7 @@ impl Browser {
             self.emit(BrowserEvent::FocusChanged {
                 depth,
                 position: Some(position),
+                triggered_by_removal: false,
             });
         }
     }
@@ -2020,6 +2040,7 @@ impl Browser {
             self.emit(BrowserEvent::FocusChanged {
                 depth,
                 position: Some(position),
+                triggered_by_removal: false,
             });
         }
     }
@@ -2036,6 +2057,7 @@ impl Browser {
                 self.emit(BrowserEvent::FocusChanged {
                     depth,
                     position: Some(position),
+                    triggered_by_removal: false,
                 });
             }
         }
@@ -3417,14 +3439,16 @@ impl Browser {
     }
 
     pub fn activate(self: &Rc<Self>, depth: usize, position: usize) {
-        if self
-            .entry_at(depth, position)
-            .is_some_and(|entry| entry.is_directory() && self.is_open_child(depth, &entry.location))
-        {
-            self.close_column(depth + 1);
+        let open_child = self.entry_at(depth, position).is_some_and(|entry| {
+            entry.is_directory() && self.is_open_child(depth, &entry.location)
+        });
+        self.select(depth, position);
+        if open_child {
+            // Reopening lands where opening did, without picking a child entry.
+            self.set_active_column(depth + 1);
+            self.focus_active();
             return;
         }
-        self.select(depth, position);
         self.activate_focused_with_selection(false);
     }
 
@@ -3494,6 +3518,7 @@ impl Browser {
             self.emit(BrowserEvent::FocusChanged {
                 depth,
                 position: Some(position),
+                triggered_by_removal: false,
             });
         }
     }
@@ -3505,6 +3530,7 @@ impl Browser {
             self.emit(BrowserEvent::FocusChanged {
                 depth,
                 position: Some(position),
+                triggered_by_removal: false,
             });
         }
     }
@@ -3554,14 +3580,22 @@ impl Browser {
     pub fn focus_parent(&self) {
         let focus = self.state.borrow_mut().focus_parent();
         if let Some((depth, position)) = focus {
-            self.emit(BrowserEvent::FocusChanged { depth, position });
+            self.emit(BrowserEvent::FocusChanged {
+                depth,
+                position,
+                triggered_by_removal: false,
+            });
         }
     }
 
     fn focus_child(&self) {
         let focus = self.state.borrow_mut().focus_child();
         if let Some((depth, position)) = focus {
-            self.emit(BrowserEvent::FocusChanged { depth, position });
+            self.emit(BrowserEvent::FocusChanged {
+                depth,
+                position,
+                triggered_by_removal: false,
+            });
         }
     }
 
@@ -3658,6 +3692,7 @@ impl Browser {
             self.emit(BrowserEvent::FocusChanged {
                 depth,
                 position: None,
+                triggered_by_removal: false,
             });
         }
     }

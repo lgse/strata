@@ -1172,7 +1172,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         if let Some(state) = weak.upgrade() {
             if let Some(position) = current_context_position(&state, depth, position, &entry) {
                 if state.mode_views.borrow().mode() == BrowserMode::Columns {
-                    state.browser.activate(depth, position);
+                    state.activate_column_entry(depth, position);
                 } else {
                     state.browser.activate_in_place(depth, position);
                 }

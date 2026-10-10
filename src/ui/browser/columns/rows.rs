@@ -450,6 +450,20 @@ pub(super) fn column_rows(
                 && let Some(entry) =
                     source_position.and_then(|position| state.browser.entry_at(depth, position))
             {
+                if !filtered
+                    && !control
+                    && !shift
+                    && entry.is_directory()
+                    && let Some(position) = source_position
+                {
+                    state.folder_press.replace(Some(super::FolderPress {
+                        at: std::time::Instant::now(),
+                        point: press,
+                        depth,
+                        position,
+                        location: entry.location.clone(),
+                    }));
+                }
                 let activate = !filtered
                     && should_activate_single_click(
                         press_count,
@@ -458,12 +472,14 @@ pub(super) fn column_rows(
                         control,
                         shift,
                         preserve_group,
-                    )
-                    && !state.browser.is_open_child(depth, &entry.location);
+                    );
                 let location_hold = (!search_active_for_click.get()
                     && entry.is_directory()
                     && (activate || (filtered && press_count == 1 && !control && !shift)))
                     .then(|| state.hold_tab_location());
+                if activate && let Some(hold) = &location_hold {
+                    hold.opening(depth, entry.location.clone());
+                }
                 (activate, location_hold)
             } else {
                 (false, None)
@@ -557,6 +573,7 @@ pub(super) fn column_rows(
             {
                 let entry = state.browser.entry_at(depth, source_position);
                 if let Some(entry) = entry.as_ref() {
+                    let reopening = state.browser.is_open_child(depth, &entry.location);
                     let slow_click_rename = press_count == 1
                         && selected_before
                         && selected_count_before == 1
@@ -568,7 +585,7 @@ pub(super) fn column_rows(
                                 | gtk::gdk::ModifierType::META_MASK,
                         )
                         && !preserve_group
-                        && !activate
+                        && (!activate || reopening)
                         && !state.browser.is_chooser_mode()
                         && !is_trash_location(&entry.location)
                         && gesture
@@ -577,6 +594,7 @@ pub(super) fn column_rows(
                             .is_some_and(|(row, label)| {
                                 crate::ui::pointer::hits_name_label(&row, label.upcast_ref(), x, y)
                             });
+                    let activate = activate && !slow_click_rename;
                     rename_position_for_press.set(if slow_click_rename {
                         Some(source_position)
                     } else {
@@ -680,7 +698,7 @@ pub(super) fn column_rows(
                             state.browser.preview(depth, pending.position);
                         }
                     } else {
-                        let activate = || state.browser.activate(depth, pending.position);
+                        let activate = || state.activate_column_entry(depth, pending.position);
                         if let Some(hold) = pending.location_hold.take() {
                             hold.navigate(depth, activate);
                         } else {

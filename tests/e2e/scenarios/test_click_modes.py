@@ -188,6 +188,75 @@ def test_click_then_double_click_opens_without_renaming(strata, mode):
     )
 
 
+def wait_for_focused_pane(strata, name: str) -> None:
+    strata.wait(
+        lambda: (pane := strata.focused_pane()) is not None and pane.name == name,
+        f"the {name!r} column to take focus",
+    )
+
+
+@pytest.mark.preferences(browser_mode="columns")
+@pytest.mark.parametrize("folder_clicks", [
+    pytest.param(1, marks=pytest.mark.preferences(list_folder_clicks=1), id="single-click-folders"),
+    pytest.param(2, marks=pytest.mark.preferences(list_folder_clicks=2), id="double-click-folders"),
+])
+@pytest.mark.parametrize("from_parent_column", [False, True], ids=["root", "clipped-parent"])
+def test_double_click_leaves_the_folder_open_and_focused(
+    strata, request, folder_clicks, from_parent_column,
+):
+    """A double-click ends where a single-click open does, even when its first press scrolls the strip."""
+
+    root = strata.fixture.root.name
+    browser_left = strata.pane().screen_bounds().x
+    if from_parent_column:
+        # Without the reserved slot the root column is the clipped one.
+        request.getfixturevalue("unreserved_columns")
+        strata.fixture.populate({"documents": {"Level 2": {"Level 3": {"leaf.txt": "leaf\n"}}}})
+        for name in ["documents", "Level 2", "Level 3"]:
+            strata.select_entry_with_keyboard(name)
+            strata.keyboard.press("Return")
+            strata.wait_for_directory(name)
+
+    folder = strata.settle(strata.entry("pictures", directory=root))
+    bounds = folder.screen_bounds()
+    strata.pointer.double_click(
+        folder, at=(max(bounds.x, browser_left) + 12, bounds.center[1]),
+    )
+
+    wait_for_focused_pane(strata, "pictures")
+    strata.wait_for_selection([], "pictures")
+    # Outlast the double-click interval so a late second activation would show.
+    time.sleep(0.6)
+    assert strata.pane_names()[-1] == "pictures"
+    wait_for_focused_pane(strata, "pictures")
+
+
+@pytest.mark.preferences(browser_mode="columns", list_folder_clicks=1)
+@pytest.mark.parametrize("clicks", [1, 2], ids=["click-row-space", "double-click-name"])
+def test_clicking_an_open_folder_focuses_its_column(strata, clicks):
+    root = strata.fixture.root.name
+    strata.pointer.click(strata.entry("documents"))
+    strata.wait_for_directory("documents")
+    strata.keyboard.press("Left")
+    wait_for_focused_pane(strata, root)
+    time.sleep(0.6)
+
+    entry = strata.entry("documents", root)
+    if clicks == 1:
+        point = strata.pointer.row_whitespace_point(entry, "documents")
+        strata.pointer.click(entry, at=point)
+    else:
+        label = entry.find(role="label", name="documents")
+        assert label is not None
+        point = label.screen_bounds().x + 4, label.screen_bounds().center[1]
+        strata.pointer.double_click(entry, at=point)
+
+    wait_for_focused_pane(strata, "documents")
+    time.sleep(0.6)
+    assert strata.pane_names()[-2:] == [root, "documents"], "the folder must stay open"
+    assert strata.window.find(role="text", name="Rename", states={"editable"}) is None
+
+
 @DOUBLE_CLICK
 @pytest.mark.preferences(browser_mode="list")
 def test_changing_the_preference_takes_effect_without_restarting(strata):

@@ -191,6 +191,16 @@ fn fast_delete_animates_only_its_own_success_without_showing_progress() {
                             password_failure: None,
                         },
                     );
+                    fixture
+                        .view
+                        .state
+                        .handle(&crate::app::BrowserEvent::OperationFailed {
+                            message: "Unrelated foreground failure".into(),
+                            password_failure: None,
+                        });
+                    pump_until(|| {
+                        crate::ui::window::visible_modal_layer(&fixture.window).is_some()
+                    });
                     fixture.view.browser().delete(
                         vec![entry(Location::local(
                             fixture.temp.path().join("other.txt"),

@@ -2,7 +2,7 @@
 
 use gtk::{gdk, glib, graphene, gsk, prelude::*, subclass::prelude::*};
 
-pub(super) const MAX_CONTENT_WIDTH: i32 = 1280;
+pub(in crate::ui) const MAX_CONTENT_WIDTH: i32 = 1280;
 const MAX_UPSCALE: f64 = 2.0;
 const MEDIA_MARGIN: i32 = 12;
 
@@ -136,6 +136,91 @@ fn allocate_at(widget: &gtk::Widget, width: i32, height: i32, x: i32, y: i32) {
 
 glib::wrapper! {
     pub struct MediaLayout(ObjectSubclass<imp::MediaLayout>) @extends gtk::LayoutManager;
+}
+
+fn column_width(child: &gtk::Widget, available: i32) -> i32 {
+    let minimum = child.measure(gtk::Orientation::Horizontal, -1).0;
+    available.min(MAX_CONTENT_WIDTH).max(minimum)
+}
+
+fn laid_out_children(widget: &gtk::Widget) -> impl Iterator<Item = gtk::Widget> {
+    std::iter::successors(widget.first_child(), |child| child.next_sibling())
+        .filter(|child| child.should_layout())
+}
+
+mod column_imp {
+    use super::*;
+
+    #[derive(Default)]
+    pub struct ContentColumn;
+
+    #[glib::object_subclass]
+    impl ObjectSubclass for ContentColumn {
+        const NAME: &'static str = "StrataPreviewContentColumn";
+        type Type = super::ContentColumn;
+        type ParentType = gtk::LayoutManager;
+    }
+
+    impl ObjectImpl for ContentColumn {}
+
+    impl LayoutManagerImpl for ContentColumn {
+        fn request_mode(&self, _: &gtk::Widget) -> gtk::SizeRequestMode {
+            gtk::SizeRequestMode::HeightForWidth
+        }
+
+        fn measure(
+            &self,
+            widget: &gtk::Widget,
+            orientation: gtk::Orientation,
+            for_size: i32,
+        ) -> (i32, i32, i32, i32) {
+            let mut minimum = 0;
+            let mut natural = 0;
+            for child in laid_out_children(widget) {
+                if orientation == gtk::Orientation::Horizontal {
+                    let (min, nat, _, _) = child.measure(orientation, -1);
+                    minimum = minimum.max(min);
+                    natural = natural.max(nat.min(MAX_CONTENT_WIDTH).max(min));
+                } else {
+                    let width = if for_size < 0 {
+                        -1
+                    } else {
+                        column_width(&child, for_size)
+                    };
+                    let (min, nat, _, _) = child.measure(orientation, width);
+                    minimum += min;
+                    natural += nat;
+                }
+            }
+            (minimum, natural, -1, -1)
+        }
+
+        fn allocate(&self, widget: &gtk::Widget, width: i32, _: i32, _: i32) {
+            let mut y = 0;
+            for child in laid_out_children(widget) {
+                let child_width = column_width(&child, width);
+                let height = child.measure(gtk::Orientation::Vertical, child_width).1;
+                allocate_at(
+                    &child,
+                    child_width,
+                    height,
+                    (width - child_width).max(0) / 2,
+                    y,
+                );
+                y += height;
+            }
+        }
+    }
+}
+
+glib::wrapper! {
+    pub struct ContentColumn(ObjectSubclass<column_imp::ContentColumn>) @extends gtk::LayoutManager;
+}
+
+impl ContentColumn {
+    pub(in crate::ui) fn new() -> Self {
+        glib::Object::new()
+    }
 }
 
 impl MediaLayout {

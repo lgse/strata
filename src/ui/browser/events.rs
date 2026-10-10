@@ -81,11 +81,16 @@ impl ViewState {
                         self.overlay.remove_overlay(&widget);
                     }
                 }
-                self.truncate(0);
+                // A fresh location is coming, so skip the exit animation.
+                self.truncate_for_replacement(0);
             }
-            BrowserEvent::ColumnsTruncated { len } => {
+            BrowserEvent::ColumnsTruncated { len, replacing } => {
                 self.pending_new_entry.take();
-                self.truncate(*len);
+                if *replacing {
+                    self.swap_columns_from(*len);
+                } else {
+                    self.truncate(*len);
+                }
                 self.sync_active_location();
             }
             BrowserEvent::ColumnAdded { depth, location } => {
@@ -588,7 +593,11 @@ impl ViewState {
                 }
                 self.refresh_destination_style();
             }
-            BrowserEvent::FocusChanged { depth, position } => {
+            BrowserEvent::FocusChanged {
+                depth,
+                position,
+                triggered_by_removal,
+            } => {
                 let column = self.columns.borrow().get(*depth).cloned();
                 if let Some(column) = column {
                     let editing = self.active_rename.borrow().is_some();
@@ -623,14 +632,15 @@ impl ViewState {
                     if !editing
                         && self.mode_views.borrow().mode() == BrowserMode::Columns
                         && !self.suppress_scroll_after_drop.get()
-                        && self.input_ownership.borrow().last_navigation
-                            == crate::ui::input_ownership::NavigationInput::Keyboard
+                        && (*triggered_by_removal
+                            || self.input_ownership.borrow().last_navigation
+                                == crate::ui::input_ownership::NavigationInput::Keyboard)
                     {
                         self.reveal_column(column.shell);
                     }
                 }
                 self.refresh_destination_style();
-                self.mirror_focused_folder(*depth, *position);
+                self.mirror_focused_folder(*depth, *position, *triggered_by_removal);
             }
             BrowserEvent::ColumnReloading { .. } | BrowserEvent::PreviewRequested { .. } => {}
             BrowserEvent::ExtractRequested { entry } => {
@@ -1428,7 +1438,12 @@ impl ViewState {
         self.mode_views.borrow().prune_stale_search_results();
     }
 
-    pub(super) fn mirror_focused_folder(self: &Rc<Self>, depth: usize, position: Option<usize>) {
+    pub(super) fn mirror_focused_folder(
+        self: &Rc<Self>,
+        depth: usize,
+        position: Option<usize>,
+        force: bool,
+    ) {
         if let Some(source) = self.pending_mirror.borrow_mut().take() {
             source.remove();
         }
@@ -1441,8 +1456,9 @@ impl ViewState {
             || self.active_rename.borrow().is_some()
             || self.pending_new_entry.borrow().is_some()
             || self.mode_views.borrow().mode() != BrowserMode::Columns
-            || self.input_ownership.borrow().last_navigation
-                != crate::ui::input_ownership::NavigationInput::Keyboard
+            || (!force
+                && self.input_ownership.borrow().last_navigation
+                    != crate::ui::input_ownership::NavigationInput::Keyboard)
         {
             return;
         }
@@ -1452,12 +1468,12 @@ impl ViewState {
                 return;
             };
             state.pending_mirror.borrow_mut().take();
-            state.apply_child_mirror(depth, position);
+            state.apply_child_mirror(depth, position, force);
         });
         self.pending_mirror.replace(Some(source));
     }
 
-    fn apply_child_mirror(self: &Rc<Self>, depth: usize, position: usize) {
+    fn apply_child_mirror(self: &Rc<Self>, depth: usize, position: usize, force: bool) {
         let filtered = self
             .columns
             .borrow()
@@ -1471,8 +1487,9 @@ impl ViewState {
             || self.active_rename.borrow().is_some()
             || self.pending_new_entry.borrow().is_some()
             || self.mode_views.borrow().mode() != BrowserMode::Columns
-            || self.input_ownership.borrow().last_navigation
-                != crate::ui::input_ownership::NavigationInput::Keyboard
+            || (!force
+                && self.input_ownership.borrow().last_navigation
+                    != crate::ui::input_ownership::NavigationInput::Keyboard)
         {
             return;
         }
