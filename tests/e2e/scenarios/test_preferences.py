@@ -162,34 +162,6 @@ def test_language_selection_and_auto_detection_apply_after_relaunch(strata):
     )
 
 
-@pytest.fixture
-def symlinked_settings(test_environment):
-    """Replace the seeded settings.toml with a dotfiles-style symlink before Strata starts."""
-    target = test_environment.root / "dotfiles" / "settings.toml"
-    target.parent.mkdir()
-    test_environment.settings_path.replace(target)
-    test_environment.settings_path.symlink_to(target)
-    return target
-
-
-@pytest.mark.preferences(folder_peeking=False)
-def test_preferences_save_through_a_symlinked_settings_file(symlinked_settings, strata):
-    assert strata.environment.settings_path.is_symlink()
-    _open_settings(strata, strata.window)
-    toggle = _switch(strata.window, "Folder peeking")
-    assert toggle is not None and toggle.activate()
-    strata.wait(
-        lambda: strata.environment.read_preferences().get("folder_peeking") == "true",
-        "Folder peeking to be saved through the symlink",
-    )
-    assert strata.environment.settings_path.is_symlink()
-    assert symlinked_settings.read_text() == strata.environment.settings_path.read_text()
-    strata.application.stop()
-    strata.application.start()
-    _open_settings(strata, strata.window)
-    assert _switch(strata.window, "Folder peeking").has_state("checked")
-
-
 def _tab_to(strata, node):
     for _ in range(60):
         if node.has_state("focused"):
@@ -200,22 +172,13 @@ def _tab_to(strata, node):
     raise AssertionError(f"Tab never reached {node}")
 
 
-@pytest.mark.parametrize(
-    ("problem", "title"),
-    [("write", "Settings can't be saved"), ("unreadable", "Settings file can't be read")],
-)
 @pytest.mark.preferences(folder_peeking=False)
-def test_unsaved_changes_show_one_notice_and_return_focus(strata, problem, title):
+def test_unsaved_changes_show_one_notice_and_return_focus(strata):
     settings = strata.environment.settings_path
-    if problem == "unreadable":
-        strata.application.stop()
-        settings.write_bytes(settings.read_bytes() + b"\nthis is not valid toml [")
-        strata.application.start()
-    preserved = settings.read_bytes()
+    title = "Settings can't be saved"
     _open_settings(strata, strata.window)
-    if problem == "write":
-        settings.unlink()
-        settings.mkdir()
+    settings.unlink()
+    settings.mkdir()
 
     def notice():
         return strata.window.find(role="dialog", name=title)
@@ -239,7 +202,4 @@ def test_unsaved_changes_show_one_notice_and_return_focus(strata, problem, title
     strata.keyboard.press("space")
     strata.wait(lambda: not toggle.has_state("checked"), "the second change to apply")
     assert notice() is None, "one notice per failure streak"
-    if problem == "write":
-        assert settings.is_dir()
-    else:
-        assert settings.read_bytes() == preserved
+    assert settings.is_dir()

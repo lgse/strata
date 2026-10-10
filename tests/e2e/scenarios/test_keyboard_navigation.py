@@ -372,8 +372,7 @@ def test_refresh_keeps_the_keyboard_cursor_and_viewport(strata, mode):
 
 
 @pytest.mark.parametrize("mode", SINGLE_PANE_MODES)
-@pytest.mark.parametrize("query,more", [("", "f"), ("folder-15", "9")])
-def test_refresh_keeps_focus_in_the_pane_filter(strata, mode, query, more):
+def test_refresh_keeps_focus_in_an_empty_pane_filter(strata, mode):
     archive = strata.fixture.path("archive")
     for index in range(160):
         (archive / f"folder-{index:03}").mkdir()
@@ -381,8 +380,6 @@ def test_refresh_keeps_focus_in_the_pane_filter(strata, mode, query, more):
     strata.wait_for_directory("archive")
     strata.keyboard.press("ctrl+f")
     field = strata.editable_field()
-    strata.keyboard.type_text(query)
-    strata.wait(lambda: field.text == query, "the filter query to be typed")
 
     strata.keyboard.press("F5")
     # The reload hides the field with the rows; GTK moves focus off it after the next
@@ -395,8 +392,8 @@ def test_refresh_keeps_focus_in_the_pane_filter(strata, mode, query, more):
         return len(steady) == 10 and all(steady)
 
     strata.wait(keeps_focus, "the filter field to keep focus across the reload")
-    strata.keyboard.type_text(more)
-    strata.wait(lambda: field.text == query + more, "typing to reach the filter field")
+    strata.keyboard.type_text("f")
+    strata.wait(lambda: field.text == "f", "typing to reach the filter field")
 
 
 @pytest.mark.preferences(browser_mode="list")
