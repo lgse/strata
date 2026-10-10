@@ -77,7 +77,15 @@ fn icon_cache_distinguishes_logical_size_from_display_resolution() {
                 super::sized_icon_paintable(name, color, size, scale, super::IconContext::Grid)
                     .expect("render icon")
             };
-            for name in [icons::FOLDER, icons::FILE_CODE, icons::FILE_SPREADSHEET] {
+            for name in [
+                icons::FOLDER,
+                icons::FILE_CODE,
+                icons::FILE_SPREADSHEET,
+                icons::LANG_RUST,
+                icons::LANG_JS,
+                icons::LANG_CSHARP,
+                icons::LANG_JAVA,
+            ] {
                 let small = render(name, "#123456", 64, 2);
                 let large = render(name, "#123456", 128, 1);
                 let interface = super::primary_icon_texture_at(

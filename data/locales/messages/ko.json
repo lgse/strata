@@ -577,6 +577,7 @@
   "Open the context menu": "컨텍스트 메뉴 열기",
   "Open the current item": "현재 항목 열기",
   "Open the focused directory": "포커스된 디렉터리 열기",
+  "Open the focused folder in a new tab / window": "포커스된 폴더를 새 탭 / 창에서 열기",
   "Open the focused item": "포커스된 항목 열기",
   "Open the folder": "폴더 열기",
   "Open the next column for the focused directory": "포커스된 디렉터리를 다음 열에 열기",

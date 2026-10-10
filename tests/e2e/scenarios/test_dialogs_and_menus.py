@@ -57,7 +57,7 @@ def test_the_entry_context_menu_offers_named_actions_and_accelerators(strata):
 
     strata.open_context_menu("documents")
     assert_menu_order(strata, [
-        "Open", "Open With…", "Open in Terminal", "Cut", "Copy", "Duplicate",
+        "Open", "Open With…", "Open in Terminal", "Open in…", "Cut", "Copy", "Duplicate",
         "Rename", "Move to…", "Copy to…", "Compress…", "Pin to sidebar",
         "Customize…", "Copy path", "Copy name", "Properties", "Move to Trash",
         "Permanently delete",

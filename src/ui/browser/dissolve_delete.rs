@@ -19,14 +19,19 @@ pub(super) struct PreparedDissolve {
     overlay: gtk::Overlay,
     canvas: DissolveCanvas,
     source: glib::WeakRef<gtk::Widget>,
-    source_opacity: f64,
+    source_presentation: Option<(f64, bool)>,
 }
 
 impl Drop for PreparedDissolve {
     fn drop(&mut self) {
-        self.overlay.remove_overlay(&self.canvas);
-        if let Some(source) = self.source.upgrade() {
-            source.set_opacity(self.source_opacity);
+        if self.canvas.parent().is_some() {
+            self.overlay.remove_overlay(&self.canvas);
+        }
+        if let Some((opacity, can_target)) = self.source_presentation
+            && let Some(source) = self.source.upgrade()
+        {
+            source.set_opacity(opacity);
+            source.set_can_target(can_target);
         }
     }
 }
@@ -98,8 +103,7 @@ impl DissolveCanvas {
         canvas.set_valign(gtk::Align::Fill);
         canvas.set_hexpand(true);
         canvas.set_vexpand(true);
-        // Do not route pointer input through the frozen layout to already-rebound live rows.
-        canvas.set_can_target(true);
+        canvas.set_can_target(false);
         canvas
     }
 
@@ -191,27 +195,37 @@ pub(super) fn prepare_dissolve(
     }
     let canvas = DissolveCanvas::new(rendered_rows);
     canvas.imp().backdrop.replace(backdrop.to_node());
-    let source_opacity = source.opacity();
-    overlay.add_overlay(&canvas);
-    // Keep the pre-delete presentation while the live model reconciles filesystem events.
-    // Otherwise surviving rows move under the fragments before the dissolve starts.
-    source.set_opacity(0.0);
     Some(PreparedDissolve {
         overlay,
         canvas,
         source: source.downgrade(),
-        source_opacity,
+        source_presentation: None,
     })
 }
 
 impl PreparedDissolve {
-    pub(super) fn play(self, on_done: impl FnOnce() + 'static) {
+    pub(super) fn play(mut self, on_done: impl FnOnce() + 'static) {
         if !crate::ui::motion::animations_enabled() {
             drop(self);
             on_done();
             return;
         }
 
+        // Overlapping freezes would restore the second animation's disabled source state.
+        let Some(source) = self
+            .source
+            .upgrade()
+            .filter(|source| source.is_mapped() && source.can_target())
+        else {
+            drop(self);
+            on_done();
+            return;
+        };
+        self.source_presentation = Some((source.opacity(), source.can_target()));
+        // Freeze only during playback; frozen rows must not target the reconciled model.
+        source.set_can_target(false);
+        source.set_opacity(0.0);
+        self.overlay.add_overlay(&self.canvas);
         let canvas = self.canvas.clone();
         canvas.add_css_class("delete-dissolving");
         let canvas_for_tick = canvas.clone();

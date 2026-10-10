@@ -103,7 +103,9 @@ impl FileProgressState {
         } else {
             view.status.text()
         };
-        compact.meta.set_text(&meta);
+        let show_meta = transferring
+            || meta != crate::i18n::percent((view.progress.fraction() * 100.0) as usize);
+        compact.meta.set_text(if show_meta { &meta } else { "" });
         if !view.indeterminate.get() {
             compact.progress.set_fraction(view.progress.fraction());
         }

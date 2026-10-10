@@ -26,6 +26,7 @@ pub(in crate::ui::browser) struct FileProgressState {
     pub(super) file_progress_dismissing: Rc<Cell<usize>>,
     pub(super) file_progress_dismiss_waiters: DismissWaiters,
     pub(in crate::ui::browser) pending_file_progress: RefCell<Option<glib::SourceId>>,
+    pub(super) on_present: RefCell<Option<Box<dyn FnOnce()>>>,
     pub(in crate::ui::browser) file_operation_progress: Cell<(usize, usize)>,
     pub(in crate::ui::browser) archive_progress: Cell<Option<(usize, usize)>>,
     pub(in crate::ui::browser) archive_compressing: Cell<bool>,
@@ -53,6 +54,7 @@ impl FileProgressState {
             file_progress_dismissing: Rc::new(Cell::new(0)),
             file_progress_dismiss_waiters: Rc::new(RefCell::new(Vec::new())),
             pending_file_progress: RefCell::new(None),
+            on_present: RefCell::new(None),
             file_operation_progress: Cell::new((0, 0)),
             archive_progress: Cell::new(None),
             archive_compressing: Cell::new(false),
@@ -93,6 +95,7 @@ pub(in crate::ui::browser) struct BackgroundProgress {
     pub(in crate::ui::browser) progress: Rc<FileProgressState>,
     send_to: Option<PendingSendToCompletion>,
     delete_entries: Vec<crate::model::FileEntry>,
+    trash_animation: RefCell<Option<crate::ui::browser::fly_to_trash::PreparedFlight>>,
     archive_destination: Option<crate::model::Location>,
 }
 
@@ -168,9 +171,6 @@ impl ViewState {
         let progress = self
             .progress_state
             .replace(Rc::new(FileProgressState::new(&self.overlay)));
-        if deleting {
-            self.pending_file_operation_animation.take();
-        }
         if deleting
             && self.delete_dissolve_request.get().is_none()
             && self.pending_delete_dissolve.borrow().is_some()
@@ -192,8 +192,34 @@ impl ViewState {
                 } else {
                     Vec::new()
                 },
+                trash_animation: RefCell::new(if deleting {
+                    self.pending_file_operation_animation.take()
+                } else {
+                    None
+                }),
             }),
         );
+        if deleting {
+            if progress.file_progress_view.borrow().is_some() {
+                self.discard_background_delete_animation(request_id);
+            } else {
+                let weak = Rc::downgrade(self);
+                progress.on_present.replace(Some(Box::new(move || {
+                    if let Some(state) = weak.upgrade() {
+                        state.discard_background_delete_animation(request_id);
+                    }
+                })));
+            }
+        }
+    }
+
+    fn discard_background_delete_animation(&self, request_id: OperationRequestId) {
+        if let Some(background) = self.background_file_progress.borrow().get(&request_id) {
+            background.trash_animation.take();
+        }
+        if self.delete_dissolve_request.get() == Some(request_id) {
+            self.settle_pending_delete_dissolve();
+        }
     }
 
     pub(in crate::ui::browser) fn handle_background_file_operation(
@@ -247,6 +273,9 @@ impl ViewState {
             }
             BrowserEvent::DeletionFinished { succeeded } => {
                 self.prune_stale_search_results();
+                if *succeeded && let Some(animation) = background.trash_animation.take() {
+                    animation.play(|| {});
+                }
                 if self.delete_dissolve_request.get() == Some(request_id) {
                     self.play_pending_delete_dissolve(*succeeded);
                 }
@@ -334,6 +363,7 @@ impl ViewState {
             _ => false,
         };
         if finished {
+            background.trash_animation.take();
             match event {
                 BrowserEvent::TransferCompleted => {
                     progress.complete_file_operation_progress(&crate::i18n::tr("Copy complete"))
