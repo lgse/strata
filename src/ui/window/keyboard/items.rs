@@ -23,7 +23,63 @@ use crate::{
     },
 };
 
+#[derive(Clone, Copy)]
+enum OpenInNewTarget {
+    Tab,
+    Window,
+}
+
 impl Dispatcher {
+    /// A focused file opens as with plain Enter.
+    fn open_focused_in_new(&self, browser: &Rc<Browser>, target: OpenInNewTarget) -> bool {
+        // Choosers have no tabs, and Ctrl+Enter there accepts the folder.
+        if self.chooser.is_some() {
+            return false;
+        }
+        let entry = self
+            .view
+            .selected_search_result()
+            .or_else(|| browser.focused_entry());
+        let Some(entry) = entry else {
+            return false;
+        };
+        if !entry.is_directory() {
+            self.activate_focused(browser);
+            return true;
+        }
+        let action = match target {
+            OpenInNewTarget::Tab => "win.open-tab-at",
+            OpenInNewTarget::Window => "win.open-window-at",
+        };
+        let uri = crate::adapters::gio_file_for_location(&entry.location)
+            .uri()
+            .to_variant();
+        if let Err(error) = self.window.activate_action(action, Some(&uri)) {
+            tracing::warn!(%error, action, "open-in-new location action unavailable");
+        }
+        true
+    }
+
+    fn tenxer_open_focused_in_new(
+        &self,
+        browser: &Rc<Browser>,
+        key: Key,
+        modifiers: Modifiers,
+    ) -> bool {
+        if !matches!(key, Key::Return | Key::KP_Enter) {
+            return false;
+        }
+        let mods = super::command_modifiers(modifiers);
+        let target = if mods == Modifiers::CONTROL_MASK {
+            OpenInNewTarget::Tab
+        } else if mods == Modifiers::SHIFT_MASK {
+            OpenInNewTarget::Window
+        } else {
+            return false;
+        };
+        self.open_focused_in_new(browser, target)
+    }
+
     pub(super) fn dismissal(&self, browser: &Browser, event: &KeyEvent) -> KeyResult {
         if event.key == Key::BackSpace
             && event.without(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK)
@@ -270,6 +326,25 @@ impl Dispatcher {
     }
 
     fn directory_navigation(&self, browser: &Rc<Browser>, event: &KeyEvent) -> KeyResult {
+        if matches!(event.key, Key::Return | Key::KP_Enter)
+            && !event.alt()
+            && event.without(Modifiers::SUPER_MASK)
+            && self.view.item_view_has_focus()
+            && !event.text_has_focus()
+        {
+            let target = if event.control() {
+                Some(OpenInNewTarget::Tab)
+            } else if event.shift() {
+                Some(OpenInNewTarget::Window)
+            } else {
+                None
+            };
+            if let Some(target) = target
+                && self.open_focused_in_new(browser, target)
+            {
+                return Some(Propagation::Stop);
+            }
+        }
         if !event.without(Modifiers::CONTROL_MASK | Modifiers::SUPER_MASK) {
             return Some(Propagation::Proceed);
         }
@@ -310,6 +385,9 @@ impl Dispatcher {
     ) -> bool {
         if self.view.view_mode() != BrowserMode::Icons || !self.view.item_view_has_focus() {
             return false;
+        }
+        if self.tenxer_open_focused_in_new(browser, key, modifiers) {
+            return true;
         }
         let search = self.view.selected_search_results().is_some();
         let mods = super::command_modifiers(modifiers);
@@ -440,6 +518,9 @@ impl Dispatcher {
     ) -> bool {
         if self.view.view_mode() == BrowserMode::Icons || !self.view.item_view_has_focus() {
             return false;
+        }
+        if self.tenxer_open_focused_in_new(browser, key, modifiers) {
+            return true;
         }
         let mods = super::command_modifiers(modifiers);
         if mods == Modifiers::CONTROL_MASK {

@@ -9,7 +9,7 @@ use std::{
 use gtk::{gio, glib, prelude::*};
 
 use crate::{
-    adapters::{location_for_file, reveal_target_for_file},
+    adapters::{gio_file_for_location, location_for_file, reveal_target_for_file},
     model::Location,
 };
 
@@ -21,6 +21,22 @@ pub fn present_open(application: &gtk::Application, file: gio::File) {
     let Some(location) = location_for_file(&file) else {
         return;
     };
+    present_window(application, location, file);
+}
+
+pub(super) fn present_location_window(
+    application: &gtk::Application,
+    location: Location,
+) -> BrowserView {
+    let file = gio_file_for_location(&location);
+    present_window(application, location, file)
+}
+
+fn present_window(
+    application: &gtk::Application,
+    location: Location,
+    file: gio::File,
+) -> BrowserView {
     let browser = present_target(
         application,
         Some(location.clone()),
@@ -29,7 +45,12 @@ pub fn present_open(application: &gtk::Application, file: gio::File) {
         false,
         false,
     );
-    classify(browser, file, location);
+    classify(browser.clone(), file, location);
+    browser
+}
+
+pub(super) fn route_location(browser: BrowserView, location: Location) {
+    classify(browser, gio_file_for_location(&location), location);
 }
 
 enum Kind {
@@ -108,7 +129,14 @@ fn classify(browser: BrowserView, file: gio::File, location: Location) -> Rc<Ope
         match outcome {
             Ok(Kind::Directory) => browser.navigate_location(location),
             Ok(Kind::File) => reveal_in_parent(&browser, &file, location),
-            Err(_) => show_error(&browser, retry_file, retry_location),
+            Err(error) => {
+                tracing::warn!(
+                    location = %location.display_path(),
+                    %error,
+                    "target location unavailable"
+                );
+                show_error(&browser, retry_file, retry_location);
+            }
         }
     });
     request

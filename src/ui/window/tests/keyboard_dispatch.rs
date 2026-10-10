@@ -22,6 +22,7 @@ mod folder_jump;
 mod footer_prompt;
 mod go_prompt;
 mod mode_exit;
+mod open_in_new;
 mod overlay_focus;
 mod pane_focus;
 mod place_chords;
@@ -975,6 +976,7 @@ fn press_file_row(widget: &gtk::Widget, name: &str) -> bool {
         controllers
             .item(index)
             .and_then(|controller| controller.downcast::<gtk::GestureClick>().ok())
+            .filter(|click| click.button() == 1)
     }) else {
         return false;
     };

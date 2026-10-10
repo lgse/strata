@@ -8,6 +8,7 @@ use std::{
 use gtk::{gdk, gio, glib, prelude::*};
 
 use crate::{
+    adapters::location_for_file,
     model::Location,
     ui::{blur::BlurBin, browser::BrowserView, preferences::PreferenceManager, tabs_session},
 };
@@ -122,6 +123,8 @@ impl TabWindow {
                 "close-tab",
                 "previous-tab",
                 "select-tab",
+                "open-tab-at",
+                "open-window-at",
             ] {
                 window.remove_action(name);
             }
@@ -162,6 +165,24 @@ impl TabWindow {
         }
         let location = self.active_browser().browser().active_location();
         self.add(location.or_else(|| Some(super::super::startup_location(&self.preferences))));
+    }
+
+    fn open_in_new_tab(self: &Rc<Self>, location: Location) {
+        if self.blocked() || self.window.upgrade().is_none() {
+            return;
+        }
+        tracing::debug!(location = %location.display_path(), "opening location in new tab");
+        self.add(None);
+        super::super::open_argument::route_location(self.active_browser(), location);
+    }
+
+    fn open_in_new_window(self: &Rc<Self>, location: Location) -> Option<BrowserView> {
+        let application = self.window.upgrade()?.application()?;
+        tracing::debug!(location = %location.display_path(), "opening location in new window");
+        Some(super::super::open_argument::present_location_window(
+            &application,
+            location,
+        ))
     }
 
     fn add(self: &Rc<Self>, location: Option<Location>) {
@@ -362,6 +383,26 @@ impl TabWindow {
             }
         });
         window.add_action(&select);
+
+        // Window actions let menu rows and gestures reach this `TabWindow`.
+        let open_tab = gio::SimpleAction::new("open-tab-at", Some(&String::static_variant_type()));
+        let weak = Rc::downgrade(self);
+        open_tab.connect_activate(move |_, parameter| {
+            if let (Some(state), Some(location)) = (weak.upgrade(), action_location(parameter)) {
+                state.open_in_new_tab(location);
+            }
+        });
+        window.add_action(&open_tab);
+
+        let open_window =
+            gio::SimpleAction::new("open-window-at", Some(&String::static_variant_type()));
+        let weak = Rc::downgrade(self);
+        open_window.connect_activate(move |_, parameter| {
+            if let (Some(state), Some(location)) = (weak.upgrade(), action_location(parameter)) {
+                state.open_in_new_window(location);
+            }
+        });
+        window.add_action(&open_window);
     }
 
     fn cycle(&self, delta: i32) {
@@ -585,6 +626,11 @@ pub(in crate::ui::window) fn is_tab_shortcut(key: gdk::Key, modifiers: gdk::Modi
             && (matches!(key, Key::Tab | Key::ISO_Left_Tab)
                 || super::super::page_direction(key).is_some()
                 || tab_index(key).is_some()))
+}
+
+fn action_location(parameter: Option<&glib::Variant>) -> Option<Location> {
+    let uri = parameter?.get::<String>()?;
+    location_for_file(&gio::File::for_uri(&uri))
 }
 
 pub(in crate::ui::window) fn tab_index(key: gdk::Key) -> Option<usize> {
