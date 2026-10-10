@@ -26,6 +26,7 @@ pub use crate::app::navigation::{ColumnEntryCounts, CursorToggle, VisualKind, Vi
 
 mod deferred;
 mod directory_changes;
+mod folder_sorts;
 mod loading;
 mod navigation_lifecycle;
 mod operation_events;
@@ -251,6 +252,14 @@ pub enum BrowserEvent {
     TransferFinished {
         moved_locations: Vec<Location>,
     },
+    /// Locations renamed or moved by this browser's own operations, old to new.
+    LocationsRelocated {
+        moves: Vec<(Location, Location)>,
+    },
+    /// Locations deleted or trashed by this browser's own operations.
+    LocationsRemoved {
+        locations: Vec<Location>,
+    },
     DeletionStarted {
         total: usize,
     },
@@ -325,6 +334,7 @@ pub enum BrowserEvent {
 /// emission stays safe.
 type Observer = Rc<dyn Fn(&BrowserEvent)>;
 type PreferencesObserver = Rc<dyn Fn(ViewPreferences)>;
+type FolderSortObserver = Rc<dyn Fn(&Location, SortKey, SortDirection)>;
 type DeferredDirectoryChanges = HashMap<usize, Vec<(Location, DirectoryChange)>>;
 
 const MAX_INCREMENTAL_OPERATION_UPDATES: usize = 64;
@@ -955,6 +965,9 @@ pub struct Browser {
     background_load_focus: Cell<bool>,
     observers: RefCell<Vec<Observer>>,
     preferences_observers: RefCell<Vec<PreferencesObserver>>,
+    folder_sort_observers: RefCell<Vec<FolderSortObserver>>,
+    sort_resync: folder_sorts::SortResync,
+    self_weak: Weak<Browser>,
 }
 
 impl Browser {
@@ -964,7 +977,7 @@ impl Browser {
     }
 
     pub fn with_preferences(source: Rc<dyn FileSource>, preferences: ViewPreferences) -> Rc<Self> {
-        Rc::new(Self {
+        Rc::new_cyclic(|self_weak| Self {
             source,
             state: RefCell::new(NavigationState::with_preferences(preferences)),
             loads: RefCell::new(Vec::new()),
@@ -1022,6 +1035,9 @@ impl Browser {
             background_load_focus: Cell::new(false),
             observers: RefCell::new(Vec::new()),
             preferences_observers: RefCell::new(Vec::new()),
+            folder_sort_observers: RefCell::new(Vec::new()),
+            sort_resync: folder_sorts::SortResync::default(),
+            self_weak: self_weak.clone(),
         })
     }
 
@@ -1766,13 +1782,20 @@ impl Browser {
         });
     }
 
+    /// Folders-first is application-wide: every column re-sorts, `depth` first.
     pub fn set_folders_first(self: &Rc<Self>, depth: usize, folders_first: bool) {
-        self.apply_column_preferences(depth, move |preferences| {
-            preferences.folders_first = folders_first;
-        });
+        let mut defaults = self.preferences.get();
+        if defaults.folders_first == folders_first {
+            return;
+        }
+        defaults.folders_first = folders_first;
+        self.preferences.set(defaults);
+        self.state.borrow_mut().set_default_preferences(defaults);
+        self.notify_preferences_observers();
+        self.resync_column_sorts_from(Some(depth));
     }
 
-    pub fn apply_default_preferences(&self, preferences: ViewPreferences) {
+    pub fn apply_default_preferences(self: &Rc<Self>, preferences: ViewPreferences) {
         let previous = self.preferences.replace(preferences);
         self.state.borrow_mut().set_default_preferences(preferences);
         if previous.show_hidden != preferences.show_hidden {
@@ -1786,6 +1809,17 @@ impl Browser {
         }
         if previous != preferences {
             self.notify_preferences_observers();
+        }
+        if (
+            previous.sort_key,
+            previous.sort_direction,
+            previous.folders_first,
+        ) != (
+            preferences.sort_key,
+            preferences.sort_direction,
+            preferences.folders_first,
+        ) {
+            self.resync_column_sorts();
         }
     }
 
@@ -1822,6 +1856,7 @@ impl Browser {
             });
         }
         self.emit(BrowserEvent::SortingStarted { depth });
+        self.sort_resync.debounce.set(Some(generation));
         let weak = Rc::downgrade(self);
         gio::glib::timeout_add_local_once(Duration::from_millis(16), move || {
             if let Some(browser) = weak.upgrade() {
@@ -1839,6 +1874,7 @@ impl Browser {
         if self.pending_sort.get() != Some((generation, depth)) {
             return;
         }
+        self.sort_resync.debounce.set(None);
         let result = {
             let mut state = self.state.borrow_mut();
             let Some(mut preferences) = state.column_preferences(depth) else {
@@ -1847,10 +1883,6 @@ impl Browser {
                 self.emit(BrowserEvent::SortingFinished { depth });
                 return;
             };
-            let recent = state
-                .columns
-                .get(depth)
-                .is_some_and(|column| column.location.is_recent_root());
             update(&mut preferences);
             // Size/date sorts need the metadata streaming enumeration skipped:
             // fill the whole column first instead of sorting placeholders.
@@ -1863,14 +1895,6 @@ impl Browser {
                 return;
             }
             let result = state.apply_sort_preferences(depth, preferences);
-            let mut defaults = preferences;
-            if defaults.sort_key == SortKey::DeviceOrder {
-                defaults.sort_key = self.preferences.get().sort_key;
-                defaults.sort_direction = self.preferences.get().sort_direction;
-            }
-            if !recent {
-                self.preferences.set(defaults);
-            }
             let request_id = state.request_id_for_depth(depth);
             let total = state.columns.get(depth).map(|column| column.entries.len());
             let take_focus = state.take_selection_from_reveal(depth);
@@ -1885,12 +1909,7 @@ impl Browser {
                 })
             })
         };
-        if self
-            .location_at(depth)
-            .is_none_or(|location| !location.is_recent_root())
-        {
-            self.notify_preferences_observers();
-        }
+        self.record_sort(depth, generation);
         if let Some(plan) = result {
             self.publish_staged(depth, plan);
         } else {
@@ -3676,6 +3695,9 @@ impl Browser {
         if let (Some(from), Some(to)) = (old.native_path(), entry.location.native_path()) {
             crate::services::refresh_search_indexes_for_rename(from, to);
         }
+        self.emit(BrowserEvent::LocationsRelocated {
+            moves: vec![(old.clone(), entry.location.clone())],
+        });
         self.retire_recent_target(old);
         if !(0..)
             .map_while(|depth| self.location_at(depth))
@@ -3979,14 +4001,7 @@ impl Browser {
             if self.pending_sort.get() != Some((generation, depth)) {
                 return;
             }
-            let recent = state
-                .columns
-                .get(depth)
-                .is_some_and(|column| column.location.is_recent_root());
             let outcome = state.apply_sort_preferences(depth, preferences);
-            if !recent {
-                self.preferences.set(preferences);
-            }
             self.pending_sort.set(None);
             let take_focus = state.take_selection_from_reveal(depth);
             outcome.and_then(|(focused, positions)| {
@@ -4000,12 +4015,7 @@ impl Browser {
                 })
             })
         };
-        if self
-            .location_at(depth)
-            .is_none_or(|location| !location.is_recent_root())
-        {
-            self.notify_preferences_observers();
-        }
+        self.record_sort(depth, generation);
         match outcome {
             Some(plan) => self.publish_staged(depth, plan),
             _ => {
@@ -4485,9 +4495,13 @@ impl Browser {
     }
 
     fn emit(&self, event: BrowserEvent) {
+        let finished_sort = matches!(event, BrowserEvent::SortingFinished { .. });
         let observers = self.observers.borrow().clone();
         for observer in &observers {
             observer(&event);
+        }
+        if finished_sort {
+            self.wake_sort_resync();
         }
     }
 

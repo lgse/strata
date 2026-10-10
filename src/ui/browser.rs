@@ -549,6 +549,10 @@ impl BrowserView {
         browser.observe_preferences(move |sorting| {
             preferences_for_sorting.set_sort_preferences(sorting);
         });
+        let preferences_for_folders = preferences.clone();
+        browser.observe_folder_sorts(move |location, sort_key, sort_direction| {
+            preferences_for_folders.set_folder_sort(location, sort_key, sort_direction);
+        });
         let source_generation = Rc::new(Cell::new(0u64));
         let multiple_selection = Rc::new(Cell::new(multiple));
         let mode_views = ModeViews::new(&scroller, browser.clone(), multiple_selection.clone());
@@ -1179,7 +1183,11 @@ impl BrowserView {
             .set_group_by_type(enabled);
     }
 
-    pub fn set_icons_thumbnail_size(&self, size: i32) {
+    /// Applies the Icons folder's saved size, or the default.
+    pub fn sync_icons_thumbnail_size(&self) {
+        let location = self.state.mode_views.borrow().icons_location();
+        let size =
+            super::preferences::PreferenceManager::shared().icons_size_for(location.as_ref());
         self.state
             .mode_views
             .borrow_mut()

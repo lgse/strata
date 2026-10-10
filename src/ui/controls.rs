@@ -264,6 +264,20 @@ pub(super) fn check_menu_option(label: &str, selected: bool) -> (gtk::Button, gt
     checkable_menu_option(label, selected, gtk::AccessibleRole::MenuItemCheckbox)
 }
 
+/// A menu command styled like the checkable options beside it.
+pub(super) fn menu_action(label: &str) -> gtk::Button {
+    let label = gtk::Label::new(Some(label));
+    label.set_xalign(0.0);
+    label.set_hexpand(true);
+    let action = gtk::Button::builder()
+        .child(&label)
+        .accessible_role(gtk::AccessibleRole::MenuItem)
+        .build();
+    action.add_css_class("column-menu-option");
+    action.set_has_frame(false);
+    action
+}
+
 fn checkable_menu_option(
     label: &str,
     selected: bool,

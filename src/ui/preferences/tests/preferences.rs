@@ -796,6 +796,7 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
                     sort_direction: SortDirection::Descending,
                 }
             );
+            assert!(!manager.remember_folder_views());
             assert!(!manager.checks_for_updates());
             assert_eq!(manager.release_channel(), Channel::Nightly);
             assert!(manager.preview_muted());
@@ -1080,6 +1081,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_date_format(crate::util::DateFormat::Long),
                 |m| m.set_default_directory(None),
                 |m| m.set_restore_tabs(true),
+                |m| m.set_remember_folder_views(true),
                 |m| m.set_device_label("volume:fixture-kingston", "Photos / 📁"),
                 |m| m.set_device_label("volume:fixture-kingston", ""),
                 |m| {

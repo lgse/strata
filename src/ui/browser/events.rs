@@ -496,6 +496,10 @@ impl ViewState {
                 }
             }
             BrowserEvent::LoadFailed { depth, message } => {
+                if let Some(location) = self.browser.location_at(*depth) {
+                    crate::ui::preferences::PreferenceManager::shared()
+                        .forget_missing_folder(&location);
+                }
                 if let Some(column) = self.columns.borrow().get(*depth) {
                     if column.selection.model().is_none() {
                         column.filtered_model.set_model(Some(&column.model));
@@ -751,6 +755,12 @@ impl ViewState {
                 }
                 self.dismiss_file_operation_progress();
                 self.prune_stale_search_results();
+            }
+            BrowserEvent::LocationsRelocated { moves } => {
+                crate::ui::preferences::PreferenceManager::shared().relocate_folder_views(moves);
+            }
+            BrowserEvent::LocationsRemoved { locations } => {
+                crate::ui::preferences::PreferenceManager::shared().remove_folder_views(locations);
             }
             BrowserEvent::DeletionStarted { total } => {
                 let browser = self.browser.clone();

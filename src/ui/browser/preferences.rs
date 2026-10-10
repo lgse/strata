@@ -28,8 +28,14 @@ impl BrowserView {
         );
         self.bind_view_preference(
             manager,
-            PreferenceManager::icons_thumbnail_size,
-            Self::set_icons_thumbnail_size,
+            |manager| {
+                (
+                    manager.icons_thumbnail_size(),
+                    manager.remember_folder_views(),
+                    manager.folder_views_revision(),
+                )
+            },
+            |view, _| view.sync_icons_thumbnail_size(),
         );
         self.bind_view_preference(
             manager,
@@ -90,6 +96,22 @@ impl BrowserView {
             PreferenceManager::sort_preferences,
             |view, value| {
                 view.browser().apply_default_preferences(value);
+            },
+        );
+        self.bind_view_preference(
+            manager,
+            |manager| {
+                (
+                    manager.remember_folder_views(),
+                    manager.folder_views_revision(),
+                )
+            },
+            |view, (remember, _)| {
+                view.browser().set_folder_sorts(remember.then(|| {
+                    Rc::new(|location: &crate::model::Location| {
+                        PreferenceManager::shared().folder_sort(location)
+                    }) as crate::app::FolderSortResolver
+                }));
             },
         );
     }

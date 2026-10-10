@@ -44,7 +44,7 @@ impl MountTable {
         self.innermost(path).map(|(_, fs_type)| fs_type.as_str())
     }
 
-    pub(super) fn is_remote_path(&self, path: &Path) -> bool {
+    pub(crate) fn is_remote_path(&self, path: &Path) -> bool {
         self.fs_type_for(path).is_some_and(is_remote_fs_type)
     }
 

@@ -24,9 +24,12 @@ pub(in crate::ui) const SEND_TO_RECENT_DESTINATIONS_LIMIT: usize = 3;
 mod bindings;
 #[cfg(test)]
 pub(in crate::ui) mod fixtures;
+mod folder_view_settings;
+mod folder_views;
 mod save_notice;
 mod text_size;
 pub(in crate::ui) use bindings::notify_live;
+pub(crate) use folder_view_settings::flush_pending_folder_views;
 pub use text_size::TextSize;
 
 thread_local! {
@@ -180,6 +183,8 @@ pub(in crate::ui) struct Preferences {
     default_directory: Option<PathBuf>,
     #[serde(default = "default_enabled")]
     restore_tabs: bool,
+    #[serde(default = "default_enabled")]
+    remember_folder_views: bool,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     folder_colors: HashMap<String, String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
@@ -283,6 +288,7 @@ impl Default for Preferences {
             release_channel: default_release_channel(),
             default_directory: None,
             restore_tabs: true,
+            remember_folder_views: true,
             folder_colors: HashMap::new(),
             custom_icons: HashMap::new(),
             send_to_recent_destinations: HashMap::new(),
@@ -426,6 +432,10 @@ pub struct PreferenceManager {
     /// Why saving is off for this session: the file existed but could not be read.
     load_failure: Option<io::Error>,
     save_notices: save_notice::SaveNotices,
+    /// Loaded on first use, from its own state file.
+    folder_views: std::cell::OnceCell<folder_view_settings::FolderViewStore>,
+    folder_views_revision: Cell<u64>,
+    folder_save_notices: save_notice::SaveNotices,
 }
 
 impl PreferenceManager {
@@ -480,6 +490,9 @@ impl PreferenceManager {
             persistence_dirty: Cell::new(false),
             load_failure,
             save_notices: save_notice::SaveNotices::default(),
+            folder_views: std::cell::OnceCell::new(),
+            folder_views_revision: Cell::new(0),
+            folder_save_notices: save_notice::SaveNotices::for_folder_views(),
             preferences: RefCell::new(preferences),
         })
     }
@@ -556,6 +569,7 @@ impl PreferenceManager {
     /// never register, such as the portal chooser, leave failures to the log.
     pub(in crate::ui) fn register_save_notice_window(&self, window: &gtk::Window) {
         self.save_notices.register(window);
+        self.folder_save_notices.register(window);
     }
 
     /// Republishes current preferences without a stored change, for runtime state

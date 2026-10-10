@@ -778,6 +778,174 @@ fn ctrl_f_cannot_activate_hidden_filter_or_displace_existing_column_filter() {
     );
 }
 
+#[test]
+fn saved_folder_sorts_and_icon_sizes_apply_before_settings_and_follow_changes_across_windows() {
+    gtk_test(
+        "ui::window::tests::preferences::saved_folder_sorts_and_icon_sizes_apply_before_settings_and_follow_changes_across_windows",
+        || {
+            use crate::model::{FolderSort, Location, SortDirection, SortKey};
+
+            let sorted = tempfile::tempdir().expect("sorted folder");
+            let plain = tempfile::tempdir().expect("plain folder");
+            let sorted_location = Location::local(sorted.path());
+            write_folder_views(&format!(
+                "version = 1\n[[folder]]\npath = \"{}\"\nsort = \"size\"\ndirection = \"descending\"\nicons_size = 192\n",
+                sorted.path().display()
+            ));
+            let manager = PreferenceManager::shared();
+            let first = OpenWindow::open();
+            let second = OpenWindow::open();
+            let sorting = |open: &OpenWindow| {
+                open.content
+                    .browser
+                    .browser()
+                    .column_preferences(0)
+                    .map(|preferences| (preferences.sort_key, preferences.sort_direction))
+            };
+            let show = |open: &OpenWindow, location: &Location| {
+                open.content.browser.navigate_location(location.clone());
+                wait_until(|| {
+                    open.content.browser.browser().location_at(0).as_ref() == Some(location)
+                        && !column_loading(open, 0)
+                });
+            };
+
+            show(&first, &sorted_location);
+            show(&second, &Location::local(plain.path()));
+            assert_eq!(
+                sorting(&first),
+                Some((SortKey::Size, SortDirection::Descending))
+            );
+            assert_eq!(
+                sorting(&second),
+                Some((SortKey::Name, SortDirection::Ascending))
+            );
+            show(&second, &sorted_location);
+            assert_eq!(
+                sorting(&second),
+                Some((SortKey::Size, SortDirection::Descending))
+            );
+
+            first
+                .content
+                .browser
+                .browser()
+                .set_sort(0, SortKey::Type, SortDirection::Ascending);
+            wait_until(|| sorting(&second) == Some((SortKey::Type, SortDirection::Ascending)));
+            assert_eq!(
+                manager.default_sort(),
+                (SortKey::Name, SortDirection::Ascending)
+            );
+            assert!(folder_views_file().contains("sort = \"type\""));
+
+            manager.set_browser_mode(BrowserMode::Icons);
+            wait_until(|| icons_size(&first) == Some(192) && icons_size(&second) == Some(192));
+            show(&first, &Location::local(plain.path()));
+            wait_until(|| icons_size(&first) == Some(manager.icons_thumbnail_size()));
+            icons_scale(&second)
+                .expect("icons size slider")
+                .set_value(128.0);
+            assert_eq!(manager.icons_size_for(Some(&sorted_location)), 128);
+            settle();
+            assert_eq!(icons_size(&first), Some(manager.icons_thumbnail_size()));
+
+            manager.reset_folder_sort(&sorted_location);
+            manager.set_default_icons_size(128);
+            assert_eq!(manager.folder_sort(&sorted_location), FolderSort::Default);
+            wait_until(|| icons_size(&first) == Some(128));
+            manager.set_browser_mode(BrowserMode::Columns);
+            wait_until(|| sorting(&second) == Some((SortKey::Name, SortDirection::Ascending)));
+        },
+    );
+}
+
+#[test]
+fn folder_settings_saved_by_another_process_are_merged_instead_of_overwritten() {
+    gtk_test(
+        "ui::window::tests::preferences::folder_settings_saved_by_another_process_are_merged_instead_of_overwritten",
+        || {
+            use crate::model::{FolderSort, Location, SortDirection, SortKey};
+
+            let here = tempfile::tempdir().expect("folder sorted here");
+            let elsewhere = tempfile::tempdir().expect("folder sorted elsewhere");
+            let (here, elsewhere) = (
+                Location::local(here.path()),
+                Location::local(elsewhere.path()),
+            );
+            let open = OpenWindow::open();
+            open.content.browser.navigate_location(elsewhere.clone());
+            wait_until(|| !column_loading(&open, 0));
+            let manager = PreferenceManager::shared();
+            assert_eq!(manager.folder_sort(&elsewhere), FolderSort::Default);
+
+            write_folder_views(&format!(
+                "version = 1\n[[folder]]\npath = \"{}\"\nsort = \"size\"\ndirection = \"descending\"\n",
+                elsewhere.display_path()
+            ));
+            manager.set_folder_sort(&here, SortKey::Type, SortDirection::Ascending);
+
+            let saved = folder_views_file();
+            assert!(saved.contains(&here.display_path()), "{saved}");
+            assert!(saved.contains(&elsewhere.display_path()), "{saved}");
+            assert_eq!(
+                manager.folder_sort(&elsewhere),
+                FolderSort::Saved(SortKey::Size, SortDirection::Descending)
+            );
+            wait_until(|| {
+                open.content
+                    .browser
+                    .browser()
+                    .column_preferences(0)
+                    .is_some_and(|preferences| preferences.sort_key == SortKey::Size)
+            });
+        },
+    );
+}
+
+#[test]
+fn unreadable_folder_settings_use_defaults_and_are_never_overwritten() {
+    gtk_test(
+        "ui::window::tests::preferences::unreadable_folder_settings_use_defaults_and_are_never_overwritten",
+        || {
+            use crate::model::{Location, SortDirection, SortKey};
+
+            let unreadable = "version = 1\n[[folder]\npath = \"/broken\"\n";
+            write_folder_views(unreadable);
+            let open = OpenWindow::open();
+            let folder = load_folder(&open);
+            let browser = open.content.browser.browser();
+            assert_eq!(
+                browser
+                    .column_preferences(0)
+                    .map(|preferences| preferences.sort_key),
+                Some(SortKey::Name)
+            );
+
+            browser.set_sort(0, SortKey::Size, SortDirection::Descending);
+            wait_until(|| {
+                browser
+                    .column_preferences(0)
+                    .map(|preferences| preferences.sort_key)
+                    == Some(SortKey::Size)
+            });
+            open.content
+                .browser
+                .navigate_location(Location::local(folder.path()));
+            wait_until(|| !column_loading(&open, 0));
+
+            assert_eq!(
+                browser
+                    .column_preferences(0)
+                    .map(|preferences| preferences.sort_key),
+                Some(SortKey::Size),
+                "changes still apply until Strata closes"
+            );
+            PreferenceManager::shared().flush_folder_views();
+            assert_eq!(folder_views_file(), unreadable);
+        },
+    );
+}
+
 struct OpenWindow {
     window: gtk::ApplicationWindow,
     content: super::super::composition::WindowContent,
@@ -819,6 +987,31 @@ fn write_settings(contents: &str) {
 
 fn settings_file() -> std::path::PathBuf {
     gtk::glib::user_config_dir().join("strata/settings.toml")
+}
+
+fn write_folder_views(contents: &str) {
+    let path = crate::storage::state_directory().join("folder-views.toml");
+    std::fs::create_dir_all(path.parent().expect("state directory")).expect("state directory");
+    std::fs::write(path, contents).expect("seed folder settings");
+}
+
+fn folder_views_file() -> String {
+    std::fs::read_to_string(crate::storage::state_directory().join("folder-views.toml"))
+        .expect("folder settings file")
+}
+
+fn icons_scale(open: &OpenWindow) -> Option<gtk::Scale> {
+    let mut scale = None;
+    walk(open.window.upcast_ref(), &mut |widget| {
+        if widget.has_css_class("icons-thumbnail-scale") {
+            scale = widget.clone().downcast::<gtk::Scale>().ok();
+        }
+    });
+    scale
+}
+
+fn icons_size(open: &OpenWindow) -> Option<i32> {
+    icons_scale(open).map(|scale| scale.value().round() as i32)
 }
 
 fn load_folder(open: &OpenWindow) -> tempfile::TempDir {

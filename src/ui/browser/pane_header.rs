@@ -3,7 +3,8 @@
 use crate::app::Browser;
 use crate::model::{SortDirection, SortKey};
 use crate::ui::browser::ViewState;
-use crate::ui::controls::{check_menu_option, menu_option};
+use crate::ui::controls::{check_menu_option, menu_action, menu_option};
+use crate::ui::preferences::PreferenceManager;
 use gtk::glib;
 use gtk::prelude::*;
 use std::cell::{Cell, RefCell};
@@ -152,6 +153,7 @@ pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gt
     } else {
         None
     };
+    let folder_actions = folder_sort_actions(browser, depth, &content, &popover_weak);
 
     popover.set_child(Some(&content));
     let keys = gtk::EventControllerKey::new();
@@ -198,6 +200,9 @@ pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gt
             folders_enabled.set(preferences.folders_first);
             folders_check.set_visible(preferences.folders_first);
         }
+        if let Some(browser) = weak_browser.upgrade() {
+            folder_actions.sync(&browser, depth);
+        }
     });
     let button = gtk::MenuButton::builder()
         .tooltip_text(crate::i18n::tr("Choose sort field"))
@@ -209,6 +214,82 @@ pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gt
     crate::ui::controls::pane_header_action(&button);
     crate::ui::tenxer_mode::hide_while_enabled(&button);
     button
+}
+
+struct FolderSortActions {
+    separator: gtk::Separator,
+    make_default: gtk::Button,
+    reset: gtk::Button,
+}
+
+impl FolderSortActions {
+    /// Shown only for remembered folders: Make default when the folder's sort
+    /// differs from the default, Reset when the folder stores its own sort.
+    fn sync(&self, browser: &Browser, depth: usize) {
+        let manager = PreferenceManager::shared();
+        let location = browser
+            .location_at(depth)
+            .filter(|_| browser.folder_sort_at(depth) != crate::model::FolderSort::Unremembered);
+        let sorted = browser
+            .column_preferences(depth)
+            .map(|preferences| (preferences.sort_key, preferences.sort_direction));
+        let differs =
+            location.is_some() && sorted.is_some_and(|sort| sort != manager.default_sort());
+        let saved = location
+            .as_ref()
+            .is_some_and(|location| manager.has_folder_sort(location));
+        self.make_default.set_visible(differs);
+        self.reset.set_visible(saved);
+        self.separator.set_visible(differs || saved);
+    }
+}
+
+fn folder_sort_actions(
+    browser: &Rc<Browser>,
+    depth: usize,
+    content: &gtk::Box,
+    popover: &glib::WeakRef<gtk::Popover>,
+) -> FolderSortActions {
+    let separator = gtk::Separator::new(gtk::Orientation::Horizontal);
+    let make_default = menu_action(&crate::i18n::tr("Make this the default sort"));
+    let reset = menu_action(&crate::i18n::tr("Reset to default sort"));
+    let weak_browser = Rc::downgrade(browser);
+    let closing = popover.clone();
+    make_default.connect_clicked(move |_| {
+        if let Some(preferences) = weak_browser
+            .upgrade()
+            .and_then(|browser| browser.column_preferences(depth))
+        {
+            PreferenceManager::shared()
+                .set_default_sort(preferences.sort_key, preferences.sort_direction);
+        }
+        if let Some(popover) = closing.upgrade() {
+            popover.popdown();
+        }
+    });
+    let weak_browser = Rc::downgrade(browser);
+    let closing = popover.clone();
+    reset.connect_clicked(move |_| {
+        if let Some(location) = weak_browser
+            .upgrade()
+            .and_then(|browser| browser.location_at(depth))
+        {
+            PreferenceManager::shared().reset_folder_sort(&location);
+        }
+        if let Some(popover) = closing.upgrade() {
+            popover.popdown();
+        }
+    });
+    content.append(&separator);
+    content.append(&make_default);
+    content.append(&reset);
+    let actions = FolderSortActions {
+        separator,
+        make_default,
+        reset,
+    };
+    actions.sync(browser, depth);
+    actions
 }
 
 pub(in crate::ui) fn column_sort_direction_toggle(

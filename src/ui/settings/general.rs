@@ -6,6 +6,7 @@ use gtk::prelude::*;
 
 use crate::{
     assets::icons,
+    model::{SortDirection, SortKey},
     sandbox::MediaPreviewBackend,
     services::CrossVolumeDropStrategy,
     ui::{
@@ -351,6 +352,7 @@ fn append_browsing_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) 
     ] {
         append_preference_switch(&browsing, manager, switch);
     }
+    append_folder_view_options(&browsing, manager);
     let search = super::settings_group(content, "SEARCH & FILTERING");
     for switch in [
         PreferenceSwitch {
@@ -375,6 +377,66 @@ fn append_browsing_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) 
         append_preference_switch(&search, manager, switch);
     }
     append_search_exclusions_option(&search, manager);
+}
+
+fn append_folder_view_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
+    append_preference_switch(
+        content,
+        manager,
+        PreferenceSwitch {
+            title: "Remember sort and icon size per folder",
+            description: "Each folder keeps the sort and thumbnail size you choose there. Other folders use the defaults.",
+            read: PreferenceManager::remember_folder_views,
+            write: PreferenceManager::set_remember_folder_views,
+        },
+    );
+    let sort_key = super::bindings::choice_menu(
+        manager,
+        "Default sort",
+        &[
+            ("Name", SortKey::Name),
+            ("Size", SortKey::Size),
+            ("Modified", SortKey::Modified),
+            ("Type", SortKey::Type),
+        ],
+        PreferenceManager::default_sort_key,
+        PreferenceManager::set_default_sort_key,
+    );
+    let sort_direction = super::bindings::choice_menu(
+        manager,
+        "Default sort direction",
+        &[
+            ("Ascending", SortDirection::Ascending),
+            ("Descending", SortDirection::Descending),
+        ],
+        PreferenceManager::default_sort_direction,
+        PreferenceManager::set_default_sort_direction,
+    );
+    let sort_controls = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    sort_controls.append(&sort_key);
+    sort_controls.append(&sort_direction);
+    content.append(&super::control_row(
+        "Default sort",
+        "Folders without their own sort use this order.",
+        &sort_controls,
+    ));
+
+    let forget = gtk::Button::with_label(&crate::i18n::tr("Clear"));
+    forget.add_css_class("form-control");
+    forget.set_valign(gtk::Align::Center);
+    crate::ui::accessibility::set_label(&forget, &crate::i18n::tr("Forget all folder settings"));
+    manager.bind_preference(
+        &forget,
+        PreferenceManager::has_folder_views,
+        |widget, saved| widget.set_sensitive(saved),
+    );
+    let manager_for_forget = manager.clone();
+    forget.connect_clicked(move |_| manager_for_forget.forget_folder_views());
+    content.append(&super::control_row(
+        "Forget all folder settings",
+        "Return every folder to the default sort and thumbnail size.",
+        &forget,
+    ));
 }
 
 fn append_search_exclusions_option(content: &gtk::Box, manager: &Rc<PreferenceManager>) {

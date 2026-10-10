@@ -533,6 +533,22 @@ class Strata:
             and bounds.y + bounds.height <= window.y + window.height
         )
 
+    def unclipped(self, node: Node) -> bool:
+        """Whether the nearest scroll pane shows all of `node`.
+
+        Window bounds alone accept a control half hidden under a dialog's
+        header, where a click at its centre lands on the header instead.
+        """
+
+        pane = next(
+            (ancestor for ancestor in node.ancestors() if ancestor.role == "scroll pane"),
+            None,
+        )
+        if pane is None:
+            return True
+        outer, inner = pane.screen_bounds(), node.screen_bounds()
+        return inner.y >= outer.y and inner.y + inner.height <= outer.y + outer.height
+
     def reveal(self, **criteria) -> Node:
         """Find a control that may be scrolled out of view and bring it on."""
 
@@ -540,13 +556,13 @@ class Strata:
             lambda: self.window.find(rendered=False, **criteria),
             f"a control matching {criteria}",
         )
-        if self.on_screen(node):
+        if self.on_screen(node) and self.unclipped(node):
             return node
         node.scroll_into_view()
         window = self.window.screen_bounds()
         centre = (window.x + window.width // 2, window.y + window.height // 2)
         for _ in range(self.REVEAL_SCROLL_ATTEMPTS):
-            if self.on_screen(node):
+            if self.on_screen(node) and self.unclipped(node):
                 return self.settle(node)
             below = node.screen_bounds().y > centre[1]
             self.pointer.scroll(centre, clicks=3, down=below)

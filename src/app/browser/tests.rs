@@ -16,6 +16,7 @@ mod deferred;
 #[path = "directory_changes/tests.rs"]
 mod directory_changes;
 mod events;
+mod folder_sorts;
 mod location_input;
 mod metadata;
 mod monitor;

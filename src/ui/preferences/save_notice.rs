@@ -17,6 +17,13 @@ pub(super) enum SaveProblem {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum SaveSubject {
+    #[default]
+    Settings,
+    FolderViews,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum Streak {
     #[default]
     Armed,
@@ -28,11 +35,19 @@ enum Streak {
 /// Tells the user once per failure streak that changes are not being saved.
 #[derive(Default)]
 pub(super) struct SaveNotices {
+    subject: SaveSubject,
     windows: RefCell<Vec<glib::WeakRef<gtk::Window>>>,
     streak: Rc<Cell<Streak>>,
 }
 
 impl SaveNotices {
+    pub(super) fn for_folder_views() -> Self {
+        Self {
+            subject: SaveSubject::FolderViews,
+            ..Self::default()
+        }
+    }
+
     pub(super) fn register(&self, window: &gtk::Window) {
         let mut windows = self.windows.borrow_mut();
         windows.retain(|candidate| candidate.upgrade().is_some());
@@ -60,7 +75,7 @@ impl SaveNotices {
             return;
         };
         self.streak.set(Streak::Pending);
-        let (title, detail) = notice_text(problem, path, reason);
+        let (title, detail) = notice_text(self.subject, problem, path, reason);
         let streak = self.streak.clone();
         let window = window.downgrade();
         // Opened after the failing setter returns rather than inside its call stack.
@@ -88,7 +103,12 @@ impl SaveNotices {
 }
 
 /// `reason` is already localized for the slot after a colon.
-fn notice_text(problem: SaveProblem, path: &Path, reason: &str) -> (String, String) {
+fn notice_text(
+    subject: SaveSubject,
+    problem: SaveProblem,
+    path: &Path,
+    reason: &str,
+) -> (String, String) {
     // The error text may carry a multi-line source excerpt; the log keeps it whole.
     let reason = reason
         .lines()
@@ -96,9 +116,17 @@ fn notice_text(problem: SaveProblem, path: &Path, reason: &str) -> (String, Stri
         .unwrap_or_default()
         .trim_end_matches('.');
     let path = path.display();
+    let title = crate::i18n::tr(match (subject, problem) {
+        (SaveSubject::Settings, SaveProblem::WriteFailed) => "Settings can't be saved",
+        (SaveSubject::Settings, SaveProblem::UnreadableAtStartup) => "Settings file can't be read",
+        (SaveSubject::FolderViews, SaveProblem::WriteFailed) => "Folder settings can't be saved",
+        (SaveSubject::FolderViews, SaveProblem::UnreadableAtStartup) => {
+            "Folder settings file can't be read"
+        }
+    });
     match problem {
         SaveProblem::WriteFailed => (
-            crate::i18n::tr("Settings can't be saved"),
+            title,
             rust_i18n::t!(
                 "Strata couldn't write “%{path}”: %{reason}. It tries again with each change.",
                 path = path,
@@ -107,7 +135,7 @@ fn notice_text(problem: SaveProblem, path: &Path, reason: &str) -> (String, Stri
             .into_owned(),
         ),
         SaveProblem::UnreadableAtStartup => (
-            crate::i18n::tr("Settings file can't be read"),
+            title,
             rust_i18n::t!(
                 "Strata couldn't read “%{path}” when it started: %{reason}. To keep the file as it is, Strata won't save over it. Fix or remove the file, then restart Strata.",
                 path = path,

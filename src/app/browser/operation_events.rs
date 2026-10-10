@@ -307,6 +307,10 @@ impl Browser {
         completion.record_trash_undo(&event, push_pending_undo);
         self.finish_transfer(&mut completion, &event);
         if completion.deleting {
+            let removed = deleted_locations(&event);
+            if !removed.is_empty() {
+                self.emit(BrowserEvent::LocationsRemoved { locations: removed });
+            }
             self.emit(BrowserEvent::DeletionFinished {
                 succeeded: matches!(&event, OperationEvent::Deleted { .. }),
             });
@@ -369,6 +373,21 @@ impl Browser {
         );
         for location in &moved {
             self.retire_recent_target(location);
+        }
+        let relocations: Vec<(Location, Location)> = completion
+            .destination
+            .as_ref()
+            .map(|destination| {
+                moved
+                    .iter()
+                    .filter_map(|source| {
+                        Some((source.clone(), source.transfer_target(destination)?))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        if !relocations.is_empty() {
+            self.emit(BrowserEvent::LocationsRelocated { moves: relocations });
         }
         self.emit(BrowserEvent::TransferFinished {
             moved_locations: if completion.undoing {

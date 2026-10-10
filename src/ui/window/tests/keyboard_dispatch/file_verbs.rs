@@ -317,9 +317,9 @@ fn sorting_of(browser: &crate::app::Browser, depth: usize) -> (SortKey, SortDire
 }
 
 #[test]
-fn tenxer_sort_chord_sorts_the_focused_pane_and_saves_the_default() {
+fn tenxer_sort_chord_sorts_the_focused_pane_and_remembers_it_for_the_folder() {
     crate::test_support::gtk_test(
-        "ui::window::tests::keyboard_dispatch::file_verbs::tenxer_sort_chord_sorts_the_focused_pane_and_saves_the_default",
+        "ui::window::tests::keyboard_dispatch::file_verbs::tenxer_sort_chord_sorts_the_focused_pane_and_remembers_it_for_the_folder",
         || {
             let fixture = KeyboardFixture::new();
             let directory = fixture._directory.path().to_path_buf();
@@ -352,9 +352,14 @@ fn tenxer_sort_chord_sorts_the_focused_pane_and_saves_the_default() {
             );
             plain(&fixture, Key::Escape);
 
-            let saved = || {
-                let saved = PreferenceManager::shared().sort_preferences();
-                (saved.sort_key, saved.sort_direction)
+            PreferenceManager::shared().set_remember_folder_views(true);
+            let folder = browser.location_at(1).expect("sorted folder");
+            let default = PreferenceManager::shared().default_sort();
+            let saved = || match PreferenceManager::shared().folder_sort(&folder) {
+                crate::model::FolderSort::Saved(sort_key, sort_direction) => {
+                    (sort_key, sort_direction)
+                }
+                _ => PreferenceManager::shared().default_sort(),
             };
             for (key, shift, sorting, order) in [
                 (
@@ -397,7 +402,12 @@ fn tenxer_sort_chord_sorts_the_focused_pane_and_saves_the_default() {
                 sort(&fixture, key, shift);
                 wait_until(|| sorting_of(&browser, 1) == sorting && names_at(&browser, 1) == order);
                 wait_until(|| fixture.view.item_view_has_focus());
-                assert_eq!(saved(), sorting, "{key:?} saves the default");
+                assert_eq!(saved(), sorting, "{key:?} is remembered for the folder");
+                assert_eq!(
+                    PreferenceManager::shared().default_sort(),
+                    default,
+                    "{key:?} leaves the default"
+                );
                 assert_eq!(
                     focused_name(&browser),
                     "gamma.md",

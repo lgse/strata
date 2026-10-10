@@ -413,6 +413,16 @@ impl Location {
     }
 }
 
+/// How a column's folder takes part in per-folder sorting.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FolderSort {
+    /// Not remembered per folder (remote, Trash, virtual roots): the column keeps its own sort.
+    Unremembered,
+    /// Remembered per folder but not set: the default sort applies.
+    Default,
+    Saved(SortKey, SortDirection),
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SortKey {
     /// Camera-library-local streaming order; never a saved folder default.
