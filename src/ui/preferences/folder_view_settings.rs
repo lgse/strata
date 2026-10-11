@@ -221,13 +221,8 @@ impl PreferenceManager {
             return;
         }
         self.save_preferences();
-        let sort = Some((sort_key, sort_direction));
         self.change_folder_views(Affects::Sorts, |views| {
-            views.update_all(|view| {
-                if view.sort == sort {
-                    view.sort = None;
-                }
-            })
+            views.prune_default_sort((sort_key, sort_direction))
         });
     }
 
@@ -275,11 +270,7 @@ impl PreferenceManager {
         let size = size.clamp(MIN_ICONS_THUMBNAIL_SIZE, MAX_ICONS_THUMBNAIL_SIZE);
         self.set_icons_thumbnail_size(size);
         self.change_folder_views(Affects::IconsSizesOnly, |views| {
-            views.update_all(|view| {
-                if view.icons_size == Some(size) {
-                    view.icons_size = None;
-                }
-            })
+            views.prune_default_icons_size(size)
         });
     }
 
