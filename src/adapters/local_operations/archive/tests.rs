@@ -1018,6 +1018,38 @@ fn single_root_extraction_lands_verbatim() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
+fn extraction_reports_published_locations_for_undo() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let destination = root.path().join("destination");
+    fs::create_dir(&destination)?;
+    fs::write(destination.join("readme.txt"), b"original")?;
+
+    let archive = root.path().join("note.zip");
+    write_zip_stored(&archive, &[("readme.txt", b"extracted")])?;
+    let events = run_extraction(ExtractRequest {
+        id: OperationRequestId(7),
+        entry: test_file_entry(&archive),
+        destination: Location::local(&destination),
+        created_destination: false,
+        password: None,
+    });
+
+    let Some(OperationEvent::Extracted { created, .. }) = events.last() else {
+        panic!("expected extraction, got {events:?}");
+    };
+    assert_eq!(
+        created.as_slice(),
+        &[Location::local(destination.join("readme (2).txt"))],
+        "undo must target the published rename, not the pre-existing file"
+    );
+    assert_eq!(fs::read(destination.join("readme.txt"))?, b"original");
+    Ok(())
+}
+
+#[test]
 fn a_bundle_may_share_its_name_with_an_extracted_root() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()

@@ -386,6 +386,7 @@ pub enum OperationEvent {
     Extracted {
         request_id: OperationRequestId,
         first_name: Option<String>,
+        created: Vec<Location>,
     },
     ArchiveStarted {
         request_id: OperationRequestId,

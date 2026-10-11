@@ -43,6 +43,7 @@ use extraction::ArchiveOutcome;
 use gtk::{gio, glib};
 use std::{
     collections::HashSet,
+    ffi::OsStr,
     path::Path,
     rc::Rc,
     sync::{
@@ -337,6 +338,10 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
         match result {
             Ok(Ok(ArchiveOutcome::Completed(first_name))) => emit(OperationEvent::Extracted {
                 request_id: request.id,
+                created: first_name
+                    .iter()
+                    .filter_map(|name| destination.child(OsStr::new(name)))
+                    .collect(),
                 first_name,
             }),
             Ok(Ok(ArchiveOutcome::Cancelled {

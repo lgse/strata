@@ -837,6 +837,7 @@ impl OperationProvider for ImmediateOperationProvider {
         emit(OperationEvent::Extracted {
             request_id: request.id,
             first_name: None,
+            created: Vec::new(),
         });
         LoadHandle::new(|| {})
     }

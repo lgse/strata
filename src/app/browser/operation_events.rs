@@ -567,7 +567,14 @@ impl Browser {
                     select_name: archive_name,
                 });
             }
-            OperationEvent::Extracted { first_name, .. } => {
+            OperationEvent::Extracted {
+                first_name,
+                created,
+                ..
+            } => {
+                if !completion.undoing {
+                    push_pending_undo(UndoEntry::Copy(created));
+                }
                 self.emit(BrowserEvent::ArchiveCompleted {
                     select_name: first_name.unwrap_or_default(),
                 });

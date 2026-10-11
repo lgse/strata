@@ -2096,7 +2096,11 @@ fn members_without_a_usable_mode_keep_the_default_permissions() -> Result<(), Bo
             assert_mode_and_time(&extracted, 0o666, dos_default, &context)?;
         } else {
             let modified = u64::try_from(fs::metadata(&extracted)?.mtime())?;
-            assert!((before..=after).contains(&modified), "{context}");
+            // File timestamps use the kernel's coarse clock, which can trail `now()`.
+            assert!(
+                (before.saturating_sub(1)..=after).contains(&modified),
+                "{context}"
+            );
             assert_eq!(
                 fs::metadata(&extracted)?.permissions().mode() & 0o7777,
                 expected_mode(0o666),
