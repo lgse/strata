@@ -5,79 +5,26 @@
 
 use std::{
     cell::{Cell, RefCell},
-    collections::{HashMap, VecDeque},
+    collections::HashMap,
     path::{Path, PathBuf},
     rc::Rc,
 };
 
 use gtk::glib;
 
-use crate::services::TrashedOriginal;
+use crate::{model::rebase_path, services::TrashedOriginal};
 
-use super::{PreferenceManager, Preferences};
-
-/// Trashed customization keys kept for Put back or undo; the oldest go first.
-const TRASHED_KEYS_LIMIT: usize = 10_000;
+use super::{PreferenceManager, Preferences, trashed::TrashedValues};
 
 #[derive(Default)]
 pub(super) struct ItemCustomizationState {
-    trashed: RefCell<TrashedCustomizations>,
+    trashed: RefCell<TrashedValues<TrashedCustomizations>>,
     save_scheduled: Cell<bool>,
 }
 
-/// Customizations of trashed items, kept in memory for this session only.
-#[derive(Default)]
 struct TrashedCustomizations {
-    items: VecDeque<TrashedItem>,
-    keys: usize,
-}
-
-struct TrashedItem {
-    root: PathBuf,
-    identity: TrashedOriginal,
     folder_colors: Vec<(String, String)>,
     custom_icons: Vec<(String, String)>,
-}
-
-impl TrashedItem {
-    fn keys(&self) -> usize {
-        self.folder_colors.len() + self.custom_icons.len()
-    }
-}
-
-impl TrashedCustomizations {
-    /// Two live items never share an identity, so an older entry with this
-    /// identity belongs to an item that has left Trash and whose inode was reused.
-    fn forget_identity(&mut self, identity: TrashedOriginal) {
-        let keys = &mut self.keys;
-        self.items.retain(|item| {
-            let keep = item.identity != identity;
-            if !keep {
-                *keys -= item.keys();
-            }
-            keep
-        });
-    }
-
-    fn push(&mut self, item: TrashedItem) {
-        self.keys += item.keys();
-        self.items.push_back(item);
-        while self.keys > TRASHED_KEYS_LIMIT && self.items.len() > 1 {
-            if let Some(oldest) = self.items.pop_front() {
-                self.keys -= oldest.keys();
-            }
-        }
-    }
-
-    fn take(&mut self, root: &Path, identity: TrashedOriginal) -> Option<TrashedItem> {
-        let index = self
-            .items
-            .iter()
-            .position(|item| item.root == root && item.identity == identity)?;
-        let item = self.items.remove(index)?;
-        self.keys -= item.keys();
-        Some(item)
-    }
 }
 
 impl PreferenceManager {
@@ -128,16 +75,19 @@ impl PreferenceManager {
             }
             let folder_colors = take_within(&mut preferences.folder_colors, &root);
             let custom_icons = take_within(&mut preferences.custom_icons, &root);
-            let changed = !folder_colors.is_empty() || !custom_icons.is_empty();
-            if let Some(identity) = trash_identity.filter(|_| changed) {
-                trashed.push(TrashedItem {
-                    root: root.clone(),
+            let keys = folder_colors.len() + custom_icons.len();
+            if let Some(identity) = trash_identity.filter(|_| keys > 0) {
+                trashed.keep(
+                    root.clone(),
                     identity,
-                    folder_colors,
-                    custom_icons,
-                });
+                    TrashedCustomizations {
+                        folder_colors,
+                        custom_icons,
+                    },
+                    keys,
+                );
             }
-            changed
+            keys > 0
         };
         if changed {
             self.finish_item_customization_change(&[root]);
@@ -148,16 +98,14 @@ impl PreferenceManager {
     /// item now back at `root`; another item restored there gets nothing.
     pub fn restore_item_customizations(self: &Rc<Self>, root: &Path) {
         let root = key_path(root);
-        let mut trashed = self.item_customizations.trashed.borrow_mut();
-        if !trashed.items.iter().any(|item| item.root == root) {
-            return;
-        }
-        let Some(item) =
-            TrashedOriginal::at_path(&root).and_then(|identity| trashed.take(&root, identity))
-        else {
+        let item = self
+            .item_customizations
+            .trashed
+            .borrow_mut()
+            .take_restored(&root);
+        let Some(item) = item else {
             return;
         };
-        drop(trashed);
         {
             let mut preferences = self.preferences.borrow_mut();
             preferences.folder_colors.extend(item.folder_colors);
@@ -245,11 +193,9 @@ fn relocate(map: &mut HashMap<String, String>, from: &Path, to: &Path, merged: b
 }
 
 fn rebased_key(key: &str, from: &Path, to: &Path) -> Option<String> {
-    let suffix = Path::new(key).strip_prefix(from).ok()?;
-    let rebased = if suffix.as_os_str().is_empty() {
-        to.to_path_buf()
-    } else {
-        to.join(suffix)
-    };
-    Some(rebased.to_string_lossy().into_owned())
+    Some(
+        rebase_path(Path::new(key), from, to)?
+            .to_string_lossy()
+            .into_owned(),
+    )
 }

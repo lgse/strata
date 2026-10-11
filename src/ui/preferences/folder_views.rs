@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashSet},
     fs, io,
     path::{Component, Components, Path, PathBuf},
 };
@@ -19,6 +19,8 @@ pub(in crate::ui) use keys::{holds_mount_points, key_for_location};
 
 pub(in crate::ui) const FOLDER_VIEWS_LIMIT: usize = 5_000;
 const VERSION: i64 = 1;
+/// TOML integers are signed, so use times stop here rather than fail to save.
+const MAX_USED: u64 = i64::MAX as u64;
 
 /// A local folder by absolute path, or a folder on a removable drive by its
 /// filesystem UUID and path inside the drive, so it survives remounting.
@@ -56,11 +58,12 @@ impl FolderKey {
         }
     }
 
-    fn ancestors(&self) -> impl Iterator<Item = Self> + '_ {
+    /// Whether `other` is this folder or inside it. Keys order by path
+    /// components, so the folders inside one sort right after it.
+    fn contains(&self, other: &Self) -> bool {
         let (uuid, path) = self.parts();
-        path.ancestors()
-            .filter(move |ancestor| uuid.is_some() || !ancestor.as_os_str().is_empty())
-            .map(move |ancestor| Self::with_path(uuid, ancestor.to_path_buf()))
+        let (other_uuid, other_path) = other.parts();
+        uuid == other_uuid && other_path.starts_with(path)
     }
 
     fn rebased(&self, from: &Self, to: &Self) -> Option<Self> {
@@ -104,11 +107,20 @@ struct Entry {
     used: u64,
 }
 
+/// Values taken out with a trashed folder, to put back if it is restored.
+pub(in crate::ui) struct TakenViews(Vec<(FolderKey, Entry)>);
+
+impl TakenViews {
+    pub(in crate::ui) fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
 /// Per-folder values that differ from the defaults, with a logical use clock
 /// for evicting the least recently used folders.
 #[derive(Debug, Default)]
 pub(in crate::ui) struct FolderViews {
-    entries: HashMap<FolderKey, Entry>,
+    entries: BTreeMap<FolderKey, Entry>,
     clock: u64,
     /// Unsaved changes, kept so a save can merge them over what another Strata
     /// process (such as the portal chooser) wrote in the meantime.
@@ -134,12 +146,35 @@ impl FolderViews {
         self.entries.is_empty()
     }
 
+    pub(in crate::ui) fn has_within(&self, root: &FolderKey) -> bool {
+        self.entries
+            .range(root..)
+            .next()
+            .is_some_and(|(key, _)| root.contains(key))
+    }
+
+    fn keys_within(&self, root: &FolderKey) -> Vec<FolderKey> {
+        self.entries
+            .range(root..)
+            .map(|(key, _)| key)
+            .take_while(|key| root.contains(key))
+            .cloned()
+            .collect()
+    }
+
+    fn tick(&mut self) -> u64 {
+        self.clock = (self.clock + 1).min(MAX_USED);
+        self.clock
+    }
+
     pub(in crate::ui) fn touch(&mut self, key: &FolderKey) -> bool {
-        let Some(entry) = self.entries.get_mut(key) else {
+        if !self.entries.contains_key(key) {
             return false;
-        };
-        self.clock += 1;
-        entry.used = self.clock;
+        }
+        let used = self.tick();
+        if let Some(entry) = self.entries.get_mut(key) {
+            entry.used = used;
+        }
         self.touched.insert(key.clone());
         true
     }
@@ -159,14 +194,8 @@ impl FolderViews {
         if view.is_empty() {
             self.entries.remove(key);
         } else {
-            self.clock += 1;
-            self.entries.insert(
-                key.clone(),
-                Entry {
-                    view,
-                    used: self.clock,
-                },
-            );
+            let used = self.tick();
+            self.entries.insert(key.clone(), Entry { view, used });
             self.evict_to(FOLDER_VIEWS_LIMIT);
         }
         true
@@ -212,41 +241,70 @@ impl FolderViews {
         changed
     }
 
-    /// Moves each `from` and every folder inside it to its destination, or
-    /// forgets them for `None`. Moved values replace stale ones already recorded
-    /// at a destination. The cost follows the saved folders, not the move count.
-    pub(in crate::ui) fn relocate(&mut self, moves: &[(FolderKey, Option<FolderKey>)]) -> bool {
-        if self.entries.is_empty() {
+    /// Moves the values of `from` and the folders inside it to `to`, or forgets
+    /// them for `None`. Like folder colors, a move drops stale values at and
+    /// under its destination, while a merge into an existing folder keeps that
+    /// folder's own values and carries the ones inside `from` over its contents.
+    pub(in crate::ui) fn relocate(
+        &mut self,
+        from: &FolderKey,
+        to: Option<&FolderKey>,
+        merged: bool,
+    ) -> bool {
+        if to == Some(from) {
             return false;
         }
-        let moves: HashMap<&FolderKey, Option<&FolderKey>> = moves
-            .iter()
-            .filter(|(from, to)| to.as_ref() != Some(from))
-            .map(|(from, to)| (from, to.as_ref()))
-            .collect();
-        let affected: Vec<(FolderKey, Option<FolderKey>)> = self
-            .entries
-            .keys()
-            .filter_map(|key| {
-                key.ancestors().find_map(|ancestor| {
-                    let to = moves.get(&ancestor)?;
-                    Some((key.clone(), to.and_then(|to| key.rebased(&ancestor, to))))
-                })
-            })
-            .collect();
-        let changed = !affected.is_empty();
-        let moved: Vec<(FolderKey, Entry)> = affected
-            .into_iter()
-            .filter_map(|(old, new)| {
-                let entry = self.entries.remove(&old)?;
-                self.changed.insert(old);
-                Some((new?, entry))
-            })
-            .collect();
+        let moving = self.keys_within(from);
+        if moving.is_empty() {
+            return false;
+        }
+        if let Some(to) = to.filter(|_| !merged) {
+            for stale in self.keys_within(to) {
+                if !from.contains(&stale) {
+                    self.entries.remove(&stale);
+                    self.changed.insert(stale);
+                }
+            }
+        }
+        let mut moved = Vec::with_capacity(moving.len());
+        for old in moving {
+            let Some(entry) = self.entries.remove(&old) else {
+                continue;
+            };
+            let new = to
+                .filter(|_| !(merged && old == *from))
+                .and_then(|to| old.rebased(from, to));
+            self.changed.insert(old);
+            moved.extend(new.map(|new| (new, entry)));
+        }
         self.changed
-            .extend(moved.iter().map(|(new, _)| new.clone()));
+            .extend(moved.iter().map(|(key, _)| key.clone()));
         self.entries.extend(moved);
-        changed
+        true
+    }
+
+    pub(in crate::ui) fn take_within(&mut self, root: &FolderKey) -> TakenViews {
+        let taken = self
+            .keys_within(root)
+            .into_iter()
+            .filter_map(|key| {
+                let entry = self.entries.remove(&key)?;
+                self.changed.insert(key.clone());
+                Some((key, entry))
+            })
+            .collect();
+        TakenViews(taken)
+    }
+
+    pub(in crate::ui) fn put_back(&mut self, taken: TakenViews) -> bool {
+        if taken.0.is_empty() {
+            return false;
+        }
+        self.changed
+            .extend(taken.0.iter().map(|(key, _)| key.clone()));
+        self.entries.extend(taken.0);
+        self.evict_to(FOLDER_VIEWS_LIMIT);
+        true
     }
 
     /// `saved`, as another process may have left it, with this store's unsaved

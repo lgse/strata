@@ -894,6 +894,26 @@ fn saved_folder_sorts_and_icon_sizes_apply_before_settings_and_follow_changes_ac
             );
             manager.set_browser_mode(BrowserMode::Columns);
             wait_until(|| sorting(&second) == Some((SortKey::Name, SortDirection::Ascending)));
+
+            let size_ascending = (SortKey::Size, SortDirection::Ascending);
+            manager.set_folder_sort(&plain_location, size_ascending.0, size_ascending.1);
+            manager.set_remember_folder_views(false);
+            manager.set_default_sort(size_ascending.0, size_ascending.1);
+            manager.set_default_sort(SortKey::Name, SortDirection::Ascending);
+            manager.set_remember_folder_views(true);
+            assert_eq!(
+                manager.resolve_folder_sort(&plain_location, false),
+                FolderSort::Saved(size_ascending.0, size_ascending.1),
+                "a default set while folder settings are off drops nothing"
+            );
+            manager.set_remember_folder_views(false);
+            manager.set_default_sort(size_ascending.0, size_ascending.1);
+            manager.set_remember_folder_views(true);
+            assert_eq!(
+                manager.resolve_folder_sort(&plain_location, false),
+                FolderSort::Default,
+                "turning folder settings back on drops values equal to the default"
+            );
         },
     );
 }
@@ -970,6 +990,26 @@ fn folder_settings_saved_by_another_process_are_merged_instead_of_overwritten() 
             assert!(
                 folder_views_file().contains(&here.display_path()),
                 "the save is retried once the file can be read again"
+            );
+
+            let mut settings: toml::Table = std::fs::read_to_string(settings_file())
+                .ok()
+                .and_then(|contents| toml::from_str(&contents).ok())
+                .unwrap_or_default();
+            settings.insert("sort_key".into(), "modified".into());
+            settings.insert("sort_direction".into(), "descending".into());
+            let staged = settings_file().with_extension("toml.new");
+            std::fs::create_dir_all(staged.parent().expect("config directory"))
+                .expect("config directory");
+            std::fs::write(&staged, toml::to_string(&settings).expect("settings"))
+                .expect("settings saved elsewhere");
+            std::fs::rename(&staged, settings_file()).expect("settings replaced");
+            wait_until(|| manager.default_sort() == (SortKey::Modified, SortDirection::Descending));
+            manager.set_folder_sort(&here, SortKey::Name, SortDirection::Ascending);
+            assert_eq!(
+                manager.resolve_folder_sort(&here, false),
+                FolderSort::Saved(SortKey::Name, SortDirection::Ascending),
+                "a sort equal to a default replaced elsewhere is still stored"
             );
         },
     );

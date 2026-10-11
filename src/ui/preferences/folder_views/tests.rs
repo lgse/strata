@@ -261,7 +261,7 @@ fn least_recently_used_folders_are_evicted_at_the_limit() {
 }
 
 #[test]
-fn relocation_carries_descendants_and_replaces_stale_destinations() {
+fn relocation_carries_descendants_and_replaces_stale_destinations_unless_merged() {
     let mut views = FolderViews::default();
     let first = sorted(SortKey::Size, SortDirection::Ascending);
     let second = sorted(SortKey::Type, SortDirection::Descending);
@@ -270,28 +270,43 @@ fn relocation_carries_descendants_and_replaces_stale_destinations() {
     set(&mut views, &local("/photos"), first);
     set(&mut views, &local("/photos/2024"), second);
     set(&mut views, &local("/photos-old"), sibling);
+    set(&mut views, &local("/photos.old"), sibling);
     set(&mut views, &local("/archive"), stale);
+    set(&mut views, &local("/archive/old"), stale);
 
-    assert!(views.relocate(&[(local("/photos"), Some(local("/archive")))]));
+    assert!(views.relocate(&local("/photos"), Some(&local("/archive")), false));
 
     assert_eq!(views.view(&local("/archive")), first);
     assert_eq!(views.view(&local("/archive/2024")), second);
+    assert_eq!(views.view(&local("/archive/old")), FolderView::default());
     assert_eq!(views.view(&local("/photos")), FolderView::default());
     assert_eq!(views.view(&local("/photos-old")), sibling);
+    assert_eq!(views.view(&local("/photos.old")), sibling);
 
-    assert!(views.relocate(&[(local("/archive"), Some(volume("1234-ABCD", "backup")))]));
-    assert_eq!(views.view(&volume("1234-ABCD", "backup")), first);
+    let backup = volume("1234-ABCD", "backup");
+    assert!(views.relocate(&local("/archive"), Some(&backup), false));
+    assert_eq!(views.view(&backup), first);
     assert_eq!(views.view(&volume("1234-ABCD", "backup/2024")), second);
-    assert!(views.relocate(&[
-        (volume("1234-ABCD", "backup"), Some(local("/restored"))),
-        (local("/unrelated"), Some(local("/elsewhere"))),
-    ]));
+    assert!(views.relocate(&backup, Some(&local("/restored")), false));
     assert_eq!(views.view(&local("/restored/2024")), second);
-    assert!(!views.relocate(&[(local("/missing"), Some(local("/elsewhere")))]));
+    assert!(!views.relocate(&local("/missing"), Some(&local("/elsewhere")), false));
+
+    set(&mut views, &local("/kept"), stale);
+    set(&mut views, &local("/kept/2024"), sibling);
+    set(&mut views, &local("/kept/own"), sibling);
+    assert!(views.relocate(&local("/restored"), Some(&local("/kept")), true));
+    assert_eq!(
+        views.view(&local("/kept")),
+        stale,
+        "a merged destination keeps its own values"
+    );
+    assert_eq!(views.view(&local("/kept/2024")), second);
+    assert_eq!(views.view(&local("/kept/own")), sibling);
+    assert_eq!(views.view(&local("/restored")), FolderView::default());
 }
 
 #[test]
-fn forgetting_drops_the_folder_and_its_descendants_only() {
+fn forgetting_or_trashing_takes_the_folder_and_its_descendants_only() {
     let mut views = FolderViews::default();
     let view = sorted(SortKey::Size, SortDirection::Ascending);
     for path in ["/work", "/work/notes", "/workshop"] {
@@ -299,12 +314,41 @@ fn forgetting_drops_the_folder_and_its_descendants_only() {
     }
     set(&mut views, &volume("1234-ABCD", "work"), view);
 
-    assert!(views.relocate(&[(local("/work"), None)]));
+    let taken = views.take_within(&local("/work"));
 
+    assert_eq!(taken.len(), 2);
     assert_eq!(views.len(), 2);
     assert_eq!(views.view(&local("/workshop")), view);
     assert_eq!(views.view(&volume("1234-ABCD", "work")), view);
-    assert!(!views.relocate(&[(local("/work"), None)]));
+    assert!(views.put_back(taken));
+    assert_eq!(views.view(&local("/work/notes")), view);
+
+    assert!(views.relocate(&local("/work"), None, false));
+    assert_eq!(views.len(), 2);
+    assert!(!views.relocate(&local("/work"), None, false));
+    assert!(!views.has_within(&local("/work")));
+    assert!(views.has_within(&local("/")));
+}
+
+#[test]
+fn use_times_stop_at_the_largest_value_the_file_can_store() {
+    let (mut views, repaired) = FolderViews::parse(&format!(
+        "[[folder]]\npath = \"/busy\"\nicons_size = 64\nused = {}\n",
+        i64::MAX
+    ))
+    .expect("valid TOML");
+    assert!(!repaired);
+
+    assert!(views.touch(&local("/busy")));
+    set(
+        &mut views,
+        &local("/new"),
+        sorted(SortKey::Size, SortDirection::Ascending),
+    );
+
+    let (saved, _) =
+        FolderViews::parse(&views.to_toml().expect("still serializes")).expect("parses");
+    assert_eq!(saved.len(), 2);
 }
 
 #[test]

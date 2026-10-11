@@ -108,6 +108,13 @@ impl PreferenceChanges {
         }
     }
 
+    /// Publishes a change kept outside `Preferences`, such as folder settings,
+    /// so that a notification already running repeats for it.
+    pub(super) fn notify_unrecorded(&self, manager: &PreferenceManager) {
+        self.revision.set(self.revision.get().wrapping_add(1));
+        self.notify(manager);
+    }
+
     pub(super) fn notify(&self, manager: &PreferenceManager) {
         if self.notifying.replace(true) {
             return;

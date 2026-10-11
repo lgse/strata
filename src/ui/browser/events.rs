@@ -777,7 +777,7 @@ impl ViewState {
             BrowserEvent::ItemRelocated { from, to, merged } => {
                 customization::relocate_item_customizations(from, to, *merged);
                 crate::ui::preferences::PreferenceManager::shared()
-                    .relocate_folder_views(from, Some(to));
+                    .relocate_folder_views(from, to, *merged);
             }
             BrowserEvent::ItemRemoved {
                 location,
@@ -785,10 +785,11 @@ impl ViewState {
             } => {
                 customization::forget_item_customizations(location, *trash_identity);
                 crate::ui::preferences::PreferenceManager::shared()
-                    .relocate_folder_views(location, None);
+                    .forget_folder_views_within(location, *trash_identity);
             }
             BrowserEvent::ItemRestored { location } => {
-                customization::restore_item_customizations(location)
+                customization::restore_item_customizations(location);
+                crate::ui::preferences::PreferenceManager::shared().restore_folder_views(location);
             }
             BrowserEvent::DeletionStarted { total } => {
                 let browser = self.browser.clone();

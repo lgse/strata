@@ -143,8 +143,10 @@ List column widths stay application-wide.
 A pane's sort menu shows **Make this the default sort** when its sort differs from
 the default and **Reset to default sort** when the folder has its own sort; the
 thumbnail popover has the matching size actions. Making a value the default leaves
-other folders' values alone, except those now equal to it, which are dropped.
-**Forget all folder settings** clears every saved value.
+other folders' values alone, except those now equal to it, which are dropped. With
+per-folder settings off, a new default drops nothing; turning them back on drops
+the values that equal the defaults at that point. **Forget all folder settings**
+clears every saved value.
 
 Local folders are keyed by path and folders on removable drives by filesystem UUID
 plus their path inside the drive, so values survive remounting; drives read through
@@ -153,13 +155,15 @@ local. Remote shares, other FUSE filesystems, Trash, Recent, Camera Photos, and
 paths that are not valid UTF-8 are not remembered: their sort stays with the open
 column, and a size change lasts while the folder is shown. Renames and moves
 performed in Strata, including undo and redo, carry a folder's values and those of
-the folders inside it; deleting or trashing in Strata, including a deletion moved
-to the background, drops them. Opening a local folder that was deleted also
-drops them, but only when its parent still lists other entries and holds no mount
-points, so the folders of a drive that is not mounted yet keep their values.
-Changes made by other applications leave entries that the least-recently-used
-limit of 5,000 folders eventually evicts; opening a folder counts as using it,
-while re-sorting open columns does not.
+the folders inside it, following the Replace, Merge, Trash, Put back, and undo
+rules of folder colors (see [Consumers and intentional
+scopes](#consumers-and-intentional-scopes)); permanently deleting in Strata,
+including a deletion moved to the background, drops them. Opening a local folder
+that was deleted also drops them, but only when its parent still lists other
+entries and holds no mount points, so the folders of a drive that is not mounted
+yet keep their values. Changes made by other applications leave entries that the
+least-recently-used limit of 5,000 folders eventually evicts; opening a folder
+counts as using it, while re-sorting open columns does not.
 
 Values live in `$XDG_STATE_HOME/strata/folder-views.toml` (normally
 `~/.local/state/strata/folder-views.toml`), never in `settings.toml` or in the
@@ -167,7 +171,8 @@ folders themselves. Writes are batched, so a burst of changes such as a slider d
 is one write, and never block the click that made them; pending changes are written
 when Strata or the portal chooser quits. Saves from another Strata process, such as
 the portal chooser, are merged instead of overwritten, open views follow them, and
-**Forget all folder settings** clears them too. The file follows the
+**Forget all folder settings** clears them too. Open views also follow default
+sort and size changes saved by another Strata process. The file follows the
 `settings.toml` recovery rules: a missing file starts empty; an unreadable file,
 invalid TOML, or an unknown `version` uses no saved values, logs a warning, and is
 never overwritten during that session, with a "Folder settings file can't be read"

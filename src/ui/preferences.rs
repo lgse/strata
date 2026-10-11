@@ -4,6 +4,7 @@ use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
     fs, io,
+    os::unix::fs::MetadataExt,
     path::{Component, Path, PathBuf},
     rc::Rc,
 };
@@ -29,6 +30,7 @@ mod folder_views;
 mod item_customizations;
 mod save_notice;
 mod text_size;
+mod trashed;
 pub(in crate::ui) use bindings::notify_live;
 pub(crate) use folder_view_settings::flush_pending_folder_views;
 pub use text_size::TextSize;
@@ -430,6 +432,8 @@ pub struct PreferenceManager {
     startup_locale: &'static str,
     changes: bindings::PreferenceChanges,
     persistence_dirty: Cell<bool>,
+    /// The settings file as this process last wrote or read it.
+    settings_synced: Cell<Option<FileStamp>>,
     /// Why saving is off for this session: the file existed but could not be read.
     load_failure: Option<io::Error>,
     save_notices: save_notice::SaveNotices,
@@ -452,6 +456,7 @@ impl PreferenceManager {
     }
 
     fn load() -> Rc<Self> {
+        let settings_synced = file_stamp(&settings_path());
         let (mut preferences, load_failure) = match read_preferences() {
             Ok(preferences) => (preferences, None),
             Err(error) => {
@@ -489,6 +494,7 @@ impl PreferenceManager {
             startup_interface_renderer: preferences.interface_renderer,
             changes: bindings::PreferenceChanges::new(preferences.clone()),
             persistence_dirty: Cell::new(false),
+            settings_synced: Cell::new(settings_synced),
             load_failure,
             save_notices: save_notice::SaveNotices::default(),
             folder_views: std::cell::OnceCell::new(),
@@ -1462,6 +1468,7 @@ impl PreferenceManager {
         });
         if result.is_ok() {
             self.persistence_dirty.set(false);
+            self.settings_synced.set(file_stamp(&path));
         }
         if changed {
             self.changes.notify(self);
@@ -1472,6 +1479,20 @@ impl PreferenceManager {
             self.save_notices.write_failed(&path, &error);
         }
     }
+}
+
+type FileStamp = (u64, i64, i64, u64);
+
+/// Tells this process's last write or read of a file apart from another
+/// process's later write.
+fn file_stamp(path: &Path) -> Option<FileStamp> {
+    let metadata = fs::metadata(path).ok()?;
+    Some((
+        metadata.ino(),
+        metadata.mtime(),
+        metadata.mtime_nsec(),
+        metadata.len(),
+    ))
 }
 
 fn read_state_file(path: &Path) -> io::Result<Option<String>> {
