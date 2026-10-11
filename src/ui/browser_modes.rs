@@ -1361,7 +1361,6 @@ impl ModeViews {
         }
     }
 
-    /// The location of the folder an Icons pane shows or would show.
     pub fn icons_location(&self) -> Option<crate::model::Location> {
         self.browser.location_at(self.browser.active_depth()?)
     }

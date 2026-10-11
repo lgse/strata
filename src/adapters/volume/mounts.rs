@@ -55,7 +55,6 @@ impl MountTable {
             .is_some_and(|fs_type| fs_type != "fuseblk" && is_remote_fs_type(fs_type))
     }
 
-    /// Whether a filesystem is mounted directly inside `directory`.
     pub(crate) fn has_mount_inside(&self, directory: &Path) -> bool {
         self.entries
             .iter()

@@ -115,7 +115,6 @@ fn path_has_encoded_slash(path: &str) -> bool {
     })
 }
 
-/// `path` moved along with `from` to `to`, or `None` when it is not inside `from`.
 pub(crate) fn rebase_path(path: &Path, from: &Path, to: &Path) -> Option<PathBuf> {
     let suffix = path.strip_prefix(from).ok()?;
     Some(if suffix.as_os_str().is_empty() {
@@ -451,7 +450,6 @@ impl SortKey {
         }
     }
 
-    /// Device order and Recency belong to one library and are never saved.
     pub(crate) fn stored_name(self) -> Option<&'static str> {
         match self {
             Self::Name => Some("name"),

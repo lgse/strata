@@ -1182,8 +1182,7 @@ impl NavigationState {
     }
 
     /// What a column's preferences become after its folder's sort or the
-    /// application-wide folders-first choice changed. Unremembered folders keep
-    /// their own sort, and Recent keeps its fixed order.
+    /// application-wide folders-first choice changed. Recent keeps its fixed order.
     pub fn synchronized_preferences(&self, depth: usize) -> Option<ViewPreferences> {
         let column = self.columns.get(depth)?;
         let mut preferences = column.preferences;
@@ -1202,7 +1201,6 @@ impl NavigationState {
     }
 
     /// For a column still loading: its load sorts with these once it finishes.
-    /// Returns whether the column was loading.
     pub fn set_loading_column_preferences(
         &mut self,
         depth: usize,

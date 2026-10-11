@@ -56,7 +56,6 @@ impl FolderKey {
         }
     }
 
-    /// This folder, then each folder containing it on the same filesystem key.
     fn ancestors(&self) -> impl Iterator<Item = Self> + '_ {
         let (uuid, path) = self.parts();
         path.ancestors()
@@ -81,7 +80,6 @@ fn plain_names(mut components: Components<'_>) -> bool {
         && components.all(|component| matches!(component, Component::Normal(_)))
 }
 
-/// `path` normalized, when it is absolute and can be remembered.
 fn local_path(path: &Path) -> Option<PathBuf> {
     let mut components = path.components();
     (components.next() == Some(Component::RootDir) && plain_names(components))
@@ -136,7 +134,6 @@ impl FolderViews {
         self.entries.is_empty()
     }
 
-    /// Returns whether the folder has an entry whose use time advanced.
     pub(in crate::ui) fn touch(&mut self, key: &FolderKey) -> bool {
         let Some(entry) = self.entries.get_mut(key) else {
             return false;
@@ -191,7 +188,6 @@ impl FolderViews {
         })
     }
 
-    /// Applies `change` to every entry, dropping entries left empty.
     fn update_all(&mut self, mut change: impl FnMut(&mut FolderView)) -> bool {
         let mut changed = Vec::new();
         self.entries.retain(|key, entry| {

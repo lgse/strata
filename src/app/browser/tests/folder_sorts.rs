@@ -8,7 +8,6 @@ use crate::{app::navigation::FolderSortResolver, model::FolderSort};
 type SavedSorts = Rc<RefCell<HashMap<Location, FolderSort>>>;
 type ReportedSorts = Rc<RefCell<Vec<(Location, SortKey, SortDirection)>>>;
 
-/// Unlisted locations behave like remembered folders without a saved sort.
 fn resolver(saved: &SavedSorts) -> FolderSortResolver {
     let saved = saved.clone();
     Rc::new(move |location: &Location, _| {

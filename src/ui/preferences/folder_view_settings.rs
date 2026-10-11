@@ -212,7 +212,6 @@ impl PreferenceManager {
         self.sort_preferences().sort()
     }
 
-    /// Folders whose saved sort now matches the default stop storing it.
     pub(in crate::ui) fn set_default_sort(&self, sort_key: SortKey, sort_direction: SortDirection) {
         if !store_sort(
             &mut self.preferences.borrow_mut(),
@@ -239,8 +238,7 @@ impl PreferenceManager {
             .unwrap_or_else(|| self.icons_thumbnail_size())
     }
 
-    /// Without per-folder settings the size is the default. A folder that is not
-    /// remembered keeps a changed size only while it is shown.
+    /// A folder that is not remembered keeps a changed size only while it is shown.
     pub(in crate::ui) fn set_folder_icons_size(&self, location: Option<&Location>, size: i32) {
         let size = size.clamp(MIN_ICONS_THUMBNAIL_SIZE, MAX_ICONS_THUMBNAIL_SIZE);
         if !self.remember_folder_views() {
@@ -265,7 +263,6 @@ impl PreferenceManager {
         });
     }
 
-    /// Folders whose saved size now matches the default stop storing it.
     pub(in crate::ui) fn set_default_icons_size(&self, size: i32) {
         let size = size.clamp(MIN_ICONS_THUMBNAIL_SIZE, MAX_ICONS_THUMBNAIL_SIZE);
         self.set_icons_thumbnail_size(size);
