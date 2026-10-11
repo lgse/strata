@@ -1200,7 +1200,9 @@ impl NavigationState {
         Some(preferences)
     }
 
-    /// For a column still loading: its load sorts with these once it finishes.
+    /// For a column still loading with nothing listed yet: its load sorts with
+    /// these once it finishes. Listed entries need a sort, because later
+    /// batches merge into them in order.
     pub fn set_loading_column_preferences(
         &mut self,
         depth: usize,
@@ -1209,7 +1211,7 @@ impl NavigationState {
         let Some(column) = self
             .columns
             .get_mut(depth)
-            .filter(|column| column.load_state == LoadState::Loading)
+            .filter(|column| column.load_state == LoadState::Loading && column.entries.is_empty())
         else {
             return false;
         };

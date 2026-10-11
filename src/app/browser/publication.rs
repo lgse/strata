@@ -44,6 +44,10 @@ pub(super) struct StagedPublish {
 }
 
 impl StagedPublish {
+    fn finishes_sorting(&self) -> bool {
+        matches!(self.plan.terminal, PublishTerminal::SortingFinished)
+    }
+
     fn next_chunk(&self, available: usize) -> (usize, usize) {
         let end = (self.published + self.chunk_size)
             .min(available)
@@ -158,8 +162,31 @@ impl Browser {
         self.complete_publication(depth, staged.plan);
     }
 
+    pub(super) fn publishing_sort(&self, depth: usize) -> bool {
+        self.staged_publishes
+            .borrow()
+            .get(&depth)
+            .is_some_and(StagedPublish::finishes_sorting)
+    }
+
+    /// An applied sort finishes when its rows publish, so dropping them
+    /// before the last ends the sort.
+    fn drop_staged_publish(&self, depth: usize) {
+        let staged = self.staged_publishes.borrow_mut().remove(&depth);
+        if staged.as_ref().is_some_and(StagedPublish::finishes_sorting)
+            && self.pending_sort_applied.get()
+            && self
+                .pending_sort
+                .get()
+                .is_some_and(|(_, pending_depth)| pending_depth == depth)
+        {
+            self.pending_sort.set(None);
+            self.finish_sorting(depth);
+        }
+    }
+
     pub(super) fn cancel_publish(&self, depth: usize) {
-        self.staged_publishes.borrow_mut().remove(&depth);
+        self.drop_staged_publish(depth);
         self.preserving_refreshes.borrow_mut().remove(&depth);
         if self.staged_publishes.borrow().is_empty()
             && let Some(source) = self.publish_timer.borrow_mut().take()
@@ -212,7 +239,7 @@ impl Browser {
         let stale =
             current.is_some_and(|id| self.state.borrow().request_id_for_depth(depth) != Some(id));
         if stale {
-            self.staged_publishes.borrow_mut().remove(&depth);
+            self.drop_staged_publish(depth);
         }
         stale
     }
@@ -232,9 +259,7 @@ impl Browser {
 
     fn publish_next_chunk(self: &Rc<Self>, depth: usize) {
         match self.next_publication_chunk(depth) {
-            None => {
-                self.staged_publishes.borrow_mut().remove(&depth);
-            }
+            None => self.drop_staged_publish(depth),
             Some((_, 0)) => {
                 let staged = self.staged_publishes.borrow_mut().remove(&depth);
                 if let Some(staged) = staged {

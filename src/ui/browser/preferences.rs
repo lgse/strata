@@ -32,9 +32,10 @@ impl BrowserView {
         self.bind_view_preference(
             manager,
             move |manager| {
-                let location = weak
-                    .upgrade()
-                    .and_then(|state| state.mode_views.borrow().icons_location());
+                let location = weak.upgrade().and_then(|state| {
+                    let browser = &state.browser;
+                    browser.location_at(browser.active_depth()?)
+                });
                 let size = manager.icons_size_for(location.as_ref());
                 (location, size)
             },

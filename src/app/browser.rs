@@ -1887,11 +1887,14 @@ impl Browser {
     }
 
     /// A fresh generation per sort, so a stale timer or fill cannot pass for a newer sort.
+    /// An applied sort has already finished, or finishes when its rows publish.
     fn begin_sort(&self, depth: usize) -> u64 {
         let generation = self.sort_generation.get().wrapping_add(1);
         self.sort_generation.set(generation);
-        self.pending_sort_applied.set(false);
-        if let Some((_, previous_depth)) = self.pending_sort.replace(Some((generation, depth))) {
+        let previous_applied = self.pending_sort_applied.replace(false);
+        if let Some((_, previous_depth)) = self.pending_sort.replace(Some((generation, depth)))
+            && !previous_applied
+        {
             self.finish_sorting(previous_depth);
         }
         self.emit(BrowserEvent::SortingStarted { depth });
@@ -4176,10 +4179,12 @@ impl Browser {
             return;
         }
         self.sort_loads.borrow_mut().remove(&depth);
-        if self
-            .pending_sort
-            .get()
-            .is_some_and(|(_, pending_depth)| pending_depth == depth)
+        // An applied sort is finished by its publication, or by cancelling it.
+        if !self.pending_sort_applied.get()
+            && self
+                .pending_sort
+                .get()
+                .is_some_and(|(_, pending_depth)| pending_depth == depth)
         {
             self.pending_sort.set(None);
             self.finish_sorting(depth);

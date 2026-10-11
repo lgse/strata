@@ -1361,10 +1361,6 @@ impl ModeViews {
         }
     }
 
-    pub fn icons_location(&self) -> Option<crate::model::Location> {
-        self.browser.location_at(self.browser.active_depth()?)
-    }
-
     fn visible_panes(&self) -> Vec<&Pane> {
         match self.mode {
             BrowserMode::Columns => Vec::new(),

@@ -113,9 +113,12 @@ impl Browser {
         });
     }
 
-    /// A sort that has not applied yet would be superseded by the next one.
+    /// A sort that has not applied, or is still publishing its rows, would be
+    /// superseded by the next one.
     fn sort_in_flight(&self) -> bool {
-        self.pending_sort.get().is_some() && !self.pending_sort_applied.get()
+        self.pending_sort.get().is_some_and(|(_, depth)| {
+            !self.pending_sort_applied.get() || self.publishing_sort(depth)
+        })
     }
 
     /// A sort still in flight wakes this again when it finishes.
@@ -135,7 +138,8 @@ impl Browser {
         });
     }
 
-    /// Also hands loading columns their new preferences, applied when the load finishes.
+    /// Also hands loading columns with nothing listed their new preferences,
+    /// applied when the load finishes.
     fn next_resync_column(&self) -> Option<(usize, ViewPreferences)> {
         let mut state = self.state.borrow_mut();
         let first = self

@@ -431,3 +431,110 @@ fn without_folder_sorts_an_explicit_sort_still_becomes_the_default() {
     browser.descend(0, Location::local("/fixture/child"));
     assert_eq!(browser.column_preferences(1), Some(sorted));
 }
+
+#[test]
+fn a_remote_folder_still_loading_resorts_its_listed_entries_for_a_new_folders_first_choice() {
+    let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let captured = CapturedLoad::default();
+    let (browser, _) = remembering_browser(
+        Rc::new(BatchReplaySource {
+            captured: captured.clone(),
+        }),
+        &Rc::default(),
+    );
+    browser.navigate(Location::uri("sftp://example.test/root"));
+    let (request_id, emit) = captured.borrow().clone().expect("remote load");
+    let entry = |name: &str, kind| FileEntry {
+        location: Location::uri(format!("sftp://example.test/root/{name}")),
+        kind,
+        ..batch_entry(name)
+    };
+    let send = |entries| {
+        emit(DirectoryEvent::Batch {
+            request_id,
+            entries,
+        });
+        browser.flush_coalesced_capped(Some(0));
+    };
+    send(vec![
+        entry("a", EntryKind::File),
+        entry("b", EntryKind::Directory),
+    ]);
+    assert_eq!(column_names(&browser, 0), ["b", "a"]);
+
+    browser.set_folders_first(0, false);
+    pump_until_settled(&browser, || column_names(&browser, 0) == ["a", "b"]);
+    send(vec![
+        entry("c", EntryKind::File),
+        entry("d", EntryKind::Directory),
+    ]);
+    emit(DirectoryEvent::Finished {
+        request_id,
+        truncated: false,
+        can_trash: None,
+        can_delete: None,
+    });
+    browser.flush_coalesced_capped(Some(0));
+
+    assert_eq!(column_names(&browser, 0), ["a", "b", "c", "d"]);
+}
+
+#[test]
+fn a_resync_waits_for_a_sort_still_publishing_its_rows() {
+    let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let captured = CapturedLoad::default();
+    let saved: SavedSorts = Rc::default();
+    let (browser, _) = remembering_browser(
+        Rc::new(BatchReplaySource {
+            captured: captured.clone(),
+        }),
+        &saved,
+    );
+    browser.navigate(Location::local("/fixture"));
+    let (request_id, emit) = captured.borrow().clone().expect("folder load");
+    emit(DirectoryEvent::Batch {
+        request_id,
+        entries: (0..600)
+            .map(|index| batch_entry(&format!("entry-{index:03}")))
+            .collect(),
+    });
+    emit(DirectoryEvent::Finished {
+        request_id,
+        truncated: false,
+        can_trash: None,
+        can_delete: None,
+    });
+    pump_until_settled(&browser, || browser.staged_publishes.borrow().is_empty());
+    let sorting_events = Rc::new(Cell::new((0, 0)));
+    let counted = sorting_events.clone();
+    browser.observe(move |event| {
+        let (started, finished) = counted.get();
+        match event {
+            BrowserEvent::SortingStarted { .. } => counted.set((started + 1, finished)),
+            BrowserEvent::SortingFinished { .. } => counted.set((started, finished + 1)),
+            _ => {}
+        }
+    });
+
+    browser.set_sort(0, SortKey::Type, SortDirection::Descending);
+    poll_until(|| browser.publishing_sort(0));
+    saved.borrow_mut().insert(
+        Location::local("/fixture"),
+        FolderSort::Saved(SortKey::Name, SortDirection::Descending),
+    );
+    browser.resync_column_sorts();
+    pump_until_settled(&browser, || {
+        sorting(&browser, 0) == Some((SortKey::Name, SortDirection::Descending))
+            && browser.staged_publishes.borrow().is_empty()
+    });
+
+    assert_eq!(
+        sorting_events.get(),
+        (2, 2),
+        "each sort finishes once, after its rows are published"
+    );
+}
