@@ -1874,14 +1874,14 @@ impl Browser {
         origin: SortOrigin,
         update: impl FnOnce(&mut ViewPreferences) + 'static,
     ) {
-        if self.state.borrow().column_preferences(depth).is_none() {
+        let Some(location) = self.location_at(depth) else {
             return;
-        }
+        };
         let generation = self.begin_sort(depth);
         let weak = Rc::downgrade(self);
         gio::glib::timeout_add_local_once(Duration::from_millis(16), move || {
             if let Some(browser) = weak.upgrade() {
-                browser.apply_debounced_sort(depth, generation, origin, update);
+                browser.apply_debounced_sort(depth, &location, generation, origin, update);
             }
         });
     }
@@ -1907,6 +1907,7 @@ impl Browser {
     fn apply_debounced_sort(
         self: &Rc<Self>,
         depth: usize,
+        location: &Location,
         generation: u64,
         origin: SortOrigin,
         update: impl FnOnce(&mut ViewPreferences),
@@ -1916,7 +1917,11 @@ impl Browser {
         }
         let result = {
             let mut state = self.state.borrow_mut();
-            let Some(mut preferences) = state.column_preferences(depth) else {
+            // The column may now show another folder, which must not take this sort.
+            let Some(mut preferences) = state
+                .column_preferences(depth)
+                .filter(|_| state.location_at(depth).as_ref() == Some(location))
+            else {
                 drop(state);
                 self.pending_sort.set(None);
                 self.finish_sorting(depth);

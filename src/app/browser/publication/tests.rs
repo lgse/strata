@@ -369,9 +369,10 @@ fn sort_paths_capture_selection_before_preference_observers() {
                 preferences: ViewPreferences::default(),
             });
         } else {
+            let location = fixture.browser.location_at(0).expect("column location");
             fixture
                 .browser
-                .apply_debounced_sort(0, 17, SortOrigin::Chosen, |_| {});
+                .apply_debounced_sort(0, &location, 17, SortOrigin::Chosen, |_| {});
         }
         assert_eq!(fixture.browser.state.borrow().columns[0].selected, Some(0));
         {

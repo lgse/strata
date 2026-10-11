@@ -133,6 +133,30 @@ fn remembered_folders_open_in_their_saved_sort_and_sorting_reports_only_that_fol
 }
 
 #[test]
+fn a_sort_chosen_just_before_its_column_shows_another_folder_is_not_saved_for_it() {
+    let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let saved = SavedSorts::default();
+    let (browser, reported) = remembering_browser(Rc::new(FakeFileSource), &saved);
+    browser.navigate(Location::local("/fixture"));
+    browser.descend(0, Location::local("/fixture/chosen"));
+
+    browser.set_sort(1, SortKey::Type, SortDirection::Descending);
+    browser.descend(0, Location::local("/fixture/other"));
+    pump_until_settled(&browser, || {
+        browser.pending_sort.get().is_none() || browser.pending_sort_applied.get()
+    });
+
+    assert_eq!(browser.location_at(1), Some(Location::local("/fixture/other")));
+    assert_eq!(
+        sorting(&browser, 1),
+        Some((SortKey::Name, SortDirection::Ascending))
+    );
+    assert!(reported.borrow().is_empty());
+}
+
+#[test]
 fn saved_and_default_changes_resync_open_columns_while_unremembered_columns_keep_their_sort() {
     let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
