@@ -196,7 +196,7 @@ impl FolderViews {
         self.entries.clear();
         self.changed.clear();
         self.touched.clear();
-        self.cleared = true;
+        self.cleared |= changed;
         changed
     }
 

@@ -182,6 +182,17 @@ fn clearing_every_value_removes_the_folder_and_unchanged_updates_report_nothing(
     assert!(views.update(&key, |current| current.sort = None));
     assert!(views.is_empty());
     assert!(!views.touch(&key));
+
+    assert!(!views.clear());
+    let saved = || {
+        let mut saved = FolderViews::default();
+        saved.update(&key, |current| *current = view);
+        saved
+    };
+    assert!(
+        views.merged_over(saved()).same_views(&saved()),
+        "clearing nothing keeps what another process saves later"
+    );
 }
 
 #[test]
@@ -434,8 +445,9 @@ fn saving_merges_unsaved_changes_over_what_another_process_wrote() {
         )
     );
 
-    let mut forgetting = FolderViews::default();
-    forgetting.clear();
+    let (mut forgetting, _) =
+        FolderViews::parse("[[folder]]\npath = \"/theirs\"\nicons_size = 160\n").expect("parsed");
+    assert!(forgetting.clear());
     set(&mut forgetting, &local("/kept"), mine);
     let (theirs, _) =
         FolderViews::parse("[[folder]]\npath = \"/theirs\"\nicons_size = 160\n").expect("parsed");
