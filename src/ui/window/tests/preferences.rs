@@ -872,8 +872,19 @@ fn saved_folder_sorts_and_icon_sizes_apply_before_settings_and_follow_changes_ac
                 FolderSort::Default
             );
             wait_until(|| icons_size(&first) == Some(128));
+            assert!(
+                !manager.has_folder_views(),
+                "a size equal to the new default is no longer stored"
+            );
             manager.set_browser_mode(BrowserMode::Columns);
             wait_until(|| sorting(&second) == Some((SortKey::Name, SortDirection::Ascending)));
+
+            manager.set_folder_sort(&sorted_location, SortKey::Size, SortDirection::Descending);
+            manager.set_default_sort(SortKey::Size, SortDirection::Descending);
+            assert!(
+                !manager.has_folder_views(),
+                "a sort equal to the new default is no longer stored"
+            );
         },
     );
 }

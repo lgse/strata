@@ -175,8 +175,23 @@ impl FolderViews {
         true
     }
 
-    /// Applies `change` to every entry, dropping entries left empty.
-    pub(in crate::ui) fn update_all(&mut self, mut change: impl FnMut(&mut FolderView)) -> bool {
+    pub(in crate::ui) fn prune_default_sort(&mut self, sort: (SortKey, SortDirection)) -> bool {
+        self.update_all(|view| {
+            if view.sort == Some(sort) {
+                view.sort = None;
+            }
+        })
+    }
+
+    pub(in crate::ui) fn prune_default_icons_size(&mut self, size: i32) -> bool {
+        self.update_all(|view| {
+            if view.icons_size == Some(size) {
+                view.icons_size = None;
+            }
+        })
+    }
+
+    fn update_all(&mut self, mut change: impl FnMut(&mut FolderView)) -> bool {
         let mut changed = Vec::new();
         self.entries.retain(|key, entry| {
             let previous = entry.view;

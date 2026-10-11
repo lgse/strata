@@ -218,11 +218,7 @@ fn defaults_prune_matching_values_without_touching_other_fields() {
         sorted(SortKey::Size, SortDirection::Ascending),
     );
 
-    assert!(views.update_all(|view| {
-        if view.sort == Some(default) {
-            view.sort = None;
-        }
-    }));
+    assert!(views.prune_default_sort(default));
 
     assert_eq!(views.len(), 2);
     assert_eq!(
@@ -236,6 +232,9 @@ fn defaults_prune_matching_values_without_touching_other_fields() {
         views.view(&local("/other-sort")),
         sorted(SortKey::Size, SortDirection::Ascending)
     );
+    assert!(!views.prune_default_icons_size(96));
+    assert!(views.prune_default_icons_size(160));
+    assert_eq!(views.len(), 1);
 }
 
 #[test]
