@@ -205,10 +205,7 @@ impl Browser {
                 }
                 self.refresh_unmonitored_operation_locations(context);
                 if job.deleting {
-                    let removed = super::deleted_locations(&event);
-                    if !removed.is_empty() {
-                        self.emit(BrowserEvent::LocationsRemoved { locations: removed });
-                    }
+                    self.emit_removed_locations(&event);
                 }
                 match event {
                     OperationEvent::Pasted { .. } => {

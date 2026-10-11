@@ -158,8 +158,7 @@ impl Browser {
             if state.column_preferences(depth) == Some(target) {
                 continue;
             }
-            if state.columns[depth].load_state == crate::app::navigation::LoadState::Loading {
-                state.set_loading_column_preferences(depth, target);
+            if state.set_loading_column_preferences(depth, target) {
                 continue;
             }
             if self

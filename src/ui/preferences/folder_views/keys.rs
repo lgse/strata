@@ -21,7 +21,6 @@ pub(in crate::ui) fn key_for_location(location: &Location) -> Option<FolderKey> 
     })
 }
 
-/// Whether a filesystem is mounted directly inside `directory`.
 pub(in crate::ui) fn holds_mount_points(directory: &Path) -> bool {
     with_mount_snapshot(|snapshot| snapshot.table.has_mount_inside(directory))
 }

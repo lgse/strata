@@ -1827,15 +1827,9 @@ impl Browser {
         if previous != preferences {
             self.notify_preferences_observers();
         }
-        if (
-            previous.sort_key,
-            previous.sort_direction,
-            previous.folders_first,
-        ) != (
-            preferences.sort_key,
-            preferences.sort_direction,
-            preferences.folders_first,
-        ) {
+        if (previous.sort(), previous.folders_first)
+            != (preferences.sort(), preferences.folders_first)
+        {
             self.resync_column_sorts();
         }
     }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::app::Browser;
-use crate::model::{SortDirection, SortKey};
+use crate::model::{FolderSort, SortDirection, SortKey};
 use crate::ui::browser::ViewState;
 use crate::ui::controls::{DefaultActions, check_menu_option, menu_option};
 use crate::ui::preferences::PreferenceManager;
@@ -188,10 +188,10 @@ pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gt
     let weak_browser = Rc::downgrade(browser);
     let checks = selected_checks.clone();
     popover.connect_map(move |_| {
-        let Some(preferences) = weak_browser
-            .upgrade()
-            .and_then(|browser| browser.column_preferences(depth))
-        else {
+        let Some(browser) = weak_browser.upgrade() else {
+            return;
+        };
+        let Some(preferences) = browser.column_preferences(depth) else {
             return;
         };
         for (key, check) in checks.borrow().iter() {
@@ -201,9 +201,7 @@ pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gt
             folders_enabled.set(preferences.folders_first);
             folders_check.set_visible(preferences.folders_first);
         }
-        if let Some(browser) = weak_browser.upgrade() {
-            sync_folder_sort_actions(&folder_actions, &browser, depth);
-        }
+        sync_folder_sort_actions(&folder_actions, &browser, depth);
     });
     let button = gtk::MenuButton::builder()
         .tooltip_text(crate::i18n::tr("Choose sort field"))
@@ -258,17 +256,17 @@ fn folder_sort_actions(
 }
 
 fn sync_folder_sort_actions(actions: &DefaultActions, browser: &Browser, depth: usize) {
-    let manager = PreferenceManager::shared();
-    let location = browser
-        .location_at(depth)
-        .filter(|_| browser.folder_sort_at(depth) != crate::model::FolderSort::Unremembered);
-    let differs = location.is_some()
-        && browser
-            .column_preferences(depth)
-            .is_some_and(|preferences| preferences.sort() != manager.default_sort());
-    let saved = location
-        .as_ref()
-        .is_some_and(|location| manager.has_folder_sort(location));
+    let (differs, saved) = match browser.folder_sort_at(depth) {
+        FolderSort::Unremembered => (false, false),
+        folder_sort => (
+            browser
+                .column_preferences(depth)
+                .is_some_and(|preferences| {
+                    preferences.sort() != PreferenceManager::shared().default_sort()
+                }),
+            matches!(folder_sort, FolderSort::Saved(..)),
+        ),
+    };
     actions.set_visible(differs, saved);
 }
 

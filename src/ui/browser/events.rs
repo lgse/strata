@@ -757,10 +757,12 @@ impl ViewState {
                 self.prune_stale_search_results();
             }
             BrowserEvent::LocationsRelocated { moves } => {
-                crate::ui::preferences::PreferenceManager::shared().relocate_folder_views(moves);
+                crate::ui::preferences::PreferenceManager::shared()
+                    .relocate_folder_views(moves.iter().map(|(from, to)| (from, Some(to))));
             }
             BrowserEvent::LocationsRemoved { locations } => {
-                crate::ui::preferences::PreferenceManager::shared().remove_folder_views(locations);
+                crate::ui::preferences::PreferenceManager::shared()
+                    .relocate_folder_views(locations.iter().map(|location| (location, None)));
             }
             BrowserEvent::FolderSortChosen {
                 location,

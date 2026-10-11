@@ -27,6 +27,12 @@ struct OperationContext {
     origin: Option<Location>,
 }
 
+#[derive(Clone, Copy)]
+enum Replay<'a> {
+    Undo(&'a UndoEntry),
+    Redo(&'a UndoEntry),
+}
+
 struct OperationCompletion {
     moving: Option<bool>,
     deleting: bool,
@@ -306,16 +312,13 @@ impl Browser {
         completion.undoing = undoing.is_some() || redoing.is_some();
         completion.record_trash_undo(&event, push_pending_undo);
         let replayed = match (&undoing, &redoing) {
-            (Some((_, entry)), _) => Some((false, entry)),
-            (_, Some((_, entry))) => Some((true, entry)),
+            (Some((_, entry)), _) => Some(Replay::Undo(entry)),
+            (_, Some((_, entry))) => Some(Replay::Redo(entry)),
             _ => None,
         };
         self.finish_transfer(&mut completion, &event, replayed);
         if completion.deleting {
-            let removed = deleted_locations(&event);
-            if !removed.is_empty() {
-                self.emit(BrowserEvent::LocationsRemoved { locations: removed });
-            }
+            self.emit_removed_locations(&event);
             self.emit(BrowserEvent::DeletionFinished {
                 succeeded: matches!(&event, OperationEvent::Deleted { .. }),
             });
@@ -343,12 +346,18 @@ impl Browser {
         self.flush_deferred_file_operation_changes(changes, false)
     }
 
-    /// `replayed` is the undo (`false`) or redo (`true`) entry this operation replays.
+    fn emit_removed_locations(&self, event: &OperationEvent) {
+        let locations = deleted_locations(event);
+        if !locations.is_empty() {
+            self.emit(BrowserEvent::LocationsRemoved { locations });
+        }
+    }
+
     fn finish_transfer(
         self: &Rc<Self>,
         completion: &mut OperationCompletion,
         event: &OperationEvent,
-        replayed: Option<(bool, &UndoEntry)>,
+        replayed: Option<Replay<'_>>,
     ) {
         let Some(moving) = completion.moving else {
             return;
@@ -382,7 +391,7 @@ impl Browser {
             self.retire_recent_target(location);
         }
         let relocations = match replayed {
-            Some((redo, entry)) => replayed_relocations(redo, entry, &moved),
+            Some(replay) => replayed_relocations(replay, &moved),
             None => completion
                 .destination
                 .as_ref()
@@ -657,23 +666,17 @@ fn moved_locations(event: &OperationEvent) -> Vec<Location> {
 }
 
 /// Undo moves each record from `current` back to `original`, and redo the reverse.
-fn replayed_relocations(
-    redo: bool,
-    entry: &UndoEntry,
-    moved: &[Location],
-) -> Vec<(Location, Location)> {
+fn replayed_relocations(replay: Replay<'_>, moved: &[Location]) -> Vec<(Location, Location)> {
+    let (Replay::Undo(entry) | Replay::Redo(entry)) = replay;
     let (UndoEntry::Move(records) | UndoEntry::Group { records, .. }) = entry else {
         return Vec::new();
     };
     let moved: HashSet<&Location> = moved.iter().collect();
     records
         .iter()
-        .map(|record| {
-            if redo {
-                (&record.original, &record.current)
-            } else {
-                (&record.current, &record.original)
-            }
+        .map(|record| match replay {
+            Replay::Undo(_) => (&record.current, &record.original),
+            Replay::Redo(_) => (&record.original, &record.current),
         })
         .filter(|(from, _)| moved.contains(from))
         .map(|(from, to)| (from.clone(), to.clone()))
