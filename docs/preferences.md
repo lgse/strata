@@ -177,7 +177,9 @@ never overwritten during that session, with a "Folder settings file can't be rea
 notice on the first change in a browser window; valid TOML keeps its valid entries
 and fields, clamps out-of-range sizes, and drops the rest on the next save; and a
 failed write keeps changes in memory, retries on the next change, and shows
-"Folder settings can't be saved" once per failure streak.
+"Folder settings can't be saved" once per failure streak. A file that becomes unreadable,
+invalid, or a newer `version` while Strata runs is not saved over either: the save
+counts as a failed write.
 
 ## Thumbnail workers
 
