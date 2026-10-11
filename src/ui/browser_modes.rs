@@ -1361,7 +1361,6 @@ impl ModeViews {
         }
     }
 
-    /// The location of the folder an Icons pane shows or would show.
     pub fn icons_location(&self) -> Option<crate::model::Location> {
         self.browser.location_at(self.browser.active_depth()?)
     }
@@ -2236,8 +2235,7 @@ fn icons_controls(browser: &Rc<Browser>, depth: usize, thumbnail_size: i32) -> I
     }
 }
 
-/// Shown for a remembered folder whose size differs from the default, which is
-/// exactly when it stores its own size.
+/// Shown only when a remembered folder stores its own size, i.e. it differs from the default.
 fn append_icons_size_actions(
     browser: &Rc<Browser>,
     depth: usize,

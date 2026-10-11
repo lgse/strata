@@ -263,8 +263,8 @@ impl NavigationPath {
     }
 }
 
-/// Resolves a folder's sort. The flag is set when a column opens the folder,
-/// which counts as using it; re-syncing open columns does not.
+/// The flag is true when a column opens the folder, which counts as using it;
+/// re-syncs pass false.
 pub type FolderSortResolver = Rc<dyn Fn(&Location, bool) -> FolderSort>;
 
 #[derive(Default)]
@@ -1181,9 +1181,6 @@ impl NavigationState {
         preferences_for_location(preferences, location)
     }
 
-    /// What a column's preferences become after its folder's sort or the
-    /// application-wide folders-first choice changed. Unremembered folders keep
-    /// their own sort, and Recent keeps its fixed order.
     pub fn synchronized_preferences(&self, depth: usize) -> Option<ViewPreferences> {
         let column = self.columns.get(depth)?;
         let mut preferences = column.preferences;

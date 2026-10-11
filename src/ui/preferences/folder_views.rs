@@ -56,7 +56,6 @@ impl FolderKey {
         }
     }
 
-    /// This folder, then each folder containing it on the same filesystem key.
     fn ancestors(&self) -> impl Iterator<Item = Self> + '_ {
         let (uuid, path) = self.parts();
         path.ancestors()
@@ -136,7 +135,7 @@ impl FolderViews {
         self.entries.is_empty()
     }
 
-    /// Returns whether the folder has an entry whose use time advanced.
+    /// `false` when the folder has no entry.
     pub(in crate::ui) fn touch(&mut self, key: &FolderKey) -> bool {
         let Some(entry) = self.entries.get_mut(key) else {
             return false;

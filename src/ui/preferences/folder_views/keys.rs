@@ -9,8 +9,7 @@ use crate::{
 
 use super::{FolderKey, local_path};
 
-/// `None` for locations that are not remembered: non-native, remote, or paths
-/// that cannot be stored.
+/// `None` for non-native locations, network shares, and paths that cannot be stored.
 pub(in crate::ui) fn key_for_location(location: &Location) -> Option<FolderKey> {
     let path = location.native_path()?;
     with_mount_snapshot(|snapshot| {

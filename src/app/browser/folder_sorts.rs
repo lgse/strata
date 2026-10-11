@@ -14,7 +14,6 @@ use crate::{
 
 use super::{Browser, BrowserEvent};
 
-/// Who asked for a sort, carried with it until it finishes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum SortOrigin {
     /// Chosen in this column: saved for its folder, or as the default when
@@ -68,15 +67,12 @@ impl Browser {
             })
     }
 
-    /// Re-sorts columns whose folder sort, default sort, or folders-first
-    /// choice changed elsewhere.
     pub fn resync_column_sorts(self: &Rc<Self>) {
         self.resync_column_sorts_from(None);
     }
 
-    /// Loaded columns re-sort from the main loop, never inside the sort or
-    /// preference callback that requested it; nothing is scheduled when no
-    /// loaded column changes.
+    /// Re-sorts from an idle callback, never inside the sort or preference
+    /// callback that requested it.
     pub(super) fn resync_column_sorts_from(self: &Rc<Self>, first: Option<usize>) {
         if first.is_some() {
             self.sort_resync.first.set(first);
@@ -139,8 +135,7 @@ impl Browser {
         });
     }
 
-    /// Columns still loading take their new preferences directly and sort when
-    /// the load finishes.
+    /// Also hands loading columns their new preferences, applied when the load finishes.
     fn next_resync_column(&self) -> Option<(usize, ViewPreferences)> {
         let mut state = self.state.borrow_mut();
         let first = self
@@ -174,8 +169,8 @@ impl Browser {
         None
     }
 
-    /// Without per-folder sorting a chosen sort becomes the default for new
-    /// columns, as before; with it, only the column's folder is reported.
+    /// Without per-folder sorts a chosen sort becomes the default; with them,
+    /// only the column's folder is reported.
     pub(super) fn record_sort(&self, depth: usize) {
         let (location, sorted, remembered) = {
             let state = self.state.borrow();

@@ -115,7 +115,7 @@ fn path_has_encoded_slash(path: &str) -> bool {
     })
 }
 
-/// `path` moved along with `from` to `to`, or `None` when it is not inside `from`.
+/// `None` when `path` is not inside `from`.
 pub(crate) fn rebase_path(path: &Path, from: &Path, to: &Path) -> Option<PathBuf> {
     let suffix = path.strip_prefix(from).ok()?;
     Some(if suffix.as_os_str().is_empty() {
@@ -418,7 +418,6 @@ impl Location {
     }
 }
 
-/// How a column's folder takes part in per-folder sorting.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FolderSort {
     /// Not remembered per folder (remote, Trash, virtual roots): the column keeps its own sort.
@@ -451,7 +450,6 @@ impl SortKey {
         }
     }
 
-    /// Device order and Recency belong to one library and are never saved.
     pub(crate) fn stored_name(self) -> Option<&'static str> {
         match self {
             Self::Name => Some("name"),

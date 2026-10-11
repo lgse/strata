@@ -55,9 +55,7 @@ impl SaveNotices {
         windows.push(window.downgrade());
     }
 
-    /// Creates the file's directory and writes it with `write`, one of the
-    /// atomic writers in `crate::storage`. Success ends a failure streak; a
-    /// failure is returned for `write_failed`.
+    /// Success ends a failure streak; the caller reports a failure through `write_failed`.
     pub(super) fn write(
         &self,
         path: &Path,

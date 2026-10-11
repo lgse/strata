@@ -254,7 +254,7 @@ pub enum BrowserEvent {
     TransferFinished {
         moved_locations: Vec<Location>,
     },
-    /// A sort chosen in a column whose folder keeps its own sort.
+    /// Only for remembered folders; the default sort is left unchanged.
     FolderSortChosen {
         location: Location,
         sort_key: SortKey,
@@ -1886,7 +1886,7 @@ impl Browser {
         });
     }
 
-    /// Generations never repeat, so a stale timer or fill can never pass for a newer sort.
+    /// A fresh generation per sort, so a stale timer or fill cannot pass for a newer sort.
     fn begin_sort(&self, depth: usize) -> u64 {
         let generation = self.sort_generation.get().wrapping_add(1);
         self.sort_generation.set(generation);

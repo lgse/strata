@@ -433,7 +433,6 @@ pub struct PreferenceManager {
     /// Why saving is off for this session: the file existed but could not be read.
     load_failure: Option<io::Error>,
     save_notices: save_notice::SaveNotices,
-    /// Loaded on first use, from its own state file.
     folder_views: std::cell::OnceCell<folder_view_settings::FolderViewStore>,
     folder_sorts_revision: Cell<u64>,
     folder_save_notices: save_notice::SaveNotices,
@@ -1475,7 +1474,7 @@ impl PreferenceManager {
     }
 }
 
-/// The contents of a settings or state file, or `None` when it does not exist yet.
+/// `None` when the file does not exist.
 fn read_state_file(path: &Path) -> io::Result<Option<String>> {
     match fs::read_to_string(path) {
         Ok(contents) => Ok(Some(contents)),

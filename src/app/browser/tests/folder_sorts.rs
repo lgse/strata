@@ -148,7 +148,10 @@ fn a_sort_chosen_just_before_its_column_shows_another_folder_is_not_saved_for_it
         browser.pending_sort.get().is_none() || browser.pending_sort_applied.get()
     });
 
-    assert_eq!(browser.location_at(1), Some(Location::local("/fixture/other")));
+    assert_eq!(
+        browser.location_at(1),
+        Some(Location::local("/fixture/other"))
+    );
     assert_eq!(
         sorting(&browser, 1),
         Some((SortKey::Name, SortDirection::Ascending))

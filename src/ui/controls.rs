@@ -266,7 +266,6 @@ pub(super) fn check_menu_option(label: &str, selected: bool) -> (gtk::Button, gt
 
 const MENU_OPTION_CLASS: &str = "column-menu-option";
 
-/// A menu command styled like the checkable options beside it.
 fn menu_action(label: &str) -> gtk::Button {
     let action = super::accessibility::menu_item_button();
     action.set_child(Some(&menu_option_label(label)));
@@ -301,8 +300,6 @@ fn menu_option_label(text: &str) -> gtk::Label {
     label
 }
 
-/// A popover's "Make this the default" and "Reset to default" commands. Each
-/// runs its action, then closes the popover.
 #[derive(Clone)]
 pub(super) struct DefaultActions {
     group: gtk::Box,
@@ -333,7 +330,6 @@ impl DefaultActions {
         &self.group
     }
 
-    /// The group hides when neither command applies.
     pub(super) fn set_visible(&self, make_default: bool, reset: bool) {
         self.make_default.set_visible(make_default);
         self.reset.set_visible(reset);
