@@ -1202,14 +1202,21 @@ impl NavigationState {
     }
 
     /// For a column still loading: its load sorts with these once it finishes.
-    pub fn set_loading_column_preferences(&mut self, depth: usize, preferences: ViewPreferences) {
-        if let Some(column) = self
+    /// Returns whether the column was loading.
+    pub fn set_loading_column_preferences(
+        &mut self,
+        depth: usize,
+        preferences: ViewPreferences,
+    ) -> bool {
+        let Some(column) = self
             .columns
             .get_mut(depth)
             .filter(|column| column.load_state == LoadState::Loading)
-        {
-            column.preferences = preferences;
-        }
+        else {
+            return false;
+        };
+        column.preferences = preferences;
+        true
     }
 
     pub fn column_preferences(&self, depth: usize) -> Option<ViewPreferences> {

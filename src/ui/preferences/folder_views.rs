@@ -266,6 +266,10 @@ impl FolderViews {
         merged
     }
 
+    pub(in crate::ui) fn has_unsaved(&self) -> bool {
+        self.cleared || !self.changed.is_empty() || !self.touched.is_empty()
+    }
+
     pub(in crate::ui) fn mark_saved(&mut self) {
         self.changed.clear();
         self.touched.clear();
