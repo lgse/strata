@@ -938,6 +938,19 @@ fn folder_settings_saved_by_another_process_are_merged_instead_of_overwritten() 
                 manager.resolve_folder_sort(&elsewhere, false),
                 FolderSort::Default
             );
+
+            for unsaveable in ["version = 2\n", "version = 1\n[[folder]\n"] {
+                write_folder_views(unsaveable);
+                manager.set_folder_sort(&here, SortKey::Size, SortDirection::Ascending);
+                manager.flush_folder_views();
+                assert_eq!(folder_views_file(), unsaveable);
+            }
+            write_folder_views("version = 1\n");
+            manager.flush_folder_views();
+            assert!(
+                folder_views_file().contains(&here.display_path()),
+                "the save is retried once the file can be read again"
+            );
         },
     );
 }

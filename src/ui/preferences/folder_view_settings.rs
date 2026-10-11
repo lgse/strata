@@ -105,22 +105,21 @@ impl FolderViewStore {
     }
 
     /// Takes in what another process saved since this one last read or wrote
-    /// the file, and returns whether that changed any folder's values.
-    fn merge_saved_elsewhere(&self, path: &Path) -> bool {
+    /// the file, and returns whether that changed any folder's values. An
+    /// unreadable file, or one from a newer version, must not be overwritten.
+    fn merge_saved_elsewhere(&self, path: &Path) -> io::Result<bool> {
         let Some(stamp) = file_stamp(path).filter(|stamp| Some(*stamp) != self.synced.get()) else {
-            return false;
+            return Ok(false);
         };
-        let Some((saved, _)) = fs::read_to_string(path)
-            .ok()
-            .and_then(|contents| FolderViews::parse(&contents).ok())
-        else {
-            return false;
+        let Some(contents) = read_state_file(path)? else {
+            return Ok(false);
         };
+        let (saved, _) = FolderViews::parse(&contents)?;
         let merged = self.views.borrow().merged_over(saved);
         let changed = !merged.same_views(&self.views.borrow());
         self.views.replace(merged);
         self.synced.set(Some(stamp));
-        changed
+        Ok(changed)
     }
 }
 
@@ -323,15 +322,14 @@ impl PreferenceManager {
     pub(in crate::ui) fn forget_folder_views(&self) {
         let merged = self
             .folder_view_store()
-            .merge_saved_elsewhere(&folder_views_path());
+            .merge_saved_elsewhere(&folder_views_path())
+            .unwrap_or(false);
         self.change_folder_views(FolderValue::Any, |views| views.clear() || merged);
     }
 
     /// Saved values follow a folder renamed or moved within Strata, whether or not
     /// per-folder settings are in use, and are dropped when it moves somewhere
     /// that is not remembered.
-    /// Moves the values of `from` and the folders inside it to `to`, or forgets
-    /// them for `None`.
     pub(in crate::ui) fn relocate_folder_views(&self, from: &Location, to: Option<&Location>) {
         let Some(from) = key_for_location(from) else {
             return;
@@ -356,7 +354,9 @@ impl PreferenceManager {
 
     fn merge_folder_views_saved_elsewhere(&self) {
         if let Some(store) = self.folder_views.get()
-            && store.merge_saved_elsewhere(&folder_views_path())
+            && store
+                .merge_saved_elsewhere(&folder_views_path())
+                .unwrap_or(false)
         {
             self.publish_folder_views(FolderValue::Any);
         }
@@ -422,7 +422,13 @@ impl PreferenceManager {
             self.folder_save_notices.unreadable_at_startup(&path, error);
             return;
         }
-        let merged = store.merge_saved_elsewhere(&path);
+        let merged = match store.merge_saved_elsewhere(&path) {
+            Ok(merged) => merged,
+            Err(error) => {
+                self.folder_save_notices.write_failed(&path, &error);
+                return;
+            }
+        };
         let contents = store.views.borrow().to_toml();
         let result = contents.and_then(|contents| {
             self.folder_save_notices
