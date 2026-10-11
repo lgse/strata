@@ -12,7 +12,8 @@ use sourceview5::prelude::BufferExt as _;
 use super::super::*;
 use crate::{
     model::{
-        EntryKind, FileEntry, Location, MetadataValue, SortDirection, SortKey, ViewPreferences,
+        EntryKind, FileEntry, FolderSort, Location, MetadataValue, SortDirection, SortKey,
+        ViewPreferences,
     },
     test_support::gtk_test,
     ui::{
@@ -797,6 +798,7 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
                     sort_direction: SortDirection::Descending,
                 }
             );
+            assert!(!manager.remember_folder_views());
             assert!(!manager.checks_for_updates());
             assert_eq!(manager.release_channel(), Channel::Nightly);
             assert!(manager.preview_muted());
@@ -1174,6 +1176,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_date_format(crate::util::DateFormat::Long),
                 |m| m.set_default_directory(None),
                 |m| m.set_restore_tabs(true),
+                |m| m.set_remember_folder_views(true),
                 |m| m.set_device_label("volume:fixture-kingston", "Photos / 📁"),
                 |m| m.set_device_label("volume:fixture-kingston", ""),
                 |m| {
@@ -1384,7 +1387,7 @@ fn item_customizations_follow_relocations_and_removals() {
                 &'a [Customization],
                 usize,
             );
-            // Notifications count the coalesced saves, one per step that changed something.
+            // One coalesced color save and one folder sort change per step that changed something.
             let cases: [Case<'_>; 10] = [
                 (
                     "a rename carries the root and descendants but not a look-alike sibling",
@@ -1506,32 +1509,56 @@ fn item_customizations_follow_relocations_and_removals() {
                     context.iteration(false);
                 }
             };
+            // Folder sorts follow the same operations as colors, so each color
+            // seeds a distinct sort that must end up wherever the color does.
+            let sort_for = |color| match color {
+                Red => FolderSort::Saved(SortKey::Type, SortDirection::Ascending),
+                Blue => FolderSort::Saved(SortKey::Modified, SortDirection::Ascending),
+                _ => FolderSort::Saved(SortKey::Name, SortDirection::Descending),
+            };
+            manager.set_remember_folder_views(true);
             for (case, seed, steps, expected, notified) in cases {
                 let root = tempfile::tempdir().expect("case root");
                 let path = |relative: &str| root.path().join(relative);
+                let location = |relative: &str| Location::local(path(relative));
                 fs::create_dir_all(path("docs")).expect("docs folder");
                 for (relative, color, icon) in seed {
                     fs::create_dir_all(path(relative)).expect("customized folder");
                     manager.set_folder_color(&path(relative), color.map(FolderColorValue::Preset));
                     manager.set_custom_icon(&path(relative), *icon);
+                    if let Some(FolderSort::Saved(sort_key, sort_direction)) = color.map(sort_for) {
+                        manager.set_folder_sort(&location(relative), sort_key, sort_direction);
+                    }
                 }
                 settle();
                 notifications.set(0);
+                let folder_revision = manager.folder_sorts_revision();
 
                 for step in steps {
                     match *step {
-                        Relocate { from, to, merged } => manager.relocate_item_customizations(
-                            &path(from),
-                            to.map(path).as_deref(),
-                            merged,
-                        ),
-                        Forget { root, trashed } => manager.forget_item_customizations(
-                            &path(root),
-                            trashed
+                        Relocate { from, to, merged } => {
+                            manager.relocate_item_customizations(
+                                &path(from),
+                                to.map(path).as_deref(),
+                                merged,
+                            );
+                            let to = to.map_or_else(
+                                || Location::uri("sftp://example.invalid/docs"),
+                                location,
+                            );
+                            manager.relocate_folder_views(&location(from), &to, merged);
+                        }
+                        Forget { root, trashed } => {
+                            let identity = trashed
                                 .then(|| crate::services::TrashedOriginal::at_path(&path(root)))
-                                .flatten(),
-                        ),
-                        Restore(root) => manager.restore_item_customizations(&path(root)),
+                                .flatten();
+                            manager.forget_item_customizations(&path(root), identity);
+                            manager.forget_folder_views_within(&location(root), identity);
+                        }
+                        Restore(root) => {
+                            manager.restore_item_customizations(&path(root));
+                            manager.restore_folder_views(&location(root));
+                        }
                         ReplaceOnDisk(relative) => {
                             fs::rename(path(relative), root.path().join("kept-alive"))
                                 .expect("move the original aside");
@@ -1541,9 +1568,21 @@ fn item_customizations_follow_relocations_and_removals() {
                     settle();
                 }
 
-                assert_eq!(notifications.get(), notified, "{case}: notifications");
+                let folder_changes = manager
+                    .folder_sorts_revision()
+                    .wrapping_sub(folder_revision);
+                assert_eq!(
+                    (notifications.get(), folder_changes),
+                    (notified * 2, notified as u64),
+                    "{case}: notifications of color and folder sort changes"
+                );
                 let saved = read_preferences().expect("saved preferences");
                 for (relative, color, icon) in expected {
+                    assert_eq!(
+                        manager.resolve_folder_sort(&location(relative), false),
+                        color.map_or(FolderSort::Default, sort_for),
+                        "{case}: folder sort of {relative}"
+                    );
                     let path = path(relative);
                     let key = path.to_string_lossy().into_owned();
                     assert_eq!(

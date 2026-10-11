@@ -102,6 +102,24 @@ const TARGETS: &[Target] = &[
         aliases: "browsing keyboard keybindings hints shortcuts reference help footer",
     },
     Target {
+        id: "folder-views",
+        page: "general",
+        title: "Remember sort and icon size per folder",
+        aliases: "browsing per folder sort order thumbnail size view state",
+    },
+    Target {
+        id: "default-sort",
+        page: "general",
+        title: "Default sort",
+        aliases: "browsing sort order name size modified type ascending descending",
+    },
+    Target {
+        id: "forget-folder-views",
+        page: "general",
+        title: "Forget all folder settings",
+        aliases: "browsing reset clear per folder sort thumbnail size",
+    },
+    Target {
         id: "type-search",
         page: "general",
         title: "Type to search",

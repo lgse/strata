@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+mod mount_snapshot;
 mod mounts;
 #[cfg(test)]
 mod tests;
@@ -20,6 +21,7 @@ use crate::{
     services::{VolumeIdentity, VolumeRelation, volume_relation},
 };
 
+pub(crate) use mount_snapshot::{RemovableRoot, invalidate_mount_snapshot, with_mount_snapshot};
 pub(crate) use mounts::MountTable;
 
 pub(crate) const REMOTE_QUERY_TIMEOUT: Duration = Duration::from_secs(2);
@@ -355,4 +357,33 @@ fn identity_from_gio(info: &gio::FileInfo, backend: &str) -> Option<VolumeIdenti
         filesystem_id: filesystem_id.to_string(),
         backend: backend.into(),
     })
+}
+
+fn drive_can_unplug(drive: &gio::Drive) -> bool {
+    drive.is_removable() || drive.is_media_removable() || drive.can_eject()
+}
+
+pub(crate) fn mount_can_unplug(mount: &gio::Mount) -> bool {
+    if mount.can_eject() {
+        return true;
+    }
+    mount
+        .drive()
+        .or_else(|| mount.volume().and_then(|volume| volume.drive()))
+        .is_some_and(|drive| drive_can_unplug(&drive))
+}
+
+pub(crate) fn volume_can_unplug(volume: &gio::Volume) -> bool {
+    if volume.can_eject() {
+        return true;
+    }
+    volume.drive().is_some_and(|drive| drive_can_unplug(&drive))
+        || volume.get_mount().is_some_and(|mount| mount.can_eject())
+}
+
+pub(crate) fn mount_is_removable(mount: &gio::Mount) -> bool {
+    mount_can_unplug(mount)
+        || mount
+            .volume()
+            .is_some_and(|volume| volume_can_unplug(&volume))
 }

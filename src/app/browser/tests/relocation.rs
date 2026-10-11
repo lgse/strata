@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use crate::services::PasteItem;
 
 #[path = "../operation_updates/tests.rs"]
 mod operation_updates;
@@ -375,5 +376,54 @@ fn a_rename_superseded_by_another_operation_still_reports_its_relocation() {
             .borrow()
             .iter()
             .any(|event| matches!(event, BrowserEvent::RenameCompleted { .. }))
+    );
+}
+
+#[test]
+fn renames_moves_and_deletions_report_the_locations_they_changed() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    let folder = |path: &str| FileEntry {
+        kind: EntryKind::Directory,
+        ..fixture_entry(path)
+    };
+
+    browser.rename(folder("/fixture/photos"), "pictures".to_owned());
+    browser.transfer(
+        Location::local("/fixture/archive"),
+        vec![PasteItem {
+            source: Location::local("/fixture/pictures"),
+            conflict: TransferConflict::FailIfExists,
+        }],
+        true,
+        true,
+    );
+    browser.transfer(
+        Location::local("/fixture/backup"),
+        vec![PasteItem {
+            source: Location::local("/fixture/archive/pictures"),
+            conflict: TransferConflict::FailIfExists,
+        }],
+        false,
+        true,
+    );
+    browser.delete(vec![folder("/fixture/archive/pictures")], false);
+
+    let (photos, pictures, archived) = (
+        Location::local("/fixture/photos"),
+        Location::local("/fixture/pictures"),
+        Location::local("/fixture/archive/pictures"),
+    );
+    assert_eq!(
+        location_changes(&events.borrow()),
+        [
+            relocated(&photos, &pictures),
+            relocated(&pictures, &archived),
+            removed(&archived),
+        ],
+        "a copy leaves the source where it was"
     );
 }

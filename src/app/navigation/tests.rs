@@ -1657,23 +1657,6 @@ fn changing_sort_preferences_preserves_the_selected_entry() {
 }
 
 #[test]
-fn changed_sort_preferences_are_inherited_by_new_columns() {
-    let mut state = NavigationState::default();
-    state.navigate(location("/fixture"), RequestId(1));
-    let preferences = ViewPreferences {
-        folders_first: false,
-        sort_key: SortKey::Modified,
-        sort_direction: SortDirection::Descending,
-        ..ViewPreferences::default()
-    };
-
-    assert!(state.apply_sort_preferences(0, preferences).is_some());
-    assert!(state.descend(0, location("/fixture/child"), RequestId(2)));
-
-    assert_eq!(state.column_preferences(1), Some(preferences));
-}
-
-#[test]
 fn changing_sort_preferences_only_reorders_the_target_column() {
     let mut state = NavigationState::default();
     state.navigate(location("/fixture"), RequestId(1));

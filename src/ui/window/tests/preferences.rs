@@ -778,6 +778,287 @@ fn ctrl_f_cannot_activate_hidden_filter_or_displace_existing_column_filter() {
     );
 }
 
+#[test]
+fn saved_folder_sorts_and_icon_sizes_apply_before_settings_and_follow_changes_across_windows() {
+    gtk_test(
+        "ui::window::tests::preferences::saved_folder_sorts_and_icon_sizes_apply_before_settings_and_follow_changes_across_windows",
+        || {
+            use std::os::unix::ffi::OsStrExt;
+
+            use crate::model::{FolderSort, Location, SortDirection, SortKey};
+
+            let sorted = tempfile::tempdir().expect("sorted folder");
+            let plain = tempfile::tempdir().expect("plain folder");
+            let sorted_location = Location::local(sorted.path());
+            let plain_location = Location::local(plain.path());
+            write_folder_views(&format!(
+                "version = 1\n[[folder]]\npath = \"{}\"\nsort = \"size\"\ndirection = \"descending\"\nicons_size = 192\n",
+                sorted.path().display()
+            ));
+            let manager = PreferenceManager::shared();
+            let first = OpenWindow::open();
+            let second = OpenWindow::open();
+            let sorting = |open: &OpenWindow| {
+                open.content
+                    .browser
+                    .browser()
+                    .column_preferences(0)
+                    .map(|preferences| preferences.sort())
+            };
+            let show = |open: &OpenWindow, location: &Location| {
+                open.content.browser.navigate_location(location.clone());
+                wait_until(|| {
+                    open.content.browser.browser().location_at(0).as_ref() == Some(location)
+                        && !column_loading(open, 0)
+                });
+            };
+
+            show(&first, &sorted_location);
+            show(&second, &plain_location);
+            assert_eq!(
+                sorting(&first),
+                Some((SortKey::Size, SortDirection::Descending))
+            );
+            assert_eq!(
+                sorting(&second),
+                Some((SortKey::Name, SortDirection::Ascending))
+            );
+            show(&second, &sorted_location);
+            assert_eq!(
+                sorting(&second),
+                Some((SortKey::Size, SortDirection::Descending))
+            );
+
+            first
+                .content
+                .browser
+                .browser()
+                .set_sort(0, SortKey::Type, SortDirection::Ascending);
+            wait_until(|| sorting(&second) == Some((SortKey::Type, SortDirection::Ascending)));
+            assert_eq!(
+                manager.default_sort(),
+                (SortKey::Name, SortDirection::Ascending)
+            );
+            manager.flush_folder_views();
+            assert!(folder_views_file().contains("sort = \"type\""));
+
+            manager.set_browser_mode(BrowserMode::Icons);
+            wait_until(|| icons_size(&first) == Some(192) && icons_size(&second) == Some(192));
+            let unremembered = plain
+                .path()
+                .join(std::ffi::OsStr::from_bytes(b"not-utf-8-\xff"));
+            std::fs::create_dir(&unremembered).expect("folder that is not remembered");
+            show(&first, &Location::local(&unremembered));
+            wait_until(|| icons_size(&first) == Some(manager.icons_thumbnail_size()));
+            icons_scale(&first)
+                .expect("icons size slider")
+                .set_value(224.0);
+            icons_scale(&second)
+                .expect("icons size slider")
+                .set_value(128.0);
+            assert_eq!(manager.icons_size_for(Some(&sorted_location)), 128);
+            settle();
+            assert_eq!(
+                icons_size(&first),
+                Some(224),
+                "another folder's change keeps a size that is not remembered"
+            );
+            show(&first, &plain_location);
+            wait_until(|| icons_size(&first) == Some(manager.icons_thumbnail_size()));
+
+            manager.reset_folder_sort(&sorted_location);
+            manager.set_default_icons_size(128);
+            assert_eq!(
+                manager.resolve_folder_sort(&sorted_location, false),
+                FolderSort::Default
+            );
+            wait_until(|| icons_size(&first) == Some(128));
+
+            manager.set_folder_sort(
+                &plain_location,
+                SortKey::Modified,
+                SortDirection::Descending,
+            );
+            manager.set_default_sort(SortKey::Modified, SortDirection::Descending);
+            manager.set_default_sort(SortKey::Name, SortDirection::Ascending);
+            manager.set_default_icons_size(96);
+            assert_eq!(
+                manager.resolve_folder_sort(&plain_location, false),
+                FolderSort::Default,
+                "a sort equal to a new default is no longer stored"
+            );
+            assert_eq!(
+                manager.icons_size_for(Some(&sorted_location)),
+                96,
+                "a size equal to a new default is no longer stored"
+            );
+            manager.set_browser_mode(BrowserMode::Columns);
+            wait_until(|| sorting(&second) == Some((SortKey::Name, SortDirection::Ascending)));
+
+            let size_ascending = (SortKey::Size, SortDirection::Ascending);
+            manager.set_folder_sort(&plain_location, size_ascending.0, size_ascending.1);
+            manager.set_remember_folder_views(false);
+            manager.set_default_sort(size_ascending.0, size_ascending.1);
+            manager.set_default_sort(SortKey::Name, SortDirection::Ascending);
+            manager.set_remember_folder_views(true);
+            assert_eq!(
+                manager.resolve_folder_sort(&plain_location, false),
+                FolderSort::Saved(size_ascending.0, size_ascending.1),
+                "a default set while folder settings are off drops nothing"
+            );
+            manager.set_remember_folder_views(false);
+            manager.set_default_sort(size_ascending.0, size_ascending.1);
+            manager.set_remember_folder_views(true);
+            assert_eq!(
+                manager.resolve_folder_sort(&plain_location, false),
+                FolderSort::Default,
+                "turning folder settings back on drops values equal to the default"
+            );
+        },
+    );
+}
+
+#[test]
+fn folder_settings_saved_by_another_process_are_merged_instead_of_overwritten() {
+    gtk_test(
+        "ui::window::tests::preferences::folder_settings_saved_by_another_process_are_merged_instead_of_overwritten",
+        || {
+            use crate::model::{FolderSort, Location, SortDirection, SortKey};
+
+            let here = tempfile::tempdir().expect("folder sorted here");
+            let elsewhere = tempfile::tempdir().expect("folder sorted elsewhere");
+            let (here, elsewhere) = (
+                Location::local(here.path()),
+                Location::local(elsewhere.path()),
+            );
+            let open = OpenWindow::open();
+            open.content.browser.navigate_location(elsewhere.clone());
+            wait_until(|| !column_loading(&open, 0));
+            let manager = PreferenceManager::shared();
+            assert_eq!(
+                manager.resolve_folder_sort(&elsewhere, false),
+                FolderSort::Default
+            );
+
+            write_folder_views(&format!(
+                "version = 1\n[[folder]]\npath = \"{}\"\nsort = \"size\"\ndirection = \"descending\"\n",
+                elsewhere.display_path()
+            ));
+            manager.set_folder_sort(&here, SortKey::Type, SortDirection::Ascending);
+            manager.flush_folder_views();
+
+            let saved = folder_views_file();
+            assert!(saved.contains(&here.display_path()), "{saved}");
+            assert!(saved.contains(&elsewhere.display_path()), "{saved}");
+            assert_eq!(
+                manager.resolve_folder_sort(&elsewhere, false),
+                FolderSort::Saved(SortKey::Size, SortDirection::Descending)
+            );
+            wait_until(|| {
+                open.content
+                    .browser
+                    .browser()
+                    .column_preferences(0)
+                    .is_some_and(|preferences| preferences.sort_key == SortKey::Size)
+            });
+
+            manager.forget_folder_views();
+            manager.flush_folder_views();
+            write_folder_views(&format!(
+                "version = 1\n[[folder]]\npath = \"{}\"\nsort = \"type\"\ndirection = \"descending\"\n",
+                elsewhere.display_path()
+            ));
+            manager.forget_folder_views();
+            manager.flush_folder_views();
+            assert!(
+                !folder_views_file().contains("[[folder]]"),
+                "forgetting also clears what another process saved"
+            );
+            assert_eq!(
+                manager.resolve_folder_sort(&elsewhere, false),
+                FolderSort::Default
+            );
+
+            for unsaveable in ["version = 2\n", "version = 1\n[[folder]\n"] {
+                write_folder_views(unsaveable);
+                manager.set_folder_sort(&here, SortKey::Size, SortDirection::Ascending);
+                manager.flush_folder_views();
+                assert_eq!(folder_views_file(), unsaveable);
+            }
+            write_folder_views("version = 1\n");
+            manager.flush_folder_views();
+            assert!(
+                folder_views_file().contains(&here.display_path()),
+                "the save is retried once the file can be read again"
+            );
+
+            let mut settings: toml::Table = std::fs::read_to_string(settings_file())
+                .ok()
+                .and_then(|contents| toml::from_str(&contents).ok())
+                .unwrap_or_default();
+            settings.insert("sort_key".into(), "modified".into());
+            settings.insert("sort_direction".into(), "descending".into());
+            let staged = settings_file().with_extension("toml.new");
+            std::fs::create_dir_all(staged.parent().expect("config directory"))
+                .expect("config directory");
+            std::fs::write(&staged, toml::to_string(&settings).expect("settings"))
+                .expect("settings saved elsewhere");
+            std::fs::rename(&staged, settings_file()).expect("settings replaced");
+            wait_until(|| manager.default_sort() == (SortKey::Modified, SortDirection::Descending));
+            manager.set_folder_sort(&here, SortKey::Name, SortDirection::Ascending);
+            assert_eq!(
+                manager.resolve_folder_sort(&here, false),
+                FolderSort::Saved(SortKey::Name, SortDirection::Ascending),
+                "a sort equal to a default replaced elsewhere is still stored"
+            );
+        },
+    );
+}
+
+#[test]
+fn unreadable_folder_settings_use_defaults_and_are_never_overwritten() {
+    gtk_test(
+        "ui::window::tests::preferences::unreadable_folder_settings_use_defaults_and_are_never_overwritten",
+        || {
+            use crate::model::{Location, SortDirection, SortKey};
+
+            let unreadable = "version = 1\n[[folder]\npath = \"/broken\"\n";
+            write_folder_views(unreadable);
+            let open = OpenWindow::open();
+            let folder = load_folder(&open);
+            let browser = open.content.browser.browser();
+            assert_eq!(
+                browser
+                    .column_preferences(0)
+                    .map(|preferences| preferences.sort_key),
+                Some(SortKey::Name)
+            );
+
+            browser.set_sort(0, SortKey::Size, SortDirection::Descending);
+            wait_until(|| {
+                browser
+                    .column_preferences(0)
+                    .map(|preferences| preferences.sort_key)
+                    == Some(SortKey::Size)
+            });
+            open.content
+                .browser
+                .navigate_location(Location::local(folder.path()));
+            wait_until(|| !column_loading(&open, 0));
+
+            assert_eq!(
+                browser
+                    .column_preferences(0)
+                    .map(|preferences| preferences.sort_key),
+                Some(SortKey::Size),
+                "changes still apply until Strata closes"
+            );
+            PreferenceManager::shared().flush_folder_views();
+            assert_eq!(folder_views_file(), unreadable);
+        },
+    );
+}
+
 struct OpenWindow {
     window: gtk::ApplicationWindow,
     content: super::super::composition::WindowContent,
@@ -819,6 +1100,31 @@ fn write_settings(contents: &str) {
 
 fn settings_file() -> std::path::PathBuf {
     gtk::glib::user_config_dir().join("strata/settings.toml")
+}
+
+fn write_folder_views(contents: &str) {
+    let path = crate::storage::state_directory().join("folder-views.toml");
+    std::fs::create_dir_all(path.parent().expect("state directory")).expect("state directory");
+    std::fs::write(path, contents).expect("seed folder settings");
+}
+
+fn folder_views_file() -> String {
+    std::fs::read_to_string(crate::storage::state_directory().join("folder-views.toml"))
+        .expect("folder settings file")
+}
+
+fn icons_scale(open: &OpenWindow) -> Option<gtk::Scale> {
+    let mut scale = None;
+    walk(open.window.upcast_ref(), &mut |widget| {
+        if widget.has_css_class("icons-thumbnail-scale") {
+            scale = widget.clone().downcast::<gtk::Scale>().ok();
+        }
+    });
+    scale
+}
+
+fn icons_size(open: &OpenWindow) -> Option<i32> {
+    icons_scale(open).map(|scale| scale.value().round() as i32)
 }
 
 fn load_folder(open: &OpenWindow) -> tempfile::TempDir {
@@ -1229,6 +1535,7 @@ fn renamed_folder_keeps_its_customization_and_a_new_folder_at_the_old_path_does_
         || {
             use crate::assets::icons::FILE_CODE;
             use crate::model::FolderColor::Red;
+            use crate::model::{FolderSort, Location, SortDirection, SortKey};
 
             let first = OpenWindow::open();
             let second = OpenWindow::open();
@@ -1237,6 +1544,15 @@ fn renamed_folder_keeps_its_customization_and_a_new_folder_at_the_old_path_does_
             let renamed = directory.path().join("renamed");
             let plain = rendered_folder(&old);
             customize_items(directory.path(), &[("child", Some(Red), Some(FILE_CODE))]);
+            let manager = PreferenceManager::shared();
+            let folder_sort =
+                |path: &std::path::Path| manager.resolve_folder_sort(&Location::local(path), false);
+            let size_sort = FolderSort::Saved(SortKey::Size, SortDirection::Descending);
+            manager.set_folder_sort(
+                &Location::local(&old),
+                SortKey::Size,
+                SortDirection::Descending,
+            );
             let customized = rendered_folder(&old);
             assert_ne!(customized, plain);
 
@@ -1255,6 +1571,8 @@ fn renamed_folder_keeps_its_customization_and_a_new_folder_at_the_old_path_does_
                 "after the rename",
             );
             assert_eq!(rendered_folder(&renamed), customized);
+            assert_eq!(folder_sort(&renamed), size_sort);
+            assert_eq!(folder_sort(&old), FolderSort::Default);
 
             std::fs::create_dir(&old).expect("new folder at the old path");
             loaded_entry(&first, &old);
@@ -1271,6 +1589,7 @@ fn renamed_folder_keeps_its_customization_and_a_new_folder_at_the_old_path_does_
                 &[("renamed", None, None)],
                 "after the trash",
             );
+            assert_eq!(folder_sort(&renamed), FolderSort::Default);
 
             // Tombstones are shared: another window's undo restores them.
             second

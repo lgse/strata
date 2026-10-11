@@ -115,6 +115,15 @@ fn path_has_encoded_slash(path: &str) -> bool {
     })
 }
 
+pub(crate) fn rebase_path(path: &Path, from: &Path, to: &Path) -> Option<PathBuf> {
+    let suffix = path.strip_prefix(from).ok()?;
+    Some(if suffix.as_os_str().is_empty() {
+        to.to_path_buf()
+    } else {
+        to.join(suffix)
+    })
+}
+
 fn uri_scheme_eq(uri: &str, scheme: &str) -> bool {
     gio::glib::Uri::parse_scheme(uri).is_some_and(|parsed| parsed.eq_ignore_ascii_case(scheme))
 }
@@ -262,12 +271,7 @@ impl Location {
     pub fn rebase(&self, from: &Self, to: &Self) -> Option<Self> {
         match (&self.kind, &from.kind, &to.kind) {
             (LocationKind::Native(path), LocationKind::Native(from), LocationKind::Native(to)) => {
-                let suffix = path.strip_prefix(from).ok()?;
-                Some(Self::local(if suffix.as_os_str().is_empty() {
-                    to.to_path_buf()
-                } else {
-                    to.join(suffix)
-                }))
+                rebase_path(path, from, to).map(Self::local)
             }
             (LocationKind::Uri(uri), LocationKind::Uri(from), LocationKind::Uri(to)) => {
                 let file = gio::File::for_uri(uri);
@@ -414,6 +418,15 @@ impl Location {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FolderSort {
+    /// Not remembered per folder (remote, Trash, virtual roots): the column keeps its own sort.
+    Unremembered,
+    /// Remembered per folder but not set: the default sort applies.
+    Default,
+    Saved(SortKey, SortDirection),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SortKey {
     /// Camera-library-local streaming order; never a saved folder default.
     DeviceOrder,
@@ -425,10 +438,49 @@ pub enum SortKey {
     Modified,
 }
 
+impl SortKey {
+    pub(crate) fn from_stored(value: &str) -> Option<Self> {
+        match value {
+            "name" => Some(Self::Name),
+            "size" => Some(Self::Size),
+            "modified" => Some(Self::Modified),
+            "type" => Some(Self::Type),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn stored_name(self) -> Option<&'static str> {
+        match self {
+            Self::Name => Some("name"),
+            Self::Size => Some("size"),
+            Self::Modified => Some("modified"),
+            Self::Type => Some("type"),
+            Self::DeviceOrder | Self::Recency => None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SortDirection {
     Ascending,
     Descending,
+}
+
+impl SortDirection {
+    pub(crate) fn from_stored(value: &str) -> Option<Self> {
+        match value {
+            "ascending" => Some(Self::Ascending),
+            "descending" => Some(Self::Descending),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn stored_name(self) -> &'static str {
+        match self {
+            Self::Ascending => "ascending",
+            Self::Descending => "descending",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -437,6 +489,17 @@ pub struct ViewPreferences {
     pub folders_first: bool,
     pub sort_key: SortKey,
     pub sort_direction: SortDirection,
+}
+
+impl ViewPreferences {
+    pub fn sort(&self) -> (SortKey, SortDirection) {
+        (self.sort_key, self.sort_direction)
+    }
+
+    pub fn set_sort(&mut self, (sort_key, sort_direction): (SortKey, SortDirection)) {
+        self.sort_key = sort_key;
+        self.sort_direction = sort_direction;
+    }
 }
 
 impl Default for ViewPreferences {

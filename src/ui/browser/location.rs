@@ -1242,6 +1242,7 @@ impl ViewState {
             .and_then(|mount| crate::adapters::location_for_file(&mount.root()))
             .or_else(|| successor_mount_location(waited));
         if let Some(location) = location {
+            crate::adapters::invalidate_mount_snapshot();
             self.apply_unlock_view_follow_up(&waited.keys, &location, user_asked_to_open);
         }
         self.finish_unlock_slot(&waited.keys);

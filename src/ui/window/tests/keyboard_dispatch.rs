@@ -608,7 +608,7 @@ fn tenxer_space_selects_the_cursor_and_motion_keeps_the_fill() {
             preferences.set_group_by_type(false);
             let browser = fixture.view.browser();
             fixture.shortcuts.observe_browser(&browser);
-            fixture.view.set_icons_thumbnail_size(48);
+            PreferenceManager::shared().set_icons_thumbnail_size(48);
             for mode in [BrowserMode::List, BrowserMode::Icons, BrowserMode::Columns] {
                 fixture.view.set_view_mode(mode);
                 focus_files(&fixture);
@@ -815,7 +815,7 @@ fn tenxer_visual_ranges_select_unset_and_keep_the_fill() {
             preferences.set_group_by_type(false);
             let browser = fixture.view.browser();
             fixture.shortcuts.observe_browser(&browser);
-            fixture.view.set_icons_thumbnail_size(48);
+            PreferenceManager::shared().set_icons_thumbnail_size(48);
             for name in ["d.txt", "e.txt"] {
                 std::fs::write(fixture._directory.path().join(name), b"preview").expect("file");
             }
@@ -2268,7 +2268,7 @@ fn tenxer_icons_move_spatially_open_explicitly_and_peek() {
             }
             fixture.view.refresh();
             wait_loaded(&browser, 0);
-            fixture.view.set_icons_thumbnail_size(48);
+            PreferenceManager::shared().set_icons_thumbnail_size(48);
             fixture.view.set_view_mode(BrowserMode::Icons);
             focus_files(&fixture);
             wait_until(|| {

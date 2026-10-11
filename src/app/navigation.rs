@@ -4,11 +4,14 @@ use std::{
     cell::Cell,
     cmp::Ordering,
     collections::{HashMap, HashSet},
+    rc::Rc,
 };
 
 use crate::{
     app::peek::PeekState,
-    model::{FileEntry, Location, MetadataValue, SortDirection, SortKey, ViewPreferences},
+    model::{
+        FileEntry, FolderSort, Location, MetadataValue, SortDirection, SortKey, ViewPreferences,
+    },
     services::{DirectoryChange, MetadataUpdate, RequestId},
 };
 
@@ -260,6 +263,10 @@ impl NavigationPath {
     }
 }
 
+/// The flag is true when a column opens the folder, which counts as using it;
+/// re-syncs pass false.
+pub type FolderSortResolver = Rc<dyn Fn(&Location, bool) -> FolderSort>;
+
 #[derive(Default)]
 pub struct NavigationState {
     pub columns: Vec<ColumnState>,
@@ -268,6 +275,7 @@ pub struct NavigationState {
     back_history: Vec<NavigationPath>,
     forward_history: Vec<NavigationPath>,
     preferences: ViewPreferences,
+    folder_sorts: Option<FolderSortResolver>,
     // GTK focus/rebuild selection echoes must not arm paste-into.
     selection_commit: bool,
     selectionless_removals: HashSet<Location>,
@@ -368,13 +376,12 @@ impl NavigationState {
         self.peek = None;
         self.visual = None;
         self.selection_commit = false;
-        let preferences = self.preferences;
         self.columns = path
             .locations
             .into_iter()
             .zip(request_ids)
             .map(|(location, request_id)| ColumnState {
-                preferences: preferences_for_location(preferences, &location),
+                preferences: self.initial_preferences(&location),
                 location,
                 entries: Vec::new(),
                 entry_counts: Cell::new(None),
@@ -452,7 +459,7 @@ impl NavigationState {
 
     fn push_column(&mut self, location: Location, request_id: RequestId) {
         self.columns.push(ColumnState {
-            preferences: preferences_for_location(self.preferences, &location),
+            preferences: self.initial_preferences(&location),
             location,
             entries: Vec::new(),
             entry_counts: Cell::new(None),
@@ -1144,6 +1151,74 @@ impl NavigationState {
         self.preferences = preferences;
     }
 
+    pub fn set_folder_sorts(&mut self, resolver: Option<FolderSortResolver>) {
+        self.folder_sorts = resolver;
+    }
+
+    pub fn remembers_folder_sorts(&self) -> bool {
+        self.folder_sorts.is_some()
+    }
+
+    pub fn folder_sort(&self, location: &Location) -> FolderSort {
+        self.resolve_folder_sort(location, false)
+    }
+
+    fn resolve_folder_sort(&self, location: &Location, opened: bool) -> FolderSort {
+        self.folder_sorts
+            .as_ref()
+            .map_or(FolderSort::Unremembered, |resolve| {
+                resolve(location, opened)
+            })
+    }
+
+    fn initial_preferences(&self, location: &Location) -> ViewPreferences {
+        let mut preferences = self.preferences;
+        if let FolderSort::Saved(sort_key, sort_direction) =
+            self.resolve_folder_sort(location, true)
+        {
+            preferences.set_sort((sort_key, sort_direction));
+        }
+        preferences_for_location(preferences, location)
+    }
+
+    /// What a column's preferences become after its folder's sort or the
+    /// application-wide folders-first choice changed. Recent keeps its fixed order.
+    pub fn synchronized_preferences(&self, depth: usize) -> Option<ViewPreferences> {
+        let column = self.columns.get(depth)?;
+        let mut preferences = column.preferences;
+        if column.location.is_recent_root() {
+            return Some(preferences);
+        }
+        preferences.folders_first = self.preferences.folders_first;
+        match self.folder_sort(&column.location) {
+            FolderSort::Saved(sort_key, sort_direction) => {
+                preferences.set_sort((sort_key, sort_direction));
+            }
+            FolderSort::Default => preferences.set_sort(self.preferences.sort()),
+            FolderSort::Unremembered => {}
+        }
+        Some(preferences)
+    }
+
+    /// For a column still loading with nothing listed yet: its load sorts with
+    /// these once it finishes. Listed entries need a sort, because later
+    /// batches merge into them in order.
+    pub fn set_loading_column_preferences(
+        &mut self,
+        depth: usize,
+        preferences: ViewPreferences,
+    ) -> bool {
+        let Some(column) = self
+            .columns
+            .get_mut(depth)
+            .filter(|column| column.load_state == LoadState::Loading && column.entries.is_empty())
+        else {
+            return false;
+        };
+        column.preferences = preferences;
+        true
+    }
+
     pub fn column_preferences(&self, depth: usize) -> Option<ViewPreferences> {
         self.columns.get(depth).map(|column| column.preferences)
     }
@@ -1168,13 +1243,6 @@ impl NavigationState {
         } else {
             preferences
         };
-        if !recent && preferences.sort_key != SortKey::DeviceOrder {
-            self.preferences.sort_key = preferences.sort_key;
-            self.preferences.sort_direction = preferences.sort_direction;
-        }
-        if !recent {
-            self.preferences.folders_first = preferences.folders_first;
-        }
         let column = &mut self.columns[depth];
         let selected_location = column
             .selected

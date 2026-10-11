@@ -503,6 +503,10 @@ impl ViewState {
                 }
             }
             BrowserEvent::LoadFailed { depth, message } => {
+                if let Some(location) = self.browser.location_at(*depth) {
+                    crate::ui::preferences::PreferenceManager::shared()
+                        .forget_missing_folder(&location);
+                }
                 if let Some(column) = self.columns.borrow().get(*depth) {
                     if column.selection.model().is_none() {
                         column.filtered_model.set_model(Some(&column.model));
@@ -759,15 +763,33 @@ impl ViewState {
                 self.dismiss_file_operation_progress();
                 self.prune_stale_search_results();
             }
+            BrowserEvent::FolderSortChosen {
+                location,
+                sort_key,
+                sort_direction,
+            } => {
+                crate::ui::preferences::PreferenceManager::shared().set_folder_sort(
+                    location,
+                    *sort_key,
+                    *sort_direction,
+                );
+            }
             BrowserEvent::ItemRelocated { from, to, merged } => {
-                customization::relocate_item_customizations(from, to, *merged)
+                customization::relocate_item_customizations(from, to, *merged);
+                crate::ui::preferences::PreferenceManager::shared()
+                    .relocate_folder_views(from, to, *merged);
             }
             BrowserEvent::ItemRemoved {
                 location,
                 trash_identity,
-            } => customization::forget_item_customizations(location, *trash_identity),
+            } => {
+                customization::forget_item_customizations(location, *trash_identity);
+                crate::ui::preferences::PreferenceManager::shared()
+                    .forget_folder_views_within(location, *trash_identity);
+            }
             BrowserEvent::ItemRestored { location } => {
-                customization::restore_item_customizations(location)
+                customization::restore_item_customizations(location);
+                crate::ui::preferences::PreferenceManager::shared().restore_folder_views(location);
             }
             BrowserEvent::DeletionStarted { total } => {
                 let browser = self.browser.clone();

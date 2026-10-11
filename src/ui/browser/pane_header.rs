@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 
 use crate::app::Browser;
-use crate::model::{SortDirection, SortKey};
+use crate::model::{FolderSort, SortDirection, SortKey};
 use crate::ui::browser::ViewState;
-use crate::ui::controls::{check_menu_option, menu_option};
+use crate::ui::controls::{DefaultActions, check_menu_option, menu_option};
+use crate::ui::preferences::PreferenceManager;
 use gtk::glib;
 use gtk::prelude::*;
 use std::cell::{Cell, RefCell};
@@ -152,6 +153,8 @@ pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gt
     } else {
         None
     };
+    let folder_actions = folder_sort_actions(browser, depth, &popover);
+    content.append(folder_actions.widget());
 
     popover.set_child(Some(&content));
     let keys = gtk::EventControllerKey::new();
@@ -185,10 +188,10 @@ pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gt
     let weak_browser = Rc::downgrade(browser);
     let checks = selected_checks.clone();
     popover.connect_map(move |_| {
-        let Some(preferences) = weak_browser
-            .upgrade()
-            .and_then(|browser| browser.column_preferences(depth))
-        else {
+        let Some(browser) = weak_browser.upgrade() else {
+            return;
+        };
+        let Some(preferences) = browser.column_preferences(depth) else {
             return;
         };
         for (key, check) in checks.borrow().iter() {
@@ -198,6 +201,7 @@ pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gt
             folders_enabled.set(preferences.folders_first);
             folders_check.set_visible(preferences.folders_first);
         }
+        sync_folder_sort_actions(&folder_actions, &browser, depth);
     });
     let button = gtk::MenuButton::builder()
         .tooltip_text(crate::i18n::tr("Choose sort field"))
@@ -209,6 +213,61 @@ pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gt
     crate::ui::controls::pane_header_action(&button);
     crate::ui::tenxer_mode::hide_while_enabled(&button);
     button
+}
+
+fn folder_sort_actions(
+    browser: &Rc<Browser>,
+    depth: usize,
+    popover: &gtk::Popover,
+) -> DefaultActions {
+    let weak_browser = Rc::downgrade(browser);
+    let make_default = move || {
+        if let Some(preferences) = weak_browser
+            .upgrade()
+            .and_then(|browser| browser.column_preferences(depth))
+        {
+            PreferenceManager::shared()
+                .set_default_sort(preferences.sort_key, preferences.sort_direction);
+        }
+    };
+    let weak_browser = Rc::downgrade(browser);
+    let reset = move || {
+        if let Some(location) = weak_browser
+            .upgrade()
+            .and_then(|browser| browser.location_at(depth))
+        {
+            PreferenceManager::shared().reset_folder_sort(&location);
+        }
+    };
+    let actions = DefaultActions::new(
+        popover,
+        (
+            &crate::i18n::tr("Make this the default sort"),
+            &crate::i18n::tr("Reset to default sort"),
+        ),
+        make_default,
+        reset,
+    );
+    actions
+        .widget()
+        .prepend(&gtk::Separator::new(gtk::Orientation::Horizontal));
+    sync_folder_sort_actions(&actions, browser, depth);
+    actions
+}
+
+fn sync_folder_sort_actions(actions: &DefaultActions, browser: &Browser, depth: usize) {
+    let (differs, saved) = match browser.folder_sort_at(depth) {
+        FolderSort::Unremembered => (false, false),
+        folder_sort => (
+            browser
+                .column_preferences(depth)
+                .is_some_and(|preferences| {
+                    preferences.sort() != PreferenceManager::shared().default_sort()
+                }),
+            matches!(folder_sort, FolderSort::Saved(..)),
+        ),
+    };
+    actions.set_visible(differs, saved);
 }
 
 pub(in crate::ui) fn column_sort_direction_toggle(

@@ -48,6 +48,19 @@ impl MountTable {
         self.fs_type_for(path).is_some_and(is_remote_fs_type)
     }
 
+    /// Remote filesystems other than FUSE drivers for local block devices,
+    /// such as ntfs-3g and exfat-fuse on a USB drive.
+    pub(crate) fn is_network_path(&self, path: &Path) -> bool {
+        self.fs_type_for(path)
+            .is_some_and(|fs_type| fs_type != "fuseblk" && is_remote_fs_type(fs_type))
+    }
+
+    pub(crate) fn has_mount_inside(&self, directory: &Path) -> bool {
+        self.entries
+            .iter()
+            .any(|(mount_point, _)| mount_point.parent() == Some(directory))
+    }
+
     pub(super) fn query_may_block(&self, path: &Path) -> bool {
         // Prefix probes can trigger autofs even when a nested mount is local.
         self.is_remote_path(path)

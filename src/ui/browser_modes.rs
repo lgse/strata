@@ -402,6 +402,9 @@ pub struct ModeViews {
     density: BrowserDensity,
     group_by_type: bool,
     icons_thumbnail_size: Rc<Cell<i32>>,
+    /// The size preferences gave the shown folder; a size changed on a folder
+    /// that is not remembered lasts until this changes.
+    icons_resolved_size: Cell<i32>,
     focus_before_header: RefCell<Option<glib::WeakRef<gtk::Widget>>>,
     /// Page Up/Down scrolls the viewport itself; skip the follow-up `scroll_to`
     /// that `FocusChanged` would otherwise schedule from stale GridView estimates.
@@ -480,6 +483,7 @@ impl ModeViews {
             density: BrowserDensity::Compact,
             group_by_type: false,
             icons_thumbnail_size: Rc::new(Cell::new(DEFAULT_ICONS_THUMBNAIL_SIZE)),
+            icons_resolved_size: Cell::new(DEFAULT_ICONS_THUMBNAIL_SIZE),
             focus_before_header: RefCell::new(None),
             suppress_focus_scroll: Cell::new(false),
             cursor_keeps_focus: Cell::new(false),
@@ -1338,17 +1342,22 @@ impl ModeViews {
         }
     }
 
-    pub fn set_icons_thumbnail_size(&mut self, size: i32) {
-        if self.icons_thumbnail_size.get() == size {
+    pub fn apply_resolved_icons_size(&mut self, size: i32) {
+        if self.icons_resolved_size.replace(size) != size {
+            self.set_icons_thumbnail_size(size);
+        }
+    }
+
+    fn set_icons_thumbnail_size(&mut self, size: i32) {
+        if self.icons_thumbnail_size.replace(size) == size {
             return;
         }
-        match self
+        if let Some(scale) = self
             .icons_panes
             .first()
             .and_then(|pane| pane.thumbnail_scale.as_ref())
         {
-            Some(scale) => scale.set_value(f64::from(size)),
-            None => self.icons_thumbnail_size.set(size),
+            scale.set_value(f64::from(size));
         }
     }
 
@@ -1824,6 +1833,10 @@ impl ModeViews {
             return;
         };
         self.clear_icons();
+        let size = crate::ui::preferences::PreferenceManager::shared()
+            .icons_size_for(Some(&snapshot.location));
+        self.icons_resolved_size.set(size);
+        self.icons_thumbnail_size.set(size);
         let mut pane = build_icons_pane(
             self.browser.clone(),
             ModeClickOptions {
@@ -2172,6 +2185,13 @@ fn icons_controls(browser: &Rc<Browser>, depth: usize, thumbnail_size: i32) -> I
     thumbnail_content.append(&thumbnail_heading);
     thumbnail_content.append(&thumbnail_scale);
     thumbnail_content.append(&thumbnail_extremes);
+    append_icons_size_actions(
+        browser,
+        depth,
+        &thumbnail_content,
+        &thumbnail_popover,
+        &thumbnail_scale,
+    );
     thumbnail_popover.set_child(Some(&thumbnail_content));
     let thumbnail_menu = gtk::MenuButton::builder()
         .tooltip_text(crate::i18n::tr("Thumbnail size"))
@@ -2209,6 +2229,73 @@ fn icons_controls(browser: &Rc<Browser>, depth: usize, thumbnail_size: i32) -> I
         thumbnail_popover,
         empty_trash_button: is_trash.then_some(empty_trash),
     }
+}
+
+/// Shown only when a remembered folder stores its own size, i.e. it differs from the default.
+fn append_icons_size_actions(
+    browser: &Rc<Browser>,
+    depth: usize,
+    content: &gtk::Box,
+    popover: &gtk::Popover,
+    scale: &gtk::Scale,
+) {
+    let remembered_location = {
+        let browser = Rc::downgrade(browser);
+        move || {
+            let location = browser.upgrade()?.location_at(depth)?;
+            crate::ui::preferences::PreferenceManager::shared()
+                .remembers(&location)
+                .then_some(location)
+        }
+    };
+    let make_default = {
+        let scale = scale.downgrade();
+        move || {
+            if let Some(scale) = scale.upgrade() {
+                crate::ui::preferences::PreferenceManager::shared()
+                    .set_default_icons_size(scale.value().round() as i32);
+            }
+        }
+    };
+    let reset = {
+        let remembered_location = remembered_location.clone();
+        move || {
+            if let Some(location) = remembered_location() {
+                crate::ui::preferences::PreferenceManager::shared()
+                    .reset_folder_icons_size(&location);
+            }
+        }
+    };
+    let actions = crate::ui::controls::DefaultActions::new(
+        popover,
+        (
+            &crate::i18n::tr("Make this the default size"),
+            &crate::i18n::tr("Reset to default size"),
+        ),
+        make_default,
+        reset,
+    );
+    actions.widget().add_css_class("column-menu");
+    content.append(actions.widget());
+
+    let sync = {
+        let scale = scale.downgrade();
+        move || {
+            let Some(scale) = scale.upgrade() else {
+                return;
+            };
+            let differs = remembered_location().is_some()
+                && scale.value().round() as i32
+                    != crate::ui::preferences::PreferenceManager::shared().icons_thumbnail_size();
+            actions.set_visible(differs, differs);
+        }
+    };
+    sync();
+    {
+        let sync = sync.clone();
+        popover.connect_map(move |_| sync());
+    }
+    scale.connect_value_changed(move |_| sync());
 }
 
 fn disable_scale_long_press_zoom(scale: &gtk::Scale) {
@@ -2340,6 +2427,8 @@ fn build_icons_pane(
 
     let density_for_size = context.density.get();
     let sections_for_size = Rc::downgrade(&sections);
+    let browser_for_size = Rc::downgrade(&context.browser);
+    let depth_for_size = context.depth;
     let thumbnail_size_for_change = options.thumbnail_size.clone();
     let value_for_change = controls.thumbnail_value.clone();
     let loading_stack = stack.downgrade();
@@ -2349,8 +2438,14 @@ fn build_icons_pane(
         .connect_value_changed(move |scale| {
             let size = scale.value().round() as i32;
             value_for_change.set_label(&format!("{size} px"));
-            thumbnail_size_for_change.set(size);
-            crate::ui::preferences::PreferenceManager::shared().set_icons_thumbnail_size(size);
+            // A size applied from preferences updates the cell first and is not saved back.
+            if thumbnail_size_for_change.replace(size) != size {
+                let location = browser_for_size
+                    .upgrade()
+                    .and_then(|browser| browser.location_at(depth_for_size));
+                crate::ui::preferences::PreferenceManager::shared()
+                    .set_folder_icons_size(location.as_ref(), size);
+            }
             if let (Some(stack), Some(context)) =
                 (loading_stack.upgrade(), loading_context.upgrade())
             {

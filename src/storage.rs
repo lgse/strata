@@ -150,6 +150,10 @@ pub(crate) fn config_directory() -> PathBuf {
     gtk::glib::user_config_dir().join("strata")
 }
 
+pub(crate) fn state_directory() -> PathBuf {
+    gtk::glib::user_state_dir().join("strata")
+}
+
 pub(crate) fn atomic_write(path: &Path, contents: &[u8]) -> io::Result<()> {
     atomic_write_with(path, LinkPolicy::Reject, |file| file.write_all(contents))
 }

@@ -4,6 +4,7 @@ use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
     fs, io,
+    os::unix::fs::MetadataExt,
     path::{Component, Path, PathBuf},
     rc::Rc,
 };
@@ -24,10 +25,14 @@ pub(in crate::ui) const SEND_TO_RECENT_DESTINATIONS_LIMIT: usize = 3;
 mod bindings;
 #[cfg(test)]
 pub(in crate::ui) mod fixtures;
+mod folder_view_settings;
+mod folder_views;
 mod item_customizations;
 mod save_notice;
 mod text_size;
+mod trashed;
 pub(in crate::ui) use bindings::notify_live;
+pub(crate) use folder_view_settings::flush_pending_folder_views;
 pub use text_size::TextSize;
 
 thread_local! {
@@ -181,6 +186,8 @@ pub(in crate::ui) struct Preferences {
     default_directory: Option<PathBuf>,
     #[serde(default = "default_enabled")]
     restore_tabs: bool,
+    #[serde(default = "default_enabled")]
+    remember_folder_views: bool,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     folder_colors: HashMap<String, String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
@@ -284,6 +291,7 @@ impl Default for Preferences {
             release_channel: default_release_channel(),
             default_directory: None,
             restore_tabs: true,
+            remember_folder_views: true,
             folder_colors: HashMap::new(),
             custom_icons: HashMap::new(),
             send_to_recent_destinations: HashMap::new(),
@@ -424,9 +432,14 @@ pub struct PreferenceManager {
     startup_locale: &'static str,
     changes: bindings::PreferenceChanges,
     persistence_dirty: Cell<bool>,
+    /// The settings file as this process last wrote or read it.
+    settings_synced: Cell<Option<FileStamp>>,
     /// Why saving is off for this session: the file existed but could not be read.
     load_failure: Option<io::Error>,
     save_notices: save_notice::SaveNotices,
+    folder_views: std::cell::OnceCell<folder_view_settings::FolderViewStore>,
+    folder_sorts_revision: Cell<u64>,
+    folder_save_notices: save_notice::SaveNotices,
     item_customizations: item_customizations::ItemCustomizationState,
 }
 
@@ -443,6 +456,7 @@ impl PreferenceManager {
     }
 
     fn load() -> Rc<Self> {
+        let settings_synced = file_stamp(&settings_path());
         let (mut preferences, load_failure) = match read_preferences() {
             Ok(preferences) => (preferences, None),
             Err(error) => {
@@ -480,8 +494,12 @@ impl PreferenceManager {
             startup_interface_renderer: preferences.interface_renderer,
             changes: bindings::PreferenceChanges::new(preferences.clone()),
             persistence_dirty: Cell::new(false),
+            settings_synced: Cell::new(settings_synced),
             load_failure,
             save_notices: save_notice::SaveNotices::default(),
+            folder_views: std::cell::OnceCell::new(),
+            folder_sorts_revision: Cell::new(0),
+            folder_save_notices: save_notice::SaveNotices::for_folder_views(),
             item_customizations: Default::default(),
             preferences: RefCell::new(preferences),
         })
@@ -559,6 +577,7 @@ impl PreferenceManager {
     /// never register, such as the portal chooser, leave failures to the log.
     pub(in crate::ui) fn register_save_notice_window(&self, window: &gtk::Window) {
         self.save_notices.register(window);
+        self.folder_save_notices.register(window);
     }
 
     /// Republishes current preferences without a stored change, for runtime state
@@ -1413,6 +1432,8 @@ impl PreferenceManager {
         sort_preferences(&self.preferences.borrow())
     }
 
+    /// Unlike `set_default_sort`, this keeps folder sorts that equal the new
+    /// default: with per-folder sorts off, they are kept but ignored.
     pub fn set_sort_preferences(&self, preferences: ViewPreferences) {
         if preferences.sort_key == SortKey::Recency {
             return;
@@ -1420,22 +1441,7 @@ impl PreferenceManager {
         let mut stored = self.preferences.borrow_mut();
         stored.show_hidden = preferences.show_hidden;
         stored.folders_first = preferences.folders_first;
-        let sort_key = match preferences.sort_key {
-            SortKey::DeviceOrder => None,
-            SortKey::Recency => None,
-            SortKey::Name => Some("name"),
-            SortKey::Size => Some("size"),
-            SortKey::Modified => Some("modified"),
-            SortKey::Type => Some("type"),
-        };
-        if let Some(sort_key) = sort_key {
-            stored.sort_key = sort_key.to_owned();
-            stored.sort_direction = match preferences.sort_direction {
-                SortDirection::Ascending => "ascending",
-                SortDirection::Descending => "descending",
-            }
-            .to_owned();
-        }
+        store_sort(&mut stored, preferences.sort());
         drop(stored);
         self.save_preferences();
     }
@@ -1449,26 +1455,20 @@ impl PreferenceManager {
         if let Some(error) = &self.load_failure {
             if changed {
                 self.changes.notify(self);
-                self.save_notices.report(
-                    save_notice::SaveProblem::UnreadableAtStartup,
-                    &path,
-                    &crate::services::io_error_detail(error),
-                );
+                self.save_notices.unreadable_at_startup(&path, error);
             }
             return;
         }
         self.persistence_dirty.set(true);
-        let result = (|| -> io::Result<()> {
-            if let Some(parent) = path.parent() {
-                fs::create_dir_all(parent)?;
-            }
-            let value =
-                toml::to_string_pretty(&*self.preferences.borrow()).map_err(io::Error::other)?;
-            crate::storage::atomic_write_config(&path, value.as_bytes())
-        })();
+        let contents =
+            toml::to_string_pretty(&*self.preferences.borrow()).map_err(io::Error::other);
+        let result = contents.and_then(|contents| {
+            self.save_notices
+                .write(&path, &contents, crate::storage::atomic_write_config)
+        });
         if result.is_ok() {
             self.persistence_dirty.set(false);
-            self.save_notices.saved();
+            self.settings_synced.set(file_stamp(&path));
         }
         if changed {
             self.changes.notify(self);
@@ -1476,21 +1476,36 @@ impl PreferenceManager {
         // Reported after bindings apply, and whether or not anything changed,
         // because a retry with an unchanged value can fail too.
         if let Err(error) = result {
-            tracing::warn!(%error, path = %path.display(), "unable to save preference");
-            self.save_notices.report(
-                save_notice::SaveProblem::WriteFailed,
-                &path,
-                &crate::services::io_error_detail(&error),
-            );
+            self.save_notices.write_failed(&path, &error);
         }
     }
 }
 
+type FileStamp = (u64, i64, i64, u64);
+
+/// Tells this process's last write or read of a file apart from another
+/// process's later write.
+fn file_stamp(path: &Path) -> Option<FileStamp> {
+    let metadata = fs::metadata(path).ok()?;
+    Some((
+        metadata.ino(),
+        metadata.mtime(),
+        metadata.mtime_nsec(),
+        metadata.len(),
+    ))
+}
+
+fn read_state_file(path: &Path) -> io::Result<Option<String>> {
+    match fs::read_to_string(path) {
+        Ok(contents) => Ok(Some(contents)),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
 fn read_preferences() -> io::Result<Preferences> {
-    let contents = match fs::read_to_string(settings_path()) {
-        Ok(contents) => contents,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Preferences::default()),
-        Err(error) => return Err(error),
+    let Some(contents) = read_state_file(&settings_path())? else {
+        return Ok(Preferences::default());
     };
     let table: toml::Table = toml::from_str(&contents)
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
@@ -1527,27 +1542,27 @@ fn salvage_preferences(saved: toml::Table) -> Preferences {
 }
 
 fn sort_preferences(preferences: &Preferences) -> ViewPreferences {
-    let sorting = match (
-        preferences.sort_key.as_str(),
-        preferences.sort_direction.as_str(),
-    ) {
-        ("name", "ascending") => Some((SortKey::Name, SortDirection::Ascending)),
-        ("name", "descending") => Some((SortKey::Name, SortDirection::Descending)),
-        ("size", "ascending") => Some((SortKey::Size, SortDirection::Ascending)),
-        ("size", "descending") => Some((SortKey::Size, SortDirection::Descending)),
-        ("modified", "ascending") => Some((SortKey::Modified, SortDirection::Ascending)),
-        ("modified", "descending") => Some((SortKey::Modified, SortDirection::Descending)),
-        ("type", "ascending") => Some((SortKey::Type, SortDirection::Ascending)),
-        ("type", "descending") => Some((SortKey::Type, SortDirection::Descending)),
-        _ => None,
-    }
-    .unwrap_or((SortKey::Name, SortDirection::Ascending));
+    let sorting = SortKey::from_stored(&preferences.sort_key)
+        .zip(SortDirection::from_stored(&preferences.sort_direction))
+        .unwrap_or((SortKey::Name, SortDirection::Ascending));
     ViewPreferences {
         show_hidden: preferences.show_hidden,
         folders_first: preferences.folders_first,
         sort_key: sorting.0,
         sort_direction: sorting.1,
     }
+}
+
+fn store_sort(
+    preferences: &mut Preferences,
+    (sort_key, sort_direction): (SortKey, SortDirection),
+) -> bool {
+    let Some(stored_key) = sort_key.stored_name() else {
+        return false;
+    };
+    preferences.sort_key = stored_key.to_owned();
+    preferences.sort_direction = sort_direction.stored_name().to_owned();
+    true
 }
 
 fn configured_video_preview_backend(preferences: &Preferences) -> MediaPreviewBackend {

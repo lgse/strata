@@ -264,6 +264,15 @@ pub(super) fn check_menu_option(label: &str, selected: bool) -> (gtk::Button, gt
     checkable_menu_option(label, selected, gtk::AccessibleRole::MenuItemCheckbox)
 }
 
+const MENU_OPTION_CLASS: &str = "column-menu-option";
+
+fn menu_action(label: &str) -> gtk::Button {
+    let action = super::accessibility::menu_item_button();
+    action.set_child(Some(&menu_option_label(label)));
+    action.add_css_class(MENU_OPTION_CLASS);
+    action
+}
+
 fn checkable_menu_option(
     label: &str,
     selected: bool,
@@ -272,19 +281,77 @@ fn checkable_menu_option(
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     let check = crate::assets::primary_icon(crate::assets::icons::CHECK, 16);
     check.set_visible(selected);
-    let label = gtk::Label::new(Some(label));
-    label.set_xalign(0.0);
-    label.set_hexpand(true);
-    row.append(&label);
+    row.append(&menu_option_label(label));
     row.append(&check);
     let option = gtk::Button::builder()
         .child(&row)
         .accessible_role(role)
+        .has_frame(false)
         .build();
-    option.add_css_class("column-menu-option");
-    option.set_has_frame(false);
+    option.add_css_class(MENU_OPTION_CLASS);
     super::accessibility::sync_checked_with_icon(&option, &check);
     (option, check)
+}
+
+fn menu_option_label(text: &str) -> gtk::Label {
+    let label = gtk::Label::new(Some(text));
+    label.set_xalign(0.0);
+    label.set_hexpand(true);
+    label
+}
+
+/// A popover's "Make this the default" and "Reset to default" commands.
+#[derive(Clone)]
+pub(super) struct DefaultActions {
+    group: gtk::Box,
+    make_default: gtk::Button,
+    reset: gtk::Button,
+}
+
+impl DefaultActions {
+    pub(super) fn new(
+        popover: &gtk::Popover,
+        (make_default_label, reset_label): (&str, &str),
+        make_default: impl Fn() + 'static,
+        reset: impl Fn() + 'static,
+    ) -> Self {
+        let group = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        let make_default = closing_menu_action(make_default_label, popover, make_default);
+        let reset = closing_menu_action(reset_label, popover, reset);
+        group.append(&make_default);
+        group.append(&reset);
+        Self {
+            group,
+            make_default,
+            reset,
+        }
+    }
+
+    pub(super) fn widget(&self) -> &gtk::Box {
+        &self.group
+    }
+
+    pub(super) fn set_visible(&self, make_default: bool, reset: bool) {
+        self.make_default.set_visible(make_default);
+        self.reset.set_visible(reset);
+        self.group.set_visible(make_default || reset);
+    }
+}
+
+fn closing_menu_action(
+    label: &str,
+    popover: &gtk::Popover,
+    run: impl Fn() + 'static,
+) -> gtk::Button {
+    let action = menu_action(label);
+    let popover = popover.downgrade();
+    action.connect_clicked(move |_| {
+        run();
+        if let Some(popover) = popover.upgrade() {
+            popover.popdown();
+        }
+    });
+    action
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
