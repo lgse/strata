@@ -195,6 +195,7 @@ impl Browser {
         if let Some(depth) = state.fail(request_id, message.clone()) {
             drop(state);
             self.emit(BrowserEvent::LoadFailed { depth, message });
+            self.check_failed_root_load(depth);
         } else if state.fail_peek(request_id, message.clone()) {
             drop(state);
             self.emit(BrowserEvent::PeekFailed { message });

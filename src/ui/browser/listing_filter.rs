@@ -29,6 +29,8 @@ pub(super) struct FilterState {
     notify_scheduled: Cell<bool>,
     /// Whether a footer prompt that filters this browser, 10xer's **f** or **s**, has focus.
     footer_focus: RefCell<Option<Rc<dyn Fn() -> bool>>>,
+    /// The search query and the hit the cursor last rested on in its results.
+    cursor_hit: RefCell<Option<(String, PathBuf)>>,
 }
 
 impl FilterState {
@@ -42,6 +44,11 @@ pub(in crate::ui) struct FilterStatus {
     pub query: String,
     pub search: bool,
     pub current: Option<PathBuf>,
+    /// Whether results replace the listing. A typed query has not switched the
+    /// view until its debounce fires, a search has nothing to count until its
+    /// first batch, and a column on a non-local location narrows its own rows
+    /// in place; the counts below describe none of these.
+    pub displayed: bool,
     pub files: usize,
     pub folders: usize,
     pub visual: Option<VisualKind>,
@@ -197,6 +204,13 @@ impl Target {
         }
     }
 
+    fn awaiting_results(&self) -> bool {
+        match self {
+            Self::Column(column) => column.search_session.awaiting_results(),
+            Self::Pane { search, .. } => search.awaiting_results(),
+        }
+    }
+
     pub(super) fn hits(&self) -> Option<Hits> {
         match self {
             Self::Column(column) => column.recursive_search_active.get().then(|| Hits {
@@ -341,26 +355,63 @@ fn step_column_results(
     true
 }
 
-fn filter_status(target: &Target, root: Option<&Path>) -> Option<FilterStatus> {
+fn filter_status(
+    target: &Target,
+    root: Option<&Path>,
+    cursor_hit: &RefCell<Option<(String, PathBuf)>>,
+) -> Option<FilterStatus> {
     let query = target.entry().text();
+    let search = target.searching();
+    if !search {
+        cursor_hit.take();
+    }
     if query.trim().is_empty() {
         return None;
     }
     let results = target.results().unwrap_or_default();
     let folders = results.iter().filter(|item| item.is_directory).count();
-    let search = target.searching();
     let current = search
-        .then(|| target.current_result())
+        .then(|| current_hit(target, &query, &results, cursor_hit))
         .flatten()
         .and_then(|item| Some(item.path.strip_prefix(root?).ok()?.to_path_buf()));
     Some(FilterStatus {
         query: query.to_string(),
         search,
         current,
+        displayed: target.results_view().is_some()
+            && !(results.is_empty() && target.awaiting_results()),
         files: results.len() - folders,
         folders,
         visual: None,
     })
+}
+
+/// The hit under the cursor. With focus outside the results (a menu, the
+/// sidebar, the shortcut reference), the cursor would fall back to the
+/// selection, which over a fill is not where it rested, so the last hit it
+/// rested on stands while it is still listed.
+fn current_hit(
+    target: &Target,
+    query: &str,
+    results: &[SearchItem],
+    cursor_hit: &RefCell<Option<(String, PathBuf)>>,
+) -> Option<SearchItem> {
+    let focused = target.results_view().is_some_and(|view| {
+        view.root()
+            .and_then(|root| root.focus())
+            .is_some_and(|focus| focus == view || focus.is_ancestor(&view))
+    });
+    if focused {
+        let hit = target.current_result();
+        cursor_hit.replace(hit.as_ref().map(|hit| (query.to_owned(), hit.path.clone())));
+        return hit;
+    }
+    let kept = cursor_hit
+        .borrow()
+        .as_ref()
+        .filter(|(kept_query, _)| kept_query == query)
+        .and_then(|(_, path)| results.iter().find(|item| item.path == *path).cloned());
+    kept.or_else(|| target.current_result())
 }
 
 pub(super) fn filter_shows_query(target: &Target) -> bool {
@@ -602,7 +653,8 @@ impl BrowserView {
             .filter_depth()
             .and_then(|depth| self.state.browser.location_at(depth));
         let root = root.as_ref().and_then(|location| location.native_path());
-        let status = target.and_then(|target| filter_status(&target, root));
+        let status = target
+            .and_then(|target| filter_status(&target, root, &self.state.listing_filter.cursor_hit));
         Some(status.map(|status| FilterStatus {
             visual: self.state.result_visual_kind(),
             ..status

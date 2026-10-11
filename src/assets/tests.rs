@@ -195,15 +195,8 @@ fn cold_interface_icons_render_when_decoder_workers_cannot_start() {
                     "recoloring must request the new color variant"
                 );
                 let texture = recolored.downcast::<gtk::gdk::Texture>().expect("texture");
-                let stride = texture.width() as usize * 4;
-                let mut pixels = vec![0; stride * texture.height() as usize];
-                texture.download(&mut pixels, stride);
                 assert!(
-                    pixels
-                        .as_chunks::<4>()
-                        .0
-                        .iter()
-                        .any(|pixel| u32::from_ne_bytes(*pixel) >> 24 != 0),
+                    crate::test_support::texture_has_visible_pixels(&texture),
                     "bundled icon must render visible geometry: {name}"
                 );
             }

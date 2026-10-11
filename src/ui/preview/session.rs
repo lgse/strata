@@ -70,6 +70,7 @@ impl PreviewState {
     }
 
     pub(super) fn clear_target(&self) {
+        self.reset_find();
         self.continue_playback.take();
         self.cancel_pending_show();
         self.claim_on_resume.set(false);

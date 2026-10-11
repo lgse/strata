@@ -597,6 +597,11 @@ def test_preview_source_text_takes_pointer_focus_and_copies(strata):
     assert text is not None, strata.preview().dump()
     strata.pointer.click(text)
     strata.wait(lambda: text.has_state("focused"), "the preview text to take focus")
+    strata.keyboard.press("ctrl+Home")
+    strata.keyboard.press_repeatedly("shift+Right", 3)
+    strata.keyboard.press("ctrl+c")
+    assert table_clipboard_text(strata) == "the"
+    strata.pointer.click(text)
     bounds = text.screen_bounds()
     strata.pointer.drag_points(
         (bounds.x + 34, bounds.y + 14),
@@ -912,6 +917,111 @@ def test_narrow_window_prioritizes_the_last_column_and_restores_the_latest_previ
     strata.wait(last_column_visible, "the last column beside the resumed preview")
     resize(1200)
     strata.wait(lambda: strata.preview().screen_bounds().width == preferred, "the preferred preview width to return")
+
+
+@pytest.mark.parametrize("fixture_tree,filename,word", [
+    ({"selection.md": "alpha bravo charlie delta\n\nsecond paragraph\n"}, "selection.md", "alpha"),
+    ({"selection.docx": Path(__file__).resolve().parents[2] / "fixtures/documents/report.docx"}, "selection.docx", "Quarterly"),
+], indirect=["fixture_tree"])
+@pytest.mark.preferences(single_click_previews=False)
+def test_rendered_document_word_and_shift_selection(strata, filename, word):
+    strata.select_entry_with_keyboard(filename)
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview_shows(word), "rendered document text")
+    strata.keyboard.press("ctrl+l")
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("selection-cleared")
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.press("ctrl+c")
+    strata.keyboard.press("Escape")
+    row = strata.wait(lambda: strata.preview().find(role="list item"), "first prose row")
+    text = row.find_all(role="panel")[-1]
+    bounds = text.screen_bounds()
+    start = (bounds.x + 17, bounds.center[1])
+    end = (bounds.x + bounds.width * 3 // 4, bounds.center[1])
+    strata.pointer.double_click(text, at=start)
+    strata.keyboard.press("ctrl+c")
+    assert table_clipboard_text(strata) == word
+    strata.pointer.click(text, at=start)
+    strata.pointer.click(text, at=end, modifiers=["shift"])
+    strata.keyboard.press("ctrl+c")
+    copied = table_clipboard_text(strata)
+    assert copied.startswith(word) and len(copied) > len(word)
+    strata.keyboard.press("ctrl+Home")
+    strata.keyboard.press_repeatedly("shift+Right", 5)
+    strata.keyboard.press("ctrl+c")
+    assert table_clipboard_text(strata) == word[:5]
+    strata.keyboard.press_repeatedly("shift+Left", 2)
+    strata.keyboard.press("ctrl+c")
+    assert table_clipboard_text(strata) == word[:3]
+    assert strata.selected_names() == [filename]
+
+
+@pytest.mark.parametrize("fixture_tree,filename", [
+    ({"find.txt": "alpha needle omega\nsecond NEEDLE line\n", "after.txt": "unrelated text\n"}, "find.txt"),
+    ({"find.txt": "alpha needle omega\n" + "padding line\n" * 600 + "second NEEDLE line\n", "after.txt": "unrelated text\n"}, "find.txt"),
+    ({"find.py": "# alpha needle omega\n" + "# padding line\n" * 600 + "# second NEEDLE line\n", "after.txt": "unrelated text\n"}, "find.py"),
+    ({"find.md": "alpha needle omega\n\nsecond NEEDLE line\n", "after.txt": "unrelated text\n"}, "find.md"),
+], indirect=["fixture_tree"], ids=["source", "virtual-source", "incremental-source", "rendered"])
+@pytest.mark.parametrize("tenxer", [
+    pytest.param(False, marks=pytest.mark.preferences(tenxer_mode=False), id="default"),
+    pytest.param(True, marks=pytest.mark.preferences(tenxer_mode=True), id="tenxer"),
+])
+@pytest.mark.preferences(single_click_previews=False, type_to_search=False)
+def test_preview_find_navigates_content_without_filtering_files(strata, filename, tenxer):
+    strata.select_entry_with_keyboard(filename)
+    selected_before = strata.selected_names()
+    entries_before = strata.entry_names()
+    strata.keyboard.press("l" if tenxer else "space")
+    strata.wait(lambda: strata.preview_shows("alpha needle omega"), "preview text")
+    if not tenxer:
+        strata.keyboard.press("Right")
+    strata.wait(lambda: strata.focused_name() is None, "preview keyboard ownership")
+    find_key = "/" if tenxer else "ctrl+f"
+    strata.keyboard.press(find_key)
+    field = strata.wait(lambda: strata.preview().find(role="text", name="Find in preview"), "preview find field")
+    strata.keyboard.type_text("needle")
+    strata.wait(lambda: strata.preview_shows("Match 1 of 2"), "first match")
+    strata.keyboard.press("Return")
+    strata.wait(lambda: strata.preview_shows("Match 2 of 2"), "Enter to find the next match")
+    strata.keyboard.press("shift+Return")
+    strata.wait(lambda: strata.preview_shows("Match 1 of 2"), "Shift+Enter to find the previous match")
+    strata.pointer.click(strata.preview().find(role="button", name="Previous match"))
+    strata.wait(lambda: strata.preview_shows("Match 2 of 2"), "previous match to wrap")
+    strata.pointer.click(strata.preview().find(role="button", name="Next match"))
+    strata.wait(lambda: strata.preview_shows("Match 1 of 2"), "next match to wrap")
+    strata.pointer.click(strata.preview().find(role="button", name="Next match"))
+    strata.wait(lambda: strata.preview_shows("Match 2 of 2"), "next match")
+    strata.keyboard.press("Escape")
+    strata.wait(lambda: strata.preview().find(role="text", name="Find in preview") is None, "find dismissal")
+    strata.keyboard.press("ctrl+c")
+    assert table_clipboard_text(strata) == "NEEDLE"
+    assert strata.selected_names() == selected_before
+    assert strata.entry_names() == entries_before
+    strata.keyboard.press(find_key)
+    strata.wait(lambda: strata.preview().find(role="text", name="Find in preview"), "find to reopen")
+    if filename.endswith(".md"):
+        strata.pointer.click(strata.preview().find(role="button", name="View source"))
+        strata.wait(lambda: strata.preview_shows("Match 1 of 2"), "query to follow the source view")
+        strata.pointer.click(strata.preview().find(role="button", name="View rendered"))
+        strata.wait(lambda: strata.preview_shows("Match 1 of 2"), "query to follow the rendered view")
+        strata.pointer.click(strata.preview().find(role="text", name="Find in preview"))
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("missing passage")
+    strata.wait(lambda: strata.preview_shows("No matches"), "empty search results")
+    strata.keyboard.press("Escape")
+    strata.wait(lambda: strata.preview().find(role="text", name="Find in preview") is None, "find to dismiss without closing the document")
+    strata.pointer.click(strata.preview().find(role="button", name="Close preview (Space)"))
+    strata.wait(lambda: strata.preview() is None, "preview to close")
+    strata.select_entry_with_keyboard("after.txt")
+    selected_after = strata.selected_names()
+    strata.keyboard.press("l" if tenxer else "space")
+    strata.wait(lambda: strata.preview_shows("unrelated text"), "a different file preview")
+    strata.pointer.click(strata.preview().find(role="button", name=f"Find in preview ({'/' if tenxer else 'Ctrl+F'})"))
+    field = strata.wait(lambda: strata.preview().find(role="text", name="Find in preview"), "find in the new preview")
+    assert field.text == ""
+    strata.keyboard.press("Escape")
+    assert strata.selected_names() == selected_after
 
 
 LONG_DOCUMENT = {

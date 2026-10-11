@@ -39,7 +39,7 @@ pub(crate) use document::{
     has_web_scheme, layout_document, parse_document, parse_markdown,
 };
 pub use file_source::{
-    DirectoryChange, DirectoryEvent, DirectoryRequest, FileSource, LoadHandle,
+    DirectoryChange, DirectoryEvent, DirectoryRequest, FileSource, LoadHandle, LocationIdentity,
     LocationValidationError, MetadataOutcome, MetadataRequest, MetadataUpdate, RequestId,
     UriCredentials, backend_unavailable_message, sanitize_uri_credentials,
     validate_uri_credentials,

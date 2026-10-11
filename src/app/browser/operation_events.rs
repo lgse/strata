@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
+    cell::RefCell,
     collections::{HashMap, HashSet},
     rc::Rc,
 };
 
 use crate::{
     model::Location,
-    services::{OperationEvent, OperationRequestId},
+    services::{OperationEvent, OperationRequestId, TrashedOriginal},
 };
 
 mod background;
@@ -25,6 +26,16 @@ struct OperationContext {
     refresh_locations: HashSet<Location>,
     navigation_generation: u64,
     origin: Option<Location>,
+    location_changes: LocationChanges,
+}
+
+/// Per-request state for publishing path changes as each item lands, even
+/// after a later operation superseded this one.
+struct LocationChanges {
+    deleting: bool,
+    moving: bool,
+    removed: RefCell<HashSet<Location>>,
+    restored: RefCell<HashSet<Location>>,
 }
 
 struct OperationCompletion {
@@ -128,6 +139,12 @@ impl Browser {
             refresh_locations,
             navigation_generation: self.validation_generation.get(),
             origin: self.active_location(),
+            location_changes: LocationChanges {
+                deleting: self.deletion_operation.get(),
+                moving: self.transfer_operation.get() == Some(true),
+                removed: RefCell::default(),
+                restored: RefCell::default(),
+            },
         };
         let weak = Rc::downgrade(self);
         Rc::new(move |event| {
@@ -138,6 +155,7 @@ impl Browser {
             if event_id != context.request_id {
                 return;
             }
+            browser.track_location_changes(&context.location_changes, &event);
             let background = browser
                 .background_operations
                 .borrow()
@@ -154,6 +172,74 @@ impl Browser {
                 browser.finish_operation(&context, event);
             }
         })
+    }
+
+    fn track_location_changes(&self, changes: &LocationChanges, event: &OperationEvent) {
+        match event {
+            OperationEvent::ItemMoved {
+                from, to, merged, ..
+            } => self.emit(BrowserEvent::ItemRelocated {
+                from: from.clone(),
+                to: to.clone(),
+                merged: *merged,
+            }),
+            OperationEvent::ItemTrashed {
+                location, identity, ..
+            } => self.publish_removal(changes, location, Some(*identity)),
+            // A merged move staged these overwritten destination items in Trash.
+            OperationEvent::Merged { overwritten, .. } if changes.moving => {
+                for location in overwritten {
+                    self.publish_removal(changes, location, None);
+                }
+            }
+            OperationEvent::DeleteProgress {
+                deleted_locations, ..
+            } => {
+                for location in deleted_locations {
+                    self.publish_removal(changes, location, None);
+                }
+            }
+            OperationEvent::RestoreProgress {
+                restored_location: Some(location),
+                ..
+            } => self.publish_restoration(changes, location),
+            OperationEvent::Restored { restored, .. }
+            | OperationEvent::RestoreCompletedWithErrors { restored, .. } => {
+                for location in restored {
+                    self.publish_restoration(changes, location);
+                }
+            }
+            // Restores also list completed items in these terminals, so only a
+            // deletion's terminal names removals its progress did not report.
+            _ if changes.deleting => {
+                for location in deleted_locations(event) {
+                    self.publish_removal(changes, &location, None);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn publish_removal(
+        &self,
+        changes: &LocationChanges,
+        location: &Location,
+        trash_identity: Option<TrashedOriginal>,
+    ) {
+        if changes.removed.borrow_mut().insert(location.clone()) {
+            self.emit(BrowserEvent::ItemRemoved {
+                location: location.clone(),
+                trash_identity,
+            });
+        }
+    }
+
+    fn publish_restoration(&self, changes: &LocationChanges, location: &Location) {
+        if changes.restored.borrow_mut().insert(location.clone()) {
+            self.emit(BrowserEvent::ItemRestored {
+                location: location.clone(),
+            });
+        }
     }
 
     fn publish_operation_progress(self: &Rc<Self>, event: &OperationEvent) -> bool {
@@ -219,6 +305,7 @@ impl Browser {
                 merged.overwritten.extend(overwritten.iter().cloned());
                 return true;
             }
+            OperationEvent::ItemMoved { .. } | OperationEvent::ItemTrashed { .. } => return true,
             OperationEvent::ArchiveStarted { total, .. } => {
                 BrowserEvent::ArchiveStarted { total: *total }
             }
@@ -529,6 +616,8 @@ impl Browser {
             | OperationEvent::DeleteProgress { .. }
             | OperationEvent::RestoreProgress { .. }
             | OperationEvent::Merged { .. }
+            | OperationEvent::ItemMoved { .. }
+            | OperationEvent::ItemTrashed { .. }
             | OperationEvent::ArchiveStarted { .. }
             | OperationEvent::ArchiveProgress { .. }
             | OperationEvent::FlushingToDevice { .. } => {}
@@ -625,6 +714,8 @@ fn operation_event_id(event: &OperationEvent) -> OperationRequestId {
         | OperationEvent::Created { request_id }
         | OperationEvent::EntryCreated { request_id, .. }
         | OperationEvent::Pasted { request_id, .. }
+        | OperationEvent::ItemMoved { request_id, .. }
+        | OperationEvent::ItemTrashed { request_id, .. }
         | OperationEvent::FlushingToDevice { request_id }
         | OperationEvent::Merged { request_id, .. }
         | OperationEvent::TransferFailed { request_id, .. }

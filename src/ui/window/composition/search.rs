@@ -2,7 +2,7 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use gtk::{gio, prelude::*};
+use gtk::prelude::*;
 
 use crate::{
     app::{Browser, BrowserEvent},
@@ -16,7 +16,11 @@ use crate::{
 
 use super::WindowContent;
 
-pub(super) fn install(content: &WindowContent, preferences: &Rc<PreferenceManager>) {
+pub(super) fn install(
+    window: &gtk::ApplicationWindow,
+    content: &WindowContent,
+    preferences: &Rc<PreferenceManager>,
+) {
     let controller = content.browser.browser();
     let history = NavigationHistory::shared();
     install_history_recorder(&controller, &history);
@@ -56,14 +60,25 @@ pub(super) fn install(content: &WindowContent, preferences: &Rc<PreferenceManage
         }
         clicked_search();
     });
-    let action = gio::SimpleAction::new("search", None);
-    action.connect_activate(move |_, _| toggle());
-    content.actions.add_action(&action);
+    let own_layer = dialog.widget();
+    super::add_guarded_window_action(
+        window,
+        &content.actions,
+        "search",
+        &content.browser,
+        Some(own_layer.clone()),
+        move || toggle(),
+    );
 
     let jump = folder_jump_handler(dialog, content, history);
-    let action = gio::SimpleAction::new("jump-folder", None);
-    action.connect_activate(move |_, _| jump());
-    content.actions.add_action(&action);
+    super::add_guarded_window_action(
+        window,
+        &content.actions,
+        "jump-folder",
+        &content.browser,
+        Some(own_layer),
+        move || jump(),
+    );
 }
 
 #[derive(Default)]

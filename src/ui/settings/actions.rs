@@ -72,8 +72,10 @@ pub(super) fn actions_page() -> gtk::Widget {
     let list = gtk::Box::new(gtk::Orientation::Vertical, 0);
     list.add_css_class("settings-group");
     list.set_overflow(gtk::Overflow::Hidden);
+    search::tag(&list, "Custom actions");
     content.append(&list);
     let problems = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    search::tag(&problems, "Custom actions");
     content.append(&problems);
 
     let registry = crate::ui::actions::shared();

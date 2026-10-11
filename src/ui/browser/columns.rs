@@ -364,6 +364,7 @@ impl FolderPress {
     }
 }
 
+#[derive(Clone)]
 pub(super) struct BoundRow {
     pub(super) item: glib::WeakRef<gtk::ListItem>,
     pub(super) row: glib::WeakRef<gtk::Box>,
@@ -456,6 +457,18 @@ impl ColumnView {
         crate::ui::loading_skeleton::focus_surface_or(&self.presentation.stack, &self.list)
     }
 
+    /// The bound row GTK shows at `position`. A reload during an inline rename can leave
+    /// a detached row behind that still reports the position it had.
+    pub(super) fn shown_row_at(&self, position: u32) -> Option<(gtk::Box, BoundRow)> {
+        self.bound_rows.borrow().iter().find_map(|bound| {
+            let row = bound.row.upgrade()?;
+            (bound.item.upgrade()?.position() == position
+                && row.is_mapped()
+                && row.is_ancestor(&self.list))
+            .then(|| (row, bound.clone()))
+        })
+    }
+
     pub(super) fn refresh_name_highlights(&self, find: Option<&str>) {
         let searching = self.recursive_search_active.get();
         let results = self.search_results.borrow();
@@ -502,10 +515,7 @@ impl ColumnView {
             position.and_then(|position| self.map.view_position(position))
         };
         if let Some(position) = position {
-            let row = self.bound_rows.borrow().iter().find_map(|bound| {
-                let item = bound.item.upgrade()?;
-                (item.position() == position).then(|| bound.row.upgrade())?
-            })?;
+            let (row, _) = self.shown_row_at(position)?;
             let bounds = row.compute_bounds(&self.list)?;
             return Some((
                 self.item_context_trigger.clone(),
@@ -2141,20 +2151,15 @@ impl ViewState {
         let Some(active_pos) = active else {
             return;
         };
-        for bound in column.bound_rows.borrow().iter() {
-            if bound.item.upgrade().map(|item| item.position()) == Some(active_pos) {
-                if let Some(row) = bound.row.upgrade() {
+        if let Some((row, _)) = column.shown_row_at(active_pos) {
+            row.remove_css_class("flash-active-path");
+            row.add_css_class("flash-active-path");
+            let weak_row = row.downgrade();
+            glib::timeout_add_local_once(Duration::from_millis(420), move || {
+                if let Some(row) = weak_row.upgrade() {
                     row.remove_css_class("flash-active-path");
-                    row.add_css_class("flash-active-path");
-                    let weak_row = row.downgrade();
-                    glib::timeout_add_local_once(Duration::from_millis(420), move || {
-                        if let Some(row) = weak_row.upgrade() {
-                            row.remove_css_class("flash-active-path");
-                        }
-                    });
                 }
-                break;
-            }
+            });
         }
     }
 

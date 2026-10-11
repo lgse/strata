@@ -6,12 +6,12 @@ mod text_size;
 use std::collections::HashSet;
 
 use super::{
-    Theme, ThemeManager, ThemeTokens, azure_tokens, blend, builtins, color_to_hex,
+    Theme, ThemeManager, ThemeTokens, azure_tokens, blend, builtins, canonical_color, color_to_hex,
     is_omarchy_theme_event, merge_builtin_and_custom_themes, slugify, source_palette_from_quattro,
     source_style_scheme_xml, themes_directory, title_case_slug, tokens_from_quattro,
     validate_tokens,
 };
-use crate::test_support::gtk_test;
+use crate::test_support::{gtk_test, texture_has_visible_pixels};
 
 #[test]
 fn bundled_catalog_is_valid_unique_and_alphabetical() {
@@ -157,9 +157,122 @@ fn colors_can_be_blended_into_semantic_tokens() {
 
 #[test]
 fn gtk_color_formats_canonicalize_for_persistence_and_scheme_xml() {
-    assert_eq!(color_to_hex("rgb(153,193,241)"), "#99c1f1");
-    assert_eq!(color_to_hex("#fff"), "#ffffff");
-    assert_eq!(color_to_hex("rebeccapurple"), "#663399");
+    for (value, css, opaque) in [
+        ("rgb(153,193,241)", Some("#99c1f1"), "#99c1f1"),
+        ("#fff", Some("#ffffff"), "#ffffff"),
+        ("#81A1C1", Some("#81a1c1"), "#81a1c1"),
+        ("rebeccapurple", Some("#663399"), "#663399"),
+        ("#000aaafff", Some("#00aaff"), "#00aaff"),
+        ("#0000aaaaffff", Some("#00aaff"), "#00aaff"),
+        ("#0000aaaaffff8888", Some("#00aaff88"), "#00aaff"),
+        ("rgba(0, 170, 255, 0.5)", Some("#00aaff80"), "#00aaff"),
+        ("0x7aa2f7", None, "0x7aa2f7"),
+    ] {
+        assert_eq!(canonical_color(value).as_deref(), css, "{value}");
+        assert_eq!(color_to_hex(value), opaque, "{value}");
+    }
+}
+
+#[test]
+fn custom_theme_colors_load_as_css_hex_without_rewriting_the_file() {
+    gtk_test(
+        "ui::theme::tests::custom_theme_colors_load_as_css_hex_without_rewriting_the_file",
+        || {
+            use gtk::prelude::*;
+            let directory = themes_directory();
+            std::fs::create_dir_all(&directory).expect("themes directory");
+            let mut written = azure_tokens();
+            written.name = "Deep Hex".to_owned();
+            written.accent = "#000aaafff".to_owned();
+            written.highlight = "#0000aaaaffff8888".to_owned();
+            written.syntax_string = Some("#333333333".to_owned());
+            let source = toml::to_string_pretty(&written).expect("theme file");
+            let path = directory.join("deep-hex.toml");
+            std::fs::write(&path, &source).expect("custom theme");
+
+            let manager = ThemeManager::shared();
+            let loaded = manager
+                .themes()
+                .into_iter()
+                .find(|theme| theme.id == "deep-hex")
+                .expect("custom theme with GTK-only hex colors loads")
+                .tokens;
+            assert_eq!(loaded.accent, "#00aaff");
+            assert_eq!(loaded.highlight, "#00aaff88");
+            assert_eq!(loaded.syntax_string.as_deref(), Some("#333333"));
+            assert_eq!(loaded.background, written.background);
+
+            let window = gtk::Window::new();
+            manager.select_theme("deep-hex");
+            for (name, expected) in [
+                ("strata_accent", "#00aaff"),
+                ("strata_highlight", "#00aaff88"),
+            ] {
+                #[expect(deprecated, reason = "GTK has no replacement for named CSS colors")]
+                let applied = window.style_context().lookup_color(name);
+                assert_eq!(
+                    applied,
+                    Some(gtk::gdk::RGBA::parse(expected).expect("canonical color")),
+                    "{name}"
+                );
+            }
+            assert_eq!(crate::assets::primary_icon_color(), "#00aaff");
+            assert_eq!(
+                std::fs::read_to_string(&path).expect("custom theme"),
+                source,
+                "loading never rewrites the user's theme file"
+            );
+            window.close();
+        },
+    );
+}
+
+#[test]
+fn applied_icon_colors_are_canonical_and_render_visible_strokes() {
+    gtk_test(
+        "ui::theme::tests::applied_icon_colors_are_canonical_and_render_visible_strokes",
+        || {
+            use gtk::prelude::*;
+            let manager = ThemeManager::shared();
+            for (value, expected) in [
+                ("#000aaafff", "#00aaff"),
+                ("rgb(0, 170, 255)", "#00aaff"),
+                ("deepskyblue", "#00bfff"),
+                ("#00aaff80", "#00aaff"),
+            ] {
+                let mut tokens = azure_tokens();
+                tokens.accent = value.to_owned();
+                tokens.text = value.to_owned();
+                tokens.danger = value.to_owned();
+                manager.apply_tokens(&tokens, None);
+                assert_eq!(crate::assets::primary_icon_color(), expected, "{value}");
+                for (kind, image) in [
+                    (
+                        "primary",
+                        crate::assets::primary_icon(crate::assets::icons::COG, 18),
+                    ),
+                    (
+                        "text",
+                        crate::assets::text_icon(crate::assets::icons::COG, 18),
+                    ),
+                    (
+                        "danger",
+                        crate::assets::danger_icon(crate::assets::icons::COG, 18),
+                    ),
+                ] {
+                    let texture = image
+                        .paintable()
+                        .expect("icon paintable")
+                        .downcast::<gtk::gdk::Texture>()
+                        .expect("icon texture");
+                    assert!(
+                        texture_has_visible_pixels(&texture),
+                        "{value} {kind} icon has a visible stroke"
+                    );
+                }
+            }
+        },
+    );
 }
 
 fn scheme_color_values(xml: &str) -> Vec<&str> {
@@ -281,6 +394,70 @@ magenta = "#666666"
     assert_eq!(palette.constant, "#555555");
     assert_eq!(palette.type_color, "#222222");
     assert_eq!(palette.preprocessor, "#444444");
+}
+
+#[test]
+fn quattro_syntax_palette_treats_unparsable_colors_as_missing() {
+    let base = [
+        ("blue", "#111111"),
+        ("cyan", "#222222"),
+        ("green", "#333333"),
+        ("yellow", "#444444"),
+        ("orange", "#555555"),
+        ("magenta", "#666666"),
+    ];
+    let source_with = |key: &str, value: &str| {
+        base.iter()
+            .map(|(name, color)| {
+                let color = if *name == key { value } else { color };
+                format!("{name} = \"{color}\"\n")
+            })
+            .collect::<String>()
+    };
+    type Field = fn(&super::SourcePalette) -> &str;
+    let statement: Field = |palette| &palette.statement;
+    let string: Field = |palette| &palette.string;
+    let constant: Field = |palette| &palette.constant;
+    let type_color: Field = |palette| &palette.type_color;
+    for (key, value, expected) in [
+        ("green", "invalid", None),
+        ("yellow", "invalid", None),
+        ("magenta", "0x666666", Some((statement, "#111111"))),
+        ("orange", "notacolor", Some((constant, "#444444"))),
+        ("cyan", "", Some((type_color, "#111111"))),
+        ("green", "#333333333", Some((string, "#333333"))),
+        (
+            "magenta",
+            "rgba(102,102,102,0.5)",
+            Some((statement, "#66666680")),
+        ),
+    ] {
+        let palette = source_palette_from_quattro(&source_with(key, value));
+        match expected {
+            None => assert!(palette.is_none(), "{key} = {value:?}"),
+            Some((field, color)) => assert_eq!(
+                palette.as_ref().map(field),
+                Some(color),
+                "{key} = {value:?}"
+            ),
+        }
+    }
+
+    let source = format!(
+        "background = \"#0a0f1a\"\nforeground = \"#a8dfff\"\naccent = \"#00aaff\"\n{}",
+        source_with("orange", "0x555555").replace("#666666", "notacolor")
+    );
+    let tokens = tokens_from_quattro("azure-glow", &source, super::OmarchyVariant::Original)
+        .expect("required Quattro colors are valid");
+    let xml = source_style_scheme_xml(&tokens, source_palette_from_quattro(&source).as_ref());
+    let values = scheme_color_values(&xml);
+    assert_eq!(values.len(), 12);
+    for value in values {
+        assert!(
+            value.starts_with('#') && value.len() == 7,
+            "scheme colors must be canonical #rrggbb, got {value}"
+        );
+    }
 }
 
 #[test]

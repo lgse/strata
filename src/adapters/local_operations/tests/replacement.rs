@@ -100,7 +100,7 @@ fn staged_file_replacement_preserves_the_destination_on_disk_full() -> Result<()
                 ))
             })
         }),
-        &|| {},
+        &|_| {},
     ));
 
     assert!(result.is_err());
@@ -153,7 +153,7 @@ fn cancelling_staging_preserves_the_destination_and_cleans_the_partial_copy()
                 ))
             })
         }),
-        &|| {},
+        &|_| {},
     ));
     let context = glib::MainContext::default();
     while !staging.get() {
@@ -258,7 +258,7 @@ fn replacement_move_does_not_delete_a_substituted_source() -> Result<(), Box<dyn
                 fs::write(new_source, b"new arrival").map_err(io_error)
             })
         }),
-        &|| {},
+        &|_| {},
     ));
 
     let error = result.expect_err("a substituted source must fail identity validation");
@@ -333,7 +333,7 @@ fn replacement_stops_before_exchanging_a_substituted_target() -> Result<(), Box<
                 fs::write(new_target, b"new arrival").map_err(io_error)
             })
         }),
-        &|| {},
+        &|_| {},
     ));
 
     let error = result.expect_err("a substituted target must fail identity validation");

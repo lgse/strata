@@ -13,6 +13,7 @@ use crate::ui::browser::columns::{
     select_all_in_column, set_column_busy, set_column_selections, set_filter_placeholder,
     stop_column_spinner, touch_source_model, update_empty_trash_sensitivity,
 };
+use crate::ui::browser::customization;
 use crate::ui::browser::location::MountStrategy;
 use crate::ui::browser::peek::append_peek_entries;
 use crate::ui::browser::transfer::FinishedSendToCompletion;
@@ -99,6 +100,12 @@ impl ViewState {
                 }
             }
             BrowserEvent::ColumnsRelocated { from_depth } => {
+                if self
+                    .listing_search_depth()
+                    .is_some_and(|depth| depth >= *from_depth)
+                {
+                    self.forget_listing_search();
+                }
                 if self.mode_views.borrow().mode() == BrowserMode::Columns {
                     let refocus = self
                         .focused_column_depth()
@@ -772,6 +779,16 @@ impl ViewState {
                     *sort_key,
                     *sort_direction,
                 );
+            }
+            BrowserEvent::ItemRelocated { from, to, merged } => {
+                customization::relocate_item_customizations(from, to, *merged)
+            }
+            BrowserEvent::ItemRemoved {
+                location,
+                trash_identity,
+            } => customization::forget_item_customizations(location, *trash_identity),
+            BrowserEvent::ItemRestored { location } => {
+                customization::restore_item_customizations(location)
             }
             BrowserEvent::DeletionStarted { total } => {
                 let browser = self.browser.clone();

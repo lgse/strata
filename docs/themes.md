@@ -39,7 +39,7 @@ border = "#315b75"
 dim_text = "#6f8da3"
 ```
 
-Strata discovers valid `.toml` files in this directory on startup and displays them under **Your themes**. If a custom filename matches a bundled theme ID, the custom theme replaces that bundled entry so saved preferences and selection always use the user’s palette.
+Strata discovers valid `.toml` files in this directory on startup and displays them under **Your themes**. If a custom filename matches a bundled theme ID, the custom theme replaces that bundled entry so saved preferences and selection always use the user’s palette. Colors load as `#rrggbb`, or `#rrggbbaa` when translucent, so GTK-only forms such as 9-digit hex still apply; the file is not rewritten. Interface icons ignore the alpha.
 
 Theme files may be symlinks into a dotfiles repository. The configurator never overwrites an existing theme file: when `<theme-id>.toml` already exists, whether it loaded or not (for example an invalid file or a link to a missing or broken dotfile), the new theme is saved as the next free `<theme-id>-2.toml`, `<theme-id>-3.toml`, and so on.
 
@@ -84,6 +84,6 @@ The variants keep palette hues and adjust brightness where necessary; they do no
 
 The choice is saved as `omarchy_variant = "original"`, `"darker"`, or `"high_contrast"` in Strata's `settings.toml`. It applies before Settings opens and live across windows, menus, dialogs, icons, and previews. Changing the active Omarchy theme retains the variant. Turning off Follow Omarchy disables the selector but remembers its value; bundled and custom themes are unaffected.
 
-Syntax colors follow Quattro's named `magenta`, `green`, `orange`, `cyan`, and `yellow` colors. Older terminal palettes can supply `color5` for keywords, `color2` for strings, `color9` for constants, and `color3` for types. Missing colors retain the existing source-palette or derived fallback.
+Syntax colors follow Quattro's named `magenta`, `green`, `orange`, `cyan`, and `yellow` colors. Older terminal palettes can supply `color5` for keywords, `color2` for strings, `color9` for constants, and `color3` for types. Missing colors retain the existing source-palette or derived fallback. Quattro values load in the same canonical hex form as custom theme files; values GTK cannot parse count as missing.
 
-The system option is not shown when a valid Quattro current-theme state is unavailable. If that state disappears while Strata is running, following turns off and Strata returns to the selected built-in theme. Legacy Omarchy theme layouts and alacritty-based color extraction are intentionally unsupported.
+The system option is not shown when a valid Quattro current-theme state is unavailable. If that state disappears while Strata is running, following turns off and Strata returns to the selected built-in theme. If it only becomes invalid, for example midway through an Omarchy theme switch, the last applied Omarchy palette stays in use until the next valid change. Legacy Omarchy theme layouts and alacritty-based color extraction are intentionally unsupported.

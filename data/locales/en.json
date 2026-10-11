@@ -1200,6 +1200,7 @@
   "settings_keywords.preview-autoplay": "browsing video audio gif playback paused sound",
   "settings_keywords.previews": "browsing quick preview selecting supported files",
   "settings_keywords.refresh": "performance timer reload network share monitors",
+  "settings_keywords.render-documents": "browsing preview markdown md html rendered source view",
   "settings_keywords.renderer": "appearance graphics cairo gtk gpu text artifacts performance restart",
   "settings_keywords.restore-tabs": "startup launch session reopen tabs",
   "settings_keywords.search-exclusions": "search filter exclusions exclude folders directories ignore venv prune",

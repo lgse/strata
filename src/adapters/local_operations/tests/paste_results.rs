@@ -3,7 +3,7 @@
 use super::*;
 
 #[test]
-fn a_copy_reports_the_destination_it_created() -> Result<(), Box<dyn Error>> {
+fn a_copy_reports_the_destination_it_created_and_no_moved_item() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
         .map_err(|error| error.to_string())?;
@@ -13,7 +13,7 @@ fn a_copy_reports_the_destination_it_created() -> Result<(), Box<dyn Error>> {
     fs::write(&source, b"original-content")?;
     fs::create_dir(&destination)?;
 
-    let created = run_paste_collecting_created(PasteRequest {
+    let events = run_paste(PasteRequest {
         id: OperationRequestId(70),
         destination: Location::local(&destination),
         items: vec![PasteItem {
@@ -21,12 +21,22 @@ fn a_copy_reports_the_destination_it_created() -> Result<(), Box<dyn Error>> {
             conflict: TransferConflict::FailIfExists,
         }],
         move_sources: false,
-    })?;
+    });
 
+    let created = events
+        .iter()
+        .filter_map(|event| match event {
+            OperationEvent::TransferProgress {
+                created_location, ..
+            } => created_location.clone(),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
     assert_eq!(
-        created.into_iter().flatten().collect::<Vec<_>>(),
+        created,
         vec![Location::local(destination.join("photo.jpg"))]
     );
+    assert!(item_moves(&events).is_empty());
     Ok(())
 }
 
@@ -93,26 +103,50 @@ fn a_copy_that_replaces_an_existing_item_reports_its_destination() -> Result<(),
 }
 
 #[test]
-fn a_move_reports_no_created_destination() -> Result<(), Box<dyn Error>> {
+fn a_move_reports_where_each_item_landed_instead_of_a_created_destination()
+-> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
         .map_err(|error| error.to_string())?;
     let root = tempfile::tempdir()?;
-    let source = root.path().join("photo.jpg");
+    let photo = root.path().join("photo.jpg");
+    let notes = root.path().join("notes");
     let destination = root.path().join("album");
-    fs::write(&source, b"original-content")?;
+    fs::write(&photo, b"original-content")?;
+    fs::create_dir(&notes)?;
     fs::create_dir(&destination)?;
 
-    let created = run_paste_collecting_created(PasteRequest {
+    let events = run_paste(PasteRequest {
         id: OperationRequestId(73),
         destination: Location::local(&destination),
-        items: vec![PasteItem {
-            source: Location::local(&source),
-            conflict: TransferConflict::FailIfExists,
-        }],
+        items: [&photo, &notes]
+            .map(|source| PasteItem {
+                source: Location::local(source),
+                conflict: TransferConflict::FailIfExists,
+            })
+            .into(),
         move_sources: true,
-    })?;
+    });
 
-    assert!(created.into_iter().flatten().next().is_none());
+    assert!(!events.iter().any(|event| matches!(
+        event,
+        OperationEvent::TransferProgress {
+            created_location: Some(_),
+            ..
+        }
+    )));
+    assert_eq!(
+        item_moves(&events),
+        [
+            (
+                Location::local(&photo),
+                Location::local(destination.join("photo.jpg"))
+            ),
+            (
+                Location::local(&notes),
+                Location::local(destination.join("notes"))
+            ),
+        ]
+    );
     Ok(())
 }

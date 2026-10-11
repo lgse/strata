@@ -240,12 +240,21 @@ fn coalescing_preserves_a_move_when_metadata_follows_it() {
 
 #[test]
 fn hidden_monitor_changes_are_skipped_but_atomic_publication_stays_visible() {
+    let watched = Location::local("/fixture");
     let hidden = Location::local("/fixture/.strata-replacement-123");
     let visible = Location::local("/fixture/report.pdf");
 
-    assert!(visible_monitor_change(PendingMonitorChange::Upsert(hidden.clone()), false,).is_none());
+    assert!(
+        visible_monitor_change(
+            &watched,
+            PendingMonitorChange::Upsert(hidden.clone()),
+            false
+        )
+        .is_none()
+    );
     assert!(matches!(
         visible_monitor_change(
+            &watched,
             PendingMonitorChange::Move {
                 from: hidden,
                 to: visible.clone(),
@@ -256,11 +265,21 @@ fn hidden_monitor_changes_are_skipped_but_atomic_publication_stays_visible() {
     ));
     assert!(
         visible_monitor_change(
+            &watched,
             PendingMonitorChange::Upsert(Location::local("/fixture/.env")),
             true,
         )
         .is_some()
     );
+    let hidden_folder = Location::local("/fixture/.config");
+    assert!(matches!(
+        visible_monitor_change(
+            &hidden_folder,
+            PendingMonitorChange::Remove(hidden_folder.clone()),
+            false,
+        ),
+        Some(PendingMonitorChange::Remove(location)) if location == hidden_folder
+    ));
 }
 
 #[test]

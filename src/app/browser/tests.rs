@@ -85,6 +85,58 @@ struct RecordingFileSource {
 
 type WatchCallback = Rc<dyn Fn(DirectoryChange)>;
 
+/// Identities of fake folders, so a source can find a folder after a rename.
+#[derive(Default)]
+struct FolderIdentities(RefCell<HashMap<Location, LocationIdentity>>);
+
+impl FolderIdentities {
+    fn identify(&self, location: &Location) {
+        let mut identities = self.0.borrow_mut();
+        let born = identities.len() as u64 + 1;
+        identities.insert(
+            location.clone(),
+            LocationIdentity {
+                device: 1,
+                inode: born,
+                created: Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(born)),
+            },
+        );
+    }
+
+    /// A new folder at `to` that the filesystem gave the deleted `from` folder's inode.
+    fn reuse_inode(&self, from: &Location, to: &Location) {
+        let mut identities = self.0.borrow_mut();
+        let deleted = identities.remove(from).expect("an identified folder");
+        identities.insert(
+            to.clone(),
+            LocationIdentity {
+                created: Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_000)),
+                ..deleted
+            },
+        );
+    }
+
+    fn rename(&self, from: &Location, to: &Location) {
+        let mut identities = self.0.borrow_mut();
+        let identity = identities.remove(from).expect("an identified folder");
+        identities.insert(to.clone(), identity);
+    }
+
+    fn identity(&self, location: &Location) -> Option<LocationIdentity> {
+        self.0.borrow().get(location).copied()
+    }
+
+    fn find(&self, parent: &Location, identity: LocationIdentity) -> Option<Location> {
+        self.0
+            .borrow()
+            .iter()
+            .find(|(location, candidate)| {
+                identity.matches(candidate) && location.parent().as_ref() == Some(parent)
+            })
+            .map(|(location, _)| location.clone())
+    }
+}
+
 struct WatchingFileSource {
     notify: Rc<RefCell<Option<WatchCallback>>>,
 }
@@ -642,6 +694,17 @@ impl OperationProvider for ImmediateOperationProvider {
                     .then(|| item.source.transfer_target(&request.destination))
                     .flatten(),
             });
+            if request.move_sources
+                && let Some(target) = item.source.transfer_target(&request.destination)
+                && target != item.source
+            {
+                emit(OperationEvent::ItemMoved {
+                    request_id: request.id,
+                    from: item.source.clone(),
+                    to: target,
+                    merged: item.conflict == TransferConflict::Merge,
+                });
+            }
         }
         emit(OperationEvent::Pasted {
             request_id: request.id,
@@ -665,6 +728,14 @@ impl OperationProvider for ImmediateOperationProvider {
                     .collect(),
             )
         });
+        for item in &request.items {
+            emit(OperationEvent::ItemMoved {
+                request_id: request.id,
+                from: item.record.current.clone(),
+                to: item.record.original.clone(),
+                merged: false,
+            });
+        }
         emit(OperationEvent::Pasted {
             request_id: request.id,
             locations: request
@@ -1016,6 +1087,9 @@ struct ScriptedSource {
     fill_calls: RefCell<Vec<FillCall>>,
     enumerate_calls: RefCell<Vec<(RequestId, DirectoryEmit)>>,
     manual_enumerate: bool,
+    missing: RefCell<HashSet<Location>>,
+    unreachable: RefCell<HashSet<Location>>,
+    identities: FolderIdentities,
 }
 
 impl ScriptedSource {
@@ -1028,6 +1102,9 @@ impl ScriptedSource {
             fill_calls: RefCell::new(Vec::new()),
             enumerate_calls: RefCell::new(Vec::new()),
             manual_enumerate: false,
+            missing: RefCell::new(HashSet::new()),
+            unreachable: RefCell::new(HashSet::new()),
+            identities: FolderIdentities::default(),
         }
     }
 
@@ -1123,8 +1200,33 @@ impl ScriptedSource {
 }
 
 impl FileSource for ScriptedSource {
-    fn validate_location(&self, _location: &Location) -> Result<(), LocationValidationError> {
-        Ok(())
+    fn query_location_identity(
+        &self,
+        location: Location,
+        emit: Rc<dyn Fn(Option<LocationIdentity>)>,
+    ) -> LoadHandle {
+        emit(self.identities.identity(&location));
+        LoadHandle::new(|| {})
+    }
+
+    fn find_by_identity(
+        &self,
+        parent: Location,
+        identity: LocationIdentity,
+        emit: Rc<dyn Fn(Option<Location>)>,
+    ) -> LoadHandle {
+        emit(self.identities.find(&parent, identity));
+        LoadHandle::new(|| {})
+    }
+
+    fn validate_location(&self, location: &Location) -> Result<(), LocationValidationError> {
+        if self.missing.borrow().contains(location) {
+            Err(LocationValidationError::Missing)
+        } else if self.unreachable.borrow().contains(location) {
+            Err(LocationValidationError::Unavailable("offline".into()))
+        } else {
+            Ok(())
+        }
     }
 
     fn supports_metadata_fill(&self, _location: &Location) -> bool {
@@ -1209,6 +1311,59 @@ fn scripted_browser(
     let observed = events.clone();
     browser.observe(move |event| observed.borrow_mut().push(event.clone()));
     (browser, events, source)
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum LocationChange {
+    Relocated {
+        from: Location,
+        to: Location,
+        merged: bool,
+    },
+    Removed {
+        location: Location,
+        trash_identity: Option<TrashedOriginal>,
+    },
+    Restored(Location),
+}
+
+fn location_changes(events: &[BrowserEvent]) -> Vec<LocationChange> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            BrowserEvent::ItemRelocated { from, to, merged } => Some(LocationChange::Relocated {
+                from: from.clone(),
+                to: to.clone(),
+                merged: *merged,
+            }),
+            BrowserEvent::ItemRemoved {
+                location,
+                trash_identity,
+            } => Some(LocationChange::Removed {
+                location: location.clone(),
+                trash_identity: *trash_identity,
+            }),
+            BrowserEvent::ItemRestored { location } => {
+                Some(LocationChange::Restored(location.clone()))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+fn relocated(from: &Location, to: &Location) -> LocationChange {
+    LocationChange::Relocated {
+        from: from.clone(),
+        to: to.clone(),
+        merged: false,
+    }
+}
+
+fn removed(location: &Location) -> LocationChange {
+    LocationChange::Removed {
+        location: location.clone(),
+        trash_identity: None,
+    }
 }
 
 /// The deadline only turns a hang into a deterministic failure.

@@ -66,6 +66,7 @@ struct State {
     generation: Cell<u64>,
     source: RefCell<Option<glib::SourceId>>,
     deliver: RefCell<Option<Deliver>>,
+    awaiting: Cell<bool>,
 }
 
 impl Drop for State {
@@ -82,6 +83,10 @@ pub(super) struct SearchSession(Rc<State>);
 impl SearchSession {
     pub(super) fn is_active(&self) -> bool {
         self.0.worker.borrow().is_some()
+    }
+
+    pub(super) fn awaiting_results(&self) -> bool {
+        self.0.awaiting.get()
     }
 
     pub(super) fn searches(&self, input: &SearchInput) -> bool {
@@ -101,6 +106,7 @@ impl SearchSession {
         }
         self.0.worker.take();
         self.0.deliver.take();
+        self.0.awaiting.set(false);
         self.0.query.borrow_mut().clear();
     }
 
@@ -130,6 +136,7 @@ impl SearchSession {
     pub(super) fn query(&self, query: &str) {
         self.expect_query(query);
         if let Some(worker) = self.0.worker.borrow().as_ref() {
+            self.0.awaiting.set(true);
             worker.handle.query(query.trim());
         }
     }
@@ -201,6 +208,7 @@ impl SearchSession {
                 drain(&worker.receiver, &state.query.borrow(), lists_without_query)
             };
             if let Some(batch) = latest {
+                state.awaiting.set(false);
                 let deliver = state.deliver.borrow().clone();
                 if let Some(deliver) = deliver {
                     deliver(batch);

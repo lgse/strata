@@ -250,18 +250,14 @@ fn parked_delete_finishes_without_cancelling_foreground_and_respects_permanent_u
         let browser = Browser::new(Rc::new(FakeFileSource));
         let operations = Rc::new(HeldOperations::default());
         browser.set_operation_provider(operations.clone());
-        let removed = Rc::new(RefCell::new(Vec::new()));
-        let observed = removed.clone();
-        browser.observe(move |event| {
-            if let BrowserEvent::LocationsRemoved { locations } = event {
-                observed.borrow_mut().extend(locations.iter().cloned());
-            }
-        });
         let deleted = Location::local("/fixture/deleted.txt");
         browser.delete(vec![entry(deleted.clone())], permanent);
         let id = browser.last_started_operation().expect("delete started");
         assert!(browser.background_file_operation(id));
         let foreground = copy(&browser, "other.txt");
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let observed = events.clone();
+        browser.observe(move |event| observed.borrow_mut().push(event.clone()));
         operations.emit(
             id,
             OperationEvent::DeleteProgress {
@@ -280,7 +276,7 @@ fn parked_delete_finishes_without_cancelling_foreground_and_respects_permanent_u
         );
         assert!(browser.is_current_operation(foreground));
         assert!(!operations.cancelled(foreground));
-        assert_eq!(removed.borrow().as_slice(), std::slice::from_ref(&deleted));
+        assert_eq!(location_changes(&events.borrow()), [removed(&deleted)]);
         assert_eq!(
             pending_undo_entry(),
             if permanent {

@@ -286,6 +286,22 @@ fn tenxer_preview_owns_document_keys_until_returned() {
                 assert_eq!(fixture.selected(), selection, "{mode:?}");
                 assert_eq!(browser.active_location(), origin, "{mode:?}");
 
+                fixture.press(Key::slash, ModifierType::empty());
+                let find = widget_with_class(&fixture.preview.widget(), "preview-find")
+                    .expect("preview find bar");
+                assert!(find.is_visible());
+                let focused =
+                    gtk::prelude::RootExt::focus(&fixture.window).expect("find entry focus");
+                assert!(focused.is_ancestor(&find));
+                fixture.press(Key::Escape, ModifierType::empty());
+                assert!(!find.is_visible());
+                assert!(fixture.preview.is_open() && preview_has_focus(&fixture));
+                assert_eq!(
+                    fixture.selected(),
+                    selection,
+                    "{mode:?} find keeps selection"
+                );
+
                 let top = document_scroll(&fixture);
                 for (key, modifiers) in [
                     (Key::j, ModifierType::empty()),
@@ -302,6 +318,10 @@ fn tenxer_preview_owns_document_keys_until_returned() {
                         "{mode:?} {key:?} scrolls down"
                     );
                 }
+                assert!(
+                    !find.is_visible(),
+                    "{mode:?} Ctrl+F pages instead of finding"
+                );
                 for (key, modifiers) in [
                     (Key::k, ModifierType::empty()),
                     (Key::Up, ModifierType::empty()),
@@ -483,8 +503,8 @@ fn tenxer_preview_owns_document_keys_until_returned() {
             assert!(fixture.view.item_view_has_focus(), "g 3 is a place chord");
 
             enter_document();
-            assert!(fixture.press(Key::slash, ModifierType::empty()));
-            assert!(fixture.shortcuts.prompt_has_focus(), "/ opens find");
+            assert!(fixture.press(Key::question, ModifierType::SHIFT_MASK));
+            assert!(fixture.shortcuts.prompt_has_focus(), "? opens listing find");
             fixture.press(Key::Escape, ModifierType::empty());
             wait_until(|| fixture.view.item_view_has_focus());
 

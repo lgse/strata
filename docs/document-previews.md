@@ -48,6 +48,14 @@ Small source previews up to 128 KiB and 512 lines retain the syntax-highlighted 
 
 When **Source** is the initial view, parsing is deferred until the user requests **Rendered**. Rendered paragraphs and code are grouped around a 32 KiB target, while individual pathological lines are divided into contiguous 2 KiB virtual rows before GTK layout; tables remain atomic document-selection units but use their own recycled, vertically scrolling rows, with exceptionally large cell displays bounded while table copy retains complete text. Cell formatting that expands beyond 16 KiB is shown as plain text with an explanatory accessible description. Complete code blocks use syntax highlighting, while blocks split for virtualization remain plain to keep highlighting bounded and lexically correct. Both large source and rendered previews use GTK list virtualization, so only visible rows own Pango layouts, text buffers, table grids, or cells. Drag selection is stored in document coordinates and survives row recycling; copy reads from the model, with tables represented as tab-separated text.
 
+## Text selection and find
+
+Rendered prose and code support double-click word selection, triple-click line selection, Shift-click extension, and Shift with the arrow or Home/End keys. Ctrl+Shift+Left/Right extends by words; Ctrl+Home/End moves to the start/end of the loaded document. Selection and copy use document coordinates and survive recycled rows. Source previews also support native keyboard text selection and remain read-only.
+
+Use the header's **Find in preview** button, or **Ctrl+F** (**/** in 10xer mode) while the preview owns focus, to search loaded source text or rendered prose/code. Search is literal and case-insensitive. The selected match is revealed and can be copied; the find bar shows its position or **No matches**. **Enter** / **Shift+Enter** and the next/previous buttons navigate matches and wrap at either end. **Escape** dismisses find and returns focus to the document without closing its preview. The query follows Source/Rendered switching and is cleared when a different file is previewed or the drawer is closed.
+
+Find does not read beyond the existing preview limits, search other files, or perform OCR. Rendered table cells, PDF pages, images, archives, and media are not searched. Textual tables can be searched in Source view. **Ctrl+F** still filters filenames when the file listing owns focus, and in 10xer mode it keeps paging the preview.
+
 ## Interactive tables
 
 CSV and TSV use quote-aware parsing, preserve multiline fields, and tolerate ragged rows. The first row becomes column titles. Markdown and HTML tables share the same native `ColumnView`; HTML row headers remain styled cells when the first row is not entirely headers.

@@ -107,6 +107,13 @@ fn undoing_a_move_stops_at_an_unconfirmed_conflict() -> Result<(), Box<dyn Error
         other => panic!("expected a transfer failure, got {other:?}"),
     };
     assert_eq!(completed, vec![Location::local(&first)]);
+    assert_eq!(
+        item_moves(&events.borrow()),
+        [(
+            Location::local(&first),
+            Location::local(origin.join("notes.txt"))
+        )]
+    );
     assert_eq!(fs::read(&blocked)?, b"newer");
     assert_eq!(fs::read(&second)?, b"second");
     assert_eq!(fs::read(origin.join("notes.txt"))?, b"first");
@@ -390,4 +397,44 @@ fn cancelled_rename_undo_reports_cancellation_without_moving_the_item() -> Resul
     assert!(current.exists());
     assert!(!original.exists());
     Ok(())
+}
+
+#[test]
+fn undoing_a_grouping_reports_the_trashed_group_folder() {
+    crate::test_support::gtk_test(
+        "adapters::local_operations::tests::undo::undoing_a_grouping_reports_the_trashed_group_folder",
+        || {
+            let root = tempfile::tempdir().expect("root");
+            let group = root.path().join("group");
+            fs::create_dir(&group).expect("group folder");
+            fs::write(group.join("report.txt"), b"contents").expect("grouped item");
+            let identity = TrashedOriginal::at_path(&group).expect("identity");
+            let events = Rc::new(RefCell::new(Vec::new()));
+            let emitted = events.clone();
+            let _operation = LocalOperationProvider.undo_move(
+                UndoMoveRequest {
+                    cleanup_locations: vec![Location::local(&group)],
+                    id: OperationRequestId(42),
+                    items: vec![UndoMoveItem {
+                        record: MoveRecord {
+                            original: Location::local(root.path().join("report.txt")),
+                            current: Location::local(group.join("report.txt")),
+                        },
+                        conflict: TransferConflict::FailIfExists,
+                    }],
+                },
+                Rc::new(move |event| emitted.borrow_mut().push(event)),
+            );
+
+            drive_until_transfer_settles(&events);
+
+            let events = events.borrow();
+            assert!(matches!(events.last(), Some(OperationEvent::Pasted { .. })));
+            assert!(!group.exists());
+            assert_eq!(
+                trashed_items(&events),
+                [(Location::local(&group), identity)]
+            );
+        },
+    );
 }

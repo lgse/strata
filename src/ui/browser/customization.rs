@@ -1,16 +1,40 @@
 // SPDX-License-Identifier: MIT
 
-use crate::model::{FolderColor, FolderColorValue};
+use crate::model::{FolderColor, FolderColorValue, Location};
+use crate::services::TrashedOriginal;
 use crate::ui::controls::{focus_button, modal_layout};
 use crate::ui::modal::{
     ModalHost, dismiss_modal_layer, dismiss_modal_layer_then, modal_layer,
     modal_layer_with_backdrop, remember_modal_focus,
 };
+use crate::ui::preferences::PreferenceManager;
 use gtk::prelude::*;
 use gtk::{gdk, glib};
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
+
+/// Item customizations are keyed by native path; remote locations carry none.
+pub(super) fn relocate_item_customizations(from: &Location, to: &Location, merged: bool) {
+    if let Some(from) = from.native_path() {
+        PreferenceManager::shared().relocate_item_customizations(from, to.native_path(), merged);
+    }
+}
+
+pub(super) fn forget_item_customizations(
+    location: &Location,
+    trash_identity: Option<TrashedOriginal>,
+) {
+    if let Some(path) = location.native_path() {
+        PreferenceManager::shared().forget_item_customizations(path, trash_identity);
+    }
+}
+
+pub(super) fn restore_item_customizations(location: &Location) {
+    if let Some(path) = location.native_path() {
+        PreferenceManager::shared().restore_item_customizations(path);
+    }
+}
 
 fn rgba_to_hex(rgba: &gdk::RGBA) -> String {
     format!(

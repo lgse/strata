@@ -16,6 +16,12 @@ use crate::services::{
     normalize_preview_text,
 };
 
+mod selection;
+pub(super) use selection::match_ranges;
+
+#[derive(Clone, Copy)]
+pub(super) struct TextMatch(DocumentSelection);
+
 const SOURCE_UNIT_BYTES: usize = 16 * 1024;
 const SOURCE_UNIT_LINES: usize = 64;
 const PATHOLOGICAL_TEXT_UNIT_BYTES: usize = 2 * 1024;
@@ -75,7 +81,7 @@ struct SelectionPoint {
     offset: usize,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct DocumentSelection {
     anchor: SelectionPoint,
     focus: SelectionPoint,
@@ -104,6 +110,7 @@ struct BoundRow {
 
 pub(super) struct VirtualPreviewState {
     units: Rc<Vec<PreviewUnit>>,
+    list: glib::WeakRef<gtk::ListView>,
     tables: RefCell<HashMap<usize, Rc<super::table_view::TableState>>>,
     wrapped: Cell<bool>,
     selection: Cell<Option<DocumentSelection>>,
@@ -176,6 +183,7 @@ fn virtual_preview(
 ) -> (gtk::Box, Rc<VirtualPreviewState>) {
     let state = Rc::new(VirtualPreviewState {
         units: Rc::new(units),
+        list: glib::WeakRef::new(),
         tables: RefCell::new(HashMap::new()),
         wrapped: Cell::new(wrapped),
         selection: Cell::new(None),
@@ -338,6 +346,7 @@ fn virtual_preview(
                 }
             });
     }
+    state.list.set(Some(&list));
     install_pointer_selection(&list, &scroll, state.clone());
     install_keyboard_selection(&list, state.clone());
 
@@ -351,6 +360,120 @@ fn virtual_preview(
 }
 
 impl VirtualPreviewState {
+    pub(super) fn can_find(&self) -> bool {
+        self.units
+            .iter()
+            .any(|unit| !unit.display_text().is_empty())
+    }
+
+    pub(super) fn find_matches(&self, query: &str) -> Vec<TextMatch> {
+        let mut text = String::new();
+        let mut starts = Vec::new();
+        let mut length = 0;
+        for (index, unit) in self.units.iter().enumerate() {
+            if unit.display_text().is_empty() {
+                continue;
+            }
+            starts.push((length, index));
+            text.push_str(unit.display_text());
+            length += unit.display_text().chars().count();
+            if unit.copy_text().ends_with('\n') && !unit.display_text().ends_with('\n') {
+                text.push('\n');
+                length += 1;
+            }
+        }
+        if starts.is_empty() {
+            return Vec::new();
+        }
+        let point = |offset: usize| {
+            let (start, unit) = starts[starts
+                .partition_point(|(start, _)| *start <= offset)
+                .saturating_sub(1)];
+            SelectionPoint {
+                unit,
+                offset: (offset - start).min(self.units[unit].selection_len()),
+            }
+        };
+        match_ranges(&text, query)
+            .into_iter()
+            .map(|(start, end)| {
+                TextMatch(DocumentSelection {
+                    anchor: point(start),
+                    focus: point(end),
+                })
+            })
+            .collect()
+    }
+
+    pub(super) fn select_match(self: &Rc<Self>, found: TextMatch) {
+        self.select_and_reveal(found.0);
+    }
+
+    pub(super) fn clear_selection(&self) {
+        self.selection.set(None);
+        update_all_bound_selection(self);
+    }
+
+    fn select_and_reveal(self: &Rc<Self>, selection: DocumentSelection) {
+        self.selection.set(Some(selection));
+        update_all_bound_selection(self);
+        let Some(list) = self.list.upgrade() else {
+            return;
+        };
+        list.scroll_to(
+            selection.focus.unit as u32,
+            gtk::ListScrollFlags::NONE,
+            None,
+        );
+        let state = Rc::downgrade(self);
+        let frames = Cell::new(0);
+        list.add_tick_callback(move |list, _| {
+            let Some(state) = state.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+            frames.set(frames.get() + 1);
+            if state.selection.get() != Some(selection) || frames.get() > 30 {
+                return glib::ControlFlow::Break;
+            }
+            let view = state
+                .bound
+                .borrow()
+                .get(&selection.focus.unit)
+                .and_then(|row| row.view.upgrade());
+            let Some(view) = view else {
+                return glib::ControlFlow::Continue;
+            };
+            let Some(scroll) = list
+                .ancestor(gtk::ScrolledWindow::static_type())
+                .and_downcast::<gtk::ScrolledWindow>()
+            else {
+                return glib::ControlFlow::Break;
+            };
+            let Some(bounds) = view.compute_bounds(&scroll) else {
+                return glib::ControlFlow::Continue;
+            };
+            let iter = view.buffer().iter_at_offset(
+                selection
+                    .focus
+                    .offset
+                    .min(view.buffer().char_count() as usize) as i32,
+            );
+            let rect = view.iter_location(&iter);
+            let (_, y) =
+                view.buffer_to_window_coords(gtk::TextWindowType::Widget, rect.x(), rect.y());
+            let adjustment = scroll.vadjustment();
+            let top = f64::from(bounds.y()) + f64::from(y);
+            if top < 0.0 || top + f64::from(rect.height()) > adjustment.page_size() {
+                let maximum = (adjustment.upper() - adjustment.page_size()).max(adjustment.lower());
+                adjustment.set_value(
+                    (adjustment.value() + top - adjustment.page_size() / 2.0)
+                        .clamp(adjustment.lower(), maximum),
+                );
+            }
+            glib::ControlFlow::Break
+        });
+    }
+
     pub(super) fn set_wrapped(&self, wrapped: bool) {
         if self.wrapped.replace(wrapped) == wrapped {
             return;
@@ -1265,7 +1388,7 @@ fn install_pointer_selection(
     let weak_list = list.downgrade();
     let state_for_press = state.clone();
     let drag_claimed_for_press = drag_claimed.clone();
-    click.connect_pressed(move |_, _, x, y| {
+    click.connect_pressed(move |gesture, presses, x, y| {
         let Some(list) = weak_list.upgrade() else {
             return;
         };
@@ -1275,17 +1398,27 @@ fn install_pointer_selection(
         {
             return;
         }
-        state_for_press
-            .pressed_link
-            .replace(link_info_at(&list, &state_for_press, x, y).map(|(_, _, uri)| uri));
+        let extend = gesture
+            .current_event_state()
+            .contains(gtk::gdk::ModifierType::SHIFT_MASK);
+        if presses == 1 && !extend {
+            state_for_press
+                .pressed_link
+                .replace(link_info_at(&list, &state_for_press, x, y).map(|(_, _, uri)| uri));
+        }
         drag_claimed_for_press.set(false);
         list.grab_focus();
         let point = point_at(&list, &state_for_press, x, y)
             .unwrap_or(SelectionPoint { unit: 0, offset: 0 });
-        state_for_press.selection.set(Some(DocumentSelection {
-            anchor: point,
-            focus: point,
-        }));
+        state_for_press
+            .selection
+            .set(Some(selection::clicked_selection(
+                &state_for_press.units,
+                state_for_press.selection.get(),
+                point,
+                presses,
+                extend,
+            )));
         update_all_bound_selection(&state_for_press);
     });
 
@@ -1350,12 +1483,6 @@ fn install_pointer_selection(
             gesture.set_state(gtk::EventSequenceState::Claimed);
             state_for_update.pressed_link.borrow_mut().take();
             list.grab_focus();
-            let point = point_at(&list, &state_for_update, start_x, start_y)
-                .unwrap_or(SelectionPoint { unit: 0, offset: 0 });
-            state_for_update.selection.set(Some(DocumentSelection {
-                anchor: point,
-                focus: point,
-            }));
             state_for_update.dragging.set(true);
             state_for_update
                 .drag_generation
@@ -1456,13 +1583,15 @@ fn install_keyboard_selection(list: &gtk::ListView, state: Rc<VirtualPreviewStat
     let keys = gtk::EventControllerKey::new();
     let weak_list = list.downgrade();
     keys.connect_key_pressed(move |_, key, _, modifiers| {
-        if !modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK) {
+        use gtk::gdk::ModifierType as Modifiers;
+        if modifiers.intersects(Modifiers::ALT_MASK | Modifiers::SUPER_MASK) {
             return glib::Propagation::Proceed;
         }
         let Some(list) = weak_list.upgrade() else {
             return glib::Propagation::Proceed;
         };
-        if key == gtk::gdk::Key::a {
+        let control = modifiers.contains(Modifiers::CONTROL_MASK);
+        if control && key == gtk::gdk::Key::a {
             let Some(last) = state.units.len().checked_sub(1) else {
                 return glib::Propagation::Stop;
             };
@@ -1476,10 +1605,20 @@ fn install_keyboard_selection(list: &gtk::ListView, state: Rc<VirtualPreviewStat
             update_all_bound_selection(&state);
             return glib::Propagation::Stop;
         }
-        if key == gtk::gdk::Key::c {
+        if control && key == gtk::gdk::Key::c {
             if let Some(text) = selection_text(&state) {
                 list.clipboard().set_text(&text);
             }
+            return glib::Propagation::Stop;
+        }
+        if let Some(selection) = selection::move_selection(
+            &state.units,
+            state.selection.get(),
+            key,
+            control,
+            modifiers.contains(Modifiers::SHIFT_MASK),
+        ) {
+            state.select_and_reveal(selection);
             return glib::Propagation::Stop;
         }
         glib::Propagation::Proceed
@@ -1613,11 +1752,11 @@ fn point_at(
         .iter_at_position(buffer_x, buffer_y)
         .map_or_else(
             || {
-                if y >= bounds.y() + bounds.height() / 2.0 {
-                    unit.selection_len()
-                } else {
-                    0
+                let (mut iter, _) = view.line_at_y(buffer_y);
+                if buffer_x > view.iter_location(&iter).x() {
+                    view.forward_display_line_end(&mut iter);
                 }
+                iter.offset() as usize
             },
             |(iter, trailing)| {
                 usize::try_from(iter.offset().saturating_add(trailing)).unwrap_or(usize::MAX)

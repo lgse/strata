@@ -174,3 +174,102 @@ fn stale_watchers_cannot_queue_a_rescan_during_file_operations() {
         );
     }
 }
+
+#[test]
+fn a_root_departure_during_a_file_operation_is_applied_when_it_completes() {
+    let root = Location::local("/fixture");
+    let renamed = Location::local("/fixture-renamed");
+    let mut failures = Vec::new();
+    for rename in [false, true] {
+        for deletion in [true, false] {
+            let (browser, events, source) =
+                scripted_browser(ScriptedSource::scripted(vec!["current"], vec![]));
+            source.identities.identify(&root);
+            browser.navigate(root.clone());
+            let request_id = browser.begin_operation();
+            if deletion {
+                browser.deletion_operation.set(true);
+            } else {
+                browser.transfer_operation.set(Some(true));
+                browser
+                    .transfer_destination
+                    .replace(Some(Location::local("/elsewhere")));
+                browser.transfer_reveal.set(false);
+            }
+            let complete = browser.operation_callback(request_id, false, HashSet::new());
+            source.missing.borrow_mut().insert(root.clone());
+            if rename {
+                source.identities.rename(&root, &renamed);
+            }
+            events.borrow_mut().clear();
+
+            browser.handle_directory_change(0, &root, DirectoryChange::Remove(root.clone()));
+            let deferred = browser.location_at(0) == Some(root.clone());
+            complete(if deletion {
+                OperationEvent::Deleted {
+                    request_id,
+                    locations: Vec::new(),
+                }
+            } else {
+                OperationEvent::Pasted {
+                    request_id,
+                    locations: Vec::new(),
+                }
+            });
+
+            let count = |matches: fn(&BrowserEvent) -> bool| {
+                events
+                    .borrow()
+                    .iter()
+                    .filter(|event| matches(event))
+                    .count()
+            };
+            let resets = count(|event| matches!(event, BrowserEvent::Reset));
+            let relocations =
+                count(|event| matches!(event, BrowserEvent::ColumnsRelocated { from_depth: 0 }));
+            let reloads = count(|event| matches!(event, BrowserEvent::ColumnReloaded { .. }));
+            let (expected, expected_resets, expected_relocations) = if rename {
+                (renamed.clone(), 0, 1)
+            } else {
+                (Location::local("/"), 1, 0)
+            };
+            if !deferred
+                || browser.location_at(0) != Some(expected.clone())
+                || resets != expected_resets
+                || relocations != expected_relocations
+                || reloads != 0
+            {
+                failures.push(format!(
+                    "rename {rename}, {}: deferred={deferred}, location_at(0)={:?} (expected \
+                     {expected:?}), Reset x{resets}, ColumnsRelocated x{relocations}, \
+                     ColumnReloaded x{reloads}",
+                    if deletion { "deletion" } else { "transfer" },
+                    browser.location_at(0),
+                ));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn an_unconfirmed_departure_during_a_file_operation_keeps_the_other_changes() {
+    let (browser, _events, source) =
+        scripted_browser(ScriptedSource::scripted(vec!["current"], vec![]));
+    let root = Location::local("/fixture");
+    browser.navigate(root.clone());
+    let request_id = browser.begin_operation();
+    browser.deletion_operation.set(true);
+    let complete = browser.operation_callback(request_id, false, HashSet::new());
+    source.unreachable.borrow_mut().insert(root.clone());
+
+    browser.handle_directory_change(0, &root, DirectoryChange::Upsert(batch_entry("added")));
+    browser.handle_directory_change(0, &root, DirectoryChange::Remove(root.clone()));
+    complete(OperationEvent::Deleted {
+        request_id,
+        locations: Vec::new(),
+    });
+
+    assert_eq!(browser.location_at(0), Some(root));
+    assert_eq!(column_names(&browser, 0), ["added", "current"]);
+}

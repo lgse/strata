@@ -26,6 +26,7 @@ mod bindings;
 pub(in crate::ui) mod fixtures;
 mod folder_view_settings;
 mod folder_views;
+mod item_customizations;
 mod save_notice;
 mod text_size;
 pub(in crate::ui) use bindings::notify_live;
@@ -436,6 +437,7 @@ pub struct PreferenceManager {
     folder_views: std::cell::OnceCell<folder_view_settings::FolderViewStore>,
     folder_sorts_revision: Cell<u64>,
     folder_save_notices: save_notice::SaveNotices,
+    item_customizations: item_customizations::ItemCustomizationState,
 }
 
 impl PreferenceManager {
@@ -493,6 +495,7 @@ impl PreferenceManager {
             folder_views: std::cell::OnceCell::new(),
             folder_sorts_revision: Cell::new(0),
             folder_save_notices: save_notice::SaveNotices::for_folder_views(),
+            item_customizations: Default::default(),
             preferences: RefCell::new(preferences),
         })
     }
