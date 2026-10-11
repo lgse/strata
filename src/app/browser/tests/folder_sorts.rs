@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use super::*;
-use crate::{app::navigation::FolderSortResolver, model::FolderSort, services::PasteItem};
+use crate::{app::navigation::FolderSortResolver, model::FolderSort};
 
 type SavedSorts = Rc<RefCell<HashMap<Location, FolderSort>>>;
 type ReportedSorts = Rc<RefCell<Vec<(Location, SortKey, SortDirection)>>>;
@@ -410,66 +410,4 @@ fn without_folder_sorts_an_explicit_sort_still_becomes_the_default() {
     assert_eq!(published.borrow().as_slice(), [sorted]);
     browser.descend(0, Location::local("/fixture/child"));
     assert_eq!(browser.column_preferences(1), Some(sorted));
-}
-
-#[test]
-fn renames_moves_and_deletions_report_the_locations_they_changed() {
-    let browser = Browser::new(Rc::new(FakeFileSource));
-    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
-    let events = Rc::new(RefCell::new(Vec::new()));
-    let observed = events.clone();
-    browser.observe(move |event| {
-        if matches!(
-            event,
-            BrowserEvent::LocationsRelocated { .. } | BrowserEvent::LocationsRemoved { .. }
-        ) {
-            observed.borrow_mut().push(event.clone());
-        }
-    });
-    let folder = |path: &str| FileEntry {
-        kind: EntryKind::Directory,
-        ..fixture_entry(path)
-    };
-
-    browser.rename(folder("/fixture/photos"), "pictures".to_owned());
-    browser.transfer(
-        Location::local("/fixture/archive"),
-        vec![PasteItem {
-            source: Location::local("/fixture/pictures"),
-            conflict: TransferConflict::FailIfExists,
-        }],
-        true,
-        true,
-    );
-    browser.transfer(
-        Location::local("/fixture/backup"),
-        vec![PasteItem {
-            source: Location::local("/fixture/archive/pictures"),
-            conflict: TransferConflict::FailIfExists,
-        }],
-        false,
-        true,
-    );
-    browser.delete(vec![folder("/fixture/archive/pictures")], false);
-
-    let events = events.borrow();
-    assert_eq!(events.len(), 3, "a copy leaves the source where it was");
-    assert!(matches!(
-        &events[0],
-        BrowserEvent::LocationsRelocated { moves }
-            if moves == &[(Location::local("/fixture/photos"), Location::local("/fixture/pictures"))]
-    ));
-    assert!(matches!(
-        &events[1],
-        BrowserEvent::LocationsRelocated { moves }
-            if moves == &[(
-                Location::local("/fixture/pictures"),
-                Location::local("/fixture/archive/pictures")
-            )]
-    ));
-    assert!(matches!(
-        &events[2],
-        BrowserEvent::LocationsRemoved { locations }
-            if locations == &[Location::local("/fixture/archive/pictures")]
-    ));
 }

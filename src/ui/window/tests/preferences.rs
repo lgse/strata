@@ -1462,6 +1462,7 @@ fn renamed_folder_keeps_its_customization_and_a_new_folder_at_the_old_path_does_
         || {
             use crate::assets::icons::FILE_CODE;
             use crate::model::FolderColor::Red;
+            use crate::model::{FolderSort, Location, SortDirection, SortKey};
 
             let first = OpenWindow::open();
             let second = OpenWindow::open();
@@ -1470,6 +1471,15 @@ fn renamed_folder_keeps_its_customization_and_a_new_folder_at_the_old_path_does_
             let renamed = directory.path().join("renamed");
             let plain = rendered_folder(&old);
             customize_items(directory.path(), &[("child", Some(Red), Some(FILE_CODE))]);
+            let manager = PreferenceManager::shared();
+            let folder_sort =
+                |path: &std::path::Path| manager.resolve_folder_sort(&Location::local(path), false);
+            let size_sort = FolderSort::Saved(SortKey::Size, SortDirection::Descending);
+            manager.set_folder_sort(
+                &Location::local(&old),
+                SortKey::Size,
+                SortDirection::Descending,
+            );
             let customized = rendered_folder(&old);
             assert_ne!(customized, plain);
 
@@ -1488,6 +1498,8 @@ fn renamed_folder_keeps_its_customization_and_a_new_folder_at_the_old_path_does_
                 "after the rename",
             );
             assert_eq!(rendered_folder(&renamed), customized);
+            assert_eq!(folder_sort(&renamed), size_sort);
+            assert_eq!(folder_sort(&old), FolderSort::Default);
 
             std::fs::create_dir(&old).expect("new folder at the old path");
             loaded_entry(&first, &old);
@@ -1504,6 +1516,7 @@ fn renamed_folder_keeps_its_customization_and_a_new_folder_at_the_old_path_does_
                 &[("renamed", None, None)],
                 "after the trash",
             );
+            assert_eq!(folder_sort(&renamed), FolderSort::Default);
 
             // Tombstones are shared: another window's undo restores them.
             second

@@ -330,26 +330,14 @@ impl PreferenceManager {
     /// Saved values follow a folder renamed or moved within Strata, whether or not
     /// per-folder settings are in use, and are dropped when it moves somewhere
     /// that is not remembered.
-    pub(in crate::ui) fn relocate_folder_views(&self, moves: &[(Location, Location)]) {
-        let moves: Vec<(FolderKey, Option<FolderKey>)> = moves
-            .iter()
-            .filter_map(|(from, to)| Some((key_for_location(from)?, key_for_location(to))))
-            .collect();
-        if moves.is_empty() {
+    /// Moves the values of `from` and the folders inside it to `to`, or forgets
+    /// them for `None`.
+    pub(in crate::ui) fn relocate_folder_views(&self, from: &Location, to: Option<&Location>) {
+        let Some(from) = key_for_location(from) else {
             return;
-        }
-        self.change_folder_views(FolderValue::Any, |views| views.relocate(&moves));
-    }
-
-    pub(in crate::ui) fn remove_folder_views(&self, locations: &[Location]) {
-        let removals: Vec<(FolderKey, Option<FolderKey>)> = locations
-            .iter()
-            .filter_map(|location| Some((key_for_location(location)?, None)))
-            .collect();
-        if removals.is_empty() {
-            return;
-        }
-        self.change_folder_views(FolderValue::Any, |views| views.relocate(&removals));
+        };
+        let to = to.and_then(key_for_location);
+        self.change_folder_views(FolderValue::Any, |views| views.relocate(&[(from, to)]));
     }
 
     /// A local folder that failed to open because it was deleted forgets its

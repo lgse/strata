@@ -254,14 +254,6 @@ pub enum BrowserEvent {
     TransferFinished {
         moved_locations: Vec<Location>,
     },
-    /// Locations renamed or moved by this browser's own operations, old to new.
-    LocationsRelocated {
-        moves: Vec<(Location, Location)>,
-    },
-    /// Locations deleted or trashed by this browser's own operations.
-    LocationsRemoved {
-        locations: Vec<Location>,
-    },
     /// A sort chosen in a column whose folder keeps its own sort.
     FolderSortChosen {
         location: Location,
@@ -3758,9 +3750,6 @@ impl Browser {
         if let (Some(from), Some(to)) = (old.native_path(), entry.location.native_path()) {
             crate::services::refresh_search_indexes_for_rename(from, to);
         }
-        self.emit(BrowserEvent::LocationsRelocated {
-            moves: vec![(old.clone(), entry.location.clone())],
-        });
         self.retire_recent_target(old);
         if !(0..)
             .map_while(|depth| self.location_at(depth))

@@ -763,12 +763,6 @@ impl ViewState {
                 self.dismiss_file_operation_progress();
                 self.prune_stale_search_results();
             }
-            BrowserEvent::LocationsRelocated { moves } => {
-                crate::ui::preferences::PreferenceManager::shared().relocate_folder_views(moves);
-            }
-            BrowserEvent::LocationsRemoved { locations } => {
-                crate::ui::preferences::PreferenceManager::shared().remove_folder_views(locations);
-            }
             BrowserEvent::FolderSortChosen {
                 location,
                 sort_key,
@@ -781,12 +775,18 @@ impl ViewState {
                 );
             }
             BrowserEvent::ItemRelocated { from, to, merged } => {
-                customization::relocate_item_customizations(from, to, *merged)
+                customization::relocate_item_customizations(from, to, *merged);
+                crate::ui::preferences::PreferenceManager::shared()
+                    .relocate_folder_views(from, Some(to));
             }
             BrowserEvent::ItemRemoved {
                 location,
                 trash_identity,
-            } => customization::forget_item_customizations(location, *trash_identity),
+            } => {
+                customization::forget_item_customizations(location, *trash_identity);
+                crate::ui::preferences::PreferenceManager::shared()
+                    .relocate_folder_views(location, None);
+            }
             BrowserEvent::ItemRestored { location } => {
                 customization::restore_item_customizations(location)
             }
