@@ -36,8 +36,8 @@ pub(crate) fn with_mount_snapshot<T>(read: impl FnOnce(&MountSnapshot) -> T) -> 
     })
 }
 
-/// GIO announces mounts from an idle callback, after Strata may already have
-/// opened a drive it just mounted, so the mount path also calls this.
+/// GIO announces a mount from an idle callback, which can run after Strata
+/// already opens a drive it just mounted, so that path calls this as well.
 pub(crate) fn invalidate_mount_snapshot() {
     MOUNTS.with(|cache| {
         if let Ok(mut cache) = cache.try_borrow_mut()

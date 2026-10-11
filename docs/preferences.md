@@ -84,9 +84,9 @@ control that might be midway through synchronization.
 | Hidden files | Shared across existing browsers and new columns. |
 | Open folder after dropping files | Drop dispatch reads the saved choice (off by default), including confirmation of cross-device drops. Successful drops reveal the destination only when enabled and the user is still at the transfer origin. Paste and Move/Copy to remain unchanged. |
 | Cross-device drag and drop | Drop dispatch reads the current Copy, Move, or Ask strategy; unresolved volume lookups follow the same cross-device policy. |
-| Default sort key/direction | The sort for folders without their own (see [Per-folder sort and thumbnail size](#per-folder-sort-and-thumbnail-size)). Set under **Settings → General → Browsing → Default sort** or with a pane's **Make this the default sort**; open columns that follow the default re-sort live in every window. With per-folder settings off, an explicit field sort updates the default instead and existing columns keep their own sort. Camera Photos libraries open in column-local Device order (see below). |
+| Default sort key/direction | The sort for folders without their own; see [Per-folder sort and thumbnail size](#per-folder-sort-and-thumbnail-size). Set under **Settings → General → Browsing → Default sort**; open columns that follow the default re-sort live in every window. With per-folder settings off, an explicit field sort updates the default instead and existing columns keep their own sort. Camera Photos libraries open in column-local Device order (see below). |
 | Folders first | Application-wide: toggling it in any pane's sort menu re-sorts every open column in every window and applies to new columns. Recent keeps its fixed order. |
-| Remember sort and icon size per folder | On by default. Browsers and the portal chooser bind at construction, before Settings opens, and resolve each column's folder sort and the Icons folder's size live. Off restores the last-sort-wins defaults; saved folder values stay stored but unused. |
+| Remember sort and icon size per folder | On by default. Browsers and the portal chooser bind at construction, before Settings opens, and resolve each column's folder sort and the Icons folder's size live. Off restores the last-sort-wins defaults; saved folder values stay stored but unused. See [Per-folder sort and thumbnail size](#per-folder-sort-and-thumbnail-size). |
 | Type-to-search, opening search results directly | Keyboard/search actions read the current manager value at dispatch. |
 | Global search exclusions | Each global-search invocation reads the current rules before indexing, including before Settings opens. Existing search snapshots keep their rules until reopened. Exclusion editors synchronize across windows. Pane filters, 10xer path search, folder-history search, and destination pickers retain their explicit browsing scope and ignore these rules. |
 | 10xer mode | Interactive browsers and the portal file chooser bind pane Close/filter/refresh/sort chrome and the Yazi-style keymap at construction, including lazily rebuilt views. Window Search hides in interactive browsers. Window Close, chooser Accept/Cancel, and List column headings stay. Unclaimed letter commands return focus from non-text window chrome to the listing; text fields, menus, and previews retain their own input. Off by default; toggle with `Ctrl+Shift+M` or Settings → General → Browsing. Enabling shows a brief non-interactive splash that respects Reduce motion; reopening an already-enabled window does not replay it. |
@@ -99,7 +99,7 @@ control that might be midway through synchronization.
 | Keybinding hints | Navigation hints and the shortcuts button bind immediately and live. When hidden, the status bar appears only while the clipboard badge or F1 reference needs it; otherwise the empty bar is hidden. |
 | Thumbnail workers | Browser construction binds the shared decoder limit before Settings opens. Changes apply across windows and rebuilt views; lowering the limit lets active work finish and retires excess idle supervisors. |
 | Browser and chooser column widths | A Columns resize or a List heading resize, including double-click autofit, saves the unscaled width. New columns and rebuilt List panes read the latest saved defaults before Settings opens. Dragging a Columns edge resizes that column as the pointer moves, with a **Column width** caption that appears once the pointer rests on the edge and follows it through the drag, and when the drag ends the window's other open columns ease to the same width; double-click autofit changes only its own column. Other windows keep their widths. Browser defaults (`browser_column_width`, `browser_list_columns`) and chooser defaults (`chooser_column_width`, `chooser_list_columns`) are independent. The Name column keeps expanding until it is resized itself. Not exposed in Settings. |
-| Icons view thumbnail size | The default size for folders without their own. Every browser binds at construction, and an Icons pane resolves its folder's size before it is built, so it opens at that size. The popover slider saves the shown folder's size (or, with per-folder settings off, the default); **Make this the default size** sets the default. Visible Icons panes in other windows resize when their folder's size or the default changes. Clamped to 32–256 px; not exposed in Settings. |
+| Icons view thumbnail size | The default size for folders without their own; see [Per-folder sort and thumbnail size](#per-folder-sort-and-thumbnail-size). Every browser binds at construction, and an Icons pane resolves its folder's size before it is built, so it opens at that size. With per-folder settings off, the popover slider sets the default. Visible Icons panes in other windows resize when their folder's size or the default changes. Clamped to 32–256 px; not exposed in Settings. |
 | Hardware video acceleration/backend | Preview providers read the current choice when requesting a preview; changing it does not restart an already playing file. Settings controls and backend availability synchronize live. |
 | Preview text wrap | Every text preview and header toggle binds to the saved wrap choice, including newly loaded files. Off by default. |
 | Preview autoplay | Read when a video, audio, or GIF preview is first shown. Off by default: playback waits for an explicit play action; the generic player shows its center play affordance, and the audio and video views their transport play button. When on, playback starts silent and fades in on a slow-in, slow-out curve, over 1 s from the first frame for video and over 0.5 s from the first sample for audio, unless the saved audio state is muted or the file is shorter than 10 s, which plays at full volume at once; any play, pause, seek, volume or mute input brings the sound in at once, and the saved volume is never changed. Continuing playback into the next file with `<` / `>` keeps its sound. Does not affect resuming playback that was already active before a preview pane was temporarily hidden by a resize. |
@@ -163,23 +163,19 @@ while re-sorting open columns does not.
 
 Values live in `$XDG_STATE_HOME/strata/folder-views.toml` (normally
 `~/.local/state/strata/folder-views.toml`), never in `settings.toml` or in the
-folders themselves. The file is read on first use and written atomically half a
-second after a value changes, so a burst of changes such as a slider drag is one
-write and no write blocks the click that made it; pending changes and use times
-are written when Strata or the portal chooser quits. Each process watches the file
-and merges what another Strata process, such as the portal chooser, saves, so its
-open views follow those values and **Forget all folder settings** clears them too.
-A save also merges anything not yet picked up and applies this process's own
-changes on top, so neither process overwrites the other's folders. It follows the
+folders themselves. Writes are batched, so a burst of changes such as a slider drag
+is one write, and never block the click that made them; pending changes are written
+when Strata or the portal chooser quits. Saves from another Strata process, such as
+the portal chooser, are merged instead of overwritten, open views follow them, and
+**Forget all folder settings** clears them too. The file follows the
 `settings.toml` recovery rules: a missing file starts empty; an unreadable file,
 invalid TOML, or an unknown `version` uses no saved values, logs a warning, and is
 never overwritten during that session, with a "Folder settings file can't be read"
 notice on the first change in a browser window; valid TOML keeps its valid entries
 and fields, clamps out-of-range sizes, and drops the rest on the next save; and a
-failed write keeps changes in memory, retries on the next change, and shows
-"Folder settings can't be saved" once per failure streak. A file that becomes unreadable,
-invalid, or a newer `version` while Strata runs is not saved over either: the save
-counts as a failed write.
+failed write, or a save refused because the file has become unreadable, invalid
+TOML, or an unknown `version` since startup, keeps changes in memory, retries on
+the next change, and shows "Folder settings can't be saved" once per failure streak.
 
 ## Thumbnail workers
 

@@ -55,7 +55,6 @@ impl MountTable {
             .is_some_and(|fs_type| fs_type != "fuseblk" && is_remote_fs_type(fs_type))
     }
 
-    /// Only mount points whose parent is `directory`, not deeper ones.
     pub(crate) fn has_mount_inside(&self, directory: &Path) -> bool {
         self.entries
             .iter()

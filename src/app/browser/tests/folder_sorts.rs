@@ -8,7 +8,6 @@ use crate::{app::navigation::FolderSortResolver, model::FolderSort};
 type SavedSorts = Rc<RefCell<HashMap<Location, FolderSort>>>;
 type ReportedSorts = Rc<RefCell<Vec<(Location, SortKey, SortDirection)>>>;
 
-/// Unlisted locations behave like remembered folders without a saved sort.
 fn resolver(saved: &SavedSorts) -> FolderSortResolver {
     let saved = saved.clone();
     Rc::new(move |location: &Location, _| {
@@ -63,17 +62,21 @@ fn save_reported_sorts(browser: &Browser, saved: &SavedSorts) {
     });
 }
 
-/// Leaves no re-sync queued on the shared default main context, and fails
-/// instead of blocking when nothing is left to dispatch.
-fn pump_until_settled(browser: &Browser, condition: impl Fn() -> bool) {
+/// Fails instead of blocking when nothing is left to dispatch.
+fn poll_until(condition: impl Fn() -> bool) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     let context = gtk::glib::MainContext::default();
-    while !(condition() && browser.sort_resync_settled()) {
+    while !condition() {
         assert!(std::time::Instant::now() < deadline, "timed out");
         if !context.iteration(false) {
             std::thread::sleep(std::time::Duration::from_millis(1));
         }
     }
+}
+
+/// Leaves no re-sync queued on the shared default main context.
+fn pump_until_settled(browser: &Browser, condition: impl Fn() -> bool) {
+    poll_until(|| condition() && browser.sort_resync_settled());
 }
 
 fn sorting(browser: &Browser, depth: usize) -> Option<(SortKey, SortDirection)> {
@@ -320,17 +323,7 @@ fn a_resync_superseded_by_a_chosen_sort_is_retried() {
     );
     started.set(false);
     browser.resync_column_sorts();
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    let context = gtk::glib::MainContext::default();
-    while !started.get() {
-        assert!(
-            std::time::Instant::now() < deadline,
-            "the re-sync never started"
-        );
-        if !context.iteration(false) {
-            std::thread::sleep(std::time::Duration::from_millis(1));
-        }
-    }
+    poll_until(|| started.get());
     browser.set_sort(1, SortKey::Type, SortDirection::Descending);
     pump_until_settled(&browser, || {
         sorting(&browser, 0) == Some((SortKey::Name, SortDirection::Descending))

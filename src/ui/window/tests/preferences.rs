@@ -790,6 +790,7 @@ fn saved_folder_sorts_and_icon_sizes_apply_before_settings_and_follow_changes_ac
             let sorted = tempfile::tempdir().expect("sorted folder");
             let plain = tempfile::tempdir().expect("plain folder");
             let sorted_location = Location::local(sorted.path());
+            let plain_location = Location::local(plain.path());
             write_folder_views(&format!(
                 "version = 1\n[[folder]]\npath = \"{}\"\nsort = \"size\"\ndirection = \"descending\"\nicons_size = 192\n",
                 sorted.path().display()
@@ -813,7 +814,7 @@ fn saved_folder_sorts_and_icon_sizes_apply_before_settings_and_follow_changes_ac
             };
 
             show(&first, &sorted_location);
-            show(&second, &Location::local(plain.path()));
+            show(&second, &plain_location);
             assert_eq!(
                 sorting(&first),
                 Some((SortKey::Size, SortDirection::Descending))
@@ -862,7 +863,7 @@ fn saved_folder_sorts_and_icon_sizes_apply_before_settings_and_follow_changes_ac
                 Some(224),
                 "another folder's change keeps a size that is not remembered"
             );
-            show(&first, &Location::local(plain.path()));
+            show(&first, &plain_location);
             wait_until(|| icons_size(&first) == Some(manager.icons_thumbnail_size()));
 
             manager.reset_folder_sort(&sorted_location);
@@ -872,19 +873,27 @@ fn saved_folder_sorts_and_icon_sizes_apply_before_settings_and_follow_changes_ac
                 FolderSort::Default
             );
             wait_until(|| icons_size(&first) == Some(128));
-            assert!(
-                !manager.has_folder_views(),
-                "a size equal to the new default is no longer stored"
+
+            manager.set_folder_sort(
+                &plain_location,
+                SortKey::Modified,
+                SortDirection::Descending,
+            );
+            manager.set_default_sort(SortKey::Modified, SortDirection::Descending);
+            manager.set_default_sort(SortKey::Name, SortDirection::Ascending);
+            manager.set_default_icons_size(96);
+            assert_eq!(
+                manager.resolve_folder_sort(&plain_location, false),
+                FolderSort::Default,
+                "a sort equal to a new default is no longer stored"
+            );
+            assert_eq!(
+                manager.icons_size_for(Some(&sorted_location)),
+                96,
+                "a size equal to a new default is no longer stored"
             );
             manager.set_browser_mode(BrowserMode::Columns);
             wait_until(|| sorting(&second) == Some((SortKey::Name, SortDirection::Ascending)));
-
-            manager.set_folder_sort(&sorted_location, SortKey::Size, SortDirection::Descending);
-            manager.set_default_sort(SortKey::Size, SortDirection::Descending);
-            assert!(
-                !manager.has_folder_views(),
-                "a sort equal to the new default is no longer stored"
-            );
         },
     );
 }

@@ -115,7 +115,6 @@ fn path_has_encoded_slash(path: &str) -> bool {
     })
 }
 
-/// `None` when `path` is not inside `from`.
 pub(crate) fn rebase_path(path: &Path, from: &Path, to: &Path) -> Option<PathBuf> {
     let suffix = path.strip_prefix(from).ok()?;
     Some(if suffix.as_os_str().is_empty() {

@@ -1474,7 +1474,6 @@ impl PreferenceManager {
     }
 }
 
-/// `None` when the file does not exist.
 fn read_state_file(path: &Path) -> io::Result<Option<String>> {
     match fs::read_to_string(path) {
         Ok(contents) => Ok(Some(contents)),
@@ -1533,7 +1532,6 @@ fn sort_preferences(preferences: &Preferences) -> ViewPreferences {
     }
 }
 
-/// Returns `false`, storing nothing, for a sort that is never saved.
 fn store_sort(
     preferences: &mut Preferences,
     (sort_key, sort_direction): (SortKey, SortDirection),

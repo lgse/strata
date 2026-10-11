@@ -300,6 +300,7 @@ fn menu_option_label(text: &str) -> gtk::Label {
     label
 }
 
+/// A popover's "Make this the default" and "Reset to default" commands.
 #[derive(Clone)]
 pub(super) struct DefaultActions {
     group: gtk::Box,

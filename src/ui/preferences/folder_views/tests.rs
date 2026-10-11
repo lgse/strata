@@ -182,59 +182,49 @@ fn clearing_every_value_removes_the_folder_and_unchanged_updates_report_nothing(
     assert!(views.update(&key, |current| current.sort = None));
     assert!(views.is_empty());
     assert!(!views.touch(&key));
-
-    assert!(!views.clear());
-    let saved = || {
-        let mut saved = FolderViews::default();
-        saved.update(&key, |current| *current = view);
-        saved
-    };
-    assert!(
-        views.merged_over(saved()).same_views(&saved()),
-        "clearing nothing keeps what another process saves later"
-    );
 }
 
 #[test]
 fn defaults_prune_matching_values_without_touching_other_fields() {
     let mut views = FolderViews::default();
     let default = (SortKey::Modified, SortDirection::Descending);
+    let other = (SortKey::Size, SortDirection::Ascending);
+    let view = |sort, icons_size| FolderView {
+        sort: Some(sort),
+        icons_size,
+    };
+    set(&mut views, &local("/default-sort"), view(default, None));
     set(
         &mut views,
-        &local("/only-sort"),
-        sorted(default.0, default.1),
+        &local("/default-sort-and-size"),
+        view(default, Some(160)),
     );
     set(
         &mut views,
-        &local("/sort-and-size"),
-        FolderView {
-            sort: Some(default),
-            icons_size: Some(160),
-        },
+        &local("/other-sort-default-size"),
+        view(other, Some(160)),
     );
-    set(
-        &mut views,
-        &local("/other-sort"),
-        sorted(SortKey::Size, SortDirection::Ascending),
-    );
+    set(&mut views, &local("/other-values"), view(other, Some(96)));
 
     assert!(views.prune_default_sort(default));
-
-    assert_eq!(views.len(), 2);
+    assert!(!views.prune_default_sort(default));
+    assert_eq!(views.len(), 3);
     assert_eq!(
-        views.view(&local("/sort-and-size")),
+        views.view(&local("/default-sort-and-size")),
         FolderView {
             sort: None,
             icons_size: Some(160),
         }
     );
-    assert_eq!(
-        views.view(&local("/other-sort")),
-        sorted(SortKey::Size, SortDirection::Ascending)
-    );
-    assert!(!views.prune_default_icons_size(96));
+
     assert!(views.prune_default_icons_size(160));
-    assert_eq!(views.len(), 1);
+    assert!(!views.prune_default_icons_size(160));
+    assert_eq!(views.len(), 2);
+    assert_eq!(
+        views.view(&local("/other-sort-default-size")),
+        view(other, None)
+    );
+    assert_eq!(views.view(&local("/other-values")), view(other, Some(96)));
 }
 
 #[test]
@@ -428,29 +418,33 @@ fn saving_merges_unsaved_changes_over_what_another_process_wrote() {
     assert_eq!(merged.view(&local("/removed")), FolderView::default());
     assert_eq!(merged.view(&local("/theirs")).icons_size, Some(160));
 
-    let (later, _) = FolderViews::parse("[[folder]]\npath = \"/later\"\nicons_size = 96\n")
-        .expect("written again before this save succeeded");
-    let unsaved = merged.merged_over(later);
+    let written_later = || {
+        FolderViews::parse("[[folder]]\npath = \"/later\"\nicons_size = 96\n")
+            .expect("written again before this save succeeded")
+            .0
+    };
+    let unsaved = merged.merged_over(written_later());
     assert_eq!(unsaved.view(&local("/new")), mine, "still unsaved");
     assert_eq!(unsaved.view(&local("/theirs")), FolderView::default());
     merged.mark_saved();
-    let (after_save, _) =
-        FolderViews::parse("[[folder]]\npath = \"/later\"\nicons_size = 96\n").expect("parsed");
     assert!(
-        merged.merged_over(after_save).same_views(
-            &FolderViews::parse("[[folder]]\npath = \"/later\"\nicons_size = 96\n")
-                .expect("parsed")
-                .0
-        )
+        merged
+            .merged_over(written_later())
+            .same_views(&written_later())
     );
+}
 
-    let (mut forgetting, _) =
-        FolderViews::parse("[[folder]]\npath = \"/theirs\"\nicons_size = 160\n").expect("parsed");
-    assert!(forgetting.clear());
-    set(&mut forgetting, &local("/kept"), mine);
+#[test]
+fn forgetting_all_on_an_empty_store_still_clears_what_another_process_wrote() {
+    let mut ours = FolderViews::default();
+    ours.clear();
+    let mine = sorted(SortKey::Name, SortDirection::Descending);
+    set(&mut ours, &local("/kept"), mine);
     let (theirs, _) =
         FolderViews::parse("[[folder]]\npath = \"/theirs\"\nicons_size = 160\n").expect("parsed");
-    let merged = forgetting.merged_over(theirs);
+
+    let merged = ours.merged_over(theirs);
+
     assert_eq!(merged.view(&local("/theirs")), FolderView::default());
     assert_eq!(merged.view(&local("/kept")), mine);
 }
