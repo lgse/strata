@@ -241,7 +241,7 @@ fn opening_a_folder_whose_sort_waits_for_metadata_saves_nothing() {
     )])));
     let source = Rc::new(ScriptedSource::manual(
         vec![],
-        vec![FillAnswer::Complete(vec![("alpha", 100)])],
+        vec![FillAnswer::Complete(vec![("alpha", 0)])],
     ));
     let (browser, reported) = remembering_browser(source.clone(), &saved);
 
@@ -261,7 +261,7 @@ fn opening_a_folder_whose_sort_waits_for_metadata_saves_nothing() {
         can_trash: None,
         can_delete: None,
     });
-    pump_until_settled(&browser, || column_names(&browser, 0) == ["beta", "alpha"]);
+    pump_until_settled(&browser, || column_names(&browser, 0) == ["alpha", "beta"]);
 
     assert!(
         reported.borrow().is_empty(),

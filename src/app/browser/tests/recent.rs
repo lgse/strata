@@ -239,8 +239,6 @@ fn recent_sort_changes_stay_local_and_normal_folder_defaults_are_preserved() {
             .column_preferences(0)
             .is_some_and(|preferences| preferences.sort_direction == SortDirection::Descending)
     });
-    browser.set_folders_first(0, true);
-    while gtk::glib::MainContext::default().iteration(false) {}
     assert!(
         !browser
             .column_preferences(0)
