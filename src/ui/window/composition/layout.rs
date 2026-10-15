@@ -12,6 +12,7 @@ use crate::{
     assets::{self, icons},
     ui::{
         browser::BrowserView,
+        decoration::{self, ControlLayout, WindowControl},
         marquee::OriginClick,
         preferences::PreferenceManager,
         preview::PreviewDrawer,
@@ -33,9 +34,8 @@ pub(super) struct Header {
     pub(super) sidebar_toggle: SidebarToggle,
     pub(super) search: gtk::Button,
     pub(super) settings: gtk::Button,
-    #[cfg(test)]
+    pub(super) leading: gtk::Box,
     pub(super) minimize: gtk::Button,
-    #[cfg(test)]
     pub(super) maximize: gtk::Button,
     pub(super) close: gtk::Button,
 }
@@ -136,30 +136,53 @@ impl Header {
         actions.append(&search);
         actions.append(&appearance);
         actions.append(&settings);
-        actions.append(&minimize);
-        actions.append(&maximize);
-        actions.append(&close);
+        let leading = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        leading.add_css_class("window-controls-start");
         let content = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         content.set_hexpand(true);
         content.set_valign(gtk::Align::Center);
+        content.append(&leading);
         content.append(&sidebar_toggle);
         content.append(&location);
         content.append(&actions);
         widget.set_title_widget(Some(&content));
-        Self {
+        let header = Self {
             widget,
             content,
             sidebar_toggle,
             search,
             settings,
-            #[cfg(test)]
+            leading,
             minimize,
-            #[cfg(test)]
             maximize,
             close,
             actions,
             new_tab,
-        }
+        };
+        header.place_window_controls(&decoration::current_control_layout(window), None);
+        header
+    }
+
+    pub(super) fn place_window_controls(
+        &self,
+        layout: &ControlLayout,
+        slots: Option<(&gtk::Box, &gtk::Box)>,
+    ) {
+        let (start, end, after) = match slots {
+            Some((start, end)) => (start, end, None),
+            None => (
+                &self.leading,
+                &self.actions,
+                Some(self.settings.clone().upcast()),
+            ),
+        };
+        let button = |control: &WindowControl| match control {
+            WindowControl::Minimize => &self.minimize,
+            WindowControl::Maximize => &self.maximize,
+            WindowControl::Close => &self.close,
+        };
+        decoration::place_controls(start, None, layout.start.iter().map(button));
+        decoration::place_controls(end, after, layout.end.iter().map(button));
     }
 }
 

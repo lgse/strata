@@ -384,6 +384,12 @@ fn tenxer_sidebar_and_header_round_trips() {
             let row = super::super::sidebar_device_row(&place, None, Some(&eject));
             fixture.sidebar.state.places_for_test().append(&row);
             wait_until(|| eject.is_mapped());
+            fixture
+                .sidebar_toggle
+                .parent()
+                .and_downcast::<gtk::Box>()
+                .expect("header")
+                .prepend(&gtk::Button::with_label("Close"));
 
             for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
                 fixture.view.set_view_mode(mode);

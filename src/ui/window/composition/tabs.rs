@@ -81,6 +81,12 @@ impl TabWindow {
             drag_token: glib::uuid_string_random().to_string(),
         });
         state.add(None);
+        let weak = Rc::downgrade(&state);
+        crate::ui::decoration::follow_control_layout(window, move |_| {
+            if let Some(state) = weak.upgrade() {
+                state.refresh_chrome();
+            }
+        });
         state.install_actions(window);
         state.install_keys(window);
         super::super::install_modal_focus_trap(window);
@@ -316,20 +322,18 @@ impl TabWindow {
     fn refresh_chrome(&self) {
         let multiple = self.tabs.borrow().len() > 1;
         self.strip.widget().set_visible(multiple);
+        let layout = crate::ui::decoration::current_control_layout(&self.stack);
         for tab in self.tabs.borrow().iter() {
             let header = &tab.content.header;
             if let Some(parent) = header.new_tab.parent().and_downcast::<gtk::Box>() {
                 parent.remove(&header.new_tab);
             }
-            if let Some(parent) = header.close.parent().and_downcast::<gtk::Box>() {
-                parent.remove(&header.close);
-            }
             if multiple && tab.id == self.active.get() {
                 self.strip.actions.append(&header.new_tab);
-                self.strip.end.append(&header.close);
+                header.place_window_controls(&layout, Some((&self.strip.start, &self.strip.end)));
             } else {
                 header.actions.prepend(&header.new_tab);
-                header.actions.append(&header.close);
+                header.place_window_controls(&layout, None);
                 header.new_tab.set_visible(!multiple);
                 header
                     .close

@@ -196,6 +196,10 @@ headerbar menubutton.header-action > button:checked,
   padding: 0 6px 0 0;
 }
 
+.window-controls-start > button:first-child {
+  margin-left: 6px;
+}
+
 headerbar image,
 button.header-action image {
   -gtk-icon-size: 16px;

@@ -511,6 +511,7 @@ fn window_buttons_load_and_follow_settings_across_open_and_later_windows() {
                 .into_iter()
                 .zip(expected)
                 {
+                    assert!(button.is_ancestor(&open.window));
                     assert_eq!(button.is_visible(), visible);
                 }
             };

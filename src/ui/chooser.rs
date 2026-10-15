@@ -49,6 +49,7 @@ use super::{
         ModalTone, focus_button, form_check_button, form_entry, form_label, menu_option,
         message_dialog_layout,
     },
+    decoration::{self, WindowControl},
     marquee::OriginClick,
     modal::close_on_escape,
     preferences::PreferenceManager,
@@ -1506,7 +1507,7 @@ fn build_chooser_hosted(
         .default_height(initial_height)
         .modal(request.modal)
         .build();
-    crate::ui::decoration::claim_titlebar(&window);
+    decoration::claim_titlebar(&window);
     if let Some(host) = &host {
         window.set_transient_for(Some(&host.parent));
         window.set_destroy_with_parent(true);
@@ -1534,9 +1535,12 @@ fn build_chooser_hosted(
     let location = view.location_widget();
     location.set_hexpand(true);
     let appearance = build_appearance_menu(&view, &browser, theme.clone(), &preview);
+    let leading = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    leading.add_css_class("window-controls-start");
     let header_content = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     header_content.set_hexpand(true);
     header_content.set_valign(gtk::Align::Center);
+    header_content.append(&leading);
     header_content.append(&sidebar_toggle);
     header_content.append(&location);
     let close = gtk::Button::builder()
@@ -1556,8 +1560,15 @@ fn build_chooser_hosted(
     let header_actions = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     header_actions.add_css_class("header-actions");
     header_actions.append(&appearance);
-    header_actions.append(&close);
     header_content.append(&header_actions);
+    let appearance = appearance.upcast::<gtk::Widget>();
+    decoration::follow_control_layout(&window, move |layout| {
+        if layout.start.contains(&WindowControl::Close) {
+            decoration::place_controls(&leading, None, [&close]);
+        } else {
+            decoration::place_controls(&header_actions, Some(appearance.clone()), [&close]);
+        }
+    });
     header.set_title_widget(Some(&header_content));
 
     let confined = source.root_limit.is_some();

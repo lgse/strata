@@ -180,6 +180,37 @@ fn browser_windows_keep_gtk_from_adding_a_default_title_bar() {
 }
 
 #[test]
+fn window_controls_follow_the_live_decoration_layout() {
+    gtk_test(
+        "ui::window::composition::tabs::tests::window_controls_follow_the_live_decoration_layout",
+        || {
+            let (window, tabs) = open();
+            let settings = window.settings();
+            let parent = |button: &gtk::Button| button.parent().and_downcast::<gtk::Box>();
+            settings.set_gtk_decoration_layout(Some("close:appmenu"));
+            let first = tabs.active_tab();
+            let header = &first.content.header;
+            assert_eq!(parent(&header.close).as_ref(), Some(&header.leading));
+            assert_eq!(parent(&header.minimize).as_ref(), Some(&header.actions));
+            tabs.new_tab();
+            let second = tabs.active_tab();
+            let header = &second.content.header;
+            assert_eq!(parent(&header.close).as_ref(), Some(&tabs.strip.start));
+            assert_eq!(parent(&header.minimize).as_ref(), Some(&tabs.strip.end));
+            settings.set_gtk_decoration_layout(Some("appmenu:minimize,maximize,close"));
+            for button in [&header.minimize, &header.maximize, &header.close] {
+                assert_eq!(parent(button).as_ref(), Some(&tabs.strip.end));
+            }
+            tabs.select(first.id);
+            assert_eq!(parent(&header.close).as_ref(), Some(&header.actions));
+            let header = &first.content.header;
+            assert_eq!(parent(&header.close).as_ref(), Some(&tabs.strip.end));
+            window.destroy();
+        },
+    );
+}
+
+#[test]
 fn saved_window_buttons_survive_tab_chrome_refreshes() {
     gtk_test(
         "ui::window::composition::tabs::tests::saved_window_buttons_survive_tab_chrome_refreshes",

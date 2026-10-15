@@ -27,7 +27,14 @@ impl TopBarNavigation {
     }
 
     pub fn focus_first(&self) -> bool {
-        self.header.child_focus(gtk::DirectionType::TabForward)
+        let mut child = Some(self.toggle.clone().upcast::<gtk::Widget>());
+        while let Some(widget) = child {
+            if widget.child_focus(gtk::DirectionType::TabForward) {
+                return true;
+            }
+            child = widget.next_sibling();
+        }
+        false
     }
 
     pub fn has_focus(&self) -> bool {
