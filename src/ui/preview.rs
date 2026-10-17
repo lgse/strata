@@ -42,6 +42,7 @@ mod keyboard;
 mod layout;
 pub(in crate::ui) use layout::{separator, separator_width};
 pub(in crate::ui) mod media_layout;
+mod model;
 #[cfg(test)]
 mod pdf_ranges_tests;
 mod pdf_text;
@@ -206,6 +207,8 @@ struct PreviewState {
     media_toggle_mute: RefCell<Option<Rc<dyn Fn()>>>,
     audio: RefCell<Option<AudioPreview>>,
     video: RefCell<Option<VideoPreview>>,
+    model: RefCell<Option<model::ModelPreview>>,
+    model_view: Cell<crate::services::ModelView>,
     handed_off: RefCell<Option<crate::model::Location>>,
     continue_playback: RefCell<Option<PlaybackContinuation>>,
     split: RefCell<Option<gtk::Paned>>,
@@ -465,6 +468,8 @@ impl PreviewDrawer {
             keyboard_view: RefCell::new(None),
             audio: RefCell::new(None),
             video: RefCell::new(None),
+            model: RefCell::new(None),
+            model_view: Cell::default(),
             handed_off: RefCell::new(None),
             continue_playback: RefCell::new(None),
             claim_on_resume: Cell::new(false),
@@ -896,6 +901,8 @@ impl PreviewState {
             .is_none_or(|current| current.location != entry.location)
         {
             self.reset_find();
+            self.model_view.set(Default::default());
+            self.model.borrow_mut().take();
         }
         self.cancel_pending_show();
         self.retain_pending_playback(&entry);
@@ -1143,6 +1150,7 @@ impl PreviewState {
                 pdf_page,
                 media_size: self.media_preview_size(),
                 model_palette: super::theme::ThemeManager::shared().active_model_palette(),
+                model_view: Default::default(),
                 archive_password: None,
             },
             emit,
@@ -1317,6 +1325,15 @@ impl PreviewState {
         render_document: bool,
         archive_password: Option<SecretString>,
     ) {
+        if self
+            .current
+            .borrow()
+            .as_ref()
+            .is_none_or(|current| current.location != entry.location)
+        {
+            self.model_view.set(Default::default());
+            self.model.borrow_mut().take();
+        }
         self.raw_metadata_load.borrow_mut().take();
         if super::raw_details::supports(&entry) {
             let load = self
@@ -1372,6 +1389,7 @@ impl PreviewState {
                 pdf_page,
                 media_size: self.media_preview_size(),
                 model_palette: super::theme::ThemeManager::shared().active_model_palette(),
+                model_view: self.model_view.get(),
                 archive_password,
             },
             emit,
@@ -1391,6 +1409,9 @@ impl PreviewState {
         }
         match event {
             PreviewEvent::Progress { stage, .. } => {
+                if let Some(model) = self.model.borrow().as_ref() {
+                    model.set_progress(stage);
+                }
                 if let Some(label) = self.loading_label.borrow().as_ref() {
                     label.set_text(&stage.label());
                 }
@@ -1412,6 +1433,11 @@ impl PreviewState {
                 // Failures carry English source messages: known ones have catalog
                 // entries, and system error text passes through unchanged.
                 let detail = crate::i18n::tr(&message);
+                if let Some(model) = self.model.borrow().as_ref() {
+                    self.model_view.set(model.view());
+                    model.show_error(&detail);
+                    return;
+                }
                 if message == crate::services::INCORRECT_ARCHIVE_PASSWORD {
                     self.render_archive_password_prompt(entry, Some(&detail));
                 } else {
@@ -1530,11 +1556,15 @@ impl PreviewState {
             .take()
             .is_some_and(|pending| pending.request == Some(preview.request_id));
         self.content_type.set_text(&preview.content_type);
-        self.reset_content(
-            matches!(preview.content, PreviewContent::SandboxedMedia { .. })
-                .then(|| media_family(&preview.content_type))
-                .flatten(),
-        );
+        let reuse_model = matches!(preview.content, PreviewContent::Model { mesh: Some(_), .. })
+            && self.model.borrow().is_some();
+        if !reuse_model {
+            self.reset_content(
+                matches!(preview.content, PreviewContent::SandboxedMedia { .. })
+                    .then(|| media_family(&preview.content_type))
+                    .flatten(),
+            );
+        }
         match preview.content {
             PreviewContent::Text { content, truncated } => {
                 self.print.set_visible(true);
@@ -1591,7 +1621,8 @@ impl PreviewState {
                 self.rendered_text.replace(Some(state));
                 self.content.append(&view);
             }
-            PreviewContent::Rasterized { png } | PreviewContent::Model { png, .. } => {
+            PreviewContent::Model { png, mesh } => self.render_model(png, mesh),
+            PreviewContent::Rasterized { png } => {
                 let model = crate::services::is_model(&preview.entry.native_name);
                 let cover =
                     crate::sandbox::CoverFormat::for_name(&preview.entry.native_name).is_some();
@@ -2260,6 +2291,7 @@ impl PreviewState {
                     pdf_page: page_index,
                     media_size: render_size,
                     model_palette: super::theme::ThemeManager::shared().active_model_palette(),
+                    model_view: Default::default(),
                     archive_password: None,
                 },
                 emit,
@@ -2941,6 +2973,7 @@ impl PreviewState {
     }
 
     fn reset_content(&self, keep: Option<MediaFamily>) {
+        self.model.borrow_mut().take();
         let owned = self.content_owns_keys();
         self.detach_find();
         self.rendered_text.borrow_mut().take();
@@ -2995,6 +3028,11 @@ impl PreviewState {
     }
 
     fn show_loading(self: &Rc<Self>, request_id: PreviewRequestId) {
+        if let Some(model) = self.model.borrow().as_ref() {
+            self.cancel_loading();
+            model.set_loading(self.model_view.get());
+            return;
+        }
         let family = self.current.borrow().as_ref().and_then(entry_family);
         self.reset_content(family);
         self.cancel_loading();

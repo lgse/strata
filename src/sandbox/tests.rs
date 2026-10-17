@@ -32,7 +32,7 @@ fn renderer_outputs_are_never_read_through_symlinks() {
     let dir = tempfile::tempdir().expect("scratch directory");
     let real = dir.path().join("host-file");
     fs::write(&real, b"2 5").expect("host file");
-    for name in ["result.png", "result.meta"] {
+    for name in ["result.png", "result.meta", "result.model"] {
         let link = dir.path().join(name);
         std::os::unix::fs::symlink(&real, &link).expect("planted symlink");
         assert!(super::read_private_output(&link, 256).is_err());

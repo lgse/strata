@@ -23,6 +23,7 @@ use crate::{
 };
 
 pub(in crate::ui::preview) use details::VideoDetails;
+pub(super) use layout::PlayerLayout;
 
 use super::{
     ListingPosition,

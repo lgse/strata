@@ -537,6 +537,7 @@ impl LocalPreviewProvider {
                 format,
                 size: MediaPreviewSize::new(request.media_size.width.min(800), request.media_size.height.min(800)),
                 palette: request.model_palette,
+                view: request.model_view,
             });
             let operation = if let Some(render) = model {
                 Some(ParseOperation::PreviewModel(render))
@@ -673,6 +674,7 @@ impl LocalPreviewProvider {
                 content = match render {
                     Ok(Ok(output)) if model.is_some() => PreviewContent::Model {
                         png: output.data,
+                        mesh: output.model_mesh,
                     },
                     Ok(Ok(output)) if matches!(operation, ParseOperation::PreviewPdf(_)) => {
                         if let Some(mtime) = modified

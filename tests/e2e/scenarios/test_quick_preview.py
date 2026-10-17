@@ -6,6 +6,7 @@ from __future__ import annotations
 import pytest
 from pathlib import Path
 import io
+import struct
 import zipfile
 from PIL import Image
 
@@ -29,6 +30,9 @@ def test_model_preview_renders_stl_prefers_thumbnails_and_reports_limits(strata)
         "vertex 0 0 0\nvertex 1 0 0\nvertex 0 1 0\n"
         "endloop\nendfacet\nendsolid\n"
     )
+    (folder / "binary.stl").write_bytes(
+        b"solid" + bytes(75) + struct.pack("<I12fH", 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0)
+    )
     with zipfile.ZipFile(folder / "sample.3mf", "w") as package:
         package.writestr(
             "3D/3dmodel.model",
@@ -40,13 +44,47 @@ def test_model_preview_renders_stl_prefers_thumbnails_and_reports_limits(strata)
         package.writestr("Metadata/invalid-thumbnail.png", b"invalid image")
     (folder / "sample.3mf").rename(folder / "model-blob")
     (folder / "sample.3mf").symlink_to("model-blob")
+    with zipfile.ZipFile(folder / "geometry.3mf", "w") as package:
+        package.writestr(
+            "3D/3dmodel.model",
+            '<model><resources><object id="1"><mesh><vertices>'
+            '<vertex x="0" y="0" z="0"/><vertex x="2" y="0" z="0"/>'
+            '<vertex x="0" y="1" z="1"/></vertices><triangles>'
+            '<triangle v1="0" v2="1" v3="2"/></triangles></mesh></object>'
+            '</resources><build><item objectid="1"/></build></model>',
+        )
 
-    strata.wait(lambda: strata.entry("sample.stl"), "STL file in listing")
+    strata.wait(
+        lambda: all(strata.entry(name) for name in ["binary.stl", "geometry.3mf", "sample.3mf", "sample.stl"]),
+        "model files in listing",
+    )
     strata.select_entry("sample.stl")
     strata.keyboard.press("space")
     strata.wait(lambda: strata.preview() and strata.preview().find(role="image", name="Model preview"), "rendered STL preview")
+    assert strata.preview_shows("4 of 4 in folder")
+    for name in ["Front right", "Back right", "Back left", "Front left"]:
+        next_view = strata.preview().find(role="button", name="Next model view")
+        assert next_view is not None
+        strata.pointer.click(next_view)
+        strata.wait(
+            lambda: strata.preview().find(role="image", name="Camera position").description == name
+            and strata.preview().find(role="button", name="Next model view").has_state("sensitive"),
+            f"STL camera view {name} to finish rendering",
+        )
+        camera = strata.preview().find(role="image", name="Camera position")
+        assert camera is not None and camera.description == name
+        assert strata.preview_shows("ASCII STL")
+        assert strata.preview_shows("1 triangle")
+        assert strata.preview_shows("4 of 4 in folder")
     strata.pointer.click(strata.preview().find(role="button", name="Close preview (Space)"))
     strata.wait(lambda: strata.preview() is None, "STL preview to close")
+
+    strata.select_entry("binary.stl")
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview_shows("Binary STL") and strata.preview_shows("1 triangle"), "binary STL mesh details")
+    assert strata.preview_shows("1 of 4 in folder")
+    strata.pointer.click(strata.preview().find(role="button", name="Close preview (Space)"))
+    strata.wait(lambda: strata.preview() is None, "binary STL preview to close")
 
     strata.select_entry("sample.3mf")
     strata.keyboard.press("space")
@@ -54,8 +92,24 @@ def test_model_preview_renders_stl_prefers_thumbnails_and_reports_limits(strata)
         lambda: strata.preview() and strata.preview().find(role="image", name="Model preview"),
         "embedded 3MF thumbnail",
     )
+    assert strata.preview().find(role="button", name="Next model view") is None
+    assert strata.preview().find(role="image", name="Camera position") is None
     strata.pointer.click(strata.preview().find(role="button", name="Close preview (Space)"))
     strata.wait(lambda: strata.preview() is None, "model preview to close")
+    strata.select_entry("geometry.3mf")
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview() and strata.preview().find(role="button", name="Previous model view"), "rendered 3MF camera controls")
+    strata.pointer.click(strata.preview().find(role="button", name="Previous model view"))
+    strata.wait(
+        lambda: strata.preview().find(role="image", name="Camera position").description == "Back left"
+        and strata.preview().find(role="button", name="Previous model view").has_state("sensitive"),
+        "3MF camera to wrap to the previous view",
+    )
+    assert strata.preview_shows("3MF")
+    assert strata.preview_shows("1 triangle")
+    assert strata.preview_shows("2 of 4 in folder")
+    strata.pointer.click(strata.preview().find(role="button", name="Close preview (Space)"))
+    strata.wait(lambda: strata.preview() is None, "geometry preview to close")
     with zipfile.ZipFile(folder / "assembly.3mf", "w") as package:
         package.writestr("3D/Objects/part.model", "<model/>")
         package.writestr("3D/3dmodel.model", "<model/>")

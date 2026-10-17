@@ -3,7 +3,7 @@
 use super::*;
 use crate::{
     model::{EntryKind, FileEntry, Location, MetadataValue},
-    services::{ModelPalette, PreviewRequestId},
+    services::{ModelEncoding, ModelMesh, ModelPalette, ModelView, PreviewRequestId},
 };
 use std::sync::{
     Arc,
@@ -11,7 +11,7 @@ use std::sync::{
 };
 
 #[test]
-fn model_requests_reuse_only_matching_size_and_palette_without_ui_state() {
+fn model_requests_reuse_only_matching_size_palette_and_view_without_ui_state() {
     let _lock = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
         .expect("main context lock");
@@ -38,12 +38,15 @@ fn model_requests_reuse_only_matching_size_and_palette_without_ui_state() {
     };
     let provider = LocalPreviewProvider::new(Rc::new(|| MediaPreviewBackend::Software));
     let calls = Arc::new(AtomicUsize::new(0));
-    for (width, accent, expected_calls) in [
-        (200, 0xff0000, 1),
-        (200, 0xff0000, 1),
-        (200, 0x00ff00, 2),
-        (300, 0x00ff00, 3),
-        (200, 0xff0000, 3),
+    for (width, accent, view, expected_calls) in [
+        (200, 0xff0000, ModelView::FrontLeft, 1),
+        (200, 0xff0000, ModelView::FrontLeft, 1),
+        (200, 0x00ff00, ModelView::FrontLeft, 2),
+        (300, 0x00ff00, ModelView::FrontLeft, 3),
+        (200, 0xff0000, ModelView::FrontLeft, 3),
+        (200, 0xff0000, ModelView::FrontRight, 4),
+        (200, 0xff0000, ModelView::FrontLeft, 4),
+        (200, 0xff0000, ModelView::FrontRight, 4),
     ] {
         let palette = ModelPalette {
             accent,
@@ -61,6 +64,7 @@ fn model_requests_reuse_only_matching_size_and_palette_without_ui_state() {
                 pdf_page: 0,
                 media_size: MediaPreviewSize::new(width, 200),
                 model_palette: palette,
+                model_view: view,
                 archive_password: None,
             },
             Rc::new(move |event| emit.borrow_mut().push(event)),
@@ -70,6 +74,7 @@ fn model_requests_reuse_only_matching_size_and_palette_without_ui_state() {
                 };
                 assert_eq!(render.format, ModelFormat::ThreeMf);
                 assert_eq!(render.palette, palette);
+                assert_eq!(render.view, view);
                 assert_eq!(render.size, MediaPreviewSize::new(width, 200));
                 rendered.fetch_add(1, Ordering::SeqCst);
                 Ok(crate::sandbox::ParseOutput {
@@ -77,6 +82,11 @@ fn model_requests_reuse_only_matching_size_and_palette_without_ui_state() {
                     page: 0,
                     pages: 0,
                     text_layer: None,
+                    model_mesh: Some(ModelMesh {
+                        view,
+                        encoding: ModelEncoding::ThreeMf,
+                        triangles: 17,
+                    }),
                 })
             },
         );
@@ -89,9 +99,9 @@ fn model_requests_reuse_only_matching_size_and_palette_without_ui_state() {
         assert!(matches!(
             events.borrow().as_slice(),
             [PreviewEvent::Ready(Preview {
-                content: PreviewContent::Model { .. },
+                content: PreviewContent::Model { mesh: Some(mesh), .. },
                 ..
-            })]
+            })] if mesh.view == view && mesh.triangles == 17 && mesh.encoding == ModelEncoding::ThreeMf
         ));
         assert_eq!(calls.load(Ordering::SeqCst), expected_calls);
     }

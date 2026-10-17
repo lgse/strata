@@ -1293,6 +1293,15 @@
   "your package manager": "패키지 관리자",
   "{paths} is for whole-selection actions; use {path} for a per-item action": "{paths}는 선택 전체 동작용입니다. 항목별 동작에는 {path}를 사용하세요",
   "{path} is for per-item actions; use {paths} for a whole selection": "{path}는 항목별 동작용입니다. 선택 전체에는 {paths}를 사용하세요",
+  "Front left": "앞쪽 왼쪽",
+  "Front right": "앞쪽 오른쪽",
+  "Back right": "뒤쪽 오른쪽",
+  "Back left": "뒤쪽 왼쪽",
+  "Previous model view": "이전 모델 보기",
+  "Next model view": "다음 모델 보기",
+  "Camera position": "카메라 위치",
+  "Binary STL": "바이너리 STL",
+  "ASCII STL": "ASCII STL",
   "Delete without Trash": "휴지통 없이 삭제",
   "Deletion without Trash": "휴지통 없이 삭제"
 }

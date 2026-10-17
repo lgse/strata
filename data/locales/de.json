@@ -1293,6 +1293,15 @@
   "your package manager": "Ihren Paketmanager",
   "{paths} is for whole-selection actions; use {path} for a per-item action": "{paths} ist für Aktionen auf die gesamte Auswahl gedacht; verwenden Sie {path} für eine Aktion pro Element",
   "{path} is for per-item actions; use {paths} for a whole selection": "{path} ist für Aktionen pro Element gedacht; verwenden Sie {paths} für die gesamte Auswahl",
+  "Front left": "Vorne links",
+  "Front right": "Vorne rechts",
+  "Back right": "Hinten rechts",
+  "Back left": "Hinten links",
+  "Previous model view": "Vorherige Modellansicht",
+  "Next model view": "Nächste Modellansicht",
+  "Camera position": "Kameraposition",
+  "Binary STL": "Binäres STL",
+  "ASCII STL": "ASCII-STL",
   "Delete without Trash": "Ohne Papierkorb löschen",
   "Deletion without Trash": "Löschen ohne Papierkorb"
 }

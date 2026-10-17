@@ -844,5 +844,57 @@
     "it": "%{count} byte",
     "ru": "%{count} байта",
     "zh-CN": "%{count} 字节"
+  },
+  "counts.triangles.one": {
+    "en": "%{count} triangle",
+    "fr": "%{count} triangle",
+    "de": "%{count} Dreieck",
+    "es": "%{count} triángulo",
+    "ja": "%{count} 個の三角形",
+    "pt-BR": "%{count} triângulo",
+    "ko": "삼각형 %{count}개",
+    "vi": "%{count} tam giác",
+    "it": "%{count} triangolo",
+    "ru": "%{count} треугольник",
+    "zh-CN": "%{count} 个三角形"
+  },
+  "counts.triangles.other": {
+    "en": "%{count} triangles",
+    "fr": "%{count} triangles",
+    "de": "%{count} Dreiecke",
+    "es": "%{count} triángulos",
+    "ja": "%{count} 個の三角形",
+    "pt-BR": "%{count} triângulos",
+    "ko": "삼각형 %{count}개",
+    "vi": "%{count} tam giác",
+    "it": "%{count} triangoli",
+    "ru": "%{count} треугольников",
+    "zh-CN": "%{count} 个三角形"
+  },
+  "counts.triangles.few": {
+    "en": "%{count} triangles",
+    "fr": "%{count} triangles",
+    "de": "%{count} Dreiecke",
+    "es": "%{count} triángulos",
+    "ja": "%{count} 個の三角形",
+    "pt-BR": "%{count} triângulos",
+    "ko": "삼각형 %{count}개",
+    "vi": "%{count} tam giác",
+    "it": "%{count} triangoli",
+    "ru": "%{count} треугольника",
+    "zh-CN": "%{count} 个三角形"
+  },
+  "counts.triangles.many": {
+    "en": "%{count} triangles",
+    "fr": "%{count} triangles",
+    "de": "%{count} Dreiecke",
+    "es": "%{count} triángulos",
+    "ja": "%{count} 個の三角形",
+    "pt-BR": "%{count} triângulos",
+    "ko": "삼각형 %{count}개",
+    "vi": "%{count} tam giác",
+    "it": "%{count} triangoli",
+    "ru": "%{count} треугольников",
+    "zh-CN": "%{count} 个三角形"
   }
 }

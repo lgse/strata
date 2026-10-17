@@ -1293,6 +1293,15 @@
   "your package manager": "менеджер пакетов",
   "{paths} is for whole-selection actions; use {path} for a per-item action": "{paths} предназначен для действий над всем выделением; для действия над каждым элементом используйте {path}",
   "{path} is for per-item actions; use {paths} for a whole selection": "{path} предназначен для действий над каждым элементом; для всего выделения используйте {paths}",
+  "Front left": "Спереди слева",
+  "Front right": "Спереди справа",
+  "Back right": "Сзади справа",
+  "Back left": "Сзади слева",
+  "Previous model view": "Предыдущий вид модели",
+  "Next model view": "Следующий вид модели",
+  "Camera position": "Положение камеры",
+  "Binary STL": "Двоичный STL",
+  "ASCII STL": "ASCII STL",
   "Delete without Trash": "Удалить без корзины",
   "Deletion without Trash": "Удаление без корзины"
 }

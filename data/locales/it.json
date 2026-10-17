@@ -1293,6 +1293,15 @@
   "your package manager": "il tuo gestore di pacchetti",
   "{paths} is for whole-selection actions; use {path} for a per-item action": "{paths} è per le azioni sull’intera selezione; usa {path} per un’azione per elemento",
   "{path} is for per-item actions; use {paths} for a whole selection": "{path} è per le azioni per elemento; usa {paths} per l’intera selezione",
+  "Front left": "Davanti a sinistra",
+  "Front right": "Davanti a destra",
+  "Back right": "Dietro a destra",
+  "Back left": "Dietro a sinistra",
+  "Previous model view": "Vista precedente del modello",
+  "Next model view": "Vista successiva del modello",
+  "Camera position": "Posizione della fotocamera",
+  "Binary STL": "STL binario",
+  "ASCII STL": "STL ASCII",
   "Delete without Trash": "Elimina senza cestino",
   "Deletion without Trash": "Eliminazione senza cestino"
 }

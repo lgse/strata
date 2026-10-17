@@ -65,6 +65,7 @@ pub struct PreviewRequest {
     pub pdf_page: i32,
     pub media_size: MediaPreviewSize,
     pub model_palette: super::ModelPalette,
+    pub model_view: super::ModelView,
     pub archive_password: Option<SecretString>,
 }
 
@@ -127,6 +128,7 @@ pub enum PreviewContent {
     },
     Model {
         png: Vec<u8>,
+        mesh: Option<super::ModelMesh>,
     },
     SandboxedMedia {
         media: SandboxedMedia,

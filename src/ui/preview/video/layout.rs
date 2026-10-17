@@ -205,11 +205,11 @@ glib::wrapper! {
 }
 
 impl PlayerLayout {
-    pub(super) fn new() -> Self {
+    pub(in crate::ui::preview) fn new() -> Self {
         glib::Object::new()
     }
 
-    pub(super) fn set_paintable(&self, paintable: Option<&gdk::Paintable>) {
+    pub(in crate::ui::preview) fn set_paintable(&self, paintable: Option<&gdk::Paintable>) {
         self.imp().paintable.set(paintable);
         self.layout_changed();
     }

@@ -25,6 +25,7 @@ pub(crate) mod archive;
 pub(crate) mod browser;
 pub(crate) mod media;
 pub(crate) mod metadata;
+mod model;
 pub(crate) mod raw_metadata;
 
 const WALL_TIME_LIMIT: Duration = Duration::from_secs(12);
@@ -350,6 +351,7 @@ pub(crate) struct ParseOutput {
     pub(crate) page: i32,
     pub(crate) pages: i32,
     pub(crate) text_layer: Option<crate::services::PdfTextLayer>,
+    pub(crate) model_mesh: Option<crate::services::ModelMesh>,
 }
 
 pub(crate) fn parse(
@@ -451,6 +453,7 @@ fn parse_sandboxed(
             page: 0,
             pages: 0,
             text_layer: None,
+            model_mesh: None,
         });
     }
 
@@ -556,6 +559,11 @@ fn parse_sandboxed(
         });
     }
     let (page, pages) = read_metadata(&output.path().join("result.meta"));
+    let model_mesh = if let ParseOperation::PreviewModel(render) = operation {
+        model::read_mesh(render, &output.path().join("result.model"))?
+    } else {
+        None
+    };
     // A page without an extractable text layer (scanned images, malformed layout)
     // still previews; selection just stays unavailable there.
     let text_layer = if matches!(operation, ParseOperation::PreviewPdf(_)) {
@@ -570,6 +578,7 @@ fn parse_sandboxed(
         page,
         pages,
         text_layer,
+        model_mesh,
     })
 }
 
@@ -853,12 +862,13 @@ fn sandbox_command(
                 format!("{value}:{}x{}", size.width, size.height)
             }
             ParseOperation::PreviewModel(render) => format!(
-                "{}:{}x{}:{:06x}:{:06x}",
+                "{}:{}x{}:{:06x}:{:06x}:{}",
                 render.format.argument(),
                 render.size.width,
                 render.size.height,
                 render.palette.accent,
                 render.palette.surface,
+                render.view.argument(),
             ),
             ParseOperation::ThumbnailModel(format) => format.argument().to_owned(),
             ParseOperation::ThumbnailCover(format) => format.argument().to_owned(),

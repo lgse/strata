@@ -6,6 +6,7 @@ use crate::model::{Location, MetadataValue};
 mod audio;
 mod find;
 mod media_controls;
+mod model;
 mod pdf;
 mod video;
 
@@ -100,6 +101,18 @@ fn model_progress_and_theme_reloads_follow_the_current_request_in_each_drawer() 
                 });
             }
             assert!(first.state.loading_label.borrow().is_some());
+            model::ready(&provider, 2, Some(crate::services::ModelView::FrontLeft));
+            model::ready(&provider, 1, Some(crate::services::ModelView::FrontLeft));
+            let next = first
+                .state
+                .model
+                .borrow()
+                .as_ref()
+                .expect("mesh controls")
+                .next
+                .clone();
+            next.emit_clicked();
+            model::ready(&provider, 3, Some(crate::services::ModelView::FrontRight));
             let old_palette = manager.active_model_palette();
             let mut tokens = manager.appearance_tokens();
             tokens.accent = if old_palette.accent == 0xff0000 {
@@ -111,10 +124,18 @@ fn model_progress_and_theme_reloads_follow_the_current_request_in_each_drawer() 
             manager.preview(&tokens);
             {
                 let pending = provider.0.borrow();
-                assert_eq!(pending.len(), 5);
-                assert_eq!(pending[3].request.entry.native_name, "new.stl");
-                assert_eq!(pending[4].request.entry.native_name, "second.stl");
-                for request in &pending[3..] {
+                assert_eq!(pending.len(), 6);
+                assert_eq!(pending[4].request.entry.native_name, "new.stl");
+                assert_eq!(
+                    pending[4].request.model_view,
+                    crate::services::ModelView::FrontRight
+                );
+                assert_eq!(pending[5].request.entry.native_name, "second.stl");
+                assert_eq!(
+                    pending[5].request.model_view,
+                    crate::services::ModelView::FrontLeft
+                );
+                for request in &pending[4..] {
                     assert_eq!(
                         request.request.model_palette,
                         manager.active_model_palette()
@@ -123,14 +144,14 @@ fn model_progress_and_theme_reloads_follow_the_current_request_in_each_drawer() 
                 }
             }
             first.close();
-            emit_progress(3, crate::services::ModelPreviewStage::Finishing);
+            emit_progress(4, crate::services::ModelPreviewStage::Finishing);
             assert!(first.state.current_request.get().is_none());
             assert!(first.state.loading_label.borrow().is_none());
             tokens.surface = "#102030".into();
             manager.preview(&tokens);
             assert_eq!(
                 provider.0.borrow().len(),
-                6,
+                7,
                 "closed drawer must not reload"
             );
             second.close();

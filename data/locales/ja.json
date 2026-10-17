@@ -1293,6 +1293,15 @@
   "your package manager": "パッケージマネージャー",
   "{paths} is for whole-selection actions; use {path} for a per-item action": "{paths} は選択全体のアクション用です。項目ごとのアクションには {path} を使用してください",
   "{path} is for per-item actions; use {paths} for a whole selection": "{path} は項目ごとのアクション用です。選択全体には {paths} を使用してください",
+  "Front left": "左前",
+  "Front right": "右前",
+  "Back right": "右後ろ",
+  "Back left": "左後ろ",
+  "Previous model view": "モデルの前のビュー",
+  "Next model view": "モデルの次のビュー",
+  "Camera position": "カメラの位置",
+  "Binary STL": "バイナリ STL",
+  "ASCII STL": "ASCII STL",
   "Delete without Trash": "ゴミ箱を使わずに削除",
   "Deletion without Trash": "ゴミ箱を使わない削除"
 }

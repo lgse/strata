@@ -72,7 +72,31 @@ isolation, resource limits, or the other narrow optional runtime mounts.
 ## Local 3D model previews
 
 Quick Preview accepts STL, 3MF and FreeCAD (`.FCStd`) files. STL and single-part
-3MF geometry use a fixed-angle software render; FreeCAD uses its saved image.
+3MF geometry use a software render with four diagonal camera views looking down
+at the model; FreeCAD uses its saved image. Rendered
+meshes show media-style previous/next controls around a circular camera-position
+indicator, with stable centring and scale. Its dot sweeps around the circle to the
+selected corner, respecting the reduced-motion and system animation settings.
+The indicator is a top-down map: a hollow circle marks the model at the centre,
+and the camera dot sits on the outer circumference. Camera directions are shared
+with the renderer: +X is right, −Y is front, and +Z is up. The initial front-left
+camera therefore appears at the lower left; front-right is lower right,
+back-right upper right and back-left upper left. These names follow the model's
+coordinate axes.
+View names are exposed to assistive technology; the visible controls use the
+orbit diagram without a text caption.
+The model and controls form one vertically centred block using the video player's
+layout. Geometry renders on a square canvas, avoiding unused space from the pane's
+aspect ratio. Above the badges, the filename and its position among model files
+in the current sorted or filtered listing use the same styling as video previews.
+Above the camera controls, media-style badges show the mesh encoding (binary STL,
+ASCII STL or 3MF) and the rendered triangle count. These details come from the
+existing parse/render pass and remain part of the cached preview. Thumbnail-only
+previews do not parse geometry for badges. Dimensions and units are not shown.
+While another view renders, the last image dims behind a central spinner and live
+render progress. Failed view changes
+retain that image with a visible error so the controls can retry. Embedded images
+have no camera controls and are never replaced with geometry for view selection.
 A 3MF package with exactly one usable embedded PNG uses that image, even if other
 candidates are corrupt or its geometry spans multiple model parts. Two usable
 images are ambiguous: Quick Preview tries geometry, while browser thumbnailing
@@ -88,7 +112,10 @@ Heavy Quick Previews (models, PDFs, workbooks and DOCX) share one process-wide
 permit and use one-shot sandboxes. Cancellation retains that permit until the
 helper exits. Format is carried explicitly across the sandbox boundary, including
 for symlinks; the UI supplies the render palette. Geometry PNG cache keys include
-format, size and palette, and open model previews reload on palette changes.
+format, size, palette and camera view. Open model previews reload on palette
+changes while retaining the selected camera; another file starts from the default
+front-left view. The helper reports whether its PNG came from a mesh or an
+embedded thumbnail, and mesh results must identify the requested camera view.
 
 Input, package and geometry limits are centralized in
 `src/services/model_preview.rs`. These are compile-time constants, not Settings

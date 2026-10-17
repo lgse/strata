@@ -1293,6 +1293,15 @@
   "your package manager": "your package manager",
   "{paths} is for whole-selection actions; use {path} for a per-item action": "{paths} is for whole-selection actions; use {path} for a per-item action",
   "{path} is for per-item actions; use {paths} for a whole selection": "{path} is for per-item actions; use {paths} for a whole selection",
+  "Front left": "Front left",
+  "Front right": "Front right",
+  "Back right": "Back right",
+  "Back left": "Back left",
+  "Previous model view": "Previous model view",
+  "Next model view": "Next model view",
+  "Camera position": "Camera position",
+  "Binary STL": "Binary STL",
+  "ASCII STL": "ASCII STL",
   "Delete without Trash": "Delete without Trash",
   "Deletion without Trash": "Deletion without Trash"
 }

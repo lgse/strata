@@ -160,6 +160,7 @@ fn cold_previews_with_shared_thumbnails_match_rendered_cache_hits() {
                     pdf_page: 0,
                     media_size: MediaPreviewSize::new(640, 800),
                     model_palette: crate::services::ModelPalette::default(),
+                    model_view: Default::default(),
                     archive_password: None,
                 };
                 let provider = LocalPreviewProvider::new(Rc::new(|| MediaPreviewBackend::Software));
@@ -179,6 +180,7 @@ fn cold_previews_with_shared_thumbnails_match_rendered_cache_hits() {
                                 page: 0,
                                 pages: 40,
                                 text_layer: None,
+                                model_mesh: None,
                             })
                         },
                     );
@@ -409,6 +411,7 @@ fn cancelled_in_flight_document_renders_keep_the_permit_and_emit_no_stale_events
                 pdf_page: 1,
                 media_size: MediaPreviewSize::new(640, 800),
                 model_palette: crate::services::ModelPalette::default(),
+                model_view: Default::default(),
                 archive_password: None,
             },
             Rc::new(move |event| events_for_emit.borrow_mut().push(event)),
@@ -424,6 +427,7 @@ fn cancelled_in_flight_document_renders_keep_the_permit_and_emit_no_stale_events
                         page: 1,
                         pages: 2,
                         text_layer: None,
+                        model_mesh: None,
                     })
                 } else {
                     Err("late renderer error".into())
@@ -494,6 +498,7 @@ fn cancelled_archive_listings_emit_no_stale_events() {
             pdf_page: 0,
             media_size: MediaPreviewSize::new(640, 800),
             model_palette: crate::services::ModelPalette::default(),
+            model_view: Default::default(),
             archive_password: None,
         },
         Rc::new(move |event| events_for_emit.borrow_mut().push(event)),
@@ -508,6 +513,7 @@ fn cancelled_archive_listings_emit_no_stale_events() {
                 page: 0,
                 pages: 0,
                 text_layer: None,
+                model_mesh: None,
             })
         },
     );
@@ -696,6 +702,7 @@ fn uncertain_file_names_resolve_their_preview_from_the_content() {
             pdf_page: 0,
             media_size: MediaPreviewSize::new(640, 800),
             model_palette: crate::services::ModelPalette::default(),
+            model_view: Default::default(),
             archive_password: None,
         };
         let events = Rc::new(RefCell::new(Vec::new()));
@@ -771,6 +778,7 @@ fn text_subclassed_names_resolve_their_preview_from_the_type_hierarchy() {
             pdf_page: 0,
             media_size: MediaPreviewSize::new(640, 800),
             model_palette: crate::services::ModelPalette::default(),
+            model_view: Default::default(),
             archive_password: None,
         };
         let events = Rc::new(RefCell::new(Vec::new()));
@@ -915,6 +923,7 @@ fn preview_families_follow_file_bytes_not_names() {
             pdf_page: 0,
             media_size: MediaPreviewSize::new(640, 800),
             model_palette: crate::services::ModelPalette::default(),
+            model_view: Default::default(),
             archive_password: None,
         };
         let events = Rc::new(RefCell::new(Vec::new()));
@@ -938,6 +947,7 @@ fn preview_families_follow_file_bytes_not_names() {
                     page: 0,
                     pages: 0,
                     text_layer: None,
+                    model_mesh: None,
                 })
             },
         );
@@ -1009,6 +1019,7 @@ fn archives_list_member_trees_as_preview_content() {
                 pdf_page: 0,
                 media_size: MediaPreviewSize::new(640, 800),
                 model_palette: crate::services::ModelPalette::default(),
+                model_view: Default::default(),
                 archive_password: None,
             };
             let provider = LocalPreviewProvider::new(Rc::new(|| MediaPreviewBackend::Software));
@@ -1037,6 +1048,7 @@ fn archives_list_member_trees_as_preview_content() {
                         page: 0,
                         pages: 0,
                         text_layer: None,
+                        model_mesh: None,
                     })
                 },
             );
@@ -1118,6 +1130,7 @@ fn preview_archive_with_password(
         pdf_page: 0,
         media_size: MediaPreviewSize::new(640, 800),
         model_palette: crate::services::ModelPalette::default(),
+        model_view: Default::default(),
         archive_password: password
             .map(|password| crate::services::SecretString::new(password.to_owned())),
     };
@@ -1145,6 +1158,7 @@ fn preview_archive_with_password(
                 page: 0,
                 pages: 0,
                 text_layer: None,
+                model_mesh: None,
             })
         },
     );
@@ -1417,6 +1431,7 @@ fn unsupported_archive_preview_reports_unsupported_format() {
                 pdf_page: 0,
                 media_size: MediaPreviewSize::new(640, 800),
                 model_palette: crate::services::ModelPalette::default(),
+                model_view: Default::default(),
                 archive_password: None,
             };
             let provider = LocalPreviewProvider::new(Rc::new(|| MediaPreviewBackend::Software));
@@ -1443,6 +1458,7 @@ fn unsupported_archive_preview_reports_unsupported_format() {
                         page: 0,
                         pages: 0,
                         text_layer: None,
+                        model_mesh: None,
                     })
                 },
             );

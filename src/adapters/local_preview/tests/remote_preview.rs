@@ -30,6 +30,7 @@ fn request(path: &Path, name: &str) -> PreviewRequest {
         pdf_page: 0,
         media_size: MediaPreviewSize::new(640, 800),
         model_palette: crate::services::ModelPalette::default(),
+        model_view: Default::default(),
         archive_password: None,
     }
 }
@@ -182,6 +183,7 @@ fn uri_images_stage_private_inputs_and_remove_them_after_rendering() {
                                     page: 0,
                                     pages: 2,
                                     text_layer: None,
+                                    model_mesh: None,
                                 })
                             }
                         },

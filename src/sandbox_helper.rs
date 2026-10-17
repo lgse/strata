@@ -223,14 +223,19 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
                     }
                 }
             };
-            let png = match model::render_reporting(input, value, &progress) {
+            let rendered = match model::render_reporting(input, value, &progress) {
                 Ok(result) => result,
                 Err(message) => {
                     let _ = fs::write(output.with_file_name("result.error"), message.as_bytes());
                     return Err(message);
                 }
             };
-            (png, None)
+            fs::write(
+                output.with_file_name("result.model"),
+                serde_json::to_vec(&rendered.mesh).map_err(|error| error.to_string())?,
+            )
+            .map_err(|error| error.to_string())?;
+            (rendered.png, None)
         }
         _ => return Err("Unknown preview helper operation".to_owned()),
     };

@@ -1293,6 +1293,15 @@
   "your package manager": "包管理器",
   "{paths} is for whole-selection actions; use {path} for a per-item action": "{paths} 仅适用于“全部所选项目”方式的操作；“逐项”方式请使用 {path}",
   "{path} is for per-item actions; use {paths} for a whole selection": "{path} 仅适用于“逐项”方式的操作；“全部所选项目”方式请使用 {paths}",
+  "Front left": "左前方",
+  "Front right": "右前方",
+  "Back right": "右后方",
+  "Back left": "左后方",
+  "Previous model view": "上一个模型视角",
+  "Next model view": "下一个模型视角",
+  "Camera position": "相机位置",
+  "Binary STL": "二进制 STL",
+  "ASCII STL": "ASCII STL",
   "Delete without Trash": "不经过回收站删除",
   "Deletion without Trash": "不经过回收站删除"
 }

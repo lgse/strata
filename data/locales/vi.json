@@ -1293,6 +1293,15 @@
   "your package manager": "trình quản lý gói của bạn",
   "{paths} is for whole-selection actions; use {path} for a per-item action": "{paths} dành cho hành động trên toàn bộ lựa chọn; dùng {path} cho hành động theo từng mục",
   "{path} is for per-item actions; use {paths} for a whole selection": "{path} dành cho hành động theo từng mục; dùng {paths} cho toàn bộ lựa chọn",
+  "Front left": "Phía trước bên trái",
+  "Front right": "Phía trước bên phải",
+  "Back right": "Phía sau bên phải",
+  "Back left": "Phía sau bên trái",
+  "Previous model view": "Góc nhìn mô hình trước",
+  "Next model view": "Góc nhìn mô hình tiếp theo",
+  "Camera position": "Vị trí máy ảnh",
+  "Binary STL": "STL nhị phân",
+  "ASCII STL": "STL ASCII",
   "Delete without Trash": "Xóa không qua Thùng rác",
   "Deletion without Trash": "Xóa không qua Thùng rác"
 }
