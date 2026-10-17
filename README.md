@@ -765,6 +765,7 @@ Start with [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Dee
 - [Hardened configuration](docs/hardened-configuration.md)
 - [Performance baseline](docs/performance-baseline.md)
 - [Custom actions](docs/custom-actions.md)
+- [External file providers and optional KDE Connect sharing](docs/file-providers.md)
 - [Themes and Omarchy integration](docs/themes.md)
 - [Unsafe code policy](docs/unsafe-code.md)
 - [Releasing](docs/releasing.md)

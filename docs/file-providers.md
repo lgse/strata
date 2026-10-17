@@ -11,6 +11,13 @@ They do not change. A file provider is appropriate when eligibility and state
 come from an external service and must update while a directory/menu stays open.
 The browser does not need to know about cloud accounts, pins or service sockets.
 
+## Optional providers
+
+- [KDE Connect](../contrib/providers/kdeconnect/README.md): send selected local
+  files directly to a paired device, with a hover submenu when several devices
+  are available. Install explicitly; normal Strata installations do not require
+  KDE Connect or Python.
+
 ## Registration and artwork
 
 Install one directory per provider under `$XDG_CONFIG_HOME/strata/providers/`
