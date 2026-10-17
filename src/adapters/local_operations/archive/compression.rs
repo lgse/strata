@@ -16,9 +16,9 @@ use super::super::{
     },
     owed::{Deletion, Owed},
     placement::{
-        COMPRESSION_STAGE_PREFIX, Displacement, NUMBERED_NAME_ATTEMPTS, PlaceError,
-        REPLACED_PREFIX, displacement_without_trash, exchange, file_creation_error, place_staged,
-        put_back, remove_if_unchanged, reserve_hidden_name, set_aside, set_aside_if_safe,
+        Displacement, NUMBERED_NAME_ATTEMPTS, PlaceError, RenameFailure,
+        displacement_without_trash, exchange, file_creation_error, place_staged, put_back,
+        remove_if_unchanged, reserve_hidden_name, set_aside, set_aside_if_safe,
     },
     placement_reason,
     replacement::{DisplacedOriginal, cannot_replace_safely, original_kept_aside},
@@ -29,8 +29,9 @@ use super::{
     ArchiveError, COPY_BUF, archive_failed, check_archive_cancelled, copy_with_big_buf,
     decoders::FILE_ATTRIBUTE_UNIX_EXTENSION, destination::process_umask,
 };
-use crate::services::{
-    PlacedSnapshot, ReplacedOriginal, TransferConflict, TrashedOriginal, error_detail,
+use crate::{
+    model::hidden_names::HiddenName,
+    services::{PlacedSnapshot, ReplacedOriginal, TransferConflict, TrashedOriginal, error_detail},
 };
 use gtk::{gio, glib};
 use rustix::fs::AtFlags;
@@ -205,7 +206,7 @@ impl Publication {
             },
         };
 
-        let (name, file) = reserve_hidden_name(COMPRESSION_STAGE_PREFIX, |name| {
+        let (name, file) = reserve_hidden_name(HiddenName::Compression, |name| {
             fs().create_exclusive(
                 Entry::new(&*parent, name),
                 rustix::fs::Mode::from_raw_mode(0o600),
@@ -392,12 +393,23 @@ impl Publication {
         let aside = match set_aside(
             fs(),
             Entry::new(&*stage.parent, target),
-            REPLACED_PREFIX,
+            HiddenName::Replaced,
             identity,
         ) {
             Ok(aside) => aside,
-            Err(PlaceError::Unsupported) => return Err(self.cannot_replace_safely()),
-            Err(error) => return Err(self.creation_failed(placement_reason(error))),
+            Err(RenameFailure::Place(PlaceError::Unsupported)) => {
+                return Err(self.cannot_replace_safely());
+            }
+            Err(RenameFailure::Place(error)) => {
+                return Err(self.creation_failed(placement_reason(error)));
+            }
+            Err(RenameFailure::Stranded { temporary, error }) => {
+                return Err(archive_failed(original_kept_aside(
+                    &self.name,
+                    &temporary,
+                    &error_detail(placement_reason(error)),
+                )));
+            }
         };
         match stage.place(target) {
             Ok(()) => Ok(self.published(Displaced::Aside(DisplacedOriginal {
@@ -417,9 +429,21 @@ impl Publication {
     }
 
     fn publish_numbered(&self, stage: &Stage) -> Result<Published, ArchiveError> {
-        let mut candidate = self.name.clone();
+        let (stem, extension) = split_extension(OsStr::new(&self.name), false);
         let mut limit = None;
-        for suffix in 1..NUMBERED_NAME_ATTEMPTS {
+        for suffix in 0..NUMBERED_NAME_ATTEMPTS {
+            let candidate = if suffix == 0 {
+                self.name.clone()
+            } else if extension.is_empty() {
+                return Err(
+                    crate::i18n::tr("Archive filename must have a format extension").into(),
+                );
+            } else {
+                let limit = *limit.get_or_insert_with(|| name_limit(fs(), stage.parent.as_fd()));
+                numbered_name(stem, suffix, extension, limit, false)
+                    .to_string_lossy()
+                    .into_owned()
+            };
             match stage.place(OsStr::new(&candidate)) {
                 Ok(()) => {
                     return Ok(Published {
@@ -427,20 +451,7 @@ impl Publication {
                         displaced: Displaced::None,
                     });
                 }
-                Err(PlaceError::Exists) => {
-                    let (stem, extension) = split_extension(OsStr::new(&self.name), false);
-                    if extension.is_empty() {
-                        return Err(crate::i18n::tr(
-                            "Archive filename must have a format extension",
-                        )
-                        .into());
-                    }
-                    let limit =
-                        *limit.get_or_insert_with(|| name_limit(fs(), stage.parent.as_fd()));
-                    candidate = numbered_name(stem, suffix, extension, limit, false)
-                        .to_string_lossy()
-                        .into_owned();
-                }
+                Err(PlaceError::Exists) => {}
                 Err(error) => return Err(self.creation_failed(placement_reason(error))),
             }
         }

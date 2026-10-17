@@ -46,7 +46,6 @@ pub(crate) async fn transfer_targets(
     move_sources: bool,
     cancellable: &gio::Cancellable,
 ) -> Result<Vec<TransferTarget>, glib::Error> {
-    crate::adapters::volume::watch_operation_mounts();
     let destination = gio_file_for_location(destination);
     let sources = sources
         .iter()

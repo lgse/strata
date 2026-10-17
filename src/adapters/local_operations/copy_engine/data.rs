@@ -23,17 +23,10 @@ use crate::adapters::{
         fs_ops::{EntryStat, FsOps},
         placement::ENOTSUPP,
     },
-    volume::Family,
+    volume::{Family, MountKey, learn_mount_capability},
 };
 
 const MIB: usize = 1 << 20;
-
-static COPY_RANGE_MISSING: AtomicBool = AtomicBool::new(false);
-
-#[cfg(test)]
-pub(super) fn forget_learned() {
-    COPY_RANGE_MISSING.store(false, Ordering::Relaxed);
-}
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum Network {
@@ -97,6 +90,7 @@ fn has_copy_fixes(network: Network) -> bool {
 }
 
 pub(super) struct Route {
+    target: MountKey,
     clone: bool,
     copy_range: Option<usize>,
     holes: bool,
@@ -120,6 +114,7 @@ impl Route {
             })
         };
         let target_network = network(target.family);
+        let capabilities = target.capabilities();
         // It stops at the reported size, which virtual files leave at 0
         // whatever they hold.
         let copy_range = source_stat.size > 0
@@ -130,10 +125,11 @@ impl Route {
                         && network(source_family()) == Some(target_network)
                 }
             }
-            && !COPY_RANGE_MISSING.load(Ordering::Relaxed);
+            && capabilities.copy_range != Some(false);
         Self {
+            target: target.key,
             clone: source_stat.size > 0
-                && target.capabilities().reflink != Some(false)
+                && capabilities.reflink != Some(false)
                 && (target_network != Some(Network::Smb) || has_copy_fixes(Network::Smb)),
             // A larger NFS request becomes an asynchronous COPY that costs
             // seconds whatever its size.
@@ -205,6 +201,7 @@ impl Until {
 enum Ranged {
     Done,
     From(u64),
+    Missing(u64),
 }
 
 enum Walked {
@@ -349,6 +346,12 @@ impl Data {
                 // Then whatever the source gained past `size`.
                 (Ranged::Done, Until::End(size)) => offset = size,
                 (Ranged::From(copied), _) => offset = copied,
+                (Ranged::Missing(copied), _) => {
+                    learn_mount_capability(route.target, |capabilities| {
+                        capabilities.copy_range = Some(false);
+                    });
+                    offset = copied;
+                }
             }
         }
         self.read_write(ends, offset, until, progress, None)
@@ -373,10 +376,7 @@ impl Data {
             {
                 Ok(copied) => copied,
                 Err(Errno::INTR) => continue,
-                Err(Errno::NOSYS) => {
-                    COPY_RANGE_MISSING.store(true, Ordering::Relaxed);
-                    return Ok(Ranged::From(offset));
-                }
+                Err(Errno::NOSYS) => return Ok(Ranged::Missing(offset)),
                 Err(
                     Errno::XDEV
                     | Errno::OPNOTSUPP

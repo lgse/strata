@@ -27,10 +27,21 @@ fn folder_art_reuses_decodes_and_invalidates_changed_files() {
                 decodes.set(decodes.get() + 1);
                 std::fs::read(path).ok()
             };
-            let load = || load_folder_art(directory.path(), &job, &parse).expect("folder lookup");
+            let load =
+                || load_folder_art(directory.path(), &job, &job, &parse).expect("folder lookup");
             assert!(load().is_none());
             let path = directory.path().join("cover.png");
             std::fs::write(&path, png(10)).expect("write artwork");
+            let activity = crate::services::file_activity::begin(
+                crate::services::file_activity::OperationScope::default(),
+            );
+            let fence = activity.fence([directory.path().to_owned()]);
+            assert!(
+                load_folder_art(directory.path(), &job, &job, &parse).is_none(),
+                "a folder an operation fences is not listed"
+            );
+            drop(fence);
+            assert_eq!(decodes.get(), 0);
             let first = load().expect("first cover");
             let second = load().expect("cached cover");
             assert_eq!(decodes.get(), 1);
@@ -114,6 +125,57 @@ fn failed_details_are_retried_and_cancelled_jobs_never_publish() {
             let details = cached_details(&key).expect("successful missing artwork is cacheable");
             assert_eq!(details.tags.title.as_deref(), Some("Recovered"));
             assert!(details.cover.is_none());
+            drop(pending);
+
+            let album = tempfile::tempdir().expect("album directory");
+            let song = album.path().join("song.wav");
+            std::fs::write(&song, "ok").expect("song");
+            std::fs::write(album.path().join("cover.png"), png(10)).expect("folder cover");
+            let entry = crate::ui::preview::tests::entry(song.to_str().expect("fixture path"));
+            let source = SandboxedMedia {
+                path: song,
+                ..source
+            };
+            let cover_stopped = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let stopped = cover_stopped.clone();
+            let title = Rc::new(RefCell::new(None));
+            let covers = Rc::new(Cell::new(0));
+            let (shown, cover_calls) = (title.clone(), covers.clone());
+            let pending = load_details_with(
+                &entry,
+                &source,
+                move |tags| *shown.borrow_mut() = Some(tags.title),
+                move |_| cover_calls.set(cover_calls.get() + 1),
+                move |path, operation, cancellation| match operation {
+                    ParseOperation::AudioTags => {
+                        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+                        while !stopped.load(std::sync::atomic::Ordering::SeqCst)
+                            && std::time::Instant::now() < deadline
+                        {
+                            std::thread::sleep(Duration::from_millis(1));
+                        }
+                        (!cancellation.is_cancelled())
+                            .then(|| br#"{"format":{"tags":{"title":"Kept"}}}"#.to_vec())
+                    }
+                    ParseOperation::AudioCover => Some(b"null".to_vec()),
+                    _ => {
+                        let stop = cancellation.clone();
+                        let _hold = file_activity::hold([path], move || stop.cancel()).ok()?;
+                        let activity =
+                            file_activity::begin(file_activity::OperationScope::default());
+                        activity.fence([path.to_owned()]).stop_reads();
+                        stopped.store(true, std::sync::atomic::Ordering::SeqCst);
+                        None
+                    }
+                },
+            );
+            wait(|| covers.get() == 1 && title.borrow().is_some());
+            assert_eq!(
+                *title.borrow(),
+                Some(Some("Kept".to_owned())),
+                "an operation on the folder cover leaves the song's tags"
+            );
+            assert!(cached_details(&TrackKey::of(&entry)).is_none());
             drop(pending);
         },
     );

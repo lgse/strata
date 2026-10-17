@@ -961,6 +961,7 @@ fn volume_still_mounted(root: &Path) -> bool {
             .iter()
             .any(|mount| root == mount || root.starts_with(mount));
     }
+    let _allowed = crate::util::ui_thread::allow(crate::util::ui_thread::Exception::MountTable);
     crate::adapters::MountTable::current().is_mount_point(root)
 }
 

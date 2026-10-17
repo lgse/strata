@@ -83,6 +83,13 @@ Residual limits:
   a destination name just before Strata renames over its placeholder loses its write, and so does
   an item created at the name, even exclusively, after something else removed the placeholder in
   that window; see [The reserved-name step and its risk](#the-reserved-name-step-and-its-risk).
+- Where the operation knows which item it moves (restore, Replace's source and the original it
+  sets aside, putting an original back, a case-only rename), another item found at the source
+  name is refused before anything moves. Another item found at the destination just after the
+  move is left there and reported as unconfirmed: it may be one another program put there, so it
+  is never moved back. An item swapped in at the source name between that check and the rename
+  is therefore left at the destination too; where that is a hidden name Strata chose (an original
+  set aside, a case-only rename's temporary name), the error names it.
 - ext4, ntfs3, NFS and SMB give a freed inode number straight to the next item created. Where no
   birth time is reported (NFSv3, ntfs-3g, exfat-fuse), an item deleted and recreated at the same
   name with the same type passes for the original.
@@ -102,9 +109,10 @@ Residual limits:
   under a second spelling there, as it numbers names that differ only in case before copying.
 - After a lost reply while placing over a placeholder (to the placeholder's `mkdir` or exclusive
   create, or to the rename over it), an empty folder or file Strata created can remain at the
-  destination name. Where inode numbers are stable, a placeholder the rename left in place proves
-  the rename never happened: Strata removes it and reports the error itself. On FUSE the moved
-  item can report the placeholder's number, so nothing is removed there.
+  destination name. Where the mount's type is known to keep inode numbers, a placeholder the rename
+  left in place proves the rename never happened: Strata removes it and reports the error itself.
+  On FUSE and vboxsf the moved item can report the placeholder's number, so nothing is removed
+  there, nor on a mount of another type or one whose type cannot be read.
 
 Renaming a folder in the lower layer of an overlayfs mount without `redirect_dir`, or moving
 across bind mounts or btrfs subvolumes, returns `EXDEV`. Those moves copy, and the copy uses a
@@ -242,8 +250,10 @@ only delete the remaining copy. A replacing move keeps its Undo, which moves the
 
 Merge moves the files it overwrites to Trash. Without Trash, it sets them aside, never by
 exchange: the originals go into one hidden `.strata-merge-<id>` folder inside the merge target, are
-put back if the merge fails, and are removed once it succeeds and is flushed to disk. An original
-whose name the merge left free, because the incoming item was a special file the destination
+put back if the merge fails or is cancelled, and are removed once it succeeds and is flushed to
+disk. To put an original back over a copy the merge already placed at its name, the merge deletes
+that copy while it is still as placed; anything else at the name stays, and the original stays in
+the folder, which the error names. An original whose name the merge left free, because the incoming item was a special file the destination
 cannot store or a source that a merging move kept, is put back instead. It refuses to set a file
 aside where Replace would. How the incoming items are placed is described under
 [Merges](#merges).
@@ -296,7 +306,7 @@ copy whose source still exists, and is safe to delete; nothing removes it automa
 | Step | When | Gives way to the next step |
 | --- | --- | --- |
 | `FICLONE`, one call | the file is not empty and the destination has not refused clones; on SMB only on kernels with the client's December 2023 fixes | on the errnos that mean it did nothing; `EOPNOTSUPP` and `ENOTTY` are remembered for the mount |
-| `copy_file_range`, in chunks | the file reports a size, and both ends are on one device, or in one network family (NFS, SMB or FUSE) on a kernel with that family's fixes: NFS from 5.9, FUSE from 5.8, SMB from 6.7, 6.6.7 or 6.1.73 | on the errnos that mean "unsupported", from the current offset; `ENOSYS` is remembered for the process |
+| `copy_file_range`, in chunks | the file reports a size, and both ends are on one device, or in one network family (NFS, SMB or FUSE) on a kernel with that family's fixes: NFS from 5.9, FUSE from 5.8, SMB from 6.7, 6.6.7 or 6.1.73 | on the errnos that mean "unsupported", from the current offset; `ENOSYS` is remembered for the mount |
 | `pread` and `pwrite` | always | — |
 
 - Chunks start at 1 MiB, double while a call takes under 100 ms, up to 64 MiB, and halve when one
@@ -487,7 +497,8 @@ with the placement routine:
 Placed folders then get their exact modes, and the empty stage is removed. Nothing is written into
 a live folder except by an exclusive rename, or an exclusive create where nothing can be placed, so
 a stopped merge leaves no partial file under a real name. Items already placed stay, and only they
-are reported. Undoing a merge removes items under the names they were saved as. Each merged folder
+are reported, except a copy over an original set aside without Trash, which gives way to the
+original. Undoing a merge removes items under the names they were saved as. Each merged folder
 is opened without following symlinks and pinned, so a folder swapped for a link is not followed,
 while mount points inside the target are.
 
@@ -509,7 +520,12 @@ if it is still what the copy read:
   same type, size and modification time and, where inode numbers are stable, the same inode, change
   time and link count. Removing one name of a hard-linked file changes the other names' change time
   and link count, so Strata counts the names it removed itself, across every item of a paste, a
-  restore or an undo, and accepts only those changes.
+  restore or an undo, and accepts only those link counts. Right after removing a name, it reads the
+  file's change time through another name of it in the same item, and the file's later names must
+  show that change time. Before Linux 6.13, a change within the clock tick of that removal shows
+  the same change time. A name in another item (two selected or restored items that share a
+  file) is accepted with any change time once Strata removed one of the file's names, as long as
+  its size and modification time still match.
 - **SMB change times.** The SMB client answers a stat from the attributes it cached for a file
   (`acregmax`, or `actimeo` in the mount's options, one second by default, and longer for a file
   this machine keeps reading), which can hold a change time from before a change reached the
@@ -520,8 +536,8 @@ if it is still what the copy read:
   which cache nothing, the record takes no extra round trip.
 - **Relaxed identity.** FUSE daemons without `use_ino`, vfat and exFAT, and cifs mounted with
   `noserverino` give an entry a new inode number once the kernel evicts it. There, the type and the
-  birth time, where both stats report one, stand in for the inode, and the change time is compared
-  only for files with one link.
+  birth time, where both stats report a non-zero one, stand in for the inode, and the change time is
+  compared only for files with one link.
 - **Racily clean files.** Where timestamps are coarse, as on every filesystem before Linux 6.13, a
   same-size rewrite can leave a file's times as they were. Such files are compared by content; see
   [Racily clean files](#racily-clean-files).
@@ -687,7 +703,9 @@ beside it in the same paste. Where there is no Trash, it deletes them by the sam
 copy merge records what it creates, under the name it was saved as and within the paste's 100,000
 entries, only where an original could not go to the Trash, or where it overwrote nothing and the
 location offers no Trash; a paste with a merge records each item it copies beside it where the
-destination offers no Trash. The undo deletes an item only if all of it is unchanged. An item that
+destination offers no Trash. The undo deletes an item only if all of it is unchanged. A folder of
+the item that the copy left without owner access, such as 0555, gets it while its entries are
+deleted, and its mode back if it stays; the folder the item sits in is never changed. An item that
 changed, or has no record (one on a GVfs location, a GIO copy without native creation provenance,
 an entry whose client-reported identity changed during publication, or one created where the Trash
 worked during the paste), stays whole and fails with "It was kept, as it may have changed since it was copied";
@@ -740,10 +758,10 @@ reported.
   size and modification time, as another copy of the source would have, passes for it. On kernel
   exFAT and vfat, whose birth times count in 10 ms ticks, a copy replaced within its birth time's
   tick by a file of its size and modification time passes as well, and the move deletes its source.
-  A copy recognises its own entries by inode number, and on FUSE its claimed files by type and
-  size. Where the kernel can renumber an evicted entry (FUSE, vfat, exFAT, cifs with
-  `noserverino`), a renumbered entry stops the copy as changed; nothing is deleted, and its hidden
-  stage can be left behind.
+  A copy recognises its own entries, and a selected folder it is about to read, by the mount's
+  rule: by inode number where the mount keeps them, by birth time on vfat and exFAT, and by type
+  elsewhere (its claimed files also by being empty), so an entry the kernel renumbered after
+  eviction does not stop the copy. A hidden stage the kernel renumbered can still be left behind.
 - **Modes that cannot be stored.** On vfat, exFAT, exfat-fuse, ntfs-3g and SMB without POSIX
   extensions, the mount options decide modes, and nothing reports what was lost. On SMB with POSIX
   extensions, a file opened right after `chmod 0444` reports 0755, so any copier copies 0755.
@@ -1110,10 +1128,11 @@ caches), refused `chown`, foreign groups, extended attributes refused by prefix,
 with ACLs first, refused `mknodat` of files and pipes, NFS silly renames, files that report no size,
 reported modes, change times that equal the modification time (FAT), folder birth times that renames
 reset (exFAT), times stamped within one tick of a coarse clock (kernels without multigrain
-timestamps), single link counts (sshfs), entries renumbered after eviction, SMB's refusal to open
-two names of one file at once or, during its deferred close, another name of a file just written,
-its stale read-only folders and change times answered from its attribute cache, and writeback errors
-that `syncfs` reports. Tests can also pretend to run on another kernel release, freeze the clock
+timestamps), single link counts (sshfs), entries renumbered after eviction (never one a descriptor
+holds), SMB's refusal to open two names of one file at once or, during its deferred close, another
+name of a file just written, its stale read-only folders, change times answered from its attribute
+cache, server inode numbers turned off after a collision and creation times Samba makes up, and
+writeback errors that `syncfs` reports. Tests can also pretend to run on another kernel release, freeze the clock
 that the racily clean check, the wait for SMB's deferred close and the emulated attribute cache
 read, and set a paste's batch limits and clock. The seam also asserts that no call runs on the main
 context's thread.

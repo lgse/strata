@@ -22,6 +22,7 @@ use crate::ui::modal::{
     ModalHost, close_on_escape, dismiss_modal_layer, dismiss_modal_layer_then, modal_layer,
     show_error_dialog,
 };
+use crate::util::ui_thread::{self, Exception};
 use gtk::gdk::ModifierType as Modifiers;
 use gtk::prelude::*;
 use gtk::{gio, glib};
@@ -120,7 +121,10 @@ pub(super) enum DeletionReach {
 
 /// A mixed selection uses the stronger local warning.
 pub(super) fn deletion_reach(entries: &[FileEntry]) -> DeletionReach {
-    deletion_reach_with(entries, crate::adapters::MountTable::current)
+    deletion_reach_with(entries, || {
+        let _allowed = ui_thread::allow(Exception::MountTable);
+        crate::adapters::MountTable::current()
+    })
 }
 
 fn deletion_reach_with(

@@ -400,6 +400,7 @@ fn is_archive_contract_message(message: &str) -> bool {
     message == crate::adapters::INVALID_ARCHIVE
         || message == crate::adapters::ARCHIVE_TOO_LARGE_MESSAGE
         || message == "Preview cancelled"
+        || message == crate::services::file_activity::HELD_FOR_OPERATION
 }
 
 fn parse_sandboxed(
@@ -416,11 +417,31 @@ fn parse_sandboxed(
     if operation.is_media() {
         return Err("Media previews require a decoded-frame session".into());
     }
-    let input = input
+    let canonical = input
         .canonicalize()
         .map_err(|error| crate::services::io_error_message(&error))?;
+    let stop = cancellation.clone();
+    let hold = crate::services::file_activity::hold([input, &canonical], move || stop.cancel())?;
+    hold.settle(parse_canonical(
+        &canonical,
+        operation,
+        value,
+        media_backend,
+        cancellation,
+        progress,
+    ))
+}
+
+fn parse_canonical(
+    input: &Path,
+    operation: ParseOperation,
+    value: i32,
+    media_backend: MediaPreviewBackend,
+    cancellation: &Cancellation,
+    progress: &dyn Fn(crate::services::ModelPreviewStage),
+) -> Result<ParseOutput, String> {
     let input_metadata =
-        fs::metadata(&input).map_err(|error| crate::services::io_error_message(&error))?;
+        fs::metadata(input).map_err(|error| crate::services::io_error_message(&error))?;
     if !input_metadata.is_file() {
         return Err("Preview input is not a regular file".to_owned());
     }
@@ -445,7 +466,7 @@ fn parse_sandboxed(
             },
         );
     }
-    if let Some(result) = browser::preview(&input, &operation, cancellation) {
+    if let Some(result) = browser::preview(input, &operation, cancellation) {
         return result.map(|data| ParseOutput {
             data,
             page: 0,
@@ -476,7 +497,7 @@ fn parse_sandboxed(
     let mut command = sandbox_command(
         &bwrap,
         &executable,
-        &input,
+        input,
         output.path(),
         operation.clone(),
         value,

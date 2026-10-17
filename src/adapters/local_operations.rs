@@ -81,7 +81,6 @@ use deletion::bounded_local_worker_count;
 use deletion::ensure_local_delete_target_unchanged;
 #[cfg(test)]
 use deletion::local_delete_worker_count;
-use deletion::local_device_is_rotational;
 use deletion::local_file_identity;
 #[cfg(test)]
 use deletion::open_local_delete_target;
@@ -126,12 +125,14 @@ use restore::{NameKept, restore_name};
 
 mod copy_engine;
 mod create_entry;
+mod deferred_close;
 mod environment;
 mod fs_ops;
 mod merge_aside;
 mod mount_profile;
 mod owed;
 mod placement;
+pub(crate) mod probes;
 mod transfer_targets;
 pub(super) mod trash;
 mod typed_names;
@@ -148,6 +149,7 @@ pub(crate) use archive::{
 
 #[cfg(test)]
 pub(crate) use archive::write_compression_fixture;
+pub(in crate::adapters) use fs_ops::{FolderStamp, folder_stamp, list_folder};
 #[cfg(test)]
 pub(crate) use tests::fs_quirks::{FsQuirks, Op as FsOp, Quirks};
 pub(crate) use transfer_targets::transfer_targets;
@@ -175,16 +177,16 @@ use gtk::{gio, glib, prelude::*};
 use fs_ops::{Entry, fs};
 use mount_profile::{FolderNames, NamePolicy};
 use owed::{Deletion, Done, Owed, Settling};
-use placement::{COPY_PREFIX, PlaceError, RenameFailure};
+use placement::{PlaceError, RenameFailure};
 
 use crate::{
     adapters::{
         gio_file_for_location, location_for_file,
         trash_restore::RestoreContext,
         trash_support::{TrashError, TrashFailure, trash_with_cleanup},
-        volume::{MountTable, NameProfile},
+        volume::{NameProfile, mount_watch},
     },
-    model::Location,
+    model::{Location, hidden_names::HiddenName},
     services::{
         CancelledOperation, CompressRequest, CreateDirectoryRequest, CreateFileRequest,
         DeleteRequest, ExtractRequest, KeptCause, KeptItem, LoadHandle, NameMode, OperationEvent,
@@ -501,7 +503,7 @@ async fn removable_roots_for_paths(paths: &[PathBuf]) -> Vec<PathBuf> {
     if let Some(hints) = removable_hints_for_test() {
         return removable_sync_roots(&destinations, &hints);
     }
-    let table = MountTable::load().await;
+    let table = mount_watch::fresh().await;
     let mounts = gio::VolumeMonitor::get().mounts();
     let mut hints = Vec::new();
     for path in paths {
@@ -1170,12 +1172,12 @@ async fn parallel_copy_plans(
         let rotational = destination
             .path()
             .and_then(|path| std::fs::File::open(path).ok())
-            .and_then(|directory| local_device_is_rotational(&directory))
+            .and_then(|directory| fs().rotational(directory.as_fd()))
             .unwrap_or(windows_disk)
             || source_folders.into_iter().any(|folder| {
                 open_local_parent_directory(folder)
                     .ok()
-                    .and_then(local_device_is_rotational)
+                    .and_then(|folder| fs().rotational(folder.as_fd()))
                     == Some(true)
             });
         Some((plans, bounded_local_worker_count(available, rotational)))
@@ -1794,7 +1796,7 @@ async fn create_remote_file_stage(
     let parent = target
         .parent()
         .ok_or_else(|| translated_io_error("The destination has no parent directory"))?;
-    let stage = parent.child(format!("{COPY_PREFIX}{}", glib::uuid_string_random()));
+    let stage = parent.child(HiddenName::Copy.fresh());
     let stream = match await_cancellable(&stage, cancellable, |stage, cancellable, result| {
         stage.create_async(
             gio::FileCreateFlags::PRIVATE,
@@ -2819,8 +2821,6 @@ fn item_error(name: &str, error: impl std::fmt::Display) -> String {
 }
 
 fn operation_handle(cancellable: gio::Cancellable) -> LoadHandle {
-    // Install invalidation before the queued operation can learn mount capabilities.
-    super::volume::watch_operation_mounts();
     LoadHandle::new(move || cancellable.cancel())
 }
 
@@ -4065,12 +4065,10 @@ impl OperationProvider for LocalOperationProvider {
     }
 
     fn compress(&self, request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
-        super::volume::watch_operation_mounts();
         archive::compress(request, emit)
     }
 
     fn extract(&self, request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
-        super::volume::watch_operation_mounts();
         archive::extract(request, emit)
     }
 }

@@ -3,12 +3,15 @@
 #![cfg(test)]
 
 pub(crate) mod operations;
+mod tests;
 
 use std::{
     io::Write,
-    sync::{Arc, LockResult, Mutex, MutexGuard, Once},
+    sync::{Arc, LockResult, Mutex, MutexGuard, Once, OnceLock, PoisonError},
+    time::{Duration, Instant},
 };
 
+use gtk::glib;
 use tracing_subscriber::fmt::MakeWriter;
 
 pub(crate) struct TestMutex(Mutex<()>);
@@ -35,7 +38,89 @@ impl TestMutex {
 /// separate locks each covering only their own module's tests do not prevent a test in one
 /// module from racing a test in another, since neither knows about the other's lock. Poisoning is
 /// cleared because the mutex protects no state and should not turn one failure into a cascade.
-pub(crate) static ASYNC_MAIN_CONTEXT_DEFAULT: TestMutex = TestMutex::new();
+pub(crate) static ASYNC_MAIN_CONTEXT_DEFAULT: MainContextLock = MainContextLock(TestMutex::new());
+
+pub(crate) struct MainContextLock(TestMutex);
+
+pub(crate) struct MainContextGuard<'a> {
+    _lock: MutexGuard<'a, ()>,
+    first_source: u32,
+}
+
+impl MainContextLock {
+    pub(crate) fn lock(&self) -> LockResult<MainContextGuard<'_>> {
+        let lock = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        Ok(MainContextGuard {
+            _lock: lock,
+            first_source: next_source_id(),
+        })
+    }
+}
+
+/// A failed test's tasks, and the GIO calls they awaited, would abort the run
+/// once another test's thread polled or dropped them, so they end on the thread
+/// that started them.
+impl Drop for MainContextGuard<'_> {
+    fn drop(&mut self) {
+        if !std::thread::panicking() {
+            return;
+        }
+        let context = glib::MainContext::default();
+        for id in self.first_source..next_source_id() {
+            if let Some(task) = task_at(&context, id) {
+                task.destroy();
+            }
+        }
+        settle(&context);
+    }
+}
+
+const SETTLED_AFTER: Duration = Duration::from_millis(100);
+const SETTLE_LIMIT: Duration = Duration::from_secs(2);
+
+/// Dropping a GIO future leaves its call running, and its callback is bound to
+/// this thread.
+fn settle(context: &glib::MainContext) {
+    let limit = Instant::now() + SETTLE_LIMIT;
+    let mut quiet_since = Instant::now();
+    while quiet_since.elapsed() < SETTLED_AFTER && Instant::now() < limit {
+        if context.iteration(false) {
+            quiet_since = Instant::now();
+        } else {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
+}
+
+fn next_source_id() -> u32 {
+    let probe = glib::idle_source_new(None, glib::Priority::LOW, || glib::ControlFlow::Break);
+    let id = probe.attach(Some(&glib::MainContext::default())).as_raw();
+    probe.destroy();
+    id
+}
+
+#[expect(
+    unsafe_code,
+    reason = "glib-rs neither lists a context's sources nor tells its tasks apart"
+)]
+fn task_at(context: &glib::MainContext, id: u32) -> Option<glib::Source> {
+    static TASK_FUNCS: OnceLock<usize> = OnceLock::new();
+    let funcs = |source: &glib::Source| {
+        // SAFETY: a `Source` holds a reference to its `GSource`.
+        unsafe { (*source.as_ptr()).source_funcs as usize }
+    };
+    let tasks = *TASK_FUNCS.get_or_init(|| {
+        let task = glib::MainContext::new().spawn(std::future::pending::<()>());
+        let tasks = funcs(task.source());
+        task.abort();
+        tasks
+    });
+    // SAFETY: `id` is at least the id of a source GLib attached, so it is not 0.
+    let id = unsafe { glib::translate::from_glib(id) };
+    context
+        .find_source_by_id(&id)
+        .filter(|source| funcs(source) == tasks)
+}
 
 #[derive(Clone, Default)]
 pub(crate) struct LogWriter(Arc<Mutex<Vec<u8>>>);
@@ -138,6 +223,8 @@ pub(crate) fn gtk_test_with_env(
         }
         crate::assets::prepare().expect("bundled assets");
         crate::assets::register_icon_theme();
+        crate::adapters::mount_watch::start();
+        crate::util::ui_thread::mark();
         run();
         return;
     }

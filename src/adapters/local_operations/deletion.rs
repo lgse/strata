@@ -209,7 +209,7 @@ pub(super) fn open_local_delete_target<Fd: AsFd>(
         fs().unlink(Entry::new(parent, name), rustix::fs::AtFlags::empty())
             .map_err(|error| {
                 rust_i18n::t!(
-                    "Could not delete %{name}: %{error}",
+                    "Could not delete “%{name}”: %{error}",
                     name = name.to_string_lossy(),
                     error = os_error_detail(error)
                 )
@@ -411,7 +411,7 @@ pub(super) fn remove_local_delete_directory(
     ) {
         queue.fail(
             rust_i18n::t!(
-                "Could not delete %{name}: %{error}",
+                "Could not delete “%{name}”: %{error}",
                 name = name.to_string_lossy(),
                 error = os_error_detail(error)
             )
@@ -485,7 +485,7 @@ pub(super) fn local_delete_worker_count(roots: &[PinnedEntry]) -> usize {
         .unwrap_or(1);
     let rotational = roots
         .iter()
-        .any(|root| local_device_is_rotational(root.parent.as_ref()) == Some(true));
+        .any(|root| fs().rotational(root.parent.as_fd()) == Some(true));
     bounded_local_worker_count(available, rotational)
 }
 
@@ -739,7 +739,7 @@ pub(super) async fn local_parent_worker_count(parents: impl IntoIterator<Item = 
         let rotational = parents.iter().any(|parent| {
             open_local_parent_directory(parent)
                 .ok()
-                .and_then(local_device_is_rotational)
+                .and_then(|parent| fs().rotational(parent.as_fd()))
                 == Some(true)
         });
         bounded_local_worker_count(available, rotational)

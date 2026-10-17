@@ -670,7 +670,7 @@ pub(super) async fn remove_unchanged(
         _ => None,
     }) {
         return Err(io_error(rust_i18n::t!(
-            "Could not delete %{name}: %{error}",
+            "Could not delete “%{name}”: %{error}",
             name = path.file_name().unwrap_or_default().to_string_lossy(),
             error = crate::services::io_error_detail(&io::Error::from_raw_os_error(error))
         )));

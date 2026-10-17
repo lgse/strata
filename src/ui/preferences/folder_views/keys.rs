@@ -16,7 +16,7 @@ pub(in crate::ui) fn key_for_location(location: &Location) -> Option<FolderKey> 
         if snapshot.table.is_network_path(path) {
             return None;
         }
-        key_for_path(path, &snapshot.removable)
+        key_for_path(path, snapshot.removable)
     })
 }
 

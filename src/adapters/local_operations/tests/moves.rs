@@ -1206,6 +1206,59 @@ fn moving_across_volumes_deletes_every_entry_it_copied() -> Result<(), Box<dyn E
     Ok(())
 }
 
+#[test]
+fn a_name_of_a_linked_file_changed_after_its_other_name_went_stays() -> Result<(), Box<dyn Error>> {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+    let _serial = serial()?;
+    let root = tempfile::tempdir()?;
+    let folder = root.path().join("source/folder");
+    fs::create_dir_all(&folder)?;
+    fs::write(folder.join("a"), b"linked")?;
+    fs::hard_link(folder.join("a"), folder.join("b"))?;
+    let hour_before = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)?
+        .as_secs()
+        - 3600;
+    set_times(&folder.join("a"), hour_before, 0)?;
+    let checked = Arc::new(AtomicUsize::new(0));
+    let rewrite_second = |name: &'static str| -> super::fs_quirks::Racer {
+        let (checked, path, probe) = (
+            checked.clone(),
+            folder.join(name),
+            root.path().join("probe"),
+        );
+        Box::new(move || {
+            if checked.fetch_add(1, Ordering::SeqCst) == 1 {
+                let before = fs::metadata(&path).expect("stat the file");
+                wait_for_a_later_change_time(&probe, &before);
+                fs::write(&path, b"LINKED").expect("rewrite the file");
+                set_times(&path, hour_before, 0).expect("put the times back");
+            }
+        })
+    };
+    let quirks = Quirks {
+        before: vec![
+            (Op::Stat, "a", 0, rewrite_second("a")),
+            (Op::Stat, "b", 0, rewrite_second("b")),
+        ],
+        ..Quirks::default()
+    };
+
+    let (moved, report, _) = move_across_volumes(&folder, quirks)?;
+
+    assert_eq!(fs::read(moved.join("a"))?, b"linked");
+    assert_eq!(fs::read(moved.join("b"))?, b"linked");
+    let left = names(&folder)?;
+    assert_eq!(left.len(), 1, "{left:?}");
+    let second = folder.join(&left[0]);
+    assert_eq!(fs::read(&second)?, b"LINKED");
+    assert_eq!(report.kept, [kept(second, KeptCause::Changed)]);
+    Ok(())
+}
+
 fn make_fifo(path: &Path) -> io::Result<()> {
     rustix::fs::mknodat(
         rustix::fs::CWD,

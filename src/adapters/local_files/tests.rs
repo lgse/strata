@@ -469,7 +469,7 @@ fn uri_monitor_changes_keep_their_uri_locations() {
 fn permission_errors_are_reported_as_inaccessible() {
     let error = std::io::Error::from(ErrorKind::PermissionDenied);
     assert_eq!(
-        map_validation_error(error),
+        LocationValidationError::from(error),
         LocationValidationError::Inaccessible
     );
 }
@@ -1212,6 +1212,340 @@ fn enumerate_reports_truncated_once_the_entry_budget_is_exceeded() {
 }
 
 #[test]
+fn native_loads_list_through_the_filesystem_seam() -> Result<(), Box<dyn Error>> {
+    use crate::adapters::{FsOp, FsQuirks, Quirks};
+    use rustix::io::Errno;
+
+    for (quirks, listed, stamps, chunks, failure) in [
+        (
+            Quirks {
+                listing_chunk: Some(1),
+                ..Quirks::default()
+            },
+            3,
+            1,
+            4,
+            None,
+        ),
+        (
+            Quirks {
+                fail: vec![(FsOp::ListChunks, "*", 1, Errno::IO)],
+                listing_chunk: Some(1),
+                ..Quirks::default()
+            },
+            0,
+            1,
+            2,
+            Some("A device input/output error occurred"),
+        ),
+        (
+            Quirks {
+                fail: vec![(FsOp::FolderStamp, "*", 0, Errno::ACCESS)],
+                ..Quirks::default()
+            },
+            0,
+            1,
+            0,
+            Some("Permission denied"),
+        ),
+    ] {
+        let root = tempfile::tempdir()?;
+        for name in ["a", "b", "c"] {
+            fs::write(root.path().join(name), b"content")?;
+        }
+        let scope = FsQuirks::install(root.path(), quirks);
+
+        let events = run_enumerate(DirectoryRequest {
+            id: RequestId(1),
+            location: Location::local(root.path()),
+            batch_size: 64,
+            include_metadata: false,
+            max_entries: 100,
+            time_budget: Duration::from_secs(10),
+        });
+
+        let failed = events.iter().find_map(|event| match event {
+            DirectoryEvent::Failed { message, .. } => Some(message.as_str()),
+            _ => None,
+        });
+        assert_eq!(
+            (
+                batched_entry_count(&events),
+                scope.count(FsOp::FolderStamp),
+                scope.count(FsOp::ListChunks),
+                failed,
+            ),
+            (listed, stamps, chunks, failure)
+        );
+    }
+    Ok(())
+}
+
+#[derive(Clone, Default)]
+struct Gate(std::sync::Arc<(std::sync::Mutex<(bool, bool)>, std::sync::Condvar)>);
+
+impl Gate {
+    fn racer(&self) -> Box<dyn FnMut() + Send> {
+        let gate = self.clone();
+        Box::new(move || {
+            let (state, changed) = &*gate.0;
+            let mut state = state.lock().expect("gate");
+            state.0 = true;
+            changed.notify_all();
+            while !state.1 {
+                state = changed.wait(state).expect("gate");
+            }
+        })
+    }
+
+    fn reached(&self) -> bool {
+        self.0.0.lock().expect("gate").0
+    }
+
+    fn release(&self) {
+        self.0.0.lock().expect("gate").1 = true;
+        self.0.1.notify_all();
+    }
+}
+
+impl Drop for Gate {
+    fn drop(&mut self) {
+        self.release();
+    }
+}
+
+fn load_into(
+    events: &Rc<RefCell<Vec<DirectoryEvent>>>,
+    root: &Path,
+    id: u64,
+) -> crate::services::LoadHandle {
+    let events = events.clone();
+    LocalFileSource.enumerate(
+        DirectoryRequest {
+            id: RequestId(id),
+            location: Location::local(root),
+            batch_size: 64,
+            include_metadata: false,
+            max_entries: 100,
+            time_budget: Duration::from_secs(30),
+        },
+        Rc::new(move |event| events.borrow_mut().push(event)),
+    )
+}
+
+fn outcome_of(events: &Rc<RefCell<Vec<DirectoryEvent>>>, id: u64) -> Option<Result<usize, String>> {
+    let events = events.borrow();
+    let listed = events
+        .iter()
+        .filter_map(|event| match event {
+            DirectoryEvent::Batch {
+                request_id,
+                entries,
+            } if request_id.0 == id => Some(entries.len()),
+            _ => None,
+        })
+        .sum();
+    events.iter().find_map(|event| match event {
+        DirectoryEvent::Finished { request_id, .. } if request_id.0 == id => Some(Ok(listed)),
+        DirectoryEvent::Failed {
+            request_id,
+            message,
+        } if request_id.0 == id => Some(Err(message.clone())),
+        _ => None,
+    })
+}
+
+#[test]
+fn repeated_loads_of_a_stuck_folder_share_one_call_and_then_time_out() -> Result<(), Box<dyn Error>>
+{
+    use crate::adapters::{FsOp, FsQuirks, Quirks, mount_lanes};
+
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    fs::write(root.path().join("file"), b"content")?;
+    let gate = Gate::default();
+    let scope = FsQuirks::install(
+        root.path(),
+        Quirks {
+            before: vec![(FsOp::FolderStamp, "*", 0, gate.racer())],
+            ..Quirks::default()
+        },
+    );
+    let events = Rc::new(RefCell::new(Vec::new()));
+
+    let first = load_into(&events, root.path(), 1);
+    drain_until(|| gate.reached());
+    let second = load_into(&events, root.path(), 2);
+    drain_until(|| {
+        mount_lanes::responsiveness(root.path()) == mount_lanes::Responsiveness::Stalled
+    });
+    assert_eq!(scope.count(FsOp::FolderStamp), 1);
+    let third = load_into(&events, root.path(), 3);
+    drain_until(|| outcome_of(&events, 3).is_some());
+    assert_eq!(
+        outcome_of(&events, 3),
+        Some(Err("The operation timed out".to_owned()))
+    );
+    assert_eq!(
+        (outcome_of(&events, 1), outcome_of(&events, 2)),
+        (None, None)
+    );
+
+    gate.release();
+    drain_until(|| outcome_of(&events, 1).is_some() && outcome_of(&events, 2).is_some());
+    assert_eq!(
+        (outcome_of(&events, 1), outcome_of(&events, 2)),
+        (Some(Ok(1)), Some(Ok(1)))
+    );
+    assert_eq!(scope.count(FsOp::FolderStamp), 1);
+    assert_eq!(
+        mount_lanes::responsiveness(root.path()),
+        mount_lanes::Responsiveness::Answering
+    );
+    drop((first, second, third));
+    Ok(())
+}
+
+#[test]
+fn a_slow_listing_that_keeps_answering_never_stalls_its_mount() -> Result<(), Box<dyn Error>> {
+    use crate::adapters::{FsOp, FsQuirks, Quirks};
+
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    for name in ["a", "b", "c", "d", "e"] {
+        fs::write(root.path().join(name), b"content")?;
+    }
+    let slow_chunk = || -> Box<dyn FnMut() + Send> {
+        Box::new(|| std::thread::sleep(Duration::from_millis(700)))
+    };
+    let _scope = FsQuirks::install(
+        root.path(),
+        Quirks {
+            listing_chunk: Some(1),
+            before: (0..5)
+                .map(|_| (FsOp::ListChunks, "*", 0, slow_chunk()))
+                .collect(),
+            ..Quirks::default()
+        },
+    );
+    let events = Rc::new(RefCell::new(Vec::new()));
+
+    let started = Instant::now();
+    let first = load_into(&events, root.path(), 1);
+    drain_until(|| started.elapsed() >= Duration::from_millis(2500));
+    let second = load_into(&events, root.path(), 2);
+    drain_until(|| outcome_of(&events, 1).is_some() && outcome_of(&events, 2).is_some());
+
+    assert_eq!(
+        (outcome_of(&events, 1), outcome_of(&events, 2)),
+        (Some(Ok(5)), Some(Ok(5)))
+    );
+    drop((first, second));
+    Ok(())
+}
+
+#[test]
+fn a_load_asked_for_while_the_folder_is_being_read_lists_it_afresh() -> Result<(), Box<dyn Error>> {
+    use crate::adapters::{FsOp, FsQuirks, Quirks};
+
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    for names in [&["a", "b"][..], &[]] {
+        let root = tempfile::tempdir()?;
+        for name in names {
+            fs::write(root.path().join(name), b"content")?;
+        }
+        let gate = Gate::default();
+        let scope = FsQuirks::install(
+            root.path(),
+            Quirks {
+                listing_chunk: Some(1),
+                before: vec![(FsOp::ListChunks, "*", 0, gate.racer())],
+                ..Quirks::default()
+            },
+        );
+        let events = Rc::new(RefCell::new(Vec::new()));
+
+        let first = load_into(&events, root.path(), 1);
+        drain_until(|| gate.reached());
+        fs::write(root.path().join("c"), b"content")?;
+        let second = load_into(&events, root.path(), 2);
+        for _ in 0..50 {
+            glib::MainContext::default().iteration(false);
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert_eq!(scope.count(FsOp::FolderStamp), 1, "one call at a time");
+
+        gate.release();
+        drain_until(|| outcome_of(&events, 1).is_some() && outcome_of(&events, 2).is_some());
+        assert_eq!(
+            (outcome_of(&events, 1), outcome_of(&events, 2)),
+            (Some(Ok(names.len())), Some(Ok(names.len() + 1))),
+            "{names:?}"
+        );
+        assert_eq!(scope.count(FsOp::FolderStamp), 2);
+        drop((first, second));
+    }
+    Ok(())
+}
+
+#[test]
+fn a_link_whose_target_stops_answering_trips_only_that_link() -> Result<(), Box<dyn Error>> {
+    use crate::adapters::{FsOp, FsQuirks, Quirks, mount_lanes};
+
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let sibling = root.path().join("sibling");
+    fs::create_dir(root.path().join("target"))?;
+    fs::create_dir(&sibling)?;
+    fs::write(sibling.join("file"), b"content")?;
+    std::os::unix::fs::symlink(root.path().join("target"), root.path().join("nas"))?;
+    let gate = Gate::default();
+    let _scope = FsQuirks::install(
+        root.path(),
+        Quirks {
+            before: vec![(FsOp::FolderStamp, "nas", 0, gate.racer())],
+            ..Quirks::default()
+        },
+    );
+    let events = Rc::new(RefCell::new(Vec::new()));
+
+    let warm = load_into(&events, &sibling, 1);
+    drain_until(|| outcome_of(&events, 1).is_some());
+    let parked = load_into(&events, root.path(), 2);
+    drain_until(|| gate.reached());
+    let reached = Instant::now();
+    drain_until(|| reached.elapsed() > mount_lanes::STALLED_AFTER + Duration::from_millis(200));
+    let again = load_into(&events, &sibling, 3);
+    drain_until(|| outcome_of(&events, 3).is_some());
+
+    assert_eq!(
+        (
+            outcome_of(&events, 3),
+            mount_lanes::responsiveness(&sibling),
+            mount_lanes::responsiveness(&root.path().join("nas"))
+        ),
+        (
+            Some(Ok(1)),
+            mount_lanes::Responsiveness::Answering,
+            mount_lanes::Responsiveness::Stalled
+        )
+    );
+    gate.release();
+    drain_until(|| outcome_of(&events, 2).is_some());
+    assert_eq!(outcome_of(&events, 2), Some(Ok(3)));
+    drop((warm, parked, again));
+    Ok(())
+}
+
+#[test]
 fn enumerate_resolves_can_trash_from_a_child_entry() {
     let root = unique_fixture_root("can-trash");
     fs::create_dir_all(&root).expect("the fixture directory should be created");
@@ -1454,7 +1788,8 @@ fn cancelled_native_scan_returns_no_partial_result() {
             &root,
             &request,
             &cancellable,
-            Instant::now() + Duration::from_secs(10)
+            Instant::now() + Duration::from_secs(10),
+            &Progress::unlaned(),
         ),
         NativeEnumeration::Cancelled
     ));
@@ -1929,24 +2264,73 @@ fn fill_directory_child_count_extracts_item_count() -> Result<(), Box<dyn Error>
     fs::write(root.join("file-1.txt"), b"1").expect("file 1");
     fs::write(root.join("file-2.txt"), b"2").expect("file 2");
     fs::create_dir_all(root.join("subdir")).expect("subdir");
+    let alias = root.with_extension("alias");
+    std::os::unix::fs::symlink(&root, &alias).expect("alias");
+    let fill = |id, folder: &Path| {
+        let events = run_fill(MetadataRequest {
+            id: RequestId(id),
+            entries: vec![Location::local(folder)],
+            full: false,
+            include_icon_details: true,
+            time_budget: Duration::from_secs(10),
+        });
+        assert_eq!(fill_outcome(&events), Some(MetadataOutcome::Complete));
+        events.iter().rev().find_map(|event| match event {
+            DirectoryEvent::MetadataFilled { updates, .. } => {
+                updates.first().map(|update| update.child_count.clone())
+            }
+            _ => None,
+        })
+    };
+    let activity = crate::services::file_activity::begin(
+        crate::services::file_activity::OperationScope::default(),
+    );
 
-    let events = run_fill(MetadataRequest {
-        id: RequestId(1),
-        entries: vec![Location::local(&root)],
-        full: false,
-        include_icon_details: true,
-        time_budget: Duration::from_secs(10),
-    });
-    assert_eq!(fill_outcome(&events), Some(MetadataOutcome::Complete));
-    let child_count = events.iter().rev().find_map(|event| match event {
-        DirectoryEvent::MetadataFilled { updates, .. } => {
-            updates.first().map(|update| update.child_count.clone())
-        }
-        _ => None,
-    });
-    assert_eq!(child_count, Some(MetadataValue::Known(3)));
+    let real = root.canonicalize()?;
+
+    for (row, folder) in [("as named", &root), ("through a symbolic link", &alias)] {
+        let fence = activity.fence([real.clone()]);
+        assert_eq!(
+            fill(1, folder),
+            Some(MetadataValue::Unknown),
+            "{row}: a folder an operation fences is not listed"
+        );
+        drop(fence);
+        assert_eq!(fill(2, folder), Some(MetadataValue::Known(3)), "{row}");
+    }
+    fs::remove_file(&alias).expect("the alias should be removed");
     fs::remove_dir_all(&root).expect("the fixture directory should be removed");
     Ok(())
+}
+
+#[test]
+fn background_folder_listings_skip_a_folder_an_operation_fences() {
+    let root = tempfile::tempdir().expect("fixture directory");
+    let folder = root.path().join("folder");
+    fs::create_dir(&folder).expect("watched folder");
+    fs::write(folder.join("#1234"), b"").expect("numbered name");
+    let identity =
+        folder_identity(&fs::metadata(&folder).expect("folder metadata")).expect("folder identity");
+    let listings: [(&str, &dyn Fn() -> bool); 2] = [
+        ("numbered names", &|| {
+            numbered_names_in(&folder)
+                .is_ok_and(|names| names.contains(std::ffi::OsStr::new("#1234")))
+        }),
+        ("departure probe", &|| {
+            native_entry_with_identity(root.path(), identity).as_ref() == Some(&folder)
+        }),
+    ];
+    let activity = crate::services::file_activity::begin(
+        crate::services::file_activity::OperationScope::default(),
+    );
+
+    for (listing, lists) in &listings {
+        assert!(lists(), "{listing}");
+    }
+    let _fence = activity.fence([root.path().to_owned()]);
+    for (listing, lists) in &listings {
+        assert!(!lists(), "{listing} under a fence");
+    }
 }
 
 #[test]
@@ -2148,7 +2532,7 @@ fn cheap_metadata_is_published_while_details_are_waiting() {
 }
 
 #[test]
-fn cancelled_media_details_are_not_cached_as_unavailable() {
+fn cancelled_or_withheld_media_details_are_not_cached_as_unavailable() {
     let root = tempfile::tempdir().expect("fixture directory");
     let path = root.path().join("photo.jpg");
     fs::write(&path, b"\xff\xd8\xff\xe0\0\x10JFIF\0").expect("fixture file");
@@ -2160,22 +2544,38 @@ fn cancelled_media_details_are_not_cached_as_unavailable() {
             None::<&gio::Cancellable>,
         )
         .expect("source metadata");
-    let cancellable = gio::Cancellable::new();
-    let (mut update, _) = update_from_info(&info, &location);
-    assert!(!fill_icon_details_with_probe(
-        &mut update,
-        &info,
-        &location,
-        &cancellable,
-        Instant::now() + Duration::from_secs(10),
-        |_, _, cancellation| {
-            cancellation.cancel();
-            Err("cancelled".to_owned())
-        },
-    ));
-    assert_eq!(update.image_dimensions, MetadataValue::Unknown);
-    assert_eq!(update.duration_seconds, MetadataValue::Unknown);
-    assert!(cached_icon_details_for_revisit(&path).is_none());
+    for (row, cancels, error, filled) in [
+        ("cancelled", true, "cancelled", false),
+        (
+            "withheld by an operation",
+            false,
+            crate::services::file_activity::HELD_FOR_OPERATION,
+            true,
+        ),
+    ] {
+        let cancellable = gio::Cancellable::new();
+        let (mut update, _) = update_from_info(&info, &location);
+        assert_eq!(
+            fill_icon_details_with_probe(
+                &mut update,
+                &info,
+                &location,
+                &cancellable,
+                Instant::now() + Duration::from_secs(10),
+                |_, _, cancellation| {
+                    if cancels {
+                        cancellation.cancel();
+                    }
+                    Err(error.to_owned())
+                },
+            ),
+            filled,
+            "{row}"
+        );
+        assert_eq!(update.image_dimensions, MetadataValue::Unknown, "{row}");
+        assert_eq!(update.duration_seconds, MetadataValue::Unknown, "{row}");
+        assert!(cached_icon_details_for_revisit(&path).is_none(), "{row}");
+    }
 }
 
 #[derive(Clone, Default)]

@@ -48,3 +48,4 @@ pub(crate) use volume::{
     MountTable, RemovableRoot, invalidate_mount_snapshot, is_local_fuse_overlay, mount_can_unplug,
     mount_is_removable, volume_can_unplug, with_mount_snapshot,
 };
+pub(crate) use volume::{mount_lanes, mount_watch};

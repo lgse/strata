@@ -55,6 +55,17 @@ pub enum LocationValidationError {
     BackendUnavailable(String),
 }
 
+impl From<std::io::Error> for LocationValidationError {
+    fn from(error: std::io::Error) -> Self {
+        match error.kind() {
+            std::io::ErrorKind::NotFound => Self::Missing,
+            std::io::ErrorKind::PermissionDenied => Self::Inaccessible,
+            std::io::ErrorKind::NotADirectory => Self::NotDirectory,
+            _ => Self::Unavailable(io_error_detail(&error)),
+        }
+    }
+}
+
 impl fmt::Display for LocationValidationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

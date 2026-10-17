@@ -7,7 +7,7 @@ use crate::{
 };
 use gtk::{gio, glib, prelude::*};
 
-use super::{await_cancellable, io_error};
+use super::{await_cancellable, translated_io_error};
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
@@ -387,7 +387,7 @@ pub(super) async fn run_file_operation_with_progress(
         operation(&mut callback)
     })
     .await
-    .map_err(|_| io_error(worker_error))?
+    .map_err(|_| translated_io_error(worker_error))?
 }
 
 pub(super) async fn copy_file_with_progress(
@@ -413,7 +413,7 @@ pub(super) async fn copy_file_with_progress(
     run_file_operation_with_progress(
         reporter,
         move |progress| source.copy(&target, flags, Some(&cancellable), Some(progress)),
-        "Copy worker stopped unexpectedly",
+        "The copy stopped unexpectedly",
     )
     .await
 }
@@ -441,7 +441,7 @@ pub(super) async fn move_file_with_progress(
     run_file_operation_with_progress(
         reporter,
         move |progress| source.move_(&target, flags, Some(&cancellable), Some(progress)),
-        "Move worker stopped unexpectedly",
+        "The move stopped unexpectedly",
     )
     .await
 }

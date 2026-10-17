@@ -6,14 +6,14 @@ use crate::{
         gio_file_for_location, location_for_file,
         trash_support::{TrashError, trash_with_cleanup},
     },
-    model::Location,
+    model::{Location, hidden_names::HiddenName},
     services::{PlacedSnapshot, ReplacedOriginal, TransferReport, TrashedOriginal},
 };
 use gtk::{gio, glib, prelude::*};
 
 use super::{
     owed::{Deletion, Owed},
-    placement::{Displacement, PlaceError, REPLACED_PREFIX},
+    placement::{Displacement, PlaceError, RenameFailure},
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -57,10 +57,10 @@ pub(super) struct StagedSibling {
 impl StagedSibling {
     pub(super) fn create(
         parent: Arc<OwnedFd>,
-        prefix: &str,
+        hidden: HiddenName,
         content: StageContent,
     ) -> Result<Self, PlaceError> {
-        let (name, identity) = placement::reserve_hidden_name(prefix, |name| {
+        let (name, identity) = placement::reserve_hidden_name(hidden, |name| {
             let entry = Entry::new(&*parent, name);
             let made = match &content {
                 StageContent::Directory => {
@@ -144,6 +144,7 @@ pub(super) async fn publish_staged_without_replace(
             cleanup,
         ));
     };
+    let staged = OffMain::new(staged);
     let parent = staged.parent.clone();
     let (stage_name, name) = (staged.name.clone(), target_name.clone());
     let recorded = staged.identity;
@@ -154,7 +155,7 @@ pub(super) async fn publish_staged_without_replace(
     let placed = match step {
         Ok(step) => step,
         Err(error) => {
-            let cleanup = discard_incomplete_staged(staged).await;
+            let cleanup = discard_incomplete_staged(staged.into_inner()).await;
             return Err(copy_failure_after_cleanup(
                 io_error(blocking_join_message(error)),
                 cleanup,
@@ -172,7 +173,7 @@ pub(super) async fn publish_staged_without_replace(
         Err(PlaceError::Unconfirmed) => return Err(placement_error(PlaceError::Unconfirmed)),
         Err(error) => Err(placement_error(error)),
     };
-    let cleanup = discard_incomplete_staged(staged).await;
+    let cleanup = discard_incomplete_staged(staged.into_inner()).await;
     match result {
         Ok(ownership) => cleanup.map(|()| ownership).map_err(|error| {
             io_error(rust_i18n::t!(
@@ -411,13 +412,18 @@ pub(super) fn ensure_unchanged(
     }
 }
 
-pub(super) fn set_aside_failure(error: PlaceError, name: &str) -> glib::Error {
-    match error {
-        PlaceError::Unsupported => io_error(cannot_replace_safely(name)),
-        PlaceError::Changed => {
+pub(super) fn set_aside_failure(failure: RenameFailure, name: &str) -> glib::Error {
+    match failure {
+        RenameFailure::Place(PlaceError::Unsupported) => io_error(cannot_replace_safely(name)),
+        RenameFailure::Place(PlaceError::Changed) => {
             translated_io_error("The target changed while the operation was in progress")
         }
-        error => placement_failure(error, name, could_not_replace),
+        RenameFailure::Place(error) => placement_failure(error, name, could_not_replace),
+        RenameFailure::Stranded { temporary, error } => io_error(original_kept_aside(
+            name,
+            &temporary,
+            &crate::services::error_detail(placement_reason(error)),
+        )),
     }
 }
 
@@ -484,7 +490,7 @@ pub(super) fn place_source(
         Err(error) => return Err(error.error),
     }
     let name = plan.target_display();
-    let aside = placement::set_aside(fs(), target, REPLACED_PREFIX, plan.target.identity)
+    let aside = placement::set_aside(fs(), target, HiddenName::Replaced, plan.target.identity)
         .map_err(|error| set_aside_failure(error, &name))?;
     let error = match placement::place(fs(), source, target, expected) {
         Ok(_) => return Ok(SourcePlaced::SetAside(aside)),
@@ -710,7 +716,7 @@ pub(super) async fn set_aside_and_publish(
         placement::set_aside(
             fs(),
             Entry::new(&*parent, &step_plan.target_name),
-            REPLACED_PREFIX,
+            HiddenName::Replaced,
             step_plan.target.identity,
         )
         .map_err(|error| set_aside_failure(error, &step_name))
@@ -1155,7 +1161,7 @@ pub(super) async fn merge_owing(
                 overwritten: trashed,
                 ..MergePlan::default()
             });
-            return Err(merge_aside::abandon(aside, error).await);
+            return Err(merge_aside::abandon(aside, error, HashMap::new()).await);
         }
     }
     let written: Vec<PathBuf> = plan
@@ -1172,13 +1178,19 @@ pub(super) async fn merge_owing(
         }
         _ => false,
     };
+    let records = !move_source && (!trashed.is_empty() || records_created);
     let placing = target_path
         .as_ref()
-        .filter(|_| !move_source && (!trashed.is_empty() || records_created))
+        .filter(|_| records || aside.is_some())
         .map(|root| {
             let path = |location: &Location| location.native_path().map(Path::to_path_buf);
             let created = plan.created.iter().filter(|_| records_created);
-            let wanted: HashSet<_> = trashed.iter().chain(created).filter_map(path).collect();
+            let wanted: HashSet<_> = trashed
+                .iter()
+                .chain(created)
+                .filter(|_| records)
+                .filter_map(path)
+                .collect();
             let unwanted = records_created.then(|| {
                 plan.overwritten
                     .iter()
@@ -1186,7 +1198,17 @@ pub(super) async fn merge_owing(
                     .filter(|path| !wanted.contains(path))
                     .collect()
             });
-            copy_engine::Placing::new(root.clone(), wanted, unwanted, placed_entries.clone())
+            let aside = aside
+                .as_ref()
+                .map(merge_aside::MergeAside::paths)
+                .unwrap_or_default();
+            copy_engine::Placing::new(
+                root.clone(),
+                wanted,
+                unwanted,
+                aside,
+                placed_entries.clone(),
+            )
         });
     (hooks.on_merged)(MergePlan {
         created: plan.created,
@@ -1197,7 +1219,7 @@ pub(super) async fn merge_owing(
     if let Some(path) = native_path(&target).filter(|_| move_source || aside.is_some()) {
         match copy_engine::barrier(path).await {
             Ok(barrier) => owed.barrier = Some(barrier),
-            Err(error) => return Err(merge_aside::abandon(aside, error).await),
+            Err(error) => return Err(merge_aside::abandon(aside, error, HashMap::new()).await),
         }
     }
     let copying = MergeCopy {
@@ -1207,6 +1229,10 @@ pub(super) async fn merge_owing(
     };
     let copied =
         (hooks.copy_into_target)(source.clone(), target, copying, cancellable.clone()).await;
+    let over_aside = placing
+        .as_ref()
+        .map(|placing| placing.over_aside())
+        .unwrap_or_default();
     if let Some(placing) = placing {
         let placed: HashMap<_, _> = placing
             .take()
@@ -1222,7 +1248,7 @@ pub(super) async fn merge_owing(
     }
     let copied = match copied {
         Ok(copied) => copied,
-        Err(error) => return Err(merge_aside::abandon(aside, error).await),
+        Err(error) => return Err(merge_aside::abandon(aside, error, over_aside).await),
     };
     if native_path(&source).is_none()
         && owed
@@ -1231,7 +1257,7 @@ pub(super) async fn merge_owing(
             .is_some_and(copy_engine::Barrier::syncs_each_file)
         && let Err(error) = copy_engine::sync_files(written, cancellable).await
     {
-        return Err(merge_aside::abandon(aside, error).await);
+        return Err(merge_aside::abandon(aside, error, over_aside).await);
     }
     owed.nested = copied.nested;
     if let Some(aside) = merge_aside::finish(aside).await? {

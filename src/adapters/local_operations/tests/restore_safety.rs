@@ -1329,7 +1329,7 @@ fn restore_uses_the_trash_entry_target_path_as_the_physical_source() -> Result<(
 fn trash_items_whose_files_share_names_are_restored_whole() -> Result<(), Box<dyn Error>> {
     use std::sync::{
         Arc,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     };
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT.lock()?;
     let uid = rustix::process::getuid().as_raw();
@@ -1360,9 +1360,15 @@ fn trash_items_whose_files_share_names_are_restored_whole() -> Result<(), Box<dy
         })
         .collect();
     let both = copied.clone();
+    let gave_up = Arc::new(AtomicBool::new(false));
+    let giving_up = gave_up.clone();
     let wait: Racer = Box::new(move || {
-        let start = Instant::now();
-        while both.load(Ordering::SeqCst) < 2 && start.elapsed() < Duration::from_secs(5) {
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while both.load(Ordering::SeqCst) < 2 {
+            if Instant::now() > deadline {
+                giving_up.store(true, Ordering::SeqCst);
+                return;
+            }
             thread::sleep(Duration::from_millis(5));
         }
     });
@@ -1395,6 +1401,10 @@ fn trash_items_whose_files_share_names_are_restored_whole() -> Result<(), Box<dy
     );
     wait_for_restore(&events);
 
+    assert!(
+        !gave_up.load(Ordering::SeqCst),
+        "a Trash copy was synced for deletion before both items were copied"
+    );
     let events = events.borrow();
     assert!(
         matches!(events.last(), Some(OperationEvent::Restored { .. })),

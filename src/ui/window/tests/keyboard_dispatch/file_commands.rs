@@ -1547,7 +1547,7 @@ fn a_mount_that_refused_trash_confirms_up_front_until_reload() {
             assert!(!permanent, "the first Delete tries Trash");
             // The adapter records the refusal before it reports the failure.
             crate::adapters::trash_support::record_unsupported(
-                crate::adapters::MountTable::current()
+                crate::adapters::mount_watch::latest()
                     .mount_for(&directory)
                     .expect("fixture mount"),
                 crate::adapters::trash_support::UnsupportedReason::FuseRefused,

@@ -12,13 +12,16 @@ use rustix::{
 };
 use unicode_normalization::UnicodeNormalization;
 
-use crate::adapters::{
-    local_operations::{
-        fs_ops::{Entry, EntryStat, FsOps},
-        native_fs::LocalFileIdentity,
-        placement::{self, PlaceError, Placed},
+use crate::{
+    adapters::{
+        local_operations::{
+            fs_ops::{Entry, EntryStat, FsOps},
+            native_fs::LocalFileIdentity,
+            placement::{self, PlaceError, Placed},
+        },
+        volume::Family,
     },
-    volume::Family,
+    model::hidden_names::HiddenName,
 };
 
 /// Local POSIX filesystems, which link an unnamed file atomically. The SMB
@@ -110,9 +113,9 @@ fn fold(name: &OsStr) -> Option<String> {
 pub(in crate::adapters::local_operations) fn create_file(
     fs: &dyn FsOps,
     dir: BorrowedFd<'_>,
-    prefix: &str,
+    hidden: HiddenName,
 ) -> Result<(OsString, (OwnedFd, EntryStat)), PlaceError> {
-    placement::reserve_hidden_name(prefix, |name| {
+    placement::reserve_hidden_name(hidden, |name| {
         let entry = Entry { dir, name };
         let fd = match fs.create_exclusive(entry, Mode::from_raw_mode(0o600)) {
             Ok(fd) => fd,

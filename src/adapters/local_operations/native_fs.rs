@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-use super::fs_ops::{Entry, assert_off_main_thread, fs};
-use crate::services::TrashedOriginal;
+use super::fs_ops::{Entry, EntryStat, assert_off_main_thread, fs};
+use crate::services::{Attributes, Evidence, IdentityTraits, Proof, TrashedOriginal};
 use std::{
     ffi::{OsStr, OsString},
     io,
@@ -21,17 +21,25 @@ pub(super) struct LocalFileIdentity {
 
 impl PartialEq for LocalFileIdentity {
     fn eq(&self, other: &Self) -> bool {
-        self.device == other.device && self.inode == other.inode && self.may_be(other)
-    }
-}
-
-impl LocalFileIdentity {
-    pub(super) fn may_be(&self, other: &Self) -> bool {
-        self.kind == other.kind
+        self.device == other.device
+            && self.inode == other.inode
+            && self.kind == other.kind
             && match (self.birth, other.birth) {
                 (Some(left), Some(right)) => left == right,
                 _ => true,
             }
+    }
+}
+
+impl LocalFileIdentity {
+    pub(super) fn evidence(self, attributes: Option<Attributes>) -> Evidence {
+        Evidence {
+            device: self.device,
+            inode: self.inode,
+            kind: self.kind,
+            birth: self.birth,
+            attributes,
+        }
     }
 
     pub(super) fn from_stat(stat: &rustix::fs::Stat) -> Self {
@@ -42,6 +50,16 @@ impl LocalFileIdentity {
             birth: None,
         }
     }
+}
+
+pub(super) fn compare(
+    traits: IdentityTraits,
+    recorded: LocalFileIdentity,
+    attributes: Option<Attributes>,
+    current: &EntryStat,
+) -> Proof {
+    let now = current.identity.evidence(Some(current.attributes()));
+    recorded.evidence(attributes).compare(traits, &now)
 }
 
 impl From<LocalFileIdentity> for TrashedOriginal {

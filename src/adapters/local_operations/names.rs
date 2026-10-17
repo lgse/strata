@@ -96,14 +96,7 @@ fn numbered_names_after(
     limit: NameLimit,
     skipped: usize,
 ) -> impl Iterator<Item = OsString> + '_ {
-    let path = Path::new(name);
-    let stem = match path.extension() {
-        Some(extension) if !is_directory && !extension.is_empty() => {
-            path.file_stem().unwrap_or(name)
-        }
-        _ => name,
-    };
-    let extension = OsStr::from_bytes(&name.as_bytes()[stem.len()..]);
+    let (stem, extension) = numbered_parts(name, is_directory);
     let (base_stem, copy_num) = parse_copy_suffix(stem);
     let start = copy_num.map_or(1, |number| number + 1);
     (start..=u64::MAX)
@@ -111,6 +104,29 @@ fn numbered_names_after(
         .take(placement::NUMBERED_NAME_ATTEMPTS as usize)
         .skip(skipped)
         .map(move |index| numbered_name(base_stem, index, extension, limit, is_directory))
+}
+
+/// A name that ends in its dot has no extension: `readme.` numbers as `readme. (1)`.
+fn numbered_parts(name: &OsStr, is_directory: bool) -> (&OsStr, &OsStr) {
+    let path = Path::new(name);
+    let stem = match path.extension() {
+        Some(extension) if !is_directory && !extension.is_empty() => {
+            path.file_stem().unwrap_or(name)
+        }
+        _ => name,
+    };
+    (stem, OsStr::from_bytes(&name.as_bytes()[stem.len()..]))
+}
+
+/// Unlike [`numbered_names`], a ` (n)` the name already has is kept, not counted on.
+pub(super) fn with_number(
+    name: &OsStr,
+    number: u64,
+    is_directory: bool,
+    limit: NameLimit,
+) -> OsString {
+    let (stem, extension) = numbered_parts(name, is_directory);
+    numbered_name(stem, number, extension, limit, is_directory)
 }
 
 pub(super) fn numbered_name(

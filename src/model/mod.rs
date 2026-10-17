@@ -11,6 +11,7 @@ use std::{
 use gio::prelude::*;
 
 pub mod action;
+pub mod hidden_names;
 
 pub use action::{
     ACTION_SCHEMA_VERSION, ActionConditions, ActionDefinition, ActionError, ActionInput,

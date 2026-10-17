@@ -56,6 +56,20 @@ fn failed_probes_are_retried_and_cancelled_loads_never_publish() {
             drop(pending);
 
             std::fs::write(&path, "ok").expect("restore the probe");
+            let activity = crate::services::file_activity::begin(
+                crate::services::file_activity::OperationScope::default(),
+            );
+            let fence = activity.fence([directory.path().to_owned()]);
+            let withheld = Rc::new(RefCell::new(Vec::new()));
+            let pending = load(withheld.clone());
+            wait(|| !withheld.borrow().is_empty());
+            assert_eq!(*withheld.borrow(), vec![None]);
+            assert!(
+                cached_details(&key).is_none(),
+                "a folder an operation fences is not listed"
+            );
+            drop(pending);
+            drop(fence);
             let results = Rc::new(RefCell::new(Vec::new()));
             let pending = load(results.clone());
             wait(|| !results.borrow().is_empty());

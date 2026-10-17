@@ -442,6 +442,77 @@ fn a_claimed_name_swapped_for_a_pipe_fails_without_waiting() -> Result<(), Box<d
 }
 
 #[test]
+fn a_claimed_file_evicted_before_its_job_is_still_written() -> Result<(), Box<dyn Error>> {
+    use std::sync::atomic::Ordering;
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT.lock()?;
+    let root = tempfile::tempdir()?;
+    let (source, destination) = (root.path().join("source"), root.path().join("destination"));
+    fs::create_dir(&source)?;
+    fs::create_dir(&destination)?;
+    // A FAT short name may stand for any long name, so both are claimed.
+    for file in ["PROGRA~1", "Program Files"] {
+        fs::write(source.join(file), file)?;
+    }
+    let evicted = Arc::new(AtomicBool::new(false));
+    let racer: Racer = {
+        let (destination, evicted) = (destination.clone(), evicted.clone());
+        Box::new(move || {
+            let stage = fs::read_dir(&destination)
+                .and_then(|mut entries| entries.next().expect("the stage"))
+                .expect("list the destination")
+                .path();
+            let claimed = stage.join("PROGRA~1");
+            evicted.store(super::fs_quirks::evict(&claimed), Ordering::SeqCst);
+        })
+    };
+    let _destination = FsQuirks::install(
+        &destination,
+        Quirks {
+            before: vec![(Op::OpenWrite, "PROGRA~1", 0, racer)],
+            ..Quirks::vfat()
+        },
+    );
+    let target = destination.join("target");
+
+    copy(&source, &target)?;
+
+    assert!(evicted.load(Ordering::SeqCst));
+    assert_eq!(fs::read_to_string(target.join("PROGRA~1"))?, "PROGRA~1");
+    Ok(())
+}
+
+#[test]
+fn a_source_folder_evicted_before_its_job_is_copied() -> Result<(), Box<dyn Error>> {
+    use std::sync::atomic::Ordering;
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT.lock()?;
+    let root = tempfile::tempdir()?;
+    let (sources, destination) = (root.path().join("sources"), root.path().join("destination"));
+    let folder = sources.join("folder");
+    fs::create_dir_all(folder.join("sub"))?;
+    fs::create_dir(&destination)?;
+    fs::write(folder.join("sub/a.txt"), b"a")?;
+    let evicted = Arc::new(AtomicBool::new(false));
+    let racer: Racer = {
+        let (folder, evicted) = (folder.clone(), evicted.clone());
+        Box::new(move || evicted.store(super::fs_quirks::evict(&folder), Ordering::SeqCst))
+    };
+    let _sources = FsQuirks::install(
+        &sources,
+        Quirks {
+            before: vec![(Op::OpenDir, "folder", 0, racer)],
+            ..Quirks::sshfs()
+        },
+    );
+    let _destination = FsQuirks::install(&destination, Quirks::default());
+
+    copy(&folder, &destination.join("copy"))?;
+
+    assert!(evicted.load(Ordering::SeqCst));
+    assert_eq!(fs::read(destination.join("copy/sub/a.txt"))?, b"a");
+    Ok(())
+}
+
+#[test]
 fn a_cancelled_copy_on_nfs_leaves_no_stage() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT.lock()?;
     let cancellable = gio::Cancellable::new();

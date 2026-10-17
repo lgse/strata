@@ -11,9 +11,8 @@ use std::{
     time::Duration,
 };
 
-use gtk::gio;
-
 use super::names::{NameEncoding, NameProfile, NameRules, PrivateUse, Reserved, Strip, byte_limit};
+use crate::services::{IdentityTraits, InodeNumbers};
 
 /// Parsed without touching mounted filesystems, including unresponsive mounts.
 #[derive(Clone)]
@@ -47,28 +46,32 @@ pub(crate) struct MountType {
 }
 
 impl MountType {
-    /// Whether an entry keeps its inode number: FAT and exFAT, libfuse
-    /// without `use_ino` and cifs without server inode numbers number an
-    /// entry afresh once the kernel has evicted it, and vboxsf keeps a name's
-    /// number for whatever a rename puts there.
-    pub(crate) fn stable_inodes(&self) -> bool {
-        if self.fs_type == "vboxsf" {
-            return false;
-        }
-        match family(&self.fs_type) {
-            Family::Fat | Family::Fuse => false,
-            Family::Smb => !self
-                .super_options
-                .split(',')
-                .any(|option| option == "noserverino"),
-            _ => true,
-        }
-    }
-
-    /// The kernel's exFAT driver stamps a folder's birth time at each rename
+    /// FAT and exFAT, libfuse without `use_ino` and cifs without server inode numbers number an
+    /// entry afresh once the kernel has evicted it, and vboxsf keeps a name's number for whatever
+    /// a rename puts there. The kernel's exFAT driver stamps a folder's birth time at each rename
     /// into or within it.
-    pub(crate) fn renames_reset_folder_births(&self) -> bool {
-        self.fs_type == "exfat"
+    pub(crate) fn identity(&self) -> IdentityTraits {
+        let numbers = match (family(&self.fs_type), self.fs_type.as_str()) {
+            (Family::Fat | Family::Fuse, _) | (_, "vboxsf") => InodeNumbers::Renewed,
+            (Family::Smb, _)
+                if self
+                    .super_options
+                    .split(',')
+                    .any(|option| option == "noserverino") =>
+            {
+                InodeNumbers::Renewed
+            }
+            (
+                Family::Other,
+                "9p" | "virtiofs" | "ecryptfs" | "ceph" | "hfs" | "hfsplus" | "ntfs" | "ramfs",
+            ) => InodeNumbers::Kept,
+            (Family::Other, _) => InodeNumbers::Unknown,
+            _ => InodeNumbers::Kept,
+        };
+        IdentityTraits {
+            numbers,
+            folder_births: self.fs_type != "exfat",
+        }
     }
 
     /// How long the SMB client keeps a closed file's handle open
@@ -210,6 +213,10 @@ impl MountType {
 
     pub(crate) fn is_gvfs_bridge(&self) -> bool {
         self.fs_type == "fuse.gvfsd-fuse"
+    }
+
+    pub(crate) fn outside_writers(&self) -> bool {
+        self.fs_type != "fuseblk" && is_remote_fs_type(&self.fs_type)
     }
 }
 
@@ -356,24 +363,23 @@ pub(crate) fn set_mountinfo_for_isolated_test(mountinfo: Option<String>) {
         .unwrap_or_else(std::sync::PoisonError::into_inner) = mountinfo;
 }
 
+#[cfg(test)]
+pub(super) fn mountinfo_for_test() -> Option<String> {
+    MOUNTINFO_FOR_TEST
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone()
+}
+
 impl MountTable {
     pub(crate) fn current() -> Self {
+        crate::util::ui_thread::assert_off();
         #[cfg(test)]
-        if let Some(mountinfo) = MOUNTINFO_FOR_TEST
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone()
-        {
+        if let Some(mountinfo) = mountinfo_for_test() {
             return Self::parse(mountinfo);
         }
         std::fs::read("/proc/self/mountinfo")
             .map(Self::parse)
-            .unwrap_or_else(|_| Self::parse(b""))
-    }
-
-    pub(crate) async fn load() -> Self {
-        gio::spawn_blocking(Self::current)
-            .await
             .unwrap_or_else(|_| Self::parse(b""))
     }
 
@@ -427,6 +433,12 @@ impl MountTable {
             .map(MountEntry::parts)
     }
 
+    pub(crate) fn points(&self) -> impl Iterator<Item = (u64, &Path)> {
+        self.entries
+            .iter()
+            .map(|entry| (entry.id, entry.site.point.as_path()))
+    }
+
     pub(crate) fn mount_at(&self, path: &Path) -> Option<(&MountType, &MountSite)> {
         self.innermost(path).map(MountEntry::parts)
     }
@@ -447,8 +459,8 @@ impl MountTable {
     /// Remote filesystems other than FUSE drivers for local block devices,
     /// such as ntfs-3g and exfat-fuse on a USB drive.
     pub(crate) fn is_network_path(&self, path: &Path) -> bool {
-        self.fs_type_for(path)
-            .is_some_and(|fs_type| fs_type != "fuseblk" && is_remote_fs_type(fs_type))
+        self.innermost(path)
+            .is_some_and(|entry| entry.mount_type.outside_writers())
     }
 
     pub(crate) fn has_mount_inside(&self, directory: &Path) -> bool {

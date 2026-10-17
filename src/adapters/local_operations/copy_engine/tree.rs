@@ -33,7 +33,7 @@ use super::{
     metadata::Snapshot,
     open_failure, open_file, open_one_name,
     restrictive::{self, Restrictive},
-    same_entry, stable_inodes, stage,
+    stage,
 };
 use crate::{
     adapters::{
@@ -43,15 +43,16 @@ use crate::{
             io_error,
             mount_profile::{FolderRules, Site, crosses},
             names::{Key, PlanEntry, Planned, numbered_names, plan_names},
-            native_fs::{LocalFileIdentity, os_error_detail},
-            placement::{self, COPY_PREFIX, PlaceError},
+            native_fs::{LocalFileIdentity, compare, os_error_detail},
+            placement::{self, PlaceError},
             replacement::{StageContent, StagedSibling},
             translated_io_error,
             work_queue::{self, Group, Job, WorkQueue},
         },
         volume::{Family, MountKey, NameProfile},
     },
-    services::{KeptCause, RenameCause, SpecialKind},
+    model::hidden_names::HiddenName,
+    services::{IdentityTraits, KeptCause, Proof, RenameCause, SpecialKind},
 };
 
 /// `FS_CASEFOLD_FL`, which folders made inside a casefolded one inherit.
@@ -123,11 +124,11 @@ impl Tree {
         Ok(())
     }
 
-    fn source_in(&self, fs: &dyn FsOps, folder: BorrowedFd<'_>) {
+    fn source_in(&self, fs: &dyn FsOps, folder: BorrowedFd<'_>) -> &(Mount, Site) {
         self.source.get_or_init(|| {
             let mount = Mount::new(fs, folder);
             (mount, Site::of(mount.key, mount.names, folder))
-        });
+        })
     }
 
     fn opens_one_name_per_file(&self) -> bool {
@@ -297,7 +298,7 @@ pub(super) struct Names {
     /// mounts list a name in another case than it was made in, so the
     /// listing alone cannot tell such an entry from another name's.
     made: Option<Mutex<HashMap<OsString, Vec<LocalFileIdentity>>>>,
-    stable_inodes: bool,
+    identity: IdentityTraits,
     rules: FolderRules,
 }
 
@@ -305,7 +306,7 @@ impl Names {
     fn new(
         requested: Vec<OsString>,
         naming: Naming,
-        family: Family,
+        identity: IdentityTraits,
         rules: FolderRules,
     ) -> Arc<Self> {
         Arc::new(Self {
@@ -313,7 +314,7 @@ impl Names {
             keys: OnceLock::new(),
             numbered: Mutex::default(),
             made: (naming == Naming::Claim).then(Mutex::default),
-            stable_inodes: stable_inodes(family),
+            identity,
             rules,
         })
     }
@@ -331,13 +332,16 @@ impl Names {
         }
     }
 
-    fn unclaimed(&self, name: &OsStr, identity: LocalFileIdentity) -> bool {
+    fn unclaimed(&self, name: &OsStr, current: &EntryStat) -> bool {
         let Some(made) = &self.made else {
             return false;
         };
         lock(made)
             .get(&stage::collision_key(name))
-            .is_none_or(|made| self.stable_inodes && !made.contains(&identity))
+            .is_none_or(|made| {
+                made.iter()
+                    .all(|&made| compare(self.identity, made, None, current) == Proof::Different)
+            })
     }
 
     fn requested(&self) -> &HashMap<OsString, usize> {
@@ -458,14 +462,14 @@ impl Folder {
             .open_dir(Entry::new(&**source_parent, source_name))
             .map_err(|error| open_failure(source_name, error))?;
         let source_stat = fs.stat_fd(source.as_fd())?;
-        if expected.is_some_and(|expected| expected != source_stat.identity) {
+        let (source_mount, _) = tree.source_in(fs, source.as_fd());
+        if expected.is_some_and(|expected| !source_mount.may_be(expected, &source_stat)) {
             return Err(Failure::Changed);
         }
-        tree.source_in(fs, source.as_fd());
         let (target_parent, target_name, created) = &self.target;
         let target = fs.open_dir(Entry::new(&**target_parent, target_name))?;
         let target_stat = fs.stat_fd(target.as_fd())?;
-        if !same_entry(&target_stat, *created, self.mount.family) {
+        if !self.mount.may_be(*created, &target_stat) {
             return Err(Failure::Place(PlaceError::Changed));
         }
         let snapshot = Snapshot::read(fs, source.as_fd(), &source_stat)?;
@@ -482,7 +486,7 @@ impl Folder {
             dir: Arc::new(target),
             stat: target_stat,
             path: self.path,
-            names: Names::new(requested, naming, self.mount.family, rules),
+            names: Names::new(requested, naming, self.mount.identity, rules),
             site: self.site,
             mount: self.mount,
             scope: self.scope,
@@ -788,7 +792,7 @@ pub(super) fn adopt(
     let ours = || {
         let names = names?;
         let stat = fs.stat(entry, true).ok()?;
-        if !fresh(&stat) || !names.unclaimed(entry.name, stat.identity) {
+        if !fresh(&stat) || !names.unclaimed(entry.name, &stat) {
             return None;
         }
         let listed = fs
@@ -993,7 +997,7 @@ pub(super) fn finish_pipe(
         Err(_) => return Ok(()),
     };
     let created = fs.stat_fd(fd.as_fd())?;
-    if created.kind != FileType::Fifo || !same_entry(&created, identity, mount.family) {
+    if created.kind != FileType::Fifo || !mount.may_be(identity, &created) {
         return Err(Failure::Place(PlaceError::Changed));
     }
     Snapshot::of(stat).apply_to_pipe(
@@ -1128,10 +1132,10 @@ impl File {
         let created = fs.stat_fd(fd.as_fd())?;
         match expected {
             Some(expected) => {
-                let ours = if stable_inodes(self.mount.family) {
-                    created.identity == expected
-                } else {
-                    created.kind == FileType::RegularFile && created.size == 0
+                let ours = match compare(self.mount.identity, expected, None, &created) {
+                    Proof::Same => true,
+                    Proof::Different => false,
+                    Proof::Unproven => created.size == 0,
                 };
                 if !ours {
                     return Err(Failure::Place(PlaceError::Changed));
@@ -1154,7 +1158,7 @@ impl File {
             copy.apply_metadata(fd.as_fd(), &created, &snapshot, parent, &self.mount)?;
             copy.sync_written(fd.as_fd(), &self.mount)?;
             fs.close(fd)?;
-            copy.settle_times(target, created.identity, &snapshot, self.mount.family)?;
+            copy.settle_times(target, created.identity, &snapshot, &self.mount)?;
             Ok(Some(read))
         })(fd);
         if !matches!(written, Ok(Some(_))) {
@@ -1275,7 +1279,7 @@ impl Merged {
             .map_err(|error| open_failure(target_name, error))?;
         let target_stat = fs.stat_fd(target.as_fd())?;
         let mount = copy.mount(target.as_fd());
-        if expected.is_some_and(|expected| !same_entry(&target_stat, expected, mount.family)) {
+        if expected.is_some_and(|expected| !mount.may_be(expected, &target_stat)) {
             return Err(Failure::Changed);
         }
         lock(&tree.copies).push(manifest::Published::new(
@@ -1313,7 +1317,7 @@ impl Merged {
             .map(|(_, _, planned)| planned.target.clone())
             .collect();
         let live = Live {
-            names: Names::new(requested, naming, mount.family, folder),
+            names: Names::new(requested, naming, mount.identity, folder),
             site: names.site,
             naming,
             source: Arc::new(source),
@@ -1409,11 +1413,12 @@ impl Live {
     ) -> Result<(), Failure> {
         let fs = tree.copy.fs;
         tree.copy.check_cancelled()?;
-        let staged = StagedSibling::create(self.dir.clone(), COPY_PREFIX, StageContent::Directory)?;
+        let staged =
+            StagedSibling::create(self.dir.clone(), HiddenName::Copy, StageContent::Directory)?;
         let (name, identity) = (staged.name.clone(), staged.identity);
         lock(&tree.stages).push(staged);
         let dir = fs.open_dir(Entry::new(&*self.dir, &name))?;
-        if !same_entry(&fs.stat_fd(dir.as_fd())?, identity, self.mount.family) {
+        if !self.mount.may_be(identity, &fs.stat_fd(dir.as_fd())?) {
             return Err(Failure::Place(PlaceError::Changed));
         }
         let scope = tree.scopes.fetch_add(1, Ordering::Relaxed);
@@ -1525,7 +1530,7 @@ impl Place {
             copy,
             self.stage.as_fd(),
             &self.path,
-            self.mount.family,
+            &self.mount,
             None,
         )?;
         let mut children = fs.list(self.stage.as_fd())?;
@@ -1591,7 +1596,7 @@ impl Place {
             fs,
             self.live.as_fd(),
             &mut placed_folders,
-            stable_inodes(self.mount.family),
+            self.mount.identity,
         );
         lock(&tree.placed).extend(placed);
         result?;

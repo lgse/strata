@@ -569,102 +569,34 @@ fn unreachable_uri_resolves_to_unknown_without_hanging() {
     assert_eq!(lookup.relation, VolumeRelation::Unknown);
 }
 
-fn capabilities_follow_mount_changes_once_watched_by(
-    name: &str,
-    start: impl FnOnce(&Path) -> Box<dyn FnOnce()>,
-) {
-    crate::test_support::gtk_test(name, || {
-        use gtk::prelude::*;
-
-        let root = tempfile::tempdir().expect("fixture");
-        let finish = start(root.path());
-        let real = MountKey::Device(u64::MAX - 7);
-        let scoped = MountKey::Test(u64::MAX - 7);
-        for key in [real, scoped] {
-            learn_mount_capability(key, |capabilities| capabilities.hard_links = Some(false));
-        }
-
-        gio_unix::MountMonitor::get().emit_by_name::<()>("mounts-changed", &[]);
-
-        assert_eq!(mount_capabilities(real), MountCapabilities::default());
-        assert_eq!(mount_capabilities(scoped).hard_links, Some(false));
-        forget_test_mount_capabilities(u64::MAX - 7);
-        finish();
-    });
-}
-
 #[test]
-fn operation_mount_changes_invalidate_capabilities_before_preferences_are_read() {
-    capabilities_follow_mount_changes_once_watched_by(
-        "adapters::volume::tests::operation_mount_changes_invalidate_capabilities_before_preferences_are_read",
-        |root| {
-            use crate::services::{
-                DeleteRequest, OperationEvent, OperationProvider, OperationRequestId,
+fn navigation_lookups_read_the_mount_table_the_watcher_published() {
+    crate::test_support::gtk_test(
+        "adapters::volume::tests::navigation_lookups_read_the_mount_table_the_watcher_published",
+        || {
+            let root = tempfile::tempdir().expect("fixture");
+            let share = root.path().join("share");
+            let publish = |mountinfo: String| {
+                mount_watch::publish_for_isolated_test(Some(MountTable::parse(mountinfo)));
+            };
+            let looked_up = || {
+                with_mount_snapshot(|snapshot| {
+                    (
+                        snapshot.table.is_network_path(&share.join("folder")),
+                        snapshot.table.has_mount_inside(root.path()),
+                    )
+                })
             };
 
-            let path = root.join("delete.txt");
-            fs::write(&path, b"fixture").expect("fixture file");
-            let finished = Rc::new(std::cell::Cell::new(false));
-            let observed = finished.clone();
-            let operation = crate::adapters::LocalOperationProvider.delete(
-                DeleteRequest {
-                    id: OperationRequestId(1615),
-                    entries: vec![crate::test_support::operations::entry(Location::local(
-                        &path,
-                    ))],
-                    permanent: true,
-                },
-                Rc::new(move |event| {
-                    if matches!(event, OperationEvent::Deleted { .. }) {
-                        observed.set(true);
-                    }
-                }),
-            );
-            Box::new(move || {
-                let deadline = Instant::now() + Duration::from_secs(10);
-                while !finished.get() {
-                    assert!(Instant::now() < deadline, "deletion did not finish");
-                    glib::MainContext::default().iteration(false);
-                    std::thread::yield_now();
-                }
-                assert!(!path.exists());
-                drop(operation);
-            })
-        },
-    );
-}
-
-#[test]
-fn typed_name_checks_invalidate_capabilities_before_preferences_are_read() {
-    capabilities_follow_mount_changes_once_watched_by(
-        "adapters::volume::tests::typed_name_checks_invalidate_capabilities_before_preferences_are_read",
-        |root| {
-            let folder = gio::File::for_path(root);
-            let refused = glib::MainContext::default()
-                .block_on(crate::adapters::typed_name_refusal(&folder, "name", false));
-            assert_eq!(refused, None);
-            Box::new(|| {})
-        },
-    );
-}
-
-#[test]
-fn paste_target_checks_invalidate_capabilities_before_preferences_are_read() {
-    capabilities_follow_mount_changes_once_watched_by(
-        "adapters::volume::tests::paste_target_checks_invalidate_capabilities_before_preferences_are_read",
-        |root| {
-            let source = root.join("a.txt");
-            let destination = root.join("into");
-            fs::write(&source, b"a").expect("fixture file");
-            fs::create_dir(&destination).expect("fixture folder");
-            let targets = glib::MainContext::default().block_on(crate::adapters::transfer_targets(
-                &Location::local(&destination),
-                &[Location::local(&source)],
-                false,
-                &gio::Cancellable::new(),
+            publish(format!(
+                "1 0 8:1 / / rw - ext4 /dev/root rw\n\
+                 900 1 0:90 / {} rw - nfs4 server:/export rw\n",
+                share.display()
             ));
-            assert_eq!(targets.expect("paste targets").len(), 1);
-            Box::new(|| {})
+            assert_eq!(looked_up(), (true, true));
+
+            publish("1 0 8:1 / / rw - ext4 /dev/root rw\n".to_owned());
+            assert_eq!(looked_up(), (false, false));
         },
     );
 }

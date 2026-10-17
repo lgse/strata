@@ -6,6 +6,7 @@
 //! disk. An original whose name the merge left free goes back to it first.
 
 use std::{
+    collections::{HashMap, HashSet},
     ffi::OsString,
     os::fd::{AsFd, OwnedFd},
     path::{Path, PathBuf},
@@ -19,13 +20,15 @@ use rustix::{
 };
 
 use super::{
+    copy_engine::Ownership,
     deletion::{PinnedEntry, parallel_delete_local},
     fs_ops::{Entry, drop_off_main_thread, fs},
     io_error,
     native_fs::{LocalFileIdentity, open_local_parent_directory, retry_local_open},
-    placement::{self, Feasibility, MERGE_PREFIX, PlaceError},
+    placement::{self, Feasibility, PlaceError},
     placement_reason, run_blocking, was_cancelled,
 };
+use crate::model::hidden_names::HiddenName;
 
 struct Folder {
     name: OsString,
@@ -41,6 +44,7 @@ struct Mirror {
 }
 
 struct Moved {
+    path: PathBuf,
     parent: Arc<OwnedFd>,
     aside_parent: Arc<OwnedFd>,
     name: OsString,
@@ -90,7 +94,7 @@ fn open_beneath(dir: &OwnedFd, relative: &Path) -> Result<OwnedFd, PlaceError> {
 }
 
 fn create_folder(target: &OwnedFd) -> Result<Folder, PlaceError> {
-    let (name, identity) = placement::reserve_hidden_name(MERGE_PREFIX, |name| {
+    let (name, identity) = placement::reserve_hidden_name(HiddenName::Merge, |name| {
         let entry = Entry::new(target, name);
         fs().mkdir(entry, Mode::from_raw_mode(0o700))
             .map_err(placement::creation_error)?;
@@ -140,6 +144,10 @@ impl MergeAside {
 
     fn used(&self) -> bool {
         self.folder.is_some()
+    }
+
+    pub(super) fn paths(&self) -> HashSet<PathBuf> {
+        self.moved.iter().map(|moved| moved.path.clone()).collect()
     }
 
     fn folder_path(&self) -> Option<PathBuf> {
@@ -197,6 +205,7 @@ impl MergeAside {
         )
         .map_err(failed)?;
         self.moved.push(Moved {
+            path: path.to_path_buf(),
             parent,
             aside_parent,
             name: file_name.to_os_string(),
@@ -239,16 +248,22 @@ impl MergeAside {
         Ok(current)
     }
 
-    /// An original whose name was taken meanwhile stays in the folder.
-    fn put_back(&mut self) -> Result<(), Kept> {
+    /// An original whose name holds anything but the merge's own copy, as `placed`
+    /// tells it, stays in the folder.
+    fn put_back(&mut self, placed: &HashMap<PathBuf, Ownership>) -> Result<(), Kept> {
         let mut failure = None;
         for moved in std::mem::take(&mut self.moved).into_iter().rev() {
-            if let Err(error) = placement::place(
-                fs(),
-                Entry::new(&*moved.aside_parent, &moved.name),
-                Entry::new(&*moved.parent, &moved.name),
-                Some(moved.identity),
-            ) {
+            let aside = Entry::new(&*moved.aside_parent, &moved.name);
+            let original = Entry::new(&*moved.parent, &moved.name);
+            let mut put = placement::place(fs(), aside, original, Some(moved.identity));
+            if put == Err(PlaceError::Exists)
+                && placed
+                    .get(&moved.path)
+                    .is_some_and(|copy| copy.discard(fs(), original))
+            {
+                put = placement::place(fs(), aside, original, Some(moved.identity));
+            }
+            if let Err(error) = put {
                 failure.get_or_insert(error);
             }
         }
@@ -355,12 +370,16 @@ pub(super) async fn set_aside(
     result
 }
 
-pub(super) async fn abandon(aside: Option<MergeAside>, error: glib::Error) -> glib::Error {
+pub(super) async fn abandon(
+    aside: Option<MergeAside>,
+    error: glib::Error,
+    placed: HashMap<PathBuf, Ownership>,
+) -> glib::Error {
     let Some(mut aside) = aside.filter(MergeAside::used) else {
         return error;
     };
     let folder = aside.folder_path().unwrap_or_default();
-    let kept = match gio::spawn_blocking(move || aside.put_back()).await {
+    let kept = match gio::spawn_blocking(move || aside.put_back(&placed)).await {
         Ok(Ok(())) => return error,
         Ok(Err(kept)) => kept,
         Err(_) => Kept {

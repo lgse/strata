@@ -96,7 +96,7 @@ impl RestoreContext {
         Self {
             home_trash_root: glib::user_data_dir().join("Trash"),
             uid: rustix::process::getuid().as_raw(),
-            mounts: MountTable::load().await,
+            mounts: super::volume::mount_watch::fresh().await,
         }
     }
 }

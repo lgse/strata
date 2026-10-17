@@ -229,20 +229,19 @@ pub(crate) fn is_media_path(path: &Path) -> bool {
     content_type.starts_with("audio/") || content_type.starts_with("video/")
 }
 
-pub(crate) fn read_head_sample(path: &Path) -> Option<Vec<u8>> {
+pub(crate) fn read_head_sample(path: &Path) -> std::io::Result<Vec<u8>> {
     use std::io::Read;
-    let file = std::fs::File::open(path).ok()?;
+    let file = super::file_activity::open(path)?;
     let mut sample = Vec::with_capacity(CONTENT_SAMPLE_BYTES);
     file.take(CONTENT_SAMPLE_BYTES as u64)
-        .read_to_end(&mut sample)
-        .ok()?;
-    Some(sample)
+        .read_to_end(&mut sample)?;
+    Ok(sample)
 }
 
 /// Whether a local file's leading bytes still back the visual family its name claims,
 /// so metadata probes skip source files that merely share a media extension.
 pub(crate) fn bytes_support_named_family(path: &Path) -> bool {
-    let Some(sample) = read_head_sample(path) else {
+    let Ok(sample) = read_head_sample(path) else {
         return true;
     };
     let mut content_type = content_type_for_path(path).to_string();

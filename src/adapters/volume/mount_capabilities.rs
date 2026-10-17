@@ -8,6 +8,7 @@
 use std::{collections::BTreeMap, ffi::OsStr, sync::Mutex, time::Duration};
 
 use super::{CoarseTimes, Family, FuseFormat, MountNames, Strictness};
+use crate::services::IdentityTraits;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(crate) enum MountKey {
@@ -30,14 +31,17 @@ pub(crate) struct MountCapabilities {
     pub hard_links: Option<bool>,
     pub rename_over_empty_directory: Option<bool>,
     pub tmpfile: Option<bool>,
+    /// Whether an unnamed file links only through `/proc`: `AT_EMPTY_PATH`
+    /// needs Linux 6.10 unprivileged.
+    pub tmpfile_link_through_proc: Option<bool>,
     pub reflink: Option<bool>,
+    pub copy_range: Option<bool>,
     /// Namespaces the mount refuses as unsupported; a refused name alone
     /// says nothing about its namespace.
     pub refused_xattrs: XattrNamespaces,
     /// From mountinfo, kept here so a mount change drops it with the rest.
     pub family: Option<Family>,
-    pub stable_inodes: Option<bool>,
-    pub renames_reset_folder_births: bool,
+    pub identity: IdentityTraits,
     pub fuse_format: Option<FuseFormat>,
     pub coarse_times: Option<CoarseTimes>,
     pub deferred_close: Option<Duration>,

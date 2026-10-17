@@ -50,12 +50,18 @@ pub(super) fn shown_name(name: &OsStr) -> String {
         .collect()
 }
 
-fn heading(cause: RenameCause) -> String {
-    crate::i18n::tr(match cause {
-        RenameCause::Alias => "The destination can\u{2019}t tell these names apart",
-        RenameCause::Taken => "These names were already taken",
-        RenameCause::Invalid => "The destination doesn\u{2019}t allow these names",
-        RenameCause::TooLong => "These names were too long for the destination",
+fn heading(cause: RenameCause, count: usize) -> String {
+    crate::i18n::tr(match (cause, count == 1) {
+        (RenameCause::Alias, true) => {
+            "The destination can\u{2019}t tell this name apart from another"
+        }
+        (RenameCause::Alias, false) => "The destination can\u{2019}t tell these names apart",
+        (RenameCause::Taken, true) => "This name was already taken",
+        (RenameCause::Taken, false) => "These names were already taken",
+        (RenameCause::Invalid, true) => "The destination doesn\u{2019}t allow this name",
+        (RenameCause::Invalid, false) => "The destination doesn\u{2019}t allow these names",
+        (RenameCause::TooLong, true) => "This name was too long for the destination",
+        (RenameCause::TooLong, false) => "These names were too long for the destination",
     })
 }
 
@@ -114,7 +120,7 @@ fn kept_line(item: &KeptItem, in_trash: bool) -> String {
         )
         .into_owned(),
         KeptCause::Undeletable(error) => rust_i18n::t!(
-            "Could not delete %{name}: %{error}",
+            "Could not delete “%{name}”: %{error}",
             name = name,
             error = crate::services::io_error_detail(&std::io::Error::from_raw_os_error(*error))
         )
@@ -196,7 +202,7 @@ fn renamed_sections(renamed: &[RenamedItem]) -> Vec<(String, Lines)> {
     }
     sections
         .into_iter()
-        .map(|(cause, lines)| (heading(cause), lines))
+        .map(|(cause, lines)| (heading(cause, lines.count), lines))
         .collect()
 }
 
@@ -214,18 +220,21 @@ fn left_sections(report: &TransferReport) -> Vec<(String, Lines)> {
         .skipped
         .iter()
         .partition(|item| item.kind == SpecialKind::Symlink);
-    for (skipped, heading) in [
+    for (skipped, one, several) in [
         (
             special,
+            "This special file can\u{2019}t be copied and was left out",
             "These special files can\u{2019}t be copied and were left out",
         ),
         (
             links,
+            "This symbolic link can\u{2019}t be stored at the destination and was left out",
             "These symbolic links can\u{2019}t be stored at the destination and were left out",
         ),
     ] {
         if !skipped.is_empty() {
-            left.push((crate::i18n::tr(heading), Lines::of(skipped, skipped_line)));
+            let heading = crate::i18n::tr(if skipped.len() == 1 { one } else { several });
+            left.push((heading, Lines::of(skipped, skipped_line)));
         }
     }
     for (kept, heading, in_trash) in [
@@ -240,9 +249,11 @@ fn left_sections(report: &TransferReport) -> Vec<(String, Lines)> {
                 });
                 lines.note = Some(format!(
                     "{}\n\n{}",
-                    crate::i18n::tr(
+                    crate::i18n::tr(if report.kept_out_of_undo.len() == 1 {
+                        "Undo can\u{2019}t move this item back, as part of it stayed in its original folder."
+                    } else {
                         "Undo can\u{2019}t move these items back, as part of each stayed in its original folder."
-                    ),
+                    }),
                     bullets(&left_out)
                 ));
             }

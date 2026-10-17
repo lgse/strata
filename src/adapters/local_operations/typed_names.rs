@@ -34,7 +34,6 @@ pub(super) fn refused(name: &str, rules: &NameProfile, new_folder: bool) -> Opti
 }
 
 pub(crate) async fn refused_in(folder: &gio::File, name: &str, new_folder: bool) -> Option<String> {
-    crate::adapters::volume::watch_operation_mounts();
     refused(name, &folder_name_rules(folder).await?, new_folder)
 }
 

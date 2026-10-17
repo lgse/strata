@@ -60,15 +60,27 @@ fn one_short_renamed_line_gets_a_notice_and_anything_more_a_dialog() {
         (renamed(9), false, LISTED_ITEMS),
     ] {
         let count = report.renamed.len();
+        let heading = crate::i18n::tr(if count == 1 {
+            "The destination can\u{2019}t tell this name apart from another"
+        } else {
+            "The destination can\u{2019}t tell these names apart"
+        });
         match presentation(&report) {
-            Some(Presentation::Notice { text, .. }) => {
+            Some(Presentation::Notice {
+                heading: shown,
+                text,
+            }) => {
                 assert!(notice, "{count}");
+                assert_eq!(shown, heading);
                 assert_eq!(text, renamed_line(&report.renamed[0]));
             }
             Some(Presentation::Information {
-                message, detail, ..
+                message,
+                summary,
+                detail,
             }) => {
                 assert!(!notice, "{count}");
+                assert_eq!(summary, heading, "{count}");
                 assert_eq!(message, crate::i18n::count("items_renamed", count));
                 assert_eq!(detail.matches('•').count(), listed, "{count}");
                 assert_eq!(
@@ -84,12 +96,29 @@ fn one_short_renamed_line_gets_a_notice_and_anything_more_a_dialog() {
 
 #[test]
 fn renamed_items_are_grouped_by_why_they_were_renamed() {
-    let causes = [
-        RenameCause::Invalid,
-        RenameCause::Alias,
-        RenameCause::TooLong,
-        RenameCause::Taken,
+    let headings = [
+        (
+            RenameCause::Invalid,
+            "The destination doesn\u{2019}t allow this name",
+            "The destination doesn\u{2019}t allow these names",
+        ),
+        (
+            RenameCause::Alias,
+            "The destination can\u{2019}t tell this name apart from another",
+            "The destination can\u{2019}t tell these names apart",
+        ),
+        (
+            RenameCause::TooLong,
+            "This name was too long for the destination",
+            "These names were too long for the destination",
+        ),
+        (
+            RenameCause::Taken,
+            "This name was already taken",
+            "These names were already taken",
+        ),
     ];
+    let causes = headings.map(|(cause, _, _)| cause);
     let mut report = renamed(causes.len() * 2);
     for (item, cause) in report.renamed.iter_mut().zip(causes.iter().cycle()) {
         item.cause = *cause;
@@ -103,10 +132,13 @@ fn renamed_items_are_grouped_by_why_they_were_renamed() {
         .split("\n\n")
         .filter(|line| !line.starts_with('•'))
         .collect::<Vec<_>>();
-    assert_eq!(sections, causes.map(heading));
+    assert_eq!(
+        sections,
+        headings.map(|(_, _, several)| crate::i18n::tr(several))
+    );
     let distinct = sections.iter().collect::<std::collections::HashSet<_>>();
     assert_eq!(distinct.len(), causes.len(), "{sections:?}");
-    for cause in causes {
+    for (cause, one, _) in headings {
         let only = TransferReport {
             renamed: report
                 .renamed
@@ -120,7 +152,7 @@ fn renamed_items_are_grouped_by_why_they_were_renamed() {
         let Some(Presentation::Notice { heading: shown, .. }) = presentation(&only) else {
             panic!("one renamed item gets a notice");
         };
-        assert_eq!(shown, heading(cause), "{cause:?}");
+        assert_eq!(shown, crate::i18n::tr(one), "{cause:?}");
     }
 }
 
@@ -218,6 +250,16 @@ fn items_left_out_or_left_behind_make_the_report_a_warning_or_follow_a_stop() {
             name = "data"
         );
         assert_eq!(detail.contains(&*replacement), in_trash_count > 0, "{row}");
+        let undeletable = rust_i18n::t!(
+            "Could not delete “%{name}”: %{error}",
+            name = "data",
+            error = reason
+        );
+        assert_eq!(
+            detail.matches(&*undeletable).count(),
+            usize::from(kept_count > 0) + usize::from(in_trash_count > 0),
+            "{row}"
+        );
         assert_eq!(
             detail.contains(&reason),
             kept_count + in_trash_count > 0,
@@ -232,28 +274,44 @@ fn links_left_out_get_their_own_section_and_undo_says_what_it_leaves_out() {
         location: Location::local("/copy/env/bin/python"),
         kind,
     };
-    let report = TransferReport {
-        skipped: vec![skipped(SpecialKind::Socket), skipped(SpecialKind::Symlink)],
-        ..TransferReport::default()
-    };
-    let Some(Presentation::Warning { detail }) = presentation(&report) else {
-        panic!("anything left out makes a warning");
-    };
-    let sections = detail
-        .split("\n\n")
-        .filter(|line| !line.starts_with('•'))
-        .collect::<Vec<_>>();
-    assert_eq!(sections.len(), 2, "{detail}");
-    assert_ne!(sections[0], sections[1]);
-    assert_eq!(detail.matches('•').count(), 2);
+    for (count, special, links) in [
+        (
+            1,
+            "This special file can\u{2019}t be copied and was left out",
+            "This symbolic link can\u{2019}t be stored at the destination and was left out",
+        ),
+        (
+            2,
+            "These special files can\u{2019}t be copied and were left out",
+            "These symbolic links can\u{2019}t be stored at the destination and were left out",
+        ),
+    ] {
+        let report = TransferReport {
+            skipped: [SpecialKind::Socket, SpecialKind::Symlink]
+                .into_iter()
+                .flat_map(|kind| std::iter::repeat_n(skipped(kind), count))
+                .collect(),
+            ..TransferReport::default()
+        };
+        let Some(Presentation::Warning { detail }) = presentation(&report) else {
+            panic!("anything left out makes a warning");
+        };
+        let sections = detail
+            .split("\n\n")
+            .filter(|line| !line.starts_with('•'))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            sections,
+            [crate::i18n::tr(special), crate::i18n::tr(links)],
+            "{count}"
+        );
+        assert_eq!(detail.matches('•').count(), 2 * count, "{count}");
+    }
 
     let kept = KeptItem {
         location: Location::local("/source/env/bin/python"),
         cause: KeptCause::Skipped(SpecialKind::Symlink),
     };
-    let note = crate::i18n::tr(
-        "Undo can\u{2019}t move these items back, as part of each stayed in its original folder.",
-    );
     for (in_trash, left_out, noted) in [
         (false, 0, false),
         (false, 1, true),
@@ -261,6 +319,11 @@ fn links_left_out_get_their_own_section_and_undo_says_what_it_leaves_out() {
         (true, 1, false),
     ] {
         let row = format!("in Trash: {in_trash}, kept out of undo: {left_out}");
+        let note = crate::i18n::tr(if left_out == 1 {
+            "Undo can\u{2019}t move this item back, as part of it stayed in its original folder."
+        } else {
+            "Undo can\u{2019}t move these items back, as part of each stayed in its original folder."
+        });
         let mut report = TransferReport {
             kept_out_of_undo: (0..left_out)
                 .map(|index| Location::local(format!("/source/project {index}")))
@@ -304,8 +367,12 @@ fn a_stop_lists_renamed_items_by_cause_under_its_outcome() {
     let detail = outcome_detail(outcome.to_owned(), &report);
 
     assert!(detail.starts_with(&format!("{outcome}\n\n")), "{detail}");
-    for cause in [RenameCause::Alias, RenameCause::Taken] {
-        assert_eq!(detail.matches(&heading(cause)).count(), 1, "{cause:?}");
+    for heading in [
+        "The destination can\u{2019}t tell these names apart",
+        "This name was already taken",
+    ] {
+        let heading = crate::i18n::tr(heading);
+        assert_eq!(detail.matches(&heading).count(), 1, "{heading}");
     }
     assert!(detail.contains(&renamed_line(&report.renamed[0])));
     assert_eq!(detail.matches('•').count(), 1 + LISTED_ITEMS);

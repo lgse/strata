@@ -819,20 +819,28 @@ fn a_failed_publication_puts_the_original_back() -> Result<(), Box<dyn Error>> {
 #[test]
 fn a_taken_name_keeps_the_original_aside_and_names_it() -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;
-    // The racer writes just before the new item is published at `target`.
-    let cases: [(Preset, Op, usize); 2] = [
-        (Quirks::default, Op::Rename, 1),
-        (Quirks::vboxsf, Op::Create, 0),
+    // The racer writes just before the new item is published at `target`, or
+    // saves over it just as the original is set aside, which sets the save aside.
+    let cases: [(Preset, Op, usize, bool, bool); 4] = [
+        (Quirks::default, Op::Rename, 1, false, false),
+        (Quirks::vboxsf, Op::Create, 0, false, false),
+        (Quirks::default, Op::Rename, 0, true, false),
+        (Quirks::default, Op::Rename, 0, true, true),
     ];
-    for (quirks, op, skip) in cases {
+    for (quirks, op, skip, saves_over, move_source) in cases {
         let root = tempfile::tempdir()?;
         let source = root.path().join("source");
         let target = root.path().join("target");
         fs::write(&source, b"new")?;
         fs::write(&target, b"old")?;
-        let racer_target = target.clone();
+        let (racer_target, saved) = (target.clone(), root.path().join("saved"));
         let racer: Box<dyn FnMut() + Send> = Box::new(move || {
-            let _ = fs::write(&racer_target, b"racer");
+            if saves_over {
+                let _ = fs::write(&saved, b"racer");
+                let _ = fs::rename(&saved, &racer_target);
+            } else {
+                let _ = fs::write(&racer_target, b"racer");
+            }
         });
         let _quirks = FsQuirks::install(
             root.path(),
@@ -845,21 +853,28 @@ fn a_taken_name_keeps_the_original_aside_and_names_it() -> Result<(), Box<dyn Er
             ),
         );
 
-        let (result, _) = replace_reporting(&source, &target, false);
+        let (result, _) = replace_reporting(&source, &target, move_source);
 
-        let error = result.expect_err("the racer keeps the name");
+        let row = format!("{op:?}, saves over: {saves_over}, moving: {move_source}");
+        let error = result.expect_err("the racer keeps its item");
         let kept = names(root.path())?
             .into_iter()
             .find(|name| name.starts_with(".strata-replaced-"))
             .ok_or("the original was not kept")?;
-        assert!(error.message().contains(&kept), "{op:?}: {error}");
-        assert_eq!(fs::read(root.path().join(&kept))?, b"old", "{op:?}");
-        assert_eq!(fs::read(&target)?, b"racer", "{op:?}");
-        assert_eq!(
-            names(root.path())?,
-            [kept.as_str(), "source", "target"],
-            "{op:?}"
-        );
+        assert!(error.message().contains(&kept), "{row}: {error}");
+        if saves_over {
+            assert_eq!(fs::read(root.path().join(&kept))?, b"racer", "{row}");
+            assert_eq!(names(root.path())?, [kept.as_str(), "source"], "{row}");
+        } else {
+            assert_eq!(fs::read(root.path().join(&kept))?, b"old", "{row}");
+            assert_eq!(fs::read(&target)?, b"racer", "{row}");
+            assert_eq!(
+                names(root.path())?,
+                [kept.as_str(), "source", "target"],
+                "{row}"
+            );
+        }
+        assert_eq!(fs::read(&source)?, b"new", "{row}");
     }
     Ok(())
 }
@@ -1019,7 +1034,8 @@ fn same_filesystem_replacing_move_refuses_a_substituted_source() -> Result<(), B
             without_trash(
                 NFS_SUPER_MAGIC,
                 Quirks {
-                    before: vec![(Op::Rename, "source", 0, racer)],
+                    // As the original is set aside, before the source moves.
+                    before: vec![(Op::Rename, "target", 0, racer)],
                     ..quirks()
                 },
             ),

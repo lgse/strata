@@ -6,10 +6,12 @@ pub(crate) mod diagnostics;
 mod document;
 pub(crate) mod document_media;
 pub(crate) mod docx;
+pub(crate) mod file_activity;
 pub(crate) mod file_providers;
 mod file_source;
 pub(crate) mod image_conversion;
 mod install_source;
+mod item_identity;
 pub(crate) mod jobs;
 mod listeners;
 mod mime_type;
@@ -51,6 +53,7 @@ pub(crate) use file_source::{
 };
 pub use install_source::{InstallSource, ManagedInstall};
 pub(crate) use install_source::{ensure_self_managed, installed_executable};
+pub use item_identity::{Attributes, Evidence, IdentityTraits, InodeNumbers, Proof};
 pub use jobs::{
     ActionEventSink, ActionRunEvent, ActionRunRequest, ActionRunner, CancelHandle,
     InvocationSource, JobId, JobRequest, JobService, JobSnapshot, JobStatus, ScriptProgress,
@@ -63,7 +66,9 @@ pub use mime_type::{
 };
 pub(crate) use model_preview::ModelRender;
 pub use model_preview::{ModelFormat, ModelPalette};
-pub(crate) use native_fs::{is_hidden_name, native_hidden_names, native_kind, symlink_kind};
+pub(crate) use native_fs::{
+    is_hidden_name, link_target_kind, listed_kind, native_hidden_names, native_kind, symlink_kind,
+};
 pub(crate) use navigation_history::NavigationHistory;
 pub use operations::{
     ArchiveFormat, CancelledOperation, CompressRequest, CreateDirectoryRequest, CreateFileRequest,
