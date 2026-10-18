@@ -82,10 +82,10 @@ row. Badges share the thumbnail/icon rendering used by Columns, List and Icons.
 ```
 
 Return an empty `actions` array for ineligible selections. No placeholder or
-disabled global menu item is inserted. Strata always keeps each provider's root
-entries together in an inline section with a small, muted, non-interactive
-heading. This is not an extra submenu: providers choose flat actions, recursive
-submenus, or a mixture within their section:
+disabled global menu item is inserted. Unless placed in **Send to…** (below),
+Strata keeps each provider's root entries together in an inline section with a
+small, muted, non-interactive heading. This is not an extra submenu: providers
+choose flat actions, recursive submenus, or a mixture within their section:
 
 ```json
 {"version":1,"id":2,"actions":[{"id":"share","label":"Copy share link","context":"opaque-selection-token"},{"id":"offline","label":"Offline availability","children":[{"id":"keep","label":"Keep offline","icon":"available","context":"opaque-selection-token"}]}]}
@@ -103,6 +103,25 @@ providers supply identical labels. Empty sections and their headings disappear.
 Menus populate asynchronously; retained provider sections and branches reuse
 their models on refresh. Removed leaves are disabled before removal, including
 when their containing section or branch is withdrawn or the menu closes.
+
+A root action that names a *destination*, such as a paired phone, can ask
+to appear inside Strata's **Send to…** submenu instead of the provider section:
+
+```json
+{"version":1,"id":2,"actions":[{"id":"pixel","label":"Pixel","icon":"phone","placement":"send-to","context":"opaque-selection-token"},{"id":"tablet","label":"Tablet","icon":"tablet","placement":"send-to","context":"opaque-selection-token"}]}
+```
+
+Removable drives keep the first, unlabelled group of **Send to…**; each provider's
+destinations follow in a group labelled with its registered name, so labels should
+be the bare destination name. **Send to…** appears as soon as any destination
+exists, including ones that arrive while the menu is open, and disappears when
+the last one is withdrawn. Destinations may have `children`, with the usual tree
+bounds, and their leaves activate exactly like section leaves. `placement` is
+read on root actions only; it is ignored on children, on background (folder)
+menus and in menus without a Send to… entry, where the action stays in the
+provider section. Unrecognized values also keep the section, so a provider that
+uses `placement` degrades to a heading section on older Strata versions without
+a handshake.
 
 Each menu and activation describes the whole selection, never a silently filtered
 subset. An adapter may support cross-account selections; otherwise return no

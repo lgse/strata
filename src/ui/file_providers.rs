@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 use super::thumbnail::ThumbnailSlot;
 use crate::services::file_providers::{
-    self as protocol, Client, Decoration, Feedback, MenuAction, OutcomeStatus, Registration,
-    Request, Update,
+    self as protocol, Client, Decoration, Feedback, MenuAction, OutcomeStatus, Placement,
+    Registration, Request, Update,
 };
 use gtk::{gdk, gio, glib, prelude::*};
 use std::{
@@ -594,7 +594,7 @@ fn notify(owner: &glib::WeakRef<gtk::Widget>, message: &str) {
 }
 /// The caller owns the epoch: rebuilding/closing a menu cancels its old watcher.
 pub(super) fn watch_menu(
-    model: gio::Menu,
+    models: (gio::Menu, Option<gio::Menu>),
     group: gio::SimpleActionGroup,
     owner: (&gtk::Widget, &gtk::PopoverMenu),
     paths: Vec<PathBuf>,
@@ -621,7 +621,7 @@ pub(super) fn watch_menu(
     let owner = owner.downgrade();
     let popover = popover.downgrade();
     let mut renderer = menus::Renderer::new(
-        model,
+        models,
         group,
         owner.clone(),
         popover.clone(),

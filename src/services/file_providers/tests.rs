@@ -371,6 +371,32 @@ fn responses_require_method_fields_and_validate_partial_outcomes() {
 }
 
 #[test]
+fn placement_parses_send_to_and_tolerates_future_values_on_any_node() {
+    let parse = |placement: serde_json::Value| {
+        let frame = serde_json::json!({"version":1,"id":1,"actions":[
+            {"id":"pixel","label":"Pixel","placement":placement,
+             "children":[{"id":"root","label":"Drive root","placement":"send-to"}]}
+        ]});
+        checked_reply(&serde_json::to_vec(&frame).expect("json"), &manifest())
+    };
+    let known = parse("send-to".into()).expect("known placement");
+    let root = &known.actions.expect("actions")[0];
+    assert!(root.sends_to());
+    assert_eq!(root.placement, Some(Placement::SendTo));
+    assert!(
+        root.children.as_ref().expect("children")[0].sends_to(),
+        "a child's placement is the host's to ignore, not a protocol error"
+    );
+    let future = parse("float-to-top".into()).expect("future placement");
+    let root = &future.actions.expect("actions")[0];
+    assert!(!root.sends_to());
+    assert_eq!(root.placement, Some(Placement::Unrecognized));
+    assert!(parse(7.into()).is_err(), "placement keeps its string type");
+    let absent = parse(serde_json::Value::Null).expect("null means no placement");
+    assert_eq!(absent.actions.expect("actions")[0].placement, None);
+}
+
+#[test]
 fn activation_feedback_is_honored_only_for_fully_accepted_outcomes() {
     let accepted = serde_json::json!({"status":"accepted","accepted":1,"total":1});
     for (outcome, feedback, expected) in [

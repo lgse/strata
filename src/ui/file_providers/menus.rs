@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-use super::{MenuAction, MenuKey, MenuResult, Pending, request, with_hub};
+use super::{MenuAction, MenuKey, MenuResult, Pending, Placement, request, with_hub};
 use gtk::{gio, glib, prelude::*};
 use std::{
     cell::{Cell, RefCell},
@@ -123,6 +123,10 @@ impl Node {
         }) {
             item.set_icon(&icon);
         }
+        if self.data.sends_to() {
+            item.set_attribute_value("x-strata-send-to-device", Some(&true.to_variant()));
+            item.set_attribute_value("x-strata-description", Some(&label.to_variant()));
+        }
         item
     }
 }
@@ -223,46 +227,23 @@ impl ProviderSection {
     }
 }
 
-pub(super) struct Renderer {
-    context: Context,
-    popover: glib::WeakRef<gtk::PopoverMenu>,
+/// Provider sections of one menu model, in provider order.
+struct Sections {
     model: gio::Menu,
     sections: Vec<ProviderSection>,
 }
 
-impl Renderer {
-    pub(super) fn new(
-        model: gio::Menu,
-        group: gio::SimpleActionGroup,
-        owner: glib::WeakRef<gtk::Widget>,
-        popover: glib::WeakRef<gtk::PopoverMenu>,
-        key: MenuKey,
-        alive: Rc<Cell<u64>>,
-        epoch: u64,
-    ) -> Self {
-        Self {
-            context: Context {
-                group,
-                owner,
-                key,
-                alive,
-                epoch,
-            },
-            popover,
-            model,
-            sections: Vec::new(),
-        }
-    }
-
-    pub(super) fn update(&mut self, result: MenuResult) -> bool {
-        let mut groups: BTreeMap<usize, MenuResult> = BTreeMap::new();
-        for (provider, action) in result {
-            groups.entry(provider).or_default().push((provider, action));
-        }
+impl Sections {
+    fn update(
+        &mut self,
+        context: &Context,
+        groups: &BTreeMap<usize, MenuResult>,
+        popover: Option<gtk::PopoverMenu>,
+    ) -> bool {
         let mut changed = false;
         for index in (0..self.sections.len()).rev() {
             if !groups.contains_key(&self.sections[index].provider) {
-                self.sections.remove(index).retire(&self.context);
+                self.sections.remove(index).retire(context);
                 self.model.remove(index as i32);
                 changed = true;
             }
@@ -285,18 +266,95 @@ impl Renderer {
             }
             let section = &mut self.sections[index];
             changed |= reconcile(
-                &self.context,
+                context,
                 &section.model,
                 usize::from(section.heading),
                 &mut section.nodes,
                 actions,
             );
             if new_section {
-                insert_section(&self.model, index, section, self.popover.upgrade());
+                insert_section(&self.model, index, section, popover.clone());
                 changed = true;
             }
         }
         changed
+    }
+
+    fn retire(&self, context: &Context) {
+        for section in &self.sections {
+            section.retire(context);
+        }
+    }
+}
+
+pub(super) struct Renderer {
+    context: Context,
+    popover: glib::WeakRef<gtk::PopoverMenu>,
+    sections: Sections,
+    send_to: Option<Sections>,
+}
+
+impl Renderer {
+    /// `models` holds the section model and, when the menu has one, Send to….
+    pub(super) fn new(
+        models: (gio::Menu, Option<gio::Menu>),
+        group: gio::SimpleActionGroup,
+        owner: glib::WeakRef<gtk::Widget>,
+        popover: glib::WeakRef<gtk::PopoverMenu>,
+        key: MenuKey,
+        alive: Rc<Cell<u64>>,
+        epoch: u64,
+    ) -> Self {
+        let (model, send_to) = models;
+        Self {
+            context: Context {
+                group,
+                owner,
+                key,
+                alive,
+                epoch,
+            },
+            popover,
+            sections: Sections {
+                model,
+                sections: Vec::new(),
+            },
+            send_to: send_to.map(|model| Sections {
+                model,
+                sections: Vec::new(),
+            }),
+        }
+    }
+
+    pub(super) fn update(&mut self, result: MenuResult) -> bool {
+        let mut groups: BTreeMap<usize, MenuResult> = BTreeMap::new();
+        let mut send_to_groups: BTreeMap<usize, MenuResult> = BTreeMap::new();
+        for (provider, mut action) in result {
+            placed(&mut action, true, self.send_to.is_some());
+            let target = match action.placement {
+                Some(Placement::SendTo) => &mut send_to_groups,
+                Some(Placement::Unrecognized) | None => &mut groups,
+            };
+            target.entry(provider).or_default().push((provider, action));
+        }
+        let mut changed = self
+            .sections
+            .update(&self.context, &groups, self.popover.upgrade());
+        if let Some(send_to) = &mut self.send_to {
+            // Nested submenus cannot host the icon heading, so these use plain labels.
+            changed |= send_to.update(&self.context, &send_to_groups, None);
+        }
+        changed
+    }
+}
+
+/// Placement only applies to root actions, and only where Send to… exists.
+fn placed(action: &mut MenuAction, root: bool, send_to_available: bool) {
+    if !root || !send_to_available {
+        action.placement = None;
+    }
+    for child in action.children.iter_mut().flatten() {
+        placed(child, false, send_to_available);
     }
 }
 
@@ -348,8 +406,9 @@ fn heading(icon: &gtk::gdk::Texture, name: &str) -> gtk::Widget {
 
 impl Drop for Renderer {
     fn drop(&mut self) {
-        for section in &self.sections {
-            section.retire(&self.context);
+        self.sections.retire(&self.context);
+        if let Some(send_to) = &self.send_to {
+            send_to.retire(&self.context);
         }
     }
 }

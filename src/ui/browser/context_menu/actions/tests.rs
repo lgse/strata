@@ -98,6 +98,49 @@ fn send_to_updates_an_open_menu_and_reopens_without_navigation() {
                 !has_visible_label(popover.upcast_ref(), "Send to…"),
                 "unplug removes the action without closing the menu"
             );
+            let devices = gio::Menu::new();
+            devices.append(Some("Pixel"), Some("provider.action-0-pixel"));
+            menu.send_to_provider_model
+                .insert_section(0, Some("KDE Connect"), &devices);
+            wait_until(|| has_visible_label(popover.upcast_ref(), "Send to…"));
+            assert!(
+                has_visible_label(popover.upcast_ref(), "Send to…"),
+                "a provider destination shows Send to… without any drive"
+            );
+            let send_to = menu.send_to_model.clone();
+            update(targets.clone());
+            menu.schedule_removable_refresh();
+            let drives_only = || {
+                send_to.n_items() == 1 && send_to.item_attribute_value(0, "label", None).is_none()
+            };
+            wait_until(drives_only);
+            assert_eq!(
+                send_to.n_items(),
+                1,
+                "a rebuild withdraws stale provider destinations until they are re-sent"
+            );
+            assert!(has_visible_label(popover.upcast_ref(), "Send to…"));
+            menu.send_to_provider_model
+                .insert_section(0, Some("KDE Connect"), &devices);
+            assert_eq!(
+                send_to.n_items(),
+                2,
+                "drives first, then the provider section"
+            );
+            assert!(send_to.item_link(0, "section").is_some());
+            assert_eq!(
+                send_to
+                    .item_attribute_value(1, "label", None)
+                    .and_then(|value| value.get::<String>())
+                    .as_deref(),
+                Some("KDE Connect")
+            );
+            menu.send_to_provider_model.remove_all();
+            assert_eq!(send_to.n_items(), 1, "withdrawing devices keeps the drives");
+            assert!(has_visible_label(popover.upcast_ref(), "Send to…"));
+            update(Vec::new());
+            menu.schedule_removable_refresh();
+            wait_until(|| !has_visible_label(popover.upcast_ref(), "Send to…"));
             popover.popdown();
             wait_until(|| !popover.is_mapped());
             update(targets);

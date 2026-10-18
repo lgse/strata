@@ -218,6 +218,7 @@ fn action(id: &str, label: &str, children: Option<Vec<MenuAction>>) -> MenuActio
         icon: None,
         context: None,
         children,
+        placement: None,
     }
 }
 
@@ -270,7 +271,7 @@ fn provider_sections_scope_duplicate_labels_and_retire_empty_groups() {
             let model = gio::Menu::new();
             let group = gio::SimpleActionGroup::new();
             let mut renderer = menus::Renderer::new(
-                model.clone(),
+                (model.clone(), None),
                 group.clone(),
                 glib::WeakRef::new(),
                 glib::WeakRef::new(),
@@ -349,7 +350,7 @@ fn nested_refresh_retains_navigation_model_and_withdraws_old_leaf_actions() {
             let model = gio::Menu::new();
             let group = gio::SimpleActionGroup::new();
             let mut renderer = menus::Renderer::new(
-                model.clone(),
+                (model.clone(), None),
                 group.clone(),
                 glib::WeakRef::new(),
                 glib::WeakRef::new(),
@@ -388,6 +389,130 @@ fn nested_refresh_retains_navigation_model_and_withdraws_old_leaf_actions() {
 }
 
 #[test]
+fn send_to_placement_fills_labelled_sections_or_falls_back_to_the_group() {
+    crate::test_support::gtk_test(
+        "ui::file_providers::tests::send_to_placement_fills_labelled_sections_or_falls_back_to_the_group",
+        || {
+            install_hub();
+            let placed = |id: &str, label: &str, children| {
+                let mut device = action(id, label, children);
+                device.placement = Some(Placement::SendTo);
+                device
+            };
+            let labels = |model: &gio::MenuModel| {
+                (0..model.n_items())
+                    .filter_map(|index| {
+                        model
+                            .item_attribute_value(index, "label", None)
+                            .and_then(|value| value.get::<String>())
+                    })
+                    .collect::<Vec<_>>()
+            };
+            let group = gio::SimpleActionGroup::new();
+            let model = gio::Menu::new();
+            let send_to = gio::Menu::new();
+            let mut renderer = menus::Renderer::new(
+                (model.clone(), Some(send_to.clone())),
+                group.clone(),
+                glib::WeakRef::new(),
+                glib::WeakRef::new(),
+                (vec!["/file".into()], false),
+                Rc::new(Cell::new(1)),
+                1,
+            );
+            let mut pixel = placed("pixel", "Pixel", None);
+            pixel.context = Some("pixel-incarnation".into());
+            let tablet = placed(
+                "tablet",
+                "Tablet",
+                Some(vec![placed("downloads", "Downloads", None)]),
+            );
+            assert!(renderer.update(vec![
+                (0, action("share", "Copy link", None)),
+                (0, pixel.clone()),
+                (0, tablet),
+            ]));
+            assert_eq!(labels(model.upcast_ref()), ["Example Cloud"]);
+            assert_eq!(
+                labels(&model.item_link(0, "section").expect("group")),
+                ["Copy link"]
+            );
+            assert_eq!(labels(send_to.upcast_ref()), ["Example Cloud"]);
+            let devices = send_to.item_link(0, "section").expect("Send to section");
+            assert_eq!(labels(&devices), ["Pixel", "Tablet"]);
+            assert_eq!(
+                devices
+                    .item_attribute_value(0, "x-strata-send-to-device", None)
+                    .and_then(|value| value.get::<bool>()),
+                Some(true)
+            );
+            assert_eq!(
+                devices
+                    .item_attribute_value(0, "x-strata-description", None)
+                    .and_then(|value| value.get::<String>())
+                    .as_deref(),
+                Some("Pixel")
+            );
+            let downloads = devices.item_link(1, "submenu").expect("device submenu");
+            assert_eq!(labels(&downloads), ["Downloads"]);
+            assert!(
+                downloads
+                    .item_attribute_value(0, "x-strata-send-to-device", None)
+                    .is_none(),
+                "placement below the root is ignored"
+            );
+            assert!(group.lookup_action("action-0-pixel").is_some());
+            assert!(group.lookup_action("action-0-downloads").is_some());
+            assert!(group.lookup_action("action-0-tablet").is_none());
+
+            let old_pixel = group.lookup_action("action-0-pixel").expect("device leaf");
+            assert!(renderer.update(vec![(0, action("share", "Copy link", None))]));
+            assert_eq!(
+                send_to.n_items(),
+                0,
+                "withdrawn devices remove their section"
+            );
+            assert!(!old_pixel.is_enabled());
+            assert!(group.lookup_action("action-0-pixel").is_none());
+            assert!(group.lookup_action("action-0-share").is_some());
+            assert_eq!(model.n_items(), 1);
+
+            assert!(renderer.update(vec![(0, pixel.clone())]));
+            assert_eq!(
+                model.n_items(),
+                0,
+                "a provider with only devices has no group"
+            );
+            assert_eq!(labels(send_to.upcast_ref()), ["Example Cloud"]);
+            drop(renderer);
+            assert!(group.list_actions().is_empty());
+            send_to.remove_all();
+
+            let mut without_send_to = menus::Renderer::new(
+                (model.clone(), None),
+                group.clone(),
+                glib::WeakRef::new(),
+                glib::WeakRef::new(),
+                (vec!["/file".into()], true),
+                Rc::new(Cell::new(1)),
+                1,
+            );
+            without_send_to.update(vec![(0, pixel)]);
+            let section = model.item_link(0, "section").expect("fallback group");
+            assert_eq!(labels(&section), ["Pixel"]);
+            assert!(
+                section
+                    .item_attribute_value(0, "x-strata-send-to-device", None)
+                    .is_none(),
+                "without Send to… the device is an ordinary group action"
+            );
+            assert_eq!(send_to.n_items(), 0);
+            HUB.with(|cell| cell.replace(None));
+        },
+    );
+}
+
+#[test]
 fn retired_menu_does_not_remove_replacement_menu_actions() {
     crate::test_support::gtk_test(
         "ui::file_providers::tests::retired_menu_does_not_remove_replacement_menu_actions",
@@ -398,7 +523,7 @@ fn retired_menu_does_not_remove_replacement_menu_actions() {
             let alive = Rc::new(Cell::new(1));
             let make = |epoch| {
                 menus::Renderer::new(
-                    model.clone(),
+                    (model.clone(), None),
                     group.clone(),
                     glib::WeakRef::new(),
                     glib::WeakRef::new(),
@@ -707,7 +832,7 @@ fn provider_icon_heading_keeps_the_name_and_action_positions() {
             let group = gio::SimpleActionGroup::new();
             popover.insert_action_group("provider", Some(&group));
             let mut renderer = menus::Renderer::new(
-                model.clone(),
+                (model.clone(), None),
                 group.clone(),
                 glib::WeakRef::new(),
                 popover.downgrade(),

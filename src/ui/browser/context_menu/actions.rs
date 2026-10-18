@@ -30,7 +30,11 @@ pub(super) struct ActionMenuSection {
     provider_group: gio::SimpleActionGroup,
     provider_epoch: Rc<std::cell::Cell<u64>>,
     pub(super) transfer_sections: Option<[gio::Menu; 2]>,
-    send_to_row_indices: RefCell<[Option<i32>; 2]>,
+    send_to_model: gio::Menu,
+    send_to_provider_model: gio::Menu,
+    send_to_offset: Rc<Cell<i32>>,
+    send_to_transfer_index: Cell<Option<usize>>,
+    send_to_row: Cell<Option<(usize, i32)>>,
     root_model: gio::Menu,
     header: Option<gtk::Widget>,
     owner: gtk::glib::WeakRef<gtk::Widget>,
@@ -162,6 +166,23 @@ impl ActionMenuSection {
             }
         });
         popover.insert_action_group("provider", Some(&provider_group));
+        // Send to… holds the removable-drive section first, then mirrored
+        // provider sections that arrive and withdraw while the menu is open.
+        let send_to_model = gio::Menu::new();
+        let send_to_provider_model = gio::Menu::new();
+        let send_to_offset = Rc::new(Cell::new(0));
+        let (send_to_root, offset) = (send_to_model.clone(), send_to_offset.clone());
+        send_to_provider_model.connect_items_changed(move |model, position, removed, added| {
+            for _ in 0..removed {
+                send_to_root.remove(offset.get() + position);
+            }
+            for index in position..position + added {
+                send_to_root.insert_item(
+                    offset.get() + index,
+                    &gio::MenuItem::from_model(model, index),
+                );
+            }
+        });
         let closed_epoch = provider_epoch.clone();
         popover.connect_closed(move |popover| {
             // GTK closes the popover before dispatching the chosen leaf action.
@@ -230,7 +251,11 @@ impl ActionMenuSection {
             provider_group,
             provider_epoch,
             transfer_sections,
-            send_to_row_indices: RefCell::new([None, None]),
+            send_to_model,
+            send_to_provider_model,
+            send_to_offset,
+            send_to_transfer_index: Cell::new(None),
+            send_to_row: Cell::new(None),
             root_model: root,
             header: header.cloned(),
             owner: anchor.downgrade(),
@@ -243,6 +268,12 @@ impl ActionMenuSection {
             refresh_pending: Cell::new(false),
             selection: RefCell::new(None),
             pressed_inside,
+        });
+        let weak = Rc::downgrade(&menu);
+        menu.send_to_model.connect_items_changed(move |_, _, _, _| {
+            if let Some(menu) = weak.upgrade() {
+                menu.sync_send_to_row();
+            }
         });
         let monitor = &menu.monitor;
         if menu.transfer_sections.is_some() {
@@ -402,11 +433,11 @@ impl ActionMenuSection {
             0 => None,
             1 => Some(0),
             _ => Some(1),
-        } && let Some(transfer_sections) = &self.transfer_sections
+        } && self.transfer_sections.is_some()
         {
-            let send_to = gio::Menu::new();
-            append_send_to_menu(
-                &send_to,
+            let devices = gio::Menu::new();
+            append_send_to_devices(
+                &devices,
                 &self.actions,
                 &self.dispatch,
                 &destinations,
@@ -414,15 +445,9 @@ impl ActionMenuSection {
                 &sources,
                 handlers,
             );
-            if send_to.n_items() > 0 {
-                let section = &transfer_sections[transfer_index];
-                let row_index = section.n_items();
-                let devices = send_to.item_link(0, "submenu").expect("Send to submenu");
-                let item = gio::MenuItem::new_submenu(Some(&crate::i18n::tr("Send to…")), &devices);
-                item.set_icon(&gio::ThemedIcon::new(crate::assets::icons::SEND_HORIZONTAL));
-                section.append_item(&item);
-                self.send_to_row_indices.borrow_mut()[transfer_index] = Some(row_index);
-            }
+            self.send_to_transfer_index.set(Some(transfer_index));
+            self.set_removable_devices((devices.n_items() > 0).then_some(devices));
+            self.sync_send_to_row();
         }
 
         let (Some(inputs), Some(paths), Some(parent)) =
@@ -463,8 +488,12 @@ impl ActionMenuSection {
     fn watch_providers(&self, paths: Vec<PathBuf>, background: bool) {
         let popover = self.popover.downgrade();
         let navigation = self.navigation.clone();
+        let send_to = self
+            .send_to_transfer_index
+            .get()
+            .map(|_| self.send_to_provider_model.clone());
         crate::ui::file_providers::watch_menu(
-            self.provider_model.clone(),
+            (self.provider_model.clone(), send_to),
             self.provider_group.clone(),
             (
                 self.owner
@@ -491,19 +520,51 @@ impl ActionMenuSection {
     fn clear(&self) {
         self.provider_epoch.set(self.provider_epoch.get() + 1);
         self.provider_model.remove_all();
+        self.send_to_provider_model.remove_all();
         for name in self.provider_group.list_actions() {
             self.provider_group.remove_action(&name);
         }
-        if let Some(transfer_sections) = &self.transfer_sections {
-            for (index, row_index) in self.send_to_row_indices.borrow_mut().iter_mut().enumerate() {
-                if let Some(row_index) = row_index.take() {
-                    transfer_sections[index].remove(row_index);
-                }
-            }
-        }
+        self.send_to_transfer_index.set(None);
+        self.set_removable_devices(None);
+        self.sync_send_to_row();
         self.model.remove_all();
         for name in self.actions.list_actions() {
             self.actions.remove_action(&name);
+        }
+    }
+
+    fn set_removable_devices(&self, devices: Option<gio::Menu>) {
+        if self.send_to_offset.replace(0) == 1 {
+            self.send_to_model.remove(0);
+        }
+        if let Some(devices) = devices {
+            self.send_to_model.insert_section(0, None, &devices);
+            self.send_to_offset.set(1);
+        }
+    }
+
+    /// Shows Send to… while it has any destination, removable or provider-supplied.
+    fn sync_send_to_row(&self) {
+        let Some(transfer_sections) = &self.transfer_sections else {
+            return;
+        };
+        let wanted = self
+            .send_to_transfer_index
+            .get()
+            .filter(|_| self.send_to_model.n_items() > 0);
+        if self.send_to_row.get().map(|(index, _)| index) == wanted {
+            return;
+        }
+        if let Some((index, row)) = self.send_to_row.take() {
+            transfer_sections[index].remove(row);
+        }
+        if let Some(index) = wanted {
+            let section = &transfer_sections[index];
+            let item =
+                gio::MenuItem::new_submenu(Some(&crate::i18n::tr("Send to…")), &self.send_to_model);
+            item.set_icon(&gio::ThemedIcon::new(crate::assets::icons::SEND_HORIZONTAL));
+            self.send_to_row.set(Some((index, section.n_items())));
+            section.append_item(&item);
         }
     }
 
@@ -566,8 +627,8 @@ impl ActionMenuSection {
     }
 }
 
-pub(super) fn append_send_to_menu(
-    model: &gio::Menu,
+fn append_send_to_devices(
+    devices: &gio::Menu,
     actions: &gio::SimpleActionGroup,
     dispatch: &super::commands::MenuDispatch,
     destinations: &[crate::ui::RemovableDestination],
@@ -575,10 +636,9 @@ pub(super) fn append_send_to_menu(
     sources: &[Location],
     handlers: SendToMenuHandlers,
 ) {
-    if destinations.is_empty() || sources.is_empty() {
+    if sources.is_empty() {
         return;
     }
-    let devices = gio::Menu::new();
     for (index, destination) in destinations.iter().enumerate() {
         let name = format!("send-to-{index}");
         let id = destination.id.clone();
@@ -651,7 +711,6 @@ pub(super) fn append_send_to_menu(
         item.set_attribute_value("x-strata-description", Some(&destination.name.to_variant()));
         devices.append_item(&item);
     }
-    model.append_submenu(Some(&crate::i18n::tr("Send to…")), &devices);
 }
 
 fn valid_recent_destinations(root: &Path, persisted: &[PathBuf]) -> Vec<PathBuf> {

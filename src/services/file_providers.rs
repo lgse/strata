@@ -13,7 +13,8 @@ mod protocol;
 mod transport;
 
 pub(crate) use protocol::{
-    Decoration, Feedback, MenuAction, OutcomeStatus, Reply, Request, query_batch, selection_fits,
+    Decoration, Feedback, MenuAction, OutcomeStatus, Placement, Reply, Request, query_batch,
+    selection_fits,
 };
 pub(crate) use transport::{Client, Update, start};
 pub(crate) const PATH_LIMIT: usize = 200;
