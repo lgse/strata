@@ -240,7 +240,7 @@ impl PreviewState {
             .scroll
             .borrow()
             .as_ref()
-            .map(|_| Target::Source(self.source_preview.view.clone()))
+            .map(|_| Target::Source(self.source_preview.view.borrow().clone()))
     }
 
     pub(super) fn refresh_find(self: &Rc<Self>) {

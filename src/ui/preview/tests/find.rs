@@ -34,7 +34,7 @@ fn source_find_tracks_incremental_text_and_resets_for_another_file() {
             );
             preview.state.find_button.emit_clicked();
             preview.state.find.entry.set_text("éclair");
-            let buffer = preview.state.source_preview.view.buffer();
+            let buffer = preview.state.source_preview.view.borrow().buffer();
             assert!(buffer.selection_bounds().is_none());
             while glib::MainContext::default().iteration(false) {}
             let (start, end) = buffer

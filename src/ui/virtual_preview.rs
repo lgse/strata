@@ -198,11 +198,13 @@ pub(super) fn source_document(
 }
 
 pub(super) fn use_virtual_plain_source(content: &str) -> bool {
-    content.len() > 128 * 1024
-        || content.lines().count() > 512
-        || content
-            .lines()
-            .any(|line| line.len() > PATHOLOGICAL_TEXT_UNIT_BYTES)
+    content.len() > 128 * 1024 || content.lines().count() > 512 || has_pathological_line(content)
+}
+
+pub(super) fn has_pathological_line(content: &str) -> bool {
+    content
+        .lines()
+        .any(|line| line.len() > PATHOLOGICAL_TEXT_UNIT_BYTES)
 }
 
 fn virtual_preview(
