@@ -2017,7 +2017,10 @@ impl SidebarState {
         let row = sidebar_button(crate::assets::icons::CLOCK, &crate::i18n::tr("Recent"));
         crate::ui::accessibility::set_description(&row, Some("recent:///"));
         self.add_keycap(&row, &place_keycap(super::keys::bindings::GO_RECENT));
-        self.bind_place_row(&row, location, PlaceNavigation::Direct);
+        self.bind_place_row(&row, location.clone(), PlaceNavigation::Direct);
+        self.attach_place_context_menu(&row, location, |state| {
+            state.preference_manager.set_sidebar_show_recent(false);
+        });
         self.append_sidebar_row(&row);
         self.make_place_reorderable(&row, "recent");
     }
@@ -2055,6 +2058,13 @@ impl SidebarState {
             .build();
         popover.add_css_class("folder-context-popover");
         popover.set_parent(&row);
+        sidebar::append_open_in_tab(
+            &menu,
+            &popover,
+            &row,
+            &self.view,
+            &Location::uri("trash:///"),
+        );
         let properties_popover = popover.downgrade();
         let properties_view = self.view.downgrade();
         properties.connect_clicked(move |_| {
@@ -2121,38 +2131,25 @@ impl SidebarState {
         row.add_css_class("reorderable");
         row.set_cursor_from_name(Some("pointer"));
 
-        let drag = gtk::DragSource::builder()
-            .actions(gtk::gdk::DragAction::MOVE)
-            .build();
-        let weak_state = Rc::downgrade(self);
-        let source_payload = payload.clone();
-        drag.connect_prepare(move |_, _, _| {
-            let payload = &source_payload;
-            let content = gtk::gdk::ContentProvider::for_value(&payload.to_value());
-            if let Some(index) = parse_pinned_drag_source(payload)
-                && let Some(state) = weak_state.upgrade()
-                && let Some(place) = state.pinned_places.borrow().get(index)
-            {
-                pinned_drop::start_reorder(&content, place.clone());
-            }
-            Some(content)
-        });
-        drag.connect_drag_begin(move |drag, _| {
-            if let Some(row) = drag.widget() {
-                row.add_css_class("dragging");
-                row.set_cursor_from_name(Some("grabbing"));
-            }
-        });
-        let end_feedback = self.drop_feedback.clone();
-        drag.connect_drag_end(move |drag, _, _| {
-            pinned_drop::clear_reorder();
-            end_feedback.reset();
-            if let Some(row) = drag.widget() {
-                row.remove_css_class("dragging");
-                row.set_cursor_from_name(Some("pointer"));
-            }
-        });
-        row.add_controller(drag);
+        let pinned = parse_pinned_drag_source(&payload);
+        let folder = pinned
+            .and_then(|index| self.pinned_places.borrow().get(index).cloned())
+            .or_else(|| {
+                self.place_rows
+                    .borrow()
+                    .iter()
+                    .find(|(_, candidate)| candidate == row)
+                    .map(|(location, _)| (location.clone(), location.display_path()))
+            });
+        if let Some(folder) = folder {
+            sidebar::install_drag(
+                row,
+                folder,
+                payload.clone(),
+                pinned.is_some(),
+                self.drop_feedback.clone(),
+            );
+        }
 
         let on_drop: SidebarReorder = Rc::new(on_drop);
         self.install_reorder_target(row, payload.clone(), None, on_drop.clone());
@@ -2389,6 +2386,7 @@ impl SidebarState {
             return Some(ids);
         }
         if let Some(location) = mounted_location {
+            sidebar::install_open_in_tab(&row, &self.view, &location, &self.drop_feedback);
             self.place_rows
                 .borrow_mut()
                 .push((location.clone(), row.clone()));
@@ -2541,6 +2539,7 @@ impl SidebarState {
             .build();
         popover.add_css_class("folder-context-popover");
         popover.set_parent(&row);
+        sidebar::append_open_in_tab(&menu, &popover, &row, &self.view, &properties_location);
 
         let properties_popover = popover.downgrade();
         let properties_view = self.view.downgrade();
@@ -2684,6 +2683,7 @@ impl SidebarState {
             .build();
         popover.add_css_class("folder-context-popover");
         popover.set_parent(row);
+        sidebar::append_open_in_tab(&menu, &popover, row, &self.view, &location);
 
         if let Some((button, action)) = extra_item {
             let popover = popover.downgrade();
@@ -4296,6 +4296,16 @@ fn attach_device_actions_menu(
         .build();
     popover.add_css_class("folder-context-popover");
     popover.set_parent(row);
+    let mounted_location = properties
+        .as_ref()
+        .and_then(|target| match target {
+            drive_dialogs::PropertiesTarget::Volume(volume) => volume.get_mount(),
+            drive_dialogs::PropertiesTarget::Mount(mount) => Some(mount.clone()),
+        })
+        .and_then(|mount| location_for_file(&mount.root()));
+    if let Some(location) = mounted_location {
+        sidebar::append_open_in_tab(&menu, &popover, row, view, &location);
+    }
     if let (Some(action), Some(on_crypto)) = (actions.encrypted, on_crypto) {
         let option = sidebar_context_option(action.icon(), action.label(), false);
         menu.append(&option);

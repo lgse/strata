@@ -102,6 +102,7 @@ impl TabWindow {
             persist,
             drag_token: glib::uuid_string_random().to_string(),
         });
+        state.strip.install_drop(&state);
         state.add(None);
         state.install_actions(window);
         state.install_keys(window);
@@ -155,6 +156,7 @@ impl TabWindow {
                 "select-tab",
                 "open-tab-at",
                 "open-window-at",
+                "sidebar-tab-drag",
             ] {
                 window.remove_action(name);
             }
@@ -288,6 +290,7 @@ impl TabWindow {
         });
         self.tabs.borrow_mut().push(tab);
         self.strip.add(self, id, &content.browser);
+        strip::install_new_tab_drop(self, &content.header.new_tab);
         let weak = Rc::downgrade(self);
         content.browser.observe_tab_location(move |location| {
             if let Some(state) = weak.upgrade() {
@@ -436,7 +439,7 @@ impl TabWindow {
 
     fn refresh_chrome(&self) {
         let multiple = self.tabs.borrow().len() > 1;
-        self.strip.widget().set_visible(multiple);
+        self.strip.refresh_visibility();
         for tab in self.tabs.borrow().iter() {
             let header = &tab.content.header;
             if let Some(parent) = header.new_tab.parent().and_downcast::<gtk::Box>() {
@@ -474,6 +477,19 @@ impl TabWindow {
     }
 
     fn install_actions(self: &Rc<Self>, window: &gtk::ApplicationWindow) {
+        let sidebar_drag =
+            gio::SimpleAction::new("sidebar-tab-drag", Some(&bool::static_variant_type()));
+        let weak = Rc::downgrade(self);
+        sidebar_drag.connect_activate(move |_, parameter| {
+            if let Some(state) = weak.upgrade() {
+                let active = parameter
+                    .and_then(|value| value.get::<bool>())
+                    .unwrap_or(false);
+                state.strip.show_open_drop(active && !state.blocked());
+            }
+        });
+        window.add_action(&sidebar_drag);
+
         let create = gio::SimpleAction::new("new-tab", None);
         let weak = Rc::downgrade(self);
         create.connect_activate(move |_, _| {
@@ -555,16 +571,32 @@ impl TabWindow {
     }
 
     fn reorder(&self, source: u64, target: u64) {
-        if source == target || self.blocked() {
+        let tabs = self.tabs.borrow();
+        let (Some(from), Some(to)) = (
+            tabs.iter().position(|tab| tab.id == source),
+            tabs.iter().position(|tab| tab.id == target),
+        ) else {
+            return;
+        };
+        drop(tabs);
+        self.reorder_at(source, to + usize::from(from < to));
+    }
+
+    fn reorder_at(&self, source: u64, insertion: usize) {
+        if self.blocked() {
             return;
         }
         let mut tabs = self.tabs.borrow_mut();
         let Some(from) = tabs.iter().position(|tab| tab.id == source) else {
             return;
         };
-        let Some(to) = tabs.iter().position(|tab| tab.id == target) else {
+        if insertion > tabs.len() {
             return;
-        };
+        }
+        let to = insertion - usize::from(from < insertion);
+        if from == to {
+            return;
+        }
         let tab = tabs.remove(from);
         tabs.insert(to, tab);
         self.strip
@@ -682,6 +714,9 @@ impl TabWindow {
     }
 
     fn handle_key(self: &Rc<Self>, press: &KeyPress) -> glib::Propagation {
+        if press.is(ESCAPE_ANY) && self.strip.cancel_drag() {
+            return glib::Propagation::Stop;
+        }
         // GDK reports a modifier key's state from before its own press.
         self.show_hints((press.modifiers() | press.modifier_key()) == TAB_NUMBERS.modifiers());
         if self.blocked() || !is_tab_shortcut(press) {

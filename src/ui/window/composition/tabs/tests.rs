@@ -1114,6 +1114,134 @@ fn explicit_target_windows_do_not_clobber_the_saved_session() {
     );
 }
 
+#[test]
+fn tab_drop_slots_preserve_the_active_browser_and_saved_order() {
+    gtk_test(
+        "ui::window::composition::tabs::tests::tab_drop_slots_preserve_the_active_browser_and_saved_order",
+        || {
+            let root = tempfile::tempdir().expect("tab folders");
+            let (window, tabs) = open();
+            tabs.preferences.set_restore_tabs(true);
+            let locations: Vec<_> = ["alpha", "beta", "gamma"]
+                .into_iter()
+                .map(|name| {
+                    let path = root.path().join(name);
+                    std::fs::create_dir(&path).expect("folder");
+                    Location::local(path)
+                })
+                .collect();
+            load(&tabs.active_browser(), locations[0].clone());
+            for location in &locations[1..] {
+                tabs.open_in_new_tab(location.clone());
+                wait_until(|| {
+                    tabs.active_browser().browser().active_location().as_ref() == Some(location)
+                });
+            }
+            let active = tabs.active.get();
+            let browser = tabs.active_browser().browser();
+            for (source, insertion, order) in [
+                (1, 3, [2, 3, 1]),
+                (1, 1, [2, 1, 3]),
+                (3, 0, [3, 2, 1]),
+                (3, 1, [3, 2, 1]),
+                (2, 2, [3, 2, 1]),
+                (2, 3, [3, 1, 2]),
+                (99, 0, [3, 1, 2]),
+                (1, 4, [3, 1, 2]),
+            ] {
+                tabs.reorder_at(source, insertion);
+                assert_eq!(
+                    tabs.tabs
+                        .borrow()
+                        .iter()
+                        .map(|tab| tab.id)
+                        .collect::<Vec<_>>(),
+                    order
+                );
+                assert_eq!(tabs.active.get(), active);
+                assert!(Rc::ptr_eq(&tabs.active_browser().browser(), &browser));
+                let expected: Vec<_> = order
+                    .iter()
+                    .map(|id| locations[*id as usize - 1].clone())
+                    .collect();
+                wait_until(|| saved_session().is_some_and(|session| session.tabs == expected));
+                assert_eq!(
+                    saved_session().expect("saved tabs").active,
+                    order
+                        .iter()
+                        .position(|id| *id == active)
+                        .expect("active tab")
+                );
+            }
+            window.destroy();
+        },
+    );
+}
+
+#[test]
+fn sidebar_tab_actions_preserve_the_original_tab() {
+    gtk_test(
+        "ui::window::composition::tabs::tests::sidebar_tab_actions_preserve_the_original_tab",
+        || {
+            let application = application();
+            for from_menu in [false, true] {
+                let root = tempfile::tempdir().expect("original folder");
+                let (window, tabs) = open_in(&application);
+                tabs.preferences.set_sidebar_show_home(true);
+                let original = tabs.active_browser();
+                load(&original, Location::local(root.path()));
+                let home = Location::local(glib::home_dir());
+                let row = tabs
+                    .active_tab()
+                    .content
+                    .sidebar
+                    .state
+                    .place_rows
+                    .borrow()
+                    .iter()
+                    .find(|(location, _)| location == &home)
+                    .map(|(_, row)| row.clone())
+                    .expect("Home row");
+                if from_menu {
+                    let option = find_widget(row.upcast_ref(), &|widget| {
+                        widget
+                            .downcast_ref::<gtk::Label>()
+                            .is_some_and(|label| label.text() == "Open in New Tab")
+                    })
+                    .expect("new tab menu label")
+                    .ancestor(gtk::Button::static_type())
+                    .and_downcast::<gtk::Button>()
+                    .expect("menu button");
+                    option.emit_clicked();
+                } else {
+                    let controllers = row.observe_controllers();
+                    let middle = (0..controllers.n_items())
+                        .filter_map(|index| {
+                            controllers.item(index).and_downcast::<gtk::GestureClick>()
+                        })
+                        .find(|gesture| gesture.button() == 2)
+                        .expect("middle click");
+                    middle.emit_by_name::<()>("released", &[&1_i32, &0_f64, &0_f64]);
+                }
+                wait_until(|| {
+                    tabs.active_browser().browser().active_location() == Some(home.clone())
+                });
+                assert_eq!(tabs.tabs.borrow().len(), 2);
+                tabs.select_index(0);
+                assert!(Rc::ptr_eq(
+                    &tabs.active_browser().browser(),
+                    &original.browser()
+                ));
+                assert_eq!(
+                    original.browser().active_location(),
+                    Some(Location::local(root.path()))
+                );
+                window.destroy();
+            }
+        },
+    );
+}
+
 fn open_target_fixture() -> (
     tempfile::TempDir,
     gtk::ApplicationWindow,

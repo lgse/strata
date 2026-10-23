@@ -302,6 +302,7 @@ headerbar.browser-header menubutton.header-action > button {
 }
 
 .browser-tab:drop(active),
+.tab-strip overlay:drop(active),
 .tab-strip .tab-select:drop(active) {
   background: transparent;
   box-shadow: none;
@@ -334,6 +335,14 @@ headerbar.browser-header menubutton.header-action > button {
 
 .tab-indicator {
   color: @strata_accent;
+}
+
+button.header-action.tab-drop-hover,
+button.header-action.tab-drop-hover:drop(active) {
+  color: @strata_accent;
+  background: alpha(@strata_accent, 0.15);
+  outline: none;
+  box-shadow: none;
 }
 
 .tab-key-hint {
