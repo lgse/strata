@@ -1,4 +1,13 @@
 {
+  "Save bookmark": "Lưu dấu trang",
+  "Jump to bookmark": "Đi đến dấu trang",
+  "Save current folder under a letter": "Lưu thư mục hiện tại bằng một chữ cái",
+  "Jump to a bookmarked folder by letter": "Đi đến thư mục đã đánh dấu bằng chữ cái",
+  "Only local folders can be bookmarked": "Chỉ có thể đánh dấu thư mục cục bộ",
+  "Saved bookmark %{key}": "Đã lưu dấu trang %{key}",
+  "Bookmark %{key} is unavailable": "Dấu trang %{key} không khả dụng",
+  "No bookmark %{key}": "Không có dấu trang %{key}",
+  "Could not access bookmarks: %{error}": "Không thể truy cập dấu trang: %{error}",
   " (%{size} known; size incomplete)": " (đã biết %{size}; kích thước chưa đầy đủ)",
   " (size unavailable)": " (không có kích thước)",
   "%{changes} · published %{date}": "%{changes} · phát hành ngày %{date}",

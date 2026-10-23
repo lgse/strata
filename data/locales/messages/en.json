@@ -1,4 +1,13 @@
 {
+  "Save bookmark": "Save bookmark",
+  "Jump to bookmark": "Jump to bookmark",
+  "Save current folder under a letter": "Save current folder under a letter",
+  "Jump to a bookmarked folder by letter": "Jump to a bookmarked folder by letter",
+  "Only local folders can be bookmarked": "Only local folders can be bookmarked",
+  "Saved bookmark %{key}": "Saved bookmark %{key}",
+  "Bookmark %{key} is unavailable": "Bookmark %{key} is unavailable",
+  "No bookmark %{key}": "No bookmark %{key}",
+  "Could not access bookmarks: %{error}": "Could not access bookmarks: %{error}",
   " (%{size} known; size incomplete)": " (%{size} known; size incomplete)",
   " (size unavailable)": " (size unavailable)",
   "%{changes} · published %{date}": "%{changes} · published %{date}",

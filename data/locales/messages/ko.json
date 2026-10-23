@@ -1,4 +1,13 @@
 {
+  "Save bookmark": "북마크 저장",
+  "Jump to bookmark": "북마크로 이동",
+  "Save current folder under a letter": "현재 폴더를 영문자에 할당하여 저장",
+  "Jump to a bookmarked folder by letter": "영문자로 북마크한 폴더로 이동",
+  "Only local folders can be bookmarked": "로컬 폴더만 북마크할 수 있습니다",
+  "Saved bookmark %{key}": "북마크 %{key} 저장됨",
+  "Bookmark %{key} is unavailable": "북마크 %{key}을(를) 사용할 수 없습니다",
+  "No bookmark %{key}": "북마크 %{key} 없음",
+  "Could not access bookmarks: %{error}": "북마크에 접근할 수 없습니다: %{error}",
   " (%{size} known; size incomplete)": " (알려진 크기 %{size}, 전체 크기는 불완전함)",
   " (size unavailable)": " (크기를 알 수 없음)",
   "%{changes} · published %{date}": "%{changes} · %{date} 게시",

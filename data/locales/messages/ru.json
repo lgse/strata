@@ -1,4 +1,13 @@
 {
+  "Save bookmark": "Сохранить закладку",
+  "Jump to bookmark": "Перейти к закладке",
+  "Save current folder under a letter": "Сохранить текущую папку под буквой",
+  "Jump to a bookmarked folder by letter": "Перейти к сохранённой папке по букве",
+  "Only local folders can be bookmarked": "В закладки можно добавлять только локальные папки",
+  "Saved bookmark %{key}": "Закладка %{key} сохранена",
+  "Bookmark %{key} is unavailable": "Закладка %{key} недоступна",
+  "No bookmark %{key}": "Нет закладки %{key}",
+  "Could not access bookmarks: %{error}": "Не удалось получить доступ к закладкам: %{error}",
   " (%{size} known; size incomplete)": " (известно %{size}; размер указан не полностью)",
   " (size unavailable)": " (размер недоступен)",
   "%{changes} · published %{date}": "%{changes} · опубликовано %{date}",

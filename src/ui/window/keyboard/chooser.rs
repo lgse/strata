@@ -32,6 +32,8 @@ pub(in crate::ui::window) fn refusal(
         CUT,
         COPY,
         PASTE,
+        BOOKMARK_SET,
+        BOOKMARK_GO,
         ACTIONS,
         UNYANK,
         UNYANK_X,

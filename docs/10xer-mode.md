@@ -490,6 +490,28 @@ a scheme the location bar opens such as `sftp:`, `//host`, `\\host`, or
 `user@host:`) lists nothing and is never searched,
 mounted, or probed before **Enter**.
 
+### Letter bookmarks
+
+From a file listing, press **m**, then a lowercase **a–z**, to save the
+keyboard-focused pane's current directory under that letter. Press **'**, then
+the same letter, to return there. For example, **m p** saves a directory and
+**' p** opens it later. Selecting a child folder does not change what gets saved.
+Saving another directory under the same letter replaces that bookmark.
+
+Letter bookmarks are separate from sidebar pins, shared by all windows, and
+persist across restarts in `$XDG_DATA_HOME/strata/letter-bookmarks.json`
+(default `~/.local/share/strata/letter-bookmarks.json`). Only local directories
+are supported; remote locations and virtual places cannot be saved. A missing
+bookmark or unavailable directory reports an error without navigating.
+
+The footer shows the armed prefix. The **m** menu offers all letters for saving;
+the **'** menu lists only saved letters, each beside its full directory path.
+With no saved bookmarks, no options menu is shown. **Esc** cancels;
+unknown or modified second keys cancel without running another command. Text
+fields keep these keys as ordinary text, and the default keyboard map is
+unchanged. The file chooser does not save or open letter bookmarks. In a media
+preview, **m** still mutes; return to the listing before saving a bookmark.
+
 ## Prompts
 
 Typed commands use the footer, never the pane filter revealer or the global

@@ -140,11 +140,10 @@ impl ChordIndicator {
             mark.set_text(&chord.map(Chord::mark).unwrap_or_default());
             mark.set_visible(chord.is_some());
             match chord {
-                Some(chord) if previous != Some(chord) => {
+                Some(chord) if !rows.is_empty() => {
                     self.panel.show(&mark, chord, &rows, self.armed.clone());
                 }
-                Some(_) => {}
-                None => self.panel.hide(),
+                _ => self.panel.hide(),
             }
         }
         if previous != chord {

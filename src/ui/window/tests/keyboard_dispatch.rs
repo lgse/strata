@@ -21,6 +21,7 @@ mod filter_focus;
 mod folder_jump;
 mod footer_prompt;
 mod go_prompt;
+mod letter_bookmarks;
 mod mode_exit;
 mod open_in_new;
 mod overlay_focus;

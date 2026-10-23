@@ -1,4 +1,13 @@
 {
+  "Save bookmark": "Salvar favorito",
+  "Jump to bookmark": "Ir para o favorito",
+  "Save current folder under a letter": "Salvar a pasta atual com uma letra",
+  "Jump to a bookmarked folder by letter": "Ir para uma pasta favorita pela letra",
+  "Only local folders can be bookmarked": "Somente pastas locais podem ser salvas como favoritas",
+  "Saved bookmark %{key}": "Favorito %{key} salvo",
+  "Bookmark %{key} is unavailable": "O favorito %{key} está indisponível",
+  "No bookmark %{key}": "Nenhum favorito %{key}",
+  "Could not access bookmarks: %{error}": "Não foi possível acessar os favoritos: %{error}",
   " (%{size} known; size incomplete)": " (%{size} conhecidos; tamanho incompleto)",
   " (size unavailable)": " (tamanho indisponível)",
   "%{changes} · published %{date}": "%{changes} · publicada em %{date}",

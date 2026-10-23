@@ -1,4 +1,13 @@
 {
+  "Save bookmark": "Enregistrer le signet",
+  "Jump to bookmark": "Aller au signet",
+  "Save current folder under a letter": "Enregistrer le dossier actuel sous une lettre",
+  "Jump to a bookmarked folder by letter": "Aller à un dossier marqué à l’aide de sa lettre",
+  "Only local folders can be bookmarked": "Seuls les dossiers locaux peuvent être marqués",
+  "Saved bookmark %{key}": "Signet %{key} enregistré",
+  "Bookmark %{key} is unavailable": "Le signet %{key} est indisponible",
+  "No bookmark %{key}": "Aucun signet %{key}",
+  "Could not access bookmarks: %{error}": "Impossible d’accéder aux signets : %{error}",
   " (%{size} known; size incomplete)": " (%{size} connue ; taille incomplète)",
   " (size unavailable)": " (taille indisponible)",
   "%{changes} · published %{date}": "%{changes} · publiée le %{date}",

@@ -329,6 +329,8 @@ fn passes_through_preview(press: &KeyPress) -> bool {
 
 fn reaches_listing(press: &KeyPress) -> bool {
     press.is_any(&[
+        BOOKMARK_SET,
+        BOOKMARK_GO,
         GO,
         JUMP_VISITED,
         FILTER_LISTING,

@@ -1,4 +1,13 @@
 {
+  "Save bookmark": "Salva segnalibro",
+  "Jump to bookmark": "Vai al segnalibro",
+  "Save current folder under a letter": "Salva la cartella attuale con una lettera",
+  "Jump to a bookmarked folder by letter": "Vai a una cartella salvata tramite la sua lettera",
+  "Only local folders can be bookmarked": "È possibile salvare solo cartelle locali nei segnalibri",
+  "Saved bookmark %{key}": "Segnalibro %{key} salvato",
+  "Bookmark %{key} is unavailable": "Il segnalibro %{key} non è disponibile",
+  "No bookmark %{key}": "Nessun segnalibro %{key}",
+  "Could not access bookmarks: %{error}": "Impossibile accedere ai segnalibri: %{error}",
   " (%{size} known; size incomplete)": " (%{size} nota; dimensione incompleta)",
   " (size unavailable)": " (dimensione non disponibile)",
   "%{changes} · published %{date}": "%{changes} · pubblicata il %{date}",

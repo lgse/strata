@@ -1,4 +1,13 @@
 {
+  "Save bookmark": "Lesezeichen speichern",
+  "Jump to bookmark": "Zum Lesezeichen wechseln",
+  "Save current folder under a letter": "Aktuellen Ordner unter einem Buchstaben speichern",
+  "Jump to a bookmarked folder by letter": "Über einen Buchstaben zu einem gespeicherten Ordner wechseln",
+  "Only local folders can be bookmarked": "Nur lokale Ordner können als Lesezeichen gespeichert werden",
+  "Saved bookmark %{key}": "Lesezeichen %{key} gespeichert",
+  "Bookmark %{key} is unavailable": "Lesezeichen %{key} ist nicht verfügbar",
+  "No bookmark %{key}": "Kein Lesezeichen %{key}",
+  "Could not access bookmarks: %{error}": "Zugriff auf Lesezeichen fehlgeschlagen: %{error}",
   " (%{size} known; size incomplete)": " (%{size} bekannt; Größe unvollständig)",
   " (size unavailable)": " (Größe nicht verfügbar)",
   "%{changes} · published %{date}": "%{changes} · veröffentlicht am %{date}",

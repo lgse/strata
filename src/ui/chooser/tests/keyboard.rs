@@ -342,6 +342,16 @@ fn chooser_refuses_commands_its_request_does_not_allow() {
             let origin = browser.active_location();
             for (key, modifiers, feedback) in [
                 (
+                    Key::m,
+                    ModifierType::empty(),
+                    "Not available in the file chooser",
+                ),
+                (
+                    Key::apostrophe,
+                    ModifierType::empty(),
+                    "Not available in the file chooser",
+                ),
+                (
                     Key::y,
                     ModifierType::empty(),
                     "Not available in the file chooser",

@@ -1,4 +1,13 @@
 {
+  "Save bookmark": "ブックマークを保存",
+  "Jump to bookmark": "ブックマークへ移動",
+  "Save current folder under a letter": "現在のフォルダーを英字に割り当てて保存",
+  "Jump to a bookmarked folder by letter": "英字を指定してブックマークしたフォルダーへ移動",
+  "Only local folders can be bookmarked": "ブックマークできるのはローカルフォルダーのみです",
+  "Saved bookmark %{key}": "ブックマーク %{key} を保存しました",
+  "Bookmark %{key} is unavailable": "ブックマーク %{key} は利用できません",
+  "No bookmark %{key}": "ブックマーク %{key} はありません",
+  "Could not access bookmarks: %{error}": "ブックマークにアクセスできませんでした: %{error}",
   " (%{size} known; size incomplete)": " (判明分 %{size}、一部サイズ不明)",
   " (size unavailable)": " (サイズ不明)",
   "%{changes} · published %{date}": "%{changes} · %{date}公開",

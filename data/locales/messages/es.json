@@ -1,4 +1,13 @@
 {
+  "Save bookmark": "Guardar marcador",
+  "Jump to bookmark": "Ir al marcador",
+  "Save current folder under a letter": "Guardar la carpeta actual con una letra",
+  "Jump to a bookmarked folder by letter": "Ir a una carpeta marcada mediante su letra",
+  "Only local folders can be bookmarked": "Solo se pueden marcar carpetas locales",
+  "Saved bookmark %{key}": "Marcador %{key} guardado",
+  "Bookmark %{key} is unavailable": "El marcador %{key} no está disponible",
+  "No bookmark %{key}": "No existe el marcador %{key}",
+  "Could not access bookmarks: %{error}": "No se pudo acceder a los marcadores: %{error}",
   " (%{size} known; size incomplete)": " (%{size} conocidos; tamaño incompleto)",
   " (size unavailable)": " (tamaño no disponible)",
   "%{changes} · published %{date}": "%{changes} · publicada el %{date}",

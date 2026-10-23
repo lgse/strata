@@ -1,4 +1,13 @@
 {
+  "Save bookmark": "保存书签",
+  "Jump to bookmark": "跳转到书签",
+  "Save current folder under a letter": "将当前文件夹保存到字母书签",
+  "Jump to a bookmarked folder by letter": "按字母跳转到书签文件夹",
+  "Only local folders can be bookmarked": "只能为本地文件夹添加书签",
+  "Saved bookmark %{key}": "已保存书签 %{key}",
+  "Bookmark %{key} is unavailable": "书签 %{key} 不可用",
+  "No bookmark %{key}": "没有书签 %{key}",
+  "Could not access bookmarks: %{error}": "无法访问书签：%{error}",
   " (%{size} known; size incomplete)": "（已知 %{size}，部分大小未知）",
   " (size unavailable)": "（大小不可用）",
   "%{changes} · published %{date}": "%{changes} · 发布于 %{date}",

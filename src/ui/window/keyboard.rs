@@ -566,6 +566,7 @@ struct Dispatcher {
     destinations: crate::ui::folder_picker::FolderPicker,
     armed_actions: Rc<RefCell<Option<files::ArmedActions>>>,
     open_with: files::OpenWithLookup,
+    bookmark_revision: Rc<Cell<u64>>,
     chooser: Option<ChooserPolicy>,
 }
 
@@ -623,6 +624,7 @@ impl Dispatcher {
             destinations: crate::ui::folder_picker::FolderPicker::default(),
             armed_actions: Rc::default(),
             open_with: files::OpenWithLookup::default(),
+            bookmark_revision: Rc::default(),
             sidebar: SidebarFocus {
                 state: sidebar.state.clone(),
                 widget: sidebar.widget.clone(),
@@ -640,10 +642,12 @@ impl Dispatcher {
         let cancel_on_destroy = dispatcher.shortcuts.clone();
         let destinations_on_destroy = dispatcher.destinations.clone();
         let open_with_on_destroy = dispatcher.open_with.clone();
+        let bookmark_revision_on_destroy = dispatcher.bookmark_revision.clone();
         dispatcher.view.widget().connect_unrealize(move |_| {
             cancel_on_destroy.cancel_chord();
             destinations_on_destroy.cancel();
             open_with_on_destroy.invalidate();
+            bookmark_revision_on_destroy.set(bookmark_revision_on_destroy.get().wrapping_add(1));
         });
         let rename_target = dispatcher.rename_target.clone();
         let typed_name_revision = dispatcher.typed_name_revision.clone();
@@ -694,6 +698,8 @@ impl Dispatcher {
     fn handle_key(&self, browser: &Rc<Browser>, press: &KeyPress) -> Propagation {
         if !press.is_modifier() {
             self.open_with.invalidate();
+            self.bookmark_revision
+                .set(self.bookmark_revision.get().wrapping_add(1));
         }
         let preferences = &self.type_to_search.preferences;
         if let Some(size) = preferences.text_size().for_shortcut(press) {

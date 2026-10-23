@@ -1,4 +1,13 @@
 {
+  "Save bookmark": "儲存書籤",
+  "Jump to bookmark": "跳至書籤",
+  "Save current folder under a letter": "將目前資料夾儲存為字母書籤",
+  "Jump to a bookmarked folder by letter": "以字母跳至書籤資料夾",
+  "Only local folders can be bookmarked": "只能將本機資料夾加入書籤",
+  "Saved bookmark %{key}": "已儲存書籤 %{key}",
+  "Bookmark %{key} is unavailable": "書籤 %{key} 無法使用",
+  "No bookmark %{key}": "沒有書籤 %{key}",
+  "Could not access bookmarks: %{error}": "無法存取書籤：%{error}",
   " (%{size} known; size incomplete)": " （%{size} 已知；大小不完整）",
   " (size unavailable)": " （大小無法取得）",
   "%{changes} · published %{date}": "%{changes} · 發佈於 %{date}",
