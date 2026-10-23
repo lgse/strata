@@ -54,6 +54,9 @@ pub enum LocationValidationError {
     /// A chooser policy refusal, held as an English source message.
     Refused(&'static str),
     EmbeddedCredential,
+    /// Polkit refused an `admin://` operation, or its prompt was dismissed; GVfs reports both
+    /// as `PERMISSION_DENIED`.
+    NotAuthorized,
     /// Already localized by [`backend_unavailable_message`].
     BackendUnavailable(String),
 }
@@ -91,12 +94,13 @@ impl fmt::Display for LocationValidationError {
             Self::UnsupportedScheme(scheme) => write!(
                 formatter,
                 "The {scheme}:// scheme isn't supported. Use an absolute local path or one of: \
-                 smb://, sftp://, ftp://, ftps://, dav://, davs://, or recent:///."
+                 smb://, sftp://, ftp://, ftps://, dav://, davs://, admin://, or recent:///."
             ),
             Self::EmbeddedCredential => formatter.write_str(
                 "Passwords typed into the address bar aren't accepted. Enter the address \
                  without a password, you'll be prompted to sign in securely.",
             ),
+            Self::NotAuthorized => formatter.write_str("Administrator access wasn't granted."),
             Self::BackendUnavailable(message) => formatter.write_str(message),
         }
     }
@@ -122,13 +126,14 @@ impl LocationValidationError {
             .into_owned(),
             Self::UnsupportedShorthand(message) | Self::Refused(message) => tr(message),
             Self::UnsupportedScheme(scheme) => rust_i18n::t!(
-                "The %{scheme}:// scheme isn't supported. Use an absolute local path or one of: smb://, sftp://, ftp://, ftps://, dav://, davs://, or recent:///.",
+                "The %{scheme}:// scheme isn't supported. Use an absolute local path or one of: smb://, sftp://, ftp://, ftps://, dav://, davs://, admin://, or recent:///.",
                 scheme = scheme
             )
             .into_owned(),
             Self::EmbeddedCredential => tr(
                 "Passwords typed into the address bar aren't accepted. Enter the address without a password, you'll be prompted to sign in securely.",
             ),
+            Self::NotAuthorized => tr("Administrator access wasn't granted."),
             Self::BackendUnavailable(message) => message.clone(),
         }
     }
@@ -514,6 +519,8 @@ pub enum DirectoryEvent {
         request_id: RequestId,
         message: String,
         refused: bool,
+        /// Permissions keep the user out of a native folder that exists.
+        denied: bool,
     },
     /// Size/mtime arrivals for already-listed entries, positioned by the receiver
     /// against stable locations. Zero or more chunks, then exactly one `MetadataFinished`
@@ -557,6 +564,7 @@ pub struct MetadataUpdate {
     pub image_dimensions: MetadataValue<(u32, u32)>,
     pub child_count: MetadataValue<u64>,
     pub duration_seconds: MetadataValue<u64>,
+    pub listable: MetadataValue<bool>,
 }
 
 #[derive(Clone, Debug)]
@@ -607,6 +615,11 @@ pub trait FileSource {
 
     fn confined_to(&self) -> Option<&Path> {
         None
+    }
+
+    /// Whether a native folder the user can't read may be reopened through `admin://`.
+    fn offers_administrator_access(&self) -> bool {
+        false
     }
 
     fn validate_location(&self, location: &Location) -> Result<(), LocationValidationError>;

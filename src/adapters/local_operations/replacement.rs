@@ -827,6 +827,44 @@ pub(super) async fn set_aside_and_publish(
     ))
 }
 
+/// `admin://` has no Trash to keep the original in, so a confirmed replace overwrites
+/// a file in place; a folder is never replaced there.
+async fn replace_as_administrator(
+    source: gio::File,
+    target: gio::File,
+    move_source: bool,
+    cancellable: &gio::Cancellable,
+    on_replaced: &dyn Fn(ReplacedOriginal, Option<PlacedSnapshot>),
+) -> Result<Owed, glib::Error> {
+    let target_kind = await_cancellable(&target, cancellable, |target, cancellable, result| {
+        target.query_info_async(
+            gio::FILE_ATTRIBUTE_STANDARD_TYPE,
+            gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+            glib::Priority::DEFAULT,
+            Some(cancellable),
+            move |output| result.resolve(output),
+        );
+    })
+    .await?
+    .file_type();
+    if target_kind == gio::FileType::Directory {
+        return Err(glib::Error::new(
+            gio::IOErrorEnum::NotSupported,
+            &crate::i18n::tr("Safe replacement is unavailable at this destination"),
+        ));
+    }
+    let flags = gio::FileCopyFlags::OVERWRITE | gio::FileCopyFlags::NOFOLLOW_SYMLINKS;
+    if move_source {
+        super::progress::move_file_with_progress(source, target, flags, cancellable.clone(), None)
+            .await?;
+    } else {
+        super::progress::copy_file_with_progress(source, target, flags, cancellable.clone(), None)
+            .await?;
+    }
+    on_replaced(ReplacedOriginal::Deleted, None);
+    Ok(Owed::default())
+}
+
 /// Replaces `target` with `source`; the original is removed only once the
 /// replacement is in place.
 pub(super) async fn replace_owing(
@@ -840,6 +878,10 @@ pub(super) async fn replace_owing(
 ) -> Result<Owed, glib::Error> {
     if let Some(locations) = affected_locations {
         locations.extend([&source, &target].into_iter().filter_map(location_for_file));
+    }
+    if target.has_uri_scheme(crate::model::ADMIN_SCHEME) {
+        return replace_as_administrator(source, target, move_source, cancellable, on_replaced)
+            .await;
     }
     let source_path = source.path().ok_or_else(|| {
         glib::Error::new(

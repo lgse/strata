@@ -406,10 +406,14 @@ impl BrowserView {
             return None;
         }
         let locations: Vec<Location> = entries.iter().map(|entry| entry.location.clone()).collect();
+        let administrator = locations.iter().any(Location::is_administrator);
         let files: Vec<_> = locations.iter().map(gio_file_for_location).collect();
         let folder = self.state.browser.active_location();
         let state = Rc::downgrade(&self.state);
         Some(glib::MainContext::default().spawn_local(async move {
+            if administrator {
+                return report(super::desktop::ADMINISTRATOR_OPEN_REFUSAL);
+            }
             let unchanged = || {
                 current()
                     && state.upgrade().is_some_and(|state| {

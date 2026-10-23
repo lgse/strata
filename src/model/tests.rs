@@ -132,6 +132,57 @@ fn non_recent_locations_are_not_mistaken_for_the_collection() {
 }
 
 #[test]
+fn native_folders_reopen_through_admin_with_their_path_escaped() {
+    use std::os::unix::ffi::OsStrExt;
+
+    for (path, uri) in [
+        (
+            std::ffi::OsStr::new("/run/media/user/drive/backups"),
+            "admin:///run/media/user/drive/backups",
+        ),
+        (
+            std::ffi::OsStr::new("/run/media/user/Photos RAW/100%"),
+            "admin:///run/media/user/Photos%20RAW/100%25",
+        ),
+        (
+            std::ffi::OsStr::from_bytes(b"/srv/caf\xe9"),
+            "admin:///srv/caf%E9",
+        ),
+    ] {
+        let administrator = Location::local(path).as_administrator().expect(uri);
+        assert_eq!(administrator.uri_value(), Some(uri));
+        assert!(administrator.is_administrator());
+        assert!(!Location::local(path).is_administrator());
+    }
+    for location in [
+        Location::local("relative/backups"),
+        Location::uri("sftp://host/backups"),
+        Location::uri("admin:///backups"),
+    ] {
+        assert_eq!(location.as_administrator(), None, "{location:?}");
+    }
+}
+
+#[test]
+fn admin_locations_walk_up_to_a_named_administrator_root() {
+    let backups = Location::uri("admin:///run/media/user/backups");
+
+    assert_eq!(
+        backups.breadcrumbs(),
+        [
+            "admin:///",
+            "admin:///run",
+            "admin:///run/media",
+            "admin:///run/media/user",
+            "admin:///run/media/user/backups",
+        ]
+        .map(Location::uri)
+    );
+    assert_eq!(Location::uri("admin:///").display_name(), "Administrator");
+    assert_eq!(backups.display_name(), "backups");
+}
+
+#[test]
 fn uri_display_names_are_percent_decoded() {
     assert_eq!(
         Location::uri("smb://server/share/My%20Share").display_name(),

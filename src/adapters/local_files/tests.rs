@@ -102,6 +102,20 @@ fn remote_backend_failures_hide_uri_user_info_in_views_and_diagnostic_logs() {
 }
 
 #[test]
+fn a_refused_admin_prompt_is_not_authorized_while_other_denials_stay_errors() {
+    let denied = || glib::Error::new(gio::IOErrorEnum::PermissionDenied, "Permission denied");
+
+    assert_eq!(
+        uri_validation_result(&Location::uri("admin:///root"), Err(denied())),
+        Err(LocationValidationError::NotAuthorized)
+    );
+    assert!(matches!(
+        uri_validation_result(&Location::uri("sftp://host/root"), Err(denied())),
+        Err(LocationValidationError::Unavailable(_))
+    ));
+}
+
+#[test]
 fn validation_accepts_readable_directories_and_rejects_files_and_missing_paths()
 -> Result<(), Box<dyn Error>> {
     let unique = SystemTime::now()
@@ -2612,6 +2626,71 @@ fn enumerate_with_metadata_fills_sizes_up_front() -> Result<(), Box<dyn Error>> 
         "a streaming load should leave sizes for the window fill"
     );
     Ok(())
+}
+
+#[test]
+fn metadata_marks_folders_the_user_cannot_open() {
+    let root = unique_fixture_root("folder-access");
+    let locked = root.join("locked");
+    let open = root.join("open");
+    let file = root.join("file.txt");
+    fs::create_dir_all(&locked).expect("the locked folder should be created");
+    fs::create_dir_all(&open).expect("the open folder should be created");
+    fs::write(&file, b"content").expect("the fixture file should be written");
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o000))
+        .expect("the locked folder's permissions should be set");
+
+    let scanned = run_enumerate(DirectoryRequest {
+        id: RequestId(1),
+        location: Location::local(&root),
+        batch_size: 64,
+        include_metadata: true,
+        max_entries: 100,
+        time_budget: Duration::from_secs(10),
+        background: false,
+    });
+    let filled = run_fill(MetadataRequest {
+        id: RequestId(2),
+        entries: [&locked, &open, &file].map(Location::local).to_vec(),
+        full: false,
+        include_icon_details: false,
+        time_budget: Duration::from_secs(10),
+    });
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o755))
+        .expect("the locked folder's permissions should be restored");
+    fs::remove_dir_all(&root).expect("the fixture directory should be removed");
+
+    let scanned: HashMap<_, _> = scanned
+        .iter()
+        .filter_map(|event| match event {
+            DirectoryEvent::Batch { entries, .. } => Some(entries.iter()),
+            _ => None,
+        })
+        .flatten()
+        .map(|entry| (entry.location.clone(), entry.listable.clone()))
+        .collect();
+    let filled: HashMap<_, _> = filled
+        .iter()
+        .filter_map(|event| match event {
+            DirectoryEvent::MetadataFilled { updates, .. } => Some(updates.iter()),
+            _ => None,
+        })
+        .flatten()
+        .map(|update| (update.location.clone(), update.listable.clone()))
+        .collect();
+    // Root reads every folder, so nothing is locked for it.
+    let locked_access = MetadataValue::Known(rustix::process::geteuid().is_root());
+    for listable in [scanned, filled] {
+        assert_eq!(listable[&Location::local(&locked)], locked_access);
+        assert_eq!(
+            listable[&Location::local(&open)],
+            MetadataValue::Known(true)
+        );
+        assert_eq!(
+            listable[&Location::local(&file)],
+            MetadataValue::Unavailable
+        );
+    }
 }
 
 fn run_fill(request: MetadataRequest) -> Vec<DirectoryEvent> {

@@ -141,6 +141,7 @@ fn drag_preview_icon_renders_single_and_multiple_entries() {
                     image_dimensions: MetadataValue::Unknown,
                     child_count: MetadataValue::Unknown,
                     duration_seconds: MetadataValue::Unknown,
+                    listable: MetadataValue::Unknown,
                 }
             }
 

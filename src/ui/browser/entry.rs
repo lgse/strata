@@ -25,6 +25,9 @@ pub(in crate::ui) fn format_file_size(bytes: u64) -> String {
 pub(in crate::ui) fn metadata_needs_fill(entry: &FileEntry) -> bool {
     entry.modified_unix_seconds == crate::model::MetadataValue::Unknown
         || (!entry.is_directory() && entry.size == crate::model::MetadataValue::Unknown)
+        || (entry.is_directory()
+            && entry.location.native_path().is_some()
+            && entry.listable == crate::model::MetadataValue::Unknown)
 }
 
 pub(super) fn entry_responds_to_preview_click(entry: &FileEntry, previews_enabled: bool) -> bool {
@@ -118,6 +121,9 @@ pub(in crate::ui) fn entry_filter(
 pub(in crate::ui) fn entry_icon(entry: &FileEntry) -> &'static str {
     if entry.is_broken_symbolic_link() {
         return crate::assets::icons::X;
+    }
+    if entry.is_locked_folder() {
+        return crate::assets::icons::FOLDER_LOCK;
     }
     if entry.is_directory() {
         return crate::assets::icons::FOLDER;

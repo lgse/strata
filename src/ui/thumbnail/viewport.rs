@@ -81,6 +81,7 @@ pub(super) fn publish_thumbnail_metadata(
             duration_seconds: metadata.duration.map_or(MetadataValue::Unknown, |seconds| {
                 MetadataValue::Known(seconds.round() as u64)
             }),
+            listable: MetadataValue::Unknown,
         },
     );
 }

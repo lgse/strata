@@ -380,7 +380,8 @@ button does not choose it: nothing changes until you accept, and Cancel or
 focused; pressing **d** again confirms it, so **d d** trashes. **D** / **Shift+Delete**, and **d** inside Trash, show the permanent
 deletion confirmation with its confirm button focused, so **Enter** confirms, and **d**
 there does nothing. In a folder whose listing reports no Trash support (such as
-a tmpfs, or a FUSE mount that already refused Trash), **d** / **Delete** open a permanent confirmation instead, stating
+a tmpfs, a FUSE mount that already refused Trash, or a folder opened as
+[administrator](administrator-access.md)), **d** / **Delete** open a permanent confirmation instead, stating
 that the location doesn't support Trash, with Cancel focused, so **d d** does
 not delete there. Errors appear in
 the usual operation dialogs, and **Ctrl+Z** undoes what the default map can undo.

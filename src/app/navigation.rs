@@ -26,6 +26,11 @@ pub enum LoadState {
     Ready,
     Empty,
     Error(String),
+    /// Permissions kept the user out of a native folder that `administrator` may open.
+    Denied {
+        message: String,
+        administrator: Location,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -1342,10 +1347,21 @@ impl NavigationState {
         true
     }
 
-    pub fn fail(&mut self, request_id: RequestId, message: String) -> Option<usize> {
+    pub fn fail(
+        &mut self,
+        request_id: RequestId,
+        message: String,
+        administrator: Option<Location>,
+    ) -> Option<usize> {
         let (depth, column) = self.column_for_request_mut(request_id)?;
         column.drop_load_intents();
-        column.load_state = LoadState::Error(message);
+        column.load_state = match administrator {
+            Some(administrator) => LoadState::Denied {
+                message,
+                administrator,
+            },
+            None => LoadState::Error(message),
+        };
         Some(depth)
     }
 
@@ -2628,6 +2644,10 @@ fn apply_metadata_update(entry: &mut FileEntry, update: &MetadataUpdate) -> bool
         && entry.duration_seconds != update.duration_seconds
     {
         entry.duration_seconds = update.duration_seconds.clone();
+        changed = true;
+    }
+    if update.listable != MetadataValue::Unknown && entry.listable != update.listable {
+        entry.listable = update.listable.clone();
         changed = true;
     }
     changed

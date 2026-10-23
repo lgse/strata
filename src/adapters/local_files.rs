@@ -256,6 +256,8 @@ enum NativeEnumeration {
         can_delete: Option<bool>,
     },
     Failed(String),
+    /// The folder exists but its permissions keep this user out.
+    Denied(String),
     Cancelled,
 }
 
@@ -290,6 +292,8 @@ fn uri_validation_result(
     let info = result.map_err(|error| {
         if error.matches(gio::IOErrorEnum::NotMounted) {
             LocationValidationError::NotMounted(location.clone())
+        } else if location.is_administrator() && error.matches(gio::IOErrorEnum::PermissionDenied) {
+            LocationValidationError::NotAuthorized
         } else if error.matches(gio::IOErrorEnum::NotSupported) {
             LocationValidationError::BackendUnavailable(backend_unavailable_message(
                 location.uri_value().unwrap_or_default(),
@@ -468,6 +472,7 @@ fn remote_directory_failure(request_id: RequestId, error: &glib::Error) -> Direc
         request_id,
         message: sanitize_failure_message(&error.to_string()),
         refused: false,
+        denied: false,
     }
 }
 
@@ -614,6 +619,7 @@ fn entry_from_info(location: Location, info: gio::FileInfo) -> FileEntry {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
         is_hidden: info_is_hidden(&info),
         recent_uri: None,
     }
@@ -744,9 +750,11 @@ fn fill_native_entry_metadata(entry: &mut FileEntry) -> std::io::Result<()> {
             entry.size = MetadataValue::Unknown;
             entry.modified_unix_seconds = MetadataValue::Unknown;
             entry.mode = MetadataValue::Unknown;
+            entry.listable = MetadataValue::Unknown;
             return Err(error);
         }
     };
+    entry.listable = folder_listable(path, metadata.is_dir());
     entry.size = if metadata.is_dir() {
         MetadataValue::Unknown
     } else {
@@ -763,13 +771,30 @@ fn fill_native_entry_metadata(entry: &mut FileEntry) -> std::io::Result<()> {
 }
 
 fn fill_followed_metadata(entry: &mut FileEntry, target: &FolderStamp) {
-    entry.size = if target.kind == FileType::Directory {
+    let directory = target.kind == FileType::Directory;
+    entry.size = if directory {
         MetadataValue::Unknown
     } else {
         MetadataValue::Known(target.size)
     };
     entry.modified_unix_seconds = MetadataValue::Known(target.modified.0);
     entry.mode = MetadataValue::Known(target.mode);
+    if let Some(path) = entry.location.native_path() {
+        entry.listable = folder_listable(path, directory);
+    }
+}
+
+/// Like GIO's `access::can-read` and `access::can-execute` together, so ACLs count.
+fn folder_listable(path: &Path, directory: bool) -> MetadataValue<bool> {
+    use rustix::fs::Access;
+    if !directory {
+        return MetadataValue::Unavailable;
+    }
+    match rustix::fs::access(path, Access::READ_OK | Access::EXEC_OK) {
+        Ok(()) => MetadataValue::Known(true),
+        Err(rustix::io::Errno::ACCESS | rustix::io::Errno::PERM) => MetadataValue::Known(false),
+        Err(_) => MetadataValue::Unavailable,
+    }
 }
 
 fn native_entry(
@@ -817,6 +842,7 @@ fn native_entry(
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
         is_hidden,
         recent_uri: None,
     };
@@ -863,7 +889,12 @@ fn scan_native_listing(
     stamped: oneshot::Sender<DirectoryStamp>,
 ) -> NativeEnumeration {
     let failed = |error: rustix::io::Errno| {
-        NativeEnumeration::Failed(crate::services::io_error_message(&error.into()))
+        let message = crate::services::io_error_message(&error.into());
+        if matches!(error, rustix::io::Errno::ACCESS | rustix::io::Errno::PERM) {
+            NativeEnumeration::Denied(message)
+        } else {
+            NativeEnumeration::Failed(message)
+        }
     };
     let stamp = match read_stamp(path, progress) {
         Ok(stamp) => stamp,
@@ -1035,6 +1066,7 @@ fn enumerate_native(
                     request_id,
                     message: crate::services::io_error_message(&ErrorKind::TimedOut.into()),
                     refused: true,
+                    denied: false,
                 });
                 return;
             }
@@ -1043,6 +1075,7 @@ fn enumerate_native(
                     request_id,
                     message: "Native directory worker failed".to_owned(),
                     refused: false,
+                    denied: false,
                 });
                 return;
             }
@@ -1116,6 +1149,16 @@ fn enumerate_native(
                     request_id,
                     message,
                     refused: false,
+                    denied: false,
+                });
+            }
+            NativeEnumeration::Denied(message) => {
+                tracing::info!(request_id = request_id.0, "directory load denied");
+                emit(DirectoryEvent::Failed {
+                    request_id,
+                    message,
+                    refused: false,
+                    denied: true,
                 });
             }
             NativeEnumeration::Cancelled => {}
@@ -1253,6 +1296,7 @@ fn enumerate_recent_with_source(
                     request_id,
                     message,
                     refused: false,
+                    denied: false,
                 });
                 return;
             }
@@ -1298,6 +1342,7 @@ fn enumerate_recent_with_source(
                         request_id,
                         message,
                         refused: false,
+                        denied: false,
                     });
                     break;
                 }
@@ -1503,6 +1548,7 @@ impl FileSource for LocalFileSource {
                     request_id,
                     message: crate::services::io_error_message(&ErrorKind::TimedOut.into()),
                     refused: true,
+                    denied: false,
                 });
                 return;
             };
@@ -1528,7 +1574,8 @@ impl FileSource for LocalFileSource {
                     can_delete,
                 });
             };
-            let mut can_trash = None;
+            // GVfs's admin backend has no trash operation but reports `access::can-trash`.
+            let mut can_trash = location.is_administrator().then_some(false);
             let mut can_delete = None;
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
@@ -1705,6 +1752,10 @@ impl FileSource for LocalFileSource {
         })
     }
 
+    fn offers_administrator_access(&self) -> bool {
+        crate::model::administrator_access_available()
+    }
+
     fn supports_metadata_fill(&self, _location: &Location) -> bool {
         true
     }
@@ -1787,6 +1838,7 @@ impl FileSource for LocalFileSource {
                             image_dimensions: MetadataValue::Unknown,
                             child_count: MetadataValue::Unknown,
                             duration_seconds: MetadataValue::Unknown,
+                            listable: MetadataValue::Unknown,
                         },
                         false,
                     ),
@@ -2186,6 +2238,7 @@ fn fill_parallel_with_details(
                                         image_dimensions: MetadataValue::Unknown,
                                         child_count: MetadataValue::Unknown,
                                         duration_seconds: MetadataValue::Unknown,
+                                        listable: MetadataValue::Unknown,
                                     },
                                     false,
                                 ),
@@ -2474,6 +2527,10 @@ fn update_from_info(info: &gio::FileInfo, location: &Location) -> (MetadataUpdat
         .map(|modified| MetadataValue::Known(modified.to_unix()))
         .unwrap_or(MetadataValue::Unavailable);
     let mode = info_mode(info);
+    let listable = match location.native_path() {
+        Some(path) => folder_listable(path, info.file_type() == gio::FileType::Directory),
+        None => MetadataValue::Unknown,
+    };
     let ok = size != MetadataValue::Unknown
         || modified_unix_seconds != MetadataValue::Unknown
         || mode != MetadataValue::Unknown;
@@ -2486,6 +2543,7 @@ fn update_from_info(info: &gio::FileInfo, location: &Location) -> (MetadataUpdat
             image_dimensions: MetadataValue::Unknown,
             child_count: MetadataValue::Unknown,
             duration_seconds: MetadataValue::Unknown,
+            listable,
         },
         ok,
     )
