@@ -1255,6 +1255,20 @@ impl ModeViews {
         }
     }
 
+    pub(in crate::ui) fn settle_in_place_filter(&self) {
+        let Some(pane) = self.single_pane() else {
+            return;
+        };
+        let Some(entry) = pane.filter_entry.as_ref() else {
+            return;
+        };
+        super::browser::notify_filter_query(
+            &pane.filter,
+            &pane.filter_query,
+            entry.text().to_string(),
+        );
+    }
+
     /// Dismisses the filter whose field or results have focus, and returns focus to the
     /// directory cursor.
     pub fn dismiss_focused_filter(&self) -> bool {

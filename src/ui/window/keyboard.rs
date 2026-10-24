@@ -258,9 +258,11 @@ fn release_preview_keys_on_mode_exit(
 /// footer reports the focused listing's filter or search in every key map.
 fn bind_footer_filter(dispatcher: &Dispatcher) {
     let view = dispatcher.view.downgrade();
+    let descent = dispatcher.filter_descent.clone();
     dispatcher
         .shortcuts
         .connect_prompt_changed(move |kind, text| {
+            descent.take();
             let Some(view) = view.upgrade() else {
                 return;
             };
@@ -286,9 +288,16 @@ fn bind_footer_filter(dispatcher: &Dispatcher) {
             )
     }));
     let shortcuts = dispatcher.shortcuts.clone();
+    let view = dispatcher.view.downgrade();
+    let descent = dispatcher.filter_descent.clone();
     dispatcher
         .view
-        .connect_filter_results_changed(Rc::new(move || shortcuts.refresh_filter()));
+        .connect_filter_results_changed(Rc::new(move || {
+            shortcuts.refresh_filter();
+            if let Some(view) = view.upgrade() {
+                prompts::finish_filter_descent(&view, &shortcuts, &descent);
+            }
+        }));
     let shortcuts = dispatcher.shortcuts.clone();
     dispatcher
         .view
@@ -297,9 +306,14 @@ fn bind_footer_filter(dispatcher: &Dispatcher) {
     // GTK may land that focus after the selection change has been reported. In
     // Columns the footer also follows the focused column.
     let shortcuts = dispatcher.shortcuts.clone();
-    let handler = dispatcher
-        .window
-        .connect_focus_widget_notify(move |_| shortcuts.schedule_filter_refresh());
+    let view = dispatcher.view.downgrade();
+    let descent = dispatcher.filter_descent.clone();
+    let handler = dispatcher.window.connect_focus_widget_notify(move |_| {
+        shortcuts.schedule_filter_refresh();
+        if let Some(view) = view.upgrade() {
+            prompts::cancel_stale_filter_descent(&view, &shortcuts, &descent);
+        }
+    });
     // A closed tab's view unrealizes while its window lives on.
     let window = dispatcher.window.downgrade();
     let handler = Cell::new(Some(handler));
@@ -557,6 +571,7 @@ struct Dispatcher {
     type_to_search: TypeToSearch,
     shortcuts: ShortcutFooter,
     history: Rc<NavigationHistory>,
+    filter_descent: Rc<RefCell<Option<prompts::FilterDescent>>>,
     rename_target: Rc<RefCell<Option<crate::model::FileEntry>>>,
     /// Only the latest typed name submitted may act after its check.
     typed_name_revision: Rc<Cell<u64>>,
@@ -616,6 +631,7 @@ impl Dispatcher {
             type_to_search: parts.type_to_search,
             shortcuts: parts.shortcuts,
             history: parts.history,
+            filter_descent: Rc::default(),
             rename_target: Rc::default(),
             typed_name_revision: Rc::default(),
             destination_targets: Rc::default(),
@@ -649,7 +665,9 @@ impl Dispatcher {
         let typed_name_revision = dispatcher.typed_name_revision.clone();
         let destination_targets = dispatcher.destination_targets.clone();
         let destinations = dispatcher.destinations.clone();
+        let filter_descent = dispatcher.filter_descent.clone();
         dispatcher.shortcuts.connect_prompt_reset(move || {
+            filter_descent.take();
             typed_name_revision.set(typed_name_revision.get().wrapping_add(1));
             drop(rename_target.take());
             drop(destination_targets.take());
@@ -669,7 +687,9 @@ impl Dispatcher {
 
     fn handle_chooser_key(&self, browser: &Rc<Browser>, press: &KeyPress) -> KeyResult {
         if !self.type_to_search.preferences.tenxer_mode() {
-            return self.tenxer_keys(browser, press);
+            return self
+                .normal_filter_keys(press)
+                .or_else(|| self.tenxer_keys(browser, press));
         }
         if !press.is_modifier() {
             self.open_with.invalidate();
@@ -809,6 +829,9 @@ impl Dispatcher {
                 return Some(result);
             }
             return Some(self.prompt_key(browser, press));
+        }
+        if let Some(result) = self.normal_filter_keys(press) {
+            return Some(result);
         }
         if self
             .preview

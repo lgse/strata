@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-//! 10xer footer prompts. While a prompt has focus only its own keys act; every
+//! Browser filter navigation and 10xer footer prompts. A prompt owns its keys; every
 //! other key edits the text and never reaches a browsing command.
 
 use std::{
@@ -12,6 +12,7 @@ use std::{
 use gtk::{
     gdk::ModifierType as Modifiers,
     glib::{self, Propagation},
+    prelude::*,
 };
 
 use super::{Dispatcher, KeyResult};
@@ -30,7 +31,128 @@ use crate::{
 
 const SHIFT: Modifiers = Modifiers::SHIFT_MASK;
 
+pub(super) struct FilterDescent {
+    navigation: u64,
+    query: String,
+    input: Option<FilterEntry>,
+}
+
+struct FilterEntry {
+    entry: glib::WeakRef<gtk::Entry>,
+    changed: Option<glib::SignalHandlerId>,
+}
+
+impl Drop for FilterEntry {
+    fn drop(&mut self) {
+        if let (Some(entry), Some(changed)) = (self.entry.upgrade(), self.changed.take()) {
+            entry.disconnect(changed);
+        }
+    }
+}
+
+impl FilterDescent {
+    fn is_current(&self, view: &BrowserView, shortcuts: &ShortcutFooter) -> bool {
+        if view.browser().navigation_generation() != self.navigation {
+            return false;
+        }
+        match &self.input {
+            Some(input) => input.entry.upgrade().is_some_and(|entry| {
+                entry
+                    .root()
+                    .and_then(|root| root.focus())
+                    .is_some_and(|focus| focus == entry || focus.is_ancestor(&entry))
+                    && entry.text() == self.query
+            }),
+            None => {
+                shortcuts.open_prompt_kind() == Some(Prompt::Filter)
+                    && shortcuts.prompt_has_focus()
+                    && shortcuts.prompt_text() == self.query
+            }
+        }
+    }
+}
+
+pub(super) fn cancel_stale_filter_descent(
+    view: &BrowserView,
+    shortcuts: &ShortcutFooter,
+    pending: &RefCell<Option<FilterDescent>>,
+) {
+    let stale = pending
+        .borrow()
+        .as_ref()
+        .is_some_and(|pending| !pending.is_current(view, shortcuts));
+    if stale {
+        pending.take();
+    }
+}
+
+pub(super) fn finish_filter_descent(
+    view: &BrowserView,
+    shortcuts: &ShortcutFooter,
+    pending: &RefCell<Option<FilterDescent>>,
+) {
+    cancel_stale_filter_descent(view, shortcuts, pending);
+    if pending.borrow().is_none() {
+        return;
+    }
+    let Some(entry) = view.first_settled_filter_match() else {
+        return;
+    };
+    let footer = pending
+        .take()
+        .is_some_and(|pending| pending.input.is_none());
+    if let Some(entry) = entry.filter(FileEntry::is_directory) {
+        if footer {
+            shortcuts.dismiss_prompt();
+        }
+        view.keyboard_navigation();
+        view.browser().navigate(entry.location);
+        if footer {
+            shortcuts.open_prompt(Prompt::Filter);
+        } else {
+            view.show_filter_with_query("");
+        }
+    }
+}
+
 impl Dispatcher {
+    pub(super) fn normal_filter_keys(&self, press: &KeyPress) -> KeyResult {
+        if self.type_to_search.preferences.tenxer_mode() || !press.is(FILTER_DESCEND) {
+            return None;
+        }
+        let entry = self.view.focused_filter_entry()?;
+        self.begin_filter_descent(Some(entry));
+        Some(Propagation::Stop)
+    }
+
+    fn begin_filter_descent(&self, entry: Option<gtk::Entry>) {
+        let query = entry
+            .as_ref()
+            .map(|entry| entry.text().to_string())
+            .unwrap_or_else(|| self.shortcuts.prompt_text());
+        if query.trim().is_empty() {
+            return;
+        }
+        let input = entry.map(|entry| {
+            let pending = Rc::downgrade(&self.filter_descent);
+            let changed = entry.connect_changed(move |_| {
+                if let Some(pending) = pending.upgrade() {
+                    pending.take();
+                }
+            });
+            FilterEntry {
+                entry: entry.downgrade(),
+                changed: Some(changed),
+            }
+        });
+        self.filter_descent.replace(Some(FilterDescent {
+            navigation: self.view.browser().navigation_generation(),
+            query,
+            input,
+        }));
+        finish_filter_descent(&self.view, &self.shortcuts, &self.filter_descent);
+    }
+
     pub(super) fn tenxer_prompt_keys(&self, press: &KeyPress) -> KeyResult {
         if !self.view.item_view_has_focus() {
             return None;
@@ -121,6 +243,8 @@ impl Dispatcher {
             }
         } else if press.is(ENTER_ANY_SHIFT) {
             self.submit_prompt(browser);
+        } else if kind == Some(Prompt::Filter) && press.is(FILTER_DESCEND) {
+            self.begin_filter_descent(None);
         } else if let Some(delta) = step
             && kind.is_some_and(Prompt::picks_history)
         {

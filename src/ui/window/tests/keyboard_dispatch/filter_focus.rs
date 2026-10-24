@@ -366,6 +366,80 @@ fn in_place_escape_case(mode: BrowserMode) -> Result<(), String> {
     Ok(())
 }
 
+struct RemoteFolders;
+
+impl FileSource for RemoteFolders {
+    fn validate_location(&self, location: &Location) -> Result<(), LocationValidationError> {
+        RemoteShare.validate_location(location)
+    }
+
+    fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle {
+        let remote = request.location.native_path().is_none();
+        RemoteShare.enumerate(
+            request,
+            Rc::new(move |event| {
+                let event = match event {
+                    DirectoryEvent::Batch {
+                        request_id,
+                        mut entries,
+                    } if remote => {
+                        for entry in &mut entries {
+                            entry.kind = EntryKind::Directory;
+                        }
+                        DirectoryEvent::Batch {
+                            request_id,
+                            entries,
+                        }
+                    }
+                    event => event,
+                };
+                emit(event);
+            }),
+        )
+    }
+}
+
+#[test]
+fn normal_filter_slash_enters_a_remote_folder_from_in_place_results() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::filter_focus::normal_filter_slash_enters_a_remote_folder_from_in_place_results",
+        || {
+            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
+                let fixture = KeyboardFixture::with_parts(Rc::new(TextPreview), || {
+                    BrowserView::new(
+                        Rc::new(RemoteFolders),
+                        crate::ui::browser::PeekBehavior::default(),
+                    )
+                });
+                fixture.view.set_view_mode(mode);
+                let browser = fixture.view.browser();
+                browser.navigate(Location::uri(SHARE));
+                wait_loaded(&browser, 0);
+                focus_files(&fixture);
+                assert!(fixture.press(Key::f, ModifierType::CONTROL_MASK));
+                focused_entry(&fixture.window).set_text("notes");
+                assert!(fixture.press(Key::slash, ModifierType::empty()));
+                wait_until_or(
+                    || {
+                        browser.active_location()
+                            == Some(Location::uri(format!("{SHARE}/notes.txt")))
+                            && fixture.view.filter_has_focus()
+                    },
+                    || {
+                        format!(
+                            "{mode:?}: location {:?}, filter focus {}, query {:?}",
+                            browser.active_location(),
+                            fixture.view.filter_has_focus(),
+                            fixture.view.listing_filter()
+                        )
+                    },
+                );
+                assert_eq!(focused_entry(&fixture.window).text(), "");
+            }
+        },
+    );
+}
+
 #[test]
 fn escape_dismisses_the_filter_from_a_focused_result() {
     crate::test_support::gtk_test(

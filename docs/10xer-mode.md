@@ -536,6 +536,16 @@ count, including zero, with a file/folder breakdown in its accessible descriptio
 **Enter**, and **Ctrl+R** act on the results, never on the hidden directory's
 cursor or fill.
 
+While typing an **f** filter, **/** enters the first displayed match if it is a
+folder, even for a partial or fuzzy match. It clears the query and keeps the
+filter prompt focused in that folder, ready for the next level. For example,
+**f**, `doc`, **/**, `proj`, **/** can enter `Documents/Projects`. A file as the
+first match, no matches, or an empty query leaves the prompt and location
+unchanged. Pending filter results wait for a match or indexing to finish; editing
+or dismissing the prompt cancels that pending navigation. This shortcut does
+not apply to **s** search or **/** / **?** find prompts. Normal-mode **Ctrl+F**
+supports the same shortcut with its own filename matching rules.
+
 **s** always searches the current folder tree, not every indexed root, and
 matches paths below it the way fzf does: each space-separated term must match
 somewhere in a hit's path, in any order, as a fuzzy subsequence, so

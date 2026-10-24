@@ -570,6 +570,87 @@ fn live_mode_changes_switch_the_chooser_between_maps() {
 }
 
 #[test]
+fn filter_slash_enters_folders_without_accepting_the_chooser() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::keyboard::filter_slash_enters_folders_without_accepting_the_chooser",
+        || {
+            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
+                for tenxer in [true, false] {
+                    let chooser = Chooser::open_with(
+                        ChooserKind::Open {
+                            directory: true,
+                            multiple: false,
+                        },
+                        mode,
+                        &["Documents/Projects/"],
+                        tenxer,
+                    );
+                    let context = glib::MainContext::default();
+                    while context.pending() {
+                        context.iteration(false);
+                    }
+                    chooser.focus_files();
+                    assert!(chooser.press_with(
+                        Key::f,
+                        if tenxer {
+                            ModifierType::empty()
+                        } else {
+                            ModifierType::CONTROL_MASK
+                        }
+                    ));
+                    let input = || {
+                        if tenxer {
+                            chooser.prompt()
+                        } else {
+                            chooser
+                                .state
+                                .view
+                                .focused_filter_entry()
+                                .expect("filter input")
+                        }
+                    };
+                    for (query, destination) in
+                        [("doc", "Documents"), ("proj", "Documents/Projects")]
+                    {
+                        input().set_text(query);
+                        assert!(chooser.press(Key::slash), "{mode:?} {query}");
+                        let deadline =
+                            std::time::Instant::now() + std::time::Duration::from_secs(5);
+                        while chooser.state.view.browser().active_location()
+                            != Some(Location::local(chooser.root.path().join(destination)))
+                            || !if tenxer {
+                                chooser.prompt_focused()
+                            } else {
+                                chooser.state.view.filter_has_focus()
+                            }
+                        {
+                            assert!(
+                                std::time::Instant::now() < deadline,
+                                "{mode:?} tenxer={tenxer} {query}: location {:?}, filter focus {}, prompt focus {}",
+                                chooser.state.view.browser().active_location(),
+                                chooser.state.view.filter_has_focus(),
+                                chooser.prompt_focused()
+                            );
+                            glib::MainContext::default().iteration(false);
+                            std::thread::sleep(std::time::Duration::from_millis(2));
+                        }
+                        assert_eq!(input().text(), "");
+                        assert!(
+                            chooser.open_request(),
+                            "{mode:?}: slash accepted the folder"
+                        );
+                    }
+                    assert!(chooser.press(Key::Escape));
+                    assert!(chooser.open_request());
+                    assert!(chooser.press(Key::Escape));
+                    assert!(chooser.cancelled());
+                }
+            }
+        },
+    );
+}
+
+#[test]
 fn folder_only_search_hits_exclude_files_and_choose_the_focused_folder() {
     crate::test_support::gtk_test(
         "ui::chooser::tests::keyboard::folder_only_search_hits_exclude_files_and_choose_the_focused_folder",
