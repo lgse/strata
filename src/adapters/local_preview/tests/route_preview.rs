@@ -68,9 +68,9 @@ fn route_requests_bypass_text_and_cache_by_palette() {
                 rendered.fetch_add(1, Ordering::SeqCst);
                 let preview = RoutePreview {
                     png: resvg::tiny_skia::Pixmap::new(800, 600)
-                        .unwrap()
+                        .expect("allocate route image")
                         .encode_png()
-                        .unwrap(),
+                        .expect("encode route image"),
                     profile: None,
                     distance_m: 1000.0,
                     elevation: None,
@@ -91,7 +91,7 @@ fn route_requests_bypass_text_and_cache_by_palette() {
                     ],
                 };
                 Ok(crate::sandbox::ParseOutput {
-                    data: serde_json::to_vec(&preview).unwrap(),
+                    data: serde_json::to_vec(&preview).expect("serialize route preview"),
                     page: 0,
                     pages: 0,
                     text_layer: None,

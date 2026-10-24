@@ -163,7 +163,8 @@ impl PreviewCache {
 fn preview_content_size(content: &PreviewContent) -> usize {
     match content {
         PreviewContent::Route { preview } => {
-            preview.png.len() + preview.profile.as_ref().map_or(0, Vec::len)
+            preview.png.len()
+                + preview.profile.as_ref().map_or(0, Vec::len)
                 + preview.samples.len() * size_of::<crate::services::route_preview::RouteSample>()
         }
         PreviewContent::Rasterized { png } | PreviewContent::Model { png, .. } => png.len(),

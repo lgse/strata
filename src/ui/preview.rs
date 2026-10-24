@@ -579,10 +579,13 @@ impl PreviewDrawer {
                             &entry.native_name,
                         )
                         .is_some())
-                    && state.revealer.reveals_child()
                     && state.current_request.get().is_some()
                 {
-                    state.load(entry, 0);
+                    if state.sizing.is_suspended() {
+                        state.sizing.defer_load();
+                    } else if state.revealer.reveals_child() {
+                        state.load(entry, 0);
+                    }
                 }
             },
         );

@@ -18,14 +18,14 @@ fn ready_with_elevation(provider: &Provider, index: usize, elevation: Option<[f6
         content: PreviewContent::Route {
             preview: RoutePreview {
                 png: resvg::tiny_skia::Pixmap::new(800, 600)
-                    .unwrap()
+                    .expect("allocate route image")
                     .encode_png()
-                    .unwrap(),
+                    .expect("encode route image"),
                 profile: elevation.map(|_| {
                     resvg::tiny_skia::Pixmap::new(800, 140)
-                        .unwrap()
+                        .expect("allocate elevation image")
                         .encode_png()
-                        .unwrap()
+                        .expect("encode elevation image")
                 }),
                 elevation,
                 distance_m: 1000.0,
@@ -58,7 +58,12 @@ fn route_media_commands_restart_at_the_end_and_stop_on_replacement_or_close() {
             let drawer = PreviewDrawer::new(provider.clone(), false);
             drawer.show(entry("first.gpx"), None);
             ready(&provider, 0);
-            let player = drawer.state.route.borrow().clone().unwrap();
+            let player = drawer
+                .state
+                .route
+                .borrow()
+                .clone()
+                .expect("loaded route player");
             assert!(
                 drawer.has_video(),
                 "route participates in the media shortcut dispatcher"
@@ -81,9 +86,23 @@ fn route_media_commands_restart_at_the_end_and_stop_on_replacement_or_close() {
             );
             assert!(drawer.media_key(MediaCommand::Seek(MediaSeek::End)));
             assert!(!player.play.is_active());
-            assert_eq!(player.position.get().unwrap().distance_m, 1000.0);
+            assert_eq!(
+                player
+                    .position
+                    .get()
+                    .expect("position at route end")
+                    .distance_m,
+                1000.0
+            );
             assert!(drawer.media_key(MediaCommand::PlayPause));
-            assert_eq!(player.position.get().unwrap().distance_m, 0.0);
+            assert_eq!(
+                player
+                    .position
+                    .get()
+                    .expect("position after restart")
+                    .distance_m,
+                0.0
+            );
             assert!(player.play.is_active());
             drawer.show(entry("second.gpx"), None);
             ready(&provider, 1);
@@ -97,7 +116,12 @@ fn route_media_commands_restart_at_the_end_and_stop_on_replacement_or_close() {
                 weak.upgrade().is_none(),
                 "tick and widget handlers do not retain the route"
             );
-            let player = drawer.state.route.borrow().clone().unwrap();
+            let player = drawer
+                .state
+                .route
+                .borrow()
+                .clone()
+                .expect("replacement route player");
             assert!(drawer.media_key(MediaCommand::PlayPause));
             drawer.close();
             assert!(!player.play.is_active());
@@ -126,12 +150,31 @@ fn route_units_load_before_settings_and_update_across_drawers_and_files() {
             assert!(labels(first.widget().upcast_ref()).contains(&"0.6 mi".into()));
             first.media_key(MediaCommand::Seek(MediaSeek::End));
             first.media_key(MediaCommand::Seek(MediaSeek::By(-15_000_000)));
-            let player = first.state.route.borrow().clone().unwrap();
-            assert_eq!(player.position.get().unwrap().distance_m, 500.0);
+            let player = first
+                .state
+                .route
+                .borrow()
+                .clone()
+                .expect("loaded route player");
+            assert_eq!(
+                player
+                    .position
+                    .get()
+                    .expect("position after seeking")
+                    .distance_m,
+                500.0
+            );
             first.media_key(MediaCommand::PlayPause);
             manager.set_unit_system(UnitSystem::Metric);
             assert!(player.play.is_active(), "unit changes preserve playback");
-            assert_eq!(player.position.get().unwrap().distance_m, 500.0);
+            assert_eq!(
+                player
+                    .position
+                    .get()
+                    .expect("position after changing units")
+                    .distance_m,
+                500.0
+            );
             let text = labels(first.widget().upcast_ref());
             assert!(text.contains(&"0.5 km".into()));
             assert!(text.contains(&"1.0 km".into()));
@@ -158,4 +201,57 @@ fn labels(widget: &gtk::Widget) -> Vec<String> {
         child = widget.next_sibling();
     }
     result
+}
+
+#[test]
+fn suspended_route_reloads_with_the_latest_palette_on_resume() {
+    crate::test_support::gtk_test(
+        "ui::preview::tests::route::suspended_route_reloads_with_the_latest_palette_on_resume",
+        || {
+            let provider = Rc::new(Provider::default());
+            let drawer = PreviewDrawer::new(provider.clone(), false);
+            drawer.show(entry("route.gpx"), None);
+            ready(&provider, 0);
+            let split = gtk::Paned::new(gtk::Orientation::Horizontal);
+            split.set_start_child(Some(&gtk::Box::new(gtk::Orientation::Vertical, 0)));
+            split.set_end_child(Some(&drawer.widget()));
+            drawer.state.sync_split(&split);
+            assert!(drawer.state.sizing.is_suspended());
+            let manager = crate::ui::theme::ThemeManager::shared();
+            let mut tokens = manager.appearance_tokens();
+            let old_palette = manager.active_model_palette();
+            tokens.accent = if old_palette.accent == 0xff0000 {
+                "#00ff00"
+            } else {
+                "#ff0000"
+            }
+            .into();
+            manager.preview(&tokens);
+            assert_eq!(
+                provider.0.borrow().len(),
+                1,
+                "hidden previews defer rendering"
+            );
+            let window = gtk::Window::builder()
+                .default_width(1200)
+                .default_height(760)
+                .child(&split)
+                .build();
+            window.present();
+            while glib::MainContext::default().iteration(false) {}
+            drawer.state.sync_split(&split);
+            let pending = provider.0.borrow();
+            assert_eq!(
+                pending.len(),
+                2,
+                "restoration requests a fresh route render"
+            );
+            assert_eq!(
+                pending[1].request.model_palette,
+                manager.active_model_palette()
+            );
+            assert_ne!(pending[1].request.model_palette, old_palette);
+            window.destroy();
+        },
+    );
 }

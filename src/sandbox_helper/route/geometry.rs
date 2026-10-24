@@ -34,11 +34,13 @@ pub(super) fn prepare(route: &Route) -> Trace {
             .unwrap_or(longitudes[0] + 360.0);
         if next - lon > gap {
             gap = next - lon;
-            seam = next.rem_euclid(360.0);
+            seam = longitudes[(i + 1) % longitudes.len()];
         }
     }
     let project = |p: &Point| {
-        let x = (p.lon - seam).rem_euclid(360.0).to_radians();
+        let x = (p.lon.rem_euclid(360.0) - seam)
+            .rem_euclid(360.0)
+            .to_radians();
         let latitude = p.lat.clamp(-85.05112878, 85.05112878).to_radians();
         let y = -(std::f64::consts::FRAC_PI_4 + latitude / 2.0).tan().ln();
         [x, y]

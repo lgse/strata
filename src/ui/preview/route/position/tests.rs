@@ -23,12 +23,17 @@ fn hovering_a_route_segment_and_seeking_distance_choose_the_same_elevation() {
         sample(0.0, 0.0, 0.0, Some(120.0), true),
         sample(100.0, 100.0, 1000.0, Some(20.0), false),
     ];
-    let hovered = nearest(&samples, [25.0, 25.0]).unwrap();
+    let hovered = nearest(&samples, [25.0, 25.0]).expect("nearest route position");
     assert_eq!(hovered.position, [25.0, 25.0]);
     assert_eq!(hovered.distance_m, 250.0);
     assert_eq!(hovered.elevation_y, Some(95.0));
     assert_eq!(at_distance(&samples, 250.0), Some(hovered));
-    assert_eq!(at_distance(&samples, 5000.0).unwrap().distance_m, 1000.0);
+    assert_eq!(
+        at_distance(&samples, 5000.0)
+            .expect("clamped route endpoint")
+            .distance_m,
+        1000.0
+    );
 }
 
 #[test]
@@ -39,12 +44,24 @@ fn hovering_does_not_invent_a_connection_across_route_or_elevation_gaps() {
         sample(500.0, 0.0, 100.0, Some(20.0), true),
         sample(600.0, 0.0, 200.0, Some(40.0), false),
     ];
-    let gap = nearest(&samples, [300.0, 0.0]).unwrap();
+    let gap = nearest(&samples, [300.0, 0.0]).expect("nearest segment endpoint");
     assert!(gap.position == [100.0, 0.0] || gap.position == [500.0, 0.0]);
-    assert_eq!(at_distance(&samples, 50.0).unwrap().elevation_y, None);
-    assert_eq!(at_distance(&samples, 150.0).unwrap().position, [550.0, 0.0]);
     assert_eq!(
-        at_distance(&samples, 150.0).unwrap().elevation_y,
+        at_distance(&samples, 50.0)
+            .expect("position with missing elevation")
+            .elevation_y,
+        None
+    );
+    assert_eq!(
+        at_distance(&samples, 150.0)
+            .expect("position within second segment")
+            .position,
+        [550.0, 0.0]
+    );
+    assert_eq!(
+        at_distance(&samples, 150.0)
+            .expect("elevation within second segment")
+            .elevation_y,
         Some(30.0)
     );
 }
@@ -57,7 +74,9 @@ fn stationary_and_isolated_points_can_be_hovered_without_dividing_by_zero() {
         sample(400.0, 100.0, 0.0, None, true),
     ];
     assert_eq!(
-        nearest(&samples, [399.0, 100.0]).unwrap().position,
+        nearest(&samples, [399.0, 100.0])
+            .expect("nearest isolated point")
+            .position,
         [400.0, 100.0]
     );
     assert_eq!(at_distance(&samples, 0.0), Some(samples[0]));
@@ -72,12 +91,13 @@ fn sub_metre_profile_hover_selects_the_same_route_position_as_the_drawing() {
         sample(100.0, 100.0, 0.5, Some(20.0), false),
     ];
     let endpoint = profile_x(0.5, 0.5);
-    let hovered = at_distance(&samples, profile_distance(endpoint, 0.5)).unwrap();
+    let hovered =
+        at_distance(&samples, profile_distance(endpoint, 0.5)).expect("profile endpoint position");
     assert_eq!(hovered.position, [100.0, 100.0]);
     assert_eq!(hovered.elevation_y, Some(20.0));
     assert_eq!(
         at_distance(&samples, profile_distance(endpoint / 2.0 + 1.0, 0.5))
-            .unwrap()
+            .expect("profile midpoint position")
             .distance_m,
         0.25
     );

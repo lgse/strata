@@ -44,7 +44,7 @@ pub(super) fn parse(bytes: &[u8], format: RouteFormat) -> Result<Route, String> 
                         route.split();
                     }
                     if gpx_point(&stack, &name) {
-                        point = attributes(&start);
+                        point = attributes(&start, reader.decoder());
                     }
                 } else if matches!(
                     name.as_slice(),
@@ -175,21 +175,24 @@ struct Altitude {
 }
 
 fn gpx_point(stack: &[Vec<u8>], name: &[u8]) -> bool {
-    let path: Vec<&[u8]> = stack.iter().map(Vec::as_slice).collect();
-    matches!(
-        (path.as_slice(), name),
-        ([b"gpx", b"trk", b"trkseg"], b"trkpt") | ([b"gpx", b"rte"], b"rtept") | ([b"gpx"], b"wpt")
-    )
+    match name {
+        b"trkpt" => stack == [b"gpx".as_slice(), b"trk", b"trkseg"],
+        b"rtept" => stack == [b"gpx".as_slice(), b"rte"],
+        b"wpt" => stack == [b"gpx".as_slice()],
+        _ => false,
+    }
 }
 
-fn attributes(start: &BytesStart<'_>) -> Option<Point> {
+fn attributes(start: &BytesStart<'_>, decoder: quick_xml::encoding::Decoder) -> Option<Point> {
     let mut lat = None;
     let mut lon = None;
     for attribute in start.attributes() {
         let attribute = attribute.ok()?;
         let number = || {
-            std::str::from_utf8(&attribute.value)
+            attribute
+                .decoded_and_normalized_value(quick_xml::XmlVersion::Implicit1_0, decoder)
                 .ok()?
+                .trim()
                 .parse::<f64>()
                 .ok()
         };

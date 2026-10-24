@@ -131,10 +131,10 @@ impl RoutePlayer {
         };
         let weak = Rc::downgrade(self);
         plot.marker.set_draw_func(move |_, context, _, _| {
-            if let Some(player) = weak.upgrade() {
-                if let (Some(plot), Some(position)) = (player.plot(kind), player.position.get()) {
-                    plot.draw_marker(context, position, player.distance_m);
-                }
+            if let Some(player) = weak.upgrade()
+                && let (Some(plot), Some(position)) = (player.plot(kind), player.position.get())
+            {
+                plot.draw_marker(context, position, player.distance_m);
             }
         });
         let motion = gtk::EventControllerMotion::new();

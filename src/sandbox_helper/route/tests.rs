@@ -4,7 +4,7 @@ use super::*;
 
 #[test]
 fn gpx_preserves_gaps_and_missing_zero_and_negative_altitude() {
-    let route = parse(br#"<gpx><trk><trkseg><trkpt lat="0" lon="0"><ele>-5</ele></trkpt><trkpt lat="0" lon="0.001"><ele>0</ele></trkpt><trkpt lat="NaN" lon="0"/><trkpt lat="1" lon="1"/></trkseg><trkseg><trkpt lat="2" lon="2"/></trkseg></trk></gpx>"#, RouteFormat::Gpx).unwrap();
+    let route = parse(br#"<gpx><trk><trkseg><trkpt lat="0" lon="0"><ele>-5</ele></trkpt><trkpt lat="0" lon="0.001"><ele>0</ele></trkpt><trkpt lat="NaN" lon="0"/><trkpt lat="1" lon="1"/></trkseg><trkseg><trkpt lat="2" lon="2"/></trkseg></trk></gpx>"#, RouteFormat::Gpx).expect("parse GPX fixture");
     assert_eq!(
         route.segments.iter().map(Vec::len).collect::<Vec<_>>(),
         [2, 1, 1]
@@ -12,10 +12,12 @@ fn gpx_preserves_gaps_and_missing_zero_and_negative_altitude() {
     assert_eq!(route.segments[0][0].elevation, Some(-5.0));
     assert_eq!(route.segments[0][1].elevation, Some(0.0));
     assert_eq!(route.segments[1][0].elevation, None);
-    let preview = render::draw(&route, ModelPalette::default()).unwrap();
+    let preview = render::draw(&route, ModelPalette::default()).expect("render route");
     assert!((preview.distance_m - 111.195).abs() < 0.01);
     assert_eq!(preview.elevation, Some([-5.0, 0.0]));
-    assert!(RoutePreview::from_json(&serde_json::to_vec(&preview).unwrap()).is_ok());
+    assert!(
+        RoutePreview::from_json(&serde_json::to_vec(&preview).expect("serialize preview")).is_ok()
+    );
 }
 
 #[test]
@@ -31,8 +33,8 @@ fn waypoints_and_flat_or_missing_altitude_remain_useful() {
             true,
         ),
     ] {
-        let route = parse(xml.as_bytes(), RouteFormat::Gpx).unwrap();
-        let preview = render::draw(&route, ModelPalette::default()).unwrap();
+        let route = parse(xml.as_bytes(), RouteFormat::Gpx).expect("parse GPX fixture");
+        let preview = render::draw(&route, ModelPalette::default()).expect("render route");
         assert_eq!(preview.profile.is_some(), profile);
         assert!(preview.distance_m.is_finite());
         assert!(!preview.png.is_empty());
@@ -55,7 +57,7 @@ fn xml_rejects_truncation_wrong_root_dtd_and_excessive_depth() {
 
 #[test]
 fn kml_keeps_lines_separate_and_requires_absolute_altitude() {
-    let route = parse(br#"<kml xmlns:gx="http://www.google.com/kml/ext/2.2"><Document><Placemark><MultiGeometry><LineString><altitudeMode>absolute</altitudeMode><coordinates>0,0,10 0.001,0,20</coordinates></LineString><LineString><coordinates>1,1,100 2,2,200</coordinates></LineString><gx:Track><altitudeMode>absolute</altitudeMode><gx:coord>3 3 30</gx:coord><gx:coord/><gx:coord>4 4 40</gx:coord></gx:Track></MultiGeometry></Placemark></Document></kml>"#, RouteFormat::Kml).unwrap();
+    let route = parse(br#"<kml xmlns:gx="http://www.google.com/kml/ext/2.2"><Document><Placemark><MultiGeometry><LineString><altitudeMode>absolute</altitudeMode><coordinates>0,0,10 0.001,0,20</coordinates></LineString><LineString><coordinates>1,1,100 2,2,200</coordinates></LineString><gx:Track><altitudeMode>absolute</altitudeMode><gx:coord>3 3 30</gx:coord><gx:coord/><gx:coord>4 4 40</gx:coord></gx:Track></MultiGeometry></Placemark></Document></kml>"#, RouteFormat::Kml).expect("parse KML fixture");
     assert_eq!(
         route.segments.iter().map(Vec::len).collect::<Vec<_>>(),
         [2, 2, 1, 1]
@@ -71,8 +73,8 @@ fn dateline_distance_uses_the_short_arc() {
         br#"<gpx><rte><rtept lat="0" lon="179.999"/><rtept lat="0" lon="-179.999"/></rte></gpx>"#,
         RouteFormat::Gpx,
     )
-    .unwrap();
-    let preview = render::draw(&route, ModelPalette::default()).unwrap();
+    .expect("parse dateline route");
+    let preview = render::draw(&route, ModelPalette::default()).expect("render route");
     assert!((preview.distance_m - 222.39).abs() < 0.1);
 }
 
@@ -96,8 +98,13 @@ fn fit_fixture() -> Vec<u8> {
     bytes.extend((data.len() as u32).to_le_bytes());
     bytes.extend(b".FIT");
     bytes.extend(data);
+    append_fit_crc(&mut bytes);
+    bytes
+}
+
+fn append_fit_crc(bytes: &mut Vec<u8>) {
     let mut crc = 0u16;
-    for byte in &bytes {
+    for byte in bytes.iter() {
         crc ^= u16::from(*byte);
         for _ in 0..8 {
             crc = if crc & 1 != 0 {
@@ -108,13 +115,12 @@ fn fit_fixture() -> Vec<u8> {
         }
     }
     bytes.extend(crc.to_le_bytes());
-    bytes
 }
 
 #[test]
 fn fit_decodes_coordinates_prefers_enhanced_altitude_and_preserves_gaps() {
     let bytes = fit_fixture();
-    let route = parse(&bytes, RouteFormat::Fit).unwrap();
+    let route = parse(&bytes, RouteFormat::Fit).expect("parse FIT fixture");
     assert_eq!(
         route.segments.iter().map(Vec::len).collect::<Vec<_>>(),
         [2, 1]
@@ -124,7 +130,31 @@ fn fit_decodes_coordinates_prefers_enhanced_altitude_and_preserves_gaps() {
     assert_eq!(route.segments[1][0].elevation, None);
     assert!((geometry::distance(route.segments[0][0], route.segments[0][1]) - 111.2).abs() < 0.1);
     let chained = [bytes.as_slice(), bytes.as_slice()].concat();
-    assert_eq!(parse(&chained, RouteFormat::Fit).unwrap().segments.len(), 4);
+    assert_eq!(
+        parse(&chained, RouteFormat::Fit)
+            .expect("parse chained FIT records")
+            .segments
+            .len(),
+        4
+    );
+
+    let hex = concat!(
+        "0c2034083c0000002e464954",
+        "4000000000010001000004",
+        "410000140003fd0486000485010485",
+        "0180b4f43f0000000000000000",
+        "410000140002000485010485",
+        "a1000000009a2e0000",
+    );
+    let mut compressed: Vec<_> = (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).expect("decode fixture hex"))
+        .collect();
+    append_fit_crc(&mut compressed);
+    let route = parse(&compressed, RouteFormat::Fit).expect("parse compressed FIT records");
+    assert_eq!(route.segments.len(), 1);
+    assert_eq!(route.points, 2);
+    assert!((geometry::prepare(&route).distance_m - 111.2).abs() < 0.1);
 }
 
 #[test]
@@ -150,7 +180,7 @@ fn route_limits_are_aggregate_and_output_metadata_is_validated() {
                 lon: 0.0,
                 elevation: None,
             }))
-            .unwrap();
+            .expect("insert point within limit");
     }
     route.split();
     assert!(
@@ -162,13 +192,20 @@ fn route_limits_are_aggregate_and_output_metadata_is_validated() {
             }))
             .is_err()
     );
-    let route = parse(br#"<gpx><wpt lat="0" lon="0"/></gpx>"#, RouteFormat::Gpx).unwrap();
-    let mut preview = render::draw(&route, ModelPalette::default()).unwrap();
+    let route =
+        parse(br#"<gpx><wpt lat="0" lon="0"/></gpx>"#, RouteFormat::Gpx).expect("parse waypoint");
+    let mut preview = render::draw(&route, ModelPalette::default()).expect("render waypoint");
     preview.distance_m = -1.0;
-    assert!(RoutePreview::from_json(&serde_json::to_vec(&preview).unwrap()).is_err());
+    assert!(
+        RoutePreview::from_json(&serde_json::to_vec(&preview).expect("serialize invalid preview"))
+            .is_err()
+    );
     preview.distance_m = 0.0;
     preview.elevation = Some([0.0, 1.0]);
-    assert!(RoutePreview::from_json(&serde_json::to_vec(&preview).unwrap()).is_err());
+    assert!(
+        RoutePreview::from_json(&serde_json::to_vec(&preview).expect("serialize invalid preview"))
+            .is_err()
+    );
 }
 
 #[test]
@@ -180,8 +217,8 @@ fn kml_multitrack_inherits_absolute_altitude_even_when_mode_follows_tracks() {
         let xml = format!(
             "<kml xmlns:gx=\"http://www.google.com/kml/ext/2.2\"><Placemark><gx:MultiTrack>{children}</gx:MultiTrack></Placemark></kml>"
         );
-        let route = parse(xml.as_bytes(), RouteFormat::Kml).unwrap();
-        let preview = render::draw(&route, ModelPalette::default()).unwrap();
+        let route = parse(xml.as_bytes(), RouteFormat::Kml).expect("parse MultiTrack fixture");
+        let preview = render::draw(&route, ModelPalette::default()).expect("render route");
         assert_eq!(preview.elevation, Some([10.0, 20.0]));
     }
 }
@@ -189,16 +226,44 @@ fn kml_multitrack_inherits_absolute_altitude_even_when_mode_follows_tracks() {
 #[test]
 fn gpx_extensions_cannot_replace_point_altitude() {
     let xml = br#"<gpx><metadata><name>Ride &amp; walk</name></metadata><wpt lat="1" lon="2"><ele>12</ele><extensions><wpt><ele>900</ele></wpt></extensions></wpt></gpx>"#;
-    let route = parse(xml, RouteFormat::Gpx).unwrap();
+    let route = parse(xml, RouteFormat::Gpx).expect("parse GPX extensions");
     assert_eq!(route.points, 1);
     assert_eq!(route.segments[0][0].elevation, Some(12.0));
     assert!(parse(&[xml.as_slice(), b"junk"].concat(), RouteFormat::Gpx).is_err());
+    let route = parse(br#"<gpx><rte><rtept lat="0" lon="0"/><rtept lat="&#48;" lon="&#x30;.001"/><rtept lat="0" lon="0.002"/></rte></gpx>"#, RouteFormat::Gpx).expect("parse escaped coordinates");
+    assert_eq!(route.segments.len(), 1);
+    assert_eq!(route.points, 3);
+    assert!((geometry::prepare(&route).distance_m - 222.39).abs() < 0.01);
+}
+
+#[test]
+fn projection_preserves_local_direction_across_longitude_normalization() {
+    for lon in [165.846129, -0.14971, -179.999, 179.999] {
+        let mut route = Route::default();
+        for offset in [0.0, 0.001] {
+            route
+                .push(Some(Point {
+                    lat: offset,
+                    lon: lon + offset,
+                    elevation: None,
+                }))
+                .expect("insert route point");
+        }
+        let trace = geometry::prepare(&route);
+        let [x0, y0] = trace.samples[0].position;
+        let [x1, y1] = trace.samples[1].position;
+        assert!(x1 > x0, "eastward motion at {lon}");
+        assert!(
+            ((y1 - y0) / (x1 - x0) + 1.0).abs() < 0.0001,
+            "northeast bearing at {lon}"
+        );
+    }
 }
 
 #[test]
 fn interaction_samples_preserve_gaps_and_reject_invalid_renderer_coordinates() {
-    let route = parse(br#"<gpx><trk><trkseg><trkpt lat="0" lon="0"><ele>0</ele></trkpt><trkpt lat="0" lon="0.01"><ele>10</ele></trkpt></trkseg><trkseg><trkpt lat="1" lon="1"/></trkseg></trk></gpx>"#, RouteFormat::Gpx).unwrap();
-    let preview = render::draw(&route, ModelPalette::default()).unwrap();
+    let route = parse(br#"<gpx><trk><trkseg><trkpt lat="0" lon="0"><ele>0</ele></trkpt><trkpt lat="0" lon="0.01"><ele>10</ele></trkpt></trkseg><trkseg><trkpt lat="1" lon="1"/></trkseg></trk></gpx>"#, RouteFormat::Gpx).expect("parse segmented route");
+    let preview = render::draw(&route, ModelPalette::default()).expect("render route");
     assert_eq!(preview.samples.len(), 3);
     assert!(!preview.samples[1].starts_segment);
     assert!(preview.samples[2].starts_segment);
@@ -216,19 +281,24 @@ fn interaction_samples_preserve_gaps_and_reject_invalid_renderer_coordinates() {
             }
             5 => {
                 changed.png = resvg::tiny_skia::Pixmap::new(1, 1)
-                    .unwrap()
+                    .expect("allocate tiny route image")
                     .encode_png()
-                    .unwrap()
+                    .expect("encode tiny route image")
             }
             _ => {
                 changed.profile = Some(
                     resvg::tiny_skia::Pixmap::new(1, 1)
-                        .unwrap()
+                        .expect("allocate tiny profile image")
                         .encode_png()
-                        .unwrap(),
+                        .expect("encode tiny profile image"),
                 )
             }
         }
-        assert!(RoutePreview::from_json(&serde_json::to_vec(&changed).unwrap()).is_err());
+        assert!(
+            RoutePreview::from_json(
+                &serde_json::to_vec(&changed).expect("serialize invalid samples")
+            )
+            .is_err()
+        );
     }
 }
