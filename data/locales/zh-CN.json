@@ -1091,6 +1091,7 @@
   "These files could not be loaded. Fix them in the actions folder, or remove them.": "无法加载这些文件。请在操作文件夹中修复或删除它们。",
   "This 3MF model exceeds the 2 million vertex preview limit. Try a lower-detail version.": "此 3MF 模型超出 200 万个顶点的预览上限。请尝试较低精度的版本。",
   "This FreeCAD file has no usable embedded thumbnail": "此 FreeCAD 文件没有可用的内嵌缩略图",
+  "This PDF is password protected.": "此 PDF 受密码保护。",
   "This archive format is not supported for preview.": "不支持预览此压缩文件格式。",
   "This archive has no parent directory.": "此压缩文件没有上级目录。",
   "This archive uses a compression method or feature that Strata does not support.": "此压缩文件使用了 Strata 不支持的压缩方法或功能。",

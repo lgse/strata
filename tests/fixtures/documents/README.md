@@ -45,3 +45,16 @@ The package contains `mimetype` (stored first and uncompressed),
 `text.pdf` is a hand-written minimal PDF (single Helvetica text stream, no
 compression) whose two text lines let the quick preview exercise its text
 layer: glyph hit-testing, drag selection, and copy.
+
+`password-protected.pdf` and `owner-restricted.pdf` encrypt the same document
+with AES-256. The first requires the artificial user password `preview`; the
+second has an empty user password and must still preview without prompting.
+Both use the artificial owner password `owner`. Generate them with:
+
+```sh
+cd tests/fixtures/documents
+qpdf --encrypt preview owner 256 -- text.pdf password-protected.pdf
+qpdf --encrypt '' owner 256 --print=none --modify=none --extract=n -- text.pdf owner-restricted.pdf
+```
+
+QPDF is needed only to regenerate these fixtures, not to run the tests.

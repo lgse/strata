@@ -1091,6 +1091,7 @@
   "These files could not be loaded. Fix them in the actions folder, or remove them.": "Không thể tải các tệp này. Hãy sửa chúng trong thư mục hành động hoặc xóa chúng.",
   "This 3MF model exceeds the 2 million vertex preview limit. Try a lower-detail version.": "Mô hình 3MF này vượt quá giới hạn xem trước 2 triệu đỉnh. Hãy thử phiên bản ít chi tiết hơn.",
   "This FreeCAD file has no usable embedded thumbnail": "Tệp FreeCAD này không có hình thu nhỏ nhúng dùng được",
+  "This PDF is password protected.": "Tệp PDF này được bảo vệ bằng mật khẩu.",
   "This archive format is not supported for preview.": "Định dạng tệp nén này không hỗ trợ xem trước.",
   "This archive has no parent directory.": "Tệp nén này không có thư mục cha.",
   "This archive uses a compression method or feature that Strata does not support.": "Tệp nén này dùng phương thức nén hoặc tính năng mà Strata không hỗ trợ.",

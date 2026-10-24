@@ -1091,6 +1091,7 @@
   "These files could not be loaded. Fix them in the actions folder, or remove them.": "Não foi possível carregar estes arquivos. Corrija-os na pasta de ações ou remova-os.",
   "This 3MF model exceeds the 2 million vertex preview limit. Try a lower-detail version.": "Este modelo 3MF excede o limite de prévia de 2 milhões de vértices. Tente uma versão com menos detalhes.",
   "This FreeCAD file has no usable embedded thumbnail": "Este arquivo do FreeCAD não tem uma miniatura incorporada utilizável",
+  "This PDF is password protected.": "Este PDF é protegido por senha.",
   "This archive format is not supported for preview.": "Este formato de arquivo compactado não é compatível com a prévia.",
   "This archive has no parent directory.": "Este arquivo compactado não tem um diretório pai.",
   "This archive uses a compression method or feature that Strata does not support.": "Este arquivo compactado usa um método de compactação ou recurso não compatível com o Strata.",

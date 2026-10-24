@@ -1091,6 +1091,7 @@
   "These files could not be loaded. Fix them in the actions folder, or remove them.": "Не удалось загрузить эти файлы. Исправьте их в папке действий или удалите.",
   "This 3MF model exceeds the 2 million vertex preview limit. Try a lower-detail version.": "Эта модель 3MF превышает предел предпросмотра в 2 миллиона вершин. Попробуйте версию с меньшей детализацией.",
   "This FreeCAD file has no usable embedded thumbnail": "В этом файле FreeCAD нет пригодной встроенной миниатюры",
+  "This PDF is password protected.": "Этот PDF защищён паролем.",
   "This archive format is not supported for preview.": "Этот формат архива не поддерживается для предпросмотра.",
   "This archive has no parent directory.": "У этого архива нет родительской папки.",
   "This archive uses a compression method or feature that Strata does not support.": "В этом архиве используется метод сжатия или функция, которые Strata не поддерживает.",
