@@ -19,11 +19,10 @@ pub(crate) enum Keys {
     Mixed(&'static [Keys]),
 }
 
-/// Digit-row keys 1 to `last`, and 0 when `zero`, with shared modifiers or
-/// after a chord prefix.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Digits {
     prefix: Option<Binding>,
+    then: Option<Binding>,
     modifiers: Modifiers,
     ignored: Modifiers,
     last: u8,
@@ -34,6 +33,7 @@ impl Digits {
     pub(crate) const fn new(modifiers: Modifiers, last: u8, zero: bool) -> Self {
         Self {
             prefix: None,
+            then: None,
             modifiers,
             ignored: Modifiers::empty(),
             last,
@@ -46,10 +46,18 @@ impl Digits {
     pub(crate) const fn after(prefix: Binding, last: u8, zero: bool) -> Self {
         Self {
             prefix: Some(prefix),
+            then: None,
             modifiers: Modifiers::empty(),
             ignored: Modifiers::SHIFT_MASK,
             last,
             zero,
+        }
+    }
+
+    pub(crate) const fn after_chord(prefix: Binding, then: Binding, last: u8, zero: bool) -> Self {
+        Self {
+            then: Some(then),
+            ..Self::after(prefix, last, zero)
         }
     }
 
@@ -66,6 +74,7 @@ impl Digits {
     pub(crate) const fn step(self) -> Self {
         Self {
             prefix: None,
+            then: None,
             modifiers: Modifiers::empty(),
             ..self
         }
@@ -124,8 +133,8 @@ pub(crate) fn digit_label(digits: Digits, digit: u8) -> String {
     debug_assert!(digits.contains(digit), "{digit} is outside {digits:?}");
     let locale = rust_i18n::locale();
     let digit = digit.to_string();
-    match digits.prefix {
-        Some(prefix) => format!("{} {digit}", binding_label(&locale, prefix)),
+    match prefix_label(&locale, &digits) {
+        Some(prefix) => format!("{prefix} {digit}"),
         None => with_modifiers(&locale, digits.modifiers, &digit),
     }
 }
@@ -175,9 +184,8 @@ fn alternatives(locale: &str, bindings: &[Binding]) -> String {
 
 fn digits_label(locale: &str, digits: &Digits) -> String {
     let range = format!("1\u{2013}{}", digits.last);
-    match digits.prefix {
+    match prefix_label(locale, digits) {
         Some(prefix) => {
-            let prefix = binding_label(locale, prefix);
             if digits.zero {
                 format!("{prefix} {range} / {prefix} 0")
             } else {
@@ -193,6 +201,14 @@ fn digits_label(locale: &str, digits: &Digits) -> String {
             with_modifiers(locale, digits.modifiers, &keys)
         }
     }
+}
+
+fn prefix_label(locale: &str, digits: &Digits) -> Option<String> {
+    let prefix = binding_label(locale, digits.prefix?);
+    Some(match digits.then {
+        Some(then) => format!("{prefix} {}", binding_label(locale, then)),
+        None => prefix,
+    })
 }
 
 fn binding_label(locale: &str, binding: Binding) -> String {

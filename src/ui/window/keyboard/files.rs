@@ -13,9 +13,10 @@ use gtk::{
 use super::{Dispatcher, KeyResult};
 use crate::{
     model::{Location, SortDirection, SortKey},
+    services::InvocationSource,
     ui::{
         browser::{ConflictFocus, Yank},
-        keys::{KeyPress, bindings::*},
+        keys::{Digits, KeyPress, bindings::*},
         tenxer_mode::{Chord, Prompt},
         window::visible_modal_layer,
     },
@@ -59,8 +60,8 @@ fn sort_choice(press: &KeyPress) -> Option<(SortKey, SortDirection)> {
 }
 
 /// 0 is slot 10.
-fn action_slot(press: &KeyPress) -> Option<(u8, usize)> {
-    let digit = press.digit_in(ACTIONS_NUMBERS)?;
+fn action_slot(press: &KeyPress, digits: Digits) -> Option<(u8, usize)> {
+    let digit = press.digit_in(digits)?;
     let slot = if digit == 0 { 10 } else { usize::from(digit) };
     Some((digit, slot))
 }
@@ -81,7 +82,7 @@ impl Dispatcher {
         } else if press.is(SORT_BY) {
             self.shortcuts.arm_chord(Chord::Sort);
         } else if press.is(ACTIONS) {
-            self.arm_actions();
+            self.arm_actions(InvocationSource::Selection);
         } else if press.is_any(&[TENXER_RENAME, RENAME]) {
             self.open_rename_prompt();
         } else if press.is(OPEN_WITH) {
@@ -236,15 +237,15 @@ impl Dispatcher {
         true
     }
 
-    fn arm_actions(&self) {
+    fn arm_actions(&self, source: InvocationSource) {
         use crate::ui::keys::{
             self, Keys,
             bindings::{
-                ACTIONS_COMPRESS, ACTIONS_EXTRACT, ACTIONS_EXTRACT_TO, ACTIONS_NUMBERS,
-                ACTIONS_TERMINAL,
+                ACTIONS_COMPRESS, ACTIONS_EXTRACT, ACTIONS_EXTRACT_TO, ACTIONS_FOLDER,
+                ACTIONS_NUMBERS, ACTIONS_TERMINAL,
             },
         };
-        let numbered = self.view.numbered_actions();
+        let numbered = self.view.numbered_actions(source);
         let mut rows = if numbered.actions.is_empty() {
             vec![(
                 keys::label(&Keys::Digits(ACTIONS_NUMBERS.step())),
@@ -258,15 +259,22 @@ impl Dispatcher {
                 .map(|(index, action)| (slot_key(index), action.name().to_owned()))
                 .collect()
         };
-        rows.extend(
-            [
-                (ACTIONS_TERMINAL, "Open terminal here"),
-                (ACTIONS_COMPRESS, "Compress\u{2026}"),
-                (ACTIONS_EXTRACT, "Extract here"),
-                (ACTIONS_EXTRACT_TO, "Extract to\u{2026}"),
-            ]
-            .map(|(step, action)| (keys::label(&Keys::One(step)), crate::i18n::tr(action))),
-        );
+        let chord = match source {
+            InvocationSource::Selection => {
+                rows.extend(
+                    [
+                        (ACTIONS_FOLDER, "Actions for this folder\u{2026}"),
+                        (ACTIONS_TERMINAL, "Open terminal here"),
+                        (ACTIONS_COMPRESS, "Compress\u{2026}"),
+                        (ACTIONS_EXTRACT, "Extract here"),
+                        (ACTIONS_EXTRACT_TO, "Extract to\u{2026}"),
+                    ]
+                    .map(|(step, action)| (keys::label(&Keys::One(step)), crate::i18n::tr(action))),
+                );
+                Chord::Action
+            }
+            InvocationSource::Background => Chord::FolderAction,
+        };
         self.armed_actions.replace(Some(ArmedActions {
             ids: numbered
                 .actions
@@ -275,24 +283,39 @@ impl Dispatcher {
                 .collect(),
             targets: numbered.targets,
         }));
-        self.shortcuts.arm_chord_with(Chord::Action, rows);
+        self.shortcuts.arm_chord_with(chord, rows);
     }
 
     pub(super) fn complete_action(&self, press: &KeyPress) -> bool {
-        if self.complete_folder_action(press) {
+        if press.is(ACTIONS_FOLDER) {
+            self.arm_actions(InvocationSource::Background);
+            return true;
+        }
+        if self.complete_lettered_action(press) {
             self.armed_actions.take();
             return true;
         }
-        let Some((digit, slot)) = action_slot(press) else {
+        self.complete_numbered_action(press, InvocationSource::Selection)
+    }
+
+    pub(super) fn complete_numbered_action(
+        &self,
+        press: &KeyPress,
+        source: InvocationSource,
+    ) -> bool {
+        let (digits, changed) = match source {
+            InvocationSource::Selection => (ACTIONS_NUMBERS, "Selection changed"),
+            InvocationSource::Background => (ACTIONS_FOLDER_NUMBERS, "Folder changed"),
+        };
+        let Some((digit, slot)) = action_slot(press, digits) else {
             return false;
         };
         let Some(armed) = self.armed_actions.take() else {
             return false;
         };
-        let numbered = self.view.numbered_actions();
+        let numbered = self.view.numbered_actions(source);
         if numbered.targets != armed.targets {
-            self.shortcuts
-                .show_feedback(&crate::i18n::tr("Selection changed"));
+            self.shortcuts.show_feedback(&crate::i18n::tr(changed));
             return true;
         }
         let Some(action) = numbered.actions.get(slot - 1).cloned() else {
@@ -309,7 +332,7 @@ impl Dispatcher {
         true
     }
 
-    fn complete_folder_action(&self, press: &KeyPress) -> bool {
+    fn complete_lettered_action(&self, press: &KeyPress) -> bool {
         use crate::ui::browser::TargetCommand;
         if press.is(ACTIONS_TERMINAL) {
             if !self.view.open_focused_folder_terminal() {

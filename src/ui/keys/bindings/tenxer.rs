@@ -85,6 +85,7 @@ catalog! {
         ACTIONS_EXTRACT: Binding = Binding::plain(Key::e), after ACTIONS;
         ACTIONS_EXTRACT_TO: Binding = Binding::shift(Key::e), after ACTIONS;
         ACTIONS_NUMBERS: Digits = Digits::after(ACTIONS, 9, true);
+        ACTIONS_FOLDER_NUMBERS: Digits = Digits::after_chord(ACTIONS, ACTIONS_FOLDER, 9, true);
 
         TAB_CHORD: Binding = Binding::plain(Key::t);
         TAB_CHORD_NEW: Binding = Binding::plain(Key::n), after TAB_CHORD;
@@ -97,6 +98,8 @@ catalog! {
         TENXER_PAGE_UP_PAGE_UP: Binding = Binding::ctrl(Key::Page_Up);
         TENXER_PAGE_DOWN_PAGE_DOWN: Binding = Binding::ctrl(Key::Page_Down);
         TENXER_THUMBNAILS_LARGER_EQUAL: Binding = Binding::plain(Key::equal);
+
+        ACTIONS_FOLDER: Binding = Binding::plain(Key::period);
 
         // The reference shows these as "Shift reverses" beside the sort chord.
         SORT_BY_NAME_REVERSED: Binding = Binding::shift(Key::a);

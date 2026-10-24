@@ -2,7 +2,8 @@
 
 Custom actions add your own scripts to the file and folder context menus. In
 [10xer mode](10xer-mode.md), **;** then **1**–**9** / **0** runs the first
-ten matching actions on the focused item or filled selection.
+ten matching actions on the focused item or filled selection, and **; .** then a
+digit runs them on the focused folder itself.
 
 They are ordinary programs running with your permissions. There is no sandbox and
 no install step beyond enabling an action. Strata validates the definition and the
@@ -204,8 +205,9 @@ the selection size is within `min_items`/`max_items`. A mixed selection therefor
 never runs an action on a subset the author did not intend to accept.
 
 Opening the folder background menu offers the same rules with the folder itself as
-the single input. Actions are only offered for native paths: Trash, GVfs, and other
-non-native locations are excluded in this release.
+the single input; in 10xer mode **; .** offers the same actions for the focused
+folder from the keyboard. Actions are only offered for native paths: Trash, GVfs,
+and other non-native locations are excluded in this release.
 
 Custom actions occupy a separate section between the opening/printing commands
 and Cut/Copy. The context menu uses GTK's native nested menu model: hover over
@@ -225,7 +227,7 @@ read as a command or as an option such as `-rf`.
 | `STRATA_ACTION_VERSION` | Protocol version, currently `1`. |
 | `STRATA_ACTION_ID` | Definition identity; the display name is in context JSON. |
 | `STRATA_ACTION_MODE` | `per-item` or `whole-selection`. |
-| `STRATA_ACTION_SOURCE` | `selection` or `background`. |
+| `STRATA_ACTION_SOURCE` | `selection` (items, or **;** in 10xer mode) or `background` (the folder itself, or **; .**). |
 | `STRATA_ACTION_COUNT`, `STRATA_ACTION_POSITION` | Input count, and 1-based position for per-item runs. |
 | `STRATA_ACTION_PATHS` | File containing every input path, NUL-delimited and byte-exact. |
 | `STRATA_ACTION_PARENT` | File containing the invoking folder. |
