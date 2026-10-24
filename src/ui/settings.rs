@@ -3447,3 +3447,25 @@ fn append_heading(container: &gtk::Box, text: &str) -> gtk::Label {
     container.append(&heading);
     heading
 }
+
+pub(super) fn unit_system_control(manager: &Rc<PreferenceManager>) -> gtk::Box {
+    use super::preferences::UnitSystem;
+    let (control, buttons) = super::controls::segmented_control(
+        &["Metric", "Imperial"],
+        usize::from(manager.unit_system() == UnitSystem::Imperial),
+    );
+    super::accessibility::set_label(&control, &crate::i18n::tr("Units"));
+    for (button, value) in buttons
+        .iter()
+        .zip([UnitSystem::Metric, UnitSystem::Imperial])
+    {
+        bindings::bind_choice(
+            manager,
+            button,
+            value,
+            PreferenceManager::unit_system,
+            PreferenceManager::set_unit_system,
+        );
+    }
+    control
+}

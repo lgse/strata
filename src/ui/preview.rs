@@ -50,6 +50,7 @@ mod model;
 mod pdf_ranges_tests;
 mod pdf_text;
 mod player_layout;
+mod route;
 mod session;
 pub(super) mod video;
 mod waveform;
@@ -96,7 +97,9 @@ pub(crate) fn entry_supports_quick_preview(entry: &FileEntry) -> bool {
     if !matches!(entry.kind, EntryKind::File | EntryKind::FileSymbolicLink) {
         return false;
     }
-    if crate::services::is_model(&entry.native_name) {
+    if crate::services::is_model(&entry.native_name)
+        || crate::services::route_preview::RouteFormat::for_name(&entry.native_name).is_some()
+    {
         return entry.location.native_path().is_some();
     }
     if crate::sandbox::CoverFormat::for_name(&entry.native_name).is_some() {
@@ -212,6 +215,7 @@ struct PreviewState {
     audio: RefCell<Option<AudioPreview>>,
     video: RefCell<Option<VideoPreview>>,
     model: RefCell<Option<model::ModelPreview>>,
+    route: RefCell<Option<Rc<route::RoutePlayer>>>,
     model_spinner: gtk::Spinner,
     model_view: Cell<crate::services::ModelView>,
     handed_off: RefCell<Option<crate::model::Location>>,
@@ -484,6 +488,7 @@ impl PreviewDrawer {
             audio: RefCell::new(None),
             video: RefCell::new(None),
             model: RefCell::new(None),
+            route: RefCell::new(None),
             model_spinner,
             model_view: Cell::default(),
             handed_off: RefCell::new(None),
@@ -569,7 +574,11 @@ impl PreviewDrawer {
                 };
                 let entry = state.current.borrow().clone();
                 if let Some(entry) = entry
-                    && crate::services::is_model(&entry.native_name)
+                    && (crate::services::is_model(&entry.native_name)
+                        || crate::services::route_preview::RouteFormat::for_name(
+                            &entry.native_name,
+                        )
+                        .is_some())
                     && state.revealer.reveals_child()
                     && state.current_request.get().is_some()
                 {
@@ -863,6 +872,9 @@ impl Drop for PreviewState {
 
 impl PreviewState {
     fn media_command(self: &Rc<Self>, command: MediaCommand) -> bool {
+        if let Some(route) = self.route.borrow().as_ref() {
+            return route.command(command);
+        }
         match command {
             MediaCommand::Previous => return self.step_media(-1, true),
             MediaCommand::Next => return self.step_media(1, true),
@@ -1286,6 +1298,7 @@ impl PreviewState {
                     }
                     PreviewContent::Image
                     | PreviewContent::Model { .. }
+                    | PreviewContent::Route { .. }
                     | PreviewContent::Media
                     | PreviewContent::SandboxedMedia { .. }
                     | PreviewContent::Archive { .. }
@@ -1702,6 +1715,7 @@ impl PreviewState {
                 self.rendered_text.replace(Some(state));
                 self.content.append(&view);
             }
+            PreviewContent::Route { preview } => self.render_route(preview),
             PreviewContent::Model { png, mesh } => self.render_model(png, mesh),
             PreviewContent::Rasterized { png } => {
                 let model = crate::services::is_model(&preview.entry.native_name);
@@ -2919,6 +2933,7 @@ impl PreviewState {
         self.media.borrow().is_some()
             || self.audio.borrow().is_some()
             || self.video.borrow().is_some()
+            || self.route.borrow().is_some()
     }
 
     fn stepping_family(&self) -> Option<MediaFamily> {
@@ -3051,6 +3066,9 @@ impl PreviewState {
     }
 
     fn reset_content(&self, keep: Option<MediaFamily>) {
+        if let Some(route) = self.route.borrow_mut().take() {
+            route.pause();
+        }
         self.model.borrow_mut().take();
         let owned = self.content_owns_keys();
         self.detach_find();

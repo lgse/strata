@@ -177,7 +177,7 @@ impl VideoView {
             details: header.upcast_ref(),
             badges: None,
             timeline: Some(timeline.upcast_ref()),
-            controls: transport.upcast_ref(),
+            controls: Some(transport.upcast_ref()),
         });
         root.add_css_class("preview-video");
 

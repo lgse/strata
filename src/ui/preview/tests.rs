@@ -9,6 +9,7 @@ mod media_controls;
 mod model;
 mod operations;
 mod pdf;
+mod route;
 mod video;
 
 struct Pending {

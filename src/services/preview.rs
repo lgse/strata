@@ -126,6 +126,9 @@ pub enum PreviewContent {
     Rasterized {
         png: Vec<u8>,
     },
+    Route {
+        preview: super::route_preview::RoutePreview,
+    },
     Model {
         png: Vec<u8>,
         mesh: Option<super::ModelMesh>,

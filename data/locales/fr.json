@@ -1486,5 +1486,22 @@
   "Press Enter to close.": "Appuyez sur Entrée pour fermer.",
   "The command opened in your terminal. Run diagnostics again when it finishes.": "La commande s’est ouverte dans votre terminal. Relancez le diagnostic une fois qu’elle est terminée.",
   "Disabled": "Désactivé",
-  "Open folder": "Ouvrir le dossier"
+  "Open folder": "Ouvrir le dossier",
+  "%{distance} km": "%{distance} km",
+  "%{minimum}–%{maximum} m": "%{minimum}–%{maximum} m",
+  "Copy this route file locally before previewing it.": "Copiez ce fichier d’itinéraire en local avant de le prévisualiser.",
+  "Elevation": "Altitude",
+  "Elevation profile": "Profil altimétrique",
+  "Route": "Itinéraire",
+  "Route preview": "Aperçu de l’itinéraire",
+  "This route exceeds the 250,000 point preview limit.": "Cet itinéraire dépasse la limite de 250 000 points pour l’aperçu.",
+  "This route file exceeds the 32 MiB preview limit.": "Ce fichier d’itinéraire dépasse la limite de 32 Mio pour l’aperçu.",
+  "This route file is invalid or contains no supported coordinates.": "Ce fichier d’itinéraire est invalide ou ne contient aucune coordonnée prise en charge.",
+  "Units": "Unités",
+  "Metric": "Métrique",
+  "Imperial": "Impérial",
+  "Distance and elevation in route previews.": "Distance et altitude dans les aperçus de parcours.",
+  "settings_keywords.units": "métrique impérial kilomètres miles mètres pieds distance altitude parcours gpx fit kml",
+  "%{distance} mi": "%{distance} mi",
+  "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum} pi"
 }

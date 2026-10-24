@@ -78,6 +78,7 @@ unrar_sys = { version = "0.5.8", optional = true }
 x11rb = { version = "0.13.2", default-features = false, features = ["xkb", "xtest"], optional = true }
 regex = { version = "1.13.1", optional = true }
 frizbee = "0.13"
+fitparser = "0.11.0"
 
 [dev-dependencies]
 rustls = { version = "0.23.46", default-features = false, features = ["std", "ring", "tls12"] }

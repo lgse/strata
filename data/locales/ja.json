@@ -1486,5 +1486,22 @@
   "Press Enter to close.": "Enter キーを押すと閉じます。",
   "The command opened in your terminal. Run diagnostics again when it finishes.": "コマンドをターミナルで開きました。完了したら、もう一度診断を実行してください。",
   "Disabled": "無効",
-  "Open folder": "フォルダーを開く"
+  "Open folder": "フォルダーを開く",
+  "%{distance} km": "%{distance} km",
+  "%{minimum}–%{maximum} m": "%{minimum}–%{maximum} m",
+  "Copy this route file locally before previewing it.": "プレビューする前に、このルートファイルをローカルにコピーしてください。",
+  "Elevation": "標高",
+  "Elevation profile": "標高プロファイル",
+  "Route": "ルート",
+  "Route preview": "ルートのプレビュー",
+  "This route exceeds the 250,000 point preview limit.": "このルートはプレビューの上限である250,000ポイントを超えています。",
+  "This route file exceeds the 32 MiB preview limit.": "このルートファイルはプレビューの上限である32 MiBを超えています。",
+  "This route file is invalid or contains no supported coordinates.": "このルートファイルは無効か、対応する座標が含まれていません。",
+  "Units": "単位",
+  "Metric": "メートル法",
+  "Imperial": "ヤード・ポンド法",
+  "Distance and elevation in route previews.": "ルートプレビューの距離と標高。",
+  "settings_keywords.units": "メートル法 ヤード・ポンド法 キロメートル マイル メートル フィート 距離 標高 ルート gpx fit kml",
+  "%{distance} mi": "%{distance} マイル",
+  "%{minimum}–%{maximum} ft": "%{minimum}～%{maximum} フィート"
 }

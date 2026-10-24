@@ -26,6 +26,7 @@ mod path_match;
 mod preview;
 mod release_channel;
 mod remote_download;
+pub(crate) mod route_preview;
 pub(crate) mod rtf;
 mod search;
 pub(crate) mod table;

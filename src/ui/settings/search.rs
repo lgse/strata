@@ -14,6 +14,12 @@ struct Target {
 
 const TARGETS: &[Target] = &[
     Target {
+        id: "units",
+        page: "general",
+        title: "Units",
+        aliases: "metric imperial kilometres miles metres feet distance elevation route gpx fit kml",
+    },
+    Target {
         id: "language",
         page: "general",
         title: "Language",

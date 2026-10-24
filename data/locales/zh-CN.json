@@ -1486,5 +1486,22 @@
   "Press Enter to close.": "按 Enter 键关闭。",
   "The command opened in your terminal. Run diagnostics again when it finishes.": "已在终端中打开命令。完成后请重新运行诊断。",
   "Disabled": "已禁用",
-  "Open folder": "打开文件夹"
+  "Open folder": "打开文件夹",
+  "%{distance} km": "%{distance} km",
+  "%{minimum}–%{maximum} m": "%{minimum}–%{maximum} m",
+  "Copy this route file locally before previewing it.": "请先将此路线文件复制到本机再预览。",
+  "Elevation": "海拔",
+  "Elevation profile": "海拔剖面",
+  "Route": "路线",
+  "Route preview": "路线预览",
+  "This route exceeds the 250,000 point preview limit.": "此路线超过了预览上限（250,000 个点）。",
+  "This route file exceeds the 32 MiB preview limit.": "此路线文件超过了 32 MiB 的预览大小上限。",
+  "This route file is invalid or contains no supported coordinates.": "此路线文件无效或不含支持的坐标。",
+  "Units": "单位",
+  "Metric": "公制",
+  "Imperial": "英制",
+  "Distance and elevation in route previews.": "路线预览中的距离和海拔。",
+  "settings_keywords.units": "公制 英制 千米 英里 米 英尺 距离 海拔 路线 gpx fit kml",
+  "%{distance} mi": "%{distance} 英里",
+  "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum} 英尺"
 }

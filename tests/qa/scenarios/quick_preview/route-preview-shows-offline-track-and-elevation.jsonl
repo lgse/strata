@@ -1,0 +1,58 @@
+{"scenario":"route-preview-shows-offline-track-and-elevation","modes":["list"],"prefs":{"single_click_previews":false},"tree":{"route.gpx":"<gpx><trk><trkseg><trkpt lat=\"51\" lon=\"0\"><ele>10</ele></trkpt><trkpt lat=\"51.002\" lon=\"0.003\"><ele>30</ele></trkpt><trkpt lat=\"51.004\" lon=\"0.001\"><ele>20</ele></trkpt></trkseg></trk></gpx>","no-altitude.gpx":"<gpx><rte><rtept lat=\"0\" lon=\"0\"/><rtept lat=\"0\" lon=\"0.02\"/></rte></gpx>","route.kml":"<kml><Placemark><LineString><altitudeMode>absolute</altitudeMode><coordinates>0,0,-5 0.01,0,0</coordinates></LineString></Placemark></kml>","broken.gpx":"<gpx><trk>","notes.txt":"ordinary text preview"},"cost":{"list":10.0}}
+{"fs":{"path":"route.fit","hex":"0c200000250000002e464954400000140003000485010485020284000000000000000000c40900000000009a2e0000f6091597"}}
+{"wait":{"entries":{"contains":["route.gpx","route.fit","route.kml","no-altitude.gpx","broken.gpx","notes.txt"]}},"message":"route fixtures listed"}
+{"select":{"entry":"route.gpx"}}
+{"key":"space"}
+{"wait":{"all":[{"present":{"role":"image","name":"Route preview","within":{"preview":true}}},{"present":{"role":"image","name":"Elevation profile","within":{"preview":true}}},{"preview":"10–30 m"}]},"message":"GPX route and recorded elevation rendered"}
+{"key":"ctrl+alt+space"}
+{"wait":{"state":{"target":{"role":"toggle button","name":"Play or pause","within":{"preview":true}},"pressed":true}},"message":"media shortcut starts the route animation"}
+{"wait":{"description":{"target":{"role":"image","name":"Route preview","within":{"preview":true}},"text":"0.1 km"}},"message":"playback advances along the route"}
+{"move":{"role":"image","name":"Elevation profile","within":{"preview":true}},"at":["50%","50%"]}
+{"wait":{"all":[{"state":{"target":{"role":"toggle button","name":"Play or pause","within":{"preview":true}},"pressed":false}},{"description":{"target":{"role":"image","name":"Route preview","within":{"preview":true}},"text":"0.3 km"}},{"description":{"target":{"role":"image","name":"Elevation profile","within":{"preview":true}},"text":"0.3 km"}}]},"message":"elevation hover pauses and synchronizes both positions"}
+{"key":"ctrl+alt+space"}
+{"wait":{"state":{"target":{"role":"toggle button","name":"Play or pause","within":{"preview":true}},"pressed":true}},"message":"explicit play resumes from the hovered position"}
+{"move":{"role":"image","name":"Route preview","within":{"preview":true}},"at":["45%","5%"]}
+{"wait":{"all":[{"state":{"target":{"role":"toggle button","name":"Play or pause","within":{"preview":true}},"pressed":false}},{"description":{"target":{"role":"image","name":"Route preview","within":{"preview":true}},"text":"0.6 km"}},{"description":{"target":{"role":"image","name":"Elevation profile","within":{"preview":true}},"text":"0.6 km"}}]},"message":"route hover pauses and selects the matching elevation"}
+{"move":{"role":"image","name":"Elevation profile","within":{"preview":true}},"at":["99%","50%"]}
+{"wait":{"state":{"target":{"role":"toggle button","name":"Play or pause","within":{"preview":true}},"pressed":false}},"message":"moving between the plots leaves playback paused"}
+{"key":"ctrl+alt+space"}
+{"wait":{"state":{"target":{"role":"toggle button","name":"Play or pause","within":{"preview":true}},"pressed":true}},"message":"play resumes near the route end"}
+{"wait":{"all":[{"state":{"target":{"role":"toggle button","name":"Play or pause","within":{"preview":true}},"pressed":false}},{"description":{"target":{"role":"image","name":"Route preview","within":{"preview":true}},"text":"0.6 km"}}]},"message":"playback stops at the route end"}
+{"key":"ctrl+alt+space"}
+{"wait":{"state":{"target":{"role":"toggle button","name":"Play or pause","within":{"preview":true}},"pressed":true}},"message":"play restarts a completed route"}
+{"select":{"entry":"no-altitude.gpx"}}
+{"wait":{"selected":["no-altitude.gpx"]},"message":"selection changed to no-altitude.gpx"}
+{"wait":{"all":[{"preview":"2.2 km"},{"present":{"role":"image","name":"Route preview","within":{"preview":true}}}]},"message":"no-altitude.gpx rendered"}
+{"expect":{"absent":{"role":"image","name":"Elevation profile","within":{"preview":true}}},"message":"profile presence matches recorded altitude"}
+{"wait":{"state":{"target":{"role":"toggle button","name":"Play or pause","within":{"preview":true}},"pressed":false}},"message":"changing files does not carry route playback into the next file"}
+{"key":"ctrl+alt+space"}
+{"wait":{"state":{"target":{"role":"toggle button","name":"Play or pause","within":{"preview":true}},"pressed":true}},"message":"route playback works without elevation"}
+{"move":{"role":"image","name":"Route preview","within":{"preview":true}},"at":["50%","50%"]}
+{"wait":{"state":{"target":{"role":"toggle button","name":"Play or pause","within":{"preview":true}},"pressed":false}},"message":"hover pauses a route without elevation"}
+{"select":{"entry":"route.kml"}}
+{"wait":{"selected":["route.kml"]},"message":"selection changed to route.kml"}
+{"wait":{"all":[{"preview":"-5–0 m"},{"present":{"role":"image","name":"Route preview","within":{"preview":true}}}]},"message":"route.kml rendered"}
+{"click":{"role":"toggle button","name":"Imperial","within":{"preview":true}}}
+{"wait":{"all":[{"preview":"-16–0 ft"},{"pref":{"key":"unit_system","value":"imperial"}}]},"message":"route selector converts negative elevation and saves imperial units"}
+{"expect":{"present":{"role":"image","name":"Elevation profile","within":{"preview":true}}},"message":"profile presence matches recorded altitude"}
+{"select":{"entry":"route.fit"}}
+{"wait":{"selected":["route.fit"]},"message":"selection changed to route.fit"}
+{"wait":{"all":[{"preview":"0–33 ft"},{"present":{"role":"image","name":"Route preview","within":{"preview":true}}}]},"message":"route.fit rendered"}
+{"expect":{"present":{"role":"image","name":"Elevation profile","within":{"preview":true}}},"message":"profile presence matches recorded altitude"}
+{"select":{"entry":"broken.gpx"}}
+{"wait":{"preview":"This route file is invalid or contains no supported coordinates."},"message":"malformed route reports an error"}
+{"expect":{"absent":{"role":"image","name":"Route preview","within":{"preview":true}}},"message":"failed input does not retain another route"}
+{"select":{"entry":"notes.txt"}}
+{"wait":{"preview":"ordinary text preview"},"message":"normal preview still follows selection"}
+{"restart":true}
+{"wait":{"entries":{"contains":["route.gpx"]}},"message":"route fixtures listed after restart"}
+{"select":{"entry":"route.gpx"}}
+{"key":"space"}
+{"wait":{"all":[{"preview":"33–98 ft"},{"preview":"0.4 mi"},{"state":{"target":{"role":"toggle button","name":"Imperial","within":{"preview":true}},"pressed":true}}]},"message":"imperial units survive restart and apply to a different route"}
+{"activate":{"role":"button","name":"Settings"}}
+{"wait":{"present":{"role":"button","name":"Close settings"}},"message":"settings opened"}
+{"click":{"role":"toggle button","name":"Metric","nth":-1}}
+{"wait":{"pref":{"key":"unit_system","value":"metric"}},"message":"Settings changes the shared saved unit preference"}
+{"activate":{"role":"button","name":"Close settings"}}
+{"wait":{"absent":{"role":"button","name":"Close settings"}},"message":"settings closed"}
+{"wait":{"all":[{"preview":"10–30 m"},{"preview":"0.6 km"},{"state":{"target":{"role":"toggle button","name":"Metric","within":{"preview":true}},"pressed":true}}]},"message":"existing preview immediately follows Settings unit change"}

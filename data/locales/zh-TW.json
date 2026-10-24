@@ -1486,5 +1486,22 @@
   "Next model view": "下一個模型視角",
   "Camera position": "攝影機位置",
   "Binary STL": "二進位 STL",
-  "ASCII STL": "ASCII STL"
+  "ASCII STL": "ASCII STL",
+  "%{distance} km": "%{distance} km",
+  "%{minimum}–%{maximum} m": "%{minimum}–%{maximum} m",
+  "Copy this route file locally before previewing it.": "請先將此路線檔案複製到本機再預覽。",
+  "Elevation": "海拔",
+  "Elevation profile": "海拔剖面",
+  "Route": "路線",
+  "Route preview": "路線預覽",
+  "This route exceeds the 250,000 point preview limit.": "此路線超過了預覽上限（250,000 個點）。",
+  "This route file exceeds the 32 MiB preview limit.": "此路線檔案超過了 32 MiB 的預覽大小上限。",
+  "This route file is invalid or contains no supported coordinates.": "此路線檔案無效或不含支援的座標。",
+  "Units": "單位",
+  "Metric": "公制",
+  "Imperial": "英制",
+  "Distance and elevation in route previews.": "路線預覽中的距離與海拔。",
+  "settings_keywords.units": "公制 英制 公里 英里 公尺 英尺 距離 海拔 路線 gpx fit kml",
+  "%{distance} mi": "%{distance} 英里",
+  "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum} 英尺"
 }

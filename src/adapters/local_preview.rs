@@ -12,6 +12,8 @@ mod remote;
 use futures_channel::oneshot;
 use gtk::{gio, glib, prelude::*};
 
+use crate::services::route_preview::{RouteFormat, RoutePreview, RouteRender};
+
 use crate::{
     adapters::{
         gio_close::Closing,
@@ -120,6 +122,7 @@ struct PreviewCacheKey {
     modified: i64,
     pdf_page: Option<(i32, PdfRenderSize)>,
     model: Option<ModelRender>,
+    route: Option<RouteRender>,
 }
 
 impl PreviewCache {
@@ -159,6 +162,10 @@ impl PreviewCache {
 
 fn preview_content_size(content: &PreviewContent) -> usize {
     match content {
+        PreviewContent::Route { preview } => {
+            preview.png.len() + preview.profile.as_ref().map_or(0, Vec::len)
+                + preview.samples.len() * size_of::<crate::services::route_preview::RouteSample>()
+        }
         PreviewContent::Rasterized { png } | PreviewContent::Model { png, .. } => png.len(),
         PreviewContent::Pdf {
             png, text_layer, ..
@@ -278,11 +285,11 @@ impl LocalPreviewProvider {
             let (mut content_type, uncertain) =
                 crate::services::guess_content_type(Path::new(&entry.native_name));
             let mut content = content_family(&content_type);
-            if crate::services::is_model(&entry.native_name) {
+            if crate::services::is_model(&entry.native_name) || RouteFormat::for_name(&entry.native_name).is_some() {
                 content = PreviewContent::Unsupported;
             }
 
-            if !crate::services::is_model(&entry.native_name)
+            if !crate::services::is_model(&entry.native_name) && RouteFormat::for_name(&entry.native_name).is_none()
                 && matches!(content, PreviewContent::Unsupported)
             {
                 if gio::content_type_is_a(&content_type, "text/plain") {
@@ -299,7 +306,7 @@ impl LocalPreviewProvider {
                 }
             }
 
-            if !crate::services::is_model(&entry.native_name) && matches!(content, PreviewContent::Unsupported)
+            if !crate::services::is_model(&entry.native_name) && RouteFormat::for_name(&entry.native_name).is_none() && matches!(content, PreviewContent::Unsupported)
                 && (uncertain || entry.native_name.is_empty())
             {
                 let file = gio_file_for_location(&entry.location);
@@ -344,7 +351,7 @@ impl LocalPreviewProvider {
             }
             let sample_is_text = sample.as_deref().map(looks_like_text);
             if let Some(sample) = &sample
-                && !crate::services::is_model(&entry.native_name)
+                && !crate::services::is_model(&entry.native_name) && RouteFormat::for_name(&entry.native_name).is_none()
             {
                 reconcile_with_sample(&mut content_type, &mut content, sample);
             }
@@ -549,7 +556,10 @@ impl LocalPreviewProvider {
                 palette: request.model_palette,
                 view: request.model_view,
             });
-            let operation = if let Some(render) = model {
+            let route = RouteFormat::for_name(&entry.native_name).map(|format| RouteRender { format, palette: request.model_palette });
+            let operation = if let Some(render) = route {
+                Some(ParseOperation::PreviewRoute(render))
+            } else if let Some(render) = model {
                 Some(ParseOperation::PreviewModel(render))
             } else if let Some(format) = crate::sandbox::CoverFormat::for_name(&entry.native_name) {
                 Some(ParseOperation::PreviewCover(format))
@@ -566,6 +576,7 @@ impl LocalPreviewProvider {
                 PreviewContent::Media => None,
                 PreviewContent::Text { .. }
                 | PreviewContent::Model { .. }
+                | PreviewContent::Route { .. }
                 | PreviewContent::Document { .. }
                 | PreviewContent::Rendered { .. }
                 | PreviewContent::Rasterized { .. }
@@ -584,6 +595,8 @@ impl LocalPreviewProvider {
                             entry,
                             message: if matches!(operation, ParseOperation::PreviewModel(_)) {
                                 "Remote model previews are not supported; copy the file locally first"
+                            } else if matches!(operation, ParseOperation::PreviewRoute(_)) {
+                                "Copy this route file locally before previewing it."
                             } else if matches!(operation, ParseOperation::PreviewCover(_)) {
                                 "Remote cover previews are not supported; copy the file locally first"
                             } else {
@@ -630,6 +643,7 @@ impl LocalPreviewProvider {
                     modified,
                     pdf_page,
                     model,
+                    route,
                 });
                 if let Some(cached) = cache_key
                     .as_ref()
@@ -648,7 +662,7 @@ impl LocalPreviewProvider {
                     return;
                 }
 
-                let heavy_permit = if matches!(operation, ParseOperation::PreviewPdf(_) | ParseOperation::PreviewModel(_) | ParseOperation::PreviewCover(_)) {
+                let heavy_permit = if matches!(operation, ParseOperation::PreviewPdf(_) | ParseOperation::PreviewModel(_) | ParseOperation::PreviewRoute(_) | ParseOperation::PreviewCover(_)) {
                     let Some(permit) = request_heavy_preview_permit().acquire().await else {
                         return;
                     };
@@ -682,6 +696,15 @@ impl LocalPreviewProvider {
                     return;
                 }
                 content = match render {
+                    Ok(Ok(output)) if route.is_some() => {
+                        match RoutePreview::from_json(&output.data) {
+                            Ok(preview) => PreviewContent::Route { preview },
+                            Err(message) => {
+                                emit(PreviewEvent::Failed { request_id, entry, message });
+                                return;
+                            }
+                        }
+                    },
                     Ok(Ok(output)) if model.is_some() => PreviewContent::Model {
                         png: output.data,
                         mesh: output.model_mesh,

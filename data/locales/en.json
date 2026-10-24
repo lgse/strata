@@ -1486,5 +1486,22 @@
   "Press Enter to close.": "Press Enter to close.",
   "The command opened in your terminal. Run diagnostics again when it finishes.": "The command opened in your terminal. Run diagnostics again when it finishes.",
   "Disabled": "Disabled",
-  "Open folder": "Open folder"
+  "Open folder": "Open folder",
+  "%{distance} km": "%{distance} km",
+  "%{minimum}–%{maximum} m": "%{minimum}–%{maximum} m",
+  "Copy this route file locally before previewing it.": "Copy this route file locally before previewing it.",
+  "Elevation": "Elevation",
+  "Elevation profile": "Elevation profile",
+  "Route": "Route",
+  "Route preview": "Route preview",
+  "This route exceeds the 250,000 point preview limit.": "This route exceeds the 250,000 point preview limit.",
+  "This route file exceeds the 32 MiB preview limit.": "This route file exceeds the 32 MiB preview limit.",
+  "This route file is invalid or contains no supported coordinates.": "This route file is invalid or contains no supported coordinates.",
+  "Units": "Units",
+  "Metric": "Metric",
+  "Imperial": "Imperial",
+  "Distance and elevation in route previews.": "Distance and elevation in route previews.",
+  "settings_keywords.units": "metric imperial kilometres miles metres feet distance elevation route gpx fit kml",
+  "%{distance} mi": "%{distance} mi",
+  "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum} ft"
 }

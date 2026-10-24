@@ -1486,5 +1486,22 @@
   "Press Enter to close.": "닫으려면 Enter 키를 누르세요.",
   "The command opened in your terminal. Run diagnostics again when it finishes.": "터미널에서 명령을 열었습니다. 완료되면 진단을 다시 실행하세요.",
   "Disabled": "비활성화됨",
-  "Open folder": "폴더 열기"
+  "Open folder": "폴더 열기",
+  "%{distance} km": "%{distance} km",
+  "%{minimum}–%{maximum} m": "%{minimum}–%{maximum} m",
+  "Copy this route file locally before previewing it.": "미리보기 전에 이 경로 파일을 로컬로 복사하세요.",
+  "Elevation": "고도",
+  "Elevation profile": "고도 프로필",
+  "Route": "경로",
+  "Route preview": "경로 미리보기",
+  "This route exceeds the 250,000 point preview limit.": "이 경로는 미리보기 제한인 250,000개 지점을 초과합니다.",
+  "This route file exceeds the 32 MiB preview limit.": "이 경로 파일은 미리보기 제한인 32 MiB를 초과합니다.",
+  "This route file is invalid or contains no supported coordinates.": "이 경로 파일이 유효하지 않거나 지원되는 좌표가 없습니다.",
+  "Units": "단위",
+  "Metric": "미터법",
+  "Imperial": "야드파운드법",
+  "Distance and elevation in route previews.": "경로 미리보기의 거리와 고도입니다.",
+  "settings_keywords.units": "미터법 야드파운드법 킬로미터 마일 미터 피트 거리 고도 경로 gpx fit kml",
+  "%{distance} mi": "%{distance}마일",
+  "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum}피트"
 }

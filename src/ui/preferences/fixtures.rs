@@ -81,6 +81,7 @@ pub(in crate::ui) fn non_default_preferences() -> Preferences {
         preview_muted: true,
         preview_volume: 0.35,
         preview_text_wrap: true,
+        unit_system: UnitSystem::Imperial,
         preview_autoplay: true,
         watch_network_folders: false,
         thumbnail_workers: 6,

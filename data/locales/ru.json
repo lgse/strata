@@ -1486,5 +1486,22 @@
   "Press Enter to close.": "Нажмите Enter, чтобы закрыть.",
   "The command opened in your terminal. Run diagnostics again when it finishes.": "Команда открыта в терминале. Когда она завершится, снова запустите диагностику.",
   "Disabled": "Отключено",
-  "Open folder": "Открыть папку"
+  "Open folder": "Открыть папку",
+  "%{distance} km": "%{distance} км",
+  "%{minimum}–%{maximum} m": "%{minimum}–%{maximum} м",
+  "Copy this route file locally before previewing it.": "Скопируйте этот файл маршрута на компьютер перед предпросмотром.",
+  "Elevation": "Высота",
+  "Elevation profile": "Профиль высоты",
+  "Route": "Маршрут",
+  "Route preview": "Предпросмотр маршрута",
+  "This route exceeds the 250,000 point preview limit.": "Этот маршрут превышает ограничение предпросмотра в 250 000 точек.",
+  "This route file exceeds the 32 MiB preview limit.": "Этот файл маршрута превышает ограничение предпросмотра в 32 МиБ.",
+  "This route file is invalid or contains no supported coordinates.": "Этот файл маршрута повреждён или не содержит поддерживаемых координат.",
+  "Units": "Единицы измерения",
+  "Metric": "Метрические",
+  "Imperial": "Имперские",
+  "Distance and elevation in route previews.": "Расстояние и высота в предпросмотре маршрутов.",
+  "settings_keywords.units": "метрические имперские километры мили метры футы расстояние высота маршрут gpx fit kml",
+  "%{distance} mi": "%{distance} мили",
+  "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum} фут."
 }

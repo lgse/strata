@@ -249,7 +249,7 @@ impl ModelPreview {
             details: header.upcast_ref(),
             badges: Some(badges.upcast_ref()),
             timeline: None,
-            controls: controls.upcast_ref(),
+            controls: Some(controls.upcast_ref()),
         });
         root.add_css_class("preview-model");
         layout.set_aspect(Some(1.0));

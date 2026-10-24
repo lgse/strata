@@ -5,6 +5,7 @@ use std::{fs, time::Duration};
 mod cover_preview;
 mod model_preview;
 mod remote_preview;
+mod route_preview;
 
 use super::*;
 use crate::services::{MediaPreviewSize, PreviewContent};
@@ -229,6 +230,7 @@ fn preview_cache_stores_and_retrieves_entries() {
         modified: 100,
         pdf_page: None,
         model: None,
+        route: None,
     };
     let content1 = PreviewContent::Rasterized {
         png: vec![1, 2, 3, 4],
@@ -242,6 +244,7 @@ fn preview_cache_stores_and_retrieves_entries() {
         modified: 200,
         pdf_page: None,
         model: None,
+        route: None,
     };
     let content2 = PreviewContent::Text {
         content: "hello world".to_owned(),
@@ -256,12 +259,14 @@ fn preview_cache_stores_and_retrieves_entries() {
         modified: 300,
         pdf_page: Some((0, PdfRenderSize::new(640, 800))),
         model: None,
+        route: None,
     };
     let pdf_page_1 = PreviewCacheKey {
         path: PathBuf::from("doc.pdf"),
         modified: 300,
         pdf_page: Some((1, PdfRenderSize::new(640, 800))),
         model: None,
+        route: None,
     };
     let page0_content = PreviewContent::Pdf {
         png: vec![10, 20],
@@ -285,6 +290,7 @@ fn preview_cache_stores_and_retrieves_entries() {
             modified: 300,
             pdf_page: Some((0, PdfRenderSize::new(800, 1_800))),
             model: None,
+            route: None,
         }),
         None,
         "a page rendered for a smaller viewport must not poison a larger preview"
@@ -544,6 +550,7 @@ fn preview_cache_evicts_the_least_recent_entry() {
             modified: index as i64,
             pdf_page: None,
             model: None,
+            route: None,
         })
         .collect();
 
@@ -574,6 +581,7 @@ fn replacing_a_preview_cache_entry_updates_its_byte_count() {
         modified: 1,
         pdf_page: None,
         model: None,
+        route: None,
     };
 
     cache.insert(key.clone(), PreviewContent::Rasterized { png: vec![0; 8] });
@@ -595,6 +603,7 @@ fn active_media_requests_are_never_retained_by_the_preview_cache() {
         modified: 1,
         pdf_page: None,
         model: None,
+        route: None,
     };
     let content = PreviewContent::SandboxedMedia {
         media: SandboxedMedia {

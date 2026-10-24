@@ -1486,5 +1486,22 @@
   "Press Enter to close.": "Nhấn Enter để đóng.",
   "The command opened in your terminal. Run diagnostics again when it finishes.": "Lệnh đã được mở trong terminal. Hãy chạy lại chẩn đoán khi lệnh hoàn tất.",
   "Disabled": "Đã tắt",
-  "Open folder": "Mở thư mục"
+  "Open folder": "Mở thư mục",
+  "%{distance} km": "%{distance} km",
+  "%{minimum}–%{maximum} m": "%{minimum}–%{maximum} m",
+  "Copy this route file locally before previewing it.": "Hãy sao chép tệp tuyến đường này về máy trước khi xem trước.",
+  "Elevation": "Độ cao",
+  "Elevation profile": "Biểu đồ độ cao",
+  "Route": "Tuyến đường",
+  "Route preview": "Xem trước tuyến đường",
+  "This route exceeds the 250,000 point preview limit.": "Tuyến đường này vượt quá giới hạn 250.000 điểm cho bản xem trước.",
+  "This route file exceeds the 32 MiB preview limit.": "Tệp tuyến đường này vượt quá giới hạn 32 MiB cho bản xem trước.",
+  "This route file is invalid or contains no supported coordinates.": "Tệp tuyến đường này không hợp lệ hoặc không chứa tọa độ được hỗ trợ.",
+  "Units": "Đơn vị",
+  "Metric": "Hệ mét",
+  "Imperial": "Hệ Anh",
+  "Distance and elevation in route previews.": "Khoảng cách và độ cao trong bản xem trước tuyến đường.",
+  "settings_keywords.units": "hệ mét hệ Anh kilômét dặm mét foot khoảng cách độ cao tuyến đường gpx fit kml",
+  "%{distance} mi": "%{distance} dặm",
+  "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum} ft"
 }

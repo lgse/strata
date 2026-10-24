@@ -71,6 +71,14 @@ pub(crate) enum FileIconColors {
     Theme,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum UnitSystem {
+    #[default]
+    Metric,
+    Imperial,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub(in crate::ui) struct Preferences {
     mode: String,
@@ -197,6 +205,8 @@ pub(in crate::ui) struct Preferences {
     preview_volume: f64,
     #[serde(default)]
     preview_text_wrap: bool,
+    #[serde(default)]
+    unit_system: UnitSystem,
     #[serde(default)]
     preview_autoplay: bool,
     #[serde(default = "default_enabled")]
@@ -419,6 +429,7 @@ impl Default for Preferences {
             preview_muted: false,
             preview_volume: default_full_volume(),
             preview_text_wrap: false,
+            unit_system: UnitSystem::Metric,
             preview_autoplay: false,
             watch_network_folders: true,
             thumbnail_workers: crate::sandbox::browser::default_worker_limit(),
@@ -1156,6 +1167,15 @@ impl PreferenceManager {
 
     pub fn set_preview_volume(&self, volume: f64) {
         self.preferences.borrow_mut().preview_volume = normalized_volume(volume);
+        self.save_preferences();
+    }
+
+    pub(crate) fn unit_system(&self) -> UnitSystem {
+        self.preferences.borrow().unit_system
+    }
+
+    pub(crate) fn set_unit_system(&self, units: UnitSystem) {
+        self.preferences.borrow_mut().unit_system = units;
         self.save_preferences();
     }
 
