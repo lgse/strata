@@ -122,7 +122,7 @@ fn fit_decodes_coordinates_prefers_enhanced_altitude_and_preserves_gaps() {
     assert_eq!(route.segments[0][0].elevation, Some(-5.0));
     assert_eq!(route.segments[0][1].elevation, Some(20.0));
     assert_eq!(route.segments[1][0].elevation, None);
-    assert!((render::distance(route.segments[0][0], route.segments[0][1]) - 111.2).abs() < 0.1);
+    assert!((geometry::distance(route.segments[0][0], route.segments[0][1]) - 111.2).abs() < 0.1);
     let chained = [bytes.as_slice(), bytes.as_slice()].concat();
     assert_eq!(parse(&chained, RouteFormat::Fit).unwrap().segments.len(), 4);
 }
@@ -204,15 +204,29 @@ fn interaction_samples_preserve_gaps_and_reject_invalid_renderer_coordinates() {
     assert!(preview.samples[2].starts_segment);
     assert_eq!(preview.samples[1].distance_m, preview.samples[2].distance_m);
     assert!(preview.samples[2].elevation_y.is_none());
-    for invalid in 0..5 {
+    for invalid in 0..7 {
         let mut changed = preview.clone();
         match invalid {
             0 => changed.samples[0].position[0] = -1.0,
             1 => changed.samples[1].distance_m = -1.0,
             2 => changed.samples[0].starts_segment = false,
             3 => changed.samples[1].elevation_y = Some(141.0),
-            _ => {
+            4 => {
                 changed.samples.pop();
+            }
+            5 => {
+                changed.png = resvg::tiny_skia::Pixmap::new(1, 1)
+                    .unwrap()
+                    .encode_png()
+                    .unwrap()
+            }
+            _ => {
+                changed.profile = Some(
+                    resvg::tiny_skia::Pixmap::new(1, 1)
+                        .unwrap()
+                        .encode_png()
+                        .unwrap(),
+                )
             }
         }
         assert!(RoutePreview::from_json(&serde_json::to_vec(&changed).unwrap()).is_err());

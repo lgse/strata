@@ -10,6 +10,7 @@ use crate::services::{
 };
 
 mod fit;
+mod geometry;
 mod render;
 mod xml;
 

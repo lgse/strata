@@ -6,6 +6,9 @@ use super::ModelPalette;
 
 pub(crate) const MAX_ROUTE_INPUT_BYTES: u64 = 32 * 1024 * 1024;
 pub(crate) const MAX_ROUTE_POINTS: usize = 250_000;
+pub(crate) const ROUTE_WIDTH: u32 = 800;
+pub(crate) const ROUTE_HEIGHT: u32 = 600;
+pub(crate) const PROFILE_HEIGHT: u32 = 140;
 pub(crate) const INVALID_ROUTE: &str =
     "This route file is invalid or contains no supported coordinates.";
 
@@ -89,13 +92,15 @@ impl RoutePreview {
             let valid = sample
                 .position
                 .iter()
-                .zip([800.0, 600.0])
+                .zip([ROUTE_WIDTH as f32, ROUTE_HEIGHT as f32])
                 .all(|(value, maximum)| value.is_finite() && (0.0..=maximum).contains(value))
                 && sample.distance_m.is_finite()
                 && (previous_distance..=self.distance_m).contains(&sample.distance_m)
                 && (!sample.starts_segment || sample.distance_m == previous_distance)
                 && sample.elevation_y.is_none_or(|y| {
-                    self.profile.is_some() && y.is_finite() && (0.0..=140.0).contains(&y)
+                    self.profile.is_some()
+                        && y.is_finite()
+                        && (0.0..=PROFILE_HEIGHT as f32).contains(&y)
                 });
             previous_distance = sample.distance_m;
             valid
@@ -105,15 +110,13 @@ impl RoutePreview {
     pub(crate) fn from_json(bytes: &[u8]) -> Result<Self, String> {
         let invalid = || "The preview renderer produced invalid image data".to_owned();
         let result: Self = serde_json::from_slice(bytes).map_err(|_| invalid())?;
-        let valid_png = |png: &[u8], max_height| {
-            crate::sandbox::png_dimensions(png)
-                .is_some_and(|(width, height)| width <= 800 && height <= max_height)
-        };
-        if !valid_png(&result.png, 600)
+        let valid_png =
+            |png: &[u8], height| crate::sandbox::png_dimensions(png) == Some((ROUTE_WIDTH, height));
+        if !valid_png(&result.png, ROUTE_HEIGHT)
             || result
                 .profile
                 .as_ref()
-                .is_some_and(|png| !valid_png(png, 140))
+                .is_some_and(|png| !valid_png(png, PROFILE_HEIGHT))
             || result.profile.is_some() != result.elevation.is_some()
             || !result.distance_m.is_finite()
             || !(0.0..=MAX_ROUTE_POINTS as f64 * 21_000_000.0).contains(&result.distance_m)
@@ -135,12 +138,12 @@ impl RoutePreview {
 
 pub(crate) fn profile_x(distance_m: f64, total_m: f64) -> f64 {
     2.0 + if total_m > 0.0 {
-        distance_m / total_m * 796.0
+        distance_m / total_m * (f64::from(ROUTE_WIDTH) - 4.0)
     } else {
         0.0
     }
 }
 
 pub(crate) fn profile_distance(x: f64, total_m: f64) -> f64 {
-    ((x - 2.0) / 796.0).clamp(0.0, 1.0) * total_m
+    ((x - 2.0) / (f64::from(ROUTE_WIDTH) - 4.0)).clamp(0.0, 1.0) * total_m
 }

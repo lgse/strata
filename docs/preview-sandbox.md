@@ -223,6 +223,13 @@ route and elevation markers over 30 seconds at a steady distance-based pace.
 Hovering either graph pauses playback and synchronizes both markers; playback
 resumes only on an explicit play action. Seeking uses the media shortcuts too.
 The timer stops when the preview is hidden, closed or replaced.
+
+The helper prepares a single projected trace with cumulative distance, segment
+boundaries and optional elevation coordinates. Both PNGs are drawn from this
+trace, and the same samples drive hover and playback in the UI. The plot owns
+coordinate transforms, picking and marker drawing; the player owns position and
+the playback timer. Host validation requires the PNG dimensions to match the
+trace’s coordinate space (800×600 for the route, 800×140 for elevation).
 The Metric / Imperial selector shares the saved **Settings → General → Units**
 preference. Distances use kilometres or miles; elevation uses metres or feet.
 Changing units updates labels in place without interrupting playback.

@@ -67,7 +67,7 @@ fn route_requests_bypass_text_and_cache_by_palette() {
                 assert_eq!(render.palette, palette);
                 rendered.fetch_add(1, Ordering::SeqCst);
                 let preview = RoutePreview {
-                    png: resvg::tiny_skia::Pixmap::new(1, 1)
+                    png: resvg::tiny_skia::Pixmap::new(800, 600)
                         .unwrap()
                         .encode_png()
                         .unwrap(),

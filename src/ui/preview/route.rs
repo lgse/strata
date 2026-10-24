@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 mod player;
+pub(in crate::ui::preview) mod plot;
 mod position;
 
 pub(super) use player::RoutePlayer;
@@ -8,18 +9,9 @@ pub(super) use player::RoutePlayer;
 use super::{PreviewState, components, player_layout};
 use crate::services::route_preview::{RouteFormat, RoutePreview};
 use crate::ui::preferences::{PreferenceManager, UnitSystem};
-use gtk::{gdk, glib, prelude::*};
+use gtk::{glib, prelude::*};
+use plot::{Plot, PlotKind};
 use std::rc::Rc;
-
-fn picture(png: Vec<u8>, label: &str) -> Result<(gtk::Picture, gdk::Texture), glib::Error> {
-    let texture = gdk::Texture::from_bytes(&glib::Bytes::from_owned(png))?;
-    let picture = gtk::Picture::for_paintable(&texture);
-    picture.set_can_shrink(true);
-    picture.set_content_fit(gtk::ContentFit::Contain);
-    picture.set_hexpand(true);
-    crate::ui::accessibility::set_label(&picture, &crate::i18n::tr(label));
-    Ok((picture, texture))
-}
 
 fn distance(metres: f64, units: UnitSystem) -> String {
     match units {
@@ -59,11 +51,11 @@ impl PreviewState {
     }
 
     fn append_route(self: &Rc<Self>, preview: RoutePreview) -> Result<(), glib::Error> {
-        let route = player::Plot::new(preview.png, "Route preview", false)?;
+        let route = Plot::new(preview.png, PlotKind::Route)?;
         super::install_preview_drag(&route.frame, self);
         let profile_plot = preview
             .profile
-            .map(|png| player::Plot::new(png, "Elevation profile", true))
+            .map(|png| Plot::new(png, PlotKind::Elevation))
             .transpose()?;
         let player = RoutePlayer::new(route, profile_plot, preview.samples, preview.distance_m);
         let header = components::DetailsHeader::new(None);

@@ -1,67 +1,20 @@
 // SPDX-License-Identifier: MIT
 
-use super::super::{
-    audio::palette::{follow_theme, palette},
-    keyboard::{MediaCommand, MediaSeek},
+use super::super::keyboard::{MediaCommand, MediaSeek};
+use super::{
+    distance,
+    plot::{Plot, PlotKind},
+    position,
 };
-use super::{distance, position};
-use crate::services::route_preview::{RouteSample, profile_distance, profile_x};
+use crate::services::route_preview::RouteSample;
 use crate::ui::preferences::{PreferenceManager, UnitSystem};
-use gtk::{gdk, glib, prelude::*};
+use gtk::{glib, prelude::*};
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
 };
 
 const PLAYBACK_SECONDS: f64 = 30.0;
-
-pub(super) struct Plot {
-    pub frame: gtk::Overlay,
-    pub picture: gtk::Picture,
-    marker: gtk::DrawingArea,
-    profile: bool,
-}
-
-impl Plot {
-    pub fn new(png: Vec<u8>, label: &str, profile: bool) -> Result<Self, glib::Error> {
-        let (picture, _) = super::picture(png, label)?;
-        picture.set_content_fit(if profile {
-            gtk::ContentFit::Fill
-        } else {
-            gtk::ContentFit::Contain
-        });
-        let frame = gtk::Overlay::new();
-        frame.set_child(Some(&picture));
-        frame.set_hexpand(true);
-        frame.set_vexpand(!profile);
-        let marker = gtk::DrawingArea::new();
-        marker.set_can_target(false);
-        frame.add_overlay(&marker);
-        frame.set_cursor_from_name(Some("crosshair"));
-        follow_theme(&marker);
-        Ok(Self {
-            frame,
-            picture,
-            marker,
-            profile,
-        })
-    }
-
-    fn transform(&self) -> (f64, f64, f64, f64) {
-        let width = f64::from(self.marker.width());
-        let height = f64::from(self.marker.height());
-        if self.profile {
-            return (0.0, 0.0, width / 800.0, height / 140.0);
-        }
-        let scale = (width / 800.0).min(height / 600.0);
-        (
-            (width - 800.0 * scale) / 2.0,
-            (height - 600.0 * scale) / 2.0,
-            scale,
-            scale,
-        )
-    }
-}
 
 pub(in crate::ui::preview) struct RoutePlayer {
     pub(super) route: Plot,
@@ -76,7 +29,7 @@ pub(in crate::ui::preview) struct RoutePlayer {
     pub(in crate::ui::preview) position: Cell<Option<RouteSample>>,
     tick: RefCell<Option<gtk::TickCallbackId>>,
     last_frame: Cell<Option<i64>>,
-    last_pointer: Cell<Option<(bool, f64, f64)>>,
+    last_pointer: Cell<Option<(PlotKind, f64, f64)>>,
 }
 
 impl RoutePlayer {
@@ -138,9 +91,9 @@ impl RoutePlayer {
                 player.pause();
             }
         });
-        player.bind_plot(false);
+        player.bind_plot(PlotKind::Route);
         if player.profile.is_some() {
-            player.bind_plot(true);
+            player.bind_plot(PlotKind::Elevation);
         }
         let weak = Rc::downgrade(&player);
         PreferenceManager::shared().bind_preference(
@@ -165,22 +118,23 @@ impl RoutePlayer {
         controls
     }
 
-    fn plot(&self, profile: bool) -> Option<&Plot> {
-        if profile {
-            self.profile.as_ref()
-        } else {
-            Some(&self.route)
+    fn plot(&self, kind: PlotKind) -> Option<&Plot> {
+        match kind {
+            PlotKind::Route => Some(&self.route),
+            PlotKind::Elevation => self.profile.as_ref(),
         }
     }
 
-    fn bind_plot(self: &Rc<Self>, profile: bool) {
-        let Some(plot) = self.plot(profile) else {
+    fn bind_plot(self: &Rc<Self>, kind: PlotKind) {
+        let Some(plot) = self.plot(kind) else {
             return;
         };
         let weak = Rc::downgrade(self);
         plot.marker.set_draw_func(move |_, context, _, _| {
             if let Some(player) = weak.upgrade() {
-                player.draw(context, profile);
+                if let (Some(plot), Some(position)) = (player.plot(kind), player.position.get()) {
+                    plot.draw_marker(context, position, player.distance_m);
+                }
             }
         });
         let motion = gtk::EventControllerMotion::new();
@@ -188,40 +142,29 @@ impl RoutePlayer {
         motion.connect_enter(move |_, x, y| {
             if let Some(player) = weak.upgrade() {
                 player.last_pointer.set(None);
-                player.hover(profile, x, y);
+                player.hover(kind, x, y);
             }
         });
         let weak = Rc::downgrade(self);
         motion.connect_motion(move |_, x, y| {
             if let Some(player) = weak.upgrade() {
-                player.hover(profile, x, y);
+                player.hover(kind, x, y);
             }
         });
         plot.frame.add_controller(motion);
     }
 
-    pub(in crate::ui::preview) fn hover(&self, profile: bool, x: f64, y: f64) {
+    pub(in crate::ui::preview) fn hover(&self, kind: PlotKind, x: f64, y: f64) {
         // Redraws can re-emit motion without the pointer moving after an explicit play.
-        if self.last_pointer.replace(Some((profile, x, y))) == Some((profile, x, y)) {
+        if self.last_pointer.replace(Some((kind, x, y))) == Some((kind, x, y)) {
             return;
         }
         self.pause();
-        let Some(plot) = self.plot(profile) else {
+        let Some(plot) = self.plot(kind) else {
             return;
         };
-        let (left, top, sx, sy) = plot.transform();
-        if sx <= 0.0 || sy <= 0.0 {
-            return;
-        }
-        let x = (x - left) / sx;
-        let y = (y - top) / sy;
-        if profile {
-            self.position.set(position::at_distance(
-                &self.samples,
-                profile_distance(x, self.distance_m),
-            ));
-        } else if (0.0..=800.0).contains(&x) && (0.0..=600.0).contains(&y) {
-            self.position.set(position::nearest(&self.samples, [x, y]));
+        if let Some(position) = plot.pick(&self.samples, self.distance_m, x, y) {
+            self.position.set(Some(position));
         }
         self.sync();
     }
@@ -309,45 +252,6 @@ impl RoutePlayer {
             crate::ui::accessibility::set_description(&plot.picture, Some(&distance));
             plot.marker.queue_draw();
         }
-    }
-
-    fn draw(&self, context: &gtk::cairo::Context, profile: bool) {
-        let (Some(plot), Some(position)) = (self.plot(profile), self.position.get()) else {
-            return;
-        };
-        let (left, top, sx, sy) = plot.transform();
-        let colors = palette();
-        let color = |c: gdk::RGBA| {
-            context.set_source_rgba(
-                c.red().into(),
-                c.green().into(),
-                c.blue().into(),
-                c.alpha().into(),
-            )
-        };
-        let (x, y) = if profile {
-            let x = profile_x(position.distance_m, self.distance_m) * sx;
-            color(colors.dim);
-            context.set_line_width(1.0);
-            context.move_to(x, 0.0);
-            context.line_to(x, f64::from(plot.marker.height()));
-            let _ = context.stroke();
-            let Some(y) = position.elevation_y else {
-                return;
-            };
-            (x, f64::from(y) * sy)
-        } else {
-            (
-                left + f64::from(position.position[0]) * sx,
-                top + f64::from(position.position[1]) * sy,
-            )
-        };
-        color(colors.accent_bright);
-        context.arc(x, y, 4.5, 0.0, std::f64::consts::TAU);
-        let _ = context.fill_preserve();
-        color(colors.background);
-        context.set_line_width(2.0);
-        let _ = context.stroke();
     }
 }
 

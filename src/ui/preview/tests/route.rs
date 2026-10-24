@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::services::route_preview::{RoutePreview, RouteSample};
-use crate::ui::preview::keyboard::MediaSeek;
+use crate::ui::preview::{keyboard::MediaSeek, route::plot::PlotKind};
 
 fn ready(provider: &Provider, index: usize) {
     ready_with_elevation(provider, index, None);
@@ -66,15 +66,15 @@ fn route_media_commands_restart_at_the_end_and_stop_on_replacement_or_close() {
             assert!(drawer.media_key(MediaCommand::PlayPause));
             assert!(player.play.is_active());
             assert!(!drawer.media_key(MediaCommand::Mute));
-            player.hover(false, 10.0, 20.0);
+            player.hover(PlotKind::Route, 10.0, 20.0);
             assert!(!player.play.is_active(), "pointer movement pauses playback");
             assert!(drawer.media_key(MediaCommand::PlayPause));
-            player.hover(false, 10.0, 20.0);
+            player.hover(PlotKind::Route, 10.0, 20.0);
             assert!(
                 player.play.is_active(),
                 "duplicate motion must not undo explicit play"
             );
-            player.hover(false, 11.0, 20.0);
+            player.hover(PlotKind::Route, 11.0, 20.0);
             assert!(
                 !player.play.is_active(),
                 "a new pointer position pauses again"
