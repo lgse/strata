@@ -33,6 +33,35 @@ fn code_page_and_unicode_escapes_replace_their_legacy_fallbacks() {
 }
 
 #[test]
+fn unicode_surrogates_preserve_emoji_and_replace_unpaired_units() {
+    for (source, expected) in [
+        (r"{\rtf1 A [\u-10179?\u-8704?] B}", "<p>A [😀] B</p>"),
+        (r"{\rtf1 \u55357?\u56832?}", "<p>😀</p>"),
+        (r"{\rtf1\uc0 \u-10179\u-8704}", "<p>😀</p>"),
+        (r"{\rtf1\uc2 \u-10179??\u-8704??}", "<p>😀</p>"),
+        (r"{\rtf1 \u-10179\'3f\u-8704\'3f}", "<p>😀</p>"),
+        (r"{\rtf1 \b\u-10179?\u-8704?\b0}", "<p><b>😀</b></p>"),
+        (r"{\rtf1 {\b\u-10179?}{\u-8704?}}", "<p><b>😀</b></p>"),
+        (r"{\rtf1 \u-10179?}", "<p>�</p>"),
+        (r"{\rtf1 \u-8704?}", "<p>�</p>"),
+        (r"{\rtf1 \u-10179?x\u-8704?}", "<p>�x�</p>"),
+        (r"{\rtf1 \u-10179?\u65?}", "<p>�A</p>"),
+        (r"{\rtf1 \u-10179?\u-10179?\u-8704?}", "<p>�😀</p>"),
+        (r"{\rtf1 \u-10179?\line\u-8704?}", "<p>�<br>�</p>"),
+        (r"{\rtf1 \u-10179?\par\u-8704?}", "<p>�</p><p>�</p>"),
+        (r"{\rtf1 {\*\unknown\u-10179?\u-8704?}kept}", "<p>kept</p>"),
+        (
+            "{\\rtf1 \\u-10179?{\\*\\unknown\\\nignored}\\u-8704?}",
+            "<p>😀</p>",
+        ),
+        (r"{\rtf1 \u65536?\u-32769?}", "<p>��</p>"),
+    ] {
+        let html = to_html(source, &Cancellation::default()).expect("RTF unicode escapes");
+        assert_eq!(html, expected, "{source}");
+    }
+}
+
+#[test]
 fn rendered_documents_keep_one_block_per_paragraph() {
     let parsed = parse_document(DocumentKind::Rtf, SAMPLE, &Cancellation::default())
         .expect("rendered RTF document");
