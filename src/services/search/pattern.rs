@@ -54,16 +54,19 @@ fn typo_matches_word(name: &str, query: &str) -> bool {
 fn within_one_edit(word: &str, query: &str) -> bool {
     let mut word = word.chars();
     let mut query = query.chars();
+    // Character-aligned suffixes can be compared without decoding them again.
     loop {
+        let word_tail = word.as_str();
+        let query_tail = query.as_str();
         match (word.next(), query.next()) {
             (Some(left), Some(right)) if left == right => {}
             (Some(left), Some(right)) => {
-                return word.clone().eq(query.clone())
-                    || std::iter::once(left).chain(word.clone()).eq(query.clone())
-                    || word.clone().eq(std::iter::once(right).chain(query.clone()))
+                return word.as_str() == query.as_str()
+                    || word_tail == query.as_str()
+                    || word.as_str() == query_tail
                     || (word.next() == Some(right)
                         && query.next() == Some(left)
-                        && word.eq(query));
+                        && word.as_str() == query.as_str());
             }
             (None, None) => return true,
             (Some(_), None) => return word.next().is_none(),
