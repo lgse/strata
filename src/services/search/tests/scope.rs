@@ -193,6 +193,35 @@ fn multi_word_filters_rank_phrase_hits_above_scattered_words() {
 }
 
 #[test]
+fn global_search_matches_multi_word_queries_and_ranks_phrase_above_scattered_words() {
+    let fixture = tempfile::tempdir().expect("fixture");
+    for name in [
+        "ducks_in_the_pool.txt",
+        "duck.md",
+        "goose.txt",
+        "nested/duck txt notes.md",
+        "nested/subfolder/notes.txt",
+    ] {
+        fixture_file(fixture.path(), name);
+    }
+    let (global, events) = index_trees_with_exclusions(
+        vec![fixture.path().into()],
+        false,
+        Vec::new(),
+        SearchLimits::default(),
+    );
+    global.query("duck txt");
+    let SearchEvent::Results { items, .. } = wait_for_results(&events).expect("results");
+    let names: Vec<_> = items.iter().map(|item| item.name.as_str()).collect();
+    assert_eq!(names, &["duck txt notes.md", "ducks_in_the_pool.txt"]);
+
+    global.query("subfolder txt");
+    let SearchEvent::Results { items, .. } = wait_for_results(&events).expect("results");
+    let names: Vec<_> = items.iter().map(|item| item.name.as_str()).collect();
+    assert_eq!(names, &["notes.txt"]);
+}
+
+#[test]
 fn wildcard_scoring_is_session_local_and_applies_to_new_index_batches() {
     let index = Arc::new(SharedIndex::new());
     let (filter, events) =

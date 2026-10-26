@@ -1773,7 +1773,7 @@ fn filter_score_normalized(item: &SearchItem, query: &str) -> Option<i64> {
 }
 
 fn fuzzy_score_normalized(item: &SearchItem, query: &str) -> Option<i64> {
-    if query.is_empty() {
+    if query.trim().is_empty() {
         return None;
     }
     let search_name = item.search_name();
@@ -1781,6 +1781,14 @@ fn fuzzy_score_normalized(item: &SearchItem, query: &str) -> Option<i64> {
         10_000 - position as i64 * 12 - search_name.len() as i64
     } else if let Some(position) = item.search_path.find(query) {
         7_000 - position as i64 * 4 - item.search_path.len() as i64
+    } else if query.contains(char::is_whitespace) {
+        if pattern::text_matches_words(search_name, query.split_whitespace()) {
+            5_000 - search_name.len() as i64
+        } else if pattern::text_matches_words(&item.search_path, query.split_whitespace()) {
+            3_000 - item.search_path.len() as i64
+        } else {
+            fuzzy_subsequence_score(&item.search_path, query)?
+        }
     } else {
         fuzzy_subsequence_score(&item.search_path, query)?
     };
