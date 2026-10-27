@@ -482,6 +482,7 @@ struct NestedValidationSource {
     file: Location,
     parent_validation: RefCell<Option<ValidationEmit>>,
     parent_cancelled: Rc<Cell<bool>>,
+    parent_listing: Vec<FileEntry>,
 }
 
 impl FileSource for NestedValidationSource {
@@ -504,6 +505,12 @@ impl FileSource for NestedValidationSource {
     }
 
     fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle {
+        if self.file.parent().as_ref() == Some(&request.location) {
+            emit(DirectoryEvent::Batch {
+                request_id: request.id,
+                entries: self.parent_listing.clone(),
+            });
+        }
         emit(DirectoryEvent::Finished {
             request_id: request.id,
             truncated: false,
@@ -618,6 +625,70 @@ fn location_input_naming_a_file_reveals_it_inside_its_parent() {
 }
 
 #[test]
+fn leaving_a_pending_typed_file_reveal_drops_its_preview() {
+    let file = Location::local("/fixture/report.pdf");
+    type Leave = fn(&Rc<Browser>, &NestedValidationSource);
+    let routes: [(&str, Leave); 4] = [
+        ("history", |browser, _| {
+            browser.navigate(Location::local("/start"));
+            assert_eq!(browser.navigate_input("/fixture/report.pdf"), Ok(()));
+            browser.back();
+        }),
+        ("navigate", |browser, _| {
+            browser.navigate(Location::local("/start"));
+            assert_eq!(browser.navigate_input("/fixture/report.pdf"), Ok(()));
+            browser.navigate(Location::local("/elsewhere"));
+            browser.back();
+            browser.back();
+        }),
+        ("rejected", |browser, source| {
+            assert_eq!(browser.navigate_input("/fixture/report.pdf"), Ok(()));
+            let parent_validation = source.parent_validation.take().expect("parent validation");
+            parent_validation(Err(LocationValidationError::Inaccessible));
+        }),
+        ("descend", |browser, source| {
+            assert_eq!(browser.navigate_input("/fixture/report.pdf"), Ok(()));
+            browser.descend(0, Location::local("/fixture/sub"));
+            let child_validation = source.parent_validation.take().expect("child validation");
+            child_validation(Ok(()));
+        }),
+    ];
+    for (route, leave) in routes {
+        let source = Rc::new(NestedValidationSource {
+            file: file.clone(),
+            parent_validation: RefCell::new(None),
+            parent_cancelled: Rc::new(Cell::new(false)),
+            parent_listing: vec![listing_file(file.clone(), "report.pdf", false)],
+        });
+        let browser = Browser::new(source.clone());
+        browser.navigate(Location::local("/fixture"));
+        let preview_requested = Rc::new(RefCell::new(Vec::new()));
+        let preview_sink = preview_requested.clone();
+        browser.observe(move |event| {
+            if let BrowserEvent::PreviewRequested { entry, .. } = event {
+                preview_sink.borrow_mut().push(entry.location.clone());
+            }
+        });
+
+        leave(&browser, &source);
+        assert!(
+            browser.reveal_monitored_locations(
+                Location::local("/fixture"),
+                std::slice::from_ref(&file)
+            ),
+            "{route}: the file should be selectable again"
+        );
+
+        assert_eq!(selected_locations(&browser), vec![file.clone()], "{route}");
+        assert!(
+            preview_requested.borrow().is_empty(),
+            "{route}: abandoned typed path must not preview {:?}",
+            preview_requested.borrow()
+        );
+    }
+}
+
+#[test]
 fn location_input_naming_a_file_in_an_already_open_folder_opens_preview() {
     let file = Location::local("/fixture/report.pdf");
     let browser = Browser::new(Rc::new(TypedPathSource::containing(
@@ -679,6 +750,7 @@ fn synchronous_file_validation_keeps_async_parent_validation_alive() {
         file: file.clone(),
         parent_validation: RefCell::new(None),
         parent_cancelled: Rc::new(Cell::new(false)),
+        parent_listing: Vec::new(),
     });
     let browser = Browser::new(source.clone());
     browser.navigate(Location::local("/start"));

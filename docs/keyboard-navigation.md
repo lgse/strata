@@ -129,6 +129,7 @@ have no remembered position for the ancestor.
 A navigation that names a target — a typed file path, a Ctrl+K result opened with
 Enter or Alt+Enter, Open file location, or an `org.freedesktop.FileManager1`
 request — selects that target instead of restoring the remembered position.
+A typed file path also opens Quick Preview on the file once it is selected.
 
 ## Refreshing a directory
 

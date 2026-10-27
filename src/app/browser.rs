@@ -1436,6 +1436,8 @@ impl Browser {
                         browser
                             .deferred_reveal
                             .replace(Some((pending_location.clone(), reveal.clone())));
+                    } else {
+                        browser.preview_revealed_location.take();
                     }
                     browser.emit(BrowserEvent::LocationNavigationRejected { error });
                 }
@@ -1705,9 +1707,14 @@ impl Browser {
             ) if directory == location => LoadSelection::Target(targets),
             (_, selection) => selection,
         };
-        if let Some(target) = self.preview_revealed_location.borrow().as_ref()
-            && !matches!(&selection, LoadSelection::Target(targets) if targets.contains(target))
-        {
+        let reveals_preview_target = self
+            .preview_revealed_location
+            .borrow()
+            .as_ref()
+            .is_some_and(|target| {
+                matches!(&selection, LoadSelection::Target(targets) if targets.contains(target))
+            });
+        if !reveals_preview_target {
             self.preview_revealed_location.take();
         }
         self.bump_navigation_generation();
@@ -1755,7 +1762,7 @@ impl Browser {
         keep_parent_active: bool,
     ) {
         let _update = self.navigation_update();
-        self.deferred_reveal.take();
+        self.cancel_deferred_reveal();
         self.bump_navigation_generation();
         if self.is_open_child(parent_depth, &location) {
             return;
@@ -3973,7 +3980,7 @@ impl Browser {
 
     fn restore_path(self: &Rc<Self>, path: NavigationPath) {
         let _update = self.navigation_update();
-        self.deferred_reveal.take();
+        self.cancel_deferred_reveal();
         if path
             .locations()
             .iter()
