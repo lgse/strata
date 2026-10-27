@@ -1,4 +1,4 @@
-{"scenario":"focus-usable-after-view-change","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.6},"quality":{"impact":3,"coverage":2,"criticality":4,"diagnostic":4,"score":16,"note":"Keyboard focus after Columns->List->Columns switches; tenxer-sidebar-header-round-trips and switching-keeps-pane-filter also check focus after view switches, leaving only the default-mode route"}}
+{"scenario":"focus-usable-after-view-change","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":4,"score":49,"note":"Real view shortcuts retain usable focus in one tab and with hidden tabs across Columns, Icons and List; filter sessions remain covered by switching-keeps-pane-filter"}}
 {"select":{"entry":"readme.md"}}
 {"wait":{"focused":"readme.md"},"message":"keyboard focus to reach 'readme.md'"}
 {"key":"ctrl+3"}
@@ -10,3 +10,22 @@
 {"wait":{"view_mode":"Columns"},"message":"the browser to switch to the Columns view"}
 {"key":"Up"}
 {"wait":{"focused":"readme.md"},"message":"keyboard focus to reach 'readme.md'"}
+{"key":"ctrl+t"}
+{"select":{"entry":"documents"}}
+{"wait":{"entries":["notes.txt","report.md","spreadsheet.csv"],"dir":"documents"},"message":"a second tab lists a different folder"}
+{"select":{"entry":"notes.txt","dir":"documents"}}
+{"wait":{"focused":"notes.txt"},"message":"the second tab owns keyboard focus before switching views"}
+{"key":"ctrl+3"}
+{"wait":{"all":[{"view_mode":"List"},{"focused":"notes.txt"}]},"message":"Ctrl+3 leaves focus in the visible tab, not the hidden tab"}
+{"key":"Down"}
+{"wait":{"focused":"report.md"},"message":"List arrows navigate the visible tab after a view switch"}
+{"key":"ctrl+2"}
+{"wait":{"all":[{"view_mode":"Icons"},{"focused":"report.md"}]},"message":"Ctrl+2 preserves the visible tab cursor"}
+{"key":"Right"}
+{"wait":{"focused":"spreadsheet.csv"},"message":"Icons arrows navigate the visible tab after a view switch"}
+{"key":"ctrl+1"}
+{"wait":{"all":[{"view_mode":"Columns"},{"focused":"spreadsheet.csv"}]},"message":"Ctrl+1 preserves the visible tab cursor"}
+{"key":"Up"}
+{"wait":{"focused":"report.md"},"message":"Columns arrows navigate the visible tab after a view switch"}
+{"key":"ctrl+shift+1"}
+{"wait":{"all":[{"view_mode":"Columns"},{"focused":"readme.md"}]},"message":"the hidden tab applied the saved view changes and restores its own cursor when selected"}

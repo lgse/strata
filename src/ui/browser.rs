@@ -1140,6 +1140,9 @@ impl BrowserView {
 
     /// Focus follows the filter session across a view switch.
     fn restore_view_switch_focus(&self, filter_focus: Option<FilterFocus>) {
+        if !crate::ui::focus_navigation::browser_can_take_focus(&self.state.overlay) {
+            return;
+        }
         if let Some(target) = self.filter_target() {
             if filter_focus == Some(FilterFocus::Entry) {
                 refocus_filter_entry(target.entry());
@@ -1185,6 +1188,10 @@ impl BrowserView {
 
     pub(in crate::ui) fn restore_listing_focus(&self) {
         self.state.restore_listing_focus();
+    }
+
+    pub(in crate::ui) fn cancel_column_drag(&self) -> bool {
+        self.state.mode_views.borrow().cancel_column_drag()
     }
 
     /// Makes this listing the focus target when a dismissed overlay leaves `window`

@@ -1,6 +1,12 @@
 {"scenario":"list-column-drag-applies-on-release","modes":["list"],"layout":"us","mutation":null,"known_bug":null}
 {"wait":{"entries":["archive","documents","pictures","readme.md","todo.txt"],"dir":"$root"},"message":"the fixture listed by name"}
 {"wait":{"present":{"role":"button","name":"Size","within":{"pane":null}}},"message":"the Size heading to appear"}
+{"select":{"entry":"readme.md"}}
+{"wait":{"focused":"readme.md"},"message":"the selected file initially owns focus"}
+{"drag":{"from":{"role":"button","name":"Mode","within":{"pane":null}},"to":{"role":"button","name":"Size","within":{"pane":null}},"to_at":["80%","50%"]},"release":false}
+{"key":"Escape"}
+{"button_up":1}
+{"expect":[{"pref":{"key":"list_column_order","value":null}},{"selected":["readme.md"],"dir":"$root"}],"message":"Escape cancels a heading drag without saving column order or clearing file selection"}
 {"drag":{"from":{"role":"button","name":"Mode","within":{"pane":null}},"to":{"role":"button","name":"Size","within":{"pane":null}},"to_at":["80%","50%"]},"release":false}
 {"expect":[{"compare":{"left":{"of":{"role":"button","name":"Mode","within":{"pane":null}},"get":"x"},"op":"<","right":{"of":{"role":"button","name":"Size","within":{"pane":null}},"get":"x"}}},{"pref":{"key":"list_column_order","value":null}}],"message":"holding a dragged heading over another must not move or save columns"}
 {"button_up":1}
@@ -13,3 +19,7 @@
 {"drag":{"from":{"role":"button","name":"Name","within":{"pane":null}},"to":{"role":"button","name":"Type","within":{"pane":null}},"to_at":["80%","50%"]}}
 {"wait":{"pref":{"key":"list_column_order","value":["size","mode","type","name","modified"]}},"message":"releasing the sortable Name heading after Type to save the order"}
 {"expect":{"entries":["archive","documents","pictures","readme.md","todo.txt"],"dir":"$root"},"timeout_ms":1000,"hold_ms":300,"message":"dragging a sortable heading must not change sorting"}
+{"drag":{"from":{"role":"button","name":"Name","within":{"pane":null}},"to":{"role":"button","name":"Size","within":{"pane":null}},"to_at":["20%","50%"]},"release":false}
+{"key":"Escape"}
+{"button_up":1}
+{"expect":[{"pref":{"key":"list_column_order","value":["size","mode","type","name","modified"]}},{"selected":["readme.md"],"dir":"$root"},{"entries":["archive","documents","pictures","readme.md","todo.txt"],"dir":"$root"}],"message":"cancelling a sortable heading drag preserves order, selection and sorting; a previous cancelled drag does not block later drags"}

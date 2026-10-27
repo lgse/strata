@@ -2529,6 +2529,9 @@ fn install_shortcuts(
             }
             return glib::Propagation::Proceed;
         }
+        if press.is(ESCAPE_ANY) && state.view.cancel_column_drag() {
+            return glib::Propagation::Stop;
+        }
         let focused = gtk::prelude::RootExt::focus(&state.window);
         if preferences.tenxer_mode()
             && (state.name_has_focus(focused.as_ref()) || state.view.location_has_focus())

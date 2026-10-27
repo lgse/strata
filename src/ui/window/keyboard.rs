@@ -796,6 +796,10 @@ impl Dispatcher {
         if self.native_menu_owns_input() {
             return Some(Propagation::Proceed);
         }
+        if press.is(ESCAPE_ANY) && self.view.cancel_column_drag() {
+            self.shortcuts.cancel_chord();
+            return Some(Propagation::Stop);
+        }
         let mut focused = gtk::prelude::RootExt::focus(&self.window);
         while let Some(widget) = focused {
             if widget.has_css_class("file-operation-card") {

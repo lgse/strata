@@ -1087,7 +1087,8 @@ pub fn build_layer(
     close_on_escape(&layer, move || escape_hide());
 
     let click_layer = layer.clone();
-    let click_dialog = responsive_panel.clone();
+    // The responsive bin fills the window; the dialog is the panel inside its margin.
+    let click_dialog = panel.clone();
     let click = gtk::GestureClick::new();
     click.connect_pressed(move |_, _, x, y| {
         let on_dialog = click_dialog

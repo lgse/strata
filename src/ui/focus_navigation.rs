@@ -120,6 +120,31 @@ pub(super) fn plain_tab_direction(press: &KeyPress) -> Option<gtk::DirectionType
     }
 }
 
+/// Listing updates must not take focus from a modal or an inactive tab.
+pub(super) fn browser_can_take_focus(widget: &impl IsA<gtk::Widget>) -> bool {
+    let widget = widget.as_ref();
+    // Startup/loading focus can precede mapping; only an inactive tab is excluded.
+    if !widget.is_mapped() {
+        let mut child = widget.clone();
+        while let Some(parent) = child.parent() {
+            if child.has_css_class("tab-context")
+                && parent.downcast_ref::<gtk::Stack>().is_some_and(|stack| {
+                    stack
+                        .visible_child()
+                        .is_some_and(|visible| visible != child)
+                })
+            {
+                return false;
+            }
+            child = parent;
+        }
+    }
+    widget
+        .root()
+        .and_downcast::<gtk::Window>()
+        .is_none_or(|window| !super::window::foreign_modal_visible(&window, None))
+}
+
 pub(super) fn contains_widget(container: &gtk::Widget, focused: Option<&gtk::Widget>) -> bool {
     focused.is_some_and(|focused| focused == container || focused.is_ancestor(container))
 }

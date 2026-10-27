@@ -1177,6 +1177,9 @@ impl ViewState {
     }
 
     pub(super) fn focus_rebuilt_active_column(&self) {
+        if !crate::ui::focus_navigation::browser_can_take_focus(&self.overlay) {
+            return;
+        }
         let Some(depth) = self.browser.active_depth() else {
             return;
         };

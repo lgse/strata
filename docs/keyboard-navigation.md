@@ -364,6 +364,10 @@ Columns reserves preview space from startup, even before a file is previewed. **
 
 In Columns, the pane to the right mirrors keyboard selection like Finder: moving with **Up/Down**, **Page Up/Page Down**, **Home/End** or **Ctrl+Up/Ctrl+Down** onto a folder shows its contents in a child column that takes the reserved preview space, onto a previewable file closes that child column and opens Quick Preview in the same space, and onto any other file closes the child pane. The focused column stays where it is throughout. Shift-extended ranges do not mirror. A preview closed with **Space**, **i**, **Esc**, the close button, or **Appearance → Preview panel** stays closed while mirroring until it is opened explicitly again. Pointer selection keeps the configured click behavior. Clicking a folder whose column is already open focuses that column rather than closing it, and a double-click ends exactly where a single-click open does; a slow click on a selected folder's name still renames it. In every view, a plain click on an item that is part of a multi-selection collapses the selection to that item and then applies its single-click behavior: a folder set to open on one click opens (in Columns, as its child column), and a previewable file is previewed when **Single-click previews** is on. Pressing a member and dragging still drags the whole selection. **Settings → General → Browsing → Mirror columns selection** (on by default) toggles the mirroring. 10xer mode follows the same preference for its cursor in Columns; see [10xer mode](10xer-mode.md). **l** / **→** enters a directory or a file preview, and **i** toggles a file's preview or opens the next column / toggles folder peek for a directory.
 
+Switching views with **Ctrl+1**, **Ctrl+2**, or **Ctrl+3** keeps keyboard focus in the visible tab. Hidden tabs follow the saved view preference without taking focus. A newer keyboard navigation action supersedes any queued cursor-focus restoration.
+
+During a List heading drag, **Escape** cancels the reorder without clearing the file selection or changing the sort. Releasing the mouse afterward does not save a new column order. The file chooser uses the same behavior: Escape cancels the heading drag, not the chooser.
+
 ## Closing dialogs and overlays
 
 Closing an overlay or dialog by any route (Escape, its close or Cancel button, or a
@@ -379,6 +383,9 @@ extracted folder, keeps focus.
 Closing Settings always returns focus to the file list cursor, even when Settings was
 opened with the gear button. The one exception is a filter field or filter result that
 had focus when Settings opened, for example with **Ctrl+,**: it gets focus back.
+**Ctrl+,** does not open Settings while an action dialog such as Properties is open.
+A docked operation may finish and update its file selection behind a dialog, but it
+must not take keyboard focus from that dialog.
 
 Customize opens with focus on **Done**, so one **Escape** closes it. Closing its
 custom color dialog returns focus to the custom color button.

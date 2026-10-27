@@ -1,0 +1,14 @@
+{"scenario":"chooser-heading-escape-keeps-selection","modes":["list"],"portal":true,"session_bus":true}
+{"portal_open":"Heading drag cancellation","options":{"current_folder":"$fixture","multiple":true}}
+{"adopt":"Heading drag cancellation","message":"the portal chooser opens in List mode"}
+{"wait":{"present":{"row":"readme.md"}},"message":"the chooser lists the fixture files"}
+{"click":{"row":"readme.md"}}
+{"wait":{"state":{"target":{"row":"readme.md"},"selected":true}},"message":"a file is selected before dragging a heading"}
+{"drag":{"from":{"role":"button","name":"Mode","within":{"pane":null}},"to":{"role":"button","name":"Size","within":{"pane":null}},"to_at":["80%","50%"]},"release":false}
+{"key":"Escape"}
+{"button_up":1}
+{"portal_response":{"done":false},"message":"Escape cancels the heading drag, not the entire chooser"}
+{"expect":[{"pref":{"key":"list_column_order","value":null}},{"state":{"target":{"row":"readme.md"},"selected":true}}],"message":"heading cancellation preserves the file selection and saved column order in the chooser"}
+{"drag":{"from":{"role":"button","name":"Mode","within":{"pane":null}},"to":{"role":"button","name":"Size","within":{"pane":null}},"to_at":["80%","50%"]}}
+{"wait":{"pref":{"key":"list_column_order","value":["name","size","mode","type","modified"]}},"message":"another heading drag can commit after the previous one was cancelled"}
+{"expect":{"state":{"target":{"row":"readme.md"},"selected":true}},"message":"a subsequent successful heading drag also preserves the file selection"}

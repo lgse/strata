@@ -283,6 +283,84 @@ fn docked_progress_does_not_change_an_existing_modal_blur() {
 }
 
 #[test]
+fn docked_completion_preserves_modal_focus_when_created_entries_are_selected() {
+    crate::test_support::gtk_test(
+        "ui::browser::progress::tests::minimization::docked_completion_preserves_modal_focus_when_created_entries_are_selected",
+        || {
+            for mode in [
+                crate::ui::browser_modes::BrowserMode::Columns,
+                crate::ui::browser_modes::BrowserMode::Icons,
+                crate::ui::browser_modes::BrowserMode::List,
+            ] {
+                let fixture = Fixture::new();
+                std::fs::write(fixture.temp.path().join("source.txt"), "source")
+                    .expect("source file");
+                fixture.view.set_view_mode(mode);
+                fixture
+                    .view
+                    .navigate_location(Location::local(fixture.temp.path()));
+                pump_until(|| {
+                    fixture
+                        .view
+                        .browser()
+                        .column_snapshot(0)
+                        .is_some_and(|column| !column.loading && column.count == 1)
+                });
+                fixture.view.browser().compress(
+                    vec![entry(Location::local(
+                        fixture.temp.path().join("source.txt"),
+                    ))],
+                    Location::local(fixture.temp.path()),
+                    "created".into(),
+                    TransferConflict::FailIfExists,
+                    ArchiveFormat::Zip,
+                    None,
+                );
+                let id = fixture
+                    .view
+                    .browser()
+                    .last_started_operation()
+                    .expect("compression started");
+                fixture.progress(id);
+                crate::ui::modal::show_error_dialog(
+                    &fixture.window,
+                    "Keep modal focus",
+                    "A background completion must not take keyboard focus.",
+                );
+                let focused = gtk::prelude::RootExt::focus(&fixture.window)
+                    .expect("the modal's Close button owns focus");
+                assert!(focused.is::<gtk::Button>());
+                let created = fixture.temp.path().join("created.zip");
+                std::fs::write(&created, "archive").expect("created archive");
+                fixture.operations.emit(
+                    id,
+                    OperationEvent::Compressed {
+                        request_id: id,
+                        archive_name: "created.zip".into(),
+                        archive: Location::local(created),
+                        original: None,
+                        placed: None,
+                    },
+                );
+                pump_until(|| {
+                    !fixture.view.browser().has_background_operations()
+                        && fixture
+                            .view
+                            .browser()
+                            .column_snapshot(0)
+                            .is_some_and(|column| !column.loading && column.count == 2)
+                });
+                assert_eq!(
+                    gtk::prelude::RootExt::focus(&fixture.window),
+                    Some(focused),
+                    "{mode:?}: selecting a background operation's created entry must not steal modal focus",
+                );
+            }
+        },
+    );
+}
+
+#[test]
 fn docked_copy_archive_and_deletion_update_and_cancel_independently() {
     crate::test_support::gtk_test(
         "ui::browser::progress::tests::minimization::docked_copy_archive_and_deletion_update_and_cancel_independently",
