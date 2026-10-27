@@ -39,7 +39,10 @@ fn entries_or_empty<'de, D: serde::Deserializer<'de>>(
 ) -> Result<BTreeMap<String, toml::Value>, D::Error> {
     Ok(match toml::Value::deserialize(deserializer)? {
         toml::Value::Table(entries) => entries.into_iter().collect(),
-        _ => BTreeMap::new(),
+        other => {
+            tracing::warn!(%other, "keymap map is not a table of entries; dropping it");
+            BTreeMap::new()
+        }
     })
 }
 

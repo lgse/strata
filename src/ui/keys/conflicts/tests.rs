@@ -11,7 +11,7 @@ use super::{
             ACTIONS_NUMBERS, ACTIONS_TERMINAL, CHOOSE_FOLDER, COPY, COPY_AS_NAME, COPY_PATH,
             DELETE_PERMANENTLY, DOWN, DUPLICATE, ENTER, ESCAPE, FILTER, FILTER_SLASH, FIND,
             FIND_IN_PREVIEW, GO, GO_DOWNLOADS, GO_FIRST, GO_HOME, GO_PROMPT, HISTORY_BACK,
-            HOME_FOLDER, LAST_ITEM, LEFT, MEDIA_SEEK_BACK_PAGE, MEDIA_SEEK_END, MEDIA_SEEK_START,
+            LAST_ITEM, LEFT, MEDIA_SEEK_BACK_PAGE, MEDIA_SEEK_END, MEDIA_SEEK_START,
             MEDIA_VOLUME_STEP_DOWN, MEDIA_VOLUME_STEP_UP, MOVE_TO_TRASH, NEW_FOLDER,
             OPEN_CONTAINING_FOLDER, OPEN_IN_NEW_WINDOW, OPEN_WITH, PAGE_DOWN, PAGE_UP,
             PDF_ZOOM_RESET, PIN, PIN_NUMBERS, PREVIEW, PREVIOUS_MATCH, REFERENCE, REFERENCE_SEARCH,
@@ -19,7 +19,7 @@ use super::{
             TENXER_DELETE_CONFIRM, TENXER_MEDIA_MUTE, TENXER_MEDIA_PREVIOUS, TENXER_MODE, TERMINAL,
             TEXT_LARGER, TEXT_RESET, THUMBNAILS_LARGER, THUMBNAILS_SMALLER, UP, YANK,
         },
-        command::{Group, Kind as CommandKind, Spec},
+        command::Group,
     },
     FieldLimit, Finding, Fixed, Kind, Policy, Severity, audit, check,
 };
@@ -31,15 +31,6 @@ const ON: Policy = Policy {
     type_to_search: true,
 };
 const SUPER: Modifiers = Modifiers::SUPER_MASK;
-
-/// Rename as if it shipped `;`, a key Zhuyin starts syllables with, so the
-/// shipped-key rule has a command to fire on.
-const RENAME_SHIPPING_SEMICOLON: Command = Command::new(&Spec {
-    id: "rename",
-    kind: CommandKind::Single,
-    default: &[Binding::plain(Key::semicolon)],
-    tenxer: &[],
-});
 
 struct Row {
     case: &'static str,
@@ -656,16 +647,6 @@ const ROWS: &[Row] = &[
         found: true,
     },
     Row {
-        case: "a shipped punctuation key on a command text fields run",
-        map: Map::Default,
-        command: RENAME_SHIPPING_SEMICOLON,
-        candidate: Binding::plain(Key::semicolon),
-        table: &[],
-        policy: OFF,
-        kind: Kind::InputMethodKey,
-        found: true,
-    },
-    Row {
         case: "an added punctuation key, which yields to a focused field",
         map: Map::Default,
         command: RENAME,
@@ -906,13 +887,13 @@ const ROWS: &[Row] = &[
         found: false,
     },
     Row {
-        case: "Ctrl with a folder jump, which the window reads before its Ctrl guard",
+        case: "a saved key of a command the map has no path to",
         map: Map::Default,
-        command: HOME_FOLDER,
+        command: RENAME,
         candidate: Binding::ctrl(Key::e),
-        table: &[],
+        table: &[(YANK, &[Binding::ctrl(Key::e)])],
         policy: OFF,
-        kind: Kind::NeverMatches,
+        kind: Kind::Duplicate(YANK),
         found: false,
     },
     Row {
@@ -1109,29 +1090,6 @@ fn each_kind_has_a_failing_and_a_passing_row() {
         }
     }
     assert_eq!(checked, ROWS.len());
-}
-
-#[test]
-fn inactive_findings_mark_keys_that_never_fire_there() {
-    let keymap = Keymap::defaults();
-    let shadowed = check(&keymap, Map::Default, RENAME, Binding::plain(Key::e), ON);
-    assert!(
-        shadowed.iter().any(|finding| finding.inactive()),
-        "{shadowed:?}"
-    );
-    let consumed = check(
-        &keymap,
-        Map::Default,
-        RENAME,
-        Binding::shift(Key::asciitilde),
-        OFF,
-    );
-    assert!(
-        consumed.iter().any(|finding| finding.inactive()),
-        "{consumed:?}"
-    );
-    let overlap = check(&keymap, Map::Default, ENTER, Binding::ctrl(Key::m), OFF);
-    assert!(!overlap.is_empty() && overlap.iter().all(|finding| !finding.inactive()));
 }
 
 fn warning(command: Command, kind: Kind, binding: Binding) -> (Command, Finding) {

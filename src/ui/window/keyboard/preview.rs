@@ -178,7 +178,7 @@ impl Dispatcher {
         {
             return true;
         }
-        let motions: [(&dyn Match, DocumentScroll); 13] = [
+        let motions: [(&dyn Match, DocumentScroll); 14] = [
             (&HALF_PAGE_UP, DocumentScroll::HalfPage(-1)),
             (&HALF_PAGE_DOWN, DocumentScroll::HalfPage(1)),
             (&PAGE_UP, DocumentScroll::Page(-1)),
@@ -191,6 +191,7 @@ impl Dispatcher {
             (&PAGE_DOWN_KEY.ignoring(SHIFT), DocumentScroll::Page(1)),
             (&HOME_KEY, DocumentScroll::Start),
             (&END_KEY, DocumentScroll::End),
+            (&FIRST_ITEM, DocumentScroll::Start),
             (&LAST_ITEM, DocumentScroll::End),
         ];
         let Some((_, motion)) = motions.into_iter().find(|(key, _)| press.is(key)) else {
@@ -213,7 +214,7 @@ impl Dispatcher {
             } else {
                 self.preview.archive_key(ArchiveMove::Parent);
             }
-        } else if press.is(HOME_KEY) {
+        } else if press.is(HOME_KEY) || press.is(FIRST_ITEM) {
             self.preview.archive_edge(false);
         } else if press.is(END_KEY) || press.is(LAST_ITEM) {
             self.preview.archive_edge(true);
@@ -339,7 +340,7 @@ fn passes_through_preview(press: &KeyPress) -> bool {
         MEDIA_VOLUME_UP,
         MEDIA_VOLUME_DOWN,
         MEDIA_MUTE,
-    ]) || (press.is(HIDDEN_FILES) && press.modifiers().contains(CONTROL))
+    ]) || (press.is(HIDDEN_FILES) && press.binding().is_some_and(|binding| !binding.is_typed()))
 }
 
 fn reaches_listing(press: &KeyPress) -> bool {

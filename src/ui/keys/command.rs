@@ -44,10 +44,7 @@ pub(crate) enum Group {
 
 impl Group {
     /// The trigger's id and the prefix of each step's id.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "ids are read once overrides are saved")
-    )]
+    #[cfg(test)]
     pub(crate) const fn id(self) -> &'static str {
         match self {
             Self::Go => "go",
@@ -343,7 +340,6 @@ impl Alternate {
     }
 }
 
-/// Every command the catalog declares.
 pub(crate) fn registry() -> impl Iterator<Item = Command> {
     bindings::entries().filter_map(|entry| match entry {
         bindings::Entry::Command(command) => Some(command),
@@ -351,7 +347,6 @@ pub(crate) fn registry() -> impl Iterator<Item = Command> {
     })
 }
 
-/// Both maps' tables: each command's bindings, primary first.
 #[derive(Debug)]
 pub(crate) struct Keymap {
     default: HashMap<Command, Vec<Binding>>,

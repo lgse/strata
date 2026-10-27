@@ -715,8 +715,10 @@ impl Side {
     }
 }
 
+/// Entries that cannot fire in the map, such as a saved key for a command the
+/// map has no path to, hold nothing.
 fn compare_with_table(keymap: &Keymap, mine: Side, add: &mut impl FnMut(Kind)) {
-    for other in registry().filter(|other| *other != mine.command) {
+    for other in registry().filter(|other| *other != mine.command && !no_path(*other, mine.map)) {
         let place = Place::of(other, mine.map);
         for binding in entry(keymap, mine.map, other) {
             let theirs = Side {
@@ -725,6 +727,9 @@ fn compare_with_table(keymap: &Keymap, mine: Side, add: &mut impl FnMut(Kind)) {
                 binding,
                 map: mine.map,
             };
+            if never_matches(theirs) {
+                continue;
+            }
             if let Some(kind) = conflict(mine, theirs) {
                 add(kind);
             }

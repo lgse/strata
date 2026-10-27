@@ -25,7 +25,6 @@ impl Shown {
         }
     }
 
-    /// The command shown, unless this is a fixed binding.
     fn command(self) -> Option<Command> {
         match self {
             Self::Command(command) => Some(command),
@@ -251,7 +250,6 @@ pub(crate) fn digit_label(digits: Digits, digit: u8) -> String {
     }
 }
 
-/// The label in the active map.
 pub(crate) fn label_in(locale: &str, keys: &Keys) -> String {
     label_in_map(locale, keys, Map::active())
 }

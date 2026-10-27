@@ -107,7 +107,6 @@ pub(crate) const CUSTOM_ACTIONS: [Command; 10] = [
     bindings::CUSTOM_ACTION_10,
 ];
 
-/// The 1-based slot `command` names, if it is a custom action slot.
 pub(crate) fn custom_action_slot(command: Command) -> Option<usize> {
     CUSTOM_ACTIONS
         .iter()
@@ -264,7 +263,6 @@ impl Binding {
         }
     }
 
-    /// Whether `press` reads as this key once aliases are applied.
     fn matches_read(&self, press: &KeyPress) -> bool {
         self.matches_key(press, press.key, press.shortcut_modifiers)
     }
@@ -606,8 +604,7 @@ impl Event {
     }
 }
 
-/// Keys that only change what other keys do, never a shortcut themselves.
-const MODIFIER_KEYS: [Key; 20] = [
+const MODIFIER_KEYS: [Key; 22] = [
     Key::Shift_L,
     Key::Shift_R,
     Key::Control_L,
@@ -628,6 +625,8 @@ const MODIFIER_KEYS: [Key; 20] = [
     Key::ISO_First_Group,
     Key::ISO_Last_Group,
     Key::Caps_Lock,
+    Key::Num_Lock,
+    Key::Scroll_Lock,
 ];
 
 fn modifier_of(key: Key) -> Modifiers {

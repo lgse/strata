@@ -2835,7 +2835,14 @@ fn install_shortcuts(
             super::window::apply_browser_mode(&state.view, &PreferenceManager::shared(), mode);
             return glib::Propagation::Stop;
         }
-        if control {
+        // A user's binding for a folder jump may hold Ctrl, as in the window.
+        let jumps = press.is_any(&[
+            HISTORY_BACK.in_map(Map::Default),
+            HISTORY_FORWARD.in_map(Map::Default),
+            PARENT_FOLDER.into(),
+            HOME_FOLDER.into(),
+        ]);
+        if control && !jumps {
             return glib::Propagation::Proceed;
         }
         let column_popover = focused

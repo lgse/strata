@@ -62,7 +62,6 @@ impl Dispatcher {
             .copied()
             .find(|command| press.is(*command))?;
         if command == DUPLICATE {
-            // 10xer's targets: the fill, or the item under the cursor.
             return self
                 .view
                 .duplicate_entries(&self.view.command_targets())

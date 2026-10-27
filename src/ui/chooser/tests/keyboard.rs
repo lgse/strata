@@ -999,7 +999,7 @@ fn saved_overrides_reach_the_chooser_dispatcher() {
                 .expect("settings directory");
             std::fs::write(
                 &settings,
-                "[keymap.default]\ntoggle_hidden_files = [\"<Control><Alt>h\"]\n",
+                "[keymap.default]\ntoggle_hidden_files = [\"<Control><Alt>h\"]\nparent_folder = [\"<Control>e\"]\n",
             )
             .expect("saved override");
             let chooser = Chooser::open_with(single_file(), BrowserMode::List, &["a.txt"], false);
@@ -1016,6 +1016,16 @@ fn saved_overrides_reach_the_chooser_dispatcher() {
                 chooser.press_with(Key::h, ModifierType::CONTROL_MASK | ModifierType::ALT_MASK)
             );
             assert_eq!(browser.preferences().show_hidden, !hidden);
+            let parent = Location::local(
+                chooser
+                    .root
+                    .path()
+                    .parent()
+                    .expect("fixture parent")
+                    .to_path_buf(),
+            );
+            assert!(chooser.press_with(Key::e, ModifierType::CONTROL_MASK));
+            wait_until(|| browser.active_location().as_ref() == Some(&parent));
         },
     );
 }

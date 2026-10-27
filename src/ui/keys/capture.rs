@@ -26,7 +26,6 @@ thread_local! {
     static NEXT_ID: Cell<u64> = const { Cell::new(0) };
 }
 
-/// Disarms the capture when dropped.
 #[must_use = "the capture ends when this is dropped"]
 pub(crate) struct Capture(u64);
 
