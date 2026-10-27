@@ -464,9 +464,9 @@ impl BrowserView {
         Some((location, name))
     }
 
-    pub fn change_keyboard_pin(&self, pin: bool) -> PinChange {
+    pub fn change_keyboard_pin(&self, pin: bool, done: impl FnOnce(PinChange) + 'static) {
         let Some((location, name)) = self.keyboard_pin_folder() else {
-            return PinChange::Nothing;
+            return done(PinChange::Nothing);
         };
         let status = if is_trash_location(&location) {
             PinStatus::Unavailable
@@ -477,27 +477,38 @@ impl BrowserView {
                 .as_ref()
                 .map_or(PinStatus::Unavailable, |handler| handler(&location))
         };
-        match (pin, status) {
+        let change = match (pin, status) {
             (true, PinStatus::Available) => {
                 let handler = self.state.pin_handler.borrow().clone();
                 let Some(handler) = handler else {
-                    return PinChange::Refused(name);
+                    return done(PinChange::Refused(name));
                 };
-                handler(location.clone(), name.clone());
-                PinChange::Pinned(location, name)
+                handler(
+                    location.clone(),
+                    name.clone(),
+                    Box::new(move |saved| {
+                        done(if saved {
+                            PinChange::Pinned(location, name)
+                        } else {
+                            PinChange::Refused(name)
+                        });
+                    }),
+                );
+                return;
             }
             (true, PinStatus::Pinned) => PinChange::AlreadyPinned(name),
             (true, PinStatus::Unavailable) => PinChange::Refused(name),
             (false, PinStatus::Pinned) => {
                 let handler = self.state.unpin_handler.borrow().clone();
                 let Some(handler) = handler else {
-                    return PinChange::NotPinned(name);
+                    return done(PinChange::NotPinned(name));
                 };
                 handler(&location);
                 PinChange::Unpinned(name)
             }
             (false, _) => PinChange::NotPinned(name),
-        }
+        };
+        done(change);
     }
 
     pub fn transfer_targets(&self, moving: bool) -> Result<Vec<FileEntry>, &'static str> {

@@ -215,10 +215,28 @@ pub(crate) fn system_error_text(error: &std::io::Error) -> String {
     }
 }
 
-/// Localized text for common GIO failures; other errors keep GIO's description.
+/// Localized common GIO failures; application-owned errors retain their detail.
 pub(crate) fn gio_error_message(error: &glib::Error) -> String {
+    gio_error_reason(error)
+        .map(crate::i18n::tr)
+        .unwrap_or_else(|| error.message().to_owned())
+}
+
+/// Platform backend wording is diagnostic detail, not an application-owned message.
+pub(crate) fn gio_backend_error_message(error: &glib::Error) -> String {
+    let reason = gio_error_reason(error).unwrap_or_else(|| {
+        tracing::debug!(
+            error = %sanitize_failure_message(error.message()),
+            "unrecognized GIO backend error"
+        );
+        UNEXPECTED_SYSTEM_ERROR
+    });
+    crate::i18n::tr(reason)
+}
+
+fn gio_error_reason(error: &glib::Error) -> Option<&'static str> {
     use gtk::gio::IOErrorEnum;
-    let message = match error.kind::<IOErrorEnum>() {
+    Some(match error.kind::<IOErrorEnum>() {
         Some(IOErrorEnum::NotFound) => "No such file or folder",
         Some(IOErrorEnum::PermissionDenied) => "Permission denied",
         Some(IOErrorEnum::NotDirectory) => "Not a folder",
@@ -237,9 +255,8 @@ pub(crate) fn gio_error_message(error: &glib::Error) -> String {
         Some(IOErrorEnum::HostNotFound) => "Could not find the server",
         Some(IOErrorEnum::TooManyLinks) => "There are too many levels of symbolic links",
         Some(IOErrorEnum::NotMounted) => "The location is not mounted",
-        _ => return error.message().to_owned(),
-    };
-    crate::i18n::tr(message)
+        _ => return None,
+    })
 }
 
 /// [`gio_error_message`] for the `%{error}` slot after a colon; see [`error_detail`].

@@ -93,8 +93,10 @@ fn remote_backend_failures_hide_uri_user_info_in_views_and_diagnostic_logs() {
     };
     let diagnostic = capture_logs(|| log_monitor_metadata_error(&location, &error));
 
+    assert_eq!(validation_message, crate::services::UNEXPECTED_SYSTEM_ERROR);
+    assert_eq!(message, crate::services::UNEXPECTED_SYSTEM_ERROR);
+    assert!(diagnostic.contains("sftp://host.example/private"));
     for text in [&validation_message, &message, &diagnostic] {
-        assert!(text.contains("sftp://host.example/private"), "{text}");
         for secret in ["alice", "secret", "token", "hidden", "fragment"] {
             assert!(!text.contains(secret), "{text}");
         }

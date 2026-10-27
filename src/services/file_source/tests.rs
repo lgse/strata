@@ -40,6 +40,38 @@ fn io_errors_without_a_stable_kind_or_known_reason_get_catalog_text() {
 }
 
 #[test]
+fn untyped_gio_failures_use_localized_catalog_text_instead_of_backend_details() {
+    crate::test_support::gtk_test(
+        "services::file_source::tests::untyped_gio_failures_use_localized_catalog_text_instead_of_backend_details",
+        || {
+            rust_i18n::set_locale("fr");
+            let raw = "Failed to open sftp://alice:secret@host/private?token=hidden";
+            for kind in [
+                gtk::gio::IOErrorEnum::Failed,
+                gtk::gio::IOErrorEnum::InvalidArgument,
+            ] {
+                let error = gtk::glib::Error::new(kind, raw);
+                assert_eq!(
+                    super::gio_backend_error_message(&error),
+                    crate::i18n::tr(super::UNEXPECTED_SYSTEM_ERROR)
+                );
+                assert_eq!(
+                    super::gio_error_message(&error),
+                    raw,
+                    "application-owned operation errors must retain their detail"
+                );
+            }
+            let denied = gtk::glib::Error::new(gtk::gio::IOErrorEnum::PermissionDenied, raw);
+            assert_eq!(super::gio_error_message(&denied), "Permission refusée");
+            assert_eq!(
+                super::gio_backend_error_message(&denied),
+                "Permission refusée"
+            );
+        },
+    );
+}
+
+#[test]
 fn embedded_uri_credentials_are_rejected() {
     for uri in [
         "smb://user:secret@host/share",

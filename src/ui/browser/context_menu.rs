@@ -1363,7 +1363,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
             && entry.is_directory()
             && let Some(handler) = state.pin_handler.borrow().as_ref()
         {
-            handler(entry.location, entry.display_name);
+            handler(entry.location, entry.display_name, Box::new(|_| {}));
         }
     });
     let weak = Rc::downgrade(state);

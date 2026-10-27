@@ -295,8 +295,8 @@ fn uri_validation_result(
                 location.uri_value().unwrap_or_default(),
             ))
         } else {
-            LocationValidationError::Unavailable(sanitize_failure_message(
-                &crate::services::gio_error_detail(&error),
+            LocationValidationError::Unavailable(crate::services::error_detail(
+                crate::services::gio_backend_error_message(&error),
             ))
         }
     })?;
@@ -466,7 +466,7 @@ fn name_hash(name: &OsStr) -> u64 {
 fn remote_directory_failure(request_id: RequestId, error: &glib::Error) -> DirectoryEvent {
     DirectoryEvent::Failed {
         request_id,
-        message: sanitize_failure_message(&error.to_string()),
+        message: crate::services::gio_backend_error_message(error),
         refused: false,
     }
 }

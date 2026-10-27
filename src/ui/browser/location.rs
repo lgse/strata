@@ -37,6 +37,13 @@ const BREADCRUMB_LABEL_MAX_CHARS: i32 = 32;
 fn ellipsize_crumb_label(label: &gtk::Label) {
     label.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
     label.set_max_width_chars(BREADCRUMB_LABEL_MAX_CHARS);
+    label.set_width_chars(
+        label
+            .text()
+            .chars()
+            .take(BREADCRUMB_LABEL_MAX_CHARS as usize)
+            .count() as i32,
+    );
 }
 
 pub(super) struct UnlockProgressView {
@@ -735,7 +742,11 @@ fn mount_failure_message(location: &Location, error: &glib::Error) -> Option<Str
     if let Some(message) = transport_failure_message(error) {
         return Some(message);
     }
-    Some(sanitize_failure_message(&error.to_string()))
+    Some(if location.native_path().is_some() {
+        sanitize_failure_message(&crate::services::gio_error_message(error))
+    } else {
+        crate::services::gio_backend_error_message(error)
+    })
 }
 
 fn transport_failure_message(error: &glib::Error) -> Option<String> {
@@ -1571,10 +1582,15 @@ impl ViewState {
             .refresh(&self.location_entry, &self.browser);
     }
 
+    fn show_breadcrumbs(&self) {
+        self.breadcrumb_reveal_pending.set(true);
+        self.location_stack.set_visible_child_name("breadcrumbs");
+    }
+
     pub(super) fn cancel_location_edit(&self) {
         self.path_completion.dismiss();
         // Resetting a visible entry emits changed and reopens its completion popover.
-        self.location_stack.set_visible_child_name("breadcrumbs");
+        self.show_breadcrumbs();
         self.restore_location_text();
         self.browser.focus_active();
     }
@@ -1584,7 +1600,7 @@ impl ViewState {
         let input = self.location_entry.text();
         match self.open_typed_location(input.as_str(), None) {
             Ok(TypedLocation::Navigating { .. }) => {
-                self.location_stack.set_visible_child_name("breadcrumbs");
+                self.show_breadcrumbs();
                 self.browser.focus_active();
             }
             Ok(TypedLocation::Mounting { sanitized, .. }) => {
@@ -1593,7 +1609,7 @@ impl ViewState {
                 }
             }
             Err(error) => {
-                self.location_stack.set_visible_child_name("breadcrumbs");
+                self.show_breadcrumbs();
                 self.restore_location_text();
                 show_error_dialog(
                     &self.overlay,
@@ -2587,27 +2603,10 @@ impl ViewState {
         let editing = self.location_stack.visible_child_name().as_deref() == Some("entry")
             && self.location_entry_has_focus();
         if !editing {
-            self.location_stack.set_visible_child_name("breadcrumbs");
+            self.show_breadcrumbs();
             self.location_entry.set_text(&location.display_path());
         }
-        let Some(last) = self.breadcrumbs.last_child() else {
-            return;
-        };
-        let last = last.downgrade();
-        let _tick = self
-            .breadcrumb_scroller
-            .add_tick_callback(move |scroller, _| {
-                let Some(last) = last.upgrade() else {
-                    return glib::ControlFlow::Break;
-                };
-                // The adjustment's upper bound is stale until the new crumbs are allocated.
-                if last.width() <= 0 {
-                    return glib::ControlFlow::Continue;
-                }
-                let adjustment = scroller.hadjustment();
-                adjustment.set_value(adjustment.upper() - adjustment.page_size());
-                glib::ControlFlow::Break
-            });
+        self.breadcrumb_reveal_pending.set(true);
     }
 
     pub(super) fn show_breadcrumb_hierarchy_menu(
