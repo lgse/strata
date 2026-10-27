@@ -214,6 +214,12 @@ pub trait PreviewProvider {
 pub(crate) const CONTENT_SAMPLE_BYTES: usize = 8 * 1024;
 
 pub(crate) fn guess_content_type(path: &Path) -> (String, bool) {
+    if path
+        .extension()
+        .is_some_and(|extension| extension.as_encoded_bytes().eq_ignore_ascii_case(b"h264"))
+    {
+        return ("video/h264".to_owned(), false);
+    }
     let (guessed, uncertain) = gio::content_type_guess(Some(path), None::<&[u8]>);
     if !guessed.starts_with("image/") && crate::sandbox::raw_metadata::is_raw(path) {
         return ("image/x-dcraw".to_owned(), false);

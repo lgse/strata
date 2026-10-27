@@ -5,7 +5,8 @@
 {"click":{"entry":"clip.mp4"},"button":3}
 {"wait":{"menu_items":{}},"message":"the context menu for 'clip.mp4'"}
 {"wait":{"present":{"menu_item":"Properties"}},"message":"the menu item 'Properties'"}
-{"reveal_control":{"role":"menu item","name":"Properties"}}
+{"wheel":{"role":"menu"},"clicks":3,"direction":"down","until":{"inside":{"target":{"menu_item":"Properties"},"of":{"role":"scroll pane","within":{"role":"menu"}},"axis":"y"}},"message":"scroll the menu to Properties"}
+{"settle":{"menu_item":"Properties"}}
 {"click":{"menu_item":"Properties"}}
 {"wait":{"menu_items":null},"message":"the menu to close"}
 {"wait":{"dialog":true},"message":"a dialog to appear"}

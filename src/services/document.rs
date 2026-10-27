@@ -2032,6 +2032,24 @@ impl DocumentUnit {
     }
 }
 
+fn document_word_boundary(text: &str) -> Option<usize> {
+    if let Some(space) = text.rfind(' ') {
+        return Some(space + 1);
+    }
+    if text.is_ascii() {
+        ['\t', '\r', '\u{b}', '\u{c}']
+            .into_iter()
+            .filter_map(|whitespace| text.rfind(whitespace))
+            .max()
+            .map(|offset| offset + 1)
+    } else {
+        text.char_indices()
+            .rev()
+            .find(|(_, character)| character.is_whitespace())
+            .map(|(offset, whitespace)| offset + whitespace.len_utf8())
+    }
+}
+
 fn document_unit_ranges(
     text: &str,
     budget: &LayoutBudget<'_>,
@@ -2048,6 +2066,8 @@ fn document_unit_ranges(
             if end > start {
                 ranges.push(start..end);
             }
+            let has_word_boundaries =
+                document_word_boundary(&text[line_start..content_end]).is_some();
             let mut chunk_start = line_start;
             while content_end - chunk_start > DOCUMENT_UNIT_LINE_TARGET {
                 budget.check()?;
@@ -2060,6 +2080,12 @@ fn document_unit_ranges(
                 let mut chunk_end = chunk_start + chunk_bytes;
                 while !text.is_char_boundary(chunk_end) {
                     chunk_end -= 1;
+                }
+                // Keep prose words intact, but scan unbroken tokens only once per line.
+                if has_word_boundaries
+                    && let Some(end) = document_word_boundary(&text[chunk_start..chunk_end])
+                {
+                    chunk_end = chunk_start + end;
                 }
                 ranges.push(chunk_start..chunk_end);
                 chunk_start = chunk_end;

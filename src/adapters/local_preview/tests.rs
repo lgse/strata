@@ -838,6 +838,7 @@ fn text_subclassed_names_resolve_their_preview_from_the_type_hierarchy() {
 enum Resolved {
     Text(String),
     Image,
+    Media,
     Pdf,
     Unsupported,
 }
@@ -869,6 +870,22 @@ fn preview_families_follow_file_bytes_not_names() {
             "clip.mp4",
             &b"not a movie\n"[..],
             Resolved::Text("not a movie\n".into()),
+        ),
+        (
+            "clip.h264",
+            &b"not a movie\n"[..],
+            Resolved::Text("not a movie\n".into()),
+        ),
+        ("empty.H264", &b""[..], Resolved::Text(String::new())),
+        (
+            "stream.h264",
+            &b"\x00\x00\x00\x01\x67\x64\x00\x0c\xac\xd9\x41\x41"[..],
+            Resolved::Media,
+        ),
+        (
+            "STREAM.H264",
+            &b"\x00\x00\x01\x67\x64\x00\x0c\xac\xd9\x41\x41"[..],
+            Resolved::Media,
         ),
         (
             "app.ts",
@@ -987,6 +1004,10 @@ fn preview_families_follow_file_bytes_not_names() {
         let resolved = match &preview.content {
             PreviewContent::Text { content, .. } => Resolved::Text(content.clone()),
             PreviewContent::Rasterized { .. } => Resolved::Image,
+            PreviewContent::SandboxedMedia { media } => {
+                assert_eq!(media.path, path);
+                Resolved::Media
+            }
             PreviewContent::Pdf { .. } => Resolved::Pdf,
             PreviewContent::Unsupported => Resolved::Unsupported,
             other => panic!("{name} resolved to {other:?}"),

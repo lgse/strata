@@ -1,15 +1,20 @@
-{"scenario":"video-preview-badges-next-video","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"tree":{"notes.txt":"plain"},"setup":[{"fs":{"path":"alpha.mp4","ffmpeg":["-f","lavfi","-i","testsrc2=size=320x180:rate=24:duration=6","-c:v","libx264","-threads","1","-pix_fmt","yuv420p","-an"]}},{"fs":{"path":"beta.mp4","ffmpeg":["-f","lavfi","-i","testsrc2=size=320x180:rate=24:duration=5","-c:v","libx264","-threads","1","-pix_fmt","yuv420p","-an"]}}],"cost":{"columns":0.7},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Space previews video with codec/fps badges, Ctrl+Alt+Shift+> steps to next video; only QA route for keyboard next-video step"}}
-{"select_with_keyboard":"alpha.mp4"}
+{"scenario":"video-preview-badges-next-video","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"tree":{"notes.txt":"plain"},"variants":[{"id":"mp4","vars":{"extension":"mp4"}},{"id":"h264","vars":{"extension":"h264"}}],"setup":[{"fs":{"path":"alpha.$extension","ffmpeg":["-f","lavfi","-i","testsrc2=size=320x180:rate=24:duration=6","-c:v","libx264","-threads","1","-pix_fmt","yuv420p","-an"]}},{"fs":{"path":"beta.$extension","ffmpeg":["-f","lavfi","-i","testsrc2=size=320x180:rate=24:duration=5","-c:v","libx264","-threads","1","-pix_fmt","yuv420p","-an"]}}],"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Space previews video with codec/fps badges, Ctrl+Alt+Shift+> steps to next video, raw .h264 Properties; only QA route for keyboard next-video step"}}
+{"select_with_keyboard":"alpha.$extension"}
 {"key":"space"}
 {"wait":{"preview":"1 of 2 in folder"},"message":"the video view"}
 {"wait":{"preview":"H.264"},"message":"the codec badge from the sandboxed probe"}
-{"expect":{"preview":"24 fps"}}
+{"key":"alt+Return","variants":["h264"]}
+{"wait":{"dialog":"alpha.$extension"},"message":"raw video Properties opens","variants":["h264"]}
+{"wait":{"presented":{"role":"label","name":"320 × 180 pixels","within":{"dialog":true}}},"message":"Properties probes raw video despite the generic system MIME type","variants":["h264"]}
+{"key":"Escape","variants":["h264"]}
+{"wait":{"dialog":null},"message":"raw video Properties closes","variants":["h264"]}
+{"expect":{"preview":"24 fps"},"variants":["mp4"]}
 {"expect":{"present":{"role":"slider","name":"Playback position","within":{"preview":true}}}}
 {"expect":{"present":{"role":"button","name":"Next video","within":{"preview":true}}}}
 {"expect":{"not":{"preview":"Preview unavailable"}}}
 {"key":"ctrl+alt+shift+>"}
 {"wait":{"preview":"2 of 2 in folder"},"message":"the next video in the same view"}
-{"wait":{"preview":"beta.mp4"},"message":"the stepped file's title"}
+{"wait":{"preview":"beta.$extension"},"message":"the stepped file's title"}
 {"expect":{"not":{"preview":"Preview unavailable"}}}
 {"key":"space"}
 {"wait":{"preview":null},"message":"the preview to close"}

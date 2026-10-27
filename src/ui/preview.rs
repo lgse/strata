@@ -108,7 +108,7 @@ pub(crate) fn entry_supports_quick_preview(entry: &FileEntry) -> bool {
 
     let native_path = entry.location.native_path();
     let (content_type, uncertain) =
-        gio::content_type_guess(Some(Path::new(&entry.native_name)), None::<&[u8]>);
+        crate::services::guess_content_type(Path::new(&entry.native_name));
     let content = crate::services::content_family(&content_type);
     if crate::services::table::is_workbook(&content_type, &entry.native_name)
         || crate::sandbox::DocumentFormat::for_file(&content_type, &entry.native_name).is_some()
@@ -3492,16 +3492,18 @@ fn entry_family(entry: &FileEntry) -> Option<MediaFamily> {
     if crate::services::route_preview::RouteFormat::for_name(&entry.native_name).is_some() {
         return Some(MediaFamily::Route);
     }
-    if entry.duration_seconds == MetadataValue::Unavailable {
-        return None;
-    }
-    FAMILIES.with_borrow_mut(|known| {
+    let family = FAMILIES.with_borrow_mut(|known| {
         *known.entry(extension).or_insert_with_key(|extension| {
             media_family(
-                &gio::content_type_guess(Some(Path::new(&format!("a.{extension}"))), None::<&[u8]>)
-                    .0,
+                &crate::services::guess_content_type(Path::new(&format!("a.{extension}"))).0,
             )
         })
+    });
+    // Elementary streams can have valid video dimensions without a duration.
+    family.filter(|family| {
+        entry.duration_seconds != MetadataValue::Unavailable
+            || (*family == MediaFamily::Video
+                && matches!(entry.image_dimensions, MetadataValue::Known(_)))
     })
 }
 
