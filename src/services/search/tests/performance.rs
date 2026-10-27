@@ -43,6 +43,8 @@ fn heap_and_parallel_scoring_match_a_full_stable_sort() {
         ("needle", &fuzzy),
         ("nested/objects", &fuzzy),
         ("ndobj", &fuzzy),
+        ("archive needle", &fuzzy),
+        ("needle txt", &fuzzy),
         ("配置", &fuzzy),
         ("missing", &fuzzy),
         ("", &fuzzy),

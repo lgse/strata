@@ -1773,16 +1773,27 @@ fn filter_score_normalized(item: &SearchItem, query: &str) -> Option<i64> {
 }
 
 fn fuzzy_score_normalized(item: &SearchItem, query: &str) -> Option<i64> {
-    if query.is_empty() {
+    if query.trim().is_empty() {
         return None;
     }
     let search_name = item.search_name();
-    let mut score = if let Some(position) = search_name.find(query) {
-        10_000 - position as i64 * 12 - search_name.len() as i64
+    let (tier, mut score) = if let Some(position) = search_name.find(query) {
+        (5, 10_000 - position as i64 * 12 - search_name.len() as i64)
     } else if let Some(position) = item.search_path.find(query) {
-        7_000 - position as i64 * 4 - item.search_path.len() as i64
+        (
+            4,
+            7_000 - position as i64 * 4 - item.search_path.len() as i64,
+        )
+    } else if query.contains(char::is_whitespace) {
+        if pattern::text_matches_words(search_name, query.split_whitespace()) {
+            (3, 5_000 - search_name.len() as i64)
+        } else if pattern::text_matches_words(&item.search_path, query.split_whitespace()) {
+            (2, 3_000 - item.search_path.len() as i64)
+        } else {
+            (1, fuzzy_subsequence_score(&item.search_path, query)?)
+        }
     } else {
-        fuzzy_subsequence_score(&item.search_path, query)?
+        (1, fuzzy_subsequence_score(&item.search_path, query)?)
     };
     if search_name == query {
         score += 20_000;
@@ -1791,7 +1802,8 @@ fn fuzzy_score_normalized(item: &SearchItem, query: &str) -> Option<i64> {
         score += 20;
     }
     score -= i64::from(item.depth) * 32;
-    Some(score)
+    // Keep penalties and fuzzy bonuses inside their match tier.
+    Some((tier << 32) + score.clamp(i64::from(i32::MIN), i64::from(i32::MAX)))
 }
 
 fn fuzzy_subsequence_score(haystack: &str, needle: &str) -> Option<i64> {

@@ -943,6 +943,7 @@ button.appearance-density-snap:focus-visible {
 
 .delete-confirmation-list {
   background: alpha(@strata_highlight, 0.42);
+  border-radius: 3px;
 }
 
 .delete-confirmation-list viewport {

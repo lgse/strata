@@ -1379,8 +1379,8 @@ impl ChooserState {
         let Some(filename) = self.filename.as_ref() else {
             return;
         };
-        filename.grab_focus();
-        filename.select_region(0, super::collection_edit::rename_stem_end(&filename.text()));
+        filename.grab_focus_without_selecting();
+        select_name_stem(filename);
     }
 
     fn activate_file(self: &Rc<Self>, location: &Location) {
@@ -1419,6 +1419,10 @@ impl ChooserState {
             _ => {}
         }
     }
+}
+
+fn select_name_stem(entry: &gtk::Entry) {
+    entry.select_region(0, super::collection_edit::rename_stem_end(&entry.text()));
 }
 
 fn eligible_open_entries(entries: Vec<FileEntry>, directory: bool) -> Vec<FileEntry> {
@@ -1819,7 +1823,7 @@ fn build_chooser_hosted(
             crate::ui::accessibility::set_label(&entry, &crate::i18n::tr("Name"));
             if let Some(name) = current_name {
                 entry.set_text(&name.to_string_lossy());
-                entry.select_region(0, -1);
+                select_name_stem(&entry);
             }
             row.append(&entry);
             details.append(&row);
@@ -2158,16 +2162,20 @@ fn build_chooser_hosted(
         }
         return Some(state);
     } else if let Some(filename) = state.filename.as_ref() {
-        filename.grab_focus();
-        filename.select_region(0, -1);
+        filename.grab_focus_without_selecting();
+        select_name_stem(filename);
     } else {
         sidebar_toggle.grab_focus();
     }
     window.set_focus_visible(true);
+    let target_filename = state.filename.clone();
     let initial_focus = gtk::prelude::RootExt::focus(&window).map(|widget| widget.downgrade());
     // View initialization also queues focus work; restore the chooser's target afterward.
     glib::idle_add_local_once(move || {
-        if let Some(widget) = initial_focus.and_then(|widget| widget.upgrade()) {
+        if let Some(filename) = target_filename.as_ref() {
+            filename.grab_focus_without_selecting();
+            select_name_stem(filename);
+        } else if let Some(widget) = initial_focus.and_then(|widget| widget.upgrade()) {
             widget.grab_focus();
         }
     });
@@ -2863,8 +2871,8 @@ fn install_shortcuts(
                 return glib::Propagation::Stop;
             }
             if in_header {
-                filename.grab_focus();
-                filename.select_region(0, -1);
+                filename.grab_focus_without_selecting();
+                select_name_stem(filename);
                 return glib::Propagation::Stop;
             }
         }
