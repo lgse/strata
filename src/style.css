@@ -2369,8 +2369,9 @@ scrollbar.horizontal > range > trough > slider {
   margin: 0;
 }
 
-.sidebar-row:hover {
-  background: alpha(@strata_accent, 0.15);
+.sidebar-row:hover,
+.sidebar-device:hover {
+  background: alpha(@strata_text, 0.06);
 }
 
 .sidebar-row.active,
@@ -2384,10 +2385,6 @@ scrollbar.horizontal > range > trough > slider {
 .sidebar-row.active image,
 .sidebar-device.active .sidebar-row image {
   color: @strata_accent;
-}
-
-.sidebar-device:hover {
-  background: alpha(@strata_accent, 0.15);
 }
 
 .sidebar-device:hover > .sidebar-row,
