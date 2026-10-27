@@ -71,7 +71,7 @@ unicode-normalization = "0.1.25"
 # may change in a minor release.
 ureq = { version = "~3.4", features = ["json"] }
 zbus = { version = "5.19.0", default-features = false, features = ["async-io"] }
-zstd = "0.14.0"
+zstd = "0.14.3"
 zip = "9.0.4"
 unrar = { version = "0.5.8", optional = true }
 unrar_sys = { version = "0.5.8", optional = true }
