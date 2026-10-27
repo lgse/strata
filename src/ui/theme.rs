@@ -34,10 +34,29 @@ const RESET_CSS: &str = "* { all: unset; }";
 /// Above the static stylesheet so generated density spacing wins over its presets.
 const DENSITY_STYLE_PRIORITY: u32 = STYLE_PRIORITY + 1;
 const TOKEN_STYLE_PRIORITY: u32 = DENSITY_STYLE_PRIORITY + 1;
+/// Below user styles but above tokens and base styles, so uncomposited popup
+/// fallbacks strip shadow padding before users customize them.
+const UNCOMPOSITED_STYLE_PRIORITY: u32 = TOKEN_STYLE_PRIORITY + 1;
 /// Above every Strata stylesheet, so `~/.config/strata/style.css` has the final word.
-const USER_STYLE_PRIORITY: u32 = TOKEN_STYLE_PRIORITY + 1;
+const USER_STYLE_PRIORITY: u32 = UNCOMPOSITED_STYLE_PRIORITY + 1;
 const USER_STYLE_FILE: &str = "style.css";
 const STYLE_CSS: &str = include_str!("../style.css");
+
+/// On an uncomposited display (e.g. bare X11 without a compositing manager),
+/// transparent popup subsurfaces cannot be blended with the desktop underneath
+/// and fall back to solid black pixels outside the content boundary.
+/// Stripping box-shadow and setting border-radius: 0 leaves clean, crisp popup
+/// windows without black shadow frames or clipped black corner tips.
+const UNCOMPOSITED_CSS: &str = "\
+tooltip,
+popover,
+popover > contents,
+popover contents,
+.peek-popover {
+    box-shadow: none;
+    border-radius: 0;
+}
+";
 
 thread_local! {
     static SHARED_MANAGER: RefCell<Option<Rc<ThemeManager>>> = const { RefCell::new(None) };
@@ -205,6 +224,7 @@ pub struct ThemeManager {
             super::browser_modes::FrameDensity,
         )>,
     >,
+    uncomposited_provider: gtk::CssProvider,
     user_provider: gtk::CssProvider,
     base_roundness: Cell<Option<CornerRoundness>>,
     themes: RefCell<Vec<Theme>>,
@@ -275,6 +295,7 @@ impl ThemeManager {
             base_provider: gtk::CssProvider::new(),
             density_provider: gtk::CssProvider::new(),
             density: Cell::new(None),
+            uncomposited_provider: gtk::CssProvider::new(),
             user_provider: gtk::CssProvider::new(),
             base_roundness: Cell::new(None),
             themes: RefCell::new(themes),
@@ -519,9 +540,21 @@ impl ThemeManager {
             );
             gtk::style_context_add_provider_for_display(
                 &display,
+                &self.uncomposited_provider,
+                UNCOMPOSITED_STYLE_PRIORITY,
+            );
+            gtk::style_context_add_provider_for_display(
+                &display,
                 &self.user_provider,
                 USER_STYLE_PRIORITY,
             );
+            Self::apply_composited_display(&display, &self.uncomposited_provider);
+            let weak_provider = self.uncomposited_provider.downgrade();
+            display.connect_notify_local(Some("composited"), move |display, _| {
+                if let Some(provider) = weak_provider.upgrade() {
+                    Self::apply_composited_display(display, &provider);
+                }
+            });
         }
         self.user_provider
             .connect_parsing_error(|_, section, error| {
@@ -532,6 +565,14 @@ impl ThemeManager {
                     "invalid rule in user stylesheet"
                 );
             });
+    }
+
+    fn apply_composited_display(display: &gdk::Display, provider: &gtk::CssProvider) {
+        if display.is_composited() {
+            provider.load_from_string("");
+        } else {
+            provider.load_from_string(UNCOMPOSITED_CSS);
+        }
     }
 
     /// A missing or unreadable file clears the provider, so deleting

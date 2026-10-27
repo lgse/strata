@@ -598,13 +598,50 @@ fn location_input_naming_a_file_reveals_it_inside_its_parent() {
     )));
     browser.navigate(Location::local("/start"));
     let reveal_pending_on_add = record_reveal_pending_on_column_added(&browser);
+    let preview_requested = Rc::new(RefCell::new(Vec::new()));
+    let preview_sink = preview_requested.clone();
+    browser.observe(move |event| {
+        if let BrowserEvent::PreviewRequested { entry, automatic } = event {
+            preview_sink
+                .borrow_mut()
+                .push((entry.location.clone(), *automatic));
+        }
+    });
 
     assert_eq!(browser.navigate_input("/fixture/report.pdf"), Ok(()));
 
     assert_eq!(browser.active_location(), Some(Location::local("/fixture")));
-    assert_eq!(selected_locations(&browser), vec![file]);
+    assert_eq!(selected_locations(&browser), vec![file.clone()]);
     assert_eq!(*reveal_pending_on_add.borrow(), [true]);
     assert!(!browser.column_snapshot(0).expect("column").reveal_pending);
+    assert_eq!(*preview_requested.borrow(), vec![(file, false)]);
+}
+
+#[test]
+fn location_input_naming_a_file_in_an_already_open_folder_opens_preview() {
+    let file = Location::local("/fixture/report.pdf");
+    let browser = Browser::new(Rc::new(TypedPathSource::containing(
+        file.clone(),
+        vec![
+            listing_file(Location::local("/fixture/notes.txt"), "notes.txt", false),
+            listing_file(file.clone(), "report.pdf", false),
+        ],
+    )));
+    browser.navigate(Location::local("/fixture"));
+
+    let preview_requested = Rc::new(RefCell::new(Vec::new()));
+    let preview_sink = preview_requested.clone();
+    browser.observe(move |event| {
+        if let BrowserEvent::PreviewRequested { entry, automatic } = event {
+            preview_sink
+                .borrow_mut()
+                .push((entry.location.clone(), *automatic));
+        }
+    });
+
+    assert_eq!(browser.navigate_input("/fixture/report.pdf"), Ok(()));
+    assert_eq!(selected_locations(&browser), vec![file.clone()]);
+    assert_eq!(*preview_requested.borrow(), vec![(file, false)]);
 }
 
 #[test]
