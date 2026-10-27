@@ -3917,7 +3917,7 @@ button.shortcut-footer-button:disabled {
   background: @strata_surface;
   border: 1px solid alpha(@strata_border, 0.8);
   border-radius: 9px;
-  box-shadow: 0 0 14px alpha(@strata_glow, 0.24), 0 6px 20px alpha(@strata_bg, 0.45);
+  box-shadow: 0 0 14px alpha(@strata_glow, 0.24);
   color: @strata_text;
   padding: 0;
 }
@@ -4189,7 +4189,7 @@ dropdown.form-control popover row:selected check {
   background: @strata_surface;
   border: 1px solid alpha(@strata_border, 0.55);
   border-radius: 9px;
-  box-shadow: 0 0 14px alpha(@strata_glow, 0.16), 0 8px 24px alpha(@strata_bg, 0.32);
+  box-shadow: 0 0 14px alpha(@strata_glow, 0.16);
   padding: 4px;
 }
 

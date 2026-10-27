@@ -2721,11 +2721,9 @@ impl PreviewState {
         let pause_icon = crate::assets::primary_icon(crate::assets::icons::PAUSE, 18);
         let play_button = gtk::Button::new();
         play_button.add_css_class("preview-media-button");
-        crate::ui::shortcut_reference::follow_tooltip(
-            &play_button,
-            "Play/Pause (%{keys})",
-            keys::Keys::One(MEDIA_PLAY_PAUSE.shown()),
-        );
+        let keys = keys::Keys::One(MEDIA_PLAY_PAUSE.shown());
+        crate::ui::shortcut_reference::follow_tooltip(&play_button, "Play/Pause (%{keys})", keys);
+        crate::ui::shortcut_reference::follow_label(&play_button, "Play/Pause (%{keys})", keys);
         play_button.set_child(Some(if media.is_playing() {
             &pause_icon
         } else {
@@ -3318,11 +3316,9 @@ impl VolumeControls {
     ) -> Self {
         let toggle = gtk::Button::new();
         toggle.add_css_class("preview-media-button");
-        crate::ui::shortcut_reference::follow_tooltip(
-            &toggle,
-            "Mute/unmute (%{keys})",
-            keys::Keys::One(MEDIA_MUTE.shown()),
-        );
+        let keys = keys::Keys::One(MEDIA_MUTE.shown());
+        crate::ui::shortcut_reference::follow_tooltip(&toggle, "Mute/unmute (%{keys})", keys);
+        crate::ui::shortcut_reference::follow_label(&toggle, "Mute/unmute (%{keys})", keys);
         let muted = preferences.preview_muted();
         let icon = crate::assets::primary_icon(
             if muted {

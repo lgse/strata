@@ -201,10 +201,10 @@ pub(super) fn copyable_command(command: &str) -> gtk::Overlay {
     overlay.set_child(Some(&field));
 
     let copy = gtk::Button::builder()
-        .tooltip_text(crate::i18n::tr("Copy install command"))
         .halign(gtk::Align::End)
         .valign(gtk::Align::Center)
         .build();
+    super::accessibility::set_tooltip_and_label(&copy, &crate::i18n::tr("Copy install command"));
     copy.add_css_class("preview-command-copy");
     copy.set_has_frame(false);
     copy.set_cursor_from_name(Some("pointer"));
@@ -219,14 +219,20 @@ pub(super) fn copyable_command(command: &str) -> gtk::Overlay {
         let generation = feedback_generation.get().saturating_add(1);
         feedback_generation.set(generation);
         crate::assets::set_primary_icon(&copy_icon, crate::assets::icons::CHECK);
-        button.set_tooltip_text(Some(&crate::i18n::tr("Install command copied")));
+        super::accessibility::set_tooltip_and_label(
+            button,
+            &crate::i18n::tr("Install command copied"),
+        );
         let button = button.clone();
         let copy_icon = copy_icon.clone();
         let feedback_generation = feedback_generation.clone();
         glib::timeout_add_local_once(Duration::from_secs(2), move || {
             if feedback_generation.get() == generation {
                 crate::assets::set_primary_icon(&copy_icon, crate::assets::icons::COPY);
-                button.set_tooltip_text(Some(&crate::i18n::tr("Copy install command")));
+                super::accessibility::set_tooltip_and_label(
+                    &button,
+                    &crate::i18n::tr("Copy install command"),
+                );
             }
         });
     });

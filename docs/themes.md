@@ -99,9 +99,58 @@ Theme files may be symlinks into a dotfiles repository. The configurator never r
 
 Strata watches `~/.config/strata/themes/` while it runs, along with the directory of each file a `.toml` symlink there points to, so a theme kept in a dotfiles repository also updates live when its target is rewritten. When a theme file changes, the custom themes are read again; if the theme currently selected resolves to different colors, it is re-applied to every open window, including icon colors and code-preview syntax colors. No restart is needed.
 
-This makes dynamic themes work: a generator can rewrite a theme file in place, for example a [matugen](https://github.com/InioX/matugen) template that follows the wallpaper and writes `~/.config/strata/themes/matugen.toml` on every change. Select that theme once (Settings → Appearance, or `theme = "matugen"` in `settings.toml`) and open windows follow the file.
+This makes dynamic themes work: a generator can rewrite a theme file in place, for example the [matugen template](#matugen-template) below, which follows the wallpaper and writes `~/.config/strata/themes/matugen.toml` on every change. Select that theme once (Settings → Appearance, or `theme = "matugen"` in `settings.toml`) and open windows follow the file.
 
 Writes are debounced, so a generator touching several files in a row triggers one re-read. If a file is caught mid-write, invalid, or removed, the current appearance stays in place; the next read that produces valid colors applies them.
+
+### Matugen template
+
+[matugen](https://github.com/InioX/matugen) builds a Material You palette from the wallpaper and fills templates with it. This template, contributed in [arqueon/strata-extras](https://github.com/arqueon/strata-extras/tree/main/themes/matugen) (MIT), maps that palette to Strata's interface and syntax colors. It was written against matugen 4.2; older template syntax may differ.
+
+1. Save it as `~/.config/matugen/templates/strata-theme.toml`:
+
+   ```toml
+   name = "Matugen"
+   background = "{{colors.surface.default.hex}}"
+   surface = "{{colors.surface_container.default.hex}}"
+   text = "{{colors.on_surface.default.hex}}"
+   accent = "{{colors.primary.default.hex}}"
+   danger = "{{colors.error.default.hex}}"
+   muted = "{{colors.surface_container_high.default.hex}}"
+   highlight = "{{colors.secondary_container.default.hex}}"
+   border = "{{colors.outline_variant.default.hex}}"
+   dim_text = "{{colors.on_surface_variant.default.hex}}"
+   syntax_keyword = "{{colors.tertiary.default.hex}}"
+   syntax_string = "{{colors.secondary.default.hex}}"
+   syntax_constant = "{{colors.tertiary_fixed_dim.default.hex}}"
+   syntax_type = "{{colors.primary.default.hex}}"
+   syntax_preprocessor = "{{colors.on_surface_variant.default.hex}}"
+   ```
+
+2. Register it in `~/.config/matugen/config.toml`:
+
+   ```toml
+   [templates.strata]
+   input_path = '~/.config/matugen/templates/strata-theme.toml'
+   output_path = '~/.config/strata/themes/matugen.toml'
+   ```
+
+3. Run matugen once, for example `matugen image ~/Pictures/wallpaper.png`, then select **Matugen** in **Settings → Appearance**.
+
+From then on, every matugen run recolors open windows. Shells that run user matugen templates on each wallpaper change, such as DankMaterialShell, keep Strata in sync with no further setup.
+
+| Strata key | Material color |
+| --- | --- |
+| `background` | `surface` |
+| `surface` | `surface_container` |
+| `text` | `on_surface` |
+| `accent` | `primary` |
+| `danger` | `error` |
+| `muted` | `surface_container_high` |
+| `highlight` (selection) | `secondary_container` |
+| `border` | `outline_variant` |
+| `dim_text` | `on_surface_variant` |
+| `syntax_keyword` / `syntax_string` / `syntax_constant` / `syntax_type` / `syntax_preprocessor` | `tertiary` / `secondary` / `tertiary_fixed_dim` / `primary` / `on_surface_variant` |
 
 ## Syntax colors
 

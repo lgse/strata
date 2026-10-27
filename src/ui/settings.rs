@@ -3411,12 +3411,15 @@ fn search_field(placeholder: &str) -> (gtk::Overlay, gtk::Entry, gtk::Button) {
     theme_search.add_controller(search_keys);
     let clear_search = gtk::Button::builder()
         .child(&crate::assets::primary_icon(icons::X, 15))
-        .tooltip_text(crate::i18n::tr("Clear search"))
         .halign(gtk::Align::End)
         .valign(gtk::Align::Center)
         .margin_end(6)
         .visible(false)
         .build();
+    crate::ui::accessibility::set_tooltip_and_label(
+        &clear_search,
+        &crate::i18n::tr("Clear search"),
+    );
     clear_search.add_css_class("theme-search-clear");
     clear_search.set_has_frame(false);
     let search_overlay = gtk::Overlay::new();

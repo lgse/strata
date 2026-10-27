@@ -98,6 +98,7 @@ impl SearchDialog {
             .hexpand(true)
             .build();
         field.add_css_class("search-field");
+        crate::ui::accessibility::set_label(&field, &crate::i18n::tr("Search files and folders…"));
         search_bar.append(&field);
         let indexing_spinner = gtk::Spinner::new();
         indexing_spinner.add_css_class("search-indexing-spinner");

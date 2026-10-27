@@ -4239,9 +4239,11 @@ fn sidebar_button(icon: &str, name: &str) -> gtk::Button {
 }
 
 fn sidebar_eject_button(action: MediaRelease, on_release: impl Fn() + 'static) -> gtk::Button {
-    let button = gtk::Button::builder()
-        .tooltip_text(crate::i18n::tr(media_release_label(action)))
-        .build();
+    let button = gtk::Button::new();
+    super::accessibility::set_tooltip_and_label(
+        &button,
+        &crate::i18n::tr(media_release_label(action)),
+    );
     button.set_child(Some(&crate::assets::primary_icon(
         crate::assets::icons::EJECT,
         14,
@@ -4258,9 +4260,8 @@ fn sidebar_eject_button(action: MediaRelease, on_release: impl Fn() + 'static) -
 }
 
 fn sidebar_lock_button(action: EncryptedMediaAction, on_click: impl Fn() + 'static) -> gtk::Button {
-    let button = gtk::Button::builder()
-        .tooltip_text(crate::i18n::tr(action.label()))
-        .build();
+    let button = gtk::Button::new();
+    super::accessibility::set_tooltip_and_label(&button, &crate::i18n::tr(action.label()));
     button.set_child(Some(&crate::assets::primary_icon(action.icon(), 14)));
     button.add_css_class("sidebar-eject");
     button.add_css_class("sidebar-device-action");

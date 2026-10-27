@@ -499,6 +499,7 @@ impl PromptBar {
         entry.add_css_class("form-control");
         entry.add_css_class("shortcut-footer-prompt");
         entry.set_hexpand(true);
+        crate::ui::accessibility::set_labelled_by(&entry, &[label.upcast_ref()]);
         let hint = gtk::Label::new(None);
         hint.add_css_class("shortcut-footer-chord-hint");
         hint.set_ellipsize(gtk::pango::EllipsizeMode::End);
@@ -733,6 +734,7 @@ impl ShortcutFooter {
         search.set_placeholder_text(Some(&crate::i18n::tr("Search actions or keys…")));
         search.set_hexpand(true);
         search.add_css_class("shortcut-reference-search");
+        crate::ui::accessibility::set_label(&search, &crate::i18n::tr("Search actions or keys…"));
         header.append(&search);
         content.append(&header);
         let body = gtk::Box::new(gtk::Orientation::Horizontal, 0);

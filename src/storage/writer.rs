@@ -26,9 +26,13 @@ pub(crate) enum Policy {
 
 type Produce = Box<dyn FnOnce() -> io::Result<Vec<u8>> + Send>;
 
+/// Also returns a lock the writer holds until the file has been replaced.
+type ProduceLocked = Box<dyn FnOnce() -> io::Result<(Vec<u8>, Option<fs::File>)> + Send>;
+
 enum Contents {
     Bytes(Vec<u8>),
     Produced(Produce),
+    ProducedLocked(ProduceLocked),
     Removed,
 }
 
@@ -109,9 +113,14 @@ impl Writer {
     }
 
     fn write(&self, path: &Path, save: Save) {
+        let mut _lock = None;
         let contents = match save.contents {
             Contents::Bytes(contents) => Ok(Some(contents)),
             Contents::Produced(produce) => produce().map(Some),
+            Contents::ProducedLocked(produce) => produce().map(|(contents, lock)| {
+                _lock = lock;
+                Some(contents)
+            }),
             Contents::Removed => Ok(None),
         };
         let result = contents.and_then(|contents| match contents {
@@ -297,6 +306,21 @@ pub(crate) fn save_produced(
 ) {
     let contents = Contents::Produced(Box::new(produce));
     drop(shared().save(path, contents, policy, Some(failure)));
+}
+
+/// Like [`save`], with contents made on the writer thread together with a lock that
+/// stays held until the file is replaced.
+pub(crate) fn save_locked(
+    path: PathBuf,
+    policy: Policy,
+    produce: impl FnOnce() -> io::Result<(Vec<u8>, Option<fs::File>)> + Send + 'static,
+) -> oneshot::Receiver<io::Result<()>> {
+    shared().save(
+        path,
+        Contents::ProducedLocked(Box::new(produce)),
+        policy,
+        None,
+    )
 }
 
 pub(crate) fn reread<T: Send + 'static>(

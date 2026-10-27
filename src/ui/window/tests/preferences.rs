@@ -1662,6 +1662,7 @@ fn folder_settings_saved_by_another_process_are_merged_instead_of_overwritten() 
             let held = crate::storage::writer::hold();
             std::fs::rename(&staged, settings_file()).expect("settings replaced");
             manager.notice_saves_elsewhere();
+            manager.set_folder_peeking(!manager.folder_peeking());
             settle_for(std::time::Duration::from_millis(100));
             assert_eq!(
                 manager.default_sort(),
@@ -1670,6 +1671,13 @@ fn folder_settings_saved_by_another_process_are_merged_instead_of_overwritten() 
             );
             drop(held);
             wait_until(|| manager.default_sort() == (SortKey::Modified, SortDirection::Descending));
+            crate::storage::writer::settle();
+            assert!(
+                std::fs::read_to_string(settings_file())
+                    .expect("settings")
+                    .contains("sort_key = \"modified\""),
+                "a save that was in flight keeps the defaults saved elsewhere"
+            );
             manager.set_folder_sort(&here, SortKey::Name, SortDirection::Ascending);
             assert_eq!(
                 manager.resolve_folder_sort(&here, false),

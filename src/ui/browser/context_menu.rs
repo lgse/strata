@@ -46,41 +46,6 @@ fn submenu_row(header: &gtk::Button, entries: [&gtk::Button; 2]) -> gtk::Box {
     wrapper
 }
 
-fn context_menu_placement(anchor_height: i32, click_y: f64) -> (gtk::PositionType, i32) {
-    let click_y = click_y.round() as i32;
-    let above = click_y.clamp(0, anchor_height);
-    let below = anchor_height.saturating_sub(above);
-    let position = if below >= above {
-        gtk::PositionType::Bottom
-    } else {
-        gtk::PositionType::Top
-    };
-
-    (
-        position,
-        anchor_height
-            .saturating_sub(CONTEXT_MENU_EDGE_MARGIN * 2)
-            .max(1),
-    )
-}
-
-// GTK popovers do not shift their anchor to use space across the click point.
-fn shifted_anchor_y(
-    position: gtk::PositionType,
-    anchor_height: i32,
-    click_y: i32,
-    content_height: i32,
-) -> i32 {
-    let near_edge = CONTEXT_MENU_EDGE_MARGIN;
-    let far_edge = anchor_height.saturating_sub(CONTEXT_MENU_EDGE_MARGIN);
-    match position {
-        gtk::PositionType::Bottom => {
-            click_y.min(far_edge.saturating_sub(content_height).max(near_edge))
-        }
-        _ => click_y.max(near_edge.saturating_add(content_height).min(far_edge)),
-    }
-}
-
 pub(in crate::ui) fn context_menu_popover(
     content: &impl IsA<gtk::Widget>,
 ) -> (gtk::Popover, gtk::ScrolledWindow) {
@@ -270,51 +235,34 @@ fn show_model_context_popover(popover: &gtk::Popover, anchor: &gtk::Widget, x: f
     }
     position_model_context_popover(popover, anchor, x, y);
     popover.popup();
-    let (popover, anchor) = (popover.downgrade(), anchor.downgrade());
-    // GTK inserts native section separators in an idle; measure their final height then.
-    glib::idle_add_local_once(move || {
-        if let (Some(popover), Some(anchor)) = (popover.upgrade(), anchor.upgrade())
-            && popover.is_visible()
-        {
-            position_model_context_popover(&popover, &anchor, x, y);
-        }
-    });
+}
+
+// Capped by the monitor, not the window: the popup flips above the click or
+// shrinks to fit the screen.
+fn monitor_menu_height(widget: &impl IsA<gtk::Widget>) -> i32 {
+    let monitor = widget
+        .native()
+        .and_then(|native| native.surface())
+        .and_then(|surface| surface.display().monitor_at_surface(&surface));
+    monitor
+        .map_or(i32::MAX / 2, |monitor| monitor.geometry().height())
+        .saturating_sub(CONTEXT_MENU_EDGE_MARGIN * 2)
+        .max(1)
 }
 
 fn position_model_context_popover(popover: &gtk::Popover, anchor: &gtk::Widget, x: f64, y: f64) {
-    let (Some(parent), Some(window)) = (
-        popover.parent(),
-        anchor.root().and_downcast::<gtk::Window>(),
-    ) else {
+    let Some(parent) = popover.parent() else {
         return;
     };
-    let Some(click) = anchor.compute_point(&window, &gtk::graphene::Point::new(x as f32, y as f32))
+    let Some(point) = anchor.compute_point(&parent, &gtk::graphene::Point::new(x as f32, y as f32))
     else {
         return;
     };
-    let (position, available) = context_menu_placement(window.height(), f64::from(click.y()));
-    popover.set_position(position);
+    popover.set_position(gtk::PositionType::Bottom);
     if let Some(scroll) = popover.child().and_downcast::<gtk::ScrolledWindow>() {
-        scroll.set_max_content_height(available);
+        scroll.set_max_content_height(monitor_menu_height(anchor));
         scroll.set_propagate_natural_height(true);
     }
-    let height = popover
-        .child()
-        .map_or(1, |child| child.measure(gtk::Orientation::Vertical, -1).1)
-        .saturating_add(CONTEXT_MENU_EDGE_MARGIN);
-    let y = shifted_anchor_y(position, window.height(), click.y().round() as i32, height);
-    let width = popover
-        .child()
-        .map_or(1, |child| child.measure(gtk::Orientation::Horizontal, -1).1);
-    let inset = (width / 2 + CONTEXT_MENU_EDGE_MARGIN)
-        .min(window.width() / 2)
-        .max(0);
-    let x = click
-        .x()
-        .clamp(inset as f32, (window.width() - inset).max(inset) as f32);
-    let Some(point) = window.compute_point(&parent, &gtk::graphene::Point::new(x, y as f32)) else {
-        return;
-    };
     popover.set_pointing_to(Some(&gtk::gdk::Rectangle::new(
         point.x().round() as i32,
         point.y().round() as i32,
@@ -339,16 +287,11 @@ fn present_context_popover(
     let point = anchor
         .compute_point(&overlay, &gtk::graphene::Point::new(x as f32, y as f32))
         .unwrap_or(gtk::graphene::Point::new(x as f32, y as f32));
-    let (position, max_content_height) =
-        context_menu_placement(overlay.height(), f64::from(point.y()));
-    popover.set_position(position);
-    scroll.set_max_content_height(max_content_height);
-    let click_y = point.y().round() as i32;
-    let (_, content_height, _, _) = scroll.measure(gtk::Orientation::Vertical, -1);
-    let anchor_y = shifted_anchor_y(position, overlay.height(), click_y, content_height.max(1));
+    popover.set_position(gtk::PositionType::Bottom);
+    scroll.set_max_content_height(monitor_menu_height(anchor));
     popover.set_pointing_to(Some(&gtk::gdk::Rectangle::new(
         point.x().round() as i32,
-        anchor_y,
+        point.y().round() as i32,
         1,
         1,
     )));

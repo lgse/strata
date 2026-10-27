@@ -751,6 +751,7 @@ pub(super) fn show(
     let search_entry = gtk::SearchEntry::new();
     search_entry.add_css_class("open-with-search");
     search_entry.set_placeholder_text(Some(&crate::i18n::tr("Search applications…")));
+    super::accessibility::set_label(&search_entry, &crate::i18n::tr("Search applications…"));
     layout.body.append(&search_entry);
 
     let list = gtk::ListBox::new();

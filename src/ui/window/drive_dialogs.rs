@@ -691,6 +691,7 @@ fn show_label_dialog_for_identity(
     entry.set_max_width_chars(32);
     entry.set_text(&current_label);
     entry.select_region(0, -1);
+    crate::ui::accessibility::set_label(&entry, &crate::i18n::tr("Label shown in Strata"));
     shell
         .layout
         .body
@@ -968,6 +969,7 @@ fn fill_format_dialog<S, Fut>(
     );
     let label_entry = label_field.entry.clone();
     label_entry.set_placeholder_text(Some(&crate::i18n::tr("Volume label (optional)")));
+    crate::ui::accessibility::set_label(&label_entry, &crate::i18n::tr("Filesystem label"));
     step1.append(&field_block("Filesystem label", &label_field.widget));
 
     let quick_check = form_check_button(&crate::i18n::tr("Quick format"));

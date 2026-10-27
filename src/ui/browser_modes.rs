@@ -1768,16 +1768,16 @@ impl ModeViews {
             pane.stack.grab_focus();
             return;
         }
-        let target = self
+        let focused = self
             .browser
             .focused_item()
-            .filter(|(focused_depth, _, _)| *focused_depth == depth)
-            .and_then(|(_, source, _)| {
-                pane.item_sections().into_iter().find_map(|section| {
-                    let position = section.source_to_view(&pane.model, source)?;
-                    (position < section.view_model.n_items()).then_some((section.view, position))
-                })
-            });
+            .filter(|(focused_depth, _, _)| *focused_depth == depth);
+        let target = focused.as_ref().and_then(|(_, source, _)| {
+            pane.item_sections().into_iter().find_map(|section| {
+                let position = section.source_to_view(&pane.model, *source)?;
+                (position < section.view_model.n_items()).then_some((section.view, position))
+            })
+        });
         let (view, position) = target.map_or_else(
             || (pane.focus_view(), None),
             |(view, position)| (view, Some(position)),
@@ -1795,8 +1795,15 @@ impl ModeViews {
                     .into_iter()
                     .find(|section| section.view == view)
                     .map(|section| section.bound_items.clone())
+                && let Some((depth, source, entry)) = focused
             {
-                focus_collection_cursor_when_bound(view.downgrade(), items, position);
+                focus_collection_cursor_when_bound(
+                    view.downgrade(),
+                    items,
+                    position,
+                    Rc::downgrade(&self.browser),
+                    (depth, source, entry.location),
+                );
             }
             return;
         }
@@ -2294,6 +2301,7 @@ pub(crate) fn filter_controls(
         .child(&row)
         .build();
     let button = gtk::ToggleButton::new();
+    let labelled_entry = entry.clone();
     // 10xer hides the button, so it names the default map's key.
     super::shortcut_reference::follow_keys(&button, move |button| {
         let keys = super::keys::label_in_map(
@@ -2304,6 +2312,7 @@ pub(crate) fn filter_controls(
         let label = rust_i18n::t!(tooltip, keys = keys);
         button.set_tooltip_text(Some(&label));
         super::accessibility::set_label(button, &label);
+        super::accessibility::set_label(&labelled_entry, &label);
     });
     button.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::FUNNEL,
@@ -2365,6 +2374,7 @@ fn icons_controls(browser: &Rc<Browser>, depth: usize, thumbnail_size: i32) -> I
     large.set_xalign(1.0);
     thumbnail_extremes.append(&small);
     thumbnail_extremes.append(&large);
+    crate::ui::accessibility::set_labelled_by(&thumbnail_scale, &[thumbnail_title.upcast_ref()]);
     thumbnail_content.append(&thumbnail_heading);
     thumbnail_content.append(&thumbnail_scale);
     thumbnail_content.append(&thumbnail_extremes);
@@ -3772,11 +3782,9 @@ fn list_navigation(browser: &Rc<Browser>) -> gtk::Box {
         ),
     ] {
         let button = gtk::Button::builder().sensitive(available).build();
-        super::shortcut_reference::follow_tooltip(
-            &button,
-            tooltip,
-            Keys::One(binding.alternate(0).shown()),
-        );
+        let keys = Keys::One(binding.alternate(0).shown());
+        super::shortcut_reference::follow_tooltip(&button, tooltip, keys);
+        super::shortcut_reference::follow_label(&button, tooltip, keys);
         button.set_child(Some(&crate::assets::chrome_icon(icon)));
         button.add_css_class("list-navigation-button");
         button.set_cursor_from_name(Some("pointer"));
@@ -3842,10 +3850,8 @@ fn build_list_pane(
 
     let columns_popover =
         column_options::create_column_options_popover(&headings, &columns, &bound_items);
-    let columns_menu = gtk::MenuButton::builder()
-        .tooltip_text(crate::i18n::tr("Columns"))
-        .popover(&columns_popover)
-        .build();
+    let columns_menu = gtk::MenuButton::builder().popover(&columns_popover).build();
+    super::accessibility::set_tooltip_and_label(&columns_menu, &crate::i18n::tr("Columns"));
     columns_menu.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::COLUMNS,
     )));
@@ -5462,12 +5468,24 @@ fn focus_collection_cursor_when_bound(
     view: glib::object::WeakRef<gtk::Widget>,
     items: Rc<RefCell<Vec<BoundModeItem>>>,
     position: u32,
+    browser: Weak<Browser>,
+    expected: (usize, usize, Location),
 ) {
+    // A later input or splice supersedes this cursor even when focus stays in the same view.
+    let is_current = move || {
+        browser.upgrade().is_some_and(|browser| {
+            browser
+                .focused_item()
+                .is_some_and(|(depth, source, entry)| {
+                    depth == expected.0 && source == expected.1 && entry.location == expected.2
+                })
+        })
+    };
     glib::idle_add_local_once(move || {
         let Some(view) = view.upgrade() else {
             return;
         };
-        if !collection_keeps_cursor(&view) {
+        if !is_current() || !collection_keeps_cursor(&view) {
             return;
         }
         if focus_bound_cursor(&items, position) {
@@ -5476,7 +5494,8 @@ fn focus_collection_cursor_when_bound(
         let frames = Cell::new(0u8);
         let items = items.clone();
         view.add_tick_callback(move |view, _| {
-            if !collection_keeps_cursor(view)
+            if !is_current()
+                || !collection_keeps_cursor(view)
                 || focus_bound_cursor(&items, position)
                 || frames.get() >= 8
             {

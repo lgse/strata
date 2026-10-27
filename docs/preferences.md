@@ -162,6 +162,13 @@ plus `$XDG_DATA_HOME/strata/udiskie-install/state.toml`.
 Synchronization between independently running application processes, or manual
 external edits to `settings.toml` while Strata runs, is not supported by this
 in-process binding mechanism. External edits are read on the next launch.
+A save writes only the settings this process changed or repaired at startup since
+its last successful save, over the file as it is on disk, so it keeps what another
+process, such as the portal chooser, wrote to the other settings, and keys this
+version does not know. Folder colors, custom icons, device labels, Send to
+destinations and Omarchy variants are merged entry by entry. If two processes change
+the same setting, the later save wins. A file that cannot be read or parsed is left
+unchanged and the save fails.
 
 ## Per-folder sort and thumbnail size
 

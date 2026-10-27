@@ -308,6 +308,15 @@ fn empty_directory_focus_is_a_named_mapped_surface_and_tabs_out() {
                         )
                     });
 
+                // GTK's Tab traversal needs the new page's first painted frame.
+                let painted = Rc::new(Cell::new(false));
+                let ready = painted.clone();
+                let clock = surface.frame_clock().expect("mapped surface frame clock");
+                let handler = clock.connect_after_paint(move |_| ready.set(true));
+                surface.queue_draw();
+                wait_until(|| painted.get());
+                clock.disconnect(handler);
+
                 tab(&fixture, gtk::DirectionType::TabForward);
                 assert_eq!(
                     focus(&fixture).as_ref(),

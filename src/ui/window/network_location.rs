@@ -109,7 +109,9 @@ pub(super) fn show(state: &Rc<SidebarState>) {
     // Wrap within the dialog's width instead of widening it to fit the message.
     error.set_max_width_chars(1);
     keep_words_whole(&error);
-    fields.append(&form_label(&i18n::tr("Server address")));
+    let address_label = form_label(&i18n::tr("Server address"));
+    crate::ui::accessibility::set_labelled_by(&address, &[address_label.upcast_ref()]);
+    fields.append(&address_label);
     fields.append(&address);
     fields.append(&error);
     layout.body.append(&fields);

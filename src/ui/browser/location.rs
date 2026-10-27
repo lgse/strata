@@ -495,9 +495,15 @@ fn dismiss_authentication_prompt(browser_overlay: &gtk::Overlay, layer: &gtk::Bo
     dismiss_modal_layer(layer, &window_overlay, blurred_root.as_ref());
 }
 
-fn append_authentication_field(fields: &gtk::Box, label_text: &str, field: &impl IsA<gtk::Widget>) {
+fn append_authentication_field(
+    fields: &gtk::Box,
+    label_text: &str,
+    field: &(impl IsA<gtk::Widget> + IsA<gtk::Accessible>),
+) {
     let group = gtk::Box::new(gtk::Orientation::Vertical, 5);
-    group.append(&form_label(&crate::i18n::tr(label_text)));
+    let label = form_label(&crate::i18n::tr(label_text));
+    crate::ui::accessibility::set_labelled_by(field, &[label.upcast_ref()]);
+    group.append(&label);
     group.append(field);
     fields.append(&group);
 }
@@ -2447,9 +2453,11 @@ impl ViewState {
                     &current_label,
                     Some(&crumb.display_path()),
                 );
-                let copy = gtk::Button::builder()
-                    .tooltip_text(crate::i18n::tr("Copy path"))
-                    .build();
+                let copy = gtk::Button::new();
+                crate::ui::accessibility::set_tooltip_and_label(
+                    &copy,
+                    &crate::i18n::tr("Copy path"),
+                );
                 let copy_icon = crate::assets::primary_icon(crate::assets::icons::COPY, 16);
                 copy.set_child(Some(&copy_icon));
                 copy.add_css_class("copy-path");
@@ -2464,14 +2472,20 @@ impl ViewState {
                     let generation = feedback_generation.get().saturating_add(1);
                     feedback_generation.set(generation);
                     crate::assets::set_primary_icon(&copy_icon, crate::assets::icons::CHECK);
-                    button.set_tooltip_text(Some(&crate::i18n::tr("Path copied")));
+                    crate::ui::accessibility::set_tooltip_and_label(
+                        button,
+                        &crate::i18n::tr("Path copied"),
+                    );
                     let button = button.clone();
                     let copy_icon = copy_icon.clone();
                     let feedback_generation = feedback_generation.clone();
                     glib::timeout_add_local_once(Duration::from_secs(2), move || {
                         if feedback_generation.get() == generation {
                             crate::assets::set_primary_icon(&copy_icon, crate::assets::icons::COPY);
-                            button.set_tooltip_text(Some(&crate::i18n::tr("Copy path")));
+                            crate::ui::accessibility::set_tooltip_and_label(
+                                &button,
+                                &crate::i18n::tr("Copy path"),
+                            );
                         }
                     });
                 });

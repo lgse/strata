@@ -2850,7 +2850,9 @@ fn merge_pending_change(
         (PendingMonitorChange::Rescan, _) | (_, PendingMonitorChange::Rescan) => {
             PendingMonitorChange::Rescan
         }
-        (PendingMonitorChange::Move { .. }, PendingMonitorChange::Upsert(_)) => existing,
+        // An exchange can report arrival before departure; query the name's final state.
+        (PendingMonitorChange::Move { .. }, PendingMonitorChange::Upsert(_))
+        | (PendingMonitorChange::Upsert(_), PendingMonitorChange::Remove(_)) => existing,
         (PendingMonitorChange::Move { .. }, PendingMonitorChange::Remove(_)) => {
             PendingMonitorChange::Rescan
         }

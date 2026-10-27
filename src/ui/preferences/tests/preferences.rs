@@ -139,7 +139,7 @@ fn malformed_send_to_history_does_not_discard_other_preferences() {
     assert!(saved.clone().try_into::<Preferences>().is_err());
 
     assert_eq!(
-        salvage_preferences(saved),
+        salvage_preferences(saved).0,
         Preferences {
             send_to_recent_destinations: HashMap::new(),
             ..non_default_preferences()
@@ -208,7 +208,7 @@ fn a_malformed_preference_does_not_discard_the_others() {
     assert!(saved.clone().try_into::<Preferences>().is_err());
 
     assert_eq!(
-        salvage_preferences(saved),
+        salvage_preferences(saved).0,
         Preferences {
             show_hidden: false,
             omarchy_variants: HashMap::new(),
@@ -251,7 +251,7 @@ fn one_malformed_entry_keeps_the_rest_of_its_collection() {
     assert!(saved.clone().try_into::<Preferences>().is_err());
 
     assert_eq!(
-        salvage_preferences(saved),
+        salvage_preferences(saved).0,
         Preferences {
             search_exclusions: vec![".venv".into(), "/fixture/custom_excluded".into()],
             list_hidden_columns: vec![ListColumnId::Size, ListColumnId::Mode],
@@ -288,7 +288,7 @@ fn a_missing_required_preference_does_not_discard_the_others() {
     assert!(saved.clone().try_into::<Preferences>().is_err());
 
     assert_eq!(
-        salvage_preferences(saved),
+        salvage_preferences(saved).0,
         Preferences {
             theme: Preferences::default().theme,
             ..non_default_preferences()
@@ -303,6 +303,7 @@ fn assert_recovered_preferences_survive_save(
     seed_saved_preferences_for_test();
     let mut saved = toml::Table::try_from(non_default_preferences()).expect("saved preferences");
     corrupt(&mut saved);
+    let malformed_keys: Vec<String> = saved.keys().cloned().collect();
     let malformed = toml::to_string(&saved).expect("syntactically valid TOML");
     fs::write(settings_path(), &malformed).expect("persist malformed preferences");
 
@@ -325,17 +326,100 @@ fn assert_recovered_preferences_survive_save(
         .into_iter()
         .map(|(key, _)| key)
         .collect();
-    let known_keys: BTreeSet<String> = toml::Table::try_from(&expected)
+    let every_key = toml::Table::try_from(non_default_preferences()).expect("every preference");
+    let kept_keys: BTreeSet<String> = toml::Table::try_from(&expected)
         .expect("known preferences")
         .into_iter()
         .map(|(key, _)| key)
+        .chain(malformed_keys.into_iter().filter(|key| {
+            !every_key.contains_key(key) && !RETIRED_SETTINGS.contains(&key.as_str())
+        }))
         .collect();
     assert_eq!(
-        saved_keys, known_keys,
-        "a save keeps only known preferences"
+        saved_keys, kept_keys,
+        "a save keeps the valid and unknown preferences"
     );
     crate::storage::writer::settle();
     assert_eq!(read_preferences().expect("saved preferences"), expected);
+}
+
+#[test]
+fn a_save_keeps_the_settings_another_process_wrote() {
+    gtk_test(
+        "ui::preferences::tests::preferences::a_save_keeps_the_settings_another_process_wrote",
+        || {
+            seed_saved_preferences_for_test();
+            let read = || {
+                toml::from_str::<toml::Table>(
+                    &fs::read_to_string(settings_path()).expect("saved file"),
+                )
+                .expect("saved table")
+            };
+            let write = |table: &toml::Table| {
+                fs::write(settings_path(), toml::to_string(table).expect("settings"))
+                    .expect("other process saves");
+            };
+            let mut repairable = read();
+            repairable.insert("search_time_limit".into(), toml::Value::Integer(45));
+            write(&repairable);
+            let manager = PreferenceManager::load();
+            let (peeking, tenxer) = {
+                let preferences = manager.preferences.borrow();
+                (preferences.folder_peeking, preferences.tenxer_mode)
+            };
+
+            let mut other = read();
+            other.insert("tenxer_mode".into(), toml::Value::Boolean(!tenxer));
+            other.insert(
+                "list_hidden_columns".into(),
+                toml::Value::Array(vec!["size".into()]),
+            );
+            other.insert("future_setting".into(), toml::Value::String("kept".into()));
+            other.insert("auto_refresh_interval".into(), toml::Value::Integer(600));
+            other["device_labels"]
+                .as_table_mut()
+                .expect("device labels")
+                .insert("volume:other".into(), "Other drive".into());
+            write(&other);
+
+            let saved = || {
+                crate::storage::writer::settle();
+                read()
+            };
+            manager.set_folder_peeking(!peeking);
+            manager.set_device_label("volume:this", "This drive");
+            let table = saved();
+            assert_eq!(table["folder_peeking"].as_bool(), Some(!peeking));
+            assert_eq!(
+                table["search_time_limit"].as_integer(),
+                Some(60),
+                "a repair made at startup is saved"
+            );
+            assert_eq!(table["tenxer_mode"].as_bool(), Some(!tenxer));
+            assert_eq!(table["list_hidden_columns"], other["list_hidden_columns"]);
+            assert_eq!(table["future_setting"].as_str(), Some("kept"));
+            assert!(!table.contains_key("auto_refresh_interval"));
+            let labels = table["device_labels"].as_table().expect("device labels");
+            assert_eq!(labels["volume:other"].as_str(), Some("Other drive"));
+            assert_eq!(labels["volume:this"].as_str(), Some("This drive"));
+
+            manager.set_folder_peeking(peeking);
+            let table = saved();
+            assert_eq!(table["folder_peeking"].as_bool(), Some(peeking));
+            assert_eq!(table["tenxer_mode"].as_bool(), Some(!tenxer));
+            assert_eq!(table["future_setting"].as_str(), Some("kept"));
+
+            let broken = "this is not valid toml [";
+            fs::write(settings_path(), broken).expect("broken by another process");
+            manager.set_folder_peeking(!peeking);
+            crate::storage::writer::settle();
+            assert_eq!(
+                fs::read_to_string(settings_path()).expect("broken settings"),
+                broken,
+                "a file that cannot be parsed is not overwritten"
+            );
+        },
+    );
 }
 
 #[test]

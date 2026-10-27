@@ -1,0 +1,35 @@
+{"scenario":"fields-and-sliders-named","modes":["columns","icons"],"layout":"us","mutation":null,"known_bug":null}
+{"key":"ctrl+f"}
+{"wait":{"field":{}},"message":"Ctrl+F to open the filter field"}
+{"wait":{"present":{"role":"text","name":"Filter this pane (Ctrl+F)"}},"message":"the filter field is unnamed","modes":["columns"]}
+{"wait":{"present":{"role":"text","name":"Filter icons (Ctrl+F)"}},"message":"the filter field is unnamed","modes":["icons"]}
+{"key":"Escape"}
+{"wait":{"editable_fields":0},"message":"the field to close"}
+{"key":"ctrl+k"}
+{"wait":{"field":{}},"message":"Ctrl+K to open the search palette"}
+{"wait":{"present":{"role":"text","name":"Search files and folders…"}},"message":"the search palette field is unnamed"}
+{"key":"Escape"}
+{"wait":{"editable_fields":0},"message":"the field to close"}
+{"key":"F1"}
+{"wait":{"field":{}},"message":"F1 to open the shortcut reference"}
+{"wait":{"present":{"role":"text","name":"Search actions or keys…"}},"message":"the shortcut reference search is unnamed"}
+{"key":"Escape"}
+{"wait":{"editable_fields":0},"message":"the field to close"}
+{"click":{"sidebar":"Network"},"button":3,"modes":["columns"]}
+{"wait":{"menu_items":{"contains":["Connect to server…"]}},"message":"the Network place menu","modes":["columns"]}
+{"click":{"menu_item":"Connect to server…"},"modes":["columns"]}
+{"wait":{"dialog":"Connect to server"},"message":"the Connect to server dialog","modes":["columns"]}
+{"wait":{"present":{"role":"text","name":"Server address"}},"message":"the server address field is unnamed","modes":["columns"]}
+{"key":"Escape","modes":["columns"]}
+{"click":{"entry":"readme.md"},"button":3,"modes":["columns"]}
+{"wait":{"menu_items":{"contains":["Compress…"]}},"message":"the file menu","modes":["columns"]}
+{"settle":{"menu_item":"Compress…"},"modes":["columns"]}
+{"click":{"menu_item":"Compress…"},"modes":["columns"]}
+{"wait":{"dialog":true},"message":"the Compress dialog","modes":["columns"]}
+{"click":{"role":"toggle button","name":"Password protected"},"modes":["columns"]}
+{"wait":{"all":[{"present":{"role":"text","name":"Archive name"}},{"present":{"role":"password text","name":"Password"}},{"present":{"role":"password text","name":"Confirm password"}}]},"message":"a Compress field is unnamed","modes":["columns"]}
+{"key":"Escape","modes":["columns"]}
+{"key":"ctrl+2","modes":["icons"]}
+{"wait":{"present":{"role":"button","name":"Thumbnail size"}},"message":"the Icons header","modes":["icons"]}
+{"click":{"role":"button","name":"Thumbnail size"},"modes":["icons"]}
+{"wait":{"present":{"role":"slider","name":"Thumbnail size"}},"message":"the thumbnail size slider is unnamed","modes":["icons"]}

@@ -23,6 +23,15 @@ pub(super) fn set_label(widget: &impl IsA<gtk::Accessible>, label: &str) {
     qa::record(widget, |naming| naming.label = Some(label.to_owned()));
 }
 
+/// A tooltip is not an accessible name, so an icon-only button states it as its name too.
+pub(super) fn set_tooltip_and_label(
+    widget: &(impl IsA<gtk::Widget> + IsA<gtk::Accessible>),
+    text: &str,
+) {
+    widget.set_tooltip_text(Some(text));
+    set_label(widget, text);
+}
+
 thread_local! {
     static OWN_LABELS: RefCell<Vec<glib::WeakRef<gtk::Widget>>> = RefCell::default();
     static STAND_INS: RefCell<Vec<glib::WeakRef<gtk::Widget>>> = RefCell::default();
