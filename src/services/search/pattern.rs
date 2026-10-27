@@ -30,7 +30,7 @@ pub(crate) fn filter_query_allows_typos(query: &str) -> bool {
     query.chars().take(4).count() == 4 && query.chars().all(char::is_alphanumeric)
 }
 
-pub(crate) fn text_matches_word(text: &str, word: &str) -> bool {
+fn text_matches_word(text: &str, word: &str) -> bool {
     text.contains(word) || typo_matches_word(text, word)
 }
 
