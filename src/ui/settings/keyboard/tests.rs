@@ -361,6 +361,11 @@ fn search_finds_rows_by_action_and_key() {
                 assert!(shown(&row_in(&layer, Map::Default, RENAME)), "{query}");
                 assert!(!shown(&row_in(&layer, Map::Default, COPY)), "{query}");
             }
+            entry.set_text("hotkeys");
+            settle();
+            assert_eq!(stack.visible_child_name().as_deref(), Some(PAGE));
+            assert!(shown(&row_in(&layer, Map::Default, RENAME)));
+            assert!(shown(&row_in(&layer, Map::Default, COPY)));
             let tenxer = descendants(&stack.child_by_name(PAGE).expect("keyboard page"))
                 .into_iter()
                 .filter_map(|widget| widget.downcast::<gtk::ToggleButton>().ok())

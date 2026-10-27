@@ -568,11 +568,16 @@ fn find_matches(query: &str) -> Matches {
             }
         }
     }
-    // Action names score as aliases, so a setting keeps a query it ties.
+    // A query for the page itself lists every row; otherwise action names
+    // score as aliases, so a setting keeps a query it ties.
+    let whole_page = result.ids.contains(KEYBOARD_SHORTCUTS);
     for target in super::keyboard::search_targets() {
         let aliases = format!("{} {}", target.names, target.aliases);
-        if let Some(score) = score_text(query, "", super::keyboard::PAGE, &aliases) {
+        let scored = score_text(query, "", super::keyboard::PAGE, &aliases);
+        if whole_page || scored.is_some() {
             result.ids.insert(target.id);
+        }
+        if let Some(score) = scored {
             // Keeps the table switch shown, since a row may match only in the hidden table.
             result.ids.insert(KEYBOARD_SHORTCUTS.to_owned());
             result.pages.insert(super::keyboard::PAGE);

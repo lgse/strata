@@ -306,7 +306,6 @@ impl Page {
         self.filter();
     }
 
-    /// Shows the rows whose action name contains the page's filter text.
     fn filter(&self) {
         let query = self.query.borrow();
         let query = query.trim();
@@ -397,8 +396,6 @@ impl Page {
         }));
     }
 
-    /// Leaves the capture state, if any, focusing its row's Add button when
-    /// `refocus` is set.
     fn end_capture(&self, refocus: bool) {
         let Some(capturing) = self.capture.take() else {
             return;
@@ -841,11 +838,9 @@ fn table(
     table
 }
 
-/// The reference's sections and order: each command sits in the first
-/// section that names it in `map`'s reference, then in the other map's.
-/// Commands `map` cannot run stay out, chord triggers in the default map
-/// among them, and the default map files the 10xer mode section's commands
-/// it can run under "Search and tools".
+/// Each command sits in the first section naming it in `map`'s reference,
+/// then in the other map's. Commands `map` cannot run stay out, and the default
+/// map files the 10xer section's runnable commands under "Search and tools".
 fn sections(map: Map) -> Vec<(&'static str, Vec<Command>)> {
     let tenxer = shortcut_reference::command_sections(Map::Tenxer);
     let default = shortcut_reference::command_sections(Map::Default);
@@ -1065,7 +1060,6 @@ fn message(map: Map, command: Command, finding: Finding) -> String {
     }
 }
 
-/// The row's name in the interface language.
 fn title(command: Command) -> String {
     title_in(command, &rust_i18n::locale())
 }
@@ -1087,8 +1081,6 @@ fn slot_action(command: Command, catalog: &ActionCatalog) -> Option<String> {
     ))
 }
 
-/// The lowercase names searches match: the row's in English and the interface
-/// language, and a slot's action.
 fn search_names(command: Command, catalog: &ActionCatalog) -> String {
     let mut names = vec![title(command), title_in(command, "en")];
     names.extend(slot_action(command, catalog));
