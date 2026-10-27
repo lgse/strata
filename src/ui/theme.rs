@@ -34,25 +34,19 @@ const RESET_CSS: &str = "* { all: unset; }";
 /// Above the static stylesheet so generated density spacing wins over its presets.
 const DENSITY_STYLE_PRIORITY: u32 = STYLE_PRIORITY + 1;
 const TOKEN_STYLE_PRIORITY: u32 = DENSITY_STYLE_PRIORITY + 1;
-/// Below user styles but above tokens and base styles, so uncomposited popup
-/// fallbacks strip shadow padding before users customize them.
+/// Above the token and roundness styles so the uncomposited fallback wins over them.
 const UNCOMPOSITED_STYLE_PRIORITY: u32 = TOKEN_STYLE_PRIORITY + 1;
 /// Above every Strata stylesheet, so `~/.config/strata/style.css` has the final word.
 const USER_STYLE_PRIORITY: u32 = UNCOMPOSITED_STYLE_PRIORITY + 1;
 const USER_STYLE_FILE: &str = "style.css";
 const STYLE_CSS: &str = include_str!("../style.css");
 
-/// On an uncomposited display (e.g. bare X11 without a compositing manager),
-/// transparent popup subsurfaces cannot be blended with the desktop underneath
-/// and fall back to solid black pixels outside the content boundary.
-/// Stripping box-shadow and setting border-radius: 0 leaves clean, crisp popup
-/// windows without black shadow frames or clipped black corner tips.
+/// Without a compositor (X11 with no compositing manager) the transparent
+/// shadow and corner pixels of popup surfaces render solid black.
 const UNCOMPOSITED_CSS: &str = "\
 tooltip,
 popover,
-popover > contents,
-popover contents,
-.peek-popover {
+popover contents {
     box-shadow: none;
     border-radius: 0;
 }
