@@ -313,7 +313,15 @@ impl Direct {
             assert!(click_class(&fixture.overlay, "action-dialog-close"));
             wait_until(|| !modal_visible(&fixture.overlay));
         }
-        for name in directory_names(fixture._directory.path()) {
+        // A finished copy still publishes its listing; a refresh that overlaps
+        // it can leave the column empty.
+        let on_disk = directory_names(fixture._directory.path());
+        wait_until(|| {
+            browser
+                .column_snapshot(0)
+                .is_some_and(|column| !column.loading && column.count == on_disk.len())
+        });
+        for name in on_disk {
             if !self.names.contains(&name) {
                 std::fs::remove_file(fixture._directory.path().join(name)).expect("copy");
             }
