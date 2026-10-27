@@ -739,6 +739,26 @@ fn save_name_and_location_do_not_dispatch_listing_shortcuts() {
 }
 
 #[test]
+fn save_file_initial_name_selection_stops_before_the_dot() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::keyboard::save_file_initial_name_selection_stops_before_the_dot",
+        || {
+            let chooser = Chooser::open_with(
+                ChooserKind::SaveFile {
+                    current_name: Some("report.draft.pdf".into()),
+                },
+                BrowserMode::List,
+                &[],
+                false,
+            );
+            while gtk::glib::MainContext::default().iteration(false) {}
+            let name = chooser.state.filename.clone().expect("name field");
+            assert_eq!(name.selection_bounds(), Some((0, 12)));
+        },
+    );
+}
+
+#[test]
 fn saving_over_an_existing_file_confirms_with_cancel_focused() {
     crate::test_support::gtk_test(
         "ui::chooser::tests::keyboard::saving_over_an_existing_file_confirms_with_cancel_focused",

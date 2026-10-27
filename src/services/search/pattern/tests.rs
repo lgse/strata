@@ -28,6 +28,12 @@ fn plain_queries_tolerate_one_edit_in_a_whole_filename_word() {
         ("trash.svg", "*trahs*", false),
         ("trash.svg", "trazh.svg", false),
         ("RE\u{301}SUME\u{301}.txt", "résmué", true),
+        ("éafé.svg", "café", true),
+        ("café.svg", "cafe", true),
+        ("café.svg", "caéfé", true),
+        ("caéfé.svg", "café", true),
+        ("café.svg", "caéf", true),
+        ("café.svg", "caéx", false),
         ("旅行写真.jpg", "旅写真", false),
         ("旅行写真.jpg", "旅写行真", true),
     ] {
