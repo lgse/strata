@@ -78,6 +78,10 @@ impl Dispatcher {
         // Result navigation also consumes Ctrl+H; toggling must win.
         if press.is_any(&[HIDDEN_FILES, HIDDEN_FILES_PERIOD, TENXER_HIDDEN_FILES]) {
             self.view.toggle_hidden_from_keys();
+        } else if press.is(BOOKMARK_SET) {
+            self.shortcuts.arm_chord(Chord::BookmarkSet);
+        } else if press.is(BOOKMARK_GO) {
+            self.arm_bookmark_go();
         } else if press.is(SORT_BY) {
             self.shortcuts.arm_chord(Chord::Sort);
         } else if press.is(ACTIONS) {

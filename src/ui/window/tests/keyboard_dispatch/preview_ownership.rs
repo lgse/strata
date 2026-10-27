@@ -255,6 +255,13 @@ fn tenxer_preview_owns_document_keys_until_returned() {
             let launched = glib::user_data_dir().join("launched");
             default_recorder_app("text/plain", &launched);
             let fixture = ownership_fixture();
+            let bookmark = tempfile::tempdir().expect("original bookmark");
+            glib::MainContext::default()
+                .block_on(crate::services::letter_bookmarks::set(
+                    'j',
+                    bookmark.path().to_path_buf(),
+                ))
+                .expect("seed bookmark j");
             let browser = fixture.view.browser();
             let origin = browser.active_location();
             let opened = record_opens(&browser);
@@ -273,7 +280,15 @@ fn tenxer_preview_owns_document_keys_until_returned() {
                         "the column yields its destination to the preview"
                     );
                 }
-                for key in [Key::l, Key::Right, Key::space, Key::v, Key::q] {
+                for key in [
+                    Key::l,
+                    Key::Right,
+                    Key::space,
+                    Key::v,
+                    Key::q,
+                    Key::m,
+                    Key::apostrophe,
+                ] {
                     assert!(
                         fixture.press(key, ModifierType::empty()),
                         "{mode:?} {key:?}"
@@ -282,6 +297,7 @@ fn tenxer_preview_owns_document_keys_until_returned() {
                         preview_has_focus(&fixture),
                         "{mode:?} {key:?} kept the keys"
                     );
+                    assert_eq!(fixture.shortcuts.armed_chord(), None);
                 }
                 assert_eq!(fixture.selected(), selection, "{mode:?}");
                 assert_eq!(browser.active_location(), origin, "{mode:?}");
@@ -303,6 +319,17 @@ fn tenxer_preview_owns_document_keys_until_returned() {
                 );
 
                 let top = document_scroll(&fixture);
+                fixture.press(Key::m, ModifierType::empty());
+                fixture.press(Key::j, ModifierType::empty());
+                assert!(preview_has_focus(&fixture));
+                assert_eq!(
+                    glib::MainContext::default()
+                        .block_on(crate::services::letter_bookmarks::get('j'))
+                        .expect("read bookmark j"),
+                    Some(bookmark.path().to_path_buf()),
+                    "preview m j must not overwrite a bookmark"
+                );
+                fixture.press(Key::Home, ModifierType::empty());
                 for (key, modifiers) in [
                     (Key::j, ModifierType::empty()),
                     (Key::Down, ModifierType::empty()),
@@ -810,7 +837,16 @@ fn tenxer_interactive_previews_keep_a_defined_key_owner() {
                 owner_bar(&fixture),
                 "rebuilt archive rows keep the owner bar"
             );
-            for key in [Key::l, Key::Return, Key::space, Key::v, Key::j, Key::G] {
+            for key in [
+                Key::l,
+                Key::Return,
+                Key::space,
+                Key::v,
+                Key::j,
+                Key::G,
+                Key::m,
+                Key::apostrophe,
+            ] {
                 let modifiers = if key == Key::G {
                     ModifierType::SHIFT_MASK
                 } else {
@@ -818,6 +854,7 @@ fn tenxer_interactive_previews_keep_a_defined_key_owner() {
                 };
                 assert!(fixture.press(key, modifiers), "{key:?}");
                 assert!(archive_has_focus(&fixture), "{key:?} stays in the archive");
+                assert_eq!(fixture.shortcuts.armed_chord(), None);
             }
             fixture.press(Key::h, ModifierType::empty());
             assert!(

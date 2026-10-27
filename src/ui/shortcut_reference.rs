@@ -512,6 +512,8 @@ fn tenxer_places(chooser: bool) -> Vec<Shortcut> {
                 Mixed(&[Chord(&[GO, GO_PIN]), Chord(&[GO, GO_UNPIN])]),
                 "Pin / unpin a folder",
             ),
+            row(One(BOOKMARK_SET), "Save current folder under a letter"),
+            row(One(BOOKMARK_GO), "Jump to a bookmarked folder by letter"),
         ]);
     }
     shortcuts.extend_from_slice(&[

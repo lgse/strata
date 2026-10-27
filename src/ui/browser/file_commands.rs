@@ -328,6 +328,12 @@ impl BrowserView {
         }
     }
 
+    pub(crate) fn keyboard_bookmark_folder(&self) -> Option<std::path::PathBuf> {
+        self.focused_listing_depth()
+            .and_then(|depth| self.state.browser.location_at(depth))
+            .and_then(|location| location.native_path().map(std::path::PathBuf::from))
+    }
+
     pub fn open_focused_folder_terminal(&self) -> bool {
         let Some(location) = self
             .focused_listing_depth()

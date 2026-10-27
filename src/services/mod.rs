@@ -14,6 +14,7 @@ mod install_source;
 pub(crate) mod integration_catalog;
 mod item_identity;
 pub(crate) mod jobs;
+pub(crate) mod letter_bookmarks;
 mod listeners;
 mod mime_type;
 pub(crate) mod model_preview;

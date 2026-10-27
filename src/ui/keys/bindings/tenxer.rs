@@ -4,6 +4,36 @@ use gtk::gdk::Key;
 
 use crate::ui::keys::{Binding, Digits};
 
+/// Bookmark slots use normalized bindings, including the non-Latin fallback.
+pub(crate) const BOOKMARK_LETTERS: [(char, Binding); 26] = [
+    ('a', Binding::plain(Key::a)),
+    ('b', Binding::plain(Key::b)),
+    ('c', Binding::plain(Key::c)),
+    ('d', Binding::plain(Key::d)),
+    ('e', Binding::plain(Key::e)),
+    ('f', Binding::plain(Key::f)),
+    ('g', Binding::plain(Key::g)),
+    ('h', Binding::plain(Key::h)),
+    ('i', Binding::plain(Key::i)),
+    ('j', Binding::plain(Key::j)),
+    ('k', Binding::plain(Key::k)),
+    ('l', Binding::plain(Key::l)),
+    ('m', Binding::plain(Key::m)),
+    ('n', Binding::plain(Key::n)),
+    ('o', Binding::plain(Key::o)),
+    ('p', Binding::plain(Key::p)),
+    ('q', Binding::plain(Key::q)),
+    ('r', Binding::plain(Key::r)),
+    ('s', Binding::plain(Key::s)),
+    ('t', Binding::plain(Key::t)),
+    ('u', Binding::plain(Key::u)),
+    ('v', Binding::plain(Key::v)),
+    ('w', Binding::plain(Key::w)),
+    ('x', Binding::plain(Key::x)),
+    ('y', Binding::plain(Key::y)),
+    ('z', Binding::plain(Key::z)),
+];
+
 catalog! {
     tenxer_only {
         CLOSE_WINDOW: Binding = Binding::shift(Key::q);
@@ -50,6 +80,9 @@ catalog! {
         SEARCH_SUBFOLDERS: Binding = Binding::plain(Key::s);
         JUMP_VISITED: Binding = Binding::plain(Key::z);
         JUMP_RECENT: Binding = Binding::shift(Key::z);
+
+        BOOKMARK_SET: Binding = Binding::plain(Key::m);
+        BOOKMARK_GO: Binding = Binding::plain(Key::apostrophe);
 
         GO: Binding = Binding::plain(Key::g);
         GO_FIRST: Binding = Binding::plain(Key::g), after GO;
