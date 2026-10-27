@@ -30,6 +30,7 @@ pub(crate) struct NumberedActions {
     pub(crate) actions: Vec<Rc<ActionHandle>>,
     paths: Vec<PathBuf>,
     parent: Option<PathBuf>,
+    source: InvocationSource,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -345,13 +346,30 @@ impl BrowserView {
         self.state.refocus_cursor();
     }
 
-    pub(crate) fn numbered_actions(&self) -> NumberedActions {
+    pub(crate) fn numbered_actions(&self, source: InvocationSource) -> NumberedActions {
+        let folder = self
+            .focused_listing_depth()
+            .and_then(|depth| self.state.browser.location_at(depth));
+        let parent = folder
+            .as_ref()
+            .and_then(|location| location.native_path().map(PathBuf::from));
+        if source == InvocationSource::Background {
+            let actions = folder
+                .as_ref()
+                .and_then(crate::ui::actions::folder_input)
+                .map_or_else(Vec::new, |input| {
+                    crate::ui::actions::shared().catalog().numbered(&[input])
+                });
+            return NumberedActions {
+                targets: folder.into_iter().collect(),
+                actions,
+                paths: parent.iter().cloned().collect(),
+                parent,
+                source,
+            };
+        }
         let entries = self.command_targets();
         let targets = entries.iter().map(|entry| entry.location.clone()).collect();
-        let parent = self
-            .focused_listing_depth()
-            .and_then(|depth| self.state.browser.location_at(depth))
-            .and_then(|location| location.native_path().map(PathBuf::from));
         let (inputs, paths) = match (
             crate::ui::actions::inputs_for_entries(&entries),
             crate::ui::actions::native_paths(&entries),
@@ -369,6 +387,7 @@ impl BrowserView {
             actions,
             paths,
             parent,
+            source,
         }
     }
 
@@ -382,7 +401,7 @@ impl BrowserView {
             action,
             numbered.paths,
             parent,
-            InvocationSource::Selection,
+            numbered.source,
             Some(Rc::new(move || {
                 if let Some(browser) = browser.upgrade() {
                     browser.focus_active();

@@ -766,13 +766,13 @@ fn tenxer_open_with_drops_a_lookup_overtaken_by_a_newer_interaction() {
     );
 }
 
-fn write_action(id: &str, name: &str, menu: &str, extensions: &str, extra: &str, output: &Path) {
+fn write_action(id: &str, name: &str, menu: &str, when: &str, extra: &str, output: &Path) {
     let directory = crate::storage::config_directory().join("actions").join(id);
     std::fs::create_dir_all(&directory).expect("action folder");
     std::fs::write(
         directory.join("action.toml"),
         format!(
-            "schema_version = 1\nid = \"{id}\"\nname = \"{name}\"\nmenu = \"{menu}\"\n{extra}\n[when]\nextensions = [{extensions}]\n\n[run]\nruntime = \"command\"\nprogram = \"/bin/sh\"\nargs = [\"-c\", \"printf '%s\\\\n' {id} \\\"$@\\\" >> '{}'\", \"sh\", \"{{paths}}\"]\n",
+            "schema_version = 1\nid = \"{id}\"\nname = \"{name}\"\nmenu = \"{menu}\"\n{extra}\n[when]\n{when}\n\n[run]\nruntime = \"command\"\nprogram = \"/bin/sh\"\nargs = [\"-c\", \"printf '%s\\\\n' \\\"{id} $STRATA_ACTION_SOURCE\\\" \\\"$@\\\" >> '{}'\", \"sh\", \"{{paths}}\"]\n",
             output.display()
         ),
     )
@@ -811,14 +811,28 @@ fn tenxer_numbered_actions_run_the_listed_match_on_the_current_targets() {
             let fixture = KeyboardFixture::new();
             let directory = fixture._directory.path().to_path_buf();
             let output = fixture._history_directory.path().join("invocations");
-            write_action("top-b", "Top B", "top", "\"txt\"", "", &output);
-            write_action("top-a", "Top A", "top", "\"txt\"", "", &output);
+            write_action(
+                "top-b",
+                "Top B",
+                "top",
+                "extensions = [\"txt\"]",
+                "",
+                &output,
+            );
+            write_action(
+                "top-a",
+                "Top A",
+                "top",
+                "extensions = [\"txt\"]",
+                "",
+                &output,
+            );
             for index in 1..=9 {
                 write_action(
                     &format!("sub-{index}"),
                     &format!("Sub {index}"),
                     "submenu",
-                    "\"txt\"",
+                    "extensions = [\"txt\"]",
                     "",
                     &output,
                 );
@@ -827,16 +841,23 @@ fn tenxer_numbered_actions_run_the_listed_match_on_the_current_targets() {
                 "disabled",
                 "Aaa disabled",
                 "top",
-                "\"txt\"",
+                "extensions = [\"txt\"]",
                 "enabled = false",
                 &output,
             );
-            write_action("images", "Aaa images", "top", "\"png\"", "", &output);
+            write_action(
+                "images",
+                "Aaa images",
+                "top",
+                "extensions = [\"png\"]",
+                "",
+                &output,
+            );
             write_action(
                 "confirming",
                 "Aaa confirm",
                 "submenu",
-                "\"md\"",
+                "extensions = [\"md\"]",
                 "",
                 &output,
             );
@@ -876,7 +897,10 @@ fn tenxer_numbered_actions_run_the_listed_match_on_the_current_targets() {
             plain(&fixture, Key::_1);
             assert_eq!(
                 wait_invocations(&output, 2),
-                ["top-a", directory.join("a.txt").to_string_lossy().as_ref()]
+                [
+                    "top-a selection",
+                    directory.join("a.txt").to_string_lossy().as_ref(),
+                ]
             );
             std::fs::remove_file(&output).expect("reset recorder");
 
@@ -889,7 +913,7 @@ fn tenxer_numbered_actions_run_the_listed_match_on_the_current_targets() {
             assert_eq!(
                 wait_invocations(&output, 3),
                 [
-                    "sub-8",
+                    "sub-8 selection",
                     directory.join("a.txt").to_string_lossy().as_ref(),
                     directory.join("b.txt").to_string_lossy().as_ref(),
                 ],
@@ -941,7 +965,14 @@ fn tenxer_numbered_actions_run_the_listed_match_on_the_current_targets() {
             browser.clear_active_selection();
             move_to_named(&fixture, &browser, "notes.md");
             plain(&fixture, Key::semicolon);
-            write_action("aa-new", "Aa new", "submenu", "\"md\"", "", &unlisted);
+            write_action(
+                "aa-new",
+                "Aa new",
+                "submenu",
+                "extensions = [\"md\"]",
+                "",
+                &unlisted,
+            );
             gtk::glib::MainContext::default().block_on(crate::ui::actions::shared().reload());
             plain(&fixture, Key::_1);
             assert_eq!(feedback(&fixture), "Actions changed");
@@ -991,6 +1022,84 @@ fn tenxer_numbered_actions_run_the_listed_match_on_the_current_targets() {
             );
             plain(&fixture, Key::_1);
             assert_eq!(feedback(&fixture), "No action 1");
+        },
+    );
+}
+
+#[test]
+fn tenxer_folder_actions_run_on_the_focused_folder_not_the_cursor_item() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::file_verbs::tenxer_folder_actions_run_on_the_focused_folder_not_the_cursor_item",
+        || {
+            let fixture = KeyboardFixture::new();
+            let directory = fixture._directory.path().to_path_buf();
+            let output = fixture._history_directory.path().join("invocations");
+            write_action(
+                "folders",
+                "Folders",
+                "submenu",
+                "kinds = [\"folder\"]",
+                "",
+                &output,
+            );
+            write_action(
+                "texts",
+                "Texts",
+                "top",
+                "extensions = [\"txt\"]",
+                "",
+                &output,
+            );
+            gtk::glib::MainContext::default().block_on(crate::ui::actions::shared().reload());
+            enable_tenxer(&fixture);
+            let browser = fixture.view.browser();
+
+            move_to_named(&fixture, &browser, "a.txt");
+            plain(&fixture, Key::semicolon);
+            plain(&fixture, Key::period);
+            assert_eq!(fixture.shortcuts.armed_chord(), Some(Chord::FolderAction));
+            assert_eq!(fixture.shortcuts.chord().text(), "; .-");
+            wait_until(|| fixture.shortcuts.chord_options().is_some());
+            assert_eq!(
+                fixture.shortcuts.chord_options().expect("options"),
+                owned_rows(&[("1", "Folders")]),
+                "the folder's matches, not the cursor file's"
+            );
+            plain(&fixture, Key::_1);
+            assert_eq!(
+                wait_invocations(&output, 2),
+                ["folders background", directory.to_string_lossy().as_ref()]
+            );
+            std::fs::remove_file(&output).expect("reset recorder");
+
+            focus_files(&fixture);
+            plain(&fixture, Key::semicolon);
+            plain(&fixture, Key::period);
+            plain(&fixture, Key::_2);
+            assert_eq!(feedback(&fixture), "No action 2");
+
+            plain(&fixture, Key::semicolon);
+            plain(&fixture, Key::period);
+            open_empty_folder(&fixture);
+            plain(&fixture, Key::_1);
+            assert_eq!(feedback(&fixture), "Folder changed");
+            run_jobs(Duration::from_millis(300));
+            assert!(
+                invocations(&output).is_empty(),
+                "a folder left since the chord was armed runs nothing"
+            );
+
+            plain(&fixture, Key::semicolon);
+            plain(&fixture, Key::period);
+            plain(&fixture, Key::_1);
+            assert_eq!(
+                wait_invocations(&output, 2),
+                [
+                    "folders background",
+                    directory.join("empty").to_string_lossy().as_ref(),
+                ],
+                "an empty folder still offers its own actions"
+            );
         },
     );
 }
@@ -1584,6 +1693,7 @@ fn activation_fallback_opens_one_chooser_after_the_history_read() {
 }
 
 const LETTERED_ACTIONS: &[(&str, &str)] = &[
+    (".", "Actions for this folder\u{2026}"),
     ("t", "Open terminal here"),
     ("c", "Compress\u{2026}"),
     ("e", "Extract here"),
