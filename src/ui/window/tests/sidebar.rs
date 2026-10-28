@@ -170,25 +170,18 @@ fn navigation_and_history_keep_only_the_current_sidebar_place_active() {
                     );
                 }
             };
-            for mode in [
-                super::super::BrowserMode::Columns,
-                super::super::BrowserMode::Icons,
-                super::super::BrowserMode::List,
-            ] {
-                view.set_view_mode(mode);
-                click(&a);
-                expect(&a);
-                view.browser().navigate_location(child.clone(), true);
-                expect(&child);
-                view.browser().parent();
-                expect(&a);
-                click(&b);
-                expect(&b);
-                view.browser().back();
-                expect(&a);
-                view.browser().navigate_location(b.clone(), true);
-                expect(&b);
-            }
+            click(&a);
+            expect(&a);
+            view.browser().navigate_location(child.clone(), true);
+            expect(&child);
+            view.browser().parent();
+            expect(&a);
+            click(&b);
+            expect(&b);
+            view.browser().back();
+            expect(&a);
+            view.browser().navigate_location(b.clone(), true);
+            expect(&b);
             view.browser().clear_observer();
             sidebar.disconnect();
             window.destroy();

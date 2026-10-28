@@ -121,8 +121,8 @@ pub(super) use crate::ui::modal::{
     animate_in, animate_out, dismiss_modal_layer, modal_layer, show_error_dialog, slide_out,
 };
 
+// Receives whether the pin was saved, once the bookmark snapshot is published.
 type PinCompletion = Box<dyn FnOnce(bool)>;
-// Completion follows publication of the persisted bookmark snapshot.
 type PinHandler = Rc<dyn Fn(Location, String, PinCompletion)>;
 type UnpinHandler = Rc<dyn Fn(&Location)>;
 type PinStatusHandler = Rc<dyn Fn(&Location) -> PinStatus>;
