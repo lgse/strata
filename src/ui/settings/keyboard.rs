@@ -492,9 +492,16 @@ struct Row {
     page: Weak<Page>,
 }
 
+/// The least width a row's copy keeps before the key chips move below it.
+const COPY_WIDTH_CHARS: i32 = 20;
+
 impl Row {
-    fn new(map: Map, command: Command, page: &Weak<Page>) -> (gtk::Box, Rc<Self>) {
-        let widget = gtk::Box::new(gtk::Orientation::Horizontal, 16);
+    fn new(map: Map, command: Command, page: &Weak<Page>) -> (super::wrap::WrapRow, Rc<Self>) {
+        // Not a box: its minimum height assumes the split between copy and
+        // chips that wraps least, while it allocates the natural split, so a
+        // scrolled table cut rows short. The wrap row measures the split it
+        // allocates and drops the chips below the copy when both cannot fit.
+        let widget = super::wrap::WrapRow::new(16);
         widget.add_css_class("settings-option");
         widget.add_css_class("keymap-row");
         search::tag_id(&widget, &target_id(command));
@@ -502,16 +509,17 @@ impl Row {
 
         let copy = gtk::Box::new(gtk::Orientation::Vertical, 4);
         copy.set_hexpand(true);
-        copy.set_valign(gtk::Align::Center);
         let title = gtk::Label::new(Some(&action));
         title.set_xalign(0.0);
         title.set_wrap(true);
+        title.set_width_chars(COPY_WIDTH_CHARS);
         title.set_wrap_mode(gtk::pango::WrapMode::WordChar);
         title.add_css_class("settings-option-title");
         copy.append(&title);
         let runs = gtk::Label::new(None);
         runs.set_xalign(0.0);
         runs.set_wrap(true);
+        runs.set_width_chars(COPY_WIDTH_CHARS);
         runs.set_wrap_mode(gtk::pango::WrapMode::WordChar);
         runs.add_css_class("settings-option-description");
         runs.set_visible(keys::custom_action_slot(command).is_some());
@@ -520,14 +528,7 @@ impl Row {
         let pending = gtk::Box::new(gtk::Orientation::Vertical, 2);
         copy.append(&findings);
         copy.append(&pending);
-        // GtkBox measures the copy's width for the row's height only when
-        // allocating, and a wrapping note answers that wider than its plain
-        // minimum, so the row came out too short for wrapped chips. The
-        // wrapper answers both measures alike.
-        let column = super::wrap::WrapRow::new(0);
-        column.set_hexpand(true);
-        column.append(&copy);
-        widget.append(&column);
+        widget.append(&copy);
 
         let controls = super::wrap::WrapRow::new(6);
         controls.set_end_align(true);
@@ -964,6 +965,7 @@ fn finding_label(text: &str, severity: Severity) -> gtk::Label {
     let label = gtk::Label::new(Some(text));
     label.set_xalign(0.0);
     label.set_wrap(true);
+    label.set_width_chars(COPY_WIDTH_CHARS);
     label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     keep_words_whole(&label);
     label.add_css_class("settings-option-description");
