@@ -326,8 +326,11 @@ impl TabWindow {
         };
         if self.active.get() != 0 {
             let previous = self.active_tab();
-            *previous.focus.borrow_mut() =
-                gtk::prelude::RootExt::focus(&window).map(|widget| widget.downgrade());
+            // A click on a tab button focuses it before `clicked` runs, and
+            // the strip is shared chrome: keep only focus inside the tab.
+            *previous.focus.borrow_mut() = gtk::prelude::RootExt::focus(&window)
+                .filter(|widget| widget.is_ancestor(&previous.content.overlay))
+                .map(|widget| widget.downgrade());
             previous.content.footer.shortcuts.cancel_chord();
             previous.content.browser.cancel_location_edit();
         }

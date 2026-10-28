@@ -378,6 +378,38 @@ fn tabs_preserve_locations_and_route_actions_to_the_active_browser() {
 }
 
 #[test]
+fn returning_to_a_tab_left_by_a_tab_button_focuses_its_listing() {
+    gtk_test(
+        "ui::window::composition::tabs::tests::returning_to_a_tab_left_by_a_tab_button_focuses_its_listing",
+        || {
+            let root = tempfile::tempdir().expect("tab fixture");
+            std::fs::write(root.path().join("one.txt"), "one").expect("file");
+            let (window, tabs) = open();
+            let first_id = tabs.active.get();
+            let first = tabs.active_browser();
+            load(&first, Location::local(root.path()));
+            tabs.new_tab();
+            let second_id = tabs.active.get();
+            load(&tabs.active_browser(), Location::local(root.path()));
+            tabs.select(first_id);
+            wait_until(|| first.item_view_has_focus());
+
+            // A click focuses the tab button before `clicked` selects its tab.
+            let button = find_widget(tabs.strip.widget().upcast_ref(), &|widget| {
+                widget.has_css_class("tab-select")
+            })
+            .expect("a tab button");
+            assert!(button.grab_focus(), "tab buttons take focus on click");
+            tabs.select(second_id);
+            tabs.select(first_id);
+
+            wait_until(|| first.item_view_has_focus());
+            window.destroy();
+        },
+    );
+}
+
+#[test]
 fn tab_shortcuts_work_in_both_modes_and_follow_reordering() {
     gtk_test(
         "ui::window::composition::tabs::tests::tab_shortcuts_work_in_both_modes_and_follow_reordering",
