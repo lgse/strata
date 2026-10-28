@@ -1,4 +1,4 @@
-{"scenario":"hidden-files-persist-across-restart","modes":["columns","list"],"cost":{"columns":0.5,"list":0.6}}
+{"scenario":"hidden-files-persist-across-restart","modes":["columns","list"],"prefs":{"group_by_type":true},"cost":{"columns":0.5,"list":0.6}}
 {"wait":{"entries":{"contains":["todo.txt"],"excludes":[".hidden.txt"]},"dir":"$root"},"message":"the fixture listed without its hidden file"}
 {"key":"ctrl+period"}
 {"wait":{"entries":{"contains":[".hidden.txt"]},"dir":"$root"},"message":"Ctrl+. to show hidden files"}

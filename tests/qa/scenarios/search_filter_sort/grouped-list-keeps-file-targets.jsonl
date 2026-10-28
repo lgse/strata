@@ -1,0 +1,43 @@
+{"scenario":"grouped-list-keeps-file-targets","modes":["list"],"prefs":{"group_by_type":true,"show_hidden":false,"filter_include_subfolders":false},"tree":{"grouped":{"{0000..1023}.csv":"csv\n","{0000..1023}.txt":"text\n",".hidden.csv":"hidden\n","nested":{}},"empty":{}},"setup":[{"fs":{"path":"grouped/broken","symlink":"missing"}}]}
+{"wait":{"entries":["empty","grouped"]},"message":"fixture folders are listed"}
+{"select":{"entry":"grouped"}}
+{"key":"Return"}
+{"wait":{"entries":{"contains":["0000.csv","0001.csv"]}},"message":"chunked mixed files appear in their CSV group"}
+{"select":{"entry":"0000.csv"}}
+{"key":"F2"}
+{"wait":{"field":{"text":"0000.csv"}},"message":"rename targets the visible CSV file"}
+{"key":"ctrl+a"}
+{"type":"0000.json"}
+{"wait":{"field":{"text":"0000.json"}},"message":"new extension is entered"}
+{"key":"Return"}
+{"fs":{"path":"grouped/0000.json","text":"csv\n"},"message":"the selected file is renamed across type groups"}
+{"fs":{"path":"grouped/0000.csv","exists":false},"timeout_ms":0,"message":"the old CSV path is gone"}
+{"fs":{"path":"grouped/0000.txt","text":"text\n"},"timeout_ms":0,"message":"the same-stem TXT neighbor is untouched"}
+{"wait":{"focused":"0000.json"},"message":"focus follows the file into its new group"}
+{"key":"ctrl+f"}
+{"wait":{"field":{}},"message":"filter field has focus"}
+{"type":"0000.*"}
+{"wait":{"matches":{"set":["0000.json","0000.txt"]}},"message":"wildcard filtering finds the renamed file and its neighbor"}
+{"fs":{"path":"grouped/0000.json","rename":"grouped/0000.TXT"}}
+{"wait":{"matches":{"set":["0000.TXT","0000.txt"]}},"message":"external extension changes replace stale filter results"}
+{"click":{"search_result":"0000.TXT"}}
+{"key":"Escape"}
+{"wait":{"not":{"field":{}}},"message":"filter is dismissed"}
+{"click":{"role":"button","name":"Appearance"}}
+{"wait":{"present":{"role":"check menu item","name":"Group by file type"}},"message":"grouping option is available"}
+{"click":{"role":"check menu item","name":"Group by file type"}}
+{"wait":{"absent":{"role":"check menu item","name":"Group by file type"}},"message":"grouping menu closes automatically"}
+{"wait":{"pref":{"key":"group_by_type","value":false}},"message":"grouping is disabled live"}
+{"key":"F2"}
+{"wait":{"field":{"text":"0000.TXT"}},"message":"rename still targets the chosen file after monitor and grouping changes"}
+{"key":"Escape"}
+{"wait":{"not":{"field":{}}},"message":"second rename is cancelled"}
+{"key":"Delete"}
+{"fs":{"path":"grouped/0000.TXT","exists":false},"message":"Delete removes only the chosen file"}
+{"fs":{"path":"$data/Trash/files/0000.TXT","text":"csv\n"},"message":"the chosen file is recoverable in isolated Trash"}
+{"fs":{"path":"grouped/0000.txt","text":"text\n"},"timeout_ms":0,"message":"Delete leaves the same-stem neighbor untouched"}
+{"key":"alt+Up"}
+{"wait":{"entries":["empty","grouped"]},"message":"leaving the grouped listing restores only parent entries"}
+{"select":{"entry":"empty"}}
+{"key":"Return"}
+{"wait":{"all":[{"directory":"empty"},{"entries":[]}]},"message":"the next empty folder contains no stale grouped rows"}

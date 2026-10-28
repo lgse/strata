@@ -304,7 +304,11 @@ impl ModeViews {
         let Some(list) = pane.section.view.downcast_ref::<gtk::ListView>() else {
             return;
         };
-        let Some(model) = pane.section.view_model.downcast_ref::<gtk::SortListModel>() else {
+        let Some(model) = pane
+            .section
+            .view_model
+            .downcast_ref::<super::grouped_model::GroupedModel>()
+        else {
             return;
         };
         let top = crate::ui::browser::camera_scroll::CameraTopAnchor::capture(&pane.section.view);
@@ -314,7 +318,6 @@ impl ModeViews {
         // selection model and both scrollers instead of resetting the viewport.
         list.set_header_factory(None::<&gtk::ListItemFactory>);
         let sorter = grouped.then(|| super::pane_type_group_sorter(&self.browser, pane.depth));
-        model.set_section_sorter(sorter.as_ref().map(|sorter| &sorter.sorter));
         model.set_sorter(sorter.as_ref().map(|sorter| &sorter.sorter));
         pane.type_group_sorter = sorter;
         if grouped {
