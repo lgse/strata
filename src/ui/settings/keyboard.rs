@@ -520,7 +520,14 @@ impl Row {
         let pending = gtk::Box::new(gtk::Orientation::Vertical, 2);
         copy.append(&findings);
         copy.append(&pending);
-        widget.append(&copy);
+        // GtkBox measures the copy's width for the row's height only when
+        // allocating, and a wrapping note answers that wider than its plain
+        // minimum, so the row came out too short for wrapped chips. The
+        // wrapper answers both measures alike.
+        let column = super::wrap::WrapRow::new(0);
+        column.set_hexpand(true);
+        column.append(&copy);
+        widget.append(&column);
 
         let controls = super::wrap::WrapRow::new(6);
         controls.set_end_align(true);
