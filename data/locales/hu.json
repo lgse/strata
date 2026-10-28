@@ -1300,6 +1300,7 @@
   "keys.name.home": "Home",
   "keys.name.insert": "Insert",
   "keys.name.menu": "Menu",
+  "keys.name.compose": "Compose",
   "keys.name.page_down": "Page Down",
   "keys.name.page_up": "Page Up",
   "keys.name.shift": "Shift",
@@ -1493,6 +1494,17 @@
   "The command opened in your terminal. Run diagnostics again when it finishes.": "A parancs megnyílt a terminálban. Futtassa újra a diagnosztikát, amikor befejeződik.",
   "Disabled": "Letiltva",
   "Open folder": "Mappa megnyitása",
+  "Keyboard": "Billentyűzet",
+  "Keyboard settings": "Billentyűzet beállításai",
+  "Shortcuts for each mode": "Gyorsbillentyűk egyes módokhoz",
+  "Search keybinds": "Gyorsbillentyűk keresése",
+  "Reset all": "Összes visszaállítása",
+  "Reset all keybinds?": "Visszaállítja az összes gyorsbillentyűt?",
+  "Restore the shipped keys of every action in the shown mode.": "A megjelenített mód összes műveletéhez tartozó alapértelmezett billentyűk visszaállítása.",
+  "Not bound": "Nincs hozzárendelve",
+  "Press a key…": "Nyomjon meg egy billentyűt…",
+  "Turn off type-to-search": "Gépeléssel történő keresés kikapcsolása",
+  "settings_keywords.keyboard-shortcuts": "billentyűkombináció billentyűzet gyorsbillentyűk billentyűk újrakötés 10xer alapértelmezett visszaállítás",
   "%{distance} km": "%{distance} km",
   "%{minimum}–%{maximum} m": "%{minimum}–%{maximum} m",
   "Copy this route file locally before previewing it.": "Másolja ezt az útvonalfájlt helyben, mielőtt előnézetben megtekinti.",
@@ -1510,5 +1522,6 @@
   "%{distance} mi": "%{distance} mi",
   "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum} ft",
   "%{elevation} m": "%{elevation} m",
-  "%{elevation} ft": "%{elevation} ft"
+  "%{elevation} ft": "%{elevation} ft",
+  "No action": "Nincs művelet"
 }
