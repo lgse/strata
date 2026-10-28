@@ -312,7 +312,7 @@ fn complete_due_update_check(
         return;
     }
     LAST_COMPLETED_CHECK.set(Some(Instant::now()));
-    publish_update_check(channel, method, result);
+    publish_update_check(effective_update_channel(channel, method), method, result);
 }
 
 fn publish_update_check(channel: Channel, method: UpdateMethod, result: UpdateCheck) {
@@ -1926,8 +1926,10 @@ fn update_check_row_with(
             // Clear any previously offered release immediately, not only once
             // this check's own result lands: otherwise the sidebar keeps
             // showing a (possibly prerelease) offer from before the channel
-            // was switched for the whole duration of this check.
-            clear_cached_update_notice();
+            // was switched for the whole duration of this check. Other
+            // Settings rows keep their offer until that result arrives.
+            update_status::forget();
+            publish_update_notice(None);
             button.set_sensitive(false);
             // Read the channel now, not once when the row was built: a
             // mid-session channel toggle must be reflected by the very next

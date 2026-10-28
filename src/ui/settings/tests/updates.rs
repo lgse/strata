@@ -167,13 +167,78 @@ fn startup_results_initialize_and_update_existing_settings_rows() {
 }
 
 #[test]
+fn a_check_started_in_one_row_keeps_other_rows_offers_until_its_result() {
+    gtk_test(
+        "ui::settings::tests::updates::a_check_started_in_one_row_keeps_other_rows_offers_until_its_result",
+        || {
+            let manager = PreferenceManager::shared();
+            manager.set_checks_for_updates(true);
+            manager.set_release_channel(Channel::Stable);
+            clear_cached_update_notice();
+            let notices = Rc::new(RefCell::new(Vec::new()));
+            let notice: UpdateNoticeHandler = Rc::new({
+                let notices = notices.clone();
+                move |result| notices.borrow_mut().push(result.is_some())
+            });
+            register_update_notice(&notice);
+            let generation = next_check_generation();
+            complete_due_update_check(
+                &Rc::downgrade(&manager),
+                Channel::Stable,
+                UpdateCheck::Available {
+                    release: super::update_dialog::release(),
+                    install: offered_request(),
+                },
+                UpdateMethod::InPlace,
+                generation,
+            );
+            let row = || {
+                update_check_row_with(
+                    manager.clone(),
+                    release_notes_card(ReleaseNotesKind::Available, "Available release", ""),
+                    install_guard(),
+                    UpdateMethod::InPlace,
+                    FakeInstaller::default().launcher(),
+                )
+            };
+            let (first, second) = (row(), row());
+            assert_eq!(notices.borrow().as_slice(), [true]);
+
+            (second.run_check)(true);
+
+            assert!(second.pending_download.borrow().is_none());
+            assert!(
+                first.pending_download.borrow().is_some(),
+                "a check elsewhere must not drop this row's install offer"
+            );
+            assert_eq!(
+                first.responsive_action.1.label().as_deref(),
+                Some("Install update")
+            );
+            assert!(first.responsive_action.1.is_sensitive());
+            assert_eq!(
+                notices.borrow().as_slice(),
+                [true, false],
+                "the sidebar notice clears as soon as a check starts"
+            );
+            assert!(update_status::available().is_none());
+            // Orphan the started check so its result cannot land in later assertions.
+            next_check_generation();
+            clear_cached_update_notice();
+            assert!(first.pending_download.borrow().is_none());
+        },
+    );
+}
+
+#[test]
 fn startup_offers_keep_package_managed_actions_and_reject_obsolete_channels() {
     gtk_test(
         "ui::settings::tests::updates::startup_offers_keep_package_managed_actions_and_reject_obsolete_channels",
         || {
             let manager = PreferenceManager::shared();
             manager.set_checks_for_updates(true);
-            manager.set_release_channel(Channel::Stable);
+            // Package-managed rows follow Stable whatever the preference says.
+            manager.set_release_channel(Channel::Preview);
             for method in [
                 UpdateMethod::Aur,
                 UpdateMethod::Omarchy,
@@ -183,7 +248,7 @@ fn startup_offers_keep_package_managed_actions_and_reject_obsolete_channels() {
                 let generation = next_check_generation();
                 complete_due_update_check(
                     &Rc::downgrade(&manager),
-                    Channel::Stable,
+                    Channel::Preview,
                     UpdateCheck::Available {
                         release: super::update_dialog::release(),
                         install: offered_request(),
@@ -215,7 +280,7 @@ fn startup_offers_keep_package_managed_actions_and_reject_obsolete_channels() {
                 let generation = next_check_generation();
                 complete_due_update_check(
                     &Rc::downgrade(&manager),
-                    Channel::Preview,
+                    Channel::Stable,
                     UpdateCheck::Failed("wrong channel".into()),
                     method,
                     generation,

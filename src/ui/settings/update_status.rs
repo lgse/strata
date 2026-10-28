@@ -31,6 +31,11 @@ pub(super) fn clear() {
     HANDLERS.with(|handlers| handlers.notify(|handler| handler(None)));
 }
 
+/// Rows keep their last rendering until the next result lands.
+pub(super) fn forget() {
+    CURRENT.take();
+}
+
 pub(super) fn available() -> CachedUpdate {
     let current = CURRENT.with_borrow(Clone::clone)?;
     match &current.result {
