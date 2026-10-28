@@ -735,7 +735,8 @@ fn reflow_settings(
             || row.has_css_class("settings-exclusions-row")
         {
             true
-        } else if row.has_css_class("settings-text-size-row") {
+        } else if row.has_css_class("settings-text-size-row") || row.has_css_class("keymap-row") {
+            // Key chips wrap on their own, so a keymap row stacks only when narrow.
             stack_text_size
         } else {
             compact
