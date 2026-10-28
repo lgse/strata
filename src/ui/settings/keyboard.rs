@@ -18,12 +18,16 @@ use crate::{
     services::{ActionCatalog, ActionRegistry},
     ui::{
         accessibility,
-        controls::{keep_words_whole, segmented_control},
+        controls::{
+            ModalTone, keep_words_whole, message_dialog_description, message_dialog_layout,
+            segmented_control,
+        },
         keys::{
             self, Binding, Command, CommandKind, Group, Keys, Map,
             bindings::*,
             conflicts::{self, FieldLimit, Finding, Fixed, Kind, Outcome, Policy, Severity},
         },
+        modal::{ModalHost, dismiss_modal_layer, modal_layer},
         preferences::PreferenceManager,
         shortcut_reference,
     },
@@ -147,10 +151,10 @@ pub(super) fn keyboard_page(preferences: Rc<PreferenceManager>) -> gtk::Widget {
         }
     }
     let weak = Rc::downgrade(&page);
-    reset_all.connect_clicked(move |_| {
+    reset_all.connect_clicked(move |button| {
         if let Some(page) = weak.upgrade() {
             page.end_capture(false);
-            page.preferences.reset_map(page.shown.get());
+            page.confirm_reset_all(button);
         }
     });
 
@@ -284,6 +288,57 @@ impl Page {
                 row.action.set_text(&action);
             }
         }
+    }
+
+    fn confirm_reset_all(&self, anchor: &gtk::Button) {
+        let Some(host) = ModalHost::blurred_for(anchor) else {
+            return;
+        };
+        let map = self.shown.get();
+        let layout = message_dialog_layout(
+            icons::UNDO_2,
+            &crate::i18n::tr("Reset all keybinds?"),
+            &crate::i18n::tr(match map {
+                Map::Default => "Default",
+                Map::Tenxer => "10xer mode",
+            }),
+            &crate::i18n::tr("Reset"),
+            ModalTone::Danger,
+        );
+        layout
+            .body
+            .append(&message_dialog_description(&crate::i18n::tr(
+                "Restore the shipped keys of every action in the shown mode.",
+            )));
+        let layer = modal_layer(
+            &layout.content,
+            &host.overlay,
+            host.blurred_root.clone(),
+            None,
+        );
+        let dismiss = {
+            let layer = layer.downgrade();
+            let overlay = host.overlay.clone();
+            let root = host.blurred_root.clone();
+            Rc::new(move || {
+                if let Some(layer) = layer.upgrade() {
+                    dismiss_modal_layer(&layer, &overlay, root.as_ref());
+                }
+            })
+        };
+        for button in [&layout.close, &layout.cancel] {
+            let dismiss = dismiss.clone();
+            button.connect_clicked(move |_| dismiss());
+        }
+        let preferences = Rc::downgrade(&self.preferences);
+        layout.confirm.connect_clicked(move |_| {
+            if let Some(preferences) = preferences.upgrade() {
+                preferences.reset_map(map);
+            }
+            dismiss();
+        });
+        host.overlay.add_overlay(&layer);
+        layout.confirm.grab_focus();
     }
 
     fn update_reset_all(&self) {

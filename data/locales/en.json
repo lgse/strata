@@ -1500,6 +1500,7 @@
   "KEYBINDS": "KEYBINDS",
   "Search keybinds": "Search keybinds",
   "Reset all": "Reset all",
+  "Reset all keybinds?": "Reset all keybinds?",
   "Restore the shipped keys of every action in the shown mode.": "Restore the shipped keys of every action in the shown mode.",
   "Not bound": "Not bound",
   "Press a key…": "Press a key…",

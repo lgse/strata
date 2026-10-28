@@ -117,7 +117,8 @@ cancel, or **Backspace** to remove every key the action has. A key is recorded
 the way labels show it, so with a Russian layout the key that types **у** with
 Ctrl is **Ctrl+E**. A refused key keeps the capture waiting and says why under
 the row. **Reset** on a row restores its shipped keys, and **Reset all** those of
-the shown table. Changes save at once and apply in every open window.
+the shown table after asking. Changes save at once and apply in every open
+window.
 
 Notes under a row explain keys that do not work everywhere. A key that never
 fires is struck through. Where type-to-search takes a plain key, the note has a

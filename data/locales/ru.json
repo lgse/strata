@@ -1500,6 +1500,7 @@
   "KEYBINDS": "СОЧЕТАНИЯ КЛАВИШ",
   "Search keybinds": "Поиск сочетаний клавиш",
   "Reset all": "Сбросить все",
+  "Reset all keybinds?": "Сбросить все сочетания клавиш?",
   "Restore the shipped keys of every action in the shown mode.": "Вернуть исходные клавиши всем действиям показанного режима.",
   "Not bound": "Не назначено",
   "Press a key…": "Нажмите клавишу…",

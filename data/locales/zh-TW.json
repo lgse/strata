@@ -1500,6 +1500,7 @@
   "KEYBINDS": "按鍵綁定",
   "Search keybinds": "搜尋按鍵綁定",
   "Reset all": "全部重設",
+  "Reset all keybinds?": "重設所有按鍵綁定？",
   "Restore the shipped keys of every action in the shown mode.": "將顯示中模式的所有動作還原為原始按鍵。",
   "Not bound": "未指派",
   "Press a key…": "按下按鍵…",

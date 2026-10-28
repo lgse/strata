@@ -15,7 +15,10 @@ impl OpenPage {
         let page = keyboard_page(PreferenceManager::shared());
         let window = gtk::Window::new();
         window.set_default_size(1000, 800);
-        window.set_child(Some(&page));
+        // Confirmation dialogs layer over the window's overlay, as in Settings.
+        let overlay = gtk::Overlay::new();
+        overlay.set_child(Some(&page));
+        window.set_child(Some(&overlay));
         window.present();
         settle();
         Self { window, page }
@@ -23,6 +26,17 @@ impl OpenPage {
 
     fn row(&self, map: Map, command: Command) -> gtk::Widget {
         row_in(&self.page, map, command)
+    }
+
+    /// A button of the newest confirmation dialog, by its `action-dialog-*`
+    /// class; a dismissed dialog lingers while it animates out.
+    fn dialog_button(&self, class: &str) -> gtk::Button {
+        descendants(self.window.upcast_ref())
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
+            .filter(|button| button.has_css_class(class))
+            .last()
+            .unwrap_or_else(|| panic!("{class} button"))
     }
 
     /// Sends a press through the page's key reader, as the window would.
@@ -252,6 +266,13 @@ fn reset_row_and_reset_table_restore_defaults() {
                 .expect("Reset all");
             reset_all.emit_clicked();
             settle();
+            open.dialog_button("action-dialog-cancel").emit_clicked();
+            settle();
+            assert!(preferences.keymap().overrides(Map::Default, REFRESH));
+            reset_all.emit_clicked();
+            settle();
+            open.dialog_button("action-dialog-confirm").emit_clicked();
+            settle();
             let keymap = preferences.keymap();
             assert!(!keymap.overrides(Map::Default, REFRESH));
             assert!(keymap.overrides(Map::Tenxer, REFRESH));
@@ -267,6 +288,8 @@ fn reset_row_and_reset_table_restore_defaults() {
             settle();
             assert!(reset_all.is_sensitive());
             reset_all.emit_clicked();
+            settle();
+            open.dialog_button("action-dialog-confirm").emit_clicked();
             settle();
             let keymap = preferences.keymap();
             for map in [Map::Default, Map::Tenxer] {

@@ -425,7 +425,7 @@ why under the row; otherwise the key is appended to the entry. Findings from
 `conflicts::audit` render as text under each row, never as tooltips; a key with
 `NeverMatches` shows only that finding, and an inactive key is struck through.
 A row's **Reset** appears once its entry differs from the shipped one, and
-**Reset all** restores the shown table. A custom action slot's row names the
+**Reset all** asks, then restores the shown table. A custom action slot's row names the
 action it runs under its title, or **No action**, and follows the
 `ActionRegistry` as actions are added, renamed or removed; the page filter and
 Settings search also match that name. Settings search finds a row by its

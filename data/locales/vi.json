@@ -1500,6 +1500,7 @@
   "KEYBINDS": "PHÍM TẮT",
   "Search keybinds": "Tìm phím tắt",
   "Reset all": "Đặt lại tất cả",
+  "Reset all keybinds?": "Đặt lại tất cả phím tắt?",
   "Restore the shipped keys of every action in the shown mode.": "Khôi phục phím gốc của mọi hành động trong chế độ đang hiển thị.",
   "Not bound": "Chưa gán",
   "Press a key…": "Nhấn một phím…",

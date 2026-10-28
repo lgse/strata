@@ -1500,6 +1500,7 @@
   "KEYBINDS": "키 바인딩",
   "Search keybinds": "키 바인딩 검색",
   "Reset all": "모두 초기화",
+  "Reset all keybinds?": "모든 키 바인딩을 초기화할까요?",
   "Restore the shipped keys of every action in the shown mode.": "표시된 모드의 모든 동작을 기본 키로 되돌립니다.",
   "Not bound": "할당되지 않음",
   "Press a key…": "키를 누르세요…",

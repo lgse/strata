@@ -1500,6 +1500,7 @@
   "KEYBINDS": "ATALHOS",
   "Search keybinds": "Pesquisar atalhos",
   "Reset all": "Redefinir tudo",
+  "Reset all keybinds?": "Redefinir todos os atalhos?",
   "Restore the shipped keys of every action in the shown mode.": "Restaurar as teclas originais de todas as ações do modo exibido.",
   "Not bound": "Não atribuído",
   "Press a key…": "Pressione uma tecla…",

@@ -1500,6 +1500,7 @@
   "KEYBINDS": "TASTENBELEGUNG",
   "Search keybinds": "Tastenbelegung durchsuchen",
   "Reset all": "Alle zurücksetzen",
+  "Reset all keybinds?": "Alle Tastenbelegungen zurücksetzen?",
   "Restore the shipped keys of every action in the shown mode.": "Ursprüngliche Tasten aller Aktionen im angezeigten Modus wiederherstellen.",
   "Not bound": "Nicht belegt",
   "Press a key…": "Taste drücken…",
