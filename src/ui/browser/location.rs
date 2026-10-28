@@ -687,24 +687,8 @@ fn mount_error_is_authentication_failure(location: &Location, error: &glib::Erro
     if mount_error_is_host_key_rejection(error) {
         return false;
     }
-    if error.matches(gio::IOErrorEnum::PermissionDenied) {
-        return true;
-    }
-
-    // GVfs' SMB backend reports rejected credentials as G_IO_ERROR_FAILED on
-    // some versions, preserving the useful distinction only in its message.
-    let message = error.message().to_ascii_lowercase();
-    [
-        "permission denied",
-        "authentication failed",
-        "authentication required",
-        "auth fail",
-        "too many authentication failures",
-        "logon failure",
-        "invalid credentials",
-    ]
-    .iter()
-    .any(|reason| message.contains(reason))
+    error.matches(gio::IOErrorEnum::PermissionDenied)
+        || crate::services::describes_refused_credentials(error.message())
 }
 
 fn mount_error_is_host_key_rejection(error: &glib::Error) -> bool {

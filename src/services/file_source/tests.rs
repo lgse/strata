@@ -67,6 +67,17 @@ fn untyped_gio_failures_use_localized_catalog_text_instead_of_backend_details() 
                 super::gio_backend_error_message(&denied),
                 "Permission refusée"
             );
+            let refused = "Failed to mount Windows share: Permission denied";
+            let refused = gtk::glib::Error::new(gtk::gio::IOErrorEnum::Failed, refused);
+            assert_eq!(
+                super::gio_backend_error_message(&refused),
+                "Permission refusée",
+                "untyped SMB credential rejections keep their reason"
+            );
+            assert_eq!(
+                super::gio_error_message(&refused),
+                "Failed to mount Windows share: Permission denied"
+            );
         },
     );
 }

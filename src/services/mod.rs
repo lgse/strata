@@ -51,9 +51,9 @@ pub use file_source::{
     sanitize_uri_credentials, validate_uri_credentials,
 };
 pub(crate) use file_source::{
-    INVALID_NAME_REASON, UNEXPECTED_SYSTEM_ERROR, error_detail, gio_backend_error_message,
-    gio_error_detail, gio_error_message, io_error_detail, io_error_message,
-    sanitize_failure_message,
+    INVALID_NAME_REASON, UNEXPECTED_SYSTEM_ERROR, describes_refused_credentials, error_detail,
+    gio_backend_error_message, gio_error_detail, gio_error_message, io_error_detail,
+    io_error_message, sanitize_failure_message,
 };
 pub use install_source::{InstallSource, ManagedInstall};
 pub(crate) use install_source::{ensure_self_managed, installed_executable};

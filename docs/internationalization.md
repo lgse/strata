@@ -127,8 +127,9 @@ with its own message keeps that message, except a `storage::DestinationError`
 localized `message()`. `gio_error_message` preserves application-owned detail for
 unclassified errors. Network-location validation, directory enumeration, and mount
 failures use `services::gio_backend_error_message`, which shares the same typed
-reasons but substitutes a generic translated reason for unknown backend text and
-retains sanitized detail in diagnostic logs.
+reasons, reads untyped backend text that describes refused credentials as
+"Permission denied", substitutes a generic translated reason for other unknown
+backend text, and retains sanitized detail in diagnostic logs.
 Never format an `io::Error` directly: its `Display` adds an
 `(os error N)` suffix and can name internal temporary paths. These return
 standalone, capitalized text. When the

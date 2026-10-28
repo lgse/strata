@@ -224,14 +224,33 @@ pub(crate) fn gio_error_message(error: &glib::Error) -> String {
 
 /// Platform backend wording is diagnostic detail, not an application-owned message.
 pub(crate) fn gio_backend_error_message(error: &glib::Error) -> String {
-    let reason = gio_error_reason(error).unwrap_or_else(|| {
-        tracing::debug!(
-            error = %sanitize_failure_message(error.message()),
-            "unrecognized GIO backend error"
-        );
-        UNEXPECTED_SYSTEM_ERROR
-    });
+    let reason = gio_error_reason(error)
+        .or_else(|| describes_refused_credentials(error.message()).then_some("Permission denied"))
+        .unwrap_or_else(|| {
+            tracing::debug!(
+                error = %sanitize_failure_message(error.message()),
+                "unrecognized GIO backend error"
+            );
+            UNEXPECTED_SYSTEM_ERROR
+        });
     crate::i18n::tr(reason)
+}
+
+/// GVfs' SMB backend reports rejected credentials as `G_IO_ERROR_FAILED` on
+/// some versions, preserving the distinction only in its message.
+pub(crate) fn describes_refused_credentials(message: &str) -> bool {
+    let message = message.to_ascii_lowercase();
+    [
+        "permission denied",
+        "authentication failed",
+        "authentication required",
+        "auth fail",
+        "too many authentication failures",
+        "logon failure",
+        "invalid credentials",
+    ]
+    .iter()
+    .any(|reason| message.contains(reason))
 }
 
 fn gio_error_reason(error: &glib::Error) -> Option<&'static str> {
