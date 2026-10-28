@@ -12,8 +12,8 @@ use super::{
 };
 use crate::{
     adapters::gio_file_for_location,
-    model::{FileEntry, Location, SortDirection, SortKey},
-    services::{ActionHandle, ArchiveFormat, InvocationSource},
+    model::{ActionInput, FileEntry, Location, SortDirection, SortKey},
+    services::{ActionCatalog, ActionHandle, ArchiveFormat, InvocationSource},
 };
 
 pub(crate) use super::transfer::ConflictFocus;
@@ -88,14 +88,20 @@ impl TypedEntry {
 }
 
 impl BrowserView {
+    /// 10xer falls back to the item under the cursor; the default map acts on
+    /// the selection only, as its Copy and Delete do.
     pub fn command_targets(&self) -> Vec<FileEntry> {
+        let tenxer = crate::ui::preferences::PreferenceManager::shared().tenxer_mode();
         if let Some(results) = self.selected_search_results() {
-            if !results.is_empty() {
+            if !results.is_empty() || !tenxer {
                 return results;
             }
             return self.selected_search_result().into_iter().collect();
         }
         self.state.sync_mode_selection();
+        if !tenxer {
+            return self.state.browser.transfer_entries();
+        }
         self.focused_listing_depth()
             .map(|depth| self.state.browser.command_entries(depth))
             .unwrap_or_default()
@@ -346,6 +352,26 @@ impl BrowserView {
     }
 
     pub(crate) fn numbered_actions(&self) -> NumberedActions {
+        self.actions_for_targets(ActionCatalog::numbered)
+    }
+
+    /// The targets and the action at `index` in Settings → Actions' order,
+    /// when that action can run on them.
+    pub(crate) fn listed_action(
+        &self,
+        index: usize,
+    ) -> Option<(NumberedActions, Rc<ActionHandle>)> {
+        let numbered = self.actions_for_targets(|catalog, inputs| {
+            catalog.listed(index, inputs).into_iter().collect()
+        });
+        let action = numbered.actions.first().cloned()?;
+        Some((numbered, action))
+    }
+
+    fn actions_for_targets(
+        &self,
+        choose: impl FnOnce(&ActionCatalog, &[ActionInput]) -> Vec<Rc<ActionHandle>>,
+    ) -> NumberedActions {
         let entries = self.command_targets();
         let targets = entries.iter().map(|entry| entry.location.clone()).collect();
         let parent = self
@@ -362,7 +388,7 @@ impl BrowserView {
         let actions = if inputs.is_empty() {
             Vec::new()
         } else {
-            crate::ui::actions::shared().catalog().numbered(&inputs)
+            choose(&crate::ui::actions::shared().catalog(), &inputs)
         };
         NumberedActions {
             targets,

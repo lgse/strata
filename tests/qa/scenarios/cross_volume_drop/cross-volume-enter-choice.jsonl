@@ -1,15 +1,25 @@
-{"scenario":"cross-volume-enter-choice","modes":["columns"],"prefs":{"cross_volume_drop_strategy":"always-ask"},"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"copy","vars":{"action":"Copy","tabs":"0"}},{"id":"move","vars":{"action":"Move","tabs":"1"}},{"id":"cancel","vars":{"action":"Cancel","tabs":"2"}}],"cost":{"columns-copy":0.9,"columns-move":0.9,"columns-cancel":1.0},"quality":{"impact":4,"coverage":3,"criticality":4,"diagnostic":4,"score":38,"note":"Enter on focused Copy/Move/Cancel in cross-volume drop dialog; only keyboard route through this dialog, unit tests stop at prompt logic"}}
+{"scenario":"cross-volume-enter-choice","modes":["columns","icons","list"],"prefs":{"cross_volume_drop_strategy":"always-ask"},"layout":"us","variants":[{"id":"copy","vars":{"action":"Copy"}},{"id":"move","vars":{"action":"Move"}},{"id":"cancel","vars":{"action":"Cancel"}},{"id":"escape","modes":["columns"],"vars":{"action":"Copy"}},{"id":"cancel-button","modes":["columns"],"vars":{"action":"Copy"}},{"id":"close","modes":["columns"],"vars":{"action":"Copy"}},{"id":"backdrop","modes":["columns"],"vars":{"action":"Copy"}}],"quality":{"impact":4,"coverage":4,"criticality":4,"diagnostic":4,"score":56,"note":"Cross-volume Copy/Move/Cancel via Enter across all views, plus Escape, Cancel, X and backdrop: transfer safety and usable returned focus; underlying prompt policy is unit-tested"}}
 {"fs":{"path":"drop-volume","volume":"/dev/shm"}}
+{"wait":{"entries":{"contains":["drop-volume","todo.txt"]}},"message":"the cross-volume destination is listed before dragging"}
+{"select":{"entry":"todo.txt"}}
+{"wait":{"focused":"todo.txt"},"message":"the drag source initially owns keyboard focus"}
 {"drag":{"from":{"entry":"todo.txt"},"to":{"entry":"drop-volume"}}}
-{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"wait":{"dialog":"Copy or move?"},"message":"the cross-volume prompt opens"}
 {"key":"shift+Tab","variants":["move"]}
 {"key":"shift+Tab","repeat":2,"variants":["cancel"]}
-{"wait":{"state":{"target":{"dialog_button":"$action"},"focused":true}},"message":"$action focused"}
-{"key":"Return"}
-{"wait":{"dialog":null},"message":"the copy-or-move dialog to close"}
-{"fs":{"path":"drop-volume/todo.txt","exists":false},"timeout_ms":0,"message":"Cancel must not start a transfer","variants":["cancel"]}
-{"fs":{"path":"todo.txt","exists":true},"timeout_ms":0,"variants":["cancel"]}
-{"fs":{"path":"drop-volume/todo.txt","exists":true},"message":"the destination to be created","variants":["copy","move"]}
-{"fs":{"path":"todo.txt","exists":false},"message":"the source to move","variants":["move"]}
-{"fs":{"path":"todo.txt","exists":true},"timeout_ms":0,"message":"Copy must preserve the source","variants":["copy"]}
-{"fs":{"path":"drop-volume/todo.txt","text":"todo\n"},"timeout_ms":0,"variants":["copy","move"]}
+{"wait":{"state":{"target":{"dialog_button":"$action"},"focused":true}},"message":"$action initially owns dialog focus"}
+{"key":"Return","variants":["copy","move","cancel"]}
+{"key":"Escape","variants":["escape"]}
+{"click":{"dialog_button":"Cancel"},"variants":["cancel-button"]}
+{"click":{"role":"button","name":"Close dialog","within":{"dialog":true}},"variants":["close"]}
+{"click":{"window":true},"at":[5,100],"variants":["backdrop"]}
+{"wait":{"dialog":null},"message":"the copy-or-move prompt closes"}
+{"fs":{"path":"drop-volume/todo.txt","exists":false},"timeout_ms":0,"message":"dismissing the prompt must not start a transfer","variants":["cancel","escape","cancel-button","close","backdrop"]}
+{"fs":{"path":"todo.txt","exists":true},"timeout_ms":0,"message":"cancellation preserves the source","variants":["cancel","escape","cancel-button","close","backdrop"]}
+{"fs":{"path":"drop-volume/todo.txt","text":"todo\n"},"message":"the chosen transfer creates the correct destination","variants":["copy","move"]}
+{"fs":{"path":"todo.txt","exists":false},"message":"Move removes the source","variants":["move"]}
+{"fs":{"path":"todo.txt","text":"todo\n"},"timeout_ms":0,"message":"Copy preserves the source","variants":["copy"]}
+{"wait":{"focused":"todo.txt"},"message":"a non-destructive dismissal returns focus to the source row","variants":["copy","cancel","escape","cancel-button","close","backdrop"]}
+{"key":"Up","modes":["columns","list"],"variants":["copy","cancel","escape","cancel-button","close","backdrop"]}
+{"key":"Left","modes":["icons"],"variants":["copy","cancel"]}
+{"wait":{"focused":"readme.md"},"message":"arrow navigation works after the drop prompt closes"}

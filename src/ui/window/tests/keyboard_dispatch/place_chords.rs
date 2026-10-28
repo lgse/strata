@@ -99,47 +99,56 @@ fn chord(fixture: &KeyboardFixture, second: Key) {
 
 #[test]
 fn go_chord_resolves_uris_and_visible_pin_order() {
-    let pins = [
-        Location::local("/pins/beta"),
-        Location::local("/pins/alpha"),
-    ];
-    for (key, location, validate) in [
-        (Key::t, Location::uri("trash:///"), false),
-        (Key::n, Location::uri("network:///"), true),
-        (Key::r, Location::uri("recent:///"), false),
-        (Key::_1, pins[0].clone(), true),
-        (Key::KP_2, pins[1].clone(), true),
-    ] {
-        assert_eq!(
-            go_target(&chord_key(key), &pins),
-            Some(GoTarget::Place { location, validate }),
-            "{key:?}"
-        );
-    }
-    assert_eq!(
-        go_target(&chord_key(Key::_9), &pins),
-        Some(GoTarget::Missing("No pin 9".into()))
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::place_chords::go_chord_resolves_uris_and_visible_pin_order",
+        || {
+            // Go steps belong to the 10xer map, the only one that arms the chord.
+            let preferences = crate::ui::preferences::PreferenceManager::shared();
+            preferences.set_tenxer_mode(true);
+            let pins = [
+                Location::local("/pins/beta"),
+                Location::local("/pins/alpha"),
+            ];
+            for (key, location, validate) in [
+                (Key::t, Location::uri("trash:///"), false),
+                (Key::n, Location::uri("network:///"), true),
+                (Key::r, Location::uri("recent:///"), false),
+                (Key::_1, pins[0].clone(), true),
+                (Key::KP_2, pins[1].clone(), true),
+            ] {
+                assert_eq!(
+                    go_target(&chord_key(key), &pins),
+                    Some(GoTarget::Place { location, validate }),
+                    "{key:?}"
+                );
+            }
+            assert_eq!(
+                go_target(&chord_key(Key::_9), &pins),
+                Some(GoTarget::Missing("No pin 9".into()))
+            );
+            assert_eq!(
+                go_target(&chord_key(Key::space), &pins),
+                Some(GoTarget::Prompt)
+            );
+            // The AZERTY − key is also digit 6 and the Czech + key digit 1.
+            for (key, keycode, pin) in [(Key::minus, 15, false), (Key::plus, 10, true)] {
+                let press =
+                    crate::ui::keys::KeyPress::from_signal(key, keycode, ModifierType::empty());
+                assert_eq!(
+                    go_target(&press, &pins),
+                    Some(GoTarget::Pin(pin)),
+                    "{key:?}"
+                );
+            }
+            for key in [Key::z, Key::G, Key::q, Key::_0] {
+                assert_eq!(
+                    go_target(&chord_key(key), &pins),
+                    None,
+                    "{key:?} is not a place"
+                );
+            }
+        },
     );
-    assert_eq!(
-        go_target(&chord_key(Key::space), &pins),
-        Some(GoTarget::Prompt)
-    );
-    // The AZERTY − key is also digit 6 and the Czech + key digit 1.
-    for (key, keycode, pin) in [(Key::minus, 15, false), (Key::plus, 10, true)] {
-        let press = crate::ui::keys::KeyPress::from_signal(key, keycode, ModifierType::empty());
-        assert_eq!(
-            go_target(&press, &pins),
-            Some(GoTarget::Pin(pin)),
-            "{key:?}"
-        );
-    }
-    for key in [Key::z, Key::G, Key::q, Key::_0] {
-        assert_eq!(
-            go_target(&chord_key(key), &pins),
-            None,
-            "{key:?} is not a place"
-        );
-    }
 }
 
 fn chord_key(key: Key) -> crate::ui::keys::KeyPress {

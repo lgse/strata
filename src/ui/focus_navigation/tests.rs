@@ -2,46 +2,11 @@
 
 use super::*;
 
-fn press(key: gdk::Key, modifiers: gdk::ModifierType) -> KeyPress {
-    KeyPress::from_signal(key, 0, modifiers)
-}
-
-#[test]
-fn vim_keys_normalize_only_without_typing_or_modifiers() {
-    for (letter, arrow) in [
-        (gdk::Key::h, LEFT),
-        (gdk::Key::j, DOWN),
-        (gdk::Key::k, UP),
-        (gdk::Key::l, RIGHT),
-    ] {
-        let plain = press(letter, gdk::ModifierType::empty());
-        assert!(navigation_key(&plain, false, None).is(arrow));
-        assert_eq!(navigation_key(&plain, true, None), plain);
-        for modifier in [
-            gdk::ModifierType::SHIFT_MASK,
-            gdk::ModifierType::CONTROL_MASK,
-            gdk::ModifierType::ALT_MASK,
-            gdk::ModifierType::SUPER_MASK,
-        ] {
-            let held = press(letter, modifier);
-            assert_eq!(navigation_key(&held, false, None), held);
-        }
-    }
-}
-
 #[test]
 fn native_arrow_aliases_use_gtk_spatial_selection() {
     crate::test_support::gtk_test(
         "ui::focus_navigation::tests::native_arrow_aliases_use_gtk_spatial_selection",
         || {
-            let entry = gtk::Entry::new();
-            let j = press(gdk::Key::j, gdk::ModifierType::empty());
-            assert_eq!(navigation_key(&j, false, Some(entry.upcast_ref())), j);
-            let popover = gtk::Popover::new();
-            let button = gtk::Button::with_label("Option");
-            popover.set_child(Some(&button));
-            let l = press(gdk::Key::l, gdk::ModifierType::empty());
-            assert_eq!(navigation_key(&l, false, Some(button.upcast_ref())), l);
             for grid in [false, true] {
                 let model = gtk::StringList::new(&["a", "b", "c", "d", "e", "f", "g", "h", "i"]);
                 let selection = gtk::SingleSelection::new(Some(model));

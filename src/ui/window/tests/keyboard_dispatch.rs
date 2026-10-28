@@ -14,6 +14,7 @@ use crate::services::{
 };
 mod audio_tracks;
 mod context_menus;
+mod direct_commands;
 mod escape_precedence;
 mod file_commands;
 mod file_verbs;
@@ -21,6 +22,8 @@ mod filter_focus;
 mod folder_jump;
 mod footer_prompt;
 mod go_prompt;
+mod keymap_conflicts;
+mod keymap_overrides;
 mod mode_exit;
 mod open_in_new;
 mod overlay_focus;
@@ -28,6 +31,7 @@ mod pane_focus;
 mod place_chords;
 mod preview_ownership;
 mod reload_cursor;
+mod structural_aliases;
 mod thumbnail_size;
 mod video_clips;
 
@@ -3273,15 +3277,17 @@ fn press_phase(
     modifiers: ModifierType,
 ) -> bool {
     let controllers = window.observe_controllers();
-    let keys = (0..controllers.n_items())
+    let keys: Vec<_> = (0..controllers.n_items())
         .filter_map(|index| {
             controllers
                 .item(index)
                 .and_downcast::<gtk::EventControllerKey>()
         })
-        .find(|keys| keys.propagation_phase() == phase)
-        .unwrap_or_else(|| panic!("{phase:?} key controller"));
-    keys.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers])
+        .filter(|keys| keys.propagation_phase() == phase)
+        .collect();
+    assert!(!keys.is_empty(), "{phase:?} key controller");
+    keys.iter()
+        .any(|keys| keys.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers]))
 }
 
 fn settings_layer(content: &super::super::composition::WindowContent) -> Option<gtk::Widget> {

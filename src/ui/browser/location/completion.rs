@@ -14,7 +14,9 @@ use gtk::{
 
 use crate::ui::keys::{
     self, Keys,
-    bindings::{COMPLETE, DOWN, ENTER, ENTER_ANY_SHIFT, ESCAPE_ANY_SHIFT, PAGE_DOWN, PAGE_UP, UP},
+    bindings::{
+        COMPLETE, DOWN, ENTER, ENTER_ANY_SHIFT, ESCAPE_ANY_SHIFT, PAGE_DOWN_KEY, PAGE_UP_KEY, UP,
+    },
 };
 use crate::{adapters::probes, app::Browser};
 
@@ -137,11 +139,16 @@ impl PathCompletion {
         content_box.append(&scroll);
 
         let shortcuts = gtk::Label::new(None);
-        shortcuts.set_markup(&crate::ui::shortcut_reference::legend_markup(&[
-            (Keys::One(COMPLETE), "completion.complete"),
-            (Keys::Any(&[UP, DOWN]), "Choose"),
-            (Keys::One(ENTER), "Open"),
-        ]));
+        crate::ui::shortcut_reference::follow_keys(&shortcuts, |shortcuts| {
+            shortcuts.set_markup(&crate::ui::shortcut_reference::legend_markup(&[
+                (Keys::One(COMPLETE.shown()), "completion.complete"),
+                (
+                    Keys::Any(crate::ui::keys::shown![UP.alternate(0), DOWN.alternate(0)]),
+                    "Choose",
+                ),
+                (Keys::One(ENTER.shown()), "Open"),
+            ]));
+        });
         shortcuts.set_xalign(0.0);
         shortcuts.add_css_class("path-completion-shortcuts");
         content_box.append(&shortcuts);
@@ -218,9 +225,9 @@ impl PathCompletion {
                 Command::Down
             } else if press.is(UP.ignoring(SHIFT)) {
                 Command::Step(-1)
-            } else if press.is(PAGE_DOWN.ignoring(SHIFT)) {
+            } else if press.is(PAGE_DOWN_KEY.ignoring(SHIFT)) {
                 Command::Step(5)
-            } else if press.is(PAGE_UP.ignoring(SHIFT)) {
+            } else if press.is(PAGE_UP_KEY.ignoring(SHIFT)) {
                 Command::Step(-5)
             } else if press.is(ENTER_ANY_SHIFT) {
                 Command::Activate

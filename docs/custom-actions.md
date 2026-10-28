@@ -2,7 +2,10 @@
 
 Custom actions add your own scripts to the file and folder context menus. In
 [10xer mode](10xer-mode.md), **;** then **1**–**9** / **0** runs the first
-ten matching actions on the focused item or filled selection.
+ten matching actions on the focused item or filled selection. Outside it, bind
+a key to one of the ten **Custom action** slots in **Settings → Keyboard**:
+slot N runs the Nth action **Settings → Actions** lists, on the selection (see
+[Keymap](keymap.md#custom-action-slots)).
 
 They are ordinary programs running with your permissions. There is no sandbox and
 no install step beyond enabling an action. Strata validates the definition and the
@@ -90,8 +93,8 @@ asks you to **Replace script** or **Keep draft**, without opening another dialog
 Code replacement can be undone in the editor; drafts for the other runtimes are retained.
 Escape or clicking outside closes only the dropdown, leaving the editor open.
 Searching, browsing, or applying a template never saves or executes it. Review
-and save the action, then launch it from its file/folder context menu or, in
-10xer mode, **;** then a digit.
+and save the action, then launch it from its file/folder context menu, a key
+bound to its custom action slot or, in 10xer mode, **;** then a digit.
 
 The documented Python starter and every Python recipe include the same maintained
 [`context()` reference](../data/actions/context-api.txt) as a module docstring.

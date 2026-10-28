@@ -20,6 +20,7 @@ use crate::{
     test_support::gtk_test,
     ui::{
         browser_modes::{BrowserDensity, BrowserMode, ClickCount, DensityScale, FrameDensity},
+        keys::{Binding, Map, bindings},
         preferences::fixtures::{
             non_default_preferences, seed_omarchy_colors_for_test, seed_omarchy_for_test,
             seed_saved_preferences_for_test,
@@ -1160,6 +1161,25 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
                 manager.custom_icon(Path::new("/fixture/folder")).as_deref(),
                 Some(crate::assets::icons::HOME)
             );
+            let keymap = manager.keymap();
+            assert_eq!(
+                keymap.bindings(Map::Default, bindings::SETTINGS),
+                [
+                    Binding::ctrl(gtk::gdk::Key::comma),
+                    Binding::ctrl_alt(gtk::gdk::Key::F12)
+                ]
+            );
+            assert_eq!(
+                keymap.bindings(Map::Tenxer, bindings::SIDEBAR_FOCUS),
+                [
+                    Binding::ctrl_shift(gtk::gdk::Key::b),
+                    Binding::ctrl_alt(gtk::gdk::Key::F11)
+                ]
+            );
+            assert_eq!(
+                keymap.bindings(Map::Tenxer, bindings::SETTINGS),
+                bindings::SETTINGS.defaults(Map::Tenxer)
+            );
         },
     );
 }
@@ -1586,6 +1606,15 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_open_folder_after_drop(false),
                 |m| m.set_folder_color(Path::new("/fixture/folder"), None),
                 |m| m.set_custom_icon(Path::new("/fixture/folder"), None),
+                |m| {
+                    m.set_bindings(
+                        Map::Default,
+                        bindings::RENAME,
+                        vec![Binding::ctrl(gtk::gdk::Key::e)],
+                    )
+                },
+                |m| m.reset_binding(Map::Tenxer, bindings::SIDEBAR_FOCUS),
+                |m| m.reset_map(Map::Default),
             ];
             let theme_setters: &[fn(&ThemeManager)] = &[
                 |m| m.set_follow_omarchy(true),

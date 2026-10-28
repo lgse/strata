@@ -261,9 +261,21 @@ fn render_value(value: &Value) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
-        Value::String(text) => format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\"")),
-        Value::Null | Value::Object(_) => panic!("settings.toml cannot hold {value}"),
+        Value::String(text) => render_string(text),
+        Value::Object(entries) => format!(
+            "{{ {} }}",
+            entries
+                .iter()
+                .map(|(key, value)| format!("{} = {}", render_string(key), render_value(value)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        Value::Null => panic!("settings.toml cannot hold {value}"),
     }
+}
+
+fn render_string(text: &str) -> String {
+    format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
 fn populate(directory: &Path, tree: &Value) {

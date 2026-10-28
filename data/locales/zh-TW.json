@@ -1256,6 +1256,7 @@
   "keys.name.home": "Home",
   "keys.name.insert": "插入",
   "keys.name.menu": "選單",
+  "keys.name.compose": "組合鍵",
   "keys.name.page_down": "下一頁",
   "keys.name.page_up": "上一頁",
   "keys.name.shift": "Shift",
@@ -1493,6 +1494,17 @@
   "Camera position": "攝影機位置",
   "Binary STL": "二進位 STL",
   "ASCII STL": "ASCII STL",
+  "Keyboard": "鍵盤",
+  "Keyboard settings": "鍵盤設定",
+  "Shortcuts for each mode": "各模式的快捷鍵",
+  "Search keybinds": "搜尋按鍵綁定",
+  "Reset all": "全部重設",
+  "Reset all keybinds?": "重設所有按鍵綁定？",
+  "Restore the shipped keys of every action in the shown mode.": "將顯示中模式的所有動作還原為原始按鍵。",
+  "Not bound": "未指派",
+  "Press a key…": "按下按鍵…",
+  "Turn off type-to-search": "關閉“輸入以搜尋”",
+  "settings_keywords.keyboard-shortcuts": "快捷鍵 快速鍵 按鍵 鍵盤 指派 重新指派 自訂 重設",
   "%{distance} km": "%{distance} km",
   "%{minimum}–%{maximum} m": "%{minimum}–%{maximum} m",
   "Copy this route file locally before previewing it.": "請先將此路線檔案複製到本機再預覽。",
@@ -1510,5 +1522,6 @@
   "%{distance} mi": "%{distance} 英里",
   "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum} 英尺",
   "%{elevation} m": "%{elevation} m",
-  "%{elevation} ft": "%{elevation} 英尺"
+  "%{elevation} ft": "%{elevation} 英尺",
+  "No action": "無動作"
 }

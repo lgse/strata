@@ -995,6 +995,59 @@ fn tenxer_numbered_actions_run_the_listed_match_on_the_current_targets() {
     );
 }
 
+/// Slot N is the Nth action Settings → Actions lists, disabled ones included,
+/// so a slot never runs another action in its place.
+#[test]
+fn default_map_custom_action_slots_run_their_listed_action() {
+    use crate::ui::keys::{Binding, CUSTOM_ACTIONS, Keymap, Map, use_keymap};
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::file_verbs::default_map_custom_action_slots_run_their_listed_action",
+        || {
+            let fixture = KeyboardFixture::new();
+            let preferences = PreferenceManager::shared();
+            fixture.shortcuts.bind_preferences(&preferences);
+            preferences.set_type_to_search(false);
+            let directory = fixture._directory.path().to_path_buf();
+            let output = fixture._history_directory.path().join("invocations");
+            write_action("a-off", "Off", "top", "\"txt\"", "enabled = false", &output);
+            write_action("b-images", "Images", "top", "\"png\"", "", &output);
+            write_action("c-text", "Text", "submenu", "\"txt\"", "", &output);
+            gtk::glib::MainContext::default().block_on(crate::ui::actions::shared().reload());
+            let key = Binding::ctrl_alt(Key::e);
+            let press_slot = |number: usize| {
+                let _keymap = use_keymap(Keymap::defaults().with(
+                    Map::Default,
+                    CUSTOM_ACTIONS[number - 1],
+                    vec![key],
+                ));
+                select_named(&fixture, "a.txt");
+                assert!(fixture.press(Key::e, ModifierType::CONTROL_MASK | ModifierType::ALT_MASK));
+            };
+
+            press_slot(3);
+            assert_eq!(
+                wait_invocations(&output, 2),
+                ["c-text", directory.join("a.txt").to_string_lossy().as_ref()]
+            );
+            std::fs::remove_file(&output).expect("reset recorder");
+
+            for (number, message) in [
+                (1, "No matching actions"),
+                (2, "No matching actions"),
+                (4, "No action 4"),
+            ] {
+                press_slot(number);
+                assert_eq!(feedback(&fixture), message, "slot {number}");
+            }
+            run_jobs(Duration::from_millis(300));
+            assert!(
+                invocations(&output).is_empty(),
+                "no other action runs instead"
+            );
+        },
+    );
+}
+
 fn launch_recorder(id: &str, targets: &[(&Path, &str)]) {
     let wanted = format!("{id}.desktop");
     let files: Vec<gtk::gio::File> = targets

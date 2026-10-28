@@ -1155,6 +1155,7 @@ pub struct Browser {
     peek_load: RefCell<Option<LoadHandle>>,
     validation_load: RefCell<Option<LoadHandle>>,
     deferred_reveal: RefCell<Option<(Location, Vec<Location>)>>,
+    preview_revealed_location: RefCell<Option<Location>>,
     validation_generation: Cell<u64>,
     navigation_lifecycle: navigation_lifecycle::NavigationLifecycle,
     navigation_cleanup: RefCell<Option<Box<dyn FnOnce()>>>,
@@ -1244,6 +1245,7 @@ impl Browser {
             peek_load: RefCell::new(None),
             validation_load: RefCell::new(None),
             deferred_reveal: RefCell::new(None),
+            preview_revealed_location: RefCell::new(None),
             validation_generation: Cell::new(0),
             navigation_lifecycle: navigation_lifecycle::NavigationLifecycle::default(),
             navigation_cleanup: RefCell::new(None),
@@ -1410,6 +1412,9 @@ impl Browser {
                 }
                 Err(LocationValidationError::NotDirectory) => match pending_location.parent() {
                     Some(parent) => {
+                        browser
+                            .preview_revealed_location
+                            .replace(Some(pending_location.clone()));
                         browser.navigate_validated_inner(
                             parent,
                             false,
@@ -1431,6 +1436,8 @@ impl Browser {
                         browser
                             .deferred_reveal
                             .replace(Some((pending_location.clone(), reveal.clone())));
+                    } else {
+                        browser.preview_revealed_location.take();
                     }
                     browser.emit(BrowserEvent::LocationNavigationRejected { error });
                 }
@@ -1664,6 +1671,7 @@ impl Browser {
 
     pub(crate) fn cancel_deferred_reveal(&self) {
         self.deferred_reveal.take();
+        self.preview_revealed_location.take();
     }
 
     fn apply_resolved_location_reveal(self: &Rc<Self>, depth: usize, request_id: RequestId) {
@@ -1699,6 +1707,16 @@ impl Browser {
             ) if directory == location => LoadSelection::Target(targets),
             (_, selection) => selection,
         };
+        let reveals_preview_target = self
+            .preview_revealed_location
+            .borrow()
+            .as_ref()
+            .is_some_and(|target| {
+                matches!(&selection, LoadSelection::Target(targets) if targets.contains(target))
+            });
+        if !reveals_preview_target {
+            self.preview_revealed_location.take();
+        }
         self.bump_navigation_generation();
         if self.active_location().as_ref() == Some(&location) {
             return;
@@ -1744,7 +1762,7 @@ impl Browser {
         keep_parent_active: bool,
     ) {
         let _update = self.navigation_update();
-        self.deferred_reveal.take();
+        self.cancel_deferred_reveal();
         self.bump_navigation_generation();
         if self.is_open_child(parent_depth, &location) {
             return;
@@ -3962,7 +3980,7 @@ impl Browser {
 
     fn restore_path(self: &Rc<Self>, path: NavigationPath) {
         let _update = self.navigation_update();
-        self.deferred_reveal.take();
+        self.cancel_deferred_reveal();
         if path
             .locations()
             .iter()
@@ -5018,6 +5036,39 @@ impl Browser {
             observer(&event);
         }
         self.follow_leftovers(&event);
+        self.follow_preview_reveals(&event);
+    }
+
+    fn follow_preview_reveals(&self, event: &BrowserEvent) {
+        match event {
+            BrowserEvent::SelectionSetChanged {
+                depth,
+                focused,
+                take_focus: true,
+                ..
+            } => {
+                let target = self.preview_revealed_location.borrow().clone();
+                if let Some(target) = target
+                    && let Some(entry) = self
+                        .entry_at(*depth, *focused)
+                        .filter(|e| e.location == target)
+                {
+                    self.preview_revealed_location.take();
+                    self.request_preview(entry);
+                }
+            }
+            BrowserEvent::LocationRevealFailed { location } => {
+                let matches_target = self
+                    .preview_revealed_location
+                    .borrow()
+                    .as_ref()
+                    .is_some_and(|target| target == location);
+                if matches_target {
+                    self.preview_revealed_location.take();
+                }
+            }
+            _ => {}
+        }
     }
 
     fn new_request_id(&self) -> RequestId {

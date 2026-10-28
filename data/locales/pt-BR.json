@@ -1300,6 +1300,7 @@
   "keys.name.home": "Home",
   "keys.name.insert": "Insert",
   "keys.name.menu": "Menu",
+  "keys.name.compose": "Compor",
   "keys.name.page_down": "Page Down",
   "keys.name.page_up": "Page Up",
   "keys.name.shift": "Shift",
@@ -1493,6 +1494,17 @@
   "The command opened in your terminal. Run diagnostics again when it finishes.": "O comando foi aberto no seu terminal. Execute o diagnóstico novamente quando ele terminar.",
   "Disabled": "Desativado",
   "Open folder": "Abrir pasta",
+  "Keyboard": "Teclado",
+  "Keyboard settings": "Configurações de teclado",
+  "Shortcuts for each mode": "Atalhos de cada modo",
+  "Search keybinds": "Pesquisar atalhos",
+  "Reset all": "Redefinir tudo",
+  "Reset all keybinds?": "Redefinir todos os atalhos?",
+  "Restore the shipped keys of every action in the shown mode.": "Restaurar as teclas originais de todas as ações do modo exibido.",
+  "Not bound": "Não atribuído",
+  "Press a key…": "Pressione uma tecla…",
+  "Turn off type-to-search": "Desativar “Digite para buscar”",
+  "settings_keywords.keyboard-shortcuts": "atalhos teclas teclado atribuir reatribuir combinações redefinir",
   "%{distance} km": "%{distance} km",
   "%{minimum}–%{maximum} m": "%{minimum}–%{maximum} m",
   "Copy this route file locally before previewing it.": "Copie este arquivo de rota para o computador antes de visualizá-lo.",
@@ -1510,5 +1522,6 @@
   "%{distance} mi": "%{distance} mi",
   "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum} pés",
   "%{elevation} m": "%{elevation} m",
-  "%{elevation} ft": "%{elevation} pés"
+  "%{elevation} ft": "%{elevation} pés",
+  "No action": "Nenhuma ação"
 }

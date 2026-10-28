@@ -78,6 +78,50 @@ fn localized_setting_titles_keep_stable_search_targets() {
 }
 
 #[test]
+fn shortcut_rows_never_take_a_query_from_a_setting() {
+    crate::test_support::gtk_test(
+        "ui::settings::search::tests::shortcut_rows_never_take_a_query_from_a_setting",
+        || {
+            let mut words: Vec<&str> = TARGETS
+                .iter()
+                .flat_map(|target| {
+                    target
+                        .title
+                        .split_whitespace()
+                        .chain(target.aliases.split_whitespace())
+                })
+                .collect();
+            words.sort_unstable();
+            words.dedup();
+            let mut taken = Vec::new();
+            for word in words {
+                let query = normalized(word);
+                if query.is_empty() {
+                    continue;
+                }
+                let mut best = -1;
+                let mut setting = None;
+                for target in TARGETS {
+                    if let Some(score) = score(&query, target)
+                        && score > best
+                    {
+                        best = score;
+                        setting = Some(target.page);
+                    }
+                }
+                let routed = find_matches(&query).best_page;
+                if setting.is_some() && routed != setting {
+                    taken.push(format!("{word}: {setting:?} became {routed:?}"));
+                }
+            }
+            assert!(taken.is_empty(), "{taken:#?}");
+            let rename = find_matches(&normalized("Rename"));
+            assert_eq!(rename.best_page, Some(super::super::keyboard::PAGE));
+        },
+    );
+}
+
+#[test]
 fn ranks_exact_labels_aliases_and_small_typing_errors() {
     for (query, page, id) in [
         ("Folder peeking", "general", "peeking"),
@@ -500,6 +544,10 @@ fn every_page_row_is_registered_for_search() {
                     .widget,
                 ),
                 ("actions", super::super::actions::actions_page()),
+                (
+                    "keyboard",
+                    super::super::keyboard::keyboard_page(manager.clone()),
+                ),
                 (
                     "integrations",
                     super::super::integrations::integrations_page(None),

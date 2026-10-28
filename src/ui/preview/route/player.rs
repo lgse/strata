@@ -48,10 +48,11 @@ impl RoutePlayer {
         play.add_css_class("preview-video-play");
         play.set_child(Some(&icon));
         play.set_sensitive(distance_m > 0.0);
-        play.set_tooltip_text(Some(&crate::ui::shortcut_reference::with_keys(
+        crate::ui::shortcut_reference::follow_tooltip(
+            &play,
             "Play/Pause (%{keys})",
-            crate::ui::keys::Keys::One(crate::ui::keys::bindings::MEDIA_PLAY_PAUSE),
-        )));
+            crate::ui::keys::Keys::One(crate::ui::keys::bindings::MEDIA_PLAY_PAUSE.shown()),
+        );
         crate::ui::accessibility::set_label(&play, &crate::i18n::tr("Play or pause"));
         let elapsed = super::super::components::label("preview-media-time");
         let position = Cell::new(samples.first().copied());

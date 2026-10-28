@@ -962,6 +962,7 @@ pub(super) fn show(
         let (Some(list), Some(search)) = (list_weak.upgrade(), search_for_list.upgrade()) else {
             return glib::Propagation::Proceed;
         };
+        let press = &press.untyped();
 
         if press.is(UP.ignoring(SHORTCUT_MODIFIERS))
             && let Some(selected) = list.selected_row()

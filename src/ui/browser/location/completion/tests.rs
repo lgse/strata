@@ -193,6 +193,63 @@ fn down_reopens_suggestions_after_tab_completion() {
 }
 
 #[test]
+fn tab_alternates_complete_like_tab() {
+    crate::test_support::gtk_test(
+        "ui::browser::location::completion::tests::tab_alternates_complete_like_tab",
+        || {
+            use crate::ui::keys::{
+                Binding, Keymap, Map,
+                bindings::{FOCUS_NEXT, FOCUS_PREVIOUS},
+                use_keymap,
+            };
+            use gtk::gdk::{Key, ModifierType};
+
+            let _keymap = use_keymap(
+                Keymap::defaults()
+                    .with(
+                        Map::Default,
+                        FOCUS_NEXT,
+                        vec![Binding::plain(Key::Tab), Binding::plain(Key::F7)],
+                    )
+                    .with(
+                        Map::Default,
+                        FOCUS_PREVIOUS,
+                        vec![Binding::shift(Key::Tab), Binding::ctrl(Key::F7)],
+                    ),
+            );
+            let fixture = tempdir().expect("fixture");
+            fs::create_dir(fixture.path().join("Documents")).expect("completion folder");
+            let browser = Browser::new(Rc::new(LocalFileSource));
+            browser.navigate(Location::local(fixture.path()));
+            let entry = gtk::Entry::new();
+            let completion = PathCompletion::attach(&entry, browser, || true, || {});
+            let window = gtk::Window::builder().child(&entry).build();
+            window.present();
+            entry.grab_focus();
+            wait_until(|| entry.is_mapped());
+            let keys = entry
+                .observe_controllers()
+                .iter::<glib::Object>()
+                .filter_map(Result::ok)
+                .find_map(|controller| controller.downcast::<gtk::EventControllerKey>().ok())
+                .expect("completion keyboard controller");
+
+            let completed = fixture.path().join("Documents/");
+            for modifiers in [ModifierType::empty(), ModifierType::CONTROL_MASK] {
+                entry.set_text(&fixture.path().join("Doc").to_string_lossy());
+                wait_until(|| completion.popover.is_visible());
+                assert!(
+                    keys.emit_by_name::<bool>("key-pressed", &[&Key::F7, &0u32, &modifiers]),
+                    "{modifiers:?}"
+                );
+                wait_until(|| entry.text().as_str() == completed.to_string_lossy());
+            }
+            window.destroy();
+        },
+    );
+}
+
+#[test]
 fn typed_paths_are_listed_off_the_ui_thread_and_only_the_latest_text_is_shown() {
     crate::test_support::gtk_test(
         "ui::browser::location::completion::tests::typed_paths_are_listed_off_the_ui_thread_and_only_the_latest_text_is_shown",

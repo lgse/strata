@@ -1300,6 +1300,7 @@
   "keys.name.home": "Début",
   "keys.name.insert": "Inser",
   "keys.name.menu": "Menu",
+  "keys.name.compose": "Compose",
   "keys.name.page_down": "Page suiv.",
   "keys.name.page_up": "Page préc.",
   "keys.name.shift": "Maj",
@@ -1493,6 +1494,17 @@
   "The command opened in your terminal. Run diagnostics again when it finishes.": "La commande s’est ouverte dans votre terminal. Relancez le diagnostic une fois qu’elle est terminée.",
   "Disabled": "Désactivé",
   "Open folder": "Ouvrir le dossier",
+  "Keyboard": "Clavier",
+  "Keyboard settings": "Paramètres du clavier",
+  "Shortcuts for each mode": "Raccourcis de chaque mode",
+  "Search keybinds": "Rechercher des raccourcis",
+  "Reset all": "Tout réinitialiser",
+  "Reset all keybinds?": "Réinitialiser tous les raccourcis ?",
+  "Restore the shipped keys of every action in the shown mode.": "Rétablir les touches d’origine de toutes les actions du mode affiché.",
+  "Not bound": "Non attribué",
+  "Press a key…": "Appuyez sur une touche…",
+  "Turn off type-to-search": "Désactiver « Saisissez du texte pour rechercher »",
+  "settings_keywords.keyboard-shortcuts": "raccourcis touches clavier attribuer réattribuer combinaisons réinitialiser",
   "%{distance} km": "%{distance} km",
   "%{minimum}–%{maximum} m": "%{minimum}–%{maximum} m",
   "Copy this route file locally before previewing it.": "Copiez ce fichier d’itinéraire en local avant de le prévisualiser.",
@@ -1510,5 +1522,6 @@
   "%{distance} mi": "%{distance} mi",
   "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum} pi",
   "%{elevation} m": "%{elevation} m",
-  "%{elevation} ft": "%{elevation} pi"
+  "%{elevation} ft": "%{elevation} pi",
+  "No action": "Aucune action"
 }

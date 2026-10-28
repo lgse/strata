@@ -50,6 +50,7 @@ struct ListColumnLayout {
     cells: Rc<Vec<RefCell<Vec<glib::WeakRef<gtk::Widget>>>>>,
     name_manually_resized: Rc<Cell<bool>>,
     scale: Rc<Cell<f64>>,
+    drag: Rc<Cell<Option<ListColumnDrag>>>,
     chooser: bool,
 }
 
@@ -82,7 +83,33 @@ impl ListColumnLayout {
                 saved.is_some_and(|saved| saved.name.is_some()),
             )),
             scale: Rc::new(Cell::new(1.0)),
+            drag: Rc::default(),
             chooser,
+        }
+    }
+
+    fn finish_drag(
+        &self,
+        headings: &gtk::Box,
+        bound_items: &Rc<RefCell<Vec<BoundModeItem>>>,
+        released: Option<(f64, f64)>,
+    ) {
+        let Some(drag) = self.drag.take() else {
+            return;
+        };
+        headings.set_cursor(None);
+        headings.remove_css_class("column-reordering");
+        column_drop_feedback(headings, None);
+        if drag.active
+            && let Some(offset) = released
+            && let Some((target, after)) = column_drop_site(headings, self, drag, offset)
+        {
+            super::preferences::PreferenceManager::shared().move_list_column(
+                drag.column,
+                target,
+                after,
+            );
+            apply_columns_layout(headings, self, bound_items);
         }
     }
 
@@ -516,6 +543,7 @@ pub struct ModeViews {
     suppress_focus_scroll: Cell<bool>,
     /// Set while a footer prompt moves the cursor; the prompt keeps the keys.
     cursor_keeps_focus: Cell<bool>,
+    cursor_focus_generation: Rc<Cell<u64>>,
     /// A pane whose results, rather than its hidden listing, take the focus a
     /// `FocusChanged` asked for. The view state focuses them on their cursor.
     results_take_focus: Cell<Option<usize>>,
@@ -595,6 +623,7 @@ impl ModeViews {
             focus_before_header: RefCell::new(None),
             suppress_focus_scroll: Cell::new(false),
             cursor_keeps_focus: Cell::new(false),
+            cursor_focus_generation: Rc::default(),
             results_take_focus: Cell::new(None),
         }
     }
@@ -1285,6 +1314,8 @@ impl ModeViews {
     }
 
     pub fn cancel_pending_restore(&mut self) {
+        self.cursor_focus_generation
+            .set(self.cursor_focus_generation.get().wrapping_add(1));
         self.pane_navigation.borrow_mut().cancel();
     }
 
@@ -1293,7 +1324,7 @@ impl ModeViews {
             return;
         }
         self.cancel_rename();
-        self.pane_navigation.borrow_mut().cancel();
+        self.cancel_pending_restore();
         self.mode = mode;
         match mode {
             BrowserMode::Columns => {}
@@ -1753,8 +1784,36 @@ impl ModeViews {
         self.results_take_focus.take()
     }
 
+    pub(in crate::ui) fn cancel_column_drag(&self) -> bool {
+        if self.mode != BrowserMode::List {
+            return false;
+        }
+        self.visible_panes().into_iter().any(|pane| {
+            let Some(columns) = pane
+                .list_columns
+                .as_ref()
+                .filter(|columns| columns.drag.get().is_some_and(|drag| drag.active))
+            else {
+                return false;
+            };
+            let Some(headings) = pane.list_headings.as_ref() else {
+                return false;
+            };
+            // Reset can emit drag-end; discard the pending commit first.
+            columns.finish_drag(headings, &pane.section.bound_items, None);
+            let controllers = headings.observe_controllers();
+            if let Some(drag) = (0..controllers.n_items())
+                .find_map(|index| controllers.item(index).and_downcast::<gtk::GestureDrag>())
+            {
+                drag.reset();
+            }
+            true
+        })
+    }
+
     pub fn focus_visible_pane(&self, depth: usize) {
-        if self.rename_is_active() {
+        if self.rename_is_active() || !super::focus_navigation::browser_can_take_focus(&self.stack)
+        {
             return;
         }
         let Some(pane) = self
@@ -1782,13 +1841,19 @@ impl ModeViews {
             || (pane.focus_view(), None),
             |(view, position)| (view, Some(position)),
         );
+        let generation = self.cursor_focus_generation.get();
+        let had_live_focus = view
+            .root()
+            .and_then(|root| root.focus())
+            .is_some_and(|focused| focused.is_mapped());
         if !view.grab_focus() {
             for pane in self.panes_at(depth) {
                 pane.stack.grab_focus();
             }
             return;
         }
-        if self.suppress_focus_scroll.replace(false) {
+        // A recycled, unmapped rename row needs GTK's cursor restored, not just widget focus.
+        if self.suppress_focus_scroll.replace(false) && had_live_focus {
             if let Some(position) = position
                 && let Some(items) = pane
                     .item_sections()
@@ -1812,7 +1877,11 @@ impl ModeViews {
         }
         let view = view.downgrade();
         let stack = pane.stack.downgrade();
+        let current_generation = self.cursor_focus_generation.clone();
         glib::idle_add_local_once(move || {
+            if current_generation.get() != generation {
+                return;
+            }
             if let Some(view) = view.upgrade()
                 && stack
                     .upgrade()
@@ -2283,7 +2352,9 @@ struct IconsControls {
 }
 
 /// `tooltip` names the filter shortcut with `%{keys}`.
-pub(crate) fn filter_controls(tooltip: &str) -> (gtk::Entry, gtk::Revealer, gtk::ToggleButton) {
+pub(crate) fn filter_controls(
+    tooltip: &'static str,
+) -> (gtk::Entry, gtk::Revealer, gtk::ToggleButton) {
     let entry = gtk::Entry::builder()
         .placeholder_text(super::browser::filter_placeholder(0))
         .has_frame(false)
@@ -2298,16 +2369,23 @@ pub(crate) fn filter_controls(tooltip: &str) -> (gtk::Entry, gtk::Revealer, gtk:
         .transition_type(gtk::RevealerTransitionType::SlideDown)
         .child(&row)
         .build();
-    let label = super::shortcut_reference::with_keys(
-        tooltip,
-        super::keys::Keys::One(super::keys::bindings::FILTER),
-    );
-    let button = gtk::ToggleButton::builder().tooltip_text(&label).build();
+    let button = gtk::ToggleButton::new();
+    let labelled_entry = entry.clone();
+    // 10xer hides the button, so it names the default map's key.
+    super::shortcut_reference::follow_keys(&button, move |button| {
+        let keys = super::keys::label_in_map(
+            &rust_i18n::locale(),
+            &super::keys::Keys::One(super::keys::bindings::FILTER.shown()),
+            super::keys::Map::Default,
+        );
+        let label = rust_i18n::t!(tooltip, keys = keys);
+        button.set_tooltip_text(Some(&label));
+        super::accessibility::set_label(button, &label);
+        super::accessibility::set_label(&labelled_entry, &label);
+    });
     button.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::FUNNEL,
     )));
-    super::accessibility::set_label(&button, &label);
-    super::accessibility::set_label(&entry, &label);
     crate::ui::controls::pane_header_action(&button);
     let shown_filter = revealer.clone();
     let focused_filter = entry.clone();
@@ -3486,33 +3564,17 @@ fn list_headings(
     drag.set_button(1);
     drag.set_propagation_phase(gtk::PropagationPhase::Capture);
 
-    let drag_state = Rc::new(Cell::new(None::<ListColumnDrag>));
+    let drag_state = columns.drag.clone();
     let headings_weak = headings.downgrade();
     let finish_drag = Rc::new({
-        let drag_state = drag_state.clone();
         let headings_weak = headings_weak.clone();
         let columns = columns.clone();
         let bound_items = bound_items.clone();
         move |released: Option<(f64, f64)>| {
-            let Some(drag) = drag_state.take() else {
-                return;
-            };
-            let Some(headings) = headings_weak.upgrade() else {
-                return;
-            };
-            headings.set_cursor(None);
-            headings.remove_css_class("column-reordering");
-            column_drop_feedback(&headings, None);
-            if drag.active
-                && let Some(offset) = released
-                && let Some((target, after)) = column_drop_site(&headings, &columns, drag, offset)
-            {
-                super::preferences::PreferenceManager::shared().move_list_column(
-                    drag.column,
-                    target,
-                    after,
-                );
-                apply_columns_layout(&headings, &columns, &bound_items);
+            if let Some(headings) = headings_weak.upgrade() {
+                columns.finish_drag(&headings, &bound_items, released);
+            } else {
+                columns.drag.take();
             }
         }
     });
@@ -3773,10 +3835,9 @@ fn list_navigation(browser: &Rc<Browser>) -> gtk::Box {
         ),
     ] {
         let button = gtk::Button::builder().sensitive(available).build();
-        super::accessibility::set_tooltip_and_label(
-            &button,
-            &super::shortcut_reference::with_keys(tooltip, Keys::One(binding)),
-        );
+        let keys = Keys::One(binding.alternate(0).shown());
+        super::shortcut_reference::follow_tooltip(&button, tooltip, keys);
+        super::shortcut_reference::follow_label(&button, tooltip, keys);
         button.set_child(Some(&crate::assets::chrome_icon(icon)));
         button.add_css_class("list-navigation-button");
         button.set_cursor_from_name(Some("pointer"));

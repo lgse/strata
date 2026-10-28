@@ -1300,6 +1300,7 @@
   "keys.name.home": "Pos1",
   "keys.name.insert": "Einfg",
   "keys.name.menu": "Menü",
+  "keys.name.compose": "Compose",
   "keys.name.page_down": "Bild ab",
   "keys.name.page_up": "Bild auf",
   "keys.name.shift": "Umschalt",
@@ -1493,6 +1494,17 @@
   "The command opened in your terminal. Run diagnostics again when it finishes.": "Der Befehl wurde in Ihrem Terminal geöffnet. Führen Sie die Diagnose erneut aus, wenn er abgeschlossen ist.",
   "Disabled": "Deaktiviert",
   "Open folder": "Ordner öffnen",
+  "Keyboard": "Tastatur",
+  "Keyboard settings": "Tastatureinstellungen",
+  "Shortcuts for each mode": "Tastenkürzel je Modus",
+  "Search keybinds": "Tastenbelegung durchsuchen",
+  "Reset all": "Alle zurücksetzen",
+  "Reset all keybinds?": "Alle Tastenbelegungen zurücksetzen?",
+  "Restore the shipped keys of every action in the shown mode.": "Ursprüngliche Tasten aller Aktionen im angezeigten Modus wiederherstellen.",
+  "Not bound": "Nicht belegt",
+  "Press a key…": "Taste drücken…",
+  "Turn off type-to-search": "„Zum Suchen tippen“ ausschalten",
+  "settings_keywords.keyboard-shortcuts": "Tastenkürzel Tasten Tastatur belegen zuweisen Kürzel zurücksetzen",
   "%{distance} km": "%{distance} km",
   "%{minimum}–%{maximum} m": "%{minimum}–%{maximum} m",
   "Copy this route file locally before previewing it.": "Kopieren Sie diese Routendatei vor der Vorschau auf Ihren Computer.",
@@ -1510,5 +1522,6 @@
   "%{distance} mi": "%{distance} mi",
   "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum} ft",
   "%{elevation} m": "%{elevation} m",
-  "%{elevation} ft": "%{elevation} ft"
+  "%{elevation} ft": "%{elevation} ft",
+  "No action": "Keine Aktion"
 }

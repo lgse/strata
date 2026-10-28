@@ -1300,6 +1300,7 @@
   "keys.name.home": "Home",
   "keys.name.insert": "Insert",
   "keys.name.menu": "Menu",
+  "keys.name.compose": "Compose",
   "keys.name.page_down": "Page Down",
   "keys.name.page_up": "Page Up",
   "keys.name.shift": "Shift",
@@ -1493,6 +1494,17 @@
   "The command opened in your terminal. Run diagnostics again when it finishes.": "The command opened in your terminal. Run diagnostics again when it finishes.",
   "Disabled": "Disabled",
   "Open folder": "Open folder",
+  "Keyboard": "Keyboard",
+  "Keyboard settings": "Keyboard settings",
+  "Shortcuts for each mode": "Shortcuts for each mode",
+  "Search keybinds": "Search keybinds",
+  "Reset all": "Reset all",
+  "Reset all keybinds?": "Reset all keybinds?",
+  "Restore the shipped keys of every action in the shown mode.": "Restore the shipped keys of every action in the shown mode.",
+  "Not bound": "Not bound",
+  "Press a key…": "Press a key…",
+  "Turn off type-to-search": "Turn off type-to-search",
+  "settings_keywords.keyboard-shortcuts": "keymap keybindings hotkeys accelerators rebind remap keys 10xer default reset",
   "%{distance} km": "%{distance} km",
   "%{minimum}–%{maximum} m": "%{minimum}–%{maximum} m",
   "Copy this route file locally before previewing it.": "Copy this route file locally before previewing it.",
@@ -1510,5 +1522,6 @@
   "%{distance} mi": "%{distance} mi",
   "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum} ft",
   "%{elevation} m": "%{elevation} m",
-  "%{elevation} ft": "%{elevation} ft"
+  "%{elevation} ft": "%{elevation} ft",
+  "No action": "No action"
 }

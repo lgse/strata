@@ -2071,8 +2071,14 @@ fn bind_context_hint(button: &gtk::Button, shortcut: &gtk::Label, label: &str, h
     let label = label.to_owned();
     PreferenceManager::shared().bind_preference(
         shortcut,
-        move |preferences| shortcut_reference::context_hint_for(hint, preferences),
-        move |widget, hinted| {
+        // The same command shows other keys in the other map or once rebound.
+        move |preferences| {
+            (
+                shortcut_reference::context_hint_for(hint, preferences),
+                preferences.shown_keys(),
+            )
+        },
+        move |widget, (hinted, _)| {
             let shown = widget
                 .downcast_ref::<gtk::Label>()
                 .expect("context hint label");

@@ -31,6 +31,7 @@ mod exclusions;
 mod general;
 mod install_command;
 mod integrations;
+mod keyboard;
 mod release_picker;
 mod search;
 mod theme;
@@ -1018,6 +1019,11 @@ pub fn build_layer(
                         search::apply(&page, &search_state);
                         stack.add_named(&page, Some("actions"));
                     }
+                    keyboard::PAGE => {
+                        let page = keyboard::keyboard_page(preferences.clone());
+                        search::apply(&page, &search_state);
+                        stack.add_named(&page, Some(keyboard::PAGE));
+                    }
                     "integrations" => {
                         let open_folder = open_folder.clone();
                         let close_settings = close_settings.clone();
@@ -1098,7 +1104,8 @@ pub fn build_layer(
     close_on_escape(&layer, move || escape_hide());
 
     let click_layer = layer.clone();
-    let click_dialog = responsive_panel.clone();
+    // The responsive bin fills the window; the dialog is the panel inside its margin.
+    let click_dialog = panel.clone();
     let click = gtk::GestureClick::new();
     click.connect_pressed(move |_, _, x, y| {
         let on_dialog = click_dialog
@@ -3101,7 +3108,7 @@ struct NavigationEntry {
 
 /// Settings pages in navigation order. Search finds page titles here and routes
 /// to the button built from each entry.
-static NAVIGATION: [NavigationEntry; 7] = [
+static NAVIGATION: [NavigationEntry; 8] = [
     NavigationEntry {
         page: "general",
         label: "General",
@@ -3122,6 +3129,13 @@ static NAVIGATION: [NavigationEntry; 7] = [
         subtitle: "Custom actions",
         icon: icons::PLAY,
         accessible_label: None,
+    },
+    NavigationEntry {
+        page: keyboard::PAGE,
+        label: "Keyboard",
+        subtitle: "Shortcuts for each mode",
+        icon: icons::KEYBOARD,
+        accessible_label: Some("Keyboard settings"),
     },
     NavigationEntry {
         page: "integrations",
@@ -3259,9 +3273,9 @@ fn translated_in(locale: &str, message: &str) -> String {
     rust_i18n::t!(
         message,
         locale = locale,
-        reference_keys = label_in(locale, &One(REFERENCE)),
-        sidebar_focus_keys = label_in(locale, &One(SIDEBAR_FOCUS)),
-        tenxer_mode_keys = label_in(locale, &One(TENXER_MODE))
+        reference_keys = label_in(locale, &One(REFERENCE.alternate(0).shown())),
+        sidebar_focus_keys = label_in(locale, &One(SIDEBAR_FOCUS.shown())),
+        tenxer_mode_keys = label_in(locale, &One(TENXER_MODE.shown()))
     )
     .into_owned()
 }
@@ -3273,12 +3287,12 @@ fn settings_option(title: &str, description: &str, active: bool) -> (gtk::Box, g
     let copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
     copy.set_hexpand(true);
     copy.set_valign(gtk::Align::Center);
-    let title_label = gtk::Label::new(Some(&translated(title)));
+    let title_label = gtk::Label::new(None);
     title_label.set_xalign(0.0);
     title_label.set_wrap(true);
     title_label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     title_label.add_css_class("settings-option-title");
-    let description_label = gtk::Label::new(Some(&translated(description)));
+    let description_label = gtk::Label::new(None);
     description_label.set_xalign(0.0);
     description_label.set_wrap(true);
     description_label.add_css_class("settings-option-description");
@@ -3290,8 +3304,26 @@ fn settings_option(title: &str, description: &str, active: bool) -> (gtk::Box, g
         .halign(gtk::Align::End)
         .valign(gtk::Align::Center)
         .build();
-    super::accessibility::set_own_label(&toggle, &translated(title));
-    super::accessibility::set_description(&toggle, Some(&translated(description)));
+    let keyed = [title, description]
+        .iter()
+        .any(|message| message.contains("_keys}"));
+    let (title, description) = (title.to_owned(), description.to_owned());
+    let (title_label, description_label) = (title_label.downgrade(), description_label.downgrade());
+    let render = move |toggle: &gtk::Switch| {
+        if let Some(label) = title_label.upgrade() {
+            label.set_text(&translated(&title));
+        }
+        if let Some(label) = description_label.upgrade() {
+            label.set_text(&translated(&description));
+        }
+        super::accessibility::set_own_label(toggle, &translated(&title));
+        super::accessibility::set_description(toggle, Some(&translated(&description)));
+    };
+    if keyed {
+        super::shortcut_reference::follow_keys(&toggle, render);
+    } else {
+        render(&toggle);
+    }
     row.append(&copy);
     row.append(&toggle);
     (row, toggle)

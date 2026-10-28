@@ -296,12 +296,11 @@ impl TabStrip {
         content.append(&label);
         content.append(&hint);
         select.set_child(Some(&content));
-        let close = layout::header_action(
-            crate::assets::icons::X,
-            &crate::ui::shortcut_reference::with_keys(
-                "Close tab (%{keys})",
-                crate::ui::keys::Keys::One(crate::ui::keys::bindings::TAB_CLOSE),
-            ),
+        let close = layout::header_action(crate::assets::icons::X, "");
+        crate::ui::shortcut_reference::follow_tooltip(
+            &close,
+            "Close tab (%{keys})",
+            crate::ui::keys::Keys::One(crate::ui::keys::bindings::TAB_CLOSE.shown()),
         );
         close.remove_css_class("header-action");
         let close_icons = gtk::Stack::new();

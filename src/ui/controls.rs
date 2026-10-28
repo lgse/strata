@@ -11,12 +11,10 @@ pub(super) fn stepper(labels: [String; 3]) -> (gtk::Box, [gtk::Button; 3]) {
     control.set_hexpand(true);
     control.set_halign(gtk::Align::End);
     let buttons = std::array::from_fn(|index| {
-        let label = &labels[index];
         let button = gtk::Button::new();
         if index == 1 {
             button.add_css_class("appearance-text-value");
             button.set_hexpand(true);
-            super::accessibility::set_description(&button, Some(label));
         } else {
             let icon = if index == 0 {
                 crate::assets::icons::MINUS
@@ -28,13 +26,23 @@ pub(super) fn stepper(labels: [String; 3]) -> (gtk::Box, [gtk::Button; 3]) {
             image.set_valign(gtk::Align::Center);
             button.set_child(Some(&image));
             button.add_css_class("appearance-text-step");
-            super::accessibility::set_label(&button, label);
-            button.set_tooltip_text(Some(label));
         }
+        label_stepper_button(&button, &labels[index]);
         control.append(&button);
         button
     });
     (control, buttons)
+}
+
+/// The value button keeps its text and takes `label` as its description; the
+/// icon-only step buttons take it as their name and tooltip.
+pub(super) fn label_stepper_button(button: &gtk::Button, label: &str) {
+    if button.has_css_class("appearance-text-value") {
+        super::accessibility::set_description(button, Some(label));
+    } else {
+        super::accessibility::set_label(button, label);
+        button.set_tooltip_text(Some(label));
+    }
 }
 
 /// A numeric stepper with GTK's native spin actions, decrement before the entry.

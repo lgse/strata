@@ -2,25 +2,25 @@
 
 use super::*;
 use crate::ui::keys::{
-    self, Binding, KeyPress, SHORTCUT_MODIFIERS,
+    self, Command, KeyPress, Match, SHORTCUT_MODIFIERS,
     bindings::{
-        COPY, DOWN, ESCAPE_ANY, FIRST_ITEM, LAST_ITEM, LEFT, RIGHT, SELECT_ALL, UNSELECT_ALL, UP,
+        COPY, DOWN, END_KEY, ESCAPE_ANY, HOME_KEY, LEFT, RIGHT, SELECT_ALL, UNSELECT_ALL, UP,
     },
 };
 
-const CLEARS_SELECTION: [Binding; 9] = [
-    ESCAPE_ANY,
-    LEFT.ignoring(SHORTCUT_MODIFIERS),
-    RIGHT.ignoring(SHORTCUT_MODIFIERS),
-    UP.ignoring(SHORTCUT_MODIFIERS),
-    DOWN.ignoring(SHORTCUT_MODIFIERS),
-    FIRST_ITEM.ignoring(SHORTCUT_MODIFIERS),
-    LAST_ITEM.ignoring(SHORTCUT_MODIFIERS),
-    SELECT_ALL,
-    UNSELECT_ALL,
+const CLEARS_SELECTION: [&dyn Match; 9] = [
+    &ESCAPE_ANY,
+    &LEFT.ignoring(SHORTCUT_MODIFIERS),
+    &RIGHT.ignoring(SHORTCUT_MODIFIERS),
+    &UP.ignoring(SHORTCUT_MODIFIERS),
+    &DOWN.ignoring(SHORTCUT_MODIFIERS),
+    &HOME_KEY.ignoring(SHORTCUT_MODIFIERS),
+    &END_KEY.ignoring(SHORTCUT_MODIFIERS),
+    &SELECT_ALL,
+    &UNSELECT_ALL,
 ];
 
-const CELL_ACTIONS: [(Binding, &str); 2] = [
+const CELL_ACTIONS: [(Command, &str); 2] = [
     (COPY, "clipboard.copy"),
     (SELECT_ALL, "selection.select-all"),
 ];
@@ -439,7 +439,7 @@ impl Selection {
                 view.clipboard().set_text(&text);
                 return glib::Propagation::Stop;
             }
-            if press.is_any(&CLEARS_SELECTION) {
+            if press.untyped().is_any(&CLEARS_SELECTION) {
                 state.clear();
             }
             run_focused_cell_action(controller, press)

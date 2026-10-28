@@ -75,6 +75,7 @@ pub mod icons {
     pub const LOCK_OPEN: &str = "strata-lock-open";
     pub const KEY: &str = "strata-key";
     pub const KEY_ROUND: &str = "strata-key-round";
+    pub const KEYBOARD: &str = "strata-keyboard";
     pub const MONITOR: &str = "strata-monitor";
     pub const NETWORK: &str = "strata-network";
     pub const PALETTE: &str = "strata-palette";

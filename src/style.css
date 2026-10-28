@@ -6727,6 +6727,83 @@ two-column presentation. */
   font-size: 0.875em;
 }
 
+.settings-dialog .settings-preferences.keymap-table,
+.settings-dialog.compact .settings-preferences.keymap-table {
+  padding: 0;
+}
+
+.keymap-table > box:first-child > .menu-heading {
+  margin-top: 0;
+}
+
+.keymap-chip {
+  background: @strata_muted;
+  border: 1px solid alpha(@strata_border, 0.8);
+  border-radius: 5px;
+  padding: 1px 2px 1px 7px;
+}
+
+.keymap-chip-key,
+.keymap-prefix {
+  color: @strata_text;
+  font-size: 0.875em;
+  font-weight: 600;
+}
+
+.keymap-prefix {
+  color: @strata_dim_text;
+}
+
+.keymap-chip.inactive {
+  background: transparent;
+  border-style: dashed;
+}
+
+.keymap-chip.inactive .keymap-chip-key {
+  color: @strata_dim_text;
+  text-decoration-line: line-through;
+}
+
+.settings-dialog button.keymap-chip-remove {
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  box-shadow: none;
+  color: @strata_dim_text;
+  min-height: 18px;
+  min-width: 18px;
+  padding: 0;
+}
+
+.settings-dialog button.keymap-chip-remove:hover {
+  background: alpha(@strata_accent, 0.15);
+  color: @strata_text;
+}
+
+.settings-dialog button.keymap-chip-remove:active {
+  background: alpha(@strata_accent, 0.22);
+  color: @strata_accent;
+}
+
+.settings-dialog button.keymap-chip-remove:focus-visible {
+  outline: 2px solid alpha(@strata_accent, 0.5);
+  outline-offset: 0;
+}
+
+.settings-action-button.keymap-capture {
+  background: alpha(@strata_accent, 0.1);
+  border-color: @strata_accent;
+  color: @strata_accent;
+}
+
+.keymap-finding.error {
+  color: @strata_danger;
+}
+
+.keymap-finding.warning {
+  color: @strata_accent;
+}
+
 .settings-release-expander {
   background: mix(@strata_bg, @strata_muted, 0.25);
   border: 1px solid alpha(@strata_border, 0.55);
@@ -6876,9 +6953,10 @@ two-column presentation. */
   min-width: 42px;
 }
 
+/* 11px puts the 18px icon's centre on the search field's 16px icon. */
 .settings-dialog .settings-navigation button {
-  padding-left: 18px;
-  padding-right: 10px;
+  padding-left: 11px;
+  padding-right: 11px;
 }
 
 .settings-dialog .settings-navigation.compact > button,

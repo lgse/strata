@@ -356,7 +356,7 @@ impl Waveform {
                 #[upgrade_or]
                 glib::Propagation::Proceed,
                 move |_, press| {
-                    match seek_or_volume(press) {
+                    match seek_or_volume(&press.untyped()) {
                         Some(MediaCommand::Seek(seek)) => waveform.seek_by_key(seek),
                         Some(command) => {
                             if let Some(delta) = command.volume_delta() {

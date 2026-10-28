@@ -27,6 +27,11 @@ Strata isolates its appearance from desktop GTK styling:
   from the desktop icon theme, such as dropdown arrows and spin button steps,
   use bundled symbolic icons instead. Application icons in Open With still
   come from the desktop theme.
+- On a display without a compositor, such as X11 without a compositing
+  manager, popovers, menus, and tooltips drop their shadow and corner radius,
+  because the transparent pixels of a popup surface would render solid black.
+  This fallback sits below the user stylesheet and follows the display's
+  composited state live.
 
 The `@strata_*` namespace prevents accidental collisions with other
 stylesheets' `@theme_*` colors; it does not stop deliberate `@strata_*`

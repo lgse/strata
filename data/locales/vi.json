@@ -1300,6 +1300,7 @@
   "keys.name.home": "Home",
   "keys.name.insert": "Insert",
   "keys.name.menu": "Menu",
+  "keys.name.compose": "Compose",
   "keys.name.page_down": "Page Down",
   "keys.name.page_up": "Page Up",
   "keys.name.shift": "Shift",
@@ -1493,6 +1494,17 @@
   "The command opened in your terminal. Run diagnostics again when it finishes.": "Lệnh đã được mở trong terminal. Hãy chạy lại chẩn đoán khi lệnh hoàn tất.",
   "Disabled": "Đã tắt",
   "Open folder": "Mở thư mục",
+  "Keyboard": "Bàn phím",
+  "Keyboard settings": "Cài đặt bàn phím",
+  "Shortcuts for each mode": "Phím tắt cho từng chế độ",
+  "Search keybinds": "Tìm phím tắt",
+  "Reset all": "Đặt lại tất cả",
+  "Reset all keybinds?": "Đặt lại tất cả phím tắt?",
+  "Restore the shipped keys of every action in the shown mode.": "Khôi phục phím gốc của mọi hành động trong chế độ đang hiển thị.",
+  "Not bound": "Chưa gán",
+  "Press a key…": "Nhấn một phím…",
+  "Turn off type-to-search": "Tắt “Nhập để tìm kiếm”",
+  "settings_keywords.keyboard-shortcuts": "phím tắt phím bàn phím gán đổi đặt lại",
   "%{distance} km": "%{distance} km",
   "%{minimum}–%{maximum} m": "%{minimum}–%{maximum} m",
   "Copy this route file locally before previewing it.": "Hãy sao chép tệp tuyến đường này về máy trước khi xem trước.",
@@ -1510,5 +1522,6 @@
   "%{distance} mi": "%{distance} dặm",
   "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum} ft",
   "%{elevation} m": "%{elevation} m",
-  "%{elevation} ft": "%{elevation} ft"
+  "%{elevation} ft": "%{elevation} ft",
+  "No action": "Không có hành động"
 }

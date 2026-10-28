@@ -17,11 +17,11 @@ use crate::ui::controls::{
 use crate::ui::focus_navigation::vim_focus_direction;
 use crate::ui::keys::{
     self, KeyPress,
-    bindings::{ENTER_ANY, ESCAPE_ANY, LEFT, RIGHT, TENXER_DELETE_CONFIRM, VIM_LEFT, VIM_RIGHT},
+    bindings::{ENTER_ANY, ESCAPE_ANY, LEFT, RIGHT, TENXER_DELETE_CONFIRM},
 };
 use crate::ui::modal::{
     ModalHost, close_on_escape, dismiss_modal_layer, dismiss_modal_layer_then, modal_layer,
-    show_error_dialog,
+    remember_modal_focus_for_listing, show_error_dialog,
 };
 use gtk::gdk::ModifierType as Modifiers;
 use gtk::prelude::*;
@@ -197,9 +197,9 @@ enum DeleteConfirmationFocus {
 
 fn delete_confirmation_focus_target(press: &KeyPress) -> Option<DeleteConfirmationFocus> {
     const ARROW_MODIFIERS: Modifiers = Modifiers::SHIFT_MASK.union(Modifiers::SUPER_MASK);
-    if press.is_any(&[LEFT.ignoring(ARROW_MODIFIERS), VIM_LEFT]) {
+    if press.is(LEFT.ignoring(ARROW_MODIFIERS).or_alternates()) {
         Some(DeleteConfirmationFocus::Cancel)
-    } else if press.is_any(&[RIGHT.ignoring(ARROW_MODIFIERS), VIM_RIGHT]) {
+    } else if press.is(RIGHT.ignoring(ARROW_MODIFIERS).or_alternates()) {
         Some(DeleteConfirmationFocus::Confirm)
     } else {
         None
@@ -1015,26 +1015,23 @@ impl ViewState {
         let spinner = layout.loading;
 
         let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
+        remember_modal_focus_for_listing(&layer, &window_overlay);
         window_overlay.add_overlay(&layer);
         let cancelled_layer = layer.clone();
         let cancelled_overlay = window_overlay.clone();
         let cancelled_root = blurred_root.clone();
-        let cancelled_browser = self.browser.clone();
         cancel.connect_clicked(move |_| {
             dismiss_modal_layer(
                 &cancelled_layer,
                 &cancelled_overlay,
                 cancelled_root.as_ref(),
             );
-            cancelled_browser.focus_active();
         });
         let closed_layer = layer.clone();
         let closed_overlay = window_overlay.clone();
         let closed_root = blurred_root.clone();
-        let closed_browser = self.browser.clone();
         close.connect_clicked(move |_| {
             dismiss_modal_layer(&closed_layer, &closed_overlay, closed_root.as_ref());
-            closed_browser.focus_active();
         });
         let confirmed_layer = layer.clone();
         let confirmed_overlay = window_overlay.clone();
@@ -1083,7 +1080,6 @@ impl ViewState {
         let escaped_layer = layer.clone();
         let escaped_overlay = window_overlay;
         let escaped_root = blurred_root;
-        let escaped_browser = self.browser.clone();
         let focused_cancel = cancel.clone();
         let focused_cancel_initial = cancel.clone();
         let focused_confirm = confirm.clone();
@@ -1091,7 +1087,6 @@ impl ViewState {
         keys::on_press(&keys, move |_, press| {
             if press.is(ESCAPE_ANY) {
                 dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
-                escaped_browser.focus_active();
                 glib::Propagation::Stop
             } else if press.is(ENTER_ANY) {
                 if let Some(button) = enter_buttons.iter().find(|button| button.has_focus()) {

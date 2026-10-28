@@ -329,6 +329,74 @@ fn context_hints_follow_the_active_map() {
 }
 
 #[test]
+fn context_hints_and_accelerators_follow_keymap_overrides() {
+    crate::test_support::gtk_test(
+        "ui::browser::context_menu::tests::menus::context_hints_and_accelerators_follow_keymap_overrides",
+        || {
+            use crate::ui::keys::{
+                Binding, Map,
+                bindings::{COPY_PATH, RENAME},
+            };
+            let manager = crate::ui::preferences::PreferenceManager::shared();
+            manager.set_tenxer_mode(false);
+            let fixture = tempfile::tempdir().expect("menu fixture");
+            let view = BrowserView::new(Rc::new(MenuSource), PeekBehavior::default());
+            view.set_operation_provider(Rc::new(crate::adapters::LocalOperationProvider));
+            let window = gtk::Window::builder()
+                .child(&view.widget())
+                .default_width(1000)
+                .default_height(850)
+                .build();
+            window.present();
+            view.browser()
+                .navigate(crate::model::Location::local(fixture.path()));
+            wait_until(|| label(&view.widget(), "notes.txt").is_some());
+            let menu = open_menu(&view, Some("notes.txt"));
+            let model = menu
+                .downcast_ref::<gtk::PopoverMenu>()
+                .and_then(gtk::PopoverMenu::menu_model)
+                .expect("native menu model");
+            let accelerator = || native_accelerator(&model, "Rename").expect("rename row");
+            let hint = || {
+                let hints = label_texts(&menu);
+                hints
+                    .iter()
+                    .position(|hint| hint == "Rename")
+                    .and_then(|index| hints.get(index + 1).cloned())
+            };
+            assert_eq!(hint().as_deref(), Some("F2 / Ctrl+R"));
+            assert_eq!(accelerator(), "F2");
+            manager.set_bindings(Map::Default, RENAME, vec![Binding::ctrl(gtk::gdk::Key::e)]);
+            assert_eq!(hint().as_deref(), Some("Ctrl+E"));
+            assert_eq!(accelerator(), "<Control>e");
+            manager.set_bindings(Map::Default, RENAME, Vec::new());
+            assert_ne!(hint().as_deref(), Some("Ctrl+E"));
+            assert_eq!(accelerator(), "");
+
+            // Type-to-search hides only a plain key it takes, not a key moved off one.
+            let copy_path = || {
+                let hints = label_texts(&menu);
+                hints
+                    .iter()
+                    .position(|hint| hint == "Copy path")
+                    .and_then(|index| hints.get(index + 1).cloned())
+            };
+            manager.set_type_to_search(true);
+            assert_ne!(copy_path().as_deref(), Some("y"));
+            manager.set_bindings(
+                Map::Default,
+                COPY_PATH,
+                vec![Binding::alt(gtk::gdk::Key::y)],
+            );
+            assert_eq!(copy_path().as_deref(), Some("Alt+Y"));
+            menu.popdown();
+            view.browser().clear_observer();
+            window.destroy();
+        },
+    );
+}
+
+#[test]
 fn archive_extraction_actions_follow_build_support() {
     crate::test_support::gtk_test(
         "ui::browser::context_menu::tests::menus::archive_extraction_actions_follow_build_support",
@@ -562,6 +630,24 @@ fn tree_label_texts(menu: &gtk::Popover) -> Vec<String> {
         .filter(|label| !label.text().is_empty())
         .map(|label| label.text().to_string())
         .collect()
+}
+
+/// The `accel` attribute of the native row labeled `label`, empty without one.
+fn native_accelerator(model: &gio::MenuModel, label: &str) -> Option<String> {
+    (0..model.n_items()).find_map(|index| {
+        let attribute = |name| {
+            model
+                .item_attribute_value(index, name, None)
+                .and_then(|value| value.get::<String>())
+        };
+        if attribute("label").as_deref() == Some(label) {
+            return Some(attribute("accel").unwrap_or_default());
+        }
+        ["section", "submenu"]
+            .into_iter()
+            .filter_map(|link| model.item_link(index, link))
+            .find_map(|linked| native_accelerator(&linked, label))
+    })
 }
 
 fn label_texts(menu: &gtk::Popover) -> Vec<String> {

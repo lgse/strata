@@ -2,10 +2,11 @@
 
 use gtk::gdk::Key;
 
-use crate::ui::keys::Binding;
+use crate::ui::keys::{Binding, Command};
 
 catalog! {
     tenxer_only {
-        CHOOSE_FOLDER: Binding = Binding::ctrl(Key::Return);
+        /// Folder requests in the file chooser accept with it in either map.
+        CHOOSE_FOLDER: Command "choose_folder" = Binding::ctrl(Key::Return), live in both;
     }
 }

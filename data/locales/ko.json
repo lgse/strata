@@ -1300,6 +1300,7 @@
   "keys.name.home": "Home",
   "keys.name.insert": "Insert",
   "keys.name.menu": "Menu",
+  "keys.name.compose": "Compose",
   "keys.name.page_down": "Page Down",
   "keys.name.page_up": "Page Up",
   "keys.name.shift": "Shift",
@@ -1493,6 +1494,17 @@
   "The command opened in your terminal. Run diagnostics again when it finishes.": "터미널에서 명령을 열었습니다. 완료되면 진단을 다시 실행하세요.",
   "Disabled": "비활성화됨",
   "Open folder": "폴더 열기",
+  "Keyboard": "키보드",
+  "Keyboard settings": "키보드 설정",
+  "Shortcuts for each mode": "모드별 단축키",
+  "Search keybinds": "키 바인딩 검색",
+  "Reset all": "모두 초기화",
+  "Reset all keybinds?": "모든 키 바인딩을 초기화할까요?",
+  "Restore the shipped keys of every action in the shown mode.": "표시된 모드의 모든 동작을 기본 키로 되돌립니다.",
+  "Not bound": "할당되지 않음",
+  "Press a key…": "키를 누르세요…",
+  "Turn off type-to-search": "“입력하여 검색” 끄기",
+  "settings_keywords.keyboard-shortcuts": "단축키 키 키보드 할당 변경 재지정 초기화",
   "%{distance} km": "%{distance} km",
   "%{minimum}–%{maximum} m": "%{minimum}–%{maximum} m",
   "Copy this route file locally before previewing it.": "미리보기 전에 이 경로 파일을 로컬로 복사하세요.",
@@ -1510,5 +1522,6 @@
   "%{distance} mi": "%{distance}마일",
   "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum}피트",
   "%{elevation} m": "%{elevation} m",
-  "%{elevation} ft": "%{elevation} 피트"
+  "%{elevation} ft": "%{elevation} 피트",
+  "No action": "동작 없음"
 }

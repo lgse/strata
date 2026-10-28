@@ -732,8 +732,6 @@ shows no hint. Default-map hints that are unbound or remapped (**y** for copy pa
 **Ctrl+R** for rename) are hidden. Copy path is **c c**; Properties is
 **Alt+Enter**.
 
-## Not bound
-
 Tabs use the same shortcuts in both modes: **Ctrl+T** creates a tab,
 **Ctrl+W** closes it, **Ctrl+Shift+T** reopens the last closed tab,
 **Ctrl+Tab / Ctrl+Shift+Tab** cycles tabs, and
@@ -744,16 +742,12 @@ stopping at either end of the strip.
 **Ctrl+Shift+1–9 / 0** selects a tab directly. Hold **Ctrl+Shift** to show tab
 numbers. See [browser tabs](keyboard-navigation.md#browser-tabs).
 
-These default-map shortcuts are unbound or remapped while the mode is on:
+## Not bound
 
-| Default-map key | In 10xer mode |
-| --- | --- |
-| **Ctrl+Shift+K** | Unbound. Use **z** / **Z**. |
-| **Ctrl+Alt+T** | Unbound. Use **;** **t** or the context menu. |
-| **Ctrl+\\** | Unbound. Arrows never leave the file list. |
-| **Ctrl+D** | Half page down. Duplicate is dropped. |
-| **Ctrl+F** | Full page down. Filter is **f**. |
-| **Ctrl+B** | Full page up. Sidebar toggle is **Ctrl+N**. |
-| **Ctrl+R** | Invert selection. Rename is **r** / **F2**. |
-| **y** / **p** (default map) | Yank / paste. Path copy is **c c**; pin with **g +** and jump to a pin with **g** then a digit. |
-| **Space** | Toggle selection. In List and Columns, preview is **l** / **→**. |
+Some default-map keys do something else in 10xer mode or nothing at all: for
+example, **Ctrl+R** inverts the selection there, and rename is **r** / **F2**.
+**Settings → Keyboard** shows both tables as they are, with any changes: switch
+it to **10xer mode** to see each action's 10xer keys and **Not bound** on the
+ones 10xer leaves out. Each table lists only the actions its mode can run. A key bound in the 10xer table to jump to folder, arrow
+scope, duplicate or pin works there, and the default table can bind several
+10xer verbs; see [Keymap](keymap.md#two-tables).

@@ -538,10 +538,11 @@ fn bind_tenxer_unused_subtitle(
         return;
     };
     let unused = crate::ui::tenxer_mode::UNUSED_SUBTITLE;
+    // Bound after the row's own rendering, so it has the last word.
     manager.bind_preference(
         &description,
-        PreferenceManager::tenxer_mode,
-        move |widget, enabled| {
+        PreferenceManager::shown_keys,
+        move |widget, (enabled, ..)| {
             if let Some(label) = widget.downcast_ref::<gtk::Label>() {
                 label.set_text(&super::translated(if enabled { unused } else { normal }));
                 label.set_visible(true);

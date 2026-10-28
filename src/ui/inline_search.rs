@@ -756,7 +756,7 @@ pub(super) fn wrap(
         let Some(state) = weak.upgrade() else {
             return glib::Propagation::Proceed;
         };
-        if !press.is(UP)
+        if !press.untyped().is(UP)
             || !state
                 .collection
                 .current_position()

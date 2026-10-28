@@ -37,9 +37,8 @@ use super::{
     keys::{
         KeyPress,
         bindings::{
-            BACKSPACE, DOWN, ENTER, FILTER_SLASH, FIRST_ITEM, FOCUS_NEXT, LAST_ITEM, LEFT,
-            PAGE_DOWN, PAGE_UP, RIGHT, SPACE, UP, VIEW_COLUMNS, VIEW_ICONS, VIEW_LIST, VIM_DOWN,
-            VIM_LEFT, VIM_RIGHT, VIM_UP,
+            BACKSPACE, DOWN, END_KEY, ENTER, FILTER_SLASH, FOCUS_NEXT, HOME_KEY, LEFT,
+            PAGE_DOWN_KEY, PAGE_UP_KEY, RIGHT, SPACE, UP, VIEW_COLUMNS, VIEW_ICONS, VIEW_LIST,
         },
     },
     modal::{ModalHost, close_on_escape, dismiss_modal_layer, modal_layer},
@@ -548,13 +547,12 @@ fn single_pane_arrow_action(
 
 pub(super) fn is_browser_navigation_key(press: &KeyPress) -> bool {
     const TOLERATED: ModifierType = ModifierType::SHIFT_MASK.union(ModifierType::ALT_MASK);
-    press.is_any(&[VIM_LEFT, VIM_DOWN, VIM_UP, VIM_RIGHT])
-        || [
-            UP, DOWN, LEFT, RIGHT, FIRST_ITEM, LAST_ITEM, PAGE_UP, PAGE_DOWN, FOCUS_NEXT, ENTER,
-            BACKSPACE,
-        ]
+    [UP, DOWN, LEFT, RIGHT, FOCUS_NEXT, ENTER]
         .into_iter()
-        .any(|key| press.is(key.ignoring(TOLERATED)))
+        .any(|key| press.is(key.ignoring(TOLERATED).or_alternates()))
+        || [HOME_KEY, END_KEY, PAGE_UP_KEY, PAGE_DOWN_KEY, BACKSPACE]
+            .into_iter()
+            .any(|key| press.is(key.ignoring(TOLERATED)))
 }
 
 pub(super) fn type_to_search_query(press: &KeyPress) -> Option<TypeToSearchQuery> {
@@ -839,7 +837,6 @@ pub(super) fn build_appearance_menu(
     let (row, check, _) = appearance_row(
         crate::assets::icons::EYE,
         "Preview panel",
-        "",
         preview.is_enabled(),
     );
     let preview_shortcut = gtk::Label::new(None);
@@ -856,13 +853,17 @@ pub(super) fn build_appearance_menu(
     let description_toggle = preview_toggle.downgrade();
     preferences.bind_preference(
         &preview_shortcut,
+        // The same command shows other keys in the other map or once rebound.
         |preferences| {
-            crate::ui::shortcut_reference::context_hint_for(
-                crate::ui::shortcut_reference::ContextHint::Preview,
-                preferences,
+            (
+                crate::ui::shortcut_reference::context_hint_for(
+                    crate::ui::shortcut_reference::ContextHint::Preview,
+                    preferences,
+                ),
+                preferences.shown_keys(),
             )
         },
-        move |widget, hint| {
+        move |widget, (hint, _)| {
             let shortcut = widget
                 .downcast_ref::<gtk::Label>()
                 .expect("preview shortcut label");
@@ -931,11 +932,29 @@ pub(super) fn build_appearance_menu(
             },
             shortcut_reference::with_keys,
         };
-        super::controls::stepper([
-            with_keys("Decrease text size (%{keys})", Keys::One(TEXT_SMALLER)),
-            with_keys("Reset text size (%{keys})", Keys::One(TEXT_RESET)),
-            with_keys("Increase text size (%{keys})", Keys::One(TEXT_LARGER)),
-        ])
+        let labels = || {
+            [
+                with_keys(
+                    "Decrease text size (%{keys})",
+                    Keys::One(TEXT_SMALLER.shown()),
+                ),
+                with_keys("Reset text size (%{keys})", Keys::One(TEXT_RESET.shown())),
+                with_keys(
+                    "Increase text size (%{keys})",
+                    Keys::One(TEXT_LARGER.alternate(0).shown()),
+                ),
+            ]
+        };
+        let (stepper, buttons) = super::controls::stepper(labels());
+        let relabeled = buttons.each_ref().map(|button| button.downgrade());
+        super::shortcut_reference::follow_keys(&stepper, move |_| {
+            for (button, label) in relabeled.iter().zip(labels()) {
+                if let Some(button) = button.upgrade() {
+                    super::controls::label_stepper_button(&button, &label);
+                }
+            }
+        });
+        (stepper, buttons)
     };
     text_controls.append(&stepper);
     for (button, delta) in [(decrease, -1), (increase, 1)] {
@@ -964,7 +983,9 @@ pub(super) fn build_appearance_menu(
             crate::assets::icons::EYE_OFF
         },
         "Hidden files",
-        &super::keys::label(&super::keys::Keys::One(super::keys::bindings::HIDDEN_FILES)),
+        Some(super::keys::Keys::One(
+            super::keys::bindings::HIDDEN_FILES.alternate(0).shown(),
+        )),
         hidden_files_shown,
         true,
         gtk::AccessibleRole::MenuItemCheckbox,
@@ -1034,18 +1055,18 @@ fn appearance_option(
     sensitive: bool,
     role: gtk::AccessibleRole,
 ) -> (gtk::Button, gtk::Image, gtk::Image) {
-    appearance_option_with_shortcut(icon, label, "", checked, sensitive, role)
+    appearance_option_with_shortcut(icon, label, None, checked, sensitive, role)
 }
 
 fn appearance_option_with_shortcut(
     icon: &str,
     label: &str,
-    shortcut: &str,
+    shortcut: Option<super::keys::Keys>,
     checked: bool,
     sensitive: bool,
     role: gtk::AccessibleRole,
 ) -> (gtk::Button, gtk::Image, gtk::Image) {
-    let (row, check, option) = appearance_row(icon, label, shortcut, checked);
+    let (row, check, option) = appearance_row(icon, label, checked);
     let button = gtk::Button::builder()
         .child(&row)
         .sensitive(sensitive)
@@ -1054,21 +1075,31 @@ fn appearance_option_with_shortcut(
     button.add_css_class("appearance-option");
     button.set_has_frame(false);
     let name = crate::i18n::tr(label);
-    if shortcut.is_empty() {
-        super::accessibility::set_label(&button, &name);
-    } else {
-        super::accessibility::describe_menu_item(&button, &name, shortcut);
+    super::accessibility::set_label(&button, &name);
+    if let Some(keys) = shortcut {
+        let shown = gtk::Label::new(None);
+        shown.add_css_class("folder-context-shortcut");
+        row.append(&shown);
+        row.reorder_child_after(&check, Some(&shown));
+        let described = button.downgrade();
+        super::shortcut_reference::follow_keys(&shown, move |shown| {
+            let text = super::keys::label(&keys);
+            shown.set_text(&text);
+            shown.set_visible(!text.is_empty());
+            if let Some(button) = described.upgrade() {
+                if text.is_empty() {
+                    super::accessibility::set_label(&button, &name);
+                } else {
+                    super::accessibility::describe_menu_item(&button, &name, &text);
+                }
+            }
+        });
     }
     super::accessibility::sync_checked_with_icon(&button, &check);
     (button, check, option)
 }
 
-fn appearance_row(
-    icon: &str,
-    label: &str,
-    shortcut: &str,
-    checked: bool,
-) -> (gtk::Box, gtk::Image, gtk::Image) {
+fn appearance_row(icon: &str, label: &str, checked: bool) -> (gtk::Box, gtk::Image, gtk::Image) {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     let check = crate::assets::primary_icon(crate::assets::icons::CHECK, 16);
     check.set_visible(checked);
@@ -1078,11 +1109,6 @@ fn appearance_row(
     label.set_hexpand(true);
     row.append(&option);
     row.append(&label);
-    if !shortcut.is_empty() {
-        let shortcut = gtk::Label::new(Some(shortcut));
-        shortcut.add_css_class("folder-context-shortcut");
-        row.append(&shortcut);
-    }
     row.append(&check);
     (row, check, option)
 }
@@ -1559,7 +1585,7 @@ impl SidebarState {
                     &crate::i18n::tr("Home"),
                     location.clone(),
                 );
-                self.add_keycap(&row, &place_keycap(super::keys::bindings::GO_HOME));
+                self.add_place_keycap(&row, super::keys::bindings::GO_HOME);
                 self.attach_place_context_menu(&row, location, |state| {
                     state.preference_manager.set_sidebar_show_home(false);
                 });
@@ -1580,7 +1606,7 @@ impl SidebarState {
                     &crate::i18n::tr("Network"),
                     location.clone(),
                 );
-                self.add_keycap(&row, &place_keycap(super::keys::bindings::GO_NETWORK));
+                self.add_place_keycap(&row, super::keys::bindings::GO_NETWORK);
                 self.attach_place_context_menu_with(
                     &row,
                     location,
@@ -1622,7 +1648,7 @@ impl SidebarState {
                 Location::local(path),
             );
             if let Some(step) = standard_place_chord_key(place) {
-                self.add_keycap(&row, &place_keycap(step));
+                self.add_place_keycap(&row, step);
             }
         }
     }
@@ -1650,8 +1676,10 @@ impl SidebarState {
             previous = Some(location.clone());
             self.visible_pins.borrow_mut().push(location.clone());
             let row = self.append_pinned_place(index, &name, location);
-            if let Some(keycap) = pin_keycap(ordinal) {
-                self.add_keycap(&row, &keycap);
+            if let Some(keycap) =
+                pin_keycap(ordinal).and_then(|keycap| self.add_keycap(&row, &keycap))
+            {
+                sync_keycap(&keycap, self.keycaps_shown.get() && !self.rail.get());
             }
         }
         pinned_drop::append_gap(self, previous, None, &drag_cache);
@@ -2031,7 +2059,7 @@ impl SidebarState {
         let location = Location::uri("recent:///");
         let row = sidebar_button(crate::assets::icons::CLOCK, &crate::i18n::tr("Recent"));
         crate::ui::accessibility::set_description(&row, Some("recent:///"));
-        self.add_keycap(&row, &place_keycap(super::keys::bindings::GO_RECENT));
+        self.add_place_keycap(&row, super::keys::bindings::GO_RECENT);
         self.bind_place_row(&row, location.clone(), PlaceNavigation::Direct);
         self.attach_place_context_menu(&row, location, |state| {
             state.preference_manager.set_sidebar_show_recent(false);
@@ -2044,7 +2072,7 @@ impl SidebarState {
         let location = Location::uri("trash:///");
         let row = sidebar_button(crate::assets::icons::TRASH, &crate::i18n::tr("Trash"));
         crate::ui::accessibility::set_description(&row, Some("trash:///"));
-        self.add_keycap(&row, &place_keycap(super::keys::bindings::GO_TRASH));
+        self.add_place_keycap(&row, super::keys::bindings::GO_TRASH);
         self.bind_place_row(&row, location, PlaceNavigation::Direct);
 
         let menu = super::accessibility::menu_box();
@@ -2629,16 +2657,23 @@ impl SidebarState {
 
     /// Keycaps name the second key of the **g** place chord while it is armed.
     /// They stand in for the row icon so long place names are not truncated further.
-    fn add_keycap(&self, row: &gtk::Button, key: &str) {
-        let Some(content) = row.child().and_downcast::<gtk::Box>() else {
-            return;
-        };
+    fn add_keycap(&self, row: &gtk::Button, key: &str) -> Option<gtk::Label> {
+        let content = row.child().and_downcast::<gtk::Box>()?;
         let keycap = gtk::Label::new(Some(key));
         keycap.add_css_class("sidebar-keycap");
         keycap.set_valign(gtk::Align::Center);
         content.insert_child_after(&keycap, content.first_child().as_ref());
         self.keycaps.borrow_mut().push(keycap.clone());
-        sync_keycap(&keycap, self.keycaps_shown.get() && !self.rail.get());
+        Some(keycap)
+    }
+
+    fn add_place_keycap(&self, row: &gtk::Button, step: super::keys::Command) {
+        if let Some(keycap) = self.add_keycap(row, "") {
+            super::shortcut_reference::follow_keys(&keycap, move |keycap| {
+                keycap.set_text(&place_keycap(step));
+            });
+            sync_keycap(&keycap, self.keycaps_shown.get() && !self.rail.get());
+        }
     }
 
     pub(in crate::ui) fn show_place_keycaps(&self, shown: bool) {
@@ -4066,8 +4101,13 @@ fn resolve_place_order(persisted: &[String]) -> Vec<&'static str> {
     order
 }
 
-fn place_keycap(step: super::keys::Binding) -> String {
-    super::keys::label(&super::keys::Keys::One(step))
+/// Only the 10xer Go chord shows these keycaps, so they always show that map.
+fn place_keycap(step: super::keys::Command) -> String {
+    super::keys::label_in_map(
+        &rust_i18n::locale(),
+        &super::keys::Keys::One(step.shown()),
+        super::keys::Map::Tenxer,
+    )
 }
 
 fn pin_keycap(ordinal: usize) -> Option<String> {
@@ -4078,7 +4118,7 @@ fn pin_keycap(ordinal: usize) -> Option<String> {
     Some(super::keys::digit_label(PIN_NUMBERS.step(), pin))
 }
 
-fn standard_place_chord_key(id: &str) -> Option<super::keys::Binding> {
+fn standard_place_chord_key(id: &str) -> Option<super::keys::Command> {
     use super::keys::bindings::{GO_DOCUMENTS, GO_DOWNLOADS, GO_MUSIC, GO_PICTURES, GO_VIDEOS};
     match id {
         "documents" => Some(GO_DOCUMENTS),
@@ -4182,6 +4222,7 @@ fn customize_sidebar_folder_icon(row: &gtk::Button, location: &Location, icon: &
 }
 
 fn sync_keycap(keycap: &gtk::Label, visible: bool) {
+    let visible = visible && !keycap.text().is_empty();
     if let Some(icon) = keycap.prev_sibling() {
         if visible && icon.is_visible() {
             // Matching the icon's width keeps the place name from shifting.

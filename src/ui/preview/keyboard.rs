@@ -10,12 +10,12 @@ use super::*;
 use crate::ui::{
     browser::{BrowserView, WeakBrowserView},
     keys::{
-        Binding,
+        Match,
         bindings::{
-            DOWN, FIRST_ITEM, LAST_ITEM, LEFT, MEDIA_SEEK_BACK_PAGE, MEDIA_SEEK_FORWARD_PAGE,
-            MEDIA_SEEK_START, MEDIA_VOLUME_STEP_DOWN, MEDIA_VOLUME_STEP_UP,
-            MEDIA_VOLUME_STEP_UP_EQUAL, PAGE_DOWN, PAGE_UP, PDF_ZOOM_RESET, RIGHT, SPACE,
-            TENXER_LAST_ITEM, TENXER_MEDIA_MUTE, TENXER_MEDIA_NEXT, TENXER_MEDIA_PREVIOUS, UP,
+            DOWN, END_KEY, HOME_KEY, LEFT, MEDIA_SEEK_BACK_PAGE, MEDIA_SEEK_END,
+            MEDIA_SEEK_FORWARD_PAGE, MEDIA_SEEK_START, MEDIA_VOLUME_STEP_DOWN,
+            MEDIA_VOLUME_STEP_UP, PAGE_DOWN_KEY, PAGE_UP_KEY, PDF_ZOOM_RESET, RIGHT, SPACE,
+            TENXER_MEDIA_MUTE, TENXER_MEDIA_NEXT, TENXER_MEDIA_PREVIOUS, UP,
         },
     },
 };
@@ -88,41 +88,46 @@ impl MediaCommand {
     }
 }
 
-const SEEK_AND_VOLUME: [(Binding, MediaCommand); 13] = [
-    (LEFT, MediaCommand::Seek(MediaSeek::By(-MEDIA_SEEK_STEP_US))),
-    (RIGHT, MediaCommand::Seek(MediaSeek::By(MEDIA_SEEK_STEP_US))),
+const SEEK_AND_VOLUME: [(&dyn Match, MediaCommand); 12] = [
     (
-        MEDIA_SEEK_BACK_PAGE,
+        &LEFT,
+        MediaCommand::Seek(MediaSeek::By(-MEDIA_SEEK_STEP_US)),
+    ),
+    (
+        &RIGHT,
+        MediaCommand::Seek(MediaSeek::By(MEDIA_SEEK_STEP_US)),
+    ),
+    (
+        &MEDIA_SEEK_BACK_PAGE,
         MediaCommand::Seek(MediaSeek::By(-MEDIA_SEEK_PAGE_US)),
     ),
     (
-        MEDIA_SEEK_FORWARD_PAGE,
+        &MEDIA_SEEK_FORWARD_PAGE,
         MediaCommand::Seek(MediaSeek::By(MEDIA_SEEK_PAGE_US)),
     ),
     (
-        PAGE_DOWN,
+        &PAGE_DOWN_KEY,
         MediaCommand::Seek(MediaSeek::By(-MEDIA_SEEK_PAGE_US)),
     ),
     (
-        PAGE_UP,
+        &PAGE_UP_KEY,
         MediaCommand::Seek(MediaSeek::By(MEDIA_SEEK_PAGE_US)),
     ),
-    (MEDIA_SEEK_START, MediaCommand::Seek(MediaSeek::Start)),
-    (FIRST_ITEM, MediaCommand::Seek(MediaSeek::Start)),
-    (TENXER_LAST_ITEM, MediaCommand::Seek(MediaSeek::End)),
-    (LAST_ITEM, MediaCommand::Seek(MediaSeek::End)),
-    (MEDIA_VOLUME_STEP_UP, MediaCommand::VolumeUp),
-    (MEDIA_VOLUME_STEP_UP_EQUAL, MediaCommand::VolumeUp),
-    (MEDIA_VOLUME_STEP_DOWN, MediaCommand::VolumeDown),
+    (&MEDIA_SEEK_START, MediaCommand::Seek(MediaSeek::Start)),
+    (&HOME_KEY, MediaCommand::Seek(MediaSeek::Start)),
+    (&MEDIA_SEEK_END, MediaCommand::Seek(MediaSeek::End)),
+    (&END_KEY, MediaCommand::Seek(MediaSeek::End)),
+    (&MEDIA_VOLUME_STEP_UP, MediaCommand::VolumeUp),
+    (&MEDIA_VOLUME_STEP_DOWN, MediaCommand::VolumeDown),
 ];
 
-const PLAYBACK: [(Binding, MediaCommand); 6] = [
-    (SPACE, MediaCommand::PlayPause),
-    (UP, MediaCommand::VolumeUp),
-    (DOWN, MediaCommand::VolumeDown),
-    (TENXER_MEDIA_MUTE, MediaCommand::Mute),
-    (TENXER_MEDIA_PREVIOUS, MediaCommand::Previous),
-    (TENXER_MEDIA_NEXT, MediaCommand::Next),
+const PLAYBACK: [(&dyn Match, MediaCommand); 6] = [
+    (&SPACE, MediaCommand::PlayPause),
+    (&UP, MediaCommand::VolumeUp),
+    (&DOWN, MediaCommand::VolumeDown),
+    (&TENXER_MEDIA_MUTE, MediaCommand::Mute),
+    (&TENXER_MEDIA_PREVIOUS, MediaCommand::Previous),
+    (&TENXER_MEDIA_NEXT, MediaCommand::Next),
 ];
 
 pub(super) fn seek_or_volume(press: &KeyPress) -> Option<MediaCommand> {
@@ -135,10 +140,10 @@ pub(in crate::ui) fn media_key_command(press: &KeyPress) -> Option<MediaCommand>
     command_for(&PLAYBACK, press).or_else(|| seek_or_volume(press))
 }
 
-fn command_for(commands: &[(Binding, MediaCommand)], press: &KeyPress) -> Option<MediaCommand> {
+fn command_for(commands: &[(&dyn Match, MediaCommand)], press: &KeyPress) -> Option<MediaCommand> {
     commands
         .iter()
-        .find(|(binding, _)| press.is(*binding))
+        .find(|(key, _)| press.is(key))
         .map(|(_, command)| *command)
 }
 

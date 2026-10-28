@@ -71,12 +71,10 @@ impl Header {
         }
         let location = browser.location_widget();
         location.set_hexpand(true);
-        let search_label = crate::ui::shortcut_reference::with_keys(
-            "Search (%{keys})",
-            crate::ui::keys::Keys::One(crate::ui::keys::bindings::SEARCH),
-        );
-        let search = header_action(icons::SEARCH, &search_label);
-        crate::ui::accessibility::set_label(&search, &search_label);
+        let search = header_action(icons::SEARCH, "");
+        let search_keys = crate::ui::keys::Keys::One(crate::ui::keys::bindings::SEARCH.shown());
+        crate::ui::shortcut_reference::follow_tooltip(&search, "Search (%{keys})", search_keys);
+        crate::ui::shortcut_reference::follow_label(&search, "Search (%{keys})", search_keys);
         crate::ui::tenxer_mode::hide_while_enabled(&search);
         let appearance =
             build_appearance_menu(browser, &browser.browser(), preferences.clone(), preview);
@@ -127,12 +125,11 @@ impl Header {
         }
         let actions = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         actions.add_css_class("header-actions");
-        let new_tab = header_action(
-            icons::PLUS,
-            &crate::ui::shortcut_reference::with_keys(
-                "New tab (%{keys})",
-                crate::ui::keys::Keys::One(crate::ui::keys::bindings::TAB_NEW),
-            ),
+        let new_tab = header_action(icons::PLUS, "");
+        crate::ui::shortcut_reference::follow_tooltip(
+            &new_tab,
+            "New tab (%{keys})",
+            crate::ui::keys::Keys::One(crate::ui::keys::bindings::TAB_NEW.shown()),
         );
         crate::ui::accessibility::set_label(&new_tab, &crate::i18n::tr("New tab"));
         actions.append(&new_tab);
@@ -342,13 +339,9 @@ fn bind_sidebar_modes(
     let describe = {
         let toggle = toggle.clone();
         let state = Rc::downgrade(&sidebar.state);
-        let preferences = preferences.clone();
         Rc::new(move || {
             if let Some(state) = state.upgrade() {
-                toggle.describe(
-                    SidebarMode::of(toggle.is_active(), state.rail.get()),
-                    preferences.tenxer_mode(),
-                );
+                toggle.describe(SidebarMode::of(toggle.is_active(), state.rail.get()));
             }
         })
     };
@@ -356,7 +349,7 @@ fn bind_sidebar_modes(
     toggle.connect_toggled(move |_| on_toggled());
     let on_rail = describe.clone();
     sidebar.state.connect_rail_changed(move |_| on_rail());
-    preferences.bind_preference(toggle, PreferenceManager::tenxer_mode, move |_, _| {
+    preferences.bind_preference(toggle, PreferenceManager::shown_keys, move |_, _| {
         describe();
     });
 }

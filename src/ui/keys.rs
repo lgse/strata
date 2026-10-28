@@ -10,15 +10,27 @@ use gtk::{
     prelude::*,
 };
 
+mod alias;
 pub(crate) mod bindings;
+mod capture;
+mod command;
 mod composition;
+pub(crate) mod conflicts;
 mod label;
 
 #[cfg(test)]
 mod tests;
 
+pub(crate) use alias::install_native as install_native_aliases;
+pub(crate) use capture::{Capture, capture};
+#[cfg(test)]
+pub(crate) use command::use_keymap;
+pub(crate) use command::{
+    Command, Group, Keymap, Kind as CommandKind, Map, Matcher, Rejected, registry,
+};
 pub(crate) use label::{
-    Digits, Keys, digit_label, label, label_in, modifiers_label, modifiers_label_in, search_text,
+    Digits, Keys, Shown, digit_label, label, label_in, label_in_map, modifiers_label,
+    modifiers_label_in, search_text, shown,
 };
 
 /// The modifiers shortcuts compare. Locks, AltGr, Hyper and Meta never count.
@@ -29,15 +41,78 @@ pub(crate) const SHORTCUT_MODIFIERS: Modifiers = Modifiers::CONTROL_MASK
 
 /// Editing shortcuts of `gtk::Text` and `gtk::TextView`, with the widget action
 /// each runs.
-pub(crate) const TEXT_EDITING: [(Binding, &str); 7] = [
+pub(crate) const TEXT_EDITING: [(Command, &str); 6] = [
     (bindings::COPY, "clipboard.copy"),
     (bindings::CUT, "clipboard.cut"),
     (bindings::PASTE, "clipboard.paste"),
     (bindings::SELECT_ALL, "selection.select-all"),
     (bindings::UNDO, "text.undo"),
     (bindings::REDO, "text.redo"),
-    (bindings::REDO_Y, "text.redo"),
 ];
+
+/// Commands the window's direct stage runs from a key a user binds to them in
+/// a map whose own stages leave them out: 10xer verbs, chord steps and paging
+/// in the default map, and default-map verbs in 10xer. Neither table binds
+/// them by default.
+pub(crate) const DIRECT_IN_DEFAULT: [Command; 20] = [
+    bindings::OPEN_WITH,
+    bindings::MOVE_TO,
+    bindings::COPY_TO,
+    bindings::RESTORE,
+    bindings::ACTIONS_COMPRESS,
+    bindings::ACTIONS_EXTRACT,
+    bindings::ACTIONS_EXTRACT_TO,
+    bindings::ACTIONS_TERMINAL,
+    bindings::SORT_BY_NAME,
+    bindings::SORT_BY_MODIFIED,
+    bindings::SORT_BY_SIZE,
+    bindings::SORT_BY_TYPE,
+    bindings::COPY_AS_PATH,
+    bindings::COPY_AS_NAME,
+    bindings::INVERT_SELECTION,
+    bindings::SEARCH_SUBFOLDERS,
+    bindings::JUMP_VISITED,
+    bindings::JUMP_RECENT,
+    bindings::HALF_PAGE_UP,
+    bindings::HALF_PAGE_DOWN,
+];
+
+/// See [`DIRECT_IN_DEFAULT`].
+pub(crate) const DIRECT_IN_TENXER: [Command; 4] = [
+    bindings::DUPLICATE,
+    bindings::PIN,
+    bindings::JUMP_TO_FOLDER,
+    bindings::ARROW_SCOPE,
+];
+
+pub(crate) fn direct_commands(map: Map) -> &'static [Command] {
+    match map {
+        Map::Default => &DIRECT_IN_DEFAULT,
+        Map::Tenxer => &DIRECT_IN_TENXER,
+    }
+}
+
+/// The default map's custom action slots: slot N runs the Nth action in the
+/// order Settings → Actions lists them. Only the direct stage runs them.
+pub(crate) const CUSTOM_ACTIONS: [Command; 10] = [
+    bindings::CUSTOM_ACTION_1,
+    bindings::CUSTOM_ACTION_2,
+    bindings::CUSTOM_ACTION_3,
+    bindings::CUSTOM_ACTION_4,
+    bindings::CUSTOM_ACTION_5,
+    bindings::CUSTOM_ACTION_6,
+    bindings::CUSTOM_ACTION_7,
+    bindings::CUSTOM_ACTION_8,
+    bindings::CUSTOM_ACTION_9,
+    bindings::CUSTOM_ACTION_10,
+];
+
+pub(crate) fn custom_action_slot(command: Command) -> Option<usize> {
+    CUSTOM_ACTIONS
+        .iter()
+        .position(|slot| *slot == command)
+        .map(|index| index + 1)
+}
 
 /// A canonical key and its exact modifiers. Letters are lowercase with Shift
 /// explicit, a symbol names the symbol, and a digit means its digit-row position.
@@ -98,9 +173,109 @@ impl Binding {
         self.modifiers
     }
 
-    /// The string for a menu item's `accel` attribute.
+    /// The string for a menu item's `accel` attribute, and the one settings
+    /// files store.
     pub(crate) fn accelerator(self) -> glib::GString {
         gtk::accelerator_name(self.key, self.modifiers)
+    }
+
+    /// The form a saved binding takes: a plain digit also matches with Shift,
+    /// which AZERTY needs to type digits, as chord digit steps do.
+    pub(crate) fn normalized(self) -> Self {
+        if self.modifiers.is_empty() && digit_value(self.key).is_some() {
+            self.ignoring(Modifiers::SHIFT_MASK)
+        } else {
+            self
+        }
+    }
+
+    /// Reads an accelerator such as `<Control>e`, the form [`Self::accelerator`]
+    /// writes, as [`Self::normalized`]. As in GTK, a letter's case does not
+    /// matter and Shift is written out (`<Shift>g`). A digit means its digit-row
+    /// position and a keypad key the main key it acts as. Only Ctrl, Alt, Shift
+    /// and Super may be held.
+    pub(crate) fn parse(accelerator: &str) -> Option<Self> {
+        let (key, modifiers) = gtk::accelerator_parse(accelerator)?;
+        Self::canonical(key, modifiers)
+    }
+
+    /// The saved form of `key` with `modifiers`, as [`Self::parse`] reads it,
+    /// or `None` when a keymap cannot hold it.
+    fn canonical(key: Key, mut modifiers: Modifiers) -> Option<Self> {
+        if !SHORTCUT_MODIFIERS.contains(modifiers)
+            || key.into_glib() == 0
+            || key == Key::VoidSymbol
+            || MODIFIER_KEYS.contains(&key)
+        {
+            return None;
+        }
+        let key = if key == Key::ISO_Left_Tab {
+            modifiers.insert(Modifiers::SHIFT_MASK);
+            Key::Tab
+        } else if let Some(digit) = KEYPAD_DIGITS.iter().position(|digit| *digit == key) {
+            DIGITS[digit]
+        } else {
+            main_key(key.to_lower())
+        };
+        Some(Self::new(key, modifiers).normalized())
+    }
+
+    pub(crate) const fn shown(self) -> Shown {
+        Shown::Binding(self)
+    }
+}
+
+/// What a press can be compared with: a fixed [`Binding`], or a [`Command`]
+/// resolved through the active map.
+pub(crate) trait Match {
+    fn matches(&self, press: &KeyPress) -> bool;
+}
+
+impl<T: Match + ?Sized> Match for &T {
+    fn matches(&self, press: &KeyPress) -> bool {
+        (**self).matches(press)
+    }
+}
+
+impl Match for Binding {
+    /// Compares modifiers exactly apart from those the binding ignores, with
+    /// the key the user pressed, or with the canonical key an alias reads as
+    /// when the binding is on that key, as Tab's completion is.
+    fn matches(&self, press: &KeyPress) -> bool {
+        self.matches_pressed(press)
+            || (press.aliased() && self.key == press.key && self.matches_read(press))
+    }
+}
+
+impl Binding {
+    fn matches_pressed(&self, press: &KeyPress) -> bool {
+        let (key, modifiers) = press.physical_key();
+        self.matches_key(press, key, modifiers)
+    }
+
+    fn matches_key(&self, press: &KeyPress, key: Key, modifiers: Modifiers) -> bool {
+        let compared = SHORTCUT_MODIFIERS.difference(self.ignored);
+        match digit_value(self.key) {
+            Some(digit) => {
+                press.digit == Some(digit) && press.state & compared == self.modifiers & compared
+            }
+            None => self.key == key && modifiers & compared == self.modifiers & compared,
+        }
+    }
+
+    fn matches_read(&self, press: &KeyPress) -> bool {
+        self.matches_key(press, press.key, press.shortcut_modifiers)
+    }
+
+    /// A plain printable key, which types rather than commands.
+    pub(crate) fn is_typed(self) -> bool {
+        !self
+            .modifiers
+            .intersects(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
+            && self
+                .key
+                .to_unicode()
+                .is_some_and(|character| !character.is_control())
     }
 }
 
@@ -114,26 +289,20 @@ pub(crate) struct KeyPress {
     digit: Option<u8>,
     fallback: bool,
     modifier: bool,
+    aliasing: alias::Aliasing,
+    alias: Option<alias::Alias>,
 }
 
 impl KeyPress {
-    /// Whether the press is `binding`, comparing modifiers exactly apart from
-    /// those the binding ignores.
-    pub(crate) fn is(&self, binding: Binding) -> bool {
-        let compared = SHORTCUT_MODIFIERS.difference(binding.ignored);
-        match digit_value(binding.key) {
-            Some(digit) => {
-                self.digit == Some(digit) && self.state & compared == binding.modifiers & compared
-            }
-            None => {
-                self.key == binding.key
-                    && self.shortcut_modifiers & compared == binding.modifiers & compared
-            }
-        }
+    /// Whether the press is `key`: a binding, or any of a command's bindings
+    /// in the active map. A structural command compares the key the press
+    /// reads as; anything else compares the key as pressed.
+    pub(crate) fn is(&self, key: impl Match) -> bool {
+        key.matches(self)
     }
 
-    pub(crate) fn is_any(&self, bindings: &[Binding]) -> bool {
-        bindings.iter().any(|binding| self.is(*binding))
+    pub(crate) fn is_any<M: Match>(&self, keys: &[M]) -> bool {
+        keys.iter().any(|key| key.matches(self))
     }
 
     /// The digit-row position (1–9, 0) or keypad digit when the press is in
@@ -165,9 +334,14 @@ impl KeyPress {
     }
 
     /// The held Ctrl, Alt, Shift and Super, including Shift that typed a symbol.
-    /// For policies that depend on what is held rather than on a binding.
+    /// For policies that depend on what is held rather than on a binding. An
+    /// alias holds what its canonical key does.
     pub(crate) fn modifiers(&self) -> Modifiers {
-        self.state
+        if self.alias.is_some() {
+            self.shortcut_modifiers
+        } else {
+            self.state
+        }
     }
 
     /// The modifier this key itself holds, empty for other keys. GDK reports
@@ -182,14 +356,72 @@ impl KeyPress {
         self.fallback
     }
 
-    /// The same press read as `binding`, for keys that stand in for others,
-    /// such as h/j/k/l for arrows.
-    pub(crate) fn read_as(self, binding: Binding) -> Self {
+    /// Whether the key is a user alternate of a structural command, read as
+    /// that command's canonical key.
+    pub(crate) fn aliased(&self) -> bool {
+        self.alias.is_some()
+    }
+
+    /// The key as pressed, in the form a keymap saves and loads it: the
+    /// binding a shortcut capture records, or `None` for a key a keymap
+    /// cannot hold. A keypad digit is its digit-row key.
+    pub(crate) fn binding(&self) -> Option<Binding> {
+        // Tab numbers read Shift on the digit row by position, not as the
+        // symbol it types.
+        let (key, modifiers) = match self.digit_position() {
+            Some(position) if self.state.contains(Modifiers::SHIFT_MASK) => {
+                (position.key, position.modifiers)
+            }
+            _ => self.physical_key(),
+        };
+        Binding::canonical(key, modifiers)
+    }
+
+    /// The digit binding a digit-row press with Ctrl, Alt or Super also
+    /// matches, whatever the layout types there: AZERTY's Ctrl+& is Ctrl+1.
+    pub(crate) fn digit_position(&self) -> Option<Binding> {
+        self.digit
+            .filter(|_| {
+                self.state.intersects(
+                    Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK,
+                )
+            })
+            .map(|digit| Binding::new(DIGITS[usize::from(digit)], self.state))
+    }
+
+    /// The press without a plain printable alias such as **j** for ↓, for
+    /// surfaces that never read **h j k l** as arrows.
+    pub(crate) fn untyped(self) -> Self {
+        if !self.alias.is_some_and(|alias| alias.typed) {
+            return self;
+        }
+        let (key, shortcut_modifiers) = self.physical_key();
         Self {
-            key: binding.key,
-            shortcut_modifiers: binding.modifiers,
+            key,
+            shortcut_modifiers,
+            alias: None,
             ..self
         }
+    }
+
+    fn read_as(self, canonical: Binding, typed: bool) -> Self {
+        Self {
+            key: canonical.key,
+            shortcut_modifiers: canonical.modifiers,
+            alias: Some(alias::Alias {
+                key: self.key,
+                modifiers: self.shortcut_modifiers,
+                typed,
+            }),
+            ..self
+        }
+    }
+
+    fn physical_key(&self) -> (Key, Modifiers) {
+        self.alias
+            .map_or((self.key, self.shortcut_modifiers), |alias| {
+                (alias.key, alias.modifiers)
+            })
     }
 
     /// A press from signal arguments alone, as emitted without a GDK event. It
@@ -203,6 +435,7 @@ impl KeyPress {
 
 /// While the focused field is composing, the input method sees each key first;
 /// the handler gets only keys it passes back, like Escape after a Korean commit.
+/// An armed [`capture`] in the controller's window takes every other press.
 pub(crate) fn on_press(
     controller: &gtk::EventControllerKey,
     handler: impl Fn(&gtk::EventControllerKey, &KeyPress) -> Propagation + 'static,
@@ -226,10 +459,18 @@ pub(crate) fn on_press(
                 return Propagation::Stop;
             }
         }
-        handler(controller, &read(controller, keyval, keycode, state))
+        let press = read(controller, keyval, keycode, state);
+        if let Some(captured) = capture::deliver(controller, &press) {
+            return captured;
+        }
+        handler(
+            controller,
+            &alias::rewrite(press, alias::Context::of_controller(controller)),
+        )
     })
 }
 
+/// Releases report what is held, so they are never read through aliases.
 pub(crate) fn on_release(
     controller: &gtk::EventControllerKey,
     handler: impl Fn(&gtk::EventControllerKey, &KeyPress) + 'static,
@@ -240,10 +481,16 @@ pub(crate) fn on_release(
 }
 
 /// Reads a key event that reached a non-key controller, such as
-/// `EventControllerLegacy`. Other events give `None`.
-pub(crate) fn read_event(event: &gdk::Event) -> Option<KeyPress> {
+/// `EventControllerLegacy`, as `on_press` reads it. Other events give `None`.
+pub(crate) fn read_event(
+    controller: &impl IsA<gtk::EventController>,
+    event: &gdk::Event,
+) -> Option<KeyPress> {
     let event = event.downcast_ref::<gdk::KeyEvent>()?;
-    Some(normalize_event(event))
+    Some(alias::rewrite(
+        normalize_event(event),
+        alias::Context::of_controller(controller),
+    ))
 }
 
 #[expect(
@@ -357,7 +604,7 @@ impl Event {
     }
 }
 
-const MODIFIER_KEYS: [Key; 12] = [
+const MODIFIER_KEYS: [Key; 22] = [
     Key::Shift_L,
     Key::Shift_R,
     Key::Control_L,
@@ -368,8 +615,18 @@ const MODIFIER_KEYS: [Key; 12] = [
     Key::Super_R,
     Key::Meta_L,
     Key::Meta_R,
+    Key::Hyper_L,
+    Key::Hyper_R,
     Key::ISO_Level3_Shift,
+    Key::ISO_Level5_Shift,
+    Key::Mode_switch,
+    Key::ISO_Next_Group,
+    Key::ISO_Prev_Group,
+    Key::ISO_First_Group,
+    Key::ISO_Last_Group,
     Key::Caps_Lock,
+    Key::Num_Lock,
+    Key::Scroll_Lock,
 ];
 
 fn modifier_of(key: Key) -> Modifiers {
@@ -414,7 +671,10 @@ where
         typed: event.typed,
         digit: position_digit(event.keycode, event.typed, event.level),
         fallback: latin.is_some(),
-        modifier: event.modifier,
+        // GDK does not count AltGr or a layout switch on every backend.
+        modifier: event.modifier || MODIFIER_KEYS.contains(&event.typed),
+        aliasing: alias::Aliasing::Off,
+        alias: None,
     }
 }
 

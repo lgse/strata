@@ -36,8 +36,8 @@ mod update_check;
 mod update_install;
 
 pub use actions::{
-    ActionAvailability, ActionHandle, ActionLoadFailure, ActionProgram, ActionRegistry,
-    ActionScript, ActionWriteRequest, MatchedAction,
+    ActionAvailability, ActionCatalog, ActionHandle, ActionLoadFailure, ActionProgram,
+    ActionRegistry, ActionScript, ActionWriteRequest, MatchedAction,
 };
 pub(crate) use document::{
     DocumentBlock, DocumentLayout, DocumentListChildKind, DocumentMedia, DocumentSpan,

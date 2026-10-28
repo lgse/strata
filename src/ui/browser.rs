@@ -386,17 +386,13 @@ impl BrowserView {
             .placeholder_text(crate::i18n::tr("Enter a path or URI…"))
             .build();
         location_entry.add_css_class("location-entry");
-        let confirm_location = gtk::Button::builder()
-            .tooltip_text(super::accessibility::location_confirm_label())
-            .build();
+        let confirm_location = gtk::Button::new();
         confirm_location.set_child(Some(&crate::assets::primary_icon(
             crate::assets::icons::CHECK,
             16,
         )));
         confirm_location.add_css_class("location-action");
-        let cancel_location = gtk::Button::builder()
-            .tooltip_text(super::accessibility::location_cancel_label())
-            .build();
+        let cancel_location = gtk::Button::new();
         cancel_location.set_child(Some(&crate::assets::primary_icon(
             crate::assets::icons::X,
             16,
@@ -1157,6 +1153,9 @@ impl BrowserView {
 
     /// Focus follows the filter session across a view switch.
     fn restore_view_switch_focus(&self, filter_focus: Option<FilterFocus>) {
+        if !crate::ui::focus_navigation::browser_can_take_focus(&self.state.overlay) {
+            return;
+        }
         if let Some(target) = self.filter_target() {
             if filter_focus == Some(FilterFocus::Entry) {
                 refocus_filter_entry(target.entry());
@@ -1202,6 +1201,10 @@ impl BrowserView {
 
     pub(in crate::ui) fn restore_listing_focus(&self) {
         self.state.restore_listing_focus();
+    }
+
+    pub(in crate::ui) fn cancel_column_drag(&self) -> bool {
+        self.state.mode_views.borrow().cancel_column_drag()
     }
 
     /// Makes this listing the focus target when a dismissed overlay leaves `window`
@@ -1727,8 +1730,11 @@ impl BrowserView {
 
     pub fn duplicate_selection(&self) -> bool {
         self.state.sync_mode_selection();
-        let entries = self.state.browser.transfer_entries();
-        let Some((destination, sources)) = duplicate_transfer(&entries) else {
+        self.duplicate_entries(&self.state.browser.transfer_entries())
+    }
+
+    pub(in crate::ui) fn duplicate_entries(&self, entries: &[FileEntry]) -> bool {
+        let Some((destination, sources)) = duplicate_transfer(entries) else {
             return false;
         };
         self.state.start_transfer(destination, sources, false);
@@ -1762,9 +1768,12 @@ impl BrowserView {
 
     pub fn pin_focused(&self) {
         self.state.sync_mode_selection();
-        let Some(entry) = self.state.browser.focused_entry() else {
-            return;
-        };
+        if let Some(entry) = self.state.browser.focused_entry() {
+            self.pin_entry(entry);
+        }
+    }
+
+    pub(in crate::ui) fn pin_entry(&self, entry: FileEntry) {
         let status = self
             .state
             .pin_status_handler
@@ -2342,6 +2351,14 @@ impl BrowserView {
     }
 
     pub fn page_selection(&self, direction: i32, extend: bool) -> bool {
+        self.step_selection_by_page(direction, extend, false)
+    }
+
+    pub(in crate::ui) fn half_page_selection(&self, direction: i32) -> bool {
+        self.step_selection_by_page(direction, false, true)
+    }
+
+    fn step_selection_by_page(&self, direction: i32, extend: bool, half: bool) -> bool {
         let focused = self.state.overlay.root().and_then(|root| root.focus());
         let Some((view, scroll)) = focused
             .as_ref()
@@ -2350,6 +2367,11 @@ impl BrowserView {
             return false;
         };
         let page = super::scrolling::page(&view, &scroll);
+        let items = if half {
+            (page.items / 2).max(1)
+        } else {
+            page.items
+        };
         self.state.mode_views.borrow().suppress_focus_scroll();
         if extend {
             let order = self
@@ -2359,7 +2381,7 @@ impl BrowserView {
                 .and_then(|depth| self.displayed_order(depth));
             self.state
                 .browser
-                .extend_page_selection(direction, page.items, order.as_deref());
+                .extend_page_selection(direction, items, order.as_deref());
             let position = self.cursor_view_position(&view);
             super::scrolling::reveal_cursor(
                 &view,
@@ -2374,7 +2396,7 @@ impl BrowserView {
             self.state
                 .mode_views
                 .borrow()
-                .page_target(depth, direction, page.items)
+                .page_target(depth, direction, items)
                 .map(|position| (depth, position))
         });
         if let Some((depth, position)) = target {
@@ -2388,7 +2410,7 @@ impl BrowserView {
                 .filter(|order| !order.is_empty());
             self.state
                 .browser
-                .page_along(direction, page.items, order.as_deref());
+                .page_along(direction, items, order.as_deref());
         }
         super::scrolling::reveal_selection(&view, &scroll, direction, &page);
         true

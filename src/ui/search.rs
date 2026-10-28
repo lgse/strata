@@ -153,10 +153,17 @@ impl SearchDialog {
             label.set_ellipsize(gtk::pango::EllipsizeMode::End);
             label
         };
-        let navigation = hint_label(&super::shortcut_reference::with_keys(
+        let followed_hint = |message: &'static str, keys: keys::Keys| {
+            let label = hint_label("");
+            super::shortcut_reference::follow_keys(&label, move |label| {
+                label.set_text(&super::shortcut_reference::with_keys(message, keys));
+            });
+            label
+        };
+        let navigation = followed_hint(
             "%{keys}  navigate",
-            keys::Keys::Any(&[UP, DOWN]),
-        ));
+            keys::Keys::Any(crate::ui::keys::shown![UP.alternate(0), DOWN.alternate(0)]),
+        );
         let open = gtk::Box::new(gtk::Orientation::Horizontal, 5);
         open.set_valign(gtk::Align::Center);
         open.append(&crate::assets::primary_icon(
@@ -174,10 +181,10 @@ impl SearchDialog {
             crate::assets::icons::FOLDER_OPEN,
             13,
         ));
-        reveal_hint.append(&hint_label(&super::shortcut_reference::with_keys(
+        reveal_hint.append(&followed_hint(
             "%{keys}  open containing folder",
-            keys::Keys::One(OPEN_CONTAINING_FOLDER),
-        )));
+            keys::Keys::One(OPEN_CONTAINING_FOLDER.shown()),
+        ));
         reveal_hint.add_css_class("search-hint");
         footer.append(&reveal_hint);
         let truncated_hint = gtk::Box::new(gtk::Orientation::Horizontal, 4);
@@ -252,6 +259,7 @@ impl SearchDialog {
                 return glib::Propagation::Proceed;
             };
             record_interaction(&state);
+            let press = &press.untyped();
             if press.is(ESCAPE_ANY) {
                 hide(&state);
                 return glib::Propagation::Stop;

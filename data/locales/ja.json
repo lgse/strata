@@ -1300,6 +1300,7 @@
   "keys.name.home": "Home",
   "keys.name.insert": "Insert",
   "keys.name.menu": "Menu",
+  "keys.name.compose": "Compose",
   "keys.name.page_down": "Page Down",
   "keys.name.page_up": "Page Up",
   "keys.name.shift": "Shift",
@@ -1493,6 +1494,17 @@
   "The command opened in your terminal. Run diagnostics again when it finishes.": "コマンドをターミナルで開きました。完了したら、もう一度診断を実行してください。",
   "Disabled": "無効",
   "Open folder": "フォルダーを開く",
+  "Keyboard": "キーボード",
+  "Keyboard settings": "キーボードの設定",
+  "Shortcuts for each mode": "モードごとのショートカット",
+  "Search keybinds": "キー割り当てを検索",
+  "Reset all": "すべてリセット",
+  "Reset all keybinds?": "すべてのキー割り当てをリセットしますか？",
+  "Restore the shipped keys of every action in the shown mode.": "表示中のモードのすべての操作を初期のキーに戻します。",
+  "Not bound": "未割り当て",
+  "Press a key…": "キーを押してください…",
+  "Turn off type-to-search": "「入力して検索」をオフにする",
+  "settings_keywords.keyboard-shortcuts": "ショートカット キー キーボード 割り当て 変更 リセット キーマップ",
   "%{distance} km": "%{distance} km",
   "%{minimum}–%{maximum} m": "%{minimum}–%{maximum} m",
   "Copy this route file locally before previewing it.": "プレビューする前に、このルートファイルをローカルにコピーしてください。",
@@ -1510,5 +1522,6 @@
   "%{distance} mi": "%{distance} マイル",
   "%{minimum}–%{maximum} ft": "%{minimum}～%{maximum} フィート",
   "%{elevation} m": "%{elevation} m",
-  "%{elevation} ft": "%{elevation} フィート"
+  "%{elevation} ft": "%{elevation} フィート",
+  "No action": "アクションなし"
 }

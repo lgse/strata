@@ -222,6 +222,9 @@ fn surface_has_focus(stack: &gtk::Stack) -> bool {
 
 /// Focuses the surface while it stands in for `view`, otherwise `view` itself.
 pub(crate) fn focus_surface_or(stack: &gtk::Stack, view: &impl IsA<gtk::Widget>) -> bool {
+    if !crate::ui::focus_navigation::browser_can_take_focus(stack) {
+        return false;
+    }
     if surface_takes_focus(stack) {
         stack.grab_focus()
     } else {

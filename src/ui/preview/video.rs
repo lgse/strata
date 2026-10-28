@@ -163,10 +163,11 @@ impl VideoView {
         play.add_css_class("preview-media-center");
         play.add_css_class("preview-video-play");
         play.set_child(Some(&play_icon));
-        play.set_tooltip_text(Some(&crate::ui::shortcut_reference::with_keys(
+        crate::ui::shortcut_reference::follow_tooltip(
+            &play,
             "Play/Pause (%{keys})",
-            crate::ui::keys::Keys::One(crate::ui::keys::bindings::MEDIA_PLAY_PAUSE),
-        )));
+            crate::ui::keys::Keys::One(crate::ui::keys::bindings::MEDIA_PLAY_PAUSE.shown()),
+        );
         crate::ui::accessibility::set_label(&play, &crate::i18n::tr("Play or pause"));
         let transport = navigation_row(&previous, &play, &next, 10);
         transport.set_start_widget(Some(&elapsed));

@@ -1300,6 +1300,7 @@
   "keys.name.home": "Home",
   "keys.name.insert": "Ins",
   "keys.name.menu": "Menu",
+  "keys.name.compose": "Compose",
   "keys.name.page_down": "Pag Giù",
   "keys.name.page_up": "Pag Su",
   "keys.name.shift": "Maiusc",
@@ -1493,6 +1494,17 @@
   "The command opened in your terminal. Run diagnostics again when it finishes.": "Il comando è stato aperto nel terminale. Esegui di nuovo la diagnostica al termine.",
   "Disabled": "Disattivato",
   "Open folder": "Apri cartella",
+  "Keyboard": "Tastiera",
+  "Keyboard settings": "Impostazioni della tastiera",
+  "Shortcuts for each mode": "Scorciatoie per ogni modalità",
+  "Search keybinds": "Cerca scorciatoie",
+  "Reset all": "Ripristina tutto",
+  "Reset all keybinds?": "Ripristinare tutte le scorciatoie?",
+  "Restore the shipped keys of every action in the shown mode.": "Ripristina i tasti originali di tutte le azioni della modalità mostrata.",
+  "Not bound": "Non assegnato",
+  "Press a key…": "Premi un tasto…",
+  "Turn off type-to-search": "Disattiva “Digita per cercare”",
+  "settings_keywords.keyboard-shortcuts": "scorciatoie tasti tastiera assegnare riassegnare combinazioni ripristinare",
   "%{distance} km": "%{distance} km",
   "%{minimum}–%{maximum} m": "%{minimum}–%{maximum} m",
   "Copy this route file locally before previewing it.": "Copia questo file di percorso sul computer prima di visualizzarne l’anteprima.",
@@ -1510,5 +1522,6 @@
   "%{distance} mi": "%{distance} mi",
   "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum} ft",
   "%{elevation} m": "%{elevation} m",
-  "%{elevation} ft": "%{elevation} ft"
+  "%{elevation} ft": "%{elevation} ft",
+  "No action": "Nessuna azione"
 }

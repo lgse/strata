@@ -1177,6 +1177,9 @@ impl ViewState {
     }
 
     pub(super) fn focus_rebuilt_active_column(&self) {
+        if !crate::ui::focus_navigation::browser_can_take_focus(&self.overlay) {
+            return;
+        }
         let Some(depth) = self.browser.active_depth() else {
             return;
         };
@@ -1796,6 +1799,7 @@ impl ViewState {
         let navigation_state = Rc::downgrade(self);
         keys::on_press(&return_to_filter, move |controller, press| {
             let filter_active = search_active.get() || !query_for_return.borrow().trim().is_empty();
+            let press = &press.untyped();
             if !filter_active || !press.is_any(&[UP, DOWN]) {
                 return glib::Propagation::Proceed;
             }

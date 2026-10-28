@@ -442,6 +442,69 @@ fn chooser_refuses_commands_its_request_does_not_allow() {
     );
 }
 
+/// An Escape alternate cancels the request like Escape, and Escape still does
+/// when the table leaves it out.
+#[test]
+fn dialogs_dismiss_on_escape_alternate() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::keyboard::dialogs_dismiss_on_escape_alternate",
+        || {
+            use crate::ui::keys::{Binding, Keymap, Map, bindings::ESCAPE, use_keymap};
+            let alternate = vec![Binding::ctrl(Key::bracketleft)];
+            let _keymap = use_keymap(
+                Keymap::defaults()
+                    .with(Map::Default, ESCAPE, alternate.clone())
+                    .with(Map::Tenxer, ESCAPE, alternate),
+            );
+            for tenxer in [false, true] {
+                for (key, modifiers) in [
+                    (Key::bracketleft, ModifierType::CONTROL_MASK),
+                    (Key::Escape, ModifierType::empty()),
+                ] {
+                    let chooser =
+                        Chooser::open_with(single_file(), BrowserMode::List, &["a.txt"], tenxer);
+                    chooser.focus_files();
+                    assert!(chooser.press_with(key, modifiers));
+                    assert!(chooser.cancelled(), "{key:?} tenxer={tenxer}");
+                }
+            }
+        },
+    );
+}
+
+/// A modified Down alternate moves the cursor as Down does, though Ctrl is held.
+#[test]
+fn modified_arrow_alternate_moves_the_cursor() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::keyboard::modified_arrow_alternate_moves_the_cursor",
+        || {
+            use crate::ui::keys::{Binding, Keymap, Map, bindings::DOWN, use_keymap};
+            let keymap =
+                [Map::Default, Map::Tenxer]
+                    .into_iter()
+                    .fold(Keymap::defaults(), |keymap, map| {
+                        let mut bindings = DOWN.defaults(map).to_vec();
+                        bindings.push(Binding::ctrl(Key::j));
+                        keymap.with(map, DOWN, bindings)
+                    });
+            let _keymap = use_keymap(keymap);
+            for tenxer in [false, true] {
+                let chooser = Chooser::open_with(
+                    single_file(),
+                    BrowserMode::List,
+                    &["a.txt", "b.txt"],
+                    tenxer,
+                );
+                chooser.focus_files();
+                chooser.press(Key::Home);
+                wait_until(|| chooser.cursor_name().as_deref() == Some("a.txt"));
+                assert!(chooser.press_with(Key::j, ModifierType::CONTROL_MASK));
+                wait_until(|| chooser.cursor_name().as_deref() == Some("b.txt"));
+            }
+        },
+    );
+}
+
 #[test]
 fn escape_dismisses_one_interaction_before_cancelling_and_the_toggle_keeps_the_request() {
     crate::test_support::gtk_test(
@@ -924,6 +987,49 @@ fn default_map_enter_returns_only_the_files_of_a_fill_with_a_folder() {
     );
 }
 
+/// The portal process loads the settings file when its chooser opens, keymap
+/// overrides included.
+#[test]
+fn saved_overrides_reach_the_chooser_dispatcher() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::keyboard::saved_overrides_reach_the_chooser_dispatcher",
+        || {
+            let settings = crate::ui::preferences::config_directory().join("settings.toml");
+            std::fs::create_dir_all(settings.parent().expect("settings directory"))
+                .expect("settings directory");
+            std::fs::write(
+                &settings,
+                "[keymap.default]\ntoggle_hidden_files = [\"<Control><Alt>h\"]\nparent_folder = [\"<Control>e\"]\n",
+            )
+            .expect("saved override");
+            let chooser = Chooser::open_with(single_file(), BrowserMode::List, &["a.txt"], false);
+            chooser.focus_files();
+            let browser = chooser.state.view.browser();
+            let hidden = browser.preferences().show_hidden;
+            chooser.press_with(Key::h, ModifierType::CONTROL_MASK);
+            assert_eq!(
+                browser.preferences().show_hidden,
+                hidden,
+                "Ctrl+H is unbound"
+            );
+            assert!(
+                chooser.press_with(Key::h, ModifierType::CONTROL_MASK | ModifierType::ALT_MASK)
+            );
+            assert_eq!(browser.preferences().show_hidden, !hidden);
+            let parent = Location::local(
+                chooser
+                    .root
+                    .path()
+                    .parent()
+                    .expect("fixture parent")
+                    .to_path_buf(),
+            );
+            assert!(chooser.press_with(Key::e, ModifierType::CONTROL_MASK));
+            wait_until(|| browser.active_location().as_ref() == Some(&parent));
+        },
+    );
+}
+
 #[test]
 fn default_map_enter_keeps_single_selection_and_folder_navigation() {
     crate::test_support::gtk_test(
@@ -957,6 +1063,91 @@ fn default_map_enter_keeps_single_selection_and_folder_navigation() {
             let folder = Location::local(chooser.root.path().join("folder"));
             wait_until(|| browser.active_location().as_ref() == Some(&folder));
             assert!(chooser.open_request(), "Enter on a folder chose the fill");
+        },
+    );
+}
+
+/// The 10xer stage and the chooser's own first keys read before the folder
+/// accept, so `conflicts::check` must refuse an accept key either takes. Rows
+/// are driven like the window's in `keyboard_dispatch::keymap_conflicts`.
+#[test]
+fn folder_accept_order_matches_the_conflict_check() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::keyboard::folder_accept_order_matches_the_conflict_check",
+        || {
+            use crate::ui::keys::{
+                Binding, Keymap, Map,
+                bindings::CHOOSE_FOLDER,
+                conflicts::{Policy, Severity, check},
+                use_keymap,
+            };
+            let open = || {
+                let folders = ChooserKind::Open {
+                    directory: true,
+                    multiple: false,
+                };
+                let chooser = Chooser::open(folders, BrowserMode::List, &["alpha/", "beta/"]);
+                chooser.focus_files();
+                chooser
+            };
+            let press = |chooser: &Chooser,
+                         binding: Binding,
+                         owner: Option<fn(&Chooser) -> bool>| {
+                chooser.press_with(binding.key(), binding.modifiers());
+                let owned = || owner.is_some_and(|owner| owner(chooser));
+                let deadline = std::time::Instant::now() + std::time::Duration::from_millis(300);
+                while chooser.responses.get() == 0
+                    && !owned()
+                    && std::time::Instant::now() < deadline
+                {
+                    glib::MainContext::default().iteration(false);
+                    std::thread::sleep(std::time::Duration::from_millis(2));
+                }
+                (chooser.responses.get() > 0, owned())
+            };
+            let shipped = CHOOSE_FOLDER.defaults(Map::Tenxer)[0];
+            assert_eq!(press(&open(), shipped, None), (true, false));
+            let edits_location: fn(&Chooser) -> bool =
+                |chooser| chooser.state.view.location_has_focus();
+            for (key, owner) in [
+                // The chooser's handler reads location first.
+                ("<Control>l", Some(edits_location)),
+                // The 10xer stage pages first.
+                ("<Control>u", None),
+                // The focused 10xer listing keeps typed keys.
+                ("e", None),
+            ] {
+                let binding = Binding::parse(key).expect("accelerator");
+                let mut entry = CHOOSE_FOLDER.defaults(Map::Tenxer).to_vec();
+                entry.push(binding);
+                let keymap = Keymap::defaults().with(Map::Tenxer, CHOOSE_FOLDER, entry);
+                let findings = check(
+                    &keymap,
+                    Map::Tenxer,
+                    CHOOSE_FOLDER,
+                    binding,
+                    Policy::default(),
+                );
+                let error = findings
+                    .iter()
+                    .any(|finding| finding.severity == Severity::Error);
+                let chooser = open();
+                let (fired, owned) = {
+                    let _keymap = use_keymap(keymap);
+                    press(&chooser, binding, owner)
+                };
+                if owner.is_some() && !owned {
+                    assert!(
+                        press(&open(), binding, owner).1,
+                        "{key}: the owner kept no key"
+                    );
+                }
+                assert_eq!(
+                    error,
+                    !fired || owner.is_some(),
+                    "{key}: fired={fired}, findings={findings:?}"
+                );
+            }
         },
     );
 }
