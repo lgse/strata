@@ -12,7 +12,7 @@ use std::{
 
 use gtk::{gdk::Key, glib, prelude::*};
 
-use super::{append_heading, page_content, scrollable_page, search};
+use super::{page_content, scrollable_page, search};
 use crate::{
     assets::{self, icons},
     services::{ActionCatalog, ActionRegistry},
@@ -41,11 +41,12 @@ pub(super) const PAGE: &str = "keyboard";
 pub(super) fn keyboard_page(preferences: Rc<PreferenceManager>) -> gtk::Widget {
     let content = page_content();
     content.add_css_class("settings-keyboard-page");
-    append_heading(&content, "KEYBINDS");
-    let controls = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    // The map comes first as the scope the search then narrows; the first
+    // section heading follows at the page's usual section gap.
+    let controls = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    controls.set_margin_bottom(24);
     search::tag(&controls, "Keyboard shortcuts");
     let (filter_field, filter, clear_filter) = super::search_field("Search keybinds");
-    controls.append(&filter_field);
 
     let shown = if preferences.tenxer_mode() {
         Map::Tenxer
@@ -54,8 +55,7 @@ pub(super) fn keyboard_page(preferences: Rc<PreferenceManager>) -> gtk::Widget {
     };
     let toolbar = super::wrap::WrapRow::new(8);
     toolbar.set_hexpand(true);
-    toolbar.set_margin_top(8);
-    toolbar.set_margin_bottom(8);
+    toolbar.set_end_align(true);
     let (maps, map_buttons) = segmented_control(
         &["Default", "10xer mode"],
         usize::from(shown == Map::Tenxer),
@@ -72,9 +72,13 @@ pub(super) fn keyboard_page(preferences: Rc<PreferenceManager>) -> gtk::Widget {
             "Restore the shipped keys of every action in the shown mode.",
         )),
     );
+    let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    spacer.set_hexpand(true);
     toolbar.append(&maps);
+    toolbar.append(&spacer);
     toolbar.append(&reset_all);
     controls.append(&toolbar);
+    controls.append(&filter_field);
     let no_match = gtk::Label::new(Some(&crate::i18n::tr("No matching shortcuts")));
     no_match.set_xalign(0.0);
     no_match.add_css_class("settings-option-description");
