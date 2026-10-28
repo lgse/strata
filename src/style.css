@@ -6956,9 +6956,10 @@ two-column presentation. */
   min-width: 42px;
 }
 
+/* 11px puts the 18px icon's centre on the search field's 16px icon. */
 .settings-dialog .settings-navigation button {
-  padding-left: 18px;
-  padding-right: 10px;
+  padding-left: 11px;
+  padding-right: 11px;
 }
 
 .settings-dialog .settings-navigation.compact > button,
