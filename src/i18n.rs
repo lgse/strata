@@ -13,6 +13,8 @@ pub(crate) enum Language {
     French,
     #[serde(rename = "de")]
     German,
+    #[serde(rename = "hu")]
+    Hungarian,
     #[serde(rename = "es")]
     Spanish,
     #[serde(rename = "ja")]
@@ -37,12 +39,13 @@ pub(crate) enum Language {
 }
 
 impl Language {
-    pub const CHOICES: [(&'static str, Self); 13] = [
+    pub const CHOICES: [(&'static str, Self); 14] = [
         ("Auto-detect", Self::Auto),
         ("English", Self::English),
-        ("Français", Self::French),
         ("Deutsch", Self::German),
         ("Español", Self::Spanish),
+        ("Français", Self::French),
+        ("Magyar", Self::Hungarian),
         ("日本語", Self::Japanese),
         ("Português (Brasil)", Self::BrazilianPortuguese),
         ("한국어", Self::Korean),
@@ -59,6 +62,7 @@ impl Language {
             Self::English => "en",
             Self::French => "fr",
             Self::German => "de",
+            Self::Hungarian => "hu",
             Self::Spanish => "es",
             Self::Japanese => "ja",
             Self::BrazilianPortuguese => "pt-BR",
@@ -83,6 +87,7 @@ fn supported_locale(value: &str) -> Option<&'static str> {
         "en" | "c" | "posix" => Some("en"),
         "fr" => Some("fr"),
         "de" => Some("de"),
+        "hu" => Some("hu"),
         "es" => Some("es"),
         "ja" => Some("ja"),
         "pt" => Some("pt-BR"),
