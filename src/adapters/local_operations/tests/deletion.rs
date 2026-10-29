@@ -272,14 +272,21 @@ fn removed_entries_are_reported_when_they_change_and_stop_with_the_reporter() {
             })
             .collect::<Vec<_>>()
     };
+    let wait_for_reports = |count: usize| {
+        let started = std::time::Instant::now();
+        while removed().len() < count && started.elapsed() < Duration::from_secs(5) {
+            wait(5);
+        }
+    };
 
     wait(40);
     assert!(removed().is_empty(), "nothing removed yet");
     (0..3).for_each(|_| deadline.note_removed());
+    wait_for_reports(1);
     wait(40);
     assert_eq!(removed(), [(7, 3)], "an unchanged count is reported once");
     deadline.note_removed();
-    wait(40);
+    wait_for_reports(2);
     assert_eq!(removed(), [(7, 3), (7, 4)]);
 
     drop(reporter);

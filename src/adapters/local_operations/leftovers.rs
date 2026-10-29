@@ -56,8 +56,8 @@ const REVIEWED_ENTRIES: usize = 1_000;
 
 static SWEPT: LazyLock<Mutex<HashSet<(PathBuf, OsString)>>> = LazyLock::new(Mutex::default);
 
-/// Shared by every job of one deletion: when its wait for leftovers began, and
-/// how many entries its workers have removed so far.
+/// Shared by every job of one deletion: when its leftover wait began and how many
+/// entries its workers have removed.
 #[derive(Clone, Default)]
 pub(crate) struct Deadline {
     started: Arc<OnceLock<SystemTime>>,

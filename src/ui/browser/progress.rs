@@ -687,9 +687,8 @@ impl FileProgressState {
         self.sync_compact(view);
     }
 
-    /// One item being deleted has no count to fill a bar from, and it stays at 0% until the
-    /// whole item is gone, so pulse and report how much of it is already gone. With several
-    /// items the item count carries the progress, and the entries removed would only flicker.
+    /// A single item stays at 0% until it is gone, so pulse and show the entries removed
+    /// instead. With several items the item count already carries the progress.
     pub(super) fn update_removed_entries(&self, removed: usize) {
         let (_, total) = self.file_operation_progress.get();
         if total > 1 || self.transfer_cancel_requested.get() {

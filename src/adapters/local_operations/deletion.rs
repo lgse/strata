@@ -815,8 +815,8 @@ pub(super) async fn deletion_worker_count(targets: &[DeletionTarget]) -> usize {
 
 const REMOVED_REPORT_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
 
-/// Reports the entries a deletion's workers have removed so far, since one large folder
-/// completes only when its last entry is gone. Dropping it stops the reports.
+/// Reports the entries removed so far, since one large folder completes only when its
+/// last entry is gone.
 pub(super) struct RemovedReporter(glib::JoinHandle<()>);
 
 impl RemovedReporter {
