@@ -23,7 +23,7 @@ const TARGETS: &[Target] = &[
         id: "language",
         page: "general",
         title: "Language",
-        aliases: "locale translation auto detect restart English Français Deutsch Español 日本語 Português 한국어 Tiếng Việt Italiano Русский 简体中文",
+        aliases: "locale translation auto detect restart English Français Deutsch Español 日本語 Português 한국어 Tiếng Việt Italiano Magyar Hungarian Русский 简体中文",
     },
     Target {
         id: "custom-actions",

@@ -42,10 +42,10 @@ impl Language {
     pub const CHOICES: [(&'static str, Self); 14] = [
         ("Auto-detect", Self::Auto),
         ("English", Self::English),
-        ("Deutsch", Self::German),
-        ("Español", Self::Spanish),
         ("Français", Self::French),
         ("Magyar", Self::Hungarian),
+        ("Deutsch", Self::German),
+        ("Español", Self::Spanish),
         ("日本語", Self::Japanese),
         ("Português (Brasil)", Self::BrazilianPortuguese),
         ("한국어", Self::Korean),
@@ -269,7 +269,7 @@ fn group_separator(locale: &str) -> &'static str {
     match locale {
         "en" | "ja" | "ko" | "zh-CN" | "zh-TW" => ",",
         "fr" => "\u{202f}",
-        "ru" => "\u{a0}",
+        "hu" | "ru" => "\u{a0}",
         _ => ".",
     }
 }

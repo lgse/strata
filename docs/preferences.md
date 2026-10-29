@@ -316,8 +316,8 @@ without resetting other preferences.
 ## Language
 
 **Settings → General → Language** offers **Auto-detect** (the default) and
-English, French, German, Spanish, Japanese, Brazilian Portuguese, Korean,
-Vietnamese, Italian, Russian, Simplified Chinese, and Traditional Chinese.
+English, French, Hungarian, German, Spanish, Japanese, Brazilian Portuguese,
+Korean, Vietnamese, Italian, Russian, Simplified Chinese, and Traditional Chinese.
 Language names use their native spelling so the selector remains recognizable
 after an accidental choice.
 Save a manual choice as `language = "fr"` or `language = "zh-CN"`, for example,

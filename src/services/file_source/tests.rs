@@ -10,6 +10,7 @@ fn error_details_continue_in_lower_case_only_where_the_language_does() {
     for (locale, reason, expected) in [
         ("fr", "Délai dépassé", "délai dépassé"),
         ("ru", "Доступ запрещён", "доступ запрещён"),
+        ("hu", "Hozzáférés megtagadva", "hozzáférés megtagadva"),
         (
             "vi",
             "Quyền truy cập bị từ chối",

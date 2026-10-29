@@ -18,7 +18,7 @@ user-defined names, or the locale environment inherited by other programs.
   shared with the standalone Bash installer. After editing, regenerate its
   embedded catalog with `python3 scripts/installer_messages.py --write`.
 
-Locales are `en`, `fr`, `de`, `es`, `ja`, `pt-BR`, `ko`, `vi`, `it`, `ru`,
+Locales are `en`, `fr`, `hu`, `de`, `es`, `ja`, `pt-BR`, `ko`, `vi`, `it`, `ru`,
 `zh-CN`, and `zh-TW`.
 JSON keys normally contain the original English message. Semantic keys are used
 for grammatical count forms and calendar data, and for an English word that needs

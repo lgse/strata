@@ -73,6 +73,7 @@ fn release_dates_follow_the_app_language() {
             for (locale, expected) in [
                 ("en", "Sep 20, 2026"),
                 ("de", "20. Sept. 2026"),
+                ("hu", "2026. szept. 20."),
                 ("ja", "2026年9月20日"),
                 ("zh-CN", "2026年9月20日"),
                 ("zh-TW", "2026年9月20日"),

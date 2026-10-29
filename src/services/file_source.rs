@@ -248,14 +248,14 @@ pub(crate) fn gio_error_detail(error: &glib::Error) -> String {
 }
 
 /// Adapts a standalone, capitalized error reason for a `…: %{error}` slot. French, Spanish,
-/// Italian, Portuguese, Russian and Vietnamese continue in lower case after a colon; German
-/// capitalizes nouns, and English and CJK keep the text as is.
+/// Italian, Portuguese, Hungarian, Russian and Vietnamese continue in lower case after a colon;
+/// German capitalizes nouns, and English and CJK keep the text as is.
 pub(crate) fn error_detail(text: String) -> String {
     error_detail_in(&rust_i18n::locale(), text)
 }
 
 fn error_detail_in(locale: &str, text: String) -> String {
-    if !matches!(locale, "fr" | "es" | "it" | "pt-BR" | "ru" | "vi") {
+    if !matches!(locale, "fr" | "es" | "it" | "pt-BR" | "hu" | "ru" | "vi") {
         return text;
     }
     let mut chars = text.chars();

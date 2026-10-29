@@ -35,7 +35,7 @@ previously added a custom KDE Connect action, disable it yourself in
 
 The provider's messages follow the inherited system locale (`LC_ALL`,
 `LC_MESSAGES`, then `LANG`) with English fallback, independently of Strata's
-language preference. `messages.json` includes all twelve Strata languages.
+language preference. `messages.json` includes all thirteen Strata languages.
 Device names, filenames and protocol identifiers are never translated.
 
 ## Selection and failure behavior
