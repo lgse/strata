@@ -457,6 +457,7 @@
   "Icons view": "Chế độ xem biểu tượng",
   "Image: %{alt}\n%{message}": "Ảnh: %{alt}\n%{message}",
   "In “%{folder}”": "Trong “%{folder}”",
+  "In-app updates are disabled in this build.": "Cập nhật trong ứng dụng bị tắt trong bản dựng này.",
   "Increase / decrease / reset text size": "Tăng / giảm / đặt lại cỡ chữ",
   "Increase / decrease / reset thumbnail size": "Tăng / giảm / đặt lại kích thước ảnh thu nhỏ",
   "Increase / decrease thumbnail size": "Tăng / giảm kích thước ảnh thu nhỏ",

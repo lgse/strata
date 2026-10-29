@@ -445,6 +445,7 @@
   "Icons view": "圖示檢視",
   "Image: %{alt}\n%{message}": "圖片：%{alt}\n%{message}",
   "In “%{folder}”": "位於 “%{folder}”",
+  "In-app updates are disabled in this build.": "此版本已停用應用程式內更新。",
   "Increase / decrease / reset text size": "增大 / 減小 / 重設文字大小",
   "Install Strata v%{value1}": "安裝 Strata v%{value1}",
   "Install the required tools to continue": "安裝所需的工具以繼續",

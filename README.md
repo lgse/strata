@@ -783,6 +783,12 @@ in; `--all-features` also enables UnRAR. The source lockfile and license notices
 still describe the optional dependency; they do not mean it is linked into the
 feature-disabled binary. See [third-party notices](THIRD_PARTY_LICENSES.md#unrar).
 
+### Builds without the in-app updater
+
+Distributions that ship Strata updates through their own packages build with
+`STRATA_UPDATER=disabled`, which removes update checks, installs, and the
+Updates settings page. See [distribution packaging](docs/packaging.md#building-without-the-in-app-updater).
+
 Start with [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Deeper references:
 
 - [Keyboard navigation](docs/keyboard-navigation.md)

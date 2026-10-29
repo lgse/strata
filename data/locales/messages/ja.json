@@ -457,6 +457,7 @@
   "Icons view": "アイコン表示",
   "Image: %{alt}\n%{message}": "画像: %{alt}\n%{message}",
   "In “%{folder}”": "「%{folder}」内",
+  "In-app updates are disabled in this build.": "このビルドではアプリ内アップデートが無効になっています。",
   "Increase / decrease / reset text size": "文字サイズを拡大 / 縮小 / リセット",
   "Increase / decrease / reset thumbnail size": "サムネイルサイズを拡大 / 縮小 / リセット",
   "Increase / decrease thumbnail size": "サムネイルサイズを拡大 / 縮小",

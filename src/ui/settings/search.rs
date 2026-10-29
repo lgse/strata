@@ -558,7 +558,10 @@ fn find_matches(query: &str) -> Matches {
     }
     let mut result = Matches::default();
     let mut best = -1;
-    for target in TARGETS {
+    for target in TARGETS
+        .iter()
+        .filter(|target| super::page_shown(target.page))
+    {
         if let Some(score) = score(query, target) {
             result.ids.insert(target.id.to_owned());
             result.pages.insert(target.page);

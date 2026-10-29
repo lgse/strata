@@ -457,6 +457,7 @@
   "Icons view": "图标视图",
   "Image: %{alt}\n%{message}": "图片：%{alt}\n%{message}",
   "In “%{folder}”": "位于“%{folder}”",
+  "In-app updates are disabled in this build.": "此版本已禁用应用内更新。",
   "Increase / decrease / reset text size": "增大 / 减小 / 重置文字大小",
   "Increase / decrease / reset thumbnail size": "增大 / 减小 / 重置缩略图大小",
   "Increase / decrease thumbnail size": "增大 / 减小缩略图大小",

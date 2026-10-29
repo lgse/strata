@@ -457,6 +457,7 @@
   "Icons view": "Вид значками",
   "Image: %{alt}\n%{message}": "Изображение: %{alt}\n%{message}",
   "In “%{folder}”": "В «%{folder}»",
+  "In-app updates are disabled in this build.": "Встроенные обновления отключены в этой сборке.",
   "Increase / decrease / reset text size": "Увеличить / уменьшить / сбросить размер текста",
   "Increase / decrease / reset thumbnail size": "Увеличить / уменьшить / сбросить размер миниатюр",
   "Increase / decrease thumbnail size": "Увеличить / уменьшить размер миниатюр",

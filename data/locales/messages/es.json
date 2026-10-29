@@ -457,6 +457,7 @@
   "Icons view": "Vista de iconos",
   "Image: %{alt}\n%{message}": "Imagen: %{alt}\n%{message}",
   "In “%{folder}”": "En «%{folder}»",
+  "In-app updates are disabled in this build.": "Las actualizaciones integradas están desactivadas en esta compilación.",
   "Increase / decrease / reset text size": "Aumentar / reducir / restablecer el tamaño del texto",
   "Increase / decrease / reset thumbnail size": "Aumentar / reducir / restablecer el tamaño de las miniaturas",
   "Increase / decrease thumbnail size": "Aumentar / reducir el tamaño de las miniaturas",

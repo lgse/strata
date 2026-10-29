@@ -246,7 +246,10 @@ fn force_due_update_check(last: Option<Instant>) -> bool {
 }
 
 pub(super) fn maybe_run_due_update_check(manager: &Rc<PreferenceManager>) {
-    if !manager.checks_for_updates() || CHECK_IN_FLIGHT.get() {
+    if !crate::build_info::updater_enabled()
+        || !manager.checks_for_updates()
+        || CHECK_IN_FLIGHT.get()
+    {
         return;
     }
     let last_completed = LAST_COMPLETED_CHECK.get();
@@ -926,7 +929,9 @@ pub fn build_layer(
     updates_spinner.set_valign(gtk::Align::Center);
     updates_spinner.set_vexpand(true);
     updates_container.append(&updates_spinner);
-    stack.add_named(&updates_container, Some("updates"));
+    if page_shown("updates") {
+        stack.add_named(&updates_container, Some("updates"));
+    }
     page.append(&stack);
 
     // Created before the navigation loop so lazy builders can register
@@ -960,7 +965,7 @@ pub fn build_layer(
     };
     let nav_buttons: Rc<RefCell<Vec<(gtk::Button, &'static str)>>> =
         Rc::new(RefCell::new(Vec::new()));
-    for entry in &NAVIGATION {
+    for entry in NAVIGATION.iter().filter(|entry| page_shown(entry.page)) {
         let name = entry.page;
         let active = name == "general";
         let (button, navigation_label, navigation_content) = navigation_button(entry);
@@ -3165,6 +3170,10 @@ struct NavigationEntry {
     subtitle: &'static str,
     icon: &'static str,
     accessible_label: Option<&'static str>,
+}
+
+fn page_shown(page: &str) -> bool {
+    page != "updates" || crate::build_info::updater_enabled()
 }
 
 /// Settings pages in navigation order. Search finds page titles here and routes

@@ -457,6 +457,7 @@
   "Icons view": "아이콘 보기",
   "Image: %{alt}\n%{message}": "이미지: %{alt}\n%{message}",
   "In “%{folder}”": "위치: “%{folder}”",
+  "In-app updates are disabled in this build.": "이 빌드에서는 앱 내 업데이트가 비활성화되어 있습니다.",
   "Increase / decrease / reset text size": "텍스트 크기 늘리기 / 줄이기 / 초기화",
   "Increase / decrease / reset thumbnail size": "썸네일 크기 늘리기 / 줄이기 / 초기화",
   "Increase / decrease thumbnail size": "썸네일 크기 늘리기 / 줄이기",
