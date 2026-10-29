@@ -5120,7 +5120,7 @@ fn metadata_fill_position(
     position.filter(|_| {
         super::browser::metadata_needs_fill(entry)
             || (include_mode && entry.mode == MetadataValue::Unknown)
-            || (entry.is_directory() && entry.child_count == MetadataValue::Unknown)
+            || entry.is_directory()
             || (include_icon_details && icon_details_need_fill(entry))
     })
 }

@@ -216,6 +216,9 @@ impl ViewState {
                     );
                 }
             }
+            BrowserEvent::FolderCountsInvalidated => {
+                crate::ui::thumbnail::refresh_metadata();
+            }
             BrowserEvent::MetadataFilled { depth, updates } => {
                 if self.mode_views.borrow().mode() == BrowserMode::Columns
                     && let Some(column) = self.columns.borrow().get(*depth).cloned()

@@ -22,7 +22,7 @@ mod slot;
 mod tests;
 mod viewport;
 pub(crate) use slot::ThumbnailSlot;
-pub(super) use viewport::{near_viewport, request_metadata};
+pub(super) use viewport::{near_viewport, request_metadata, schedule_refresh as refresh_metadata};
 
 static NEXT_REQUEST: AtomicU64 = AtomicU64::new(1);
 const MAX_CACHE_ENTRIES: usize = 256;

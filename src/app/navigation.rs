@@ -698,16 +698,8 @@ impl NavigationState {
         if updates.is_empty() {
             return None;
         }
-        // Full-sort fills arrive in small chunks. Build routing once, not a directory scan
-        // per chunk; structural changes invalidate it and the sort terminal releases it.
-        let index = column.metadata_positions.get_or_insert_with(|| {
-            column
-                .entries
-                .iter()
-                .enumerate()
-                .map(|(position, entry)| (entry.location.clone(), position))
-                .collect()
-        });
+        column.index_metadata_positions();
+        let index = column.metadata_positions.as_ref().expect("indexed entries");
         let mut positions = Vec::with_capacity(updates.len());
         if index.len() == column.entries.len() {
             for (location, update) in updates {
@@ -2267,6 +2259,26 @@ impl NavigationState {
         self.columns.get(depth)?.entries.get(position).cloned()
     }
 
+    pub fn resolve_entry_at(
+        &mut self,
+        depth: usize,
+        position: usize,
+        location: &Location,
+    ) -> Option<(usize, FileEntry)> {
+        let column = self.columns.get_mut(depth)?;
+        let position = if column
+            .entries
+            .get(position)
+            .is_some_and(|entry| &entry.location == location)
+        {
+            position
+        } else {
+            column.index_metadata_positions();
+            *column.metadata_positions.as_ref()?.get(location)?
+        };
+        Some((position, column.entries.get(position)?.clone()))
+    }
+
     pub fn column_entry_counts(&self, depth: usize) -> Option<ColumnEntryCounts> {
         let column = self.columns.get(depth)?;
         let show_hidden = column.preferences.show_hidden;
@@ -2449,6 +2461,19 @@ impl ColumnState {
         (position..self.entries.len())
             .find(visible)
             .or_else(|| (0..position.min(self.entries.len())).rev().find(visible))
+    }
+
+    fn index_metadata_positions(&mut self) {
+        // Sort chunks and shifted viewport targets share one index per structural revision.
+        if self.metadata_positions.is_none() {
+            self.metadata_positions = Some(
+                self.entries
+                    .iter()
+                    .enumerate()
+                    .map(|(position, entry)| (entry.location.clone(), position))
+                    .collect(),
+            );
+        }
     }
 
     fn invalidate_entry_indexes(&mut self) {

@@ -441,7 +441,7 @@ impl Browser {
             && !self.sorting.borrow().contains_key(&depth)
     }
 
-    pub(super) fn operation_touches(location: &Location) -> bool {
+    pub(crate) fn operation_touches(location: &Location) -> bool {
         location
             .native_path()
             .is_some_and(file_activity::is_changing)

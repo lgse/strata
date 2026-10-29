@@ -188,6 +188,8 @@ pub enum BrowserEvent {
         depth: usize,
         updates: Vec<(usize, FileEntry)>,
     },
+    /// Re-admit viewport metadata without replacing rows or clearing their last displayed count.
+    FolderCountsInvalidated,
     ColumnReloaded {
         depth: usize,
     },
@@ -1159,6 +1161,7 @@ pub struct Browser {
     departure_probe: RefCell<Option<directory_changes::DepartureProbe>>,
     freshness: freshness::Freshness,
     metadata_pending: RefCell<HashMap<usize, Vec<ViewportTarget>>>,
+    folder_counts_after_load: RefCell<HashMap<usize, RequestId>>,
     metadata_idle: RefCell<Option<gio::glib::SourceId>>,
     staging: RefCell<HashMap<usize, StagingLoad>>,
     sorting: RefCell<HashMap<usize, SortingLoad>>,
@@ -1251,6 +1254,7 @@ impl Browser {
             departure_probe: RefCell::new(None),
             freshness: freshness::Freshness::default(),
             metadata_pending: RefCell::new(HashMap::new()),
+            folder_counts_after_load: RefCell::new(HashMap::new()),
             metadata_idle: RefCell::new(None),
             staging: RefCell::new(HashMap::new()),
             sorting: RefCell::new(HashMap::new()),
@@ -2454,6 +2458,17 @@ impl Browser {
 
     pub fn entry_at(&self, depth: usize, position: usize) -> Option<FileEntry> {
         self.state.borrow().entry_at(depth, position)
+    }
+
+    pub(crate) fn resolve_entry_at(
+        &self,
+        depth: usize,
+        position: usize,
+        location: &Location,
+    ) -> Option<(usize, FileEntry)> {
+        self.state
+            .borrow_mut()
+            .resolve_entry_at(depth, position, location)
     }
 
     pub fn column_entry_counts(&self, depth: usize) -> Option<ColumnEntryCounts> {
@@ -5096,6 +5111,7 @@ impl Browser {
     }
 
     fn emit(&self, event: BrowserEvent) {
+        self.invalidate_loaded_folder_counts(&event);
         let observers = self.observers.borrow().clone();
         for observer in &observers {
             observer(&event);

@@ -2165,6 +2165,52 @@ fn metadata_fill_updates_values_without_reordering() {
 }
 
 #[test]
+fn entry_resolution_follows_splices_and_never_retargets_a_removed_location() {
+    let mut state = NavigationState::default();
+    let root = location("/fixture");
+    let target = location("/fixture/bravo");
+    state.navigate(root.clone(), RequestId(1));
+    state.apply_batch(
+        RequestId(1),
+        vec![
+            file_entry("/fixture/alpha", "alpha"),
+            file_entry("/fixture/bravo", "bravo"),
+        ],
+    );
+    let resolved = state.resolve_entry_at(0, 0, &target).expect("bravo");
+    assert_eq!((resolved.0, resolved.1.location), (1, target.clone()));
+    state.apply_directory_change(
+        0,
+        &root,
+        DirectoryChange::Upsert(file_entry("/fixture/aardvark", "aardvark")),
+    );
+    let resolved = state
+        .resolve_entry_at(0, 1, &target)
+        .expect("shifted bravo");
+    assert_eq!((resolved.0, resolved.1.location), (2, target.clone()));
+    assert_eq!(
+        state.apply_metadata(
+            RequestId(1),
+            vec![metadata_update("/fixture/bravo", 20, 200)]
+        ),
+        Some((0, vec![2]))
+    );
+    state.apply_directory_change(
+        0,
+        &root,
+        DirectoryChange::Remove(location("/fixture/alpha")),
+    );
+    let resolved = state.resolve_entry_at(0, 2, &target).expect("shifted back");
+    assert_eq!(
+        (resolved.0, resolved.1.location, resolved.1.size),
+        (1, target.clone(), MetadataValue::Known(20))
+    );
+    state.apply_directory_change(0, &root, DirectoryChange::Remove(target.clone()));
+    assert!(state.resolve_entry_at(0, 1, &target).is_none());
+    assert!(state.resolve_entry_at(1, 0, &target).is_none());
+}
+
+#[test]
 fn metadata_fill_for_a_superseded_load_is_dropped() {
     let mut state = NavigationState::default();
     state.navigate(location("/fixture"), RequestId(1));

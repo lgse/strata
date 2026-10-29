@@ -43,9 +43,10 @@ fn holds_original(kind: Leftover) -> bool {
 impl Browser {
     pub(super) fn follow_ended_operations(browser: Weak<Self>) -> Subscription {
         file_activity::observe(move |notice| {
-            if let Notice::Ended(_) = notice
+            if let Notice::Ended(ended) = notice
                 && let Some(browser) = browser.upgrade()
             {
+                browser.invalidate_folder_counts(ended);
                 browser.sync_all_leftovers();
             }
         })
