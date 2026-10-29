@@ -1734,6 +1734,7 @@ fn saved_date_format_renders_before_settings_and_updates_bound_labels() {
                 image_dimensions: MetadataValue::Unknown,
                 child_count: MetadataValue::Unknown,
                 duration_seconds: MetadataValue::Unknown,
+                listable: MetadataValue::Unknown,
                 recent_uri: None,
             };
             let absolute = |pattern: &str| {

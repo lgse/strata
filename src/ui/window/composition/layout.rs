@@ -255,9 +255,11 @@ fn bind_pin_handlers(browser: &BrowserView, sidebar: &SidebarView) {
     let weak_unpin_sidebar = Rc::downgrade(&sidebar.state);
     let pinned_places = sidebar.state.pinned_places.clone();
     browser.set_pin_handlers(
-        Rc::new(move |location, name| {
+        Rc::new(move |location, name, done| {
             if let Some(sidebar) = weak_pin_sidebar.upgrade() {
-                sidebar.pin_location(location, name);
+                sidebar.pin_location_with(location, name, done);
+            } else {
+                done(false);
             }
         }),
         Rc::new(move |location| {

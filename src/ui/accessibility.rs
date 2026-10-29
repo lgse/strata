@@ -353,6 +353,12 @@ pub(super) fn view_name(mode: BrowserMode) -> String {
 
 fn entry_kind_name(entry: &FileEntry) -> String {
     crate::i18n::tr(match entry.kind {
+        EntryKind::Directory if entry.is_locked_folder() => {
+            "Folder that requires administrator access"
+        }
+        EntryKind::DirectorySymbolicLink if entry.is_locked_folder() => {
+            "Folder link that requires administrator access"
+        }
         EntryKind::Directory => "Folder",
         EntryKind::DirectorySymbolicLink => "Folder link",
         EntryKind::File => "File",

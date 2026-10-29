@@ -40,7 +40,7 @@ impl ComposedFolder {
     fn focus_cursor_row(&self, mode: BrowserMode) {
         self.content.browser.set_view_mode(mode);
         let browser = self.content.browser.browser();
-        browser.select(0, 1);
+        browser.select(0, self.cursor_position());
         browser.focus_active();
         wait_until(|| self.content.browser.item_view_has_focus());
         // Deferred load and rebuild focus work must not land after the overlay opens.
@@ -48,9 +48,25 @@ impl ComposedFolder {
         assert!(self.cursor_row_has_focus(), "{mode:?} cursor row focused");
     }
 
+    fn cursor_position(&self) -> usize {
+        let browser = self.content.browser.browser();
+        let show_hidden = browser.preferences().show_hidden;
+        browser
+            .with_column_entries(0, |entries| {
+                entries
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, entry)| show_hidden || !entry.is_hidden)
+                    .nth(1)
+                    .map(|(position, _)| position)
+            })
+            .flatten()
+            .expect("second visible fixture entry")
+    }
+
     fn cursor_row_has_focus(&self) -> bool {
         self.content.browser.item_view_has_focus()
-            && focused_index(&self.content.browser.browser()) == 1
+            && focused_index(&self.content.browser.browser()) == self.cursor_position()
     }
 
     fn describe_focus(&self) -> String {
@@ -778,8 +794,6 @@ fn a_rename_to_a_hidden_name_lets_the_next_rename_start() {
     crate::test_support::gtk_test(
         "ui::window::tests::keyboard_dispatch::overlay_focus::a_rename_to_a_hidden_name_lets_the_next_rename_start",
         || {
-            // Directory monitors drop hidden names only when the folder opens with
-            // hidden files off, as it does by default.
             PreferenceManager::seed_saved_preferences_for_test();
             let preferences = PreferenceManager::shared();
             let mut sort = preferences.sort_preferences();

@@ -91,6 +91,7 @@ fn uri_entries_keep_roots_and_reject_secrets_and_transients() {
             StoredTab::from(KIND_URI, "trash:///some-deleted-file"),
             StoredTab::from(KIND_URI, "recent:///some-recent-file"),
             StoredTab::from(KIND_URI, "gphoto2://camera"),
+            StoredTab::from(KIND_URI, "admin:///run/media/user/drive/backups"),
             StoredTab::from(KIND_URI, "https://example.com/share"),
             StoredTab::from("bookmark", "whatever"),
         ],

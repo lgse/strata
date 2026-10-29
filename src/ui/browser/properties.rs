@@ -781,7 +781,11 @@ impl ViewState {
             match pin_action {
                 Some(PinAction::Pin) => {
                     if let Some(handler) = pin_handler.as_ref() {
-                        handler(pinning_location.clone(), pinning_name.clone());
+                        handler(
+                            pinning_location.clone(),
+                            pinning_name.clone(),
+                            Box::new(|_| {}),
+                        );
                     }
                 }
                 Some(PinAction::Unpin) => {

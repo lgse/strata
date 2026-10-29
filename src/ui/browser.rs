@@ -115,13 +115,15 @@ pub(super) use crate::ui::browser::pane_header::{
 };
 pub(super) use crate::ui::browser::paths::is_trash_root;
 pub use crate::ui::browser::peek::PeekBehavior;
-pub(super) use crate::ui::browser::presentation::not_responding_notice;
+pub(super) use crate::ui::browser::presentation::{administrator_notice, not_responding_notice};
 pub use crate::ui::browser::properties::format_permissions;
 pub(super) use crate::ui::modal::{
     animate_in, animate_out, dismiss_modal_layer, modal_layer, show_error_dialog, slide_out,
 };
 
-type PinHandler = Rc<dyn Fn(Location, String)>;
+// Receives whether the pin was saved, once the bookmark snapshot is published.
+type PinCompletion = Box<dyn FnOnce(bool)>;
+type PinHandler = Rc<dyn Fn(Location, String, PinCompletion)>;
 type UnpinHandler = Rc<dyn Fn(&Location)>;
 type PinStatusHandler = Rc<dyn Fn(&Location) -> PinStatus>;
 type PrintHandler = Rc<dyn Fn(FileEntry)>;
@@ -195,7 +197,7 @@ pub(super) struct ViewState {
     global_activity_spinner: gtk::Spinner,
     global_activity: RefCell<GlobalActivityState>,
     breadcrumbs: gtk::Box,
-    breadcrumb_scroller: gtk::ScrolledWindow,
+    breadcrumb_reveal_pending: Rc<Cell<bool>>,
     location_entry: gtk::Entry,
     path_completion: Rc<location::completion::PathCompletion>,
     columns_widget: gtk::Box,
@@ -442,6 +444,21 @@ impl BrowserView {
         breadcrumb_overlay.set_hexpand(true);
 
         let hadjustment = breadcrumb_scroller.hadjustment();
+        let breadcrumb_reveal_pending = Rc::new(Cell::new(false));
+        let pending = breadcrumb_reveal_pending.clone();
+        let reveal = RefCell::new(None::<super::frame::FrameTask>);
+        super::frame::after_layout(&breadcrumb_scroller, move |scroller| {
+            if scroller.is_mapped() && pending.replace(false) {
+                let scroller = scroller.downgrade();
+                // GTK can still update adjustment bounds during this frame's layout.
+                reveal.replace(Some(super::frame::FrameTask::new(None, move || {
+                    if let Some(scroller) = scroller.upgrade() {
+                        let adjustment = scroller.hadjustment();
+                        adjustment.set_value(adjustment.upper() - adjustment.page_size());
+                    }
+                })));
+            }
+        });
         let breadcrumb_scrollbar =
             gtk::Scrollbar::new(gtk::Orientation::Horizontal, Some(&hadjustment));
         breadcrumb_scrollbar.add_css_class("breadcrumb-scrollbar");
@@ -592,7 +609,7 @@ impl BrowserView {
             global_activity_spinner,
             global_activity: RefCell::new(GlobalActivityState::default()),
             breadcrumbs,
-            breadcrumb_scroller: breadcrumb_scroller.clone(),
+            breadcrumb_reveal_pending,
             location_entry,
             path_completion,
             columns_widget,
@@ -901,9 +918,11 @@ impl BrowserView {
 
     pub(super) fn can_trash_file_drop(sources: &[Location]) -> bool {
         !sources.is_empty()
-            && sources
-                .iter()
-                .all(|source| source.parent().is_some() && !paths::is_trash_location(source))
+            && sources.iter().all(|source| {
+                source.parent().is_some()
+                    && !paths::is_trash_location(source)
+                    && !source.is_administrator()
+            })
     }
 
     pub(super) fn trash_file_drop(&self, sources: Vec<Location>) -> bool {
@@ -1767,7 +1786,7 @@ impl BrowserView {
             return;
         }
         if let Some(handler) = self.state.pin_handler.borrow().as_ref() {
-            handler(entry.location, entry.display_name);
+            handler(entry.location, entry.display_name, Box::new(|_| {}));
         }
     }
 
@@ -2165,6 +2184,7 @@ impl BrowserView {
                         image_dimensions: crate::model::MetadataValue::Unknown,
                         child_count: crate::model::MetadataValue::Unknown,
                         duration_seconds: crate::model::MetadataValue::Unknown,
+                        listable: crate::model::MetadataValue::Unknown,
                         recent_uri: None,
                     }
                 })

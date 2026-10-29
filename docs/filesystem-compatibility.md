@@ -1307,6 +1307,11 @@ GIO decides where Trash is available. It reports Trash as unsupported for:
 
 There, Delete offers permanent deletion and Replace and Merge use the order above.
 
+Folders opened through `admin://` have no Trash either. GVfs's admin backend reports
+`access::can-trash` but has no trash operation, so Strata treats Trash as unavailable there before
+anything is deleted. Replace overwrites a file in place, and Merge isn't offered; see
+[Administrator access](administrator-access.md).
+
 GLib 2.86.0 to 2.88.4 can report success without trashing anything on FUSE filesystems that do not
 report entry types (GLib issue #4060). Strata therefore checks that a trashed local item is gone
 before reporting success or recording Undo: an item still at its name by the mount's identity

@@ -1,0 +1,55 @@
+{"scenario":"tenxer-pin-feedback-identifies-slot","modes":["list"],"prefs":{"tenxer_mode":true},"cost":{"list":2.4},"tree":{"pin-a":{},"pin-b":{},"pin-c":{},"pin-d":{},"pin-e":{},"pin-f":{},"pin-g":{},"pin-h":{},"pin-i":{},"pin-j":{}}}
+{"select":{"entry":"pin-a"}}
+{"wait":{"focused":"pin-a"},"message":"the first folder has keyboard focus"}
+{"key":"g"}
+{"key":"shift+plus"}
+{"wait":{"present":{"role":"label","name":"Pinned “pin-a” as g 1"}},"message":"the first pin confirmation includes its actual saved slot"}
+{"select":{"entry":"pin-b"}}
+{"wait":{"focused":"pin-b"},"message":"the second folder has keyboard focus"}
+{"key":"g"}
+{"key":"shift+plus"}
+{"wait":{"present":{"role":"label","name":"Pinned “pin-b” as g 2"}},"message":"the second pin confirmation includes its saved slot"}
+{"select":{"entry":"pin-c"}}
+{"wait":{"focused":"pin-c"},"message":"the third folder has keyboard focus"}
+{"key":"g"}
+{"key":"shift+plus"}
+{"wait":{"present":{"role":"label","name":"Pinned “pin-c” as g 3"}},"message":"the third pin confirmation includes its saved slot"}
+{"select":{"entry":"pin-d"}}
+{"wait":{"focused":"pin-d"},"message":"the fourth folder has keyboard focus"}
+{"key":"g"}
+{"key":"shift+plus"}
+{"wait":{"present":{"role":"label","name":"Pinned “pin-d” as g 4"}},"message":"the fourth pin confirmation includes its saved slot"}
+{"select":{"entry":"pin-e"}}
+{"wait":{"focused":"pin-e"},"message":"the fifth setup folder has keyboard focus"}
+{"key":"g"}
+{"key":"shift+plus"}
+{"wait":{"present":{"sidebar":"pin-e"}},"message":"the fifth pin is persisted before continuing"}
+{"select":{"entry":"pin-f"}}
+{"wait":{"focused":"pin-f"},"message":"the sixth setup folder has keyboard focus"}
+{"key":"g"}
+{"key":"shift+plus"}
+{"wait":{"present":{"sidebar":"pin-f"}},"message":"the sixth pin is persisted before continuing"}
+{"select":{"entry":"pin-g"}}
+{"wait":{"focused":"pin-g"},"message":"the seventh setup folder has keyboard focus"}
+{"key":"g"}
+{"key":"shift+plus"}
+{"wait":{"present":{"sidebar":"pin-g"}},"message":"the seventh pin is persisted before continuing"}
+{"select":{"entry":"pin-h"}}
+{"wait":{"focused":"pin-h"},"message":"the eighth setup folder has keyboard focus"}
+{"key":"g"}
+{"key":"shift+plus"}
+{"wait":{"present":{"sidebar":"pin-h"}},"message":"the eighth pin is persisted before checking the shortcut boundary"}
+{"select":{"entry":"pin-i"}}
+{"wait":{"focused":"pin-i"},"message":"the ninth folder has keyboard focus"}
+{"key":"g"}
+{"key":"shift+plus"}
+{"wait":{"present":{"role":"label","name":"Pinned “pin-i” as g 9"}},"message":"the final numbered pin includes its shortcut"}
+{"select":{"entry":"pin-j"}}
+{"wait":{"focused":"pin-j"},"message":"the tenth folder has keyboard focus"}
+{"key":"g"}
+{"key":"shift+plus"}
+{"wait":{"present":{"role":"label","name":"Pinned “pin-j”"}},"message":"pins beyond nine do not advertise an unavailable digit shortcut"}
+{"key":"g"}
+{"key":"shift+plus"}
+{"wait":{"present":{"role":"label","name":"“pin-j” is already pinned"}},"message":"pinning the same folder again does not add another bookmark"}
+{"fs":{"path":"$config/gtk-3.0/bookmarks","lines":10},"message":"each folder was persisted exactly once"}

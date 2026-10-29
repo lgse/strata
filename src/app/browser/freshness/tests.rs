@@ -126,6 +126,7 @@ impl Folders {
                 request_id,
                 message: "The operation timed out".to_owned(),
                 refused: !self.answering(),
+                denied: false,
             });
             return false;
         };
@@ -155,6 +156,7 @@ impl Folders {
                 request_id,
                 message: "A device input/output error occurred".to_owned(),
                 refused: false,
+                denied: false,
             },
             false => DirectoryEvent::Finished {
                 request_id,
@@ -172,6 +174,7 @@ impl Folders {
                 request_id: request.id,
                 message: "The operation timed out".to_owned(),
                 refused: true,
+                denied: false,
             });
         }
     }
@@ -323,6 +326,7 @@ impl FileSource for Folders {
                 request_id: request.id,
                 message: "The operation timed out".to_owned(),
                 refused: true,
+                denied: false,
             });
             return LoadHandle::new(|| {});
         }
@@ -422,6 +426,7 @@ fn entry(folder: &Location, name: &str) -> FileEntry {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
         recent_uri: None,
     }
 }

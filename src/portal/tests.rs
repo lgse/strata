@@ -38,6 +38,7 @@ fn entry(path: &Path, directory: bool) -> FileEntry {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
         recent_uri: None,
     }
 }
@@ -264,6 +265,7 @@ fn open_selection_validates_kind_cardinality_and_locality() {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
         ..folder
     };
     assert!(open_selection(&[remote], &current, true, false).is_err());

@@ -13,6 +13,8 @@ pub(crate) enum Language {
     French,
     #[serde(rename = "de")]
     German,
+    #[serde(rename = "hu")]
+    Hungarian,
     #[serde(rename = "es")]
     Spanish,
     #[serde(rename = "ja")]
@@ -37,10 +39,11 @@ pub(crate) enum Language {
 }
 
 impl Language {
-    pub const CHOICES: [(&'static str, Self); 13] = [
+    pub const CHOICES: [(&'static str, Self); 14] = [
         ("Auto-detect", Self::Auto),
         ("English", Self::English),
         ("Français", Self::French),
+        ("Magyar", Self::Hungarian),
         ("Deutsch", Self::German),
         ("Español", Self::Spanish),
         ("日本語", Self::Japanese),
@@ -59,6 +62,7 @@ impl Language {
             Self::English => "en",
             Self::French => "fr",
             Self::German => "de",
+            Self::Hungarian => "hu",
             Self::Spanish => "es",
             Self::Japanese => "ja",
             Self::BrazilianPortuguese => "pt-BR",
@@ -83,6 +87,7 @@ fn supported_locale(value: &str) -> Option<&'static str> {
         "en" | "c" | "posix" => Some("en"),
         "fr" => Some("fr"),
         "de" => Some("de"),
+        "hu" => Some("hu"),
         "es" => Some("es"),
         "ja" => Some("ja"),
         "pt" => Some("pt-BR"),
@@ -264,7 +269,7 @@ fn group_separator(locale: &str) -> &'static str {
     match locale {
         "en" | "ja" | "ko" | "zh-CN" | "zh-TW" => ",",
         "fr" => "\u{202f}",
-        "ru" => "\u{a0}",
+        "hu" | "ru" => "\u{a0}",
         _ => ".",
     }
 }
