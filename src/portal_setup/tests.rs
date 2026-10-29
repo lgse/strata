@@ -322,13 +322,15 @@ fn a_group_is_private_when_only_the_user_has_it() {
                   bob:x:1001:1001:Bob:/home/bob:/bin/bash\n\
                   carol:x:1002:100:Carol:/home/carol:/bin/bash\n";
     let groups = "alice:x:1000:\nbob:x:1001:\nstaff:x:50:alice,bob\nusers:x:100:\n\
-                  helpers:x:1010:alice\nteam:x:1011:alice,carol\n";
+                  helpers:x:1010:alice\nteam:x:1011:alice,carol\n\
+                  mine:x:1012:alice\nours:x:1012:bob\n";
     for (user, group, private, why) in [
         (1000, 1000, true, "a private group of one member"),
         (1000, 1010, true, "a group the user alone has joined"),
         (1000, 1001, false, "another user's private group"),
         (1000, 50, false, "a group with another member"),
         (1000, 1011, false, "a group shared with carol"),
+        (1000, 1012, false, "a gid another entry opens to bob"),
         (
             1002,
             100,

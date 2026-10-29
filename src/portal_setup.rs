@@ -875,9 +875,8 @@ fn secure_executable_for_user(
     Ok(path)
 }
 
-/// Whether group write access on a path reaches nobody but `user`. Distributions that give
-/// every user a private group, and a umask of 002, make a user's own folders group-writable.
-/// A group the databases do not describe counts as shared.
+/// Distributions that give each user a private group and a umask of 002 leave the user's own
+/// folders group-writable. A group the databases do not describe counts as shared.
 fn group_is_private(user: u32, group: u32, passwd: &str, groups: &str) -> bool {
     let mut name = None;
     for fields in passwd
@@ -896,18 +895,26 @@ fn group_is_private(user: u32, group: u32, passwd: &str, groups: &str) -> bool {
     let Some(name) = name else {
         return false;
     };
-    groups
+    let mut listed = false;
+    for fields in groups
         .lines()
         .map(|line| line.split(':').collect::<Vec<_>>())
-        .any(|fields| {
-            let [_, _, id, members] = fields[..] else {
-                return false;
-            };
-            id.parse() == Ok(group)
-                && members
-                    .split(',')
-                    .all(|member| member.is_empty() || member == name)
-        })
+    {
+        let [_, _, id, members] = fields[..] else {
+            continue;
+        };
+        if id.parse() != Ok(group) {
+            continue;
+        }
+        listed = true;
+        if members
+            .split(',')
+            .any(|member| !member.is_empty() && member != name)
+        {
+            return false;
+        }
+    }
+    listed
 }
 
 fn trusted_owner(owner: u32, effective_user: u32) -> bool {
