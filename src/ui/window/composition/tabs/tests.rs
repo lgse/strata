@@ -44,12 +44,13 @@ fn open_persisting(
 }
 
 fn wait_until(condition: impl Fn() -> bool) {
+    wait_until_or(condition, || "tab state did not settle".to_owned());
+}
+
+fn wait_until_or(condition: impl Fn() -> bool, failure: impl Fn() -> String) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     while !condition() {
-        assert!(
-            std::time::Instant::now() < deadline,
-            "tab state did not settle"
-        );
+        assert!(std::time::Instant::now() < deadline, "{}", failure());
         while glib::MainContext::default().pending() {
             glib::MainContext::default().iteration(false);
         }
@@ -883,6 +884,77 @@ fn saved_session_restores_tabs_in_order_with_active_tab() {
             wait_until(|| tab_locations(&tabs) == expected);
             assert_eq!(tabs.tabs.borrow().len(), 3);
             assert_eq!(tabs.active.get(), tabs.tabs.borrow()[2].id);
+            window.destroy();
+        },
+    );
+}
+
+/// Restores three tabs on folders holding a subfolder and a file, so the
+/// cursor lands on a folder whose column mirrors open, as on a real launch.
+fn restore_three_tabs(root: &std::path::Path) -> (gtk::ApplicationWindow, Rc<TabWindow>) {
+    let folders: Vec<_> = ["first", "second", "third"]
+        .into_iter()
+        .map(|name| root.join(name))
+        .collect();
+    for folder in &folders {
+        std::fs::create_dir_all(folder.join("sub")).expect("session directory");
+        std::fs::write(folder.join("file.txt"), "file").expect("session file");
+    }
+    crate::ui::tabs_session::save(&folders.iter().map(Location::local).collect::<Vec<_>>(), 2);
+    crate::storage::writer::settle();
+    let (window, tabs) = open();
+    assert!(tabs.try_restore());
+    let expected: Vec<_> = folders
+        .iter()
+        .map(|folder| Some(Location::local(folder)))
+        .collect();
+    wait_until(|| tab_locations(&tabs) == expected);
+    (window, tabs)
+}
+
+fn focused_widget(window: &gtk::ApplicationWindow) -> String {
+    gtk::prelude::RootExt::focus(window).map_or_else(
+        || "nothing".to_owned(),
+        |widget| format!("{} {:?}", widget.type_(), widget.css_classes()),
+    )
+}
+
+#[test]
+fn a_restored_session_opens_with_focus_in_the_listing() {
+    gtk_test(
+        "ui::window::composition::tabs::tests::a_restored_session_opens_with_focus_in_the_listing",
+        || {
+            let root = tempfile::tempdir().expect("tab fixture");
+            let (window, tabs) = restore_three_tabs(root.path());
+            let active = tabs.active_browser();
+
+            wait_until_or(
+                || active.item_view_has_focus(),
+                || format!("focus after restoring: {}", focused_widget(&window)),
+            );
+            window.destroy();
+        },
+    );
+}
+
+#[test]
+fn a_restored_tab_shown_for_the_first_time_focuses_its_listing() {
+    gtk_test(
+        "ui::window::composition::tabs::tests::a_restored_tab_shown_for_the_first_time_focuses_its_listing",
+        || {
+            let root = tempfile::tempdir().expect("tab fixture");
+            let (window, tabs) = restore_three_tabs(root.path());
+            let ids: Vec<_> = tabs.tabs.borrow().iter().map(|tab| tab.id).collect();
+
+            // Ctrl+Shift+1 and Ctrl+Shift+2: tabs restored but never shown.
+            for id in &ids[..2] {
+                tabs.select(*id);
+                let browser = tabs.active_browser();
+                wait_until_or(
+                    || browser.item_view_has_focus(),
+                    || format!("focus after showing tab {id}: {}", focused_widget(&window)),
+                );
+            }
             window.destroy();
         },
     );
