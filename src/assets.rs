@@ -51,6 +51,7 @@ pub mod icons {
     pub const FOLDER: &str = "strata-folder";
     pub const FOLDER_ARCHIVE: &str = "strata-folder-archive";
     pub const FOLDER_INPUT: &str = "strata-folder-input";
+    pub const FOLDER_LOCK: &str = "strata-folder-lock";
     pub const FOLDER_OPEN: &str = "strata-folder-open";
     pub const FOLDER_OUTPUT: &str = "strata-folder-output";
     pub const FOLDER_PLUS: &str = "strata-folder-plus";

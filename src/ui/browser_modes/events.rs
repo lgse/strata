@@ -286,8 +286,14 @@ impl ModeViews {
                     self.focus_visible_pane(*depth);
                 }
             }
-            BrowserEvent::LoadFailed { depth, message } => {
-                self.update_panes(*depth, |pane| pane.fail_loading(message));
+            BrowserEvent::LoadFailed {
+                depth,
+                message,
+                administrator,
+            } => {
+                self.update_panes(*depth, |pane| {
+                    pane.fail_loading(message, administrator.is_some());
+                });
                 if self.mode_pane(*depth).is_some() {
                     self.pane_navigation.borrow_mut().cancel();
                 }
@@ -554,7 +560,7 @@ impl Pane {
         self.show_count_after_update(defer_empty);
     }
 
-    fn fail_loading(&self, message: &str) {
+    fn fail_loading(&self, message: &str, offers_administrator: bool) {
         reconnect_pane_model(self);
         for section in self.all_sections() {
             section.syncing.set(false);
@@ -565,6 +571,7 @@ impl Pane {
             message = message
         ));
         self.status.add_css_class("error");
+        self.administrator.set_visible(offers_administrator);
         self.loading.show(STATUS_PAGE);
     }
 }

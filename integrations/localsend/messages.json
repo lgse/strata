@@ -11,6 +11,18 @@
     "Invalid provider request.": "Invalid provider request.",
     "Unsupported provider method.": "Unsupported provider method."
   },
+  "hu": {
+    "LocalSend could not be started.": "A LocalSend nem indítható el.",
+    "LocalSend closed before it opened the selection.": "A LocalSend bezárult, mielőtt megnyitotta volna a kijelölést.",
+    "This LocalSend menu expired. Reopen the right-click menu.": "Ez a LocalSend-menü lejárt. Nyissa meg újra a környezeti menüt.",
+    "The selected items changed. Reopen the right-click menu.": "A kijelölt elemek megváltoztak. Nyissa meg újra a környezeti menüt.",
+    "One or more selected items cannot be read.": "Egy vagy több kijelölt elem nem olvasható.",
+    "LocalSend is not installed in a system directory.": "A LocalSend nincs rendszerkönyvtárba telepítve.",
+    "The selected items are no longer available.": "A kijelölt elemek már nem érhetők el.",
+    "Items opened in LocalSend: {count}. Choose a device there to send them.": "A LocalSendben megnyitott elemek: {count}. A küldéshez válasszon ott egy eszközt.",
+    "Invalid provider request.": "Érvénytelen szolgáltatói kérés.",
+    "Unsupported provider method.": "Nem támogatott szolgáltatói metódus."
+  },
   "fr": {
     "LocalSend could not be started.": "Impossible de démarrer LocalSend.",
     "LocalSend closed before it opened the selection.": "LocalSend s’est fermé avant d’ouvrir la sélection.",

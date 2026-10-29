@@ -49,3 +49,30 @@ fn launches_report_a_missing_terminal_after_the_ui_thread_returns() {
         },
     );
 }
+
+#[test]
+fn opening_a_file_as_administrator_explains_instead_of_launching() {
+    crate::test_support::gtk_test(
+        "ui::browser::desktop::tests::opening_a_file_as_administrator_explains_instead_of_launching",
+        || {
+            let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            let overlay = gtk::Overlay::new();
+            overlay.set_child(Some(&content));
+            let window = gtk::Window::builder().child(&overlay).build();
+            let browser = Browser::new(Rc::new(crate::adapters::LocalFileSource));
+
+            open_location(
+                &Location::uri("admin:///srv/backups/report.pdf"),
+                &content,
+                &browser,
+            );
+
+            assert!(has_label(overlay.upcast_ref(), "Unable to open item"));
+            assert!(has_label(
+                overlay.upcast_ref(),
+                "Other applications can't open files in a folder opened as administrator."
+            ));
+            window.destroy();
+        },
+    );
+}

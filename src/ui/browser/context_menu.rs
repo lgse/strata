@@ -377,7 +377,7 @@ pub(in crate::ui) fn install_folder_context_menu(
     customize.set_visible(directory_actions && location.native_path().is_some());
     new_folder.set_visible(directory_actions);
     new_file.set_visible(directory_actions);
-    open_with.set_visible(directory_actions);
+    open_with.set_visible(directory_actions && !location.is_administrator());
     open_terminal.set_visible(directory_actions);
     paste.set_visible(directory_actions);
     properties.set_visible(!in_recent);
@@ -1363,7 +1363,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
             && entry.is_directory()
             && let Some(handler) = state.pin_handler.borrow().as_ref()
         {
-            handler(entry.location, entry.display_name);
+            handler(entry.location, entry.display_name, Box::new(|_| {}));
         }
     });
     let weak = Rc::downgrade(state);
@@ -1593,8 +1593,12 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
                     && super::desktop::entry_is_regular_executable(&entry),
             );
             let open_with_entries = entries.clone();
-            open_with.set_visible(open_with_entries.len() == 1);
-            open_with_multiple.set_visible(open_with_entries.len() > 1);
+            // See `desktop::ADMINISTRATOR_OPEN_REFUSAL`.
+            let other_apps = !entries
+                .iter()
+                .any(|entry| entry.location.is_administrator());
+            open_with.set_visible(other_apps && open_with_entries.len() == 1);
+            open_with_multiple.set_visible(other_apps && open_with_entries.len() > 1);
             open_multiple.set_visible(false);
             for button in [&open_with, &open_with_multiple] {
                 button.set_sensitive(false);

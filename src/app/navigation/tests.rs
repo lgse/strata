@@ -31,6 +31,7 @@ fn named_entry(path: &str, name: &str) -> FileEntry {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
         recent_uri: None,
     }
 }
@@ -1513,6 +1514,7 @@ fn hidden_entry(path: &str, name: &str) -> FileEntry {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
         recent_uri: None,
     }
 }
@@ -2108,6 +2110,7 @@ fn file_entry(path: &str, name: &str) -> FileEntry {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
         recent_uri: None,
     }
 }
@@ -2121,6 +2124,7 @@ fn metadata_update(path: &str, size: u64, modified: i64) -> MetadataUpdate {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
     }
 }
 
@@ -2255,6 +2259,7 @@ fn fill_updates_never_clobber_known_fields() {
             image_dimensions: MetadataValue::Known((1920, 1080)),
             child_count: MetadataValue::Known(4),
             duration_seconds: MetadataValue::Known(83),
+            listable: MetadataValue::Unknown,
         }],
     );
     assert!(matches!(applied, Some((0, ref positions)) if positions == &[0]));
@@ -2290,6 +2295,7 @@ fn fill_updates_never_clobber_known_fields() {
             image_dimensions: MetadataValue::Unknown,
             child_count: MetadataValue::Unknown,
             duration_seconds: MetadataValue::Unknown,
+            listable: MetadataValue::Unknown,
         }],
     );
     assert_eq!(applied, None);
@@ -2392,6 +2398,7 @@ fn typed_entry(name: &str, kind: EntryKind) -> FileEntry {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
         recent_uri: None,
     }
 }

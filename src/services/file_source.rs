@@ -54,6 +54,9 @@ pub enum LocationValidationError {
     /// A chooser policy refusal, held as an English source message.
     Refused(&'static str),
     EmbeddedCredential,
+    /// Polkit refused an `admin://` operation, or its prompt was dismissed; GVfs reports both
+    /// as `PERMISSION_DENIED`.
+    NotAuthorized,
     /// Already localized by [`backend_unavailable_message`].
     BackendUnavailable(String),
 }
@@ -91,12 +94,13 @@ impl fmt::Display for LocationValidationError {
             Self::UnsupportedScheme(scheme) => write!(
                 formatter,
                 "The {scheme}:// scheme isn't supported. Use an absolute local path or one of: \
-                 smb://, sftp://, ftp://, ftps://, dav://, davs://, or recent:///."
+                 smb://, sftp://, ftp://, ftps://, dav://, davs://, admin://, or recent:///."
             ),
             Self::EmbeddedCredential => formatter.write_str(
                 "Passwords typed into the address bar aren't accepted. Enter the address \
                  without a password, you'll be prompted to sign in securely.",
             ),
+            Self::NotAuthorized => formatter.write_str("Administrator access wasn't granted."),
             Self::BackendUnavailable(message) => formatter.write_str(message),
         }
     }
@@ -122,13 +126,14 @@ impl LocationValidationError {
             .into_owned(),
             Self::UnsupportedShorthand(message) | Self::Refused(message) => tr(message),
             Self::UnsupportedScheme(scheme) => rust_i18n::t!(
-                "The %{scheme}:// scheme isn't supported. Use an absolute local path or one of: smb://, sftp://, ftp://, ftps://, dav://, davs://, or recent:///.",
+                "The %{scheme}:// scheme isn't supported. Use an absolute local path or one of: smb://, sftp://, ftp://, ftps://, dav://, davs://, admin://, or recent:///.",
                 scheme = scheme
             )
             .into_owned(),
             Self::EmbeddedCredential => tr(
                 "Passwords typed into the address bar aren't accepted. Enter the address without a password, you'll be prompted to sign in securely.",
             ),
+            Self::NotAuthorized => tr("Administrator access wasn't granted."),
             Self::BackendUnavailable(message) => message.clone(),
         }
     }
@@ -215,10 +220,47 @@ pub(crate) fn system_error_text(error: &std::io::Error) -> String {
     }
 }
 
-/// Localized text for common GIO failures; other errors keep GIO's description.
+/// Localized common GIO failures; application-owned errors retain their detail.
 pub(crate) fn gio_error_message(error: &glib::Error) -> String {
+    gio_error_reason(error)
+        .map(crate::i18n::tr)
+        .unwrap_or_else(|| error.message().to_owned())
+}
+
+/// Platform backend wording is diagnostic detail, not an application-owned message.
+pub(crate) fn gio_backend_error_message(error: &glib::Error) -> String {
+    let reason = gio_error_reason(error)
+        .or_else(|| describes_refused_credentials(error.message()).then_some("Permission denied"))
+        .unwrap_or_else(|| {
+            tracing::debug!(
+                error = %sanitize_failure_message(error.message()),
+                "unrecognized GIO backend error"
+            );
+            UNEXPECTED_SYSTEM_ERROR
+        });
+    crate::i18n::tr(reason)
+}
+
+/// GVfs' SMB backend reports rejected credentials as `G_IO_ERROR_FAILED` on
+/// some versions, preserving the distinction only in its message.
+pub(crate) fn describes_refused_credentials(message: &str) -> bool {
+    let message = message.to_ascii_lowercase();
+    [
+        "permission denied",
+        "authentication failed",
+        "authentication required",
+        "auth fail",
+        "too many authentication failures",
+        "logon failure",
+        "invalid credentials",
+    ]
+    .iter()
+    .any(|reason| message.contains(reason))
+}
+
+fn gio_error_reason(error: &glib::Error) -> Option<&'static str> {
     use gtk::gio::IOErrorEnum;
-    let message = match error.kind::<IOErrorEnum>() {
+    Some(match error.kind::<IOErrorEnum>() {
         Some(IOErrorEnum::NotFound) => "No such file or folder",
         Some(IOErrorEnum::PermissionDenied) => "Permission denied",
         Some(IOErrorEnum::NotDirectory) => "Not a folder",
@@ -237,9 +279,8 @@ pub(crate) fn gio_error_message(error: &glib::Error) -> String {
         Some(IOErrorEnum::HostNotFound) => "Could not find the server",
         Some(IOErrorEnum::TooManyLinks) => "There are too many levels of symbolic links",
         Some(IOErrorEnum::NotMounted) => "The location is not mounted",
-        _ => return error.message().to_owned(),
-    };
-    crate::i18n::tr(message)
+        _ => return None,
+    })
 }
 
 /// [`gio_error_message`] for the `%{error}` slot after a colon; see [`error_detail`].
@@ -248,14 +289,14 @@ pub(crate) fn gio_error_detail(error: &glib::Error) -> String {
 }
 
 /// Adapts a standalone, capitalized error reason for a `…: %{error}` slot. French, Spanish,
-/// Italian, Portuguese, Russian and Vietnamese continue in lower case after a colon; German
-/// capitalizes nouns, and English and CJK keep the text as is.
+/// Italian, Portuguese, Hungarian, Russian and Vietnamese continue in lower case after a colon;
+/// German capitalizes nouns, and English and CJK keep the text as is.
 pub(crate) fn error_detail(text: String) -> String {
     error_detail_in(&rust_i18n::locale(), text)
 }
 
 fn error_detail_in(locale: &str, text: String) -> String {
-    if !matches!(locale, "fr" | "es" | "it" | "pt-BR" | "ru" | "vi") {
+    if !matches!(locale, "fr" | "es" | "it" | "pt-BR" | "hu" | "ru" | "vi") {
         return text;
     }
     let mut chars = text.chars();
@@ -514,6 +555,8 @@ pub enum DirectoryEvent {
         request_id: RequestId,
         message: String,
         refused: bool,
+        /// Permissions keep the user out of a native folder that exists.
+        denied: bool,
     },
     /// Size/mtime arrivals for already-listed entries, positioned by the receiver
     /// against stable locations. Zero or more chunks, then exactly one `MetadataFinished`
@@ -557,6 +600,7 @@ pub struct MetadataUpdate {
     pub image_dimensions: MetadataValue<(u32, u32)>,
     pub child_count: MetadataValue<u64>,
     pub duration_seconds: MetadataValue<u64>,
+    pub listable: MetadataValue<bool>,
 }
 
 #[derive(Clone, Debug)]
@@ -607,6 +651,11 @@ pub trait FileSource {
 
     fn confined_to(&self) -> Option<&Path> {
         None
+    }
+
+    /// Whether a native folder the user can't read may be reopened through `admin://`.
+    fn offers_administrator_access(&self) -> bool {
+        false
     }
 
     fn validate_location(&self, location: &Location) -> Result<(), LocationValidationError>;

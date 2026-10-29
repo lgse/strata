@@ -3,6 +3,7 @@
 use crate::ui::blur::BlurBin;
 use crate::ui::controls::{
     ModalTone, focus_button, message_dialog_description, message_dialog_layout,
+    stack_actions_when_constrained,
 };
 use crate::ui::keys::{self, bindings::ESCAPE_ANY};
 use gtk::glib;
@@ -802,6 +803,61 @@ fn show_message_dialog(
     close_icon.connect_clicked(move |_| icon_dismiss());
     close_on_escape(&layer, move || dismiss());
     close.grab_focus();
+}
+
+/// An error dialog that also offers one way past the error, such as opening the
+/// location as administrator.
+pub(super) fn show_error_dialog_with_action(
+    parent: &impl IsA<gtk::Widget>,
+    message: &str,
+    detail: &str,
+    action: (&str, &str),
+    on_action: Rc<dyn Fn()>,
+) {
+    let Some(ModalHost {
+        overlay: window_overlay,
+        blurred_root,
+    }) = ModalHost::blurred_for(parent)
+    else {
+        return;
+    };
+    let (icon, label) = action;
+    let layout = message_dialog_layout(
+        icon,
+        message,
+        &crate::i18n::tr("The operation could not be completed"),
+        label,
+        ModalTone::Accent,
+    );
+    layout.cancel.set_label(&crate::i18n::tr("Close"));
+    stack_actions_when_constrained(&layout);
+    let explanation = message_dialog_description(detail);
+    explanation.set_selectable(true);
+    layout.body.append(&explanation);
+
+    let layer = modal_layer(&layout.content, &window_overlay, blurred_root.clone(), None);
+    remember_modal_focus(&layer, &window_overlay);
+    window_overlay.add_overlay(&layer);
+    let dismissed = Rc::new(Cell::new(false));
+    let dismiss_layer = layer.clone();
+    let dismiss_overlay = window_overlay.clone();
+    let dismiss = Rc::new(move || {
+        if dismissed.replace(true) {
+            return;
+        }
+        dismiss_modal_layer(&dismiss_layer, &dismiss_overlay, blurred_root.as_ref());
+    });
+    let cancel_dismiss = dismiss.clone();
+    layout.cancel.connect_clicked(move |_| cancel_dismiss());
+    let icon_dismiss = dismiss.clone();
+    layout.close.connect_clicked(move |_| icon_dismiss());
+    let confirm_dismiss = dismiss.clone();
+    layout.confirm.connect_clicked(move |_| {
+        confirm_dismiss();
+        on_action();
+    });
+    close_on_escape(&layer, move || dismiss());
+    focus_button(&layout.confirm);
 }
 
 /// For a delete that completed with errors, some of them Trash-unsupported: offers

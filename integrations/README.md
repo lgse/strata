@@ -66,7 +66,7 @@ provider that runs the command should resolve it the same way; the LocalSend
 provider shows how.
 
 `name` and `description` are Strata interface text: add them to every catalog
-under `data/locales/` in all twelve languages (see
+under `data/locales/` in all thirteen languages (see
 [Internationalization](../docs/internationalization.md)). Messages the provider
 itself returns stay with the provider; follow the system locale as the protocol
 documentation describes.

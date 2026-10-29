@@ -1146,10 +1146,13 @@ impl ViewState {
                 // Rebuilt, already-loaded columns receive no finish event to cancel the timer.
                 stop_column_spinner(column);
                 if let Some(message) = snapshot.error.as_deref() {
-                    column.presentation.show_error(&rust_i18n::t!(
-                        "Unable to read this directory\n%{message}",
-                        message = message
-                    ));
+                    column.presentation.show_error(
+                        &rust_i18n::t!(
+                            "Unable to read this directory\n%{message}",
+                            message = message
+                        ),
+                        snapshot.administrator.is_some(),
+                    );
                 } else if snapshot.count == 0 {
                     column.presentation.show_empty();
                 } else {
@@ -1402,6 +1405,9 @@ impl ViewState {
         column.append(&filter_revealer);
         let not_responding = super::not_responding_notice();
         column.append(&not_responding);
+        if depth == 0 && location.is_administrator() {
+            column.append(&super::administrator_notice());
+        }
 
         let entry_count = Rc::new(Cell::new(0));
         let browser_for_model = self.browser.clone();
@@ -1896,11 +1902,21 @@ impl ViewState {
                 browser.retry_column(depth);
             }
         });
-        let presentation = LoadPresentation::new(&scroll, Some(retry)).with_focus_fallback(
-            &location.display_name(),
-            &list,
-            &self.browser,
-        );
+        let administrator = gtk::Button::with_label(&crate::i18n::tr("Open as Administrator"));
+        administrator.add_css_class("retry-button");
+        let weak_state = Rc::downgrade(self);
+        administrator.connect_clicked(move |_| {
+            if let Some(state) = weak_state.upgrade()
+                && let Some(location) = state
+                    .browser
+                    .column_snapshot(depth)
+                    .and_then(|snapshot| snapshot.administrator)
+            {
+                state.open_as_administrator(location);
+            }
+        });
+        let presentation = LoadPresentation::new(&scroll, Some(retry), Some(administrator))
+            .with_focus_fallback(&location.display_name(), &list, &self.browser);
         let weak_for_clear = Rc::downgrade(self);
         let returning_to_column = Rc::new(Cell::new(false));
         let returning_for_clear = returning_to_column.clone();

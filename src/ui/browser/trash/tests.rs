@@ -99,6 +99,7 @@ fn trashed_entry(root: &Path, name: &str, original: &Path) -> (FileEntry, PathBu
             image_dimensions: crate::model::MetadataValue::Unknown,
             child_count: crate::model::MetadataValue::Unknown,
             duration_seconds: crate::model::MetadataValue::Unknown,
+            listable: crate::model::MetadataValue::Unknown,
             recent_uri: None,
         },
         info,
@@ -136,6 +137,7 @@ fn deletion_reach_keeps_the_local_warning_unless_every_item_is_remote() {
                 (&["/mnt/cloud/a"][..], Remote),
                 (&["/mnt/nas/a", "/mnt/cloud/b"], Remote),
                 (&["sftp://host/a"], Remote),
+                (&["admin:///srv/a"], Local),
                 (&["/home/user/a"], Local),
                 (&["/media/usb/a"], Local),
                 (&["/mnt/pool/a"], Local),
@@ -544,6 +546,45 @@ fn missing_file_link_marks_the_delete_total_incomplete() {
             assert!(has_label(&window, "—"));
             assert!(!has_label(&window, "100 kB"));
             assert!(target.is_file());
+            window.destroy();
+            view.browser().clear_observer();
+        },
+    );
+}
+
+#[test]
+fn delete_as_administrator_confirms_permanent_deletion_without_trying_trash() {
+    crate::test_support::gtk_test(
+        "ui::browser::trash::tests::delete_as_administrator_confirms_permanent_deletion_without_trying_trash",
+        || {
+            let entries: Vec<FileEntry> = ["a.txt", "b.txt"]
+                .map(|name| {
+                    crate::test_support::operations::entry(Location::uri(format!(
+                        "admin:///srv/backups/{name}"
+                    )))
+                })
+                .to_vec();
+            let held = Rc::new(crate::test_support::operations::HeldOperations::default());
+            let view = view();
+            view.set_operation_provider(held.clone());
+            let window = window(&view);
+
+            view.state.request_delete(entries, false);
+
+            wait_until(|| button(window.upcast_ref(), "Permanently delete 2 items").is_some());
+            wait_until(|| focused_button_label(&window).as_deref() == Some("Cancel"));
+            assert!(
+                held.delete_requests.borrow().is_empty(),
+                "Delete never attempts Trash as administrator"
+            );
+            assert!(has_label(
+                &window,
+                "Trash isn't available when browsing as administrator."
+            ));
+            assert!(has_label(
+                &window,
+                "These items will be permanently deleted. This action cannot be undone."
+            ));
             window.destroy();
             view.browser().clear_observer();
         },

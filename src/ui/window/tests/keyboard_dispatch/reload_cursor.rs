@@ -753,6 +753,7 @@ impl crate::services::FileSource for ShrinkingShare {
                 image_dimensions: crate::model::MetadataValue::Unknown,
                 child_count: crate::model::MetadataValue::Unknown,
                 duration_seconds: crate::model::MetadataValue::Unknown,
+                listable: crate::model::MetadataValue::Unknown,
                 is_hidden: false,
             })
             .collect();
