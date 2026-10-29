@@ -687,6 +687,27 @@ impl FileProgressState {
         self.sync_compact(view);
     }
 
+    /// One item being deleted has no count to fill a bar from, and it stays at 0% until the
+    /// whole item is gone, so pulse and report how much of it is already gone. With several
+    /// items the item count carries the progress, and the entries removed would only flicker.
+    pub(super) fn update_removed_entries(&self, removed: usize) {
+        let (_, total) = self.file_operation_progress.get();
+        if total > 1 || self.transfer_cancel_requested.get() {
+            return;
+        }
+        let progress_view = self.file_progress_view.borrow();
+        let Some(view) = progress_view.as_ref() else {
+            return;
+        };
+        view.status.set_text(&rust_i18n::t!(
+            "%{items} deleted",
+            items = item_count_label(removed)
+        ));
+        view.indeterminate.set(true);
+        ensure_indeterminate_pulse(view);
+        self.sync_compact(view);
+    }
+
     pub(super) fn update_archive_progress(&self, completed: usize, total: usize) {
         self.file_operation_progress.set((completed, total));
         self.archive_progress.set(Some((completed, total)));

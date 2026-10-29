@@ -838,6 +838,9 @@ impl ViewState {
             BrowserEvent::DeletionProgress { completed, total } => {
                 self.update_item_progress(*completed, *total);
             }
+            BrowserEvent::DeletionEntriesRemoved { removed } => {
+                self.update_removed_entries(*removed);
+            }
             BrowserEvent::DeletionFinished { succeeded } => {
                 let dissolve = self.pending_delete_dissolve.take();
                 if let Some((depth, _)) = dissolve.as_ref() {
