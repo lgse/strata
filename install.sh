@@ -1626,7 +1626,7 @@ configure_file_chooser() {
   local extracted=$1
   if [[ $WITH_FILE_CHOOSER == yes ]]; then
     TASK_OUTPUT=notices run_task "$(text chooser)" "$BIN_PATH" --install-portal \
-      || die "File chooser setup failed. Strata is installed; retry in Settings → General → System file chooser."
+      || die "File chooser setup failed. Strata is installed; retry in Settings → General → Desktop integration → System file manager."
   elif [[ -r $extracted/portal/strata.portal && ( $NON_INTERACTIVE == no || $WITH_FILE_CHOOSER == no ) ]]; then
     "$BIN_PATH" --dismiss-portal-prompt >>"${LOG_FILE:-/dev/null}" 2>&1 \
       || warn "Could not save your choice. Strata may offer file chooser integration on first launch."
