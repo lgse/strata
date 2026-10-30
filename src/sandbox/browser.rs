@@ -11,7 +11,7 @@ use std::{
     process::Stdio,
     sync::{
         Arc, Condvar, Mutex, OnceLock,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -452,15 +452,27 @@ fn preview_pool() -> &'static Pool {
     })
 }
 
+static WORKERS_AVAILABLE: AtomicBool = AtomicBool::new(true);
+
+pub(crate) fn disable_workers() {
+    WORKERS_AVAILABLE.store(false, Ordering::Relaxed);
+}
+
+#[cfg(test)]
+pub(crate) fn enable_workers() {
+    WORKERS_AVAILABLE.store(true, Ordering::Relaxed);
+}
+
 pub(crate) fn workers_supported() -> bool {
-    static SUPPORTED: OnceLock<bool> = OnceLock::new();
-    *SUPPORTED.get_or_init(|| {
+    static LANDLOCK_SUPPORTED: OnceLock<bool> = OnceLock::new();
+    let landlock = *LANDLOCK_SUPPORTED.get_or_init(|| {
         let supported = worker::supported();
         if !supported {
             tracing::warn!("Landlock ABI 3 unavailable; retaining one-shot sandboxes");
         }
         supported
-    })
+    });
+    landlock && WORKERS_AVAILABLE.load(Ordering::Relaxed)
 }
 
 impl Pool {
@@ -695,7 +707,14 @@ enum Worker {
 impl Worker {
     fn spawn() -> io::Result<Self> {
         if workers_supported() {
-            ProcessWorker::spawn().map(Self::Persistent)
+            match ProcessWorker::spawn() {
+                Ok(worker) => Ok(Self::Persistent(worker)),
+                Err(error) => {
+                    tracing::warn!(%error, "worker sandbox unavailable; retaining one-shot sandboxes");
+                    disable_workers();
+                    Ok(Self::OneShot)
+                }
+            }
         } else {
             Ok(Self::OneShot)
         }
@@ -807,7 +826,7 @@ impl ProcessWorker {
             snapshot.path(),
         )
         .map_err(io::Error::other)?;
-        let (socket, child_socket) = UnixStream::pair()?;
+        let (mut socket, child_socket) = UnixStream::pair()?;
         socket.set_read_timeout(Some(super::WALL_TIME_LIMIT))?;
         socket.set_write_timeout(Some(super::WALL_TIME_LIMIT))?;
         let bwrap = crate::trusted_command::resolve("bwrap")
@@ -840,7 +859,18 @@ impl ProcessWorker {
             .stdin(Stdio::from(std::os::fd::OwnedFd::from(child_socket)))
             .stdout(Stdio::null())
             .stderr(Stdio::null());
-        let child = super::spawn_renderer(&mut command)?;
+        let mut child = super::spawn_renderer(&mut command)?;
+        drop(command);
+        let mut ready = [0];
+        use io::Read;
+        socket.read_exact(&mut ready).map_err(|error| {
+            super::terminate(&mut child);
+            io::Error::other(format!("Browser worker failed to initialize: {error}"))
+        })?;
+        if ready[0] != 1 {
+            super::terminate(&mut child);
+            return Err(io::Error::other("Invalid worker ready handshake"));
+        }
         tracing::debug!(pid = child.id(), "browser sandbox started");
         Ok(Self {
             child,

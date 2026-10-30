@@ -745,3 +745,17 @@ fn preview_operations_render_inside_the_decoder() {
         &response.png
     ));
 }
+
+#[test]
+fn disabling_workers_falls_back_to_oneshot_sandboxes() {
+    enable_workers();
+    let initial = workers_supported();
+    disable_workers();
+    assert!(!workers_supported());
+    let worker = Worker::spawn().expect("spawn fallback");
+    assert!(matches!(worker, Worker::OneShot));
+    if initial {
+        enable_workers();
+        assert!(workers_supported());
+    }
+}

@@ -99,6 +99,19 @@ fn workers_without_landlock_warn_without_rendering() {
 }
 
 #[test]
+fn workers_warn_when_workers_disabled_during_render() {
+    let check = workers(true, || {
+        crate::sandbox::browser::disable_workers();
+        Ok(())
+    });
+    assert_eq!(
+        (check.status, check.finding),
+        (Status::Warning, Finding::LandlockUnavailable)
+    );
+    crate::sandbox::browser::enable_workers();
+}
+
+#[test]
 fn video_thumbnails_distinguish_missing_slow_and_broken_decoders() {
     for (ffmpeg, thumbnailer, render, status, finding, fixed) in [
         (

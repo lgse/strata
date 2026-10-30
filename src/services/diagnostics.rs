@@ -479,6 +479,9 @@ fn workers(supported: bool, render: impl FnOnce() -> Result<(), String>) -> Chec
         return Check::warning(id, Finding::LandlockUnavailable);
     }
     match render() {
+        Ok(()) if !sandbox::browser::workers_supported() => {
+            Check::warning(id, Finding::LandlockUnavailable)
+        }
         Ok(()) => Check::passed(id, Finding::WorkersWork),
         Err(error) => Check::problem(id, Finding::WorkersFailed).with_detail(error),
     }

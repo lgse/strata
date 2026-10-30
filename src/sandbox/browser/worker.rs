@@ -14,8 +14,11 @@ use super::{
 /// receive a source on stdin and a one-way output pipe, not the control socket.
 pub(crate) fn run() -> Result<(), String> {
     restrict_mutations()?;
-    let socket = UnixStream::from(rustix::io::dup(std::io::stdin()).map_err(|e| e.to_string())?);
+    verify_namespaces()?;
+    let mut socket =
+        UnixStream::from(rustix::io::dup(std::io::stdin()).map_err(|e| e.to_string())?);
     rustix::io::fcntl_setfd(&socket, rustix::io::FdFlags::CLOEXEC).map_err(|e| e.to_string())?;
+    socket.write_all(&[1]).map_err(|e| e.to_string())?;
     while let Some((operation, input, write)) = wire::receive(&socket).map_err(|e| e.to_string())? {
         let child = match process::fork().map_err(|e| e.to_string())? {
             Some(child) => child,
@@ -42,6 +45,22 @@ pub(crate) fn run() -> Result<(), String> {
             .map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+fn verify_namespaces() -> Result<(), String> {
+    match process::fork().map_err(|e| e.to_string())? {
+        Some(child) => {
+            if process::wait(child).map_err(|e| e.to_string())? {
+                Ok(())
+            } else {
+                Err("Worker namespaces restricted by sandbox environment".into())
+            }
+        }
+        None => {
+            let status = if process::namespaces().is_ok() { 0 } else { 1 };
+            rustix::runtime::exit_group(status);
+        }
+    }
 }
 
 fn isolated_job(operation: Operation) -> Result<(), String> {
