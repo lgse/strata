@@ -411,6 +411,37 @@ fn returning_to_a_tab_left_by_a_tab_button_focuses_its_listing() {
 }
 
 #[test]
+fn returning_to_a_tab_restores_focus_in_its_sidebar() {
+    gtk_test(
+        "ui::window::composition::tabs::tests::returning_to_a_tab_restores_focus_in_its_sidebar",
+        || {
+            let root = tempfile::tempdir().expect("tab fixture");
+            let (window, tabs) = open();
+            let first_id = tabs.active.get();
+            load(&tabs.active_browser(), Location::local(root.path()));
+            let sidebar = tabs.active_tab().content.sidebar.widget.clone();
+            tabs.new_tab();
+            let second_id = tabs.active.get();
+            tabs.select(first_id);
+
+            let place = || {
+                find_widget(&sidebar, &|widget| {
+                    widget.is::<gtk::Button>() && widget.is_mapped()
+                })
+            };
+            wait_until(|| place().is_some());
+            let row = place().expect("a sidebar place");
+            assert!(row.grab_focus(), "sidebar rows take focus");
+            tabs.select(second_id);
+            tabs.select(first_id);
+
+            assert_eq!(gtk::prelude::RootExt::focus(&window), Some(row));
+            window.destroy();
+        },
+    );
+}
+
+#[test]
 fn tab_shortcuts_work_in_both_modes_and_follow_reordering() {
     gtk_test(
         "ui::window::composition::tabs::tests::tab_shortcuts_work_in_both_modes_and_follow_reordering",
