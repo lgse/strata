@@ -253,7 +253,10 @@ pub(super) async fn resolve(
         }
         let info = file
             .query_info_future(
-                "standard::type,standard::content-type",
+                &format!(
+                    "standard::type,{}",
+                    crate::adapters::CONTENT_TYPE_ATTRIBUTES
+                ),
                 gio::FileQueryInfoFlags::NONE,
                 glib::Priority::DEFAULT,
             )
@@ -269,7 +272,9 @@ pub(super) async fn resolve(
                 "Broken symbolic links cannot be opened with an application",
             ));
         }
-        let Some(next_type) = info.content_type().map(|value| value.to_string()) else {
+        let Some(next_type) =
+            crate::adapters::content_type_of(&info).map(|value| value.to_string())
+        else {
             return Some(Err("Unable to determine the selected file type"));
         };
         if !content_types

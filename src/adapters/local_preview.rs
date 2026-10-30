@@ -314,7 +314,7 @@ impl LocalPreviewProvider {
                 let file = gio_file_for_location(&entry.location);
                 let info = match file
                     .query_info_future(
-                        "standard::content-type,unix::mode",
+                        &format!("{},unix::mode", super::CONTENT_TYPE_ATTRIBUTES),
                         gio::FileQueryInfoFlags::NONE,
                         glib::Priority::DEFAULT,
                     )
@@ -330,8 +330,7 @@ impl LocalPreviewProvider {
                         return;
                     }
                 };
-                let queried_type = info
-                    .content_type()
+                let queried_type = super::content_type_of(&info)
                     .map(|value| value.to_string())
                     .unwrap_or_else(|| "application/octet-stream".to_owned());
                 let unix_mode = info
