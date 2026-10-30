@@ -1460,6 +1460,24 @@ impl BrowserView {
             .is_some_and(ColumnView::focus_surface)
     }
 
+    /// Columns only: the focused column becomes the first one. False when
+    /// there is nothing to the left of it.
+    pub fn make_focused_column_first(&self) -> bool {
+        if self.view_mode() != BrowserMode::Columns {
+            return false;
+        }
+        let Some(depth) = self
+            .state
+            .focused_column_depth()
+            .or_else(|| self.state.browser.active_depth())
+            .filter(|depth| *depth > 0)
+        else {
+            return false;
+        };
+        self.state.browser.make_first_column(depth);
+        true
+    }
+
     pub fn navigate_up(&self) {
         if self.view_mode() != BrowserMode::Columns {
             self.state.browser.parent();

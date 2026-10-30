@@ -896,6 +896,50 @@ fn returning_to_an_ancestor_selects_the_folder_you_came_from() {
 }
 
 #[test]
+fn making_a_column_first_keeps_later_columns_focus_and_cursor() {
+    let (browser, ..) = folder_browser(FolderTree::with(&[
+        ("/a", &["b"]),
+        ("/a/b", &["c", "d"]),
+        ("/a/b/c", &["e"]),
+    ]));
+    browser.navigate(Location::local("/a"));
+    browser.descend(0, Location::local("/a/b"));
+    browser.descend(1, Location::local("/a/b/c"));
+    browser.select(1, 0);
+    let strip = |browser: &Rc<Browser>| {
+        (0..)
+            .map_while(|depth| browser.location_at(depth))
+            .collect::<Vec<_>>()
+    };
+
+    browser.make_first_column(1);
+
+    assert_eq!(
+        strip(&browser),
+        [Location::local("/a/b"), Location::local("/a/b/c")]
+    );
+    assert_eq!(browser.active_depth(), Some(0));
+    assert_eq!(focused_location(&browser), Some(Location::local("/a/b/c")));
+
+    browser.make_first_column(0);
+    assert_eq!(
+        strip(&browser),
+        [Location::local("/a/b"), Location::local("/a/b/c")],
+        "the first column has nothing to drop"
+    );
+
+    browser.back();
+    assert_eq!(
+        strip(&browser),
+        [
+            Location::local("/a"),
+            Location::local("/a/b"),
+            Location::local("/a/b/c")
+        ]
+    );
+}
+
+#[test]
 fn returning_to_a_non_ancestor_keeps_the_first_entry() {
     let (browser, ..) = folder_browser(FolderTree::with(&[
         ("/a", &["a1", "a2"]),

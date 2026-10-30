@@ -210,6 +210,7 @@
   "Close preview or cancel the current interaction": "プレビューを閉じるか、現在の操作をキャンセル",
   "Close the active tab": "アクティブなタブを閉じる",
   "Close the current pane or go to the parent folder": "現在のペインを閉じるか、親フォルダーへ移動",
+  "Make the focused pane the first pane": "現在のペインを最初のペインにする",
   "Close the current window": "現在のウィンドウを閉じる",
   "Close the preview and return to the listing": "プレビューを閉じて一覧に戻る",
   "Close this reference or cancel the current interaction": "このリファレンスを閉じるか、現在の操作をキャンセル",

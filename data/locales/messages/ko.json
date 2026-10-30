@@ -210,6 +210,7 @@
   "Close preview or cancel the current interaction": "미리 보기를 닫거나 현재 상호 작용 취소",
   "Close the active tab": "활성 탭 닫기",
   "Close the current pane or go to the parent folder": "현재 열을 닫거나 상위 폴더로 이동",
+  "Make the focused pane the first pane": "현재 열을 첫 번째 열로 만들기",
   "Close the current window": "현재 창 닫기",
   "Close the preview and return to the listing": "미리 보기를 닫고 목록으로 돌아가기",
   "Close this reference or cancel the current interaction": "이 참조를 닫거나 현재 상호 작용 취소",

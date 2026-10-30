@@ -390,6 +390,12 @@ impl Dispatcher {
             {
                 return Some(Propagation::Stop);
             }
+            if press.is(MAKE_FIRST_COLUMN)
+                && self.chooser.is_none()
+                && self.view.make_focused_column_first()
+            {
+                return Some(Propagation::Stop);
+            }
         }
         // Ahead of the Ctrl and Super guard, which a user's binding may hold.
         let jumped = if press.is(HISTORY_BACK.in_map(Map::Default).ignoring(SHIFT)) {

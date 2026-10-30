@@ -210,6 +210,7 @@
   "Close preview or cancel the current interaction": "关闭预览或取消当前操作",
   "Close the active tab": "关闭当前标签页",
   "Close the current pane or go to the parent folder": "关闭当前栏或前往上级文件夹",
+  "Make the focused pane the first pane": "将当前栏设为第一栏",
   "Close the current window": "关闭当前窗口",
   "Close the preview and return to the listing": "关闭预览并返回文件列表",
   "Close this reference or cancel the current interaction": "关闭快捷键参考或取消当前操作",

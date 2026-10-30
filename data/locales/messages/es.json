@@ -210,6 +210,7 @@
   "Close preview or cancel the current interaction": "Cerrar la vista previa o cancelar la interacción actual",
   "Close the active tab": "Cerrar la pestaña activa",
   "Close the current pane or go to the parent folder": "Cerrar el panel actual o ir a la carpeta superior",
+  "Make the focused pane the first pane": "Convertir el panel actual en el primero",
   "Close the current window": "Cerrar la ventana actual",
   "Close the preview and return to the listing": "Cerrar la vista previa y volver a la lista",
   "Close this reference or cancel the current interaction": "Cerrar esta referencia o cancelar la interacción actual",

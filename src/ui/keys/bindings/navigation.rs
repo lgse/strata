@@ -52,6 +52,9 @@ catalog! {
             tenxer [Binding::plain(Key::i)];
     }
     default_only {
+        /// Columns: the focused column becomes the first one. 10xer keeps
+        /// its parent, current and preview strip.
+        MAKE_FIRST_COLUMN: Command "make_first_column" = Binding::alt(Key::Down);
         EXTEND_UP: Binding = Binding::shift(Key::Up);
         EXTEND_DOWN: Binding = Binding::shift(Key::Down);
         EXTEND_PAGE_UP: Binding = Binding::shift(Key::Page_Up);

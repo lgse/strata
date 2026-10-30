@@ -2294,6 +2294,16 @@ impl Browser {
         }
     }
 
+    /// Drops the columns before `depth`, keeping the ones after it, and leaves
+    /// focus and the cursor in what becomes the first column.
+    pub fn make_first_column(self: &Rc<Self>, depth: usize) {
+        let cursor = self.cursor_entry(depth).map(|entry| entry.location);
+        let target = self.state.borrow_mut().go_to_column(depth);
+        if let Some(target) = target {
+            self.restore_path_focused(target, 0, cursor);
+        }
+    }
+
     pub fn select(&self, depth: usize, position: usize) {
         let selected = self.state.borrow_mut().select(depth, position);
         if selected {
@@ -4062,6 +4072,24 @@ impl Browser {
     }
 
     fn restore_path(self: &Rc<Self>, path: NavigationPath) {
+        let preferred = path
+            .locations()
+            .last()
+            .and_then(|destination| self.came_from_child(destination));
+        let Some(depth) = path.locations().len().checked_sub(1) else {
+            return;
+        };
+        self.restore_path_focused(path, depth, preferred);
+    }
+
+    /// Restores `path` with focus in the column at `focus`, its cursor on
+    /// `preferred` when that loads, or on the first entry.
+    fn restore_path_focused(
+        self: &Rc<Self>,
+        path: NavigationPath,
+        focus: usize,
+        preferred: Option<Location>,
+    ) {
         let _update = self.navigation_update();
         self.cancel_deferred_reveal();
         if path
@@ -4071,10 +4099,6 @@ impl Browser {
         {
             return;
         }
-        let preferred = path
-            .locations()
-            .last()
-            .and_then(|destination| self.came_from_child(destination));
         self.bump_navigation_generation();
         self.emit(BrowserEvent::NavigationStarting { history: true });
         self.close_peek();
@@ -4094,8 +4118,9 @@ impl Browser {
             .borrow_mut()
             .restore(path, loads.iter().map(|(_, request_id)| *request_id));
 
-        let active_depth = loads.len().checked_sub(1);
+        let active_depth = (focus < loads.len()).then_some(focus);
         if let Some(depth) = active_depth {
+            self.state.borrow_mut().focus_column(depth);
             match preferred {
                 Some(child) => self
                     .state
