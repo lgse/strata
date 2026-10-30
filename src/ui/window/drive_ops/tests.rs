@@ -168,12 +168,19 @@ const CONTAINER: &str = "/org/freedesktop/UDisks2/block_devices/sda1";
 const MAPPING: &str = "/org/freedesktop/UDisks2/block_devices/dm_2d0";
 const PLAIN: &str = "/org/freedesktop/UDisks2/block_devices/sda2";
 
+#[derive(Clone, Copy)]
+enum ContainerState {
+    Open,
+    Closed,
+    Unreachable,
+}
+
 /// A UDisks fixture with one LUKS container, its mapping and a plain block.
 /// Returns the object each `Lock` call targeted.
 fn lock_with_fixture(
     device: Option<&str>,
     luks_uuid: Option<&str>,
-    container_open: bool,
+    container: ContainerState,
 ) -> (Result<(), DriveOpError>, Vec<String>) {
     let mut locked = Vec::new();
     let object_path =
@@ -205,14 +212,18 @@ fn lock_with_fixture(
                         }
                         (_, "org.freedesktop.UDisks2.Block", "CryptoBackingDevice") => "/",
                         (CONTAINER, "org.freedesktop.UDisks2.Encrypted", "CleartextDevice") => {
-                            if container_open {
-                                MAPPING
-                            } else {
-                                "/"
+                            match container {
+                                ContainerState::Open => MAPPING,
+                                ContainerState::Closed => "/",
+                                ContainerState::Unreachable => {
+                                    return Err(DriveOpError::CommandFailed(
+                                        "Timeout was reached".into(),
+                                    ));
+                                }
                             }
                         }
                         _ => {
-                            return Err(DriveOpError::CommandFailed(
+                            return Err(DriveOpError::MissingInterface(
                                 "No such interface on object".into(),
                             ));
                         }
@@ -239,7 +250,7 @@ fn lock_closes_the_container_whether_named_directly_or_through_its_mapping() {
         (Some("/dev/unknown"), Some("luks-uuid")),
         (Some("/dev/sda2"), Some("luks-uuid")),
     ] {
-        let (result, locked) = lock_with_fixture(device, luks_uuid, true);
+        let (result, locked) = lock_with_fixture(device, luks_uuid, ContainerState::Open);
         assert!(result.is_ok(), "{device:?} {luks_uuid:?}: {result:?}");
         assert_eq!(locked, [CONTAINER], "{device:?} {luks_uuid:?}");
     }
@@ -248,7 +259,7 @@ fn lock_closes_the_container_whether_named_directly_or_through_its_mapping() {
 #[test]
 fn lock_never_targets_a_block_without_an_encrypted_container() {
     for device in ["/dev/sda2", "/dev/unknown"] {
-        let (result, locked) = lock_with_fixture(Some(device), None, true);
+        let (result, locked) = lock_with_fixture(Some(device), None, ContainerState::Open);
         assert!(
             matches!(result, Err(DriveOpError::DeviceNotFound)),
             "{device}"
@@ -259,9 +270,21 @@ fn lock_never_targets_a_block_without_an_encrypted_container() {
 
 #[test]
 fn lock_of_an_already_closed_container_succeeds_without_calling_udisks_lock() {
-    let (result, locked) = lock_with_fixture(Some("/dev/sda1"), None, false);
+    let (result, locked) = lock_with_fixture(Some("/dev/sda1"), None, ContainerState::Closed);
     assert!(result.is_ok());
     assert!(locked.is_empty());
+}
+
+#[test]
+fn lock_reports_a_failed_container_read_instead_of_a_missing_device() {
+    for device in ["/dev/sda1", "/dev/dm-0"] {
+        let (result, locked) = lock_with_fixture(Some(device), None, ContainerState::Unreachable);
+        assert!(
+            matches!(&result, Err(DriveOpError::CommandFailed(message)) if message == "Timeout was reached"),
+            "{device}: {result:?}"
+        );
+        assert!(locked.is_empty(), "{device}");
+    }
 }
 
 #[test]
@@ -279,6 +302,14 @@ fn dismissed_lock_authorization_is_quiet_and_other_failures_keep_their_reason() 
             "Device /dev/sda1 is busy",
         )),
         DriveOpError::CommandFailed(message) if message == "Device /dev/sda1 is busy"
+    ));
+    assert!(matches!(
+        lock_error(gio::DBusError::new_for_dbus_error(
+            "org.freedesktop.DBus.Error.InvalidArgs",
+            "No such interface “org.freedesktop.UDisks2.Encrypted”",
+        )),
+        DriveOpError::MissingInterface(message)
+            if message == "No such interface “org.freedesktop.UDisks2.Encrypted”"
     ));
 }
 

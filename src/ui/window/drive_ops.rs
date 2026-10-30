@@ -140,6 +140,8 @@ pub(super) fn is_eligible(volume: Option<&gio::Volume>) -> bool {
 #[derive(Debug)]
 pub(super) enum DriveOpError {
     CommandFailed(String),
+    /// The D-Bus object does not implement the requested interface or property.
+    MissingInterface(String),
     DeviceNotFound,
     Cancelled,
     InvalidLabel(String),
@@ -149,7 +151,7 @@ pub(super) enum DriveOpError {
 impl std::fmt::Display for DriveOpError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::CommandFailed(msg) => write!(f, "{msg}"),
+            Self::CommandFailed(msg) | Self::MissingInterface(msg) => write!(f, "{msg}"),
             Self::DeviceNotFound => f.write_str("Could not identify the drive's block device"),
             Self::Cancelled => f.write_str("Operation cancelled"),
             Self::InvalidLabel(msg) => write!(f, "Invalid label: {msg}"),
@@ -161,7 +163,7 @@ impl std::fmt::Display for DriveOpError {
 impl DriveOpError {
     pub(super) fn user_message(&self) -> String {
         match self {
-            Self::CommandFailed(message) => message.clone(),
+            Self::CommandFailed(message) | Self::MissingInterface(message) => message.clone(),
             Self::DeviceNotFound => crate::i18n::tr("Could not identify the drive's block device"),
             Self::Cancelled => crate::i18n::tr("Operation cancelled"),
             Self::InvalidLabel(reason) => {
@@ -447,14 +449,15 @@ pub(super) fn lock_encrypted_device(
         )?
         .filter(|backing| backing != "/");
         let container = backing.unwrap_or(block);
-        // Reading the property fails on a block without the Encrypted interface.
-        let Ok(Some(cleartext)) = udisks_object_property(
+        let cleartext = match udisks_object_property(
             &mut call,
             &container,
             "org.freedesktop.UDisks2.Encrypted",
             "CleartextDevice",
-        ) else {
-            continue;
+        ) {
+            Ok(Some(cleartext)) => cleartext,
+            Ok(None) | Err(DriveOpError::MissingInterface(_)) => continue,
+            Err(error) => return Err(error),
         };
         if cleartext != "/" {
             call(
@@ -530,8 +533,22 @@ fn lock_error(mut error: glib::Error) -> DriveOpError {
     if matches!(dismissed, DriveOpError::Cancelled) {
         return dismissed;
     }
+    // GDBus answers a property read on an unexported interface with InvalidArgs.
+    let missing_interface = gio::DBusError::remote_error(&error).is_some_and(|name| {
+        matches!(
+            name.as_str(),
+            "org.freedesktop.DBus.Error.InvalidArgs"
+                | "org.freedesktop.DBus.Error.UnknownInterface"
+                | "org.freedesktop.DBus.Error.UnknownProperty"
+        )
+    });
     gio::DBusError::strip_remote_error(&mut error);
-    DriveOpError::CommandFailed(error.message().to_owned())
+    let message = error.message().to_owned();
+    if missing_interface {
+        DriveOpError::MissingInterface(message)
+    } else {
+        DriveOpError::CommandFailed(message)
+    }
 }
 
 /// Report the outcome: stay quiet on cancellation and success, and show
