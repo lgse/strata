@@ -361,7 +361,10 @@ fn tenxer_pin_chords_pin_the_cursor_folder_or_the_current_folder() {
             let (pins, unpins, status) = (pinned.clone(), pinned.clone(), pinned.clone());
             let refused = unavailable.clone();
             fixture.view.set_pin_handlers(
-                Rc::new(move |location, name| pins.borrow_mut().push((location, name))),
+                Rc::new(move |location, name, done| {
+                    pins.borrow_mut().push((location, name));
+                    done(true);
+                }),
                 Rc::new(move |location| unpins.borrow_mut().retain(|(pin, _)| pin != location)),
                 Rc::new(move |location| {
                     if refused.borrow().as_ref() == Some(location) {

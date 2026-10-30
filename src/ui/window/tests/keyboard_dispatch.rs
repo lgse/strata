@@ -1059,7 +1059,10 @@ fn tenxer_file_list_skips_conflicting_defaults_and_keeps_bound_shortcuts() {
             let pins = Rc::new(Cell::new(0));
             let observed = pins.clone();
             fixture.view.set_pin_handlers(
-                Rc::new(move |_location, _name| observed.set(observed.get() + 1)),
+                Rc::new(move |_location, _name, done| {
+                    observed.set(observed.get() + 1);
+                    done(true);
+                }),
                 Rc::new(|_location| {}),
                 Rc::new(|_| PinStatus::Available),
             );

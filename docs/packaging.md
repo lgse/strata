@@ -124,3 +124,13 @@ Settings get the original `GDK_DEBUG` back; ordinary launches and the separate
 ## Other distributions
 
 Debian/Ubuntu, Fedora, Flatpak, and AppImage each have their own dependency, sandboxing, update, and review requirements and are tracked as separate issues. The AUR marker must not be reused for them until those provider-specific semantics are designed.
+
+### Building without the in-app updater
+
+A distribution whose own packages deliver Strata updates builds with the updater compiled out:
+
+```bash
+STRATA_UPDATER=disabled cargo build --locked --release
+```
+
+Such a build never checks for, downloads, or installs a release. Settings has no Updates page and its search finds no update settings, the update notice never appears, and `services::install_update` refuses to run. Diagnostics reports the installation as having in-app updates disabled, which tells a downstream build apart in bug reports. `STRATA_UPDATER` accepts only `enabled` (the default) and `disabled`; any other value fails the build, so a typo cannot ship an updater. It combines with `--no-default-features` for builds without RAR support.

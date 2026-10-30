@@ -328,7 +328,7 @@ impl ThemeManager {
         manager.apply_density();
         manager.apply_selected();
         manager.monitor_text_scaling();
-        manager.monitor_omarchy(&omarchy.directories);
+        manager.monitor_omarchy(&omarchy.directories, omarchy.theme_directory.as_deref());
         manager.monitor_custom_themes(themes_directory().is_dir());
         manager.monitor_linked_themes(linked_theme_targets(&themes_directory()));
         manager
@@ -787,7 +787,7 @@ impl ThemeManager {
         });
     }
 
-    fn monitor_omarchy(self: &Rc<Self>, directories: &[PathBuf]) {
+    fn monitor_omarchy(self: &Rc<Self>, directories: &[PathBuf], theme_directory: Option<&Path>) {
         let mut monitors = self.omarchy_monitors.take();
         monitors.retain(|(path, _)| directories.contains(path));
         for path in directories {
@@ -795,13 +795,19 @@ impl ThemeManager {
                 continue;
             }
             let (changed, live) = (Rc::downgrade(self), Rc::downgrade(self));
+            let colors =
+                (Some(path.as_path()) == theme_directory).then(|| path.join("colors.toml"));
             let monitor = crate::adapters::watch(
                 &Location::local(path),
                 Watched::Folder,
                 move |file, other_file| {
-                    if !is_omarchy_theme_event(file)
-                        && !other_file.is_some_and(is_omarchy_theme_event)
-                    {
+                    let relevant = |file: &gio::File| {
+                        is_omarchy_theme_event(file)
+                            || colors
+                                .as_ref()
+                                .is_some_and(|colors| file.path().as_ref() == Some(colors))
+                    };
+                    if !relevant(file) && !other_file.is_some_and(relevant) {
                         return;
                     }
                     if let Some(manager) = changed.upgrade() {
@@ -845,7 +851,7 @@ impl ThemeManager {
     }
 
     fn apply_omarchy_refresh(self: &Rc<Self>, refresh: OmarchyRefresh) {
-        self.monitor_omarchy(&refresh.directories);
+        self.monitor_omarchy(&refresh.directories, refresh.theme_directory.as_deref());
         let unchanged = self.omarchy_state.replace(refresh.state.clone()) == refresh.state;
         if let Some(state) = &refresh.state {
             self.preferences.set_active_omarchy_theme(&state.name);
@@ -1155,6 +1161,7 @@ impl OmarchyState {
 struct OmarchyRefresh {
     state: Option<OmarchyState>,
     name_exists: bool,
+    theme_directory: Option<PathBuf>,
     /// Ancestor watches survive moving away or replacing the current state tree.
     directories: Vec<PathBuf>,
 }
@@ -1164,7 +1171,11 @@ impl OmarchyRefresh {
         let state = omarchy_state_dir();
         let home = glib::home_dir();
         let theme = state.join("theme");
-        let directories = std::iter::once(theme.as_path())
+        // Watch the target's identity, not the stable symlink spelling.
+        let theme_directory = fs::canonicalize(&theme).ok();
+        let directories = theme_directory
+            .iter()
+            .map(PathBuf::as_path)
             .chain(state.ancestors().take_while(|path| path.starts_with(&home)))
             .filter(|path| path.is_dir())
             .map(Path::to_path_buf)
@@ -1175,6 +1186,7 @@ impl OmarchyRefresh {
                 .zip(read("theme/colors.toml"))
                 .map(|(name, colors)| OmarchyState { name, colors }),
             name_exists: state.join("theme.name").is_file(),
+            theme_directory,
             directories,
         }
     }

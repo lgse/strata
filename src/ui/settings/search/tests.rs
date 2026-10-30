@@ -277,6 +277,34 @@ fn global_search_navigates_filters_lazy_pages_and_restores_without_editing_prefe
 }
 
 #[test]
+fn builds_without_the_updater_leave_updates_out_of_navigation_and_search() {
+    crate::test_support::gtk_test(
+        "ui::settings::search::tests::builds_without_the_updater_leave_updates_out_of_navigation_and_search",
+        || {
+            crate::ui::prepare_portal_ui();
+            for updater in [true, false] {
+                if !updater {
+                    crate::build_info::disable_updater_for_test();
+                }
+                let (layer, entry, stack) = settings_layer(&PreferenceManager::shared());
+                let has_button = descendants(&layer)
+                    .iter()
+                    .any(|widget| widget.is::<gtk::Button>() && widget.widget_name() == "updates");
+                assert_eq!(has_button, updater);
+                assert_eq!(stack.child_by_name("updates").is_some(), updater);
+                entry.set_text("release channel");
+                let expected = if updater {
+                    "updates"
+                } else {
+                    "settings-search-empty"
+                };
+                assert_eq!(stack.visible_child_name().as_deref(), Some(expected));
+            }
+        },
+    );
+}
+
+#[test]
 fn search_field_selects_all_with_ctrl_a_on_any_layout() {
     use gtk::gdk::{Key, ModifierType};
     crate::test_support::gtk_test(

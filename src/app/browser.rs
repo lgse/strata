@@ -118,6 +118,8 @@ pub struct BrowserColumnSnapshot {
     pub selected_positions: Vec<usize>,
     pub loading: bool,
     pub error: Option<String>,
+    /// Offered beside `error` when only permissions kept the user out.
+    pub administrator: Option<Location>,
     pub truncated: bool,
     pub reveal_pending: bool,
     pub not_responding: bool,
@@ -186,6 +188,8 @@ pub enum BrowserEvent {
         depth: usize,
         updates: Vec<(usize, FileEntry)>,
     },
+    /// Re-admit viewport metadata without replacing rows or clearing their last displayed count.
+    FolderCountsInvalidated,
     ColumnReloaded {
         depth: usize,
     },
@@ -206,6 +210,8 @@ pub enum BrowserEvent {
     LoadFailed {
         depth: usize,
         message: String,
+        /// The folder's `admin://` form when only permissions kept the user out.
+        administrator: Option<Location>,
     },
     PeekStarted {
         location: Location,
@@ -317,6 +323,9 @@ pub enum BrowserEvent {
         completed: usize,
         total: usize,
     },
+    DeletionEntriesRemoved {
+        removed: usize,
+    },
     DeletionFinished {
         succeeded: bool,
     },
@@ -356,9 +365,11 @@ pub enum BrowserEvent {
     },
     NavigationRejected {
         parent_depth: usize,
+        location: Location,
         error: LocationValidationError,
     },
     LocationNavigationRejected {
+        location: Location,
         error: LocationValidationError,
     },
     LocationRevealFailed {
@@ -435,6 +446,22 @@ impl UndoEntry {
             } => created.is_empty() && overwritten.is_empty(),
             Self::Move(records) | Self::Group { records, .. } => records.is_empty(),
             Self::Rename(_) => false,
+        }
+    }
+
+    /// Undoing a copy or merge moves what it placed to Trash, which `admin://` lacks.
+    fn places_as_administrator(&self) -> bool {
+        match self {
+            Self::Copy(created) => created.iter().any(Location::is_administrator),
+            Self::Merge {
+                created,
+                overwritten,
+                ..
+            } => created
+                .iter()
+                .chain(overwritten)
+                .any(Location::is_administrator),
+            Self::Trash { .. } | Self::Move(_) | Self::Group { .. } | Self::Rename(_) => false,
         }
     }
 
@@ -772,7 +799,7 @@ thread_local! {
 }
 
 fn push_pending_undo(entry: UndoEntry) {
-    if entry.is_empty() {
+    if entry.is_empty() || entry.places_as_administrator() {
         return;
     }
     PENDING_UNDO.with(|pending| {
@@ -784,7 +811,7 @@ fn push_pending_undo(entry: UndoEntry) {
 }
 
 fn push_background_undo(entry: UndoEntry) {
-    if entry.is_empty() {
+    if entry.is_empty() || entry.places_as_administrator() {
         return;
     }
     PENDING_UNDO.with(|pending| {
@@ -1137,6 +1164,7 @@ pub struct Browser {
     departure_probe: RefCell<Option<directory_changes::DepartureProbe>>,
     freshness: freshness::Freshness,
     metadata_pending: RefCell<HashMap<usize, Vec<ViewportTarget>>>,
+    folder_counts_after_load: RefCell<HashMap<usize, RequestId>>,
     metadata_idle: RefCell<Option<gio::glib::SourceId>>,
     staging: RefCell<HashMap<usize, StagingLoad>>,
     sorting: RefCell<HashMap<usize, SortingLoad>>,
@@ -1229,6 +1257,7 @@ impl Browser {
             departure_probe: RefCell::new(None),
             freshness: freshness::Freshness::default(),
             metadata_pending: RefCell::new(HashMap::new()),
+            folder_counts_after_load: RefCell::new(HashMap::new()),
             metadata_idle: RefCell::new(None),
             staging: RefCell::new(HashMap::new()),
             sorting: RefCell::new(HashMap::new()),
@@ -1422,6 +1451,7 @@ impl Browser {
                         );
                     }
                     None => browser.emit(BrowserEvent::LocationNavigationRejected {
+                        location: pending_location.clone(),
                         error: LocationValidationError::NotDirectory,
                     }),
                 },
@@ -1439,7 +1469,10 @@ impl Browser {
                     } else {
                         browser.preview_revealed_location.take();
                     }
-                    browser.emit(BrowserEvent::LocationNavigationRejected { error });
+                    browser.emit(BrowserEvent::LocationNavigationRejected {
+                        location: pending_location.clone(),
+                        error,
+                    });
                 }
             }
         });
@@ -1796,6 +1829,7 @@ impl Browser {
                 Err(error) => {
                     browser.emit(BrowserEvent::NavigationRejected {
                         parent_depth,
+                        location: pending_location.clone(),
                         error,
                     });
                     browser.focus_active();
@@ -2429,6 +2463,17 @@ impl Browser {
         self.state.borrow().entry_at(depth, position)
     }
 
+    pub(crate) fn resolve_entry_at(
+        &self,
+        depth: usize,
+        position: usize,
+        location: &Location,
+    ) -> Option<(usize, FileEntry)> {
+        self.state
+            .borrow_mut()
+            .resolve_entry_at(depth, position, location)
+    }
+
     pub fn column_entry_counts(&self, depth: usize) -> Option<ColumnEntryCounts> {
         self.state.borrow().column_entry_counts(depth)
     }
@@ -2470,7 +2515,16 @@ impl Browser {
             selected_positions: state.selected_positions(depth),
             loading: column.load_state == crate::app::navigation::LoadState::Loading,
             error: match &column.load_state {
-                crate::app::navigation::LoadState::Error(message) => Some(message.clone()),
+                crate::app::navigation::LoadState::Error(message)
+                | crate::app::navigation::LoadState::Denied { message, .. } => {
+                    Some(message.clone())
+                }
+                _ => None,
+            },
+            administrator: match &column.load_state {
+                crate::app::navigation::LoadState::Denied { administrator, .. } => {
+                    Some(administrator.clone())
+                }
                 _ => None,
             },
             truncated: column.truncated,
@@ -3781,7 +3835,9 @@ impl Browser {
 
     pub fn activate(self: &Rc<Self>, depth: usize, position: usize) {
         let open_child = self.entry_at(depth, position).is_some_and(|entry| {
-            entry.is_directory() && self.is_open_child(depth, &entry.location)
+            entry.is_directory()
+                && !entry.is_locked_folder()
+                && self.is_open_child(depth, &entry.location)
         });
         self.select(depth, position);
         if open_child {
@@ -3834,6 +3890,9 @@ impl Browser {
         let Some(entry) = self.entry_at(depth, position) else {
             return;
         };
+        if self.open_locked_folder(&entry, select_first) {
+            return;
+        }
         if entry.is_directory() {
             self.navigate_location(entry.location, select_first);
         } else if self.should_extract_on_activate(&entry) {
@@ -3951,6 +4010,27 @@ impl Browser {
         self.activate_focused_with_selection(true);
     }
 
+    /// `admin://` for a native folder the user can't read, when the source offers it.
+    pub(crate) fn administrator_alternative(&self, location: &Location) -> Option<Location> {
+        if !self.source.offers_administrator_access() {
+            return None;
+        }
+        location.as_administrator()
+    }
+
+    /// Opening a folder the user can't read goes through `admin://`, as in GNOME Files.
+    fn open_locked_folder(self: &Rc<Self>, entry: &FileEntry, select_first: bool) -> bool {
+        let Some(administrator) = entry
+            .is_locked_folder()
+            .then(|| self.administrator_alternative(&entry.location))
+            .flatten()
+        else {
+            return false;
+        };
+        self.navigate_location(administrator, select_first);
+        true
+    }
+
     fn activate_focused_with_selection(self: &Rc<Self>, select_first: bool) {
         let focused = self.state.borrow().focused_entry();
         let Some((depth, _, entry)) = focused else {
@@ -3958,6 +4038,9 @@ impl Browser {
             return;
         };
 
+        if self.open_locked_folder(&entry, select_first) {
+            return;
+        }
         if entry.is_directory() {
             if self.is_open_child(depth, &entry.location) {
                 self.focus_child();
@@ -4188,9 +4271,8 @@ impl Browser {
                 browser.reschedule_freshness();
             }
         });
-        let watch =
-            self.source
-                .start_watch(location, self.preferences.get().show_hidden, notify, report);
+        // Hidden entries remain in the model so revealing them never needs a rescan.
+        let watch = self.source.start_watch(location, true, notify, report);
         if let Some(monitor) = self
             .monitors
             .borrow_mut()
@@ -5032,6 +5114,7 @@ impl Browser {
     }
 
     fn emit(&self, event: BrowserEvent) {
+        self.invalidate_loaded_folder_counts(&event);
         let observers = self.observers.borrow().clone();
         for observer in &observers {
             observer(&event);
@@ -5124,7 +5207,16 @@ fn location_from_input_with_home(
     let normalized = scheme.to_ascii_lowercase();
     if !matches!(
         normalized.as_str(),
-        "smb" | "sftp" | "ftp" | "ftps" | "dav" | "davs" | "trash" | "network" | "recent"
+        "smb"
+            | "sftp"
+            | "ftp"
+            | "ftps"
+            | "dav"
+            | "davs"
+            | "trash"
+            | "network"
+            | "recent"
+            | crate::model::ADMIN_SCHEME
     ) {
         return Err(LocationValidationError::UnsupportedScheme(
             scheme.to_owned(),

@@ -26,6 +26,11 @@ pub enum LoadState {
     Ready,
     Empty,
     Error(String),
+    /// Permissions kept the user out of a native folder that `administrator` may open.
+    Denied {
+        message: String,
+        administrator: Location,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -693,16 +698,8 @@ impl NavigationState {
         if updates.is_empty() {
             return None;
         }
-        // Full-sort fills arrive in small chunks. Build routing once, not a directory scan
-        // per chunk; structural changes invalidate it and the sort terminal releases it.
-        let index = column.metadata_positions.get_or_insert_with(|| {
-            column
-                .entries
-                .iter()
-                .enumerate()
-                .map(|(position, entry)| (entry.location.clone(), position))
-                .collect()
-        });
+        column.index_metadata_positions();
+        let index = column.metadata_positions.as_ref().expect("indexed entries");
         let mut positions = Vec::with_capacity(updates.len());
         if index.len() == column.entries.len() {
             for (location, update) in updates {
@@ -1364,10 +1361,21 @@ impl NavigationState {
         true
     }
 
-    pub fn fail(&mut self, request_id: RequestId, message: String) -> Option<usize> {
+    pub fn fail(
+        &mut self,
+        request_id: RequestId,
+        message: String,
+        administrator: Option<Location>,
+    ) -> Option<usize> {
         let (depth, column) = self.column_for_request_mut(request_id)?;
         column.drop_load_intents();
-        column.load_state = LoadState::Error(message);
+        column.load_state = match administrator {
+            Some(administrator) => LoadState::Denied {
+                message,
+                administrator,
+            },
+            None => LoadState::Error(message),
+        };
         Some(depth)
     }
 
@@ -2251,6 +2259,26 @@ impl NavigationState {
         self.columns.get(depth)?.entries.get(position).cloned()
     }
 
+    pub fn resolve_entry_at(
+        &mut self,
+        depth: usize,
+        position: usize,
+        location: &Location,
+    ) -> Option<(usize, FileEntry)> {
+        let column = self.columns.get_mut(depth)?;
+        let position = if column
+            .entries
+            .get(position)
+            .is_some_and(|entry| &entry.location == location)
+        {
+            position
+        } else {
+            column.index_metadata_positions();
+            *column.metadata_positions.as_ref()?.get(location)?
+        };
+        Some((position, column.entries.get(position)?.clone()))
+    }
+
     pub fn column_entry_counts(&self, depth: usize) -> Option<ColumnEntryCounts> {
         let column = self.columns.get(depth)?;
         let show_hidden = column.preferences.show_hidden;
@@ -2433,6 +2461,19 @@ impl ColumnState {
         (position..self.entries.len())
             .find(visible)
             .or_else(|| (0..position.min(self.entries.len())).rev().find(visible))
+    }
+
+    fn index_metadata_positions(&mut self) {
+        // Sort chunks and shifted viewport targets share one index per structural revision.
+        if self.metadata_positions.is_none() {
+            self.metadata_positions = Some(
+                self.entries
+                    .iter()
+                    .enumerate()
+                    .map(|(position, entry)| (entry.location.clone(), position))
+                    .collect(),
+            );
+        }
     }
 
     fn invalidate_entry_indexes(&mut self) {
@@ -2658,6 +2699,10 @@ fn apply_metadata_update(entry: &mut FileEntry, update: &MetadataUpdate) -> bool
         && entry.duration_seconds != update.duration_seconds
     {
         entry.duration_seconds = update.duration_seconds.clone();
+        changed = true;
+    }
+    if update.listable != MetadataValue::Unknown && entry.listable != update.listable {
+        entry.listable = update.listable.clone();
         changed = true;
     }
     changed

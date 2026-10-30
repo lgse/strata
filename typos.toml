@@ -8,6 +8,7 @@ extend-exclude = [
   "data/locales/**/de.json",
   "data/locales/**/es.json",
   "data/locales/**/fr.json",
+  "data/locales/**/hu.json",
   "data/locales/**/it.json",
   "data/locales/**/ja.json",
   "data/locales/**/ko.json",
@@ -34,11 +35,11 @@ extend-ignore-re = [
   # German F1 row exercised by the localized shortcut reference regression.
   '"Ausgewählte Elemente kopieren / ausschneiden"',
   # Non-English values in the multilingual count and calendar catalogs.
-  '(?m)^\s*"(?:fr|de|es|ja|pt-BR|ko|vi|it|ru|zh-CN|zh-TW)": ".*"',
+  '(?m)^\s*"(?:fr|hu|de|es|ja|pt-BR|ko|vi|it|ru|zh-CN|zh-TW)": ".*"',
   # Non-English installer messages generated from data/locales/installer.json.
-  '(?s)\n  (?:fr|de|es|ja|pt-BR|ko|vi|it|ru|zh-CN|zh-TW)\) INSTALLER_MESSAGES=\(.*?\n  \) ;;',
+  '(?s)\n  (?:fr|hu|de|es|ja|pt-BR|ko|vi|it|ru|zh-CN|zh-TW)\) INSTALLER_MESSAGES=\(.*?\n  \) ;;',
   # Localized desktop-entry values.
-  '(?m)^\w+\[(?:fr|de|es|ja|pt_BR|ko|vi|it|ru|zh_CN|zh_TW)\]=.*$',
+  '(?m)^\w+\[(?:fr|hu|de|es|ja|pt_BR|ko|vi|it|ru|zh_CN|zh_TW)\]=.*$',
   # "café" fixtures spelled as raw, escaped or percent-encoded bytes, and the name they fix to.
   'caf(\\x[0-9a-fA-F]{2}|\\u\{[0-9a-fA-F]+\}|%[0-9A-Fa-f]{2}|_\.txt)',
 ]

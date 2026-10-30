@@ -259,7 +259,10 @@ impl Direct {
         let pins = Rc::new(Cell::new(0));
         let pinned = pins.clone();
         fixture.view.set_pin_handlers(
-            Rc::new(move |_location, _name| pinned.set(pinned.get() + 1)),
+            Rc::new(move |_location, _name, done| {
+                pinned.set(pinned.get() + 1);
+                done(true);
+            }),
             Rc::new(|_location| {}),
             Rc::new(|_| PinStatus::Available),
         );
@@ -590,7 +593,10 @@ fn tenxer_direct_pin_takes_the_search_hit() {
             let pinned = Rc::new(RefCell::new(Vec::new()));
             let pins = pinned.clone();
             fixture.view.set_pin_handlers(
-                Rc::new(move |_location, name| pins.borrow_mut().push(name)),
+                Rc::new(move |_location, name, done| {
+                    pins.borrow_mut().push(name);
+                    done(true);
+                }),
                 Rc::new(|_location| {}),
                 Rc::new(|_| PinStatus::Available),
             );

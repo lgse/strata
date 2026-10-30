@@ -1,9 +1,9 @@
 use super::fs_quirks::{Births, HoldGuard, Op, Racer, Trash, hold};
 use super::*;
 use crate::adapters::local_operations::{
-    LocalDeleteJob, LocalDeleteQueue, PinnedEntry, parallel_delete_local_blocking_with_workers,
-    parallel_delete_local_with, process_local_delete_job, retry_local_open,
-    run_local_delete_workers,
+    Deadline, LocalDeleteJob, LocalDeleteQueue, PinnedEntry, RemovedReporter,
+    parallel_delete_local_blocking_with_workers, parallel_delete_local_with,
+    process_local_delete_job, retry_local_open, run_local_delete_workers,
 };
 use crate::{
     adapters::trash_support::SystemTrash,
@@ -219,6 +219,80 @@ fn parallel_workers_finish_nested_trees_without_following_symlinks() -> Result<(
         assert_eq!(fs::read(sentinel)?, b"keep");
     }
     Ok(())
+}
+
+#[test]
+fn workers_count_every_file_symlink_and_folder_they_remove() -> Result<(), Box<dyn Error>> {
+    for workers in [1, 2, 4] {
+        let root = tempfile::tempdir()?;
+        let target = root.path().join("target");
+        for index in 0..8 {
+            let nested = target.join(format!("{index}/nested"));
+            fs::create_dir_all(&nested)?;
+            fs::write(nested.join("file"), b"delete")?;
+            std::os::unix::fs::symlink("file", nested.join("link"))?;
+        }
+        let deadline = Deadline::default();
+        parallel_delete_local_blocking_with_workers(
+            vec![delete_root(&target)?],
+            Arc::new(AtomicBool::new(false)),
+            workers,
+            &deadline,
+        )?;
+        // The target, then per index its folder, its nested folder, a file and a symlink.
+        assert_eq!(deadline.removed(), 1 + 8 * 4, "{workers} workers");
+    }
+    Ok(())
+}
+
+#[test]
+fn removed_entries_are_reported_when_they_change_and_stop_with_the_reporter() {
+    let _serial = serial().expect("serialized");
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let deadline = Deadline::default();
+    let recorded = events.clone();
+    let reporter = RemovedReporter::start(
+        OperationRequestId(7),
+        deadline.clone(),
+        Rc::new(move |event| recorded.borrow_mut().push(event)),
+        Duration::from_millis(5),
+    );
+    let context = glib::MainContext::default();
+    let wait = |ms: u64| context.block_on(glib::timeout_future(Duration::from_millis(ms)));
+    let removed = || {
+        events
+            .borrow()
+            .iter()
+            .map(|event| match event {
+                OperationEvent::DeleteEntriesRemoved {
+                    request_id,
+                    removed,
+                } => (request_id.0, *removed),
+                other => panic!("unexpected event {other:?}"),
+            })
+            .collect::<Vec<_>>()
+    };
+    let wait_for_reports = |count: usize| {
+        let started = std::time::Instant::now();
+        while removed().len() < count && started.elapsed() < Duration::from_secs(5) {
+            wait(5);
+        }
+    };
+
+    wait(40);
+    assert!(removed().is_empty(), "nothing removed yet");
+    (0..3).for_each(|_| deadline.note_removed());
+    wait_for_reports(1);
+    wait(40);
+    assert_eq!(removed(), [(7, 3)], "an unchanged count is reported once");
+    deadline.note_removed();
+    wait_for_reports(2);
+    assert_eq!(removed(), [(7, 3), (7, 4)]);
+
+    drop(reporter);
+    deadline.note_removed();
+    wait(40);
+    assert_eq!(removed().len(), 2, "a dropped reporter stays silent");
 }
 
 #[test]

@@ -2,7 +2,7 @@
 
 use std::{
     cell::{Cell, RefCell},
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashSet},
     fmt,
     fs::{self, File},
     future::Future,
@@ -388,12 +388,11 @@ impl Activity {
             registry.trees.remove(tree);
         }
         drop(registry);
-        let ended: Vec<PathBuf> = scope
-            .roots
-            .into_iter()
-            .chain(scope.folders)
-            .chain(trees)
-            .collect();
+        let ended = EndedOperation {
+            roots: scope.roots.into_iter().collect(),
+            folders: scope.folders.into_iter().collect(),
+            trees: trees.into_iter().collect(),
+        };
         notify(&Notice::Ended(&ended));
     }
 }
@@ -467,16 +466,32 @@ pub(crate) fn is_releasing() -> bool {
     !registry().barriers.is_empty()
 }
 
+/// Direct writes and recursive merges stay distinct so consumers can leave unrelated
+/// descendants alone when invalidating metadata.
+pub(crate) struct EndedOperation {
+    pub(crate) roots: HashSet<PathBuf>,
+    pub(crate) folders: HashSet<PathBuf>,
+    pub(crate) trees: HashSet<PathBuf>,
+}
+
 pub(crate) enum Notice<'a> {
     Releasing(&'a [PathBuf]),
     Lifted(&'a [PathBuf]),
-    Ended(&'a [PathBuf]),
+    Ended(&'a EndedOperation),
 }
 
 impl Notice<'_> {
     pub(crate) fn covers(&self, path: &Path) -> bool {
-        let (Self::Releasing(roots) | Self::Lifted(roots) | Self::Ended(roots)) = self;
-        roots.iter().any(|root| path.starts_with(root))
+        match self {
+            Self::Releasing(roots) | Self::Lifted(roots) => {
+                roots.iter().any(|root| path.starts_with(root))
+            }
+            Self::Ended(ended) => path.ancestors().any(|parent| {
+                ended.roots.contains(parent)
+                    || ended.folders.contains(parent)
+                    || ended.trees.contains(parent)
+            }),
+        }
     }
 }
 

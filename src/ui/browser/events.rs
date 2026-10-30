@@ -216,6 +216,9 @@ impl ViewState {
                     );
                 }
             }
+            BrowserEvent::FolderCountsInvalidated => {
+                crate::ui::thumbnail::refresh_metadata();
+            }
             BrowserEvent::MetadataFilled { depth, updates } => {
                 if self.mode_views.borrow().mode() == BrowserMode::Columns
                     && let Some(column) = self.columns.borrow().get(*depth).cloned()
@@ -226,7 +229,7 @@ impl ViewState {
                         .collect();
                     if !filled.is_empty() {
                         column.bound_rows.borrow_mut().retain(|bound| {
-                            let (Some(item), Some(_row)) =
+                            let (Some(item), Some(row)) =
                                 (bound.item.upgrade(), bound.row.upgrade())
                             else {
                                 return false;
@@ -235,6 +238,21 @@ impl ViewState {
                             if let Some(position) = position
                                 && let Some(&entry) = filled.get(&position)
                             {
+                                if entry.is_locked_folder() {
+                                    if let Some(icon) =
+                                        row.first_child()
+                                            .and_downcast::<crate::ui::thumbnail::ThumbnailSlot>()
+                                    {
+                                        crate::ui::thumbnail::show_locked_folder(&icon);
+                                    }
+                                    if let Some(label) = bound.rename_label.upgrade() {
+                                        crate::ui::accessibility::describe_entry(
+                                            &item,
+                                            &label.label(),
+                                            Some(entry),
+                                        );
+                                    }
+                                }
                                 let size = &bound.size;
                                 let text = column_size_text(Some(entry));
                                 let actively_renaming = bound.edit.is_editing();
@@ -517,7 +535,11 @@ impl ViewState {
                     }
                 }
             }
-            BrowserEvent::LoadFailed { depth, message } => {
+            BrowserEvent::LoadFailed {
+                depth,
+                message,
+                administrator,
+            } => {
                 if let Some(location) = self.browser.location_at(*depth) {
                     crate::ui::preferences::PreferenceManager::shared()
                         .forget_missing_folder(&location);
@@ -529,10 +551,13 @@ impl ViewState {
                         column.syncing_selection.set(false);
                     }
                     stop_column_spinner(column);
-                    column.presentation.show_error(&rust_i18n::t!(
-                        "Unable to read this directory\n%{message}",
-                        message = message
-                    ));
+                    column.presentation.show_error(
+                        &rust_i18n::t!(
+                            "Unable to read this directory\n%{message}",
+                            message = message
+                        ),
+                        administrator.is_some(),
+                    );
                     set_column_busy(column, false);
                 }
             }
@@ -560,10 +585,13 @@ impl ViewState {
                 if let Some(peek) = self.peek.borrow().as_ref() {
                     peek.spinner.stop();
                     peek.spinner.set_visible(false);
-                    peek.presentation.show_error(&rust_i18n::t!(
-                        "Unable to read this directory\n%{message}",
-                        message = message
-                    ));
+                    peek.presentation.show_error(
+                        &rust_i18n::t!(
+                            "Unable to read this directory\n%{message}",
+                            message = message
+                        ),
+                        false,
+                    );
                 }
             }
             BrowserEvent::PeekClosed => self.close_peek_visual(),
@@ -838,6 +866,9 @@ impl ViewState {
             BrowserEvent::DeletionProgress { completed, total } => {
                 self.update_item_progress(*completed, *total);
             }
+            BrowserEvent::DeletionEntriesRemoved { removed } => {
+                self.update_removed_entries(*removed);
+            }
             BrowserEvent::DeletionFinished { succeeded } => {
                 let dissolve = self.pending_delete_dissolve.take();
                 if let Some((depth, _)) = dissolve.as_ref() {
@@ -1031,9 +1062,10 @@ impl ViewState {
             }
             BrowserEvent::NavigationRejected {
                 parent_depth,
+                location,
                 error,
             } => {
-                self.handle_navigation_rejected(*parent_depth, error.clone());
+                self.handle_navigation_rejected(*parent_depth, location, error.clone());
             }
             BrowserEvent::EmptyTrashRequested => {
                 self.load_trash_summary();
@@ -1044,7 +1076,10 @@ impl ViewState {
             BrowserEvent::LeftoversChanged { depth, announce } => {
                 self.follow_leftovers(*depth, *announce);
             }
-            BrowserEvent::LocationNavigationRejected { error } => {
+            BrowserEvent::LocationNavigationRejected {
+                location: rejected,
+                error,
+            } => {
                 let credentials = self.pending_location_credentials.take();
                 match error {
                     LocationValidationError::NotMounted(location) => {
@@ -1061,13 +1096,17 @@ impl ViewState {
                             credentials,
                         );
                     }
+                    LocationValidationError::NotAuthorized => {
+                        self.abandon_deferred_reveal();
+                        self.fail_pending_connect(Some(error.message()));
+                    }
                     error => {
                         self.abandon_deferred_reveal();
                         if !self.fail_pending_connect(Some(error.message())) {
-                            show_error_dialog(
-                                &self.overlay,
+                            self.show_open_failure(
                                 &crate::i18n::tr("Unable to open location"),
-                                &error.message(),
+                                rejected,
+                                error,
                             );
                         }
                     }

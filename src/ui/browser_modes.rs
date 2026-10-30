@@ -470,6 +470,8 @@ struct Pane {
     stack: gtk::Stack,
     loading: super::loading_skeleton::DelayedLoading,
     status: gtk::Label,
+    /// Shown under `status` when only permissions kept the user out of the folder.
+    administrator: gtk::Button,
     spinner: gtk::Spinner,
     truncated_hint: gtk::Image,
     not_responding: gtk::Box,
@@ -2222,6 +2224,17 @@ fn install_tab_landing(view: &gtk::Widget, state: Option<Weak<super::browser::Vi
 const STATUS_PAGE: &str = "status";
 
 fn install_pane_surface(pane: &Pane, browser: &Rc<Browser>, directory: &str) {
+    let depth = pane.depth;
+    let weak = Rc::downgrade(browser);
+    pane.administrator.connect_clicked(move |_| {
+        if let Some(browser) = weak.upgrade()
+            && let Some(location) = browser
+                .column_snapshot(depth)
+                .and_then(|snapshot| snapshot.administrator)
+        {
+            browser.navigate_location(location, true);
+        }
+    });
     super::loading_skeleton::DirectorySurface::install(
         &pane.stack,
         &pane.status,
@@ -2614,15 +2627,31 @@ fn build_icons_pane(
             .actions
             .prepend(&super::browser::pane_new_folder_button(state, depth));
     }
-    let (shell, header, content, model, stack, status, spinner, truncated_hint, not_responding) =
-        pane_base(
-            title,
-            BrowserMode::Icons,
-            "icons-pane",
-            &icons_loading_skeleton(options.thumbnail_size.get(), options.density),
-            Some(controls.leading.clone().upcast()),
-            Some(controls.actions.clone().upcast()),
+    let (
+        shell,
+        header,
+        content,
+        model,
+        stack,
+        status,
+        administrator,
+        spinner,
+        truncated_hint,
+        not_responding,
+    ) = pane_base(
+        title,
+        BrowserMode::Icons,
+        "icons-pane",
+        &icons_loading_skeleton(options.thumbnail_size.get(), options.density),
+        Some(controls.leading.clone().upcast()),
+        Some(controls.actions.clone().upcast()),
+    );
+    if location.as_ref().is_some_and(Location::is_administrator) {
+        shell.insert_child_after(
+            &super::browser::administrator_notice(),
+            Some(&not_responding),
         );
+    }
     let source_index = SourceIndexMap::watch(&model);
     if let Some(destination) = browser.location_at(depth) {
         install_mode_directory_drop_target(&stack, destination, transfer_handler.clone());
@@ -2861,6 +2890,7 @@ fn build_icons_pane(
         loading: super::loading_skeleton::DelayedLoading::new(&stack),
         stack,
         status,
+        administrator,
         spinner,
         truncated_hint,
         not_responding,
@@ -3914,15 +3944,31 @@ fn build_list_pane(
 
     let (filter_entry, filter_revealer, filter_button) = filter_controls("Filter list (%{keys})");
     actions.append(&filter_button);
-    let (shell, header, content, model, stack, status, spinner, truncated_hint, not_responding) =
-        pane_base(
-            title,
-            BrowserMode::List,
-            "list-pane",
-            &list_loading_skeleton(&columns),
-            Some(navigation.upcast()),
-            Some(actions.upcast()),
+    let (
+        shell,
+        header,
+        content,
+        model,
+        stack,
+        status,
+        administrator,
+        spinner,
+        truncated_hint,
+        not_responding,
+    ) = pane_base(
+        title,
+        BrowserMode::List,
+        "list-pane",
+        &list_loading_skeleton(&columns),
+        Some(navigation.upcast()),
+        Some(actions.upcast()),
+    );
+    if location.as_ref().is_some_and(Location::is_administrator) {
+        shell.insert_child_after(
+            &super::browser::administrator_notice(),
+            Some(&not_responding),
         );
+    }
     let source_index = SourceIndexMap::watch(&model);
     if let Some(destination) = browser.location_at(depth) {
         install_mode_directory_drop_target(&stack, destination, transfer_handler.clone());
@@ -4189,6 +4235,7 @@ fn build_list_pane(
         loading: super::loading_skeleton::DelayedLoading::new(&stack),
         stack,
         status,
+        administrator,
         spinner,
         truncated_hint,
         not_responding,
@@ -4341,6 +4388,7 @@ fn pane_base(
     gtk::StringList,
     gtk::Stack,
     gtk::Label,
+    gtk::Button,
     gtk::Spinner,
     gtk::Image,
     gtk::Box,
@@ -4395,6 +4443,14 @@ fn pane_base(
     let status = gtk::Label::new(Some(&crate::i18n::tr("This directory is empty")));
     status.add_css_class("status-message");
     status.set_wrap(true);
+    let administrator = gtk::Button::with_label(&crate::i18n::tr("Open as Administrator"));
+    administrator.add_css_class("retry-button");
+    administrator.set_halign(gtk::Align::Center);
+    administrator.set_visible(false);
+    let status_page = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    status_page.set_valign(gtk::Align::Center);
+    status_page.append(&status);
+    status_page.append(&administrator);
     // Focusable only off the content page (see `DirectorySurface`); a group role keeps its name.
     let stack = gtk::Stack::builder()
         .hexpand(true)
@@ -4403,7 +4459,7 @@ fn pane_base(
         .build();
     stack.add_named(&content, Some(super::loading_skeleton::CONTENT_PAGE));
     stack.add_named(loading, Some(super::loading_skeleton::LOADING_PAGE));
-    stack.add_named(&status, Some(STATUS_PAGE));
+    stack.add_named(&status_page, Some(STATUS_PAGE));
     shell.append(&stack);
 
     let model = gtk::StringList::new(&[]);
@@ -4414,6 +4470,7 @@ fn pane_base(
         model,
         stack,
         status,
+        administrator,
         spinner,
         truncated_hint,
         not_responding,
@@ -5063,7 +5120,7 @@ fn metadata_fill_position(
     position.filter(|_| {
         super::browser::metadata_needs_fill(entry)
             || (include_mode && entry.mode == MetadataValue::Unknown)
-            || (entry.is_directory() && entry.child_count == MetadataValue::Unknown)
+            || entry.is_directory()
             || (include_icon_details && icon_details_need_fill(entry))
     })
 }
@@ -5683,6 +5740,7 @@ fn show_count(pane: &Pane) {
         pane.status.remove_css_class("error");
         pane.status
             .set_label(&crate::i18n::tr("This directory is empty"));
+        pane.administrator.set_visible(false);
         pane.loading.show(STATUS_PAGE);
     } else {
         pane.loading.show(super::loading_skeleton::CONTENT_PAGE);
@@ -5732,6 +5790,8 @@ fn apply_snapshot(pane: &Pane, snapshot: &BrowserColumnSnapshot, browser: &Brows
                 message = message
             ));
             pane.status.add_css_class("error");
+            pane.administrator
+                .set_visible(snapshot.administrator.is_some());
             pane.loading.show(STATUS_PAGE);
         }
     }
@@ -6051,9 +6111,13 @@ fn update_bound_list_metadata(pane: &Pane, updates: &[(usize, FileEntry)]) {
             let Some(row) = row.downcast::<gtk::Box>().ok() else {
                 return true;
             };
-            let Some((_, _, _, mode, size, _, modified)) = list_row_parts(&row) else {
+            let Some((icon, name, _, mode, size, _, modified)) = list_row_parts(&row) else {
                 return true;
             };
+            if entry.is_locked_folder() {
+                super::thumbnail::show_locked_folder(&icon);
+                super::accessibility::describe_entry(&item, &name.label(), Some(entry));
+            }
             mode.set_label(&entry_mode(entry));
             size.set_label(&entry_size(entry));
             crate::util::set_modified_date(&modified, Some(entry), "—");
@@ -6085,6 +6149,12 @@ fn update_bound_icons_metadata(pane: &Pane, updates: &[(usize, FileEntry)]) {
             let Some(card) = card.downcast::<gtk::Box>().ok() else {
                 return true;
             };
+            if entry.is_locked_folder() {
+                if let Some((icon, _)) = super::icons_cell::parts(&card) {
+                    super::thumbnail::show_locked_folder(&icon);
+                }
+                super::accessibility::describe_entry(&item, &entry.display_name, Some(entry));
+            }
             set_icons_entry_details(&card, entry);
             true
         });

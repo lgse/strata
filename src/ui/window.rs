@@ -1845,6 +1845,17 @@ impl SidebarState {
     }
 
     fn pin_location(self: &Rc<Self>, location: Location, name: String) {
+        self.pin_location_with(location, name, |_| {});
+    }
+
+    fn pin_location_with(
+        self: &Rc<Self>,
+        location: Location,
+        name: String,
+        done: impl FnOnce(bool) + 'static,
+    ) {
+        let expected = location.clone();
+        let weak = Rc::downgrade(self);
         self.update_pinned_places(
             move |places| {
                 if pin_status(places, &location) != PinStatus::Available {
@@ -1853,7 +1864,11 @@ impl SidebarState {
                 places.push((location.clone(), name.clone()));
                 true
             },
-            |_| {},
+            move |_| {
+                done(weak.upgrade().is_some_and(|state| {
+                    pin_status(&state.pinned_places.borrow(), &expected) == PinStatus::Pinned
+                }))
+            },
         );
     }
 

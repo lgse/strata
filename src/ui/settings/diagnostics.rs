@@ -578,6 +578,9 @@ fn environment(anchor: &impl IsA<gtk::Widget>) -> Vec<(String, String)> {
     let tr = crate::i18n::tr;
     let installation = match InstallSource::detect().managed() {
         Some(managed) => managed.ownership_summary(),
+        None if !crate::build_info::updater_enabled() => {
+            tr("In-app updates are disabled in this build.")
+        }
         None => tr("Self-managed"),
     };
     let kernel = ["ostype", "osrelease"]

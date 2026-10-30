@@ -103,7 +103,8 @@ impl ViewState {
             column.header_actions.child_focus(direction) || leave()
         } else if focused == *surface || focused.is_ancestor(surface) {
             if backward {
-                (column.presentation.retry_has_focus(&focused) && surface.grab_focus())
+                column.presentation.focus_previous_action(&focused)
+                    || (column.presentation.action_has_focus(&focused) && surface.grab_focus())
                     // An open filter sits between the header and the rows, as on Tab.
                     || (column.filter_entry.is_mapped() && column.filter_entry.grab_focus())
                     || (column.header_actions_stack.visible_child_name().as_deref()
@@ -112,7 +113,7 @@ impl ViewState {
                         && focus_header_action(&column.header_actions, gtk::DirectionType::Left))
                     || leave()
             } else {
-                (focused == *surface && column.presentation.focus_retry()) || leave()
+                column.presentation.focus_next_action(&focused, surface) || leave()
             }
         } else {
             return false;

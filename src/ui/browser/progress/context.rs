@@ -316,6 +316,10 @@ impl ViewState {
                 progress.update_item_progress(*completed, *total);
                 false
             }
+            BrowserEvent::DeletionEntriesRemoved { removed } => {
+                progress.update_removed_entries(*removed);
+                false
+            }
             BrowserEvent::DeletionFinished { succeeded } => {
                 self.prune_stale_search_results();
                 if *succeeded && let Some(animation) = background.trash_animation.take() {
@@ -472,6 +476,9 @@ impl ViewState {
     }
     pub(in crate::ui::browser) fn update_item_progress(&self, completed: usize, total: usize) {
         self.file_progress().update_item_progress(completed, total);
+    }
+    pub(in crate::ui::browser) fn update_removed_entries(&self, removed: usize) {
+        self.file_progress().update_removed_entries(removed);
     }
     pub(in crate::ui::browser) fn update_archive_progress(&self, completed: usize, total: usize) {
         self.file_progress()

@@ -22,7 +22,7 @@ mod slot;
 mod tests;
 mod viewport;
 pub(crate) use slot::ThumbnailSlot;
-pub(super) use viewport::{near_viewport, request_metadata};
+pub(super) use viewport::{near_viewport, request_metadata, schedule_refresh as refresh_metadata};
 
 static NEXT_REQUEST: AtomicU64 = AtomicU64::new(1);
 const MAX_CACHE_ENTRIES: usize = 256;
@@ -407,6 +407,11 @@ pub(super) fn set_thumbnail_or_icon(
     thumbnail_size: i32,
 ) {
     super::file_providers::bind(image, entry.location.native_path());
+    // A thumbnail of a root-only file would persist in the user's cache.
+    if entry.location.is_administrator() {
+        show_fallback_icon(image, fallback_icon, icon_size);
+        return;
+    }
     let Some(path) = entry.local_thumbnail_path() else {
         if entry.location.backend_name() == "gphoto2"
             && !entry.is_directory()
@@ -1298,6 +1303,36 @@ pub(super) fn show_fallback_icon(image: &ThumbnailSlot, icon: &str, size: i32) {
     viewport::cancel_metadata(image.as_ptr() as usize);
     image.set_thumbnail_source(None);
     set_fallback_icon(image, None, icon, size);
+}
+
+/// A metadata fill can find that a bound folder needs administrator access; a
+/// folder the user customized keeps its icon, as a fresh bind would.
+pub(super) fn show_locked_folder(image: &ThumbnailSlot) {
+    use crate::assets::icons::{FOLDER, FOLDER_LOCK};
+    if image.fallback_icon().as_deref() != Some(FOLDER) {
+        return;
+    }
+    let customized = TRACKED_CUSTOMIZED_ICONS.with_borrow_mut(|icons| {
+        match icons.get_mut(&(image.as_ptr() as usize)) {
+            Some(tracked) if tracked.customized => true,
+            Some(tracked) => {
+                tracked.icon = FOLDER_LOCK.to_owned();
+                false
+            }
+            None => false,
+        }
+    });
+    if customized {
+        return;
+    }
+    let (texture, _) = path_icon_texture(
+        None,
+        FOLDER_LOCK,
+        image.icon_pixel_size(),
+        image.scale_factor(),
+        image.icon_context(),
+    );
+    image.set_fallback(FOLDER_LOCK, texture.as_ref());
 }
 
 pub(super) fn show_customized_icon(

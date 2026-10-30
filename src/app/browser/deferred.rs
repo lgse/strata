@@ -45,6 +45,11 @@ impl Browser {
             .retain(|depth, _| *depth < len);
         // This borrow must end before retain_sort_work notifies observers.
         let state = self.state.borrow();
+        self.folder_counts_after_load
+            .borrow_mut()
+            .retain(|depth, request| {
+                *depth < len && state.request_id_for_depth(*depth) == Some(*request)
+            });
         self.fill_tokens.borrow_mut().retain(|_, fill| {
             fill.depth < len
                 && state.request_id_for_depth(fill.depth) == Some(fill.directory_request)
@@ -94,6 +99,7 @@ impl Browser {
     pub(super) fn cancel_deferred_work(&self) {
         self.cancel_metadata_idle();
         self.metadata_pending.borrow_mut().clear();
+        self.folder_counts_after_load.borrow_mut().clear();
         self.metadata_loads.borrow_mut().clear();
         self.fill_tokens.borrow_mut().clear();
         self.cancel_sort_work();

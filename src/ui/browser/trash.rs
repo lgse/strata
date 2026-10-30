@@ -129,10 +129,13 @@ pub(super) fn deletion_reach(entries: &[FileEntry]) -> DeletionReach {
                     .fs_type_for(path)
                     .is_some_and(crate::adapters::is_local_fuse_overlay)
         }
-        None => !location
-            .uri_value()
-            .and_then(glib::Uri::parse_scheme)
-            .is_some_and(|scheme| scheme.eq_ignore_ascii_case("trash")),
+        None => {
+            !location.is_administrator()
+                && !location
+                    .uri_value()
+                    .and_then(glib::Uri::parse_scheme)
+                    .is_some_and(|scheme| scheme.eq_ignore_ascii_case("trash"))
+        }
     };
     if !entries.is_empty() && entries.iter().all(|entry| remote(&entry.location)) {
         DeletionReach::Remote
@@ -169,7 +172,13 @@ fn reach_description(reach: DeletionReach, single: bool) -> String {
 /// Names the mount a failed trash attempt recorded, when the dialog's first
 /// item is on one.
 fn trash_unavailable_reason(entries: &[FileEntry]) -> Option<String> {
-    let parent = entries.first()?.location.parent()?;
+    let first = &entries.first()?.location;
+    if first.is_administrator() {
+        return Some(crate::i18n::tr(
+            "Trash isn't available when browsing as administrator.",
+        ));
+    }
+    let parent = first.parent()?;
     let (mount, _) = crate::adapters::trash_support::unsupported_reason_for(parent.native_path()?)?;
     Some(
         rust_i18n::t!(
@@ -869,6 +878,9 @@ impl ViewState {
     fn trash_unsupported_for(&self, entries: &[FileEntry]) -> bool {
         !entries.is_empty()
             && entries.iter().all(|entry| {
+                if entry.location.is_administrator() {
+                    return true;
+                }
                 let parent = entry.location.parent();
                 (0..)
                     .map_while(|depth| {

@@ -16,6 +16,23 @@
     "Invalid provider request.": "Invalid provider request.",
     "Unsupported provider method.": "Unsupported provider method."
   },
+  "hu": {
+    "Device": "Eszköz",
+    "Select regular files, without folders or symbolic links.": "Válasszon normál fájlokat, mappák és szimbolikus hivatkozások nélkül.",
+    "KDE Connect did not respond in time.": "A KDE Connect nem válaszolt időben.",
+    "Too many devices to fit in Strata's device menu.": "Túl sok eszköz van ahhoz, hogy elférjenek a Strata eszközmenüjében.",
+    "KDE Connect is unavailable or the device list changed.": "A KDE Connect nem érhető el, vagy megváltozott az eszközlista.",
+    "The device is unavailable or file sharing was disabled.": "Az eszköz nem érhető el, vagy a fájlmegosztás le lett tiltva.",
+    "KDE Connect did not confirm the submission. Check your device before retrying.": "A KDE Connect nem erősítette meg a küldést. Ellenőrizze az eszközét, mielőtt újra próbálkozna.",
+    "This device menu expired. Reopen the right-click menu.": "Ez az eszközmenü lejárt. Nyissa meg újra a környezeti menüt.",
+    "The selected files changed. Reopen the right-click menu.": "A kijelölt fájlok megváltoztak. Nyissa meg újra a környezeti menüt.",
+    "One or more selected files cannot be read.": "Egy vagy több kijelölt fájl nem olvasható.",
+    "The selected device disconnected or file sharing was disabled.": "A kiválasztott eszköz kapcsolata megszakadt, vagy a fájlmegosztás le lett tiltva.",
+    "The selected files are no longer available.": "A kijelölt fájlok már nem érhetők el.",
+    "Files submitted to {device}: {count}. KDE Connect handles transfer progress and results.": "A(z) {device} eszközre elküldött fájlok: {count}. Az átvitel folyamatát és eredményét a KDE Connect kezeli.",
+    "Invalid provider request.": "Érvénytelen szolgáltatói kérés.",
+    "Unsupported provider method.": "Nem támogatott szolgáltatói metódus."
+  },
   "fr": {
     "Device": "Appareil",
     "Select regular files, without folders or symbolic links.": "Sélectionnez des fichiers ordinaires, sans dossiers ni liens symboliques.",

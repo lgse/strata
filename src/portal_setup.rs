@@ -832,10 +832,18 @@ fn install_at(context: &SetupContext, executable: &Path) -> Result<PathBuf, Stri
 }
 
 fn secure_executable(path: &Path) -> Result<PathBuf, String> {
-    secure_executable_for_user(path, rustix::process::geteuid().as_raw())
+    let user = rustix::process::geteuid().as_raw();
+    secure_executable_for_user(path, user, &|group| {
+        let read = |file| fs::read_to_string(file).unwrap_or_default();
+        group_is_private(user, group, &read("/etc/passwd"), &read("/etc/group"))
+    })
 }
 
-fn secure_executable_for_user(path: &Path, effective_user: u32) -> Result<PathBuf, String> {
+fn secure_executable_for_user(
+    path: &Path,
+    effective_user: u32,
+    private_group: &dyn Fn(u32) -> bool,
+) -> Result<PathBuf, String> {
     let path = fs::canonicalize(path)
         .map_err(|error| path_error("resolve the Strata executable", path, error))?;
     for (index, component) in path.ancestors().enumerate() {
@@ -857,13 +865,56 @@ fn secure_executable_for_user(path: &Path, effective_user: u32) -> Result<PathBu
                 "The Strata executable path must be owned by the current user or root",
             ));
         }
-        if metadata.permissions().mode() & 0o022 != 0 {
+        let mode = metadata.permissions().mode();
+        if mode & 0o002 != 0 || (mode & 0o020 != 0 && !private_group(metadata.gid())) {
             return Err(crate::i18n::tr(
                 "The Strata executable path must not be writable by other users",
             ));
         }
     }
     Ok(path)
+}
+
+/// Distributions that give each user a private group and a umask of 002 leave the user's own
+/// folders group-writable. A group the databases do not describe counts as shared.
+fn group_is_private(user: u32, group: u32, passwd: &str, groups: &str) -> bool {
+    let mut name = None;
+    for fields in passwd
+        .lines()
+        .map(|line| line.split(':').collect::<Vec<_>>())
+    {
+        let [login, _, uid, primary, ..] = fields[..] else {
+            continue;
+        };
+        if uid.parse() == Ok(user) {
+            name = Some(login);
+        } else if primary.parse() == Ok(group) {
+            return false;
+        }
+    }
+    let Some(name) = name else {
+        return false;
+    };
+    let mut listed = false;
+    for fields in groups
+        .lines()
+        .map(|line| line.split(':').collect::<Vec<_>>())
+    {
+        let [_, _, id, members] = fields[..] else {
+            continue;
+        };
+        if id.parse() != Ok(group) {
+            continue;
+        }
+        listed = true;
+        if members
+            .split(',')
+            .any(|member| !member.is_empty() && member != name)
+        {
+            return false;
+        }
+    }
+    listed
 }
 
 fn trusted_owner(owner: u32, effective_user: u32) -> bool {

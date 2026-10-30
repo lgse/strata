@@ -305,6 +305,7 @@ impl FileSource for RemoteShare {
                 image_dimensions: MetadataValue::Unknown,
                 child_count: MetadataValue::Unknown,
                 duration_seconds: MetadataValue::Unknown,
+                listable: MetadataValue::Unknown,
                 is_hidden: false,
             })
             .collect();

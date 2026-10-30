@@ -16,6 +16,10 @@ fn main() {
     println!("cargo::rerun-if-env-changed=STRATA_TRUSTED_COMMAND_PATH");
     validate_trusted_command_path();
 
+    println!("cargo::rustc-check-cfg=cfg(strata_updater_disabled)");
+    println!("cargo::rerun-if-env-changed=STRATA_UPDATER");
+    configure_updater();
+
     println!("cargo::rerun-if-env-changed=STRATA_BUILD_COMMIT");
     track_git_metadata();
 
@@ -48,6 +52,19 @@ fn main() {
         })
         .unwrap_or_else(|| "stable".to_owned());
     println!("cargo::rustc-env=STRATA_BUILD_KIND={build_kind}");
+}
+
+/// Distribution packages set `STRATA_UPDATER=disabled` so their package manager
+/// owns updates. Any other value is rejected rather than shipping an updater by accident.
+fn configure_updater() {
+    let Some(value) = env::var_os("STRATA_UPDATER") else {
+        return;
+    };
+    match value.to_str().map(str::trim) {
+        Some("" | "enabled") => {}
+        Some("disabled") => println!("cargo::rustc-cfg=strata_updater_disabled"),
+        _ => panic!("STRATA_UPDATER must be \"enabled\" or \"disabled\", not {value:?}"),
+    }
 }
 
 /// Extra host helper directories are embedded verbatim, so a relative or empty

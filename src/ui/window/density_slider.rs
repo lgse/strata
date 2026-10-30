@@ -33,37 +33,56 @@ mod imp {
         }
     }
 
+    const GAP: i32 = 8;
+
     impl WidgetImpl for SnapLabels {
         fn measure(&self, orientation: gtk::Orientation, _for_size: i32) -> (i32, i32, i32, i32) {
-            let (mut minimum, mut natural) = (0, 0);
-            for (_, label) in self.labels.borrow().iter() {
+            let labels = self.labels.borrow();
+            let horizontal = orientation == gtk::Orientation::Horizontal;
+            let gap = if horizontal {
+                GAP * labels.len().saturating_sub(1) as i32
+            } else {
+                0
+            };
+            let (mut minimum, mut natural) = (gap, gap);
+            for (_, label) in labels.iter() {
                 let (child_minimum, child_natural, _, _) = label.measure(orientation, -1);
-                minimum = minimum.max(child_minimum);
-                natural = if orientation == gtk::Orientation::Horizontal {
-                    natural + child_natural
+                if horizontal {
+                    minimum += child_minimum;
+                    natural += child_natural;
                 } else {
-                    natural.max(child_natural)
-                };
+                    minimum = minimum.max(child_minimum);
+                    natural = natural.max(child_natural);
+                }
             }
             (minimum, natural, -1, -1)
         }
 
         fn size_allocate(&self, width: i32, height: i32, _baseline: i32) {
             let centers = self.mark_centers();
-            for (index, (px, label)) in self.labels.borrow().iter().enumerate() {
-                let label_width = label.measure(gtk::Orientation::Horizontal, -1).1.min(width);
+            let labels = self.labels.borrow();
+            let widths: Vec<_> = labels
+                .iter()
+                .map(|(_, label)| label.measure(gtk::Orientation::Horizontal, -1).1.min(width))
+                .collect();
+            let mut remaining =
+                widths.iter().sum::<i32>() + GAP * labels.len().saturating_sub(1) as i32;
+            let mut left = 0;
+            for (index, ((px, label), label_width)) in labels.iter().zip(widths).enumerate() {
                 let center = centers
                     .get(index)
                     .copied()
                     .unwrap_or_else(|| self.fallback_center(*px, width));
-                let x =
-                    (center - label_width as f32 / 2.0).clamp(0.0, (width - label_width) as f32);
+                let x = (center - label_width as f32 / 2.0)
+                    .clamp(left as f32, (width - remaining).max(left) as f32);
                 label.allocate(
                     label_width,
                     height,
                     -1,
                     Some(gsk::Transform::new().translate(&graphene::Point::new(x, 0.0))),
                 );
+                left = x.ceil() as i32 + label_width + GAP;
+                remaining -= label_width + GAP;
             }
         }
     }
