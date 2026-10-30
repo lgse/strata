@@ -438,6 +438,7 @@
   "Forget saved password?": "要清除已保存的密码吗？",
   "Formatting drive": "正在格式化驱动器",
   "Formatting task did not complete": "格式化任务未完成",
+  "Locking task did not complete": "锁定任务未完成",
   "Formatting…": "正在格式化…",
   "Found: %{items}": "已找到：%{items}",
   "GitHub API rate limit reached": "已达到 GitHub API 速率限制",

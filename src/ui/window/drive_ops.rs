@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-//! Storage metadata and removable-only formatting.
+//! Storage metadata, removable-only formatting, and encrypted container locking.
 //! Display labels belong to Strata preferences, not the filesystem.
 
 use std::{
@@ -404,6 +404,134 @@ fn format_device(
         ]),
     )?;
     Ok(())
+}
+
+/// Close the LUKS container behind a volume. `device` may name the container
+/// or its open cleartext mapping; `luks_uuid` is the fallback when the path
+/// leads to no container. Only a block with the `Encrypted` interface is locked.
+pub(super) fn lock_encrypted_device(
+    device: Option<&str>,
+    luks_uuid: Option<&str>,
+    mut call: impl FnMut(&str, &str, &str, &glib::Variant) -> Result<glib::Variant, DriveOpError>,
+) -> Result<(), DriveOpError> {
+    let mut resolve = |key: &str, value: &str| -> Result<Option<String>, DriveOpError> {
+        let spec = glib::VariantDict::new(None);
+        spec.insert(key, value);
+        let resolved = call(
+            "/org/freedesktop/UDisks2/Manager",
+            "org.freedesktop.UDisks2.Manager",
+            "ResolveDevice",
+            &glib::Variant::tuple_from_iter([spec.end(), glib::VariantDict::new(None).end()]),
+        )?;
+        let (paths,) = resolved
+            .get::<(Vec<glib::variant::ObjectPath>,)>()
+            .ok_or(DriveOpError::DeviceNotFound)?;
+        Ok(match paths.as_slice() {
+            [path] => Some(path.as_str().to_owned()),
+            _ => None,
+        })
+    };
+    let mut blocks = Vec::new();
+    if let Some(device) = device {
+        blocks.extend(resolve("path", device)?);
+    }
+    if let Some(uuid) = luks_uuid {
+        blocks.extend(resolve("uuid", uuid)?);
+    }
+    for block in blocks {
+        let backing = udisks_object_property(
+            &mut call,
+            &block,
+            "org.freedesktop.UDisks2.Block",
+            "CryptoBackingDevice",
+        )?
+        .filter(|backing| backing != "/");
+        let container = backing.unwrap_or(block);
+        // Reading the property fails on a block without the Encrypted interface.
+        let Ok(Some(cleartext)) = udisks_object_property(
+            &mut call,
+            &container,
+            "org.freedesktop.UDisks2.Encrypted",
+            "CleartextDevice",
+        ) else {
+            continue;
+        };
+        if cleartext != "/" {
+            call(
+                &container,
+                "org.freedesktop.UDisks2.Encrypted",
+                "Lock",
+                &glib::Variant::tuple_from_iter([glib::VariantDict::new(None).end()]),
+            )?;
+        }
+        return Ok(());
+    }
+    Err(DriveOpError::DeviceNotFound)
+}
+
+fn udisks_object_property(
+    call: &mut impl FnMut(&str, &str, &str, &glib::Variant) -> Result<glib::Variant, DriveOpError>,
+    object: &str,
+    interface: &str,
+    property: &str,
+) -> Result<Option<String>, DriveOpError> {
+    let value = call(
+        object,
+        "org.freedesktop.DBus.Properties",
+        "Get",
+        &(interface, property).to_variant(),
+    )?;
+    Ok(value
+        .child_value(0)
+        .as_variant()
+        .and_then(|value| value.get::<glib::variant::ObjectPath>())
+        .map(|path| path.as_str().to_owned()))
+}
+
+/// Run `lock_encrypted_device` against the system bus, letting polkit ask
+/// for authorization when the mapping was opened by another user.
+pub(super) async fn lock_encrypted_device_on_system_bus(
+    device: Option<String>,
+    luks_uuid: Option<String>,
+) -> Result<(), glib::Error> {
+    let result = gio::spawn_blocking(move || {
+        let connection = gio::bus_get_sync(gio::BusType::System, gio::Cancellable::NONE)?;
+        lock_encrypted_device(
+            device.as_deref(),
+            luks_uuid.as_deref(),
+            |path, interface, method, parameters| {
+                connection
+                    .call_sync(
+                        Some("org.freedesktop.UDisks2"),
+                        path,
+                        interface,
+                        method,
+                        Some(parameters),
+                        None,
+                        gio::DBusCallFlags::ALLOW_INTERACTIVE_AUTHORIZATION,
+                        i32::MAX,
+                        gio::Cancellable::NONE,
+                    )
+                    .map_err(lock_error)
+            },
+        )
+    })
+    .await
+    .map_err(|_| DriveOpError::CommandFailed(crate::i18n::tr("Locking task did not complete")))
+    .and_then(|result| result);
+    result.map_err(|error| match error {
+        DriveOpError::Cancelled => glib::Error::new(gio::IOErrorEnum::FailedHandled, ""),
+        error => glib::Error::new(gio::IOErrorEnum::Failed, &error.user_message()),
+    })
+}
+
+fn lock_error(mut error: glib::Error) -> DriveOpError {
+    let dismissed = DriveOpError::from(error.clone());
+    if matches!(dismissed, DriveOpError::Cancelled) {
+        return dismissed;
+    }
+    gio::DBusError::strip_remote_error(&mut error);
+    DriveOpError::CommandFailed(error.message().to_owned())
 }
 
 /// Report the outcome: stay quiet on cancellation and success, and show

@@ -438,6 +438,7 @@
   "Forget saved password?": "Forget saved password?",
   "Formatting drive": "Formatting drive",
   "Formatting task did not complete": "Formatting task did not complete",
+  "Locking task did not complete": "Locking task did not complete",
   "Formatting…": "Formatting…",
   "Found: %{items}": "Found: %{items}",
   "GitHub API rate limit reached": "GitHub API rate limit reached",

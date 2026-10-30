@@ -438,6 +438,7 @@
   "Forget saved password?": "¿Olvidar la contraseña guardada?",
   "Formatting drive": "Formateando la unidad",
   "Formatting task did not complete": "La tarea de formateo no se completó",
+  "Locking task did not complete": "La tarea de bloqueo no se completó",
   "Formatting…": "Formateando…",
   "Found: %{items}": "Encontrado: %{items}",
   "GitHub API rate limit reached": "se alcanzó el límite de solicitudes de la API de GitHub",

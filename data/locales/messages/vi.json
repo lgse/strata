@@ -438,6 +438,7 @@
   "Forget saved password?": "Quên mật khẩu đã lưu?",
   "Formatting drive": "Đang định dạng ổ đĩa",
   "Formatting task did not complete": "Tác vụ định dạng chưa hoàn tất",
+  "Locking task did not complete": "Tác vụ khóa chưa hoàn tất",
   "Formatting…": "Đang định dạng…",
   "Found: %{items}": "Đã tìm thấy: %{items}",
   "GitHub API rate limit reached": "đã đạt giới hạn tốc độ của API GitHub",

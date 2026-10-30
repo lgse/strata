@@ -438,6 +438,7 @@
   "Forget saved password?": "저장된 비밀번호를 삭제할까요?",
   "Formatting drive": "드라이브 포맷 중",
   "Formatting task did not complete": "포맷 작업이 완료되지 않음",
+  "Locking task did not complete": "잠금 작업이 완료되지 않음",
   "Formatting…": "포맷 중…",
   "Found: %{items}": "찾음: %{items}",
   "GitHub API rate limit reached": "GitHub API 요청 한도에 도달했습니다",

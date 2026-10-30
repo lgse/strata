@@ -427,6 +427,7 @@
   "Forget saved password?": "忘記已儲存的密碼？",
   "Formatting drive": "正在格式化磁碟機",
   "Formatting task did not complete": "格式化工作未完成",
+  "Locking task did not complete": "鎖定工作未完成",
   "Formatting…": "正在格式化…",
   "GitHub API rate limit reached": "GitHub API 速率限制已達",
   "GitHub API returned HTTP %{code}": "GitHub API 回傳 HTTP %{code}",

@@ -438,6 +438,7 @@
   "Forget saved password?": "Elfelejti a mentett jelszót?",
   "Formatting drive": "Meghajtó formázása",
   "Formatting task did not complete": "A formázási feladat nem fejeződött be",
+  "Locking task did not complete": "A zárolási feladat nem fejeződött be",
   "Formatting…": "Formázás…",
   "Found: %{items}": "Megtalálva: %{items}",
   "GitHub API rate limit reached": "Elérte a GitHub API kéréskorlátját",

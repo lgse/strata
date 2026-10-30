@@ -438,6 +438,7 @@
   "Forget saved password?": "保存したパスワードを破棄しますか？",
   "Formatting drive": "ドライブをフォーマット中",
   "Formatting task did not complete": "フォーマット処理が完了しませんでした",
+  "Locking task did not complete": "ロック処理が完了しませんでした",
   "Formatting…": "フォーマット中…",
   "Found: %{items}": "検出: %{items}",
   "GitHub API rate limit reached": "GitHub API のレート制限に達しました",

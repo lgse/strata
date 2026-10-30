@@ -438,6 +438,7 @@
   "Forget saved password?": "Забыть сохранённый пароль?",
   "Formatting drive": "Форматирование диска",
   "Formatting task did not complete": "Задача форматирования не завершена",
+  "Locking task did not complete": "Задача блокировки не завершена",
   "Formatting…": "Форматирование…",
   "Found: %{items}": "Найдено: %{items}",
   "GitHub API rate limit reached": "достигнут лимит запросов к API GitHub",
