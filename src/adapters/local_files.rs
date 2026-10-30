@@ -476,7 +476,7 @@ fn remote_directory_failure(request_id: RequestId, error: &glib::Error) -> Direc
     }
 }
 
-pub(super) fn info_is_hidden(info: &gio::FileInfo) -> bool {
+pub(crate) fn info_is_hidden(info: &gio::FileInfo) -> bool {
     info.has_attribute(gio::FILE_ATTRIBUTE_STANDARD_IS_HIDDEN) && info.is_hidden()
 }
 
