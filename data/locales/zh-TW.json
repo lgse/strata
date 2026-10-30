@@ -1529,5 +1529,17 @@
   "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum} 英尺",
   "%{elevation} m": "%{elevation} m",
   "%{elevation} ft": "%{elevation} 英尺",
-  "No action": "無動作"
+  "No action": "無動作",
+  "Not a local file": "不是本機檔案",
+  "Unsupported file type": "不支援的檔案類型",
+  "Page limit reached": "已達頁數上限",
+  "Temporary print space limit reached": "已達列印暫存空間上限",
+  "File scan limit reached": "已達檔案掃描上限",
+  "Folder links are not followed": "不會進入資料夾連結",
+  "Finding files to print…": "正在尋找要列印的檔案…",
+  "Preparing file %{current} of %{total}": "正在準備第 %{current} 個檔案，共 %{total} 個",
+  "Print selection": "列印所選項目",
+  "Preparing files for printing": "正在準備要列印的檔案",
+  "Ready to print · files: %{files} · pages: %{pages}": "準備列印 · 檔案：%{files} · 頁數：%{pages}",
+  "Skipped items: %{count}": "已略過的項目：%{count}"
 }

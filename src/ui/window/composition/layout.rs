@@ -220,7 +220,9 @@ pub(super) fn browser_layout(
     root.append(&header.widget);
     bind_pin_handlers(browser, sidebar);
     let preview_for_print = preview.clone();
-    browser.set_print_handler(Rc::new(move |entry| preview_for_print.print_entry(entry)));
+    browser.set_print_handler(Rc::new(move |entries| {
+        preview_for_print.print_entries(entries)
+    }));
     let content = browser_split(
         browser,
         sidebar,

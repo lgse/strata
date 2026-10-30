@@ -1,0 +1,19 @@
+{"scenario":"print-selection-summary","modes":["columns","list"],"tree":{"nested":{"inside.txt":"Inside the folder\n","sub":{"deep.txt":"Deep file\n"}},"one.txt":"First file\n","two.txt":"Second file\n","bad.mp3":"not audio"},"setup":[{"fs":{"path":"nested/photo.png","image":{"width":80,"height":40,"rgb":[0,128,0]}}},{"fs":{"path":"nested/photo.jpg","magick":["$fixture/nested/photo.png"]}},{"fs":{"path":"nested/report.pdf","from_repository":"tests/fixtures/documents/text.pdf"}},{"fs":{"path":"nested/broken.pdf","hex":"255044462d312e370a000102ff000a"}}]}
+{"click":{"entry":"nested","dir":"$root"},"button":3}
+{"wait":{"menu_items":{"contains":["Print"]}},"message":"Print in the folder context menu"}
+{"click":{"menu_item":"Print"}}
+{"wait":{"dialog":"Ready to print · files: 5 · pages: 5"},"message":"text, PNG, JPG and PDF files from nested folders to be ready","timeout_ms":30000}
+{"expect":{"present":{"role":"label","name":"Skipped items: 1","within":{"role":"dialog","name":"Ready to print · files: 5 · pages: 5"}}},"message":"the broken PDF to be counted as skipped"}
+{"click":{"role":"button","name":"Cancel","within":{"role":"dialog","name":"Ready to print · files: 5 · pages: 5"}}}
+{"wait":{"dialog":null},"message":"the cancelled print summary to close"}
+{"select":{"entry":"one.txt","dir":"$root"}}
+{"click":{"entry":"two.txt","dir":"$root"},"mods":["ctrl"]}
+{"click":{"entry":"bad.mp3","dir":"$root"},"mods":["ctrl"]}
+{"wait":{"selected":["bad.mp3","one.txt","two.txt"],"dir":"$root"},"message":"the mixed selection of three files"}
+{"click":{"entry":"one.txt","dir":"$root"},"button":3}
+{"wait":{"menu_items":{"contains":["Print"]}},"message":"Print in the multi-selection context menu"}
+{"click":{"menu_item":"Print"}}
+{"wait":{"dialog":"Ready to print · files: 2 · pages: 2"},"message":"two supported files to be ready while the audio file is skipped","timeout_ms":30000}
+{"expect":{"present":{"role":"label","name":"Skipped items: 1","within":{"role":"dialog","name":"Ready to print · files: 2 · pages: 2"}}},"message":"the skipped-file count to be visible"}
+{"click":{"role":"button","name":"Cancel","within":{"role":"dialog","name":"Ready to print · files: 2 · pages: 2"}}}
+{"wait":{"dialog":null},"message":"the cancelled mixed print summary to close"}

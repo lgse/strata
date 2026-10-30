@@ -820,6 +820,8 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         ContextHint::Preview,
     );
     let print = item_context_option(crate::assets::icons::PRINTER, "Print", ContextHint::None);
+    let print_multiple =
+        item_context_option(crate::assets::icons::PRINTER, "Print", ContextHint::None);
     let restore = item_context_option(
         crate::assets::icons::UNDO_2,
         "Restore",
@@ -1088,6 +1090,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     multiple_open.append(&open_in_multiple_submenu);
     multiple_open.append(&restore_multiple);
     multiple_open.append(&remove_from_recent_multiple);
+    multiple_open.append(&print_multiple);
     content.append(&multiple_open);
     multiple.append(&cut_multiple);
     multiple.append(&copy_multiple);
@@ -1325,14 +1328,29 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         if let Some(popover) = print_popover.upgrade() {
             popover.popdown();
         }
-        let Some((_, entry)) = print_target.borrow().clone() else {
-            return;
-        };
         if let Some(state) = weak.upgrade()
             && let Some(print) = state.print_handler.borrow().as_ref()
-            && entry_supports_printing(&entry)
         {
-            print(entry);
+            let entries = context_entries(&state, &print_target);
+            if !entries.is_empty() {
+                print(entries);
+            }
+        }
+    });
+    let weak = Rc::downgrade(state);
+    let print_target = target.clone();
+    let print_popover = popover.downgrade();
+    print_multiple.connect_clicked(move |_| {
+        if let Some(popover) = print_popover.upgrade() {
+            popover.popdown();
+        }
+        if let Some(state) = weak.upgrade()
+            && let Some(print) = state.print_handler.borrow().as_ref()
+        {
+            let entries = context_entries(&state, &print_target);
+            if !entries.is_empty() {
+                print(entries);
+            }
         }
     });
     let weak = Rc::downgrade(state);
@@ -1648,7 +1666,14 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
             compress.set_visible(can_compress);
             compress_multiple.set_visible(can_compress);
             preview.set_visible(crate::ui::preview::entry_supports_quick_preview(&entry));
-            print.set_visible(entry_supports_printing(&entry));
+            print.set_visible(
+                entry_supports_printing(&entry)
+                    || (entry.is_directory() && entry.location.native_path().is_some()),
+            );
+            print_multiple.set_visible(entries.iter().any(|entry| {
+                entry_supports_printing(entry)
+                    || (entry.is_directory() && entry.location.native_path().is_some())
+            }));
             open_in_submenu.set_visible(entry.is_directory());
             open_in_multiple_submenu
                 .set_visible(entries.len() > 1 && entries.iter().any(|entry| entry.is_directory()));

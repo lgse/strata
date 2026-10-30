@@ -303,6 +303,8 @@ strata --version            # print the installed version
 
 In the default map, useful shortcuts include <kbd>Ctrl</kbd>+<kbd>K</kbd> for recursive search, <kbd>Ctrl</kbd>+<kbd>L</kbd> for a path or URI, <kbd>Ctrl</kbd>+<kbd>F</kbd> to filter the current pane, <kbd>Ctrl</kbd>+<kbd>Z</kbd> to undo or <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> to redo the latest reversible file operation, <kbd>Space</kbd> for preview, <kbd>F2</kbd> to rename, and <kbd>Alt</kbd>+arrow keys for history and parent navigation.
 
+Right-click a PDF, PNG, JPEG, or text file to print it. For a selection or local folder, Strata gathers supported files from nested folders, shows any skipped items, then opens one print job.
+
 Toggle [10xer mode](docs/10xer-mode.md) with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd> for Yazi-style navigation and footer prompts; press it again to return to the default map. In 10xer mode, <kbd>l</kbd>/<kbd>→</kbd> enters preview, <kbd>h</kbd> returns to the listing without closing it, and <kbd>i</kbd> toggles it.
 
 In narrow or highly scaled windows, the file view takes priority: the preview shrinks, then hides when there is not enough room for both. Widening the window restores the preview and its session width automatically. Hidden previews pause playback and defer loading new selections; unchanged previews return without reloading the file.

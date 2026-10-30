@@ -5,7 +5,10 @@ use std::{
     collections::HashMap,
     path::Path,
     rc::Rc,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -50,6 +53,7 @@ mod model;
 mod pdf_ranges_tests;
 mod pdf_text;
 mod player_layout;
+mod print_batch;
 mod route;
 mod session;
 pub(super) mod video;
@@ -232,6 +236,8 @@ struct PreviewState {
     print_load: RefCell<Option<LoadHandle>>,
     print_progress: RefCell<Option<PrintProgress>>,
     print_request: Cell<Option<PreviewRequestId>>,
+    batch_print_task: RefCell<Option<glib::JoinHandle<()>>>,
+    batch_print_cancel: RefCell<Option<Arc<AtomicBool>>>,
     current_request: Cell<Option<PreviewRequestId>>,
     next_request: Cell<u64>,
     // Only explicit opens claim keyboard focus; implicit preview updates must not steal it.
@@ -474,6 +480,8 @@ impl PreviewDrawer {
             print_load: RefCell::new(None),
             print_progress: RefCell::new(None),
             print_request: Cell::new(None),
+            batch_print_task: RefCell::new(None),
+            batch_print_cancel: RefCell::new(None),
             current_request: Cell::new(None),
             next_request: Cell::new(1),
             focus_archive_on_ready: Cell::new(false),
@@ -867,6 +875,13 @@ impl PreviewDrawer {
     pub fn print_entry(&self, entry: FileEntry) {
         self.state.print_entry(entry);
     }
+
+    pub fn print_entries(&self, entries: Vec<FileEntry>) {
+        match entries.as_slice() {
+            [entry] if !entry.is_directory() => self.print_entry(entry.clone()),
+            _ => self.state.print_entries(entries),
+        }
+    }
 }
 
 impl Drop for PreviewState {
@@ -1102,18 +1117,24 @@ impl PreviewState {
         let (content_type, _) =
             gio::content_type_guess(Some(Path::new(&entry.native_name)), None::<&[u8]>);
         if content_type == "application/pdf" {
-            self.show_print_progress();
+            self.show_print_progress("Preparing PDF");
         }
         self.load_print_page(entry, parent, 0, Rc::new(RefCell::new(Vec::new())));
     }
 
     fn cancel_print(&self) {
+        if let Some(cancel) = self.batch_print_cancel.take() {
+            cancel.store(true, Ordering::Relaxed);
+        }
+        if let Some(task) = self.batch_print_task.take() {
+            task.abort();
+        }
         self.print_request.set(None);
         self.print_load.take();
         self.dismiss_print_progress();
     }
 
-    fn show_print_progress(self: &Rc<Self>) {
+    fn show_print_progress(self: &Rc<Self>, title: &str) {
         if self.print_progress.borrow().is_some() {
             return;
         }
@@ -1133,7 +1154,7 @@ impl PreviewState {
 
         let layout = modal_layout(
             crate::assets::icons::PRINTER,
-            &crate::i18n::tr("Preparing PDF"),
+            &crate::i18n::tr(title),
             &crate::i18n::tr("Rendering pages for the print dialog"),
             &crate::i18n::tr("Cancel"),
         );
@@ -1181,7 +1202,7 @@ impl PreviewState {
     }
 
     fn update_print_progress(self: &Rc<Self>, completed: i32, total: i32) {
-        self.show_print_progress();
+        self.show_print_progress("Preparing PDF");
         let progress = self.print_progress.borrow();
         let Some(dialog) = progress.as_ref() else {
             return;

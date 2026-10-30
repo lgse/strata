@@ -97,6 +97,7 @@ pub(super) use crate::ui::browser::context_menu::{
 pub(super) use crate::ui::browser::desktop::{launch_terminal, open_location_at};
 #[cfg(test)]
 pub(in crate::ui) use crate::ui::browser::entry::catppuccin;
+pub(in crate::ui) use crate::ui::browser::entry::entry_supports_printing;
 pub(super) use crate::ui::browser::entry::{
     FOLDER_TYPE_GROUP, OTHER_TYPE_GROUP, entry_filter, entry_icon, entry_model_value,
     format_file_size, icon_for_name, metadata_needs_fill, model_type_group,
@@ -126,7 +127,7 @@ type PinCompletion = Box<dyn FnOnce(bool)>;
 type PinHandler = Rc<dyn Fn(Location, String, PinCompletion)>;
 type UnpinHandler = Rc<dyn Fn(&Location)>;
 type PinStatusHandler = Rc<dyn Fn(&Location) -> PinStatus>;
-type PrintHandler = Rc<dyn Fn(FileEntry)>;
+type PrintHandler = Rc<dyn Fn(Vec<FileEntry>)>;
 type PreparingTransfer = (
     transfer::Preparing,
     gio::Cancellable,

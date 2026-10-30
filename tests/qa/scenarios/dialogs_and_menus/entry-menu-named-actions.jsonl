@@ -10,7 +10,7 @@
 {"wait":{"menu_items":null},"message":"the menu to close"}
 {"click":{"entry":"documents"},"button":3}
 {"wait":{"menu_items":{}},"message":"the context menu for 'documents'"}
-{"expect":{"menu_items":{"in_order":["Open","Open With…","Open in Terminal","Open in…","Cut","Copy","Duplicate","Rename","Move to…","Copy to…","Compress…","Pin to sidebar","Customize…","Copy path","Copy name","Properties","Move to Trash","Permanently delete"]}},"message":"unexpected action order"}
+{"expect":{"menu_items":{"in_order":["Open","Open With…","Open in Terminal","Open in…","Print","Cut","Copy","Duplicate","Rename","Move to…","Copy to…","Compress…","Pin to sidebar","Customize…","Copy path","Copy name","Properties","Move to Trash","Permanently delete"]}},"message":"unexpected action order"}
 {"wait":{"present":{"menu_item":"Copy"}},"message":"the menu item 'Copy'"}
 {"settle":{"menu_item":"Copy"}}
 {"click":{"menu_item":"Copy"}}

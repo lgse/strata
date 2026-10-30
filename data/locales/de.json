@@ -1529,5 +1529,17 @@
   "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum} ft",
   "%{elevation} m": "%{elevation} m",
   "%{elevation} ft": "%{elevation} ft",
-  "No action": "Keine Aktion"
+  "No action": "Keine Aktion",
+  "Not a local file": "Keine lokale Datei",
+  "Unsupported file type": "Nicht unterstützter Dateityp",
+  "Page limit reached": "Seitenlimit erreicht",
+  "Temporary print space limit reached": "Limit für temporären Druckspeicher erreicht",
+  "File scan limit reached": "Limit für die Dateisuche erreicht",
+  "Folder links are not followed": "Ordnerverknüpfungen werden nicht verfolgt",
+  "Finding files to print…": "Zu druckende Dateien werden gesucht…",
+  "Preparing file %{current} of %{total}": "Datei %{current} von %{total} wird vorbereitet",
+  "Print selection": "Auswahl drucken",
+  "Preparing files for printing": "Dateien werden zum Drucken vorbereitet",
+  "Ready to print · files: %{files} · pages: %{pages}": "Bereit zum Drucken · Dateien: %{files} · Seiten: %{pages}",
+  "Skipped items: %{count}": "Übersprungene Elemente: %{count}"
 }

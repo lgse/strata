@@ -1529,5 +1529,17 @@
   "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum} ft",
   "%{elevation} m": "%{elevation} m",
   "%{elevation} ft": "%{elevation} ft",
-  "No action": "Không có hành động"
+  "No action": "Không có hành động",
+  "Not a local file": "Không phải tệp cục bộ",
+  "Unsupported file type": "Loại tệp không được hỗ trợ",
+  "Page limit reached": "Đã đạt giới hạn số trang",
+  "Temporary print space limit reached": "Đã đạt giới hạn dung lượng tạm để in",
+  "File scan limit reached": "Đã đạt giới hạn quét tệp",
+  "Folder links are not followed": "Không đi theo liên kết đến thư mục",
+  "Finding files to print…": "Đang tìm tệp để in…",
+  "Preparing file %{current} of %{total}": "Đang chuẩn bị tệp %{current} trong %{total}",
+  "Print selection": "In mục đã chọn",
+  "Preparing files for printing": "Đang chuẩn bị tệp để in",
+  "Ready to print · files: %{files} · pages: %{pages}": "Sẵn sàng in · tệp: %{files} · trang: %{pages}",
+  "Skipped items: %{count}": "Mục đã bỏ qua: %{count}"
 }

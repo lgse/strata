@@ -1529,5 +1529,17 @@
   "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum} фут.",
   "%{elevation} m": "%{elevation} м",
   "%{elevation} ft": "%{elevation} фут.",
-  "No action": "Нет действия"
+  "No action": "Нет действия",
+  "Not a local file": "Не локальный файл",
+  "Unsupported file type": "Неподдерживаемый тип файла",
+  "Page limit reached": "Достигнут предел страниц",
+  "Temporary print space limit reached": "Достигнут предел временного места для печати",
+  "File scan limit reached": "Достигнут предел поиска файлов",
+  "Folder links are not followed": "Ссылки на папки не открываются",
+  "Finding files to print…": "Поиск файлов для печати…",
+  "Preparing file %{current} of %{total}": "Подготовка файла %{current} из %{total}",
+  "Print selection": "Печать выделенного",
+  "Preparing files for printing": "Подготовка файлов к печати",
+  "Ready to print · files: %{files} · pages: %{pages}": "Готово к печати · файлов: %{files} · страниц: %{pages}",
+  "Skipped items: %{count}": "Пропущено элементов: %{count}"
 }

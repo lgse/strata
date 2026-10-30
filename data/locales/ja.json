@@ -1529,5 +1529,17 @@
   "%{minimum}–%{maximum} ft": "%{minimum}～%{maximum} フィート",
   "%{elevation} m": "%{elevation} m",
   "%{elevation} ft": "%{elevation} フィート",
-  "No action": "アクションなし"
+  "No action": "アクションなし",
+  "Not a local file": "ローカルファイルではありません",
+  "Unsupported file type": "対応していないファイル形式です",
+  "Page limit reached": "ページ数の上限に達しました",
+  "Temporary print space limit reached": "印刷用の一時領域の上限に達しました",
+  "File scan limit reached": "ファイルの検索上限に達しました",
+  "Folder links are not followed": "フォルダーへのリンクはたどりません",
+  "Finding files to print…": "印刷するファイルを検索中…",
+  "Preparing file %{current} of %{total}": "ファイル %{current} / %{total} を準備中",
+  "Print selection": "選択項目を印刷",
+  "Preparing files for printing": "印刷するファイルを準備中",
+  "Ready to print · files: %{files} · pages: %{pages}": "印刷準備完了 · ファイル: %{files} · ページ: %{pages}",
+  "Skipped items: %{count}": "スキップした項目: %{count}"
 }

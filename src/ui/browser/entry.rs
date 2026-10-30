@@ -36,7 +36,7 @@ pub(super) fn entry_responds_to_preview_click(entry: &FileEntry, previews_enable
         && crate::ui::preview::entry_supports_quick_preview(entry)
 }
 
-pub(super) fn entry_supports_printing(entry: &FileEntry) -> bool {
+pub(in crate::ui) fn entry_supports_printing(entry: &FileEntry) -> bool {
     if !matches!(entry.kind, EntryKind::File | EntryKind::FileSymbolicLink) {
         return false;
     }

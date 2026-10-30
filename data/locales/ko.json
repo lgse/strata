@@ -1529,5 +1529,17 @@
   "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum}피트",
   "%{elevation} m": "%{elevation} m",
   "%{elevation} ft": "%{elevation} 피트",
-  "No action": "동작 없음"
+  "No action": "동작 없음",
+  "Not a local file": "로컬 파일이 아닙니다",
+  "Unsupported file type": "지원하지 않는 파일 형식",
+  "Page limit reached": "페이지 한도에 도달했습니다",
+  "Temporary print space limit reached": "임시 인쇄 공간 한도에 도달했습니다",
+  "File scan limit reached": "파일 검색 한도에 도달했습니다",
+  "Folder links are not followed": "폴더 링크는 따라가지 않습니다",
+  "Finding files to print…": "인쇄할 파일 찾는 중…",
+  "Preparing file %{current} of %{total}": "파일 준비 중: %{current}/%{total}",
+  "Print selection": "선택 항목 인쇄",
+  "Preparing files for printing": "인쇄할 파일 준비 중",
+  "Ready to print · files: %{files} · pages: %{pages}": "인쇄 준비 완료 · 파일: %{files} · 페이지: %{pages}",
+  "Skipped items: %{count}": "건너뛴 항목: %{count}"
 }

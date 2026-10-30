@@ -1529,5 +1529,17 @@
   "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum} ft",
   "%{elevation} m": "%{elevation} m",
   "%{elevation} ft": "%{elevation} ft",
-  "No action": "Nincs művelet"
+  "No action": "Nincs művelet",
+  "Not a local file": "Nem helyi fájl",
+  "Unsupported file type": "Nem támogatott fájltípus",
+  "Page limit reached": "Elérte az oldalak számának korlátját",
+  "Temporary print space limit reached": "Elérte az ideiglenes nyomtatási tárhely korlátját",
+  "File scan limit reached": "Elérte a fájlok beolvasásának korlátját",
+  "Folder links are not followed": "A mappahivatkozásokat nem követjük",
+  "Finding files to print…": "Nyomtatandó fájlok keresése…",
+  "Preparing file %{current} of %{total}": "%{current}/%{total}. fájl előkészítése",
+  "Print selection": "Kijelölés nyomtatása",
+  "Preparing files for printing": "Fájlok előkészítése nyomtatáshoz",
+  "Ready to print · files: %{files} · pages: %{pages}": "Nyomtatásra kész · fájlok: %{files} · oldalak: %{pages}",
+  "Skipped items: %{count}": "Kihagyott elemek: %{count}"
 }

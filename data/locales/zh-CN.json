@@ -1529,5 +1529,17 @@
   "%{minimum}–%{maximum} ft": "%{minimum}–%{maximum} 英尺",
   "%{elevation} m": "%{elevation} m",
   "%{elevation} ft": "%{elevation} 英尺",
-  "No action": "无操作"
+  "No action": "无操作",
+  "Not a local file": "不是本地文件",
+  "Unsupported file type": "不支持的文件类型",
+  "Page limit reached": "已达到页数上限",
+  "Temporary print space limit reached": "已达到打印临时空间上限",
+  "File scan limit reached": "已达到文件扫描上限",
+  "Folder links are not followed": "不会进入文件夹链接",
+  "Finding files to print…": "正在查找要打印的文件…",
+  "Preparing file %{current} of %{total}": "正在准备第 %{current} 个文件，共 %{total} 个",
+  "Print selection": "打印所选内容",
+  "Preparing files for printing": "正在准备要打印的文件",
+  "Ready to print · files: %{files} · pages: %{pages}": "准备打印 · 文件：%{files} · 页数：%{pages}",
+  "Skipped items: %{count}": "已跳过的项目：%{count}"
 }
