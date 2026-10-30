@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use crate::adapters::gio_file_for_location;
+use crate::adapters::{CONTENT_TYPE_ATTRIBUTES, content_type_of, gio_file_for_location};
 use crate::app::Browser;
 use crate::model::{FileEntry, Location};
 use crate::ui::browser::paths::is_trash_location;
@@ -107,7 +107,7 @@ struct DefaultApplication {
 async fn resolve_default_application(file: &gio::File) -> Result<DefaultApplication, glib::Error> {
     let info = file
         .query_info_future(
-            "standard::type,standard::content-type,unix::mode",
+            &format!("standard::type,{CONTENT_TYPE_ATTRIBUTES},unix::mode"),
             gio::FileQueryInfoFlags::NONE,
             glib::Priority::DEFAULT,
         )
@@ -118,8 +118,7 @@ async fn resolve_default_application(file: &gio::File) -> Result<DefaultApplicat
             &crate::i18n::tr("Broken symbolic links cannot be opened with an application"),
         ));
     }
-    let content_type = info
-        .content_type()
+    let content_type = content_type_of(&info)
         .map(|value| value.to_string())
         .ok_or_else(|| {
             glib::Error::new(

@@ -94,3 +94,28 @@ fn reveal_target_for_file_spells_the_child_like_the_listing() {
         ))
     );
 }
+
+#[test]
+fn content_type_falls_back_to_the_fast_type_gvfs_smb_reports_for_uncertain_names() {
+    for (content_type, fast_content_type, expected) in [
+        (
+            Some("text/x-markdown"),
+            Some("text/markdown"),
+            Some("text/x-markdown"),
+        ),
+        (None, Some("text/markdown"), Some("text/markdown")),
+        (None, None, None),
+    ] {
+        let info = gio::FileInfo::new();
+        if let Some(content_type) = content_type {
+            info.set_content_type(content_type);
+        }
+        if let Some(fast_content_type) = fast_content_type {
+            info.set_attribute_string(
+                gio::FILE_ATTRIBUTE_STANDARD_FAST_CONTENT_TYPE,
+                fast_content_type,
+            );
+        }
+        assert_eq!(content_type_of(&info).as_deref(), expected);
+    }
+}

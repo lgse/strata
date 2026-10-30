@@ -40,5 +40,23 @@ pub(crate) fn reveal_target_for_file(file: &gio::File) -> Option<(Location, Loca
     ))
 }
 
+/// Query these when reading a type with [`content_type_of`].
+pub(crate) const CONTENT_TYPE_ATTRIBUTES: &str =
+    "standard::content-type,standard::fast-content-type";
+
+/// Reads a queried file's type as GLib's default handler lookup does. Backends such as
+/// GVfs SMB omit `standard::content-type` when the name alone leaves the type uncertain
+/// (`.md`, `.py`, `.json`) and set only `standard::fast-content-type`. Checking first
+/// also avoids the GLib critical that `FileInfo::content_type` logs for a missing value.
+pub(crate) fn content_type_of(info: &gio::FileInfo) -> Option<glib::GString> {
+    [
+        gio::FILE_ATTRIBUTE_STANDARD_CONTENT_TYPE,
+        gio::FILE_ATTRIBUTE_STANDARD_FAST_CONTENT_TYPE,
+    ]
+    .into_iter()
+    .filter(|attribute| info.has_attribute(attribute))
+    .find_map(|attribute| info.attribute_string(attribute))
+}
+
 #[cfg(test)]
 mod tests;

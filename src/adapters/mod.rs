@@ -17,7 +17,10 @@ pub(crate) mod trash_support;
 mod volume;
 
 pub(crate) use file_manager1::{RevealRequest, export_file_manager};
-pub(crate) use gio_location::{gio_file_for_location, location_for_file, reveal_target_for_file};
+pub(crate) use gio_location::{
+    CONTENT_TYPE_ATTRIBUTES, content_type_of, gio_file_for_location, location_for_file,
+    reveal_target_for_file,
+};
 pub(crate) use local_actions::{LocalActionStore, resolve_executable as resolve_action_executable};
 pub use local_files::LocalFileSource;
 pub(crate) use local_files::{RecentRemovalState, recent_remove_entries};
