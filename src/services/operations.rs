@@ -558,6 +558,12 @@ pub enum OperationEvent {
         total: usize,
         deleted_locations: Vec<Location>,
     },
+    /// Entries removed so far inside the items being deleted, which a single
+    /// large folder reports long before `DeleteProgress` counts it as done.
+    DeleteEntriesRemoved {
+        request_id: OperationRequestId,
+        removed: usize,
+    },
     RestoreProgress {
         request_id: OperationRequestId,
         completed: usize,

@@ -321,6 +321,9 @@ pub enum BrowserEvent {
         completed: usize,
         total: usize,
     },
+    DeletionEntriesRemoved {
+        removed: usize,
+    },
     DeletionFinished {
         succeeded: bool,
     },

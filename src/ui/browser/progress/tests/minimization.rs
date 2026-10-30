@@ -479,6 +479,69 @@ fn docked_copy_archive_and_deletion_update_and_cancel_independently() {
 }
 
 #[test]
+fn one_deleted_folder_counts_the_entries_removed_but_several_items_keep_their_percent() {
+    crate::test_support::gtk_test(
+        "ui::browser::progress::tests::minimization::one_deleted_folder_counts_the_entries_removed_but_several_items_keep_their_percent",
+        || {
+            let fixture = Fixture::new();
+            let removed_text = |removed| {
+                rust_i18n::t!("%{items} deleted", items = item_count_label(removed)).into_owned()
+            };
+            let delete = |names: &[&str]| {
+                let entries = names
+                    .iter()
+                    .map(|name| entry(Location::local(fixture.temp.path().join(name))))
+                    .collect();
+                fixture.view.browser().delete(entries, true);
+                let id = fixture
+                    .view
+                    .browser()
+                    .last_started_operation()
+                    .expect("deletion started");
+                (id, fixture.progress(id))
+            };
+            let report = |id, removed| {
+                fixture.operations.emit(
+                    id,
+                    OperationEvent::DeleteEntriesRemoved {
+                        request_id: id,
+                        removed,
+                    },
+                );
+            };
+
+            let (single, single_progress) = delete(&["folder"]);
+            report(single, 1_200);
+            let view_pulses = || {
+                single_progress
+                    .file_progress_view
+                    .borrow()
+                    .as_ref()
+                    .expect("visible progress")
+                    .indeterminate
+                    .get()
+            };
+            assert_eq!(
+                progress_card(&single_progress).meta.text(),
+                removed_text(1_200)
+            );
+            assert!(view_pulses(), "the bar pulses while the folder empties");
+            report(single, 2_400);
+            assert_eq!(
+                progress_card(&single_progress).meta.text(),
+                removed_text(2_400)
+            );
+
+            let (several, several_progress) = delete(&["first", "second"]);
+            let before = progress_card(&several_progress).meta.text();
+            report(several, 5_000);
+            assert_eq!(progress_card(&several_progress).meta.text(), before);
+            assert!(!before.contains("deleted"));
+        },
+    );
+}
+
+#[test]
 fn background_failure_preserves_an_exclusive_foreground_move() {
     crate::test_support::gtk_test(
         "ui::browser::progress::tests::minimization::background_failure_preserves_an_exclusive_foreground_move",

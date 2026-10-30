@@ -889,7 +889,7 @@
   "Transferring…": "Átvitel…",
   "Trash / Network / Recent": "Kuka / Hálózat / Legutóbbiak",
   "Trash isn't available on %{mount_point} (%{fs_type}).": "A Kuka nem érhető el itt: %{mount_point} (%{fs_type}).",
-  "Trash isn't available when browsing as administrator.": "Rendszergazdaként böngészve a Kuka nem érhető el.",
+  "Trash isn't available when browsing as administrator.": "A Kuka nem érhető el rendszergazdaként történő böngészés közben.",
   "Trash restore requires a local source and destination": "A Kukából való helyreállításhoz helyi forrás és cél szükséges",
   "Turn on 10xer mode": "10xer mód bekapcsolása",
   "Type a full path here": "Írjon ide egy teljes útvonalat",
