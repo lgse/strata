@@ -367,7 +367,11 @@ pub(super) fn process_local_delete_job(queue: &LocalDeleteQueue, job: LocalDelet
                     }
                 };
             match step {
-                LocalDeleteStep::Removed | LocalDeleteStep::Leftover => queue.complete(completion),
+                LocalDeleteStep::Removed => {
+                    deadline.note_removed();
+                    queue.complete(completion);
+                }
+                LocalDeleteStep::Leftover => queue.complete(completion),
                 LocalDeleteStep::Directory { handle, children } => {
                     let handle = Arc::new(handle);
                     if children.is_empty() {
@@ -439,7 +443,10 @@ pub(super) fn remove_local_delete_directory(
     };
     let folder = Entry::new(parent.as_ref(), &name);
     match leftovers::remove_folder(fs(), folder, deadline, &|| queue.is_stopped(), &unchanged) {
-        Ok(()) => queue.complete(completion),
+        Ok(()) => {
+            deadline.note_removed();
+            queue.complete(completion);
+        }
         Err(Refused::Stopped(_)) => {}
         Err(Refused::Changed(_)) => queue.fail(changed.take().unwrap_or_default()),
         Err(refused) => {
@@ -806,6 +813,42 @@ pub(super) async fn deletion_worker_count(targets: &[DeletionTarget]) -> usize {
     .await
 }
 
+const REMOVED_REPORT_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
+
+/// Reports the entries removed so far, since one large folder completes only when its
+/// last entry is gone.
+pub(super) struct RemovedReporter(glib::JoinHandle<()>);
+
+impl RemovedReporter {
+    pub(super) fn start(
+        request_id: OperationRequestId,
+        deadline: Deadline,
+        emit: Rc<dyn Fn(OperationEvent)>,
+        interval: std::time::Duration,
+    ) -> Self {
+        Self(glib::MainContext::default().spawn_local(async move {
+            let mut reported = 0;
+            loop {
+                glib::timeout_future(interval).await;
+                let removed = deadline.removed();
+                if removed != reported {
+                    reported = removed;
+                    emit(OperationEvent::DeleteEntriesRemoved {
+                        request_id,
+                        removed,
+                    });
+                }
+            }
+        }))
+    }
+}
+
+impl Drop for RemovedReporter {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
 pub(super) async fn run_deletion(
     request_id: OperationRequestId,
     targets: Vec<DeletionTarget>,
@@ -869,6 +912,14 @@ pub(super) async fn run_deletion_in(
     let mut pending_progress_locations = Vec::new();
     let mut cut_off = Vec::new();
     let deadline = Deadline::default();
+    let _reporter = permanent.then(|| {
+        RemovedReporter::start(
+            request_id,
+            deadline.clone(),
+            emit.clone(),
+            REMOVED_REPORT_INTERVAL,
+        )
+    });
 
     for chunk in targets.chunks(batch_size) {
         if cancellable.is_cancelled() {

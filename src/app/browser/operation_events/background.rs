@@ -156,6 +156,9 @@ impl Browser {
             } => {
                 emit(BrowserEvent::DeletionProgress { completed, total });
             }
+            OperationEvent::DeleteEntriesRemoved { removed, .. } => {
+                emit(BrowserEvent::DeletionEntriesRemoved { removed });
+            }
             OperationEvent::Merged {
                 source,
                 created,
