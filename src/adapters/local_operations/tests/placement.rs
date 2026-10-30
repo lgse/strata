@@ -292,6 +292,31 @@ fn a_folder_into_itself_is_refused_and_learns_nothing() -> Result<(), Box<dyn Er
 }
 
 #[test]
+fn a_mount_that_refuses_every_link_with_eacces_still_places_a_file() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let scope = FsQuirks::install(
+        root.path(),
+        Quirks {
+            links: Support::Rejected(Errno::ACCESS),
+            ..without_flags(Errno::INVAL)
+        },
+    );
+    fs::write(root.path().join("source"), b"data")?;
+
+    let original = identity(&root.path().join("source"));
+
+    // As an SFTP mount without a link extension refuses every link.
+    assert_eq!(
+        place_in(root.path(), "source", "target", None),
+        Ok(Placed::OverReservedFile)
+    );
+    assert_eq!(mount_capabilities(scope.key()).hard_links, Some(false));
+    assert_eq!(names(root.path())?, ["target"]);
+    assert_eq!(identity(&root.path().join("target")), original);
+    Ok(())
+}
+
+#[test]
 fn item_level_eperm_does_not_disable_links_for_the_mount() -> Result<(), Box<dyn Error>> {
     let root = tempfile::tempdir()?;
     let scope = FsQuirks::install(
