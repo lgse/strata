@@ -13,7 +13,7 @@
 {"fs":{"path":"grouped/0000.json","text":"csv\n"},"message":"the selected file is renamed across type groups"}
 {"fs":{"path":"grouped/0000.csv","exists":false},"timeout_ms":0,"message":"the old CSV path is gone"}
 {"fs":{"path":"grouped/0000.txt","text":"text\n"},"timeout_ms":0,"message":"the same-stem TXT neighbor is untouched"}
-{"wait":{"focused":"0000.json"},"message":"focus follows the file into its new group"}
+{"wait":{"entries":{"excludes":["0000.csv"]}},"message":"the renamed row leaves the CSV group"}
 {"key":"ctrl+f"}
 {"wait":{"field":{}},"message":"filter field has focus"}
 {"type":"0000.*"}

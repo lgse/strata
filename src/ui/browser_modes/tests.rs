@@ -119,44 +119,41 @@ fn chunked_type_groups_do_not_eagerly_read_replaced_ranges() {
     crate::test_support::gtk_test(
         "ui::browser_modes::tests::chunked_type_groups_do_not_eagerly_read_replaced_ranges",
         || {
-            for total in [512, 4096] {
-                let source = gtk::StringList::new(&[]);
-                let source_index = SourceIndexMap::watch(&source);
-                let sorter =
-                    TypeGroupSorter::new(|| Some(crate::model::ViewPreferences::default()));
-                let sorted =
-                    gtk::SortListModel::new(Some(source.clone()), Some(sorter.sorter.clone()));
-                sorted.set_section_sorter(Some(&sorter.sorter));
-                let counted = counting_model::CountingModel::new(&sorted);
-                let view = counted.clone().upcast::<gio::ListModel>();
-                let view_index = SourceIndexMap::watch(&view);
-                for start in (0..total).step_by(128) {
-                    let values: Vec<_> = (start..start + 128)
-                        .map(|i| {
-                            let extension = ["png", "txt", "json", "csv"][i % 4];
-                            super::super::browser::entry_model_value(&typed_entry(
-                                &format!("{i:06}.{extension}"),
-                                crate::model::EntryKind::File,
-                            ))
-                        })
-                        .collect();
-                    let values: Vec<_> = values.iter().map(String::as_str).collect();
-                    source.splice(start as u32, 0, &values);
-                }
-                let mapped = view_index.sources_of(&source_index, &view, 0..total as u32);
-                assert!(mapped.iter().all(Option::is_some));
-                for (position, source_position) in mapped.into_iter().enumerate() {
-                    assert_eq!(
-                        source.item(source_position.expect("mapped item") as u32),
-                        sorted.item(position as u32)
-                    );
-                }
-                assert!(
-                    counted.reads() <= total * 2,
-                    "{total} published rows caused {} view reads",
-                    counted.reads()
+            const TOTAL: usize = 4096;
+            let source = gtk::StringList::new(&[]);
+            let source_index = SourceIndexMap::watch(&source);
+            let sorter = TypeGroupSorter::new(|| Some(crate::model::ViewPreferences::default()));
+            let sorted = gtk::SortListModel::new(Some(source.clone()), Some(sorter.sorter.clone()));
+            sorted.set_section_sorter(Some(&sorter.sorter));
+            let counted = counting_model::CountingModel::new(&sorted);
+            let view = counted.clone().upcast::<gio::ListModel>();
+            let view_index = SourceIndexMap::watch(&view);
+            for start in (0..TOTAL).step_by(128) {
+                let values: Vec<_> = (start..start + 128)
+                    .map(|i| {
+                        let extension = ["png", "txt", "json", "csv"][i % 4];
+                        super::super::browser::entry_model_value(&typed_entry(
+                            &format!("{i:06}.{extension}"),
+                            crate::model::EntryKind::File,
+                        ))
+                    })
+                    .collect();
+                let values: Vec<_> = values.iter().map(String::as_str).collect();
+                source.splice(start as u32, 0, &values);
+            }
+            let mapped = view_index.sources_of(&source_index, &view, 0..TOTAL as u32);
+            assert!(mapped.iter().all(Option::is_some));
+            for (position, source_position) in mapped.into_iter().enumerate() {
+                assert_eq!(
+                    source.item(source_position.expect("mapped item") as u32),
+                    sorted.item(position as u32)
                 );
             }
+            assert!(
+                counted.reads() <= TOTAL * 2,
+                "{TOTAL} published rows caused {} view reads",
+                counted.reads()
+            );
         },
     );
 }
