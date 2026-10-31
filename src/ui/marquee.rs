@@ -226,6 +226,15 @@ pub(super) fn install(setup: MarqueeSetup) -> Marquee {
     gesture.set_propagation_phase(gtk::PropagationPhase::Capture);
     let state_for_begin = state.clone();
     gesture.connect_drag_begin(move |gesture, x, y| {
+        // Capture phase sees presses before the scrollbars inside the surface, and an
+        // overlay scrollbar sits over row space that item hit testing treats as blank.
+        if gesture
+            .widget()
+            .is_some_and(|widget| super::pointer::hits_scrollbar(&widget, x, y))
+        {
+            state_for_begin.end();
+            return;
+        }
         let starts_on_item = gesture
             .widget()
             .is_some_and(|widget| (state_for_begin.is_item)(&widget, x, y));
