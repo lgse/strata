@@ -30,7 +30,7 @@ fn save_target(path: &std::path::Path) {
 fn refused_jump(name: &str, refusal: Refusal) {
     crate::test_support::gtk_test(
         &format!(
-            "ui::window::tests::keyboard_dispatch::letter_bookmarks::review_regressions::{name}"
+            "ui::window::tests::keyboard_dispatch::letter_bookmarks::pending_jump::{name}"
         ),
         || {
             let fixture = KeyboardFixture::new();
@@ -125,7 +125,7 @@ fn letter_bookmark_probe_timeout_stays_put() {
 #[test]
 fn pending_letter_bookmark_cancel_preserves_selection_and_preview() {
     crate::test_support::gtk_test(
-        "ui::window::tests::keyboard_dispatch::letter_bookmarks::review_regressions::pending_letter_bookmark_cancel_preserves_selection_and_preview",
+        "ui::window::tests::keyboard_dispatch::letter_bookmarks::pending_jump::pending_letter_bookmark_cancel_preserves_selection_and_preview",
         || {
             let fixture = KeyboardFixture::new();
             PreferenceManager::shared().set_tenxer_mode(true);
@@ -214,7 +214,7 @@ fn pending_letter_bookmark_cancel_preserves_selection_and_preview() {
 #[test]
 fn missing_letter_bookmark_does_not_cancel_navigation_validation() {
     crate::test_support::gtk_test(
-        "ui::window::tests::keyboard_dispatch::letter_bookmarks::review_regressions::missing_letter_bookmark_does_not_cancel_navigation_validation",
+        "ui::window::tests::keyboard_dispatch::letter_bookmarks::pending_jump::missing_letter_bookmark_does_not_cancel_navigation_validation",
         || {
             let fixture = KeyboardFixture::new();
             PreferenceManager::shared().set_tenxer_mode(true);
@@ -252,7 +252,7 @@ fn missing_letter_bookmark_does_not_cancel_navigation_validation() {
 #[test]
 fn letter_bookmark_read_errors_cancel_the_menu() {
     crate::test_support::gtk_test(
-        "ui::window::tests::keyboard_dispatch::letter_bookmarks::review_regressions::letter_bookmark_read_errors_cancel_the_menu",
+        "ui::window::tests::keyboard_dispatch::letter_bookmarks::pending_jump::letter_bookmark_read_errors_cancel_the_menu",
         || {
             let fixture = KeyboardFixture::new();
             PreferenceManager::shared().set_tenxer_mode(true);
@@ -283,7 +283,7 @@ fn letter_bookmark_read_errors_cancel_the_menu() {
 #[test]
 fn nonlocal_letter_bookmark_reports_unavailable() {
     crate::test_support::gtk_test(
-        "ui::window::tests::keyboard_dispatch::letter_bookmarks::review_regressions::nonlocal_letter_bookmark_reports_unavailable",
+        "ui::window::tests::keyboard_dispatch::letter_bookmarks::pending_jump::nonlocal_letter_bookmark_reports_unavailable",
         || {
             let fixture = KeyboardFixture::new();
             PreferenceManager::shared().set_tenxer_mode(true);

@@ -2,7 +2,7 @@
 
 use super::*;
 
-mod review_regressions;
+mod pending_jump;
 
 fn mark(fixture: &KeyboardFixture, prefix: Key, letter: Key) {
     focus_files(fixture);
