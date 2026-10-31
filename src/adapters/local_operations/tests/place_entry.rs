@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
-use crate::services::{NewEntryPath, PlaceNewEntryRequest};
+use crate::services::{PlaceEntryRequest, TypedPath};
 
-fn place(source: &Path, directory: bool, typed: &str) -> OperationEvent {
+fn place(source: &Path, directory: bool, typed: &str, new_item: bool) -> OperationEvent {
     let _guard = ASYNC_MAIN_CONTEXT_DEFAULT.lock();
     let context = glib::MainContext::default();
     let _owner = context.acquire().expect("exclusive main context");
@@ -14,11 +14,12 @@ fn place(source: &Path, directory: bool, typed: &str) -> OperationEvent {
     } else {
         file_entry(source)
     };
-    let _load = LocalOperationProvider.place_new_entry(
-        PlaceNewEntryRequest {
+    let _load = LocalOperationProvider.place_entry(
+        PlaceEntryRequest {
             id: OperationRequestId(1),
             entry,
-            path: NewEntryPath::parse(typed, directory).expect("valid path"),
+            path: TypedPath::parse(typed, directory, true).expect("valid path"),
+            new_item,
         },
         Rc::new(move |event| received.borrow_mut().push(event)),
     );
@@ -53,26 +54,61 @@ fn fixture(
     Ok((root, source))
 }
 
-#[test]
-fn a_new_item_is_placed_at_its_typed_path() -> Result<(), Box<dyn Error>> {
-    let rows: [(bool, &str, &[&str]); 5] = [
-        (false, "docs/", &["docs"]),
-        (false, "notes/today.txt", &["notes", "notes/today.txt"]),
-        (false, "kept/today.txt", &["kept/today.txt"]),
-        (false, "kept/fresh/", &["kept/fresh"]),
-        (true, "a/b/", &["a", "a/b"]),
-    ];
-    for (directory, typed, created) in rows {
-        let (root, source) = fixture(directory, b"")?;
+struct Row {
+    directory: bool,
+    contents: &'static [u8],
+    new_item: bool,
+    typed: &'static str,
+    placed: &'static [&'static str],
+}
 
-        let event = place(&source, directory, typed);
+#[test]
+fn an_item_is_placed_at_its_typed_path() -> Result<(), Box<dyn Error>> {
+    let new_file = |typed, placed| Row {
+        directory: false,
+        contents: b"",
+        new_item: true,
+        typed,
+        placed,
+    };
+    let rows = [
+        new_file("docs/", &["docs"]),
+        new_file("notes/today.txt", &["notes", "notes/today.txt"]),
+        new_file("kept/today.txt", &["kept/today.txt"]),
+        new_file("kept/fresh/", &["kept/fresh"]),
+        Row {
+            directory: true,
+            ..new_file("a/b/", &["a", "a/b"])
+        },
+        Row {
+            contents: b"draft",
+            new_item: false,
+            ..new_file("notes/today.txt", &["notes", "notes/today.txt"])
+        },
+        Row {
+            directory: true,
+            new_item: false,
+            ..new_file("kept/moved", &["kept/moved"])
+        },
+    ];
+    for Row {
+        directory,
+        contents,
+        new_item,
+        typed,
+        placed: created,
+    } in rows
+    {
+        let (root, source) = fixture(directory, contents)?;
+
+        let event = place(&source, directory, typed, new_item);
 
         let expected: Vec<_> = created
             .iter()
             .map(|path| Location::local(root.path().join(path)))
             .collect();
         assert!(
-            matches!(&event, OperationEvent::NewEntryPlaced { created, .. } if *created == expected),
+            matches!(&event, OperationEvent::EntryPlaced { placed, .. } if *placed == expected),
             "{typed}: {event:?}"
         );
         assert!(!source.exists(), "{typed}");
@@ -83,7 +119,7 @@ fn a_new_item_is_placed_at_its_typed_path() -> Result<(), Box<dyn Error>> {
             "{typed}"
         );
         if !placed.is_dir() {
-            assert_eq!(fs::read(&placed)?, b"", "{typed}");
+            assert_eq!(fs::read(&placed)?, contents, "{typed}");
         }
         assert_eq!(fs::read(root.path().join("kept/other"))?, b"keep");
     }
@@ -115,7 +151,7 @@ fn a_refused_placement_keeps_the_new_item_and_removes_the_folders_it_made()
         let (root, source) = fixture(false, contents)?;
         let before = names(root.path())?;
 
-        let event = place(&source, false, typed);
+        let event = place(&source, false, typed, true);
 
         assert!(
             matches!(&event, OperationEvent::Failed { message: failed, .. } if *failed == message),
@@ -126,5 +162,22 @@ fn a_refused_placement_keeps_the_new_item_and_removes_the_folders_it_made()
         assert_eq!(names(&root.path().join("kept"))?, ["other"], "{typed}");
         assert_eq!(fs::read(root.path().join("file"))?, b"keep", "{typed}");
     }
+    Ok(())
+}
+
+#[test]
+fn an_existing_empty_file_is_never_replaced_by_a_folder() -> Result<(), Box<dyn Error>> {
+    let (root, source) = fixture(false, b"")?;
+    let before = names(root.path())?;
+
+    let event = place(&source, false, "made/docs/", false);
+
+    let refused = crate::i18n::tr("An existing file can’t become a folder");
+    assert!(
+        matches!(&event, OperationEvent::Failed { message, .. } if *message == refused),
+        "{event:?}"
+    );
+    assert_eq!(names(root.path())?, before);
+    assert!(source.is_file());
     Ok(())
 }

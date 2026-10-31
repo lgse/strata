@@ -1646,9 +1646,10 @@ fn naming_a_created_file_with_a_path_makes_undo_trash_the_outermost_new_folder()
     browser.observe(move |event| observed.borrow_mut().push(event.clone()));
     browser.create_new_file(Location::local("/fixture"));
 
-    let request_id = browser.place_new_entry(
+    let request_id = browser.place_entry(
         fixture_entry("/fixture/new file"),
-        crate::services::NewEntryPath::parse("docs/today.txt", false).expect("path"),
+        crate::services::TypedPath::parse("docs/today.txt", false, true).expect("path"),
+        true,
     );
 
     assert!(events.borrow().iter().any(|event| matches!(
@@ -1681,9 +1682,10 @@ fn a_failed_path_naming_leaves_the_created_file_to_undo() {
     browser.observe(move |event| observed.borrow_mut().push(event.clone()));
 
     let request_id = browser
-        .place_new_entry(
+        .place_entry(
             fixture_entry("/fixture/new file"),
-            crate::services::NewEntryPath::parse("todo.txt/today.txt", false).expect("path"),
+            crate::services::TypedPath::parse("todo.txt/today.txt", false, true).expect("path"),
+            true,
         )
         .expect("placement started");
     operations.emit(
@@ -1702,6 +1704,72 @@ fn a_failed_path_naming_leaves_the_created_file_to_undo() {
     assert_eq!(
         pending_undo_entry(),
         Some(UndoEntry::Copy(vec![Location::local("/fixture/new file")]))
+    );
+}
+
+#[test]
+fn renaming_an_item_into_new_folders_undoes_as_a_move_back_that_trashes_them() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    let original = Location::local("/fixture/report.txt");
+    let current = Location::local("/fixture/a/b/report.txt");
+
+    browser.place_entry(
+        fixture_entry("/fixture/report.txt"),
+        crate::services::TypedPath::parse("a/b/report.txt", false, false).expect("path"),
+        false,
+    );
+
+    assert_eq!(
+        pending_undo_entry(),
+        Some(UndoEntry::Group {
+            folder: Location::local("/fixture/a"),
+            records: vec![MoveRecord {
+                original: original.clone(),
+                current: current.clone(),
+                renamed: Vec::new(),
+            }],
+        })
+    );
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::ItemRelocated { from, to, .. } if *from == original && *to == current
+    )));
+}
+
+#[test]
+fn renaming_an_item_into_an_existing_folder_undoes_as_a_move() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let operations = Rc::new(crate::test_support::operations::HeldOperations::default());
+    browser.set_operation_provider(operations.clone());
+    let original = Location::local("/fixture/todo.txt");
+    let current = Location::local("/fixture/kept/todo.txt");
+
+    let request_id = browser
+        .place_entry(
+            fixture_entry("/fixture/todo.txt"),
+            crate::services::TypedPath::parse("kept/todo.txt", false, false).expect("path"),
+            false,
+        )
+        .expect("placement started");
+    operations.emit(
+        request_id,
+        OperationEvent::EntryPlaced {
+            request_id,
+            placed: vec![current.clone()],
+        },
+    );
+
+    assert_eq!(
+        pending_undo_entry(),
+        Some(UndoEntry::Move(vec![MoveRecord {
+            original,
+            current,
+            renamed: Vec::new(),
+        }]))
     );
 }
 

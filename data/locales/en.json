@@ -32,6 +32,7 @@
   "A file in it is still open in another program. Close it and try again.": "A file in it is still open in another program. Close it and try again.",
   "Administrator": "Administrator",
   "Administrator access wasn't granted.": "Administrator access wasn't granted.",
+  "An existing file can’t become a folder": "An existing file can’t become a folder",
   "Another program or computer may still be using these items. Restore never replaces an existing item.": "Another program or computer may still be using these items. Restore never replaces an existing item.",
   "All requirements are met.": "All requirements are met.",
   "Apps and services": "Apps and services",

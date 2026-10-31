@@ -139,7 +139,7 @@ pub(super) use leftovers::Deadline;
 mod merge_aside;
 mod mount_profile;
 mod owed;
-mod place_new_entry;
+mod place_entry;
 mod placement;
 pub(crate) mod probes;
 mod release;
@@ -206,7 +206,7 @@ use crate::{
     services::{
         CancelledOperation, CompressRequest, CreateDirectoryRequest, CreateFileRequest,
         DeleteRequest, ExtractRequest, KeptCause, KeptItem, LoadHandle, NameMode, OperationEvent,
-        OperationProvider, OperationRequestId, PasteItem, PasteRequest, PlaceNewEntryRequest,
+        OperationProvider, OperationRequestId, PasteItem, PasteRequest, PlaceEntryRequest,
         RecoverRequest, RenameCause, RenameRequest, RenamedItem, ReplacedOriginal, RestoreRequest,
         RestoreSource, SkippedItem, SpecialKind, TransferConflict, TransferReport, UndoCopyRequest,
         UndoMergeRequest, UndoMoveRequest, UndoRenameRequest, validate_basename,
@@ -3012,12 +3012,12 @@ impl OperationProvider for LocalOperationProvider {
         operation_handle(cancellable)
     }
 
-    fn place_new_entry(
+    fn place_entry(
         &self,
-        request: PlaceNewEntryRequest,
+        request: PlaceEntryRequest,
         emit: Rc<dyn Fn(OperationEvent)>,
     ) -> LoadHandle {
-        place_new_entry::start(request, emit)
+        place_entry::start(request, emit)
     }
 
     fn create_directory(

@@ -32,6 +32,7 @@
   "A file in it is still open in another program. Close it and try again.": "其中的某個檔案仍在其他程式中開啟。請關閉後再試。",
   "Administrator": "管理員",
   "Administrator access wasn't granted.": "未取得管理員權限。",
+  "An existing file can’t become a folder": "現有檔案無法變成資料夾",
   "Another program or computer may still be using these items. Restore never replaces an existing item.": "其他程式或電腦可能仍在使用這些項目。還原絕不會取代現有項目。",
   "All requirements are met.": "已滿足所有相依項目。",
   "Browsing as administrator. New items belong to root, and deleted items skip Trash.": "正在以管理員身分瀏覽。新項目歸 root 所有，刪除的項目不會移至回收桶。",

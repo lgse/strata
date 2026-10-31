@@ -32,6 +32,7 @@
   "A file in it is still open in another program. Close it and try again.": "フォルダー内のファイルが別のプログラムでまだ開かれています。閉じてから、もう一度お試しください。",
   "Administrator": "管理者",
   "Administrator access wasn't granted.": "管理者アクセスが許可されませんでした。",
+  "An existing file can’t become a folder": "既存のファイルをフォルダーにすることはできません",
   "Another program or computer may still be using these items. Restore never replaces an existing item.": "別のプログラムやコンピューターがこれらの項目をまだ使用している可能性があります。復元で既存の項目が置き換えられることはありません。",
   "All requirements are met.": "すべての必要条件を満たしています。",
   "Apps and services": "アプリとサービス",

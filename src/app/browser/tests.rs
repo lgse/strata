@@ -709,13 +709,13 @@ impl OperationProvider for ImmediateOperationProvider {
         LoadHandle::new(|| {})
     }
 
-    fn place_new_entry(
+    fn place_entry(
         &self,
-        request: PlaceNewEntryRequest,
+        request: PlaceEntryRequest,
         emit: Rc<dyn Fn(OperationEvent)>,
     ) -> LoadHandle {
         let mut folder = request.entry.location.parent().expect("new entry parent");
-        let created = request
+        let placed = request
             .path
             .folders
             .iter()
@@ -725,9 +725,9 @@ impl OperationProvider for ImmediateOperationProvider {
                 folder.clone()
             })
             .collect();
-        emit(OperationEvent::NewEntryPlaced {
+        emit(OperationEvent::EntryPlaced {
             request_id: request.id,
-            created,
+            placed,
         });
         LoadHandle::new(|| {})
     }
@@ -972,12 +972,12 @@ impl OperationProvider for HeldExtractProvider {
         ImmediateOperationProvider.rename(request, emit)
     }
 
-    fn place_new_entry(
+    fn place_entry(
         &self,
-        request: PlaceNewEntryRequest,
+        request: PlaceEntryRequest,
         emit: Rc<dyn Fn(OperationEvent)>,
     ) -> LoadHandle {
-        ImmediateOperationProvider.place_new_entry(request, emit)
+        ImmediateOperationProvider.place_entry(request, emit)
     }
 
     fn create_directory(

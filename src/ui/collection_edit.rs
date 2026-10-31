@@ -7,7 +7,7 @@
 
 use crate::{
     model::{FileEntry, Location},
-    services::{NewEntryPath, validate_basename},
+    services::{TypedPath, validate_basename},
 };
 use gtk::{glib, prelude::*};
 use std::{cell::RefCell, rc::Rc};
@@ -88,8 +88,18 @@ pub(super) struct EditTarget {
     pub(super) reveal: Option<Reveal>,
     pub(super) finish: Option<Rc<dyn Fn()>>,
     pub(super) cancelled: Option<Rc<dyn Fn()>>,
-    /// The entry was just created, so a local one may be named with a path.
-    pub(super) new_item: bool,
+    pub(super) naming: Naming,
+}
+
+/// How a name typed for a local entry may move it; elsewhere it is a single name.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(super) enum Naming {
+    /// A relative path moves the item below its folder.
+    #[default]
+    Path,
+    /// The entry was just created, so a file may also be named as a folder.
+    NewItem,
+    Single,
 }
 
 impl From<EditWidgets> for EditTarget {
@@ -99,7 +109,7 @@ impl From<EditWidgets> for EditTarget {
             reveal: None,
             finish: None,
             cancelled: None,
-            new_item: false,
+            naming: Naming::default(),
         }
     }
 }
@@ -113,14 +123,25 @@ pub(super) struct ActiveEdit {
     focus_handler: Option<glib::SignalHandlerId>,
     tick: Option<gtk::TickCallbackId>,
     submitted: bool,
-    allows_path: bool,
+    naming: Naming,
 }
 
 pub(super) struct Submission {
     pub(super) entry: FileEntry,
     pub(super) name: String,
-    /// The name may be a relative path; see [`NewEntryPath`].
-    pub(super) allows_path: bool,
+    pub(super) naming: Naming,
+}
+
+impl Submission {
+    /// The typed path, unless it is invalid or only a name is allowed.
+    pub(super) fn path(&self) -> Option<TypedPath> {
+        let new_item = match self.naming {
+            Naming::Single => return None,
+            Naming::Path => false,
+            Naming::NewItem => true,
+        };
+        TypedPath::parse(&self.name, self.entry.is_directory(), new_item).ok()
+    }
 }
 
 impl Drop for ActiveEdit {
@@ -184,7 +205,7 @@ pub(super) fn take_submission(
     let submission = Submission {
         entry: edit.entry.clone(),
         name: field.text().to_string(),
-        allows_path: edit.allows_path,
+        naming: edit.naming,
     };
     drop(edit);
     Some(submission)
@@ -205,10 +226,14 @@ pub(super) fn begin(
     field.set_sensitive(true);
     field.remove_css_class("error");
     crate::ui::accessibility::set_description(&field, None);
-    let allows_path = target.new_item && entry.location.native_path().is_some();
-    let path_kind = allows_path.then_some(entry.is_directory());
+    let naming = if entry.location.native_path().is_some() {
+        target.naming
+    } else {
+        Naming::Single
+    };
+    let is_directory = entry.is_directory();
     let changed = field.connect_changed(move |field| {
-        update_name_validation(field, path_kind);
+        update_name_validation(field, naming, is_directory);
     });
     let activate = submit.clone();
     let activated = field.connect_activate(move |field| activate(field));
@@ -259,7 +284,7 @@ pub(super) fn begin(
         focus_handler: Some(focus_handler),
         tick,
         submitted: false,
-        allows_path,
+        naming,
     }));
     field.grab_focus();
     field.select_region(0, end);
@@ -300,22 +325,26 @@ pub(super) fn rename_stem_end(name: &str) -> i32 {
 }
 
 /// Empty fields are an ordinary editing state, although they cannot be submitted.
-/// `path_kind` is whether a new item that may be named with a path is a folder.
-pub(super) fn name_field_error(name: &str, path_kind: Option<bool>) -> Option<&'static str> {
-    match path_kind {
+pub(super) fn name_field_error(
+    name: &str,
+    naming: Naming,
+    is_directory: bool,
+) -> Option<&'static str> {
+    match naming {
         _ if name.is_empty() => None,
-        Some(is_directory) => NewEntryPath::parse(name, is_directory).err(),
-        None => validate_basename(name).err(),
+        Naming::Single => validate_basename(name).err(),
+        Naming::Path => TypedPath::parse(name, is_directory, false).err(),
+        Naming::NewItem => TypedPath::parse(name, is_directory, true).err(),
     }
 }
 
 pub(in crate::ui) fn update_basename_validation(field: &gtk::Entry) -> bool {
-    update_name_validation(field, None)
+    update_name_validation(field, Naming::Single, false)
 }
 
-fn update_name_validation(field: &gtk::Entry, path_kind: Option<bool>) -> bool {
+fn update_name_validation(field: &gtk::Entry, naming: Naming, is_directory: bool) -> bool {
     let text = field.text();
-    match name_field_error(text.as_str(), path_kind) {
+    match name_field_error(text.as_str(), naming, is_directory) {
         None => {
             field.remove_css_class("error");
             crate::ui::accessibility::set_description(field, None);

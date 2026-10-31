@@ -108,7 +108,7 @@ impl OperationProvider for HeldOperations {
     fn rename(&self, request: RenameRequest, callback: Callback) -> LoadHandle {
         self.hold(request.id, callback)
     }
-    fn place_new_entry(&self, request: PlaceNewEntryRequest, callback: Callback) -> LoadHandle {
+    fn place_entry(&self, request: PlaceEntryRequest, callback: Callback) -> LoadHandle {
         self.hold(request.id, callback)
     }
     unsupported!(create_directory, CreateDirectoryRequest);

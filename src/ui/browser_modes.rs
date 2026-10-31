@@ -979,7 +979,7 @@ impl ModeViews {
         depth: usize,
         source_position: usize,
         entry: &FileEntry,
-        new_item: bool,
+        naming: super::collection_edit::Naming,
     ) -> bool {
         self.cancel_rename();
         let pane = match self.mode {
@@ -1013,7 +1013,7 @@ impl ModeViews {
             return false;
         };
         let mut target = super::collection_edit::EditTarget::from(widgets);
-        target.new_item = new_item;
+        target.naming = naming;
         self.bind_rename_cancellation(&mut target, &entry.location);
         if self.mode == BrowserMode::List {
             let state = self.context_state.borrow().clone().unwrap_or_default();

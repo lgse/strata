@@ -32,6 +32,7 @@
   "A file in it is still open in another program. Close it and try again.": "文件夹中的某个文件仍在其他程序中打开。请关闭后重试。",
   "Administrator": "管理员",
   "Administrator access wasn't granted.": "未获得管理员权限。",
+  "An existing file can’t become a folder": "现有文件不能变为文件夹",
   "Another program or computer may still be using these items. Restore never replaces an existing item.": "其他程序或计算机可能仍在使用这些项目。还原不会替换已有的项目。",
   "All requirements are met.": "已满足所有依赖项。",
   "Apps and services": "应用和服务",

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-//! Puts a just-created item at the relative path typed while naming it. Folders
+//! Moves an item to the relative path typed while naming it. Folders
 //! are made or reused one directory at a time without following links, the item
 //! is moved without replacing anything, and a failure removes the folders this
 //! placement made again.
@@ -16,7 +16,7 @@ use super::{
 };
 use crate::{
     model::Location,
-    services::{LoadHandle, NewEntryPath, OperationEvent, PlaceNewEntryRequest, validate_basename},
+    services::{LoadHandle, OperationEvent, PlaceEntryRequest, TypedPath, validate_basename},
 };
 use gtk::{gio, glib, prelude::*};
 use rustix::{
@@ -31,11 +31,16 @@ use std::{
     rc::Rc,
 };
 
-pub(super) fn start(request: PlaceNewEntryRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+pub(super) fn start(request: PlaceEntryRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
     let cancellable = gio::Cancellable::new();
     let operation_cancellable = cancellable.clone();
     let _task = glib::MainContext::default().spawn_local(async move {
-        let PlaceNewEntryRequest { id, entry, path } = request;
+        let PlaceEntryRequest {
+            id,
+            entry,
+            path,
+            new_item,
+        } = request;
         let fail = |message: String| {
             emit(OperationEvent::Failed {
                 request_id: id,
@@ -51,6 +56,11 @@ pub(super) fn start(request: PlaceNewEntryRequest, emit: Rc<dyn Fn(OperationEven
             fail(crate::i18n::tr("Invalid move destination"));
             return;
         };
+        let into_folder = path.folder && !is_directory;
+        if into_folder && !new_item {
+            fail(crate::i18n::tr("An existing file can’t become a folder"));
+            return;
+        }
         let folder = gio::File::for_path(source.parent().unwrap_or(Path::new("/")));
         let components = path.folders.iter().chain([&path.name]);
         for (index, component) in components.enumerate() {
@@ -77,13 +87,12 @@ pub(super) fn start(request: PlaceNewEntryRequest, emit: Rc<dyn Fn(OperationEven
             ));
             return;
         }
-        let into_folder = path.folder && !is_directory;
         let placed_path = path.clone();
         let result =
             run_local_fs_step(move || place(fs(), &source, &placed_path, into_folder)).await;
         match result {
             Ok(first_created) => {
-                let created = path
+                let placed = path
                     .folders
                     .iter()
                     .chain([&path.name])
@@ -93,9 +102,9 @@ pub(super) fn start(request: PlaceNewEntryRequest, emit: Rc<dyn Fn(OperationEven
                     })
                     .skip(first_created)
                     .collect::<Vec<Location>>();
-                emit(OperationEvent::NewEntryPlaced {
+                emit(OperationEvent::EntryPlaced {
                     request_id: id,
-                    created,
+                    placed,
                 });
             }
             Err(error) => fail(error.message().to_owned()),
@@ -108,7 +117,7 @@ pub(super) fn start(request: PlaceNewEntryRequest, emit: Rc<dyn Fn(OperationEven
 fn place(
     fs: &dyn FsOps,
     source: &Path,
-    path: &NewEntryPath,
+    path: &TypedPath,
     into_folder: bool,
 ) -> Result<usize, String> {
     let (Some(source_parent), Some(source_name)) = (source.parent(), source.file_name()) else {
@@ -139,7 +148,7 @@ impl Placement<'_> {
         &mut self,
         source_parent: &Path,
         source_name: &OsStr,
-        path: &NewEntryPath,
+        path: &TypedPath,
         into_folder: bool,
     ) -> Result<usize, String> {
         for name in &path.folders {

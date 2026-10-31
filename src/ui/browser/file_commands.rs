@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-use std::{path::PathBuf, rc::Rc};
+use std::{
+    path::{Path, PathBuf},
+    rc::Rc,
+};
 
 use gtk::{glib, prelude::*};
 
@@ -13,7 +16,7 @@ use super::{
 use crate::{
     adapters::gio_file_for_location,
     model::{ActionInput, FileEntry, Location, SortDirection, SortKey},
-    services::{ActionCatalog, ActionHandle, ArchiveFormat, InvocationSource},
+    services::{ActionCatalog, ActionHandle, ArchiveFormat, InvocationSource, TypedPath},
 };
 
 pub(crate) use super::transfer::ConflictFocus;
@@ -62,6 +65,7 @@ pub(crate) enum CreateRefusal {
     Invalid(&'static str),
     Exists(String),
     Unstorable(String),
+    NotAFolder(String),
 }
 
 pub(crate) struct TypedEntry {
@@ -235,14 +239,52 @@ pub(crate) fn can_rename(entry: &FileEntry) -> bool {
 pub(crate) struct TypedRename {
     pub(crate) entry: FileEntry,
     pub(crate) name: String,
+    /// Set when the name moves the item below its folder.
+    path: Option<TypedPath>,
 }
 
 impl TypedRename {
+    /// Every typed component, with whether it names a folder.
+    pub(crate) fn components(&self) -> Vec<(&str, bool)> {
+        let Some(path) = &self.path else {
+            return vec![(self.name.as_str(), false)];
+        };
+        path.folders
+            .iter()
+            .map(|folder| (folder.as_str(), true))
+            .chain([(path.name.as_str(), path.folder)])
+            .collect()
+    }
+
     pub(crate) fn native_paths(&self) -> Option<(PathBuf, PathBuf)> {
         let current = self.entry.location.native_path()?;
-        let wanted = current.parent()?.join(&self.name);
+        let wanted = self
+            .components()
+            .into_iter()
+            .fold(current.parent()?.to_path_buf(), |path, (name, _)| {
+                path.join(name)
+            });
         Some((current.to_path_buf(), wanted))
     }
+
+    pub(crate) fn folders(&self) -> Vec<String> {
+        self.path
+            .as_ref()
+            .map(|path| path.folders.clone())
+            .unwrap_or_default()
+    }
+}
+
+/// The first folder on a typed path below `current`'s folder that is held by
+/// something other than a folder, which the rename would refuse.
+pub(crate) fn blocked_folder(current: &Path, folders: &[String]) -> Option<String> {
+    let mut path = current.parent()?.to_path_buf();
+    folders.iter().find_map(|folder| {
+        path.push(folder);
+        std::fs::symlink_metadata(&path)
+            .is_ok_and(|metadata| !metadata.is_dir())
+            .then(|| folder.clone())
+    })
 }
 
 impl BrowserView {
@@ -254,18 +296,41 @@ impl BrowserView {
         if !can_rename(&entry) {
             return Err(CreateRefusal::Unsupported);
         }
-        crate::services::validate_basename(text).map_err(CreateRefusal::Invalid)?;
-        if entry.display_name == text || entry.native_name == std::ffi::OsStr::new(text) {
+        let (name, path) = if entry.location.native_path().is_some() {
+            let path = TypedPath::parse(text, entry.is_directory(), false)
+                .map_err(CreateRefusal::Invalid)?;
+            if path.is_rename_of(entry.is_directory()) {
+                (path.name, None)
+            } else {
+                (text.to_owned(), Some(path))
+            }
+        } else {
+            crate::services::validate_basename(text).map_err(CreateRefusal::Invalid)?;
+            (text.to_owned(), None)
+        };
+        if path.is_none()
+            && (entry.display_name == name || entry.native_name == std::ffi::OsStr::new(&name))
+        {
             return Ok(None);
         }
-        Ok(Some(TypedRename {
-            entry,
-            name: text.to_owned(),
-        }))
+        Ok(Some(TypedRename { entry, name, path }))
     }
 
     pub fn start_typed_rename(&self, rename: TypedRename) {
-        if let Some(request) = self.state.browser.rename(rename.entry, rename.name) {
+        let started = match rename.path {
+            Some(path) => {
+                let replacement = rename
+                    .entry
+                    .location
+                    .parent()
+                    .and_then(|parent| parent.child(std::ffi::OsStr::new(path.first())));
+                let started = self.state.browser.place_entry(rename.entry, path, false);
+                self.state.typed_placement.replace(started.zip(replacement));
+                started
+            }
+            None => self.state.browser.rename(rename.entry, rename.name),
+        };
+        if let Some(request) = started {
             self.state
                 .keyboard_refocus
                 .set(Some(KeyboardRefocus::Rename(request)));

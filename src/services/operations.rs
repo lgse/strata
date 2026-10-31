@@ -31,10 +31,10 @@ pub fn validate_basename(name: &str) -> Result<(), &'static str> {
     }
 }
 
-/// The name typed for an item that was just created, which may be a relative
-/// path: `docs/` names a folder, and `docs/note.txt` puts the item in `docs`.
+/// A name typed for an item, which may be a relative path below its folder:
+/// `docs/note.txt` puts the item in `docs`, and a trailing `/` names a folder.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct NewEntryPath {
+pub struct TypedPath {
     /// Folders between the item's parent and the item, outermost first.
     pub folders: Vec<String>,
     pub name: String,
@@ -42,8 +42,9 @@ pub struct NewEntryPath {
     pub folder: bool,
 }
 
-impl NewEntryPath {
-    pub fn parse(text: &str, is_directory: bool) -> Result<Self, &'static str> {
+impl TypedPath {
+    /// Only a `new_item` file may be named as a folder, as that replaces it.
+    pub fn parse(text: &str, is_directory: bool, new_item: bool) -> Result<Self, &'static str> {
         let trimmed = text.strip_suffix('/');
         let mut components = trimmed
             .unwrap_or(text)
@@ -54,6 +55,9 @@ impl NewEntryPath {
             .iter()
             .try_for_each(|component| validate_basename(component))?;
         let name = components.pop().unwrap_or_default();
+        if trimmed.is_some() && !is_directory && !new_item {
+            return Err("An existing file can’t become a folder");
+        }
         Ok(Self {
             folders: components,
             name,
@@ -82,14 +86,15 @@ pub struct RenameRequest {
     pub new_name: String,
 }
 
-/// Puts a just-created item at `path` below its folder, creating the folders
-/// that are missing. A file named as a folder is replaced by that folder only
-/// while it is still empty.
+/// Moves an item to `path` below its folder, creating the folders that are
+/// missing. A `new_item` file named as a folder is replaced by that folder
+/// only while it is still empty.
 #[derive(Clone, Debug)]
-pub struct PlaceNewEntryRequest {
+pub struct PlaceEntryRequest {
     pub id: OperationRequestId,
     pub entry: FileEntry,
-    pub path: NewEntryPath,
+    pub path: TypedPath,
+    pub new_item: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -527,11 +532,11 @@ pub enum OperationEvent {
     Renamed {
         request_id: OperationRequestId,
     },
-    /// A new item reached its typed path. `created` holds, outermost first,
-    /// each folder the placement made and then the item itself.
-    NewEntryPlaced {
+    /// An item reached its typed path. `placed` holds, outermost first, each
+    /// folder the placement made and then where the item ended up.
+    EntryPlaced {
         request_id: OperationRequestId,
-        created: Vec<Location>,
+        placed: Vec<Location>,
     },
     Created {
         request_id: OperationRequestId,
@@ -691,9 +696,9 @@ pub enum OperationEvent {
 
 pub trait OperationProvider {
     fn rename(&self, request: RenameRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;
-    fn place_new_entry(
+    fn place_entry(
         &self,
-        request: PlaceNewEntryRequest,
+        request: PlaceEntryRequest,
         emit: Rc<dyn Fn(OperationEvent)>,
     ) -> LoadHandle;
     fn create_directory(

@@ -32,6 +32,7 @@
   "A file in it is still open in another program. Close it and try again.": "Một tệp trong thư mục này vẫn đang mở trong một chương trình khác. Hãy đóng tệp rồi thử lại.",
   "Administrator": "Quản trị viên",
   "Administrator access wasn't granted.": "Không được cấp quyền quản trị viên.",
+  "An existing file can’t become a folder": "Không thể biến tệp hiện có thành thư mục",
   "Another program or computer may still be using these items. Restore never replaces an existing item.": "Một chương trình hoặc máy tính khác có thể vẫn đang dùng các mục này. Khôi phục không bao giờ thay thế một mục đã có.",
   "All requirements are met.": "Đã đáp ứng mọi yêu cầu.",
   "Apps and services": "Ứng dụng và dịch vụ",

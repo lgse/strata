@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
 
 use crate::model::{FileEntry, Location};
-use crate::services::{NewEntryPath, OperationRequestId, RequestId, validate_basename};
+use crate::services::{OperationRequestId, RequestId, validate_basename};
 use crate::ui::browser::ViewState;
 use crate::ui::browser::paths::is_trash_location;
 use crate::ui::browser_modes::BrowserMode;
+use crate::ui::collection_edit::Naming;
 use gtk::prelude::*;
 use std::rc::Rc;
 
@@ -28,7 +29,7 @@ pub(super) struct PendingRename {
     new_location: Option<Location>,
     old_name: String,
     new_name: String,
-    /// A new item went to a typed path, leaving its row for `new_location`.
+    /// The item went to a typed path, leaving its row for `new_location`.
     placed: bool,
     generation: u64,
     monitor_reported_rename: bool,
@@ -132,8 +133,8 @@ pub(super) struct PendingEntryRename {
     reveal_generation: u64,
     move_sources: std::cell::RefCell<Vec<Location>>,
     created: std::cell::RefCell<Option<Location>>,
-    /// The item was made here for naming, so its name may be a path.
-    new_item: bool,
+    /// A group folder takes a single name while its selection moves in.
+    naming: Naming,
 }
 
 pub(in crate::ui) fn set_rename_label(label: &gtk::Widget, name: &str) {
@@ -624,7 +625,7 @@ impl ViewState {
                 pending.reveal_generation == self.rename_reveal_generation.get()
             });
             if revealing && let Some(location) = new_location {
-                self.reveal_placed_entry(old_location, location);
+                self.reveal_placed_entry(location);
             }
             return;
         }
@@ -777,60 +778,24 @@ impl ViewState {
         });
     }
 
+    pub(super) fn complete_typed_placement(self: &Rc<Self>, operation_id: OperationRequestId) {
+        let placement = self.typed_placement.take();
+        if let Some((id, target)) = placement
+            && id == operation_id
+        {
+            self.reveal_placed_entry(target);
+        }
+    }
+
     /// The placed item's row leaves its folder, so select what took its place
-    /// once it is listed, as a rename keeps its row selected.
-    fn reveal_placed_entry(self: &Rc<Self>, old: Location, target: Location) {
-        let Some(depth) = self.browser.active_depth() else {
-            return;
-        };
-        let Some(parent) = target
+    /// there, as a rename keeps its row selected.
+    fn reveal_placed_entry(self: &Rc<Self>, target: Location) {
+        if let Some(parent) = target
             .parent()
-            .filter(|parent| self.browser.location_at(depth).as_ref() == Some(parent))
-        else {
-            return;
-        };
-        let weak = Rc::downgrade(self);
-        let reveal_generation = self.rename_reveal_generation.get();
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-        self.overlay.add_tick_callback(move |_, _| {
-            let Some(state) = weak.upgrade() else {
-                return gtk::glib::ControlFlow::Break;
-            };
-            if std::time::Instant::now() >= deadline
-                || state.rename_reveal_generation.get() != reveal_generation
-                || state.browser.location_at(depth).as_ref() != Some(&parent)
-                || !state
-                    .browser
-                    .selected_entries()
-                    .iter()
-                    .all(|entry| entry.location == old || entry.location == target)
-            {
-                return gtk::glib::ControlFlow::Break;
-            }
-            let Some(snapshot) = state
-                .browser
-                .column_snapshot(depth)
-                .filter(|snapshot| !snapshot.loading)
-            else {
-                return gtk::glib::ControlFlow::Continue;
-            };
-            let Some(position) = state
-                .browser
-                .with_entries(depth, 0..snapshot.count, |entries| {
-                    entries.iter().position(|entry| entry.location == target)
-                })
-                .flatten()
-            else {
-                return gtk::glib::ControlFlow::Continue;
-            };
-            if state.mode_views.borrow().mode() == BrowserMode::Columns {
-                state.browser.reveal_created_entry(depth, position);
-            } else {
-                state.browser.select(depth, position);
-            }
-            state.reveal_completed_rename(old.clone(), target.clone());
-            gtk::glib::ControlFlow::Break
-        });
+            .filter(|parent| self.browser.open_depth(parent).is_some())
+        {
+            self.apply_transfer_reveal(parent, vec![target]);
+        }
     }
 
     pub(super) fn fail_pending_rename(&self) {
@@ -1008,7 +973,7 @@ impl ViewState {
                         })
                         .unwrap_or(true)
                 }) && let Some(entry) = state.browser.entry_at(pending.depth, position)
-                    && state.begin_rename_item(pending.depth, position, entry, pending.new_item)
+                    && state.begin_rename_item(pending.depth, position, entry, pending.naming)
                 {
                     state.pending_new_entry.take();
                     return gtk::glib::ControlFlow::Break;
@@ -1081,7 +1046,11 @@ impl ViewState {
                 depth,
                 parent: location.clone(),
                 reveal_generation: self.rename_reveal_generation.get(),
-                new_item: move_sources.is_empty(),
+                naming: if move_sources.is_empty() {
+                    Naming::NewItem
+                } else {
+                    Naming::Single
+                },
                 move_sources: std::cell::RefCell::new(move_sources),
                 created: std::cell::RefCell::new(None),
             })));
@@ -1102,7 +1071,8 @@ impl ViewState {
                 reveal_generation: self.rename_reveal_generation.get(),
                 move_sources: std::cell::RefCell::new(Vec::new()),
                 created: std::cell::RefCell::new(None),
-                new_item: false,
+                // A recovered leftover may hold data, so it is not new.
+                naming: Naming::Path,
             })));
     }
 
@@ -1229,7 +1199,7 @@ impl ViewState {
         else {
             return false;
         };
-        self.activate_columns_rename(target, entry.clone(), false);
+        self.activate_columns_rename(target, entry.clone(), Naming::Path);
         true
     }
 
@@ -1248,12 +1218,12 @@ impl ViewState {
             .borrow()
             .as_ref()
             .filter(|pending| pending.created.borrow().as_ref() == Some(&entry.location))
-            .map(|pending| pending.new_item);
+            .map(|pending| pending.naming);
         if taking_over.is_none() {
             self.cancel_new_entry();
         }
-        let started =
-            self.begin_rename_item(depth, source_position, entry, taking_over == Some(true));
+        let naming = taking_over.unwrap_or_default();
+        let started = self.begin_rename_item(depth, source_position, entry, naming);
         if started && taking_over.is_some() {
             self.pending_new_entry.take();
         }
@@ -1265,7 +1235,7 @@ impl ViewState {
         depth: usize,
         source_position: usize,
         entry: FileEntry,
-        new_item: bool,
+        naming: Naming,
     ) -> bool {
         if is_trash_location(&entry.location) {
             return false;
@@ -1274,13 +1244,13 @@ impl ViewState {
             return self
                 .mode_views
                 .borrow()
-                .begin_rename(depth, source_position, &entry, new_item);
+                .begin_rename(depth, source_position, &entry, naming);
         }
         self.cancel_rename();
         let Some(target) = self.resolve_columns_rename_target(depth, source_position) else {
             return false;
         };
-        self.activate_columns_rename(target, entry, new_item);
+        self.activate_columns_rename(target, entry, naming);
         true
     }
 
@@ -1325,7 +1295,7 @@ impl ViewState {
         self: &Rc<Self>,
         target: ColumnsRenameTarget,
         entry: FileEntry,
-        new_item: bool,
+        naming: Naming,
     ) {
         let ColumnsRenameTarget {
             row,
@@ -1343,7 +1313,7 @@ impl ViewState {
         let weak = Rc::downgrade(self);
         let reveal_generation = self.rename_reveal_generation.get();
         let mut target = crate::ui::collection_edit::EditTarget::from(edit.clone());
-        target.new_item = new_item;
+        target.naming = naming;
         let browser = Rc::downgrade(&self.browser);
         let location = entry.location.clone();
         target.cancelled = Some(Rc::new(move || {
@@ -1435,7 +1405,7 @@ impl ViewState {
     }
 
     fn rename_when_shown(self: &Rc<Self>, depth: usize, position: usize, entry: FileEntry) {
-        if self.begin_rename_item(depth, position, entry.clone(), false) {
+        if self.begin_rename_item(depth, position, entry.clone(), Naming::Path) {
             return;
         }
         let weak = Rc::downgrade(self);
@@ -1458,7 +1428,7 @@ impl ViewState {
             {
                 return gtk::glib::ControlFlow::Break;
             }
-            if state.begin_rename_item(depth, position, entry.clone(), false) {
+            if state.begin_rename_item(depth, position, entry.clone(), Naming::Path) {
                 gtk::glib::ControlFlow::Break
             } else {
                 gtk::glib::ControlFlow::Continue
@@ -1467,25 +1437,20 @@ impl ViewState {
     }
 
     fn submit_rename_entry(self: &Rc<Self>, submission: crate::ui::collection_edit::Submission) {
-        let crate::ui::collection_edit::Submission {
-            entry,
-            name,
-            allows_path,
-        } = submission;
-        let path = allows_path
-            .then(|| NewEntryPath::parse(&name, entry.is_directory()).ok())
-            .flatten();
+        let path = submission.path();
+        let new_item = submission.naming == Naming::NewItem;
+        let crate::ui::collection_edit::Submission { entry, name, .. } = submission;
         let name = match path {
             Some(path) if !path.is_rename_of(entry.is_directory()) => {
                 let first = path.first().to_owned();
                 let generation = self.start_pending_rename(&entry, first.clone(), true);
                 self.update_rename_labels(&entry.location, None, &first);
                 self.queue_pending_rename(generation, move |browser| {
-                    browser.place_new_entry(entry, path)
+                    browser.place_entry(entry, path, new_item)
                 });
                 return;
             }
-            // A new folder typed with a trailing slash is still just named.
+            // A folder typed with a trailing slash is still just named.
             Some(path) => path.name,
             None => name,
         };

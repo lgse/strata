@@ -1,0 +1,25 @@
+{"scenario":"rename-moves-into-path","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"file","modes":["columns","list"],"vars":{"item":"todo.txt","typed":"notes/todo.txt","top":"notes","placed":"notes/todo.txt","kind":"file"}},{"id":"open-folder","vars":{"item":"documents","typed":"stash/documents","top":"stash","placed":"stash/documents/report.md","kind":"file"}},{"id":"existing-folder","vars":{"item":"todo.txt","typed":"archive/todo.txt","top":"archive","placed":"archive/todo.txt","kind":"file"}},{"id":"file-as-folder","vars":{"item":"todo.txt","typed":"todo/"}}]}
+{"fs":{"path":".","remember":"original"}}
+{"select":{"entry":"$item"}}
+{"wait":{"entries":{"contains":["notes.txt"]},"dir":"documents"},"message":"the folder's column to open","variants":["open-folder"]}
+{"key":"F2"}
+{"wait":{"field":{"name":"Rename","focused":true}},"message":"the rename editor to take focus"}
+{"remember":{"field":true},"as":"rename"}
+{"key":"ctrl+a"}
+{"type":"$typed"}
+{"wait":{"field":{"of":"rename","text":"$typed"}},"message":"the path to be typed"}
+{"expect":{"description":{"target":{"field":"rename"},"text":"An existing file can’t become a folder"}},"message":"the editor to explain the refusal","variants":["file-as-folder"]}
+{"key":"Return"}
+{"fs":{"path":"$placed","is":"$kind"},"message":"the item to move to '$typed'","variants":["file","open-folder","existing-folder"]}
+{"fs":{"path":"$item","exists":false},"timeout_ms":0,"variants":["file","open-folder","existing-folder"]}
+{"fs":{"path":"notes/todo.txt","text":"todo\n"},"timeout_ms":0,"variants":["file"]}
+{"wait":{"selected":["$top"],"dir":"$root"},"message":"'$top' to take the item's place in the selection","variants":["file","open-folder","existing-folder"]}
+{"wait":{"focused":"$top"},"message":"keyboard focus to stay on '$top'","variants":["file","open-folder","existing-folder"]}
+{"key":"ctrl+z","variants":["file","open-folder","existing-folder"]}
+{"fs":{"path":"$item","exists":true},"message":"undo to move the item back","variants":["file","open-folder","existing-folder"]}
+{"fs":{"path":"$top","exists":false},"message":"undo to trash the folder the rename made","variants":["file","open-folder"]}
+{"fs":{"path":"archive","is":"dir"},"timeout_ms":0,"variants":["existing-folder"]}
+{"fs":{"path":"archive/todo.txt","exists":false},"timeout_ms":0,"variants":["existing-folder"]}
+{"fs":{"path":"todo.txt","text":"todo\n"},"timeout_ms":0}
+{"fs":{"path":".","unchanged":"original"},"timeout_ms":0}
+{"wait":{"editable_fields":0},"message":"the rename editor to close","variants":["file-as-folder"]}

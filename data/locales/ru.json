@@ -32,6 +32,7 @@
   "A file in it is still open in another program. Close it and try again.": "Файл в этой папке всё ещё открыт в другой программе. Закройте его и повторите попытку.",
   "Administrator": "Администратор",
   "Administrator access wasn't granted.": "Права администратора не предоставлены.",
+  "An existing file can’t become a folder": "Существующий файл нельзя превратить в папку",
   "Another program or computer may still be using these items. Restore never replaces an existing item.": "Эти элементы всё ещё может использовать другая программа или другой компьютер. Восстановление никогда не заменяет существующий элемент.",
   "All requirements are met.": "Все требования выполнены.",
   "Apps and services": "Приложения и сервисы",

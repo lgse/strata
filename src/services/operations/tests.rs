@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::{
-    ArchiveFormat, NewEntryPath, RenameCause, RenamedItem, TransferReport, validate_basename,
+    ArchiveFormat, RenameCause, RenamedItem, TransferReport, TypedPath, validate_basename,
 };
 use crate::{
     model::{EntryKind, Location},
@@ -48,7 +48,7 @@ fn basenames_accept_single_native_and_unicode_components() {
 }
 
 #[test]
-fn new_entry_paths_split_folders_and_a_trailing_slash() {
+fn typed_paths_split_folders_and_a_trailing_slash() {
     for (text, is_directory, folders, name, folder) in [
         ("note.txt", false, &[][..], "note.txt", false),
         ("docs/", false, &[], "docs", true),
@@ -58,7 +58,7 @@ fn new_entry_paths_split_folders_and_a_trailing_slash() {
         ("a/b", true, &["a"], "b", true),
         (" a /.b", false, &[" a "], ".b", false),
     ] {
-        let path = NewEntryPath::parse(text, is_directory).expect(text);
+        let path = TypedPath::parse(text, is_directory, true).expect(text);
         assert_eq!(path.folders, folders, "{text:?}");
         assert_eq!(path.name, name, "{text:?}");
         assert_eq!(path.folder, folder, "{text:?}");
@@ -66,7 +66,7 @@ fn new_entry_paths_split_folders_and_a_trailing_slash() {
 }
 
 #[test]
-fn new_entry_paths_refuse_every_invalid_component() {
+fn typed_paths_refuse_every_invalid_component() {
     for (text, message) in [
         ("", "Enter a name"),
         ("/", "Enter a name"),
@@ -78,8 +78,21 @@ fn new_entry_paths_refuse_every_invalid_component() {
         ("a/./b", "That name is reserved"),
         ("a/nul\0/b", "Names cannot contain NUL characters"),
     ] {
-        assert_eq!(NewEntryPath::parse(text, false), Err(message), "{text:?}");
+        assert_eq!(
+            TypedPath::parse(text, false, true),
+            Err(message),
+            "{text:?}"
+        );
     }
+}
+
+#[test]
+fn only_a_new_file_may_be_named_as_a_folder() {
+    let refused = Err("An existing file can’t become a folder");
+    assert_eq!(TypedPath::parse("docs/", false, false), refused);
+    assert_eq!(TypedPath::parse("a/docs/", false, false), refused);
+    assert!(TypedPath::parse("docs/", true, false).is_ok_and(|path| path.is_rename_of(true)));
+    assert!(TypedPath::parse("docs/note.txt", false, false).is_ok());
 }
 
 #[test]

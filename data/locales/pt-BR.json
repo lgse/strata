@@ -32,6 +32,7 @@
   "A file in it is still open in another program. Close it and try again.": "Um arquivo nesta pasta ainda está aberto em outro programa. Feche-o e tente novamente.",
   "Administrator": "Administrador",
   "Administrator access wasn't granted.": "O acesso de administrador não foi concedido.",
+  "An existing file can’t become a folder": "Um arquivo existente não pode se tornar uma pasta",
   "Another program or computer may still be using these items. Restore never replaces an existing item.": "Outro programa ou computador ainda pode estar usando esses itens. Restaurar nunca substitui um item existente.",
   "All requirements are met.": "Todos os requisitos foram atendidos.",
   "Apps and services": "Aplicativos e serviços",

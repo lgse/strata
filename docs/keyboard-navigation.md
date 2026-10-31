@@ -157,19 +157,21 @@ in the same directory, moves the selected items into it, and names it in place.
 With nothing selected **Ctrl+Alt+N** falls back to a plain `new folder`. The item
 is hidden in Trash, Recent, and while a recursive search is open.
 
-In a local folder, the first name given to a **New File** or **New Folder** may
-be a relative path. Each `/` separates a folder: `notes/today.txt` moves the new
-file into `notes`, creating that folder if it is missing and reusing it if it is
-already a real folder. A trailing `/` names a folder, so a new file named `docs/`
-becomes the empty folder `docs`, and a new folder named `docs/` is simply named
-`docs`. Every part must be a valid name. The item never replaces anything, a
-link or file in the way of a folder stops it, and a new file that is no longer
-empty is not turned into a folder. If any step fails, the folders it created are
-removed again, the item keeps its default name, and the error is shown.
-**Undo** moves what the naming created to Trash: the outermost new folder, or
-the item itself when its folders already existed. Renaming an existing item,
-naming **New Folder with Selection**, and the [10xer](10xer-mode.md) prompts
-still take a single name.
+In a local folder, a rename may give a relative path below the item's folder.
+Each `/` separates a folder: renaming `todo.txt` to `notes/todo.txt` moves it
+into `notes`, creating that folder if it is missing and reusing it if it is
+already a real folder. A trailing `/` names a folder, so a folder renamed `docs/`
+is simply named `docs`. Only the first name given to a **New File** turns it into
+a folder: a new file named `docs/` becomes the empty folder `docs`, while an
+existing file never becomes one and the name is refused. Every part must be a
+valid name. The item keeps its contents and never replaces anything, a link or
+file in the way of a folder stops it, and a new file that is no longer empty is
+not turned into a folder. If any step fails, the folders it created are removed
+again, the item keeps its name, and the error is shown. **Undo** of a new item
+moves what the naming created to Trash: the outermost new folder, or the item
+itself when its folders already existed. **Undo** of a rename moves the item
+back and moves the folders the rename created to Trash. Naming **New Folder with
+Selection** and the [10xer](10xer-mode.md) **a** prompt still take a single name.
 
 For **any file or folder rename**, Enter, clicking outside the field (even empty
 pane space), or moving keyboard focus away commits a valid name. **Tab** and
@@ -186,7 +188,7 @@ and **Ctrl+\\** do nothing; finish or cancel the edit first.
 Clicking inside the field continues editing. Existing files retain extension-aware
 selection (the stem is selected); folder names containing dots are selected in full.
 
-Names containing `/` (apart from naming a new item with a path, above) or NUL,
+Names containing `/` (apart from a local rename with a path, above) or NUL,
 `.`/`..`, and whitespace-only names (including Unicode whitespace) are invalid. Valid names are used exactly as typed,
 including spaces around a nonblank name, hidden-file prefixes, and Unicode.
 Name conflicts, names the location would store as another (see [Names the user

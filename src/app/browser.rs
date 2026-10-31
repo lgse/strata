@@ -15,10 +15,10 @@ use crate::{
         ArchiveFormat, CompressRequest, CreateDirectoryRequest, CreateFileRequest, DeleteRequest,
         DirectoryChange, DirectoryRequest, DirectoryStamp, ExtractRequest, FileSource,
         ItemIdentity, LoadHandle, LocationValidationError, MetadataOutcome, MetadataRequest,
-        MoveRecord, NameMode, NewEntryPath, OperationEvent, OperationProvider, OperationRequestId,
-        PasswordFailure, PasteItem, PasteRequest, PlaceNewEntryRequest, PlacedSnapshot,
-        RenameRecord, RenameRequest, RenamedItem, RequestId, Responsiveness, RestoreRequest,
-        RestoreSource, RestoreTrashItem, StampAnswer, TransferConflict, TransferReport,
+        MoveRecord, NameMode, OperationEvent, OperationProvider, OperationRequestId,
+        PasswordFailure, PasteItem, PasteRequest, PlaceEntryRequest, PlacedSnapshot, RenameRecord,
+        RenameRequest, RenamedItem, RequestId, Responsiveness, RestoreRequest, RestoreSource,
+        RestoreTrashItem, StampAnswer, TransferConflict, TransferReport, TypedPath,
         UndoCopyRequest, UndoMergeRequest, UndoMoveItem, UndoMoveRequest, UndoRenameRequest,
         Watching, validate_basename, validate_uri_credentials,
     },
@@ -2753,11 +2753,14 @@ impl Browser {
         Some(request_id)
     }
 
-    /// Names a just-created item with a relative path, which a rename cannot.
-    pub fn place_new_entry(
+    /// Moves an item to a typed relative path, which a rename cannot.
+    /// `new_item` is one just created for naming, whose creation undo then
+    /// covers the placement too.
+    pub fn place_entry(
         self: &Rc<Self>,
         entry: FileEntry,
-        path: NewEntryPath,
+        path: TypedPath,
+        new_item: bool,
     ) -> Option<OperationRequestId> {
         let Some(provider) = self.operation_provider.borrow().clone() else {
             self.emit(BrowserEvent::RenameFailed {
@@ -2774,36 +2777,77 @@ impl Browser {
             .set_selectionless_removals([entry.location.clone()]);
         let refresh_locations = entry.location.parent().into_iter().collect();
         let emit = self.operation_callback(request_id, true, refresh_locations);
-        let created = entry.location.clone();
+        let original = entry.location.clone();
         let weak = Rc::downgrade(self);
         let publish = Rc::new(move |event: OperationEvent| {
-            if let OperationEvent::NewEntryPlaced {
-                request_id: id,
-                created: placed,
-            } = &event
-                && *id == request_id
-            {
-                if let Some(outermost) = placed.first() {
-                    retarget_created_undo(&created, outermost.clone());
-                }
-            } else if let Some(browser) = weak.upgrade() {
-                browser
+            let Some(browser) = weak.upgrade() else {
+                return emit(event);
+            };
+            match &event {
+                OperationEvent::EntryPlaced {
+                    request_id: id,
+                    placed,
+                } if *id == request_id => browser.publish_placement(&original, placed, new_item),
+                _ => browser
                     .state
                     .borrow_mut()
-                    .retain_selectionless_removals(std::iter::empty());
+                    .retain_selectionless_removals(std::iter::empty()),
             }
             emit(event);
         });
-        let load = provider.place_new_entry(
-            PlaceNewEntryRequest {
+        let load = provider.place_entry(
+            PlaceEntryRequest {
                 id: request_id,
                 entry,
                 path,
+                new_item,
             },
             publish,
         );
         self.install_operation_load(request_id, load);
         Some(request_id)
+    }
+
+    fn publish_placement(
+        self: &Rc<Self>,
+        original: &Location,
+        placed: &[Location],
+        new_item: bool,
+    ) {
+        let (Some(outermost), Some(current)) = (placed.first(), placed.last()) else {
+            return;
+        };
+        // A placed folder's open columns close; the view then opens the
+        // outermost folder that took its row, as a fresh chain.
+        if let Some(depth) = (0..)
+            .map_while(|depth| self.location_at(depth))
+            .position(|location| location.is_within(original))
+        {
+            self.truncate_columns(depth, false);
+        }
+        if new_item {
+            retarget_created_undo(original, outermost.clone());
+            return;
+        }
+        let record = MoveRecord {
+            original: original.clone(),
+            current: current.clone(),
+            renamed: Vec::new(),
+        };
+        // Undoing what made folders also trashes them, as for a group folder.
+        push_pending_undo(if placed.len() > 1 {
+            UndoEntry::Group {
+                folder: outermost.clone(),
+                records: vec![record],
+            }
+        } else {
+            UndoEntry::Move(vec![record])
+        });
+        self.publish_relocation(original, current);
+        if let (Some(from), Some(to)) = (original.native_path(), current.native_path()) {
+            crate::services::refresh_search_indexes_for_rename(from, to);
+        }
+        self.retire_recent_target(original);
     }
 
     pub fn create_new_folder(self: &Rc<Self>, parent: Location) {
