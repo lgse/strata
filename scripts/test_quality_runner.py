@@ -49,6 +49,7 @@ class QualityRunnerTests(unittest.TestCase):
                 self.assertIn("sha256:" + "a" * 64, args)
                 self.assertEqual(args[-1], phase)
                 self.assertIn("--userns=keep-id", args)
+                self.assertIn("--pids-limit=-1", args)
                 self.assertIn("CARGO_TARGET_DIR=/workspace/target/quality-container/build", args)
                 self.assertNotIn("/workspace/target/qa-container/build", " ".join(args))
                 for call in calls:
