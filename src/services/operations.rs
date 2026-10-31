@@ -76,6 +76,23 @@ impl TypedPath {
         })
     }
 
+    /// The path for an item in `folder`, without climbing out of folders it
+    /// only enters again: `../user/x` in `/home/user` is just `x`.
+    pub fn within(mut self, folder: &Location) -> Self {
+        while self.up > 0 {
+            let reentered = (1..self.up)
+                .try_fold(folder.clone(), |folder, _| folder.parent())
+                .and_then(|ancestor| ancestor.file_name())
+                .is_some_and(|name| self.folders.first().is_some_and(|first| name == **first));
+            if !reentered {
+                break;
+            }
+            self.up -= 1;
+            self.folders.remove(0);
+        }
+        self
+    }
+
     /// The component that appears in the folder the path starts from.
     pub fn first(&self) -> &str {
         self.folders.first().unwrap_or(&self.name)

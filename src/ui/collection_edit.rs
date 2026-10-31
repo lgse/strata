@@ -140,7 +140,11 @@ impl Submission {
             Naming::Path => false,
             Naming::NewItem => true,
         };
-        TypedPath::parse(&self.name, self.entry.is_directory(), new_item).ok()
+        let path = TypedPath::parse(&self.name, self.entry.is_directory(), new_item).ok()?;
+        match self.entry.location.parent() {
+            Some(parent) => Some(path.within(&parent)),
+            None => Some(path),
+        }
     }
 }
 

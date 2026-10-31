@@ -303,9 +303,14 @@ impl BrowserView {
         if !can_rename(&entry) {
             return Err(CreateRefusal::Unsupported);
         }
-        let (name, path) = if entry.location.native_path().is_some() {
+        let (name, path) = if let Some(parent) = entry
+            .location
+            .native_path()
+            .and_then(|_| entry.location.parent())
+        {
             let path = TypedPath::parse(text, entry.is_directory(), false)
-                .map_err(CreateRefusal::Invalid)?;
+                .map_err(CreateRefusal::Invalid)?
+                .within(&parent);
             if path.is_rename_of(entry.is_directory()) {
                 (path.name, None)
             } else {

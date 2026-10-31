@@ -95,13 +95,30 @@ fn typed_paths_refuse_every_invalid_component() {
 }
 
 #[test]
-fn typed_paths_start_above_the_item_only_within_the_filesystem() {
+fn typed_paths_start_above_the_item_within_the_filesystem_unless_they_come_back() {
     let folder = Location::local("/home/user");
-    let path = |text| TypedPath::parse(text, false, false).expect(text);
-    assert_eq!(path("x").start(&folder), Some(folder.clone()));
-    assert_eq!(path("../x").start(&folder), Some(Location::local("/home")));
-    assert_eq!(path("../../x").start(&folder), Some(Location::local("/")));
-    assert_eq!(path("../../../x").start(&folder), None);
+    for (text, start, folders) in [
+        ("x", Some("/home/user"), &[][..]),
+        ("../x", Some("/home"), &[]),
+        ("../../x", Some("/"), &[]),
+        ("../../../x", None, &[]),
+        ("../user/x", Some("/home/user"), &[]),
+        ("../../home/user/x", Some("/home/user"), &[]),
+        ("../user/sub/x", Some("/home/user"), &["sub"]),
+        ("../users/x", Some("/home"), &["users"]),
+        ("../../home/other/x", Some("/home"), &["other"]),
+    ] {
+        let path = TypedPath::parse(text, false, false)
+            .expect(text)
+            .within(&folder);
+        assert_eq!(path.start(&folder), start.map(Location::local), "{text:?}");
+        assert_eq!(path.folders, folders, "{text:?}");
+        assert_eq!(
+            path.is_rename_of(false),
+            start == Some("/home/user") && folders.is_empty(),
+            "{text:?}"
+        );
+    }
 }
 
 #[test]
