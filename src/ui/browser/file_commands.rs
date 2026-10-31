@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use std::{
-    path::{Path, PathBuf},
-    rc::Rc,
-};
+use std::{path::PathBuf, rc::Rc};
 
 use gtk::{glib, prelude::*};
 
@@ -280,18 +277,6 @@ impl TypedRename {
             .map(|path| path.folders.clone())
             .unwrap_or_default()
     }
-}
-
-/// The first of `folders` below `start` that is held by something other than
-/// a folder, which the rename would refuse.
-pub(crate) fn blocked_folder(start: &Path, folders: &[String]) -> Option<String> {
-    let mut path = start.to_path_buf();
-    folders.iter().find_map(|folder| {
-        path.push(folder);
-        std::fs::symlink_metadata(&path)
-            .is_ok_and(|metadata| !metadata.is_dir())
-            .then(|| folder.clone())
-    })
 }
 
 impl BrowserView {

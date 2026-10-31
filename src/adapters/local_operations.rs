@@ -168,7 +168,8 @@ pub(in crate::adapters) use fs_ops::{
 pub(crate) use tests::fs_quirks::{Births, FsQuirks, Op as FsOp, Quirks, evict};
 pub(crate) use transfer_targets::transfer_targets;
 pub(crate) use typed_names::{
-    refused_in as typed_name_refusal, rename_taken as typed_rename_is_taken,
+    blocked_folder as typed_folder_blocked, refused_in as typed_name_refusal,
+    rename_taken as typed_rename_is_taken,
 };
 
 use std::{

@@ -102,7 +102,7 @@ pub(super) use crate::ui::browser::entry::{
     format_file_size, icon_for_name, metadata_needs_fill, model_type_group,
 };
 pub(crate) use crate::ui::browser::file_commands::{
-    ConflictFocus, CreateRefusal, PinChange, TargetCommand, Yank, blocked_folder, can_rename,
+    ConflictFocus, CreateRefusal, PinChange, TargetCommand, Yank, can_rename,
 };
 pub(super) use crate::ui::browser::inline_edit::{queue_rename, reveal_rename_row};
 pub(in crate::ui) use crate::ui::browser::listing_filter::{

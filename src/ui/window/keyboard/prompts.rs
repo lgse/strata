@@ -323,7 +323,7 @@ impl Dispatcher {
             let (blocked, taken) = match paths.zip(start) {
                 Some(((current, wanted), start)) if unstorable.is_none() => {
                     gtk::gio::spawn_blocking(move || {
-                        match crate::ui::browser::blocked_folder(&start, &folders) {
+                        match crate::adapters::typed_folder_blocked(&start, &folders) {
                             Some(blocked) => (Some(blocked), false),
                             None => (
                                 None,
