@@ -31,6 +31,68 @@ fn suggest_completions(
 }
 
 #[test]
+fn unmapping_the_entry_dismisses_suggestions_and_cancels_pending_results() {
+    crate::test_support::gtk_test(
+        "ui::browser::location::completion::tests::unmapping_the_entry_dismisses_suggestions_and_cancels_pending_results",
+        || {
+            use crate::{
+                adapters::{FsOp, FsQuirks, Quirks},
+                test_support::Gate,
+            };
+
+            let fixture = tempdir().expect("fixture");
+            fs::create_dir_all(fixture.path().join("slow/Alpha")).expect("slow folder");
+            let gate = Gate::default();
+            let _scope = FsQuirks::install(
+                fixture.path(),
+                Quirks {
+                    before: vec![(FsOp::ListChunks, "slow", 0, gate.racer())],
+                    ..Quirks::default()
+                },
+            );
+            let browser = Browser::new(Rc::new(LocalFileSource));
+            let entry = gtk::Entry::new();
+            let completion = PathCompletion::attach(&entry, browser.clone(), || true, || {});
+            let window = gtk::Window::builder().child(&entry).build();
+            window.present();
+            wait_until(|| entry.is_mapped());
+            entry.set_text(&format!("{}/", fixture.path().display()));
+            wait_until(|| completion.popover.is_visible());
+
+            window.set_visible(false);
+            assert!(
+                !completion.popover.is_visible(),
+                "hiding the window dismisses suggestions"
+            );
+            window.present();
+            wait_until(|| entry.is_mapped());
+            assert!(
+                !completion.popover.is_visible(),
+                "restoring does not reopen stale suggestions"
+            );
+            completion.refresh(&entry, &browser);
+            wait_until(|| completion.popover.is_visible());
+
+            entry.set_text(&format!("{}/slow/", fixture.path().display()));
+            wait_until(|| gate.reached());
+            window.set_visible(false);
+            assert!(
+                completion.request.borrow().is_none(),
+                "unmapping cancels the pending listing"
+            );
+            gate.release();
+            window.present();
+            wait_until(|| entry.is_mapped());
+            assert!(!completion.popover.is_visible());
+            completion.refresh(&entry, &browser);
+            wait_until(|| completion.popover.is_visible());
+            assert_eq!(completion.candidates.borrow()[0].display_name, "Alpha/");
+            window.destroy();
+        },
+    );
+}
+
+#[test]
 fn first_reveal_shows_suggestions_after_switching_from_breadcrumbs() {
     crate::test_support::gtk_test(
         "ui::browser::location::completion::tests::first_reveal_shows_suggestions_after_switching_from_breadcrumbs",

@@ -103,8 +103,8 @@ jobs:
                 exit 1
               fi
               cargo tree --locked -e normal,build --prefix none > /tmp/default-dependencies.txt
-              if grep -E "^x11rb v" /tmp/dependencies.txt /tmp/default-dependencies.txt; then
-                echo "x11rb, the X11 client of the qa feature, must not be in a default or feature-disabled build" >&2
+              if grep -E "^(x11rb|wayland-client|wayland-protocols-(misc|wlr)|xkbcommon) v" /tmp/dependencies.txt /tmp/default-dependencies.txt; then
+                echo "x11rb, wayland-client, wayland-protocols-misc, wayland-protocols-wlr and xkbcommon, the input clients of the qa feature, must not be in a default or feature-disabled build" >&2
                 exit 1
               fi
               cargo check --locked --all-targets --no-default-features

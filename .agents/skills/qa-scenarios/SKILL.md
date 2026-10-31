@@ -221,6 +221,7 @@ send the key that moves back one entry in each view.
 | `variants` | `[{"id":"ru","layout":"ru","vars":{"key":"value"},"prefs":{...},"modes":[...]}]`: reruns, labelled `<mode>-<id>`; steps opt in with `"variants":["ru"]`. |
 | `tree`, `images`, `setup`, `teardown` | Fixture contents, written before launch; `teardown` runs however the run ends. |
 | `session_bus`, `env`, `portal`, `fixture_root` | A private D-Bus; extra app variables; the portal backend; a fixed `/tmp/<name>` fixture path. |
+| `input_method` | A private fcitx5 with that input method (host runs only; see `docs/testing.md`). |
 | `known_bug`, `known_bug_step` | An issue and the line expected to fail. |
 | `mutation` | A patch in `tests/qa/mutations/` the scenario must catch; check it with `./scripts/qa-mutation.sh <scenario>`. |
 | `skip` | A reason; keeps the scenario out of the default run. |
