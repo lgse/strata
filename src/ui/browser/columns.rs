@@ -2005,6 +2005,30 @@ impl ViewState {
             depth,
             location.clone(),
         );
+        let header_context_click = gtk::GestureClick::new();
+        header_context_click.set_button(3);
+        let open_folder_context = folder_context_trigger.clone();
+        let context_anchor = presentation.stack.downgrade();
+        header_context_click.connect_pressed(move |gesture, _, x, y| {
+            let (Some(header), Some(anchor)) = (gesture.widget(), context_anchor.upgrade()) else {
+                return;
+            };
+            let Some(picked) = header.pick(x, y, gtk::PickFlags::DEFAULT) else {
+                return;
+            };
+            if !is_column_background(&header, &picked) {
+                return;
+            }
+            let Some(point) =
+                header.compute_point(&anchor, &gtk::graphene::Point::new(x as f32, y as f32))
+            else {
+                return;
+            };
+            gesture.set_state(gtk::EventSequenceState::Claimed);
+            open_folder_context(f64::from(point.x()), f64::from(point.y()));
+        });
+        header.add_controller(header_context_click);
+
         let rows_for_context = bound_rows.clone();
         let pick_position = Rc::new(move |picked: &gtk::Widget| {
             let picked = file_row_target(picked.clone())?;

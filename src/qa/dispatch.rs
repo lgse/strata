@@ -34,7 +34,7 @@ impl Controller {
             return Outcome::error("the Strata window is gone".to_owned());
         };
         let Some(injector) = self.injector.as_ref() else {
-            return Outcome::error("no X input connection".to_owned());
+            return Outcome::error("no input connection".to_owned());
         };
         if injector.logging() {
             match window

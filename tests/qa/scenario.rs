@@ -66,6 +66,7 @@ pub(crate) struct Header {
     pub(crate) session_bus: bool,
     #[serde(default)]
     pub(crate) portal: bool,
+    pub(crate) input_method: Option<String>,
     pub(crate) fixture_root: Option<String>,
     pub(crate) skip: Option<String>,
     pub(crate) cost: Option<BTreeMap<String, f64>>,
@@ -327,6 +328,9 @@ pub(crate) fn load_scenario(path: &Path) -> Result<Scenario, String> {
     }
     if header.portal && !header.session_bus {
         return Err("a portal run needs the header's session_bus".to_owned());
+    }
+    if header.input_method.is_some() && !header.session_bus {
+        return Err("an input_method run needs the header's session_bus".to_owned());
     }
     if let Some(root) = &header.fixture_root
         && fixed_fixture_name(root).is_none()

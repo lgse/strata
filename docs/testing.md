@@ -320,6 +320,39 @@ never validation evidence, and must be recorded in the handoff with the
 container run it replaced. The QA runner is not wired into
 `scripts/test-headless.py`.
 
+### Wayland and input methods (host runs)
+
+Two optional parts of a host run reproduce bugs the pinned image cannot reach,
+such as input-method composition (issue #1715). Neither is validation evidence,
+and the pinned image has neither sway nor fcitx5.
+
+- `STRATA_QA_DISPLAY=wayland` gives every run a private headless sway
+  (`WLR_BACKENDS=headless`, no input devices, no XWayland, software rendering)
+  in the run's runtime directory instead of Xvfb, and launches the application
+  with `GDK_BACKEND=wayland`. The process then sends its input through a
+  Wayland virtual keyboard (with a US keymap it compiles) and virtual pointer
+  instead of XTEST. sway floats every window in the output's top-left corner,
+  where the window-manager-less X display leaves it, and `screenshot` uses
+  `grim`. `layout` steps other than `us` and pixel sampling (pixel
+  predicates and drop samples) are X11-only and fail with a message. It needs
+  `sway`, `swaymsg`, and `grim`.
+- A header's `"input_method": "<name>"` (with `session_bus`) starts a private
+  fcitx5 on the run's display and bus, with a profile holding the US keyboard
+  and that input method; Ctrl+Space switches to it. Choose the toolkit path
+  with the header's `env`, for example `"GTK_IM_MODULE":"fcitx"` for
+  fcitx5-gtk's module or `"GTK_IM_MODULE":"wayland"` for text-input-v3. The
+  input method's addon must be installed (`fcitx5/inputmethod/<name>.conf`),
+  and its log is kept as `fcitx5.log`.
+
+```bash
+STRATA_QA_HOST=1 STRATA_QA_NAMED=1 STRATA_QA_DISPLAY=wayland \
+  cargo test --features qa,invariant-checks --test qa -- \
+  --include-ignored --exact input-method-composes-over-selection
+```
+
+Scenarios that need an input method carry a `skip` reason, so the default
+container run leaves them out.
+
 `invariant-checks` turns on exact but slow consistency assertions (for example,
 the selection position cache against a full listing scan). `scripts/qa.sh` and
 `scripts/qa-drive.sh` build with it, and `cargo test --all-features` enables it

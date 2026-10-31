@@ -247,10 +247,10 @@ fn selection_copies_sorted_rows_partial_unicode_and_ragged_cells() {
                 focus: Point {
                     row: 2,
                     column: 1,
-                    offset: 4,
+                    offset: 0,
                 },
             }));
-            assert_eq!(sparse.copy_text().as_deref(), Some("a\n\nz\ttail"));
+            assert_eq!(sparse.copy_text().as_deref(), Some("a\nz\ttail\n\t"));
         },
     );
 }

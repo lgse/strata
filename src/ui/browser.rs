@@ -126,7 +126,6 @@ type PinCompletion = Box<dyn FnOnce(bool)>;
 type PinHandler = Rc<dyn Fn(Location, String, PinCompletion)>;
 type UnpinHandler = Rc<dyn Fn(&Location)>;
 type PinStatusHandler = Rc<dyn Fn(&Location) -> PinStatus>;
-type PrintHandler = Rc<dyn Fn(FileEntry)>;
 type PreparingTransfer = (
     transfer::Preparing,
     gio::Cancellable,
@@ -262,7 +261,6 @@ pub(super) struct ViewState {
     pin_handler: RefCell<Option<PinHandler>>,
     unpin_handler: RefCell<Option<UnpinHandler>>,
     pin_status_handler: RefCell<Option<PinStatusHandler>>,
-    print_handler: RefCell<Option<PrintHandler>>,
     search_selection_handlers: RefCell<Vec<Rc<dyn Fn()>>>,
     pending_select: RefCell<Vec<String>>,
     pending_properties: RefCell<Option<Location>>,
@@ -665,7 +663,6 @@ impl BrowserView {
             pin_handler: RefCell::new(None),
             unpin_handler: RefCell::new(None),
             pin_status_handler: RefCell::new(None),
-            print_handler: RefCell::new(None),
             search_selection_handlers: RefCell::new(Vec::new()),
             pending_select: RefCell::new(Vec::new()),
             pending_properties: RefCell::new(None),
@@ -987,10 +984,6 @@ impl BrowserView {
         self.state.pin_handler.replace(Some(handler));
         self.state.unpin_handler.replace(Some(unpin_handler));
         self.state.pin_status_handler.replace(Some(status_handler));
-    }
-
-    pub(super) fn set_print_handler(&self, handler: PrintHandler) {
-        self.state.print_handler.replace(Some(handler));
     }
 
     pub fn set_operation_provider(&self, provider: Rc<dyn OperationProvider>) {

@@ -31,10 +31,7 @@ use super::keys::{
         MEDIA_SEEK_FORWARD, MEDIA_VOLUME_DOWN, MEDIA_VOLUME_UP, PREVIEW, SELECT_ALL,
     },
 };
-use super::{
-    blur::BlurBin, browser::format_file_size, controls::form_password_entry,
-    controls::modal_layout, modal::close_on_escape,
-};
+use super::{browser::format_file_size, controls::form_password_entry};
 
 mod archive;
 pub(super) mod audio;
@@ -63,7 +60,6 @@ const SOURCE_INSERT_CHUNK_BYTES: usize = 4 * 1024;
 const SOURCE_INSERT_CHUNK_LINES: usize = 64;
 pub(crate) const FOCUS_PREVIEW_DELAY: Duration = Duration::from_millis(75);
 const PREVIEW_SPINNER_DELAY: Duration = Duration::from_millis(120);
-const PRINT_TEXT_BYTE_LIMIT: usize = 16 * 1024 * 1024;
 const TRANSITION: Duration = Duration::from_millis(260);
 const PDF_PAGE_GAP: i32 = 6;
 const HANDOFF_MARGIN_US: u64 = 1_000_000;
@@ -135,14 +131,6 @@ pub(crate) fn entry_supports_quick_preview(entry: &FileEntry) -> bool {
         || crate::services::is_extensionless_dotfile(&entry.native_name)
 }
 
-struct PrintProgress {
-    layer: gtk::Box,
-    overlay: gtk::Overlay,
-    blurred_root: Option<BlurBin>,
-    status: gtk::Label,
-    progress: gtk::ProgressBar,
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum DocumentView {
     Rendered,
@@ -203,7 +191,6 @@ struct PreviewState {
     raw_metadata_load: RefCell<Option<super::raw_details::MetadataLoad>>,
     open: gtk::Button,
     allow_external_open: bool,
-    print: gtk::Button,
     wrap: gtk::ToggleButton,
     text_view: RefCell<Option<sourceview5::View>>,
     text_scroll: RefCell<Option<gtk::ScrolledWindow>>,
@@ -229,9 +216,6 @@ struct PreviewState {
     load: RefCell<Option<LoadHandle>>,
     loading_delay: RefCell<Option<glib::SourceId>>,
     pdf_loads: Rc<RefCell<HashMap<i32, LoadHandle>>>,
-    print_load: RefCell<Option<LoadHandle>>,
-    print_progress: RefCell<Option<PrintProgress>>,
-    print_request: Cell<Option<PreviewRequestId>>,
     current_request: Cell<Option<PreviewRequestId>>,
     next_request: Cell<u64>,
     // Only explicit opens claim keyboard focus; implicit preview updates must not steal it.
@@ -305,16 +289,6 @@ impl PreviewDrawer {
         document_view_button.set_child(Some(&document_view_icon));
         document_view_button.add_css_class("preview-header-action");
         super::accessibility::set_label(&document_view_button, &crate::i18n::tr("View source"));
-        let print = gtk::Button::builder()
-            .tooltip_text(crate::i18n::tr("Print"))
-            .valign(gtk::Align::Center)
-            .build();
-        super::accessibility::set_label(&print, &crate::i18n::tr("Print"));
-        print.set_child(Some(&crate::assets::chrome_icon(
-            crate::assets::icons::PRINTER,
-        )));
-        print.add_css_class("preview-header-action");
-        print.set_visible(false);
         let wrap = gtk::ToggleButton::builder()
             .tooltip_text(crate::i18n::tr("Toggle word wrap"))
             .valign(gtk::Align::Center)
@@ -373,7 +347,6 @@ impl PreviewDrawer {
         header.append(&find_button);
         header.append(&model_spinner);
         header.append(&open);
-        header.append(&print);
         header.append(&wrap);
         header.append(&close);
         pane.append(&header);
@@ -453,7 +426,6 @@ impl PreviewDrawer {
             raw_metadata_load: RefCell::new(None),
             open: open.clone(),
             allow_external_open,
-            print: print.clone(),
             wrap: wrap.clone(),
             text_view: RefCell::new(None),
             text_scroll: RefCell::new(None),
@@ -471,9 +443,6 @@ impl PreviewDrawer {
             load: RefCell::new(None),
             loading_delay: RefCell::new(None),
             pdf_loads: Rc::new(RefCell::new(HashMap::new())),
-            print_load: RefCell::new(None),
-            print_progress: RefCell::new(None),
-            print_request: Cell::new(None),
             current_request: Cell::new(None),
             next_request: Cell::new(1),
             focus_archive_on_ready: Cell::new(false),
@@ -538,15 +507,6 @@ impl PreviewDrawer {
         state.pane.connect_unrealize(move |_| {
             if let Some(state) = weak.upgrade() {
                 state.stop();
-            }
-        });
-        let weak = Rc::downgrade(&state);
-        print.connect_clicked(move |_| {
-            if let Some(state) = weak.upgrade() {
-                if let Some(stream) = state.media.borrow().as_ref() {
-                    stream.set_playing(false);
-                }
-                state.print();
             }
         });
         let preferences = super::preferences::PreferenceManager::shared();
@@ -863,10 +823,6 @@ impl PreviewDrawer {
     pub fn toggle(&self, entry: Option<FileEntry>, depth: Option<usize>) {
         self.state.toggle(entry, depth);
     }
-
-    pub fn print_entry(&self, entry: FileEntry) {
-        self.state.print_entry(entry);
-    }
 }
 
 impl Drop for PreviewState {
@@ -1037,7 +993,6 @@ impl PreviewState {
         self.set_enabled(false);
         self.child_pane.set(false);
         self.clear_target();
-        self.cancel_print();
         // Destroying a focused prompt does not always report a focus leave.
         self.content.set_focusable(false);
         self.set_keyboard_owner(false);
@@ -1087,248 +1042,6 @@ impl PreviewState {
     fn finish_close(&self) {
         self.stop();
         self.pane.set_size_request(MIN_WIDTH, -1);
-    }
-
-    fn print(self: &Rc<Self>) {
-        let Some(entry) = self.current.borrow().clone() else {
-            return;
-        };
-        self.print_entry(entry);
-    }
-
-    fn print_entry(self: &Rc<Self>, entry: FileEntry) {
-        self.cancel_print();
-        let parent = self.pane.root().and_downcast::<gtk::Window>();
-        let (content_type, _) =
-            gio::content_type_guess(Some(Path::new(&entry.native_name)), None::<&[u8]>);
-        if content_type == "application/pdf" {
-            self.show_print_progress();
-        }
-        self.load_print_page(entry, parent, 0, Rc::new(RefCell::new(Vec::new())));
-    }
-
-    fn cancel_print(&self) {
-        self.print_request.set(None);
-        self.print_load.take();
-        self.dismiss_print_progress();
-    }
-
-    fn show_print_progress(self: &Rc<Self>) {
-        if self.print_progress.borrow().is_some() {
-            return;
-        }
-        let Some(window_overlay) = self
-            .pane
-            .root()
-            .and_downcast::<gtk::Window>()
-            .and_then(|window| window.child())
-            .and_downcast::<gtk::Overlay>()
-        else {
-            return;
-        };
-        let blurred_root = window_overlay.child().and_downcast::<BlurBin>();
-        if let Some(root) = blurred_root.as_ref() {
-            root.set_blurred(true);
-        }
-
-        let layout = modal_layout(
-            crate::assets::icons::PRINTER,
-            &crate::i18n::tr("Preparing PDF"),
-            &crate::i18n::tr("Rendering pages for the print dialog"),
-            &crate::i18n::tr("Cancel"),
-        );
-        layout.content.add_css_class("compact");
-        layout.close.set_visible(false);
-        layout.cancel.set_visible(false);
-        let status = gtk::Label::new(Some(&crate::i18n::tr("Rendering pages…")));
-        status.add_css_class("modal-progress-status");
-        status.set_xalign(0.0);
-        let progress = gtk::ProgressBar::new();
-        progress.add_css_class("modal-progress");
-        progress.set_fraction(0.0);
-        layout.body.append(&status);
-        layout.body.append(&progress);
-        let content = layout.content;
-        let cancel = layout.confirm;
-
-        let layer = super::browser::modal_layer(
-            &content,
-            &window_overlay,
-            blurred_root.clone(),
-            Some(Rc::new(|| true)),
-        );
-        window_overlay.add_overlay(&layer);
-        self.print_progress.replace(Some(PrintProgress {
-            layer: layer.clone(),
-            overlay: window_overlay,
-            blurred_root,
-            status,
-            progress,
-        }));
-        let weak = Rc::downgrade(self);
-        cancel.connect_clicked(move |_| {
-            if let Some(state) = weak.upgrade() {
-                state.cancel_print();
-            }
-        });
-        let weak = Rc::downgrade(self);
-        close_on_escape(&layer, move || {
-            if let Some(state) = weak.upgrade() {
-                state.cancel_print();
-            }
-        });
-        cancel.grab_focus();
-    }
-
-    fn update_print_progress(self: &Rc<Self>, completed: i32, total: i32) {
-        self.show_print_progress();
-        let progress = self.print_progress.borrow();
-        let Some(dialog) = progress.as_ref() else {
-            return;
-        };
-        let (status, fraction) = print_progress_for_page(completed, total);
-        dialog.status.set_text(&status);
-        dialog.progress.set_fraction(fraction);
-    }
-
-    fn dismiss_print_progress(&self) {
-        if let Some(dialog) = self.print_progress.take() {
-            super::browser::dismiss_modal_layer(
-                &dialog.layer,
-                &dialog.overlay,
-                dialog.blurred_root.as_ref(),
-            );
-        }
-    }
-
-    fn load_print_page(
-        self: &Rc<Self>,
-        entry: FileEntry,
-        parent: Option<gtk::Window>,
-        pdf_page: i32,
-        rendered: Rc<RefCell<Vec<Vec<u8>>>>,
-    ) {
-        let request_id = PreviewRequestId(self.next_request.get());
-        self.next_request
-            .set(self.next_request.get().saturating_add(1));
-        self.print_request.set(Some(request_id));
-        let weak = Rc::downgrade(self);
-        let entry_for_event = entry.clone();
-        let emit = Rc::new(move |event| {
-            let Some(state) = weak.upgrade() else {
-                return;
-            };
-            state.print_entry_event(
-                request_id,
-                entry_for_event.clone(),
-                parent.clone(),
-                rendered.clone(),
-                event,
-            );
-        });
-        let load = self.provider.load(
-            PreviewRequest {
-                id: request_id,
-                entry,
-                text_byte_limit: PRINT_TEXT_BYTE_LIMIT,
-                render_document: false,
-                pdf_page,
-                media_size: self.media_preview_size(),
-                model_palette: super::theme::ThemeManager::shared().active_model_palette(),
-                model_view: Default::default(),
-                archive_password: None,
-            },
-            emit,
-        );
-        self.print_load.replace(Some(load));
-    }
-
-    fn print_entry_event(
-        self: &Rc<Self>,
-        expected: PreviewRequestId,
-        entry: FileEntry,
-        parent: Option<gtk::Window>,
-        rendered: Rc<RefCell<Vec<Vec<u8>>>>,
-        event: PreviewEvent,
-    ) {
-        if self.print_request.get() != Some(expected) {
-            return;
-        }
-        match event {
-            PreviewEvent::Ready(preview) if preview.request_id == expected => {
-                self.print_request.set(None);
-                self.print_load.take();
-                match preview.content {
-                    PreviewContent::Text { content, truncated } => {
-                        if truncated {
-                            show_print_error(
-                                parent.as_ref(),
-                                "This text file is too large to print safely.",
-                            );
-                        } else {
-                            print_text(content, &entry.display_name, parent.as_ref());
-                        }
-                    }
-                    PreviewContent::Document {
-                        source, truncated, ..
-                    } => {
-                        if truncated {
-                            show_print_error(
-                                parent.as_ref(),
-                                "This text file is too large to print safely.",
-                            );
-                        } else {
-                            print_text(source, &entry.display_name, parent.as_ref());
-                        }
-                    }
-                    PreviewContent::Rasterized { png } => {
-                        self.dismiss_print_progress();
-                        print_rasterized(vec![png], &entry.display_name, parent.as_ref());
-                    }
-                    PreviewContent::Pdf {
-                        png, page, pages, ..
-                    } => {
-                        rendered.borrow_mut().push(png);
-                        let page_count = pages.clamp(1, 10_000);
-                        let completed =
-                            i32::try_from(rendered.borrow().len()).unwrap_or(page_count);
-                        if page.saturating_add(1) < page_count {
-                            self.update_print_progress(completed, page_count);
-                            self.load_print_page(entry, parent, page.saturating_add(1), rendered);
-                        } else {
-                            self.dismiss_print_progress();
-                            let pages = std::mem::take(&mut *rendered.borrow_mut());
-                            print_rasterized(pages, &entry.display_name, parent.as_ref());
-                        }
-                    }
-                    PreviewContent::Image
-                    | PreviewContent::Model { .. }
-                    | PreviewContent::Route { .. }
-                    | PreviewContent::Media
-                    | PreviewContent::SandboxedMedia { .. }
-                    | PreviewContent::Archive { .. }
-                    | PreviewContent::Rendered { .. }
-                    | PreviewContent::Unsupported => {
-                        self.dismiss_print_progress();
-                        show_print_error(parent.as_ref(), "This file type cannot be printed.");
-                    }
-                }
-            }
-            PreviewEvent::Failed {
-                request_id,
-                message,
-                ..
-            } if request_id == expected => {
-                self.print_request.set(None);
-                self.print_load.take();
-                self.dismiss_print_progress();
-                show_print_error(parent.as_ref(), &message);
-            }
-            PreviewEvent::Progress { .. }
-            | PreviewEvent::Ready(_)
-            | PreviewEvent::Failed { .. }
-            | PreviewEvent::NeedsPassword { .. } => {}
-        }
     }
 
     fn media_preview_size(&self) -> MediaPreviewSize {
@@ -1669,7 +1382,6 @@ impl PreviewState {
         }
         match preview.content {
             PreviewContent::Text { content, truncated } => {
-                self.print.set_visible(true);
                 self.wrap.set_visible(true);
                 let (view, virtualized) = self.source_preview.show(
                     &preview.entry,
@@ -1700,7 +1412,6 @@ impl PreviewState {
                 warnings,
                 truncated,
             } => {
-                self.print.set_visible(true);
                 self.wrap.set_visible(true);
                 self.wrap.set_active(
                     super::preferences::PreferenceManager::shared().preview_text_wrap(),
@@ -1738,7 +1449,6 @@ impl PreviewState {
                 let model = crate::services::is_model(&preview.entry);
                 let cover =
                     crate::sandbox::CoverFormat::for_name(&preview.entry.native_name).is_some();
-                self.print.set_visible(!model && !cover);
                 let bytes = glib::Bytes::from_owned(png);
                 match gtk::gdk::Texture::from_bytes(&bytes) {
                     Ok(texture) => {
@@ -1878,7 +1588,6 @@ impl PreviewState {
                 pages,
                 text_layer,
             } => {
-                self.print.set_visible(true);
                 self.render_pdf_viewer(preview.entry, png, page, pages, text_layer);
             }
             PreviewContent::Archive { tree } => {
@@ -3112,7 +2821,6 @@ impl PreviewState {
             self.media_toggle_mute.replace(None);
             self.media_volume_slider.replace(None);
         }
-        self.print.set_visible(false);
         self.wrap.set_visible(false);
         self.text_view.take();
         self.text_scroll.take();
@@ -3510,185 +3218,6 @@ fn is_audio_type(content_type: &str) -> bool {
                 | "audio/x-midi"
                 | "audio/sp-midi"
         )
-}
-
-fn print_progress_for_page(completed: i32, total: i32) -> (String, f64) {
-    let total = total.max(1);
-    let completed = completed.clamp(0, total);
-    (
-        rust_i18n::t!(
-            "Rendering page %{completed} of %{total}",
-            completed = crate::i18n::integer(completed as u64),
-            total = crate::i18n::integer(total as u64)
-        )
-        .into_owned(),
-        f64::from(completed) / f64::from(total),
-    )
-}
-
-fn print_page_starts(line_ranges: &[(f64, f64)], page_height: f64) -> Vec<f64> {
-    if page_height <= 0.0 {
-        return vec![0.0];
-    }
-    let mut starts = vec![0.0];
-    let mut page_start = 0.0;
-    for &(top, bottom) in line_ranges {
-        if bottom - page_start > page_height && top > page_start {
-            starts.push(top);
-            page_start = top;
-        }
-    }
-    starts
-}
-
-fn print_text(text: String, job_name: &str, parent: Option<&gtk::Window>) {
-    let operation = gtk::PrintOperation::new();
-    operation.set_job_name(job_name);
-    operation.set_allow_async(true);
-    operation.set_unit(gtk::Unit::Points);
-    let print_layout = Rc::new(RefCell::new(None::<(gtk::pango::Layout, Vec<f64>, f64)>));
-    let layout_for_begin = print_layout.clone();
-    operation.connect_begin_print(move |operation, context| {
-        let layout = context.create_pango_layout();
-        layout.set_font_description(Some(&gtk::pango::FontDescription::from_string(
-            "Monospace 10",
-        )));
-        layout.set_width((context.width() * f64::from(gtk::pango::SCALE)) as i32);
-        layout.set_wrap(gtk::pango::WrapMode::WordChar);
-        layout.set_text(&text);
-
-        let mut line_ranges = Vec::new();
-        let mut iter = layout.iter();
-        loop {
-            let (top, bottom) = iter.line_yrange();
-            line_ranges.push((
-                f64::from(top) / f64::from(gtk::pango::SCALE),
-                f64::from(bottom) / f64::from(gtk::pango::SCALE),
-            ));
-            if !iter.next_line() {
-                break;
-            }
-        }
-        let page_height = context.height();
-        let page_starts = print_page_starts(&line_ranges, page_height);
-        operation.set_n_pages(i32::try_from(page_starts.len()).unwrap_or(i32::MAX));
-        layout_for_begin.replace(Some((layout, page_starts, page_height)));
-    });
-    operation.connect_draw_page(move |_, context, page| {
-        let print_layout = print_layout.borrow();
-        let Some((layout, page_starts, page_height)) = print_layout.as_ref() else {
-            return;
-        };
-        let Some(page_start) = usize::try_from(page)
-            .ok()
-            .and_then(|page| page_starts.get(page))
-        else {
-            return;
-        };
-        let cr = context.cairo_context();
-        if cr.save().is_err() {
-            return;
-        }
-        cr.rectangle(0.0, 0.0, context.width(), *page_height);
-        cr.clip();
-        cr.translate(0.0, -*page_start);
-        cr.set_source_rgb(0.0, 0.0, 0.0);
-        pangocairo::functions::show_layout(&cr, layout);
-        let _ = cr.restore();
-    });
-    run_print_operation(&operation, parent);
-}
-
-fn show_print_error(parent: Option<&gtk::Window>, detail: &str) {
-    let dialog = gtk::AlertDialog::builder()
-        .message(crate::i18n::tr("Unable to prepare file for printing"))
-        .detail(crate::i18n::tr(detail))
-        .buttons([crate::i18n::tr("Close")])
-        .build();
-    dialog.show(parent);
-}
-
-/// Opens the native print dialog and prints the rasterized pages as a job named `job_name`.
-fn print_rasterized(pages: Vec<Vec<u8>>, job_name: &str, parent: Option<&gtk::Window>) {
-    let Ok(page_count) = i32::try_from(pages.len()) else {
-        return;
-    };
-    let operation = gtk::PrintOperation::new();
-    operation.set_job_name(job_name);
-    operation.set_allow_async(true);
-    operation.set_n_pages(page_count);
-    operation.connect_draw_page(move |_, context, page| {
-        let Some(png) = usize::try_from(page).ok().and_then(|page| pages.get(page)) else {
-            return;
-        };
-        let Ok(surface) = cairo::ImageSurface::create_from_png(&mut &png[..]) else {
-            return;
-        };
-        let cr = context.cairo_context();
-        let _ = paint_print_page(&cr, &surface, context.width(), context.height());
-    });
-    run_print_operation(&operation, parent);
-}
-
-fn run_print_operation(operation: &gtk::PrintOperation, parent: Option<&gtk::Window>) {
-    if let Err(error) = operation.run(gtk::PrintOperationAction::PrintDialog, parent) {
-        tracing::warn!(
-            error_domain = ?error.domain(),
-            error_code = error.code(),
-            "unable to open print dialog"
-        );
-    }
-}
-
-/// Returns `(x, y, dest_width, dest_height, scale)` so `image` fits `page` preserving aspect ratio.
-fn print_fit(
-    page_width: f64,
-    page_height: f64,
-    image_width: f64,
-    image_height: f64,
-) -> Option<(f64, f64, f64, f64, f64)> {
-    if page_width <= 0.0 || page_height <= 0.0 || image_width <= 0.0 || image_height <= 0.0 {
-        return None;
-    }
-    let scale = (page_width / image_width).min(page_height / image_height);
-    let dest_width = image_width * scale;
-    let dest_height = image_height * scale;
-    Some((
-        (page_width - dest_width) / 2.0,
-        (page_height - dest_height) / 2.0,
-        dest_width,
-        dest_height,
-        scale,
-    ))
-}
-
-fn paint_print_page(
-    cr: &cairo::Context,
-    surface: &cairo::ImageSurface,
-    page_width: f64,
-    page_height: f64,
-) -> bool {
-    let Some((x, y, dest_width, dest_height, scale)) = print_fit(
-        page_width,
-        page_height,
-        surface.width() as f64,
-        surface.height() as f64,
-    ) else {
-        return false;
-    };
-    if cr.save().is_err() {
-        return false;
-    }
-    cr.rectangle(x, y, dest_width, dest_height);
-    cr.clip();
-    cr.scale(scale, scale);
-    if cr.set_source_surface(surface, x / scale, y / scale).is_ok() {
-        let painted = cr.paint().is_ok();
-        let _ = cr.restore();
-        return painted;
-    }
-    let _ = cr.restore();
-    false
 }
 
 fn accepts_preview_event(
