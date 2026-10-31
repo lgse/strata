@@ -3547,12 +3547,19 @@ fn lock_encrypted_volume(
     view: &BrowserView,
     in_flight: &Rc<Cell<bool>>,
 ) {
+    let luks_uuid = crypto_password_uuid_for_volume(volume);
+    let target = lock_target(
+        volume.drive(),
+        gio_volume_unix_device(volume).map(Into::into),
+        luks_uuid.clone(),
+        device_release::key_for_volume(volume),
+    );
     request_encrypted_lock_showing(
         parent,
         &volume.name(),
-        crypto_password_uuid_for_volume(volume),
+        luks_uuid,
         volume.get_mount(),
-        password_stop_drive(volume.drive()),
+        target,
         browser,
         Some(view),
         in_flight,
@@ -3566,16 +3573,61 @@ fn lock_encrypted_mount(
     view: &BrowserView,
     in_flight: &Rc<Cell<bool>>,
 ) {
+    let luks_uuid = crypto_password_uuid_for_mount(mount);
+    let unix_device = mount
+        .volume()
+        .and_then(|volume| gio_volume_unix_device(&volume))
+        .map(String::from)
+        .or_else(|| {
+            mount
+                .root()
+                .path()
+                .and_then(|root| drive_ops::block_device_for_path(&root))
+                .map(|device| device.to_string_lossy().into_owned())
+        });
+    let target = lock_target(
+        mount.drive(),
+        unix_device,
+        luks_uuid.clone(),
+        device_release::key_for_mount(mount),
+    );
     request_encrypted_lock_showing(
         parent,
         &mount.name(),
-        crypto_password_uuid_for_mount(mount),
+        luks_uuid,
         Some(mount.clone()),
-        password_stop_drive(mount.drive()),
+        target,
         browser,
         Some(view),
         in_flight,
     );
+}
+
+enum LockTarget {
+    /// GVfs locks removable encrypted drives by stopping them.
+    StopDrive(gio::Drive),
+    /// Internal disks have no stoppable drive, so UDisks locks the container.
+    Container {
+        unix_device: Option<String>,
+        luks_uuid: Option<String>,
+        key: device_release::ReleaseKey,
+    },
+}
+
+fn lock_target(
+    drive: Option<gio::Drive>,
+    unix_device: Option<String>,
+    luks_uuid: Option<String>,
+    key: device_release::ReleaseKey,
+) -> Option<LockTarget> {
+    if let Some(drive) = password_stop_drive(drive) {
+        return Some(LockTarget::StopDrive(drive));
+    }
+    (unix_device.is_some() || luks_uuid.is_some()).then_some(LockTarget::Container {
+        unix_device,
+        luks_uuid,
+        key,
+    })
 }
 
 pub(crate) fn crypto_password_uuid_for_volume(volume: &gio::Volume) -> Option<String> {
@@ -3615,12 +3667,12 @@ fn request_encrypted_lock_showing(
     volume_name: &str,
     luks_uuid: Option<String>,
     mount: Option<gio::Mount>,
-    drive: Option<gio::Drive>,
+    target: Option<LockTarget>,
     browser: &Rc<Browser>,
     view: Option<&BrowserView>,
     in_flight: &Rc<Cell<bool>>,
 ) {
-    if mount.is_none() && drive.is_none() {
+    if mount.is_none() && target.is_none() {
         show_error_dialog(
             parent,
             &crate::i18n::tr("Unable to lock device"),
@@ -3652,9 +3704,9 @@ fn request_encrypted_lock_showing(
         let in_flight_for_lock = in_flight.clone();
         let in_flight_for_forget = in_flight.clone();
         let start_lock = move || {
-            lock_cleartext_then_stop(
+            lock_cleartext_then_close(
                 mount,
-                drive,
+                target,
                 &parent_for_lock,
                 &browser_for_lock,
                 view,
@@ -3815,24 +3867,24 @@ fn password_stop_drive(drive: Option<gio::Drive>) -> Option<gio::Drive> {
     })
 }
 
-fn lock_cleartext_then_stop(
+fn lock_cleartext_then_close(
     mount: Option<gio::Mount>,
-    drive: Option<gio::Drive>,
+    target: Option<LockTarget>,
     parent: &gtk::Widget,
     browser: &Rc<Browser>,
     view: Option<BrowserView>,
     in_flight: &Rc<Cell<bool>>,
 ) {
-    let key = match mount.as_ref() {
-        Some(mount) => device_release::key_for_mount(mount),
-        None => drive.as_ref().map(device_release::key_for_drive).unwrap_or(
-            device_release::ReleaseKey {
-                unix_device: None,
-                uuid: None,
-                mount_root: None,
-                display_name: String::new(),
-            },
-        ),
+    let key = match (mount.as_ref(), target.as_ref()) {
+        (Some(mount), _) => device_release::key_for_mount(mount),
+        (None, Some(LockTarget::StopDrive(drive))) => device_release::key_for_drive(drive),
+        (None, Some(LockTarget::Container { key, .. })) => key.clone(),
+        (None, None) => device_release::ReleaseKey {
+            unix_device: None,
+            uuid: None,
+            mount_root: None,
+            display_name: String::new(),
+        },
     };
     let sync_root = mount.as_ref().and_then(|mount| mount.root().path());
     let away_root = mount.as_ref().map(gio::Mount::root);
@@ -3862,13 +3914,20 @@ fn lock_cleartext_then_stop(
                 None => Ok(()),
             };
             match unmount_result {
-                Ok(()) => match drive {
-                    Some(drive) => {
+                Ok(()) => match target {
+                    Some(LockTarget::StopDrive(drive)) => {
                         let stop_operation =
                             device_release::mount_operation(&parent_for_stop, &key_for_stop);
                         drive
                             .stop_future(gio::MountUnmountFlags::NONE, Some(&stop_operation))
                             .await
+                    }
+                    Some(LockTarget::Container {
+                        unix_device,
+                        luks_uuid,
+                        ..
+                    }) => {
+                        drive_ops::lock_encrypted_device_on_system_bus(unix_device, luks_uuid).await
                     }
                     None => Ok(()),
                 },
@@ -3970,7 +4029,9 @@ fn gio_volume_is_locked(volume: &gio::Volume) -> bool {
     let mut names = gio_icon_names(&volume.symbolic_icon());
     names.extend(gio_icon_names(&volume.icon()));
     let names: Vec<&str> = names.iter().map(String::as_str).collect();
-    devices::encrypted_device_is_locked(&names, volume.get_mount().is_some())
+    let cleartext_open = gio_volume_unix_device(volume)
+        .is_some_and(|device| devices::block_crypto_hint(&device).cleartext_open);
+    devices::encrypted_device_is_locked(&names, volume.get_mount().is_some(), cleartext_open)
 }
 
 fn gio_mount_is_encrypted(mount: &gio::Mount) -> bool {

@@ -498,6 +498,7 @@
   "List navigation": "Навигация по списку",
   "List view": "Вид списком",
   "Loading directory": "Загрузка каталога",
+  "Locking task did not complete": "Задача блокировки не завершена",
   "Looking for compatible applications…": "Поиск совместимых приложений…",
   "Managed by Omarchy. Turn off Follow Omarchy to pick a theme manually.": "Управляется Omarchy. Отключите «Следовать Omarchy», чтобы выбрать тему вручную.",
   "Match %{current} of %{total}": "Совпадение %{current} из %{total}",

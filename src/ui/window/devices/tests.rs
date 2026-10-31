@@ -198,17 +198,20 @@ fn duplicate_send_to_identities_are_omitted_and_names_sort_deterministically() {
 }
 
 #[test]
-fn padlock_emblem_decides_lock_state() {
-    assert!(encrypted_device_is_locked(&["changes-prevent"], true));
-    assert!(!encrypted_device_is_locked(&["changes-allow"], false));
-    assert!(encrypted_device_is_locked(
-        &["drive-harddisk-encrypted"],
-        false
-    ));
-    assert!(!encrypted_device_is_locked(
-        &["drive-harddisk-encrypted"],
-        true
-    ));
+fn padlock_emblem_decides_lock_state_before_mount_and_mapping() {
+    for (icon, has_mount, cleartext_open, locked) in [
+        ("changes-prevent", true, true, true),
+        ("changes-allow", false, false, false),
+        ("drive-harddisk-encrypted", false, false, true),
+        ("drive-harddisk-encrypted", true, false, false),
+        ("drive-harddisk-encrypted", false, true, false),
+    ] {
+        assert_eq!(
+            encrypted_device_is_locked(&[icon], has_mount, cleartext_open),
+            locked,
+            "{icon} mounted={has_mount} open={cleartext_open}"
+        );
+    }
 }
 
 #[test]

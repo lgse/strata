@@ -498,6 +498,7 @@
   "List navigation": "リストナビゲーション",
   "List view": "リスト表示",
   "Loading directory": "ディレクトリを読み込み中",
+  "Locking task did not complete": "ロック処理が完了しませんでした",
   "Looking for compatible applications…": "対応するアプリを検索中…",
   "Managed by Omarchy. Turn off Follow Omarchy to pick a theme manually.": "Omarchy によって管理されています。テーマを手動で選ぶには「Omarchy に従う」をオフにしてください。",
   "Match %{current} of %{total}": "%{total} 件中 %{current} 件目",

@@ -498,6 +498,7 @@
   "List navigation": "Navigáció listanézetben",
   "List view": "Listanézet",
   "Loading directory": "Könyvtár betöltése",
+  "Locking task did not complete": "A zárolási feladat nem fejeződött be",
   "Looking for compatible applications…": "Kompatibilis alkalmazások keresése…",
   "Managed by Omarchy. Turn off Follow Omarchy to pick a theme manually.": "Az Omarchy kezeli. A téma kézi kiválasztásához kapcsolja ki az „Omarchy követése” beállítást.",
   "Match %{current} of %{total}": "%{current}. találat (összesen %{total})",

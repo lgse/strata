@@ -498,6 +498,7 @@
   "List navigation": "Navegación por lista",
   "List view": "Vista de lista",
   "Loading directory": "Cargando el directorio",
+  "Locking task did not complete": "La tarea de bloqueo no se completó",
   "Looking for compatible applications…": "Buscando aplicaciones compatibles…",
   "Managed by Omarchy. Turn off Follow Omarchy to pick a theme manually.": "Gestionado por Omarchy. Desactiva Seguir a Omarchy para elegir un tema manualmente.",
   "Match %{current} of %{total}": "Coincidencia %{current} de %{total}",
