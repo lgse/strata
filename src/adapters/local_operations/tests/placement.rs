@@ -152,7 +152,7 @@ fn create_destination(path: &Path, kind: &str) {
 
 #[test]
 fn the_ladder_never_replaces_an_existing_destination() -> Result<(), Box<dyn Error>> {
-    let quirk_sets: [Preset; 4] = [
+    let quirk_sets: [Preset; 5] = [
         Quirks::default,
         || without_flags(Errno::NOSYS),
         || Quirks {
@@ -161,6 +161,10 @@ fn the_ladder_never_replaces_an_existing_destination() -> Result<(), Box<dyn Err
         },
         || Quirks {
             links: Support::Rejected(Errno::PERM),
+            ..without_flags(Errno::NOSYS)
+        },
+        || Quirks {
+            links: Support::Rejected(Errno::ACCESS),
             ..without_flags(Errno::NOSYS)
         },
     ];
@@ -288,6 +292,65 @@ fn a_folder_into_itself_is_refused_and_learns_nothing() -> Result<(), Box<dyn Er
         };
         assert_eq!(learned, expected);
     }
+    Ok(())
+}
+
+#[test]
+fn a_mount_refusing_links_with_eacces_still_places_an_item() -> Result<(), Box<dyn Error>> {
+    // As an SFTP server without link extensions refuses every link and symlink.
+    for kind in ["file", "symlink"] {
+        let root = tempfile::tempdir()?;
+        let scope = FsQuirks::install(
+            root.path(),
+            Quirks {
+                links: Support::Rejected(Errno::ACCESS),
+                symlinks: Support::Rejected(Errno::ACCESS),
+                ..Quirks::sshfs()
+            },
+        );
+        let source = root.path().join("source");
+        if kind == "file" {
+            fs::write(&source, b"data")?;
+        } else {
+            std::os::unix::fs::symlink("elsewhere", &source)?;
+        }
+        let original = identity(&source);
+
+        assert_eq!(
+            place_in(root.path(), "source", "target", None),
+            Ok(Placed::OverReservedFile),
+            "{kind}"
+        );
+        assert_eq!(
+            mount_capabilities(scope.key()).hard_links,
+            Some(false),
+            "{kind}"
+        );
+        assert_eq!(names(root.path())?, ["target"], "{kind}");
+        assert_eq!(identity(&root.path().join("target")), original, "{kind}");
+    }
+    Ok(())
+}
+
+#[test]
+fn eacces_from_a_folder_that_refuses_the_probe_is_reported() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let scope = FsQuirks::install(
+        root.path(),
+        Quirks {
+            links: Support::Rejected(Errno::ACCESS),
+            fail: vec![(Op::Create, ".strata-probe-*", 0, Errno::ACCESS)],
+            ..without_flags(Errno::NOSYS)
+        },
+    );
+    fs::write(root.path().join("source"), b"data")?;
+
+    assert_eq!(
+        place_in(root.path(), "source", "target", None),
+        Err(PlaceError::Io(Errno::ACCESS))
+    );
+    assert_eq!(mount_capabilities(scope.key()).hard_links, None);
+    assert_eq!(names(root.path())?, ["source"]);
     Ok(())
 }
 
