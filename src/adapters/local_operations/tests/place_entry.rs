@@ -73,6 +73,7 @@ fn an_item_is_placed_at_its_typed_path() -> Result<(), Box<dyn Error>> {
     };
     let rows = [
         new_file("docs/", &["docs"]),
+        new_file("new file/", &["new file"]),
         new_file("notes/today.txt", &["notes", "notes/today.txt"]),
         new_file("kept/today.txt", &["kept/today.txt"]),
         new_file("kept/fresh/", &["kept/fresh"]),
@@ -111,8 +112,8 @@ fn an_item_is_placed_at_its_typed_path() -> Result<(), Box<dyn Error>> {
             matches!(&event, OperationEvent::EntryPlaced { placed, .. } if *placed == expected),
             "{typed}: {event:?}"
         );
-        assert!(!source.exists(), "{typed}");
         let placed = root.path().join(created[created.len() - 1]);
+        assert!(placed == source || !source.exists(), "{typed}");
         assert_eq!(
             placed.is_dir(),
             directory || typed.ends_with('/'),
@@ -132,20 +133,18 @@ fn a_refused_placement_keeps_the_new_item_and_removes_the_folders_it_made()
     let not_a_folder =
         |name: &str| rust_i18n::t!("“%{name}” is not a folder", name = name).into_owned();
     let exists = |name: &str| rust_i18n::t!("“%{name}” already exists", name = name).into_owned();
+    let changed = rust_i18n::t!(
+        "%{name} changed while the operation was in progress",
+        name = "new file"
+    )
+    .into_owned();
     let rows = [
         ("file/today.txt", &b""[..], not_a_folder("file")),
         ("link/today.txt", b"", not_a_folder("link")),
         ("kept/other", b"", exists("other")),
         ("kept/other/", b"", exists("other")),
-        (
-            "made/deeper/docs/",
-            b"typed meanwhile",
-            rust_i18n::t!(
-                "%{name} changed while the operation was in progress",
-                name = "new file"
-            )
-            .into_owned(),
-        ),
+        ("made/deeper/docs/", b"typed meanwhile", changed.clone()),
+        ("new file/", b"typed meanwhile", changed),
     ];
     for (typed, contents, message) in rows {
         let (root, source) = fixture(false, contents)?;
@@ -162,6 +161,37 @@ fn a_refused_placement_keeps_the_new_item_and_removes_the_folders_it_made()
         assert_eq!(names(&root.path().join("kept"))?, ["other"], "{typed}");
         assert_eq!(fs::read(root.path().join("file"))?, b"keep", "{typed}");
     }
+    Ok(())
+}
+
+#[test]
+fn a_new_file_comes_back_when_the_folder_taking_its_name_cannot_be_made()
+-> Result<(), Box<dyn Error>> {
+    let (root, source) = fixture(false, b"")?;
+    let before = names(root.path())?;
+    let _quirks = FsQuirks::install(
+        root.path(),
+        Quirks {
+            fail: vec![(fs_quirks::Op::Mkdir, "new file", 0, rustix::io::Errno::IO)],
+            ..Quirks::default()
+        },
+    );
+
+    let event = place(&source, false, "new file/", true);
+
+    let message = rust_i18n::t!(
+        "Could not create “%{name}”: %{error}",
+        name = "new file",
+        error = super::super::native_fs::os_error_detail(rustix::io::Errno::IO)
+    )
+    .into_owned();
+    assert!(
+        matches!(&event, OperationEvent::Failed { message: failed, .. } if *failed == message),
+        "{event:?}"
+    );
+    assert_eq!(names(root.path())?, before);
+    assert!(source.is_file());
+    assert_eq!(fs::read(&source)?, b"");
     Ok(())
 }
 

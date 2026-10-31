@@ -166,19 +166,22 @@ impl Placement<'_> {
             })?;
             self.dirs.push(folder);
         }
-        if into_folder {
-            self.make_folder(&path.name, false)?;
-            let source = Entry::new(&self.source_dir, source_name);
-            let still_empty = self
-                .fs
-                .stat(source, true)
-                .is_ok_and(|stat| stat.kind == FileType::RegularFile && stat.size == 0);
-            if !still_empty {
-                return Err(changed(source_name));
+        let own_name =
+            path.up == 0 && path.folders.is_empty() && source_name == OsStr::new(&path.name);
+        if into_folder && own_name {
+            // The file makes way for the folder that takes its name, and
+            // comes back if that folder can't be made.
+            let mode = self.remove_empty(source_name, &path.name)?;
+            if let Err(error) = self.make_folder(&path.name, false) {
+                let source = Entry::new(&self.source_dir, source_name);
+                let _ = self
+                    .fs
+                    .create_exclusive(source, Mode::from_raw_mode(mode & 0o7777));
+                return Err(error);
             }
-            self.fs
-                .unlink(source, AtFlags::empty())
-                .map_err(|error| could_not_create(&path.name, error))?;
+        } else if into_folder {
+            self.make_folder(&path.name, false)?;
+            self.remove_empty(source_name, &path.name)?;
         } else {
             let from = Entry::new(&self.source_dir, source_name);
             let target = Entry::new(self.last(), OsStr::new(&path.name));
@@ -193,6 +196,22 @@ impl Placement<'_> {
         }
         let made_folders = self.made.len() - usize::from(into_folder);
         Ok(path.folders.len() - made_folders)
+    }
+
+    /// Removes the new file named as a folder, only while it is still empty,
+    /// and returns its mode.
+    fn remove_empty(&self, source_name: &OsStr, name: &str) -> Result<u32, String> {
+        let source = Entry::new(&self.source_dir, source_name);
+        let stat = self
+            .fs
+            .stat(source, true)
+            .ok()
+            .filter(|stat| stat.kind == FileType::RegularFile && stat.size == 0)
+            .ok_or_else(|| changed(source_name))?;
+        self.fs
+            .unlink(source, AtFlags::empty())
+            .map_err(|error| could_not_create(name, error))?;
+        Ok(stat.mode)
     }
 
     fn last(&self) -> &OwnedFd {
