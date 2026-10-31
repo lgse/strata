@@ -43,6 +43,11 @@ pub(super) fn set_file_progress_delay_for_test(delay: Duration) {
     FILE_PROGRESS_DELAY_OVERRIDE.with(|cell| cell.set(Some(delay)));
 }
 
+#[cfg(test)]
+pub(super) fn reset_file_progress_delay_for_test() {
+    FILE_PROGRESS_DELAY_OVERRIDE.with(|cell| cell.set(None));
+}
+
 const INDETERMINATE_PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
 const STALLED_CANCEL_DELAY: Duration = Duration::from_secs(8);
 
