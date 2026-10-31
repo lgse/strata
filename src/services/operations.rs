@@ -31,11 +31,15 @@ pub fn validate_basename(name: &str) -> Result<(), &'static str> {
     }
 }
 
-/// A name typed for an item, which may be a relative path below its folder:
-/// `docs/note.txt` puts the item in `docs`, and a trailing `/` names a folder.
+/// A name typed for an item, which may be a path relative to its folder:
+/// `docs/note.txt` puts the item in `docs`, `../note.txt` in the folder above,
+/// and a trailing `/` names a folder. `.` and `..` resolve as written, without
+/// looking at the filesystem, and the last part must be a name.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypedPath {
-    /// Folders between the item's parent and the item, outermost first.
+    /// How many levels above the item's folder the path starts.
+    pub up: usize,
+    /// Folders between that start and the item, outermost first.
     pub folders: Vec<String>,
     pub name: String,
     /// The item ends up a folder: it is one, or the text ends with `/`.
@@ -46,33 +50,53 @@ impl TypedPath {
     /// Only a `new_item` file may be named as a folder, as that replaces it.
     pub fn parse(text: &str, is_directory: bool, new_item: bool) -> Result<Self, &'static str> {
         let trimmed = text.strip_suffix('/');
-        let mut components = trimmed
-            .unwrap_or(text)
-            .split('/')
-            .map(str::to_owned)
-            .collect::<Vec<_>>();
-        components
-            .iter()
-            .try_for_each(|component| validate_basename(component))?;
+        let mut components = trimmed.unwrap_or(text).split('/').collect::<Vec<_>>();
         let name = components.pop().unwrap_or_default();
+        validate_basename(name)?;
+        let (mut up, mut folders) = (0, Vec::<String>::new());
+        for component in components {
+            match component {
+                "." => {}
+                ".." if folders.pop().is_none() => up += 1,
+                ".." => {}
+                folder => {
+                    validate_basename(folder)?;
+                    folders.push(folder.to_owned());
+                }
+            }
+        }
         if trimmed.is_some() && !is_directory && !new_item {
             return Err("An existing file can’t become a folder");
         }
         Ok(Self {
-            folders: components,
-            name,
+            up,
+            folders,
+            name: name.to_owned(),
             folder: is_directory || trimmed.is_some(),
         })
     }
 
-    /// The component that appears in the item's own folder.
+    /// The component that appears in the folder the path starts from.
     pub fn first(&self) -> &str {
         self.folders.first().unwrap_or(&self.name)
     }
 
-    /// An ordinary rename: no folders to pass through and no change of kind.
+    /// An ordinary rename: it stays in its folder and keeps its kind.
     pub fn is_rename_of(&self, is_directory: bool) -> bool {
-        self.folders.is_empty() && self.folder == is_directory
+        self.up == 0 && self.folders.is_empty() && self.folder == is_directory
+    }
+
+    /// The folder the path starts from, for an item in `folder`.
+    pub fn start(&self, folder: &Location) -> Option<Location> {
+        (0..self.up).try_fold(folder.clone(), |folder, _| folder.parent())
+    }
+
+    /// Every component below the start, the item's name last.
+    pub fn components(&self) -> impl Iterator<Item = &str> {
+        self.folders
+            .iter()
+            .map(String::as_str)
+            .chain([self.name.as_str()])
     }
 }
 

@@ -294,12 +294,13 @@ impl Dispatcher {
             }
         };
         let folder = rename
-            .entry
-            .location
-            .parent()
+            .start_folder()
             .map(|folder| crate::adapters::gio_file_for_location(&folder));
         let paths = rename.native_paths();
         let folders = rename.folders();
+        let start = rename
+            .start_folder()
+            .and_then(|start| start.native_path().map(std::path::Path::to_path_buf));
         let submitted = self.next_typed_name();
         let revision = self.typed_name_revision.clone();
         let target = self.rename_target.clone();
@@ -319,10 +320,10 @@ impl Dispatcher {
                     }
                 }
             }
-            let (blocked, taken) = match paths {
-                Some((current, wanted)) if unstorable.is_none() => {
+            let (blocked, taken) = match paths.zip(start) {
+                Some(((current, wanted), start)) if unstorable.is_none() => {
                     gtk::gio::spawn_blocking(move || {
-                        match crate::ui::browser::blocked_folder(&current, &folders) {
+                        match crate::ui::browser::blocked_folder(&start, &folders) {
                             Some(blocked) => (Some(blocked), false),
                             None => (
                                 None,

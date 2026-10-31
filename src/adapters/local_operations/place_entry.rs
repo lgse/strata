@@ -56,14 +56,17 @@ pub(super) fn start(request: PlaceEntryRequest, emit: Rc<dyn Fn(OperationEvent)>
             fail(crate::i18n::tr("Invalid move destination"));
             return;
         };
+        let Some(start_folder) = path.start(&parent) else {
+            fail(crate::i18n::tr("Invalid move destination"));
+            return;
+        };
         let into_folder = path.folder && !is_directory;
         if into_folder && !new_item {
             fail(crate::i18n::tr("An existing file can’t become a folder"));
             return;
         }
-        let folder = gio::File::for_path(source.parent().unwrap_or(Path::new("/")));
-        let components = path.folders.iter().chain([&path.name]);
-        for (index, component) in components.enumerate() {
+        let folder = crate::adapters::gio_file_for_location(&start_folder);
+        for (index, component) in path.components().enumerate() {
             if let Err(message) = validate_basename(component) {
                 fail(crate::i18n::tr(message));
                 return;
@@ -93,10 +96,8 @@ pub(super) fn start(request: PlaceEntryRequest, emit: Rc<dyn Fn(OperationEvent)>
         match result {
             Ok(first_created) => {
                 let placed = path
-                    .folders
-                    .iter()
-                    .chain([&path.name])
-                    .scan(parent, |folder, name| {
+                    .components()
+                    .scan(start_folder, |folder, name| {
                         *folder = folder.child(OsStr::new(name))?;
                         Some(folder.clone())
                     })
@@ -123,12 +124,16 @@ fn place(
     let (Some(source_parent), Some(source_name)) = (source.parent(), source.file_name()) else {
         return Err(crate::i18n::tr("Invalid move destination"));
     };
+    let Some(start) = source_parent.ancestors().nth(path.up) else {
+        return Err(crate::i18n::tr("Invalid move destination"));
+    };
     let mut placement = Placement {
         fs,
-        dirs: vec![open_local_parent_directory(source_parent)?],
+        source_dir: open_local_parent_directory(source_parent)?,
+        dirs: vec![open_local_parent_directory(start)?],
         made: Vec::new(),
     };
-    let result = placement.run(source_parent, source_name, path, into_folder);
+    let result = placement.run((source, source_name), start, path, into_folder);
     if result.is_err() {
         placement.roll_back();
     }
@@ -137,7 +142,8 @@ fn place(
 
 struct Placement<'a> {
     fs: &'a dyn FsOps,
-    /// The item's folder, then each folder on the path as it is opened.
+    source_dir: OwnedFd,
+    /// The folder the path starts from, then each folder on it as it is opened.
     dirs: Vec<OwnedFd>,
     /// Each folder made here, as its parent's index in `dirs` and its name.
     made: Vec<(usize, String)>,
@@ -146,8 +152,8 @@ struct Placement<'a> {
 impl Placement<'_> {
     fn run(
         &mut self,
-        source_parent: &Path,
-        source_name: &OsStr,
+        (source, source_name): (&Path, &OsStr),
+        start: &Path,
         path: &TypedPath,
         into_folder: bool,
     ) -> Result<usize, String> {
@@ -162,7 +168,7 @@ impl Placement<'_> {
         }
         if into_folder {
             self.make_folder(&path.name, false)?;
-            let source = Entry::new(&self.dirs[0], source_name);
+            let source = Entry::new(&self.source_dir, source_name);
             let still_empty = self
                 .fs
                 .stat(source, true)
@@ -174,15 +180,13 @@ impl Placement<'_> {
                 .unlink(source, AtFlags::empty())
                 .map_err(|error| could_not_create(&path.name, error))?;
         } else {
-            let source = Entry::new(&self.dirs[0], source_name);
+            let from = Entry::new(&self.source_dir, source_name);
             let target = Entry::new(self.last(), OsStr::new(&path.name));
-            rename_in_place(self.fs, source, target).map_err(|failure| {
+            rename_in_place(self.fs, from, target).map_err(|failure| {
                 let target_path = path
-                    .folders
-                    .iter()
-                    .chain([&path.name])
-                    .fold(PathBuf::from(source_parent), |path, name| path.join(name));
-                rename_failure_error(failure, &source_parent.join(source_name), &target_path)
+                    .components()
+                    .fold(PathBuf::from(start), |path, name| path.join(name));
+                rename_failure_error(failure, source, &target_path)
                     .message()
                     .to_owned()
             })?;

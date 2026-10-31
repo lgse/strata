@@ -49,16 +49,22 @@ fn basenames_accept_single_native_and_unicode_components() {
 
 #[test]
 fn typed_paths_split_folders_and_a_trailing_slash() {
-    for (text, is_directory, folders, name, folder) in [
-        ("note.txt", false, &[][..], "note.txt", false),
-        ("docs/", false, &[], "docs", true),
-        ("docs/", true, &[], "docs", true),
-        ("docs/note.txt", false, &["docs"], "note.txt", false),
-        ("a/b/c/", false, &["a", "b"], "c", true),
-        ("a/b", true, &["a"], "b", true),
-        (" a /.b", false, &[" a "], ".b", false),
+    for (text, is_directory, up, folders, name, folder) in [
+        ("note.txt", false, 0, &[][..], "note.txt", false),
+        ("docs/", false, 0, &[], "docs", true),
+        ("docs/", true, 0, &[], "docs", true),
+        ("docs/note.txt", false, 0, &["docs"], "note.txt", false),
+        ("a/b/c/", false, 0, &["a", "b"], "c", true),
+        ("a/b", true, 0, &["a"], "b", true),
+        (" a /.b", false, 0, &[" a "], ".b", false),
+        ("../note.txt", false, 1, &[], "note.txt", false),
+        ("../../a/b/", false, 2, &["a"], "b", true),
+        ("./a/./b", false, 0, &["a"], "b", false),
+        ("a/../../b", false, 1, &[], "b", false),
+        ("a/b/../c", false, 0, &["a"], "c", false),
     ] {
         let path = TypedPath::parse(text, is_directory, true).expect(text);
+        assert_eq!(path.up, up, "{text:?}");
         assert_eq!(path.folders, folders, "{text:?}");
         assert_eq!(path.name, name, "{text:?}");
         assert_eq!(path.folder, folder, "{text:?}");
@@ -74,8 +80,10 @@ fn typed_paths_refuse_every_invalid_component() {
         ("a//b", "Enter a name"),
         ("docs//", "Enter a name"),
         ("a/ /b", "Enter a name"),
-        ("../escaped", "That name is reserved"),
-        ("a/./b", "That name is reserved"),
+        ("..", "That name is reserved"),
+        ("../", "That name is reserved"),
+        ("a/..", "That name is reserved"),
+        ("./", "That name is reserved"),
         ("a/nul\0/b", "Names cannot contain NUL characters"),
     ] {
         assert_eq!(
@@ -84,6 +92,16 @@ fn typed_paths_refuse_every_invalid_component() {
             "{text:?}"
         );
     }
+}
+
+#[test]
+fn typed_paths_start_above_the_item_only_within_the_filesystem() {
+    let folder = Location::local("/home/user");
+    let path = |text| TypedPath::parse(text, false, false).expect(text);
+    assert_eq!(path("x").start(&folder), Some(folder.clone()));
+    assert_eq!(path("../x").start(&folder), Some(Location::local("/home")));
+    assert_eq!(path("../../x").start(&folder), Some(Location::local("/")));
+    assert_eq!(path("../../../x").start(&folder), None);
 }
 
 #[test]

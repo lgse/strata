@@ -181,3 +181,47 @@ fn an_existing_empty_file_is_never_replaced_by_a_folder() -> Result<(), Box<dyn 
     assert!(source.is_file());
     Ok(())
 }
+
+#[test]
+fn an_item_moves_above_its_folder_and_never_over_an_item_there() -> Result<(), Box<dyn Error>> {
+    for (typed, placed) in [
+        ("../moved.txt", &["moved.txt"][..]),
+        ("../made/moved.txt", &["made", "made/moved.txt"]),
+        ("../kept/../moved.txt", &["moved.txt"]),
+    ] {
+        let (root, _) = fixture(false, b"")?;
+        fs::create_dir(root.path().join("inner"))?;
+        let source = root.path().join("inner/draft.txt");
+        fs::write(&source, "draft")?;
+
+        let event = place(&source, false, typed, false);
+
+        let expected: Vec<_> = placed
+            .iter()
+            .map(|path| Location::local(root.path().join(path)))
+            .collect();
+        assert!(
+            matches!(&event, OperationEvent::EntryPlaced { placed, .. } if *placed == expected),
+            "{typed}: {event:?}"
+        );
+        assert_eq!(
+            fs::read(root.path().join(placed[placed.len() - 1]))?,
+            b"draft"
+        );
+        assert!(!source.exists(), "{typed}");
+    }
+
+    let (root, _) = fixture(false, b"")?;
+    fs::create_dir(root.path().join("inner"))?;
+    let source = root.path().join("inner/other");
+    fs::write(&source, "draft")?;
+    let event = place(&source, false, "../kept/other", false);
+    let exists = rust_i18n::t!("“%{name}” already exists", name = "other").into_owned();
+    assert!(
+        matches!(&event, OperationEvent::Failed { message, .. } if *message == exists),
+        "{event:?}"
+    );
+    assert_eq!(fs::read(&source)?, b"draft");
+    assert_eq!(fs::read(root.path().join("kept/other"))?, b"keep");
+    Ok(())
+}

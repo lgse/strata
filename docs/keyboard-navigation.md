@@ -157,10 +157,13 @@ in the same directory, moves the selected items into it, and names it in place.
 With nothing selected **Ctrl+Alt+N** falls back to a plain `new folder`. The item
 is hidden in Trash, Recent, and while a recursive search is open.
 
-In a local folder, a rename may give a relative path below the item's folder.
+In a local folder, a rename may give a path relative to the item's folder.
 Each `/` separates a folder: renaming `todo.txt` to `notes/todo.txt` moves it
 into `notes`, creating that folder if it is missing and reusing it if it is
-already a real folder. A trailing `/` names a folder, so a folder renamed `docs/`
+already a real folder. `..` is the folder above and `.` the current one, so
+`../todo.txt` moves the item up a level; they are resolved as written, so
+`notes/../todo.txt` is just `todo.txt`, and a path cannot climb past the
+filesystem root. The last part must be a name. A trailing `/` names a folder, so a folder renamed `docs/`
 is simply named `docs`. Only the first name given to a **New File** turns it into
 a folder: a new file named `docs/` becomes the empty folder `docs`, while an
 existing file never becomes one and the name is refused. Every part must be a
@@ -189,7 +192,7 @@ Clicking inside the field continues editing. Existing files retain extension-awa
 selection (the stem is selected); folder names containing dots are selected in full.
 
 Names containing `/` (apart from a local rename with a path, above) or NUL,
-`.`/`..`, and whitespace-only names (including Unicode whitespace) are invalid. Valid names are used exactly as typed,
+`.` and `..` on their own, and whitespace-only names (including Unicode whitespace) are invalid. Valid names are used exactly as typed,
 including spaces around a nonblank name, hidden-file prefixes, and Unicode.
 Name conflicts, names the location would store as another (see [Names the user
 types](filesystem-compatibility.md#names-the-user-types)), filesystem-specific

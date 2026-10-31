@@ -239,12 +239,12 @@ pub(crate) fn can_rename(entry: &FileEntry) -> bool {
 pub(crate) struct TypedRename {
     pub(crate) entry: FileEntry,
     pub(crate) name: String,
-    /// Set when the name moves the item below its folder.
+    /// Set when the name moves the item out of its folder.
     path: Option<TypedPath>,
 }
 
 impl TypedRename {
-    /// Every typed component, with whether it names a folder.
+    /// Every typed name, with whether it names a folder.
     pub(crate) fn components(&self) -> Vec<(&str, bool)> {
         let Some(path) = &self.path else {
             return vec![(self.name.as_str(), false)];
@@ -256,14 +256,21 @@ impl TypedRename {
             .collect()
     }
 
+    /// The folder the typed names are relative to.
+    pub(crate) fn start_folder(&self) -> Option<Location> {
+        let parent = self.entry.location.parent()?;
+        match &self.path {
+            Some(path) => path.start(&parent),
+            None => Some(parent),
+        }
+    }
+
     pub(crate) fn native_paths(&self) -> Option<(PathBuf, PathBuf)> {
         let current = self.entry.location.native_path()?;
-        let wanted = self
-            .components()
-            .into_iter()
-            .fold(current.parent()?.to_path_buf(), |path, (name, _)| {
-                path.join(name)
-            });
+        let wanted = self.components().into_iter().fold(
+            self.start_folder()?.native_path()?.to_path_buf(),
+            |path, (name, _)| path.join(name),
+        );
         Some((current.to_path_buf(), wanted))
     }
 
@@ -275,10 +282,10 @@ impl TypedRename {
     }
 }
 
-/// The first folder on a typed path below `current`'s folder that is held by
-/// something other than a folder, which the rename would refuse.
-pub(crate) fn blocked_folder(current: &Path, folders: &[String]) -> Option<String> {
-    let mut path = current.parent()?.to_path_buf();
+/// The first of `folders` below `start` that is held by something other than
+/// a folder, which the rename would refuse.
+pub(crate) fn blocked_folder(start: &Path, folders: &[String]) -> Option<String> {
+    let mut path = start.to_path_buf();
     folders.iter().find_map(|folder| {
         path.push(folder);
         std::fs::symlink_metadata(&path)
@@ -317,13 +324,11 @@ impl BrowserView {
     }
 
     pub fn start_typed_rename(&self, rename: TypedRename) {
+        let start = rename.start_folder();
         let started = match rename.path {
             Some(path) => {
-                let replacement = rename
-                    .entry
-                    .location
-                    .parent()
-                    .and_then(|parent| parent.child(std::ffi::OsStr::new(path.first())));
+                let replacement =
+                    start.and_then(|start| start.child(std::ffi::OsStr::new(path.first())));
                 let started = self.state.browser.place_entry(rename.entry, path, false);
                 self.state.typed_placement.replace(started.zip(replacement));
                 started

@@ -378,11 +378,20 @@ impl ViewState {
             .map(|pending| pending.new_name.clone())
     }
 
-    fn start_pending_rename(&self, entry: &FileEntry, new_name: String, placed: bool) -> u64 {
-        let new_location = entry
-            .location
-            .parent()
-            .and_then(|parent| parent.child(std::ffi::OsStr::new(&new_name)));
+    /// `placed` is where the row's replacement appears when the item moves away.
+    fn start_pending_rename(
+        &self,
+        entry: &FileEntry,
+        new_name: String,
+        placed: Option<Option<Location>>,
+    ) -> u64 {
+        let new_location = placed.clone().unwrap_or_else(|| {
+            entry
+                .location
+                .parent()
+                .and_then(|parent| parent.child(std::ffi::OsStr::new(&new_name)))
+        });
+        let placed = placed.is_some();
         let generation = self.rename_generation.get().saturating_add(1);
         self.rename_generation.set(generation);
         self.pending_rename.replace(Some(PendingRename {
@@ -619,7 +628,6 @@ impl ViewState {
             )
         };
         let (old_location, new_location, new_name, placed) = completed;
-        self.update_rename_labels(&old_location, new_location.as_ref(), &new_name);
         if placed {
             let revealing = self.pending_rename.take().is_some_and(|pending| {
                 pending.reveal_generation == self.rename_reveal_generation.get()
@@ -629,6 +637,7 @@ impl ViewState {
             }
             return;
         }
+        self.update_rename_labels(&old_location, new_location.as_ref(), &new_name);
         if let Some(location) = new_location
             && self
                 .pending_rename
@@ -1443,8 +1452,17 @@ impl ViewState {
         let name = match path {
             Some(path) if !path.is_rename_of(entry.is_directory()) => {
                 let first = path.first().to_owned();
-                let generation = self.start_pending_rename(&entry, first.clone(), true);
-                self.update_rename_labels(&entry.location, None, &first);
+                let replacement = entry
+                    .location
+                    .parent()
+                    .and_then(|parent| path.start(&parent))
+                    .and_then(|start| start.child(std::ffi::OsStr::new(&first)));
+                let generation =
+                    self.start_pending_rename(&entry, first.clone(), Some(replacement));
+                // A row leaving for a folder above keeps its name until it goes.
+                if path.up == 0 {
+                    self.update_rename_labels(&entry.location, None, &first);
+                }
                 self.queue_pending_rename(generation, move |browser| {
                     browser.place_entry(entry, path, new_item)
                 });
@@ -1459,7 +1477,7 @@ impl ViewState {
             self.browser.clear_group_folder();
             return;
         }
-        let generation = self.start_pending_rename(&entry, name.clone(), false);
+        let generation = self.start_pending_rename(&entry, name.clone(), None);
         self.update_rename_labels(&entry.location, None, &name);
         self.queue_pending_rename(generation, move |browser| browser.rename(entry, name));
     }
