@@ -131,6 +131,7 @@ mod imp {
         pub(super) audio_anchored: Cell<bool>,
         pub(super) audio_chunks: Cell<u32>,
         pub(super) restore: Cell<Option<u64>>,
+        pub(super) start_percent: Cell<u32>,
         pub(super) history: RefCell<Option<PcmHistory>>,
         pub(super) edge_grid: Cell<Option<ambient::EdgeGrid>>,
         pub(super) edge_sampled: Cell<Option<Instant>>,
@@ -306,6 +307,11 @@ impl DecodedMedia {
         obj.restart_at(0);
         obj.ensure_timer();
         obj
+    }
+
+    /// A video with no remembered position opens this far into its duration.
+    pub(crate) fn set_start_percent(&self, percent: u32) {
+        self.imp().start_percent.set(percent.min(100));
     }
 
     pub(crate) fn source(&self) -> Option<SandboxedMedia> {
@@ -732,6 +738,7 @@ impl DecodedMedia {
             let event = imp.session.borrow().as_ref().and_then(Session::receive);
             match event {
                 Some(Event::Prepared(header)) => {
+                    let start = imp.start_percent.take();
                     if let Some(saved) = imp.restore.take()
                         && header.width > 0
                         && saved < header.duration_us
@@ -740,6 +747,16 @@ impl DecodedMedia {
                         self.invalidate_size();
                         tracing::debug!(position_us = saved, "resuming media preview");
                         self.restart_at(saved);
+                        break;
+                    }
+                    let start = (header.width > 0 && header.duration_us != media::MAX_DURATION_US)
+                        .then(|| header.duration_us / 100 * u64::from(start))
+                        .filter(|&position| position > 0);
+                    if let Some(position) = start {
+                        imp.header.set(Some(header));
+                        self.invalidate_size();
+                        tracing::debug!(position_us = position, "starting video preview");
+                        self.restart_at(position);
                         break;
                     }
                     let audio = header.audio.then(|| self.pcm_output()).transpose()?;

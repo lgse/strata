@@ -307,6 +307,11 @@ fn append_browsing_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) 
             read: PreferenceManager::preview_autoplay,
             write: PreferenceManager::set_preview_autoplay,
         },
+    ] {
+        append_preference_switch(&browsing, manager, switch);
+    }
+    append_video_start_option(&browsing, manager);
+    for switch in [
         PreferenceSwitch {
             title: "Render documents by default",
             description: "Open Markdown and HTML previews in the rendered view instead of source.",
@@ -434,6 +439,29 @@ fn append_folder_view_options(content: &gtk::Box, manager: &Rc<PreferenceManager
         "Return every folder to the default sort and thumbnail size.",
         &forget,
     ));
+}
+
+fn append_video_start_option(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
+    let control = number_stepper(0, crate::ui::preferences::MAX_PREVIEW_VIDEO_START, 5);
+    crate::ui::accessibility::set_label(&control, &crate::i18n::tr("Video preview start"));
+    bind_number(
+        manager,
+        &control,
+        |manager| f64::from(manager.preview_video_start()),
+        |manager, value| manager.set_preview_video_start(value as u32),
+    );
+    control.set_halign(gtk::Align::Start);
+    let controls = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    controls.set_valign(gtk::Align::Center);
+    controls.append(&control);
+    controls.append(&gtk::Label::new(Some("%")));
+    let row = super::control_row(
+        "Video preview start",
+        "Percent of a video's length to open it at; 0 starts at the beginning. A video you already previewed resumes where you left it.",
+        &controls,
+    );
+    row.add_css_class("settings-text-size-row");
+    content.append(&row);
 }
 
 fn append_search_limit_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) {

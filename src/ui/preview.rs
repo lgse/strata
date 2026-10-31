@@ -1483,8 +1483,13 @@ impl PreviewState {
                 let family = media_family(&preview.content_type);
                 let handed_off = self.handed_off.borrow().as_ref() == Some(&preview.entry.location);
                 source.audio_only = family == Some(MediaFamily::Audio);
-                let media =
-                    super::media::DecodedMedia::new(source.clone()).upcast::<gtk::MediaStream>();
+                let decoded = super::media::DecodedMedia::new(source.clone());
+                if !is_gif {
+                    decoded.set_start_percent(
+                        super::preferences::PreferenceManager::shared().preview_video_start(),
+                    );
+                }
+                let media = decoded.upcast::<gtk::MediaStream>();
                 self.media.replace(Some(media.clone()));
                 let weak = Rc::downgrade(self);
                 media.connect_playing_notify(move |media| {

@@ -216,6 +216,8 @@ pub(in crate::ui) struct Preferences {
     unit_system: UnitSystem,
     #[serde(default)]
     preview_autoplay: bool,
+    #[serde(default)]
+    preview_video_start: u32,
     #[serde(default = "default_enabled")]
     watch_network_folders: bool,
     #[serde(default = "crate::sandbox::browser::default_worker_limit")]
@@ -443,6 +445,7 @@ impl Default for Preferences {
             preview_text_wrap: false,
             unit_system: UnitSystem::Metric,
             preview_autoplay: false,
+            preview_video_start: 0,
             watch_network_folders: true,
             thumbnail_workers: crate::sandbox::browser::default_worker_limit(),
             show_thumbnails: true,
@@ -626,6 +629,12 @@ pub(in crate::ui) const SEARCH_ENTRY_LIMIT_CHOICES: [(&str, u32); 5] = [
     ("No limit", 0),
 ];
 
+pub(in crate::ui) const MAX_PREVIEW_VIDEO_START: u32 = 99;
+
+fn normalized_video_start(percent: u32) -> u32 {
+    percent.min(MAX_PREVIEW_VIDEO_START)
+}
+
 /// Unlisted limits round up to the next choice; 0 and anything past the largest
 /// choice mean no limit.
 fn normalized_search_limit(value: u32, choices: &[(&str, u32)]) -> u32 {
@@ -703,6 +712,7 @@ impl PreferenceManager {
             normalized_search_limit(preferences.search_time_limit, &SEARCH_TIME_LIMIT_CHOICES);
         preferences.search_entry_limit =
             normalized_search_limit(preferences.search_entry_limit, &SEARCH_ENTRY_LIMIT_CHOICES);
+        preferences.preview_video_start = normalized_video_start(preferences.preview_video_start);
         preferences.thumbnail_workers = preferences
             .thumbnail_workers
             .clamp(1, crate::sandbox::browser::MAX_WORKERS);
@@ -1275,6 +1285,16 @@ impl PreferenceManager {
 
     pub fn set_preview_autoplay(&self, autoplay: bool) {
         self.preferences.borrow_mut().preview_autoplay = autoplay;
+        self.save_preferences();
+    }
+
+    /// Percent of the duration a first-time video preview starts at.
+    pub fn preview_video_start(&self) -> u32 {
+        self.preferences.borrow().preview_video_start
+    }
+
+    pub fn set_preview_video_start(&self, percent: u32) {
+        self.preferences.borrow_mut().preview_video_start = normalized_video_start(percent);
         self.save_preferences();
     }
 
