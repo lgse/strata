@@ -199,3 +199,58 @@ fn disabled_controls_are_rejected_like_enabled_ones() {
         },
     );
 }
+
+#[test]
+fn scrollbar_presses_keep_their_drag_instead_of_starting_a_marquee() {
+    crate::test_support::gtk_test(
+        "ui::marquee::tests::scrollbar_presses_keep_their_drag_instead_of_starting_a_marquee",
+        || {
+            let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            content.set_size_request(-1, 2000);
+            let scroll = gtk::ScrolledWindow::builder()
+                .child(&content)
+                .overlay_scrolling(false)
+                .vscrollbar_policy(gtk::PolicyType::Always)
+                .build();
+            let marquee = install(MarqueeSetup {
+                view: content.clone().upcast(),
+                surface: scroll.clone().upcast(),
+                scroll: scroll.clone(),
+                overlay: gtk::Overlay::new(),
+                targets: Rc::new(RefCell::new(Vec::new())),
+                is_item: Rc::new(|_, _, _| false),
+                clear_selection: Rc::new(|| {}),
+                allow_drag: Rc::new(Cell::new(true)),
+            });
+            let gesture = marquee.gestures.borrow()[0].clone();
+            let window = gtk::Window::builder()
+                .child(&scroll)
+                .default_width(200)
+                .default_height(200)
+                .build();
+            window.present();
+            let scrollbar = scroll.vscrollbar();
+            pump_until(|| scrollbar.is_mapped() && scrollbar.width() > 0);
+            let bounds = scrollbar
+                .compute_bounds(&scroll)
+                .expect("scrollbar inside the scrolled window");
+            let press = |x: f64, y: f64| {
+                marquee.state.end();
+                gesture.emit_by_name::<()>("drag-begin", &[&x, &y]);
+                marquee.state.active.get()
+            };
+            assert!(
+                !press(
+                    f64::from(bounds.x() + bounds.width() / 2.0),
+                    f64::from(bounds.y() + 10.0),
+                ),
+                "a press on the scrollbar belongs to the scrollbar"
+            );
+            assert!(
+                press(10.0, 10.0),
+                "a press on blank viewport starts a marquee"
+            );
+            window.destroy();
+        },
+    );
+}
