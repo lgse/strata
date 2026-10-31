@@ -43,7 +43,7 @@ thumbnail resizing use the default table in both modes.
 An action only one mode ships a key for usually has no handler in the other. The
 default table can still run these 10xer actions: Open with, Move to, Copy to,
 Restore, invert selection, search subfolders, the visited and recent folder
-jumps, half-page paging, and the Sort, Copy and Action chord steps but
+jumps, half-page paging, and the Sort, Copy and Action chord steps except
 **Actions for the focused folder**. 10xer mode
 can run duplicate, pin, jump to folder and arrow scope, and copy path on a key
 that types nothing, such as one with Ctrl or an F key. A key on any other such action, such as yank or a Go
