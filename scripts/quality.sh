@@ -9,12 +9,16 @@ case "$phase" in all|fmt|clippy|test) ;; *) echo "$usage" >&2; exit 2 ;; esac
 shift $(($# > 0))
 # Options for the Rust test phase; they never select or skip tests.
 test_options=()
+# CI's build task runs no tests, and only a local run may rewrite the timings.
+task="${STRATA_QUALITY_TASK:-test}"
 while (($#)); do
   case "$1" in
     --jobs)
-      [[ "${2:-}" =~ ^[1-9][0-9]*$ ]] || { echo "$usage" >&2; exit 2; }
+      [[ "${2:-}" =~ ^[1-9][0-9]*$ && "$task" != build ]] || { echo "$usage" >&2; exit 2; }
       test_options+=(--lanes "$2"); shift 2 ;;
-    --refresh-timings) test_options+=(--refresh-timings); shift ;;
+    --refresh-timings)
+      [[ "$task" == test ]] || { echo "$usage" >&2; exit 2; }
+      test_options+=(--refresh-timings); shift ;;
     *) echo "$usage" >&2; exit 2 ;;
   esac
 done

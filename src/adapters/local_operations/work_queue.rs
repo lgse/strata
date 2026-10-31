@@ -48,6 +48,7 @@ pub(super) struct WorkQueue<J: Job> {
     cancelled: Arc<AtomicBool>,
     failed: AtomicBool,
     error: Mutex<Option<J::Error>>,
+    deferred: Mutex<Option<J::Error>>,
 }
 
 impl<J: Job> WorkQueue<J> {
@@ -61,6 +62,7 @@ impl<J: Job> WorkQueue<J> {
             cancelled,
             failed: AtomicBool::new(false),
             error: Mutex::new(None),
+            deferred: Mutex::new(None),
         }
     }
 
@@ -82,22 +84,23 @@ impl<J: Job> WorkQueue<J> {
 
     /// Stops the queue; only the first error is kept, and none after a cancel.
     pub(super) fn fail(&self, error: J::Error) {
-        if self.record(error) {
+        if Self::record(&self.cancelled, &self.error, error) {
             self.failed.store(true, Ordering::Release);
             self.wake.notify_all();
         }
     }
 
-    /// Keeps `error` for the result like [`Self::fail`], but lets the other jobs finish.
+    /// Keeps `error` for the result like [`Self::fail`], but lets the other jobs finish. An error
+    /// that stops the queue still wins, since only it explains what the unfinished jobs left.
     pub(super) fn defer(&self, error: J::Error) {
-        self.record(error);
+        Self::record(&self.cancelled, &self.deferred, error);
     }
 
-    fn record(&self, error: J::Error) -> bool {
-        if self.cancelled.load(Ordering::Acquire) {
+    fn record(cancelled: &AtomicBool, slot: &Mutex<Option<J::Error>>, error: J::Error) -> bool {
+        if cancelled.load(Ordering::Acquire) {
             return false;
         }
-        let mut first_error = lock(&self.error);
+        let mut first_error = lock(slot);
         if first_error.is_none() {
             *first_error = Some(error);
         }
@@ -149,7 +152,10 @@ impl<J: Job> WorkQueue<J> {
     pub(super) fn result(&self) -> Result<(), J::Error> {
         if self.cancelled.load(Ordering::Acquire) {
             Err(J::cancelled())
-        } else if let Some(error) = lock(&self.error).clone() {
+        } else if let Some(error) = lock(&self.error)
+            .clone()
+            .or_else(|| lock(&self.deferred).clone())
+        {
             Err(error)
         } else {
             Ok(())

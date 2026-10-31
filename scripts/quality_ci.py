@@ -246,7 +246,10 @@ def run(shard, lanes=1, timings=False):
         ignored = sorted(set(selected) & set(binary["ignored"]))
         report["binaries"].append(dict(file=binary["file"], passed=sorted(set(selected) - set(ignored)),
                                        ignored=ignored))
-    print(f"Shard {shard}: running {lanes} lanes, each on its own display and session bus", flush=True)
+    # Lane output goes only to the logs, so a hung lane is diagnosed from them, not this console.
+    logs = (REPORTS / f"shard-{shard}-lane-*.log").relative_to(ROOT)
+    print(f"Shard {shard}: running {lanes} lanes, each on its own display and session bus; "
+          f"output in {logs}", flush=True)
     failed, measured = [], {}
     with ThreadPoolExecutor(lanes) as pool:
         futures = [pool.submit(run_lane, lane, lanes, tests, timings, REPORTS / f"shard-{shard}-lane-{lane}.log")

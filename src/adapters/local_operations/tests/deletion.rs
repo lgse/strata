@@ -1859,6 +1859,40 @@ fn a_folder_kept_by_an_open_file_does_not_stop_the_rest_of_the_delete() -> Resul
     Ok(())
 }
 
+#[test]
+fn an_error_that_stops_a_delete_is_reported_over_an_earlier_open_folder()
+-> Result<(), Box<dyn Error>> {
+    let _serial = serial()?;
+    let _clock = ClockGuard::set(SystemTime::UNIX_EPOCH + CLOCK_START);
+    let root = tempfile::tempdir()?;
+    let _scope = FsQuirks::install(
+        root.path(),
+        Quirks {
+            fail: vec![(Op::Unlink, "broken", 0, rustix::io::Errno::IO)],
+            ..Quirks::nfs3()
+        },
+    );
+    let holds = Holds::default();
+    let open = root.path().join("open");
+    folder_with_an_open_file(&open, &holds)?;
+    let broken = root.path().join("broken");
+    fs::write(&broken, b"keep")?;
+
+    // One worker takes the newest job first, so the open folder is refused before the failure.
+    let error = parallel_delete_local_blocking_with_workers(
+        vec![delete_root(&broken)?, delete_root(&open)?],
+        Arc::new(AtomicBool::new(false)),
+        1,
+        &Deadline::default(),
+    )
+    .expect_err("the failed unlink");
+
+    assert!(error.contains("broken"), "{error}");
+    assert!(!error.contains("open"), "{error}");
+    assert!(broken.exists() && open.is_dir());
+    Ok(())
+}
+
 #[derive(Clone, Copy, Debug)]
 enum Hidden {
     Leftover { closed_after: Option<Op> },

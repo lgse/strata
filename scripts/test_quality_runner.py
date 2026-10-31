@@ -114,11 +114,16 @@ class QualityRunnerTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 forwarded = [arg.replace("--jobs", "--lanes") for arg in options]
                 self.assertEqual(calls[-1]["args"][-1 - len(options):], [phase, *forwarded])
-        for phase, options in (("test", ("--jobs",)), ("test", ("--jobs", "0")), ("test", ("--jobs", "two")),
-                               ("fmt", ("--jobs", "2")), ("clippy", ("--refresh-timings",)),
-                               ("test", ("--filter", "ui::"))):
-            with self.subTest(phase=phase, options=options):
-                result, calls = self.run_runner(phase, options=options)
+        result, calls = self.run_runner("test", options=("--jobs", "3"), extra_env={
+            "STRATA_QUALITY_TASK": "shard", "STRATA_QUALITY_SHARD": "0"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(calls[-1]["args"][-3:], ["test", "--lanes", "3"])
+        for phase, options, task in (("test", ("--jobs",), "test"), ("test", ("--jobs", "0"), "test"),
+                                     ("test", ("--jobs", "two"), "test"), ("fmt", ("--jobs", "2"), "test"),
+                                     ("clippy", ("--refresh-timings",), "test"), ("test", ("--filter", "ui::"), "test"),
+                                     ("test", ("--refresh-timings",), "shard"), ("test", ("--jobs", "3"), "build")):
+            with self.subTest(phase=phase, options=options, task=task):
+                result, calls = self.run_runner(phase, options=options, extra_env={"STRATA_QUALITY_TASK": task})
                 self.assertEqual(result.returncode, 2)
                 self.assertEqual(calls, [])
 
