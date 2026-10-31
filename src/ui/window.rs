@@ -1201,8 +1201,7 @@ struct CollapsibleSection {
 }
 
 impl CollapsibleSection {
-    /// Moves every row appended after the revealer into it and returns how
-    /// many rows, drop gaps excluded, it now holds.
+    /// Returns the row count without the drop gaps between rows.
     fn collect_rows(&self, sidebar: &gtk::Box) -> usize {
         let mut count = 0;
         let mut next = self.revealer.next_sibling();
@@ -2587,7 +2586,7 @@ impl SidebarState {
     }
 
     fn append_section_revealer(&self, collapsed: bool) -> (gtk::Revealer, gtk::Box) {
-        let rows = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        let rows = gtk::Box::new(gtk::Orientation::Vertical, 0);
         let revealer = gtk::Revealer::builder()
             .transition_type(gtk::RevealerTransitionType::SlideDown)
             .transition_duration(section_transition_duration())
