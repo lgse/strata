@@ -1,0 +1,39 @@
+{"scenario":"letter-bookmarks-save-replace-and-survive-restart","modes":["columns","icons","list"],"prefs":{"tenxer_mode":true,"type_to_search":false,"list_folder_clicks":2}}
+{"select":{"entry":"documents","dir":"$root"}}
+{"wait":{"focused":"documents"},"message":"keyboard focus to reach 'documents'"}
+{"key":"m"}
+{"wait":{"present":{"role":"label","name":"m-"}},"message":"m to arm the save chord"}
+{"key":"a"}
+{"wait":{"present":{"role":"label","name":"Saved bookmark a"}},"message":"m a to save bookmark a"}
+{"fs":{"path":"$data/strata/letter-bookmarks.json","json":{"entries":{"a":"file://$fixture_quoted"}}},"timeout_ms":0,"message":"bookmark a to hold the listed folder, not the selected child"}
+{"key":"Return"}
+{"wait":{"directory":"documents"},"message":"Enter to open 'documents'"}
+{"select":{"entry":"notes.txt","dir":"documents"}}
+{"wait":{"focused":"notes.txt"},"message":"keyboard focus to reach 'notes.txt'"}
+{"key":"m"}
+{"wait":{"present":{"role":"label","name":"m-"}},"message":"m to arm the save chord in 'documents'"}
+{"key":"b"}
+{"fs":{"path":"$data/strata/letter-bookmarks.json","json":{"entries":{"a":"file://$fixture_quoted","b":"file://$fixture_quoted/documents"}}},"message":"m b to save 'documents' as bookmark b"}
+{"key":"apostrophe"}
+{"wait":{"present":{"role":"label","name":"$fixture/documents"}},"message":"the ' menu to list bookmark b's folder"}
+{"key":"a"}
+{"wait":{"directory":"$root"},"message":"' a to open the fixture folder"}
+{"select":{"entry":"readme.md","dir":"$root"}}
+{"wait":{"focused":"readme.md"},"message":"keyboard focus to reach 'readme.md'"}
+{"key":"apostrophe"}
+{"wait":{"present":{"role":"label","name":"'-"}},"message":"' to arm the jump chord"}
+{"key":"b"}
+{"wait":{"directory":"documents"},"message":"' b to open 'documents'"}
+{"select":{"entry":"notes.txt","dir":"documents"}}
+{"wait":{"focused":"notes.txt"},"message":"keyboard focus to reach 'notes.txt' again"}
+{"key":"m"}
+{"wait":{"present":{"role":"label","name":"m-"}},"message":"m to arm the save chord before replacing a"}
+{"key":"a"}
+{"fs":{"path":"$data/strata/letter-bookmarks.json","json":{"entries":{"a":"file://$fixture_quoted/documents","b":"file://$fixture_quoted/documents"}}},"message":"m a in 'documents' to replace bookmark a"}
+{"restart":true}
+{"select":{"entry":"readme.md","dir":"$root"}}
+{"wait":{"focused":"readme.md"},"message":"keyboard focus to reach 'readme.md' after the restart"}
+{"key":"apostrophe"}
+{"wait":{"present":{"role":"label","name":"'-"}},"message":"' to arm the jump chord after the restart"}
+{"key":"a"}
+{"wait":{"directory":"documents"},"message":"' a to open the replaced bookmark after a restart"}

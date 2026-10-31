@@ -1,0 +1,26 @@
+{"scenario":"letter-bookmarks-read-latin-letters-and-cancel","modes":["columns"],"prefs":{"tenxer_mode":true,"type_to_search":false},"variants":[{"id":"us","vars":{"layout":"us"}},{"id":"ru","vars":{"layout":"ru"}}]}
+{"select":{"entry":"readme.md","dir":"$root"}}
+{"wait":{"focused":"readme.md"},"message":"keyboard focus to reach 'readme.md'"}
+{"layout":"$layout"}
+{"key":"m"}
+{"wait":{"present":{"role":"label","name":"m-"}},"message":"m to arm the save chord on $layout"}
+{"key":"Escape"}
+{"wait":{"absent":{"role":"label","name":"m-"}},"message":"Escape to cancel the save chord"}
+{"key":"m"}
+{"wait":{"present":{"role":"label","name":"m-"}},"message":"m to arm the save chord again"}
+{"key":"1"}
+{"wait":{"present":{"role":"label","name":"Unknown chord"}},"message":"m 1 to cancel as an unknown chord"}
+{"expect":{"absent":{"role":"label","name":"m-"}},"message":"m 1 must disarm the chord"}
+{"key":"m"}
+{"wait":{"present":{"role":"label","name":"m-"}},"message":"m to arm the save chord a third time"}
+{"key":"z"}
+{"wait":{"present":{"role":"label","name":"Saved bookmark z"}},"message":"the key in z's place on $layout to save bookmark z"}
+{"fs":{"path":"$data/strata/letter-bookmarks.json","json":{"entries":{"z":"file://$fixture_quoted"}}},"timeout_ms":0,"message":"only bookmark z to be saved, for the fixture folder"}
+{"select_with_keyboard":"documents","message":"keyboard focus to reach 'documents'"}
+{"key":"Return"}
+{"wait":{"directory":"documents"},"message":"Enter to open 'documents'"}
+{"select_with_keyboard":"notes.txt","message":"keyboard focus to reach 'notes.txt'"}
+{"key":"apostrophe"}
+{"wait":{"present":{"role":"label","name":"'-"}},"message":"the key in ' 's place on $layout to arm the jump chord"}
+{"key":"z"}
+{"wait":{"directory":"$root"},"message":"' z on $layout to return to the bookmarked folder"}
