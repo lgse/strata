@@ -295,3 +295,29 @@ fn letter_bookmark_cancel_during_folder_validation_keeps_the_current_directory()
         },
     );
 }
+
+#[test]
+fn letter_bookmark_save_reports_its_result_after_later_keys() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::letter_bookmarks::letter_bookmark_save_reports_its_result_after_later_keys",
+        || {
+            let fixture = KeyboardFixture::new();
+            PreferenceManager::shared().set_tenxer_mode(true);
+            let state = glib::user_data_dir().join("strata/letter-bookmarks.json");
+            for (fails, expected) in [(false, "Saved bookmark a"), (true, "Could not access bookmarks:")] {
+                if fails {
+                    std::fs::remove_file(&state).expect("remove saved state");
+                    std::fs::create_dir(&state).expect("unwritable state file");
+                }
+                let held = crate::storage::writer::hold();
+                mark(&fixture, Key::m, Key::a);
+                fixture.press(Key::j, ModifierType::empty());
+                drop(held);
+                wait_until_or(
+                    || fixture.shortcuts.feedback_text().starts_with(expected),
+                    || format!("feedback: {}", fixture.shortcuts.feedback_text()),
+                );
+            }
+        },
+    );
+}
