@@ -1812,6 +1812,53 @@ fn one_wait_for_open_files_covers_every_folder_of_a_delete_or_trash() -> Result<
     Ok(())
 }
 
+#[test]
+fn a_folder_kept_by_an_open_file_does_not_stop_the_rest_of_the_delete() -> Result<(), Box<dyn Error>>
+{
+    let _serial = serial()?;
+    let _clock = ClockGuard::set(SystemTime::UNIX_EPOCH + CLOCK_START);
+    let root = tempfile::tempdir()?;
+    let _scope = FsQuirks::install(root.path(), Quirks::nfs3());
+    let tree = root.path().join("tree");
+    let holds = Holds::default();
+    fs::create_dir(&tree)?;
+    folder_with_an_open_file(&tree.join("open"), &holds)?;
+    let rest = tree.join("rest");
+    fs::create_dir(&rest)?;
+    for index in 0..200 {
+        fs::write(rest.join(format!("{index}.txt")), b"deletable")?;
+    }
+
+    let events = delete_permanently(std::slice::from_ref(&tree));
+
+    let line = rust_i18n::t!(
+        "Could not delete “%{name}”: %{error}",
+        name = "open",
+        error = crate::i18n::tr(
+            "A file in it is still open in another program. Close it and try again."
+        )
+    );
+    assert!(
+        matches!(
+            events.last(),
+            Some(OperationEvent::CompletedWithErrors { message, .. }) if message.contains(&*line)
+        ),
+        "{events:?}"
+    );
+    assert!(
+        !rest.exists(),
+        "left behind: {:?}",
+        names(&rest).unwrap_or_default().len()
+    );
+    assert_eq!(names(&tree)?, ["open"]);
+    assert!(
+        names(&tree.join("open"))?
+            .iter()
+            .all(|name| foreign_leftover(OsStr::new(name)).is_some())
+    );
+    Ok(())
+}
+
 #[derive(Clone, Copy, Debug)]
 enum Hidden {
     Leftover { closed_after: Option<Op> },

@@ -205,16 +205,18 @@ jobs:
           name: quality-bundle-${{ github.run_attempt }}
           path: target/quality-bundle
 
-      - name: Run assigned tests on a private display and bus without compiling
+      - name: Run assigned tests on private displays and buses without compiling
         env:
           STRATA_CONTAINER_ENGINE: docker
           STRATA_QUALITY_IMAGE: ${{ needs.quality-build.outputs.environment_image }}
           STRATA_QUALITY_TASK: shard
           STRATA_QUALITY_SHARD: ${{ matrix.shard }}
-        run: ./scripts/quality.sh test
+        # Three displays on the 4-vCPU runner; at one per CPU, load-sensitive tests start to fail.
+        run: ./scripts/quality.sh test --jobs 3
 
+      # Lane logs are written as tests run, so they explain a shard that hit its timeout too.
       - name: Share quality reports and logs even on failure
-        if: ${{ !cancelled() }}
+        if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: quality-report-${{ github.run_attempt }}-${{ matrix.shard }}
