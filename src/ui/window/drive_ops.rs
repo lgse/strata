@@ -140,7 +140,6 @@ pub(super) fn is_eligible(volume: Option<&gio::Volume>) -> bool {
 #[derive(Debug)]
 pub(super) enum DriveOpError {
     CommandFailed(String),
-    /// The D-Bus object does not implement the requested interface or property.
     MissingInterface(String),
     DeviceNotFound,
     Cancelled,
@@ -492,7 +491,9 @@ fn udisks_object_property(
 }
 
 /// Run `lock_encrypted_device` against the system bus, letting polkit ask
-/// for authorization when the mapping was opened by another user.
+/// for authorization when the mapping was opened by another user. Only the
+/// `Lock` call waits indefinitely for that prompt; lookups keep the default
+/// D-Bus timeout so a hung udisksd fails instead of leaving Lock in flight.
 pub(super) async fn lock_encrypted_device_on_system_bus(
     device: Option<String>,
     luks_uuid: Option<String>,
@@ -503,6 +504,7 @@ pub(super) async fn lock_encrypted_device_on_system_bus(
             device.as_deref(),
             luks_uuid.as_deref(),
             |path, interface, method, parameters| {
+                let timeout_msec = if method == "Lock" { i32::MAX } else { -1 };
                 connection
                     .call_sync(
                         Some("org.freedesktop.UDisks2"),
@@ -512,7 +514,7 @@ pub(super) async fn lock_encrypted_device_on_system_bus(
                         Some(parameters),
                         None,
                         gio::DBusCallFlags::ALLOW_INTERACTIVE_AUTHORIZATION,
-                        i32::MAX,
+                        timeout_msec,
                         gio::Cancellable::NONE,
                     )
                     .map_err(lock_error)

@@ -3603,7 +3603,6 @@ fn lock_encrypted_mount(
     );
 }
 
-/// How Lock closes the encrypted container once its filesystem is unmounted.
 enum LockTarget {
     /// GVfs locks removable encrypted drives by stopping them.
     StopDrive(gio::Drive),
