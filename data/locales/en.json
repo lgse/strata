@@ -1449,6 +1449,7 @@
   "The sandbox couldn't start. Unprivileged user namespaces may be disabled or restricted, for example by AppArmor.": "The sandbox couldn't start. Unprivileged user namespaces may be disabled or restricted, for example by AppArmor.",
   "Thumbnails reuse sandboxed worker processes.": "Thumbnails reuse sandboxed worker processes.",
   "The kernel doesn't support Landlock ABI 3, so each thumbnail starts its own sandbox and loads more slowly.": "The kernel doesn't support Landlock ABI 3, so each thumbnail starts its own sandbox and loads more slowly.",
+  "The system blocks nested user namespaces, for example through AppArmor, so each thumbnail starts its own sandbox and loads more slowly.": "The system blocks nested user namespaces, for example through AppArmor, so each thumbnail starts its own sandbox and loads more slowly.",
   "A sandboxed worker couldn't render a sample image.": "A sandboxed worker couldn't render a sample image.",
   "A sample file was processed correctly.": "A sample file was processed correctly.",
   "A sample file couldn't be processed.": "A sample file couldn't be processed.",

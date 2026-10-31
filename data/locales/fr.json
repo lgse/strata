@@ -1449,6 +1449,7 @@
   "The sandbox couldn't start. Unprivileged user namespaces may be disabled or restricted, for example by AppArmor.": "Le bac à sable n’a pas pu démarrer. Les espaces de noms utilisateur non privilégiés sont peut-être désactivés ou restreints, par exemple par AppArmor.",
   "Thumbnails reuse sandboxed worker processes.": "Les miniatures réutilisent des processus isolés.",
   "The kernel doesn't support Landlock ABI 3, so each thumbnail starts its own sandbox and loads more slowly.": "Le noyau ne prend pas en charge Landlock ABI 3, donc chaque miniature démarre son propre bac à sable et se charge plus lentement.",
+  "The system blocks nested user namespaces, for example through AppArmor, so each thumbnail starts its own sandbox and loads more slowly.": "Le système bloque les espaces de noms utilisateur imbriqués, par exemple via AppArmor, donc chaque miniature démarre son propre bac à sable et se charge plus lentement.",
   "A sandboxed worker couldn't render a sample image.": "Un processus isolé n’a pas pu rendre une image d’exemple.",
   "A sample file was processed correctly.": "Un fichier d’exemple a été traité correctement.",
   "A sample file couldn't be processed.": "Un fichier d’exemple n’a pas pu être traité.",

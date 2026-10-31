@@ -13,7 +13,10 @@ binary:
 - The **preview sandbox** renders a generated PNG through a one-shot bubblewrap
   sandbox (`sandbox::parse`), which exercises bubblewrap, unprivileged user
   namespaces, `prlimit`, and the preview helper. **Sandboxed workers** render it
-  again through the pooled browser workers, unless Landlock ABI 3 is missing.
+  again through the pooled browser workers. It warns instead when Landlock ABI 3
+  is missing or the host denies the workers' nested namespaces (for example
+  AppArmor on Ubuntu 24.04), because thumbnails then fall back to one-shot
+  sandboxes.
 - **PDF thumbnails**, **video thumbnails** (a one-second Y4M clip), and **video
   and audio previews** (FFprobe metadata for a short WAV file) go through the
   same `sandbox::browser` paths as the file list.

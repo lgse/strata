@@ -1449,6 +1449,7 @@
   "The sandbox couldn't start. Unprivileged user namespaces may be disabled or restricted, for example by AppArmor.": "无法启动沙盒。非特权用户命名空间可能已被禁用或受到限制（例如被 AppArmor 限制）。",
   "Thumbnails reuse sandboxed worker processes.": "缩略图会复用沙盒工作进程。",
   "The kernel doesn't support Landlock ABI 3, so each thumbnail starts its own sandbox and loads more slowly.": "内核不支持 Landlock ABI 3，每个缩略图都会启动单独的沙盒，加载速度较慢。",
+  "The system blocks nested user namespaces, for example through AppArmor, so each thumbnail starts its own sandbox and loads more slowly.": "系统阻止了嵌套的用户命名空间（例如通过 AppArmor），每个缩略图都会启动单独的沙盒，加载速度较慢。",
   "A sandboxed worker couldn't render a sample image.": "沙盒工作进程无法渲染示例图片。",
   "A sample file was processed correctly.": "已成功处理示例文件。",
   "A sample file couldn't be processed.": "无法处理示例文件。",

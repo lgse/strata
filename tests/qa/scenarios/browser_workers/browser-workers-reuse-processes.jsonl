@@ -6,9 +6,9 @@
 {"settle":{"pane":"photos-a"}}
 {"fs":{"path":"photos-a","all_cached_in":"$cache/thumbnails/large","except_suffix":".stl"},"message":"first folder thumbnails persisted"}
 {"log":{"count":"browser sandbox started"},"as":"initial"}
-{"log":{"contains":"Landlock ABI 3 unavailable"},"as":"landlocked"}
-{"log":{"count":"browser sandbox started","at_least":1,"at_most":2},"timeout_ms":0,"unless":"landlocked"}
-{"log":{"count":"browser sandbox started","equals":0},"timeout_ms":0,"if":"landlocked"}
+{"log":{"contains":"retaining one-shot sandboxes"},"as":"one_shot"}
+{"log":{"count":"browser sandbox started","at_least":1,"at_most":2},"timeout_ms":0,"unless":"one_shot"}
+{"log":{"count":"browser sandbox started","equals":0},"timeout_ms":0,"if":"one_shot"}
 {"wait":{"present":{"role":"label","name":"320×180"}},"message":"original image dimensions","modes":["icons"]}
 {"wait":{"present":{"role":"label","name":"321×180"}},"message":"original image dimensions","modes":["icons"]}
 {"wait":{"present":{"role":"label","name":"322×180"}},"message":"original image dimensions","modes":["icons"]}
@@ -36,17 +36,17 @@
 {"fs":{"path":"photos-b/model.3mf","cached_in":"$cache/thumbnails/large","pixel":{"at":[0,0],"rgb":[220,40,80]}},"timeout_ms":0}
 {"fs":{"path":"photos-b/model.FCStd","cached_in":"$cache/thumbnails/large","pixel":{"at":[0,0],"rgb":[220,40,80]}},"timeout_ms":0}
 {"fs":{"path":"photos-b/plain.stl","cached_in":"$cache/thumbnails/large","exists":false},"timeout_ms":0}
-{"log":{"matches":"browser sandbox started pid=(\\d+)","pick":-1},"unless":"landlocked","as":"pid"}
-{"proc":{"parent_is_app":"$pid"},"timeout_ms":0,"unless":"landlocked"}
-{"proc":{"kill":"$pid"},"unless":"landlocked"}
-{"key":"alt+Left","unless":"landlocked"}
-{"wait":{"entry":"photos-c"},"message":"parent after worker loss","unless":"landlocked"}
-{"select":{"entry":"photos-c"},"modes":["columns"],"unless":"landlocked"}
-{"click":{"entry":"photos-c"},"count":2,"modes":["icons","list"],"unless":"landlocked"}
-{"wait":{"directory":"photos-c"},"message":"the browser to be working in 'photos-c'","unless":"landlocked"}
-{"settle":{"pane":"photos-c"},"unless":"landlocked"}
-{"fs":{"path":"photos-c","all_cached_in":"$cache/thumbnails/large","except_suffix":".stl"},"message":"replacement worker to finish the next folder","unless":"landlocked"}
-{"log":{"count":"browser sandbox started","equals":"$initial","plus":1},"timeout_ms":0,"unless":"landlocked"}
+{"log":{"matches":"browser sandbox started pid=(\\d+)","pick":-1},"unless":"one_shot","as":"pid"}
+{"proc":{"parent_is_app":"$pid"},"timeout_ms":0,"unless":"one_shot"}
+{"proc":{"kill":"$pid"},"unless":"one_shot"}
+{"key":"alt+Left","unless":"one_shot"}
+{"wait":{"entry":"photos-c"},"message":"parent after worker loss","unless":"one_shot"}
+{"select":{"entry":"photos-c"},"modes":["columns"],"unless":"one_shot"}
+{"click":{"entry":"photos-c"},"count":2,"modes":["icons","list"],"unless":"one_shot"}
+{"wait":{"directory":"photos-c"},"message":"the browser to be working in 'photos-c'","unless":"one_shot"}
+{"settle":{"pane":"photos-c"},"unless":"one_shot"}
+{"fs":{"path":"photos-c","all_cached_in":"$cache/thumbnails/large","except_suffix":".stl"},"message":"replacement worker to finish the next folder","unless":"one_shot"}
+{"log":{"count":"browser sandbox started","equals":"$initial","plus":1},"timeout_ms":0,"unless":"one_shot"}
 {"fs":{"path":"photos-a/photo-0.png","pixel":{"at":[0,0],"rgb":[40,160,80]}},"timeout_ms":0}
 {"fs":{"path":"photos-a/photo-1.png","pixel":{"at":[0,0],"rgb":[40,160,80]}},"timeout_ms":0}
 {"fs":{"path":"photos-a/photo-2.png","pixel":{"at":[0,0],"rgb":[40,160,80]}},"timeout_ms":0}

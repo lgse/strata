@@ -15,6 +15,10 @@ use super::super::metadata::MAX_METADATA_BYTES;
 
 pub(super) const MAX_OUTPUT_BYTES: u64 = super::super::MAX_OUTPUT_BYTES;
 
+/// A supervisor's first byte. Any other startup failure closes the socket instead.
+pub(super) const READY: u8 = 1;
+pub(super) const NAMESPACES_RESTRICTED: u8 = 0;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub(crate) enum Operation {

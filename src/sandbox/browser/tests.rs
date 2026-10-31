@@ -747,15 +747,37 @@ fn preview_operations_render_inside_the_decoder() {
 }
 
 #[test]
-fn disabling_workers_falls_back_to_oneshot_sandboxes() {
-    enable_workers();
-    let initial = workers_supported();
-    disable_workers();
-    assert!(!workers_supported());
-    let worker = Worker::spawn().expect("spawn fallback");
-    assert!(matches!(worker, Worker::OneShot));
-    if initial {
-        enable_workers();
-        assert!(workers_supported());
+fn only_denied_namespaces_make_supervisors_report_a_restriction() {
+    for (result, restricted) in [
+        (Ok(()), false),
+        (Err(io::Error::from_raw_os_error(libc::EPERM)), true),
+        (Err(io::Error::from_raw_os_error(libc::EACCES)), true),
+        (Err(io::Error::from_raw_os_error(libc::EAGAIN)), false),
+        (Err(io::Error::from_raw_os_error(libc::ENOSPC)), false),
+        (Err(io::Error::from_raw_os_error(libc::ENOMEM)), false),
+        (Err(io::Error::other("multithreaded")), false),
+    ] {
+        let status = worker::probe_status(&result);
+        assert_eq!(status == worker::PROBE_RESTRICTED, restricted, "{result:?}");
+        assert_eq!(status == 0, result.is_ok(), "{result:?}");
+    }
+}
+
+#[test]
+fn only_an_explicit_restriction_byte_disables_persistent_workers() {
+    for (bytes, expected) in [
+        (&[wire::READY][..], Ok(Readiness::Ready)),
+        (
+            &[wire::NAMESPACES_RESTRICTED][..],
+            Ok(Readiness::NamespacesRestricted),
+        ),
+        (&[][..], Err(io::ErrorKind::UnexpectedEof)),
+        (&[7][..], Err(io::ErrorKind::InvalidData)),
+    ] {
+        assert_eq!(
+            read_readiness(&mut &*bytes).map_err(|error| error.kind()),
+            expected,
+            "{bytes:?}"
+        );
     }
 }

@@ -1449,6 +1449,7 @@
   "The sandbox couldn't start. Unprivileged user namespaces may be disabled or restricted, for example by AppArmor.": "Не удалось запустить песочницу. Возможно, непривилегированные пространства имён пользователей отключены или ограничены, например AppArmor.",
   "Thumbnails reuse sandboxed worker processes.": "Миниатюры создаются повторно используемыми изолированными процессами.",
   "The kernel doesn't support Landlock ABI 3, so each thumbnail starts its own sandbox and loads more slowly.": "Ядро не поддерживает Landlock ABI 3, поэтому для каждой миниатюры запускается отдельная песочница и они загружаются медленнее.",
+  "The system blocks nested user namespaces, for example through AppArmor, so each thumbnail starts its own sandbox and loads more slowly.": "Система блокирует вложенные пространства имён пользователей, например через AppArmor, поэтому для каждой миниатюры запускается отдельная песочница и они загружаются медленнее.",
   "A sandboxed worker couldn't render a sample image.": "Изолированному процессу не удалось отрисовать образец изображения.",
   "A sample file was processed correctly.": "Образец файла успешно обработан.",
   "A sample file couldn't be processed.": "Не удалось обработать образец файла.",

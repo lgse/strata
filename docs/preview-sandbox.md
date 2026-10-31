@@ -372,6 +372,14 @@ operations; unknown syscalls, alternate ABIs, and newer mutation interfaces fail
 closed. All setup completes before parsing a file. On systems without Landlock
 ABI 3, the pool retains the original one-shot read-only-bind bubblewrap path,
 with the same concurrency budget; it never silently decodes without protection.
+Some hosts let bubblewrap start but deny nested namespaces to everything inside
+it, for example AppArmor's `unpriv_bwrap` profile on Ubuntu 24.04 and its
+derivatives. Each supervisor therefore probes job-namespace setup before its
+first job and answers with a one-byte handshake: ready, or restricted when the
+probe was denied permission. A restricted answer switches the pool to the same
+one-shot path for the rest of the process. Any other startup failure (exit
+before the handshake, a failed probe fork, resource exhaustion, or the startup
+deadline) fails only that request, and the next request starts a supervisor again.
 GDK Pixbuf's glycin loaders cannot start their own bubblewrap sandbox inside a
 job, because Landlock blocks its namespace setup, so they run directly under the
 job's protections. The seccomp filter permits the loopback-interface lookup that

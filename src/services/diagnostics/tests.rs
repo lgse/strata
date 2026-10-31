@@ -85,30 +85,67 @@ fn preview_sandbox_reports_the_first_missing_requirement_before_rendering() {
 }
 
 #[test]
-fn workers_without_landlock_warn_without_rendering() {
-    let check = workers(false, || panic!("workers are unavailable"));
-    assert_eq!(
-        (check.status, check.finding),
-        (Status::Warning, Finding::LandlockUnavailable)
-    );
-    let check = workers(true, || Err("Thumbnail unavailable".into()));
-    assert_eq!(
-        (check.status, check.finding),
-        (Status::Problem, Finding::WorkersFailed)
-    );
-}
-
-#[test]
-fn workers_warn_when_workers_disabled_during_render() {
-    let check = workers(true, || {
-        crate::sandbox::browser::disable_workers();
-        Ok(())
-    });
-    assert_eq!(
-        (check.status, check.finding),
-        (Status::Warning, Finding::LandlockUnavailable)
-    );
-    crate::sandbox::browser::enable_workers();
+fn workers_report_why_thumbnails_use_one_shot_sandboxes() {
+    use WorkerSupport::{Available, LandlockUnavailable, NamespacesRestricted};
+    for (before, after, render, rendered, status, finding) in [
+        (
+            LandlockUnavailable,
+            LandlockUnavailable,
+            Ok(()),
+            false,
+            Status::Warning,
+            Finding::LandlockUnavailable,
+        ),
+        (
+            NamespacesRestricted,
+            NamespacesRestricted,
+            Ok(()),
+            false,
+            Status::Warning,
+            Finding::NamespacesRestricted,
+        ),
+        (
+            Available,
+            NamespacesRestricted,
+            Ok(()),
+            true,
+            Status::Warning,
+            Finding::NamespacesRestricted,
+        ),
+        (
+            Available,
+            Available,
+            Ok(()),
+            true,
+            Status::Passed,
+            Finding::WorkersWork,
+        ),
+        (
+            Available,
+            Available,
+            Err("Thumbnail unavailable".to_owned()),
+            true,
+            Status::Problem,
+            Finding::WorkersFailed,
+        ),
+    ] {
+        let support = Cell::new(before);
+        let called = Cell::new(false);
+        let check = workers(
+            || support.get(),
+            || {
+                called.set(true);
+                support.set(after);
+                render.clone()
+            },
+        );
+        assert_eq!(called.get(), rendered, "{before:?} -> {after:?}");
+        assert_eq!(
+            (check.status, check.finding),
+            (status, finding),
+            "{before:?} -> {after:?}"
+        );
+    }
 }
 
 #[test]

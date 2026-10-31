@@ -1449,6 +1449,7 @@
   "The sandbox couldn't start. Unprivileged user namespaces may be disabled or restricted, for example by AppArmor.": "No se pudo iniciar el entorno aislado. Puede que los espacios de nombres de usuario sin privilegios estén desactivados o restringidos, por ejemplo, por AppArmor.",
   "Thumbnails reuse sandboxed worker processes.": "Las miniaturas reutilizan procesos aislados.",
   "The kernel doesn't support Landlock ABI 3, so each thumbnail starts its own sandbox and loads more slowly.": "El kernel no admite Landlock ABI 3, así que cada miniatura inicia su propio entorno aislado y tarda más en cargarse.",
+  "The system blocks nested user namespaces, for example through AppArmor, so each thumbnail starts its own sandbox and loads more slowly.": "El sistema bloquea los espacios de nombres de usuario anidados, por ejemplo mediante AppArmor, así que cada miniatura inicia su propio entorno aislado y tarda más en cargarse.",
   "A sandboxed worker couldn't render a sample image.": "Un proceso aislado no pudo procesar una imagen de muestra.",
   "A sample file was processed correctly.": "Se procesó correctamente un archivo de muestra.",
   "A sample file couldn't be processed.": "No se pudo procesar un archivo de muestra.",

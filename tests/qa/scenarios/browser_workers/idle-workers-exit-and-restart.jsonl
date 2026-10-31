@@ -4,16 +4,16 @@
 {"settle":{"pane":"photos-a"}}
 {"fs":{"path":"photos-a","all_cached_in":"$cache/thumbnails/large","except_suffix":".stl"},"message":"initial thumbnails"}
 {"log":{"matches":"browser sandbox started pid=(\\d+)"},"as":"original"}
-{"log":{"contains":"Landlock ABI 3 unavailable"},"as":"landlocked"}
-{"log":{"matches":"browser sandbox started pid=(\\d+)","at_least":1},"timeout_ms":0,"unless":"landlocked"}
-{"proc":{"gone":"$original"},"message":"idle sandbox processes to exit without another request","unless":"landlocked"}
-{"log":{"count":"idle browser sandbox retired","equals":"$original"},"message":"idle sandbox processes to exit without another request","unless":"landlocked"}
-{"log":{"matches":"browser sandbox started pid=(\\d+)","equals":0},"timeout_ms":0,"if":"landlocked"}
+{"log":{"contains":"retaining one-shot sandboxes"},"as":"one_shot"}
+{"log":{"matches":"browser sandbox started pid=(\\d+)","at_least":1},"timeout_ms":0,"unless":"one_shot"}
+{"proc":{"gone":"$original"},"message":"idle sandbox processes to exit without another request","unless":"one_shot"}
+{"log":{"count":"idle browser sandbox retired","equals":"$original"},"message":"idle sandbox processes to exit without another request","unless":"one_shot"}
+{"log":{"matches":"browser sandbox started pid=(\\d+)","equals":0},"timeout_ms":0,"if":"one_shot"}
 {"key":"alt+Left"}
 {"wait":{"entry":"photos-b"},"message":"parent after idle retirement"}
 {"select":{"entry":"photos-b"}}
 {"wait":{"directory":"photos-b"},"message":"the browser to be working in 'photos-b'"}
 {"settle":{"pane":"photos-b"}}
 {"fs":{"path":"photos-b","all_cached_in":"$cache/thumbnails/large","except_suffix":".stl"},"message":"thumbnails after idle retirement"}
-{"log":{"matches":"browser sandbox started pid=(\\d+)","at_least":"$original","plus":1},"timeout_ms":0,"unless":"landlocked"}
-{"log":{"matches":"browser sandbox started pid=(\\d+)","equals":"$original"},"timeout_ms":0,"if":"landlocked"}
+{"log":{"matches":"browser sandbox started pid=(\\d+)","at_least":"$original","plus":1},"timeout_ms":0,"unless":"one_shot"}
+{"log":{"matches":"browser sandbox started pid=(\\d+)","equals":"$original"},"timeout_ms":0,"if":"one_shot"}

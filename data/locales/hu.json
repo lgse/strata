@@ -1449,6 +1449,7 @@
   "The sandbox couldn't start. Unprivileged user namespaces may be disabled or restricted, for example by AppArmor.": "A homokozót nem sikerült elindítani. Lehet, hogy a nem privilegizált felhasználói névterek le vannak tiltva vagy korlátozva, például az AppArmor által.",
   "Thumbnails reuse sandboxed worker processes.": "A bélyegképek homokozóban futó munkafolyamatokat használnak újra.",
   "The kernel doesn't support Landlock ABI 3, so each thumbnail starts its own sandbox and loads more slowly.": "A kernel nem támogatja a Landlock ABI 3-at, ezért minden bélyegkép saját homokozót indít, és lassabban töltődik be.",
+  "The system blocks nested user namespaces, for example through AppArmor, so each thumbnail starts its own sandbox and loads more slowly.": "A rendszer letiltja a beágyazott felhasználói névtereket, például AppArmorral, ezért minden bélyegkép saját homokozót indít, és lassabban töltődik be.",
   "A sandboxed worker couldn't render a sample image.": "Egy homokozóban futó munkafolyamat nem tudott mintaképet megjeleníteni.",
   "A sample file was processed correctly.": "Egy mintafájl feldolgozása sikeresen megtörtént.",
   "A sample file couldn't be processed.": "Nem sikerült feldolgozni egy mintafájlt.",

@@ -62,9 +62,14 @@ pub(super) fn namespaces() -> io::Result<()> {
 }
 
 pub(super) fn wait(pid: Pid) -> io::Result<bool> {
+    Ok(exit_code(pid)? == Some(0))
+}
+
+/// `None` when the child was killed by a signal.
+pub(super) fn exit_code(pid: Pid) -> io::Result<Option<i32>> {
     loop {
         match waitpid(Some(pid), WaitOptions::empty()) {
-            Ok(Some((_, status))) => return Ok(status.exit_status() == Some(0)),
+            Ok(Some((_, status))) => return Ok(status.exit_status()),
             Ok(None) => continue,
             Err(rustix::io::Errno::INTR) => continue,
             Err(error) => return Err(error.into()),

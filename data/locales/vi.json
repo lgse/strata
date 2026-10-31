@@ -1449,6 +1449,7 @@
   "The sandbox couldn't start. Unprivileged user namespaces may be disabled or restricted, for example by AppArmor.": "Không thể khởi động hộp cát. Không gian tên người dùng không đặc quyền có thể đã bị tắt hoặc bị hạn chế, ví dụ bởi AppArmor.",
   "Thumbnails reuse sandboxed worker processes.": "Hình thu nhỏ dùng lại các tiến trình trong hộp cát.",
   "The kernel doesn't support Landlock ABI 3, so each thumbnail starts its own sandbox and loads more slowly.": "Nhân không hỗ trợ Landlock ABI 3 nên mỗi hình thu nhỏ khởi động hộp cát riêng và tải chậm hơn.",
+  "The system blocks nested user namespaces, for example through AppArmor, so each thumbnail starts its own sandbox and loads more slowly.": "Hệ thống chặn không gian tên người dùng lồng nhau, ví dụ qua AppArmor, nên mỗi hình thu nhỏ khởi động hộp cát riêng và tải chậm hơn.",
   "A sandboxed worker couldn't render a sample image.": "Một tiến trình trong hộp cát không thể kết xuất ảnh mẫu.",
   "A sample file was processed correctly.": "Tệp mẫu đã được xử lý đúng.",
   "A sample file couldn't be processed.": "Không thể xử lý tệp mẫu.",
