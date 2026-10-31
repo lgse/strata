@@ -508,6 +508,11 @@ impl InlineSearch {
             .is_some_and(|state| state.session.awaiting_results())
     }
 
+    pub(in crate::ui) fn has_pending_results(&self) -> bool {
+        self.showing_results()
+            .is_some_and(|state| state.session.has_pending_results())
+    }
+
     pub(in crate::ui) fn results_view(&self) -> Option<gtk::Widget> {
         Some(self.showing_results()?.collection.view.clone())
     }

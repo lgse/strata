@@ -1,6 +1,24 @@
 // SPDX-License-Identifier: MIT
 use super::*;
 
+thread_local! {
+    static NEXT_RESULTS: RefCell<Option<Receiver<SearchEvent>>> = const { RefCell::new(None) };
+}
+
+pub(in crate::ui) fn next_results() -> std::sync::mpsc::Sender<SearchEvent> {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    NEXT_RESULTS.with_borrow_mut(|next| {
+        assert!(next.replace(receiver).is_none());
+    });
+    sender
+}
+
+pub(super) fn intercept_results(receiver: Receiver<SearchEvent>) -> Receiver<SearchEvent> {
+    NEXT_RESULTS
+        .with_borrow_mut(|next| next.take())
+        .unwrap_or(receiver)
+}
+
 fn result(query: &str) -> SearchEvent {
     SearchEvent::Results {
         query: query.into(),

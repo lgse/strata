@@ -81,6 +81,7 @@ struct State {
     source: RefCell<Option<glib::SourceId>>,
     deliver: RefCell<Option<Deliver>>,
     awaiting: Cell<bool>,
+    incomplete: Cell<bool>,
     pruning: RefCell<Option<gio::Cancellable>>,
     admission: RefCell<Option<Admission>>,
 }
@@ -109,6 +110,10 @@ impl SearchSession {
 
     pub(super) fn awaiting_results(&self) -> bool {
         self.0.awaiting.get()
+    }
+
+    pub(super) fn has_pending_results(&self) -> bool {
+        self.0.awaiting.get() || self.0.incomplete.get()
     }
 
     pub(super) fn searches(&self, input: &SearchInput) -> bool {
@@ -142,6 +147,7 @@ impl SearchSession {
         self.0.worker.take();
         self.0.deliver.take();
         self.0.awaiting.set(false);
+        self.0.incomplete.set(false);
         self.0.query.borrow_mut().clear();
     }
 
@@ -299,6 +305,8 @@ impl SearchSession {
                 limits,
             ),
         };
+        #[cfg(test)]
+        let receiver = tests::intercept_results(receiver);
         self.0.worker.replace(Some(Worker {
             input,
             limits,
@@ -326,6 +334,7 @@ impl SearchSession {
             };
             if let Some(batch) = latest {
                 state.awaiting.set(false);
+                state.incomplete.set(batch.indexing || batch.has_more);
                 let deliver = state.deliver.borrow().clone();
                 if let Some(deliver) = deliver {
                     deliver(batch);
@@ -383,4 +392,4 @@ fn drain(
 }
 
 #[cfg(test)]
-mod tests;
+pub(in crate::ui) mod tests;
