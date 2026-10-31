@@ -2787,7 +2787,9 @@ impl Browser {
                 OperationEvent::EntryPlaced {
                     request_id: id,
                     placed,
-                } if *id == request_id => browser.publish_placement(&original, placed, new_item),
+                } if *id == request_id => {
+                    browser.publish_placement(request_id, &original, placed, new_item);
+                }
                 _ => browser
                     .state
                     .borrow_mut()
@@ -2810,6 +2812,7 @@ impl Browser {
 
     fn publish_placement(
         self: &Rc<Self>,
+        request_id: OperationRequestId,
         original: &Location,
         placed: &[Location],
         new_item: bool,
@@ -2817,6 +2820,14 @@ impl Browser {
         let (Some(outermost), Some(current)) = (placed.first(), placed.last()) else {
             return;
         };
+        // As for a rename, a placement that another operation superseded
+        // still moved the item, but records no undo and leaves the view alone.
+        if !self.is_current_operation(request_id) {
+            if !new_item {
+                self.publish_relocation(original, current);
+            }
+            return;
+        }
         // A placed folder's open columns close; the view then opens the
         // outermost folder that took its row, as a fresh chain.
         if let Some(depth) = (0..)
