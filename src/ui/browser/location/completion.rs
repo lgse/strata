@@ -18,7 +18,10 @@ use crate::ui::keys::{
         COMPLETE, DOWN, ENTER, ENTER_ANY_SHIFT, ESCAPE_ANY_SHIFT, PAGE_DOWN_KEY, PAGE_UP_KEY, UP,
     },
 };
-use crate::{adapters::probes, app::Browser};
+use crate::{
+    adapters::probes,
+    app::{Browser, Presence},
+};
 
 const MAX_COMPLETION_CANDIDATES: usize = 50;
 const MAX_SCANNED_ENTRIES: usize = 10_000;
@@ -54,6 +57,7 @@ pub(crate) struct PathCompletion {
     selected_index: Rc<Cell<Option<usize>>>,
     pending_reveal: Cell<bool>,
     suppress_refresh: Cell<bool>,
+    window_presence: Cell<Presence>,
     is_active: Box<dyn Fn() -> bool>,
     on_activate: Rc<dyn Fn()>,
     generation: Cell<u64>,
@@ -184,10 +188,18 @@ impl PathCompletion {
             selected_index: selected_index.clone(),
             pending_reveal: Cell::new(false),
             suppress_refresh: Cell::new(false),
+            window_presence: Cell::new(Presence::Focused),
             is_active: Box::new(is_active),
             on_activate,
             generation: Cell::new(0),
             request: RefCell::new(None),
+        });
+
+        let weak_completion = Rc::downgrade(&completion);
+        entry.connect_unmap(move |_| {
+            if let Some(completion) = weak_completion.upgrade() {
+                completion.dismiss();
+            }
         });
 
         let weak_completion = Rc::downgrade(&completion);
@@ -255,7 +267,10 @@ impl PathCompletion {
     }
 
     pub(crate) fn refresh(self: &Rc<Self>, entry: &gtk::Entry, browser: &Rc<Browser>) {
-        if !(self.is_active)() || entry.root().is_none() {
+        if self.window_presence.get() != Presence::Focused
+            || !(self.is_active)()
+            || entry.root().is_none()
+        {
             self.cancel_request();
             self.show(entry, Vec::new());
             return;
@@ -443,7 +458,7 @@ impl PathCompletion {
     }
 
     fn present_for_entry(&self, entry: &gtk::Entry) {
-        if !(self.is_active)() {
+        if self.window_presence.get() != Presence::Focused || !(self.is_active)() {
             self.dismiss();
             return;
         }
@@ -451,7 +466,7 @@ impl PathCompletion {
             self.hide();
             return;
         }
-        if entry.width() <= 0 {
+        if !entry.is_mapped() || entry.width() <= 0 {
             return;
         }
         // Include the entry's CSS padding and border, not just its text area.
@@ -473,6 +488,13 @@ impl PathCompletion {
         self.pending_reveal.set(false);
         if !self.popover.is_visible() {
             self.popover.popup();
+        }
+    }
+
+    pub(crate) fn set_window_presence(&self, presence: Presence) {
+        self.window_presence.set(presence);
+        if presence != Presence::Focused {
+            self.dismiss();
         }
     }
 

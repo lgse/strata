@@ -1,0 +1,11 @@
+{"scenario":"path-completion-dismisses-on-window-switch","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"session_bus":true,"quality":{"impact":2,"coverage":3,"criticality":3,"diagnostic":4,"score":23,"note":"Second window taking activation closes the first window's path suggestion and keeps the typed path; location unit tests call set_presence directly, this is the only route through real window activation"}}
+{"key":"ctrl+l"}
+{"wait":{"field":{"name":"Location (Ctrl+L)","focused":true}},"message":"the location entry to take focus"}
+{"key":"ctrl+a"}
+{"type":"$fixture/doc"}
+{"wait":{"present":{"role":"label","name":"documents/"}},"message":"the path suggestion to appear"}
+{"remember":{"field":true},"as":"location"}
+{"launch":["$fixture/pictures"]}
+{"wait":{"windows":{"title":"Strata","count":2}},"message":"a second window to open"}
+{"wait":{"absent":{"role":"label","name":"documents/"}},"message":"the inactive window to dismiss its path suggestion"}
+{"expect":{"field":{"of":"location","text":"$fixture/doc"}},"message":"dismissing suggestions to preserve the typed path"}
