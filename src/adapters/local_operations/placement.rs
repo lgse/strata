@@ -407,15 +407,18 @@ fn place_non_directory(
                     Err(PlaceError::Exists)
                 };
             }
-            Err(Errno::PERM | Errno::ACCESS) => {
+            Err(error @ (Errno::PERM | Errno::ACCESS)) => {
                 if exists(fs, to)? {
                     return Err(PlaceError::Exists);
                 }
-                // Linking can be refused for this item alone (protected_hardlinks),
-                // so only a probe teaches the mount anything. An SFTP mount without a
-                // link extension refuses every link, and answers EACCES, not EPERM.
-                if mount.capabilities().hard_links.is_none() {
-                    let _ = mount.probe(true, false);
+                // Linking can be refused for this item alone (protected_hardlinks) or by
+                // an SFTP server without a link extension (EACCES), so only a probe
+                // teaches the mount anything; a folder that refuses the probe's own
+                // file refused the link too.
+                if mount.capabilities().hard_links.is_none()
+                    && mount.probe(true, false) == Err(Errno::ACCESS)
+                {
+                    return Err(PlaceError::Io(error));
                 }
             }
             Err(Errno::MLINK) => {}
