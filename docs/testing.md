@@ -10,6 +10,7 @@ disk. Both run in one pinned container image.
 
 ```bash
 ./scripts/quality.sh                          # formatting, Clippy, and every Rust test
+./scripts/quality.sh test --jobs 4            # every Rust test, on four private displays at once
 ./scripts/test-headless.py relevant::module   # a native Rust selection on a private display
 ./scripts/qa.sh                               # every QA scenario, every mode
 ./scripts/qa.sh copy-leaves-source            # one scenario, all of its runs
@@ -83,7 +84,8 @@ child actually executes the case; an unchanged outer test count is not enough.
 
 A filter must collect at least one test; use Cargo's output or a collection
 check to verify that it did. `scripts/quality.sh` only accepts `all`, `fmt`,
-`clippy`, or `test` and does **not** forward test filters, so it cannot be used
+`clippy`, or `test`, plus the test phase's `--jobs N` and `--refresh-timings`
+(see "Local lanes"), and does **not** forward test filters, so it cannot be used
 for a targeted test selection.
 
 `./scripts/qa.sh` takes scenario names, or `<scenario>/<run>` for one run, and
@@ -191,7 +193,7 @@ dependency layers are not a full quality hit.
 
 The Rust suite runs with `--all-targets --all-features --locked` inside private
 Xvfb, with `GTK_A11Y=none`, `NO_AT_BRIDGE=1`, and `STRATA_REQUIRE_GTK_TESTS=1`.
-The shared Xvfb server uses `-noreset` so consecutive test processes do not
+Each Xvfb server uses `-noreset` so consecutive test processes do not
 race a server reset when the last display client exits. GTK initialization
 failures cannot silently skip tests. The container's `/tmp`, which holds `HOME` and
 the tests' temporary folders, is an executable tmpfs: copy tests need `O_TMPFILE`
@@ -205,15 +207,12 @@ CI's **Quality build and lint** job runs formatting and Clippy, then compiles
 `cargo test --locked --all-targets --all-features --no-run` once. It exports only
 test executables and a plan, not Cargo caches. `scripts/quality_ci.py` collects
 each libtest inventory, including the explicitly ignored tests, and assigns every
-entry to one of four shards. Timing hints in `scripts/quality-durations.json`
-come from successful GTK child runs in
-[run 34560353003](https://github.com/lgse/strata/actions/runs/34560353003).
-Tests are balanced longest-first across the shards; unknown tests receive a
-one-second weight and always participate. Timing hints are not an allowlist.
-The deferred-scroll timing was refreshed to 1.32 seconds from
-[run 34811363582](https://github.com/lgse/strata/actions/runs/34811363582).
+entry to one of four shards. Tests are balanced longest-first across the shards
+using the weights in `scripts/quality-durations.json` (see "Balancing weights");
+unknown tests receive a one-second weight and always participate. The weights are
+not an allowlist.
 `ui::search::tests::deferred_scroll_restoration_yields_to_updates_wheel_scrollbar_and_query_reset`
-runs in its own libtest process before the other tests assigned to its shard,
+runs in its own libtest process before the other tests assigned to its lane,
 not on a dedicated runner. Each process must pass its complete selection before
 an aggregate shard receipt is written. Validation rejects a missing, duplicated,
 or ignored isolated test; renaming or removing it requires updating `ISOLATED_TEST`.
@@ -221,8 +220,18 @@ Sharding does not shorten an individual test.
 
 Each **Rust tests shard N** verifies the checkout revision, application/Rust-test source
 fingerprint, image inputs, executable checksums, and the entire libtest inventory
-before selecting exact names. Tests share neither a display nor a session bus
-with another shard. The existing per-process GTK serialization still applies.
+before selecting exact names. GTK tests run one at a time per display, since every
+GTK child of a test process waits on one lock: children on one display share its
+clipboard and pointer grabs. A display therefore keeps about one core busy, so
+each shard splits its tests across three **lanes** (`--jobs 3` in the workflow),
+balanced by the same weights. Each lane runs its own libtest processes under its
+own Xvfb server and private D-Bus session, and lanes share neither with each other
+nor with another shard. On four CPUs, one shard took about 240 seconds on one
+display and about 90 on three; at one lane per CPU or more, load-sensitive tests
+start to fail. The shard's
+receipt still covers all of its tests, and any failed lane fails the shard after
+the others finish. Lane logs are written while tests run and uploaded even when a
+shard times out.
 The runner checks libtest's actual selection and final passed/ignored counts
 before writing a success receipt; nonzero exits, empty runnable shards, or changed
 inventories fail. Existing `#[ignore]` entries stay explicitly accounted for;
@@ -253,10 +262,39 @@ python3 scripts/quality_ci.py verify
 
 The example runs shards sequentially for convenient local diagnosis; CI runs them
 in parallel on separate runners. These environment variables are CI handoff modes,
-not test filters; ordinary `./scripts/quality.sh test` still runs the complete
-unsharded suite. Rebuild the bundle after changing source or checkout revision.
+not test filters. Rebuild the bundle after changing source or checkout revision.
 The four-shard matrix and `SHARDS` constant must be updated together if tuning
 fan-out. Each shard has a ten-minute hang bound; timing is otherwise informational.
+
+### Local lanes
+
+Ordinary `./scripts/quality.sh test` runs `scripts/quality_ci.py local`. It builds
+the bundle once into `target/quality-local` as a single shard and runs it in lanes
+on this machine, with the same plan validation, isolated-test handling, receipts,
+and exactly-once verification as CI. The default is one lane per two available
+CPUs. Pass `--jobs N` to choose another count, for example `--jobs 1` for a single
+display. With one lane per CPU, some load-sensitive tests can fail. A lane's full
+output is in `target/quality-local/reports/shard-0-lane-N.log`; a failing run
+prints the failed tests' panics and the end of the lane's log.
+
+### Balancing weights
+
+`scripts/quality-durations.json` maps each test to the seconds it occupies a lane.
+Refresh it after adding or substantially changing slow tests:
+
+```bash
+./scripts/quality.sh test --refresh-timings
+```
+
+This runs the local lanes with libtest's per-test times, which stable Rust reports
+only with `RUSTC_BOOTSTRAP=1 -Z unstable-options --report-time`, so it is opt-in
+and never part of ordinary or CI runs. Each libtest process uses one thread so a
+GTK test's time excludes waiting for the display. A test that runs in an isolated
+GTK child keeps its full time; any other test shares libtest's threads, four on
+CI runners, so it is weighted at a quarter of its time, with a floor of 0.01
+seconds. The run fails unless it measured exactly the runnable tests, and then
+rewrites the file. Review the diff like any generated file; the weights balance
+lanes and shards but never select tests.
 
 ### Keep Rust test windows off the local desktop
 
