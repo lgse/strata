@@ -38,7 +38,20 @@ const FILE_MANAGER_STATE_DIRECTORY: &str = "strata/file-manager-install";
 const FILE_MANAGER_STATE_FILE: &str = "state.toml";
 const INODE_DIRECTORY: &str = "inode/directory";
 
+pub(crate) const PACKAGE_PROVIDED: &str = "The package that installed this build provides its desktop integrations. Configure them in your system configuration instead.";
+
+/// A `STRATA_INTEGRATIONS=package` build never writes, removes, or refreshes the
+/// files its package ships.
+fn require_runtime_integrations() -> Result<(), String> {
+    if crate::build_info::runtime_integrations_enabled() {
+        Ok(())
+    } else {
+        Err(crate::i18n::tr(PACKAGE_PROVIDED))
+    }
+}
+
 pub(crate) fn install() -> Result<String, String> {
+    require_runtime_integrations()?;
     let executable = crate::services::installed_executable().map_err(|error| {
         rust_i18n::t!(
             "Could not locate the Strata executable: %{error}",
@@ -58,6 +71,7 @@ pub(crate) fn install() -> Result<String, String> {
 }
 
 pub(crate) fn uninstall() -> Result<String, String> {
+    require_runtime_integrations()?;
     let context = SetupContext::from_environment()?;
     let preserved_edits = uninstall_at(&context)?;
     dismiss_prompt_at(&context)?;
@@ -73,6 +87,7 @@ pub(crate) fn uninstall() -> Result<String, String> {
 }
 
 pub(crate) fn install_file_manager() -> Result<String, String> {
+    require_runtime_integrations()?;
     let executable = crate::services::installed_executable().map_err(|error| {
         rust_i18n::t!(
             "Could not locate the Strata executable: %{error}",
@@ -90,6 +105,7 @@ pub(crate) fn install_file_manager() -> Result<String, String> {
 }
 
 pub(crate) fn uninstall_file_manager() -> Result<String, String> {
+    require_runtime_integrations()?;
     let context = SetupContext::from_environment()?;
     let restored = restore_file_manager_at(&context, |previous| {
         let restored = restore_folder_handler(
@@ -491,11 +507,17 @@ pub(crate) fn status() -> Result<PortalStatus, String> {
 }
 
 pub(crate) fn refresh_after_in_place_update() -> Result<(), String> {
+    if !crate::build_info::runtime_integrations_enabled() {
+        return Ok(());
+    }
     let context = SetupContext::from_environment()?;
     refresh_configured_portal_at(&context, refresh_portals)
 }
 
 pub(crate) fn refresh_stale_portal() -> Result<(), String> {
+    if !crate::build_info::runtime_integrations_enabled() {
+        return Ok(());
+    }
     let context = SetupContext::from_environment()?;
     let executable = crate::services::installed_executable().map_err(|error| {
         rust_i18n::t!(
@@ -622,6 +644,7 @@ fn status_at(context: &SetupContext) -> Result<PortalStatus, String> {
 }
 
 pub(crate) fn dismiss_prompt() -> Result<String, String> {
+    require_runtime_integrations()?;
     dismiss_prompt_at(&SetupContext::from_environment()?)?;
     Ok("File chooser offer dismissed. You can enable it later in Settings → General → System file manager.".into())
 }

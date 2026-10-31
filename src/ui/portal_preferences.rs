@@ -6,12 +6,17 @@ use gtk::{gio, glib, prelude::*};
 
 use crate::{assets::icons, portal_setup};
 
-use super::desktop_integration::SETUP_RUNNING;
+use super::desktop_integration::{SETUP_RUNNING, package_provided_row};
 
 #[cfg(test)]
 mod tests;
 
+pub(crate) const PACKAGE_NOTE: &str = "The package that installed this build provides the file chooser portal and the file manager service. Enable them in your system configuration as the package documentation describes.";
+
 pub(super) fn settings_row() -> gtk::Box {
+    if !crate::build_info::runtime_integrations_enabled() {
+        return package_provided_row("System file manager", PACKAGE_NOTE);
+    }
     let row = gtk::Box::new(gtk::Orientation::Vertical, 2);
     row.add_css_class("settings-option");
     let content = gtk::Box::new(gtk::Orientation::Vertical, 2);

@@ -1,6 +1,7 @@
 {
   lib,
   rustPlatform,
+  runCommand,
   pkg-config,
   wrapGAppsHook4,
   glib,
@@ -36,8 +37,24 @@ let
     coreutils
     fontconfig
   ];
+  # A derivation holding only service files that point at the finished package, so
+  # a configuration enables each integration deliberately instead of every install
+  # of the package claiming the FileManager1 bus name.
+  integrationFiles =
+    name: strata: files:
+    runCommand "strata-${name}" { strata = lib.getExe strata; } (
+      lib.concatMapStrings (
+        { source, target }:
+        ''
+          install -Dm644 ${source} "$out/${target}"
+          substituteInPlace "$out/${target}" \
+            --replace-quiet /usr/bin/strata "$strata" \
+            --replace-quiet @STRATA_EXECUTABLE@ "$strata"
+        ''
+      ) files
+    );
 in
-rustPlatform.buildRustPackage {
+rustPlatform.buildRustPackage (finalAttrs: {
   pname = "strata";
   version = manifest.package.version;
   src = lib.fileset.toSource {
@@ -78,6 +95,7 @@ rustPlatform.buildRustPackage {
   STRATA_BUILD_COMMIT = buildCommit;
   STRATA_SANDBOX_ROOT = "/nix/store";
   STRATA_UPDATER = "disabled";
+  STRATA_INTEGRATIONS = "package";
   STRATA_TRUSTED_COMMAND_PATH = lib.makeBinPath (
     helpers
     ++ [
@@ -108,6 +126,25 @@ rustPlatform.buildRustPackage {
   # GTK tests require an isolated display and D-Bus; run separately from packaging.
   doCheck = false;
 
+  passthru = {
+    fileChooserPortal = integrationFiles "file-chooser-portal" finalAttrs.finalPackage [
+      {
+        source = ./data/portal/strata.portal;
+        target = "share/xdg-desktop-portal/portals/strata.portal";
+      }
+      {
+        source = ./data/portal/org.freedesktop.impl.portal.desktop.strata.service.in;
+        target = "share/dbus-1/services/org.freedesktop.impl.portal.desktop.strata.service";
+      }
+    ];
+    fileManagerService = integrationFiles "file-manager-service" finalAttrs.finalPackage [
+      {
+        source = ./data/io.github.lgse.Strata.FileManager1.service;
+        target = "share/dbus-1/services/io.github.lgse.Strata.FileManager1.service";
+      }
+    ];
+  };
+
   meta = {
     inherit (manifest.package) description;
     homepage = "https://github.com/lgse/strata";
@@ -118,4 +155,4 @@ rustPlatform.buildRustPackage {
     ];
     mainProgram = "strata";
   };
-}
+})

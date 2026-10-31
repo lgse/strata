@@ -27,8 +27,15 @@
         }
       );
 
-      checks = forAllSystems (system: {
-        inherit (self.packages.${system}) strata;
-      });
+      checks = forAllSystems (
+        system:
+        let
+          inherit (self.packages.${system}) strata;
+        in
+        {
+          inherit strata;
+          inherit (strata) fileChooserPortal fileManagerService;
+        }
+      );
     };
 }

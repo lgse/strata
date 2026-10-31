@@ -103,10 +103,52 @@ allows unfree software, such as one with `nixpkgs.config.allowUnfree = true;`:
 pkgs.callPackage "${inputs.strata}/package.nix" { rarSupport = true; }
 ```
 
-The integrations that Strata installs from Settings or the command line (the
-file chooser portal, the default file manager service, and the udiskie unlock
-hook) are not supported on Nix yet. They would record the store path of the
-current build, which the next update or garbage collection invalidates.
+The Nix package builds with `STRATA_INTEGRATIONS=package`, so the desktop
+integrations that other installations set up from Settings or the command line
+(the file chooser portal, the FileManager1 service, and the udiskie unlock hook)
+come from your Nix configuration instead. Settings → General describes them as
+provided by the package, and `--install-portal`, `--uninstall-portal`,
+`--dismiss-portal-prompt`, `--install-udiskie-unlock`, and
+`--uninstall-udiskie-unlock` refuse. Those runtime installers would record the
+store path of the current build, which the next update or garbage collection
+invalidates; the derivations below follow the package through updates, rollbacks,
+and garbage collection.
+
+The package exposes `fileChooserPortal` (the `strata.portal` file and its D-Bus
+service) and `fileManagerService` (the `org.freedesktop.FileManager1` service).
+On NixOS:
+
+```nix
+{ inputs, pkgs, ... }:
+let
+  strata = inputs.strata.packages.${pkgs.stdenv.hostPlatform.system}.default;
+in
+{
+  environment.systemPackages = [ strata ];
+  xdg.portal.enable = true;
+  xdg.portal.extraPortals = [ strata.fileChooserPortal ];
+  xdg.portal.config.common."org.freedesktop.impl.portal.FileChooser" = [ "strata" "gtk" ];
+  services.dbus.packages = [ strata.fileManagerService ];
+}
+```
+
+Replace `gtk` with the chooser backend your desktop already uses, and keep
+Strata's FileManager1 service out of `services.dbus.packages` on a system whose
+desktop ships its own provider for that bus name unless Strata should answer
+"Open file location" everywhere. Home Manager has the same `xdg.portal` options;
+set `xdg.mimeApps.defaultApplications."inode/directory" = "io.github.lgse.Strata.desktop";`
+to make Strata the folder handler, and configure the udiskie unlock hook through
+`services.udiskie.settings`:
+
+```nix
+services.udiskie.settings = {
+  program_options = {
+    event_hook = [ (lib.getExe strata) "--udiskie-hook" "{event}" "{id_usage}" "{device_file}" "{id_uuid}" ];
+    password_prompt = false;
+  };
+  device_config = [ { is_luks = true; automount = false; } ];
+};
+```
 
 ### Interactive installation
 
@@ -829,6 +871,13 @@ feature-disabled binary. See [third-party notices](THIRD_PARTY_LICENSES.md#unrar
 Distributions that ship Strata updates through their own packages build with
 `STRATA_UPDATER=disabled`, which removes update checks, installs, and the
 Updates settings page. See [distribution packaging](docs/packaging.md#building-without-the-in-app-updater).
+
+### Builds with package-provided integrations
+
+Store-based packages such as Nix build with `STRATA_INTEGRATIONS=package`, which
+turns off the runtime installers for the file chooser portal, the FileManager1
+service, the Omarchy shortcuts, and the udiskie unlock hook so the package can
+ship those files itself. See [distribution packaging](docs/packaging.md#building-with-package-provided-integrations).
 
 Start with [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Deeper references:
 
