@@ -1,4 +1,4 @@
-{"scenario":"context-menu-keeps-column-target","modes":["columns"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"root-item"},{"id":"root-background"},{"id":"nested-item"},{"id":"nested-background"}],"cost":{"columns-root-item":1.4,"columns-root-background":1.5,"columns-nested-item":1.4,"columns-nested-background":1.4},"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":3,"score":45,"note":"Item and background context menus keep pane actions on the clicked column, with keyboard focus resuming there; no other scenario or unit test checks this action owner"}}
+{"scenario":"context-menu-keeps-column-target","modes":["columns"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"root-item"},{"id":"root-background"},{"id":"nested-item"},{"id":"nested-background"},{"id":"root-header"},{"id":"nested-header"}],"cost":{"columns-root-item":1.4,"columns-root-background":1.5,"columns-nested-item":1.4,"columns-nested-background":1.4,"columns-root-header":2.1,"columns-nested-header":1.4},"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":3,"score":45,"note":"Item, background and header menus keep column ownership through dismissal; header New Folder creates in the clicked parent."}}
 {"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open"}
 {"wait":{"present":{"role":"toggle button","name":"Preview panel"}},"message":"the preview panel toggle"}
 {"key":"Escape","when":{"state":{"target":{"role":"toggle button","name":"Preview panel"},"pressed":false}}}
@@ -16,20 +16,35 @@
 {"select":{"entry":"nested","dir":"documents"}}
 {"wait":{"directory":"nested"},"message":"the browser to be working in 'nested'"}
 {"settle":{"pane":"nested"}}
-{"select":{"entry":"readme.md","dir":"$root"},"variants":["root-item","root-background"]}
-{"select":{"entry":"child.txt","dir":"nested"},"variants":["nested-item","nested-background"]}
+{"select":{"entry":"readme.md","dir":"$root"},"variants":["root-item","root-background","root-header"]}
+{"select":{"entry":"child.txt","dir":"nested"},"variants":["nested-item","nested-background","nested-header"]}
 {"click":{"entry":"notes.txt","dir":"documents"},"button":3,"variants":["root-item","nested-item"]}
 {"wait":{"menu_items":{}},"message":"the context menu for 'notes.txt'","variants":["root-item","nested-item"]}
 {"click":{"background":true,"dir":"documents"},"button":3,"variants":["root-background","nested-background"]}
-{"wait":{"menu_items":{}},"message":"the background context menu to open","variants":["root-background","nested-background"]}
+{"click":{"role":"label","name":"documents","description":"$fixture/documents","within":{"pane":"documents"}},"button":3,"variants":["root-header","nested-header"]}
+{"wait":{"menu_items":{}},"message":"the background context menu to open","variants":["root-background","nested-background","root-header","nested-header"]}
 {"wait":{"panes_with":{"target":{"role":"button","name":"Refresh (F5)"},"names":["documents"]}},"message":"actions to stay on the menu's column"}
-{"move":{"pane":"$root"},"at":["50%","50%"],"variants":["root-item","root-background"]}
-{"move":{"pane":"nested"},"at":["50%","50%"],"variants":["nested-item","nested-background"]}
+{"move":{"pane":"$root"},"at":["50%","50%"],"variants":["root-item","root-background","root-header"]}
+{"move":{"pane":"nested"},"at":["50%","50%"],"variants":["nested-item","nested-background","nested-header"]}
 {"expect":{"menu_items":{}}}
 {"expect":{"panes_with":{"target":{"role":"button","name":"Refresh (F5)"},"names":["documents"]}}}
 {"key":"Escape"}
 {"wait":{"menu_items":null},"message":"the context menu to close"}
 {"key":"Down"}
 {"wait":{"focused":"report.md"},"message":"keyboard focus to reach 'report.md'","variants":["root-item","nested-item"]}
-{"wait":{"focused":"notes.txt"},"message":"keyboard focus to reach 'notes.txt'","variants":["root-background","nested-background"]}
+{"wait":{"focused":"notes.txt"},"message":"keyboard focus to reach 'notes.txt'","variants":["root-background","nested-background","root-header","nested-header"]}
 {"wait":{"panes_with":{"target":{"role":"button","name":"Refresh (F5)"},"names":["documents"]}},"message":"keyboard navigation to resume in the menu's column"}
+{"wait":{"panes":{"excludes":["nested"]}},"message":"keyboard selection to close the nested pane","variants":["root-header"]}
+{"settle":{"role":"label","name":"documents","description":"$fixture/documents","within":{"pane":"documents"}},"variants":["root-header"]}
+{"click":{"role":"label","name":"documents","description":"$fixture/documents","within":{"pane":"documents"}},"button":3,"variants":["root-header"]}
+{"wait":{"present":{"menu_item":"New Folder"}},"message":"the header folder menu to offer New Folder","variants":["root-header"]}
+{"settle":{"menu_item":"New Folder"},"variants":["root-header"]}
+{"click":{"menu_item":"New Folder"},"variants":["root-header"]}
+{"wait":{"field":{}},"message":"the new folder name editor","variants":["root-header"]}
+{"key":"ctrl+a","variants":["root-header"]}
+{"type":"header-created","variants":["root-header"]}
+{"wait":{"field":{"text":"header-created"}},"message":"the new folder name to be entered","variants":["root-header"]}
+{"key":"Return","variants":["root-header"]}
+{"fs":{"path":"documents/header-created","exists":true},"message":"New Folder from the header to create inside documents","variants":["root-header"]}
+{"fs":{"path":"documents/nested/header-created","exists":false},"timeout_ms":0,"variants":["root-header"]}
+{"fs":{"path":"header-created","exists":false},"timeout_ms":0,"variants":["root-header"]}

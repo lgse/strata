@@ -1,9 +1,9 @@
 use super::fs_quirks::{Births, HoldGuard, Op, Racer, Trash, hold};
 use super::*;
 use crate::adapters::local_operations::{
-    LocalDeleteJob, LocalDeleteQueue, PinnedEntry, parallel_delete_local_blocking_with_workers,
-    parallel_delete_local_with, process_local_delete_job, retry_local_open,
-    run_local_delete_workers,
+    Deadline, LocalDeleteJob, LocalDeleteQueue, PinnedEntry, RemovedReporter,
+    parallel_delete_local_blocking_with_workers, parallel_delete_local_with,
+    process_local_delete_job, retry_local_open, run_local_delete_workers,
 };
 use crate::{
     adapters::trash_support::SystemTrash,
@@ -219,6 +219,80 @@ fn parallel_workers_finish_nested_trees_without_following_symlinks() -> Result<(
         assert_eq!(fs::read(sentinel)?, b"keep");
     }
     Ok(())
+}
+
+#[test]
+fn workers_count_every_file_symlink_and_folder_they_remove() -> Result<(), Box<dyn Error>> {
+    for workers in [1, 2, 4] {
+        let root = tempfile::tempdir()?;
+        let target = root.path().join("target");
+        for index in 0..8 {
+            let nested = target.join(format!("{index}/nested"));
+            fs::create_dir_all(&nested)?;
+            fs::write(nested.join("file"), b"delete")?;
+            std::os::unix::fs::symlink("file", nested.join("link"))?;
+        }
+        let deadline = Deadline::default();
+        parallel_delete_local_blocking_with_workers(
+            vec![delete_root(&target)?],
+            Arc::new(AtomicBool::new(false)),
+            workers,
+            &deadline,
+        )?;
+        // The target, then per index its folder, its nested folder, a file and a symlink.
+        assert_eq!(deadline.removed(), 1 + 8 * 4, "{workers} workers");
+    }
+    Ok(())
+}
+
+#[test]
+fn removed_entries_are_reported_when_they_change_and_stop_with_the_reporter() {
+    let _serial = serial().expect("serialized");
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let deadline = Deadline::default();
+    let recorded = events.clone();
+    let reporter = RemovedReporter::start(
+        OperationRequestId(7),
+        deadline.clone(),
+        Rc::new(move |event| recorded.borrow_mut().push(event)),
+        Duration::from_millis(5),
+    );
+    let context = glib::MainContext::default();
+    let wait = |ms: u64| context.block_on(glib::timeout_future(Duration::from_millis(ms)));
+    let removed = || {
+        events
+            .borrow()
+            .iter()
+            .map(|event| match event {
+                OperationEvent::DeleteEntriesRemoved {
+                    request_id,
+                    removed,
+                } => (request_id.0, *removed),
+                other => panic!("unexpected event {other:?}"),
+            })
+            .collect::<Vec<_>>()
+    };
+    let wait_for_reports = |count: usize| {
+        let started = std::time::Instant::now();
+        while removed().len() < count && started.elapsed() < Duration::from_secs(5) {
+            wait(5);
+        }
+    };
+
+    wait(40);
+    assert!(removed().is_empty(), "nothing removed yet");
+    (0..3).for_each(|_| deadline.note_removed());
+    wait_for_reports(1);
+    wait(40);
+    assert_eq!(removed(), [(7, 3)], "an unchanged count is reported once");
+    deadline.note_removed();
+    wait_for_reports(2);
+    assert_eq!(removed(), [(7, 3), (7, 4)]);
+
+    drop(reporter);
+    deadline.note_removed();
+    wait(40);
+    assert_eq!(removed().len(), 2, "a dropped reporter stays silent");
 }
 
 #[test]
@@ -1735,6 +1809,87 @@ fn one_wait_for_open_files_covers_every_folder_of_a_delete_or_trash() -> Result<
         assert!(folders.iter().all(|folder| folder.is_dir()), "{row}");
         assert_eq!(waited_since(start)?, budget, "{row}");
     }
+    Ok(())
+}
+
+#[test]
+fn a_folder_kept_by_an_open_file_does_not_stop_the_rest_of_the_delete() -> Result<(), Box<dyn Error>>
+{
+    let _serial = serial()?;
+    let _clock = ClockGuard::set(SystemTime::UNIX_EPOCH + CLOCK_START);
+    let root = tempfile::tempdir()?;
+    let _scope = FsQuirks::install(root.path(), Quirks::nfs3());
+    let tree = root.path().join("tree");
+    let holds = Holds::default();
+    fs::create_dir(&tree)?;
+    folder_with_an_open_file(&tree.join("open"), &holds)?;
+    let rest = tree.join("rest");
+    fs::create_dir(&rest)?;
+    for index in 0..200 {
+        fs::write(rest.join(format!("{index}.txt")), b"deletable")?;
+    }
+
+    let events = delete_permanently(std::slice::from_ref(&tree));
+
+    let line = rust_i18n::t!(
+        "Could not delete “%{name}”: %{error}",
+        name = "open",
+        error = crate::i18n::tr(
+            "A file in it is still open in another program. Close it and try again."
+        )
+    );
+    assert!(
+        matches!(
+            events.last(),
+            Some(OperationEvent::CompletedWithErrors { message, .. }) if message.contains(&*line)
+        ),
+        "{events:?}"
+    );
+    assert!(
+        !rest.exists(),
+        "left behind: {:?}",
+        names(&rest).unwrap_or_default().len()
+    );
+    assert_eq!(names(&tree)?, ["open"]);
+    assert!(
+        names(&tree.join("open"))?
+            .iter()
+            .all(|name| foreign_leftover(OsStr::new(name)).is_some())
+    );
+    Ok(())
+}
+
+#[test]
+fn an_error_that_stops_a_delete_is_reported_over_an_earlier_open_folder()
+-> Result<(), Box<dyn Error>> {
+    let _serial = serial()?;
+    let _clock = ClockGuard::set(SystemTime::UNIX_EPOCH + CLOCK_START);
+    let root = tempfile::tempdir()?;
+    let _scope = FsQuirks::install(
+        root.path(),
+        Quirks {
+            fail: vec![(Op::Unlink, "broken", 0, rustix::io::Errno::IO)],
+            ..Quirks::nfs3()
+        },
+    );
+    let holds = Holds::default();
+    let open = root.path().join("open");
+    folder_with_an_open_file(&open, &holds)?;
+    let broken = root.path().join("broken");
+    fs::write(&broken, b"keep")?;
+
+    // One worker takes the newest job first, so the open folder is refused before the failure.
+    let error = parallel_delete_local_blocking_with_workers(
+        vec![delete_root(&broken)?, delete_root(&open)?],
+        Arc::new(AtomicBool::new(false)),
+        1,
+        &Deadline::default(),
+    )
+    .expect_err("the failed unlink");
+
+    assert!(error.contains("broken"), "{error}");
+    assert!(!error.contains("open"), "{error}");
+    assert!(broken.exists() && open.is_dir());
     Ok(())
 }
 

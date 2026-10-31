@@ -1320,6 +1320,66 @@ impl ViewState {
         cancelled
     }
 
+    /// Tab in a rename: commits the name, then opens the editor on the next item
+    /// (`direction` 1) or the previous one (-1). At the listing's edge it only commits.
+    pub(in crate::ui) fn advance_rename(self: &Rc<Self>, direction: i32) -> bool {
+        let field = self
+            .active_rename
+            .borrow()
+            .as_ref()
+            .map(|active| active.field.clone())
+            .or_else(|| self.mode_views.borrow().active_rename_field());
+        let Some(field) = field else {
+            return false;
+        };
+        let before = self
+            .browser
+            .rename_item()
+            .map(|(depth, position, _)| (depth, position));
+        self.submit_rename(&field);
+        // The committed row must not pull the cursor back once its rename lands.
+        self.yield_rename_reveal();
+        self.browser.move_selection(direction);
+        if let Some((depth, position, entry)) = self.browser.rename_item()
+            && before != Some((depth, position))
+        {
+            self.rename_when_shown(depth, position, entry);
+        }
+        true
+    }
+
+    fn rename_when_shown(self: &Rc<Self>, depth: usize, position: usize, entry: FileEntry) {
+        if self.begin_rename_item(depth, position, entry.clone()) {
+            return;
+        }
+        let weak = Rc::downgrade(self);
+        let reveal_generation = self.rename_reveal_generation.get();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        // The neighbouring row is allocated a frame after the scroll that showed it.
+        self.overlay.add_tick_callback(move |_, _| {
+            let Some(state) = weak.upgrade() else {
+                return gtk::glib::ControlFlow::Break;
+            };
+            let current = state.browser.rename_item().is_some_and(
+                |(current_depth, current_position, current)| {
+                    (current_depth, current_position) == (depth, position)
+                        && current.location == entry.location
+                },
+            );
+            if !current
+                || std::time::Instant::now() >= deadline
+                || state.rename_reveal_generation.get() != reveal_generation
+            {
+                return gtk::glib::ControlFlow::Break;
+            }
+            if state.begin_rename_item(depth, position, entry.clone()) {
+                gtk::glib::ControlFlow::Break
+            } else {
+                gtk::glib::ControlFlow::Continue
+            }
+        });
+    }
+
     fn submit_rename_entry(self: &Rc<Self>, entry: FileEntry, name: String) {
         let valid_change = name != entry.display_name && validate_basename(&name).is_ok();
         if !valid_change {

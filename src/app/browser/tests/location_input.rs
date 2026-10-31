@@ -140,7 +140,8 @@ fn sidebar_location_navigation_validates_uris_but_navigates_native_paths_directl
     assert!(events.borrow().iter().any(|event| matches!(
         event,
         BrowserEvent::LocationNavigationRejected {
-            error: LocationValidationError::NotMounted(location)
+            error: LocationValidationError::NotMounted(location),
+            ..
         } if location == &remote
     )));
     assert_eq!(remote_browser.active_location(), None);
@@ -328,7 +329,8 @@ fn location_input_reports_the_target_location_when_not_mounted() {
     assert!(events.borrow().iter().any(|event| matches!(
         event,
         BrowserEvent::LocationNavigationRejected {
-            error: LocationValidationError::NotMounted(location)
+            error: LocationValidationError::NotMounted(location),
+            ..
         } if location == &Location::uri("smb://192.168.1.220/share")
     )));
     assert_eq!(browser.active_location(), Some(Location::local("/fixture")));
@@ -350,7 +352,8 @@ fn descending_into_an_unmounted_location_reports_it_for_retry() {
         event,
         BrowserEvent::NavigationRejected {
             parent_depth: 0,
-            error: LocationValidationError::NotMounted(location)
+            error: LocationValidationError::NotMounted(location),
+            ..
         } if location == &Location::uri("smb://192.168.1.220/share")
     )));
 }
@@ -396,7 +399,8 @@ fn rejected_location_input_preserves_navigation_state() {
     assert!(matches!(
         events.borrow().as_slice(),
         [BrowserEvent::LocationNavigationRejected {
-            error: LocationValidationError::Inaccessible
+            error: LocationValidationError::Inaccessible,
+            ..
         }]
     ));
 }
@@ -566,6 +570,7 @@ pub(super) fn listing_file(location: Location, name: &str, is_hidden: bool) -> F
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
         recent_uri: None,
     }
 }
@@ -945,7 +950,8 @@ fn location_input_naming_a_file_reports_a_rejected_parent() {
     assert!(events.borrow().iter().any(|event| matches!(
         event,
         BrowserEvent::LocationNavigationRejected {
-            error: LocationValidationError::Inaccessible
+            error: LocationValidationError::Inaccessible,
+            ..
         }
     )));
 }

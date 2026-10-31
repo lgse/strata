@@ -2,6 +2,8 @@
 
 //! With `STRATA_INPUT_LOG` set, each event is appended in the format `.agents/skills/qa-scenarios/reference.md` defines.
 
+mod wayland;
+
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
@@ -23,10 +25,12 @@ use x11rb::{
 
 use super::protocol::Modifier;
 
+/// Each keysym's keycode, and whether it needs Shift.
+type Keymap = HashMap<u32, (u8, bool)>;
+
 pub(crate) struct Injector {
-    connection: RustConnection,
-    root: xproto::Window,
-    keymap: HashMap<u32, (u8, bool)>,
+    backend: Backend,
+    keymap: Keymap,
     log: Option<RefCell<File>>,
     log_origin: Cell<(i16, i16)>,
     last_release: Cell<Option<Instant>>,
@@ -41,22 +45,28 @@ pub(crate) enum Event {
     Motion { x: i16, y: i16 },
 }
 
+enum Backend {
+    X11(Box<X11>),
+    Wayland(Box<wayland::Wayland>),
+}
+
+struct X11 {
+    connection: RustConnection,
+    root: xproto::Window,
+}
+
 impl Injector {
+    /// XTEST on an X display; a virtual keyboard and pointer on a Wayland compositor.
     pub(crate) fn connect() -> Result<Self, String> {
-        let (connection, screen) =
-            x11rb::connect(None).map_err(|error| format!("cannot open the X display: {error}"))?;
-        if connection
-            .extension_information(xtest::X11_EXTENSION_NAME)
-            .map_err(|error| error.to_string())?
-            .is_none()
-        {
-            return Err("the X server has no XTEST extension".to_owned());
-        }
-        let root = connection.setup().roots[screen].root;
-        // Without this, synthetic events are discarded while the application
-        // holds a pointer grab, which is the state a drag runs in.
-        xtest::grab_control(&connection, true).map_err(|error| error.to_string())?;
-        let keymap = read_keymap(&connection)?;
+        let wayland = gdk::Display::default()
+            .is_some_and(|display| display.is::<gdk4_wayland::WaylandDisplay>());
+        let (backend, keymap) = if wayland {
+            let (backend, keymap) = wayland::Wayland::connect()?;
+            (Backend::Wayland(Box::new(backend)), keymap)
+        } else {
+            let (backend, keymap) = X11::connect()?;
+            (Backend::X11(Box::new(backend)), keymap)
+        };
         let log = match std::env::var_os(INPUT_LOG_VARIABLE).filter(|path| !path.is_empty()) {
             Some(path) => Some(RefCell::new(
                 File::options()
@@ -68,8 +78,7 @@ impl Injector {
             None => None,
         };
         Ok(Self {
-            connection,
-            root,
+            backend,
             keymap,
             log,
             log_origin: Cell::new((0, 0)),
@@ -101,27 +110,132 @@ impl Injector {
     }
 
     pub(crate) fn send(&self, event: Event) -> Result<(), String> {
-        self.fake(event, 0)?;
-        // The round trip guarantees the server has generated the events for
-        // GTK's connection before the main loop is drained.
-        self.connection.sync().map_err(|error| error.to_string())?;
+        match &self.backend {
+            Backend::X11(x11) => {
+                x11.fake(event, 0)?;
+                // The round trip guarantees the server has generated the events for
+                // GTK's connection before the main loop is drained.
+                x11.connection.sync().map_err(|error| error.to_string())?;
+            }
+            Backend::Wayland(wayland) => wayland.send(event)?,
+        }
         self.log(event)
     }
 
-    /// Server-timed delay, so neither this process nor its main loop can hold the event back.
+    /// Timed outside the main loop, so neither this process nor its main loop can hold the
+    /// event back.
     pub(crate) fn send_after(
         &self,
         event: Event,
         delay: std::time::Duration,
     ) -> Result<(), String> {
-        let delay = u32::try_from(delay.as_millis()).map_err(|error| error.to_string())?;
-        self.fake(event, delay)?;
-        self.connection.flush().map_err(|error| error.to_string())?;
+        match &self.backend {
+            Backend::X11(x11) => {
+                let delay = u32::try_from(delay.as_millis()).map_err(|error| error.to_string())?;
+                x11.fake(event, delay)?;
+                x11.connection.flush().map_err(|error| error.to_string())?;
+            }
+            Backend::Wayland(wayland) => wayland.send_after(event, delay)?,
+        }
         self.log(event)
     }
 
     pub(crate) fn sync(&self) -> Result<(), String> {
-        self.connection.sync().map_err(|error| error.to_string())
+        match &self.backend {
+            Backend::X11(x11) => x11.connection.sync().map_err(|error| error.to_string()),
+            Backend::Wayland(wayland) => wayland.sync(),
+        }
+    }
+
+    fn log(&self, event: Event) -> Result<(), String> {
+        let Some(log) = self.log.as_ref() else {
+            return Ok(());
+        };
+        let (origin_x, origin_y) = self.log_origin.get();
+        let state = |pressed: bool| if pressed { "down" } else { "up" };
+        let line = match event {
+            Event::Key { keycode, pressed } => format!("key {keycode} {}", state(pressed)),
+            Event::Motion { x, y } => format!("motion {} {}", x - origin_x, y - origin_y),
+            Event::Button { number, pressed } => {
+                let (x, y) = self.pointer_position()?;
+                format!(
+                    "pointer {} {} button {number} {}",
+                    x - origin_x,
+                    y - origin_y,
+                    state(pressed)
+                )
+            }
+        };
+        writeln!(log.borrow_mut(), "{line}")
+            .map_err(|error| format!("cannot write the input log: {error}"))
+    }
+
+    pub(crate) fn pointer_position(&self) -> Result<(i16, i16), String> {
+        match &self.backend {
+            Backend::X11(x11) => x11.pointer_position(),
+            Backend::Wayland(wayland) => Ok(wayland.pointer_position()),
+        }
+    }
+
+    pub(crate) fn surface_origin(&self, surface: &gdk::Surface) -> Result<(i16, i16), String> {
+        match &self.backend {
+            Backend::X11(x11) => x11.surface_origin(surface),
+            Backend::Wayland(_) => wayland::surface_origin(surface),
+        }
+    }
+
+    pub(crate) fn screen_size(&self) -> Result<(u16, u16), String> {
+        match &self.backend {
+            Backend::X11(x11) => x11.screen_size(),
+            Backend::Wayland(wayland) => Ok(wayland.screen_size()),
+        }
+    }
+
+    pub(crate) fn grab(
+        &self,
+        x: i16,
+        y: i16,
+        width: u16,
+        height: u16,
+    ) -> Result<Vec<[u8; 3]>, String> {
+        match &self.backend {
+            Backend::X11(x11) => x11.grab(x, y, width, height),
+            Backend::Wayland(_) => {
+                Err("reading screen pixels needs the X11 display, not Wayland".to_owned())
+            }
+        }
+    }
+
+    pub(crate) fn resize(
+        &self,
+        surface: &gdk::Surface,
+        width: u16,
+        height: u16,
+    ) -> Result<(), String> {
+        match &self.backend {
+            Backend::X11(x11) => x11.resize(surface, width, height),
+            Backend::Wayland(wayland) => wayland.resize(width, height),
+        }
+    }
+}
+
+impl X11 {
+    fn connect() -> Result<(Self, Keymap), String> {
+        let (connection, screen) =
+            x11rb::connect(None).map_err(|error| format!("cannot open the X display: {error}"))?;
+        if connection
+            .extension_information(xtest::X11_EXTENSION_NAME)
+            .map_err(|error| error.to_string())?
+            .is_none()
+        {
+            return Err("the X server has no XTEST extension".to_owned());
+        }
+        let root = connection.setup().roots[screen].root;
+        // Without this, synthetic events are discarded while the application
+        // holds a pointer grab, which is the state a drag runs in.
+        xtest::grab_control(&connection, true).map_err(|error| error.to_string())?;
+        let keymap = read_keymap(&connection)?;
+        Ok((Self { connection, root }, keymap))
     }
 
     fn fake(&self, event: Event, delay: u32) -> Result<(), String> {
@@ -153,30 +267,7 @@ impl Injector {
         Ok(())
     }
 
-    fn log(&self, event: Event) -> Result<(), String> {
-        let Some(log) = self.log.as_ref() else {
-            return Ok(());
-        };
-        let (origin_x, origin_y) = self.log_origin.get();
-        let state = |pressed: bool| if pressed { "down" } else { "up" };
-        let line = match event {
-            Event::Key { keycode, pressed } => format!("key {keycode} {}", state(pressed)),
-            Event::Motion { x, y } => format!("motion {} {}", x - origin_x, y - origin_y),
-            Event::Button { number, pressed } => {
-                let (x, y) = self.pointer_position()?;
-                format!(
-                    "pointer {} {} button {number} {}",
-                    x - origin_x,
-                    y - origin_y,
-                    state(pressed)
-                )
-            }
-        };
-        writeln!(log.borrow_mut(), "{line}")
-            .map_err(|error| format!("cannot write the input log: {error}"))
-    }
-
-    pub(crate) fn pointer_position(&self) -> Result<(i16, i16), String> {
+    fn pointer_position(&self) -> Result<(i16, i16), String> {
         let reply = self
             .connection
             .query_pointer(self.root)
@@ -186,7 +277,7 @@ impl Injector {
         Ok((reply.root_x, reply.root_y))
     }
 
-    pub(crate) fn surface_origin(&self, surface: &gdk::Surface) -> Result<(i16, i16), String> {
+    fn surface_origin(&self, surface: &gdk::Surface) -> Result<(i16, i16), String> {
         let reply = self
             .connection
             .translate_coordinates(xid(surface)?, self.root, 0, 0)
@@ -196,7 +287,7 @@ impl Injector {
         Ok((reply.dst_x, reply.dst_y))
     }
 
-    pub(crate) fn screen_size(&self) -> Result<(u16, u16), String> {
+    fn screen_size(&self) -> Result<(u16, u16), String> {
         self.connection
             .setup()
             .roots
@@ -206,13 +297,7 @@ impl Injector {
             .ok_or_else(|| "the X screen is unknown".to_owned())
     }
 
-    pub(crate) fn grab(
-        &self,
-        x: i16,
-        y: i16,
-        width: u16,
-        height: u16,
-    ) -> Result<Vec<[u8; 3]>, String> {
+    fn grab(&self, x: i16, y: i16, width: u16, height: u16) -> Result<Vec<[u8; 3]>, String> {
         let reply = self
             .connection
             .get_image(
@@ -280,12 +365,7 @@ impl Injector {
         Ok(pixels)
     }
 
-    pub(crate) fn resize(
-        &self,
-        surface: &gdk::Surface,
-        width: u16,
-        height: u16,
-    ) -> Result<(), String> {
+    fn resize(&self, surface: &gdk::Surface, width: u16, height: u16) -> Result<(), String> {
         self.connection
             .configure_window(
                 xid(surface)?,
@@ -306,7 +386,7 @@ fn xid(surface: &gdk::Surface) -> Result<xproto::Window, String> {
 }
 
 /// Read once at startup, before a scenario switches layouts, so key names keep US positions.
-fn read_keymap(connection: &RustConnection) -> Result<HashMap<u32, (u8, bool)>, String> {
+fn read_keymap(connection: &RustConnection) -> Result<Keymap, String> {
     let setup = connection.setup();
     let (first, last) = (setup.min_keycode, setup.max_keycode);
     let mapping = connection

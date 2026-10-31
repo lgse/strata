@@ -393,6 +393,9 @@ impl Browser {
                 self.mark_merged_undo_item_completed(location);
                 return true;
             }
+            OperationEvent::DeleteEntriesRemoved { removed, .. } => {
+                BrowserEvent::DeletionEntriesRemoved { removed: *removed }
+            }
             OperationEvent::ArchiveStarted { total, .. } => {
                 BrowserEvent::ArchiveStarted { total: *total }
             }
@@ -719,6 +722,7 @@ impl Browser {
             }
             OperationEvent::TransferProgress { .. }
             | OperationEvent::DeleteProgress { .. }
+            | OperationEvent::DeleteEntriesRemoved { .. }
             | OperationEvent::RestoreProgress { .. }
             | OperationEvent::Merged { .. }
             | OperationEvent::ItemsReported { .. }
@@ -875,6 +879,7 @@ fn operation_event_id(event: &OperationEvent) -> OperationRequestId {
         | OperationEvent::TransferFailed { request_id, .. }
         | OperationEvent::TransferProgress { request_id, .. }
         | OperationEvent::DeleteProgress { request_id, .. }
+        | OperationEvent::DeleteEntriesRemoved { request_id, .. }
         | OperationEvent::RestoreProgress { request_id, .. }
         | OperationEvent::Deleted { request_id, .. }
         | OperationEvent::CompletedWithErrors { request_id, .. }

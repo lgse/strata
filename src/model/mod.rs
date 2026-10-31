@@ -139,6 +139,19 @@ pub(crate) fn rebase_path(path: &Path, from: &Path, to: &Path) -> Option<PathBuf
     })
 }
 
+pub(crate) const ADMIN_SCHEME: &str = "admin";
+
+/// Whether GIO can reach GVfs's `admin://` backend in this session.
+pub(crate) fn administrator_access_available() -> bool {
+    static AVAILABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *AVAILABLE.get_or_init(|| {
+        gio::Vfs::default()
+            .supported_uri_schemes()
+            .iter()
+            .any(|scheme| scheme.as_str() == ADMIN_SCHEME)
+    })
+}
+
 fn uri_scheme_eq(uri: &str, scheme: &str) -> bool {
     gio::glib::Uri::parse_scheme(uri).is_some_and(|parsed| parsed.eq_ignore_ascii_case(scheme))
 }
@@ -186,6 +199,24 @@ impl Location {
             LocationKind::Native(_) => None,
             LocationKind::Uri(uri) => Some(uri),
         }
+    }
+
+    /// A folder reached through GVfs's polkit-authorized `admin://` backend.
+    pub fn is_administrator(&self) -> bool {
+        self.uri_value()
+            .is_some_and(|uri| uri_scheme_eq(uri, ADMIN_SCHEME))
+    }
+
+    /// The same native folder through `admin://`, which runs every operation as root.
+    pub fn as_administrator(&self) -> Option<Self> {
+        let path = self.native_path().filter(|path| path.is_absolute())?;
+        let uri = gio::glib::filename_to_uri(path, None).ok()?;
+        let rest = uri.strip_prefix("file://")?;
+        Some(Self::uri(format!("{ADMIN_SCHEME}://{rest}")))
+    }
+
+    fn is_administrator_root(&self) -> bool {
+        self.is_administrator() && self.parent().is_none()
     }
 
     /// Directory operations must reject virtual children as well as the root.
@@ -403,6 +434,9 @@ impl Location {
         if self.is_camera_photo_root() {
             return crate::i18n::tr("Photos");
         }
+        if self.is_administrator_root() {
+            return crate::i18n::tr("Administrator");
+        }
         match &self.kind {
             LocationKind::Native(path) => path
                 .file_name()
@@ -576,6 +610,8 @@ pub struct FileEntry {
     pub image_dimensions: MetadataValue<(u32, u32)>,
     pub child_count: MetadataValue<u64>,
     pub duration_seconds: MetadataValue<u64>,
+    /// Whether the user may read and enter this native folder; `Unavailable` for other kinds.
+    pub listable: MetadataValue<bool>,
     pub is_hidden: bool,
 }
 
@@ -591,6 +627,11 @@ impl FileEntry {
             self.kind,
             EntryKind::Directory | EntryKind::DirectorySymbolicLink
         )
+    }
+
+    /// A native folder the user can't read or enter, which only `admin://` opens.
+    pub fn is_locked_folder(&self) -> bool {
+        self.is_directory() && self.listable == MetadataValue::Known(false)
     }
 
     pub fn is_file(&self) -> bool {

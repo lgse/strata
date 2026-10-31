@@ -326,8 +326,18 @@ impl TabWindow {
         };
         if self.active.get() != 0 {
             let previous = self.active_tab();
-            *previous.focus.borrow_mut() =
-                gtk::prelude::RootExt::focus(&window).map(|widget| widget.downgrade());
+            // Drop focus on the strip, header or footer: a click focuses a tab
+            // button before `clicked` runs, and a restored tab is left before
+            // its listing loads, with GTK's default focus on the footer.
+            let content = &previous.content;
+            let panes = [
+                content.browser.widget(),
+                content.sidebar.widget.clone(),
+                content.preview.widget(),
+            ];
+            *previous.focus.borrow_mut() = gtk::prelude::RootExt::focus(&window)
+                .filter(|widget| panes.iter().any(|pane| widget.is_ancestor(pane)))
+                .map(|widget| widget.downgrade());
             previous.content.footer.shortcuts.cancel_chord();
             previous.content.browser.cancel_location_edit();
         }

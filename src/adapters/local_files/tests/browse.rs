@@ -334,10 +334,11 @@ fn browse_activation_navigates_or_requests_mounting_of_the_resolved_share() {
                             BrowserEvent::NavigationRejected {
                                 parent_depth: 0,
                                 error,
+                                ..
                             } => {
                                 !in_place && error == expected
                             }
-                            BrowserEvent::LocationNavigationRejected { error } => {
+                            BrowserEvent::LocationNavigationRejected { error, .. } => {
                                 in_place && error == expected
                             }
                             _ => false,

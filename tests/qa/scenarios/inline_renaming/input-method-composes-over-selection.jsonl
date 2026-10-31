@@ -1,0 +1,13 @@
+{"scenario":"input-method-composes-over-selection","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"session_bus":true,"input_method":"chewing","env":{"GTK_IM_MODULE":"fcitx"},"variants":[{"id":"selected-stem"},{"id":"caret-at-end"}],"skip":"needs fcitx5-chewing, which the pinned image lacks, so run it by name on a host, where selected-stem fails until #1715 is fixed and caret-at-end is the control"}
+{"select":{"entry":"readme.md"}}
+{"select_with_keyboard":"todo.txt"}
+{"key":"F2"}
+{"wait":{"field":{"name":"Rename","focused":true,"text":"todo.txt","selection":[0,4]}},"message":"the rename editor to select the stem"}
+{"remember":{"field":true},"as":"rename"}
+{"key":"End","variants":["caret-at-end"]}
+{"wait":{"field":{"of":"rename","caret":8,"selection":null}},"variants":["caret-at-end"],"message":"the caret to move to the end without a selection"}
+{"key":"ctrl+space"}
+{"type":"18 "}
+{"key":"Return"}
+{"wait":{"field":{"of":"rename","text":"八.txt"}},"variants":["selected-stem"],"message":"the composed character to replace the selected stem"}
+{"wait":{"field":{"of":"rename","text":"todo.txt八"}},"variants":["caret-at-end"],"message":"the composed character to follow the name"}

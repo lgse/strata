@@ -35,6 +35,7 @@ mod keyboard;
 mod release_picker;
 mod search;
 mod theme;
+mod update_status;
 mod wrap;
 use about::about_page;
 use bindings::bind_switch;
@@ -174,7 +175,6 @@ thread_local! {
     static LAST_COMPLETED_CHECK: Cell<Option<Instant>> = const { Cell::new(None) };
     static CHECK_IN_FLIGHT: Cell<bool> = const { Cell::new(false) };
     static CHECK_GENERATION: Cell<u64> = const { Cell::new(0) };
-    static LAST_UPDATE_RESULT: RefCell<CachedUpdate> = const { RefCell::new(None) };
     static UPDATE_NOTICE_HANDLERS: RefCell<Vec<WeakUpdateNoticeHandler>> = const { RefCell::new(Vec::new()) };
 }
 
@@ -246,7 +246,10 @@ fn force_due_update_check(last: Option<Instant>) -> bool {
 }
 
 pub(super) fn maybe_run_due_update_check(manager: &Rc<PreferenceManager>) {
-    if !manager.checks_for_updates() || CHECK_IN_FLIGHT.get() {
+    if !crate::build_info::updater_enabled()
+        || !manager.checks_for_updates()
+        || CHECK_IN_FLIGHT.get()
+    {
         return;
     }
     let last_completed = LAST_COMPLETED_CHECK.get();
@@ -274,7 +277,15 @@ pub(super) fn maybe_run_due_update_check(manager: &Rc<PreferenceManager>) {
             match receiver.try_recv() {
                 Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
                 Err(TryRecvError::Disconnected) => {
-                    CHECK_IN_FLIGHT.set(false);
+                    complete_due_update_check(
+                        &weak_manager,
+                        channel,
+                        UpdateCheck::Failed(crate::i18n::tr(
+                            crate::services::UNEXPECTED_SYSTEM_ERROR,
+                        )),
+                        method,
+                        generation,
+                    );
                     glib::ControlFlow::Break
                 }
                 Ok(result) => {
@@ -304,37 +315,40 @@ fn complete_due_update_check(
         return;
     }
     LAST_COMPLETED_CHECK.set(Some(Instant::now()));
-    if let UpdateCheck::Available { release, install } = result {
-        publish_update_notice(Some((release, install, method)));
-    }
+    publish_update_check(effective_update_channel(channel, method), method, result);
+}
+
+fn publish_update_check(channel: Channel, method: UpdateMethod, result: UpdateCheck) {
+    update_status::publish(channel, method, result);
+    publish_update_notice(update_status::available());
 }
 
 pub(super) fn register_update_notice(notice: &UpdateNoticeHandler) {
     UPDATE_NOTICE_HANDLERS.with(|handlers| {
         handlers.borrow_mut().push(Rc::downgrade(notice));
     });
-    LAST_UPDATE_RESULT.with(|cache| {
-        if let Some(result) = cache.borrow().clone() {
-            notice(Some(result));
-        }
-    });
+    if let Some(result) = update_status::available() {
+        notice(Some(result));
+    }
 }
 
 fn publish_update_notice(result: CachedUpdate) {
-    LAST_UPDATE_RESULT.with(|cache| *cache.borrow_mut() = result.clone());
-    UPDATE_NOTICE_HANDLERS.with(|handlers| {
-        handlers.borrow_mut().retain(|notice| {
-            let Some(notice) = notice.upgrade() else {
-                return false;
-            };
-            notice(result.clone());
-            true
-        });
+    let handlers = UPDATE_NOTICE_HANDLERS.with(|handlers| {
+        let mut handlers = handlers.borrow_mut();
+        handlers.retain(|notice| notice.strong_count() > 0);
+        handlers
+            .iter()
+            .filter_map(Weak::upgrade)
+            .collect::<Vec<_>>()
     });
+    for notice in handlers {
+        notice(result.clone());
+    }
 }
 
 pub(super) fn clear_cached_update_notice() {
-    LAST_UPDATE_RESULT.with(|cache| *cache.borrow_mut() = None);
+    update_status::clear();
+    publish_update_notice(None);
 }
 
 const DIALOG_WIDTH: i32 = 1400;
@@ -926,7 +940,9 @@ pub fn build_layer(
     updates_spinner.set_valign(gtk::Align::Center);
     updates_spinner.set_vexpand(true);
     updates_container.append(&updates_spinner);
-    stack.add_named(&updates_container, Some("updates"));
+    if page_shown("updates") {
+        stack.add_named(&updates_container, Some("updates"));
+    }
     page.append(&stack);
 
     // Created before the navigation loop so lazy builders can register
@@ -960,7 +976,7 @@ pub fn build_layer(
     };
     let nav_buttons: Rc<RefCell<Vec<(gtk::Button, &'static str)>>> =
         Rc::new(RefCell::new(Vec::new()));
-    for entry in &NAVIGATION {
+    for entry in NAVIGATION.iter().filter(|entry| page_shown(entry.page)) {
         let name = entry.page;
         let active = name == "general";
         let (button, navigation_label, navigation_content) = navigation_button(entry);
@@ -1865,9 +1881,22 @@ fn update_check_row_with(
         move || installed.get() || installing.get()
     });
     let managed_update_available = Rc::new(Cell::new(false));
+    update_status::View {
+        title: title.clone(),
+        icon: status_icon.clone(),
+        status: status.clone(),
+        button: button.clone(),
+        notes: available_notes.clone(),
+        pending: pending_download.clone(),
+        managed: managed_update_available.clone(),
+        checking: checking.clone(),
+        install_underway: install_underway.clone(),
+        manager: manager.clone(),
+        method: update_method,
+    }
+    .bind(&row);
     let run_check: Rc<dyn Fn(bool)> = Rc::new({
         let title = title.clone();
-        let status_icon = status_icon.clone();
         let checking = checking.clone();
         let status = status.clone();
         let button = button.clone();
@@ -1902,7 +1931,9 @@ fn update_check_row_with(
             // Clear any previously offered release immediately, not only once
             // this check's own result lands: otherwise the sidebar keeps
             // showing a (possibly prerelease) offer from before the channel
-            // was switched for the whole duration of this check.
+            // was switched for the whole duration of this check. Other
+            // Settings rows keep their offer until that result arrives.
+            update_status::forget();
             publish_update_notice(None);
             button.set_sensitive(false);
             // Read the channel now, not once when the row was built: a
@@ -1915,14 +1946,8 @@ fn update_check_row_with(
                 update_method,
                 force,
             );
-            let title = title.clone();
-            let status_icon = status_icon.clone();
             let checking = checking.clone();
-            let status = status.clone();
             let button = button.clone();
-            let pending_download = pending_download.clone();
-            let managed_update_available = managed_update_available.clone();
-            let available_notes = available_notes.clone();
             let row_generation = row_generation.clone();
             glib::timeout_add_local(Duration::from_millis(100), move || {
                 if is_stale_check(my_generation, CHECK_GENERATION.get()) {
@@ -1938,98 +1963,19 @@ fn update_check_row_with(
                     Ok(result) => {
                         CHECK_IN_FLIGHT.set(false);
                         LAST_COMPLETED_CHECK.set(Some(Instant::now()));
-                        crate::assets::set_primary_icon(
-                            &status_icon,
-                            match &result {
-                                UpdateCheck::UpToDate => icons::CIRCLE_CHECK,
-                                UpdateCheck::Available { .. } => icons::DOWNLOADS,
-                                UpdateCheck::Failed(_) => icons::TRIANGLE_ALERT,
-                            },
-                        );
-                        title.set_text(&crate::i18n::tr(match &result {
-                            UpdateCheck::UpToDate => "Strata is up to date",
-                            UpdateCheck::Available { .. } => "An update is available",
-                            UpdateCheck::Failed(_) => "Couldn’t check for updates",
-                        }));
-                        let returns_to_stable = matches!(
-                            &result,
-                            UpdateCheck::Available { release, .. }
-                                if channel == Channel::Stable
-                                    && crate::build_info::build_kind() != BuildKind::Stable
-                                    && release.kind == BuildKind::Stable
-                        );
-                        let message = if returns_to_stable
-                            && matches!(update_method, UpdateMethod::InPlace | UpdateMethod::Aur)
-                        {
-                            let UpdateCheck::Available { release, .. } = &result else {
-                                unreachable!();
-                            };
-                            rust_i18n::t!(
-                                "Stable channel target: <a href=\"%{value1}\">v%{value2}</a>",
-                                value1 = glib::markup_escape_text(&release.url),
-                                value2 = glib::markup_escape_text(&release.version)
-                            )
-                            .into_owned()
-                        } else {
-                            update_check_message(&result, update_method)
-                        };
-                        status.set_markup(&update_status_markup(
-                            message,
-                            &result,
-                            InstallSource::detect(),
-                        ));
-                        available_notes
-                            .container
-                            .set_visible(shows_available_release_notes(&result));
-                        match &result {
-                            UpdateCheck::Available { release, install } => publish_update_notice(
-                                Some((release.clone(), install.clone(), update_method)),
-                            ),
-                            UpdateCheck::UpToDate | UpdateCheck::Failed(_) => {
-                                publish_update_notice(None)
-                            }
-                        }
-                        match &result {
-                            UpdateCheck::Available { release, install } => {
-                                show_release_notes(&available_notes, release);
-                                if update_method.is_package_managed() {
-                                    managed_update_available.set(true);
-                                    button.set_label(&crate::i18n::tr(match update_method {
-                                        UpdateMethod::Aur => aur_update_action_label(),
-                                        UpdateMethod::Omarchy => "Open Omarchy Update",
-                                        UpdateMethod::Pacman => "Check again",
-                                        UpdateMethod::InPlace => unreachable!(),
-                                    }));
-                                } else {
-                                    *pending_download.borrow_mut() = Some(PendingInstall {
-                                        kind: release.kind,
-                                        returns_to_stable,
-                                        request: install.clone(),
-                                    });
-                                    button.set_label(&crate::i18n::tr(if returns_to_stable {
-                                        "Return to stable"
-                                    } else {
-                                        "Install update"
-                                    }));
-                                }
-                            }
-                            UpdateCheck::UpToDate | UpdateCheck::Failed(_) => {}
-                        }
-                        button.set_sensitive(true);
-                        checking.set(false);
+                        publish_update_check(channel, update_method, result);
                         glib::ControlFlow::Break
                     }
                     Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
                     Err(TryRecvError::Disconnected) => {
                         CHECK_IN_FLIGHT.set(false);
-                        title.set_text(&crate::i18n::tr("Couldn’t check for updates"));
-                        crate::assets::set_primary_icon(&status_icon, icons::TRIANGLE_ALERT);
-                        status.set_markup(&crate::i18n::tr(
-                            "Couldn't check for updates · <a href=\"https://github.com/lgse/strata/releases/latest\">View releases on GitHub</a>",
-                        ));
-                        available_notes.container.set_visible(false);
-                        button.set_sensitive(true);
-                        checking.set(false);
+                        publish_update_check(
+                            channel,
+                            update_method,
+                            UpdateCheck::Failed(crate::i18n::tr(
+                                crate::services::UNEXPECTED_SYSTEM_ERROR,
+                            )),
+                        );
                         glib::ControlFlow::Break
                     }
                 }
@@ -3165,6 +3111,10 @@ struct NavigationEntry {
     subtitle: &'static str,
     icon: &'static str,
     accessible_label: Option<&'static str>,
+}
+
+fn page_shown(page: &str) -> bool {
+    page != "updates" || crate::build_info::updater_enabled()
 }
 
 /// Settings pages in navigation order. Search finds page titles here and routes

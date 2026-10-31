@@ -281,6 +281,61 @@ fn rewriting_a_symlinked_theme_target_applies_without_a_restart() {
     );
 }
 
+#[test]
+fn switching_omarchy_symlinks_keeps_direct_and_atomic_palette_edits_live() {
+    gtk_test(
+        "ui::theme::tests::switching_omarchy_symlinks_keeps_direct_and_atomic_palette_edits_live",
+        || {
+            let state = super::omarchy_state_dir();
+            let themes = gtk::glib::home_dir().join("palettes");
+            let write = |folder: &Path, accent: &str, atomic: bool| {
+                std::fs::create_dir_all(folder).expect("palette directory");
+                let destination = folder.join("colors.toml");
+                let path = if atomic {
+                    folder.join("colors.new")
+                } else {
+                    destination.clone()
+                };
+                std::fs::write(
+                    &path,
+                    format!(
+                        "background = '#112233'\nforeground = '#ddeeff'\naccent = '{accent}'\n"
+                    ),
+                )
+                .expect("palette written");
+                if atomic {
+                    std::fs::rename(path, destination).expect("atomic palette replacement");
+                }
+            };
+            let switch = |name: &str| {
+                let pending = state.join("next-theme");
+                std::os::unix::fs::symlink(themes.join(name), &pending).expect("new theme link");
+                std::fs::rename(pending, state.join("theme")).expect("atomic theme switch");
+            };
+            std::fs::create_dir_all(&state).expect("Omarchy state");
+            std::fs::write(state.join("theme.name"), "fixture").expect("theme name");
+            write(&themes.join("a"), "#112244", false);
+            write(&themes.join("b"), "#445566", false);
+            switch("a");
+            let manager = ThemeManager::shared();
+            manager.set_follow_omarchy(true);
+            assert_eq!(manager.active_model_palette().accent, 0x11_22_44);
+
+            for (name, initial, edited, color) in [
+                ("b", 0x44_55_66, "#778899", 0x77_88_99),
+                ("a", 0x11_22_44, "#aabbcc", 0xaa_bb_cc),
+            ] {
+                switch(name);
+                wait_for_live_theme(|| manager.active_model_palette().accent == initial);
+                write(&themes.join(name), edited, false);
+                wait_for_live_theme(|| manager.active_model_palette().accent == color);
+                write(&themes.join(name), "#abcdef", true);
+                wait_for_live_theme(|| manager.active_model_palette().accent == 0xab_cd_ef);
+            }
+        },
+    );
+}
+
 fn wait_for_live_theme(mut ready: impl FnMut() -> bool) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     while !ready() {

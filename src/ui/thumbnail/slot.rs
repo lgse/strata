@@ -315,12 +315,16 @@ impl ThumbnailSlot {
             return;
         }
         self.imp().texture.replace(None);
-        let scale =
-            if self.imp().limit_fallback_height.get() && icon != crate::assets::icons::FOLDER {
-                texture.map_or(1.0, cached_folder_height_scale)
-            } else {
-                1.0
-            };
+        let folder = [
+            crate::assets::icons::FOLDER,
+            crate::assets::icons::FOLDER_LOCK,
+        ]
+        .contains(&icon);
+        let scale = if self.imp().limit_fallback_height.get() && !folder {
+            texture.map_or(1.0, cached_folder_height_scale)
+        } else {
+            1.0
+        };
         self.imp().fallback_scale.set(scale);
         self.imp().fallback_icon.replace(Some(icon.to_owned()));
         self.imp().fallback.replace(texture.cloned());

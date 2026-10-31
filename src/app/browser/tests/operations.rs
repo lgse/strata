@@ -18,6 +18,7 @@ fn deleted_trash_entries_refresh_the_trash_root() {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
         recent_uri: None,
     };
 
@@ -774,6 +775,7 @@ fn cancelling_extraction_keeps_progress_until_the_worker_reports_cancellation() 
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
         recent_uri: None,
     };
     browser.extract(entry, Location::local("/fixture"), false, None);
@@ -1009,6 +1011,7 @@ fn completed_operations_refresh_only_columns_without_a_monitor() {
                 image_dimensions: MetadataValue::Unknown,
                 child_count: MetadataValue::Unknown,
                 duration_seconds: MetadataValue::Unknown,
+                listable: MetadataValue::Unknown,
                 recent_uri: None,
             };
 

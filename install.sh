@@ -58,6 +58,7 @@ installer_locale() {
       en* | c | c.* | posix*) printf en; return ;;
       fr*) printf fr; return ;;
       de*) printf de; return ;;
+      hu*) printf hu; return ;;
       es*) printf es; return ;;
       ja*) printf ja; return ;;
       pt*) printf pt-BR; return ;;
@@ -137,6 +138,69 @@ case "$(installer_locale)" in
     [usage_intro]='Without options, choose a recommended install or customize desktop integration.'
     [verbose_help]='Show detailed download and verification output'
     [udiskie_requires]='--with-udiskie-unlock requires an Arch-based system with udiskie on PATH.'
+    [progress]='%{percent}%'
+  ) ;;
+  hu) INSTALLER_MESSAGES=(
+    [setup]='Interaktív telepítő'
+    [tagline]='Fedezzen fel minden réteget.'
+    [partial]='A Strata telepítve van, de a beállítás nem fejeződött be.'
+    [failed]='A telepítés nem fejeződött be.'
+    [details]='Részletes kimenet: %{path}'
+    [cancelled]='A telepítés megszakítva. Nem történt módosítás.'
+    [task_failed]='Sikertelen: %{task}'
+    [read_failed]='Nem sikerült beolvasni a választását.'
+    [keys_toggle]='↑/↓ mozgás · Szóköz be/ki · Enter telepítés · Esc mégse'
+    [keys_choose]='↑/↓ választás · Enter tovább · Esc mégse'
+    [plain_toggle]='Kapcsoljon be vagy ki egy lehetőséget a számával; Enter a telepítéshez, q a megszakításhoz:'
+    [plain_choose]='Válasszon: [1], vagy q a megszakításhoz:'
+    [invalid_selection]='Válasszon a felsorolt lehetőségek közül.'
+    [standard]='A Strata telepítése (ajánlott)'
+    [custom]='Telepítés testreszabása'
+    [standard_hint]='Minden, amit ez a rendszer támogat: indító, mappák, fájlválasztó és opcionális integrációk.'
+    [custom_hint]='Válassza ki az asztali integrációkat és az opcionális támogatást.'
+    [setup_title]='Válassza ki a beállítást'
+    [launcher]='Alkalmazásindító'
+    [folders]='Alapértelmezett fájlkezelő'
+    [reveal]='Fájl helyének megnyitása'
+    [chooser]='Megnyitási és mentési párbeszédablakok'
+    [launcher_hint]='A Strata hozzáadása az alkalmazásmenühöz.'
+    [folders_hint]='A Strata használata mappákhoz és a „Fájl helyének megnyitása” művelethez. Tartalmazza az indítót is.'
+    [reveal_hint]='Fájlok megjelenítése más alkalmazásokból a mappák alapértelmezett kezelőjének módosítása nélkül.'
+    [reveal_ready]='A Strata mostantól kezeli a „Fájl helyének megnyitása” kéréseket.'
+    [reveal_relogin]='A FileManager1 szolgáltatás telepítve lett, de a munkamenetbuszt nem sikerült újratölteni. Jelentkezzen ki, majd be újra, hogy a Strata kezelje a „Fájl helyének megnyitása” kéréseket.'
+    [chooser_hint]='A Strata használata a portál párbeszédablakaihoz. Újraindítja a portálszolgáltatást; előbb zárja be a fájlpárbeszédablakokat.'
+    [smb]='Windows hálózati megosztások'
+    [smb_hint]='Opcionális SMB-támogatás telepítése a hálózati megosztások böngészéséhez.'
+    [raw]='Fényképezőgépes RAW-támogatás'
+    [raw_hint]='Opcionális képdekóderek telepítése a szélesebb körű előnézeti támogatáshoz.'
+    [omarchy]='Omarchy fájlkezelő-gyorsbillentyűk'
+    [omarchy_hint]='A fájlkezelő gyorsbillentyűinek lecserélése. Biztonsági másolat készül.'
+    [udiskie]='Titkosított meghajtók feloldása'
+    [udiskie_hint]='Az udiskie beállításainak szerkesztése, a LUKS automatikus csatolásának letiltása és az udiskie újraindítása. Visszaállítás: strata --uninstall-udiskie-unlock.'
+    [custom_title]='Szabja testre a Stratát'
+    [plan]='Telepítési terv'
+    [destination]='Telepítés ide: %{path}'
+    [defaults_unchanged]='Az alapértelmezett alkalmazások és gyorsbillentyűk változatlanok maradnak.'
+    [dependencies_ready]='Az összes kiválasztott futtatókörnyezeti csomag már telepítve van.'
+    [dependencies]='Függőségek telepítése'
+    [packages]='Telepítendő csomagok: %{packages}'
+    [reinstall]='Ez lecseréli a következőt: %{path}. A mentett beállításai megmaradnak.'
+    [installing]='A Strata telepítése'
+    [download]='A Strata %{version} letöltése'
+    [download_manifest]='Az aláírt kiadási jegyzék letöltése'
+    [download_signatures]='A kiadás aláírásainak letöltése'
+    [signature]='A kiadás aláírásának ellenőrzése'
+    [digest]='Az aláírt SHA-256 kivonat ellenőrzése'
+    [unpack]='Az ellenőrzött kiadás kicsomagolása'
+    [application]='Az alkalmazás telepítése'
+    [ready]='Indulhat a felfedezés'
+    [installed_notices]='Telepítve — tekintse át a beállítás részleteit'
+    [installed_warnings]='Telepítve, figyelmeztetésekkel'
+    [installed]='A Strata %{version} telepítve van.'
+    [launch]='Az indításhoz futtassa a következőt: %{command}'
+    [usage_intro]='Kapcsolók nélkül választhat az ajánlott telepítés és az asztali integráció testreszabása között.'
+    [verbose_help]='Részletes letöltési és ellenőrzési kimenet megjelenítése'
+    [udiskie_requires]='A --with-udiskie-unlock kapcsolóhoz Arch-alapú rendszer szükséges, amelynek PATH változójában elérhető az udiskie.'
     [progress]='%{percent}%'
   ) ;;
   fr) INSTALLER_MESSAGES=(
@@ -1626,7 +1690,7 @@ configure_file_chooser() {
   local extracted=$1
   if [[ $WITH_FILE_CHOOSER == yes ]]; then
     TASK_OUTPUT=notices run_task "$(text chooser)" "$BIN_PATH" --install-portal \
-      || die "File chooser setup failed. Strata is installed; retry in Settings → General → System file chooser."
+      || die "File chooser setup failed. Strata is installed; retry in Settings → General → Desktop integration → System file manager."
   elif [[ -r $extracted/portal/strata.portal && ( $NON_INTERACTIVE == no || $WITH_FILE_CHOOSER == no ) ]]; then
     "$BIN_PATH" --dismiss-portal-prompt >>"${LOG_FILE:-/dev/null}" 2>&1 \
       || warn "Could not save your choice. Strata may offer file chooser integration on first launch."

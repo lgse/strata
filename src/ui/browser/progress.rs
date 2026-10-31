@@ -43,6 +43,11 @@ pub(super) fn set_file_progress_delay_for_test(delay: Duration) {
     FILE_PROGRESS_DELAY_OVERRIDE.with(|cell| cell.set(Some(delay)));
 }
 
+#[cfg(test)]
+pub(super) fn reset_file_progress_delay_for_test() {
+    FILE_PROGRESS_DELAY_OVERRIDE.with(|cell| cell.set(None));
+}
+
 const INDETERMINATE_PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
 const STALLED_CANCEL_DELAY: Duration = Duration::from_secs(8);
 
@@ -684,6 +689,26 @@ impl FileProgressState {
         view.status.set_text(&new_status);
         view.indeterminate.set(false);
         view.progress.set_fraction(new_fraction);
+        self.sync_compact(view);
+    }
+
+    /// A single item stays at 0% until it is gone, so pulse and show the entries removed
+    /// instead. With several items the item count already carries the progress.
+    pub(super) fn update_removed_entries(&self, removed: usize) {
+        let (_, total) = self.file_operation_progress.get();
+        if total > 1 || self.transfer_cancel_requested.get() {
+            return;
+        }
+        let progress_view = self.file_progress_view.borrow();
+        let Some(view) = progress_view.as_ref() else {
+            return;
+        };
+        view.status.set_text(&rust_i18n::t!(
+            "%{items} deleted",
+            items = item_count_label(removed)
+        ));
+        view.indeterminate.set(true);
+        ensure_indeterminate_pulse(view);
         self.sync_compact(view);
     }
 

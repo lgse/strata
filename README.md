@@ -26,6 +26,7 @@ Strata combines spatial Miller-column navigation with familiar Icons and List vi
 
 - [Features](#features)
 - [Installation](#installation)
+  - [Nix and NixOS](#nix-and-nixos)
   - [Interactive installation](#interactive-installation)
   - [AI-assisted installation](#ai-assisted-installation)
   - [Manual installation](#manual-installation)
@@ -56,16 +57,56 @@ Strata combines spatial Miller-column navigation with familiar Icons and List vi
 - **Responsive filesystem work:** cancellable directory loading, bounded streaming, incremental monitoring, stable selection, and virtualized large directories.
 - **Everyday file operations:** create folders, rename, cut, copy, paste, trash, permanent delete, sorting, hidden files, pins, and history.
 - **Remote locations:** browse GIO/GVfs locations such as authenticated SMB shares and SFTP servers from the location field, with explicit host-key decisions.
+- **Administrator access:** open a local folder you can't read, such as a root-owned backup folder, after the system's polkit password prompt. See [Administrator access](docs/administrator-access.md).
 - **Adaptive appearance:** compact or airy density, 95 bundled themes, custom themes, and live Omarchy Quattro theme following.
 - **Updates in the app:** automatic update checks (on by default; turn them off in **Settings → Updates**), release notes, verified downloads, and in-place installation for release binaries.
 - **Custom actions:** add your own scripts to the file and folder context menus, with a manager in **Settings → Actions** and background progress in the Jobs dashboard. See [Custom actions](docs/custom-actions.md).
 - **Integrations:** opt-in providers maintained in the repository's [`integrations/`](integrations/README.md) catalog, installed, updated and removed from **Settings → Integrations**; they plug services and devices into the context menu and the **Send to…** menu. See [External file providers](docs/file-providers.md).
-- **System file chooser:** opt in through **Settings → General → System file chooser**, the installer, or `strata --install-portal`; see [portal setup](docs/portal-file-chooser.md).
+- **System file chooser:** opt in through **Settings → General → Desktop integration → System file manager**, the installer, or `strata --install-portal`; see [portal setup](docs/portal-file-chooser.md).
 - **Encrypted-volume unlock:** opt in through the installer, **Settings → General → Desktop integration** on Omarchy, or `strata --install-udiskie-unlock`; restore with `strata --uninstall-udiskie-unlock` (Settings **Restore default** on Omarchy only).
 
 ## Installation
 
 Arch Linux and Omarchy are the primary supported environments. Current binaries require **glibc 2.39 or newer** and the runtime libraries listed below.
+
+### Nix and NixOS
+
+Build from source with Nix on `x86_64-linux` or `aarch64-linux`:
+
+```bash
+nix run github:lgse/strata
+nix profile add github:lgse/strata
+```
+
+For NixOS or Home Manager, add a flake input:
+
+```nix
+inputs.strata.url = "github:lgse/strata";
+```
+
+```nix
+{ inputs, pkgs, ... }:
+{
+  # Home Manager; use environment.systemPackages instead for NixOS.
+  home.packages = [ inputs.strata.packages.${pkgs.stdenv.hostPlatform.system}.default ];
+}
+```
+
+Pass `inputs` through `extraSpecialArgs` (Home Manager) or `specialArgs` (NixOS).
+Update the flake input and rebuild to upgrade. On NixOS, enable `services.gvfs.enable`
+for network shares and `services.udisks2.enable` for disk management.
+
+Non-free UnRAR support is omitted by default. Enable it from a package set that
+allows unfree software, such as one with `nixpkgs.config.allowUnfree = true;`:
+
+```nix
+pkgs.callPackage "${inputs.strata}/package.nix" { rarSupport = true; }
+```
+
+The integrations that Strata installs from Settings or the command line (the
+file chooser portal, the default file manager service, and the udiskie unlock
+hook) are not supported on Nix yet. They would record the store path of the
+current build, which the next update or garbage collection invalidates.
 
 ### Interactive installation
 
@@ -783,6 +824,12 @@ in; `--all-features` also enables UnRAR. The source lockfile and license notices
 still describe the optional dependency; they do not mean it is linked into the
 feature-disabled binary. See [third-party notices](THIRD_PARTY_LICENSES.md#unrar).
 
+### Builds without the in-app updater
+
+Distributions that ship Strata updates through their own packages build with
+`STRATA_UPDATER=disabled`, which removes update checks, installs, and the
+Updates settings page. See [distribution packaging](docs/packaging.md#building-without-the-in-app-updater).
+
 Start with [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Deeper references:
 
 - [Keyboard navigation](docs/keyboard-navigation.md)
@@ -791,6 +838,7 @@ Start with [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Dee
 - [10xer mode](docs/10xer-mode.md)
 - [Architecture principles](docs/architecture.md)
 - [Filesystem compatibility](docs/filesystem-compatibility.md)
+- [Administrator access](docs/administrator-access.md)
 - [Preview sandbox](docs/preview-sandbox.md)
 - [Hardened configuration](docs/hardened-configuration.md)
 - [Performance baseline](docs/performance-baseline.md)

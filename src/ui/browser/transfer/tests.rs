@@ -136,6 +136,7 @@ fn transfer_entry(path: &Path) -> FileEntry {
         image_dimensions: crate::model::MetadataValue::Unknown,
         child_count: crate::model::MetadataValue::Unknown,
         duration_seconds: crate::model::MetadataValue::Unknown,
+        listable: crate::model::MetadataValue::Unknown,
         is_hidden: false,
         recent_uri: None,
     }
@@ -276,6 +277,7 @@ fn duplicate_transfer_uses_the_selected_entries_parent() {
         image_dimensions: crate::model::MetadataValue::Unknown,
         child_count: crate::model::MetadataValue::Unknown,
         duration_seconds: crate::model::MetadataValue::Unknown,
+        listable: crate::model::MetadataValue::Unknown,
         recent_uri: None,
     };
     let first = entry("/fixture/selected/first.txt");
@@ -299,6 +301,7 @@ fn duplicate_transfer_uses_the_selected_entries_parent() {
             image_dimensions: crate::model::MetadataValue::Unknown,
             child_count: crate::model::MetadataValue::Unknown,
             duration_seconds: crate::model::MetadataValue::Unknown,
+            listable: crate::model::MetadataValue::Unknown,
             ..entry("file.txt")
         };
         assert_eq!(duplicate_transfer(&[trashed]), None);
@@ -4150,6 +4153,11 @@ fn a_destination_slow_to_answer_shows_the_transfer_preparing_where_its_row_will_
                         || !transfer_row_shown(&overlay, moving),
                         &format!("{row}: the preparing transfer to go away"),
                     );
+                    // On a loaded machine the new paste's own conflict check can outlast the
+                    // usual delay and show its own row, which is not the cancelled one.
+                    crate::ui::browser::progress::set_file_progress_delay_for_test(
+                        std::time::Duration::from_secs(3600),
+                    );
                     paste();
                 } else {
                     release.send(()).expect("held listing");
@@ -4178,6 +4186,7 @@ fn a_destination_slow_to_answer_shows_the_transfer_preparing_where_its_row_will_
                     "{row}: one transfer started, which took the place of the row that \
                      showed it preparing unless that was cancelled"
                 );
+                crate::ui::browser::progress::reset_file_progress_delay_for_test();
                 view.browser().clear_observer();
                 window.destroy();
             }

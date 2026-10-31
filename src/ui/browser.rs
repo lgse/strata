@@ -115,16 +115,17 @@ pub(super) use crate::ui::browser::pane_header::{
 };
 pub(super) use crate::ui::browser::paths::is_trash_root;
 pub use crate::ui::browser::peek::PeekBehavior;
-pub(super) use crate::ui::browser::presentation::not_responding_notice;
+pub(super) use crate::ui::browser::presentation::{administrator_notice, not_responding_notice};
 pub use crate::ui::browser::properties::format_permissions;
 pub(super) use crate::ui::modal::{
     animate_in, animate_out, dismiss_modal_layer, modal_layer, show_error_dialog, slide_out,
 };
 
-type PinHandler = Rc<dyn Fn(Location, String)>;
+// Receives whether the pin was saved, once the bookmark snapshot is published.
+type PinCompletion = Box<dyn FnOnce(bool)>;
+type PinHandler = Rc<dyn Fn(Location, String, PinCompletion)>;
 type UnpinHandler = Rc<dyn Fn(&Location)>;
 type PinStatusHandler = Rc<dyn Fn(&Location) -> PinStatus>;
-type PrintHandler = Rc<dyn Fn(FileEntry)>;
 type PreparingTransfer = (
     transfer::Preparing,
     gio::Cancellable,
@@ -195,7 +196,7 @@ pub(super) struct ViewState {
     global_activity_spinner: gtk::Spinner,
     global_activity: RefCell<GlobalActivityState>,
     breadcrumbs: gtk::Box,
-    breadcrumb_scroller: gtk::ScrolledWindow,
+    breadcrumb_reveal_pending: Rc<Cell<bool>>,
     location_entry: gtk::Entry,
     path_completion: Rc<location::completion::PathCompletion>,
     columns_widget: gtk::Box,
@@ -260,7 +261,6 @@ pub(super) struct ViewState {
     pin_handler: RefCell<Option<PinHandler>>,
     unpin_handler: RefCell<Option<UnpinHandler>>,
     pin_status_handler: RefCell<Option<PinStatusHandler>>,
-    print_handler: RefCell<Option<PrintHandler>>,
     search_selection_handlers: RefCell<Vec<Rc<dyn Fn()>>>,
     pending_select: RefCell<Vec<String>>,
     pending_properties: RefCell<Option<Location>>,
@@ -442,6 +442,21 @@ impl BrowserView {
         breadcrumb_overlay.set_hexpand(true);
 
         let hadjustment = breadcrumb_scroller.hadjustment();
+        let breadcrumb_reveal_pending = Rc::new(Cell::new(false));
+        let pending = breadcrumb_reveal_pending.clone();
+        let reveal = RefCell::new(None::<super::frame::FrameTask>);
+        super::frame::after_layout(&breadcrumb_scroller, move |scroller| {
+            if scroller.is_mapped() && pending.replace(false) {
+                let scroller = scroller.downgrade();
+                // GTK can still update adjustment bounds during this frame's layout.
+                reveal.replace(Some(super::frame::FrameTask::new(None, move || {
+                    if let Some(scroller) = scroller.upgrade() {
+                        let adjustment = scroller.hadjustment();
+                        adjustment.set_value(adjustment.upper() - adjustment.page_size());
+                    }
+                })));
+            }
+        });
         let breadcrumb_scrollbar =
             gtk::Scrollbar::new(gtk::Orientation::Horizontal, Some(&hadjustment));
         breadcrumb_scrollbar.add_css_class("breadcrumb-scrollbar");
@@ -592,7 +607,7 @@ impl BrowserView {
             global_activity_spinner,
             global_activity: RefCell::new(GlobalActivityState::default()),
             breadcrumbs,
-            breadcrumb_scroller: breadcrumb_scroller.clone(),
+            breadcrumb_reveal_pending,
             location_entry,
             path_completion,
             columns_widget,
@@ -648,7 +663,6 @@ impl BrowserView {
             pin_handler: RefCell::new(None),
             unpin_handler: RefCell::new(None),
             pin_status_handler: RefCell::new(None),
-            print_handler: RefCell::new(None),
             search_selection_handlers: RefCell::new(Vec::new()),
             pending_select: RefCell::new(Vec::new()),
             pending_properties: RefCell::new(None),
@@ -901,9 +915,11 @@ impl BrowserView {
 
     pub(super) fn can_trash_file_drop(sources: &[Location]) -> bool {
         !sources.is_empty()
-            && sources
-                .iter()
-                .all(|source| source.parent().is_some() && !paths::is_trash_location(source))
+            && sources.iter().all(|source| {
+                source.parent().is_some()
+                    && !paths::is_trash_location(source)
+                    && !source.is_administrator()
+            })
     }
 
     pub(super) fn trash_file_drop(&self, sources: Vec<Location>) -> bool {
@@ -970,10 +986,6 @@ impl BrowserView {
         self.state.pin_status_handler.replace(Some(status_handler));
     }
 
-    pub(super) fn set_print_handler(&self, handler: PrintHandler) {
-        self.state.print_handler.replace(Some(handler));
-    }
-
     pub fn set_operation_provider(&self, provider: Rc<dyn OperationProvider>) {
         self.state.browser.set_operation_provider(provider);
     }
@@ -1004,6 +1016,23 @@ impl BrowserView {
 
     pub fn cancel_rename(&self) -> bool {
         self.state.cancel_rename()
+    }
+
+    /// Tab inside the focused inline rename: commits it and renames the neighbouring item.
+    pub fn advance_rename(&self, direction: gtk::DirectionType) -> bool {
+        let Some(field) = self.active_rename_field() else {
+            return false;
+        };
+        let focused = self.state.overlay.root().and_then(|root| root.focus());
+        if !focused.is_some_and(|focused| focused == field || focused.is_ancestor(&field)) {
+            return false;
+        }
+        let step = if direction == gtk::DirectionType::TabBackward {
+            -1
+        } else {
+            1
+        };
+        self.state.advance_rename(step)
     }
 
     pub fn cancel_new_entry(&self) -> bool {
@@ -1767,7 +1796,7 @@ impl BrowserView {
             return;
         }
         if let Some(handler) = self.state.pin_handler.borrow().as_ref() {
-            handler(entry.location, entry.display_name);
+            handler(entry.location, entry.display_name, Box::new(|_| {}));
         }
     }
 
@@ -2045,6 +2074,7 @@ impl BrowserView {
     }
 
     pub fn set_presence(&self, presence: Presence, power_saver: bool) {
+        self.state.path_completion.set_window_presence(presence);
         let browser = &self.state.browser;
         browser.set_freshness(FreshnessInput {
             presence,
@@ -2165,6 +2195,7 @@ impl BrowserView {
                         image_dimensions: crate::model::MetadataValue::Unknown,
                         child_count: crate::model::MetadataValue::Unknown,
                         duration_seconds: crate::model::MetadataValue::Unknown,
+                        listable: crate::model::MetadataValue::Unknown,
                         recent_uri: None,
                     }
                 })

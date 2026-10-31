@@ -47,6 +47,8 @@ Strata reads it once at start-up, relative to its own install prefix (`<prefix>/
 
 This is currently an official Strata metadata format for these two AUR packages, not a public cross-distribution packaging API. Supporting Debian, RPM, Flatpak, or other providers requires an explicit design for ownership, availability checks, channels, and update actions rather than assuming AUR semantics.
 
+The [Nix package](#nix) is the one other marker. It installs `nix/install-source.toml` (`manager = "Nix"`, `package = "strata"`, nothing else) so Diagnostics reports `Installed by Nix as strata.` It is safe only because that package compiles with `STRATA_UPDATER=disabled`: `update_method()` treats every marker as an AUR install, so a Nix build with the updater enabled would query the AUR for a package named `strata`. Give the marker a provider field before enabling the updater for Nix.
+
 ## Updating the packages for a release
 
 1. Publish the release (see the release workflow) and confirm both architectures uploaded their `.tar.gz` and `.sha256`.
@@ -121,6 +123,22 @@ Settings get the original `GDK_DEBUG` back; ordinary launches and the separate
 `--portal` FileChooser backend never acquire the override. Do not set
 `GDK_DEBUG=no-portals` globally to address this problem.
 
+## Nix
+
+`flake.nix` exposes `packages.<system>.default` for `x86_64-linux` and `aarch64-linux`, built from `package.nix` with `nix build`, `nix run`, or a flake input in a NixOS or Home Manager configuration; the README shows the user-facing steps. Unlike the AUR packages it compiles from source, with `STRATA_UPDATER=disabled`, without the unfree `rar` feature unless `rarSupport = true`, and with the [sandbox runtime paths](preview-sandbox.md#packaging-non-fhs-runtimes) and `STRATA_TRUSTED_COMMAND_PATH` embedded so bubblewrap and the preview helpers come from the package closure rather than a system profile. `nix flake check` builds the package; the Rust test suite is not run inside the Nix build because it needs the private display and D-Bus session described in [testing.md](testing.md).
+
+`wrapGAppsHook4` turns `bin/strata` into a wrapper around `bin/.strata-wrapped`, and every store path changes on update. The runtime-installed integrations (file chooser portal, FileManager1 service, Omarchy setup, udiskie unlock hook) record the current executable's path and so are unsupported on Nix until the package ships those files itself and the build turns the runtime installers off. The package installs the FileManager1 service only as the inactive template under `share/strata`, as above.
+
 ## Other distributions
 
-Debian/Ubuntu, Fedora, Flatpak, and AppImage each have their own dependency, sandboxing, update, and review requirements and are tracked as separate issues. The AUR marker must not be reused for them until those provider-specific semantics are designed.
+Debian/Ubuntu, Fedora, Flatpak, and AppImage each have their own dependency, sandboxing, update, and review requirements and are tracked as separate issues. The AUR marker must not be reused for them until those provider-specific semantics are designed; the Nix marker above relies on the updater being compiled out, not on such a design.
+
+### Building without the in-app updater
+
+A distribution whose own packages deliver Strata updates builds with the updater compiled out:
+
+```bash
+STRATA_UPDATER=disabled cargo build --locked --release
+```
+
+Such a build never checks for, downloads, or installs a release. Settings has no Updates page and its search finds no update settings, the update notice never appears, and `services::install_update` refuses to run. Diagnostics reports the installation as having in-app updates disabled, which tells a downstream build apart in bug reports. `STRATA_UPDATER` accepts only `enabled` (the default) and `disabled`; any other value fails the build, so a typo cannot ship an updater. It combines with `--no-default-features` for builds without RAR support.

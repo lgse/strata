@@ -416,7 +416,7 @@ impl Browser {
                 .columns
                 .get(depth)
                 .map(|column| &column.load_state),
-            Some(LoadState::Error(_))
+            Some(LoadState::Error(_) | LoadState::Denied { .. })
         ) && column.baseline.as_ref().is_some_and(|baseline| {
             if baseline.outside_writers {
                 self.freshness.input.get().watch_network_folders
@@ -441,7 +441,7 @@ impl Browser {
             && !self.sorting.borrow().contains_key(&depth)
     }
 
-    pub(super) fn operation_touches(location: &Location) -> bool {
+    pub(crate) fn operation_touches(location: &Location) -> bool {
         location
             .native_path()
             .is_some_and(file_activity::is_changing)
@@ -722,7 +722,7 @@ impl Browser {
                 .map(|column| &column.load_state)
             {
                 Some(LoadState::Loading) => (true, false),
-                Some(LoadState::Error(_)) => (false, true),
+                Some(LoadState::Error(_) | LoadState::Denied { .. }) => (false, true),
                 _ => (false, false),
             };
             let answering = responsiveness == Responsiveness::Answering;

@@ -1060,10 +1060,7 @@ pub(super) fn column_rows(
                 && !scrolling_for_bind.get()
                 && let Some(state) = state.as_ref()
                 && let Some(position) = source_position
-                && (metadata_needs_fill(entry)
-                    || (show_sizes
-                        && entry.is_directory()
-                        && entry.child_count == crate::model::MetadataValue::Unknown))
+                && (metadata_needs_fill(entry) || (show_sizes && entry.is_directory()))
             {
                 crate::ui::thumbnail::request_metadata(
                     &icon,

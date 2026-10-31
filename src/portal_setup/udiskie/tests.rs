@@ -428,8 +428,8 @@ fn install_rejects_insecure_executable() {
     let fixture = fixture();
     let context = context(fixture.path());
     let executable = executable(fixture.path());
-    fs::set_permissions(&executable, fs::Permissions::from_mode(0o775))
-        .expect("group-writable executable");
+    fs::set_permissions(&executable, fs::Permissions::from_mode(0o777))
+        .expect("world-writable executable");
 
     assert!(
         install_at(&context, &executable).is_err(),

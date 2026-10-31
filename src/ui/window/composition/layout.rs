@@ -219,8 +219,6 @@ pub(super) fn browser_layout(
     let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
     root.append(&header.widget);
     bind_pin_handlers(browser, sidebar);
-    let preview_for_print = preview.clone();
-    browser.set_print_handler(Rc::new(move |entry| preview_for_print.print_entry(entry)));
     let content = browser_split(
         browser,
         sidebar,
@@ -255,9 +253,11 @@ fn bind_pin_handlers(browser: &BrowserView, sidebar: &SidebarView) {
     let weak_unpin_sidebar = Rc::downgrade(&sidebar.state);
     let pinned_places = sidebar.state.pinned_places.clone();
     browser.set_pin_handlers(
-        Rc::new(move |location, name| {
+        Rc::new(move |location, name, done| {
             if let Some(sidebar) = weak_pin_sidebar.upgrade() {
-                sidebar.pin_location(location, name);
+                sidebar.pin_location_with(location, name, done);
+            } else {
+                done(false);
             }
         }),
         Rc::new(move |location| {

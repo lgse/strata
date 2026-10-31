@@ -252,6 +252,7 @@ pub(super) fn typed_entry(name: &str, kind: crate::model::EntryKind) -> FileEntr
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
         is_hidden: false,
         recent_uri: None,
     }

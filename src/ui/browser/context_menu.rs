@@ -7,7 +7,7 @@ use crate::services::ArchiveFormat;
 use crate::ui::browser::clipboard::{copy_locations, copy_names, locations_equal};
 use crate::ui::browser::customization::show_customize_modal;
 use crate::ui::browser::desktop::{can_open_terminal, launch_terminal};
-use crate::ui::browser::entry::{entry_icon, entry_supports_printing};
+use crate::ui::browser::entry::entry_icon;
 use crate::ui::browser::paths::{
     can_remove_location, compact_display_path, is_trash_item, is_trash_location,
 };
@@ -377,7 +377,7 @@ pub(in crate::ui) fn install_folder_context_menu(
     customize.set_visible(directory_actions && location.native_path().is_some());
     new_folder.set_visible(directory_actions);
     new_file.set_visible(directory_actions);
-    open_with.set_visible(directory_actions);
+    open_with.set_visible(directory_actions && !location.is_administrator());
     open_terminal.set_visible(directory_actions);
     paste.set_visible(directory_actions);
     properties.set_visible(!in_recent);
@@ -819,7 +819,6 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         "Quick preview",
         ContextHint::Preview,
     );
-    let print = item_context_option(crate::assets::icons::PRINTER, "Print", ContextHint::None);
     let restore = item_context_option(
         crate::assets::icons::UNDO_2,
         "Restore",
@@ -939,7 +938,6 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     single_open.append(&open_in_submenu);
     single_open.append(&restore);
     single_open.append(&remove_from_recent);
-    single_open.append(&print);
     single_open.append(&extract);
     single_open.append(&extract_to);
     content.append(&single_open);
@@ -1319,23 +1317,6 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         });
     });
     let weak = Rc::downgrade(state);
-    let print_target = target.clone();
-    let print_popover = popover.downgrade();
-    print.connect_clicked(move |_| {
-        if let Some(popover) = print_popover.upgrade() {
-            popover.popdown();
-        }
-        let Some((_, entry)) = print_target.borrow().clone() else {
-            return;
-        };
-        if let Some(state) = weak.upgrade()
-            && let Some(print) = state.print_handler.borrow().as_ref()
-            && entry_supports_printing(&entry)
-        {
-            print(entry);
-        }
-    });
-    let weak = Rc::downgrade(state);
     let terminal_target = target.clone();
     let terminal_popover = popover.downgrade();
     open_terminal.connect_clicked(move |_| {
@@ -1363,7 +1344,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
             && entry.is_directory()
             && let Some(handler) = state.pin_handler.borrow().as_ref()
         {
-            handler(entry.location, entry.display_name);
+            handler(entry.location, entry.display_name, Box::new(|_| {}));
         }
     });
     let weak = Rc::downgrade(state);
@@ -1593,8 +1574,12 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
                     && super::desktop::entry_is_regular_executable(&entry),
             );
             let open_with_entries = entries.clone();
-            open_with.set_visible(open_with_entries.len() == 1);
-            open_with_multiple.set_visible(open_with_entries.len() > 1);
+            // See `desktop::ADMINISTRATOR_OPEN_REFUSAL`.
+            let other_apps = !entries
+                .iter()
+                .any(|entry| entry.location.is_administrator());
+            open_with.set_visible(other_apps && open_with_entries.len() == 1);
+            open_with_multiple.set_visible(other_apps && open_with_entries.len() > 1);
             open_multiple.set_visible(false);
             for button in [&open_with, &open_with_multiple] {
                 button.set_sensitive(false);
@@ -1644,7 +1629,6 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
             compress.set_visible(can_compress);
             compress_multiple.set_visible(can_compress);
             preview.set_visible(crate::ui::preview::entry_supports_quick_preview(&entry));
-            print.set_visible(entry_supports_printing(&entry));
             open_in_submenu.set_visible(entry.is_directory());
             open_in_multiple_submenu
                 .set_visible(entries.len() > 1 && entries.iter().any(|entry| entry.is_directory()));

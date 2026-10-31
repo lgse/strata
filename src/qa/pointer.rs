@@ -346,6 +346,7 @@ impl Input<'_> {
     }
 
     /// Confirms the server moved the pointer, since a press elsewhere lands on the wrong widget.
+    /// On Wayland the position is the injector's own record, so a lost motion goes unnoticed.
     async fn move_to(&self, x: i16, y: i16) -> Result<(), String> {
         self.emit(
             Event::Motion {
