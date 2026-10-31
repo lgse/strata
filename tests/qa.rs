@@ -461,14 +461,21 @@ impl Display {
             .map_err(|error| format!("cannot run import: {error}"))?,
             Server::Wayland(sway) => sway.screenshot(&self.name, destination)?,
         };
+        let program = match &self.kind {
+            Server::X11 { .. } => "import",
+            Server::Wayland(_) => "grim",
+        };
         let deadline = Instant::now() + CAPTURE_TIMEOUT;
         loop {
             match child.try_wait().map_err(|error| error.to_string())? {
                 Some(status) if status.success() => return Ok(()),
-                Some(status) => return Err(format!("import exited with {status}")),
+                Some(status) => return Err(format!("{program} exited with {status}")),
                 None if Instant::now() >= deadline => {
                     terminate(&mut child);
-                    return Err(format!("import ran past {} s", CAPTURE_TIMEOUT.as_secs()));
+                    return Err(format!(
+                        "{program} ran past {} s",
+                        CAPTURE_TIMEOUT.as_secs()
+                    ));
                 }
                 None => std::thread::sleep(POLL_INTERVAL),
             }

@@ -181,15 +181,18 @@ impl Wayland {
                 press_key(&self.keyboard, time, keycode, pressed, modifiers)?;
             }
             Event::Motion { x, y } => {
+                // The compositor keeps the cursor on the output, so record where it can be.
                 let clamp = |value: i16, extent: u16| {
-                    u32::try_from(value.max(0))
-                        .unwrap_or(0)
-                        .min(u32::from(extent))
+                    value.clamp(
+                        0,
+                        i16::try_from(extent.saturating_sub(1)).unwrap_or(i16::MAX),
+                    )
                 };
+                let (x, y) = (clamp(x, self.screen.0), clamp(y, self.screen.1));
                 self.pointer.motion_absolute(
                     time,
-                    clamp(x, self.screen.0),
-                    clamp(y, self.screen.1),
+                    u32::from(x.unsigned_abs()),
+                    u32::from(y.unsigned_abs()),
                     u32::from(self.screen.0),
                     u32::from(self.screen.1),
                 );
@@ -284,6 +287,8 @@ impl Wayland {
         self.roundtrip()
     }
 
+    /// Wayland lets no client read the cursor back, so this is where the last motion sent it,
+    /// and a motion the compositor lost goes unnoticed.
     pub(super) fn pointer_position(&self) -> (i16, i16) {
         self.position.get()
     }

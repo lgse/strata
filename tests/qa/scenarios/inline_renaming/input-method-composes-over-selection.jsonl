@@ -1,4 +1,4 @@
-{"scenario":"input-method-composes-over-selection","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"session_bus":true,"input_method":"chewing","env":{"GTK_IM_MODULE":"fcitx"},"variants":[{"id":"selected-stem"},{"id":"caret-at-end"}],"skip":"needs fcitx5-chewing, which the pinned image lacks; run it by name on a host"}
+{"scenario":"input-method-composes-over-selection","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"session_bus":true,"input_method":"chewing","env":{"GTK_IM_MODULE":"fcitx"},"variants":[{"id":"selected-stem"},{"id":"caret-at-end"}],"skip":"needs fcitx5-chewing, which the pinned image lacks, so run it by name on a host, where selected-stem fails until #1715 is fixed and caret-at-end is the control"}
 {"select":{"entry":"readme.md"}}
 {"select_with_keyboard":"todo.txt"}
 {"key":"F2"}
