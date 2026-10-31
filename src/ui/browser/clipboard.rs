@@ -314,6 +314,15 @@ impl FileDropState {
         self.offer_filter.replace(Some(Box::new(filter)));
     }
 
+    pub(super) fn accepts(&self, target: &gtk::DropTarget, offered: &gtk::gdk::Drop) -> bool {
+        content_drop::accepts_offer(target, offered, self.destination().as_ref())
+            && self
+                .offer_filter
+                .borrow()
+                .as_ref()
+                .is_none_or(|filter| filter(offered))
+    }
+
     // Repeated motion must not postpone navigation; recycled rows must not open stale destinations.
     pub(crate) fn schedule_spring_load_navigation(
         self: &Rc<Self>,
@@ -510,12 +519,7 @@ pub(crate) fn prepare_file_drop_target(
     let state_for_accept = state.clone();
     drop.connect_accept(move |target, offered| {
         target.set_preload(content_drop::preloads(offered));
-        content_drop::accepts_offer(target, offered, state_for_accept.destination().as_ref())
-            && state_for_accept
-                .offer_filter
-                .borrow()
-                .as_ref()
-                .is_none_or(|filter| filter(offered))
+        state_for_accept.accepts(target, offered)
     });
     let state_for_leave = state.clone();
     drop.connect_leave(move |_| state_for_leave.reset());
@@ -569,7 +573,7 @@ pub(super) fn install_directory_drop_target(
     drop.connect_drop(move |target, value, _, _| {
         let handler = handler_for_drop.clone();
         let sources = state_for_drop.sources(target);
-        if sources.is_empty() || content_drop::is_content_value(value) {
+        if sources.is_empty() || content_drop::value_kind(value) != content_drop::ValueKind::Files {
             return commit_dropped_value(
                 target,
                 value,

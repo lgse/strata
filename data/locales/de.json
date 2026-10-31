@@ -1026,6 +1026,7 @@
   "The drive is read-only. It may need to be checked for errors after it was unplugged without being ejected.": "Das Laufwerk ist schreibgeschützt. Wenn es ohne Auswerfen abgezogen wurde, muss es möglicherweise auf Fehler geprüft werden.",
   "The disk quota has been exceeded": "Das Speicherkontingent ist überschritten",
   "The download stopped unexpectedly. Try again.": "Der Download wurde unerwartet beendet. Versuchen Sie es erneut.",
+  "The dropped content is too large": "Der abgelegte Inhalt ist zu groß",
   "The file does not match the selected filter": "Die Datei entspricht nicht dem ausgewählten Filter",
   "The file has no audio track": "Die Datei enthält keine Audiospur",
   "The file has no seekable video stream": "Die Datei enthält keinen durchsuchbaren Videostream",

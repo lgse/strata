@@ -1026,6 +1026,7 @@
   "The drive is read-only. It may need to be checked for errors after it was unplugged without being ejected.": "ドライブは読み取り専用です。取り出さずに取り外した場合は、エラーのチェックが必要なことがあります。",
   "The disk quota has been exceeded": "ディスククォータを超えました",
   "The download stopped unexpectedly. Try again.": "ダウンロードが予期せず停止しました。もう一度お試しください。",
+  "The dropped content is too large": "ドロップした内容が大きすぎます",
   "The file does not match the selected filter": "ファイルが選択したフィルターに一致しません",
   "The file has no audio track": "ファイルに音声トラックがありません",
   "The file has no seekable video stream": "ファイルにシーク可能な動画ストリームがありません",

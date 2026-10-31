@@ -202,20 +202,69 @@ pub(crate) fn save_new_file(
         .permissions(std::fs::Permissions::from_mode(0o666))
         .tempfile_in(directory)?;
     temporary.write_all(bytes)?;
-    for suffix in 0u64.. {
-        let name = if suffix == 0 {
-            format!("{stem}.{extension}")
-        } else {
-            format!("{stem} ({suffix}).{extension}")
-        };
-        let path = directory.join(name);
+    for path in numbered_paths(directory, stem, extension) {
         match temporary.persist_noclobber(&path) {
             Ok(_) => return Ok(path),
             Err(error) if error.error.kind() == io::ErrorKind::AlreadyExists => {
                 temporary = error.file;
             }
+            Err(error) if cannot_rename_without_replacing(&error.error) => {
+                drop(error.file);
+                return write_new_file(directory, stem, extension, bytes);
+            }
             Err(error) => return Err(error.error),
         }
     }
     Err(io::Error::other("file name suffixes exhausted"))
+}
+
+/// Publishing without replacing needs `RENAME_NOREPLACE` or hard links, which
+/// some FUSE mounts, such as rclone and MTP drivers, support neither of.
+fn cannot_rename_without_replacing(error: &io::Error) -> bool {
+    matches!(
+        error.kind(),
+        io::ErrorKind::Unsupported | io::ErrorKind::PermissionDenied | io::ErrorKind::InvalidInput
+    )
+}
+
+/// Writes in place under an exclusively created name, so the file is visible
+/// while it is written; a failed write removes it again.
+pub(super) fn write_new_file(
+    directory: &Path,
+    stem: &str,
+    extension: &str,
+    bytes: &[u8],
+) -> io::Result<PathBuf> {
+    for path in numbered_paths(directory, stem, extension) {
+        let mut file = match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+        {
+            Ok(file) => file,
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        };
+        if let Err(error) = file.write_all(bytes) {
+            drop(file);
+            let _ = std::fs::remove_file(&path);
+            return Err(error);
+        }
+        return Ok(path);
+    }
+    Err(io::Error::other("file name suffixes exhausted"))
+}
+
+fn numbered_paths<'a>(
+    directory: &'a Path,
+    stem: &'a str,
+    extension: &'a str,
+) -> impl Iterator<Item = PathBuf> + 'a {
+    (0u64..).map(move |suffix| {
+        directory.join(if suffix == 0 {
+            format!("{stem}.{extension}")
+        } else {
+            format!("{stem} ({suffix}).{extension}")
+        })
+    })
 }

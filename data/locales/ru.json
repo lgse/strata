@@ -1026,6 +1026,7 @@
   "The drive is read-only. It may need to be checked for errors after it was unplugged without being ejected.": "Диск доступен только для чтения. Если его отключили без извлечения, возможно, его нужно проверить на ошибки.",
   "The disk quota has been exceeded": "Превышена дисковая квота",
   "The download stopped unexpectedly. Try again.": "Загрузка неожиданно прервалась. Повторите попытку.",
+  "The dropped content is too large": "Перетащенное содержимое слишком велико",
   "The file does not match the selected filter": "Файл не соответствует выбранному фильтру",
   "The file has no audio track": "В файле нет звуковой дорожки",
   "The file has no seekable video stream": "В файле нет видеопотока с поддержкой перемотки",

@@ -1026,6 +1026,7 @@
   "The drive is read-only. It may need to be checked for errors after it was unplugged without being ejected.": "드라이브가 읽기 전용입니다. 꺼내지 않고 분리했다면 오류 검사가 필요할 수 있습니다.",
   "The disk quota has been exceeded": "디스크 할당량을 초과했습니다",
   "The download stopped unexpectedly. Try again.": "다운로드가 예기치 않게 중지되었습니다. 다시 시도하세요.",
+  "The dropped content is too large": "드롭한 콘텐츠가 너무 큽니다",
   "The file does not match the selected filter": "파일이 선택한 필터와 일치하지 않습니다",
   "The file has no audio track": "파일에 오디오 트랙이 없습니다",
   "The file has no seekable video stream": "파일에 탐색 가능한 동영상 스트림이 없습니다",

@@ -71,50 +71,55 @@ fn browser_images_keep_their_bytes_and_take_their_extension_from_them() {
     }
 }
 
+type Save = fn(&Path, &str, &str, &[u8]) -> io::Result<PathBuf>;
+
 #[test]
 fn saved_files_skip_existing_names_and_dangling_symlinks() {
-    let dir = tempfile::tempdir().expect("temporary directory");
-    let target = dir.path().join("missing.png");
-    std::os::unix::fs::symlink(&target, dir.path().join("image.png")).expect("dangling symlink");
-    std::fs::create_dir(dir.path().join("image (1).png")).expect("existing directory");
-    std::fs::write(dir.path().join("image (2).png"), b"original").expect("existing image");
+    for (save, method) in [
+        (save_new_file as Save, "renamed into place"),
+        (write_new_file as Save, "written in place"),
+    ] {
+        let dir = tempfile::tempdir().expect("temporary directory");
+        let target = dir.path().join("missing.png");
+        std::os::unix::fs::symlink(&target, dir.path().join("image.png"))
+            .expect("dangling symlink");
+        std::fs::create_dir(dir.path().join("image (1).png")).expect("existing directory");
+        std::fs::write(dir.path().join("image (2).png"), b"original").expect("existing image");
 
-    let saved = save_dropped_files(
-        dir.path(),
-        &[
-            DroppedFile::png("image", b"pasted".to_vec()),
-            DroppedFile::text("Dropped Text", "line one\nline two".to_owned()),
-        ],
-    )
-    .expect("save dropped files");
+        let saved = [
+            save(dir.path(), "image", "png", b"pasted").expect("save image"),
+            save(dir.path(), "Dropped Text", "txt", b"line one\nline two").expect("save text"),
+        ];
 
-    assert_eq!(
-        saved,
-        [
-            dir.path().join("image (3).png"),
-            dir.path().join("Dropped Text.txt"),
-        ]
-    );
-    assert_eq!(std::fs::read(&saved[0]).expect("saved image"), b"pasted");
-    assert_eq!(
-        std::fs::read(&saved[1]).expect("saved text"),
-        b"line one\nline two"
-    );
-    assert!(!target.exists());
-    assert_eq!(
-        std::fs::read(dir.path().join("image (2).png")).expect("original image"),
-        b"original"
-    );
-    let mode = std::fs::metadata(&saved[1])
-        .expect("metadata")
-        .permissions()
-        .mode();
-    assert_eq!(mode & 0o111, 0, "saved content must not be executable");
-    assert_eq!(
-        std::fs::read_dir(dir.path()).expect("directory").count(),
-        5,
-        "no temporary file may remain"
-    );
+        assert_eq!(
+            saved,
+            [
+                dir.path().join("image (3).png"),
+                dir.path().join("Dropped Text.txt"),
+            ],
+            "{method}"
+        );
+        assert_eq!(std::fs::read(&saved[0]).expect("saved image"), b"pasted");
+        assert_eq!(
+            std::fs::read(&saved[1]).expect("saved text"),
+            b"line one\nline two"
+        );
+        assert!(!target.exists(), "{method}");
+        assert_eq!(
+            std::fs::read(dir.path().join("image (2).png")).expect("original image"),
+            b"original"
+        );
+        let mode = std::fs::metadata(&saved[1])
+            .expect("metadata")
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o111, 0, "saved content must not be executable");
+        assert_eq!(
+            std::fs::read_dir(dir.path()).expect("directory").count(),
+            5,
+            "no temporary file may remain when {method}"
+        );
+    }
 }
 
 #[test]

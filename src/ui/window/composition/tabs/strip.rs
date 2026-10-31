@@ -600,9 +600,17 @@ fn install_file_drop(state: &Rc<TabWindow>, id: u64, widget: &gtk::Box, browser:
             move |destination, request| browser.commit_drop(destination, request),
         )
     });
+    // Images dropped on a tab are read before this runs; select it as the
+    // main target's drop does.
     let handler: DropHandler = {
         let browser = browser.downgrade();
+        let weak = Rc::downgrade(state);
         Rc::new(move |destination, request| {
+            if let Some(state) = weak.upgrade()
+                && !state.blocked()
+            {
+                state.select(id);
+            }
             if let Some(browser) = browser.upgrade() {
                 browser.commit_drop(destination, request);
             }

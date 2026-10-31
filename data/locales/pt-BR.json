@@ -1026,6 +1026,7 @@
   "The drive is read-only. It may need to be checked for errors after it was unplugged without being ejected.": "A unidade está somente leitura. Se ela foi desconectada sem ser ejetada, talvez seja preciso verificar se há erros.",
   "The disk quota has been exceeded": "A cota de disco foi excedida",
   "The download stopped unexpectedly. Try again.": "O download parou inesperadamente. Tente novamente.",
+  "The dropped content is too large": "O conteúdo arrastado é grande demais",
   "The file does not match the selected filter": "O arquivo não corresponde ao filtro selecionado",
   "The file has no audio track": "O arquivo não tem faixa de áudio",
   "The file has no seekable video stream": "O arquivo não tem um fluxo de vídeo navegável",

@@ -1,15 +1,20 @@
-{"scenario":"foreign-content-saves-new-files","modes":["columns","icons","list"],"layout":"us","mutation":null,"known_bug":null,"session_bus":true,"setup":[{"fs":{"path":"$data/applications","mkdir":true}},{"fs":{"path":"$environment/record-uris","write":"#!/bin/sh\nprintf \"%s\\n\" \"$$@\" > \"$environment/opened-uris\"\n"}},{"fs":{"path":"$environment/record-uris","chmod":"755"}},{"fs":{"path":"$data/applications/strata-web-browser.desktop","write":"[Desktop Entry]\nType=Application\nName=Web Browser Stub\nExec=$environment/record-uris %u\nMimeType=x-scheme-handler/http;x-scheme-handler/https;\n"}},{"fs":{"path":"$config/mimeapps.list","write":"[Default Applications]\nx-scheme-handler/http=strata-web-browser.desktop;\nx-scheme-handler/https=strata-web-browser.desktop;\n"}}],"variants":[{"id":"text"},{"id":"image","modes":["columns"]},{"id":"contents","modes":["columns"]},{"id":"link","modes":["columns"]},{"id":"open","modes":["columns"],"prefs":{"open_folder_after_drop":true}},{"id":"unwritable","modes":["columns"]}]}
+{"scenario":"foreign-content-saves-new-files","modes":["columns","icons","list"],"layout":"us","mutation":null,"known_bug":null,"session_bus":true,"setup":[{"fs":{"path":"$data/applications","mkdir":true}},{"fs":{"path":"$environment/record-uris","write":"#!/bin/sh\nprintf \"%s\\n\" \"$$@\" > \"$environment/opened-uris\"\n"}},{"fs":{"path":"$environment/record-uris","chmod":"755"}},{"fs":{"path":"$data/applications/strata-web-browser.desktop","write":"[Desktop Entry]\nType=Application\nName=Web Browser Stub\nExec=$environment/record-uris %u\nMimeType=x-scheme-handler/http;x-scheme-handler/https;\n"}},{"fs":{"path":"$config/mimeapps.list","write":"[Default Applications]\nx-scheme-handler/http=strata-web-browser.desktop;\nx-scheme-handler/https=strata-web-browser.desktop;\n"}}],"variants":[{"id":"text"},{"id":"image","modes":["columns"]},{"id":"contents","modes":["columns"]},{"id":"link","modes":["columns"]},{"id":"image_file","modes":["columns"]},{"id":"contents_fallback","modes":["columns"]},{"id":"contents_unreadable","modes":["columns"]},{"id":"open","modes":["columns"],"prefs":{"open_folder_after_drop":true}},{"id":"unwritable","modes":["columns"]}]}
 {"fs":{"path":"$environment/offer.txt","write":"Selected words\nsecond line"},"variants":["text","open","unwritable"]}
 {"fs":{"path":"archive","chmod":"555"},"variants":["unwritable"]}
 {"foreign":{"offers":[{"mime":"text/plain;charset=utf-8","path":"$environment/offer.txt"}]},"as":"foreign","message":"the foreign text source","variants":["text","open","unwritable"]}
-{"http":"aGVsbG8=","as":"url","variants":["image","contents","link"]}
-{"fs":{"path":"$environment/offer.uris","write":"$url\r\n"},"variants":["image","link"]}
+{"http":"aGVsbG8=","as":"url","variants":["image","contents","link","contents_fallback"]}
+{"fs":{"path":"$environment/offer.uris","write":"$url\r\n"},"variants":["image","link","contents_fallback"]}
 {"fs":{"path":"$environment/offer.url","write":"$url"},"variants":["contents","link"]}
 {"fs":{"path":"$environment/offer.png","image":{"width":3,"height":2,"rgb":[0,128,255]}},"variants":["image"]}
 {"foreign":{"offers":[{"mime":"image/png","path":"$environment/offer.png"},{"mime":"text/uri-list","path":"$environment/offer.uris"}]},"as":"foreign","message":"a foreign image offered with its address","variants":["image"]}
 {"fs":{"path":"$environment/photo.jpg","hex":"ffd8ffe000104a46494600010100000100010000ffd9"},"variants":["contents"]}
 {"foreign":{"offers":[{"mime":"text/plain;charset=utf-8","path":"$environment/offer.url"},{"mime":"application/octet-stream;name=\"holiday \\\"photo\\\".jpg\"","path":"$environment/photo.jpg"}]},"as":"foreign","message":"a foreign image's file contents offered with its address","variants":["contents"]}
 {"foreign":{"offers":[{"mime":"text/uri-list","path":"$environment/offer.uris"},{"mime":"text/plain;charset=utf-8","path":"$environment/offer.url"}]},"as":"foreign","message":"a foreign web address","variants":["link"]}
+{"fs":{"path":"$environment/shot.png","image":{"width":3,"height":2,"rgb":[0,128,255]}},"variants":["image_file"]}
+{"foreign":{"paths":["$environment/shot.png"],"offers":[{"mime":"image/png","path":"$environment/shot.png"}]},"as":"foreign","message":"a foreign file offered with its image data","variants":["image_file"]}
+{"fs":{"path":"$environment/contents.bin","write":"not an image"},"variants":["contents_fallback","contents_unreadable"]}
+{"foreign":{"offers":[{"mime":"application/octet-stream;name=\"broken.png\"","path":"$environment/contents.bin"},{"mime":"text/uri-list","path":"$environment/offer.uris"}]},"as":"foreign","message":"unreadable file contents offered with their address","variants":["contents_fallback"]}
+{"foreign":{"offers":[{"mime":"application/octet-stream;name=\"broken.png\"","path":"$environment/contents.bin"}]},"as":"foreign","message":"unreadable file contents offered alone","variants":["contents_unreadable"]}
 {"drag":{"from":{"kept":"foreign"},"to":{"entry":"archive","dir":"$root"}}}
 {"foreign_label":"Foreign drag finished","message":"the drop protocol to finish"}
 {"fs":{"path":"archive/dropped text.txt","text":"Selected words\nsecond line"},"message":"the dropped text to be saved as a text file","variants":["text","open"]}
@@ -28,7 +33,14 @@
 {"fs":{"path":"archive","names":["holiday \"photo\".jpg"]},"timeout_ms":0,"message":"the address offered with the image must not be saved too","variants":["contents"]}
 {"fs":{"path":"archive/127.0.0.1.desktop","has":{"contains":["[Desktop Entry]","Type=Link","URL=$url"],"lacks":["Exec"]}},"message":"the address to be saved as a web link","variants":["link"]}
 {"fs":{"path":"archive","names":["127.0.0.1.desktop"]},"timeout_ms":0,"message":"one link for the address offered in two formats","variants":["link"]}
-{"http_requests":0,"message":"dropping content must never fetch its address","variants":["image","contents","link"]}
+{"fs":{"path":"archive/shot.png","copy_of":"$environment/shot.png"},"message":"the offered file to be copied rather than its image data saved","variants":["image_file"]}
+{"fs":{"path":"archive","names":["shot.png"]},"timeout_ms":0,"message":"no image file to be saved besides the copy","variants":["image_file"]}
+{"fs":{"path":"archive/127.0.0.1.desktop","has":{"contains":["Type=Link","URL=$url"]}},"message":"the address to be saved when the file contents are not an image","variants":["contents_fallback"]}
+{"fs":{"path":"archive","names":["127.0.0.1.desktop"]},"timeout_ms":0,"message":"nothing saved from the unreadable contents","variants":["contents_fallback"]}
+{"wait":{"dialog":true},"message":"an error dialog for contents with nothing to fall back on","variants":["contents_unreadable"]}
+{"expect":{"mentions":{"target":{"dialog":true},"text":"Unsupported image format"}},"message":"the dialog to say why the content was not saved","variants":["contents_unreadable"]}
+{"fs":{"path":"archive","empty":true},"timeout_ms":0,"message":"nothing to be saved from unreadable contents","variants":["contents_unreadable"]}
+{"http_requests":0,"message":"dropping content must never fetch its address","variants":["image","contents","link","contents_fallback"]}
 {"foreign_stop":true}
 {"select":{"entry":"archive","dir":"$root"},"variants":["link"]}
 {"wait":{"entry":"127.0.0.1.desktop","dir":"archive"},"message":"the saved link listed in 'archive'","variants":["link"]}

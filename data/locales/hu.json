@@ -1026,6 +1026,7 @@
   "The drive is read-only. It may need to be checked for errors after it was unplugged without being ejected.": "A meghajtó csak olvasható. Ha a meghajtót a rendszerből való biztonságos eltávolítás nélkül választották le, előfordulhat, hogy hibaellenőrzésre lesz szükség.",
   "The disk quota has been exceeded": "A lemezkvóta túllépve",
   "The download stopped unexpectedly. Try again.": "A letöltés váratlanul leállt. Próbálja újra.",
+  "The dropped content is too large": "A behúzott tartalom túl nagy",
   "The file does not match the selected filter": "A fájl nem felel meg a kiválasztott szűrőnek",
   "The file has no audio track": "A fájlnak nincs hangsávja",
   "The file has no seekable video stream": "A fájlnak nincs tekerhető videofolyama",

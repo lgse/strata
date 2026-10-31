@@ -1026,6 +1026,7 @@
   "The drive is read-only. It may need to be checked for errors after it was unplugged without being ejected.": "驱动器为只读。如果未弹出就拔出，可能需要检查磁盘错误。",
   "The disk quota has been exceeded": "已超出磁盘配额",
   "The download stopped unexpectedly. Try again.": "下载意外停止。请重试。",
+  "The dropped content is too large": "拖放的内容过大",
   "The file does not match the selected filter": "文件与所选文件类型不匹配",
   "The file has no audio track": "文件中没有音轨",
   "The file has no seekable video stream": "文件中没有支持跳转的视频流",

@@ -1026,6 +1026,7 @@
   "The drive is read-only. It may need to be checked for errors after it was unplugged without being ejected.": "Ổ đĩa chỉ đọc. Nếu ổ đã bị rút ra mà chưa được đẩy ra, có thể cần kiểm tra lỗi ổ đĩa.",
   "The disk quota has been exceeded": "Đã vượt quá hạn mức ổ đĩa",
   "The download stopped unexpectedly. Try again.": "Quá trình tải xuống đã dừng đột ngột. Hãy thử lại.",
+  "The dropped content is too large": "Nội dung được thả quá lớn",
   "The file does not match the selected filter": "Tệp không khớp với bộ lọc đã chọn",
   "The file has no audio track": "Tệp không có rãnh âm thanh",
   "The file has no seekable video stream": "Tệp không có luồng video có thể tua",

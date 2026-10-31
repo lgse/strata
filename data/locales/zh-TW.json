@@ -1000,6 +1000,7 @@
   "The drive is read-only. It may need to be checked for errors after it was unplugged without being ejected.": "磁碟機為唯讀。若未退出就拔除，可能需要檢查錯誤。",
   "The disk quota has been exceeded": "已超出磁碟配額",
   "The download stopped unexpectedly. Try again.": "下載意外停止。請重試。",
+  "The dropped content is too large": "拖放的內容過大",
   "The file does not match the selected filter": "檔案與所選篩選條件不符",
   "The file has no audio track": "檔案沒有音軌",
   "The file has no seekable video stream": "檔案沒有可定位的視訊串流",

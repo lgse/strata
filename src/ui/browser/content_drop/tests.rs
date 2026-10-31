@@ -17,7 +17,7 @@ fn file_list(uris: &[&str]) -> glib::Value {
 }
 
 #[test]
-fn dropped_values_save_content_while_existing_files_stay_transfers() {
+fn dropped_values_save_content_while_files_transfer_and_mixed_lists_are_refused() {
     let texture = gdk::MemoryTexture::new(
         1,
         1,
@@ -32,27 +32,45 @@ fn dropped_values_save_content_while_existing_files_stay_transfers() {
     );
     assert!(image[0].bytes().starts_with(b"\x89PNG"));
 
-    for (value, saved) in [
+    for (value, kind, saved) in [
         (
             file_list(&["https://example.com/a", "http://example.org/b"]),
+            ValueKind::Content,
             Some(vec!["example.com.desktop", "example.org.desktop"]),
         ),
-        (file_list(&["file:///fixture/notes.txt"]), None),
         (
-            file_list(&["https://example.com/a", "file:///fixture/notes.txt"]),
+            file_list(&["file:///fixture/notes.txt"]),
+            ValueKind::Files,
             None,
         ),
-        (file_list(&["sftp://host.example/notes.txt"]), None),
+        (
+            file_list(&["https://example.com/a", "file:///fixture/notes.txt"]),
+            ValueKind::Refused,
+            None,
+        ),
+        (
+            file_list(&["https://user:secret@example.com/a"]),
+            ValueKind::Refused,
+            None,
+        ),
+        (
+            file_list(&["sftp://host.example/notes.txt"]),
+            ValueKind::Files,
+            None,
+        ),
         (
             "https://example.com/watch?v=1".to_value(),
+            ValueKind::Content,
             Some(vec!["example.com.desktop"]),
         ),
         (
             "Selected words\nhttps://example.com/".to_value(),
+            ValueKind::Content,
             Some(vec!["dropped text.txt"]),
         ),
-        ("".to_value(), None),
+        ("".to_value(), ValueKind::Content, None),
     ] {
+        assert_eq!(value_kind(&value), kind, "{value:?}");
         assert_eq!(
             saved_names(&value),
             saved.map(|names| names.into_iter().map(str::to_owned).collect()),
