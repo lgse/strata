@@ -29,9 +29,7 @@ fn save_target(path: &std::path::Path) {
 
 fn refused_jump(name: &str, refusal: Refusal) {
     crate::test_support::gtk_test(
-        &format!(
-            "ui::window::tests::keyboard_dispatch::letter_bookmarks::pending_jump::{name}"
-        ),
+        &format!("ui::window::tests::keyboard_dispatch::letter_bookmarks::pending_jump::{name}"),
         || {
             let fixture = KeyboardFixture::new();
             PreferenceManager::shared().set_tenxer_mode(true);

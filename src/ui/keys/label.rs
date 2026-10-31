@@ -101,7 +101,11 @@ impl Keys {
                 shown.iter().filter_map(|shown| shown.command()).collect()
             }
             Self::Digits(digits) => digits.prefix.and_then(Shown::command).into_iter().collect(),
-            Self::Letters(letters) => letters.prefix.and_then(Shown::command).into_iter().collect(),
+            Self::Letters(letters) => letters
+                .prefix
+                .and_then(Shown::command)
+                .into_iter()
+                .collect(),
             Self::Mixed(keys) => keys.iter().flat_map(Self::commands).collect(),
         }
     }

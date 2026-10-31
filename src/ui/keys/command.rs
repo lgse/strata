@@ -347,9 +347,9 @@ impl Alternate {
 pub(crate) fn registry() -> impl Iterator<Item = Command> {
     bindings::entries().filter_map(|entry| match entry {
         bindings::Entry::Command(command) => Some(command),
-        bindings::Entry::Binding(_)
-        | bindings::Entry::Digits(_)
-        | bindings::Entry::Letters(_) => None,
+        bindings::Entry::Binding(_) | bindings::Entry::Digits(_) | bindings::Entry::Letters(_) => {
+            None
+        }
     })
 }
 

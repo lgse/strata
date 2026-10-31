@@ -53,7 +53,11 @@ fn letter_bookmarks_refuse_invalid_input() {
 fn letter_bookmarks_save_over_a_file_that_no_longer_parses() {
     let root = tempfile::tempdir().expect("temporary directory");
     let store = root.path().join("marks.json");
-    for corrupt in [&b"not JSON"[..], b"{\"entries\":{\"a\":", b"{\"entries\":[]}"] {
+    for corrupt in [
+        &b"not JSON"[..],
+        b"{\"entries\":{\"a\":",
+        b"{\"entries\":[]}",
+    ] {
         std::fs::write(&store, corrupt).expect("corrupt store");
         assert!(read(&store, 'a').is_err());
         assert!(read_all(&store).is_err());
@@ -74,7 +78,10 @@ fn letter_bookmarks_load_files_with_unknown_fields_and_keys() {
         br#"{"version":2,"entries":{"a":"file:///kept","ab":"file:///long-key","":"file:///empty"}}"#,
     )
     .expect("newer store");
-    assert_eq!(read(&store, 'a').expect("known slot"), Some(PathBuf::from("/kept")));
+    assert_eq!(
+        read(&store, 'a').expect("known slot"),
+        Some(PathBuf::from("/kept"))
+    );
     assert_eq!(
         read_all(&store).expect("usable entries"),
         vec![('a', PathBuf::from("/kept"))]
@@ -82,7 +89,10 @@ fn letter_bookmarks_load_files_with_unknown_fields_and_keys() {
     write(&store, 'c', Path::new("/added")).expect("save beside unknown data");
     assert_eq!(
         read_all(&store).expect("saved store"),
-        vec![('a', PathBuf::from("/kept")), ('c', PathBuf::from("/added"))]
+        vec![
+            ('a', PathBuf::from("/kept")),
+            ('c', PathBuf::from("/added"))
+        ]
     );
 }
 

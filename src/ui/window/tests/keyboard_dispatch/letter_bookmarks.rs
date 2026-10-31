@@ -131,10 +131,7 @@ fn letter_bookmarks_menu_does_not_reopen_after_cancel_or_replace_the_save_menu()
                 if replace_with_save {
                     wait_until(|| {
                         fixture.shortcuts.chord_options()
-                            == Some(vec![(
-                                "a\u{2013}z".to_owned(),
-                                "Save bookmark".to_owned(),
-                            )])
+                            == Some(vec![("a\u{2013}z".to_owned(), "Save bookmark".to_owned())])
                     });
                     assert_eq!(
                         fixture.shortcuts.armed_chord(),
@@ -304,7 +301,10 @@ fn letter_bookmark_save_reports_its_result_after_later_keys() {
             let fixture = KeyboardFixture::new();
             PreferenceManager::shared().set_tenxer_mode(true);
             let state = glib::user_data_dir().join("strata/letter-bookmarks.json");
-            for (fails, expected) in [(false, "Saved bookmark a"), (true, "Could not access bookmarks:")] {
+            for (fails, expected) in [
+                (false, "Saved bookmark a"),
+                (true, "Could not access bookmarks:"),
+            ] {
                 if fails {
                     std::fs::remove_file(&state).expect("remove saved state");
                     std::fs::create_dir(&state).expect("unwritable state file");

@@ -321,7 +321,9 @@ impl KeyPress {
     pub(crate) fn letter(&self) -> Option<char> {
         let (key, modifiers) = self.physical_key();
         let letter = key.to_unicode().filter(char::is_ascii_lowercase)?;
-        (modifiers & SHORTCUT_MODIFIERS).is_empty().then_some(letter)
+        (modifiers & SHORTCUT_MODIFIERS)
+            .is_empty()
+            .then_some(letter)
     }
 
     /// The typed character, for typing consumers only. Nothing is typed while
