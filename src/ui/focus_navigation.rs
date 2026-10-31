@@ -3,11 +3,8 @@
 use gtk::{gdk, glib, prelude::*};
 
 use super::keys::{
-    self, Binding, KeyPress,
-    bindings::{
-        DOWN, ENTER, FOCUS_NEXT, FOCUS_PREVIOUS, LEFT, RIGHT, UP, VIM_DOWN, VIM_LEFT, VIM_RIGHT,
-        VIM_UP,
-    },
+    self, Binding, Command, KeyPress,
+    bindings::{DOWN, ENTER, FOCUS_NEXT, FOCUS_PREVIOUS, LEFT, RIGHT, UP},
 };
 
 #[cfg(test)]
@@ -17,33 +14,19 @@ mod tests;
 pub(super) const FOCUS_MODIFIERS: gdk::ModifierType =
     gdk::ModifierType::SHIFT_MASK.union(gdk::ModifierType::SUPER_MASK);
 
-const ARROWS: [(Binding, Binding); 4] = [
-    (LEFT, VIM_LEFT),
-    (DOWN, VIM_DOWN),
-    (UP, VIM_UP),
-    (RIGHT, VIM_RIGHT),
+const ARROWS: [(Command, gtk::DirectionType); 4] = [
+    (LEFT, gtk::DirectionType::Left),
+    (DOWN, gtk::DirectionType::Down),
+    (UP, gtk::DirectionType::Up),
+    (RIGHT, gtk::DirectionType::Right),
 ];
 
+/// The arrow a press reads as, or whose other key it is where no alias applied.
 pub(super) fn spatial_arrow(press: &KeyPress) -> Option<Binding> {
     ARROWS
         .into_iter()
-        .find(|(arrow, vim)| press.is_any(&[*arrow, *vim]))
-        .map(|(arrow, _)| arrow)
-}
-
-/// Reads **h j k l** as arrows unless typing owns them.
-pub(super) fn navigation_key(
-    press: &KeyPress,
-    type_to_search: bool,
-    focused: Option<&gtk::Widget>,
-) -> KeyPress {
-    if type_to_search || focused.is_some_and(|widget| editable(widget) || in_popover(widget)) {
-        return *press;
-    }
-    ARROWS
-        .into_iter()
-        .find(|(_, vim)| press.is(*vim))
-        .map_or(*press, |(arrow, _)| press.read_as(arrow))
+        .find(|(arrow, _)| press.is(arrow.or_alternates()))
+        .and_then(|(arrow, _)| arrow.canonical())
 }
 
 pub(super) fn activate_native_arrow(scope: &impl IsA<gtk::Widget>, key: gdk::Key) -> bool {
@@ -88,26 +71,18 @@ pub(super) fn arrow_direction(
     press: &KeyPress,
     tolerated: gdk::ModifierType,
 ) -> Option<gtk::DirectionType> {
-    [
-        (LEFT, gtk::DirectionType::Left),
-        (RIGHT, gtk::DirectionType::Right),
-        (UP, gtk::DirectionType::Up),
-        (DOWN, gtk::DirectionType::Down),
-    ]
-    .into_iter()
-    .find(|(arrow, _)| press.is(arrow.ignoring(tolerated)))
-    .map(|(_, direction)| direction)
+    ARROWS
+        .into_iter()
+        .find(|(arrow, _)| press.is(arrow.ignoring(tolerated)))
+        .map(|(_, direction)| direction)
 }
 
+/// The direction of an arrow's other key as pressed, such as **h** for ←.
 pub(super) fn vim_focus_direction(press: &KeyPress) -> Option<gtk::DirectionType> {
-    [
-        (VIM_LEFT, gtk::DirectionType::Left),
-        (VIM_DOWN, gtk::DirectionType::Down),
-        (VIM_UP, gtk::DirectionType::Up),
-        (VIM_RIGHT, gtk::DirectionType::Right),
-    ]
-    .into_iter()
-    .find_map(|(binding, direction)| press.is(binding).then_some(direction))
+    ARROWS
+        .into_iter()
+        .find(|(arrow, _)| press.is(arrow.alternates()))
+        .map(|(_, direction)| direction)
 }
 
 pub(super) fn plain_tab_direction(press: &KeyPress) -> Option<gtk::DirectionType> {
@@ -118,6 +93,31 @@ pub(super) fn plain_tab_direction(press: &KeyPress) -> Option<gtk::DirectionType
     } else {
         None
     }
+}
+
+/// Listing updates must not take focus from a modal or an inactive tab.
+pub(super) fn browser_can_take_focus(widget: &impl IsA<gtk::Widget>) -> bool {
+    let widget = widget.as_ref();
+    // Startup/loading focus can precede mapping; only an inactive tab is excluded.
+    if !widget.is_mapped() {
+        let mut child = widget.clone();
+        while let Some(parent) = child.parent() {
+            if child.has_css_class("tab-context")
+                && parent.downcast_ref::<gtk::Stack>().is_some_and(|stack| {
+                    stack
+                        .visible_child()
+                        .is_some_and(|visible| visible != child)
+                })
+            {
+                return false;
+            }
+            child = parent;
+        }
+    }
+    widget
+        .root()
+        .and_downcast::<gtk::Window>()
+        .is_none_or(|window| !super::window::foreign_modal_visible(&window, None))
 }
 
 pub(super) fn contains_widget(container: &gtk::Widget, focused: Option<&gtk::Widget>) -> bool {
@@ -401,6 +401,7 @@ pub(super) fn install(scope: &impl IsA<gtk::Widget>) {
         let Some(scope) = weak.upgrade() else {
             return glib::Propagation::Proceed;
         };
+        let press = &press.untyped();
         let handled = if let Some(direction) = arrow_direction(press, gdk::ModifierType::empty()) {
             move_focus(&scope, direction)
         } else if press.is(ENTER) {

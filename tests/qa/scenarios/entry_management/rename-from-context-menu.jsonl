@@ -1,0 +1,15 @@
+{"scenario":"rename-from-context-menu","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.8},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Context-menu Rename item then Enter renames on disk; only context-menu route to rename, rename-shortcuts covers F2/ctrl+r"}}
+{"click":{"entry":"readme.md"},"button":3}
+{"wait":{"menu_items":{}},"message":"the context menu for 'readme.md'"}
+{"wait":{"present":{"menu_item":"Rename"}},"message":"the menu item 'Rename'"}
+{"settle":{"menu_item":"Rename"}}
+{"click":{"menu_item":"Rename"}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"remember":{"field":true},"as":"field"}
+{"key":"ctrl+a"}
+{"type":"guide.md"}
+{"wait":{"field":{"of":"field","text":"guide.md"}},"message":"the new name to be typed"}
+{"key":"Return"}
+{"fs":{"path":"guide.md","exists":true},"message":"the rename to apply"}
+{"fs":{"path":"readme.md","exists":false},"timeout_ms":0}

@@ -6,10 +6,58 @@ use gtk::gio;
 
 use super::{
     CommandLineAction, LaunchMode, classify_command_line, classify_udiskie_hook,
-    encode_daemon_pids, gvfs_daemon_pids, gvfs_probe_marker_is_fresh_at, gvfs_probe_marker_path_in,
-    launch_mode, run_preview_helper, should_select_cairo, version_line,
+    encode_daemon_pids, file_manager_debug_environment, gvfs_daemon_pids,
+    gvfs_probe_marker_is_fresh_at, gvfs_probe_marker_path_in, launch_mode, run_preview_helper,
+    should_select_cairo, version_line,
 };
 use crate::ui::preferences::InterfaceRenderer;
+
+#[test]
+fn file_manager_activation_preserves_debug_flags_and_stops_restarting() {
+    let arguments = ["strata".into(), "--gapplication-service".into()];
+    for original in [
+        OsString::new(),
+        OsString::from("misc,portals"),
+        OsString::from_vec(b"misc:\xff".to_vec()),
+    ] {
+        let updated = file_manager_debug_environment(&arguments, Some(&original))
+            .expect("service activation must avoid synchronous GTK portal calls");
+        assert!(
+            updated
+                .as_encoded_bytes()
+                .starts_with(original.as_encoded_bytes())
+        );
+        assert_eq!(
+            file_manager_debug_environment(&arguments, Some(&updated)),
+            None
+        );
+    }
+    for existing in [
+        "no-portals",
+        "misc;NO-PORTALS",
+        "misc no-portals",
+        "no-portals,portals",
+    ] {
+        assert_eq!(
+            file_manager_debug_environment(&arguments, Some(existing.as_ref())),
+            None
+        );
+    }
+}
+
+#[test]
+fn file_manager_activation_leaves_other_launches_and_literal_paths_alone() {
+    for arguments in [
+        vec!["strata"],
+        vec!["strata", "/tmp"],
+        vec!["strata", "--", "--gapplication-service"],
+        vec!["strata", "--portal", "--gapplication-service"],
+        vec!["strata", "--preview-helper", "--gapplication-service"],
+    ] {
+        let arguments: Vec<OsString> = arguments.into_iter().map(OsString::from).collect();
+        assert_eq!(file_manager_debug_environment(&arguments, None), None);
+    }
+}
 
 #[test]
 fn application_renderer_respects_saved_choice_and_explicit_environment() {
@@ -53,6 +101,10 @@ fn launch_mode_recognizes_only_the_first_argument_as_a_mode() {
         ("--install-udiskie-unlock", LaunchMode::InstallUdiskie),
         ("--uninstall-udiskie-unlock", LaunchMode::UninstallUdiskie),
         ("--unlock-volume", LaunchMode::Application),
+        #[cfg(feature = "qa")]
+        ("--qa", LaunchMode::Qa),
+        #[cfg(not(feature = "qa"))]
+        ("--qa", LaunchMode::Application),
     ] {
         assert_eq!(launch_mode(&["strata".into(), flag.into()]), mode);
         assert_eq!(

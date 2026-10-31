@@ -28,6 +28,12 @@ pub(super) fn general_page(
     let preferences = page_content();
 
     append_language_option(&preferences, &manager);
+    let units = super::unit_system_control(&manager);
+    preferences.append(&super::control_row(
+        "Units",
+        "For things like distances, heights and volumes.",
+        &units,
+    ));
     append_browsing_options(&preferences, &manager);
     append_sidebar_options(&preferences, &manager);
 
@@ -532,10 +538,11 @@ fn bind_tenxer_unused_subtitle(
         return;
     };
     let unused = crate::ui::tenxer_mode::UNUSED_SUBTITLE;
+    // Bound after the row's own rendering, so it has the last word.
     manager.bind_preference(
         &description,
-        PreferenceManager::tenxer_mode,
-        move |widget, enabled| {
+        PreferenceManager::shown_keys,
+        move |widget, (enabled, ..)| {
             if let Some(label) = widget.downcast_ref::<gtk::Label>() {
                 label.set_text(&super::translated(if enabled { unused } else { normal }));
                 label.set_visible(true);
@@ -737,10 +744,11 @@ fn append_sidebar_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
         label.add_css_class("settings-word-wrap");
         content.append(&label);
         button.set_child(Some(&content));
-        button.update_property(&[
-            gtk::accessible::Property::Label(&crate::i18n::tr(switch.title)),
-            gtk::accessible::Property::Description(&crate::i18n::tr(switch.description)),
-        ]);
+        crate::ui::accessibility::set_own_label(&button, &crate::i18n::tr(switch.title));
+        crate::ui::accessibility::set_description(
+            &button,
+            Some(&crate::i18n::tr(switch.description)),
+        );
         super::bindings::bind_toggle(manager, &button, switch.read, switch.write);
         chips.append(&button);
     }
@@ -932,11 +940,10 @@ fn click_activation_option(
         control.add_css_class("click-activation-control");
         // Include the view and item kind so assistive tools distinguish all twelve choices.
         for button in buttons {
-            button.update_relation(&[gtk::accessible::Relation::LabelledBy(&[
-                title.upcast_ref(),
-                label.upcast_ref(),
-                button.upcast_ref(),
-            ])]);
+            crate::ui::accessibility::set_labelled_by(
+                button,
+                &[title.upcast_ref(), label.upcast_ref(), button.upcast_ref()],
+            );
         }
         label.add_css_class("activation-inline-label");
         label.set_visible(false);

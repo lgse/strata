@@ -1,0 +1,25 @@
+{"scenario":"keep-both-then-undo-remaining","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.0},"quality":{"impact":4,"coverage":4,"criticality":4,"diagnostic":3,"score":52,"note":"Keep Both via keyboard from default Replace focus, then undo; superset of keep-both-then-undo, only keyboard route through the conflict dialog"}}
+{"fs":{"path":"archive/todo.txt","write":"existing\n"}}
+{"fs":{"path":"archive/todo (1).txt","write":"previous copy\n"}}
+{"select":{"entry":"todo.txt"}}
+{"key":"ctrl+c"}
+{"select":{"entry":"archive"}}
+{"wait":{"directory":"archive"},"message":"the browser to be working in 'archive'"}
+{"settle":{"pane":"archive"}}
+{"move":{"pane":"archive"}}
+{"key":"ctrl+v"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"wait":{"state":{"target":{"dialog_button":"Replace"},"focused":true}},"message":"Replace to receive initial focus"}
+{"key":"shift+Tab"}
+{"wait":{"state":{"target":{"dialog_button":"Keep Both"},"focused":true}},"message":"Keep Both to receive keyboard focus"}
+{"key":"Return"}
+{"fs":{"path":"archive/todo (2).txt","exists":true},"message":"the numbered copy"}
+{"wait":{"selected":["todo (2).txt"],"dir":"archive"},"message":"the numbered copy to be selected"}
+{"fs":{"path":"archive/todo (2).txt","text":"todo\n"},"timeout_ms":0}
+{"wait":{"dialog":null},"message":"the conflict dialog to finish dismissing"}
+{"wait":{"focused":"todo (2).txt"},"message":"keyboard focus to reach 'todo (2).txt'"}
+{"key":"ctrl+z"}
+{"fs":{"path":"archive/todo (2).txt","exists":false},"message":"copy undo"}
+{"fs":{"path":"todo.txt","text":"todo\n"},"timeout_ms":0}
+{"fs":{"path":"archive/todo.txt","text":"existing\n"},"timeout_ms":0}
+{"fs":{"path":"archive/todo (1).txt","text":"previous copy\n"},"timeout_ms":0}

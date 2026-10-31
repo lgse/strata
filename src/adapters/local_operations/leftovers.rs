@@ -7,7 +7,10 @@ use std::{
     os::fd::{AsFd, BorrowedFd, OwnedFd},
     path::{Path, PathBuf},
     rc::Rc,
-    sync::{Arc, LazyLock, Mutex, OnceLock},
+    sync::{
+        Arc, LazyLock, Mutex, OnceLock,
+        atomic::{AtomicUsize, Ordering},
+    },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -53,12 +56,25 @@ const REVIEWED_ENTRIES: usize = 1_000;
 
 static SWEPT: LazyLock<Mutex<HashSet<(PathBuf, OsString)>>> = LazyLock::new(Mutex::default);
 
+/// Shared by every job of one deletion: when its leftover wait began and how many
+/// entries its workers have removed.
 #[derive(Clone, Default)]
-pub(crate) struct Deadline(Arc<OnceLock<SystemTime>>);
+pub(crate) struct Deadline {
+    started: Arc<OnceLock<SystemTime>>,
+    removed: Arc<AtomicUsize>,
+}
 
 impl Deadline {
     pub(super) fn wait(&self, budget: Duration) -> Wait {
-        Wait::since(*self.0.get_or_init(now), budget)
+        Wait::since(*self.started.get_or_init(now), budget)
+    }
+
+    pub(super) fn note_removed(&self) {
+        self.removed.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(super) fn removed(&self) -> usize {
+        self.removed.load(Ordering::Relaxed)
     }
 }
 

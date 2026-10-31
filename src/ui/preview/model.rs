@@ -317,8 +317,7 @@ impl ModelPreview {
         self.next.set_sensitive(has_image);
         self.picture.set_opacity(0.3);
         self.picture.set_cursor_from_name(Some("wait"));
-        self.picture
-            .update_state(&[gtk::accessible::State::Busy(true)]);
+        crate::ui::accessibility::set_busy(&self.picture, true);
         crate::ui::accessibility::set_label(&self.spinner, &crate::i18n::tr("Loading preview…"));
         self.spinner.set_visible(true);
         self.spinner.start();
@@ -342,8 +341,7 @@ impl ModelPreview {
         self.next.set_sensitive(has_image);
         self.picture.set_opacity(1.0);
         self.picture.set_cursor_from_name(Some("grab"));
-        self.picture
-            .update_state(&[gtk::accessible::State::Busy(false)]);
+        crate::ui::accessibility::set_busy(&self.picture, false);
     }
 
     fn update(&self, texture: &gdk::Texture, mesh: ModelMesh) {
@@ -426,7 +424,7 @@ impl PreviewState {
             .current
             .borrow()
             .as_ref()
-            .is_some_and(|entry| crate::services::is_model(&entry.native_name))
+            .is_some_and(crate::services::is_model)
         {
             return false;
         }
@@ -470,7 +468,7 @@ impl PreviewState {
         let depth = self.current_depth.get()?;
         let current = self.current.borrow().as_ref()?.location.clone();
         let files = view.displayed_entries_matching(depth, |entry| {
-            entry.is_file() && crate::services::is_model(&entry.native_name)
+            entry.is_file() && crate::services::is_model(entry)
         });
         let index = files.iter().position(|entry| entry.location == current)?;
         Some(ListingPosition {

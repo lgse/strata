@@ -1,0 +1,9 @@
+{"scenario":"dismissing-filter-keeps-hidden","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.6},"quality":{"impact":2,"coverage":2,"criticality":3,"diagnostic":4,"score":12,"note":"Escape dismissal of Ctrl+F filter keeps hidden files hidden; type-to-search-finds-nested shares the Escape restore"}}
+{"expect":{"entries":{"excludes":[".hidden.txt"]},"dir":"$root"}}
+{"select":{"entry":"readme.md","dir":"$root"}}
+{"key":"ctrl+f"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"type":"readme"}
+{"wait":{"matches":["readme.md"],"dir":"$root"},"message":"the filter to narrow the listing"}
+{"key":"Escape"}
+{"wait":{"entries":["archive","documents","pictures","readme.md","todo.txt"],"dir":"$root"},"message":"the listing to come back without hidden files"}

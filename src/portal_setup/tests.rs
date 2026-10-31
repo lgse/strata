@@ -3,17 +3,46 @@
 use std::{
     cell::Cell,
     fs,
-    os::unix::{ffi::OsStrExt as _, fs::PermissionsExt as _},
+    os::unix::{
+        ffi::OsStrExt as _,
+        fs::{MetadataExt as _, PermissionsExt as _},
+    },
     path::{Path, PathBuf},
+    process::{Command, Stdio},
+    time::{Duration, Instant},
 };
 
 use super::{
-    SetupContext, disable_config, enable_config, install_at, install_file_manager_at,
-    refresh_configured_portal_at, refresh_stale_portal_at, secure_executable, uninstall_at,
-    uninstall_file_manager_at,
+    SetupContext, disable_config, enable_config, group_is_private, install_at,
+    install_file_manager_at, output_within, refresh_configured_portal_at, refresh_stale_portal_at,
+    secure_executable_for_user, uninstall_at, uninstall_file_manager_at,
 };
 
 const FILE_CHOOSER: &str = "org.freedesktop.impl.portal.FileChooser";
+
+#[test]
+fn session_helpers_and_their_children_are_stopped_at_the_deadline() {
+    let run = |script: &str| {
+        let mut command = Command::new("sh");
+        command.args(["-c", script]).stdout(Stdio::piped());
+        let started = Instant::now();
+        let output = output_within(&mut command, Duration::from_millis(500));
+        assert!(started.elapsed() < Duration::from_secs(10), "{script}");
+        output
+    };
+    assert!(run("sleep 30; echo late").is_none());
+    let output = run("sleep 30 & echo ready").expect("wrapper exits");
+    assert!(output.status.success());
+    assert_eq!(output.stdout, b"ready\n");
+    assert!(!run("exit 3").expect("exits").status.success());
+    assert!(
+        output_within(
+            &mut Command::new("strata-definitely-missing-tool"),
+            Duration::from_secs(1)
+        )
+        .is_none()
+    );
+}
 
 #[test]
 fn chooser_preference_uses_existing_backends_and_round_trips() {
@@ -227,9 +256,12 @@ fn generated_override_is_removed_on_uninstall() {
 fn portal_activation_rejects_replaceable_executables() {
     let fixture = fixture();
     let executable = executable(fixture.path());
+    let user = rustix::process::geteuid().as_raw();
+    let shared_group = |_: u32| false;
+    let check = |path: &Path| secure_executable_for_user(path, user, &shared_group);
     fs::set_permissions(&executable, fs::Permissions::from_mode(0o775))
         .expect("group-writable executable");
-    assert!(secure_executable(&executable).is_err());
+    assert!(check(&executable).is_err());
 
     fs::set_permissions(&executable, fs::Permissions::from_mode(0o755)).expect("safe executable");
     fs::set_permissions(
@@ -237,7 +269,7 @@ fn portal_activation_rejects_replaceable_executables() {
         fs::Permissions::from_mode(0o777),
     )
     .expect("world-writable executable directory");
-    assert!(secure_executable(&executable).is_err());
+    assert!(check(&executable).is_err());
 
     fs::set_permissions(
         executable.parent().expect("executable parent"),
@@ -246,7 +278,80 @@ fn portal_activation_rejects_replaceable_executables() {
     .expect("safe executable directory");
     fs::set_permissions(fixture.path(), fs::Permissions::from_mode(0o777))
         .expect("world-writable executable ancestor");
-    assert!(secure_executable(&executable).is_err());
+    assert!(check(&executable).is_err());
+}
+
+#[test]
+fn group_write_access_is_accepted_only_on_a_group_nobody_else_belongs_to() {
+    let fixture = fixture();
+    let executable = executable(fixture.path());
+    let directory = executable.parent().expect("executable parent");
+    let user = rustix::process::geteuid().as_raw();
+    let group = fs::metadata(&executable)
+        .expect("executable metadata")
+        .gid();
+    let asked = std::cell::RefCell::new(Vec::new());
+    let private = |private: bool| {
+        let asked = &asked;
+        move |gid: u32| {
+            asked.borrow_mut().push(gid);
+            private
+        }
+    };
+
+    fs::set_permissions(directory, fs::Permissions::from_mode(0o775)).expect("group-writable");
+    fs::set_permissions(&executable, fs::Permissions::from_mode(0o775)).expect("group-writable");
+    assert!(secure_executable_for_user(&executable, user, &private(true)).is_ok());
+    assert_eq!(
+        asked.borrow().first(),
+        Some(&group),
+        "the path's own group is asked"
+    );
+    assert!(secure_executable_for_user(&executable, user, &private(false)).is_err());
+
+    fs::set_permissions(directory, fs::Permissions::from_mode(0o757)).expect("world-writable");
+    assert!(
+        secure_executable_for_user(&executable, user, &private(true)).is_err(),
+        "a private group never excuses world write access"
+    );
+}
+
+#[test]
+fn a_group_is_private_when_only_the_user_has_it() {
+    let passwd = "alice:x:1000:1000:Alice:/home/alice:/bin/bash\n\
+                  bob:x:1001:1001:Bob:/home/bob:/bin/bash\n\
+                  carol:x:1002:100:Carol:/home/carol:/bin/bash\n";
+    let groups = "alice:x:1000:\nbob:x:1001:\nstaff:x:50:alice,bob\nusers:x:100:\n\
+                  helpers:x:1010:alice\nteam:x:1011:alice,carol\n\
+                  mine:x:1012:alice\nours:x:1012:bob\n";
+    for (user, group, private, why) in [
+        (1000, 1000, true, "a private group of one member"),
+        (1000, 1010, true, "a group the user alone has joined"),
+        (1000, 1001, false, "another user's private group"),
+        (1000, 50, false, "a group with another member"),
+        (1000, 1011, false, "a group shared with carol"),
+        (1000, 1012, false, "a gid another entry opens to bob"),
+        (
+            1002,
+            100,
+            true,
+            "its only user, though a shared default elsewhere",
+        ),
+        (1000, 100, false, "a group carol has as her primary group"),
+        (1000, 999, false, "a group the database does not list"),
+        (4242, 1000, false, "a user the database does not list"),
+    ] {
+        assert_eq!(
+            group_is_private(user, group, passwd, groups),
+            private,
+            "{why}"
+        );
+    }
+    assert!(
+        !group_is_private(1000, 1000, "", ""),
+        "empty databases describe nothing"
+    );
+    assert!(!group_is_private(1000, 1000, "garbage\n:::\n", "garbage\n"));
 }
 
 #[test]

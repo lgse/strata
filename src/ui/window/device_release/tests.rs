@@ -21,12 +21,13 @@ use crate::{
 };
 
 use super::{
-    DeviceIds, ReleaseKey, ReleaseKind, ReleasePhase, begin_pending, clear_release_dismissed,
-    complete_release_success, enter_releasing, is_pending, location_at_flush_for_test,
-    note_unmount_progress, pending_device_shell, present_release_overlay, release_body_text,
-    release_error_count, release_is_dismissed, release_is_pending, release_overlay_presented,
-    release_phase, release_shows_spinner, reset_releases, settle_pending_attempt, start_release,
-    syncs_before_flush_for_test, unmatched_pending,
+    DeviceIds, RELEASE_ROW_TOOLTIP, ReleaseKey, ReleaseKind, ReleasePhase, begin_pending,
+    clear_release_dismissed, complete_release_success, enter_releasing, is_pending,
+    location_at_flush_for_test, note_unmount_progress, pending_device_shell,
+    present_release_overlay, release_body_text, release_error_count, release_is_dismissed,
+    release_is_pending, release_overlay_presented, release_phase, release_shows_spinner,
+    reset_releases, settle_pending_attempt, start_release, syncs_before_flush_for_test,
+    unmatched_pending,
 };
 
 fn key(unix_device: &str) -> ReleaseKey {
@@ -216,6 +217,34 @@ fn pending_row_shows_a_do_not_unplug_spinner() {
             assert!(spinner.tooltip_text().is_none());
             assert!(row.tooltip_text().is_none());
             assert!(!row.is_sensitive());
+        },
+    );
+}
+
+#[cfg(feature = "qa")]
+#[test]
+fn the_rail_names_plain_rows_while_railed_but_never_replaces_a_pending_label() {
+    crate::test_support::gtk_test(
+        "ui::window::device_release::tests::the_rail_names_plain_rows_while_railed_but_never_replaces_a_pending_label",
+        || {
+            let label = |row: &gtk::Button| {
+                crate::ui::accessibility::qa::naming(row).and_then(|naming| naming.label)
+            };
+            let plain = super::super::sidebar_button(crate::assets::icons::HOME, "Home");
+            let pending =
+                super::super::sidebar_button(crate::assets::icons::HARD_DRIVE, "USB Backup");
+            let _shell = pending_device_shell(&pending);
+            let busy = Some(crate::i18n::tr(RELEASE_ROW_TOOLTIP));
+            for rail in [true, false, true, false] {
+                super::super::sync_sidebar_button(&plain, rail);
+                super::super::sync_sidebar_button(&pending, rail);
+                assert_eq!(
+                    label(&plain),
+                    rail.then(|| "Home".to_owned()),
+                    "rail {rail}"
+                );
+                assert_eq!(label(&pending), busy, "rail {rail}");
+            }
         },
     );
 }

@@ -1,0 +1,21 @@
+diff --git a/src/ui/browser/preferences.rs b/src/ui/browser/preferences.rs
+index 3d114141..7ff24ec1 100644
+--- a/src/ui/browser/preferences.rs
++++ b/src/ui/browser/preferences.rs
+@@ -103,10 +103,15 @@ impl BrowserView {
+             Self::set_peek_enabled,
+         );
+         for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
++            let constructed = Cell::new(false);
+             self.bind_view_preference(
+                 manager,
+                 move |manager| manager.click_activation(mode),
+-                move |view, value| view.set_click_activation(mode, value),
++                move |view, value| {
++                    if !constructed.replace(true) {
++                        view.set_click_activation(mode, value);
++                    }
++                },
+             );
+         }
+         self.bind_view_preference(

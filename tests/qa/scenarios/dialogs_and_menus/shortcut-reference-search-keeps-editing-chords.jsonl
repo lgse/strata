@@ -1,0 +1,21 @@
+{"scenario":"shortcut-reference-search-keeps-editing-chords","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.3},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"F1 reference search edits with Ctrl+Left and keeps Ctrl+, from opening Settings under real input; chooser/keys unit tests pin blocked commands only"}}
+{"key":"F1"}
+{"wait":{"present":{"role":"label","name":"Keyboard shortcuts"}},"message":"the shortcut reference to open"}
+{"expect":{"presented":{"role":"label","name":"Ctrl+Alt+Space"}}}
+{"expect":{"presented":{"role":"label","name":"Ctrl+Alt+← / →"}}}
+{"expect":{"presented":{"role":"label","name":"Ctrl+Alt+↑ / ↓"}}}
+{"expect":{"presented":{"role":"label","name":"Ctrl+Alt+M"}}}
+{"wait":{"field":{}},"message":"the shortcut search to take focus"}
+{"remember":{"field":true},"as":"field"}
+{"type":"open tab"}
+{"wait":{"field":{"of":"field","text":"open tab"}},"message":"the search to be typed"}
+{"key":"ctrl+Left"}
+{"type":"new "}
+{"wait":{"field":{"of":"field","text":"open new tab"}},"message":"Ctrl+Left to move by a word in the search"}
+{"key":"ctrl+,"}
+{"type":"x"}
+{"wait":{"field":{"of":"field","text":"open new xtab"}},"message":"typing to stay in the reference after Ctrl+,"}
+{"expect":{"absent":{"role":"button","name":"Close settings"}},"message":"Ctrl+, must not open Settings"}
+{"expect":{"present":{"role":"label","name":"Keyboard shortcuts"}},"message":"the reference to stay open"}
+{"key":"Escape"}
+{"wait":{"absent":{"role":"label","name":"Keyboard shortcuts"}},"message":"Escape to close the shortcut reference"}

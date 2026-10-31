@@ -208,7 +208,7 @@ fn permission_row(parent: &gtk::Box, label: &str) -> PermissionRow {
             .accessible_role(gtk::AccessibleRole::ToggleButton)
             .build();
         // The visible `r`/`w`/`x` label would otherwise name the bit.
-        button.reset_relation(gtk::AccessibleRelation::LabelledBy);
+        crate::ui::accessibility::clear_labelled_by(&button);
         button.add_css_class("properties-permission-bit");
         button.set_sensitive(false);
         button
@@ -381,7 +381,7 @@ fn measurement_warning_text(summary: &DirectorySummary) -> Option<String> {
 }
 
 fn set_measurement_warning(warning: &gtk::Image, message: Option<&str>) {
-    warning.update_property(&[gtk::accessible::Property::Label(message.unwrap_or(""))]);
+    super::super::accessibility::set_own_label(warning, message.unwrap_or(""));
     warning.set_visible(message.is_some());
 }
 
@@ -781,7 +781,11 @@ impl ViewState {
             match pin_action {
                 Some(PinAction::Pin) => {
                     if let Some(handler) = pin_handler.as_ref() {
-                        handler(pinning_location.clone(), pinning_name.clone());
+                        handler(
+                            pinning_location.clone(),
+                            pinning_name.clone(),
+                            Box::new(|_| {}),
+                        );
                     }
                 }
                 Some(PinAction::Unpin) => {
@@ -798,7 +802,7 @@ impl ViewState {
             if let Some(display) = gtk::gdk::Display::default() {
                 display
                     .clipboard()
-                    .set_text(&copy_path_text(&copied_location, true));
+                    .set_text(&copy_path_text(&copied_location, is_directory));
                 button.set_label(&crate::i18n::tr("Copied"));
             }
         });

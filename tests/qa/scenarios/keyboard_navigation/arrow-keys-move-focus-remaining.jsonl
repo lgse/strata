@@ -1,0 +1,10 @@
+{"scenario":"arrow-keys-move-focus-remaining","modes":["columns","icons","list"],"prefs":{"type_to_search":false},"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"arrows","modes":["icons"],"vars":{"bindings":"arrows","next":"Right","previous":"Left"}},{"id":"arrows","modes":["list"],"vars":{"bindings":"arrows","next":"Down","previous":"Up"}},{"id":"hjkl","modes":["columns"],"vars":{"bindings":"hjkl","next":"j","previous":"k"}},{"id":"hjkl","modes":["icons"],"vars":{"bindings":"hjkl","next":"l","previous":"h"}},{"id":"hjkl","modes":["list"],"vars":{"bindings":"hjkl","next":"j","previous":"k"}}],"cost":{"icons-arrows":0.5,"list-arrows":0.5,"columns-hjkl":0.4,"icons-hjkl":0.5,"list-hjkl":0.5},"quality":{"impact":4,"coverage":4,"criticality":4,"diagnostic":4,"score":56,"note":"Focus/selection move by arrows in Icons and List and by hjkl in all modes; Columns arrows and ru-layout tenxer hjkl are only in arrow-keys-move-focus"}}
+{"expect":{"entries":["archive","documents","pictures","readme.md","todo.txt"]}}
+{"select":{"entry":"readme.md"}}
+{"wait":{"focused":"readme.md"},"message":"keyboard focus to reach 'readme.md'"}
+{"layout":"us"}
+{"key":"$next"}
+{"wait":{"focused":"todo.txt"},"message":"keyboard focus to reach 'todo.txt'"}
+{"wait":{"selected":["todo.txt"]},"message":"the selection to be todo.txt after the move"}
+{"key":"$previous"}
+{"wait":{"focused":"readme.md"},"message":"keyboard focus to reach 'readme.md'"}

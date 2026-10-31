@@ -1,0 +1,57 @@
+{"scenario":"keymap-tables-change-independently","modes":["columns"],"prefs":{"type_to_search":false},"cost":{"columns":4.0},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"default and 10xer Rename edited apart in Settings, each saved and dispatched only in its mode; only GUI check across a Ctrl+Shift+M switch"}}
+{"click":{"role":"button","name":"Settings"}}
+{"wait":{"present":{"role":"button","name":"Keyboard settings"}},"message":"Settings to open"}
+{"click":{"role":"button","name":"Keyboard settings"}}
+{"wait":{"present":{"role":"text","name":"Search keybinds"}},"message":"the Keyboard settings page"}
+{"click":{"role":"text","name":"Search keybinds"}}
+{"type":"Rename"}
+{"wait":{"field":{"name":"Search keybinds","text":"Rename"}},"message":"the keybind search to be typed"}
+{"click":{"role":"toggle button","name":"10xer mode"}}
+{"wait":{"state":{"target":{"role":"toggle button","name":"10xer mode"},"pressed":true}},"message":"the 10xer mode table to show"}
+{"wait":{"present":{"role":"button","name":"Remove r from “Rename”"}},"message":"the 10xer Rename row"}
+{"settle":{"role":"button","name":"Remove F2 from “Rename”"}}
+{"click":{"role":"button","name":"Remove F2 from “Rename”"}}
+{"wait":{"not":{"presented":{"role":"button","name":"Remove F2 from “Rename”","rendered":false}}},"message":"F2 to leave the 10xer Rename"}
+{"click":{"role":"toggle button","name":"Default"}}
+{"wait":{"state":{"target":{"role":"toggle button","name":"Default"},"pressed":true}},"message":"the Default table to show"}
+{"wait":{"presented":{"role":"button","name":"Remove F2 from “Rename”"}},"message":"the default Rename to keep F2"}
+{"settle":{"role":"button","name":"Add a key for “Rename”"}}
+{"click":{"role":"button","name":"Add a key for “Rename”"}}
+{"wait":{"focused_widget":"Press the new key for “Rename”"},"message":"the capture for the default Rename to take focus"}
+{"key":"ctrl+e"}
+{"wait":{"presented":{"role":"button","name":"Remove Ctrl+E from “Rename”"}},"message":"the captured Ctrl+E chip on the default Rename"}
+{"click":{"role":"toggle button","name":"10xer mode"}}
+{"wait":{"state":{"target":{"role":"toggle button","name":"10xer mode"},"pressed":true}},"message":"the 10xer mode table to show again"}
+{"wait":{"presented":{"role":"button","name":"Remove r from “Rename”"}},"message":"the 10xer Rename row"}
+{"expect":[{"not":{"presented":{"role":"button","name":"Remove Ctrl+E from “Rename”","rendered":false}}},{"not":{"presented":{"role":"button","name":"Remove F2 from “Rename”","rendered":false}}}],"message":"the 10xer Rename to keep only r"}
+{"wait":{"pref":{"key":"keymap","value":{"default":{"rename":["F2","<Control>r","<Control>e"]},"tenxer":{"rename":["r"]}}}},"message":"each table's Rename override to be saved apart"}
+{"click":{"role":"button","name":"Close settings"}}
+{"wait":{"absent":{"role":"button","name":"Close settings"}},"message":"Settings to close"}
+{"select_with_keyboard":"readme.md","message":"keyboard focus to reach 'readme.md'"}
+{"key":"F2"}
+{"wait":{"field":{"text":"readme.md"}},"message":"F2, kept by the default table, to rename 'readme.md'"}
+{"key":"Escape"}
+{"wait":{"editable_fields":0},"message":"Escape to cancel the rename"}
+{"wait":{"focused":"readme.md"},"message":"focus to return to 'readme.md'"}
+{"key":"ctrl+e"}
+{"wait":{"field":{"text":"readme.md"}},"message":"the added Ctrl+E to rename 'readme.md'"}
+{"key":"Escape"}
+{"wait":{"editable_fields":0},"message":"Escape to cancel the rename"}
+{"wait":{"focused":"readme.md"},"message":"focus to return to 'readme.md'"}
+{"key":"ctrl+shift+m"}
+{"wait":{"pref":{"key":"tenxer_mode","value":true}},"message":"Ctrl+Shift+M to turn on 10xer mode"}
+{"select_with_keyboard":"readme.md","message":"keyboard focus to reach 'readme.md' in 10xer mode"}
+{"key":"F2"}
+{"key":"End"}
+{"wait":{"focused":"todo.txt"},"message":"End to reach 'todo.txt', which a rename field opened by F2 would keep"}
+{"expect":{"editable_fields":0},"message":"F2, removed from the 10xer table, must not rename in 10xer mode"}
+{"select_with_keyboard":"readme.md","message":"keyboard focus to reach 'readme.md' in 10xer mode"}
+{"key":"ctrl+e"}
+{"key":"End"}
+{"wait":{"focused":"todo.txt"},"message":"End to reach 'todo.txt', which a rename field opened by Ctrl+E would keep"}
+{"expect":{"editable_fields":0},"message":"Ctrl+E, added to the default table only, must not rename in 10xer mode"}
+{"select_with_keyboard":"readme.md","message":"keyboard focus to reach 'readme.md' in 10xer mode"}
+{"key":"r"}
+{"wait":{"field":{"text":"readme.md"}},"message":"r, kept by the 10xer table, to rename 'readme.md'"}
+{"key":"Escape"}
+{"wait":{"editable_fields":0},"message":"Escape to cancel the 10xer rename"}

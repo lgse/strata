@@ -1,0 +1,22 @@
+{"scenario":"language-selection-after-relaunch","modes":["columns"],"prefs":{"language":"fr"},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.8},"quality":{"impact":3,"coverage":4,"criticality":3,"diagnostic":3,"score":38,"note":"Only QA check of language persistence across relaunch (manual Japanese, then auto-detect back to English); restart notice in running language is unique; pointer route only; i18n catalog unit tests do not cover the saved-choice flow"}}
+{"wait":{"present":{"role":"button","name":"Paramètres"}},"message":"saved French language before opening Settings"}
+{"click":{"role":"button","name":"Paramètres"}}
+{"wait":{"present":{"role":"button","name":"Langue"}},"message":"French language selector"}
+{"click":{"role":"button","name":"Langue"}}
+{"wait":{"present":{"role":"label","name":"日本語"}},"message":"Japanese autonym"}
+{"click":{"role":"label","name":"日本語"}}
+{"wait":{"pref":{"key":"language","value":"ja"}},"message":"manual language saved"}
+{"wait":{"present":{"role":"button","name":"Redémarrer maintenant"}},"message":"restart notice remains in the running French language"}
+{"expect":{"present":{"role":"button","name":"Langue"}}}
+{"expect":{"absent":{"role":"button","name":"言語"}}}
+{"restart":true}
+{"wait":{"present":{"role":"button","name":"設定"}},"message":"Japanese after relaunch"}
+{"click":{"role":"button","name":"設定"}}
+{"wait":{"present":{"role":"button","name":"言語"}},"message":"Japanese language selector"}
+{"click":{"role":"button","name":"言語"}}
+{"wait":{"present":{"role":"label","name":"自動検出"}},"message":"Auto-detect in Japanese"}
+{"click":{"role":"label","name":"自動検出"}}
+{"wait":{"pref":{"key":"language","value":"auto"}},"message":"Auto-detect saved"}
+{"expect":{"present":{"role":"button","name":"言語"}}}
+{"restart":true}
+{"wait":{"present":{"role":"button","name":"Settings"}},"message":"Auto-detect returns to the isolated C.UTF-8 environment's English UI"}

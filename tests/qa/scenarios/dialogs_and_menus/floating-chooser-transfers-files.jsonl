@@ -1,0 +1,40 @@
+{"scenario":"floating-chooser-transfers-files","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"copy"},{"id":"move"}],"cost":{"columns-copy":1.7,"columns-move":1.8},"quality":{"impact":4,"coverage":3,"criticality":4,"diagnostic":3,"score":34,"note":"Copy/Move via context menu, path entry and pointer Copy here/Move here in Columns; unit tests cover Enter confirm and lifecycle, not this route"}}
+{"click":{"entry":"todo.txt"},"button":3}
+{"wait":{"menu_items":{}},"message":"the context menu for 'todo.txt'"}
+{"wait":{"present":{"menu_item":"Copy to…"}},"message":"the menu item 'Copy to…'","variants":["copy"]}
+{"settle":{"menu_item":"Copy to…"},"variants":["copy"]}
+{"click":{"menu_item":"Copy to…"},"variants":["copy"]}
+{"wait":{"menu_items":null},"message":"the menu to close","variants":["copy"]}
+{"wait":{"present":{"toplevel":"Copy to"}},"message":"the floating Copy to chooser","variants":["copy"]}
+{"key":"ctrl+l","variants":["copy"]}
+{"wait":{"present":{"field":true,"within":{"toplevel":"Copy to"}}},"message":"the chooser path entry","variants":["copy"]}
+{"remember":{"field":true,"within":{"toplevel":"Copy to"}},"as":"path","variants":["copy"]}
+{"key":"ctrl+a","variants":["copy"]}
+{"type":"$fixture/documents","variants":["copy"]}
+{"wait":{"field":{"of":"path","text":"$fixture/documents"}},"message":"the destination path","variants":["copy"]}
+{"key":"Return","variants":["copy"]}
+{"wait":{"present":{"role":"label","name":"documents","description":"$fixture/documents","within":{"toplevel":"Copy to"}}},"message":"the destination breadcrumb","variants":["copy"]}
+{"expect":{"directory":"$root"},"variants":["copy"]}
+{"wait":{"present":{"role":"button","name":"Copy here","within":{"toplevel":"Copy to"}}},"message":"the destination action","variants":["copy"]}
+{"click":{"role":"button","name":"Copy here","within":{"toplevel":"Copy to"}},"variants":["copy"]}
+{"wait":{"absent":{"toplevel":"Copy to"}},"message":"the destination chooser to close","variants":["copy"]}
+{"wait":{"present":{"menu_item":"Move to…"}},"message":"the menu item 'Move to…'","variants":["move"]}
+{"settle":{"menu_item":"Move to…"},"variants":["move"]}
+{"click":{"menu_item":"Move to…"},"variants":["move"]}
+{"wait":{"menu_items":null},"message":"the menu to close","variants":["move"]}
+{"wait":{"present":{"toplevel":"Move to"}},"message":"the floating Move to chooser","variants":["move"]}
+{"key":"ctrl+l","variants":["move"]}
+{"wait":{"present":{"field":true,"within":{"toplevel":"Move to"}}},"message":"the chooser path entry","variants":["move"]}
+{"remember":{"field":true,"within":{"toplevel":"Move to"}},"as":"path","variants":["move"]}
+{"key":"ctrl+a","variants":["move"]}
+{"type":"$fixture/documents","variants":["move"]}
+{"wait":{"field":{"of":"path","text":"$fixture/documents"}},"message":"the destination path","variants":["move"]}
+{"key":"Return","variants":["move"]}
+{"wait":{"present":{"role":"label","name":"documents","description":"$fixture/documents","within":{"toplevel":"Move to"}}},"message":"the destination breadcrumb","variants":["move"]}
+{"expect":{"directory":"$root"},"variants":["move"]}
+{"wait":{"present":{"role":"button","name":"Move here","within":{"toplevel":"Move to"}}},"message":"the destination action","variants":["move"]}
+{"click":{"role":"button","name":"Move here","within":{"toplevel":"Move to"}},"variants":["move"]}
+{"wait":{"absent":{"toplevel":"Move to"}},"message":"the destination chooser to close","variants":["move"]}
+{"fs":{"path":"documents/todo.txt","exists":true},"message":"transfer into the chosen destination"}
+{"fs":{"path":"todo.txt","exists":true},"timeout_ms":0,"variants":["copy"]}
+{"fs":{"path":"todo.txt","exists":false},"timeout_ms":0,"variants":["move"]}

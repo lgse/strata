@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""Run E2E scenarios with Strata's UI thread under strace and list its file calls on user paths."""
+"""Run QA scenarios with Strata's UI thread under strace and list its file calls on user paths."""
 
 from __future__ import annotations
 
@@ -19,9 +19,8 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 REPOSITORY = Path(__file__).resolve().parents[1]
-ALLOWLIST = REPOSITORY / "tests/e2e/main-io-allowlist.toml"
+ALLOWLIST = REPOSITORY / "tests/qa/main-io-allowlist.toml"
 RUNS = Path("target/main-io")
-SCENARIOS = "tests/e2e/scenarios"
 CONTAINER_CHECKOUT = "/workspace"
 STACK_FRAMES_SHOWN = 8
 
@@ -175,6 +174,7 @@ class Launch:
     meta: dict
     roots: dict[str, str] = field(init=False)
     data_dirs: list[str] = field(init=False)
+    harness: list[str] = field(init=False)
 
     def __post_init__(self) -> None:
         roots = {name: self.meta[name] for name in PLACEHOLDERS if self.meta.get(name)}
@@ -188,6 +188,7 @@ class Launch:
             if folder.startswith("/") and not any(
                 within(folder, root) or within(root, folder) for root in private)
         ]
+        self.harness = [os.path.normpath(path) for path in self.meta.get("harness", ())]
 
     def placeholder(self, path: str) -> str:
         best = None
@@ -209,7 +210,7 @@ class Launch:
         shared = [self.roots[root] for root in SHARED_ROOTS if root in self.roots]
         if path in shared or (call in METADATA and any(within(root, path) for root in shared)):
             return TOOLKIT
-        if any(within(path, folder) for folder in self.data_dirs):
+        if any(within(path, folder) for folder in self.data_dirs + self.harness):
             return TOOLKIT
         if call in METADATA:
             for places, category in ((SETTINGS_PLACES, SETTINGS), (TOOLKIT_PLACES, TOOLKIT)):
@@ -514,11 +515,9 @@ def main(argv: list[str] | None = None) -> int:
                         help="also start Strata's UI stall watchdog with this limit")
     parser.add_argument("--stacks", action="store_true",
                         help="record the stack of every traced call (slow; use on a selection)")
-    arguments, pytest_arguments = parser.parse_known_args(argv)
-    if pytest_arguments[:1] == ["--"]:
-        pytest_arguments = pytest_arguments[1:]
-    if not any(argument.startswith("tests/") for argument in pytest_arguments):
-        pytest_arguments = [SCENARIOS, *pytest_arguments]
+    arguments, qa_arguments = parser.parse_known_args(argv)
+    if qa_arguments[:1] == ["--"]:
+        qa_arguments = qa_arguments[1:]
     try:
         allowlist = load_allowlist(arguments.allowlist)
     except (OSError, ValueError, tomllib.TOMLDecodeError) as error:
@@ -533,11 +532,11 @@ def main(argv: list[str] | None = None) -> int:
         run = REPOSITORY / relative
         run.mkdir(parents=True)
         (run / "options.json").write_text(json.dumps({"stacks": arguments.stacks}) + "\n")
-        environment = {**os.environ, "STRATA_E2E_MAIN_IO": str(relative)}
+        environment = {**os.environ, "STRATA_QA_MAIN_IO": str(relative)}
         if arguments.stall_ms:
             environment["STRATA_UI_STALL_MS"] = str(arguments.stall_ms)
         status = subprocess.run(
-            [str(REPOSITORY / "scripts/e2e.sh"), *pytest_arguments], env=environment, check=False
+            [str(REPOSITORY / "scripts/qa.sh"), *qa_arguments], env=environment, check=False
         ).returncode
     report = analyze(run, allowlist)
     text = report.as_text()

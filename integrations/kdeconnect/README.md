@@ -35,7 +35,7 @@ previously added a custom KDE Connect action, disable it yourself in
 
 The provider's messages follow the inherited system locale (`LC_ALL`,
 `LC_MESSAGES`, then `LANG`) with English fallback, independently of Strata's
-language preference. `messages.json` includes all twelve Strata languages.
+language preference. `messages.json` includes all thirteen Strata languages.
 Device names, filenames and protocol identifiers are never translated.
 
 ## Selection and failure behavior
@@ -82,15 +82,11 @@ simulated KDE Connect service. No selected content is read by the mock and no
 files are transferred to a physical device. The `Integrations` workflow runs
 them whenever files under `integrations/` change.
 
-The maintained GUI scenarios use Strata's canonical container runner, private
-Xvfb, private session/accessibility buses and a throwaway configuration:
-
-```bash
-./scripts/e2e.sh tests/e2e/scenarios/test_kdeconnect_provider.py
-```
-
-They exercise sending from **Send to…** with the pointer and the keyboard,
-selected-device routing, whole-selection submission, live device removal and notice feedback.
+There is no GUI scenario for this provider yet. Strata's **Send to…** menu
+routing is covered by the file provider QA scenarios in
+`tests/qa/scenarios/file_providers/`, run in the pinned container with
+`./scripts/qa.sh`; device routing, whole-selection submission, live device
+removal and notice feedback rest on the unit and D-Bus tests above.
 Mock acceptance does not establish delivery to a phone. For a real transfer,
 install the provider, select disposable files, send to your chosen device, and
 verify their contents there before using it for documents.

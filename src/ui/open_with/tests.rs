@@ -42,3 +42,51 @@ fn known_players_get_a_start_option_before_their_file_arguments() {
         assert_eq!(command_line_at(exec, 90.5).as_deref(), expected, "{exec:?}");
     }
 }
+
+#[test]
+fn dialogs_dismiss_on_escape_alternate() {
+    crate::test_support::gtk_test(
+        "ui::open_with::tests::dialogs_dismiss_on_escape_alternate",
+        || {
+            use crate::ui::keys::{Binding, Keymap, Map, bindings::ESCAPE, use_keymap};
+            use gtk::gdk::{Key, ModifierType};
+            let _keymap = use_keymap(Keymap::defaults().with(
+                Map::Default,
+                ESCAPE,
+                vec![Binding::ctrl(Key::bracketleft)],
+            ));
+            for (key, modifiers) in [
+                (Key::bracketleft, ModifierType::CONTROL_MASK),
+                (Key::Escape, ModifierType::empty()),
+            ] {
+                let parent = gtk::Box::new(gtk::Orientation::Vertical, 0);
+                let overlay = gtk::Overlay::builder().child(&parent).build();
+                let window = gtk::Window::builder().child(&overlay).build();
+                window.present();
+                show(
+                    &parent,
+                    vec![gio::File::for_path("/nonexistent/a.txt")],
+                    vec!["text/plain".to_owned()],
+                    Choices::default(),
+                    OpenWithContext::Explicit,
+                    Rc::new(|| {}),
+                );
+                let layer = overlay.last_child().expect("open-with layer");
+                assert!(layer.has_css_class("app-modal-layer"));
+                let controllers = layer.observe_controllers();
+                let handled = (0..controllers.n_items())
+                    .filter_map(|index| {
+                        controllers
+                            .item(index)
+                            .and_downcast::<gtk::EventControllerKey>()
+                    })
+                    .any(|keys| {
+                        keys.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers])
+                    });
+                assert!(handled, "{key:?}");
+                assert!(crate::ui::modal::is_closing_layer(&layer), "{key:?}");
+                window.destroy();
+            }
+        },
+    );
+}

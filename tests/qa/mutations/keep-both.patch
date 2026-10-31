@@ -1,0 +1,29 @@
+diff --git a/src/adapters/local_operations.rs b/src/adapters/local_operations.rs
+index 41b43bf8..63fbe9c2 100644
+--- a/src/adapters/local_operations.rs
++++ b/src/adapters/local_operations.rs
+@@ -3435,11 +3435,19 @@ impl OperationProvider for LocalOperationProvider {
+                 // held pre-existing contents that must not be trashed.
+                 // Undoing a copy deletes it, which must never remove the only
+                 // copy left after an original was replaced without Trash.
+-                let created_location = target_location.clone().filter(|_| {
+-                    !request.move_sources
+-                        && item.conflict != TransferConflict::Merge
+-                        && !replaced_permanently.get()
+-                });
++                let created_location = target_location
++                    .clone()
++                    .filter(|_| {
++                        !request.move_sources
++                            && item.conflict != TransferConflict::Merge
++                            && !replaced_permanently.get()
++                    })
++                    .map(|created| match item.conflict {
++                        TransferConflict::KeepBoth => transfer_source_name(&sources[index])
++                            .and_then(|name| location_for_file(&destination.child(name)))
++                            .unwrap_or(created),
++                        _ => created,
++                    });
+                 if records_copies
+                     && item.conflict != TransferConflict::ReplaceExisting
+                     && let Some(location) = &created_location

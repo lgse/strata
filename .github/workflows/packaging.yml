@@ -38,17 +38,18 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install packaging tools
-        run: pacman -Syu --noconfirm --needed namcap
-
-      - name: Test the package renderer
-        if: ${{ github.event_name != 'push' }}
-        run: python3 -m unittest discover -s scripts -p 'test_*.py'
+        run: pacman -Syu --noconfirm --needed git namcap
 
       - name: Create an unprivileged build user
         run: |
           useradd --create-home builder
           printf 'builder ALL=(ALL) NOPASSWD: ALL\n' > /etc/sudoers.d/builder
           chown -R builder .
+
+      # The installer refuses to run as root, so its tests cannot either.
+      - name: Test the package renderer
+        if: ${{ github.event_name != 'push' }}
+        run: su builder -c "python3 -m unittest discover -s scripts -p 'test_*.py'"
 
       - name: Verify committed packages are generated
         run: |

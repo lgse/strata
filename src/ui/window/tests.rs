@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+mod appearance_density;
 mod bookmarks;
 mod keyboard_dispatch;
 mod keyboard_policy;

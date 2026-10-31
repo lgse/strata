@@ -1,0 +1,22 @@
+{"scenario":"preview-source-text-copies","modes":["columns"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"tree":{"notes.txt":"the quick brown fox\n","page.md":"# Heading\n\nBody text.\n","third.txt":"third preview fixture\n","data.csv":"name,value\nalpha,1\n","folder":{"inner.txt":"inner\n","nested-notes.txt":"nested preview fixture\n"}},"cost":{"columns":1.5},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"Plain-text preview click-focus, keyboard and drag selection copy, paste into location field; rendered-document-word-selection covers only rendered docs"}}
+{"select_with_keyboard":"notes.txt"}
+{"key":"space"}
+{"wait":{"preview":"the quick brown fox"},"message":"the preview to render the file's text"}
+{"expect":{"present":{"role":"text","within":{"preview":true}}}}
+{"remember":{"role":"text","within":{"preview":true}},"as":"text"}
+{"click":{"remembered":"text"}}
+{"wait":{"state":{"target":{"remembered":"text"},"focused":true}},"message":"the preview text to take focus"}
+{"key":"ctrl+Home"}
+{"key":"shift+Right","repeat":3}
+{"key":"ctrl+c"}
+{"clipboard":"the"}
+{"click":{"remembered":"text"}}
+{"remember":{"remembered":"text"},"as":"bounds"}
+{"drag":{"from":{"kept":"bounds"},"from_at":[34,14],"to":{"kept":"bounds"},"to_at":[140,14]}}
+{"key":"ctrl+c"}
+{"key":"ctrl+l"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"remember":{"field":true},"as":"field"}
+{"key":"ctrl+a"}
+{"key":"ctrl+v"}
+{"wait":{"any":[{"field":{"of":"field","text":{"contains":"quick"}}},{"field":{"of":"field","text":{"contains":"fox"}}}]},"message":"the copied preview text to reach the clipboard"}

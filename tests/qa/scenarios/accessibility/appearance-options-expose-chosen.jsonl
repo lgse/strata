@@ -1,0 +1,20 @@
+{"scenario":"appearance-options-expose-chosen","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"icons","vars":{"id":"icons"}},{"id":"hidden","vars":{"id":"hidden"}}],"cost":{"columns-icons":0.7,"columns-hidden":0.6},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Appearance menu checked states after Ctrl+2/Ctrl+H; only Hidden files check state and its Ctrl+H label are unique"}}
+{"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open","variants":["icons"]}
+{"expect":{"state":{"target":{"role":"radio menu item","name":"Icons"},"checked":false}},"message":"before ctrl+2: 'Icons' should not be checked","variants":["icons"]}
+{"expect":{"state":{"target":{"role":"radio menu item","name":"Columns"},"checked":true}},"message":"before ctrl+2: 'Columns' should be checked","variants":["icons"]}
+{"key":"Escape","variants":["icons"]}
+{"wait":{"absent":{"role":"radio menu item","name":"Columns"}},"message":"the Appearance menu to close","variants":["icons"]}
+{"key":"ctrl+2","variants":["icons"]}
+{"wait":{"view_mode":"Icons"},"message":"the browser to switch to the Icons view","variants":["icons"]}
+{"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open","variants":["icons"]}
+{"expect":{"state":{"target":{"role":"radio menu item","name":"Icons"},"checked":true}},"message":"after ctrl+2: 'Icons' should be checked","variants":["icons"]}
+{"expect":{"state":{"target":{"role":"radio menu item","name":"Columns"},"checked":false}},"message":"after ctrl+2: 'Columns' should not be checked","variants":["icons"]}
+{"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open","variants":["hidden"]}
+{"expect":{"state":{"target":{"role":"check menu item","name":"Hidden files"},"checked":false}},"message":"before ctrl+h: 'Hidden files' should not be checked","variants":["hidden"]}
+{"expect":{"description":{"target":{"role":"check menu item","name":"Hidden files"},"text":"Ctrl+H"}},"variants":["hidden"]}
+{"key":"Escape","variants":["hidden"]}
+{"wait":{"absent":{"role":"radio menu item","name":"Columns"}},"message":"the Appearance menu to close","variants":["hidden"]}
+{"key":"ctrl+h","variants":["hidden"]}
+{"wait":{"entries":{"contains":[".hidden.txt"]}},"message":"hidden files to show","variants":["hidden"]}
+{"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open","variants":["hidden"]}
+{"expect":{"state":{"target":{"role":"check menu item","name":"Hidden files"},"checked":true}},"message":"after ctrl+h: 'Hidden files' should be checked","variants":["hidden"]}

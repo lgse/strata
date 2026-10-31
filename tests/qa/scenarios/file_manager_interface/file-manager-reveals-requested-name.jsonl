@@ -1,0 +1,9 @@
+{"scenario":"file-manager-reveals-requested-name","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"session_bus":true,"variants":[{"id":"showitems","vars":{"method":"ShowItems"}},{"id":"showitemproperties","vars":{"method":"ShowItemProperties"}}],"cost":{"columns-showitems":0.4,"columns-showitemproperties":0.5},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"FileManager1 reveal of a colliding non-UTF-8 name selects only the requested sibling in GUI; unit test covers only URI mapping"}}
+{"fs":{"path":"documents/bad%E8name.txt","write":"requested\n","percent_path":true}}
+{"fs":{"path":"documents/bad%E9name.txt","write":"the unrequested sibling\n","percent_path":true}}
+{"dbus_send":["--print-reply","--dest=org.freedesktop.FileManager1","/org/freedesktop/FileManager1","org.freedesktop.FileManager1.$method","array:string:file://$fixture_quoted/documents/bad%E8name.txt","string:"]}
+{"wait":{"present":{"role":"list item","name":"bad�name.txt","within":{"other_window":"Strata"},"states":["selected"]}},"message":"a new window revealing the requested file"}
+{"expect":{"compare":{"left":{"count":{"role":"list item","name":"bad�name.txt","within":{"other_window":"Strata"}}},"op":"==","right":2}}}
+{"expect":{"compare":{"left":{"count":{"role":"list item","name":"bad�name.txt","within":{"other_window":"Strata"},"states":["selected"]}},"op":"==","right":1}}}
+{"wait":{"present":{"role":"label","name":"10 B","within":{"role":"dialog","within":{"other_window":"Strata"}}}},"message":"Properties for the requested file only","variants":["showitemproperties"]}
+{"expect":{"absent":{"role":"dialog","within":{"other_window":"Strata"}}},"variants":["showitems"]}

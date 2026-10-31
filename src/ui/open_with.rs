@@ -522,7 +522,7 @@ fn register_recent_file(file: &gio::File) -> bool {
     let uri = file.uri();
     let added = manager.add_item(uri.as_str());
     if !added {
-        tracing::debug!(uri = %uri, "unable to record file in Recent history");
+        tracing::debug!(uri = %crate::model::diagnostic_uri(uri.as_str()), "unable to record file in Recent history");
     }
     added
 }
@@ -675,9 +675,9 @@ fn create_section_header(title: &str) -> gtk::ListBoxRow {
 fn create_app_row(app: &gio::AppInfo, display: &gtk::gdk::Display) -> gtk::ListBoxRow {
     let row = gtk::ListBoxRow::new();
     row.add_css_class("open-with-row");
-    row.update_property(&[gtk::accessible::Property::Label(&app.display_name())]);
+    super::accessibility::set_label(&row, &app.display_name());
     if let Some(description) = app.description() {
-        row.update_property(&[gtk::accessible::Property::Description(&description)]);
+        super::accessibility::set_description(&row, Some(&description));
     }
     let content = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     let icon = application_icon(app, display);
@@ -751,15 +751,14 @@ pub(super) fn show(
     let search_entry = gtk::SearchEntry::new();
     search_entry.add_css_class("open-with-search");
     search_entry.set_placeholder_text(Some(&crate::i18n::tr("Search applications…")));
+    super::accessibility::set_label(&search_entry, &crate::i18n::tr("Search applications…"));
     layout.body.append(&search_entry);
 
     let list = gtk::ListBox::new();
     list.add_css_class("open-with-list");
     list.set_selection_mode(gtk::SelectionMode::Single);
     list.set_activate_on_single_click(false);
-    list.update_property(&[gtk::accessible::Property::Label(&crate::i18n::tr(
-        "Applications",
-    ))]);
+    super::accessibility::set_label(&list, &crate::i18n::tr("Applications"));
 
     let always_use =
         super::controls::form_check_button(&crate::i18n::tr(if content_types.len() > 1 {
@@ -963,6 +962,7 @@ pub(super) fn show(
         let (Some(list), Some(search)) = (list_weak.upgrade(), search_for_list.upgrade()) else {
             return glib::Propagation::Proceed;
         };
+        let press = &press.untyped();
 
         if press.is(UP.ignoring(SHORTCUT_MODIFIERS))
             && let Some(selected) = list.selected_row()
@@ -1137,7 +1137,7 @@ pub(super) fn show(
                 }
             }
         }
-        let context = list.display().app_launch_context();
+        let context = crate::child_environment::launch_context(&list.display());
         if let Err(error) = launch(&entry.app, &open_files, &open_content_types, Some(&context)) {
             let detail = error.to_string();
             open_dismiss();

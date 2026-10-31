@@ -105,9 +105,7 @@ impl Waveform {
         waveform.add_css_class("preview-waveform");
         waveform.set_focusable(true);
         waveform.set_cursor_from_name(Some("pointer"));
-        waveform.update_property(&[gtk::accessible::Property::Label(&crate::i18n::tr(
-            "Playback position",
-        ))]);
+        crate::ui::accessibility::set_label(&waveform, &crate::i18n::tr("Playback position"));
         waveform.imp().targets.replace(vec![0.0; BUCKETS as usize]);
         waveform.imp().shown.replace(vec![0.0; BUCKETS as usize]);
         follow_theme(&waveform);
@@ -358,7 +356,7 @@ impl Waveform {
                 #[upgrade_or]
                 glib::Propagation::Proceed,
                 move |_, press| {
-                    match seek_or_volume(press) {
+                    match seek_or_volume(&press.untyped()) {
                         Some(MediaCommand::Seek(seek)) => waveform.seek_by_key(seek),
                         Some(command) => {
                             if let Some(delta) = command.volume_delta() {

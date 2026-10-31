@@ -89,3 +89,66 @@ jobs:
               await core.summary.write();
               core.setFailed(errors.join("; "));
             }
+
+  type-label:
+    name: Type label
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    permissions:
+      pull-requests: write
+
+    steps:
+      # Release notes are grouped by these labels; see .github/release.yml.
+      - name: Label pull request by Conventional Commit type
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const typeLabels = {
+              feat: "feature",
+              fix: "fix",
+              perf: "performance",
+              docs: "documentation",
+              refactor: "refactor",
+              test: "testing",
+              build: "build",
+              ci: "ci",
+              chore: "chore",
+            };
+            const managed = new Set([...Object.values(typeLabels), "deps", "breaking"]);
+
+            const pr = context.payload.pull_request;
+            const match = pr.title.match(/^([a-z]+)(?:\(([^)]*)\))?(!)?:/);
+            const wanted = new Set();
+            if (match?.[2] === "deps" && ["fix", "chore"].includes(match[1])) {
+              wanted.add("deps");
+            } else if (match && typeLabels[match[1]]) {
+              wanted.add(typeLabels[match[1]]);
+            }
+            if (match?.[3]) wanted.add("breaking");
+
+            const { data: labels } = await github.rest.issues.listLabelsOnIssue({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+            });
+            const current = new Set(labels.map((label) => label.name));
+
+            for (const name of current) {
+              if (managed.has(name) && !wanted.has(name)) {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pr.number,
+                  name,
+                });
+              }
+            }
+
+            const missing = [...wanted].filter((name) => !current.has(name));
+            if (missing.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                labels: missing,
+              });
+            }

@@ -70,6 +70,66 @@ fn pdf_preview_requests_carry_a_bounded_page_and_viewport() {
 }
 
 #[test]
+fn pdf_password_errors_only_describe_previews_that_need_a_password() {
+    let directory = tempfile::tempdir().expect("PDF fixtures");
+    let damaged = directory.path().join("password-protected.pdf");
+    std::fs::write(&damaged, b"%PDF-1.7\nThis PDF is password protected.\n")
+        .expect("write damaged PDF with misleading contents and filename");
+    let empty = directory.path().join("empty.pdf");
+    std::fs::write(&empty, []).expect("write empty PDF");
+    let fixtures =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/documents");
+    for (input, locked, readable) in [
+        (fixtures.join("password-protected.pdf"), true, false),
+        (fixtures.join("owner-restricted.pdf"), false, true),
+        (damaged, false, false),
+        (empty, false, false),
+        (directory.path().join("missing.pdf"), false, false),
+    ] {
+        let original = std::fs::read(&input).ok();
+        for (operation, value) in [("preview-pdf", "0:640x800"), ("thumbnail-pdf", "128")] {
+            let output_directory = tempfile::tempdir().expect("PDF output");
+            let output = output_directory.path().join("result.png");
+            let result = run(&[
+                operation.into(),
+                input.to_string_lossy().into_owned(),
+                output.to_string_lossy().into_owned(),
+                value.into(),
+                "software".into(),
+            ]);
+            assert_eq!(result.is_ok(), readable, "{operation}: {input:?}");
+            assert_eq!(output.exists(), readable, "{operation}: {input:?}");
+            let error = output_directory.path().join("result.error");
+            if locked && operation == "preview-pdf" {
+                serde_json::from_slice::<crate::sandbox::PdfPreviewError>(
+                    &std::fs::read(error).expect("structured password error"),
+                )
+                .expect("valid PDF error");
+            } else {
+                assert!(!error.exists(), "{operation}: {input:?}");
+            }
+            if !readable {
+                for name in ["result.meta", "result.text"] {
+                    assert!(!output_directory.path().join(name).exists());
+                }
+            }
+        }
+        let thumbnail =
+            super::browser_render(&input, crate::sandbox::browser::wire::Operation::Pdf);
+        assert_eq!(
+            thumbnail.png.is_empty(),
+            !readable,
+            "browser thumbnail: {input:?}"
+        );
+        assert_eq!(
+            std::fs::read(&input).ok(),
+            original,
+            "PDF input stays unchanged"
+        );
+    }
+}
+
+#[test]
 fn pdf_surface_dimensions_stay_inside_the_parent_pixel_limit() {
     let source_width = 1_000.0;
     let source_height = 1_280.0;

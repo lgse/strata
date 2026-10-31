@@ -105,6 +105,9 @@ isolation, resource limits, or the other narrow optional runtime mounts.
 - Local DOCX previews run `docx-rs` in the same helper under the same 20 MiB input
   limit. Only a validated, bounded JSON payload of generated HTML returns, and the
   application reparses it with the existing bounded HTML parser.
+- Local ODT and OTT previews stream `content.xml` and `styles.xml` through
+  `quick-xml` in the same helper under the same 20 MiB input limit, and return the
+  same validated HTML payload as DOCX.
 - Local [Markdown, bounded HTML, RTF, CSV, and TSV previews](document-previews.md) are parsed
   in-process by pure-Rust parsers that receive only the bounded source string and
   cannot initiate filesystem access, network access, JavaScript execution, or
@@ -115,11 +118,27 @@ isolation, resource limits, or the other narrow optional runtime mounts.
   and user equations are passed as data, not evaluated as JavaScript;
   SVG resource resolution is disabled and only validated PNG output returns.
 
+## Password-protected PDFs
+
+Quick Preview shows **Preview unavailable** with **This PDF is password
+protected.** when Poppler reports that opening the document requires a password.
+An **Open** button under the message hands the file to the default PDF reader,
+where it can be unlocked; Strata does not prompt for, store, or submit PDF
+passwords or create an unlocked copy. The file chooser, which never opens files
+externally, shows the explanation alone. PDFs that open without a password, including owner-restricted
+PDFs with an empty user password, still preview normally. Other rendering failures
+keep their existing error behavior.
+
+The helper identifies protection through Poppler's typed `Encrypted` error and
+returns a structured code through the existing bounded private error output.
+Locked PDF thumbnails remain passwordless and fall back to the file icon.
+
 ## Local 3D model previews
 
-Quick Preview accepts STL, 3MF and FreeCAD (`.FCStd`) files. STL and single-part
+Quick Preview accepts STL, 3MF, FreeCAD (`.FCStd`), and G-code (`.gcode`, `.gco`,
+and binary `.bgcode`) files. STL and single-part
 3MF geometry use a software render with four diagonal camera views looking down
-at the model; FreeCAD uses its saved image. Rendered
+at the model; FreeCAD and G-code use an embedded image. Rendered
 meshes show media-style previous/next controls around a circular camera-position
 indicator, with stable centring and scale. Its dot sweeps around the circle to the
 selected corner, respecting the reduced-motion and system animation settings.
@@ -154,13 +173,50 @@ candidates are corrupt or its geometry spans multiple model parts. Two usable
 images are ambiguous: Quick Preview tries geometry, while browser thumbnailing
 leaves the normal file icon. Multipart geometry is not rendered.
 
-Browser thumbnails extract embedded images only, through the **existing browser
+G-code uses the slicer thumbnail in the file header. Text files store PNG, JPEG,
+or QOI images as base64 comments (`; thumbnail begin`, including the `_PNG`,
+`_JPG`, and `_QOI` forms). Binary `.bgcode` stores the same images in thumbnail
+blocks. Several sizes are normal, unlike two usable PNG images in a 3MF package; Quick
+Preview shows the largest image that decodes. There is no toolpath render.
+A text file with no usable thumbnail keeps the ordinary text preview. A binary
+file with none reports “This G-code file has no usable embedded thumbnail”.
+Remote G-code is not staged for a thumbnail and keeps the text preview.
+
+The reader does not scan the toolpath. Text is read only until the first command,
+and only through `MAX_GCODE_HEADER_BYTES` (2 MiB), plus the rest of a thumbnail
+block that has already started. That block still cannot exceed one 4 MiB image.
+Binary files seek through metadata and stop at the first G-code block. Thumbnail
+blocks are uncompressed; a compressed thumbnail block is skipped. G-code is not
+subject to the 128 MiB model input cap.
+
+3MF, FreeCAD, and G-code browser thumbnails extract embedded images only, through the **existing browser
 worker pool** and its normal cache, cancellation and slow-job admission. There is
-no geometry fallback, new pool or thumbnail job for STL. The decoder does not read
-model XML when selecting an embedded image. Missing or unusable images leave the
+no geometry fallback or new pool. The 3MF decoder does not read
+model XML when selecting an embedded image. G-code thumbnails are shown whenever
+**Show thumbnails** is enabled and do not use the STL model thumbnails setting.
+Missing or unusable images leave the
 file icon, with the existing failure cache preventing immediate retries.
 
-Heavy Quick Previews (models, PDFs, workbooks and DOCX) share one process-wide
+Local STL browser thumbnails are a separate opt-in under **Settings → Appearance
+→ File icons → STL model thumbnails**; **Show thumbnails** must also be enabled.
+They reuse the software model renderer in a one-shot sandbox at 256×256, with a
+fixed camera, neutral model colors and a transparent background for the shared
+freedesktop thumbnail cache. The existing
+browser queue admits at most one such render across all windows in the process,
+within its general worker limit, and cancels obsolete requests normally. This
+does not create a reusable worker pool or raise any model/sandbox limits. An
+interactive Quick Preview may run concurrently; it does not share this background
+STL slot. Disabling the option hides cached STL thumbnails as well as preventing
+new renders. It does not delete PNG thumbnails already stored in
+`$XDG_CACHE_HOME/thumbnails/large`; other freedesktop clients may still display them.
+Cancellation or the wall deadline sends SIGKILL and releases the background STL
+worker and admission slot without waiting for the helper to be reaped. A detached
+waiter keeps its private output and file-operation hold alive until reaping and
+namespace cleanup finish. A killed helper stuck in kernel I/O can therefore
+overlap a later render until the kernel allows it to exit. Interactive Quick Preview
+retains its existing wait-for-exit policy. Failed models retain the file icon and normal retry backoff.
+
+Heavy Quick Previews (models, PDFs, workbooks, DOCX and ODT) share one process-wide
 permit and use one-shot sandboxes. Cancellation retains that permit until the
 helper exits. Format is carried explicitly across the sandbox boundary, including
 for symlinks; the UI supplies the render palette. Geometry PNG cache keys include
@@ -175,7 +231,8 @@ options or environment variables:
 
 | Constant | Limit | Applies to |
 | --- | --- | --- |
-| `MAX_MODEL_INPUT_BYTES` | 128 MiB (134,217,728 bytes) | Input file, including embedded-thumbnail requests |
+| `MAX_MODEL_INPUT_BYTES` | 128 MiB (134,217,728 bytes) | STL, 3MF, and FreeCAD input, including embedded-thumbnail requests |
+| `MAX_GCODE_HEADER_BYTES` | 2 MiB | Text G-code scanned before the first command. A thumbnail block already started may continue past it |
 | `MAX_MODEL_XML_BYTES` | 128 MiB, independently of compressed file size | Unpacked 3MF model XML |
 | `MAX_3MF_ARCHIVE_ENTRIES` | 256 | All ZIP entries in a 3MF package |
 | `MAX_FREECAD_ARCHIVE_ENTRIES` | 4096 | All ZIP entries in a FreeCAD package |
@@ -208,8 +265,67 @@ Embedded-image limits live in `src/sandbox_helper/model/embedded.rs`: at most 16
 candidates, 4 MiB per candidate, 16 MiB total candidate bytes read and 16 megapixels
 (16×1024×1024 pixels) total admitted to decoding. Oversized/invalid images are not
 usable; exhausting a total inspection budget fails the operation rather than
-assuming uninspected candidates are invalid. Only bounded PNG results return to
+assuming uninspected candidates are invalid. G-code reuses these limits. Only bounded PNG results return to
 GTK. Thumbnail output remains at most 256×256, in the image's original colors.
+
+## Offline route previews
+
+Quick Preview accepts local GPX, FIT and KML files, including file symlinks.
+The one-shot `preview-route` helper parses and draws the route without network,
+map tiles or external resources. The drawer and file chooser use the shared media
+layout, folder-position caption, filename header and compact format/distance badges.
+A duration badge shows elapsed time between the earliest and latest recorded
+timestamps, including pauses, when at least two distinct timestamps are available.
+An elevation line is shown against cumulative distance when a connected pair has
+recorded altitude;
+otherwise that section is omitted. The shared media play/pause shortcuts animate
+route and elevation markers over 15 seconds at a steady distance-based pace.
+Hovering either graph pauses playback and synchronizes both markers; playback
+resumes only on an explicit play action. When route passes overlap or nearly
+overlap, hovering prefers the pass nearest the current distance among hits within
+two screen pixels of the closest line. Seeking uses the media shortcuts too.
+The timer stops when the preview is hidden, closed or replaced. The elevation
+header shows the current marker height during playback, hovering and seeking,
+when altitude is available. Playback uses calculated ground distance between GPS
+points, not screen length or recorded timestamps.
+
+The helper prepares a single projected trace with cumulative distance, segment
+boundaries and optional elevation coordinates. Both PNG images are drawn from this
+trace, and the same samples drive hover and playback in the UI. The plot owns
+coordinate transforms, picking and marker drawing; the player owns position and
+the playback timer. Host validation requires the PNG dimensions to match the
+trace’s coordinate space (800×600 for the route, 800×70 for elevation).
+Units follow the saved **Settings → General → Units** preference; the preview
+has no separate unit selector. Distances use kilometres or miles; elevation uses
+metres or feet.
+Changing units updates labels in place without interrupting playback.
+
+GPX tracks, route points and isolated waypoints preserve segment boundaries.
+FIT uses `fitparser` with checksum validation, bounded sequence decoding and
+streamed records; invalid GPS fixes and timer/session boundaries break the route.
+Enhanced altitude takes precedence over legacy altitude. KML supports Points,
+LineStrings and `gx:Track`, including these inside MultiGeometry/MultiTrack.
+Polygon outlines, KMZ, NetworkLinks and external assets are not rendered. KML
+altitude contributes to the profile only with explicit `absolute` altitude mode;
+terrain-relative and default clamped altitude need terrain data unavailable here.
+
+Missing altitude stays missing, including within a segment; zero and negative
+altitudes remain valid. Distance never bridges disconnected segments. Longitude
+wrapping keeps local date-line crossings together, with Web Mercator latitude
+clamped at approximately 85 degrees for the drawing. Display thinning does not
+change distance or altitude statistics. Distances use a spherical Earth model.
+
+The helper caps input at 32 MiB, aggregate valid points at 250,000, XML nesting
+at 64 and FIT objects at 1,000,000. Existing CPU, address-space, timeout,
+cancellation and shared heavy-preview permit limits still apply. Output is bounded
+JSON containing an 800×600 route PNG, an optional 800×70 elevation PNG and small
+numeric metadata, plus at most 250,000 projected drawing positions with cumulative
+distances, optional elevation heights and segment boundaries for interaction.
+The host validates PNG dimensions, sample counts, finite drawing bounds, monotonic
+distances, segment boundaries and profile consistency before presentation.
+Geographic coordinates and original document data stay in the sandbox.
+Route previews use the existing memory cache with format and palette identity;
+visible previews reload on theme changes. No browser thumbnail job is added.
 
 ## Browser worker pool
 
@@ -383,7 +499,7 @@ the input, including cancellation and decoder-error paths; no compressed input
 is handed to an in-process media parser.
 
 Remote PDFs, animated GIFs, audio, and other video formats remain unsupported:
-copy them locally first. In particular, remote PDF rendering/printing needs a shared document
+copy them locally first. In particular, remote PDF rendering needs a shared document
 snapshot before it can safely request multiple pages without repeated downloads.
 Supported still-image formats continue to depend on installed sandbox decoder tools;
 HEIC/HEIF can use ImageMagick with libheif inside the image sandbox.

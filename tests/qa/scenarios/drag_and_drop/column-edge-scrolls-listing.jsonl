@@ -1,0 +1,9 @@
+{"scenario":"column-edge-scrolls-listing","modes":["columns"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.3},"quality":{"impact":2,"coverage":3,"criticality":3,"diagnostic":4,"score":23,"note":"Drag to a column's top edge edge-scrolls its listing; sole GUI guard of listing edge-scroll, unlike strip-edge-scrolls-columns-in (root axis)"}}
+{"fs":{"path":"documents/{000..299}.txt","write":"x\n"}}
+{"select":{"entry":"documents"}}
+{"wait":{"directory":"documents"},"message":"the browser to be working in 'documents'"}
+{"settle":{"pane":"documents"}}
+{"drag":{"from":{"entry":"000.txt","dir":"documents"},"to":{"viewport":"documents"},"to_at":["50%",-8]},"release":false}
+{"wait":{"visible":{"any_from":"040.txt"},"dir":"documents"},"message":"the parked drag to edge-scroll the column's listing"}
+{"button_up":1}
+{"fs":{"path":"documents/000.txt","exists":true},"message":"the file to stay in its own directory after the drag"}

@@ -1,0 +1,15 @@
+{"scenario":"tab-drag-reorders-numbers","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.2},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"Only QA scenario dragging a tab to reorder; reorder logic and numbered shortcuts are unit-tested, the drag gesture is not"}}
+{"key":"ctrl+t"}
+{"select":{"entry":"archive"}}
+{"wait":{"directory":"archive"},"message":"the browser to be working in 'archive'"}
+{"settle":{"pane":"archive"}}
+{"wait":{"state":{"target":{"role":"page tab","name":"archive"},"selected":true}},"message":"active tab archive"}
+{"drag":{"from":{"role":"page tab","name":"archive"},"to":{"role":"page tab","name":"$root"}}}
+{"key":"ctrl+shift+2"}
+{"wait":{"state":{"target":{"role":"page tab","name":"$root"},"selected":true}},"message":"active tab $root"}
+{"key":"ctrl+shift+1"}
+{"wait":{"state":{"target":{"role":"page tab","name":"archive"},"selected":true}},"message":"active tab archive"}
+{"key":"ctrl+Page_Down"}
+{"wait":{"state":{"target":{"role":"page tab","name":"$root"},"selected":true}},"message":"active tab $root"}
+{"key":"ctrl+Page_Up"}
+{"wait":{"state":{"target":{"role":"page tab","name":"archive"},"selected":true}},"message":"active tab archive"}

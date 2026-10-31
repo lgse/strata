@@ -84,7 +84,9 @@ fn archive_paths_are_sanitized_to_confined_relative_paths() -> Result<(), Box<dy
         "\\tmp\\marker",
         "C:\\tmp\\marker",
         "C:marker",
-        "safe/C:/marker",
+        "C:/evil.txt",
+        "./c:notes",
+        "safe/../c:notes",
         "\\\\server\\share\\marker",
         "//server/share/marker",
     ] {
@@ -96,6 +98,10 @@ fn archive_paths_are_sanitized_to_confined_relative_paths() -> Result<(), Box<dy
         ("safe/../../marker", "marker"),
         ("safe\\..\\..\\marker", "marker"),
         ("folder/./nested//item.txt", "folder/nested/item.txt"),
+        ("names/c:notes", "names/c:notes"),
+        ("names\\c:notes", "names/c:notes"),
+        ("safe/C:/marker", "safe/C:/marker"),
+        ("safe/../names/c:notes", "names/c:notes"),
     ] {
         assert_eq!(
             sanitized_archive_path(name)?,

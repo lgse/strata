@@ -1,0 +1,50 @@
+{"scenario":"valid-name-commits-remaining","modes":["list"],"layout":"us","setup":[{"fs":{"path":"archive/marker.txt","write":"keep\n"}}],"quality":{"impact":4,"coverage":4,"criticality":4,"diagnostic":4,"score":56,"note":"List folder click-away and Tab, Icons Enter and new-folder sidebar commit; only icons/list commits; Columns Enter/click-away elsewhere"}}
+{"select_with_keyboard":"archive"}
+{"key":"F2"}
+{"wait":{"field":{"name":"Rename","focused":true}},"message":"the rename editor to take focus on 'archive'"}
+{"remember":{"field":true},"as":"click"}
+{"wait":{"field":{"of":"click","text":"archive"}},"message":"the original name 'archive' in the editor"}
+{"type":"f"}
+{"wait":{"field":{"of":"click","text":"f"}},"message":"typing to replace the whole folder name"}
+{"click":{"entry":"readme.md"}}
+{"fs":{"path":"f/marker.txt","text":"keep\n"},"message":"clicking another file to commit 'archive' as 'f' with its contents in List"}
+{"wait":{"absent":{"role":"text","name":"Rename"}},"message":"the name editor to close after the click"}
+{"fs":{"path":"archive","exists":false},"timeout_ms":0}
+{"wait":{"entry":"f"},"message":"the entry 'f' to appear in List"}
+{"select_with_keyboard":"todo.txt"}
+{"key":"F2"}
+{"wait":{"field":{"name":"Rename","focused":true}},"message":"the rename editor to take focus on 'todo.txt'"}
+{"remember":{"field":true},"as":"tab"}
+{"wait":{"field":{"of":"tab","text":"todo.txt"}},"message":"the original name 'todo.txt' in the editor"}
+{"type":"t"}
+{"wait":{"field":{"of":"tab","text":"t.txt"}},"message":"typing to replace the selected stem"}
+{"key":"Tab"}
+{"fs":{"path":"t.txt","text":"todo\n"},"message":"Tab to commit 'todo.txt' as 't.txt' in List"}
+{"wait":{"absent":{"role":"text","name":"Rename"}},"message":"the name editor to close after Tab"}
+{"fs":{"path":"todo.txt","exists":false},"timeout_ms":0}
+{"wait":{"entry":"t.txt"},"message":"the entry 't.txt' to appear in List"}
+{"key":"ctrl+2"}
+{"wait":{"view_mode":"Icons"},"message":"the browser to switch to the Icons view"}
+{"select":{"entry":"readme.md"}}
+{"key":"F2"}
+{"wait":{"field":{"name":"Rename","focused":true}},"message":"the rename editor to take focus on 'readme.md'"}
+{"remember":{"field":true},"as":"enter"}
+{"wait":{"field":{"of":"enter","text":"readme.md"}},"message":"the original name 'readme.md' in the editor"}
+{"type":"e"}
+{"wait":{"field":{"of":"enter","text":"e.md"}},"message":"typing to replace the selected stem"}
+{"key":"Return"}
+{"fs":{"path":"e.md","exists":true},"message":"Return to commit 'readme.md' as 'e.md' in Icons"}
+{"wait":{"absent":{"role":"text","name":"Rename"}},"message":"the name editor to close after Return"}
+{"fs":{"path":"readme.md","exists":false},"timeout_ms":0}
+{"wait":{"entry":"e.md"},"message":"the entry 'e.md' to appear in Icons"}
+{"key":"ctrl+shift+n"}
+{"wait":{"field":{"name":"Rename","focused":true}},"message":"the rename editor to take focus on the new folder"}
+{"remember":{"field":true},"as":"sidebar"}
+{"wait":{"field":{"of":"sidebar","text":"new folder"}},"message":"the default name 'new folder' in the editor"}
+{"type":"s"}
+{"wait":{"field":{"of":"sidebar","text":"s"}},"message":"typing to replace the default name"}
+{"click":{"sidebar":"Home"}}
+{"fs":{"path":"s","is":"dir"},"message":"a sidebar click to commit the new folder as 's' in Icons"}
+{"fs":{"path":"new folder","exists":false},"timeout_ms":0}
+{"wait":{"directory":"home"},"message":"the sidebar click to go on to open 'home'"}
+{"fs":{"path":"$home/s","exists":false},"timeout_ms":0,"message":"the rename to stay in the folder it started in"}

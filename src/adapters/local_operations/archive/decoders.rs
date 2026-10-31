@@ -463,9 +463,6 @@ pub(super) fn extract_tar(
             }
             let name = entry.path().map_err(|error| archive_io_failed(&error))?;
             let entry_type = entry.header().entry_type();
-            if entry_type.is_dir() && name == Path::new(".") {
-                continue;
-            }
             let declared_size = entry.size();
             let path = name.into_owned();
             let name = path.display();

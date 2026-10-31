@@ -105,7 +105,8 @@ impl SelectedLocations {
         each_location_once: impl FnOnce() -> bool,
     ) -> &[usize] {
         if let Some(positions) = self.positions.get() {
-            debug_assert_eq!(
+            #[cfg(feature = "invariant-checks")]
+            assert_eq!(
                 positions,
                 &self.scan(entries),
                 "selection positions disagree with the listing"
@@ -129,7 +130,7 @@ impl SelectedLocations {
         })
     }
 
-    fn scan(&self, entries: &[FileEntry]) -> Vec<usize> {
+    pub(super) fn scan(&self, entries: &[FileEntry]) -> Vec<usize> {
         if self.set.is_empty() {
             return Vec::new();
         }

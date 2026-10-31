@@ -71,17 +71,16 @@ impl Header {
         }
         let location = browser.location_widget();
         location.set_hexpand(true);
-        let search = header_action(
-            icons::SEARCH,
-            &crate::ui::shortcut_reference::with_keys(
-                "Search (%{keys})",
-                crate::ui::keys::Keys::One(crate::ui::keys::bindings::SEARCH),
-            ),
-        );
+        let search = header_action(icons::SEARCH, "");
+        let search_keys = crate::ui::keys::Keys::One(crate::ui::keys::bindings::SEARCH.shown());
+        crate::ui::shortcut_reference::follow_tooltip(&search, "Search (%{keys})", search_keys);
+        crate::ui::shortcut_reference::follow_label(&search, "Search (%{keys})", search_keys);
         crate::ui::tenxer_mode::hide_while_enabled(&search);
         let appearance =
             build_appearance_menu(browser, &browser.browser(), preferences.clone(), preview);
-        let settings = header_action(icons::SETTINGS, &crate::i18n::tr("Settings"));
+        let settings_label = crate::i18n::tr("Settings");
+        let settings = header_action(icons::SETTINGS, &settings_label);
+        crate::ui::accessibility::set_label(&settings, &settings_label);
         let minimize_label = crate::i18n::tr("Minimize window");
         let minimize = header_action(icons::MINUS, &minimize_label);
         crate::ui::accessibility::set_label(&minimize, &minimize_label);
@@ -104,7 +103,9 @@ impl Header {
             }
         });
         bind_maximize_icon(window, &maximize);
-        let close = header_action(icons::X, &crate::i18n::tr("Close window"));
+        let close_label = crate::i18n::tr("Close window");
+        let close = header_action(icons::X, &close_label);
+        crate::ui::accessibility::set_label(&close, &close_label);
         let closing_window = window.downgrade();
         close.connect_clicked(move |_| {
             if let Some(window) = closing_window.upgrade() {
@@ -124,12 +125,11 @@ impl Header {
         }
         let actions = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         actions.add_css_class("header-actions");
-        let new_tab = header_action(
-            icons::PLUS,
-            &crate::ui::shortcut_reference::with_keys(
-                "New tab (%{keys})",
-                crate::ui::keys::Keys::One(crate::ui::keys::bindings::TAB_NEW),
-            ),
+        let new_tab = header_action(icons::PLUS, "");
+        crate::ui::shortcut_reference::follow_tooltip(
+            &new_tab,
+            "New tab (%{keys})",
+            crate::ui::keys::Keys::One(crate::ui::keys::bindings::TAB_NEW.shown()),
         );
         crate::ui::accessibility::set_label(&new_tab, &crate::i18n::tr("New tab"));
         actions.append(&new_tab);
@@ -219,8 +219,6 @@ pub(super) fn browser_layout(
     let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
     root.append(&header.widget);
     bind_pin_handlers(browser, sidebar);
-    let preview_for_print = preview.clone();
-    browser.set_print_handler(Rc::new(move |entry| preview_for_print.print_entry(entry)));
     let content = browser_split(
         browser,
         sidebar,
@@ -255,9 +253,11 @@ fn bind_pin_handlers(browser: &BrowserView, sidebar: &SidebarView) {
     let weak_unpin_sidebar = Rc::downgrade(&sidebar.state);
     let pinned_places = sidebar.state.pinned_places.clone();
     browser.set_pin_handlers(
-        Rc::new(move |location, name| {
+        Rc::new(move |location, name, done| {
             if let Some(sidebar) = weak_pin_sidebar.upgrade() {
-                sidebar.pin_location(location, name);
+                sidebar.pin_location_with(location, name, done);
+            } else {
+                done(false);
             }
         }),
         Rc::new(move |location| {
@@ -337,13 +337,9 @@ fn bind_sidebar_modes(
     let describe = {
         let toggle = toggle.clone();
         let state = Rc::downgrade(&sidebar.state);
-        let preferences = preferences.clone();
         Rc::new(move || {
             if let Some(state) = state.upgrade() {
-                toggle.describe(
-                    SidebarMode::of(toggle.is_active(), state.rail.get()),
-                    preferences.tenxer_mode(),
-                );
+                toggle.describe(SidebarMode::of(toggle.is_active(), state.rail.get()));
             }
         })
     };
@@ -351,7 +347,7 @@ fn bind_sidebar_modes(
     toggle.connect_toggled(move |_| on_toggled());
     let on_rail = describe.clone();
     sidebar.state.connect_rail_changed(move |_| on_rail());
-    preferences.bind_preference(toggle, PreferenceManager::tenxer_mode, move |_, _| {
+    preferences.bind_preference(toggle, PreferenceManager::shown_keys, move |_, _| {
         describe();
     });
 }

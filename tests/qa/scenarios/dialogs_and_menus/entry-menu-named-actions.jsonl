@@ -1,0 +1,29 @@
+{"scenario":"entry-menu-named-actions","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.6},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"Entry menu roles, item names, accelerator-in-description and file action order; Copy click duplicates context-menu-copy-and-paste"}}
+{"click":{"entry":"todo.txt"},"button":3}
+{"wait":{"menu_items":{}},"message":"the context menu for 'todo.txt'"}
+{"expect":{"menu_items":{}},"message":"the context menu should have the menu role"}
+{"expect":{"menu_items":{"at_least":1}},"message":"menu entries should have the menu item role"}
+{"expect":{"menu_items":{"excludes":[""]}},"message":"every menu item needs a name"}
+{"expect":{"description":{"target":{"menu_item":"Copy"},"text":"Ctrl+C"}},"message":"the accelerator belongs in the description, not the name"}
+{"expect":{"menu_items":{"in_order":["Open","Open With…","Quick preview","Cut","Copy","Duplicate","Rename","Move to…","Copy to…","Compress…","Customize…","Copy path","Copy name","Properties","Move to Trash","Permanently delete"]}},"message":"unexpected action order"}
+{"key":"Escape"}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"click":{"entry":"documents"},"button":3}
+{"wait":{"menu_items":{}},"message":"the context menu for 'documents'"}
+{"expect":{"menu_items":{"in_order":["Open","Open With…","Open in Terminal","Open in…","Cut","Copy","Duplicate","Rename","Move to…","Copy to…","Compress…","Pin to sidebar","Customize…","Copy path","Copy name","Properties","Move to Trash","Permanently delete"]}},"message":"unexpected action order"}
+{"wait":{"present":{"menu_item":"Copy"}},"message":"the menu item 'Copy'"}
+{"settle":{"menu_item":"Copy"}}
+{"click":{"menu_item":"Copy"}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"sleep":500}
+{"click":{"entry":"documents"},"button":3}
+{"wait":{"menu_items":{}},"message":"the context menu for 'documents'"}
+{"expect":{"menu_items":{"contains":["Open in…"]}}}
+{"key":"Escape"}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"sleep":500}
+{"click":{"entry":"todo.txt"},"button":3}
+{"wait":{"menu_items":{}},"message":"the context menu for 'todo.txt'"}
+{"expect":{"menu_items":{"excludes":["Open in…"]}}}
+{"key":"Escape"}
+{"wait":{"menu_items":null},"message":"the menu to close"}

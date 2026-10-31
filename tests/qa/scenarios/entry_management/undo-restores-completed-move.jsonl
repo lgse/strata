@@ -1,0 +1,12 @@
+{"scenario":"undo-restores-completed-move","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.8},"quality":{"impact":3,"coverage":2,"criticality":3,"diagnostic":4,"score":14,"note":"Ctrl+X, Ctrl+V move then Ctrl+Z restores the file in columns; move undo logic and listing refresh are unit-tested in src/adapters/local_operations/tests/undo.rs and src/app/browser/tests/undo_refresh.rs, so only the keyboard GUI route is unique"}}
+{"select":{"entry":"todo.txt"}}
+{"key":"ctrl+x"}
+{"select":{"entry":"archive"}}
+{"wait":{"directory":"archive"},"message":"the browser to be working in 'archive'"}
+{"settle":{"pane":"archive"}}
+{"move":{"pane":"archive"}}
+{"key":"ctrl+v"}
+{"fs":{"path":"archive/todo.txt","exists":true},"message":"the move to complete"}
+{"key":"ctrl+z"}
+{"fs":{"path":"todo.txt","exists":true},"message":"undo to put the file back"}
+{"fs":{"path":"archive/todo.txt","exists":false},"timeout_ms":0}

@@ -1,0 +1,31 @@
+{"scenario":"customization-follows-move-and-trash","modes":["list"],"prefs":{"browser_mode":"list"},"layout":"us","mutation":null,"known_bug":null,"cost":{"list":2.0},"quality":{"impact":3,"coverage":4,"criticality":3,"diagnostic":3,"score":38,"note":"Folder customization follows cut/paste move and trash/undo in settings.toml; no unit test found for this, rename scenario covers only rename"}}
+{"click":{"entry":"pictures"},"button":3}
+{"wait":{"menu_items":{}},"message":"the context menu for 'pictures'"}
+{"wait":{"present":{"menu_item":"Customize…"}},"message":"the menu item 'Customize…'"}
+{"settle":{"menu_item":"Customize…"}}
+{"click":{"menu_item":"Customize…"}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"expect":{"present":{"role":"button","name":"Red","within":{"dialog":true}}},"message":"no Red color button"}
+{"click":{"role":"button","name":"Red","within":{"dialog":true}}}
+{"click":{"dialog_button":"Code"}}
+{"click":{"dialog_button":"Done"}}
+{"wait":{"dialog":null},"message":"the customize dialog to close"}
+{"fs":{"path":"$config/strata/settings.toml","has":{"contains":["\"$fixture/pictures\""]}},"message":"the 'pictures' customization to be saved"}
+{"select":{"entry":"pictures"}}
+{"key":"ctrl+x"}
+{"click":{"entry":"archive"},"count":2}
+{"wait":{"directory":"archive"},"message":"the browser to be working in 'archive'"}
+{"settle":{"pane":"archive"}}
+{"move":{"pane":"archive"}}
+{"key":"ctrl+v"}
+{"wait":{"all":[{"file":{"path":"$fixture/archive/pictures","exists":true}},{"file":{"path":"$fixture/pictures","exists":false}}]},"message":"pictures to move into archive"}
+{"fs":{"path":"archive/pictures","is":"dir"},"timeout_ms":0,"message":"pictures to move into archive"}
+{"fs":{"path":"$config/strata/settings.toml","has":{"contains":["\"$fixture/archive/pictures\""],"lacks":["\"$fixture/pictures\""]}},"message":"the customization to follow the move into archive"}
+{"select":{"entry":"pictures","dir":"archive"}}
+{"key":"Delete"}
+{"fs":{"path":"archive/pictures","exists":false},"message":"pictures to be trashed"}
+{"fs":{"path":"$config/strata/settings.toml","has":{"lacks":["\"$fixture/archive/pictures\""]}},"message":"the customization to leave settings.toml with the trashed folder"}
+{"key":"ctrl+z"}
+{"fs":{"path":"archive/pictures","is":"dir"},"message":"pictures to be restored"}
+{"fs":{"path":"$config/strata/settings.toml","has":{"contains":["\"$fixture/archive/pictures\""]}},"message":"the customization to come back with the restored folder"}

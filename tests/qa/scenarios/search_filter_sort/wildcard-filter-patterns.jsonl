@@ -1,0 +1,11 @@
+{"scenario":"wildcard-filter-patterns","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"tree":{"album.MOV":{"deep.MOV":"fixture\n","unrelated.txt":"fixture\n"},"clip.MOV":"fixture\n","IMG_001.MOV":"fixture\n","IMG_001.jpg":"fixture\n","clip.MOV.bak":"fixture\n",".hidden.MOV":"fixture\n"},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Wildcard queries typed in the Columns recursive filter match anchored, case-folded names at depth, skip hidden; matcher unit-tested in search/tests/scope.rs"}}
+{"key":"ctrl+f"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"type":"*.mov"}
+{"wait":{"matches":{"set":["album.MOV","clip.MOV","IMG_001.MOV","deep.MOV"]},"dir":"$root"},"message":"*.mov to match names ending in .MOV at any depth, without the hidden or .bak files"}
+{"key":"ctrl+a"}
+{"type":"img*.mov"}
+{"wait":{"matches":{"set":["IMG_001.MOV"]},"dir":"$root"},"message":"img*.mov to match only IMG_001.MOV"}
+{"key":"ctrl+a"}
+{"key":"BackSpace"}
+{"wait":{"entries":{"set":["album.MOV","clip.MOV","IMG_001.MOV","IMG_001.jpg","clip.MOV.bak"]},"dir":"$root"},"message":"clearing the wildcard to restore the listing without hidden or nested entries"}

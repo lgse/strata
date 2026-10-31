@@ -1,0 +1,17 @@
+{"scenario":"hovered-tab-takes-drop","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.7},"quality":{"impact":3,"coverage":4,"criticality":3,"diagnostic":4,"score":42,"note":"Hover-activated tab during drag then drop in its listing; drop-on-tab-moves-files covers only the drop onto the tab"}}
+{"fs":{"path":"documents/projects","mkdir":true}}
+{"key":"ctrl+t"}
+{"wait":{"present":{"role":"page tab","name":"$root","states":["selected"]}},"message":"the new root tab to become active before pointer navigation"}
+{"select":{"entry":"documents"}}
+{"wait":{"directory":"documents"},"message":"the browser to be working in 'documents'"}
+{"settle":{"pane":"documents"}}
+{"wait":{"state":{"target":{"role":"page tab","name":"documents"},"selected":true}},"message":"active tab documents"}
+{"key":"ctrl+shift+1"}
+{"wait":{"state":{"target":{"role":"page tab","name":"$root"},"selected":true}},"message":"active tab $root"}
+{"select":{"entry":"todo.txt"}}
+{"drag":{"from":{"entry":"todo.txt"},"to":{"role":"page tab","name":"documents"}},"release":false}
+{"wait":{"state":{"target":{"role":"page tab","name":"documents"},"selected":true}},"message":"active tab documents"}
+{"move":{"entry":"projects"}}
+{"button_up":1}
+{"fs":{"path":"documents/projects/todo.txt","exists":true},"message":"file dropped after switching tabs during drag"}
+{"fs":{"path":"todo.txt","exists":false},"timeout_ms":0}

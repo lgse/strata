@@ -1,0 +1,15 @@
+{"scenario":"paste-availability-follows-clipboard","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.7},"quality":{"impact":2,"coverage":3,"criticality":3,"diagnostic":4,"score":23,"note":"Pane menu Paste disabled on empty clipboard and enabled after copy; only scenario asserting Paste sensitivity (footer unit test covers footer button only)"}}
+{"click":{"background":true},"button":3}
+{"wait":{"menu_items":{}},"message":"the pane context menu"}
+{"wait":{"present":{"menu_item":"Paste"}},"message":"the menu item 'Paste'"}
+{"expect":{"state":{"target":{"menu_item":"Paste"},"sensitive":false}},"message":"Paste should be offered but disabled while the clipboard is empty"}
+{"key":"Escape"}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"select":{"entry":"todo.txt"}}
+{"key":"ctrl+c"}
+{"click":{"background":true},"button":3}
+{"wait":{"menu_items":{}},"message":"the pane context menu"}
+{"wait":{"present":{"menu_item":"Paste"}},"message":"the menu item 'Paste'"}
+{"expect":{"state":{"target":{"menu_item":"Paste"},"sensitive":true}},"message":"copying should enable Paste"}
+{"key":"Escape"}
+{"wait":{"menu_items":null},"message":"the menu to close"}

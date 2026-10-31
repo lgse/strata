@@ -1,0 +1,33 @@
+{"scenario":"sidebar-locations-open-new-tabs","modes":["columns"],"setup":[{"fs":{"path":"$config/gtk-3.0","mkdir":true,"parents":true}},{"fs":{"path":"$config/gtk-3.0/bookmarks","write":"file://$fixture_quoted/documents Pinned documents\nfile://$fixture_quoted/archive Pinned archive\nfile://$fixture_quoted/pictures Pinned pictures\n"}}]}
+{"wait":{"present":{"sidebar":"Pinned documents"}},"message":"saved sidebar locations are ready"}
+{"select":{"entry":"readme.md","dir":"$root"}}
+{"wait":{"selected":["readme.md"],"dir":"$root"},"message":"the original tab keeps a selected file"}
+{"drag":{"from":{"sidebar":"Pinned documents"},"to":{"role":"button","name":"New tab"}}}
+{"wait":{"all":[{"directory":"documents"},{"state":{"target":{"role":"page tab","name":"documents"},"selected":true}}]},"message":"dropping a sidebar folder on plus opens it in a new tab without an existing tab strip"}
+{"key":"ctrl+shift+1"}
+{"wait":{"all":[{"directory":"$root"},{"selected":["readme.md"],"dir":"$root"}]},"message":"the original tab retains its location and selection"}
+{"click":{"sidebar":"Pinned archive"},"button":3}
+{"wait":{"menu_items":{"contains":["Open in New Tab"]}},"message":"the sidebar context menu offers a new tab"}
+{"click":{"menu_item":"Open in New Tab"}}
+{"wait":{"all":[{"directory":"archive"},{"state":{"target":{"role":"page tab","name":"archive"},"selected":true}}]},"message":"the context menu opens the sidebar target in its own tab"}
+{"move":{"sidebar":"Home"}}
+{"button_down":2}
+{"button_up":2}
+{"wait":{"state":{"target":{"role":"page tab","name":"~"},"selected":true}},"message":"middle-click Home opens a new tab"}
+{"key":"ctrl+w"}
+{"wait":{"state":{"target":{"role":"page tab","name":"archive"},"selected":true}},"message":"closing Home returns to the existing archive tab"}
+{"drag":{"from":{"sidebar":"Pinned pictures"},"to":{"role":"page tab","name":"archive"},"to_at":[2,"50%"]},"release":false}
+{"key":"Escape"}
+{"button_up":1}
+{"wait":{"all":[{"absent":{"role":"page tab","name":"pictures"}},{"state":{"target":{"role":"page tab","name":"archive"},"selected":true}}]},"message":"cancelling a sidebar drag does not open or switch tabs"}
+{"drag":{"from":{"sidebar":"Pinned pictures"},"to":{"role":"page tab","name":"archive"},"to_at":[2,"50%"]}}
+{"wait":{"all":[{"directory":"pictures"},{"state":{"target":{"role":"page tab","name":"pictures"},"selected":true}}]},"message":"dropping before an existing tab opens the sidebar folder at that position"}
+{"key":"ctrl+shift+4"}
+{"wait":{"state":{"target":{"role":"page tab","name":"archive"},"selected":true}},"message":"the existing archive tab follows the inserted tab"}
+{"key":"ctrl+shift+3"}
+{"wait":{"state":{"target":{"role":"page tab","name":"pictures"},"selected":true}},"message":"the inserted pictures tab has the third shortcut"}
+{"key":"ctrl+shift+1"}
+{"wait":{"all":[{"directory":"$root"},{"selected":["readme.md"],"dir":"$root"}]},"message":"sidebar tab actions never replace the original tab"}
+{"fs":{"path":"documents/notes.txt","text":"notes\n"},"message":"opening a sidebar folder does not move its files"}
+{"fs":{"path":"archive","empty":true},"message":"opening sidebar tabs does not transfer files into the target"}
+{"fs":{"path":"$config/gtk-3.0/bookmarks","lines_equal":["file://$fixture_quoted/documents Pinned documents","file://$fixture_quoted/archive Pinned archive","file://$fixture_quoted/pictures Pinned pictures"]},"message":"opening tabs by drag leaves bookmark order unchanged"}

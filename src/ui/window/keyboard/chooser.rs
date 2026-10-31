@@ -27,7 +27,7 @@ pub(in crate::ui::window) fn refusal(
     if press.is_any(&[
         YANK,
         PASTE_KEEP_BOTH,
-        PEEK,
+        PREVIEW,
         YANK_CUT,
         CUT,
         COPY,
@@ -36,7 +36,6 @@ pub(in crate::ui::window) fn refusal(
         BOOKMARK_GO,
         ACTIONS,
         UNYANK,
-        UNYANK_X,
         PASTE_REPLACE,
         OPEN_WITH,
         MOVE_TO,
@@ -45,13 +44,8 @@ pub(in crate::ui::window) fn refusal(
     ]) {
         return Some(UNAVAILABLE);
     }
-    let fills = press.is_any(&[
-        SPACE,
-        VISUAL_SELECT,
-        VISUAL_UNSET,
-        SELECT_ALL,
-        INVERT_SELECTION,
-    ]);
+    let fills = press.is(SPACE)
+        || press.is_any(&[VISUAL_SELECT, VISUAL_UNSET, SELECT_ALL, INVERT_SELECTION]);
     (fills && !multiple).then_some(SINGLE)
 }
 

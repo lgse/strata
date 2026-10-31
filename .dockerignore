@@ -7,9 +7,6 @@
 !data/
 !data/**
 !tests/
-!tests/e2e/
-!tests/e2e/**
-!scripts/
-!scripts/e2e_bundle.py
+!tests/container/
+!tests/container/**
 **/__pycache__
-**/.pytest_cache

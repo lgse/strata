@@ -1,0 +1,18 @@
+{"scenario":"global-search-preview-follows-neighbor","modes":["columns"],"prefs":{"search_open_files_directly":false},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":2.3},"quality":{"impact":2,"coverage":3,"criticality":3,"diagnostic":4,"score":23,"note":"Search-result preview moves to the remaining file after the previewed file is deleted; no unit test or other QA scenario covers deletion-driven preview follow from search results"}}
+{"fs":{"path":"$home/preview-deletion","mkdir":true}}
+{"fs":{"path":"$home/preview-deletion/preview-deletion-fixture.txt","write":"search preview deletion fixture\n"}}
+{"fs":{"path":"$home/preview-deletion/remaining.txt","write":"remaining file\n"}}
+{"key":"ctrl+l"}
+{"type":"$home/preview-deletion"}
+{"key":"Return"}
+{"wait":{"directory":"preview-deletion"},"message":"the browser to be working in 'preview-deletion'"}
+{"settle":{"pane":"preview-deletion"}}
+{"wait":{"entries":{"contains":["remaining.txt"]}},"message":"loaded folder"}
+{"key":"ctrl+k"}
+{"type":"preview-deletion-fixture"}
+{"wait":{"present":{"role":"label","name":"preview-deletion-fixture.txt"}},"message":"indexed search result"}
+{"key":"Return"}
+{"wait":{"preview":"search preview deletion fixture"},"message":"search result preview"}
+{"fs":{"path":"$home/preview-deletion/preview-deletion-fixture.txt","remove":true}}
+{"wait":{"preview":"remaining file"},"message":"deleted result preview to follow the remaining file"}
+{"expect":{"entries":{"contains":["remaining.txt"]}}}

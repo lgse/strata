@@ -1,0 +1,28 @@
+{"scenario":"open-with-search-filters-escape-clears","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"setup":[{"fs":{"path":"$data/applications","mkdir":true}},{"fs":{"path":"$environment/record-files","write":"#!/bin/sh\nprintf \"%s\\n\" \"$$@\" > \"$environment/opened-files\"\n"}},{"fs":{"path":"$environment/record-files","chmod":"755"}},{"fs":{"path":"$data/applications/strata-review.desktop","write":"[Desktop Entry]\nType=Application\nName=Review Text Viewer\nExec=$environment/record-files %U\nMimeType=text/plain;inode/directory;\nNoDisplay=false\n"}},{"fs":{"path":"$config/mimeapps.list","write":"[Default Applications]\ntext/plain=strata-review.desktop;\ninode/directory=strata-review.desktop;\n[Added Associations]\ntext/plain=strata-review.desktop;\ninode/directory=strata-review.desktop;\n"}},{"fs":{"path":"$data/applications/strata-review.desktop","write":"[Desktop Entry]\nType=Application\nName=Review Text Viewer\nExec=$environment/record-files %U\nMimeType=text/plain;text/markdown;\nNoDisplay=true\n"}},{"fs":{"path":"$data/applications/strata-alternative.desktop","write":"[Desktop Entry]\nType=Application\nName=Alternative Viewer\nExec=$environment/record-files %U\nMimeType=text/plain;text/markdown;\nIcon=strata-nonexistent-icon-569\n"}},{"fs":{"path":"$data/applications/strata-missing.desktop","write":"[Desktop Entry]\nType=Application\nName=Missing Icon Viewer\nExec=$environment/record-files %U\nMimeType=text/plain;text/markdown;\n"}},{"fs":{"path":"$data/applications/strata-other-desktop.desktop","write":"[Desktop Entry]\nType=Application\nName=Other Desktop Viewer\nExec=$environment/record-files %U\nMimeType=text/plain;text/markdown;\nOnlyShowIn=StrataTestDesktop;\n"}},{"fs":{"path":"$config/mimeapps.list","write":"[Default Applications]\ntext/plain=strata-review.desktop;\ntext/markdown=strata-review.desktop;\n[Added Associations]\ntext/plain=strata-review.desktop;strata-alternative.desktop;strata-missing.desktop;strata-other-desktop.desktop;\ntext/markdown=strata-review.desktop;strata-alternative.desktop;strata-missing.desktop;strata-other-desktop.desktop;\n"}}],"cost":{"columns":1.9},"quality":{"impact":3,"coverage":4,"criticality":3,"diagnostic":3,"score":38,"note":"Open With search: arrow keys keep focus in search and Escape clears it; only keyboard route here, filtering itself GTK-unit-tested"}}
+{"click":{"entry":"todo.txt"},"button":3}
+{"wait":{"menu_items":{}},"message":"the context menu for 'todo.txt'"}
+{"wait":{"state":{"target":{"menu_item":"Open With…"},"sensitive":true}},"message":"MIME lookup"}
+{"wait":{"present":{"menu_item":"Open With…"}},"message":"the menu item 'Open With…'"}
+{"settle":{"menu_item":"Open With…"}}
+{"click":{"menu_item":"Open With…"}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"type":"ALTERNATIVE"}
+{"key":"Down"}
+{"wait":{"state":{"target":{"focused_widget":true},"editable":true}},"message":"search retains focus after Down"}
+{"key":"Up"}
+{"expect":{"state":{"target":{"focused_widget":true},"editable":true}}}
+{"type":"x"}
+{"wait":{"mentions":{"target":{"dialog":true},"text":"No matching applications were found."}},"message":"typing after arrow navigation appends at the caret"}
+{"key":"BackSpace"}
+{"wait":{"mentions":{"target":{"dialog":true},"text":"Alternative Viewer"}},"message":"Backspace restores match"}
+{"screenshot":"filtered-chooser.png"}
+{"key":"ctrl+a"}
+{"type":"no-such-application-821"}
+{"wait":{"mentions":{"target":{"dialog":true},"text":"No matching applications were found."}},"message":"empty search feedback"}
+{"key":"Return"}
+{"expect":{"dialog":true}}
+{"key":"Escape"}
+{"wait":{"not":{"mentions":{"target":{"dialog":true},"text":"No matching applications were found."}}},"message":"cleared search"}
+{"key":"Escape"}
+{"wait":{"dialog":null},"message":"dismissed chooser"}

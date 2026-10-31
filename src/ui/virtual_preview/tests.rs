@@ -22,6 +22,240 @@ use crate::{
 };
 
 #[test]
+fn smooth_content_scrolling_keeps_thumb_and_hit_testing_in_document_order() {
+    gtk_test(
+        "ui::virtual_preview::tests::smooth_content_scrolling_keeps_thumb_and_hit_testing_in_document_order",
+        || {
+            let context = gtk::glib::MainContext::default();
+            let advance_frames = |duration| {
+                let deadline = std::time::Instant::now() + duration;
+                while std::time::Instant::now() < deadline {
+                    while context.pending() {
+                        context.iteration(false);
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+            };
+            let _themes = crate::ui::theme::ThemeManager::shared();
+            let content = (0..400)
+                .map(|index| {
+                    if index % 2 == 0 {
+                        format!("Short paragraph {index}.")
+                    } else {
+                        (0..10 + (index * 37) % 150)
+                            .map(|word| format!("paragraph-{index}-word-{word}"))
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n\n");
+            let cancellation = crate::sandbox::Cancellation::default();
+            let kind = crate::services::document_kind(
+                "text/markdown",
+                std::ffi::OsStr::new("scroll.md"),
+                true,
+            )
+            .expect("Markdown");
+            let markdown = content
+                .split("\n\n")
+                .enumerate()
+                .map(|(index, text)| format!("[{text}](https://example.test/{index})"))
+                .collect::<Vec<_>>()
+                .join("\n\n");
+            let parsed = crate::services::parse_document(kind, &markdown, &cancellation)
+                .expect("scroll fixture");
+            let layout = crate::services::layout_document(parsed.document, &cancellation)
+                .expect("scroll layout");
+            let previews = [
+                rendered_document(layout, Vec::new(), true, None),
+                source_document(&content, false, true),
+            ];
+            for (mode, (root, state)) in previews.into_iter().enumerate() {
+                let window = gtk::Window::builder()
+                    .default_width(480)
+                    .default_height(500)
+                    .child(&root)
+                    .build();
+                window.present();
+                advance_frames(std::time::Duration::from_millis(300));
+                let list = state.list.upgrade().expect("document list");
+                let scroll = list
+                    .ancestor(gtk::ScrolledWindow::static_type())
+                    .and_downcast::<gtk::ScrolledWindow>()
+                    .expect("document scroller");
+                let controllers = scroll
+                    .observe_controllers()
+                    .iter::<gtk::glib::Object>()
+                    .filter_map(Result::ok)
+                    .filter_map(|controller| {
+                        controller.downcast::<gtk::EventControllerScroll>().ok()
+                    })
+                    .collect::<Vec<_>>();
+                let bubble = controllers
+                    .iter()
+                    .find(|controller| {
+                        controller.propagation_phase() == gtk::PropagationPhase::Bubble
+                    })
+                    .expect("GTK scrolling controller");
+                let capture = controllers
+                    .iter()
+                    .find(|controller| {
+                        controller.propagation_phase() == gtk::PropagationPhase::Capture
+                            && controller
+                                .flags()
+                                .contains(gtk::EventControllerScrollFlags::KINETIC)
+                    })
+                    .expect("GTK smooth scrolling controller");
+                let phase = |signal| {
+                    for controller in &controllers {
+                        controller.emit_by_name::<()>(signal, &[]);
+                    }
+                };
+                let scroll_by = |dy: f64| {
+                    if !controllers
+                        .iter()
+                        .filter(|controller| {
+                            controller.propagation_phase() == gtk::PropagationPhase::Capture
+                        })
+                        .any(|controller| {
+                            controller.emit_by_name::<bool>("scroll", &[&0.0_f64, &dy])
+                        })
+                    {
+                        bubble.emit_by_name::<bool>("scroll", &[&0.0_f64, &dy]);
+                    }
+                };
+                let thumb = scroll
+                    .parent()
+                    .and_then(|parent| parent.last_child())
+                    .and_downcast::<gtk::Scrollbar>()
+                    .expect("document scrollbar")
+                    .adjustment();
+                let thumb_progress = || {
+                    (thumb.value() - thumb.lower())
+                        / (thumb.upper() - thumb.lower() - thumb.page_size()).max(1.0)
+                };
+                let point = || {
+                    let x = f64::from(list.width()) / 4.0;
+                    let y = f64::from(list.height()) / 2.0;
+                    if mode == 0 {
+                        super::link_point_at(&list, &state, x, y)
+                    } else {
+                        super::point_at(&list, &state, x, y)
+                    }
+                };
+                phase("scroll-begin");
+                scroll_by(0.25);
+                advance_frames(std::time::Duration::from_millis(300));
+                let before_momentum = scroll.vadjustment().value();
+                capture.emit_by_name::<()>("decelerate", &[&0.0_f64, &0.35_f64]);
+                phase("scroll-end");
+                advance_frames(std::time::Duration::from_millis(400));
+                assert!(
+                    scroll.vadjustment().value() > before_momentum,
+                    "native momentum must still advance a settled viewport in mode {mode}"
+                );
+                phase("scroll-begin");
+                let mut previous_progress = thumb_progress();
+                let mut previous = point().expect("initial document text");
+                let initial = previous;
+                let mut samples = 0;
+                for step in 0..240 {
+                    for _ in 0..if step % 40 == 0 { 16 } else { 1 } {
+                        scroll_by(0.75);
+                    }
+                    advance_frames(std::time::Duration::from_millis(20));
+                    let progress = thumb_progress();
+                    assert!(
+                        progress + 1e-6 >= previous_progress,
+                        "forward content scrolling moved the scrollbar backwards in mode {mode}: {previous_progress} -> {progress}; document value={} upper={}",
+                        scroll.vadjustment().value(),
+                        scroll.vadjustment().upper(),
+                    );
+                    previous_progress = progress;
+                    let current = point();
+                    let picked = list
+                        .pick(
+                            f64::from(list.width()) / 4.0,
+                            f64::from(list.height()) / 2.0,
+                            gtk::PickFlags::DEFAULT,
+                        )
+                        .and_then(|picked| {
+                            state.bound.borrow().iter().find_map(|(index, bound)| {
+                                bound
+                                    .root
+                                    .upgrade()
+                                    .filter(|root| picked == *root || picked.is_ancestor(root))
+                                    .map(|_| *index)
+                            })
+                        });
+                    if let Some(current) = current {
+                        if picked.is_some() {
+                            assert_eq!(
+                                Some(current.unit),
+                                picked,
+                                "hit testing must read the visible row, not a recycled row"
+                            );
+                        }
+                        assert!(
+                            if mode == 0 {
+                                current >= previous
+                            } else {
+                                current.unit >= previous.unit
+                            },
+                            "forward scrolling reversed visible text: {previous:?} -> {current:?}",
+                        );
+                        previous = current;
+                        samples += 1;
+                    }
+                }
+                capture.emit_by_name::<()>("decelerate", &[&0.0_f64, &0.35_f64]);
+                phase("scroll-end");
+                for _ in 0..60 {
+                    advance_frames(std::time::Duration::from_millis(20));
+                    let progress = thumb_progress();
+                    assert!(
+                        progress + 1e-6 >= previous_progress,
+                        "forward momentum moved the scrollbar backwards in mode {mode}: {previous_progress} -> {progress}"
+                    );
+                    previous_progress = progress;
+                }
+                advance_frames(std::time::Duration::from_millis(300));
+                assert!(
+                    samples > 100,
+                    "scrolling must exercise actual document text"
+                );
+                assert!(
+                    previous > initial,
+                    "smooth input must advance document text"
+                );
+                let stopped = point();
+                advance_frames(std::time::Duration::from_millis(300));
+                assert_eq!(
+                    point(),
+                    stopped,
+                    "stopping input must leave the document still"
+                );
+                phase("scroll-begin");
+                previous_progress = thumb_progress();
+                for _ in 0..120 {
+                    scroll_by(-0.75);
+                    advance_frames(std::time::Duration::from_millis(20));
+                    let progress = thumb_progress();
+                    assert!(
+                        progress <= previous_progress + 1e-6,
+                        "backward input moved the scrollbar forward in mode {mode}: {previous_progress} -> {progress}"
+                    );
+                    previous_progress = progress;
+                }
+                phase("scroll-end");
+                window.close();
+            }
+        },
+    );
+}
+
+#[test]
 fn standalone_table_keeps_copy_model_alive_without_document_state() {
     gtk_test(
         "ui::virtual_preview::tests::standalone_table_keeps_copy_model_alive_without_document_state",
@@ -67,7 +301,7 @@ fn source_units_bound_normal_rows_and_isolate_pathological_lines() {
     assert_eq!(long.len(), 2);
     assert!(
         long.iter()
-            .all(|unit| unit.display.len() <= super::PATHOLOGICAL_TEXT_UNIT_BYTES)
+            .all(|unit| unit.display_text().len() <= super::PATHOLOGICAL_TEXT_UNIT_BYTES)
     );
     assert!(long[1].continuation);
     assert_eq!(source_line_numbers(long[0]), "301");
@@ -101,7 +335,7 @@ fn maximum_source_lines_stay_bounded_and_complete() {
     assert!(
         units
             .iter()
-            .all(|unit| unit.display.len() <= super::PATHOLOGICAL_TEXT_UNIT_BYTES)
+            .all(|unit| unit.display_text().len() <= super::PATHOLOGICAL_TEXT_UNIT_BYTES)
     );
     assert_eq!(
         units
@@ -417,24 +651,12 @@ fn virtual_preview_reuses_source_rows_and_releases_widget_trees() {
             drop(nul_view);
 
             let row = gtk::Box::new(gtk::Orientation::Vertical, 0);
-            let first = SourceUnit {
-                display: "first".to_owned(),
-                source: "first".to_owned(),
-                first_line: 1,
-                line_count: 1,
-                continuation: false,
-            };
+            let first = SourceUnit::new("first".to_owned(), 1, 1, false);
             let first_view = bind_source_row(&row, &first, false)
                 .view
                 .upgrade()
                 .expect("source row should contain a text view");
-            let second = SourceUnit {
-                display: "second".to_owned(),
-                source: "second".to_owned(),
-                first_line: 2,
-                line_count: 1,
-                continuation: false,
-            };
+            let second = SourceUnit::new("second".to_owned(), 2, 1, false);
             let second_view = bind_source_row(&row, &second, false)
                 .view
                 .upgrade()
@@ -723,7 +945,7 @@ fn document(unit: &PreviewUnit) -> &DocumentUnit {
 
 fn source(display: &str, source: &str) -> PreviewUnit {
     PreviewUnit::Source(SourceUnit {
-        display: display.strip_suffix('\n').unwrap_or(display).to_owned(),
+        display_end: display.strip_suffix('\n').unwrap_or(display).len(),
         source: source.to_owned(),
         first_line: 1,
         line_count: 1,

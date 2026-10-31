@@ -1,0 +1,27 @@
+{"scenario":"sidebar-destinations-accept-three-files","modes":["columns","icons","list"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"home","vars":{"destination":"Home"}},{"id":"trash","vars":{"destination":"Trash"}}],"cost":{"columns-home":1.5,"icons-home":1.4,"list-home":1.5,"columns-trash":1.5,"icons-trash":1.4,"list-trash":1.5},"quality":{"impact":4,"coverage":4,"criticality":4,"diagnostic":3,"score":52,"note":"Three selected files dragged to sidebar Home/Trash arrive intact; only multi-item sidebar drop and trash-undo route, no other scenario covers it"}}
+{"fs":{"path":"drop-a.txt","write":"drop-a.txt"}}
+{"wait":{"entry":"drop-a.txt"},"message":"the entry 'drop-a.txt' to appear"}
+{"fs":{"path":"drop-b.txt","write":"drop-b.txt"}}
+{"wait":{"entry":"drop-b.txt"},"message":"the entry 'drop-b.txt' to appear"}
+{"fs":{"path":"drop-c.txt","write":"drop-c.txt"}}
+{"wait":{"entry":"drop-c.txt"},"message":"the entry 'drop-c.txt' to appear"}
+{"select":{"entry":"drop-a.txt"}}
+{"click":{"entry":"drop-b.txt"},"mods":["ctrl"]}
+{"click":{"entry":"drop-c.txt"},"mods":["ctrl"]}
+{"wait":{"selected":["drop-a.txt","drop-b.txt","drop-c.txt"]},"message":"the selection to become ['drop-a.txt', 'drop-b.txt', 'drop-c.txt']"}
+{"drag":{"from":{"entry":"drop-a.txt"},"to":{"sidebar":"$destination"}},"release":false}
+{"screenshot":"hover.png"}
+{"button_up":1}
+{"fs":{"path":"drop-a.txt","exists":false},"message":"all three sources to leave their original directory"}
+{"fs":{"path":"drop-b.txt","exists":false},"message":"all three sources to leave their original directory"}
+{"fs":{"path":"drop-c.txt","exists":false},"message":"all three sources to leave their original directory"}
+{"fs":{"path":"$home/drop-a.txt","text":"drop-a.txt"},"message":"all three files to arrive intact","variants":["home"]}
+{"fs":{"path":"$home/drop-b.txt","text":"drop-b.txt"},"message":"all three files to arrive intact","variants":["home"]}
+{"fs":{"path":"$home/drop-c.txt","text":"drop-c.txt"},"message":"all three files to arrive intact","variants":["home"]}
+{"fs":{"path":"$data/Trash/files/drop-a.txt","text":"drop-a.txt"},"message":"all three files to arrive intact","variants":["trash"]}
+{"fs":{"path":"$data/Trash/files/drop-b.txt","text":"drop-b.txt"},"message":"all three files to arrive intact","variants":["trash"]}
+{"fs":{"path":"$data/Trash/files/drop-c.txt","text":"drop-c.txt"},"message":"all three files to arrive intact","variants":["trash"]}
+{"key":"ctrl+z","variants":["trash"]}
+{"fs":{"path":"drop-a.txt","exists":true},"message":"all three trashed files to be restored by undo","variants":["trash"]}
+{"fs":{"path":"drop-b.txt","exists":true},"message":"all three trashed files to be restored by undo","variants":["trash"]}
+{"fs":{"path":"drop-c.txt","exists":true},"message":"all three trashed files to be restored by undo","variants":["trash"]}

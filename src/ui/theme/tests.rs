@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 
+mod density;
 mod syntax;
 mod text_size;
 
-use std::{cell::Cell, collections::HashSet, rc::Rc};
+use std::{cell::Cell, collections::HashSet, path::Path, rc::Rc};
 
 use crate::ui::preferences::{CornerRoundness, PreferenceManager};
 
@@ -225,6 +226,112 @@ fn rewriting_the_selected_custom_theme_applies_without_a_restart() {
             tokens.accent = "#778899".to_owned();
             write_theme(&tokens);
             wait_for_live_theme(|| manager.active_model_palette().accent == 0x77_88_99);
+        },
+    );
+}
+
+#[test]
+fn rewriting_a_symlinked_theme_target_applies_without_a_restart() {
+    gtk_test(
+        "ui::theme::tests::rewriting_a_symlinked_theme_target_applies_without_a_restart",
+        || {
+            let directory = themes_directory();
+            let config = directory.parent().expect("config directory");
+            let (dotfiles, generated) = (config.join("dotfiles"), config.join("generated"));
+            for path in [&directory, &dotfiles, &generated] {
+                std::fs::create_dir_all(path).expect("theme directories");
+            }
+            let write_theme = |folder: &Path, name: &str, accent: &str| {
+                let mut tokens = azure_tokens();
+                tokens.name = name.to_owned();
+                tokens.accent = accent.to_owned();
+                std::fs::write(
+                    folder.join(format!("{name}.toml")),
+                    toml::to_string_pretty(&tokens).expect("theme file"),
+                )
+                .expect("written dotfile");
+            };
+            let link = |folder: &Path, name: &str| {
+                std::os::unix::fs::symlink(
+                    folder.join(format!("{name}.toml")),
+                    directory.join(format!("{name}.toml")),
+                )
+                .expect("dotfiles link");
+            };
+            write_theme(&dotfiles, "linked", "#112233");
+            link(&dotfiles, "linked");
+
+            let manager = ThemeManager::shared();
+            manager.select_theme("linked");
+            assert_eq!(manager.active_model_palette().accent, 0x11_22_33);
+
+            // Dangling until the generator first writes it, in a directory not yet watched.
+            link(&generated, "later");
+            write_theme(&dotfiles, "linked", "#445566");
+            wait_for_live_theme(|| manager.active_model_palette().accent == 0x44_55_66);
+
+            write_theme(&generated, "later", "#778899");
+            wait_for_live_theme(|| manager.themes().iter().any(|theme| theme.id == "later"));
+            manager.select_theme("later");
+            assert_eq!(manager.active_model_palette().accent, 0x77_88_99);
+
+            write_theme(&generated, "later", "#aabbcc");
+            wait_for_live_theme(|| manager.active_model_palette().accent == 0xaa_bb_cc);
+        },
+    );
+}
+
+#[test]
+fn switching_omarchy_symlinks_keeps_direct_and_atomic_palette_edits_live() {
+    gtk_test(
+        "ui::theme::tests::switching_omarchy_symlinks_keeps_direct_and_atomic_palette_edits_live",
+        || {
+            let state = super::omarchy_state_dir();
+            let themes = gtk::glib::home_dir().join("palettes");
+            let write = |folder: &Path, accent: &str, atomic: bool| {
+                std::fs::create_dir_all(folder).expect("palette directory");
+                let destination = folder.join("colors.toml");
+                let path = if atomic {
+                    folder.join("colors.new")
+                } else {
+                    destination.clone()
+                };
+                std::fs::write(
+                    &path,
+                    format!(
+                        "background = '#112233'\nforeground = '#ddeeff'\naccent = '{accent}'\n"
+                    ),
+                )
+                .expect("palette written");
+                if atomic {
+                    std::fs::rename(path, destination).expect("atomic palette replacement");
+                }
+            };
+            let switch = |name: &str| {
+                let pending = state.join("next-theme");
+                std::os::unix::fs::symlink(themes.join(name), &pending).expect("new theme link");
+                std::fs::rename(pending, state.join("theme")).expect("atomic theme switch");
+            };
+            std::fs::create_dir_all(&state).expect("Omarchy state");
+            std::fs::write(state.join("theme.name"), "fixture").expect("theme name");
+            write(&themes.join("a"), "#112244", false);
+            write(&themes.join("b"), "#445566", false);
+            switch("a");
+            let manager = ThemeManager::shared();
+            manager.set_follow_omarchy(true);
+            assert_eq!(manager.active_model_palette().accent, 0x11_22_44);
+
+            for (name, initial, edited, color) in [
+                ("b", 0x44_55_66, "#778899", 0x77_88_99),
+                ("a", 0x11_22_44, "#aabbcc", 0xaa_bb_cc),
+            ] {
+                switch(name);
+                wait_for_live_theme(|| manager.active_model_palette().accent == initial);
+                write(&themes.join(name), edited, false);
+                wait_for_live_theme(|| manager.active_model_palette().accent == color);
+                write(&themes.join(name), "#abcdef", true);
+                wait_for_live_theme(|| manager.active_model_palette().accent == 0xab_cd_ef);
+            }
         },
     );
 }
@@ -488,19 +595,35 @@ fn quattro_colors_map_to_strata_tokens() {
         "azure-glow",
         r##"
 background = "#0a0f1a"
+dark_background = "#070b13"
+lighter_background = "#142033"
 foreground = "#a8dfff"
 accent = "#00aaff"
-selection = "#a8dfff"
-color8 = "#123247"
+selection = "#1d3350"
+muted = "#3a5068"
+color8 = "#99aabb"
 "##,
-        super::OmarchyVariant::Original,
+        super::OmarchyVariant::Lighter,
     )
     .expect("valid Quattro colors should map");
 
     assert_eq!(theme.name, "Azure Glow");
-    assert_eq!(theme.background, "#0d1b2a");
+    assert_eq!(theme.background, "#0a0f1a");
+    assert_eq!(theme.surface, "#070b13");
+    assert_eq!(theme.muted, "#142033");
+    assert_eq!(theme.highlight, "#1d3350");
+    assert_eq!(theme.border, "#3a5068");
     assert_eq!(theme.accent, "#00aaff");
-    assert_eq!(theme.border, "#487089");
+
+    let minimal = tokens_from_quattro(
+        "azure-glow",
+        "background = \"#0a0f1a\"\nlighter_background = \"#0a0f1a\"\nforeground = \"#a8dfff\"\naccent = \"#00aaff\"\ncolor8 = \"#99aabb\"\n",
+        super::OmarchyVariant::Lighter,
+    )
+    .expect("required Quattro colors should map");
+    assert_eq!(minimal.background, "#0a0f1a");
+    assert_eq!(minimal.surface, "#0a0f1a");
+    assert_ne!(minimal.muted, minimal.background);
     let derived = super::resolved_source_palette(&theme, None);
     for (source, expected) in [
         ("color2 = \"#00ff00\"", "#00ff00"),
@@ -510,7 +633,7 @@ color8 = "#123247"
         let source = format!(
             "background = \"#0a0f1a\"\nforeground = \"#a8dfff\"\naccent = \"#00aaff\"\nselection = \"#a8dfff\"\ncolor8 = \"#123247\"\n{source}"
         );
-        let tokens = tokens_from_quattro("azure-glow", &source, super::OmarchyVariant::Original)
+        let tokens = tokens_from_quattro("azure-glow", &source, super::OmarchyVariant::Lighter)
             .expect("partial Quattro palette");
         let palette = super::resolved_source_palette(&tokens, None);
         assert_eq!(palette.string, expected);
@@ -590,7 +713,7 @@ fn quattro_syntax_palette_treats_unparsable_colors_as_missing() {
         "background = \"#0a0f1a\"\nforeground = \"#a8dfff\"\naccent = \"#00aaff\"\n{}",
         source_with("orange", "0x555555").replace("#666666", "notacolor")
     );
-    let tokens = tokens_from_quattro("azure-glow", &source, super::OmarchyVariant::Original)
+    let tokens = tokens_from_quattro("azure-glow", &source, super::OmarchyVariant::Lighter)
         .expect("required Quattro colors are valid");
     let xml = source_style_scheme_xml(&tokens, source_palette_from_quattro(&source).as_ref());
     let values = scheme_color_values(&xml);
@@ -609,7 +732,7 @@ fn legacy_palette_without_quattro_semantics_is_not_detected() {
         tokens_from_quattro(
             "legacy",
             "color4 = \"#00aaff\"",
-            super::OmarchyVariant::Original
+            super::OmarchyVariant::Lighter
         )
         .is_none()
     );

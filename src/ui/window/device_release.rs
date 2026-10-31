@@ -245,7 +245,7 @@ pub(super) fn unmatched_pending(live: &[DeviceIds]) -> Vec<ReleaseKey> {
 pub(super) fn pending_device_shell(row: &gtk::Button) -> gtk::Box {
     row.set_sensitive(false);
     let busy_label = crate::i18n::tr(RELEASE_ROW_TOOLTIP);
-    row.update_property(&[gtk::accessible::Property::Label(&busy_label)]);
+    crate::ui::accessibility::set_own_label(row, &busy_label);
     let spinner = gtk::Spinner::new();
     spinner.add_css_class("sidebar-device-spinner");
     spinner.update_property(&[gtk::accessible::Property::Label(&busy_label)]);

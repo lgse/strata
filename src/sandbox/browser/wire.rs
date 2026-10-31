@@ -32,6 +32,7 @@ pub(crate) enum Operation {
     FreeCadThumbnail = 12,
     PreviewRaw = 13,
     RawMetadata = 14,
+    GcodeThumbnail = 15,
 }
 
 impl Operation {
@@ -51,6 +52,7 @@ impl Operation {
             12 => Ok(Self::FreeCadThumbnail),
             13 => Ok(Self::PreviewRaw),
             14 => Ok(Self::RawMetadata),
+            15 => Ok(Self::GcodeThumbnail),
             _ => Err(io::Error::other("Unknown browser operation")),
         }
     }

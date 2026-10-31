@@ -1,5 +1,5 @@
 disallowed-methods = [
     { path = "gtk4::EventControllerKey::connect_key_pressed", reason = "read key presses with ui::keys::on_press" },
     { path = "gtk4::EventControllerKey::connect_key_released", reason = "read key releases with ui::keys::on_release" },
-    { path = "gtk4::prelude::GtkApplicationExt::set_accels_for_action", reason = "shortcuts are ui::keys::bindings constants that the window dispatcher matches" },
+    { path = "gtk4::prelude::GtkApplicationExt::set_accels_for_action", reason = "shortcuts are commands in the ui::keys command registry, resolved through the keymap tables the window dispatcher matches" },
 ]

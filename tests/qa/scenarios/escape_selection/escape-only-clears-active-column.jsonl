@@ -1,0 +1,11 @@
+{"scenario":"escape-only-clears-active-column","modes":["columns"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.7},"quality":{"impact":2,"coverage":3,"criticality":3,"diagnostic":4,"score":23,"note":"Escape clears only the active column selection and keeps the parent column selection; Columns-only case, escape-clears-selection-no-navigation never has a child column active"}}
+{"select":{"entry":"documents","dir":"$root"}}
+{"wait":{"directory":"documents"},"message":"the browser to be working in 'documents'"}
+{"settle":{"pane":"documents"}}
+{"select":{"entry":"notes.txt","dir":"documents"}}
+{"note":"selected","dir":"$root","as":"parent"}
+{"key":"Escape"}
+{"wait":{"selected":[],"dir":"documents"},"message":"the selection to become []"}
+{"expect":{"selected":"$parent","dir":"$root"}}
+{"expect":{"panes":["$root","documents"]}}
+{"wait":{"focused":"notes.txt"},"message":"keyboard focus to reach 'notes.txt'"}

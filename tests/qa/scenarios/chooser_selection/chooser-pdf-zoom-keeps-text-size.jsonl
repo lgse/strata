@@ -1,0 +1,45 @@
+{"scenario":"chooser-pdf-zoom-keeps-text-size","modes":["list"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"default","vars":{"id":"default"}},{"id":"tenxer","vars":{"id":"tenxer"}}],"setup":[{"fs":{"path":"page.pdf","from_repository":"tests/fixtures/documents/text.pdf"}}],"portal":true,"session_bus":true,"cost":{"list-default":0.9,"list-tenxer":1.0},"quality":{"impact":2,"coverage":3,"criticality":4,"diagnostic":3,"score":25,"note":"chooser PDF zoom keeps text size; quick-preview pdf-zoom-keeps-text-size covers same keys, this adds chooser focus and post-close reset"}}
+{"portal_open":"PDF zoom reset","options":{"current_folder":"$fixture"},"variants":["default"]}
+{"adopt":"PDF zoom reset","timeout_ms":20000,"message":"PDF zoom reset chooser","variants":["default"]}
+{"wait":{"present":{"row":"page.pdf"}},"message":"the 'page.pdf' row","variants":["default"]}
+{"click":{"row":"page.pdf"},"variants":["default"]}
+{"key":"ctrl+=","variants":["default"]}
+{"wait":{"pref":{"key":"text_size","value":14}},"message":"custom chooser interface text size","variants":["default"]}
+{"key":"space","variants":["default"]}
+{"wait":{"present":{"role":"image","name":"PDF page text"}},"message":"PDF page in chooser preview","variants":["default"]}
+{"remember":{"role":"image","name":"PDF page text"},"as":"page","variants":["default"]}
+{"click":{"remembered":"page"},"variants":["default"]}
+{"note":"number","expr":{"of":{"remembered":"page"},"get":"width"},"as":"fitted","variants":["default"]}
+{"wheel":{"remembered":"page"},"clicks":2,"direction":"up","mods":["ctrl"],"variants":["default"]}
+{"wait":{"compare":{"left":{"of":{"remembered":"page"},"get":"width"},"op":">","right":"$fitted"}},"message":"Ctrl+wheel over the chooser PDF to enlarge its page","variants":["default"]}
+{"key":"ctrl+0","variants":["default"]}
+{"wait":{"compare":{"left":{"of":{"remembered":"page"},"get":"width"},"op":"==","right":"$fitted"}},"message":"Ctrl+0 on the focused chooser PDF to restore the fitted page width","variants":["default"]}
+{"expect":{"pref":{"key":"text_size","value":14}},"variants":["default"]}
+{"portal_response":{"done":false},"variants":["default"]}
+{"key":"Escape","variants":["default"]}
+{"wait":{"absent":{"role":"image","name":"PDF page text"}},"message":"preview closed before resetting interface text","variants":["default"]}
+{"key":"ctrl+0","variants":["default"]}
+{"wait":{"pref":{"key":"text_size","value":13}},"message":"interface reset after returning focus to chooser files","variants":["default"]}
+{"portal_open":"PDF zoom reset","options":{"current_folder":"$fixture"},"variants":["tenxer"]}
+{"adopt":"PDF zoom reset","timeout_ms":20000,"message":"PDF zoom reset chooser","variants":["tenxer"]}
+{"wait":{"present":{"row":"page.pdf"}},"message":"the 'page.pdf' row","variants":["tenxer"]}
+{"click":{"row":"page.pdf"},"variants":["tenxer"]}
+{"key":"ctrl+=","variants":["tenxer"]}
+{"wait":{"pref":{"key":"text_size","value":14}},"message":"custom chooser interface text size","variants":["tenxer"]}
+{"key":"space","variants":["tenxer"]}
+{"wait":{"present":{"role":"image","name":"PDF page text"}},"message":"PDF page in chooser preview","variants":["tenxer"]}
+{"remember":{"role":"image","name":"PDF page text"},"as":"page","variants":["tenxer"]}
+{"click":{"remembered":"page"},"variants":["tenxer"]}
+{"key":"ctrl+shift+m","variants":["tenxer"]}
+{"wait":{"pref":{"key":"tenxer_mode","value":true}},"message":"10xer enabled in chooser","variants":["tenxer"]}
+{"note":"number","expr":{"of":{"remembered":"page"},"get":"width"},"as":"fitted","variants":["tenxer"]}
+{"wheel":{"remembered":"page"},"clicks":2,"direction":"up","mods":["ctrl"],"variants":["tenxer"]}
+{"wait":{"compare":{"left":{"of":{"remembered":"page"},"get":"width"},"op":">","right":"$fitted"}},"message":"Ctrl+wheel over the chooser PDF to enlarge its page","variants":["tenxer"]}
+{"key":"ctrl+0","variants":["tenxer"]}
+{"wait":{"compare":{"left":{"of":{"remembered":"page"},"get":"width"},"op":"==","right":"$fitted"}},"message":"Ctrl+0 on the focused chooser PDF to restore the fitted page width","variants":["tenxer"]}
+{"expect":{"pref":{"key":"text_size","value":14}},"variants":["tenxer"]}
+{"portal_response":{"done":false},"variants":["tenxer"]}
+{"key":"Escape","variants":["tenxer"]}
+{"wait":{"absent":{"role":"image","name":"PDF page text"}},"message":"preview closed before resetting interface text","variants":["tenxer"]}
+{"key":"ctrl+0","variants":["tenxer"]}
+{"wait":{"pref":{"key":"text_size","value":13}},"message":"interface reset after returning focus to chooser files","variants":["tenxer"]}

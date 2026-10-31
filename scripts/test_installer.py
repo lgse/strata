@@ -4,6 +4,7 @@ import fcntl
 import hashlib
 import http.server
 import io
+import json
 import os
 import pathlib
 import pty
@@ -20,10 +21,15 @@ import threading
 import time
 import unittest
 
+import sign_update_manifest as signing
+from test_sign_update_manifest import test_key
+
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 INSTALLER = ROOT / "install.sh"
 BASH = shutil.which("bash")
+SIGNED_FIXTURES = ROOT / "tests/fixtures/signed-update"
+PRODUCTION_KEYS = json.loads((ROOT / "data/update-keys.json").read_text(encoding="utf-8"))
 
 
 def bash(script: str, *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -104,32 +110,41 @@ class InstallerTerminal:
 
 class InstallerFixture:
     def __init__(
-        self, *, omarchy: bool = False, verify_status: int = 0,
-        release_files: dict[str, str | None] | None = None, github_cli: str = "authenticated",
+        self, *, omarchy: bool = False,
+        release_files: dict[str, str | None] | None = None, signing_seed: int = 7,
     ):
         self.directory = tempfile.TemporaryDirectory(prefix="strata-installer-")
         self.root = pathlib.Path(self.directory.name)
         self.home = self.root / "home"
         self.commands = self.root / "commands"
         self.calls = self.root / "calls"
+        self.release = self.root / "release"
         self.terminals = []
         self.home.mkdir()
         self.commands.mkdir()
+        self.release.mkdir()
         (self.root / "tmp").mkdir()
         (self.root / "runtime").mkdir(mode=0o700)
         for name in (
             "bash", "uname", "getconf", "awk", "sort", "head", "install", "sed", "grep",
             "dirname", "mkdir", "cp", "rm", "tar", "gzip", "sha256sum", "mktemp", "sleep", "cat",
-            "tee", "stty", "date", "tail",
+            "tee", "stty", "date", "tail", "wc", "openssl", "timeout",
         ):
             (self.commands / name).symlink_to(shutil.which(name))
         distro = self.root / "os-release"
         distro.write_text('ID=manjaro\nID_LIKE=arch\nPRETTY_NAME="Manjaro Linux"\n', encoding="utf-8")
+        # The installer pins the trusted key; the release is signed with the same key
+        # unless a test asks for an untrusted one.
+        self.key, self.public_key = test_key(self.root, 7)
+        self.signing_key, self.signing_public_key = self.key, self.public_key
+        if signing_seed != 7:
+            self.signing_key, self.signing_public_key = test_key(self.root, signing_seed)
         self.installer = self.root / "install.sh"
         self.installer.write_text(
             INSTALLER.read_text(encoding="utf-8")
             .replace("/etc/os-release", str(distro))
-            .replace("/usr/share/omarchy/version", str(self.root / "system-version")),
+            .replace("/usr/share/omarchy/version", str(self.root / "system-version"))
+            .replace(PRODUCTION_KEYS[0], self.public_key),
             encoding="utf-8",
         )
         self.environment = os.environ.copy()
@@ -141,13 +156,13 @@ class InstallerFixture:
             "XDG_STATE_HOME": str(self.home / "state"), "XDG_RUNTIME_DIR": str(self.root / "runtime"),
             "TMPDIR": str(self.root / "tmp"), "CALLS": str(self.calls),
             "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8", "LANGUAGE": "", "TERM": "xterm-256color",
-            "HYPRLAND_INSTANCE_SIGNATURE": "", "VERIFY_RESULT": str(verify_status),
+            "HYPRLAND_INSTANCE_SIGNATURE": "",
         })
         self.environment.pop("NO_COLOR", None)
         target = subprocess.check_output(["uname", "-m"], text=True).strip()
         target = "aarch64" if target in ("aarch64", "arm64") else "x86_64"
         self.archive_name = f"strata-1.0.0-{target}-unknown-linux-gnu.tar.gz"
-        archive = self.root / self.archive_name
+        archive = self.release / self.archive_name
         with tarfile.open(archive, "w:gz") as bundle:
             files = {
                 "strata": '#!/bin/bash\nprintf "%s %s\\n" "$0" "$*" >> "$CALLS"\n',
@@ -166,14 +181,16 @@ class InstallerFixture:
                 member.size = len(encoded)
                 member.mode = 0o755 if name == "strata" else 0o644
                 bundle.addfile(member, io.BytesIO(encoded))
-        digest = hashlib.sha256(archive.read_bytes()).hexdigest()
-        archive.with_suffix(".gz.sha256").write_text(f"{digest}  {self.archive_name}\n", encoding="utf-8")
+        other = "aarch64" if target == "x86_64" else "x86_64"
+        (self.release / f"strata-1.0.0-{other}-unknown-linux-gnu.tar.gz").write_bytes(b"other architecture\n")
+        self.sign_release()
         self.environment["FIXTURE_ARCHIVE"] = str(archive)
+        self.environment["FIXTURE_RELEASE"] = str(self.release)
         self.command("curl", '''output=""
 while (($#)); do
   case $1 in
     --output|-o) output=$2; shift 2 ;;
-    -w) shift 2 ;;
+    --max-filesize|-w) shift 2 ;;
     -*) shift ;;
     *) url=$1; shift ;;
   esac
@@ -181,8 +198,8 @@ done
 printf "curl %s\\n" "$url" >> "$CALLS"
 case $url in
   */latest) printf 'https://github.com/lgse/strata/releases/tag/v1.0.0' ;;
-  *.sha256) cp "$FIXTURE_ARCHIVE.sha256" "$output" ;;
-  *) cp "$FIXTURE_ARCHIVE" "$output" ;;
+  *.tar.gz) cp "$FIXTURE_ARCHIVE" "$output" ;;
+  *) [[ -f $FIXTURE_RELEASE/${url##*/} ]] || exit 22; cp "$FIXTURE_RELEASE/${url##*/}" "$output" ;;
 esac
 ''')
         self.command("pacman", '''if [[ $1 == -Q ]]; then
@@ -194,13 +211,6 @@ fi
         self.command("sudo", '''printf "sudo %s\\n" "$*" >> "$CALLS"
 [[ ${1:-} != -n ]] || shift
 exec "$@"
-''')
-        if github_cli != "missing":
-            authenticated = 0 if github_cli == "authenticated" else 1
-            self.command("gh", f'''[[ $1 != auth ]] || exit {authenticated}
-printf "gh %s\\n" "$*" >> "$CALLS"
-printf 'fixture verification details\\n'
-exit "$VERIFY_RESULT"
 ''')
         self.command("xdg-mime", '''printf "xdg-mime %s\\n" "$*" >> "$CALLS"
 [[ $1 != query ]] || printf 'io.github.lgse.Strata.desktop\\n'
@@ -214,6 +224,12 @@ exit "$VERIFY_RESULT"
         path = self.commands / name
         path.write_text("#!/bin/bash\nset -euo pipefail\n" + body, encoding="utf-8")
         path.chmod(0o755)
+
+    def sign_release(self, version: str = "1.0.0") -> None:
+        manifest = signing.manifest_bytes(self.release, version, "b" * 40)
+        signatures = signing.sign_manifest(manifest, [self.signing_key], [self.signing_public_key])
+        (self.release / signing.MANIFEST_NAME).write_bytes(manifest)
+        (self.release / signing.SIGNATURES_NAME).write_bytes(signatures)
 
     def run(self, *arguments: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
@@ -263,55 +279,57 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertNotIn("\033", result.stdout + result.stderr)
 
-    def test_provenance_verification_is_optional_without_github_cli(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            result = bash(
-                'PATH="$EMPTY_PATH"; verify_provenance /tmp/strata.tar.gz',
-                env={"EMPTY_PATH": directory},
-            )
+    def test_pinned_release_keys_match_the_updater_trust_store(self) -> None:
+        result = bash('printf "%s\\n" "${RELEASE_PUBLIC_KEYS[@]}"')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("GitHub CLI is unavailable", result.stderr)
+        self.assertEqual(result.stdout.split(), PRODUCTION_KEYS)
 
-    def test_provenance_verification_is_optional_without_github_authentication(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            fake_gh = pathlib.Path(directory) / "gh"
-            fake_gh.write_text(
-                '#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALLS"\nexit 1\n', encoding="utf-8"
-            )
-            fake_gh.chmod(0o755)
-            calls = pathlib.Path(directory) / "calls"
-            result = bash(
-                'PATH="$FAKE_PATH"; verify_provenance /tmp/strata.tar.gz',
-                env={"FAKE_PATH": directory, "CALLS": str(calls)},
-            )
-            recorded_calls = calls.read_text().splitlines()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(recorded_calls, ["auth status --hostname github.com"])
-        self.assertIn("GitHub CLI is not authenticated", result.stderr)
+    def test_release_signature_verification_accepts_only_a_trusted_signature(self) -> None:
+        fixture_key = (SIGNED_FIXTURES / "public-key.hex").read_text().strip()
+        manifest = (SIGNED_FIXTURES / signing.MANIFEST_NAME).read_bytes()
+        signatures = (SIGNED_FIXTURES / signing.SIGNATURES_NAME).read_bytes()
+        pretty = json.dumps(json.loads(signatures), indent=2).encode()
+        for name, key, manifest_bytes, signature_bytes, accepted in (
+            ("fixture", fixture_key, manifest, signatures, True),
+            ("rotation", f"{'f' * 64} {fixture_key}", manifest, signatures, True),
+            ("tampered manifest", fixture_key, manifest.replace(b"0.12.0", b"0.12.1"), signatures, False),
+            ("reserialized manifest", fixture_key, manifest.rstrip(b"\n"), signatures, False),
+            ("untrusted key", "f" * 64, manifest, signatures, False),
+            ("non-canonical signatures", fixture_key, manifest, pretty, False),
+            ("empty signatures", fixture_key, manifest, b'{"schema":1,"signatures":[]}\n', False),
+        ):
+            with self.subTest(name), tempfile.TemporaryDirectory() as directory:
+                pathlib.Path(directory, "manifest").write_bytes(manifest_bytes)
+                pathlib.Path(directory, "signatures").write_bytes(signature_bytes)
+                result = bash(
+                    'RELEASE_PUBLIC_KEYS=($KEYS); TEMP_DIR=$DIR; '
+                    'verify_release_signature "$DIR/manifest" "$DIR/signatures"',
+                    env={"KEYS": key, "DIR": directory},
+                )
+                self.assertEqual(result.returncode, 0 if accepted else 1, result.stderr)
+                if not accepted:
+                    self.assertIn("No trusted release key signed", result.stderr)
 
-    def test_authenticated_provenance_verification_remains_mandatory(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            fake_gh = pathlib.Path(directory) / "gh"
-            fake_gh.write_text(
-                '#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALLS"\n'
-                'case "$*" in "auth status"*) exit 0;; *) exit "$VERIFY_RESULT";; esac\n',
-                encoding="utf-8",
-            )
-            fake_gh.chmod(0o755)
-            calls = pathlib.Path(directory) / "calls"
-            result = bash(
-                'PATH="$FAKE_PATH"; verify_provenance /tmp/strata.tar.gz',
-                env={"FAKE_PATH": directory, "CALLS": str(calls), "VERIFY_RESULT": "9"},
-            )
-            recorded_calls = calls.read_text().splitlines()
-        self.assertEqual(result.returncode, 9, result.stderr)
-        self.assertEqual(
-            recorded_calls,
-            [
-                "auth status --hostname github.com",
-                "attestation verify /tmp/strata.tar.gz --repo lgse/strata",
-            ],
-        )
+    def test_signed_artifact_must_match_the_requested_release_and_architecture(self) -> None:
+        manifest = SIGNED_FIXTURES / signing.MANIFEST_NAME
+        for version, target, expected in (
+            ("0.12.0", "x86_64-unknown-linux-gnu", "9e08fb7fa1ad03d91a140c2c89dc9be65ff0c4fecb7cc2bbc16f81e6bc7e556d 22"),
+            ("0.12.0", "aarch64-unknown-linux-gnu", "9e08fb7fa1ad03d91a140c2c89dc9be65ff0c4fecb7cc2bbc16f81e6bc7e556d 22"),
+            ("0.12.1", "x86_64-unknown-linux-gnu", "does not describe Strata 0.12.1"),
+            ("0.12.0", "riscv64gc-unknown-linux-gnu", "does not list strata-0.12.0-riscv64gc-unknown-linux-gnu.tar.gz"),
+        ):
+            with self.subTest(version=version, target=target):
+                result = bash(
+                    'read_signed_artifact "$MANIFEST" "$VERSION" "$TARGET" "strata-$VERSION-$TARGET.tar.gz"; '
+                    'printf "%s %s" "$SIGNED_ARCHIVE_SHA256" "$SIGNED_ARCHIVE_SIZE"',
+                    env={"MANIFEST": str(manifest), "VERSION": version, "TARGET": target},
+                )
+                if expected.startswith("does not"):
+                    self.assertEqual(result.returncode, 1, result.stderr)
+                    self.assertIn(expected, result.stderr)
+                else:
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(result.stdout, expected)
 
     def test_unattended_flags_select_only_requested_integrations(self) -> None:
         result = bash(
@@ -345,12 +363,12 @@ class InstallerTests(unittest.TestCase):
 
     def test_file_chooser_runs_only_the_permanently_installed_binary_after_consent(self) -> None:
         cases = [
-            (("--non-interactive",), None, []),
-            (("--with-file-manager",), None, []),
+            (("--non-interactive",), None, ["--install-portal"]),
+            (("--with-file-manager",), None, ["--install-portal"]),
             (("--with-file-chooser",), None, ["--install-portal"]),
             (("--without-file-chooser",), None, ["--dismiss-portal-prompt"]),
-            ((), False, ["--dismiss-portal-prompt"]),
-            ((), True, ["--install-portal"]),
+            ((), "recommended", ["--install-portal"]),
+            ((), "deselected", ["--dismiss-portal-prompt"]),
         ]
         for arguments, interactive_choice, expected in cases:
             with self.subTest(arguments=arguments, choice=interactive_choice), InstallerFixture() as fixture:
@@ -363,7 +381,7 @@ class InstallerTests(unittest.TestCase):
                 else:
                     terminal = fixture.terminal(piped=True)
                     terminal.expect("Enter continue")
-                    if interactive_choice:
+                    if interactive_choice == "deselected":
                         terminal.send(b"\033[B\r")
                         terminal.expect("Space toggle")
                         terminal.send(b"\033[B\033[B\033[B \r")
@@ -380,22 +398,44 @@ class InstallerTests(unittest.TestCase):
                     result = fixture.run(*arguments)
                     self.assertEqual(result.returncode == 0, succeeds, result.stderr)
                     self.assertNotIn("No such file", result.stderr)
+                    output = result.stdout + result.stderr
                 else:
-                    terminal = fixture.terminal()
+                    terminal = fixture.terminal(piped=True)
                     terminal.expect("Enter continue")
                     terminal.send(b"\r")
                     self.assertEqual(terminal.finish(), 0, terminal.output)
+                    output = terminal.output
+                self.assertEqual("does not include file chooser integration; skipping it" in output, succeeds)
                 self.assertEqual(fixture.recorded_application_calls(), [])
                 self.assertEqual((fixture.home / ".local/bin/strata").exists(), succeeds)
                 if not succeeds:
                     self.assertFalse(any(call.startswith("sudo") for call in fixture.recorded_calls()))
 
-    def test_non_interactive_mode_declines_unspecified_options(self) -> None:
-        with InstallerFixture() as fixture:
-            result = fixture.run("--non-interactive")
-            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            self.assertEqual(fixture.recorded_application_calls(), [])
-            self.assertFalse(any(call.startswith(("xdg-mime", "gdbus")) for call in fixture.recorded_calls()))
+    def test_non_interactive_mode_installs_everything_unless_declined(self) -> None:
+        for name, arguments, integrated, packages in (
+            ("defaults", ("--non-interactive",), True, {"gvfs-smb", "dcraw", "xdg-desktop-portal"}),
+            (
+                "declined",
+                ("--without-desktop-entry", "--without-file-manager", "--without-file-chooser", "--without-smb", "--without-raw"),
+                False,
+                set(),
+            ),
+        ):
+            with self.subTest(name), InstallerFixture() as fixture:
+                result = fixture.run(*arguments)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                calls = fixture.recorded_calls()
+                transaction = next(call for call in calls if call.startswith("pacman -S"))
+                self.assertEqual({package for package in packages if package in transaction}, packages)
+                self.assertEqual(any(package in transaction for package in ("gvfs-smb", "dcraw", "xdg-desktop-portal")), integrated)
+                self.assertEqual("xdg-mime default io.github.lgse.Strata.desktop inode/directory" in calls, integrated)
+                self.assertEqual((fixture.home / "data/applications/io.github.lgse.Strata.desktop").exists(), integrated)
+                self.assertEqual((fixture.home / "data/dbus-1/services/io.github.lgse.Strata.FileManager1.service").exists(), integrated)
+                self.assertEqual(
+                    fixture.recorded_application_calls(),
+                    [f"{fixture.home}/.local/bin/strata " + ("--install-portal" if integrated else "--dismiss-portal-prompt")],
+                )
+                self.assertFalse((fixture.home / ".config/hypr").exists())
 
     def test_file_manager_service_uses_the_installed_binary(self) -> None:
         for reload_status in (0, 1, None):
@@ -403,7 +443,7 @@ class InstallerTests(unittest.TestCase):
                 root = pathlib.Path(home)
                 commands = root / "commands"
                 commands.mkdir()
-                for name in ("mkdir", "dirname", "install", "sed", "grep", "head"):
+                for name in ("mkdir", "dirname", "install", "sed", "grep", "head", "timeout"):
                     (commands / name).symlink_to(shutil.which(name))
                 if reload_status is not None:
                     gdbus = commands / "gdbus"
@@ -454,6 +494,29 @@ class InstallerTests(unittest.TestCase):
                 else:
                     self.assertNotIn(active_message, result.stdout)
                     self.assertIn("Log out and back in", result.stderr)
+
+    def test_file_manager_service_continues_when_the_bus_never_replies(self) -> None:
+        with tempfile.TemporaryDirectory() as home:
+            root = pathlib.Path(home)
+            commands = root / "commands"
+            commands.mkdir()
+            for name in ("mkdir", "dirname", "install", "sed", "grep", "head", "timeout", "sleep"):
+                (commands / name).symlink_to(shutil.which(name))
+            gdbus = commands / "gdbus"
+            gdbus.write_text("#!/bin/sh\nexec sleep 20\n", encoding="utf-8")
+            gdbus.chmod(0o755)
+            started = time.monotonic()
+            result = bash(
+                'TEMP_DIR="$HOME/tmp"; mkdir -p "$TEMP_DIR"; '
+                'BIN_PATH="$HOME/.local/bin/strata"; '
+                'install_file_manager_service "$(dirname "$1")/data"; '
+                'printf "installer continued\\n"',
+                env={"HOME": home, "XDG_DATA_HOME": f"{home}/data", "PATH": str(commands)},
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertLess(time.monotonic() - started, 15)
+            self.assertIn("installer continued", result.stdout)
+            self.assertIn("Log out and back in", result.stderr)
 
     def test_file_manager_service_refuses_another_per_user_provider(self) -> None:
         with tempfile.TemporaryDirectory() as home:
@@ -551,39 +614,55 @@ class InstallerTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("requires Omarchy 3 or 4", result.stderr)
 
-    def test_recommended_setup_installs_launcher_without_changing_defaults(self) -> None:
-        for github_cli, provenance_note in (
-            ("authenticated", None),
-            ("unauthenticated", "GitHub CLI is not authenticated"),
-            ("missing", "GitHub CLI is unavailable"),
-        ):
-            with self.subTest(github_cli=github_cli), InstallerFixture(github_cli=github_cli) as fixture:
-                terminal = fixture.terminal(piped=True)
-                terminal.expect("Enter continue")
-                terminal.send(b"\r")
-                self.assertEqual(terminal.finish(), 0, terminal.output)
-                self.assertTrue((fixture.home / ".local/bin/strata").is_file())
-                self.assertTrue((fixture.home / "data/applications/io.github.lgse.Strata.desktop").is_file())
-                calls = fixture.recorded_calls()
-                self.assertFalse(any(call.startswith(("xdg-mime", "gdbus")) for call in calls), calls)
-                self.assertEqual(fixture.recorded_application_calls(), [f"{fixture.home}/.local/bin/strata --dismiss-portal-prompt"])
-                self.assertNotIn("fixture verification details", terminal.output)
-                if provenance_note:
-                    self.assertIn(provenance_note, terminal.output)
-                self.assertIn("Ready to explore", terminal.output)
-                self.assertEqual(list((fixture.root / "tmp").glob("*.log")), [])
+    def test_recommended_setup_installs_every_supported_integration(self) -> None:
+        with InstallerFixture() as fixture:
+            terminal = fixture.terminal(piped=True)
+            terminal.expect("Enter continue")
+            terminal.send(b"\r")
+            self.assertEqual(terminal.finish(), 0, terminal.output)
+            self.assertTrue((fixture.home / ".local/bin/strata").is_file())
+            self.assertTrue((fixture.home / "data/applications/io.github.lgse.Strata.desktop").is_file())
+            self.assertTrue((fixture.home / "data/dbus-1/services/io.github.lgse.Strata.FileManager1.service").is_file())
+            calls = fixture.recorded_calls()
+            self.assertIn("xdg-mime default io.github.lgse.Strata.desktop inode/directory", calls)
+            transaction = next(call for call in calls if call.startswith("pacman -S"))
+            for package in ("gvfs-smb", "dcraw", "xdg-desktop-portal"):
+                self.assertIn(package, transaction)
+            self.assertEqual(fixture.recorded_application_calls(), [f"{fixture.home}/.local/bin/strata --install-portal"])
+            self.assertNotIn("stay unchanged", terminal.output)
+            self.assertIn("Ready to explore", terminal.output)
+            self.assertEqual(list((fixture.root / "tmp").glob("*.log")), [])
 
-    def test_custom_setup_applies_selected_integrations_and_their_dependencies(self) -> None:
+    def test_release_is_authenticated_before_the_archive_is_downloaded(self) -> None:
+        with InstallerFixture() as fixture:
+            result = fixture.run("--non-interactive")
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            downloads = "https://github.com/lgse/strata/releases/download/v1.0.0"
+            self.assertEqual(
+                [call for call in fixture.recorded_calls() if call.startswith("curl")],
+                [
+                    "curl https://github.com/lgse/strata/releases/latest",
+                    f"curl {downloads}/strata-update-manifest.json",
+                    f"curl {downloads}/strata-update-manifest.signatures.json",
+                    f"curl {downloads}/{fixture.archive_name}",
+                ],
+            )
+
+    def test_custom_setup_starts_with_everything_selected_and_applies_deselections(self) -> None:
         with InstallerFixture() as fixture:
             terminal = fixture.terminal()
             terminal.expect("Enter continue")
             terminal.send(b"\033[B\r")
             terminal.expect("Space toggle")
-            terminal.send(b"\033[B \033[B\033[B \r")
+            terminal.send(b"\033[B \033[B\033[B \033[B \r")
             self.assertEqual(terminal.finish(), 0, terminal.output)
             calls = fixture.recorded_calls()
-            self.assertIn("xdg-mime default io.github.lgse.Strata.desktop inode/directory", calls)
-            self.assertEqual(fixture.recorded_application_calls(), [f"{fixture.home}/.local/bin/strata --install-portal"])
+            self.assertFalse(any(call.startswith("xdg-mime") for call in calls), calls)
+            transaction = next(call for call in calls if call.startswith("pacman -S"))
+            self.assertNotIn("gvfs-smb", transaction)
+            self.assertNotIn("xdg-desktop-portal", transaction)
+            self.assertIn("dcraw", transaction)
+            self.assertEqual(fixture.recorded_application_calls(), [f"{fixture.home}/.local/bin/strata --dismiss-portal-prompt"])
             self.assertTrue((fixture.home / "data/dbus-1/services/io.github.lgse.Strata.FileManager1.service").is_file())
             self.assertTrue((fixture.home / "data/applications/io.github.lgse.Strata.desktop").is_file())
 
@@ -598,6 +677,69 @@ class InstallerTests(unittest.TestCase):
             self.assertFalse((fixture.home / "data/applications/io.github.lgse.Strata.desktop").exists())
             self.assertTrue((fixture.home / "data/dbus-1/services/io.github.lgse.Strata.FileManager1.service").is_file())
             self.assertFalse(any(call.startswith("xdg-mime") for call in fixture.recorded_calls()))
+
+    def test_omarchy_defaults_to_the_file_chooser_and_shortcuts(self) -> None:
+        for name, arguments, expected, integrated in (
+            ("recommended", (), ["--install-portal"], True),
+            ("unattended", ("--non-interactive",), ["--install-portal"], True),
+            ("declined", ("--without-file-chooser", "--without-omarchy-keybinds"), ["--dismiss-portal-prompt"], False),
+        ):
+            with self.subTest(name), InstallerFixture(omarchy=True) as fixture:
+                if arguments:
+                    result = fixture.run(*arguments)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    output = result.stdout
+                else:
+                    terminal = fixture.terminal()
+                    terminal.expect("Enter continue")
+                    terminal.send(b"\r")
+                    self.assertEqual(terminal.finish(), 0, terminal.output)
+                    output = terminal.output
+                binary = fixture.home / ".local/bin/strata"
+                self.assertEqual(fixture.recorded_application_calls(), [f"{binary} {argument}" for argument in expected])
+                bindings = fixture.home / ".config/hypr/bindings.lua"
+                self.assertEqual(bindings.exists(), integrated, output)
+                self.assertEqual("Omarchy 4 file-manager shortcuts now open Strata." in output, integrated)
+                self.assertEqual("Open and Save dialogs" in output, integrated)
+
+    def test_without_flags_decline_defaults_and_their_dependents(self) -> None:
+        for flag, expected in (
+            ("--without-smb", "yes no ask ask ask ask ask ask ask"),
+            ("--without-raw", "yes ask no ask ask ask ask ask ask"),
+            ("--without-desktop-entry", "yes ask ask no no ask ask ask ask"),
+            ("--without-folder-association", "yes ask ask ask no ask ask ask ask"),
+            ("--without-file-manager", "yes ask ask ask no no ask ask ask"),
+            ("--without-file-chooser", "yes ask ask ask ask ask no ask ask"),
+            ("--without-omarchy-keybinds", "yes ask ask ask ask ask ask no ask"),
+            ("--without-udiskie-unlock", "yes ask ask ask ask ask ask ask no"),
+        ):
+            with self.subTest(flag=flag):
+                result = bash(
+                    f"parse_args {flag}; "
+                    'printf "%s %s %s %s %s %s %s %s %s" "$NON_INTERACTIVE" "$WITH_SMB" "$WITH_RAW" '
+                    '"$WITH_DESKTOP_ENTRY" "$WITH_FOLDER_ASSOCIATION" "$WITH_FILE_MANAGER" '
+                    '"$WITH_FILE_CHOOSER" "$WITH_OMARCHY_KEYBINDS" "$WITH_UDISKIE_UNLOCK"'
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout, expected)
+
+    def test_defaults_cover_only_integrations_the_system_supports(self) -> None:
+        for arch_based, omarchy, udiskie, expected in (
+            ("no", "", False, "yes yes yes yes ask ask ask ask"),
+            ("yes", "", False, "yes yes yes yes yes yes ask ask"),
+            ("yes", "4", True, "yes yes yes yes yes yes yes yes"),
+            ("yes", "", True, "yes yes yes yes yes yes ask yes"),
+        ):
+            with self.subTest(arch_based=arch_based, omarchy=omarchy, udiskie=udiskie):
+                result = bash(
+                    f"udiskie_on_path() {{ {'true' if udiskie else 'false'}; }}; "
+                    f'resolve_default_integrations {arch_based} "{omarchy}"; '
+                    'printf "%s %s %s %s %s %s %s %s" "$WITH_DESKTOP_ENTRY" "$WITH_FOLDER_ASSOCIATION" '
+                    '"$WITH_FILE_MANAGER" "$WITH_FILE_CHOOSER" "$WITH_SMB" "$WITH_RAW" '
+                    '"$WITH_OMARCHY_KEYBINDS" "$WITH_UDISKIE_UNLOCK"'
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout, expected)
 
     def test_custom_setup_offers_omarchy_only_when_supported(self) -> None:
         for omarchy in (False, True):
@@ -658,8 +800,8 @@ class InstallerTests(unittest.TestCase):
                 fixture.environment["DOWNLOAD_URL"] = f"http://127.0.0.1:{server.server_port}/archive"
                 curl = fixture.commands / "curl"
                 curl.write_text(curl.read_text().replace(
-                    '*) cp "$FIXTURE_ARCHIVE" "$output" ;;',
-                    '*) exec "$REAL_CURL" --noproxy "*" --fail --progress-bar --output "$output" "$DOWNLOAD_URL" ;;',
+                    '*.tar.gz) cp "$FIXTURE_ARCHIVE" "$output" ;;',
+                    '*.tar.gz) exec "$REAL_CURL" --noproxy "*" --fail --progress-bar --output "$output" "$DOWNLOAD_URL" ;;',
                 ))
                 terminal = fixture.terminal()
                 worker.start()
@@ -700,11 +842,11 @@ class InstallerTests(unittest.TestCase):
         with InstallerFixture() as fixture:
             child_pid = fixture.root / "download-pid"
             fixture.environment["DOWNLOAD_PID"] = str(child_pid)
-            fixture.command("curl", '''case "$*" in
-  */latest*) printf 'https://github.com/lgse/strata/releases/tag/v1.0.0' ;;
-  *) printf '%s' "$$" > "$DOWNLOAD_PID"; exec sleep 30 ;;
-esac
-''')
+            curl = fixture.commands / "curl"
+            curl.write_text(curl.read_text().replace(
+                '*.tar.gz) cp "$FIXTURE_ARCHIVE" "$output" ;;',
+                '*.tar.gz) printf "%s" "$$" > "$DOWNLOAD_PID"; exec sleep 30 ;;',
+            ))
             terminal = fixture.terminal()
             terminal.expect("Enter continue")
             terminal.send(b"\r")
@@ -733,26 +875,77 @@ esac
             self.assertIn("xdg-desktop-portal", transactions[0])
             self.assertEqual(fixture.recorded_application_calls(), [f"{fixture.home}/.local/bin/strata --install-portal"])
             self.assertLess(
-                next(i for i, call in enumerate(calls) if call.startswith("gh attestation verify")),
+                calls.index(f"curl https://github.com/lgse/strata/releases/download/v1.0.0/{fixture.archive_name}"),
                 calls.index(transactions[0]),
             )
 
-    def test_failed_verification_leaves_the_machine_unchanged(self) -> None:
-        with InstallerFixture(verify_status=9) as fixture:
+    def test_untrusted_release_signature_leaves_the_machine_unchanged(self) -> None:
+        with InstallerFixture(signing_seed=8) as fixture:
             result = fixture.run("--non-interactive")
-            self.assertEqual(result.returncode, 9, result.stdout + result.stderr)
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
             self.assertFalse((fixture.home / ".local/bin/strata").exists())
-            self.assertFalse(any(call.startswith("sudo") for call in fixture.recorded_calls()))
-            self.assertIn("fixture verification details", result.stderr)
+            calls = fixture.recorded_calls()
+            self.assertFalse(any(call.startswith("sudo") for call in calls))
+            self.assertFalse(any(call.endswith(".tar.gz") for call in calls), calls)
+            self.assertIn("No trusted release key signed strata-update-manifest.json", result.stderr)
             self.assertIn("Detailed output:", result.stderr)
 
+    def test_release_without_signed_manifest_is_refused(self) -> None:
+        for missing in (signing.MANIFEST_NAME, signing.SIGNATURES_NAME):
+            with self.subTest(missing=missing), InstallerFixture() as fixture:
+                (fixture.release / missing).unlink()
+                result = fixture.run("--non-interactive")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse((fixture.home / ".local/bin/strata").exists())
+                calls = fixture.recorded_calls()
+                self.assertFalse(any(call.startswith("sudo") for call in calls))
+                self.assertFalse(any(call.endswith(".tar.gz") for call in calls), calls)
+
+    def test_oversized_release_metadata_is_refused_before_verification(self) -> None:
+        with InstallerFixture() as fixture:
+            signatures = fixture.release / signing.SIGNATURES_NAME
+            signatures.write_bytes(signatures.read_bytes() + b" " * 8192)
+            result = fixture.run("--non-interactive")
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn("larger than 8192 bytes", result.stderr)
+            self.assertFalse(any(call.endswith(".tar.gz") for call in fixture.recorded_calls()))
+
+    def test_archive_that_differs_from_the_signed_digest_is_refused(self) -> None:
+        with InstallerFixture() as fixture:
+            archive = pathlib.Path(fixture.environment["FIXTURE_ARCHIVE"])
+            signed = archive.read_bytes()
+            for name, replacement in (
+                ("replaced", signed[:-1] + bytes([signed[-1] ^ 0x01])),
+                ("truncated", signed[:-1]),
+            ):
+                with self.subTest(name):
+                    archive.write_bytes(replacement)
+                    result = fixture.run("--non-interactive")
+                    self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                    self.assertIn("the signed manifest expects", result.stderr)
+                    self.assertFalse((fixture.home / ".local/bin/strata").exists())
+                    self.assertFalse(any(call.startswith("sudo") for call in fixture.recorded_calls()))
+
+    def test_missing_openssl_fails_before_downloading_anything(self) -> None:
+        with InstallerFixture() as fixture:
+            (fixture.commands / "openssl").unlink()
+            result = fixture.run("--non-interactive")
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn("Required command not found: openssl", result.stderr)
+            self.assertEqual(fixture.recorded_calls(), [])
+
     def test_integration_failure_reports_that_the_application_is_installed(self) -> None:
-        for flag, status in (("--with-folder-association", 17), ("--with-file-chooser", 1), ("--with-udiskie-unlock", 1)):
-            with self.subTest(flag=flag), InstallerFixture(release_files={
+        for flag, status, xdg_mime in (
+            ("--with-folder-association", 17, "exit 17\n"),
+            ("--with-folder-association", 124, "exec sleep 20\n"),
+            ("--with-file-chooser", 1, None),
+            ("--with-udiskie-unlock", 1, None),
+        ):
+            with self.subTest(flag=flag, status=status), InstallerFixture(release_files={
                 "strata": '#!/bin/bash\nprintf "fixture integration failed\\n" >&2\nexit 17\n',
             }) as fixture:
-                if flag == "--with-folder-association":
-                    fixture.command("xdg-mime", "exit 17\n")
+                if xdg_mime is not None:
+                    fixture.command("xdg-mime", xdg_mime)
                 elif flag == "--with-udiskie-unlock":
                     fixture.command("udiskie", "exit 0\n")
                 result = fixture.run(flag)
@@ -1031,14 +1224,16 @@ exit 23
 
     def test_udiskie_unlock_runs_only_the_permanently_installed_binary_after_consent(self) -> None:
         cases = [
-            ("explicit consent", ("--with-udiskie-unlock",), True, True, True),
-            ("unspecified", ("--non-interactive",), True, True, True),
-            ("declined", (), True, True, True),
-            ("missing udiskie", ("--with-udiskie-unlock",), False, True, False),
-            ("old release declined", (), True, False, True),
-            ("old release requested", ("--with-udiskie-unlock",), True, False, False),
+            ("explicit consent", ("--with-udiskie-unlock",), True, True, True, ["--install-portal", "--install-udiskie-unlock"]),
+            ("unspecified", ("--non-interactive",), True, True, True, ["--install-portal", "--install-udiskie-unlock"]),
+            ("declined", ("--without-udiskie-unlock",), True, True, True, ["--install-portal"]),
+            ("recommended", (), True, True, True, ["--install-portal", "--install-udiskie-unlock"]),
+            ("no udiskie", ("--non-interactive",), False, True, True, ["--install-portal"]),
+            ("missing udiskie", ("--with-udiskie-unlock",), False, True, False, []),
+            ("old release unspecified", ("--non-interactive",), True, False, True, ["--install-portal"]),
+            ("old release requested", ("--with-udiskie-unlock",), True, False, False, []),
         ]
-        for name, arguments, udiskie, marker, succeeds in cases:
+        for name, arguments, udiskie, marker, succeeds, expected in cases:
             with self.subTest(name=name), InstallerFixture(release_files={
                 "udiskie/unlock": "supported\n" if marker else None,
             }) as fixture:
@@ -1053,9 +1248,6 @@ exit 23
                     terminal.send(b"\r")
                     self.assertEqual(terminal.finish(), 0, terminal.output)
                 binary = fixture.home / ".local/bin/strata"
-                expected = ["--install-udiskie-unlock"] if succeeds and "--with-udiskie-unlock" in arguments else []
-                if not arguments:
-                    expected.append("--dismiss-portal-prompt")
                 self.assertEqual(fixture.recorded_application_calls(), [f"{binary} {argument}" for argument in expected])
                 self.assertEqual(binary.exists(), succeeds)
                 self.assertFalse((fixture.home / "config/udiskie").exists())
@@ -1070,12 +1262,12 @@ exit 23
                 terminal.expect("Enter continue")
                 terminal.send(b"\033[B\r")
                 terminal.expect("Space toggle")
-                terminal.send(b"k \r")
+                terminal.send(b"\r")
                 self.assertEqual(terminal.finish(), 0, terminal.output)
             binary = fixture.home / ".local/bin/strata"
             self.assertEqual(fixture.recorded_application_calls(), [f"{binary} {argument}" for argument in (
-                "--dismiss-portal-prompt", "--install-udiskie-unlock",
-                "--dismiss-portal-prompt", "--install-udiskie-unlock",
+                "--install-portal", "--install-udiskie-unlock",
+                "--install-portal", "--install-udiskie-unlock",
             )])
 
     def test_udiskie_unlock_capability_is_the_archive_marker_not_the_binary_string(self) -> None:

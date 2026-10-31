@@ -158,6 +158,11 @@ pub(super) fn load(section: &gtk::Box, path: PathBuf) -> MetadataLoad {
         else {
             return;
         };
+        let mime = if mime == "application/octet-stream" {
+            crate::services::guess_content_type(&path).0
+        } else {
+            mime.to_string()
+        };
         let image = mime.starts_with("image/");
         if !image && !mime.starts_with("audio/") && !mime.starts_with("video/") {
             return;

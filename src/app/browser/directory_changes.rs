@@ -405,17 +405,32 @@ impl Browser {
             .state
             .borrow()
             .path_after_external_change(depth, &change);
-        if let Some(path) = path_update
-            && !matches!(&change, DirectoryChange::Move { .. })
-        {
-            self.restore_path(path);
-            return;
+        let hidden_move = matches!(&change, DirectoryChange::Move { entry, .. }
+            if entry.is_hidden && !self.preferences.get().show_hidden);
+        if let Some(path) = path_update {
+            if !matches!(&change, DirectoryChange::Move { .. }) {
+                self.restore_path(path);
+                return;
+            }
+            if hidden_move {
+                self.truncate_columns(depth + 1, false);
+            }
         }
-        let focused_was_removed = matches!(&change, DirectoryChange::Remove(location)
-            if self.focused_item().is_some_and(|(focused_depth, _, entry)|
-                focused_depth == depth && entry.location == *location));
+        let gone = match &change {
+            DirectoryChange::Remove(location) => Some(location),
+            DirectoryChange::Move { from, .. } if hidden_move => Some(from),
+            _ => None,
+        };
+        let focused_was_removed = gone.is_some_and(|location| {
+            self.focused_item()
+                .is_some_and(|(focused_depth, _, entry)| {
+                    focused_depth == depth && entry.location == *location
+                })
+        });
         let relocation = match &change {
-            DirectoryChange::Move { from, entry } => Some((from.clone(), entry.location.clone())),
+            DirectoryChange::Move { from, entry } if !hidden_move => {
+                Some((from.clone(), entry.location.clone()))
+            }
             _ => None,
         };
         let application = self

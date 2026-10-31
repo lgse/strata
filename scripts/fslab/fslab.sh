@@ -14,7 +14,7 @@ target_volume=strata-fslab-target
 usage() {
   cat >&2 <<'EOF'
 Usage: scripts/fslab/fslab.sh COMMAND
-  image                               build the lab image on the pinned E2E base
+  image                               build the lab image on the pinned test image
   up | down [--force] | status | shell
                                       manage the privileged lab container; down
                                       releases what is free and keeps the
@@ -36,9 +36,9 @@ die() {
 
 base_image() {
   if [[ -n "${FSLAB_BASE_IMAGE:-}" ]]; then
-    python3 "$repository/scripts/e2e_base.py" verify "$FSLAB_BASE_IMAGE" --engine docker
+    python3 "$repository/scripts/image_base.py" verify "$FSLAB_BASE_IMAGE" --engine docker
   else
-    python3 "$repository/scripts/e2e_base.py" ensure --engine docker
+    python3 "$repository/scripts/image_base.py" ensure --engine docker
   fi
 }
 

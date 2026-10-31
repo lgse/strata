@@ -1,0 +1,23 @@
+{"scenario":"pdf-zoom-keeps-text-size","modes":["columns"],"prefs":{"single_click_previews":false,"text_size":21},"layout":"us","mutation":null,"known_bug":null,"tree":{"notes.txt":"the quick brown fox\n","page.md":"# Heading\n\nBody text.\n","third.txt":"third preview fixture\n","data.csv":"name,value\nalpha,1\n","folder":{"inner.txt":"inner\n","nested-notes.txt":"nested preview fixture\n"}},"variants":[{"id":"wheel","prefs":{"tenxer_mode":false},"vars":{"gesture":"wheel"}},{"id":"reset","prefs":{"tenxer_mode":false},"vars":{"gesture":"reset"}},{"id":"reset-tenxer","prefs":{"tenxer_mode":true},"vars":{"gesture":"reset-tenxer"}}],"cost":{"columns-wheel":1.1,"columns-reset":1.3,"columns-reset-tenxer":1.3},"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":3,"score":45,"note":"PDF zoom keeps text size; sole guard of outside-PDF wheel resizing text under PDF focus; chooser-pdf-zoom-keeps-text-size shares the core"}}
+{"fs":{"path":"page.pdf","from_repository":"tests/fixtures/documents/text.pdf"}}
+{"select_with_keyboard":"page.pdf"}
+{"key":"space","variants":["wheel","reset"]}
+{"key":"i","variants":["reset-tenxer"]}
+{"wait":{"present":{"role":"image","name":"PDF page text","within":{"preview":true}}},"message":"PDF page"}
+{"remember":{"role":"image","name":"PDF page text","within":{"preview":true}},"as":"page"}
+{"settle":{"remembered":"page"}}
+{"note":"number","expr":{"pref":"text_size"},"as":"saved"}
+{"note":"number","expr":{"of":{"remembered":"page"},"get":"width"},"as":"fitted"}
+{"click":{"remembered":"page"},"variants":["reset","reset-tenxer"]}
+{"wheel":{"remembered":"page"},"clicks":2,"direction":"up","mods":["ctrl"]}
+{"wait":{"compare":{"left":{"of":{"remembered":"page"},"get":"width"},"op":">","right":"$fitted"}},"message":"Ctrl+wheel over the PDF to enlarge its pages"}
+{"key":"ctrl+0","variants":["reset","reset-tenxer"]}
+{"wait":{"compare":{"left":{"of":{"remembered":"page"},"get":"width"},"op":"==","right":"$fitted"}},"message":"Ctrl+0 on the focused PDF to restore the fitted page width","variants":["reset","reset-tenxer"]}
+{"settle":{"remembered":"page"}}
+{"expect":{"compare":{"left":{"pref":"text_size"},"op":"==","right":"$saved"}}}
+{"click":{"remembered":"page"}}
+{"wheel":{"entry":"page.pdf"},"clicks":2,"direction":"up","mods":["ctrl"]}
+{"wait":{"pref":{"key":"text_size","value":23}},"message":"wheel outside the PDF to resize interface text despite PDF keyboard focus"}
+{"click":{"entry":"page.pdf"}}
+{"key":"ctrl+0"}
+{"wait":{"pref":{"key":"text_size","value":13}},"message":"reset outside the PDF to restore interface text size"}

@@ -1,0 +1,61 @@
+{"scenario":"filter-results-follow-external-changes","modes":["columns","icons","list"],"layout":"us","mutation":null,"known_bug":null,"tree":{"match-note.txt":"root decoy\n","alpha":{"match-note.txt":"alpha source\n"},"beta":{"match-note.txt":"beta source\n","only-match.txt":"beta source\n"},"match-note-other.md":"other match\n","destination":{},"thumb.txt":"thumbnail search companion"},"images":{"beta/thumb.png":{"width":64,"height":64,"rgb":[230,40,60]}},"variants":[{"id":"false","prefs":{"filter_include_subfolders":false},"vars":{"rec":"False"}},{"id":"true","prefs":{"filter_include_subfolders":true},"vars":{"rec":"True"}}],"cost":{"columns-false":1.3,"icons-false":1.2,"list-false":1.2,"columns-true":1.7,"icons-true":1.6,"list-true":1.6},"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":3,"score":45,"note":"External create/delete and F5 refresh in filter results with focus kept; only GUI check of this path (index refresh unit-tested)"}}
+{"select":{"entry":"match-note.txt"},"variants":["false"]}
+{"key":"ctrl+f","variants":["false"]}
+{"wait":{"field":{}},"message":"an editable field to take focus","variants":["false"]}
+{"remember":{"field":true},"as":"filter","variants":["false"]}
+{"type":"match-note","variants":["false"]}
+{"wait":{"matches":{"count":2}},"message":"all recursive matches","variants":["false"]}
+{"fs":{"path":"match-note-new.txt","write":"new\n"},"variants":["false"]}
+{"wait":{"present":{"result":"match-note-new.txt"}},"message":"an externally created hit","variants":["false"]}
+{"expect":{"field":{"of":"filter","focused":true}},"variants":["false"]}
+{"expect":{"field":{"of":"filter","text":"match-note"}},"variants":["false"]}
+{"fs":{"path":"alpha/match-note-deep.txt","write":"deep\n"},"variants":["false"]}
+{"settle":{"field":"filter"},"variants":["false"]}
+{"expect":{"absent":{"result":"alpha/match-note-deep.txt"}},"variants":["false"]}
+{"key":"F5","variants":["false"]}
+{"wait":{"matches":{"count":3}},"message":"the refreshed hits","variants":["false"]}
+{"expect":{"absent":{"result":"alpha/match-note-deep.txt"}},"variants":["false"]}
+{"wait":{"field":{"of":"filter","focused":true}},"message":"the filter field to keep focus across F5","variants":["false"]}
+{"expect":{"field":{"of":"filter","text":"match-note"}},"variants":["false"]}
+{"fs":{"path":"match-note.txt","remove":true},"variants":["false"]}
+{"wait":{"matches":{"occurrences":{"match-note.txt":0}}},"message":"the deleted hit to leave","variants":["false"]}
+{"wait":{"field":{"of":"filter","focused":true}},"samples":10,"message":"the filter field to keep focus after the deletion","variants":["false"]}
+{"key":"Down","variants":["false"]}
+{"wait":{"field":{"of":"filter","focused":false}},"message":"Down to leave the filter field","variants":["false"]}
+{"wait":{"not":{"focused_widget":null}},"message":"a focused widget","variants":["false"]}
+{"remember":{"focused_widget":true},"as":"focused","variants":["false"]}
+{"expect":{"any_result_row":{"focused":true}},"variants":["false"]}
+{"expect":{"not":{"focused_widget":{"contains":"Shortcuts"}}},"variants":["false"]}
+{"key":"Return","modes":["columns"],"variants":["false"]}
+{"settle":{"remembered":"focused"},"modes":["columns"],"variants":["false"]}
+{"expect":{"absent":{"role":"label","name":"Unable to open file"}},"modes":["columns"],"variants":["false"]}
+{"select":{"entry":"match-note.txt"},"variants":["true"]}
+{"key":"ctrl+f","variants":["true"]}
+{"wait":{"field":{}},"message":"an editable field to take focus","variants":["true"]}
+{"remember":{"field":true},"as":"filter","variants":["true"]}
+{"type":"match-note","variants":["true"]}
+{"wait":{"matches":{"count":4}},"message":"all recursive matches","variants":["true"]}
+{"fs":{"path":"match-note-new.txt","write":"new\n"},"variants":["true"]}
+{"wait":{"present":{"result":"match-note-new.txt"}},"message":"an externally created hit","variants":["true"]}
+{"expect":{"field":{"of":"filter","focused":true}},"variants":["true"]}
+{"expect":{"field":{"of":"filter","text":"match-note"}},"variants":["true"]}
+{"fs":{"path":"alpha/match-note-deep.txt","write":"deep\n"},"variants":["true"]}
+{"settle":{"field":"filter"},"variants":["true"]}
+{"expect":{"absent":{"result":"alpha/match-note-deep.txt"}},"variants":["true"]}
+{"key":"F5","variants":["true"]}
+{"wait":{"present":{"result":"alpha/match-note-deep.txt"}},"message":"F5 to re-index subfolders","variants":["true"]}
+{"wait":{"matches":{"count":6}},"message":"the refreshed hits","variants":["true"]}
+{"wait":{"field":{"of":"filter","focused":true}},"message":"the filter field to keep focus across F5","variants":["true"]}
+{"expect":{"field":{"of":"filter","text":"match-note"}},"variants":["true"]}
+{"fs":{"path":"match-note.txt","remove":true},"variants":["true"]}
+{"wait":{"matches":{"occurrences":{"match-note.txt":2}}},"message":"the deleted hit to leave","variants":["true"]}
+{"wait":{"field":{"of":"filter","focused":true}},"samples":10,"message":"the filter field to keep focus after the deletion","variants":["true"]}
+{"key":"Down","variants":["true"]}
+{"wait":{"field":{"of":"filter","focused":false}},"message":"Down to leave the filter field","variants":["true"]}
+{"wait":{"not":{"focused_widget":null}},"message":"a focused widget","variants":["true"]}
+{"remember":{"focused_widget":true},"as":"focused","variants":["true"]}
+{"expect":{"any_result_row":{"focused":true}},"variants":["true"]}
+{"expect":{"not":{"focused_widget":{"contains":"Shortcuts"}}},"variants":["true"]}
+{"key":"Return","modes":["columns"],"variants":["true"]}
+{"settle":{"remembered":"focused"},"modes":["columns"],"variants":["true"]}
+{"expect":{"absent":{"role":"label","name":"Unable to open file"}},"modes":["columns"],"variants":["true"]}

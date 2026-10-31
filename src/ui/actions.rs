@@ -12,7 +12,7 @@ use crate::{
     adapters::LocalActionStore,
     assets::icons,
     model::{ActionInput, FOLDER_CONTENT_TYPE, FileEntry, InputKind, Location},
-    services::{ActionHandle, ActionRegistry, InvocationSource, JobRequest},
+    services::{ActionCatalog, ActionHandle, ActionRegistry, InvocationSource, JobRequest},
     ui::{
         controls::{ModalTone, focus_button, message_dialog_description, message_dialog_layout},
         modal::{
@@ -26,12 +26,22 @@ thread_local! {
     static SHARED_REGISTRY: OnceCell<Rc<ActionRegistry>> = const { OnceCell::new() };
 }
 
-pub(crate) fn shared() -> Rc<ActionRegistry> {
-    let registry = SHARED_REGISTRY.with(|shared| {
+fn registry() -> Rc<ActionRegistry> {
+    SHARED_REGISTRY.with(|shared| {
         shared
             .get_or_init(|| ActionRegistry::new(LocalActionStore::new()))
             .clone()
-    });
+    })
+}
+
+/// The catalog as last loaded, without starting a reload on this thread's
+/// main context.
+pub(crate) fn loaded_catalog() -> Rc<ActionCatalog> {
+    registry().catalog()
+}
+
+pub(crate) fn shared() -> Rc<ActionRegistry> {
+    let registry = registry();
     if !registry.reload_waiting() {
         glib::MainContext::default().spawn_local(registry.reload());
     }

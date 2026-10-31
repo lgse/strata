@@ -66,7 +66,7 @@ provider that runs the command should resolve it the same way; the LocalSend
 provider shows how.
 
 `name` and `description` are Strata interface text: add them to every catalog
-under `data/locales/` in all twelve languages (see
+under `data/locales/` in all thirteen languages (see
 [Internationalization](../docs/internationalization.md)). Messages the provider
 itself returns stay with the provider; follow the system locale as the protocol
 documentation describes.
@@ -96,8 +96,8 @@ replaced. There is no version field to bump.
   Ubuntu packages the tests need in `tests/apt-packages.txt`. They run in the
   `Integrations` workflow when files under `integrations/` change. The
   Rust suite checks that every bundled entry parses and stays within the
-  manifest bounds; the E2E suite exercises the Settings page with a fixture
-  catalog, not with bundled entries.
+  manifest bounds; `./scripts/test-headless.py integrations` covers the
+  Settings page.
 - **No network at review time.** Reviewers run the provider against a mock or
   local service, as the KDE Connect tests do with a private D-Bus daemon.
 

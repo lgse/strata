@@ -162,6 +162,7 @@ impl Terminal {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
+        crate::child_environment::restore_command(&mut command);
         command
     }
 
@@ -236,6 +237,7 @@ pub(super) fn omarchy_presentation_command(
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
+    crate::child_environment::restore_command(&mut launch);
     Some(launch)
 }
 

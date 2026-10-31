@@ -1,0 +1,18 @@
+{"scenario":"space-previews-filtered-result-pointer","modes":["columns","icons","list"],"layout":"us","mutation":null,"known_bug":null,"tree":{"notes.txt":"the quick brown fox\n","page.md":"# Heading\n\nBody text.\n","third.txt":"third preview fixture\n","data.csv":"name,value\nalpha,1\n","folder":{"inner.txt":"inner\n","nested-notes.txt":"nested preview fixture\n"}},"cost":{"columns":0.9,"icons":0.9,"list":0.9},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":4,"score":33,"note":"Space previews a filtered result selected by right-click then Escape; keyboard Down route is space-previews-filtered-result"}}
+{"select":{"entry":"notes.txt"}}
+{"key":"ctrl+f"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"remember":{"field":true},"as":"filter"}
+{"type":"nested-notes"}
+{"wait":{"matches":["nested-notes.txt"]},"message":"the nested search result"}
+{"expect":{"present":{"search_result":"nested-notes.txt"}}}
+{"click":{"search_result":"nested-notes.txt"},"button":3}
+{"wait":{"menu_items":{}},"message":"the pointer-selected search result menu"}
+{"key":"Escape"}
+{"wait":{"state":{"target":{"search_result":"nested-notes.txt"},"selected":true}},"message":"pointer-selected search result"}
+{"key":"space"}
+{"wait":{"preview":"nested preview fixture"},"message":"Space to preview the search result, not the stale directory selection"}
+{"expect":[{"field":{"of":"filter","text":"nested-notes"}},{"matches":["nested-notes.txt"]}]}
+{"key":"space"}
+{"wait":{"preview":null},"message":"Space to close the filtered preview"}
+{"expect":[{"field":{"of":"filter","text":"nested-notes"}},{"matches":["nested-notes.txt"]}]}

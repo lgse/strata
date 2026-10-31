@@ -1,0 +1,11 @@
+{"scenario":"recursive-filtered-result-opens-once","modes":["columns","list"],"prefs":{"list_folder_clicks":2,"list_file_clicks":2,"grid_folder_clicks":2,"grid_file_clicks":2,"explorer_folder_clicks":2,"explorer_file_clicks":2,"single_click_previews":true},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.9,"list":0.9},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Folder result of the default recursive filter opens once; local-filtered-result-opens-once covers the non-recursive filter, same steps"}}
+{"select":{"entry":"documents"}}
+{"key":"ctrl+f"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"remember":{"field":true},"as":"field"}
+{"type":"doc*ments"}
+{"wait":{"field":{"of":"field","text":"doc*ments"}},"message":"the filter query"}
+{"wait":{"present":{"search_result":"documents"}},"message":"the filtered folder result"}
+{"click":{"search_result":"documents"}}
+{"wait":{"directory":"documents"},"message":"the browser to be working in 'documents'"}
+{"settle":{"pane":"documents"}}

@@ -1,0 +1,11 @@
+{"scenario":"click-mode-preference-live","modes":["list"],"prefs":{"list_folder_clicks":2,"list_file_clicks":2,"grid_folder_clicks":2,"grid_file_clicks":2,"explorer_folder_clicks":2,"explorer_file_clicks":2},"layout":"us","mutation":"click-mode-preference","known_bug":null,"cost":{"list":1.1},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"List folder click mode switched in Settings applies to the open window; only QA scenario covering live click-pref change"}}
+{"click":{"entry":"documents"}}
+{"wait":{"selected":["documents"]},"message":"double-click mode to only select"}
+{"expect":{"pane":"$root"}}
+{"click":{"header":"Settings"}}
+{"activate":{"role":"toggle button","name":"List view Folders Single"},"message":"the List single-click option in Settings"}
+{"wait":{"pref":{"key":"explorer_folder_clicks","value":1}},"message":"the single-click choice to be saved"}
+{"key":"Escape"}
+{"wait":{"absent":{"role":"toggle button","name":"List view Folders Single"}},"message":"Settings to close"}
+{"click":{"entry":"pictures"}}
+{"wait":{"pane":"pictures"},"message":"the new preference to apply to the running window"}

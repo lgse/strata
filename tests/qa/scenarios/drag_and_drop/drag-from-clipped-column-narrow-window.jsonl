@@ -1,0 +1,10 @@
+{"scenario":"drag-from-clipped-column-narrow-window","modes":["columns"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.9},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":4,"score":33,"note":"Drag from a clipped Columns column in a narrow window; regression of fix #1049 via reveal overlay; sole GUI check of this drag route"}}
+{"select":{"entry":"documents"}}
+{"wait":{"directory":"documents"},"message":"the browser to be working in 'documents'"}
+{"settle":{"pane":"documents"}}
+{"resize":{"width":600}}
+{"wait":{"window_width":600},"message":"a narrow window"}
+{"drag":{"from":{"entry":"notes.txt","dir":"documents"},"to":{"sidebar":"Home"}}}
+{"fs":{"path":"$home/notes.txt","exists":true},"message":"the dragged file to arrive in Home"}
+{"fs":{"path":"documents/notes.txt","exists":false},"message":"the dragged file to leave the clipped column"}
+{"fs":{"path":"$home/notes.txt","text":"notes\n"},"timeout_ms":0}

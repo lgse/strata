@@ -1,0 +1,20 @@
+{"scenario":"saved-keymap-applies-at-launch","modes":["columns"],"prefs":{"type_to_search":false,"keymap":{"default":{"rename":["<Control>e"]}}},"cost":{"columns":0.9},"quality":{"impact":3,"coverage":2,"criticality":3,"diagnostic":4,"score":14,"note":"saved [keymap.default] replaces Rename keys at launch and in the F1 reference; keymap_overrides unit test pins load-then-dispatch"}}
+{"select_with_keyboard":"readme.md","message":"keyboard focus to reach 'readme.md'"}
+{"key":"ctrl+e"}
+{"wait":{"field":{"text":"readme.md"}},"message":"the saved Ctrl+E to rename 'readme.md'"}
+{"key":"Escape"}
+{"wait":{"editable_fields":0},"message":"Escape to cancel the rename"}
+{"wait":{"focused":"readme.md"},"message":"focus to return to 'readme.md'"}
+{"select_with_keyboard":"readme.md","message":"keyboard focus to reach 'readme.md'"}
+{"key":"F2"}
+{"key":"End"}
+{"wait":{"focused":"todo.txt"},"message":"End to reach 'todo.txt', which a rename field opened by F2 would keep"}
+{"expect":{"editable_fields":0},"message":"F2, replaced by the saved keys, must not start a rename"}
+{"select_with_keyboard":"readme.md","message":"keyboard focus to reach 'readme.md'"}
+{"key":"ctrl+r"}
+{"key":"End"}
+{"wait":{"focused":"todo.txt"},"message":"End to reach 'todo.txt', which a rename field opened by Ctrl+R would keep"}
+{"expect":{"editable_fields":0},"message":"Ctrl+R, replaced by the saved keys, must not start a rename"}
+{"key":"F1"}
+{"wait":{"present":{"role":"label","name":"Keyboard shortcuts"}},"message":"the shortcut reference to open"}
+{"expect":{"child_names":{"of":{"parent":{"role":"label","name":"Rename","rendered":false}},"role":"label","names":["Rename","Ctrl+E"]}},"message":"the reference's Rename row to show the saved Ctrl+E instead of F2 / Ctrl+R"}

@@ -48,6 +48,49 @@ fn exact_names_rank_above_substrings_and_fuzzy_matches() {
 }
 
 #[test]
+fn multi_word_match_tiers_survive_long_paths_depth_and_fuzzy_bonuses() {
+    let root = Path::new("/fixture");
+    let long_parent = [
+        "a".repeat(100),
+        "b".repeat(100),
+        "c".repeat(100),
+        "d".repeat(100),
+    ]
+    .join("/");
+    for (query, stronger, weaker) in [
+        (
+            "duck txt",
+            format!("{}{}duck txt.md", "a/".repeat(63), "x".repeat(200)),
+            "duck txt archive/notes.md".to_owned(),
+        ),
+        (
+            "duck txt",
+            format!("{long_parent}/duck txt/notes.md"),
+            "ducks_in_the_pool.txt".to_owned(),
+        ),
+        (
+            "duck txt",
+            format!("{}duck{}.txt", "a/".repeat(63), "x".repeat(92)),
+            "duck/notes.txt".to_owned(),
+        ),
+        (
+            "abcdefghijklmnopqrstuvwx yzabcdefghij",
+            "abcdefghijklmnopqrstuvwx/yzabcdefghij".to_owned(),
+            "abcdefghijklmnopqrstu_vwx yzabcdefghij.md".to_owned(),
+        ),
+    ] {
+        let stronger_score = score_path(&root.join(&stronger).to_string_lossy(), query, root)
+            .expect("stronger match");
+        let weaker_score =
+            score_path(&root.join(&weaker).to_string_lossy(), query, root).expect("weaker match");
+        assert!(
+            stronger_score > weaker_score,
+            "query={query:?}: {stronger:?} ({stronger_score}) must outrank {weaker:?} ({weaker_score})",
+        );
+    }
+}
+
+#[test]
 fn cat_01_name_matches_rank_above_fuzzy_bucket_paths() {
     let root = Path::new("/fixture");
     let exact_prefix = score_path("/fixture/Cats/cat-01-photo.jpg", "cat-01", root)

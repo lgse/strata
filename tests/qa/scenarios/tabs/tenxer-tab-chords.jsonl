@@ -1,0 +1,55 @@
+{"scenario":"tenxer-tab-chords","modes":["columns","icons","list"],"prefs":{"tenxer_mode":true},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.9,"icons":2.1,"list":2.1},"quality":{"impact":3,"coverage":4,"criticality":3,"diagnostic":3,"score":38,"note":"10xer bare-letter tab chords (t n, t 1/2, t x) in columns/icons/list plus literal tntt in location editor; unit tests cover only Ctrl+Page tab keys, zero-selects-tenth-tab covers t0"}}
+{"select":{"entry":"todo.txt"}}
+{"key":"ctrl+l"}
+{"wait":{"present":{"role":"text","name":"Location (Ctrl+L)"}},"message":"location editor"}
+{"key":"ctrl+a"}
+{"type":"tntt"}
+{"wait":{"field":{"name":"Location (Ctrl+L)","text":"tntt"}},"message":"tab chord letters to remain literal text"}
+{"key":"Escape"}
+{"key":"t"}
+{"wait":{"present":{"role":"label","name":"t-"}},"message":"tab chord options"}
+{"key":"Escape"}
+{"key":"n"}
+{"wait":{"selected":["todo.txt"],"dir":"$root"},"message":"the selection to become ['todo.txt']"}
+{"key":"t"}
+{"key":"n"}
+{"select":{"entry":"archive"},"modes":["columns"]}
+{"click":{"entry":"archive"},"count":2,"modes":["icons","list"]}
+{"wait":{"directory":"archive"},"message":"the browser to be working in 'archive'"}
+{"settle":{"pane":"archive"}}
+{"wait":{"state":{"target":{"role":"page tab","name":"archive"},"selected":true}},"message":"active tab archive"}
+{"key":"t"}
+{"key":"1"}
+{"wait":{"state":{"target":{"role":"page tab","name":"$root"},"selected":true}},"message":"active tab $root"}
+{"wait":{"selected":["todo.txt"],"dir":"$root"},"message":"the selection to become ['todo.txt']"}
+{"key":"t"}
+{"key":"2"}
+{"wait":{"state":{"target":{"role":"page tab","name":"archive"},"selected":true}},"message":"active tab archive"}
+{"key":"t"}
+{"key":"n"}
+{"key":"alt+Up"}
+{"wait":{"directory":"$root"},"message":"the browser to be working in '$root'"}
+{"settle":{"pane":"$root"}}
+{"select":{"entry":"pictures"},"modes":["columns"]}
+{"click":{"entry":"pictures"},"count":2,"modes":["icons","list"]}
+{"wait":{"directory":"pictures"},"message":"the browser to be working in 'pictures'"}
+{"settle":{"pane":"pictures"}}
+{"wait":{"state":{"target":{"role":"page tab","name":"pictures"},"selected":true}},"message":"active tab pictures"}
+{"key":"t"}
+{"key":"t"}
+{"wait":{"state":{"target":{"role":"page tab","name":"archive"},"selected":true}},"message":"active tab archive"}
+{"key":"t"}
+{"key":"t"}
+{"wait":{"state":{"target":{"role":"page tab","name":"$root"},"selected":true}},"message":"active tab $root"}
+{"wait":{"selected":["todo.txt"],"dir":"$root"},"message":"the selection to become ['todo.txt']"}
+{"key":"t"}
+{"key":"t"}
+{"wait":{"state":{"target":{"role":"page tab","name":"pictures"},"selected":true}},"message":"active tab pictures"}
+{"key":"t"}
+{"key":"x"}
+{"wait":{"state":{"target":{"role":"page tab","name":"archive"},"selected":true}},"message":"active tab archive"}
+{"key":"t"}
+{"key":"x"}
+{"key":"t"}
+{"key":"t"}
+{"wait":{"selected":["todo.txt"],"dir":"$root"},"message":"the selection to become ['todo.txt']"}

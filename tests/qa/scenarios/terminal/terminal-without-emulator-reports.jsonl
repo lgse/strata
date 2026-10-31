@@ -1,0 +1,7 @@
+{"scenario":"terminal-without-emulator-reports","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"env":{"PATH":"$environment/launcher-path"},"setup":[{"fs":{"path":"$environment/launcher-path","mkdir":true}}],"cost":{"columns":0.5},"quality":{"impact":3,"coverage":4,"criticality":3,"diagnostic":4,"score":42,"note":"Ctrl+Alt+T with no emulator on PATH shows the no-terminal dialog; only QA check of that dialog and no Rust test pins it"}}
+{"key":"ctrl+alt+t"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"expect":{"dialog":"Unable to open terminal"},"message":"unexpected dialog"}
+{"expect":{"mentions":{"target":{"dialog":true},"role":"label","text":"No terminal emulator"}},"message":"the error should explain that no terminal was found"}
+{"click":{"dialog_button":"Close"}}
+{"wait":{"dialog":null},"message":"the dialog to close"}

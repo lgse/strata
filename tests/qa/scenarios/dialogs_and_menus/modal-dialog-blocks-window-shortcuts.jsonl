@@ -1,0 +1,35 @@
+{"scenario":"modal-dialog-blocks-window-shortcuts","modes":["columns"],"prefs":{"arrow_navigation_scoped":true,"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.5},"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":5,"score":54,"note":"Window shortcuts (Ctrl+K, Ctrl+Shift+K, Ctrl+\\) stay blocked over a modal dialog; window-accelerators-leave-rename covers only the inline rename editor"}}
+{"select":{"entry":"todo.txt"}}
+{"wait":{"focused":"todo.txt"},"message":"keyboard focus to reach 'todo.txt'"}
+{"key":"shift+Delete"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"wait":{"state":{"target":{"dialog_button":"Permanently delete 1 item"},"focused":true}},"message":"the default button to take focus"}
+{"key":"ctrl+k"}
+{"sleep":500}
+{"expect":{"dialog":true},"message":"ctrl+k"}
+{"expect":{"editable_fields":0},"message":"ctrl+k opened a palette"}
+{"expect":{"state":{"target":{"dialog_button":"Permanently delete 1 item"},"focused":true}},"message":"ctrl+k: focus is on"}
+{"expect":{"pref":{"key":"arrow_navigation_scoped","value":true}},"message":"ctrl+k"}
+{"key":"ctrl+shift+k"}
+{"sleep":500}
+{"expect":{"dialog":true},"message":"ctrl+shift+k"}
+{"expect":{"editable_fields":0},"message":"ctrl+shift+k opened a palette"}
+{"expect":{"state":{"target":{"dialog_button":"Permanently delete 1 item"},"focused":true}},"message":"ctrl+shift+k: focus is on"}
+{"expect":{"pref":{"key":"arrow_navigation_scoped","value":true}},"message":"ctrl+shift+k"}
+{"key":"ctrl+\\"}
+{"sleep":500}
+{"expect":{"dialog":true},"message":"ctrl+\\"}
+{"expect":{"editable_fields":0},"message":"ctrl+\\ opened a palette"}
+{"expect":{"state":{"target":{"dialog_button":"Permanently delete 1 item"},"focused":true}},"message":"ctrl+\\: focus is on"}
+{"expect":{"pref":{"key":"arrow_navigation_scoped","value":true}},"message":"ctrl+\\"}
+{"key":"Escape"}
+{"wait":{"dialog":null},"message":"Escape to close the dialog"}
+{"wait":{"focused":"todo.txt"},"message":"keyboard focus to reach 'todo.txt'"}
+{"expect":{"editable_fields":0}}
+{"fs":{"path":"todo.txt","exists":true},"timeout_ms":0}
+{"key":"alt+Return"}
+{"wait":{"dialog":"todo.txt"},"message":"Properties opens over the active tab"}
+{"key":"ctrl+comma"}
+{"expect":[{"dialog":"todo.txt"},{"absent":{"role":"button","name":"Close settings"}}],"message":"Ctrl+, must not open tab-local Settings behind a window-level Properties dialog"}
+{"key":"Escape"}
+{"wait":{"all":[{"dialog":null},{"focused":"todo.txt"}]},"message":"Escape closes Properties with no hidden Settings left underneath"}

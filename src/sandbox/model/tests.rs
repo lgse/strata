@@ -7,9 +7,15 @@ use crate::services::{MediaPreviewSize, ModelPalette, ModelView};
 fn model_metadata_accepts_only_the_requested_camera_or_a_supported_thumbnail() {
     let directory = tempfile::tempdir().expect("fixture directory");
     let path = directory.path().join("result.model");
-    for format in [ModelFormat::Stl, ModelFormat::ThreeMf, ModelFormat::FreeCad] {
+    for format in [
+        ModelFormat::Stl,
+        ModelFormat::ThreeMf,
+        ModelFormat::FreeCad,
+        ModelFormat::Gcode,
+    ] {
         for view in ModelView::ALL {
             let render = ModelRender {
+                purpose: crate::services::ModelRenderPurpose::Preview,
                 format,
                 view,
                 size: MediaPreviewSize::new(200, 200),
@@ -27,7 +33,7 @@ fn model_metadata_accepts_only_the_requested_camera_or_a_supported_thumbnail() {
             for (value, expected) in [
                 (
                     serde_json::to_vec(&Some(mesh)).expect("metadata"),
-                    (format != ModelFormat::FreeCad).then_some(Some(mesh)),
+                    matches!(format, ModelFormat::Stl | ModelFormat::ThreeMf).then_some(Some(mesh)),
                 ),
                 (
                     b"null".to_vec(),
@@ -79,6 +85,84 @@ fn model_metadata_accepts_only_the_requested_camera_or_a_supported_thumbnail() {
                     None => assert!(result.is_err(), "{format:?} {view:?} {value:?}"),
                 }
             }
+        }
+    }
+}
+
+#[test]
+fn thumbnail_cancel_and_timeout_return_while_reaping_is_delayed() {
+    use std::{
+        process::Command,
+        sync::{Arc, mpsc},
+        thread,
+        time::{Duration, Instant},
+    };
+
+    for cancel in [false, true] {
+        let input = tempfile::tempdir().expect("model input");
+        let output = Arc::new(super::super::PrivateOutput::create().expect("private output"));
+        let output_path = output.path().to_owned();
+        let source = input.path().join("model.stl");
+        std::fs::write(&source, b"fixture").expect("model input");
+        let hold =
+            Arc::new(crate::services::file_activity::hold([source], || {}).expect("model hold"));
+        let mut command = Command::new("sh");
+        command.args([
+            "-c",
+            "printf '{\"child-pid\": %s}\n' \"$$\" >&2; exec sleep 60",
+        ]);
+        let renderer = super::super::spawn_renderer(&mut command).expect("renderer");
+        let cancellation = super::super::Cancellation::default();
+        if cancel {
+            cancellation.cancel();
+        }
+        let (release, delayed) = mpsc::channel();
+        let (sent, returned) = mpsc::channel();
+        let foreground = thread::spawn(move || {
+            let result = wait_with_reaper(
+                renderer,
+                &cancellation,
+                Duration::ZERO,
+                &mut || {},
+                (output, hold),
+                move || {
+                    let _released = delayed.recv();
+                },
+            );
+            let _sent = sent.send(result);
+        });
+        let result = returned.recv_timeout(Duration::from_secs(2));
+        let output_retained = output_path.exists();
+        let input_retained = crate::services::file_activity::in_use_within(input.path());
+        // Release even on a failed assertion, so the fixture cannot strand its reaper.
+        let _released = release.send(());
+        foreground.join().expect("foreground worker");
+        let error = result
+            .expect("render worker must return before the reaper is released")
+            .expect_err("cancelled or timed out thumbnail");
+        assert_eq!(
+            error,
+            if cancel {
+                "Preview cancelled"
+            } else {
+                "The preview renderer timed out"
+            }
+        );
+        assert!(
+            output_retained,
+            "private output belongs to the reaper until it finishes"
+        );
+        assert!(
+            input_retained,
+            "file operation hold belongs to the reaper until it finishes"
+        );
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while output_path.exists() || crate::services::file_activity::in_use_within(input.path()) {
+            assert!(
+                Instant::now() < deadline,
+                "reaper must clean up the completed renderer"
+            );
+            thread::sleep(Duration::from_millis(5));
         }
     }
 }

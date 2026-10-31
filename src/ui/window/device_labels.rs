@@ -24,7 +24,7 @@ pub(super) fn bind_row_label(
                 .expect("device row label");
             let display_name = label.as_deref().unwrap_or(&system_name);
             label_widget.set_text(display_name);
-            row.update_property(&[gtk::accessible::Property::Label(display_name)]);
+            crate::ui::accessibility::set_own_label(row, display_name);
         },
     );
 }

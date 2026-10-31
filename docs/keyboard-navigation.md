@@ -21,6 +21,10 @@ for the full rules.
 
 In regular and 10xer modes, **Ctrl+T** opens a tab at the active location,
 **Ctrl+W** closes the active tab, and **Ctrl+Tab / Ctrl+Shift+Tab** cycles tabs.
+**Ctrl+Shift+T** reopens the last closed tab at its previous location and position.
+Repeat it to reopen up to 20 recently closed tabs in reverse closure order.
+Closed-tab history belongs to the current window and is cleared when it closes;
+reopened tabs start with fresh selection, navigation history, and preview state.
 **Ctrl+Page Up / Ctrl+Page Down** selects the previous / next tab in strip order,
 wrapping at either end, like the tab shortcuts in web browsers.
 **Ctrl+Shift+Page Up / Ctrl+Shift+Page Down** moves the active tab one position
@@ -58,9 +62,23 @@ The Material-style strip appears when there is more than one tab. The plus and
 window-close controls move into it and return to the normal header when only
 one tab remains. Scroll the strip horizontally (or use the wheel) when it
 outgrows the window; selecting a tab brings it into view without a scrollbar.
-Drag a tab label to reorder tabs. Drop files on a tab to transfer into its
-current directory, or hover there during a file drag to switch tabs and choose
-a folder in its listing. Existing copy/move modifiers and conflict handling apply.
+Drag a tab label to reorder tabs; an accent-colored insertion line shows where
+it will land. Sidebar locations offer **Open in New Tab** in their context menu
+and open in a new tab on middle-click. Dragging a sidebar location or folders
+from a file view marks on the strip where new tabs will open; drop there to
+create tabs at that position. **+** also accepts these drags, and is the drop
+target when a single tab leaves the strip hidden. Escape cancels the drag.
+Folder-only drags from a file view open tabs even over an existing tab header;
+they never move or copy the folders into that tab. Opening sidebar locations
+also leaves files and sidebar pins unchanged. These tab actions are not offered
+in file choosers.
+
+Drop files (or a mixed selection of files and folders) from a listing on a tab
+to transfer into its current directory, or hover there during a file drag to
+switch tabs and choose a folder in its listing. Existing copy/move modifiers
+and conflict handling apply. Escape cancels a file drag before it dismisses
+anything else: nothing transfers on release, and the selection, preview, and
+filter stay as they were.
 
 ## Input precedence
 
@@ -81,7 +99,7 @@ Pressing blank column content focuses that directory, including empty directorie
 
 **Shift+Up/Down** extends the selection from the range anchor by one item, **Shift+Page Up/Page Down** by one page. After Escape clears the selection, the range starts at the cursor.
 
-Copy/cut use the selection in the focused column, never a hovered row. In Columns, Delete/Shift+Delete with no selected items does nothing: an open parent-path marker is not an implicit deletion target. In List and Icons, Delete acts on the selection only. Delete in a location without Trash support, or after a Trash attempt fails because Trash is unsupported, opens the permanent-deletion confirmation with Cancel focused and the reason stated; Shift+Delete is unchanged. GIO reports Trash on most writable FUSE mounts (sshfs, rclone, cloud drives), so a refusal there is confirmed by a quick, read-only check of the mount and then remembered for that mount until Reload or a remount: later Deletes confirm up front and Move to Trash is hidden. Empty trash folders left by the failed attempt are removed. On network and cloud locations the confirmation says the items are deleted without Trash and that recovery depends on the storage provider, instead of promising permanent deletion; local disks, including `fuseblk` drives, keep the permanent wording, and a mixed selection uses it too.
+Copy/cut use the selection in the focused column, never a hovered row. In Columns, Delete/Shift+Delete with no selected items does nothing: an open parent-path marker is not an implicit deletion target. In List and Icons, Delete acts on the selection only. Delete in a location without Trash support, or after a Trash attempt fails because Trash is unsupported, opens the permanent-deletion confirmation with Cancel focused and the reason stated; Shift+Delete is unchanged. GIO reports Trash on most writable FUSE mounts (sshfs, rclone, cloud drives), so a refusal there is confirmed by a quick, read-only check of the mount and then remembered for that mount until Reload or a remount: later Deletes confirm up front and Move to Trash is hidden. Empty trash folders left by the failed attempt are removed. On network and cloud locations the confirmation says the items are deleted without Trash and that recovery depends on the storage provider, instead of promising permanent deletion; local disks, including `fuseblk` drives, keep the permanent wording, and a mixed selection uses it too. Folders opened as administrator are known to lack Trash, so Delete there confirms permanent deletion up front, with the local wording; see [Administrator access](administrator-access.md).
 
 Background selection updates from directory loading must not move keyboard focus to an inactive column.
 
@@ -111,6 +129,7 @@ have no remembered position for the ancestor.
 A navigation that names a target — a typed file path, a Ctrl+K result opened with
 Enter or Alt+Enter, Open file location, or an `org.freedesktop.FileManager1`
 request — selects that target instead of restoring the remembered position.
+A typed file path also opens Quick Preview on the file once it is selected.
 
 ## Refreshing a directory
 
@@ -203,7 +222,9 @@ exists again; either way the filter ends. Neither adds a history entry.
 
 ## Preview while filtering
 
-In the browser and file chooser, **Down** from the Ctrl+F input focuses the selected result, or the first result if none is selected. **Up/Down** then navigate the results; **Up** from the first result returns to the input without clearing the query. **Ctrl+F** also returns to the input. With no matches, Down leaves focus in the input.
+In the browser and file chooser, **Enter** in the Ctrl+F input opens the top result. While the input has focus, the top result is outlined to show it, and stays scrolled into view as results arrive until you scroll the list yourself. Moving to or clicking another result makes Enter open that one instead, and takes the outline off. Changing the query drops that choice and the results' selection, so the outline and Enter return to the new top result. In a folder without a local path, such as a network share, the input narrows the listing itself instead of showing separate results; there a new query keeps the folder's selection, so Space and file actions still act on it, but Enter returns to the new top result all the same. The outline is not a selection: Space and file actions still need a selected result. The [10xer](10xer-mode.md) **f** and **s** prompts keep their own two-step Enter and show no outline.
+
+**Down** from the Ctrl+F input focuses the outlined top result, or the selected result once you have chosen one. **Up/Down** then navigate the results; **Up** from the first result returns to the input without clearing the query. **Ctrl+F** also returns to the input. With no matches, Down leaves focus in the input.
 
 **Menu/Shift+F10** on a focused result opens its file menu. While the input itself is focused, its text-editing menu remains available. **Space** toggles quick preview for a selected file result in Columns, Icons, and List, including after returning to the query. Previewing a file keeps the query, selection, and current directory intact; on a selected folder result, Space navigates into the folder instead.
 
@@ -344,6 +365,10 @@ Columns reserves preview space from startup, even before a file is previewed. **
 
 In Columns, the pane to the right mirrors keyboard selection like Finder: moving with **Up/Down**, **Page Up/Page Down**, **Home/End** or **Ctrl+Up/Ctrl+Down** onto a folder shows its contents in a child column that takes the reserved preview space, onto a previewable file closes that child column and opens Quick Preview in the same space, and onto any other file closes the child pane. The focused column stays where it is throughout. Shift-extended ranges do not mirror. A preview closed with **Space**, **i**, **Esc**, the close button, or **Appearance → Preview panel** stays closed while mirroring until it is opened explicitly again. Pointer selection keeps the configured click behavior. Clicking a folder whose column is already open focuses that column rather than closing it, and a double-click ends exactly where a single-click open does; a slow click on a selected folder's name still renames it. In every view, a plain click on an item that is part of a multi-selection collapses the selection to that item and then applies its single-click behavior: a folder set to open on one click opens (in Columns, as its child column), and a previewable file is previewed when **Single-click previews** is on. Pressing a member and dragging still drags the whole selection. **Settings → General → Browsing → Mirror columns selection** (on by default) toggles the mirroring. 10xer mode follows the same preference for its cursor in Columns; see [10xer mode](10xer-mode.md). **l** / **→** enters a directory or a file preview, and **i** toggles a file's preview or opens the next column / toggles folder peek for a directory.
 
+Switching views with **Ctrl+1**, **Ctrl+2**, or **Ctrl+3** keeps keyboard focus in the visible tab. Hidden tabs follow the saved view preference without taking focus. A newer keyboard navigation action supersedes any queued cursor-focus restoration.
+
+During a List heading drag, **Escape** cancels the reorder without clearing the file selection or changing the sort. Releasing the mouse afterward does not save a new column order. The file chooser uses the same behavior: Escape cancels the heading drag, not the chooser.
+
 ## Closing dialogs and overlays
 
 Closing an overlay or dialog by any route (Escape, its close or Cancel button, or a
@@ -359,6 +384,9 @@ extracted folder, keeps focus.
 Closing Settings always returns focus to the file list cursor, even when Settings was
 opened with the gear button. The one exception is a filter field or filter result that
 had focus when Settings opened, for example with **Ctrl+,**: it gets focus back.
+**Ctrl+,** does not open Settings while an action dialog such as Properties is open.
+A docked operation may finish and update its file selection behind a dialog, but it
+must not take keyboard focus from that dialog.
 
 Customize opens with focus on **Done**, so one **Escape** closes it. Closing its
 custom color dialog returns focus to the custom color button.

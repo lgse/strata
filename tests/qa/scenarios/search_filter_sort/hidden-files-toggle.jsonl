@@ -1,0 +1,6 @@
+{"scenario":"hidden-files-toggle","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.4},"quality":{"impact":2,"coverage":2,"criticality":3,"diagnostic":4,"score":12,"note":"Ctrl+H reveal and re-hide in columns; hidden-files-persist-across-restart covers the same toggle via Ctrl+. plus restart; only Ctrl+H binding check"}}
+{"expect":{"entries":{"excludes":[".hidden.txt"]},"dir":"$root"}}
+{"key":"ctrl+h"}
+{"wait":{"entries":{"contains":[".hidden.txt"]},"dir":"$root"},"message":"Ctrl+H to reveal hidden files"}
+{"key":"ctrl+h"}
+{"wait":{"entries":{"excludes":[".hidden.txt"]},"dir":"$root"},"message":"Ctrl+H to hide them again"}

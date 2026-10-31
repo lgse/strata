@@ -19,7 +19,8 @@ use crate::{
     services::SearchLimits,
     test_support::gtk_test,
     ui::{
-        browser_modes::{BrowserDensity, BrowserMode, ClickCount},
+        browser_modes::{BrowserDensity, BrowserMode, ClickCount, DensityScale, FrameDensity},
+        keys::{Binding, Map, bindings},
         preferences::fixtures::{
             non_default_preferences, seed_omarchy_colors_for_test, seed_omarchy_for_test,
             seed_saved_preferences_for_test,
@@ -99,7 +100,7 @@ fn older_preferences_keep_backward_compatible_behavior_defaults() {
     saved.remove("date_format");
     saved.remove("send_to_recent_destinations");
     saved.remove("tenxer_mode");
-    saved.remove("omarchy_variant");
+    saved.remove("omarchy_variants");
     saved.remove("file_icon_colors");
     saved.remove("folder_peeking");
     saved.remove("columns_show_sizes");
@@ -116,7 +117,7 @@ fn older_preferences_keep_backward_compatible_behavior_defaults() {
             date_format: "relative".into(),
             send_to_recent_destinations: HashMap::new(),
             tenxer_mode: false,
-            omarchy_variant: OmarchyVariant::Original,
+            omarchy_variants: HashMap::new(),
             file_icon_colors: FileIconColors::Brand,
             folder_peeking: false,
             columns_show_sizes: true,
@@ -138,7 +139,7 @@ fn malformed_send_to_history_does_not_discard_other_preferences() {
     assert!(saved.clone().try_into::<Preferences>().is_err());
 
     assert_eq!(
-        salvage_preferences(saved),
+        salvage_preferences(saved).0,
         Preferences {
             send_to_recent_destinations: HashMap::new(),
             ..non_default_preferences()
@@ -200,14 +201,81 @@ fn send_to_history_is_device_scoped_deduplicated_capped_and_persistent() {
 fn a_malformed_preference_does_not_discard_the_others() {
     let mut saved = toml::Table::try_from(non_default_preferences()).expect("saved preferences");
     saved.insert("show_hidden".into(), "yes".into());
-    saved.insert("omarchy_variant".into(), "unknown".into());
+    saved.insert(
+        "omarchy_variants".into(),
+        toml::Table::from_iter([("fixture".into(), "unknown".into())]).into(),
+    );
     assert!(saved.clone().try_into::<Preferences>().is_err());
 
     assert_eq!(
-        salvage_preferences(saved),
+        salvage_preferences(saved).0,
         Preferences {
             show_hidden: false,
-            omarchy_variant: OmarchyVariant::Original,
+            omarchy_variants: HashMap::new(),
+            ..non_default_preferences()
+        }
+    );
+}
+
+#[test]
+fn one_malformed_entry_keeps_the_rest_of_its_collection() {
+    let corrupt: toml::Table = toml::from_str(
+        r#"
+        search_exclusions = [".venv", 12, "/fixture/custom_excluded"]
+        list_hidden_columns = ["size", "not_a_column", "mode"]
+        list_column_order = ["name", "size", "bogus", "modified"]
+
+        [omarchy_variants]
+        fixture = "lighter"
+        broken = "not-a-variant"
+
+        [device_labels]
+        "volume:fixture-kingston" = "Research drive"
+        "volume:broken" = 5
+
+        [send_to_recent_destinations]
+        "volume:fixture-kingston" = ["Academia/2026", 7, "Teaching"]
+        "volume:broken" = "not a list"
+        "volume:fixture-sandisk" = ["Backup"]
+
+        [browser_list_columns]
+        mode = "wide"
+        size = 80
+        type = 95
+        modified = 140
+        "#,
+    )
+    .expect("fixture TOML");
+    let mut saved = toml::Table::try_from(non_default_preferences()).expect("saved preferences");
+    saved.extend(corrupt);
+    assert!(saved.clone().try_into::<Preferences>().is_err());
+
+    assert_eq!(
+        salvage_preferences(saved).0,
+        Preferences {
+            search_exclusions: vec![".venv".into(), "/fixture/custom_excluded".into()],
+            list_hidden_columns: vec![ListColumnId::Size, ListColumnId::Mode],
+            list_column_order: vec![
+                ListColumnId::Name,
+                ListColumnId::Size,
+                ListColumnId::Modified,
+            ],
+            omarchy_variants: HashMap::from([("fixture".into(), OmarchyVariant::Lighter)]),
+            device_labels: HashMap::from([(
+                "volume:fixture-kingston".into(),
+                "Research drive".into()
+            )]),
+            send_to_recent_destinations: HashMap::from([
+                (
+                    "volume:fixture-kingston".into(),
+                    vec![PathBuf::from("Academia/2026"), PathBuf::from("Teaching")],
+                ),
+                (
+                    "volume:fixture-sandisk".into(),
+                    vec![PathBuf::from("Backup")]
+                ),
+            ]),
+            browser_list_columns: None,
             ..non_default_preferences()
         }
     );
@@ -220,7 +288,7 @@ fn a_missing_required_preference_does_not_discard_the_others() {
     assert!(saved.clone().try_into::<Preferences>().is_err());
 
     assert_eq!(
-        salvage_preferences(saved),
+        salvage_preferences(saved).0,
         Preferences {
             theme: Preferences::default().theme,
             ..non_default_preferences()
@@ -235,6 +303,7 @@ fn assert_recovered_preferences_survive_save(
     seed_saved_preferences_for_test();
     let mut saved = toml::Table::try_from(non_default_preferences()).expect("saved preferences");
     corrupt(&mut saved);
+    let malformed_keys: Vec<String> = saved.keys().cloned().collect();
     let malformed = toml::to_string(&saved).expect("syntactically valid TOML");
     fs::write(settings_path(), &malformed).expect("persist malformed preferences");
 
@@ -257,17 +326,100 @@ fn assert_recovered_preferences_survive_save(
         .into_iter()
         .map(|(key, _)| key)
         .collect();
-    let known_keys: BTreeSet<String> = toml::Table::try_from(&expected)
+    let every_key = toml::Table::try_from(non_default_preferences()).expect("every preference");
+    let kept_keys: BTreeSet<String> = toml::Table::try_from(&expected)
         .expect("known preferences")
         .into_iter()
         .map(|(key, _)| key)
+        .chain(malformed_keys.into_iter().filter(|key| {
+            !every_key.contains_key(key) && !RETIRED_SETTINGS.contains(&key.as_str())
+        }))
         .collect();
     assert_eq!(
-        saved_keys, known_keys,
-        "a save keeps only known preferences"
+        saved_keys, kept_keys,
+        "a save keeps the valid and unknown preferences"
     );
     crate::storage::writer::settle();
     assert_eq!(read_preferences().expect("saved preferences"), expected);
+}
+
+#[test]
+fn a_save_keeps_the_settings_another_process_wrote() {
+    gtk_test(
+        "ui::preferences::tests::preferences::a_save_keeps_the_settings_another_process_wrote",
+        || {
+            seed_saved_preferences_for_test();
+            let read = || {
+                toml::from_str::<toml::Table>(
+                    &fs::read_to_string(settings_path()).expect("saved file"),
+                )
+                .expect("saved table")
+            };
+            let write = |table: &toml::Table| {
+                fs::write(settings_path(), toml::to_string(table).expect("settings"))
+                    .expect("other process saves");
+            };
+            let mut repairable = read();
+            repairable.insert("search_time_limit".into(), toml::Value::Integer(45));
+            write(&repairable);
+            let manager = PreferenceManager::load();
+            let (peeking, tenxer) = {
+                let preferences = manager.preferences.borrow();
+                (preferences.folder_peeking, preferences.tenxer_mode)
+            };
+
+            let mut other = read();
+            other.insert("tenxer_mode".into(), toml::Value::Boolean(!tenxer));
+            other.insert(
+                "list_hidden_columns".into(),
+                toml::Value::Array(vec!["size".into()]),
+            );
+            other.insert("future_setting".into(), toml::Value::String("kept".into()));
+            other.insert("auto_refresh_interval".into(), toml::Value::Integer(600));
+            other["device_labels"]
+                .as_table_mut()
+                .expect("device labels")
+                .insert("volume:other".into(), "Other drive".into());
+            write(&other);
+
+            let saved = || {
+                crate::storage::writer::settle();
+                read()
+            };
+            manager.set_folder_peeking(!peeking);
+            manager.set_device_label("volume:this", "This drive");
+            let table = saved();
+            assert_eq!(table["folder_peeking"].as_bool(), Some(!peeking));
+            assert_eq!(
+                table["search_time_limit"].as_integer(),
+                Some(60),
+                "a repair made at startup is saved"
+            );
+            assert_eq!(table["tenxer_mode"].as_bool(), Some(!tenxer));
+            assert_eq!(table["list_hidden_columns"], other["list_hidden_columns"]);
+            assert_eq!(table["future_setting"].as_str(), Some("kept"));
+            assert!(!table.contains_key("auto_refresh_interval"));
+            let labels = table["device_labels"].as_table().expect("device labels");
+            assert_eq!(labels["volume:other"].as_str(), Some("Other drive"));
+            assert_eq!(labels["volume:this"].as_str(), Some("This drive"));
+
+            manager.set_folder_peeking(peeking);
+            let table = saved();
+            assert_eq!(table["folder_peeking"].as_bool(), Some(peeking));
+            assert_eq!(table["tenxer_mode"].as_bool(), Some(!tenxer));
+            assert_eq!(table["future_setting"].as_str(), Some("kept"));
+
+            let broken = "this is not valid toml [";
+            fs::write(settings_path(), broken).expect("broken by another process");
+            manager.set_folder_peeking(!peeking);
+            crate::storage::writer::settle();
+            assert_eq!(
+                fs::read_to_string(settings_path()).expect("broken settings"),
+                broken,
+                "a file that cannot be parsed is not overwritten"
+            );
+        },
+    );
 }
 
 #[test]
@@ -660,6 +812,22 @@ fn multiple_invalid_preferences_do_not_block_later_valid_entries() {
                     saved.insert("show_hidden".into(), "yes".into());
                     saved.insert("future_preference".into(), true.into());
                     saved.insert("auto_refresh_interval".into(), 600.into());
+                    saved.extend(
+                        toml::from_str::<toml::Table>(
+                            r#"
+                            search_exclusions = [".venv", 12, "/fixture/custom_excluded"]
+
+                            [omarchy_variants]
+                            fixture = "lighter"
+                            broken = "not-a-variant"
+
+                            [send_to_recent_destinations]
+                            "volume:fixture-kingston" = ["Academia/2026", 7, "Teaching"]
+                            "volume:fixture-sandisk" = ["Backup"]
+                            "#,
+                        )
+                        .expect("fixture TOML"),
+                    );
                 },
                 Preferences {
                     watch_network_folders: true,
@@ -895,6 +1063,7 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
             assert!(!crate::ui::motion::animations_enabled());
             assert_eq!(manager.browser_mode(), BrowserMode::List);
             assert_eq!(manager.browser_density(), BrowserDensity::Airy);
+            assert_eq!(manager.frame_density(), FrameDensity::Custom(6));
             assert!(manager.group_by_type());
             for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
                 let activation = manager.click_activation(mode);
@@ -946,10 +1115,12 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
             assert!(manager.preview_muted());
             assert_eq!(manager.preview_volume(), 0.35);
             assert!(manager.preview_text_wrap());
+            assert_eq!(manager.unit_system(), UnitSystem::Imperial);
             assert!(manager.preview_autoplay());
             assert!(!manager.watch_network_folders());
             assert_eq!(manager.thumbnail_workers(), 6);
             assert!(!manager.show_thumbnails());
+            assert!(manager.stl_thumbnails());
             assert_eq!(
                 manager.list_column_order(),
                 vec![
@@ -990,6 +1161,63 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
                 manager.custom_icon(Path::new("/fixture/folder")).as_deref(),
                 Some(crate::assets::icons::HOME)
             );
+            let keymap = manager.keymap();
+            assert_eq!(
+                keymap.bindings(Map::Default, bindings::SETTINGS),
+                [
+                    Binding::ctrl(gtk::gdk::Key::comma),
+                    Binding::ctrl_alt(gtk::gdk::Key::F12)
+                ]
+            );
+            assert_eq!(
+                keymap.bindings(Map::Tenxer, bindings::SIDEBAR_FOCUS),
+                [
+                    Binding::ctrl_shift(gtk::gdk::Key::b),
+                    Binding::ctrl_alt(gtk::gdk::Key::F11)
+                ]
+            );
+            assert_eq!(
+                keymap.bindings(Map::Tenxer, bindings::SETTINGS),
+                bindings::SETTINGS.defaults(Map::Tenxer)
+            );
+        },
+    );
+}
+
+#[test]
+fn legacy_omarchy_variant_migrates_to_the_active_theme() {
+    gtk_test(
+        "ui::preferences::tests::preferences::legacy_omarchy_variant_migrates_to_the_active_theme",
+        || {
+            seed_saved_preferences_for_test();
+            seed_omarchy_for_test();
+            let mut saved =
+                toml::Table::try_from(non_default_preferences()).expect("saved preferences");
+            saved.remove("omarchy_variants");
+            saved.insert("mode".into(), "omarchy".into());
+            saved.insert("omarchy_variant".into(), "high_contrast".into());
+            fs::write(
+                settings_path(),
+                toml::to_string(&saved).expect("legacy settings"),
+            )
+            .expect("persist legacy variant");
+            let themes = ThemeManager::shared();
+            let preferences = PreferenceManager::shared();
+            assert_eq!(preferences.omarchy_variant(), OmarchyVariant::Contrast);
+            let migrated = themes.appearance_tokens();
+            preferences.set_folder_peeking(false);
+            crate::storage::writer::settle();
+            let saved = fs::read_to_string(settings_path()).expect("migrated settings");
+            let saved: toml::Table = toml::from_str(&saved).expect("migrated settings table");
+            assert!(!saved.contains_key("omarchy_variant"));
+            assert_eq!(
+                read_preferences()
+                    .expect("migrated variants")
+                    .omarchy_variants,
+                HashMap::from([("fixture".into(), OmarchyVariant::Contrast)])
+            );
+            preferences.set_omarchy_variant(OmarchyVariant::Darker);
+            assert_ne!(themes.appearance_tokens(), migrated);
         },
     );
 }
@@ -1027,14 +1255,14 @@ fn saved_omarchy_mode_loads_and_changes_through_the_same_binding() {
             let startup = manager.appearance_tokens();
             for variant in [
                 OmarchyVariant::Darker,
-                OmarchyVariant::Original,
-                OmarchyVariant::HighContrast,
+                OmarchyVariant::Lighter,
+                OmarchyVariant::Contrast,
                 OmarchyVariant::Darker,
             ] {
                 preferences.set_omarchy_variant(variant);
                 crate::storage::writer::settle();
                 let tokens = manager.appearance_tokens();
-                assert_eq!(tokens == startup, variant == OmarchyVariant::Darker);
+                assert_eq!(tokens == startup, variant == OmarchyVariant::Lighter);
                 for window in &windows {
                     assert_theme_colors(window, &tokens);
                     let rebuilt_view = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -1066,7 +1294,12 @@ fn saved_omarchy_mode_loads_and_changes_through_the_same_binding() {
                 );
                 crate::storage::writer::settle();
                 assert_eq!(
-                    read_preferences().expect("saved variant").omarchy_variant,
+                    read_preferences()
+                        .expect("saved variant")
+                        .omarchy_variants
+                        .get("fixture")
+                        .copied()
+                        .unwrap_or_default(),
                     variant
                 );
             }
@@ -1094,7 +1327,7 @@ fn saved_omarchy_mode_loads_and_changes_through_the_same_binding() {
             }
             manager.set_follow_omarchy(false);
             let builtin = manager.appearance_tokens();
-            preferences.set_omarchy_variant(OmarchyVariant::HighContrast);
+            preferences.set_omarchy_variant(OmarchyVariant::Contrast);
             assert_eq!(manager.appearance_tokens(), builtin);
             for window in &windows {
                 assert_theme_colors(window, &builtin);
@@ -1175,7 +1408,7 @@ fn invalid_omarchy_palette_while_running_keeps_the_applied_palette() {
             seed_omarchy_for_test();
             let mut preferences = non_default_preferences();
             preferences.mode = "omarchy".into();
-            preferences.omarchy_variant = OmarchyVariant::Original;
+            preferences.omarchy_variants.clear();
             fs::write(
                 settings_path(),
                 toml::to_string(&preferences).expect("Omarchy preference fixture"),
@@ -1290,10 +1523,14 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_window_show_maximize(false),
                 |m| m.set_reduce_motion(false),
                 |m| m.set_element_glow(true),
-                |m| m.set_omarchy_variant(OmarchyVariant::HighContrast),
+                |m| m.set_omarchy_variant(OmarchyVariant::Contrast),
                 |m| m.set_file_icon_colors(FileIconColors::Brand),
                 |m| m.set_browser_mode(BrowserMode::Icons),
+                |m| m.set_browser_density(BrowserDensity::Custom(9)),
                 |m| m.set_browser_density(BrowserDensity::Compact),
+                |m| m.set_frame_density(FrameDensity::Custom(5)),
+                |m| m.set_frame_density(FrameDensity::Airy),
+                |m| m.set_frame_density(FrameDensity::Compact),
                 |m| m.set_group_by_type(false),
                 |m| {
                     m.set_click_activation(
@@ -1339,10 +1576,12 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_preview_muted(false),
                 |m| m.set_preview_volume(0.8),
                 |m| m.set_preview_text_wrap(false),
+                |m| m.set_unit_system(UnitSystem::Metric),
                 |m| m.set_preview_autoplay(false),
                 |m| m.set_watch_network_folders(true),
                 |m| m.set_thumbnail_workers(3),
                 |m| m.set_show_thumbnails(true),
+                |m| m.set_stl_thumbnails(false),
                 |m| m.set_icons_thumbnail_size(96),
                 |m| m.set_chooser_column_width(Some(360)),
                 |m| m.set_chooser_list_columns(None),
@@ -1367,6 +1606,15 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_open_folder_after_drop(false),
                 |m| m.set_folder_color(Path::new("/fixture/folder"), None),
                 |m| m.set_custom_icon(Path::new("/fixture/folder"), None),
+                |m| {
+                    m.set_bindings(
+                        Map::Default,
+                        bindings::RENAME,
+                        vec![Binding::ctrl(gtk::gdk::Key::e)],
+                    )
+                },
+                |m| m.reset_binding(Map::Tenxer, bindings::SIDEBAR_FOCUS),
+                |m| m.reset_map(Map::Default),
             ];
             let theme_setters: &[fn(&ThemeManager)] = &[
                 |m| m.set_follow_omarchy(true),
@@ -1430,6 +1678,41 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
 }
 
 #[test]
+fn density_sliders_save_snap_points_as_presets_and_other_values_as_custom() {
+    gtk_test(
+        "ui::preferences::tests::preferences::density_sliders_save_snap_points_as_presets_and_other_values_as_custom",
+        || {
+            let manager = PreferenceManager::shared();
+            assert_eq!(manager.browser_density(), BrowserDensity::Compact);
+            assert_eq!(manager.frame_density(), FrameDensity::Compact);
+
+            manager.set_browser_density(BrowserDensity::from_px(11));
+            manager.set_frame_density(FrameDensity::from_px(4));
+            {
+                let saved = manager.preferences.borrow();
+                assert_eq!(saved.browser_density, "custom");
+                assert_eq!(saved.browser_density_custom_px, 11);
+                assert_eq!(saved.frame_density, "airy");
+            }
+            assert_eq!(manager.browser_density(), BrowserDensity::Custom(11));
+            assert_eq!(manager.frame_density(), FrameDensity::Airy);
+
+            manager.set_browser_density(BrowserDensity::Custom(4));
+            assert_eq!(manager.preferences.borrow().browser_density, "compact");
+            assert_eq!(manager.browser_density(), BrowserDensity::Compact);
+            assert_eq!(
+                manager.frame_density(),
+                FrameDensity::Airy,
+                "content changes leave the frame alone"
+            );
+
+            manager.set_frame_density(FrameDensity::Custom(200));
+            assert_eq!(manager.frame_density(), FrameDensity::Custom(12));
+        },
+    );
+}
+
+#[test]
 fn saved_date_format_renders_before_settings_and_updates_bound_labels() {
     gtk_test(
         "ui::preferences::tests::preferences::saved_date_format_renders_before_settings_and_updates_bound_labels",
@@ -1451,6 +1734,7 @@ fn saved_date_format_renders_before_settings_and_updates_bound_labels() {
                 image_dimensions: MetadataValue::Unknown,
                 child_count: MetadataValue::Unknown,
                 duration_seconds: MetadataValue::Unknown,
+                listable: MetadataValue::Unknown,
                 recent_uri: None,
             };
             let absolute = |pattern: &str| {
@@ -2105,7 +2389,7 @@ fn list_columns_order_and_visibility_persist_and_update() {
             manager.set_list_column_visible(ListColumnId::Name, false);
             assert!(manager.is_list_column_visible(ListColumnId::Name));
 
-            manager.swap_list_columns(ListColumnId::Modified, ListColumnId::Type);
+            manager.move_list_column(ListColumnId::Modified, ListColumnId::Type, false);
             assert_eq!(
                 manager.list_column_order(),
                 vec![
@@ -2116,6 +2400,18 @@ fn list_columns_order_and_visibility_persist_and_update() {
                     ListColumnId::Type,
                 ]
             );
+            use ListColumnId::{Mode, Modified, Name, Size, Type};
+            for (column, target, after, expected) in [
+                (Name, Type, true, [Mode, Size, Modified, Type, Name]),
+                (Name, Mode, false, [Name, Mode, Size, Modified, Type]),
+                (Type, Name, false, [Type, Name, Mode, Size, Modified]),
+                (Type, Modified, true, [Name, Mode, Size, Modified, Type]),
+                (Size, Modified, false, [Name, Mode, Size, Modified, Type]),
+                (Modified, Modified, true, [Name, Mode, Size, Modified, Type]),
+            ] {
+                manager.move_list_column(column, target, after);
+                assert_eq!(manager.list_column_order(), expected);
+            }
             crate::storage::writer::settle();
 
             let saved = read_preferences().expect("saved preferences");

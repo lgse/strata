@@ -1,0 +1,10 @@
+{"scenario":"executable-requires-confirmation","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"setup":[{"fs":{"path":"run-me","program":"true"}}],"cost":{"columns":1.2},"quality":{"impact":5,"coverage":3,"criticality":4,"diagnostic":4,"score":42,"note":"Unique double-click run route, initial Run focus and Close dismissal; menu Run and Cancel are in executable-menu-confirmed-run; Close never checks the program did not launch"}}
+{"click":{"entry":"run-me"},"count":2}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"expect":{"mentions":{"target":{"dialog":true},"text":"Run this program?"}}}
+{"wait":{"state":{"target":{"dialog_button":"Run"},"focused":true}},"message":"Run to receive initial focus"}
+{"activate":{"dialog_button":"Close dialog"}}
+{"wait":{"dialog":null},"message":"the close button to dismiss the dialog"}
+{"click":{"entry":"run-me"},"count":2}
+{"click":{"dialog_button":"Run"}}
+{"wait":{"dialog":null},"message":"the confirmed program to launch"}

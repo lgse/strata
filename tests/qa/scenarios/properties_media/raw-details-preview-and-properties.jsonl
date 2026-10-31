@@ -1,0 +1,70 @@
+{"scenario":"raw-details-preview-and-properties","modes":["columns"],"prefs":{"browser_mode":"columns","single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"setup":[{"fs":{"path":"photo.png","image":{"width":1600,"height":900,"rgb":[0,128,0]}}},{"fs":{"path":"clip.mp4","ffmpeg":["-f","lavfi","-i","color=c=blue:s=320x180:r=24:d=2","-f","lavfi","-i","sine=frequency=440:sample_rate=48000:duration=2","-c:v","libx264","-c:a","aac","-ac","2","-shortest"]}},{"fs":{"path":"sound.wav","ffmpeg":["-f","lavfi","-i","sine=frequency=440:sample_rate=44100:duration=3","-c:a","pcm_s16le"]}},{"fs":{"path":"broken.mp4","write":"not a media container"}},{"fs":{"path":"camera.DNG","raw_photo":true}},{"fs":{"path":"broken.NEF","write":"not a RAW image"}}],"variants":[{"id":"dng","vars":{"name":"camera.DNG"}},{"id":"nef","vars":{"name":"broken.NEF"}}],"cost":{"columns-dng":1.1,"columns-nef":1.1},"quality":{"impact":3,"coverage":4,"criticality":3,"diagnostic":4,"score":42,"note":"RAW metadata rows in preview and Properties for DNG, N/A for broken NEF, cleared on ordinary image; only GUI check of RAW rows, properties-media-metadata omits RAW; unit tests pin row formatting and sandbox parsing"}}
+{"select":{"entry":"camera.DNG"},"variants":["dng"]}
+{"key":"space","variants":["dng"]}
+{"wait":{"preview":true},"message":"RAW preview panel","variants":["dng"]}
+{"wait":{"name":{"target":{"role":"label","description":"DIMENSIONS","within":{"preview":true}},"text":"600 × 400 pixels","rendered":false}},"message":"DIMENSIONS to report 600 × 400 pixels for camera.DNG","variants":["dng"]}
+{"wait":{"name":{"target":{"role":"label","description":"CAMERA","within":{"preview":true}},"text":"Strata Test Camera","rendered":false}},"message":"CAMERA to report Strata Test Camera for camera.DNG","variants":["dng"]}
+{"wait":{"name":{"target":{"role":"label","description":"LENS","within":{"preview":true}},"text":"Synthetic 50mm lens","rendered":false}},"message":"LENS to report Synthetic 50mm lens for camera.DNG","variants":["dng"]}
+{"wait":{"name":{"target":{"role":"label","description":"FOCAL LENGTH","within":{"preview":true}},"text":"50 mm","rendered":false}},"message":"FOCAL LENGTH to report 50 mm for camera.DNG","variants":["dng"]}
+{"wait":{"name":{"target":{"role":"label","description":"SHUTTER SPEED","within":{"preview":true}},"text":"1/250 s","rendered":false}},"message":"SHUTTER SPEED to report 1/250 s for camera.DNG","variants":["dng"]}
+{"wait":{"name":{"target":{"role":"label","description":"ISO","within":{"preview":true}},"text":"400","rendered":false}},"message":"ISO to report 400 for camera.DNG","variants":["dng"]}
+{"wait":{"name":{"target":{"role":"label","description":"GPS COORDINATES","within":{"preview":true}},"text":"-12.500000, -45.250000","rendered":false}},"message":"GPS COORDINATES to report -12.500000, -45.250000 for camera.DNG","variants":["dng"]}
+{"key":"alt+Return","variants":["dng"]}
+{"wait":{"dialog":true},"message":"a dialog to appear","variants":["dng"]}
+{"wait":{"name":{"target":{"role":"label","description":"DIMENSIONS","within":{"dialog":true}},"text":"600 × 400 pixels","rendered":false}},"message":"DIMENSIONS to report 600 × 400 pixels for camera.DNG","variants":["dng"]}
+{"wait":{"name":{"target":{"role":"label","description":"CAMERA","within":{"dialog":true}},"text":"Strata Test Camera","rendered":false}},"message":"CAMERA to report Strata Test Camera for camera.DNG","variants":["dng"]}
+{"wait":{"name":{"target":{"role":"label","description":"LENS","within":{"dialog":true}},"text":"Synthetic 50mm lens","rendered":false}},"message":"LENS to report Synthetic 50mm lens for camera.DNG","variants":["dng"]}
+{"wait":{"name":{"target":{"role":"label","description":"FOCAL LENGTH","within":{"dialog":true}},"text":"50 mm","rendered":false}},"message":"FOCAL LENGTH to report 50 mm for camera.DNG","variants":["dng"]}
+{"wait":{"name":{"target":{"role":"label","description":"SHUTTER SPEED","within":{"dialog":true}},"text":"1/250 s","rendered":false}},"message":"SHUTTER SPEED to report 1/250 s for camera.DNG","variants":["dng"]}
+{"wait":{"name":{"target":{"role":"label","description":"ISO","within":{"dialog":true}},"text":"400","rendered":false}},"message":"ISO to report 400 for camera.DNG","variants":["dng"]}
+{"wait":{"name":{"target":{"role":"label","description":"GPS COORDINATES","within":{"dialog":true}},"text":"-12.500000, -45.250000","rendered":false}},"message":"GPS COORDINATES to report -12.500000, -45.250000 for camera.DNG","variants":["dng"]}
+{"key":"Escape","variants":["dng"]}
+{"wait":{"dialog":null},"message":"Properties to close","variants":["dng"]}
+{"select":{"entry":"broken.NEF"},"variants":["dng"]}
+{"wait":{"preview":"broken.NEF"},"message":"next RAW preview target","variants":["dng"]}
+{"wait":{"name":{"target":{"role":"label","description":"DIMENSIONS","within":{"preview":true}},"text":"N/A","rendered":false}},"message":"DIMENSIONS to report N/A for camera.DNG","variants":["dng"]}
+{"wait":{"name":{"target":{"role":"label","description":"CAMERA","within":{"preview":true}},"text":"N/A","rendered":false}},"message":"CAMERA to report N/A for camera.DNG","variants":["dng"]}
+{"wait":{"name":{"target":{"role":"label","description":"LENS","within":{"preview":true}},"text":"N/A","rendered":false}},"message":"LENS to report N/A for camera.DNG","variants":["dng"]}
+{"wait":{"name":{"target":{"role":"label","description":"FOCAL LENGTH","within":{"preview":true}},"text":"N/A","rendered":false}},"message":"FOCAL LENGTH to report N/A for camera.DNG","variants":["dng"]}
+{"wait":{"name":{"target":{"role":"label","description":"SHUTTER SPEED","within":{"preview":true}},"text":"N/A","rendered":false}},"message":"SHUTTER SPEED to report N/A for camera.DNG","variants":["dng"]}
+{"wait":{"name":{"target":{"role":"label","description":"ISO","within":{"preview":true}},"text":"N/A","rendered":false}},"message":"ISO to report N/A for camera.DNG","variants":["dng"]}
+{"wait":{"name":{"target":{"role":"label","description":"GPS COORDINATES","within":{"preview":true}},"text":"N/A","rendered":false}},"message":"GPS COORDINATES to report N/A for camera.DNG","variants":["dng"]}
+{"select":{"entry":"broken.NEF"},"variants":["nef"]}
+{"key":"space","variants":["nef"]}
+{"wait":{"preview":true},"message":"RAW preview panel","variants":["nef"]}
+{"wait":{"name":{"target":{"role":"label","description":"DIMENSIONS","within":{"preview":true}},"text":"N/A","rendered":false}},"message":"DIMENSIONS to report N/A for broken.NEF","variants":["nef"]}
+{"wait":{"name":{"target":{"role":"label","description":"CAMERA","within":{"preview":true}},"text":"N/A","rendered":false}},"message":"CAMERA to report N/A for broken.NEF","variants":["nef"]}
+{"wait":{"name":{"target":{"role":"label","description":"LENS","within":{"preview":true}},"text":"N/A","rendered":false}},"message":"LENS to report N/A for broken.NEF","variants":["nef"]}
+{"wait":{"name":{"target":{"role":"label","description":"FOCAL LENGTH","within":{"preview":true}},"text":"N/A","rendered":false}},"message":"FOCAL LENGTH to report N/A for broken.NEF","variants":["nef"]}
+{"wait":{"name":{"target":{"role":"label","description":"SHUTTER SPEED","within":{"preview":true}},"text":"N/A","rendered":false}},"message":"SHUTTER SPEED to report N/A for broken.NEF","variants":["nef"]}
+{"wait":{"name":{"target":{"role":"label","description":"ISO","within":{"preview":true}},"text":"N/A","rendered":false}},"message":"ISO to report N/A for broken.NEF","variants":["nef"]}
+{"wait":{"name":{"target":{"role":"label","description":"GPS COORDINATES","within":{"preview":true}},"text":"N/A","rendered":false}},"message":"GPS COORDINATES to report N/A for broken.NEF","variants":["nef"]}
+{"key":"alt+Return","variants":["nef"]}
+{"wait":{"dialog":true},"message":"a dialog to appear","variants":["nef"]}
+{"wait":{"name":{"target":{"role":"label","description":"DIMENSIONS","within":{"dialog":true}},"text":"N/A","rendered":false}},"message":"DIMENSIONS to report N/A for broken.NEF","variants":["nef"]}
+{"wait":{"name":{"target":{"role":"label","description":"CAMERA","within":{"dialog":true}},"text":"N/A","rendered":false}},"message":"CAMERA to report N/A for broken.NEF","variants":["nef"]}
+{"wait":{"name":{"target":{"role":"label","description":"LENS","within":{"dialog":true}},"text":"N/A","rendered":false}},"message":"LENS to report N/A for broken.NEF","variants":["nef"]}
+{"wait":{"name":{"target":{"role":"label","description":"FOCAL LENGTH","within":{"dialog":true}},"text":"N/A","rendered":false}},"message":"FOCAL LENGTH to report N/A for broken.NEF","variants":["nef"]}
+{"wait":{"name":{"target":{"role":"label","description":"SHUTTER SPEED","within":{"dialog":true}},"text":"N/A","rendered":false}},"message":"SHUTTER SPEED to report N/A for broken.NEF","variants":["nef"]}
+{"wait":{"name":{"target":{"role":"label","description":"ISO","within":{"dialog":true}},"text":"N/A","rendered":false}},"message":"ISO to report N/A for broken.NEF","variants":["nef"]}
+{"wait":{"name":{"target":{"role":"label","description":"GPS COORDINATES","within":{"dialog":true}},"text":"N/A","rendered":false}},"message":"GPS COORDINATES to report N/A for broken.NEF","variants":["nef"]}
+{"key":"Escape","variants":["nef"]}
+{"wait":{"dialog":null},"message":"Properties to close","variants":["nef"]}
+{"select":{"entry":"camera.DNG"},"variants":["nef"]}
+{"wait":{"preview":"camera.DNG"},"message":"next RAW preview target","variants":["nef"]}
+{"wait":{"name":{"target":{"role":"label","description":"DIMENSIONS","within":{"preview":true}},"text":"600 × 400 pixels","rendered":false}},"message":"DIMENSIONS to report 600 × 400 pixels for broken.NEF","variants":["nef"]}
+{"wait":{"name":{"target":{"role":"label","description":"CAMERA","within":{"preview":true}},"text":"Strata Test Camera","rendered":false}},"message":"CAMERA to report Strata Test Camera for broken.NEF","variants":["nef"]}
+{"wait":{"name":{"target":{"role":"label","description":"LENS","within":{"preview":true}},"text":"Synthetic 50mm lens","rendered":false}},"message":"LENS to report Synthetic 50mm lens for broken.NEF","variants":["nef"]}
+{"wait":{"name":{"target":{"role":"label","description":"FOCAL LENGTH","within":{"preview":true}},"text":"50 mm","rendered":false}},"message":"FOCAL LENGTH to report 50 mm for broken.NEF","variants":["nef"]}
+{"wait":{"name":{"target":{"role":"label","description":"SHUTTER SPEED","within":{"preview":true}},"text":"1/250 s","rendered":false}},"message":"SHUTTER SPEED to report 1/250 s for broken.NEF","variants":["nef"]}
+{"wait":{"name":{"target":{"role":"label","description":"ISO","within":{"preview":true}},"text":"400","rendered":false}},"message":"ISO to report 400 for broken.NEF","variants":["nef"]}
+{"wait":{"name":{"target":{"role":"label","description":"GPS COORDINATES","within":{"preview":true}},"text":"-12.500000, -45.250000","rendered":false}},"message":"GPS COORDINATES to report -12.500000, -45.250000 for broken.NEF","variants":["nef"]}
+{"select":{"entry":"photo.png"}}
+{"wait":{"preview":"photo.png"},"message":"ordinary image preview"}
+{"expect":{"not":{"presented":{"role":"label","description":"DIMENSIONS","within":{"preview":true}}}}}
+{"expect":{"not":{"presented":{"role":"label","description":"CAMERA","within":{"preview":true}}}}}
+{"expect":{"not":{"presented":{"role":"label","description":"LENS","within":{"preview":true}}}}}
+{"expect":{"not":{"presented":{"role":"label","description":"FOCAL LENGTH","within":{"preview":true}}}}}
+{"expect":{"not":{"presented":{"role":"label","description":"SHUTTER SPEED","within":{"preview":true}}}}}
+{"expect":{"not":{"presented":{"role":"label","description":"ISO","within":{"preview":true}}}}}
+{"expect":{"not":{"presented":{"role":"label","description":"GPS COORDINATES","within":{"preview":true}}}}}

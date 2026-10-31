@@ -380,7 +380,8 @@ button does not choose it: nothing changes until you accept, and Cancel or
 focused; pressing **d** again confirms it, so **d d** trashes. **D** / **Shift+Delete**, and **d** inside Trash, show the permanent
 deletion confirmation with its confirm button focused, so **Enter** confirms, and **d**
 there does nothing. In a folder whose listing reports no Trash support (such as
-a tmpfs, or a FUSE mount that already refused Trash), **d** / **Delete** open a permanent confirmation instead, stating
+a tmpfs, a FUSE mount that already refused Trash, or a folder opened as
+[administrator](administrator-access.md)), **d** / **Delete** open a permanent confirmation instead, stating
 that the location doesn't support Trash, with Cancel focused, so **d d** does
 not delete there. Errors appear in
 the usual operation dialogs, and **Ctrl+Z** undoes what the default map can undo.
@@ -504,8 +505,9 @@ persist across restarts in `$XDG_DATA_HOME/strata/letter-bookmarks.json`
 are supported; remote locations and virtual places cannot be saved. A missing
 bookmark or unavailable directory reports an error without navigating.
 
-The footer shows the armed prefix. The **m** menu offers all letters for saving;
-the **'** menu lists only saved letters, each beside its full directory path.
+The footer shows the armed prefix. The **m** menu shows one **a–z** row for
+saving; the **'** menu lists only saved letters, each beside its full directory
+path.
 With no saved bookmarks, no options menu is shown. **Esc** cancels;
 unknown or modified second keys cancel without running another command.
 After choosing a letter, the jump stays pending while its directory is checked.
@@ -514,7 +516,9 @@ listing, selection, or preview; changing the selection also cancels it. Only a
 successful check navigates: missing, unreadable, unavailable, or timed-out
 folders leave the current directory intact.
 Text fields keep these keys as ordinary text, and the default keyboard map is
-unchanged. The file chooser does not save or open letter bookmarks. Document
+unchanged. **m** and **'** can be rebound as the `bookmark_set` and
+`bookmark_go` chord triggers (see [Keymap](keymap.md)); the letters after
+them are fixed. The file chooser does not save or open letter bookmarks. Document
 and archive previews swallow both bookmark prefixes. In a media preview,
 **m** still mutes; return to the listing before using bookmarks.
 
@@ -760,10 +764,9 @@ shows no hint. Default-map hints that are unbound or remapped (**y** for copy pa
 **Ctrl+R** for rename) are hidden. Copy path is **c c**; Properties is
 **Alt+Enter**.
 
-## Not bound
-
 Tabs use the same shortcuts in both modes: **Ctrl+T** creates a tab,
-**Ctrl+W** closes it, **Ctrl+Tab / Ctrl+Shift+Tab** cycles tabs, and
+**Ctrl+W** closes it, **Ctrl+Shift+T** reopens the last closed tab,
+**Ctrl+Tab / Ctrl+Shift+Tab** cycles tabs, and
 **Ctrl+Page Up / Ctrl+Page Down** selects the previous / next tab, wrapping at
 either end.
 **Ctrl+Shift+Page Up / Ctrl+Shift+Page Down** moves the active tab left / right,
@@ -771,16 +774,12 @@ stopping at either end of the strip.
 **Ctrl+Shift+1–9 / 0** selects a tab directly. Hold **Ctrl+Shift** to show tab
 numbers. See [browser tabs](keyboard-navigation.md#browser-tabs).
 
-These default-map shortcuts are unbound or remapped while the mode is on:
+## Not bound
 
-| Default-map key | In 10xer mode |
-| --- | --- |
-| **Ctrl+Shift+K** | Unbound. Use **z** / **Z**. |
-| **Ctrl+Alt+T** | Unbound. Use **;** **t** or the context menu. |
-| **Ctrl+\\** | Unbound. Arrows never leave the file list. |
-| **Ctrl+D** | Half page down. Duplicate is dropped. |
-| **Ctrl+F** | Full page down. Filter is **f**. |
-| **Ctrl+B** | Full page up. Sidebar toggle is **Ctrl+N**. |
-| **Ctrl+R** | Invert selection. Rename is **r** / **F2**. |
-| **y** / **p** (default map) | Yank / paste. Path copy is **c c**; pin with **g +** and jump to a pin with **g** then a digit. |
-| **Space** | Toggle selection. In List and Columns, preview is **l** / **→**. |
+Some default-map keys do something else in 10xer mode or nothing at all: for
+example, **Ctrl+R** inverts the selection there, and rename is **r** / **F2**.
+**Settings → Keyboard** shows both tables as they are, with any changes: switch
+it to **10xer mode** to see each action's 10xer keys and **Not bound** on the
+ones 10xer leaves out. Each table lists only the actions its mode can run. A key bound in the 10xer table to jump to folder, arrow
+scope, duplicate or pin works there, and the default table can bind several
+10xer verbs; see [Keymap](keymap.md#two-tables).

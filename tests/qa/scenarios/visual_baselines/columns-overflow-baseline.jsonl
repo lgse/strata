@@ -1,0 +1,14 @@
+{"scenario":"columns-overflow-baseline","modes":["columns"],"prefs":{"browser_mode":"columns"},"layout":"us","mutation":null,"known_bug":null,"fixture_root":"/tmp/strata-e2e-baseline","tree":{"documents":{"notes.txt":"notes\n","projects":{"release":{"summary.md":"# Release\n"}},"report.md":"# Report\n"},"pictures":{},"readme.md":"# Fixture\n","todo.txt":"todo\n"},"cost":{"columns":1.2},"quality":{"impact":2,"coverage":2,"criticality":3,"diagnostic":1,"score":7,"note":"Columns view after three-level navigation, pixel baseline of overflowing pane; visual only, columns-view-baseline covers the shallow columns render"}}
+{"select":{"entry":"documents"}}
+{"wait":{"directory":"documents"},"message":"the browser to be working in 'documents'"}
+{"settle":{"pane":"documents"}}
+{"select":{"entry":"projects","dir":"documents"}}
+{"wait":{"directory":"projects"},"message":"the browser to be working in 'projects'"}
+{"settle":{"pane":"projects"}}
+{"select":{"entry":"release","dir":"projects"}}
+{"wait":{"directory":"release"},"message":"the browser to be working in 'release'"}
+{"settle":{"pane":"release"}}
+{"move":{"point":[{"extent":{"window":true},"plus":-4},{"extent":{"window":true},"plus":-4}]}}
+{"wait":{"entries":["summary.md"]},"message":"the fixture listing to be complete"}
+{"settle":{"pane":null}}
+{"baseline":"columns-overflow"}

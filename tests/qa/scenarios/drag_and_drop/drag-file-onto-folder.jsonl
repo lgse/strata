@@ -1,0 +1,30 @@
+{"scenario":"drag-file-onto-folder","modes":["columns","icons","list"],"layout":"us","mutation":"drag-and-drop","known_bug":null,"cost":{"columns-copy":1.7,"columns-move":1.8,"icons-copy":1.7,"icons-move":1.4,"list-copy":1.4,"list-move":1.4},"variants":[{"id":"move"},{"id":"copy"}],"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":4,"score":49,"note":"Copy/move drops and undo refresh folder counts after row shifts in all views; sole GUI guard of operation-driven count admission"}}
+{"wait":{"present":{"role":"label","name":"No items","within":{"entry":"archive","dir":"$root"}}},"message":"the empty drop target to show its initial count"}
+{"fs":{"path":"aaa-before","mkdir":true}}
+{"wait":{"entries":{"contains":["aaa-before","archive"]},"dir":"$root"},"message":"an insertion to shift the already-counted folder"}
+{"select":{"entry":"todo.txt"}}
+{"wait":{"selected":["todo.txt"],"dir":"$root"},"message":"only todo.txt to be selected"}
+{"drag":{"from":{"entry":"todo.txt"},"to":{"entry":"archive"}},"variants":["move"]}
+{"drag":{"from":{"entry":"todo.txt"},"to":{"entry":"archive"}},"mods":["ctrl"],"variants":["copy"]}
+{"fs":{"path":"archive/todo.txt","text":"todo\n"},"message":"the dragged document to arrive intact"}
+{"fs":{"path":"todo.txt","exists":false},"message":"the moved document to leave its source directory","variants":["move"]}
+{"fs":{"path":"todo.txt","text":"todo\n"},"message":"the copied document to leave its source intact","variants":["copy"]}
+{"wait":{"present":{"role":"label","name":"1 item","within":{"entry":"archive","dir":"$root"}}},"message":"the empty folder's count to update after the drop"}
+{"fs":{"path":"aaa-before","remove":true}}
+{"wait":{"entries":{"excludes":["aaa-before"]},"dir":"$root"},"message":"a removal to shift the counted folder back"}
+{"select":{"entry":"readme.md"}}
+{"wait":{"selected":["readme.md"],"dir":"$root"},"message":"only readme.md to be selected"}
+{"drag":{"from":{"entry":"readme.md"},"to":{"entry":"archive"}},"variants":["move"]}
+{"drag":{"from":{"entry":"readme.md"},"to":{"entry":"archive"}},"mods":["ctrl"],"variants":["copy"]}
+{"fs":{"path":"archive/readme.md","text":"# Fixture\n"},"message":"the second document to arrive intact"}
+{"fs":{"path":"readme.md","exists":false},"message":"the second moved document to leave its source directory","variants":["move"]}
+{"fs":{"path":"readme.md","text":"# Fixture\n"},"message":"the second copied source to remain intact","variants":["copy"]}
+{"wait":{"present":{"role":"label","name":"2 items","within":{"entry":"archive","dir":"$root"}}},"message":"the existing folder count to increase after another drop"}
+{"key":"ctrl+z"}
+{"fs":{"path":"archive/readme.md","exists":false},"message":"undo to remove the second dropped document"}
+{"fs":{"path":"readme.md","text":"# Fixture\n"},"message":"undo to leave the second source intact"}
+{"wait":{"present":{"role":"label","name":"1 item","within":{"entry":"archive","dir":"$root"}}},"message":"the folder count to decrease after undo"}
+{"key":"ctrl+z"}
+{"fs":{"path":"archive/todo.txt","exists":false},"message":"undo to remove the first dropped document"}
+{"fs":{"path":"todo.txt","text":"todo\n"},"message":"undo to leave the first source intact"}
+{"wait":{"present":{"role":"label","name":"No items","within":{"entry":"archive","dir":"$root"}}},"message":"the folder count to return to empty after undo"}

@@ -1,7 +1,7 @@
 min_version = "2026.9.0"
 
 [tools]
-# Keep in lockstep with tests/e2e/Dockerfile (RUSTUP_TOOLCHAIN).
+# Keep in lockstep with tests/container/Dockerfile (RUSTUP_TOOLCHAIN).
 rust = { version = "1.98.1", components = ["clippy", "rustfmt", "rust-analyzer"] }
 python = { version = "3.14", postinstall = "python -m pip install --upgrade pycairo PyGObject" }
 "aqua:EmbarkStudios/cargo-deny" = "0.20.2"
@@ -39,10 +39,10 @@ run = "cargo deny check"
 description = "Check spelling"
 run = "typos"
 
-[tasks.e2e]
-description = "End-to-end GUI suite (Docker)"
+[tasks.qa]
+description = "QA GUI scenarios in the pinned container"
 raw_args = true
-run = "./scripts/e2e.sh -p no:cacheprovider --timeout=60 --durations=10"
+run = "./scripts/qa.sh"
 
 [tasks.check]
 description = "Local pre-push quality checks"

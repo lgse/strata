@@ -1,0 +1,6 @@
+{"scenario":"keyboard-open-selects-first-child","modes":["columns","icons","list"],"prefs":{"list_folder_clicks":1,"list_file_clicks":1,"grid_folder_clicks":1,"grid_file_clicks":1,"explorer_folder_clicks":1,"explorer_file_clicks":1},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.4,"icons":0.4,"list":0.4},"quality":{"impact":2,"coverage":3,"criticality":3,"diagnostic":4,"score":23,"note":"Keyboard Return into a folder selects its first child; click-open scenarios assert an empty selection, so this is the only check of it"}}
+{"select_with_keyboard":"documents"}
+{"key":"Return"}
+{"wait":{"directory":"documents"},"message":"the browser to be working in 'documents'"}
+{"settle":{"pane":"documents"}}
+{"wait":{"selected":["notes.txt"],"dir":"documents"},"message":"the selection to become ['notes.txt']"}

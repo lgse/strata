@@ -1,0 +1,28 @@
+{"scenario":"media-details-properties-only","modes":["icons"],"prefs":{"browser_mode":"icons","single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"setup":[{"fs":{"path":"photo.png","image":{"width":1600,"height":900,"rgb":[0,128,0]}}},{"fs":{"path":"clip.mp4","ffmpeg":["-f","lavfi","-i","color=c=blue:s=320x180:r=24:d=2","-f","lavfi","-i","sine=frequency=440:sample_rate=48000:duration=2","-c:v","libx264","-c:a","aac","-ac","2","-shortest"]}},{"fs":{"path":"sound.wav","ffmpeg":["-f","lavfi","-i","sine=frequency=440:sample_rate=44100:duration=3","-c:a","pcm_s16le"]}},{"fs":{"path":"broken.mp4","write":"not a media container"}},{"fs":{"path":"camera.DNG","raw_photo":true}},{"fs":{"path":"broken.NEF","write":"not a RAW image"}}],"cost":{"icons":1.9},"quality":{"impact":2,"coverage":3,"criticality":4,"diagnostic":2,"score":22,"note":"Preview pane shows Size/Modified/Type and no media-detail labels; dialog metadata is in properties-media-metadata, preview labels checked nowhere else"}}
+{"select":{"entry":"clip.mp4"}}
+{"key":"space"}
+{"wait":{"preview":"video/mp4"},"message":"video preview ready"}
+{"click":{"entry":"clip.mp4"},"button":3}
+{"wait":{"menu_items":{}},"message":"the context menu for 'clip.mp4'"}
+{"wait":{"present":{"menu_item":"Properties"}},"message":"the menu item 'Properties'"}
+{"wheel":{"role":"menu"},"clicks":3,"direction":"down","until":{"inside":{"target":{"menu_item":"Properties"},"of":{"role":"scroll pane","within":{"role":"menu"}},"axis":"y"}},"message":"scroll the menu to Properties"}
+{"settle":{"menu_item":"Properties"}}
+{"click":{"menu_item":"Properties"}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"wait":{"presented":{"role":"label","name":"320 × 180 pixels","within":{"dialog":true}}},"message":"source resolution in Properties"}
+{"key":"Escape"}
+{"wait":{"dialog":null},"message":"Properties to close"}
+{"expect":{"preview":true}}
+{"expect":{"all":[{"presented":{"role":"label","description":"Size","within":{"preview":true}}},{"not":{"name":{"target":{"role":"label","description":"Size","within":{"preview":true}},"text":"","rendered":false}}},{"not":{"name":{"target":{"role":"label","description":"Size","within":{"preview":true}},"text":"—","rendered":false}}}]}}
+{"expect":{"all":[{"presented":{"role":"label","description":"Modified","within":{"preview":true}}},{"not":{"name":{"target":{"role":"label","description":"Modified","within":{"preview":true}},"text":"","rendered":false}}},{"not":{"name":{"target":{"role":"label","description":"Modified","within":{"preview":true}},"text":"—","rendered":false}}}]}}
+{"expect":{"all":[{"presented":{"role":"label","description":"Type","within":{"preview":true}}},{"not":{"name":{"target":{"role":"label","description":"Type","within":{"preview":true}},"text":"","rendered":false}}},{"not":{"name":{"target":{"role":"label","description":"Type","within":{"preview":true}},"text":"—","rendered":false}}}]}}
+{"expect":{"presented":{"role":"label","name":"video/mp4","within":{"preview":true}}}}
+{"expect":{"not":{"presented":{"role":"label","name":"RESOLUTION","within":{"preview":true}}}}}
+{"expect":{"not":{"presented":{"role":"label","name":"DURATION","within":{"preview":true}}}}}
+{"expect":{"not":{"presented":{"role":"label","name":"BITRATE","within":{"preview":true}}}}}
+{"expect":{"not":{"presented":{"role":"label","name":"VIDEO CODEC","within":{"preview":true}}}}}
+{"expect":{"not":{"presented":{"role":"label","name":"FRAME RATE","within":{"preview":true}}}}}
+{"expect":{"not":{"presented":{"role":"label","name":"AUDIO CODEC","within":{"preview":true}}}}}
+{"expect":{"not":{"presented":{"role":"label","name":"SAMPLE RATE","within":{"preview":true}}}}}
+{"expect":{"not":{"presented":{"role":"label","name":"CHANNELS","within":{"preview":true}}}}}

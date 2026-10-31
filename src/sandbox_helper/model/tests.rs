@@ -377,11 +377,41 @@ fn overlapping_faces_exhaust_the_raster_budget_without_finishing() {
         800,
         800,
         [255; 3],
-        [0; 3],
+        [0, 0, 0, 255],
         ModelView::default(),
         &|stage| stages.borrow_mut().push(stage),
     )
     .expect_err("bounded failure");
     assert!(error.contains("rendering limit"));
     assert!(!stages.borrow().contains(&ModelPreviewStage::Finishing));
+}
+
+#[test]
+fn thumbnail_surface_is_transparent_and_truncated_stl_is_rejected() {
+    let directory = tempfile::tempdir().expect("model fixture");
+    let path = directory.path().join("thumbnail.stl");
+    fs::write(
+        &path,
+        "solid sample\nvertex 0 0 0\nvertex 4 0 0\nvertex 0 2 1\nendsolid",
+    )
+    .expect("STL");
+    let transparent = render(&path, "256x256:cccccc:transparent").expect("thumbnail");
+    let transparent = Pixmap::decode_png(&transparent).expect("PNG");
+    assert!(transparent.pixels().iter().any(|pixel| pixel.alpha() == 0));
+    assert!(
+        transparent
+            .pixels()
+            .iter()
+            .any(|pixel| pixel.alpha() == 255)
+    );
+    let opaque = render(&path, "256x256:cccccc:202024").expect("interactive preview");
+    let opaque = Pixmap::decode_png(&opaque).expect("PNG");
+    assert!(opaque.pixels().iter().all(|pixel| pixel.alpha() == 255));
+
+    for count in [2u32, (MAX_MODEL_TRIANGLES as u32) + 1] {
+        let mut truncated = [0; 84];
+        truncated[80..84].copy_from_slice(&count.to_le_bytes());
+        fs::write(&path, truncated).expect("truncated binary STL header");
+        assert!(render(&path, "256x256:cccccc:transparent").is_err());
+    }
 }

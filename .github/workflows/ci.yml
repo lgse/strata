@@ -2,11 +2,6 @@ name: CI
 
 on:
   workflow_dispatch:
-    inputs:
-      require_published_environments:
-        description: Bypass the fast dependency cache and require verified published base images
-        type: boolean
-        default: false
   push:
     branches: [main]
   pull_request:
@@ -16,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ inputs.require_published_environments && 'published' || 'normal' }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -28,6 +23,7 @@ jobs:
     outputs:
       environment_image: ${{ steps.environment.outputs.environment_image }}
       candidate: ${{ steps.environment.outputs.candidate }}
+      inputs: ${{ steps.environment.outputs.inputs }}
 
     steps:
       - name: Check out repository
@@ -45,11 +41,11 @@ jobs:
         env:
           BASE_REF: ${{ github.event.pull_request.base.sha || 'HEAD^' }}
         run: |
-          if reference="$(python3 scripts/e2e_images.py environment)"; then
+          if reference="$(python3 scripts/image_registry.py environment)"; then
             docker pull --platform=linux/amd64 "${reference#environment_image=}"
           else
             git cat-file -e "$BASE_REF^{commit}"
-            if git diff --quiet "$BASE_REF" HEAD -- tests/e2e/Dockerfile tests/e2e/requirements.txt tests/e2e/install-packages.sh tests/e2e/gtk; then
+            if git diff --quiet "$BASE_REF" HEAD -- tests/container; then
               echo 'The unchanged environment is unavailable. Restore public access; ordinary quality runs do not bootstrap distribution packages.' >&2
               exit 1
             else
@@ -57,11 +53,11 @@ jobs:
               if [[ "$status" != 1 ]]; then exit "$status"; fi
             fi
             echo 'Environment inputs changed: explicitly building this unpublished candidate without publishing it.'
-            reference="environment_image=$(python3 scripts/e2e_base.py build --engine docker)"
+            reference="environment_image=$(python3 scripts/image_base.py build --engine docker)"
             echo 'candidate=true' >> "$GITHUB_OUTPUT"
           fi
           printf '%s\n' "$reference" >> "$GITHUB_OUTPUT"
-          echo "inputs=$(python3 scripts/e2e_bundle.py image-key)" >> "$GITHUB_OUTPUT"
+          echo "inputs=$(python3 scripts/image_inputs.py image-key)" >> "$GITHUB_OUTPUT"
 
       - name: Restore quality-only Cargo cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -106,7 +102,13 @@ jobs:
                 echo "UnRAR must not be in the feature-disabled dependency graph" >&2
                 exit 1
               fi
+              cargo tree --locked -e normal,build --prefix none > /tmp/default-dependencies.txt
+              if grep -E "^(x11rb|wayland-client|wayland-protocols-(misc|wlr)|xkbcommon) v" /tmp/dependencies.txt /tmp/default-dependencies.txt; then
+                echo "x11rb, wayland-client, wayland-protocols-misc, wayland-protocols-wlr and xkbcommon, the input clients of the qa feature, must not be in a default or feature-disabled build" >&2
+                exit 1
+              fi
               cargo check --locked --all-targets --no-default-features
+              cargo test --locked --all-targets --no-default-features launch_mode
               cargo test --locked --all-targets --no-default-features services::operations::tests
               cargo test --locked --all-targets --no-default-features rar_disabled
               xvfb-run -a -s "-screen 0 1280x1024x24 -nolisten tcp -noreset" dbus-run-session -- \
@@ -251,6 +253,64 @@ jobs:
 
       - name: Verify exact Rust test coverage
         run: python3 scripts/quality_ci.py verify
+
+  # QA scenarios run only when CI is started by hand.
+  qa:
+    name: QA scenarios
+    needs: quality-build
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Pull the exact published environment
+        if: needs.quality-build.outputs.candidate != 'true'
+        env:
+          IMAGE: ${{ needs.quality-build.outputs.environment_image }}
+        run: docker pull --platform=linux/amd64 "$IMAGE"
+
+      - name: Download an unpublished candidate environment
+        if: needs.quality-build.outputs.candidate == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: quality-environment-${{ github.run_attempt }}
+          path: target/quality-environment
+
+      - name: Load the unpublished candidate
+        if: needs.quality-build.outputs.candidate == 'true'
+        run: zstd -dc target/quality-environment/image.tar.zst | docker load
+
+      - name: Restore the quality build's Cargo cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            target/quality-container/cargo
+            target/quality-container/build
+          key: strata-quality-v1-${{ needs.quality-build.outputs.inputs }}-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}-${{ github.sha }}
+          restore-keys: |
+            strata-quality-v1-${{ needs.quality-build.outputs.inputs }}-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}-
+
+      - name: Build the qa feature and run every scenario in the pinned container
+        env:
+          STRATA_CONTAINER_ENGINE: docker
+          STRATA_TEST_IMAGE: ${{ needs.quality-build.outputs.environment_image }}
+          STRATA_TEST_CARGO_CACHE: target/quality-container
+        run: ./scripts/qa.sh
+
+      - name: Confirm a qa build contains the text the release check rejects
+        run: |
+          strings target/quality-container/build/debug/strata | grep -F "usage: strata --qa"
+
+      - name: Upload failure artifacts
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-artifacts-${{ github.run_attempt }}
+          path: target/qa-artifacts
+          if-no-files-found: ignore
+          retention-days: 7
 
   release-scripts:
     name: Release workflow scripts

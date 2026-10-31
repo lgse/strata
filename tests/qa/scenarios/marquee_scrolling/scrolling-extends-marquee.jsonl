@@ -1,0 +1,20 @@
+{"scenario":"scrolling-extends-marquee","modes":["columns","list"],"layout":"us","mutation":null,"known_bug":null,"tree":{"{000..039}.txt":"{}\n"},"variants":[{"id":"edge","modes":["columns"]},{"id":"wheel","modes":["list"]}],"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":3,"score":45,"note":"Marquee extends over a list scrolled by edge autoscroll (Columns) or wheel (List), keeping the anchor; sole guard of scrolling mid-marquee"}}
+{"remember":{"point":[{"of":{"entry":"004.txt","part":"label"}},{"of":{"entry":"004.txt"},"at":"start-2"}]},"as":"start","modes":["columns"]}
+{"remember":{"point":[{"of":{"entry":"004.txt","part":"label"},"at":"2/3"},{"of":{"entry":"004.txt","part":"label"}}]},"as":"start","modes":["list"]}
+{"note":"scroll_target","of":{"entry":"004.txt"},"as":"target"}
+{"remember":{"point":[{"of":{"viewport":null},"at":-24},{"of":{"viewport":null},"at":-8}]},"as":"end","variants":["edge"]}
+{"remember":{"point":[{"of":{"viewport":null},"at":-24},{"of":{"viewport":null},"at":"4/5"}]},"as":"end","variants":["wheel"]}
+{"drag":{"from":{"kept":"start"},"to":{"kept":"end"}},"steps":2,"release":false}
+{"wheel":{"kept":"end"},"clicks":1,"until":{"scroll_value":{"at_least":"$target"}},"tries":20,"variants":["wheel"]}
+{"wait":{"scroll_value":{"at_least":"$target"}},"message":"scrolling during the marquee to carry the anchor above the viewport","variants":["wheel"]}
+{"wait":{"scroll_value":{"at_least":"$target"}},"message":"the marquee parked at the bottom edge to scroll the anchor above the viewport","variants":["edge"]}
+{"remember":{"point":[{"of":{"kept":"end"}},{"of":{"viewport":null},"at":-40}]},"as":"band_end","variants":["edge"]}
+{"move":{"kept":"band_end"},"variants":["edge"]}
+{"remember":{"kept":"end"},"as":"band_end","variants":["wheel"]}
+{"wait":{"band_selected":{"from":"start","to":"band_end"}},"message":"every visible row inside the scrolled marquee to be selected"}
+{"button_up":1}
+{"wheel":{"viewport":null},"clicks":2,"direction":"up","until":{"visible":{"contains":["000.txt"]}},"tries":20}
+{"wait":{"visible":{"contains":["000.txt","004.txt"]}},"message":"the beginning of the directory to scroll back into view"}
+{"expect":{"state":{"target":{"entry":"004.txt"},"selected":true}},"message":"scrolling must keep the marquee's anchor row selected"}
+{"expect":{"state":{"target":{"entry":"003.txt"},"selected":false}},"message":"the row above the anchor must stay unselected"}
+{"expect":{"preview":null}}

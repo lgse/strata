@@ -176,14 +176,7 @@ impl Dispatcher {
                 Ok(entries) => {
                     let rows = entries
                         .into_iter()
-                        .filter_map(|(letter, path)| {
-                            let (_, binding) =
-                                BOOKMARK_LETTERS.iter().find(|(slot, _)| *slot == letter)?;
-                            Some((
-                                crate::ui::keys::label(&crate::ui::keys::Keys::One(*binding)),
-                                path.display().to_string(),
-                            ))
-                        })
+                        .map(|(letter, path)| (letter.to_string(), path.display().to_string()))
                         .collect();
                     shortcuts.arm_chord_with(Chord::BookmarkGo, rows);
                 }
@@ -199,11 +192,7 @@ impl Dispatcher {
     }
 
     fn complete_bookmark(&self, browser: &Rc<Browser>, chord: Chord, press: &KeyPress) -> bool {
-        let Some((letter, binding)) = BOOKMARK_LETTERS
-            .iter()
-            .copied()
-            .find(|(_, binding)| press.is(*binding))
-        else {
+        let Some(letter) = press.letter() else {
             return false;
         };
         if self.chooser.is_some() {
@@ -230,7 +219,7 @@ impl Dispatcher {
         let expected = revision.get();
         let shortcuts = self.shortcuts.clone();
         let preferences = self.type_to_search.preferences.clone();
-        let key = crate::ui::keys::label(&crate::ui::keys::Keys::One(binding));
+        let key = letter.to_string();
         glib::MainContext::default().spawn_local(async move {
             let result = if let Some(directory) = directory.filter(|_| chord == Chord::BookmarkSet)
             {
@@ -356,43 +345,48 @@ impl Dispatcher {
 impl Dispatcher {
     fn change_pin(&self, pin: bool) {
         use crate::ui::browser::PinChange;
-        let feedback = match self.view.change_keyboard_pin(pin) {
-            PinChange::Pinned(location, name) => {
-                match self
-                    .sidebar
-                    .state
-                    .visible_pins()
-                    .iter()
-                    .position(|pinned| *pinned == location)
-                    .filter(|index| *index < 9)
-                {
-                    Some(index) => rust_i18n::t!(
-                        "Pinned “%{name}” as %{keys}",
-                        name = name,
-                        keys = crate::ui::keys::digit_label(
-                            crate::ui::keys::bindings::PIN_NUMBERS,
-                            (index + 1) as u8
+        let sidebar = Rc::downgrade(&self.sidebar.state);
+        let shortcuts = self.shortcuts.clone();
+        self.view.change_keyboard_pin(pin, move |change| {
+            let Some(sidebar) = sidebar.upgrade() else {
+                return;
+            };
+            let feedback = match change {
+                PinChange::Pinned(location, name) => {
+                    match sidebar
+                        .visible_pins()
+                        .iter()
+                        .position(|pinned| *pinned == location)
+                        .filter(|index| *index < 9)
+                    {
+                        Some(index) => rust_i18n::t!(
+                            "Pinned “%{name}” as %{keys}",
+                            name = name,
+                            keys = crate::ui::keys::digit_label(
+                                crate::ui::keys::bindings::PIN_NUMBERS,
+                                (index + 1) as u8
+                            )
                         )
-                    )
-                    .into_owned(),
-                    None => rust_i18n::t!("Pinned “%{name}”", name = name).into_owned(),
+                        .into_owned(),
+                        None => rust_i18n::t!("Pinned “%{name}”", name = name).into_owned(),
+                    }
                 }
-            }
-            PinChange::Unpinned(name) => {
-                rust_i18n::t!("Unpinned “%{name}”", name = name).into_owned()
-            }
-            PinChange::AlreadyPinned(name) => {
-                rust_i18n::t!("“%{name}” is already pinned", name = name).into_owned()
-            }
-            PinChange::NotPinned(name) => {
-                rust_i18n::t!("“%{name}” isn’t pinned", name = name).into_owned()
-            }
-            PinChange::Refused(name) => {
-                rust_i18n::t!("Can’t pin “%{name}”", name = name).into_owned()
-            }
-            PinChange::Nothing if pin => crate::i18n::tr("Nothing to pin"),
-            PinChange::Nothing => crate::i18n::tr("Nothing to unpin"),
-        };
-        self.shortcuts.show_feedback(&feedback);
+                PinChange::Unpinned(name) => {
+                    rust_i18n::t!("Unpinned “%{name}”", name = name).into_owned()
+                }
+                PinChange::AlreadyPinned(name) => {
+                    rust_i18n::t!("“%{name}” is already pinned", name = name).into_owned()
+                }
+                PinChange::NotPinned(name) => {
+                    rust_i18n::t!("“%{name}” isn’t pinned", name = name).into_owned()
+                }
+                PinChange::Refused(name) => {
+                    rust_i18n::t!("Can’t pin “%{name}”", name = name).into_owned()
+                }
+                PinChange::Nothing if pin => crate::i18n::tr("Nothing to pin"),
+                PinChange::Nothing => crate::i18n::tr("Nothing to unpin"),
+            };
+            shortcuts.show_feedback(&feedback);
+        });
     }
 }

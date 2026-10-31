@@ -228,31 +228,33 @@ instead.
 | Rule | Owner |
 | --- | --- |
 | Focused column stays put while mirroring folders and files | Manual check below (wide and narrow windows), with captures |
-| Folder hands the right pane to the child column, file takes it back | `test_quick_preview.py::test_columns_keyboard_selection_opens_the_preview`, `test_preview_hides_on_a_folder_and_resumes_when_selection_moves` |
-| Dismissed preview ignores mirroring until reopened | `test_quick_preview.py::test_columns_dismissed_preview_ignores_keyboard_mirroring_until_reopened`, `src/ui/preview/tests.rs::an_explicit_close_blocks_automatic_previews_until_reopened` |
-| Opening or reopening a folder by click focuses its column, for one or two clicks | `tests/e2e/scenarios/test_click_modes.py::test_double_click_leaves_the_folder_open_and_focused`, `test_clicking_an_open_folder_focuses_its_column`, `src/app/browser/tests/navigation.rs::activating_an_open_folder_focuses_its_column_without_closing_it` |
-| Deleting the focused entry mirrors what takes its place, for any input | `tests/e2e/scenarios/test_entry_management.py::test_trashing_an_open_folder_with_the_mouse_opens_the_folder_in_its_place` |
+| Folder hands the right pane to the child column, file takes it back | `tests/qa/scenarios/quick_preview/columns-keyboard-opens-preview.jsonl`, `preview-hides-on-folder.jsonl` |
+| Dismissed preview ignores mirroring until reopened | `src/ui/preview/tests.rs::an_explicit_close_blocks_automatic_previews_until_reopened` |
+| Opening or reopening a folder by click focuses its column, for one or two clicks | `tests/qa/scenarios/click_modes/clicking-open-folder-focuses-column.jsonl`, `src/app/browser/tests/navigation.rs::activating_an_open_folder_focuses_its_column_without_closing_it` |
+| Deleting the focused entry mirrors what takes its place, for any input | `tests/qa/scenarios/entry_management/trashing-open-folder-opens-next.jsonl` |
 | Reveals leave a viewport-filling column alone and fully reveal a clipped one that fits | `src/ui/browser/columns/tests.rs::reveal_column_does_not_move_an_already_visible_active_column`, `reveal_shows_a_fitting_column_whole_and_leaves_a_filling_one_alone` |
 | Pointer preview closes deeper columns first | `src/app/browser/tests/navigation.rs::previewing_a_file_in_a_parent_column_closes_deeper_columns_before_requesting` |
-| Automatic width, minimum, and session manual minimum | `test_quick_preview.py::test_column_preview_fills_free_space_and_keeps_a_dragged_session_minimum` |
-| A column boundary resizes the left column from either side, even when it is clipped | Manual check: the E2E scenario was removed in #1601 after keyboard-navigation timing flakes |
-| The column–preview boundary resizes the side it is grabbed from | `test_quick_preview.py::test_the_column_preview_boundary_resizes_the_side_it_is_grabbed_from` |
+| Automatic width, minimum, and session manual minimum | `tests/qa/scenarios/quick_preview/column-preview-fills-free-space.jsonl` |
+| A column boundary resizes the left column from either side, even when it is clipped | Manual check: the GUI scenario was removed in #1601 after keyboard-navigation timing flakes |
+| The column–preview boundary resizes the side it is grabbed from | `tests/qa/scenarios/quick_preview/preview-boundary-resizes-grabbed-side.jsonl` |
 | Dragged widths spread to the open columns when the drag ends; autofit is saved | `src/ui/browser/columns/tests.rs::a_finished_edge_drag_resizes_every_open_column`, `double_clicking_an_edge_autofits_the_column_and_saves_its_width` |
-| Drags, autofit, and restored widths stay within the visible browser area | `src/ui/chooser/tests/column_widths.rs::miller_autofit_saves_a_width_within_the_visible_browser_area`, `::miller_drag_cannot_exceed_the_visible_browser_area`, `tests/e2e/scenarios/test_view_switching.py::test_column_autofit_and_drag_stay_inside_the_browser_area`, `::test_an_oversized_saved_column_width_opens_inside_the_window` |
+| Drags, autofit, and restored widths stay within the visible browser area | `src/ui/chooser/tests/column_widths.rs::miller_autofit_saves_a_width_within_the_visible_browser_area`, `::miller_drag_cannot_exceed_the_visible_browser_area`, `tests/qa/scenarios/view_switching/column-autofit-stays-inside.jsonl` |
 | Columns open, swap, and close as described in Column motion | `src/ui/browser/columns/tests.rs::a_resize_during_a_column_entry_does_not_strand_its_animation`, `switching_to_a_sibling_closes_the_old_child_without_an_exit_animation`, `a_closing_column_leaves_after_its_animation_and_takes_no_input`, `close_column_skips_exit_animation_when_animations_disabled` |
 | Reopening during the drawer's slide out turns it back | `src/ui/preview/tests.rs::reopening_during_the_slide_out_turns_the_drawer_back` |
 | Only a shown preview offers its grip and divider | `src/ui/preview/tests.rs::only_a_docked_preview_offers_its_divider_for_resizing` |
-| Narrowing a filled preview outlines the minimum and keeps the panel | `test_quick_preview.py::test_dragging_a_filled_column_preview_narrower_outlines_the_new_minimum`, `src/ui/preview/tests.rs::keyboard_divider_moves_lower_the_columns_session_minimum_without_moving_the_panel` |
-| Reservation survives closing; Appearance releases it | `test_quick_preview.py::test_columns_preview_can_reopen_after_closing`, `tests/e2e/scenarios/test_preview_session.py::test_preview_mode_survives_unsupported_selections_and_matches_appearance` |
-| Narrow windows shrink then hide the preview | `test_quick_preview.py::test_narrow_window_prioritizes_the_last_column_and_restores_the_latest_preview` |
-| Peek strips reveal clipped columns | `test_preview_session.py::test_peek_click_reveals_a_column_without_activating_rows_or_toolbar_actions` |
-| Default overflow appearance | `tests/e2e/scenarios/test_visual_baselines.py::test_columns_overflow_baseline` |
-| Blank clicks and disabled controls in a showing preview keep the selection; the empty reserved slot clears; preview drags still marquee | `tests/e2e/scenarios/test_background_selection.py::test_preview_blank_click_keeps_the_selection_and_a_drag_still_selects`, `::test_disabled_transport_click_keeps_the_selection`, `::test_clicking_beside_the_last_column_clears_selection`, `src/ui/marquee/tests.rs::keeping_origins_clear_only_outside_the_content_they_show`, `::chrome_origin_click_policy_decides_when_a_plain_click_clears` |
+| Narrowing a filled preview outlines the minimum and keeps the panel | `src/ui/preview/tests.rs::keyboard_divider_moves_lower_the_columns_session_minimum_without_moving_the_panel` |
+| Reservation survives closing; Appearance releases it | `tests/qa/scenarios/quick_preview/columns-preview-reopens-after-closing.jsonl` |
+| Narrow windows shrink then hide the preview | `tests/qa/scenarios/quick_preview/narrow-window-keeps-last-column.jsonl` |
+| Peek strips reveal clipped columns | `tests/qa/scenarios/preview_session/peek-click-reveals-column.jsonl` |
+| Default overflow appearance | `tests/qa/scenarios/visual_baselines/columns-overflow-baseline.jsonl` |
+| Blank clicks and disabled controls in a showing preview keep the selection; the empty reserved slot clears; preview drags still marquee | `tests/qa/scenarios/background_selection/preview-blank-click-keeps-selection.jsonl`, `disabled-transport-click.jsonl`, `beside-last-column-clears.jsonl`, `src/ui/marquee/tests.rs::keeping_origins_clear_only_outside_the_content_they_show`, `::chrome_origin_click_policy_decides_when_a_plain_click_clears` |
 | Disabled controls are rejected like enabled ones on every chrome origin | `src/ui/marquee/tests.rs::disabled_controls_are_rejected_like_enabled_ones` |
 
 Scenarios that need several parent columns visible at once opt out of the
-reservation with the `unreserved_columns` fixture; see
-[E2E testing](e2e-testing.md).
+reservation by switching **Appearance → Preview panel** off through the UI in
+their first steps, without changing saved preferences; preview lifecycle
+scenarios and the default overflow baseline keep the reservation. See
+[testing](testing.md).
 
 ## Manual check
 

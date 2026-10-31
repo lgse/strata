@@ -130,10 +130,11 @@ fn letter_bookmarks_menu_does_not_reopen_after_cancel_or_replace_the_save_menu()
                 pump(20);
                 if replace_with_save {
                     wait_until(|| {
-                        fixture
-                            .shortcuts
-                            .chord_options()
-                            .is_some_and(|rows| rows.len() == 26)
+                        fixture.shortcuts.chord_options()
+                            == Some(vec![(
+                                "a\u{2013}z".to_owned(),
+                                "Save bookmark".to_owned(),
+                            )])
                     });
                     assert_eq!(
                         fixture.shortcuts.armed_chord(),

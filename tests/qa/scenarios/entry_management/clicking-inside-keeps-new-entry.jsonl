@@ -1,0 +1,22 @@
+{"scenario":"clicking-inside-keeps-new-entry","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"file","vars":{"kind":"file"}},{"id":"folder","vars":{"kind":"folder"}}],"cost":{"columns-file":1.1,"columns-folder":0.8},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Click inside the inline name field keeps the new entry and its exact padded name; pointer route only, setup shared with new-items-in-empty-directory"}}
+{"select":{"entry":"readme.md"},"variants":["folder"]}
+{"key":"ctrl+shift+n","variants":["folder"]}
+{"wait":{"field":{}},"message":"an editable field to take focus","variants":["folder"]}
+{"remember":{"field":true},"as":"field","variants":["folder"]}
+{"select":{"entry":"readme.md"},"variants":["file"]}
+{"click":{"background":true},"button":3,"variants":["file"]}
+{"wait":{"present":{"menu_item":"New File"}},"message":"the menu item 'New File'","variants":["file"]}
+{"settle":{"menu_item":"New File"},"variants":["file"]}
+{"click":{"menu_item":"New File"},"variants":["file"]}
+{"wait":{"menu_items":null},"message":"the menu to close","variants":["file"]}
+{"wait":{"field":{}},"message":"an editable field to take focus","variants":["file"]}
+{"remember":{"field":true},"as":"field","variants":["file"]}
+{"wait":{"field":{"of":"field","text":{"starts_with":"new file"}}},"message":"the created file's editor","variants":["file"]}
+{"type":" padded "}
+{"wait":{"field":{"of":"field","text":" padded "}},"message":"the name to appear"}
+{"click":{"field":"field"}}
+{"key":"Return"}
+{"fs":{"path":" padded ","exists":true},"message":"the exact name on disk"}
+{"fs":{"path":" padded ","is":"dir"},"timeout_ms":0,"variants":["folder"]}
+{"fs":{"path":" padded ","is":"file"},"timeout_ms":0,"variants":["file"]}
+{"wait":{"editable_fields":0},"message":"the submitted prompt to close"}

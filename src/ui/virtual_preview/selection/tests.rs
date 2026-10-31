@@ -7,7 +7,7 @@ fn units(text: &[&str]) -> Vec<PreviewUnit> {
     text.iter()
         .map(|text| {
             PreviewUnit::Source(SourceUnit {
-                display: (*text).into(),
+                display_end: text.len(),
                 source: (*text).into(),
                 first_line: 1,
                 line_count: 1,

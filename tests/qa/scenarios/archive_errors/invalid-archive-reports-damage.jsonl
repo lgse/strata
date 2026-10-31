@@ -1,0 +1,182 @@
+{"scenario":"invalid-archive-reports-damage","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"fake.zip","vars":{"name":"fake.zip"}},{"id":"fake.7z","vars":{"name":"fake.7z"}},{"id":"fake.tar","vars":{"name":"fake.tar"}},{"id":"fake.tar.gz","vars":{"name":"fake.tar.gz"}},{"id":"fake.rar","vars":{"name":"fake.rar"}},{"id":"scatter.zip","vars":{"name":"scatter.zip"}},{"id":"trailer.tar.gz","vars":{"name":"trailer.tar.gz"}}],"cost":{"columns-fake.zip":1.4,"columns-fake.7z":1.4,"columns-fake.tar":1.3,"columns-fake.tar.gz":1.4,"columns-fake.rar":1.4,"columns-scatter.zip":1.4,"columns-trailer.tar.gz":1.4},"quality":{"impact":4,"coverage":4,"criticality":4,"diagnostic":3,"score":52,"note":"Extract on invalid or damaged archives shows the error, keeps the original and leaves no staging debris; only QA check of the damage dialog, core logic unit-tested"}}
+{"fs":{"path":"fake.zip","write":"This is harmless text, not an archive.\n"},"variants":["fake.zip"]}
+{"fs":{"path":"fake.zip","keep_bytes":"original"},"variants":["fake.zip"]}
+{"fs":{"path":"valid.zip","zip":[["extracted.txt","harmless contents"]]},"variants":["fake.zip"]}
+{"key":"ctrl+r","variants":["fake.zip"]}
+{"click":{"entry":"fake.zip"},"button":3,"variants":["fake.zip"]}
+{"wait":{"present":{"menu_item":"Extract here"}},"message":"the menu item 'Extract here'","variants":["fake.zip"]}
+{"settle":{"menu_item":"Extract here"},"variants":["fake.zip"]}
+{"click":{"menu_item":"Extract here"},"variants":["fake.zip"]}
+{"wait":{"menu_items":null},"message":"the menu to close","variants":["fake.zip"]}
+{"wait":{"dialog":"Unable to complete operation"},"message":"the archive error dialog to replace the progress dialog","variants":["fake.zip"]}
+{"wait":{"present":{"role":"label","within":{"dialog":true},"name_matches":"^This\\s+file\\s+is\\s+not\\s+a\\s+valid\\s+archive\\s+or\\s+is\\s+damaged\\.$"}},"message":"QA-only: the error detail beside the dialog's title","variants":["fake.zip"]}
+{"expect":{"present":{"role":"label","within":{"dialog":true},"name_matches":"^This\\s+file\\s+is\\s+not\\s+a\\s+valid\\s+archive\\s+or\\s+is\\s+damaged\\.$"}},"variants":["fake.zip"]}
+{"expect":{"absent":{"role":"progress bar"}},"variants":["fake.zip"]}
+{"fs":{"path":"fake.zip","bytes_of":"original"},"timeout_ms":0,"variants":["fake.zip"]}
+{"fs":{"path":".","glob_none":".strata-extraction-*"},"timeout_ms":0,"variants":["fake.zip"]}
+{"click":{"dialog_button":"Close"},"variants":["fake.zip"]}
+{"wait":{"dialog":null},"message":"error dismissal","variants":["fake.zip"]}
+{"click":{"entry":"valid.zip"},"button":3,"variants":["fake.zip"]}
+{"wait":{"present":{"menu_item":"Extract here"}},"message":"the menu item 'Extract here'","variants":["fake.zip"]}
+{"settle":{"menu_item":"Extract here"},"variants":["fake.zip"]}
+{"click":{"menu_item":"Extract here"},"variants":["fake.zip"]}
+{"wait":{"menu_items":null},"message":"the menu to close","variants":["fake.zip"]}
+{"fs":{"path":"extracted.txt","exists":true},"message":"valid archive extraction","variants":["fake.zip"]}
+{"fs":{"path":"extracted.txt","text":"harmless contents"},"timeout_ms":0,"variants":["fake.zip"]}
+{"wait":{"dialog":null},"message":"extraction progress dismissal","variants":["fake.zip"]}
+{"fs":{"path":"fake.7z","write":"This is harmless text, not an archive.\n"},"variants":["fake.7z"]}
+{"fs":{"path":"fake.7z","keep_bytes":"original"},"variants":["fake.7z"]}
+{"fs":{"path":"valid.zip","zip":[["extracted.txt","harmless contents"]]},"variants":["fake.7z"]}
+{"key":"ctrl+r","variants":["fake.7z"]}
+{"click":{"entry":"fake.7z"},"button":3,"variants":["fake.7z"]}
+{"wait":{"present":{"menu_item":"Extract here"}},"message":"the menu item 'Extract here'","variants":["fake.7z"]}
+{"settle":{"menu_item":"Extract here"},"variants":["fake.7z"]}
+{"click":{"menu_item":"Extract here"},"variants":["fake.7z"]}
+{"wait":{"menu_items":null},"message":"the menu to close","variants":["fake.7z"]}
+{"wait":{"dialog":"Unable to complete operation"},"message":"the archive error dialog to replace the progress dialog","variants":["fake.7z"]}
+{"wait":{"present":{"role":"label","within":{"dialog":true},"name_matches":"^This\\s+file\\s+is\\s+not\\s+a\\s+valid\\s+archive\\s+or\\s+is\\s+damaged\\.$"}},"message":"QA-only: the error detail beside the dialog's title","variants":["fake.7z"]}
+{"expect":{"present":{"role":"label","within":{"dialog":true},"name_matches":"^This\\s+file\\s+is\\s+not\\s+a\\s+valid\\s+archive\\s+or\\s+is\\s+damaged\\.$"}},"variants":["fake.7z"]}
+{"expect":{"absent":{"role":"progress bar"}},"variants":["fake.7z"]}
+{"fs":{"path":"fake.7z","bytes_of":"original"},"timeout_ms":0,"variants":["fake.7z"]}
+{"fs":{"path":".","glob_none":".strata-extraction-*"},"timeout_ms":0,"variants":["fake.7z"]}
+{"click":{"dialog_button":"Close"},"variants":["fake.7z"]}
+{"wait":{"dialog":null},"message":"error dismissal","variants":["fake.7z"]}
+{"click":{"entry":"valid.zip"},"button":3,"variants":["fake.7z"]}
+{"wait":{"present":{"menu_item":"Extract here"}},"message":"the menu item 'Extract here'","variants":["fake.7z"]}
+{"settle":{"menu_item":"Extract here"},"variants":["fake.7z"]}
+{"click":{"menu_item":"Extract here"},"variants":["fake.7z"]}
+{"wait":{"menu_items":null},"message":"the menu to close","variants":["fake.7z"]}
+{"fs":{"path":"extracted.txt","exists":true},"message":"valid archive extraction","variants":["fake.7z"]}
+{"fs":{"path":"extracted.txt","text":"harmless contents"},"timeout_ms":0,"variants":["fake.7z"]}
+{"wait":{"dialog":null},"message":"extraction progress dismissal","variants":["fake.7z"]}
+{"fs":{"path":"fake.tar","write":"This is harmless text, not an archive.\n"},"variants":["fake.tar"]}
+{"fs":{"path":"fake.tar","keep_bytes":"original"},"variants":["fake.tar"]}
+{"fs":{"path":"valid.zip","zip":[["extracted.txt","harmless contents"]]},"variants":["fake.tar"]}
+{"key":"ctrl+r","variants":["fake.tar"]}
+{"click":{"entry":"fake.tar"},"button":3,"variants":["fake.tar"]}
+{"wait":{"present":{"menu_item":"Extract here"}},"message":"the menu item 'Extract here'","variants":["fake.tar"]}
+{"settle":{"menu_item":"Extract here"},"variants":["fake.tar"]}
+{"click":{"menu_item":"Extract here"},"variants":["fake.tar"]}
+{"wait":{"menu_items":null},"message":"the menu to close","variants":["fake.tar"]}
+{"wait":{"dialog":"Unable to complete operation"},"message":"the archive error dialog to replace the progress dialog","variants":["fake.tar"]}
+{"wait":{"present":{"role":"label","within":{"dialog":true},"name_matches":"^This\\s+file\\s+is\\s+not\\s+a\\s+valid\\s+archive\\s+or\\s+is\\s+damaged\\.$"}},"message":"QA-only: the error detail beside the dialog's title","variants":["fake.tar"]}
+{"expect":{"present":{"role":"label","within":{"dialog":true},"name_matches":"^This\\s+file\\s+is\\s+not\\s+a\\s+valid\\s+archive\\s+or\\s+is\\s+damaged\\.$"}},"variants":["fake.tar"]}
+{"expect":{"absent":{"role":"progress bar"}},"variants":["fake.tar"]}
+{"fs":{"path":"fake.tar","bytes_of":"original"},"timeout_ms":0,"variants":["fake.tar"]}
+{"fs":{"path":".","glob_none":".strata-extraction-*"},"timeout_ms":0,"variants":["fake.tar"]}
+{"click":{"dialog_button":"Close"},"variants":["fake.tar"]}
+{"wait":{"dialog":null},"message":"error dismissal","variants":["fake.tar"]}
+{"click":{"entry":"valid.zip"},"button":3,"variants":["fake.tar"]}
+{"wait":{"present":{"menu_item":"Extract here"}},"message":"the menu item 'Extract here'","variants":["fake.tar"]}
+{"settle":{"menu_item":"Extract here"},"variants":["fake.tar"]}
+{"click":{"menu_item":"Extract here"},"variants":["fake.tar"]}
+{"wait":{"menu_items":null},"message":"the menu to close","variants":["fake.tar"]}
+{"fs":{"path":"extracted.txt","exists":true},"message":"valid archive extraction","variants":["fake.tar"]}
+{"fs":{"path":"extracted.txt","text":"harmless contents"},"timeout_ms":0,"variants":["fake.tar"]}
+{"wait":{"dialog":null},"message":"extraction progress dismissal","variants":["fake.tar"]}
+{"fs":{"path":"fake.tar.gz","write":"This is harmless text, not an archive.\n"},"variants":["fake.tar.gz"]}
+{"fs":{"path":"fake.tar.gz","keep_bytes":"original"},"variants":["fake.tar.gz"]}
+{"fs":{"path":"valid.zip","zip":[["extracted.txt","harmless contents"]]},"variants":["fake.tar.gz"]}
+{"key":"ctrl+r","variants":["fake.tar.gz"]}
+{"click":{"entry":"fake.tar.gz"},"button":3,"variants":["fake.tar.gz"]}
+{"wait":{"present":{"menu_item":"Extract here"}},"message":"the menu item 'Extract here'","variants":["fake.tar.gz"]}
+{"settle":{"menu_item":"Extract here"},"variants":["fake.tar.gz"]}
+{"click":{"menu_item":"Extract here"},"variants":["fake.tar.gz"]}
+{"wait":{"menu_items":null},"message":"the menu to close","variants":["fake.tar.gz"]}
+{"wait":{"dialog":"Unable to complete operation"},"message":"the archive error dialog to replace the progress dialog","variants":["fake.tar.gz"]}
+{"wait":{"present":{"role":"label","within":{"dialog":true},"name_matches":"^This\\s+file\\s+is\\s+not\\s+a\\s+valid\\s+archive\\s+or\\s+is\\s+damaged\\.$"}},"message":"QA-only: the error detail beside the dialog's title","variants":["fake.tar.gz"]}
+{"expect":{"present":{"role":"label","within":{"dialog":true},"name_matches":"^This\\s+file\\s+is\\s+not\\s+a\\s+valid\\s+archive\\s+or\\s+is\\s+damaged\\.$"}},"variants":["fake.tar.gz"]}
+{"expect":{"absent":{"role":"progress bar"}},"variants":["fake.tar.gz"]}
+{"fs":{"path":"fake.tar.gz","bytes_of":"original"},"timeout_ms":0,"variants":["fake.tar.gz"]}
+{"fs":{"path":".","glob_none":".strata-extraction-*"},"timeout_ms":0,"variants":["fake.tar.gz"]}
+{"click":{"dialog_button":"Close"},"variants":["fake.tar.gz"]}
+{"wait":{"dialog":null},"message":"error dismissal","variants":["fake.tar.gz"]}
+{"click":{"entry":"valid.zip"},"button":3,"variants":["fake.tar.gz"]}
+{"wait":{"present":{"menu_item":"Extract here"}},"message":"the menu item 'Extract here'","variants":["fake.tar.gz"]}
+{"settle":{"menu_item":"Extract here"},"variants":["fake.tar.gz"]}
+{"click":{"menu_item":"Extract here"},"variants":["fake.tar.gz"]}
+{"wait":{"menu_items":null},"message":"the menu to close","variants":["fake.tar.gz"]}
+{"fs":{"path":"extracted.txt","exists":true},"message":"valid archive extraction","variants":["fake.tar.gz"]}
+{"fs":{"path":"extracted.txt","text":"harmless contents"},"timeout_ms":0,"variants":["fake.tar.gz"]}
+{"wait":{"dialog":null},"message":"extraction progress dismissal","variants":["fake.tar.gz"]}
+{"fs":{"path":"fake.rar","write":"This is harmless text, not an archive.\n"},"variants":["fake.rar"]}
+{"fs":{"path":"fake.rar","keep_bytes":"original"},"variants":["fake.rar"]}
+{"fs":{"path":"valid.zip","zip":[["extracted.txt","harmless contents"]]},"variants":["fake.rar"]}
+{"key":"ctrl+r","variants":["fake.rar"]}
+{"click":{"entry":"fake.rar"},"button":3,"variants":["fake.rar"]}
+{"wait":{"present":{"menu_item":"Extract here"}},"message":"the menu item 'Extract here'","variants":["fake.rar"]}
+{"settle":{"menu_item":"Extract here"},"variants":["fake.rar"]}
+{"click":{"menu_item":"Extract here"},"variants":["fake.rar"]}
+{"wait":{"menu_items":null},"message":"the menu to close","variants":["fake.rar"]}
+{"wait":{"dialog":"Unable to complete operation"},"message":"the archive error dialog to replace the progress dialog","variants":["fake.rar"]}
+{"wait":{"present":{"role":"label","within":{"dialog":true},"name_matches":"^This\\s+file\\s+is\\s+not\\s+a\\s+valid\\s+archive\\s+or\\s+is\\s+damaged\\.$"}},"message":"QA-only: the error detail beside the dialog's title","variants":["fake.rar"]}
+{"expect":{"present":{"role":"label","within":{"dialog":true},"name_matches":"^This\\s+file\\s+is\\s+not\\s+a\\s+valid\\s+archive\\s+or\\s+is\\s+damaged\\.$"}},"variants":["fake.rar"]}
+{"expect":{"absent":{"role":"progress bar"}},"variants":["fake.rar"]}
+{"fs":{"path":"fake.rar","bytes_of":"original"},"timeout_ms":0,"variants":["fake.rar"]}
+{"fs":{"path":".","glob_none":".strata-extraction-*"},"timeout_ms":0,"variants":["fake.rar"]}
+{"click":{"dialog_button":"Close"},"variants":["fake.rar"]}
+{"wait":{"dialog":null},"message":"error dismissal","variants":["fake.rar"]}
+{"click":{"entry":"valid.zip"},"button":3,"variants":["fake.rar"]}
+{"wait":{"present":{"menu_item":"Extract here"}},"message":"the menu item 'Extract here'","variants":["fake.rar"]}
+{"settle":{"menu_item":"Extract here"},"variants":["fake.rar"]}
+{"click":{"menu_item":"Extract here"},"variants":["fake.rar"]}
+{"wait":{"menu_items":null},"message":"the menu to close","variants":["fake.rar"]}
+{"fs":{"path":"extracted.txt","exists":true},"message":"valid archive extraction","variants":["fake.rar"]}
+{"fs":{"path":"extracted.txt","text":"harmless contents"},"timeout_ms":0,"variants":["fake.rar"]}
+{"wait":{"dialog":null},"message":"extraction progress dismissal","variants":["fake.rar"]}
+{"fs":{"path":"scatter.zip","zip":[["ok.txt","ok"],["second.txt","2"],["/etc/evil.txt",{"text":"evil","date_time":[1980,1,1,0,0,0],"mode":"0"}]]},"variants":["scatter.zip"]}
+{"fs":{"path":"scatter.zip","keep_bytes":"original"},"variants":["scatter.zip"]}
+{"fs":{"path":"valid.zip","zip":[["extracted.txt","harmless contents"]]},"variants":["scatter.zip"]}
+{"key":"ctrl+r","variants":["scatter.zip"]}
+{"click":{"entry":"scatter.zip"},"button":3,"variants":["scatter.zip"]}
+{"wait":{"present":{"menu_item":"Extract here"}},"message":"the menu item 'Extract here'","variants":["scatter.zip"]}
+{"settle":{"menu_item":"Extract here"},"variants":["scatter.zip"]}
+{"click":{"menu_item":"Extract here"},"variants":["scatter.zip"]}
+{"wait":{"menu_items":null},"message":"the menu to close","variants":["scatter.zip"]}
+{"wait":{"dialog":"Unable to complete operation"},"message":"the archive error dialog to replace the progress dialog","variants":["scatter.zip"]}
+{"wait":{"present":{"role":"label","within":{"dialog":true},"name_matches":"^Refusing\\s+unsafe\\s+archive\\s+path:\\s+/etc/evil\\.txt\\.\\s+Extracted\\s+entries\\s+remain\\s+in\\s+“scatter”\\.$"}},"message":"QA-only: the error detail beside the dialog's title","variants":["scatter.zip"]}
+{"expect":{"present":{"role":"label","within":{"dialog":true},"name_matches":"^Refusing\\s+unsafe\\s+archive\\s+path:\\s+/etc/evil\\.txt\\.\\s+Extracted\\s+entries\\s+remain\\s+in\\s+“scatter”\\.$"}},"variants":["scatter.zip"]}
+{"expect":{"absent":{"role":"progress bar"}},"variants":["scatter.zip"]}
+{"fs":{"path":"scatter.zip","bytes_of":"original"},"timeout_ms":0,"variants":["scatter.zip"]}
+{"fs":{"path":"scatter/ok.txt","is":"file"},"timeout_ms":0,"variants":["scatter.zip"]}
+{"fs":{"path":"ok.txt","exists":false},"timeout_ms":0,"variants":["scatter.zip"]}
+{"fs":{"path":"scatter/second.txt","is":"file"},"timeout_ms":0,"variants":["scatter.zip"]}
+{"fs":{"path":"second.txt","exists":false},"timeout_ms":0,"variants":["scatter.zip"]}
+{"fs":{"path":".","glob_none":".strata-extraction-*"},"timeout_ms":0,"variants":["scatter.zip"]}
+{"click":{"dialog_button":"Close"},"variants":["scatter.zip"]}
+{"wait":{"dialog":null},"message":"error dismissal","variants":["scatter.zip"]}
+{"click":{"entry":"valid.zip"},"button":3,"variants":["scatter.zip"]}
+{"wait":{"present":{"menu_item":"Extract here"}},"message":"the menu item 'Extract here'","variants":["scatter.zip"]}
+{"settle":{"menu_item":"Extract here"},"variants":["scatter.zip"]}
+{"click":{"menu_item":"Extract here"},"variants":["scatter.zip"]}
+{"wait":{"menu_items":null},"message":"the menu to close","variants":["scatter.zip"]}
+{"fs":{"path":"extracted.txt","exists":true},"message":"valid archive extraction","variants":["scatter.zip"]}
+{"fs":{"path":"extracted.txt","text":"harmless contents"},"timeout_ms":0,"variants":["scatter.zip"]}
+{"wait":{"dialog":null},"message":"extraction progress dismissal","variants":["scatter.zip"]}
+{"fs":{"path":"trailer.tar.gz","tar_gz":{"mode":"644","mtime":0,"members":[["a.txt",{"repeat":"x","count":50000}]],"flip_from_end":8}},"variants":["trailer.tar.gz"]}
+{"fs":{"path":"trailer.tar.gz","keep_bytes":"original"},"variants":["trailer.tar.gz"]}
+{"fs":{"path":"valid.zip","zip":[["extracted.txt","harmless contents"]]},"variants":["trailer.tar.gz"]}
+{"key":"ctrl+r","variants":["trailer.tar.gz"]}
+{"click":{"entry":"trailer.tar.gz"},"button":3,"variants":["trailer.tar.gz"]}
+{"wait":{"present":{"menu_item":"Extract here"}},"message":"the menu item 'Extract here'","variants":["trailer.tar.gz"]}
+{"settle":{"menu_item":"Extract here"},"variants":["trailer.tar.gz"]}
+{"click":{"menu_item":"Extract here"},"variants":["trailer.tar.gz"]}
+{"wait":{"menu_items":null},"message":"the menu to close","variants":["trailer.tar.gz"]}
+{"wait":{"dialog":"Unable to complete operation"},"message":"the archive error dialog to replace the progress dialog","variants":["trailer.tar.gz"]}
+{"wait":{"present":{"role":"label","within":{"dialog":true},"name_matches":"^This\\s+file\\s+is\\s+not\\s+a\\s+valid\\s+archive\\s+or\\s+is\\s+damaged\\.\\s+Extracted\\s+entries\\s+remain\\s+in\\s+“trailer”\\.$"}},"message":"QA-only: the error detail beside the dialog's title","variants":["trailer.tar.gz"]}
+{"expect":{"present":{"role":"label","within":{"dialog":true},"name_matches":"^This\\s+file\\s+is\\s+not\\s+a\\s+valid\\s+archive\\s+or\\s+is\\s+damaged\\.\\s+Extracted\\s+entries\\s+remain\\s+in\\s+“trailer”\\.$"}},"variants":["trailer.tar.gz"]}
+{"expect":{"absent":{"role":"progress bar"}},"variants":["trailer.tar.gz"]}
+{"fs":{"path":"trailer.tar.gz","bytes_of":"original"},"timeout_ms":0,"variants":["trailer.tar.gz"]}
+{"fs":{"path":"trailer/a.txt","is":"file"},"timeout_ms":0,"variants":["trailer.tar.gz"]}
+{"fs":{"path":"a.txt","exists":false},"timeout_ms":0,"variants":["trailer.tar.gz"]}
+{"fs":{"path":".","glob_none":".strata-extraction-*"},"timeout_ms":0,"variants":["trailer.tar.gz"]}
+{"click":{"dialog_button":"Close"},"variants":["trailer.tar.gz"]}
+{"wait":{"dialog":null},"message":"error dismissal","variants":["trailer.tar.gz"]}
+{"click":{"entry":"valid.zip"},"button":3,"variants":["trailer.tar.gz"]}
+{"wait":{"present":{"menu_item":"Extract here"}},"message":"the menu item 'Extract here'","variants":["trailer.tar.gz"]}
+{"settle":{"menu_item":"Extract here"},"variants":["trailer.tar.gz"]}
+{"click":{"menu_item":"Extract here"},"variants":["trailer.tar.gz"]}
+{"wait":{"menu_items":null},"message":"the menu to close","variants":["trailer.tar.gz"]}
+{"fs":{"path":"extracted.txt","exists":true},"message":"valid archive extraction","variants":["trailer.tar.gz"]}
+{"fs":{"path":"extracted.txt","text":"harmless contents"},"timeout_ms":0,"variants":["trailer.tar.gz"]}
+{"wait":{"dialog":null},"message":"extraction progress dismissal","variants":["trailer.tar.gz"]}

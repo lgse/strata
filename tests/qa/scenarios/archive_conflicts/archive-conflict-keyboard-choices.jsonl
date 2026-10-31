@@ -1,0 +1,41 @@
+{"scenario":"archive-conflict-keyboard-choices","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"setup":[{"fs":{"path":"archive.zip","write":"original archive"}},{"fs":{"path":"archive (1).zip","write":"previous archive"}}],"variants":[{"id":"cancel","vars":{"choice":"Cancel"}},{"id":"escape","vars":{"choice":"Escape"}},{"id":"replace","vars":{"choice":"Replace"}}],"cost":{"columns-cancel":1.7,"columns-escape":1.6,"columns-replace":1.6},"quality":{"impact":5,"coverage":4,"criticality":4,"diagnostic":3,"score":59,"note":"Compress name collision dismissed by keyboard Cancel/Escape or Replace with undo; copy-paste equivalents are test_copy_conflicts; Keep Both is keep-both-numbered-archives"}}
+{"fs":{"path":"$data/Trash/files","mkdir":true,"parents":true},"variants":["replace"]}
+{"fs":{"path":"$data/Trash/files/older-archive.zip","write":"older trashed archive"},"variants":["replace"]}
+{"fs":{"path":"$data/Trash/info","mkdir":true,"parents":true},"variants":["replace"]}
+{"fs":{"path":"$data/Trash/info/older-archive.zip.trashinfo","write":"[Trash Info]\nPath=$fixture_quoted/archive.zip\nDeletionDate=2026-01-01T00:00:00\n"},"variants":["replace"]}
+{"select":{"entry":"todo.txt"}}
+{"click":{"entry":"todo.txt"},"button":3}
+{"wait":{"menu_items":{}},"message":"the context menu for 'todo.txt'"}
+{"wait":{"present":{"menu_item":"Compress…"}},"message":"the menu item 'Compress…'"}
+{"settle":{"menu_item":"Compress…"}}
+{"click":{"menu_item":"Compress…"}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"remember":{"field":true},"as":"field"}
+{"key":"ctrl+a"}
+{"type":"archive"}
+{"wait":{"field":{"of":"field","text":"archive"}},"message":"archive name input"}
+{"click":{"role":"toggle button","name":"ZIP","within":{"dialog":true}}}
+{"wait":{"state":{"target":{"role":"toggle button","name":"ZIP","within":{"dialog":true}},"pressed":true}},"message":"selected archive format"}
+{"activate":{"dialog_button":"Compress"}}
+{"wait":{"dialog":"File already exists"},"message":"archive collision prompt"}
+{"wait":{"state":{"target":{"dialog_button":"Replace"},"focused":true}},"message":"initial Replace focus"}
+{"key":"Escape","variants":["escape"]}
+{"key":"shift+Tab","variants":["cancel"]}
+{"key":"shift+Tab","variants":["cancel"]}
+{"wait":{"state":{"target":{"dialog_button":"Cancel"},"focused":true}},"message":"Cancel focus","variants":["cancel"]}
+{"key":"Return","variants":["cancel","replace"]}
+{"wait":{"dialog":null},"message":"conflict dismissal"}
+{"wait":{"focused":"todo.txt"},"message":"keyboard focus to reach 'todo.txt'","variants":["cancel","escape"]}
+{"fs":{"path":"archive (1).zip","text":"previous archive"},"timeout_ms":0}
+{"fs":{"path":"archive (2).zip","exists":false},"timeout_ms":0}
+{"fs":{"path":"archive.zip","is_zip":true},"message":"replacement archive publication","variants":["replace"]}
+{"fs":{"path":"archive.zip","zip_members":[["todo.txt","todo.txt"]]},"timeout_ms":0,"variants":["replace"]}
+{"wait":{"dialog":null},"message":"archive progress dismissal","variants":["replace"]}
+{"fs":{"path":"$data/Trash/info","replace_lines":{"suffix":".trashinfo","prefix":"DeletionDate=","with":"DeletionDate=2026-01-01T00:00:00"}},"variants":["replace"]}
+{"key":"ctrl+z","variants":["replace"]}
+{"fs":{"path":"archive.zip","text":"original archive"},"message":"compression undo to restore the replaced archive","variants":["replace"]}
+{"fs":{"path":"archive (1).zip","text":"previous archive"},"timeout_ms":0,"variants":["replace"]}
+{"fs":{"path":"$data/Trash/files/older-archive.zip","text":"older trashed archive"},"timeout_ms":0,"variants":["replace"]}
+{"fs":{"path":"archive.zip","text":"original archive"},"timeout_ms":0,"variants":["cancel","escape"]}

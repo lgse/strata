@@ -1,0 +1,133 @@
+{"scenario":"distant-archive-scrolled-into-view","modes":["columns","icons","list"],"layout":"us","mutation":null,"known_bug":null,"tree":{"nested":{"{000..199}.txt":"{}\n"},"a":{"b":{"c":{"d":{"{000..199}.txt":"{}\n"}}}},"{000..199}.txt":"{}\n"},"cost":{"columns":0.9,"icons":1.0,"list":1.0},"quality":{"impact":2,"coverage":4,"criticality":4,"diagnostic":3,"score":38,"note":"Off-screen new archive scrolled into view in all three modes; compressed-archive-revealed only covers the on-screen case"}}
+{"wait":{"view_mode":"Columns"},"message":"the browser to switch to the Columns view","modes":["columns"]}
+{"click":{"entry":"005.txt"},"button":3,"modes":["columns"]}
+{"wait":{"menu_items":{}},"message":"the context menu for '005.txt'","modes":["columns"]}
+{"wait":{"present":{"menu_item":"Compress…"}},"message":"the menu item 'Compress…'","modes":["columns"]}
+{"activate":{"role":"menu item","name":"Compress…"},"modes":["columns"]}
+{"wait":{"menu_items":null},"message":"the menu to close","modes":["columns"]}
+{"flag":{"field":{}},"timeout_ms":5000,"as":"field1","modes":["columns"]}
+{"remember":{"field":true},"as":"field","if":"field1","modes":["columns"]}
+{"key":"ctrl+a","if":"field1","modes":["columns"]}
+{"type":"zzz","if":"field1","modes":["columns"]}
+{"wait":{"field":{"of":"field","text":"zzz"}},"message":"'zzz' to reach the name field","if":"field1","modes":["columns"]}
+{"key":"Return","if":"field1","modes":["columns"]}
+{"wait":{"dialog":null},"message":"the dialog to close","if":"field1","modes":["columns"]}
+{"fs":{"path":"zzz.zip","exists":true},"message":"the archive to be created","if":"field1","modes":["columns"]}
+{"click":{"entry":"005.txt"},"button":3,"unless":["field1"],"modes":["columns"]}
+{"wait":{"menu_items":{}},"message":"the context menu for '005.txt'","unless":["field1"],"modes":["columns"]}
+{"wait":{"present":{"menu_item":"Compress…"}},"message":"the menu item 'Compress…'","unless":["field1"],"modes":["columns"]}
+{"activate":{"role":"menu item","name":"Compress…"},"unless":["field1"],"modes":["columns"]}
+{"wait":{"menu_items":null},"message":"the menu to close","unless":["field1"],"modes":["columns"]}
+{"flag":{"field":{}},"timeout_ms":5000,"as":"field2","unless":["field1"],"modes":["columns"]}
+{"remember":{"field":true},"as":"field","if":"field2","modes":["columns"]}
+{"key":"ctrl+a","if":"field2","modes":["columns"]}
+{"type":"zzz","if":"field2","modes":["columns"]}
+{"wait":{"field":{"of":"field","text":"zzz"}},"message":"'zzz' to reach the name field","if":"field2","modes":["columns"]}
+{"key":"Return","if":"field2","modes":["columns"]}
+{"wait":{"dialog":null},"message":"the dialog to close","if":"field2","modes":["columns"]}
+{"fs":{"path":"zzz.zip","exists":true},"message":"the archive to be created","if":"field2","modes":["columns"]}
+{"click":{"entry":"005.txt"},"button":3,"unless":["field1","field2"],"modes":["columns"]}
+{"wait":{"menu_items":{}},"message":"the context menu for '005.txt'","unless":["field1","field2"],"modes":["columns"]}
+{"wait":{"present":{"menu_item":"Compress…"}},"message":"the menu item 'Compress…'","unless":["field1","field2"],"modes":["columns"]}
+{"activate":{"role":"menu item","name":"Compress…"},"unless":["field1","field2"],"modes":["columns"]}
+{"wait":{"menu_items":null},"message":"the menu to close","unless":["field1","field2"],"modes":["columns"]}
+{"flag":{"field":{}},"timeout_ms":5000,"as":"field3","unless":["field1","field2"],"modes":["columns"]}
+{"remember":{"field":true},"as":"field","if":"field3","modes":["columns"]}
+{"key":"ctrl+a","if":"field3","modes":["columns"]}
+{"type":"zzz","if":"field3","modes":["columns"]}
+{"wait":{"field":{"of":"field","text":"zzz"}},"message":"'zzz' to reach the name field","if":"field3","modes":["columns"]}
+{"key":"Return","if":"field3","modes":["columns"]}
+{"wait":{"dialog":null},"message":"the dialog to close","if":"field3","modes":["columns"]}
+{"fs":{"path":"zzz.zip","exists":true},"message":"the archive to be created","if":"field3","modes":["columns"]}
+{"fail":"the compress dialog never accepted the archive name","unless":["field1","field2","field3"],"modes":["columns"]}
+{"wait":{"selected":["zzz.zip"]},"message":"the selection to become ['zzz.zip']","modes":["columns"]}
+{"wait":{"entry":"zzz.zip"},"message":"the entry 'zzz.zip' to appear","modes":["columns"]}
+{"wait":{"on_screen":{"entry":"zzz.zip"}},"message":"the distant archive to be on screen","modes":["columns"]}
+{"wait":{"view_mode":"Icons"},"message":"the browser to switch to the Icons view","modes":["icons"]}
+{"click":{"entry":"005.txt"},"button":3,"modes":["icons"]}
+{"wait":{"menu_items":{}},"message":"the context menu for '005.txt'","modes":["icons"]}
+{"wait":{"present":{"menu_item":"Compress…"}},"message":"the menu item 'Compress…'","modes":["icons"]}
+{"activate":{"role":"menu item","name":"Compress…"},"modes":["icons"]}
+{"wait":{"menu_items":null},"message":"the menu to close","modes":["icons"]}
+{"flag":{"field":{}},"timeout_ms":5000,"as":"field1","modes":["icons"]}
+{"remember":{"field":true},"as":"field","if":"field1","modes":["icons"]}
+{"key":"ctrl+a","if":"field1","modes":["icons"]}
+{"type":"zzz","if":"field1","modes":["icons"]}
+{"wait":{"field":{"of":"field","text":"zzz"}},"message":"'zzz' to reach the name field","if":"field1","modes":["icons"]}
+{"key":"Return","if":"field1","modes":["icons"]}
+{"wait":{"dialog":null},"message":"the dialog to close","if":"field1","modes":["icons"]}
+{"fs":{"path":"zzz.zip","exists":true},"message":"the archive to be created","if":"field1","modes":["icons"]}
+{"click":{"entry":"005.txt"},"button":3,"unless":["field1"],"modes":["icons"]}
+{"wait":{"menu_items":{}},"message":"the context menu for '005.txt'","unless":["field1"],"modes":["icons"]}
+{"wait":{"present":{"menu_item":"Compress…"}},"message":"the menu item 'Compress…'","unless":["field1"],"modes":["icons"]}
+{"activate":{"role":"menu item","name":"Compress…"},"unless":["field1"],"modes":["icons"]}
+{"wait":{"menu_items":null},"message":"the menu to close","unless":["field1"],"modes":["icons"]}
+{"flag":{"field":{}},"timeout_ms":5000,"as":"field2","unless":["field1"],"modes":["icons"]}
+{"remember":{"field":true},"as":"field","if":"field2","modes":["icons"]}
+{"key":"ctrl+a","if":"field2","modes":["icons"]}
+{"type":"zzz","if":"field2","modes":["icons"]}
+{"wait":{"field":{"of":"field","text":"zzz"}},"message":"'zzz' to reach the name field","if":"field2","modes":["icons"]}
+{"key":"Return","if":"field2","modes":["icons"]}
+{"wait":{"dialog":null},"message":"the dialog to close","if":"field2","modes":["icons"]}
+{"fs":{"path":"zzz.zip","exists":true},"message":"the archive to be created","if":"field2","modes":["icons"]}
+{"click":{"entry":"005.txt"},"button":3,"unless":["field1","field2"],"modes":["icons"]}
+{"wait":{"menu_items":{}},"message":"the context menu for '005.txt'","unless":["field1","field2"],"modes":["icons"]}
+{"wait":{"present":{"menu_item":"Compress…"}},"message":"the menu item 'Compress…'","unless":["field1","field2"],"modes":["icons"]}
+{"activate":{"role":"menu item","name":"Compress…"},"unless":["field1","field2"],"modes":["icons"]}
+{"wait":{"menu_items":null},"message":"the menu to close","unless":["field1","field2"],"modes":["icons"]}
+{"flag":{"field":{}},"timeout_ms":5000,"as":"field3","unless":["field1","field2"],"modes":["icons"]}
+{"remember":{"field":true},"as":"field","if":"field3","modes":["icons"]}
+{"key":"ctrl+a","if":"field3","modes":["icons"]}
+{"type":"zzz","if":"field3","modes":["icons"]}
+{"wait":{"field":{"of":"field","text":"zzz"}},"message":"'zzz' to reach the name field","if":"field3","modes":["icons"]}
+{"key":"Return","if":"field3","modes":["icons"]}
+{"wait":{"dialog":null},"message":"the dialog to close","if":"field3","modes":["icons"]}
+{"fs":{"path":"zzz.zip","exists":true},"message":"the archive to be created","if":"field3","modes":["icons"]}
+{"fail":"the compress dialog never accepted the archive name","unless":["field1","field2","field3"],"modes":["icons"]}
+{"wait":{"selected":["zzz.zip"]},"message":"the selection to become ['zzz.zip']","modes":["icons"]}
+{"wait":{"entry":"zzz.zip"},"message":"the entry 'zzz.zip' to appear","modes":["icons"]}
+{"wait":{"on_screen":{"entry":"zzz.zip"}},"message":"the distant archive to be on screen","modes":["icons"]}
+{"wait":{"view_mode":"List"},"message":"the browser to switch to the List view","modes":["list"]}
+{"click":{"entry":"005.txt"},"button":3,"modes":["list"]}
+{"wait":{"menu_items":{}},"message":"the context menu for '005.txt'","modes":["list"]}
+{"wait":{"present":{"menu_item":"Compress…"}},"message":"the menu item 'Compress…'","modes":["list"]}
+{"activate":{"role":"menu item","name":"Compress…"},"modes":["list"]}
+{"wait":{"menu_items":null},"message":"the menu to close","modes":["list"]}
+{"flag":{"field":{}},"timeout_ms":5000,"as":"field1","modes":["list"]}
+{"remember":{"field":true},"as":"field","if":"field1","modes":["list"]}
+{"key":"ctrl+a","if":"field1","modes":["list"]}
+{"type":"zzz","if":"field1","modes":["list"]}
+{"wait":{"field":{"of":"field","text":"zzz"}},"message":"'zzz' to reach the name field","if":"field1","modes":["list"]}
+{"key":"Return","if":"field1","modes":["list"]}
+{"wait":{"dialog":null},"message":"the dialog to close","if":"field1","modes":["list"]}
+{"fs":{"path":"zzz.zip","exists":true},"message":"the archive to be created","if":"field1","modes":["list"]}
+{"click":{"entry":"005.txt"},"button":3,"unless":["field1"],"modes":["list"]}
+{"wait":{"menu_items":{}},"message":"the context menu for '005.txt'","unless":["field1"],"modes":["list"]}
+{"wait":{"present":{"menu_item":"Compress…"}},"message":"the menu item 'Compress…'","unless":["field1"],"modes":["list"]}
+{"activate":{"role":"menu item","name":"Compress…"},"unless":["field1"],"modes":["list"]}
+{"wait":{"menu_items":null},"message":"the menu to close","unless":["field1"],"modes":["list"]}
+{"flag":{"field":{}},"timeout_ms":5000,"as":"field2","unless":["field1"],"modes":["list"]}
+{"remember":{"field":true},"as":"field","if":"field2","modes":["list"]}
+{"key":"ctrl+a","if":"field2","modes":["list"]}
+{"type":"zzz","if":"field2","modes":["list"]}
+{"wait":{"field":{"of":"field","text":"zzz"}},"message":"'zzz' to reach the name field","if":"field2","modes":["list"]}
+{"key":"Return","if":"field2","modes":["list"]}
+{"wait":{"dialog":null},"message":"the dialog to close","if":"field2","modes":["list"]}
+{"fs":{"path":"zzz.zip","exists":true},"message":"the archive to be created","if":"field2","modes":["list"]}
+{"click":{"entry":"005.txt"},"button":3,"unless":["field1","field2"],"modes":["list"]}
+{"wait":{"menu_items":{}},"message":"the context menu for '005.txt'","unless":["field1","field2"],"modes":["list"]}
+{"wait":{"present":{"menu_item":"Compress…"}},"message":"the menu item 'Compress…'","unless":["field1","field2"],"modes":["list"]}
+{"activate":{"role":"menu item","name":"Compress…"},"unless":["field1","field2"],"modes":["list"]}
+{"wait":{"menu_items":null},"message":"the menu to close","unless":["field1","field2"],"modes":["list"]}
+{"flag":{"field":{}},"timeout_ms":5000,"as":"field3","unless":["field1","field2"],"modes":["list"]}
+{"remember":{"field":true},"as":"field","if":"field3","modes":["list"]}
+{"key":"ctrl+a","if":"field3","modes":["list"]}
+{"type":"zzz","if":"field3","modes":["list"]}
+{"wait":{"field":{"of":"field","text":"zzz"}},"message":"'zzz' to reach the name field","if":"field3","modes":["list"]}
+{"key":"Return","if":"field3","modes":["list"]}
+{"wait":{"dialog":null},"message":"the dialog to close","if":"field3","modes":["list"]}
+{"fs":{"path":"zzz.zip","exists":true},"message":"the archive to be created","if":"field3","modes":["list"]}
+{"fail":"the compress dialog never accepted the archive name","unless":["field1","field2","field3"],"modes":["list"]}
+{"wait":{"selected":["zzz.zip"]},"message":"the selection to become ['zzz.zip']","modes":["list"]}
+{"wait":{"entry":"zzz.zip"},"message":"the entry 'zzz.zip' to appear","modes":["list"]}
+{"wait":{"on_screen":{"entry":"zzz.zip"}},"message":"the distant archive to be on screen","modes":["list"]}

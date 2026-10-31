@@ -16,9 +16,11 @@ AUDIT = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = AUDIT
 SPEC.loader.exec_module(AUDIT)
 
-ENVIRONMENT = "/tmp/strata-e2e-home-x"
-FIXTURE = "/tmp/strata-e2e-fixture-x"
-RUNTIME = "/tmp/strata-e2e-runtime"
+ENVIRONMENT = "/tmp/strata-qa-home-x"
+FIXTURE = "/tmp/strata-qa-fixture-x"
+RUNTIME = "/tmp/strata-qa-runtime"
+SHADERS = "/tmp/strata-qa-shaders-x"
+LOG = "/tmp/strata-qa-x/strata.log"
 
 
 class MainThreadAuditTests(unittest.TestCase):
@@ -32,7 +34,7 @@ class MainThreadAuditTests(unittest.TestCase):
         directory = self.root / "run" / "scenario" / "launch-1"
         directory.mkdir(parents=True)
         meta = {
-            "scenario": "tests/e2e/scenarios/test_x.py::test_y",
+            "scenario": "example-scenario/columns",
             "fixture": FIXTURE,
             "environment": ENVIRONMENT,
             "home": f"{ENVIRONMENT}/home",
@@ -43,6 +45,7 @@ class MainThreadAuditTests(unittest.TestCase):
             "runtime": RUNTIME,
             "data_dirs": [f"{ENVIRONMENT}/data-dirs", "/usr/share"],
             "binary": "/workspace/target/build/debug/strata",
+            "harness": [SHADERS, LOG],
             "started": 100.0,
             "ready": 200.0,
         }
@@ -99,6 +102,8 @@ class MainThreadAuditTests(unittest.TestCase):
             f'203.5 close(18<{FIXTURE}/say \\"hi\\" {{\\76>) = 0',
             f'203.6 openat({cwd}, "{ENVIRONMENT}/data/gtksourceview-5/language-specs", O_RDONLY|O_DIRECTORY) = -1 ENOENT (No such file or directory)',
             f'203.7 mkdir("{ENVIRONMENT}/cache/gstreamer-1.0", 0777) = 0',
+            f'203.8 openat({cwd}, "{SHADERS}/mesa_shader_cache/ab", O_RDONLY) = 19<{SHADERS}/mesa_shader_cache/ab>',
+            f'203.9 fstat(2<{LOG}>, {{st_mode=S_IFREG|0644, ...}}) = 0',
         ])
         _, violations = self.violations(run)
         self.assertEqual(violations, sorted([
@@ -152,7 +157,7 @@ class MainThreadAuditTests(unittest.TestCase):
             "strata::ui::window::open_checked+0x10",
             "<strata::ui::browser::Pane>::reload+0x20",
         )])
-        self.assertEqual(report.stalls, {"tests/e2e/scenarios/test_x.py::test_y": [
+        self.assertEqual(report.stalls, {"example-scenario/columns": [
             'UI thread stalled 250 ms in statx("/tmp/x") wchan=-',
             "UI thread ran again after 300 ms",
         ]})

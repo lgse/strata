@@ -1,0 +1,39 @@
+{"scenario":"column-preview-fills-free-space","modes":["columns"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"tree":{"notes.txt":"the quick brown fox\n","page.md":"# Heading\n\nBody text.\n","third.txt":"third preview fixture\n","data.csv":"name,value\nalpha,1\n","folder":{"inner.txt":"inner\n","nested-notes.txt":"nested preview fixture\n"}},"cost":{"columns":1.4},"quality":{"impact":2,"coverage":3,"criticality":4,"diagnostic":3,"score":25,"note":"Column preview fill and drag-set session minimum across reopen/parent; fill+narrow drag shared with filled-preview-outlines-minimum; minimum unit-tested only for keyboard"}}
+{"select_with_keyboard":"notes.txt"}
+{"key":"space"}
+{"wait":{"preview":"the quick brown fox"},"message":"the first preview"}
+{"wait":{"compare":{"left":{"abs":{"minus":[{"of":{"preview":true},"get":"x"},{"of":{"pane":null},"get":"right"}]}},"op":"<=","right":3}},"message":"the preview to meet the last column"}
+{"note":"number","expr":{"of":{"preview":true},"get":"width"},"as":"initial"}
+{"key":"Down"}
+{"wait":{"preview":"Body text."},"message":"keyboard selection to update the preview"}
+{"key":"space"}
+{"select":{"entry":"folder"}}
+{"wait":{"directory":"folder"},"message":"the browser to be working in 'folder'"}
+{"settle":{"pane":"folder"}}
+{"select_with_keyboard":"inner.txt"}
+{"key":"space"}
+{"wait":{"preview":"inner"},"message":"the nested preview"}
+{"wait":{"compare":{"left":{"abs":{"minus":[{"of":{"preview":true},"get":"x"},{"of":{"pane":null},"get":"right"}]}},"op":"<=","right":3}},"message":"the nested preview to meet the last column"}
+{"note":"number","expr":{"of":{"preview":true},"get":"width"},"as":"nested"}
+{"expect":{"compare":{"left":"$nested","op":"<","right":"$initial"}}}
+{"remember":{"preview":true},"as":"bounds"}
+{"note":"number","expr":{"floor_divide":[{"of":{"kept":"bounds"},"get":"width"},5]},"as":"distance"}
+{"note":"number","expr":{"times":[{"floor_divide":[{"of":{"kept":"bounds"},"get":"width"},5]},-1]},"as":"back"}
+{"drag":{"from":{"kept":"bounds"},"from_at":[2,"50%"],"to":{"point":[{"of":{"kept":"bounds"},"at":2,"plus":"$back"},{"of":{"kept":"bounds"},"at":"50%"}]}}}
+{"wait":{"compare":{"left":{"of":{"preview":true},"get":"width"},"op":">","right":{"sum":["$nested",{"floor_divide":["$distance",2]}]}}},"message":"the dragged width to widen the preview"}
+{"note":"number","expr":{"of":{"preview":true},"get":"width"},"as":"chosen"}
+{"remember":{"preview":true},"as":"resized"}
+{"remember":{"window":true},"as":"window"}
+{"expect":{"compare":{"left":{"abs":{"minus":[{"of":{"kept":"resized"},"get":"right"},{"of":{"kept":"window"},"get":"right"}]}},"op":"<=","right":2}}}
+{"key":"space"}
+{"select_with_keyboard":"nested-notes.txt"}
+{"key":"space"}
+{"wait":{"preview":"nested preview fixture"},"message":"the reopened preview"}
+{"expect":{"compare":{"left":{"abs":{"minus":[{"of":{"preview":true},"get":"width"},"$chosen"]}},"op":"<=","right":2}},"message":"the dragged width is the session minimum"}
+{"key":"space"}
+{"key":"alt+Left"}
+{"select_with_keyboard":"notes.txt"}
+{"key":"space"}
+{"wait":{"preview":"the quick brown fox"},"message":"the parent preview"}
+{"wait":{"compare":{"left":{"abs":{"minus":[{"of":{"preview":true},"get":"x"},{"of":{"pane":null},"get":"right"}]}},"op":"<=","right":3}},"message":"the parent preview to fill the space beside the column"}
+{"expect":{"compare":{"left":{"of":{"preview":true},"get":"width"},"op":">","right":{"sum":["$chosen",2]}}},"message":"more room widens the preview past the minimum"}

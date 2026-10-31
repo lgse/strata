@@ -123,12 +123,13 @@ impl SettingsLauncher {
     }
 
     fn show(&self) {
-        let mut child = self.overlay.first_child();
-        while let Some(widget) = child {
-            child = widget.next_sibling();
-            if widget.is_visible() && widget.has_css_class("app-modal-layer") {
-                return;
-            }
+        if self
+            .overlay
+            .root()
+            .and_downcast::<gtk::Window>()
+            .is_some_and(|window| super::super::visible_modal_layer(&window).is_some())
+        {
+            return;
         }
         self.shortcuts.cancel_chord();
         // Closing Settings returns focus to the file list, not to the gear or other chrome

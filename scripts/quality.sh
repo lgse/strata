@@ -11,9 +11,9 @@ if [[ -z "$engine" ]]; then
 fi
 image="${STRATA_QUALITY_IMAGE:-}"
 if [[ -z "$image" ]]; then
-  image="$(python3 "$repository/scripts/e2e_base.py" ensure --engine "$engine")"
+  image="$(python3 "$repository/scripts/image_base.py" ensure --engine "$engine")"
 else
-  image="$(python3 "$repository/scripts/e2e_base.py" verify "$image" --engine "$engine")"
+  image="$(python3 "$repository/scripts/image_base.py" verify "$image" --engine "$engine")"
 fi
 user_id="$(id -u)"
 group_id="$(id -g)"

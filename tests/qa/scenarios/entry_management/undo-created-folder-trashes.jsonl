@@ -1,0 +1,9 @@
+{"scenario":"undo-created-folder-trashes","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.5},"quality":{"impact":3,"coverage":3,"criticality":2,"diagnostic":4,"score":23,"note":"Keyboard create-folder then Ctrl+Z through the GUI; undo logic pinned by a_created_folder_can_be_undone_by_trashing_it"}}
+{"key":"ctrl+shift+n"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"key":"Return"}
+{"fs":{"path":"new folder","is":"dir"},"message":"the folder to be created"}
+{"wait":{"editable_fields":0},"message":"the name prompt to close"}
+{"key":"ctrl+z"}
+{"fs":{"path":"new folder","exists":false},"message":"create undo to trash the folder"}
+{"fs":{"path":"$data/Trash/files","empty":false},"message":"the folder to land in Trash"}

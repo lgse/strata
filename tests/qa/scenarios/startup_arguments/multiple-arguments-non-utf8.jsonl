@@ -1,0 +1,13 @@
+{"scenario":"multiple-arguments-non-utf8","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"session_bus":true,"cost":{"columns":0.6},"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":3,"score":45,"note":"Multi-argument launch opens a window per argument incl. non-UTF-8 dir and broken link, and leaves its launch folder; unit tests cover only the collision reveal"}}
+{"fs":{"path":"startup-first","mkdir":true}}
+{"fs":{"path":"startup-first/first-argument.txt","write":"startup regression\n"}}
+{"fs":{"path":"startup-%FF","mkdir":true,"percent_path":true}}
+{"fs":{"path":"startup-%FF/non-utf8-argument.txt","write":"startup regression\n","percent_path":true}}
+{"fs":{"path":"reveal-me.txt","write":"reveal regression\n"}}
+{"fs":{"path":"broken-link.txt","symlink":"$fixture/missing-target.txt"}}
+{"fs":{"path":"collide-%E8.txt","write":"colliding name\n","percent_path":true}}
+{"fs":{"path":"collide-%E9.txt","write":"colliding name\n","percent_path":true}}
+{"launch":["startup-first","$fixture/startup-%FF","$fixture/reveal-me.txt","$fixture/broken-link.txt","$fixture/collide-%E9.txt"],"percent_path":true}
+{"wait":{"all":[{"windows":{"title":"Strata","count":6}},{"windows":{"title":"startup-first — Strata","count":1}},{"some_window":{"title":"Strata","holds":{"compare":{"left":{"count":{"name":"collide-�.txt","states":["selected"]}},"op":"==","right":1}}}},{"some_window":{"title":"Strata","holds":{"present":{"named":"first-argument.txt","within":{"window":true}}}}},{"some_window":{"title":"Strata","holds":{"present":{"named":"non-utf8-argument.txt","within":{"window":true}}}}},{"some_window":{"title":"Strata","holds":{"compare":{"left":{"count":{"name":"reveal-me.txt","states":["selected"]}},"op":">=","right":1}}}},{"some_window":{"title":"Strata","holds":{"compare":{"left":{"count":{"name":"broken-link.txt","states":["selected"]}},"op":">=","right":1}}}}]},"message":"one window per argument, with the files and broken symlink revealed"}
+{"expect":{"all":[{"some_window":{"title":"Strata","holds":{"compare":{"left":{"count":{"name":"collide-�.txt","states":["selected"]}},"op":"==","right":1}}}},{"not":{"some_window":{"title":"Strata","holds":{"compare":{"left":{"count":{"name":"collide-�.txt","states":["selected"]}},"op":">=","right":2}}}}}]}}
+{"proc":{"app_cwd":"/"},"message":"the application to leave the folder it was started in"}

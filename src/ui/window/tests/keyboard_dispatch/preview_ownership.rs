@@ -65,7 +65,7 @@ impl PreviewProvider for OwnershipPreview {
     }
 }
 
-fn ownership_fixture() -> KeyboardFixture {
+pub(super) fn ownership_fixture() -> KeyboardFixture {
     let fixture = KeyboardFixture::with_provider(Rc::new(OwnershipPreview));
     let root = fixture._directory.path();
     std::fs::write(root.join("long.txt"), b"long").expect("long document");

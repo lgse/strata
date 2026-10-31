@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
+    cell::Cell,
     rc::Rc,
     time::{Duration, Instant},
 };
@@ -101,6 +102,14 @@ fn close(route: Close, layer: &gtk::Box, window: &gtk::Window) {
             assert!(handled, "Settings handles Escape");
         }
         Close::Backdrop => {
+            let painted = Rc::new(Cell::new(false));
+            let ready = painted.clone();
+            let clock = layer.frame_clock().expect("Settings frame clock");
+            let handler = clock.connect_after_paint(move |_| ready.set(true));
+            layer.queue_draw();
+            let ready = settles(|| painted.get());
+            clock.disconnect(handler);
+            assert!(ready, "Settings must render before a pointer dismissal");
             let controllers = layer.observe_controllers();
             let click = (0..controllers.n_items())
                 .filter_map(|index| controllers.item(index).and_downcast::<gtk::GestureClick>())

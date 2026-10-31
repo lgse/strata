@@ -1,0 +1,83 @@
+{"scenario":"abandoned-extract-to-no-hijack","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"cancelled-password","teardown":[{"fs":{"path":"documents","chmod":"755"}}],"vars":{"id":"cancelled-password"}},{"id":"read-only-destination","teardown":[{"fs":{"path":"locked","chmod":"755"}}],"vars":{"id":"read-only-destination"}}],"cost":{"columns-cancelled-password":2.7,"columns-read-only-destination":2.7},"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":3,"score":45,"note":"Abandoned Extract to (password Escape, permission error) must not redirect a later Extract here; only GUI route, no unit test covers it; fix 40ed70c4 touched this path"}}
+{"fs":{"path":"later.zip","zip":[["later.txt","later extraction\n"]]}}
+{"fs":{"path":"content-encrypted.7z","from_repository":"tests/qa/fixtures/content-encrypted.7z"},"variants":["cancelled-password"]}
+{"key":"ctrl+r","variants":["cancelled-password"]}
+{"click":{"entry":"content-encrypted.7z"},"button":3,"variants":["cancelled-password"]}
+{"wait":{"menu_items":{}},"message":"the context menu for 'content-encrypted.7z'","variants":["cancelled-password"]}
+{"wait":{"present":{"menu_item":"Extract to…"}},"message":"the menu item 'Extract to…'","variants":["cancelled-password"]}
+{"settle":{"menu_item":"Extract to…"},"variants":["cancelled-password"]}
+{"click":{"menu_item":"Extract to…"},"variants":["cancelled-password"]}
+{"wait":{"menu_items":null},"message":"the menu to close","variants":["cancelled-password"]}
+{"wait":{"present":{"toplevel":"Extract to"}},"message":"the floating Extract to chooser","variants":["cancelled-password"]}
+{"key":"ctrl+l","variants":["cancelled-password"]}
+{"wait":{"present":{"field":true,"within":{"toplevel":"Extract to"}}},"message":"the chooser path entry","variants":["cancelled-password"]}
+{"remember":{"field":true,"within":{"toplevel":"Extract to"}},"as":"path","variants":["cancelled-password"]}
+{"key":"ctrl+a","variants":["cancelled-password"]}
+{"type":"$fixture/documents","variants":["cancelled-password"]}
+{"wait":{"field":{"of":"path","text":"$fixture/documents"}},"message":"the destination path","variants":["cancelled-password"]}
+{"key":"Return","variants":["cancelled-password"]}
+{"wait":{"present":{"role":"label","name":"documents","description":"$fixture/documents","within":{"toplevel":"Extract to"}}},"message":"the destination breadcrumb","variants":["cancelled-password"]}
+{"wait":{"present":{"role":"button","name":"Extract here","within":{"toplevel":"Extract to"}}},"message":"the destination action","variants":["cancelled-password"]}
+{"click":{"role":"button","name":"Extract here","within":{"toplevel":"Extract to"}},"variants":["cancelled-password"]}
+{"wait":{"absent":{"toplevel":"Extract to"}},"message":"the destination chooser to close","variants":["cancelled-password"]}
+{"wait":{"dialog":"Extract"},"message":"the password prompt","variants":["cancelled-password"]}
+{"key":"Escape","variants":["cancelled-password"]}
+{"wait":{"dialog":null},"message":"password prompt cancellation","variants":["cancelled-password"]}
+{"expect":{"directory":"$root"},"variants":["cancelled-password"]}
+{"fs":{"path":"documents/later.txt","exists":false},"timeout_ms":0,"variants":["cancelled-password"]}
+{"click":{"entry":"later.zip"},"button":3,"variants":["cancelled-password"]}
+{"wait":{"menu_items":{}},"message":"the context menu for 'later.zip'","variants":["cancelled-password"]}
+{"wait":{"present":{"menu_item":"Extract here"}},"message":"the menu item 'Extract here'","variants":["cancelled-password"]}
+{"settle":{"menu_item":"Extract here"},"variants":["cancelled-password"]}
+{"click":{"menu_item":"Extract here"},"variants":["cancelled-password"]}
+{"wait":{"menu_items":null},"message":"the menu to close","variants":["cancelled-password"]}
+{"fs":{"path":"later.txt","exists":true},"message":"later extraction","variants":["cancelled-password"]}
+{"wait":{"dialog":null},"message":"extraction progress dismissal","variants":["cancelled-password"]}
+{"expect":{"directory":"$root"},"variants":["cancelled-password"]}
+{"fs":{"path":"later.txt","text":"later extraction\n"},"timeout_ms":0,"variants":["cancelled-password"]}
+{"fs":{"path":"documents/later.txt","exists":false},"timeout_ms":0,"variants":["cancelled-password"]}
+{"wait":{"selected":["later.txt"],"dir":"$root"},"message":"the extracted file to be selected in place","variants":["cancelled-password"]}
+{"expect":{"directory":"$root"},"variants":["cancelled-password"]}
+{"screenshot":"after.png","variants":["cancelled-password"]}
+{"fs":{"path":"first.zip","zip":[["first.txt","first extraction\n"]]},"variants":["read-only-destination"]}
+{"fs":{"path":"locked","mkdir":true},"variants":["read-only-destination"]}
+{"fs":{"path":"locked","chmod":"555"},"variants":["read-only-destination"]}
+{"key":"ctrl+r","variants":["read-only-destination"]}
+{"wait":{"entry":"locked"},"message":"the entry 'locked' to appear","variants":["read-only-destination"]}
+{"click":{"entry":"first.zip"},"button":3,"variants":["read-only-destination"]}
+{"wait":{"menu_items":{}},"message":"the context menu for 'first.zip'","variants":["read-only-destination"]}
+{"wait":{"present":{"menu_item":"Extract to…"}},"message":"the menu item 'Extract to…'","variants":["read-only-destination"]}
+{"settle":{"menu_item":"Extract to…"},"variants":["read-only-destination"]}
+{"click":{"menu_item":"Extract to…"},"variants":["read-only-destination"]}
+{"wait":{"menu_items":null},"message":"the menu to close","variants":["read-only-destination"]}
+{"wait":{"present":{"toplevel":"Extract to"}},"message":"the floating Extract to chooser","variants":["read-only-destination"]}
+{"key":"ctrl+l","variants":["read-only-destination"]}
+{"wait":{"present":{"field":true,"within":{"toplevel":"Extract to"}}},"message":"the chooser path entry","variants":["read-only-destination"]}
+{"remember":{"field":true,"within":{"toplevel":"Extract to"}},"as":"path","variants":["read-only-destination"]}
+{"key":"ctrl+a","variants":["read-only-destination"]}
+{"type":"$fixture/locked","variants":["read-only-destination"]}
+{"wait":{"field":{"of":"path","text":"$fixture/locked"}},"message":"the destination path","variants":["read-only-destination"]}
+{"key":"Return","variants":["read-only-destination"]}
+{"wait":{"present":{"role":"label","name":"locked","description":"$fixture/locked","within":{"toplevel":"Extract to"}}},"message":"the destination breadcrumb","variants":["read-only-destination"]}
+{"wait":{"present":{"role":"button","name":"Extract here","within":{"toplevel":"Extract to"}}},"message":"the destination action","variants":["read-only-destination"]}
+{"click":{"role":"button","name":"Extract here","within":{"toplevel":"Extract to"}},"variants":["read-only-destination"]}
+{"wait":{"absent":{"toplevel":"Extract to"}},"message":"the destination chooser to close","variants":["read-only-destination"]}
+{"wait":{"dialog":"Unable to complete operation"},"message":"the permission error","variants":["read-only-destination"]}
+{"click":{"dialog_button":"Close"},"variants":["read-only-destination"]}
+{"wait":{"dialog":null},"message":"error dismissal","variants":["read-only-destination"]}
+{"expect":{"directory":"$root"},"variants":["read-only-destination"]}
+{"fs":{"path":"locked/later.txt","exists":false},"timeout_ms":0,"variants":["read-only-destination"]}
+{"click":{"entry":"later.zip"},"button":3,"variants":["read-only-destination"]}
+{"wait":{"menu_items":{}},"message":"the context menu for 'later.zip'","variants":["read-only-destination"]}
+{"wait":{"present":{"menu_item":"Extract here"}},"message":"the menu item 'Extract here'","variants":["read-only-destination"]}
+{"settle":{"menu_item":"Extract here"},"variants":["read-only-destination"]}
+{"click":{"menu_item":"Extract here"},"variants":["read-only-destination"]}
+{"wait":{"menu_items":null},"message":"the menu to close","variants":["read-only-destination"]}
+{"fs":{"path":"later.txt","exists":true},"message":"later extraction","variants":["read-only-destination"]}
+{"wait":{"dialog":null},"message":"extraction progress dismissal","variants":["read-only-destination"]}
+{"expect":{"directory":"$root"},"variants":["read-only-destination"]}
+{"fs":{"path":"later.txt","text":"later extraction\n"},"timeout_ms":0,"variants":["read-only-destination"]}
+{"fs":{"path":"locked/later.txt","exists":false},"timeout_ms":0,"variants":["read-only-destination"]}
+{"wait":{"selected":["later.txt"],"dir":"$root"},"message":"the extracted file to be selected in place","variants":["read-only-destination"]}
+{"expect":{"directory":"$root"},"variants":["read-only-destination"]}
+{"screenshot":"after.png","variants":["read-only-destination"]}

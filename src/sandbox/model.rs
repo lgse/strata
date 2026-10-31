@@ -31,5 +31,46 @@ pub(super) fn read_mesh(render: ModelRender, path: &Path) -> Result<Option<Model
     Ok(Some(mesh))
 }
 
+pub(super) fn wait_for_thumbnail(
+    renderer: super::Renderer,
+    cancellation: &super::Cancellation,
+    timeout: std::time::Duration,
+    progress: &mut dyn FnMut(),
+    output: std::sync::Arc<super::PrivateOutput>,
+    hold: std::sync::Arc<crate::services::file_activity::Hold>,
+) -> Result<std::process::ExitStatus, String> {
+    wait_with_reaper(
+        renderer,
+        cancellation,
+        timeout,
+        progress,
+        (output, hold),
+        || {},
+    )
+}
+
+fn wait_with_reaper<G: Send + 'static>(
+    mut renderer: super::Renderer,
+    cancellation: &super::Cancellation,
+    timeout: std::time::Duration,
+    progress: &mut dyn FnMut(),
+    guards: G,
+    before_reap: impl FnOnce() + Send + 'static,
+) -> Result<std::process::ExitStatus, String> {
+    let result = super::monitor_renderer(&mut renderer, cancellation, timeout, progress);
+    if result.is_err() {
+        super::kill_renderer(&mut renderer);
+        // SIGKILL may remain pending in uninterruptible I/O. The caller's worker and
+        // admission slot must not wait for reap, while its input/output guards stay alive.
+        std::thread::spawn(move || {
+            before_reap();
+            let _waited = renderer.child.wait();
+            renderer.await_namespace();
+            drop(guards);
+        });
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests;

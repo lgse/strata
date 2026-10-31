@@ -1,0 +1,19 @@
+{"scenario":"preview-hides-on-shift-range-folder","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"tree":{"notes.txt":"the quick brown fox\n","page.md":"# Heading\n\nBody text.\n","third.txt":"third preview fixture\n","data.csv":"name,value\nalpha,1\n","folder":{"inner.txt":"inner\n","nested-notes.txt":"nested preview fixture\n"}},"cost":{"columns":0.8},"quality":{"impact":2,"coverage":3,"criticality":3,"diagnostic":4,"score":23,"note":"Shift+arrow range onto a folder hides then resumes preview; plain hide is preview-hides-on-folder, shift range is preview-follows-extended-selection"}}
+{"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open"}
+{"wait":{"present":{"role":"radio menu item","name":"List"}},"message":"the List option"}
+{"click":{"role":"radio menu item","name":"List"}}
+{"wait":{"view_mode":"List"},"message":"the browser to switch to the List view"}
+{"select_with_keyboard":"notes.txt"}
+{"key":"space"}
+{"wait":{"preview":"the quick brown fox"},"message":"the file preview"}
+{"key":"shift+Up"}
+{"wait":{"selected":["data.csv","notes.txt"]},"message":"the selection to become ['data.csv', 'notes.txt']"}
+{"wait":{"focused":"data.csv"},"message":"the focused upper file"}
+{"wait":{"preview":"alpha"},"message":"the upper file preview"}
+{"key":"shift+Up"}
+{"wait":{"selected":["folder","data.csv","notes.txt"]},"message":"the selection to become ['folder', 'data.csv', 'notes.txt']"}
+{"wait":{"focused":"folder"},"message":"the focused folder"}
+{"wait":{"preview":null},"message":"the focused folder to dismiss the preview"}
+{"key":"shift+Down"}
+{"wait":{"selected":["data.csv","notes.txt"]},"message":"the selection to become ['data.csv', 'notes.txt']"}
+{"wait":{"preview":"alpha"},"message":"preview to resume after the folder"}

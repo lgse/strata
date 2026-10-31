@@ -123,6 +123,72 @@ fn a_rejected_place_click_returns_the_highlight_to_the_open_location() {
     );
 }
 
+#[test]
+fn navigation_and_history_keep_only_the_current_sidebar_place_active() {
+    gtk_test_with_env(
+        "ui::window::tests::sidebar::navigation_and_history_keep_only_the_current_sidebar_place_active",
+        [("GIO_USE_VFS", "local")],
+        || {
+            let directory = tempfile::tempdir().expect("places fixture");
+            let a = Location::local(directory.path().join("a"));
+            let b = Location::local(directory.path().join("b"));
+            let child = Location::local(directory.path().join("a/child"));
+            std::fs::create_dir_all(child.native_path().expect("native child folder"))
+                .expect("child folder");
+            std::fs::create_dir(b.native_path().expect("native second folder"))
+                .expect("second folder");
+            save_pins(&[(a.clone(), "A".into()), (b.clone(), "B".into())]);
+            let view = browser_for_window();
+            let sidebar = build_sidebar(view.clone(), PreferenceManager::shared(), false);
+            let content = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+            content.append(&sidebar.widget);
+            content.append(&view.widget());
+            let window = gtk::Window::builder().child(&content).build();
+            window.present();
+            let click = |location: &Location| {
+                let row = sidebar
+                    .state
+                    .place_rows
+                    .borrow()
+                    .iter()
+                    .find(|(candidate, _)| candidate == location)
+                    .expect("place row")
+                    .1
+                    .clone();
+                row.emit_clicked();
+            };
+            let expect = |location: &Location| {
+                wait_until(
+                    || view.browser().active_location().as_ref() == Some(location),
+                    "navigation to commit",
+                );
+                for (candidate, row) in sidebar.state.place_rows.borrow().iter() {
+                    assert_eq!(
+                        row.has_css_class("active"),
+                        candidate == location,
+                        "current={location:?}, row={candidate:?}"
+                    );
+                }
+            };
+            click(&a);
+            expect(&a);
+            view.browser().navigate_location(child.clone(), true);
+            expect(&child);
+            view.browser().parent();
+            expect(&a);
+            click(&b);
+            expect(&b);
+            view.browser().back();
+            expect(&a);
+            view.browser().navigate_location(b.clone(), true);
+            expect(&b);
+            view.browser().clear_observer();
+            sidebar.disconnect();
+            window.destroy();
+        },
+    );
+}
+
 fn descendants(widget: &gtk::Widget) -> Vec<gtk::Widget> {
     let mut widgets = vec![widget.clone()];
     let mut child = widget.first_child();

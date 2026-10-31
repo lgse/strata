@@ -32,6 +32,7 @@ pub(super) fn theme_editor(manager: Rc<ThemeManager>) -> ThemeEditor {
     panel.append(&editor_header());
     let name = form_entry();
     name.set_placeholder_text(Some(&crate::i18n::tr("Theme name")));
+    crate::ui::accessibility::set_label(&name, &crate::i18n::tr("Theme name"));
     panel.append(&name);
 
     let values = Rc::new(RefCell::new(starter_tokens(&manager)));
@@ -200,6 +201,7 @@ fn color_field_row(
             preview.applied.set(Some(generation));
         }
     });
+    crate::ui::accessibility::set_labelled_by(&picker, &[label.upcast_ref()]);
     field_row.append(&picker);
     field_row.append(&label);
     (field_row, picker)

@@ -10,7 +10,7 @@ import tempfile
 import textwrap
 import unittest
 
-from e2e_bundle import REPOSITORY, image_key
+from image_inputs import REPOSITORY, image_key
 
 
 class QualityRunnerTests(unittest.TestCase):
@@ -27,7 +27,7 @@ class QualityRunnerTests(unittest.TestCase):
                 "bus=os.getenv('DBUS_SESSION_BUS_ADDRESS'))) + '\\n')\n"
                 "if sys.argv[1:3] == ['image', 'inspect']:\n"
                 f" print(json.dumps([{{'Id': 'sha256:'+'a'*64, 'Os': 'linux', 'Architecture': 'amd64', "
-                f"'Config': {{'Labels': {{'org.strata.e2e.inputs': {(image_key() if key is None else key)!r}}}, "
+                f"'Config': {{'Labels': {{'org.strata.test.inputs': {(image_key() if key is None else key)!r}}}, "
                 "'Env': ['RUSTUP_HOME=/opt/rustup']}}]))\n"
             )
             engine.chmod(0o755)
@@ -50,7 +50,7 @@ class QualityRunnerTests(unittest.TestCase):
                 self.assertEqual(args[-1], phase)
                 self.assertIn("--userns=keep-id", args)
                 self.assertIn("CARGO_TARGET_DIR=/workspace/target/quality-container/build", args)
-                self.assertNotIn("/workspace/target/e2e-container/build", " ".join(args))
+                self.assertNotIn("/workspace/target/qa-container/build", " ".join(args))
                 for call in calls:
                     self.assertIsNone(call["display"])
                     self.assertIsNone(call["wayland"])
@@ -92,14 +92,6 @@ class QualityRunnerTests(unittest.TestCase):
             with self.subTest(job=name):
                 condition = re.search(r"^    if: (.+)$", jobs[name], re.M).group(1)
                 self.assertIn("github.event_name != 'push'", condition)
-        self.assertFalse({"e2e-build", "e2e-shard", "e2e"} & jobs.keys())
-        e2e = (REPOSITORY / ".github/workflows/e2e.yml").read_text()
-        triggers = e2e.split("\non:\n", 1)[1].split("\n\n", 1)[0]
-        self.assertEqual(re.findall(r"^  (\w+):", triggers, re.M), ["workflow_dispatch"])
-        e2e_jobs = dict(re.findall(r"^  ([\w-]+):\n(.*?)(?=^  [\w-]+:\n|\Z)",
-                                   e2e.split("\njobs:\n", 1)[1], re.M | re.S))
-        self.assertIn("needs: e2e-build", e2e_jobs["e2e-shard"])
-        self.assertNotIn("always()", e2e_jobs["e2e-shard"])
         build = jobs["quality-build"]
         condition = re.search(r"^    if: (.+)$", build, re.M).group(1)
         self.assertNotIn("github.event_name != 'push'", condition)
@@ -137,7 +129,7 @@ class QualityRunnerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             tools = {
-                "python3": 'case "$*" in *"e2e_images.py environment"*) [ "$PUBLISHED" = 1 ] || exit 1; echo environment_image=ghcr.io/example/build@sha256:abc;; *"e2e_base.py build"*) echo build >> "$CALL_LOG"; echo sha256:abc;; *) echo inputs;; esac\n',
+                "python3": 'case "$*" in *"image_registry.py environment"*) [ "$PUBLISHED" = 1 ] || exit 1; echo environment_image=ghcr.io/example/build@sha256:abc;; *"image_base.py build"*) echo build >> "$CALL_LOG"; echo sha256:abc;; *) echo inputs;; esac\n',
                 "docker": 'echo "$*" >> "$CALL_LOG"\n',
                 "git": 'case "$1" in cat-file) exit "$BASE_STATUS";; diff) exit "$DIFF_STATUS";; esac\n',
             }

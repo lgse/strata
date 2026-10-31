@@ -104,7 +104,12 @@ Cut styling, tooltips and date
 bindings refresh outside layout, for visible/overscan items, once scrolling has been still for
 25 ms and at least two frames.
 These presentation refreshes never resubmit file work or reset a name label or active
-rename editor. Identical active thumbnail/metadata requests are reused. Missing
+rename editor. Identical active thumbnail/metadata requests are reused. Completed
+file operations invalidate affected folder counts across browsers through the shared
+activity notification, distinguishing direct writes from recursive merges. Folder
+bindings remain registered after a successful fill and resolve shifted positions
+through the shared metadata index. Only live viewport targets are recounted;
+parent listings and unrelated metadata work stay intact. Missing
 bindings retain the existing fallback path. Pane assembly, headers, grouping/filtering, and Icons factories
 remain in the composition module rather than changing alongside this lifecycle boundary.
 
@@ -132,7 +137,8 @@ selects its first visible entry. A preview that is showing something (content or
 placeholder) is a drag-only origin: a plain click there leaves the selection alone and only a
 drag past the threshold changes it, while the empty reserved preview slot clears like the strip
 beside the columns. Presses on controls, including disabled ones and drag handles such as the
-preview header, never start a marquee. Click
+preview header, never start a marquee, and neither do presses on a viewport's own
+scrollbars, including overlay scrollbars drawn over blank row space. Click
 activation and automatic preview wait for release and reject cancelled gestures, drag motion,
 and recycled items. Marquees anchor and cache mapped item geometry in scroll-content
 coordinates, independent of native GtkScrollable or GtkViewport layout. Edge and wheel scrolling
@@ -150,6 +156,7 @@ The browser and open/save chooser use the same collection behavior, not a univer
 | `ui/collection_interaction.rs` | Display-position pointer transitions (Ctrl toggle, Shift range, plain selection/drag-group preservation) and press/release/cancel ownership. Modified sequences are claimed only on release so marquee can participate. |
 | `ui/search_session.rs` | Root, hidden-file and recursive-scope inputs; worker/receiver, query intent, generation, bounded event draining, cancellation, status/coverage delivery, pruning the hits a worker proves gone, and starting a confined source's search only once a worker places its root inside the boundary. It knows neither widgets nor acceptance/navigation policy. |
 | `ui/inline_search.rs` | Single-pane search composition and transactional consumer selection publication. `inline_search/collection.rs` owns stable result objects and displayed-order lookup; `presentation.rs` builds and binds typed row/card parts. |
+| `ui/enter_target.rs` | Which result Enter in a filter field opens: the top one until the user picks another after the query last changed. Outlines it while the field has focus, keeps it scrolled into view until the user scrolls, and tells the result surfaces when a new query drops the old selection. A selection or focus change counts as the pick unless the surface reports it as its own write. Off in 10xer. |
 | `ui/browser/columns/search.rs` | Native Columns result reconciliation. Its result vector is authoritative; the string model is only a label projection, updated in lockstep under selection suppression. Columns keeps its multi-depth navigation and native collection. |
 | `ui/collection_edit.rs` | A rename lease on an entry identity and typed editor/display handles: validation, submission signals, cancellation, focus, reveal tick and cleanup. It has no `ViewState` or `browser_modes` dependency. |
 | Browser/chooser adapters | Activation, single-click preview/navigation, selection cardinality, filename/preview updates, context commands and filesystem-operation coordination. `browser/inline_edit.rs` retains pending-operation identities, optimistic labels, refresh/error handling and operation safety. |
@@ -161,7 +168,11 @@ resolve activation, selection, drag, context and edit targets through the sorted
 the path/rank map only supplies ordering to its sorter. Basenames are never identity.
 
 Single-pane publication captures selected/focused paths before reconciliation and restores
-selection by identity. Restoring focus never reselects an explicitly deselected entry.
+selection by identity while the query stays the same; a changed query text publishes an empty
+selection in both single-pane results and Columns search results, so Enter in the field falls
+back to the top result that `ui/enter_target.rs` outlines. A filter that narrows a listing
+without a native path in place keeps that listing's own selection; the new query only stops it
+counting as the pick. Restoring focus never reselects an explicitly deselected entry.
 If the last selected result disappears, it retains the nearest previous
 selection slot; Columns intentionally leaves the selection empty when its selected result
 vanishes. Columns uses per-column hidden-file preferences and does not display a separate
@@ -204,7 +215,7 @@ selection models. They are deliberately not replaced with another navigation eng
 source/depth anchor, slow-click rename and release activation, List metadata/grouping, Icons'
 content hit testing and chooser restrictions remain explicit policies. Tests retain distinct
 pointer, keyboard, lifecycle and filesystem-effect routes rather than replacing them with a
-cross-mode launch smoke test. See [GUI validation](e2e-testing.md) and
+cross-mode launch smoke test. See [GUI validation](testing.md) and
 [live preferences](preferences.md).
 
 ### Browser implementation map
@@ -379,7 +390,7 @@ monitors and other requests it admits to a mount that stops answering;
 `adapters/gio_close.rs`, which closes the enumerators and streams the interface lets go of in the
 background (GLib still closes a GVfs stream whose open succeeded just as it was cancelled); and `storage/writer.rs`, the background writer for Strata's own settings and state. See
 [Unresponsive mounts](filesystem-compatibility.md#unresponsive-mounts) and the [main-thread I/O
-audit](e2e-testing.md#main-thread-io-audit).
+audit](testing.md#main-thread-io-audit).
 
 This separation is not a redesign of operation policy. Alternate renderers, staged
 publication/metadata orchestration, native transfer security and the settings workspace should be

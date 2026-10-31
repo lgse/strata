@@ -1,6 +1,6 @@
 [package]
 name = "strata"
-version = "1.0.0"
+version = "1.1.1"
 edition = "2024"
 description = "A fast, keyboard-first file manager for Linux"
 authors = ["LGSE Ltd."]
@@ -12,6 +12,17 @@ categories = ["filesystem", "gui"]
 [features]
 default = ["rar"]
 rar = ["dep:unrar", "dep:unrar_sys"]
+# The scripted `--qa` launch mode and its in-process X or Wayland input. Never in releases.
+qa = [
+    "dep:x11rb",
+    "dep:regex",
+    "dep:wayland-client",
+    "dep:wayland-protocols-misc",
+    "dep:wayland-protocols-wlr",
+    "dep:xkbcommon",
+]
+# Exact but slow consistency checks; tests and QA builds turn them on.
+invariant-checks = []
 
 [dependencies]
 ashpd = { version = "=0.13.13", default-features = false, features = ["backend", "file_chooser", "async-io", "tracing"] }
@@ -67,14 +78,27 @@ unicode-normalization = "0.1.25"
 # may change in a minor release.
 ureq = { version = "~3.4", features = ["json"] }
 zbus = { version = "5.19.0", default-features = false, features = ["async-io"] }
-zstd = "0.14.0"
+zstd = "0.14.3"
 zip = "9.0.4"
 unrar = { version = "0.5.8", optional = true }
 unrar_sys = { version = "0.5.8", optional = true }
+x11rb = { version = "0.13.2", default-features = false, features = ["xkb", "xtest"], optional = true }
+regex = { version = "1.13.1", optional = true }
 frizbee = "0.13"
+fitparser = "0.11.0"
+wayland-client = { version = "0.31.15", optional = true }
+wayland-protocols-misc = { version = "0.3.12", features = ["client"], optional = true }
+wayland-protocols-wlr = { version = "0.3.12", features = ["client"], optional = true }
+xkbcommon = { version = "0.9.0", default-features = false, optional = true }
 
 [dev-dependencies]
 rustls = { version = "0.23.46", default-features = false, features = ["std", "ring", "tls12"] }
+
+[[test]]
+name = "qa"
+path = "tests/qa.rs"
+required-features = ["qa"]
+harness = false
 
 [build-dependencies]
 glib-build-tools = "0.22.8"

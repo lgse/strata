@@ -18,7 +18,7 @@ use crate::ui::controls::{
 };
 use crate::ui::modal::{
     ModalHost, close_on_escape, dismiss_modal_layer, modal_layer, show_error_dialog,
-    submit_on_enter,
+    show_error_dialog_with_action, submit_on_enter,
 };
 use crate::ui::window::{crypto_password_uuid_for_volume, gio_volume_is_encrypted};
 use futures_channel::oneshot;
@@ -37,6 +37,13 @@ const BREADCRUMB_LABEL_MAX_CHARS: i32 = 32;
 fn ellipsize_crumb_label(label: &gtk::Label) {
     label.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
     label.set_max_width_chars(BREADCRUMB_LABEL_MAX_CHARS);
+    label.set_width_chars(
+        label
+            .text()
+            .chars()
+            .take(BREADCRUMB_LABEL_MAX_CHARS as usize)
+            .count() as i32,
+    );
 }
 
 pub(super) struct UnlockProgressView {
@@ -495,9 +502,15 @@ fn dismiss_authentication_prompt(browser_overlay: &gtk::Overlay, layer: &gtk::Bo
     dismiss_modal_layer(layer, &window_overlay, blurred_root.as_ref());
 }
 
-fn append_authentication_field(fields: &gtk::Box, label_text: &str, field: &impl IsA<gtk::Widget>) {
+fn append_authentication_field(
+    fields: &gtk::Box,
+    label_text: &str,
+    field: &(impl IsA<gtk::Widget> + IsA<gtk::Accessible>),
+) {
     let group = gtk::Box::new(gtk::Orientation::Vertical, 5);
-    group.append(&form_label(&crate::i18n::tr(label_text)));
+    let label = form_label(&crate::i18n::tr(label_text));
+    crate::ui::accessibility::set_labelled_by(field, &[label.upcast_ref()]);
+    group.append(&label);
     group.append(field);
     fields.append(&group);
 }
@@ -668,30 +681,14 @@ fn mount_result_is_ok(result: &Result<(), glib::Error>) -> bool {
 }
 
 fn mount_error_is_authentication_failure(location: &Location, error: &glib::Error) -> bool {
-    if location.uri_value().is_none() {
+    if location.uri_value().is_none() || location.is_administrator() {
         return false;
     }
     if mount_error_is_host_key_rejection(error) {
         return false;
     }
-    if error.matches(gio::IOErrorEnum::PermissionDenied) {
-        return true;
-    }
-
-    // GVfs' SMB backend reports rejected credentials as G_IO_ERROR_FAILED on
-    // some versions, preserving the useful distinction only in its message.
-    let message = error.message().to_ascii_lowercase();
-    [
-        "permission denied",
-        "authentication failed",
-        "authentication required",
-        "auth fail",
-        "too many authentication failures",
-        "logon failure",
-        "invalid credentials",
-    ]
-    .iter()
-    .any(|reason| message.contains(reason))
+    error.matches(gio::IOErrorEnum::PermissionDenied)
+        || crate::services::describes_refused_credentials(error.message())
 }
 
 fn mount_error_is_host_key_rejection(error: &glib::Error) -> bool {
@@ -713,7 +710,7 @@ fn mount_error_is_host_key_rejection(error: &glib::Error) -> bool {
 /// per lgse/strata#20's "cancelling authentication returns to the prior
 /// committed location" requirement.
 fn mount_failure_message(location: &Location, error: &glib::Error) -> Option<String> {
-    if mount_error_is_cancelled(error) {
+    if mount_error_is_cancelled(error) || mount_error_is_unauthorized(location, error) {
         return None;
     }
     if error.matches(gio::IOErrorEnum::NotSupported)
@@ -729,7 +726,11 @@ fn mount_failure_message(location: &Location, error: &glib::Error) -> Option<Str
     if let Some(message) = transport_failure_message(error) {
         return Some(message);
     }
-    Some(sanitize_failure_message(&error.to_string()))
+    Some(if location.native_path().is_some() {
+        sanitize_failure_message(&crate::services::gio_error_message(error))
+    } else {
+        crate::services::gio_backend_error_message(error)
+    })
 }
 
 fn transport_failure_message(error: &glib::Error) -> Option<String> {
@@ -751,6 +752,11 @@ fn transport_failure_message(error: &glib::Error) -> Option<String> {
 
 fn mount_error_is_cancelled(error: &glib::Error) -> bool {
     error.matches(gio::IOErrorEnum::Cancelled) || error.matches(gio::IOErrorEnum::FailedHandled)
+}
+
+/// GVfs reports a dismissed or refused polkit prompt for `admin://` as `PERMISSION_DENIED`.
+fn mount_error_is_unauthorized(location: &Location, error: &glib::Error) -> bool {
+    location.is_administrator() && error.matches(gio::IOErrorEnum::PermissionDenied)
 }
 
 enum MountTarget {
@@ -1565,10 +1571,15 @@ impl ViewState {
             .refresh(&self.location_entry, &self.browser);
     }
 
+    fn show_breadcrumbs(&self) {
+        self.breadcrumb_reveal_pending.set(true);
+        self.location_stack.set_visible_child_name("breadcrumbs");
+    }
+
     pub(super) fn cancel_location_edit(&self) {
         self.path_completion.dismiss();
         // Resetting a visible entry emits changed and reopens its completion popover.
-        self.location_stack.set_visible_child_name("breadcrumbs");
+        self.show_breadcrumbs();
         self.restore_location_text();
         self.browser.focus_active();
     }
@@ -1578,7 +1589,7 @@ impl ViewState {
         let input = self.location_entry.text();
         match self.open_typed_location(input.as_str(), None) {
             Ok(TypedLocation::Navigating { .. }) => {
-                self.location_stack.set_visible_child_name("breadcrumbs");
+                self.show_breadcrumbs();
                 self.browser.focus_active();
             }
             Ok(TypedLocation::Mounting { sanitized, .. }) => {
@@ -1587,7 +1598,7 @@ impl ViewState {
                 }
             }
             Err(error) => {
-                self.location_stack.set_visible_child_name("breadcrumbs");
+                self.show_breadcrumbs();
                 self.restore_location_text();
                 show_error_dialog(
                     &self.overlay,
@@ -1735,6 +1746,7 @@ impl ViewState {
     pub(super) fn handle_navigation_rejected(
         self: &Rc<Self>,
         parent_depth: usize,
+        rejected: &Location,
         error: LocationValidationError,
     ) {
         match error {
@@ -1744,14 +1756,53 @@ impl ViewState {
             LocationValidationError::Mountable(location) => {
                 self.mount_then_descend(parent_depth, location, MountStrategy::Mountable);
             }
+            LocationValidationError::NotAuthorized => {}
             error => {
-                show_error_dialog(
-                    &self.overlay,
+                self.show_open_failure(
                     &crate::i18n::tr("Unable to open directory"),
-                    &error.message(),
+                    rejected,
+                    &error,
                 );
             }
         }
+    }
+
+    /// Reports why `location` can't be opened, offering `admin://` when only
+    /// permissions stand in the way.
+    pub(super) fn show_open_failure(
+        self: &Rc<Self>,
+        title: &str,
+        location: &Location,
+        error: &LocationValidationError,
+    ) {
+        let Some(administrator) = matches!(error, LocationValidationError::Inaccessible)
+            .then(|| self.browser.administrator_alternative(location))
+            .flatten()
+        else {
+            show_error_dialog(&self.overlay, title, &error.message());
+            return;
+        };
+        let weak = Rc::downgrade(self);
+        show_error_dialog_with_action(
+            &self.overlay,
+            title,
+            &error.message(),
+            (
+                crate::assets::icons::LOCK,
+                &crate::i18n::tr("Open as Administrator"),
+            ),
+            Rc::new(move || {
+                if let Some(state) = weak.upgrade() {
+                    state.open_as_administrator(administrator.clone());
+                }
+            }),
+        );
+    }
+
+    /// Validation runs the first `admin://` operation, so polkit prompts before the
+    /// current folder is replaced, and a dismissed prompt leaves it open.
+    pub(super) fn open_as_administrator(self: &Rc<Self>, location: Location) {
+        self.browser.navigate_location(location, true);
     }
 
     pub(super) fn mount_then_navigate_with_credentials(
@@ -1778,7 +1829,11 @@ impl ViewState {
                     if let Some(connect) = &connect {
                         state.settle_connect(connect, ConnectOutcome::Opened(location.clone()));
                     }
-                    state.browser.navigate(location.clone());
+                    if location.is_administrator() {
+                        state.open_as_administrator(location.clone());
+                    } else {
+                        state.browser.navigate(location.clone());
+                    }
                     state.location_stack.set_visible_child_name("breadcrumbs");
                     state.browser.focus_active();
                 } else if let Err(error) = result {
@@ -2447,9 +2502,11 @@ impl ViewState {
                     &current_label,
                     Some(&crumb.display_path()),
                 );
-                let copy = gtk::Button::builder()
-                    .tooltip_text(crate::i18n::tr("Copy path"))
-                    .build();
+                let copy = gtk::Button::new();
+                crate::ui::accessibility::set_tooltip_and_label(
+                    &copy,
+                    &crate::i18n::tr("Copy path"),
+                );
                 let copy_icon = crate::assets::primary_icon(crate::assets::icons::COPY, 16);
                 copy.set_child(Some(&copy_icon));
                 copy.add_css_class("copy-path");
@@ -2464,14 +2521,20 @@ impl ViewState {
                     let generation = feedback_generation.get().saturating_add(1);
                     feedback_generation.set(generation);
                     crate::assets::set_primary_icon(&copy_icon, crate::assets::icons::CHECK);
-                    button.set_tooltip_text(Some(&crate::i18n::tr("Path copied")));
+                    crate::ui::accessibility::set_tooltip_and_label(
+                        button,
+                        &crate::i18n::tr("Path copied"),
+                    );
                     let button = button.clone();
                     let copy_icon = copy_icon.clone();
                     let feedback_generation = feedback_generation.clone();
                     glib::timeout_add_local_once(Duration::from_secs(2), move || {
                         if feedback_generation.get() == generation {
                             crate::assets::set_primary_icon(&copy_icon, crate::assets::icons::COPY);
-                            button.set_tooltip_text(Some(&crate::i18n::tr("Copy path")));
+                            crate::ui::accessibility::set_tooltip_and_label(
+                                &button,
+                                &crate::i18n::tr("Copy path"),
+                            );
                         }
                     });
                 });
@@ -2482,6 +2545,13 @@ impl ViewState {
                 let button = gtk::Button::with_label(&label);
                 if let Some(label) = button.child().and_downcast::<gtk::Label>() {
                     ellipsize_crumb_label(&label);
+                }
+                if crumb.is_administrator() && crumb.parent().is_none() {
+                    let content = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+                    content.append(&crate::assets::primary_icon(crate::assets::icons::LOCK, 14));
+                    content.append(&gtk::Label::new(Some(&label)));
+                    button.set_child(Some(&content));
+                    crate::ui::accessibility::set_label(&button, &label);
                 }
                 button.add_css_class("breadcrumb");
                 if crumb
@@ -2573,27 +2643,10 @@ impl ViewState {
         let editing = self.location_stack.visible_child_name().as_deref() == Some("entry")
             && self.location_entry_has_focus();
         if !editing {
-            self.location_stack.set_visible_child_name("breadcrumbs");
+            self.show_breadcrumbs();
             self.location_entry.set_text(&location.display_path());
         }
-        let Some(last) = self.breadcrumbs.last_child() else {
-            return;
-        };
-        let last = last.downgrade();
-        let _tick = self
-            .breadcrumb_scroller
-            .add_tick_callback(move |scroller, _| {
-                let Some(last) = last.upgrade() else {
-                    return glib::ControlFlow::Break;
-                };
-                // The adjustment's upper bound is stale until the new crumbs are allocated.
-                if last.width() <= 0 {
-                    return glib::ControlFlow::Continue;
-                }
-                let adjustment = scroller.hadjustment();
-                adjustment.set_value(adjustment.upper() - adjustment.page_size());
-                glib::ControlFlow::Break
-            });
+        self.breadcrumb_reveal_pending.set(true);
     }
 
     pub(super) fn show_breadcrumb_hierarchy_menu(

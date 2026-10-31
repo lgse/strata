@@ -1,0 +1,12 @@
+diff --git a/src/ui/browser/inline_edit.rs b/src/ui/browser/inline_edit.rs
+index 1d8b9e88..d517207d 100644
+--- a/src/ui/browser/inline_edit.rs
++++ b/src/ui/browser/inline_edit.rs
+@@ -79,6 +79,7 @@ impl PendingRename {
+ }
+ 
+ fn constrain_rename_to_viewport(field: &gtk::Entry, viewport: &gtk::ScrolledWindow) {
++    field.set_width_chars(field.text().chars().count() as i32);
+     let Some(editor) = field.parent() else { return };
+     let Some(bounds) = editor.compute_bounds(viewport) else {
+         return;

@@ -1,0 +1,129 @@
+{
+  "mtime": 1700000000,
+  "trees": {
+    "canonical": {
+      "documents": {
+        "notes.txt": "notes\n",
+        "report.md": "# Report\n",
+        "spreadsheet.csv": "a,b\n1,2\n"
+      },
+      "pictures": {
+        "diagram.txt": "diagram\n",
+        "photo.txt": "photo\n"
+      },
+      "archive": {},
+      "readme.md": "# Fixture\n",
+      "todo.txt": "todo\n",
+      ".hidden.txt": "hidden\n"
+    }
+  },
+  "preferences": {
+    "mode": "theme",
+    "theme": "azure-glow",
+    "folder_peeking": false,
+    "single_click_previews": false,
+    "columns_mirror_selection": true,
+    "search_open_files_directly": false,
+    "type_to_search": true,
+    "filter_include_subfolders": true,
+    "show_keybinding_hints": true,
+    "reduce_motion": true,
+    "browser_mode": "columns",
+    "browser_density": "compact",
+    "group_by_type": false,
+    "list_file_clicks": 2,
+    "list_folder_clicks": 1,
+    "grid_file_clicks": 2,
+    "grid_folder_clicks": 2,
+    "explorer_file_clicks": 2,
+    "explorer_folder_clicks": 2,
+    "show_hidden": false,
+    "text_size": "medium",
+    "folders_first": true,
+    "sort_key": "name",
+    "sort_direction": "ascending",
+    "check_for_updates": false,
+    "watch_network_folders": true,
+    "cross_volume_drop_strategy": "always-ask",
+    "release_channel": "stable",
+    "video_preview_backend": "automatic",
+    "preview_muted": true,
+    "preview_volume": 1.0,
+    "sidebar_order": [
+      "desktop",
+      "documents",
+      "downloads",
+      "music",
+      "pictures",
+      "videos"
+    ]
+  },
+  "gtk_settings": "[Settings]\ngtk-enable-animations=false\ngtk-theme-name=Adwaita\ngtk-icon-theme-name=Adwaita\ngtk-font-name=Cantarell 11\ngtk-cursor-blink=false\ngtk-double-click-time=400\ngtk-cursor-theme-name=Adwaita\ngtk-cursor-theme-size=24\ngtk-xft-antialias=1\ngtk-xft-hinting=1\ngtk-xft-hintstyle=hintslight\ngtk-xft-rgba=none\ngtk-overlay-scrolling=false\ngtk-primary-button-warps-slider=false\ngtk-decoration-layout=:\n",
+  "portal_offer_marker": "portal-opt-in-v1",
+  "environment": {
+    "XDG_DATA_DIRS": "/usr/local/share:/usr/share",
+    "XDG_CURRENT_DESKTOP": "GNOME",
+    "LC_ALL": "C.UTF-8",
+    "LANG": "C.UTF-8",
+    "LANGUAGE": "",
+    "TZ": "UTC",
+    "GDK_BACKEND": "x11",
+    "GSK_RENDERER": "cairo",
+    "GDK_SCALE": "1",
+    "GDK_DPI_SCALE": "1",
+    "GTK_A11Y": "atspi",
+    "NO_AT_BRIDGE": "0",
+    "GTK_USE_PORTAL": "0",
+    "GTK_OVERLAY_SCROLLING": "0",
+    "LIBGL_ALWAYS_SOFTWARE": "1",
+    "GALLIUM_DRIVER": "llvmpipe",
+    "GIO_USE_VFS": "local",
+    "GIO_USE_VOLUME_MONITOR": "unix",
+    "GSETTINGS_BACKEND": "memory",
+    "RUST_BACKTRACE": "1"
+  },
+  "layouts": {
+    "us": {
+      "layouts": "us",
+      "group": 0,
+      "caps_lock": false,
+      "variants": ""
+    },
+    "ru": {
+      "layouts": "us,ru",
+      "group": 1,
+      "caps_lock": false,
+      "variants": ""
+    },
+    "ru-only": {
+      "layouts": "ru",
+      "group": 0,
+      "caps_lock": false,
+      "variants": ""
+    },
+    "fr": {
+      "layouts": "fr",
+      "group": 0,
+      "caps_lock": false,
+      "variants": ""
+    },
+    "de": {
+      "layouts": "de",
+      "group": 0,
+      "caps_lock": false,
+      "variants": ""
+    },
+    "caps-lock": {
+      "layouts": "us",
+      "group": 0,
+      "caps_lock": true,
+      "variants": ""
+    },
+    "cn-altgr-pinyin": {
+      "layouts": "cn",
+      "group": 0,
+      "caps_lock": false,
+      "variants": "altgr-pinyin"
+    }
+  }
+}

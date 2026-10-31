@@ -1,0 +1,12 @@
+{"scenario":"sidebar-selection-depends-on-activation","modes":["columns"],"prefs":{"list_folder_clicks":1,"list_file_clicks":1,"grid_folder_clicks":1,"grid_file_clicks":1,"explorer_folder_clicks":1,"explorer_file_clicks":1},"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"mouse","vars":{"activation":"mouse"}},{"id":"keyboard","vars":{"activation":"keyboard"}}],"cost":{"columns-mouse":0.5,"columns-keyboard":0.5},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Sidebar Home by Return keeps child selected while mouse click clears it; only keyboard-activation selection route, sidebar-navigation-range-anchor uses click"}}
+{"fs":{"path":"$home/child","mkdir":true}}
+{"click":{"sidebar":"Home"},"variants":["mouse"]}
+{"key":"Home","variants":["keyboard"]}
+{"key":"Left","variants":["keyboard"]}
+{"wait":{"state":{"target":{"sidebar":"Home"},"focused":true}},"message":"keyboard focus on the Home sidebar button","variants":["keyboard"]}
+{"key":"Return","variants":["keyboard"]}
+{"wait":{"directory":"home"},"message":"the browser to be working in 'home'"}
+{"settle":{"pane":"home"}}
+{"wait":{"entry":"child","dir":"home"},"message":"the entry 'child' in 'home' to appear"}
+{"wait":{"selected":["child"],"dir":"home"},"message":"the selection to become ['child']","variants":["keyboard"]}
+{"wait":{"selected":[],"dir":"home"},"message":"the selection to become []","variants":["mouse"]}

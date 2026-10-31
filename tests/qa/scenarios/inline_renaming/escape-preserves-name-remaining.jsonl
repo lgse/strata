@@ -1,0 +1,36 @@
+{"scenario":"escape-preserves-name-remaining","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"existing-folder"},{"id":"new-file"},{"id":"new-folder"}],"cost":{"columns-existing-folder":0.7,"columns-new-file":1.0,"columns-new-folder":0.8},"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":3,"score":45,"note":"Escape discards a typed name on existing folder and on new file/folder (menu, Ctrl+Shift+N); superset of escape-preserves-name, unique new-entry route"}}
+{"select":{"entry":"readme.md"},"variants":["existing-folder"]}
+{"select_with_keyboard":"archive","variants":["existing-folder"]}
+{"wait":{"panes":{"ends_with":["archive"]}},"message":"the column the cursor mirrors","variants":["existing-folder"]}
+{"key":"F2","variants":["existing-folder"]}
+{"wait":{"field":{"name":"Rename","focused":true}},"message":"the rename editor to take focus","variants":["existing-folder"]}
+{"remember":{"field":true},"as":"rename","variants":["existing-folder"]}
+{"wait":{"field":{"of":"rename","text":"archive"}},"message":"the original name to appear","variants":["existing-folder"]}
+{"fs":{"path":"archive","is":"dir"},"timeout_ms":0,"variants":["existing-folder"]}
+{"select":{"entry":"readme.md"},"variants":["new-file"]}
+{"click":{"background":true},"button":3,"variants":["new-file"]}
+{"wait":{"present":{"menu_item":"New File"}},"message":"the menu item 'New File'","variants":["new-file"]}
+{"settle":{"menu_item":"New File"},"variants":["new-file"]}
+{"click":{"menu_item":"New File"},"variants":["new-file"]}
+{"wait":{"menu_items":null},"message":"the menu to close","variants":["new-file"]}
+{"wait":{"field":{"name":"Rename","focused":true}},"message":"the rename editor to take focus","variants":["new-file"]}
+{"remember":{"field":true},"as":"rename","variants":["new-file"]}
+{"wait":{"field":{"of":"rename","text":"new file"}},"message":"the original name to appear","variants":["new-file"]}
+{"fs":{"path":"new file","is":"file"},"timeout_ms":0,"variants":["new-file"]}
+{"select":{"entry":"readme.md"},"variants":["new-folder"]}
+{"key":"ctrl+shift+n","variants":["new-folder"]}
+{"wait":{"field":{"name":"Rename","focused":true}},"message":"the rename editor to take focus","variants":["new-folder"]}
+{"remember":{"field":true},"as":"rename","variants":["new-folder"]}
+{"wait":{"field":{"of":"rename","text":"new folder"}},"message":"the original name to appear","variants":["new-folder"]}
+{"fs":{"path":"new folder","is":"dir"},"timeout_ms":0,"variants":["new-folder"]}
+{"type":"discarded"}
+{"wait":{"field":{"of":"rename","text":"discarded"}},"message":"the proposed name to appear"}
+{"key":"Escape"}
+{"wait":{"absent":{"role":"text","name":"Rename"}},"message":"the name editor to close"}
+{"wait":{"entry":"archive"},"message":"the entry 'archive' to appear","variants":["existing-folder"]}
+{"fs":{"path":"archive","exists":true},"timeout_ms":0,"variants":["existing-folder"]}
+{"wait":{"entry":"new file"},"message":"the entry 'new file' to appear","variants":["new-file"]}
+{"fs":{"path":"new file","exists":true},"timeout_ms":0,"variants":["new-file"]}
+{"wait":{"entry":"new folder"},"message":"the entry 'new folder' to appear","variants":["new-folder"]}
+{"fs":{"path":"new folder","exists":true},"timeout_ms":0,"variants":["new-folder"]}
+{"fs":{"path":"discarded","exists":false},"timeout_ms":0}

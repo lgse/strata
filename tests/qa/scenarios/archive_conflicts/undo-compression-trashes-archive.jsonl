@@ -1,0 +1,26 @@
+{"scenario":"undo-compression-trashes-archive","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"setup":[{"fs":{"path":"archive.zip","write":"original archive"}},{"fs":{"path":"archive (1).zip","write":"previous archive"}}],"cost":{"columns":1.6},"quality":{"impact":4,"coverage":3,"criticality":4,"diagnostic":3,"score":34,"note":"Keep Both compress then ctrl+z trashes only the numbered archive; unit test pins undo record only, collision covered by keep-both-numbered-archives"}}
+{"select":{"entry":"todo.txt"}}
+{"click":{"entry":"todo.txt"},"button":3}
+{"wait":{"menu_items":{}},"message":"the context menu for 'todo.txt'"}
+{"wait":{"present":{"menu_item":"Compress…"}},"message":"the menu item 'Compress…'"}
+{"settle":{"menu_item":"Compress…"}}
+{"click":{"menu_item":"Compress…"}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"remember":{"field":true},"as":"field"}
+{"key":"ctrl+a"}
+{"type":"archive"}
+{"wait":{"field":{"of":"field","text":"archive"}},"message":"archive name input"}
+{"click":{"role":"toggle button","name":"ZIP","within":{"dialog":true}}}
+{"wait":{"state":{"target":{"role":"toggle button","name":"ZIP","within":{"dialog":true}},"pressed":true}},"message":"selected archive format"}
+{"activate":{"dialog_button":"Compress"}}
+{"wait":{"dialog":"File already exists"},"message":"archive collision prompt"}
+{"click":{"dialog_button":"Keep Both"}}
+{"fs":{"path":"archive (2).zip","exists":true},"message":"numbered archive publication"}
+{"wait":{"dialog":null},"message":"archive progress dismissal"}
+{"key":"ctrl+z"}
+{"fs":{"path":"archive (2).zip","exists":false},"message":"compress undo to trash the archive"}
+{"fs":{"path":"$data/Trash/files","empty":false},"message":"the archive to land in Trash"}
+{"fs":{"path":"archive.zip","text":"original archive"},"timeout_ms":0}
+{"fs":{"path":"archive (1).zip","text":"previous archive"},"timeout_ms":0}

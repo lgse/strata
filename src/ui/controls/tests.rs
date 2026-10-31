@@ -73,6 +73,19 @@ fn character_counter_tracks_edits_and_character_limits() {
             field.entry.set_max_length(11);
             assert!(field.remaining.is_visible());
             assert_eq!(field.remaining.text(), "7 chars remaining");
+
+            field.entry.set_text("ÉTÉ-2026");
+            field.set_limit(11, str::len);
+            assert_eq!(field.remaining.text(), "1 char remaining");
+            field
+                .entry
+                .delegate()
+                .expect("entry text")
+                .insert_text("ÉA", &mut 8);
+            assert_eq!(field.entry.text(), "ÉTÉ-2026");
+            field.entry.insert_text("A", &mut 8);
+            assert_eq!(field.entry.text(), "ÉTÉ-2026A");
+            assert_eq!(field.remaining.text(), "0 chars remaining");
         },
     );
 }

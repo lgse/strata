@@ -65,7 +65,7 @@ use super::{
     focus_navigation::{
         FOCUS_MODIFIERS, arrow_direction, plain_tab_direction, vim_focus_direction,
     },
-    keys::{self, KeyPress, SHORTCUT_MODIFIERS, bindings::*},
+    keys::{self, KeyPress, Map, SHORTCUT_MODIFIERS, bindings::*},
 };
 
 type Completion = Box<dyn FnOnce(ashpd::backend::Result<SelectedFiles>)>;
@@ -227,6 +227,7 @@ impl FileSource for ChooserFileSource {
                     request_id: request.id,
                     message: error.message(),
                     refused: false,
+                    denied: false,
                 });
                 None
             }
@@ -795,6 +796,7 @@ impl ChooserState {
             image_dimensions: MetadataValue::Unknown,
             child_count: MetadataValue::Unknown,
             duration_seconds: MetadataValue::Unknown,
+            listable: MetadataValue::Unknown,
             is_hidden: false,
             recent_uri: None,
         };
@@ -913,6 +915,69 @@ impl ChooserState {
             Some(source) if source.to_string_lossy() == text => source.to_owned(),
             _ => OsString::from(text),
         }
+    }
+
+    fn install_filename_selection_click(self: &Rc<Self>) {
+        if !matches!(self.request.kind, ChooserKind::SaveFile { .. }) {
+            return;
+        }
+        let click = gtk::GestureClick::new();
+        click.set_button(1);
+        click.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let weak = Rc::downgrade(self);
+        click.connect_pressed(move |gesture, _, x, y| {
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            if PreferenceManager::shared().tenxer_mode() {
+                return;
+            }
+            let Some(surface) = gesture.widget() else {
+                return;
+            };
+            let Some(picked) = surface.pick(x, y, gtk::PickFlags::DEFAULT) else {
+                return;
+            };
+            if super::focus_navigation::editable(&picked)
+                || super::focus_navigation::in_popover(&picked)
+                || !std::iter::successors(Some(picked), gtk::Widget::parent)
+                    .take_while(|widget| *widget != surface)
+                    .any(|widget| {
+                        widget.has_css_class("file-row")
+                            || widget.has_css_class("list-row")
+                            || widget.has_css_class("icons-card")
+                    })
+            {
+                return;
+            }
+            let location = state.view.browser().active_location();
+            let weak = Rc::downgrade(&state);
+            // Re-clicking a highlighted row emits no GTK selection change. Let the
+            // row handlers finish before committing its cursor and refilling the name.
+            glib::idle_add_local_once(move || {
+                let Some(state) = weak.upgrade() else {
+                    return;
+                };
+                let browser = state.view.browser();
+                if !state.window.is_visible() || browser.active_location() != location {
+                    return;
+                }
+                if state.view.selected_search_results().is_none()
+                    && browser.selection_is_load_cursor()
+                    && let Some((depth, position, _)) = browser.focused_item()
+                {
+                    browser.commit_selection();
+                    browser.set_selection(
+                        depth,
+                        &browser.selected_positions(depth),
+                        Some(position),
+                    );
+                }
+                state.filename_selection.borrow_mut().clear();
+                state.update_selected_filename();
+            });
+        });
+        self.view.widget().add_controller(click);
     }
 
     fn update_selected_filename(&self) {
@@ -1316,8 +1381,8 @@ impl ChooserState {
         let Some(filename) = self.filename.as_ref() else {
             return;
         };
-        filename.grab_focus();
-        filename.select_region(0, super::collection_edit::rename_stem_end(&filename.text()));
+        filename.grab_focus_without_selecting();
+        select_name_stem(filename);
     }
 
     fn activate_file(self: &Rc<Self>, location: &Location) {
@@ -1356,6 +1421,10 @@ impl ChooserState {
             _ => {}
         }
     }
+}
+
+fn select_name_stem(entry: &gtk::Entry) {
+    entry.select_region(0, super::collection_edit::rename_stem_end(&entry.text()));
 }
 
 fn eligible_open_entries(entries: Vec<FileEntry>, directory: bool) -> Vec<FileEntry> {
@@ -1677,12 +1746,10 @@ fn build_chooser_hosted(
     header_content.set_valign(gtk::Align::Center);
     header_content.append(&sidebar_toggle);
     header_content.append(&location);
-    let close = gtk::Button::builder()
-        .tooltip_text(crate::ui::shortcut_reference::with_keys(
-            "Cancel file selection (%{keys})",
-            crate::ui::keys::Keys::One(crate::ui::keys::bindings::ESCAPE),
-        ))
-        .build();
+    let close = gtk::Button::new();
+    let keys = crate::ui::keys::Keys::One(crate::ui::keys::bindings::ESCAPE.shown());
+    crate::ui::shortcut_reference::follow_tooltip(&close, "Cancel file selection (%{keys})", keys);
+    crate::ui::shortcut_reference::follow_label(&close, "Cancel file selection (%{keys})", keys);
     close.set_child(Some(&crate::assets::chrome_icon(crate::assets::icons::X)));
     close.add_css_class("header-action");
     let closing_window = window.downgrade();
@@ -1755,9 +1822,10 @@ fn build_chooser_hosted(
             let entry = form_entry();
             entry.set_hexpand(true);
             entry.set_placeholder_text(Some(&crate::i18n::tr("Enter a filename")));
+            crate::ui::accessibility::set_label(&entry, &crate::i18n::tr("Name"));
             if let Some(name) = current_name {
                 entry.set_text(&name.to_string_lossy());
-                entry.select_region(0, -1);
+                select_name_stem(&entry);
             }
             row.append(&entry);
             details.append(&row);
@@ -1782,6 +1850,7 @@ fn build_chooser_hosted(
             let entry = form_entry();
             entry.set_hexpand(true);
             entry.set_placeholder_text(Some(&crate::i18n::tr("Enter a filename or https:// URL")));
+            crate::ui::accessibility::set_label(&entry, &crate::i18n::tr("Name"));
             row.append(&entry);
             details.append(&row);
             Some(entry)
@@ -1854,12 +1923,10 @@ fn build_chooser_hosted(
             ..
         }
     ) {
-        crate::ui::accessibility::set_description(
+        crate::ui::shortcut_reference::follow_description(
             &accept,
-            Some(&crate::ui::shortcut_reference::with_keys(
-                "Select folder (%{keys})",
-                crate::ui::keys::Keys::One(crate::ui::keys::bindings::CHOOSE_FOLDER),
-            )),
+            "Select folder (%{keys})",
+            crate::ui::keys::Keys::One(crate::ui::keys::bindings::CHOOSE_FOLDER.shown()),
         );
     }
     let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
@@ -1909,6 +1976,7 @@ fn build_chooser_hosted(
     window.set_child(Some(&overlay));
     view.install_inline_edit_dismissal(&window);
     install_modal_focus_trap(&window);
+    keys::install_native_aliases(&window);
     view.set_as_modal_focus_fallback(&window);
     window.set_default_widget(Some(&accept));
 
@@ -1941,6 +2009,7 @@ fn build_chooser_hosted(
         download_progress: RefCell::new(None),
     });
 
+    state.install_filename_selection_click();
     let weak = Rc::downgrade(&state);
     accept.connect_clicked(move |_| {
         if let Some(state) = weak.upgrade() {
@@ -2095,16 +2164,20 @@ fn build_chooser_hosted(
         }
         return Some(state);
     } else if let Some(filename) = state.filename.as_ref() {
-        filename.grab_focus();
-        filename.select_region(0, -1);
+        filename.grab_focus_without_selecting();
+        select_name_stem(filename);
     } else {
         sidebar_toggle.grab_focus();
     }
     window.set_focus_visible(true);
+    let target_filename = state.filename.clone();
     let initial_focus = gtk::prelude::RootExt::focus(&window).map(|widget| widget.downgrade());
     // View initialization also queues focus work; restore the chooser's target afterward.
     glib::idle_add_local_once(move || {
-        if let Some(widget) = initial_focus.and_then(|widget| widget.upgrade()) {
+        if let Some(filename) = target_filename.as_ref() {
+            filename.grab_focus_without_selecting();
+            select_name_stem(filename);
+        } else if let Some(widget) = initial_focus.and_then(|widget| widget.upgrade()) {
             widget.grab_focus();
         }
     });
@@ -2257,23 +2330,32 @@ fn apply_external_parent(window: &gtk::Window, parent: Option<&WindowIdentifierT
 
 fn save_hints(kind: &ChooserKind, preferences: &Rc<PreferenceManager>) -> Option<gtk::Box> {
     use crate::ui::keys::{
-        self, Binding, Keys,
-        bindings::{ENTER, OPEN, TENXER_RENAME},
+        self, Keys, Shown,
+        bindings::{ENTER, OPEN, RENAME},
     };
-    let hints: &[(Binding, &str)] = match kind {
+    let hints: &[(Shown, &str)] = match kind {
         ChooserKind::SaveFile { .. } => &[
-            (ENTER, "Save here"),
-            (TENXER_RENAME, "Edit name"),
-            (OPEN, "Replace file"),
+            (ENTER.shown(), "Save here"),
+            (RENAME.alternate(0).shown(), "Edit name"),
+            (OPEN.shown(), "Replace file"),
         ],
-        ChooserKind::SaveFiles { .. } => &[(ENTER, "Save here")],
+        ChooserKind::SaveFiles { .. } => &[(ENTER.shown(), "Save here")],
         ChooserKind::Open { .. } => return None,
     };
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     row.add_css_class("chooser-save-hints");
     row.set_valign(gtk::Align::Center);
     for (index, (binding, action)) in hints.iter().enumerate() {
-        let keycap = gtk::Label::new(Some(&keys::label(&Keys::One(*binding))));
+        // Shown only in 10xer mode, so it shows that map.
+        let keycap = gtk::Label::new(None);
+        let shown = *binding;
+        crate::ui::shortcut_reference::follow_keys(&keycap, move |keycap| {
+            keycap.set_text(&keys::label_in_map(
+                &rust_i18n::locale(),
+                &Keys::One(shown),
+                Map::Tenxer,
+            ));
+        });
         keycap.add_css_class("sidebar-keycap");
         if index > 0 {
             keycap.set_margin_start(10);
@@ -2351,13 +2433,9 @@ fn bind_chooser_sidebar_modes(
     let describe = {
         let toggle = toggle.clone();
         let state = Rc::downgrade(&sidebar.state);
-        let preferences = preferences.clone();
         Rc::new(move || {
             if let Some(state) = state.upgrade() {
-                toggle.describe(
-                    SidebarMode::of(toggle.is_active(), state.rail.get()),
-                    preferences.tenxer_mode(),
-                );
+                toggle.describe(SidebarMode::of(toggle.is_active(), state.rail.get()));
             }
         })
     };
@@ -2365,7 +2443,7 @@ fn bind_chooser_sidebar_modes(
     toggle.connect_toggled(move |_| on_toggled());
     let on_rail = describe.clone();
     sidebar.state.connect_rail_changed(move |_| on_rail());
-    preferences.bind_preference(toggle, PreferenceManager::tenxer_mode, move |_, _| {
+    preferences.bind_preference(toggle, PreferenceManager::shown_keys, move |_, _| {
         describe();
     });
 }
@@ -2453,14 +2531,15 @@ fn install_shortcuts(
             }
             return glib::Propagation::Proceed;
         }
+        if press.is(ESCAPE_ANY) && state.view.cancel_column_drag() {
+            return glib::Propagation::Stop;
+        }
         let focused = gtk::prelude::RootExt::focus(&state.window);
         if preferences.tenxer_mode()
             && (state.name_has_focus(focused.as_ref()) || state.view.location_has_focus())
-            && !press.is_any(&[
-                REFERENCE.ignoring(SHORTCUT_MODIFIERS),
-                ESCAPE_ANY,
-                TENXER_MODE,
-            ])
+            && !(press.is(REFERENCE.in_map(Map::Default).ignoring(SHORTCUT_MODIFIERS))
+                || press.is(ESCAPE_ANY)
+                || press.is(TENXER_MODE))
         {
             return glib::Propagation::Proceed;
         }
@@ -2493,7 +2572,7 @@ fn install_shortcuts(
         {
             return glib::Propagation::Proceed;
         }
-        if press.is_any(&[CONTEXT_MENU, CONTEXT_MENU_F10])
+        if press.is(CONTEXT_MENU)
             && !focused.as_ref().is_some_and(|widget| {
                 super::focus_navigation::editable(widget)
                     || super::focus_navigation::in_popover(widget)
@@ -2514,7 +2593,7 @@ fn install_shortcuts(
             return glib::Propagation::Stop;
         }
         // Filtered rows own navigation, not the hidden directory selection.
-        if press.is_any(&[
+        if press.untyped().is_any(&[
             UP.ignoring(SHORTCUT_MODIFIERS),
             DOWN.ignoring(SHORTCUT_MODIFIERS),
         ]) && state.view.selected_search_results().is_some()
@@ -2526,13 +2605,14 @@ fn install_shortcuts(
             state.window.set_focus_visible(true);
             return glib::Propagation::Proceed;
         }
-        let original = *press;
-        let press = &super::focus_navigation::navigation_key(
-            press,
-            PreferenceManager::shared().type_to_search(),
-            focused.as_ref(),
-        );
-        let vim_navigation = *press != original;
+        // Unlike the window, the chooser types h j k l whenever type-to-search
+        // is on, 10xer mode included.
+        let press = &if preferences.type_to_search() {
+            press.untyped()
+        } else {
+            *press
+        };
+        let vim_navigation = press.aliased();
         if !focused
             .as_ref()
             .is_some_and(super::focus_navigation::in_popover)
@@ -2599,7 +2679,7 @@ fn install_shortcuts(
             state.cancel();
             return glib::Propagation::Stop;
         }
-        if press.is_any(&[RENAME, RENAME_R])
+        if press.is(RENAME.in_map(Map::Default))
             && browser.selected_entries().len() == 1
             && !focused.as_ref().is_some_and(|widget| {
                 super::focus_navigation::editable(widget)
@@ -2620,7 +2700,7 @@ fn install_shortcuts(
         if state.view.new_entry_is_active() || state.view.rename_is_active() {
             return glib::Propagation::Proceed;
         }
-        if press.is(SPACE)
+        if press.is(PREVIEW.in_map(Map::Default))
             && let Some(entry) = state.view.search_result_for_space()
         {
             if state.view.activate_directory_on_space() {
@@ -2632,7 +2712,7 @@ fn install_shortcuts(
             );
             return glib::Propagation::Stop;
         }
-        if press.is(FILTER) && state.view.show_filter() {
+        if press.is(FILTER.in_map(Map::Default)) && state.view.show_filter() {
             return glib::Propagation::Stop;
         }
         if press.is(LOCATION) {
@@ -2679,11 +2759,7 @@ fn install_shortcuts(
             }
             return glib::Propagation::Stop;
         }
-        if press.is(if preferences.tenxer_mode() {
-            TENXER_SIDEBAR
-        } else {
-            SIDEBAR
-        }) {
+        if press.is(SIDEBAR) {
             if state
                 .destination_host
                 .as_ref()
@@ -2736,13 +2812,19 @@ fn install_shortcuts(
             }
             return glib::Propagation::Stop;
         }
-        if press.is_any(&[HIDDEN_FILES, HIDDEN_FILES_PERIOD]) {
+        if press.is(HIDDEN_FILES.in_map(Map::Default)) {
             browser.toggle_hidden();
             return glib::Propagation::Stop;
         }
-        let permanent = if press.is(DELETE.ignoring(ModifierType::SUPER_MASK)) {
+        let permanent = if press.is(MOVE_TO_TRASH
+            .in_map(Map::Default)
+            .ignoring(ModifierType::SUPER_MASK))
+        {
             Some(false)
-        } else if press.is(DELETE_PERMANENTLY.ignoring(ModifierType::SUPER_MASK)) {
+        } else if press.is(DELETE_PERMANENTLY
+            .in_map(Map::Default)
+            .ignoring(ModifierType::SUPER_MASK))
+        {
             Some(true)
         } else {
             None
@@ -2758,7 +2840,14 @@ fn install_shortcuts(
             super::window::apply_browser_mode(&state.view, &PreferenceManager::shared(), mode);
             return glib::Propagation::Stop;
         }
-        if control {
+        // A user's binding for a folder jump may hold Ctrl, as in the window.
+        let jumps = press.is_any(&[
+            HISTORY_BACK.in_map(Map::Default),
+            HISTORY_FORWARD.in_map(Map::Default),
+            PARENT_FOLDER.into(),
+            HOME_FOLDER.into(),
+        ]);
+        if control && !jumps {
             return glib::Propagation::Proceed;
         }
         let column_popover = focused
@@ -2794,8 +2883,8 @@ fn install_shortcuts(
                 return glib::Propagation::Stop;
             }
             if in_header {
-                filename.grab_focus();
-                filename.select_region(0, -1);
+                filename.grab_focus_without_selecting();
+                select_name_stem(filename);
                 return glib::Propagation::Stop;
             }
         }
@@ -2829,17 +2918,17 @@ fn install_shortcuts(
         }
         let mut header_left_boundary = false;
         if state.view.header_actions_have_focus() {
-            if press.is_any(&[VIM_LEFT, LEFT.ignoring(FOCUS_MODIFIERS)]) {
+            if press.is(LEFT.ignoring(FOCUS_MODIFIERS).or_alternates()) {
                 if state.view.move_header_focus(gtk::DirectionType::Left)
                     || preferences.tenxer_mode()
                 {
                     return glib::Propagation::Stop;
                 }
                 header_left_boundary = true;
-            } else if press.is_any(&[VIM_RIGHT, RIGHT.ignoring(FOCUS_MODIFIERS)]) {
+            } else if press.is(RIGHT.ignoring(FOCUS_MODIFIERS).or_alternates()) {
                 state.view.move_header_focus(gtk::DirectionType::Right);
                 return glib::Propagation::Stop;
-            } else if press.is_any(&[VIM_DOWN, DOWN.ignoring(FOCUS_MODIFIERS)]) {
+            } else if press.is(DOWN.ignoring(FOCUS_MODIFIERS).or_alternates()) {
                 state.view.focus_items_from_header();
                 return glib::Propagation::Stop;
             }
@@ -2908,8 +2997,8 @@ fn install_shortcuts(
             state.window.set_focus_visible(true);
             return glib::Propagation::Stop;
         }
-        if press.is(SPACE.ignoring(FOCUS_MODIFIERS)) {
-            if press.is(SPACE) && state.view.activate_directory_on_space() {
+        if press.is(PREVIEW.in_map(Map::Default).ignoring(FOCUS_MODIFIERS)) {
+            if press.is(PREVIEW.in_map(Map::Default)) && state.view.activate_directory_on_space() {
                 return glib::Propagation::Stop;
             }
             preview.toggle(
@@ -2978,25 +3067,28 @@ fn install_shortcuts(
         {
             return glib::Propagation::Stop;
         }
-        if press.is_any(&[VIM_UP, UP.ignoring(alt_super)])
+        if press.is(UP.ignoring(alt_super).or_alternates())
             && !PreferenceManager::shared().arrow_navigation_scoped_active()
             && state.view.focus_header_from_top_item()
         {
             return glib::Propagation::Stop;
         }
-        if press.is(HISTORY_BACK.ignoring(FOCUS_MODIFIERS)) {
+        if press.is(HISTORY_BACK.in_map(Map::Default).ignoring(FOCUS_MODIFIERS)) {
             browser.back();
-        } else if press.is(HISTORY_FORWARD.ignoring(FOCUS_MODIFIERS)) {
+        } else if press.is(HISTORY_FORWARD
+            .in_map(Map::Default)
+            .ignoring(FOCUS_MODIFIERS))
+        {
             browser.forward();
         } else if press.is(PARENT_FOLDER.ignoring(FOCUS_MODIFIERS)) {
             browser.parent();
         } else if press.is(HOME_FOLDER.ignoring(FOCUS_MODIFIERS)) {
             browser.navigate(Location::local(home_directory()));
-        } else if press.is_any(&[VIM_DOWN, DOWN.ignoring(FOCUS_MODIFIERS)]) {
+        } else if press.is(DOWN.ignoring(FOCUS_MODIFIERS).or_alternates()) {
             browser.move_selection(1);
-        } else if press.is_any(&[VIM_UP, UP.ignoring(FOCUS_MODIFIERS)]) {
+        } else if press.is(UP.ignoring(FOCUS_MODIFIERS).or_alternates()) {
             browser.move_selection(-1);
-        } else if press.is_any(&[VIM_LEFT, LEFT.ignoring(FOCUS_MODIFIERS)]) {
+        } else if press.is(LEFT.ignoring(FOCUS_MODIFIERS).or_alternates()) {
             if state.view.first_column_has_focus()
                 && sidebar_toggle.is_active()
                 && !PreferenceManager::shared().arrow_navigation_scoped_active()
@@ -3010,7 +3102,7 @@ fn install_shortcuts(
             && state.view.view_mode() == BrowserMode::Columns
         {
             browser.enter_focused_directory();
-        } else if press.is_any(&[VIM_RIGHT, ENTER.ignoring(FOCUS_MODIFIERS)]) {
+        } else if press.is_any(&[RIGHT.alternates(), ENTER.ignoring(FOCUS_MODIFIERS)]) {
             if !tenxer.confirm_focused() {
                 state.view.activate_focused();
             }

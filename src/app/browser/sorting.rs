@@ -242,13 +242,18 @@ impl Browser {
         }
         let mut state = self.state.borrow_mut();
         if state
-            .fail(task.request_id, "Sorting the directory failed.".to_owned())
+            .fail(
+                task.request_id,
+                "Sorting the directory failed.".to_owned(),
+                None,
+            )
             .is_some()
         {
             drop(state);
             self.emit(BrowserEvent::LoadFailed {
                 depth: task.depth,
                 message: "Sorting the directory failed.".to_owned(),
+                administrator: None,
             });
         }
     }

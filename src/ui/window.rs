@@ -32,14 +32,13 @@ use super::{
         arm_spring_load_navigation, file_drag_hover_target, file_drop_action, file_drop_commit,
         locations_from_file_list_value, prepare_file_drop_target, show_error_dialog,
     },
-    browser_modes::{BrowserDensity, BrowserMode},
+    browser_modes::BrowserMode,
     controls::{ModalTone, focus_button, message_dialog_description, message_dialog_layout},
     keys::{
         KeyPress,
         bindings::{
-            BACKSPACE, DOWN, ENTER, FILTER_SLASH, FIRST_ITEM, FOCUS_NEXT, LAST_ITEM, LEFT,
-            PAGE_DOWN, PAGE_UP, RIGHT, SPACE, UP, VIEW_COLUMNS, VIEW_ICONS, VIEW_LIST, VIM_DOWN,
-            VIM_LEFT, VIM_RIGHT, VIM_UP,
+            BACKSPACE, DOWN, END_KEY, ENTER, FILTER_SLASH, FOCUS_NEXT, HOME_KEY, LEFT,
+            PAGE_DOWN_KEY, PAGE_UP_KEY, RIGHT, SPACE, UP, VIEW_COLUMNS, VIEW_ICONS, VIEW_LIST,
         },
     },
     modal::{ModalHost, close_on_escape, dismiss_modal_layer, modal_layer},
@@ -49,6 +48,7 @@ use super::{
 
 mod bookmarks;
 mod composition;
+mod density_slider;
 mod device_labels;
 mod device_release;
 mod devices;
@@ -547,13 +547,12 @@ fn single_pane_arrow_action(
 
 pub(super) fn is_browser_navigation_key(press: &KeyPress) -> bool {
     const TOLERATED: ModifierType = ModifierType::SHIFT_MASK.union(ModifierType::ALT_MASK);
-    press.is_any(&[VIM_LEFT, VIM_DOWN, VIM_UP, VIM_RIGHT])
-        || [
-            UP, DOWN, LEFT, RIGHT, FIRST_ITEM, LAST_ITEM, PAGE_UP, PAGE_DOWN, FOCUS_NEXT, ENTER,
-            BACKSPACE,
-        ]
+    [UP, DOWN, LEFT, RIGHT, FOCUS_NEXT, ENTER]
         .into_iter()
-        .any(|key| press.is(key.ignoring(TOLERATED)))
+        .any(|key| press.is(key.ignoring(TOLERATED).or_alternates()))
+        || [HOME_KEY, END_KEY, PAGE_UP_KEY, PAGE_DOWN_KEY, BACKSPACE]
+            .into_iter()
+            .any(|key| press.is(key.ignoring(TOLERATED)))
 }
 
 pub(super) fn type_to_search_query(press: &KeyPress) -> Option<TypeToSearchQuery> {
@@ -838,7 +837,6 @@ pub(super) fn build_appearance_menu(
     let (row, check, _) = appearance_row(
         crate::assets::icons::EYE,
         "Preview panel",
-        "",
         preview.is_enabled(),
     );
     let preview_shortcut = gtk::Label::new(None);
@@ -855,13 +853,17 @@ pub(super) fn build_appearance_menu(
     let description_toggle = preview_toggle.downgrade();
     preferences.bind_preference(
         &preview_shortcut,
+        // The same command shows other keys in the other map or once rebound.
         |preferences| {
-            crate::ui::shortcut_reference::context_hint_for(
-                crate::ui::shortcut_reference::ContextHint::Preview,
-                preferences,
+            (
+                crate::ui::shortcut_reference::context_hint_for(
+                    crate::ui::shortcut_reference::ContextHint::Preview,
+                    preferences,
+                ),
+                preferences.shown_keys(),
             )
         },
-        move |widget, hint| {
+        move |widget, (hint, _)| {
             let shortcut = widget
                 .downcast_ref::<gtk::Label>()
                 .expect("preview shortcut label");
@@ -899,56 +901,21 @@ pub(super) fn build_appearance_menu(
     });
     content.append(&preview_toggle);
 
+    let hidden_files_shown = preferences.sort_preferences().show_hidden;
     content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     append_menu_heading(&content, &crate::i18n::tr("DENSITY"));
-    let current_density = preferences.browser_density();
-    let hidden_files_shown = preferences.sort_preferences().show_hidden;
-    let (compact, compact_check, _) = appearance_option(
-        crate::assets::icons::ROWS,
-        "Compact",
-        current_density == BrowserDensity::Compact,
-        true,
-        gtk::AccessibleRole::MenuItemRadio,
-    );
-    let (airy, airy_check, _) = appearance_option(
-        crate::assets::icons::ROWS,
-        "Airy",
-        current_density == BrowserDensity::Airy,
-        true,
-        gtk::AccessibleRole::MenuItemRadio,
-    );
-    preferences.bind_preference(
-        &compact_check,
+    content.append(&density_slider::density_slider(
+        &preferences,
+        "Frame",
+        PreferenceManager::frame_density,
+        PreferenceManager::set_frame_density,
+    ));
+    content.append(&density_slider::density_slider(
+        &preferences,
+        "Content",
         PreferenceManager::browser_density,
-        |widget, density| widget.set_visible(density == BrowserDensity::Compact),
-    );
-    preferences.bind_preference(
-        &airy_check,
-        PreferenceManager::browser_density,
-        |widget, density| widget.set_visible(density == BrowserDensity::Airy),
-    );
-    {
-        let preferences = preferences.clone();
-        let popover_weak = popover_weak.clone();
-        compact.connect_clicked(move |_| {
-            preferences.set_browser_density(BrowserDensity::Compact);
-            if let Some(popover) = popover_weak.upgrade() {
-                popover.popdown();
-            }
-        });
-    }
-    {
-        let preferences = preferences.clone();
-        let popover_weak = popover_weak.clone();
-        airy.connect_clicked(move |_| {
-            preferences.set_browser_density(BrowserDensity::Airy);
-            if let Some(popover) = popover_weak.upgrade() {
-                popover.popdown();
-            }
-        });
-    }
-    content.append(&compact);
-    content.append(&airy);
+        PreferenceManager::set_browser_density,
+    ));
 
     content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     append_menu_heading(&content, &crate::i18n::tr("TEXT SIZE"));
@@ -965,11 +932,29 @@ pub(super) fn build_appearance_menu(
             },
             shortcut_reference::with_keys,
         };
-        super::controls::stepper([
-            with_keys("Decrease text size (%{keys})", Keys::One(TEXT_SMALLER)),
-            with_keys("Reset text size (%{keys})", Keys::One(TEXT_RESET)),
-            with_keys("Increase text size (%{keys})", Keys::One(TEXT_LARGER)),
-        ])
+        let labels = || {
+            [
+                with_keys(
+                    "Decrease text size (%{keys})",
+                    Keys::One(TEXT_SMALLER.shown()),
+                ),
+                with_keys("Reset text size (%{keys})", Keys::One(TEXT_RESET.shown())),
+                with_keys(
+                    "Increase text size (%{keys})",
+                    Keys::One(TEXT_LARGER.alternate(0).shown()),
+                ),
+            ]
+        };
+        let (stepper, buttons) = super::controls::stepper(labels());
+        let relabeled = buttons.each_ref().map(|button| button.downgrade());
+        super::shortcut_reference::follow_keys(&stepper, move |_| {
+            for (button, label) in relabeled.iter().zip(labels()) {
+                if let Some(button) = button.upgrade() {
+                    super::controls::label_stepper_button(&button, &label);
+                }
+            }
+        });
+        (stepper, buttons)
     };
     text_controls.append(&stepper);
     for (button, delta) in [(decrease, -1), (increase, 1)] {
@@ -998,7 +983,9 @@ pub(super) fn build_appearance_menu(
             crate::assets::icons::EYE_OFF
         },
         "Hidden files",
-        &super::keys::label(&super::keys::Keys::One(super::keys::bindings::HIDDEN_FILES)),
+        Some(super::keys::Keys::One(
+            super::keys::bindings::HIDDEN_FILES.alternate(0).shown(),
+        )),
         hidden_files_shown,
         true,
         gtk::AccessibleRole::MenuItemCheckbox,
@@ -1068,18 +1055,18 @@ fn appearance_option(
     sensitive: bool,
     role: gtk::AccessibleRole,
 ) -> (gtk::Button, gtk::Image, gtk::Image) {
-    appearance_option_with_shortcut(icon, label, "", checked, sensitive, role)
+    appearance_option_with_shortcut(icon, label, None, checked, sensitive, role)
 }
 
 fn appearance_option_with_shortcut(
     icon: &str,
     label: &str,
-    shortcut: &str,
+    shortcut: Option<super::keys::Keys>,
     checked: bool,
     sensitive: bool,
     role: gtk::AccessibleRole,
 ) -> (gtk::Button, gtk::Image, gtk::Image) {
-    let (row, check, option) = appearance_row(icon, label, shortcut, checked);
+    let (row, check, option) = appearance_row(icon, label, checked);
     let button = gtk::Button::builder()
         .child(&row)
         .sensitive(sensitive)
@@ -1088,21 +1075,31 @@ fn appearance_option_with_shortcut(
     button.add_css_class("appearance-option");
     button.set_has_frame(false);
     let name = crate::i18n::tr(label);
-    if shortcut.is_empty() {
-        super::accessibility::set_label(&button, &name);
-    } else {
-        super::accessibility::describe_menu_item(&button, &name, shortcut);
+    super::accessibility::set_label(&button, &name);
+    if let Some(keys) = shortcut {
+        let shown = gtk::Label::new(None);
+        shown.add_css_class("folder-context-shortcut");
+        row.append(&shown);
+        row.reorder_child_after(&check, Some(&shown));
+        let described = button.downgrade();
+        super::shortcut_reference::follow_keys(&shown, move |shown| {
+            let text = super::keys::label(&keys);
+            shown.set_text(&text);
+            shown.set_visible(!text.is_empty());
+            if let Some(button) = described.upgrade() {
+                if text.is_empty() {
+                    super::accessibility::set_label(&button, &name);
+                } else {
+                    super::accessibility::describe_menu_item(&button, &name, &text);
+                }
+            }
+        });
     }
     super::accessibility::sync_checked_with_icon(&button, &check);
     (button, check, option)
 }
 
-fn appearance_row(
-    icon: &str,
-    label: &str,
-    shortcut: &str,
-    checked: bool,
-) -> (gtk::Box, gtk::Image, gtk::Image) {
+fn appearance_row(icon: &str, label: &str, checked: bool) -> (gtk::Box, gtk::Image, gtk::Image) {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     let check = crate::assets::primary_icon(crate::assets::icons::CHECK, 16);
     check.set_visible(checked);
@@ -1112,11 +1109,6 @@ fn appearance_row(
     label.set_hexpand(true);
     row.append(&option);
     row.append(&label);
-    if !shortcut.is_empty() {
-        let shortcut = gtk::Label::new(Some(shortcut));
-        shortcut.add_css_class("folder-context-shortcut");
-        row.append(&shortcut);
-    }
     row.append(&check);
     (row, check, option)
 }
@@ -1501,6 +1493,11 @@ fn sync_sidebar_button(button: &gtk::Button, rail: bool) {
                     continue;
                 }
                 button.set_tooltip_text(rail.then_some(label.label().as_str()));
+                if rail {
+                    crate::ui::accessibility::set_stand_in_label(button, &label.label());
+                } else {
+                    crate::ui::accessibility::clear_stand_in_label(button);
+                }
                 label.set_visible(!rail);
             }
         }
@@ -1588,7 +1585,7 @@ impl SidebarState {
                     &crate::i18n::tr("Home"),
                     location.clone(),
                 );
-                self.add_keycap(&row, &place_keycap(super::keys::bindings::GO_HOME));
+                self.add_place_keycap(&row, super::keys::bindings::GO_HOME);
                 self.attach_place_context_menu(&row, location, |state| {
                     state.preference_manager.set_sidebar_show_home(false);
                 });
@@ -1609,7 +1606,7 @@ impl SidebarState {
                     &crate::i18n::tr("Network"),
                     location.clone(),
                 );
-                self.add_keycap(&row, &place_keycap(super::keys::bindings::GO_NETWORK));
+                self.add_place_keycap(&row, super::keys::bindings::GO_NETWORK);
                 self.attach_place_context_menu_with(
                     &row,
                     location,
@@ -1651,7 +1648,7 @@ impl SidebarState {
                 Location::local(path),
             );
             if let Some(step) = standard_place_chord_key(place) {
-                self.add_keycap(&row, &place_keycap(step));
+                self.add_place_keycap(&row, step);
             }
         }
     }
@@ -1679,8 +1676,10 @@ impl SidebarState {
             previous = Some(location.clone());
             self.visible_pins.borrow_mut().push(location.clone());
             let row = self.append_pinned_place(index, &name, location);
-            if let Some(keycap) = pin_keycap(ordinal) {
-                self.add_keycap(&row, &keycap);
+            if let Some(keycap) =
+                pin_keycap(ordinal).and_then(|keycap| self.add_keycap(&row, &keycap))
+            {
+                sync_keycap(&keycap, self.keycaps_shown.get() && !self.rail.get());
             }
         }
         pinned_drop::append_gap(self, previous, None, &drag_cache);
@@ -1846,6 +1845,17 @@ impl SidebarState {
     }
 
     fn pin_location(self: &Rc<Self>, location: Location, name: String) {
+        self.pin_location_with(location, name, |_| {});
+    }
+
+    fn pin_location_with(
+        self: &Rc<Self>,
+        location: Location,
+        name: String,
+        done: impl FnOnce(bool) + 'static,
+    ) {
+        let expected = location.clone();
+        let weak = Rc::downgrade(self);
         self.update_pinned_places(
             move |places| {
                 if pin_status(places, &location) != PinStatus::Available {
@@ -1854,7 +1864,11 @@ impl SidebarState {
                 places.push((location.clone(), name.clone()));
                 true
             },
-            |_| {},
+            move |_| {
+                done(weak.upgrade().is_some_and(|state| {
+                    pin_status(&state.pinned_places.borrow(), &expected) == PinStatus::Pinned
+                }))
+            },
         );
     }
 
@@ -2045,8 +2059,11 @@ impl SidebarState {
         let location = Location::uri("recent:///");
         let row = sidebar_button(crate::assets::icons::CLOCK, &crate::i18n::tr("Recent"));
         crate::ui::accessibility::set_description(&row, Some("recent:///"));
-        self.add_keycap(&row, &place_keycap(super::keys::bindings::GO_RECENT));
-        self.bind_place_row(&row, location, PlaceNavigation::Direct);
+        self.add_place_keycap(&row, super::keys::bindings::GO_RECENT);
+        self.bind_place_row(&row, location.clone(), PlaceNavigation::Direct);
+        self.attach_place_context_menu(&row, location, |state| {
+            state.preference_manager.set_sidebar_show_recent(false);
+        });
         self.append_sidebar_row(&row);
         self.make_place_reorderable(&row, "recent");
     }
@@ -2055,7 +2072,7 @@ impl SidebarState {
         let location = Location::uri("trash:///");
         let row = sidebar_button(crate::assets::icons::TRASH, &crate::i18n::tr("Trash"));
         crate::ui::accessibility::set_description(&row, Some("trash:///"));
-        self.add_keycap(&row, &place_keycap(super::keys::bindings::GO_TRASH));
+        self.add_place_keycap(&row, super::keys::bindings::GO_TRASH);
         self.bind_place_row(&row, location, PlaceNavigation::Direct);
 
         let menu = super::accessibility::menu_box();
@@ -2084,6 +2101,13 @@ impl SidebarState {
             .build();
         popover.add_css_class("folder-context-popover");
         popover.set_parent(&row);
+        sidebar::append_open_in_tab(
+            &menu,
+            &popover,
+            &row,
+            &self.view,
+            &Location::uri("trash:///"),
+        );
         let properties_popover = popover.downgrade();
         let properties_view = self.view.downgrade();
         properties.connect_clicked(move |_| {
@@ -2150,38 +2174,25 @@ impl SidebarState {
         row.add_css_class("reorderable");
         row.set_cursor_from_name(Some("pointer"));
 
-        let drag = gtk::DragSource::builder()
-            .actions(gtk::gdk::DragAction::MOVE)
-            .build();
-        let weak_state = Rc::downgrade(self);
-        let source_payload = payload.clone();
-        drag.connect_prepare(move |_, _, _| {
-            let payload = &source_payload;
-            let content = gtk::gdk::ContentProvider::for_value(&payload.to_value());
-            if let Some(index) = parse_pinned_drag_source(payload)
-                && let Some(state) = weak_state.upgrade()
-                && let Some(place) = state.pinned_places.borrow().get(index)
-            {
-                pinned_drop::start_reorder(&content, place.clone());
-            }
-            Some(content)
-        });
-        drag.connect_drag_begin(move |drag, _| {
-            if let Some(row) = drag.widget() {
-                row.add_css_class("dragging");
-                row.set_cursor_from_name(Some("grabbing"));
-            }
-        });
-        let end_feedback = self.drop_feedback.clone();
-        drag.connect_drag_end(move |drag, _, _| {
-            pinned_drop::clear_reorder();
-            end_feedback.reset();
-            if let Some(row) = drag.widget() {
-                row.remove_css_class("dragging");
-                row.set_cursor_from_name(Some("pointer"));
-            }
-        });
-        row.add_controller(drag);
+        let pinned = parse_pinned_drag_source(&payload);
+        let folder = pinned
+            .and_then(|index| self.pinned_places.borrow().get(index).cloned())
+            .or_else(|| {
+                self.place_rows
+                    .borrow()
+                    .iter()
+                    .find(|(_, candidate)| candidate == row)
+                    .map(|(location, _)| (location.clone(), location.display_path()))
+            });
+        if let Some(folder) = folder {
+            sidebar::install_drag(
+                row,
+                folder,
+                payload.clone(),
+                pinned.is_some(),
+                self.drop_feedback.clone(),
+            );
+        }
 
         let on_drop: SidebarReorder = Rc::new(on_drop);
         self.install_reorder_target(row, payload.clone(), None, on_drop.clone());
@@ -2418,6 +2429,7 @@ impl SidebarState {
             return Some(ids);
         }
         if let Some(location) = mounted_location {
+            sidebar::install_open_in_tab(&row, &self.view, &location, &self.drop_feedback);
             self.place_rows
                 .borrow_mut()
                 .push((location.clone(), row.clone()));
@@ -2570,6 +2582,7 @@ impl SidebarState {
             .build();
         popover.add_css_class("folder-context-popover");
         popover.set_parent(&row);
+        sidebar::append_open_in_tab(&menu, &popover, &row, &self.view, &properties_location);
 
         let properties_popover = popover.downgrade();
         let properties_view = self.view.downgrade();
@@ -2644,16 +2657,23 @@ impl SidebarState {
 
     /// Keycaps name the second key of the **g** place chord while it is armed.
     /// They stand in for the row icon so long place names are not truncated further.
-    fn add_keycap(&self, row: &gtk::Button, key: &str) {
-        let Some(content) = row.child().and_downcast::<gtk::Box>() else {
-            return;
-        };
+    fn add_keycap(&self, row: &gtk::Button, key: &str) -> Option<gtk::Label> {
+        let content = row.child().and_downcast::<gtk::Box>()?;
         let keycap = gtk::Label::new(Some(key));
         keycap.add_css_class("sidebar-keycap");
         keycap.set_valign(gtk::Align::Center);
         content.insert_child_after(&keycap, content.first_child().as_ref());
         self.keycaps.borrow_mut().push(keycap.clone());
-        sync_keycap(&keycap, self.keycaps_shown.get() && !self.rail.get());
+        Some(keycap)
+    }
+
+    fn add_place_keycap(&self, row: &gtk::Button, step: super::keys::Command) {
+        if let Some(keycap) = self.add_keycap(row, "") {
+            super::shortcut_reference::follow_keys(&keycap, move |keycap| {
+                keycap.set_text(&place_keycap(step));
+            });
+            sync_keycap(&keycap, self.keycaps_shown.get() && !self.rail.get());
+        }
     }
 
     pub(in crate::ui) fn show_place_keycaps(&self, shown: bool) {
@@ -2713,6 +2733,7 @@ impl SidebarState {
             .build();
         popover.add_css_class("folder-context-popover");
         popover.set_parent(row);
+        sidebar::append_open_in_tab(&menu, &popover, row, &self.view, &location);
 
         if let Some((button, action)) = extra_item {
             let popover = popover.downgrade();
@@ -3526,12 +3547,19 @@ fn lock_encrypted_volume(
     view: &BrowserView,
     in_flight: &Rc<Cell<bool>>,
 ) {
+    let luks_uuid = crypto_password_uuid_for_volume(volume);
+    let target = lock_target(
+        volume.drive(),
+        gio_volume_unix_device(volume).map(Into::into),
+        luks_uuid.clone(),
+        device_release::key_for_volume(volume),
+    );
     request_encrypted_lock_showing(
         parent,
         &volume.name(),
-        crypto_password_uuid_for_volume(volume),
+        luks_uuid,
         volume.get_mount(),
-        password_stop_drive(volume.drive()),
+        target,
         browser,
         Some(view),
         in_flight,
@@ -3545,16 +3573,61 @@ fn lock_encrypted_mount(
     view: &BrowserView,
     in_flight: &Rc<Cell<bool>>,
 ) {
+    let luks_uuid = crypto_password_uuid_for_mount(mount);
+    let unix_device = mount
+        .volume()
+        .and_then(|volume| gio_volume_unix_device(&volume))
+        .map(String::from)
+        .or_else(|| {
+            mount
+                .root()
+                .path()
+                .and_then(|root| drive_ops::block_device_for_path(&root))
+                .map(|device| device.to_string_lossy().into_owned())
+        });
+    let target = lock_target(
+        mount.drive(),
+        unix_device,
+        luks_uuid.clone(),
+        device_release::key_for_mount(mount),
+    );
     request_encrypted_lock_showing(
         parent,
         &mount.name(),
-        crypto_password_uuid_for_mount(mount),
+        luks_uuid,
         Some(mount.clone()),
-        password_stop_drive(mount.drive()),
+        target,
         browser,
         Some(view),
         in_flight,
     );
+}
+
+enum LockTarget {
+    /// GVfs locks removable encrypted drives by stopping them.
+    StopDrive(gio::Drive),
+    /// Internal disks have no stoppable drive, so UDisks locks the container.
+    Container {
+        unix_device: Option<String>,
+        luks_uuid: Option<String>,
+        key: device_release::ReleaseKey,
+    },
+}
+
+fn lock_target(
+    drive: Option<gio::Drive>,
+    unix_device: Option<String>,
+    luks_uuid: Option<String>,
+    key: device_release::ReleaseKey,
+) -> Option<LockTarget> {
+    if let Some(drive) = password_stop_drive(drive) {
+        return Some(LockTarget::StopDrive(drive));
+    }
+    (unix_device.is_some() || luks_uuid.is_some()).then_some(LockTarget::Container {
+        unix_device,
+        luks_uuid,
+        key,
+    })
 }
 
 pub(crate) fn crypto_password_uuid_for_volume(volume: &gio::Volume) -> Option<String> {
@@ -3594,12 +3667,12 @@ fn request_encrypted_lock_showing(
     volume_name: &str,
     luks_uuid: Option<String>,
     mount: Option<gio::Mount>,
-    drive: Option<gio::Drive>,
+    target: Option<LockTarget>,
     browser: &Rc<Browser>,
     view: Option<&BrowserView>,
     in_flight: &Rc<Cell<bool>>,
 ) {
-    if mount.is_none() && drive.is_none() {
+    if mount.is_none() && target.is_none() {
         show_error_dialog(
             parent,
             &crate::i18n::tr("Unable to lock device"),
@@ -3631,9 +3704,9 @@ fn request_encrypted_lock_showing(
         let in_flight_for_lock = in_flight.clone();
         let in_flight_for_forget = in_flight.clone();
         let start_lock = move || {
-            lock_cleartext_then_stop(
+            lock_cleartext_then_close(
                 mount,
-                drive,
+                target,
                 &parent_for_lock,
                 &browser_for_lock,
                 view,
@@ -3794,24 +3867,24 @@ fn password_stop_drive(drive: Option<gio::Drive>) -> Option<gio::Drive> {
     })
 }
 
-fn lock_cleartext_then_stop(
+fn lock_cleartext_then_close(
     mount: Option<gio::Mount>,
-    drive: Option<gio::Drive>,
+    target: Option<LockTarget>,
     parent: &gtk::Widget,
     browser: &Rc<Browser>,
     view: Option<BrowserView>,
     in_flight: &Rc<Cell<bool>>,
 ) {
-    let key = match mount.as_ref() {
-        Some(mount) => device_release::key_for_mount(mount),
-        None => drive.as_ref().map(device_release::key_for_drive).unwrap_or(
-            device_release::ReleaseKey {
-                unix_device: None,
-                uuid: None,
-                mount_root: None,
-                display_name: String::new(),
-            },
-        ),
+    let key = match (mount.as_ref(), target.as_ref()) {
+        (Some(mount), _) => device_release::key_for_mount(mount),
+        (None, Some(LockTarget::StopDrive(drive))) => device_release::key_for_drive(drive),
+        (None, Some(LockTarget::Container { key, .. })) => key.clone(),
+        (None, None) => device_release::ReleaseKey {
+            unix_device: None,
+            uuid: None,
+            mount_root: None,
+            display_name: String::new(),
+        },
     };
     let sync_root = mount.as_ref().and_then(|mount| mount.root().path());
     let away_root = mount.as_ref().map(gio::Mount::root);
@@ -3841,13 +3914,20 @@ fn lock_cleartext_then_stop(
                 None => Ok(()),
             };
             match unmount_result {
-                Ok(()) => match drive {
-                    Some(drive) => {
+                Ok(()) => match target {
+                    Some(LockTarget::StopDrive(drive)) => {
                         let stop_operation =
                             device_release::mount_operation(&parent_for_stop, &key_for_stop);
                         drive
                             .stop_future(gio::MountUnmountFlags::NONE, Some(&stop_operation))
                             .await
+                    }
+                    Some(LockTarget::Container {
+                        unix_device,
+                        luks_uuid,
+                        ..
+                    }) => {
+                        drive_ops::lock_encrypted_device_on_system_bus(unix_device, luks_uuid).await
                     }
                     None => Ok(()),
                 },
@@ -3949,7 +4029,9 @@ fn gio_volume_is_locked(volume: &gio::Volume) -> bool {
     let mut names = gio_icon_names(&volume.symbolic_icon());
     names.extend(gio_icon_names(&volume.icon()));
     let names: Vec<&str> = names.iter().map(String::as_str).collect();
-    devices::encrypted_device_is_locked(&names, volume.get_mount().is_some())
+    let cleartext_open = gio_volume_unix_device(volume)
+        .is_some_and(|device| devices::block_crypto_hint(&device).cleartext_open);
+    devices::encrypted_device_is_locked(&names, volume.get_mount().is_some(), cleartext_open)
 }
 
 fn gio_mount_is_encrypted(mount: &gio::Mount) -> bool {
@@ -4080,8 +4162,13 @@ fn resolve_place_order(persisted: &[String]) -> Vec<&'static str> {
     order
 }
 
-fn place_keycap(step: super::keys::Binding) -> String {
-    super::keys::label(&super::keys::Keys::One(step))
+/// Only the 10xer Go chord shows these keycaps, so they always show that map.
+fn place_keycap(step: super::keys::Command) -> String {
+    super::keys::label_in_map(
+        &rust_i18n::locale(),
+        &super::keys::Keys::One(step.shown()),
+        super::keys::Map::Tenxer,
+    )
 }
 
 fn pin_keycap(ordinal: usize) -> Option<String> {
@@ -4092,7 +4179,7 @@ fn pin_keycap(ordinal: usize) -> Option<String> {
     Some(super::keys::digit_label(PIN_NUMBERS.step(), pin))
 }
 
-fn standard_place_chord_key(id: &str) -> Option<super::keys::Binding> {
+fn standard_place_chord_key(id: &str) -> Option<super::keys::Command> {
     use super::keys::bindings::{GO_DOCUMENTS, GO_DOWNLOADS, GO_MUSIC, GO_PICTURES, GO_VIDEOS};
     match id {
         "documents" => Some(GO_DOCUMENTS),
@@ -4196,6 +4283,7 @@ fn customize_sidebar_folder_icon(row: &gtk::Button, location: &Location, icon: &
 }
 
 fn sync_keycap(keycap: &gtk::Label, visible: bool) {
+    let visible = visible && !keycap.text().is_empty();
     if let Some(icon) = keycap.prev_sibling() {
         if visible && icon.is_visible() {
             // Matching the icon's width keeps the place name from shifting.
@@ -4227,9 +4315,11 @@ fn sidebar_button(icon: &str, name: &str) -> gtk::Button {
 }
 
 fn sidebar_eject_button(action: MediaRelease, on_release: impl Fn() + 'static) -> gtk::Button {
-    let button = gtk::Button::builder()
-        .tooltip_text(crate::i18n::tr(media_release_label(action)))
-        .build();
+    let button = gtk::Button::new();
+    super::accessibility::set_tooltip_and_label(
+        &button,
+        &crate::i18n::tr(media_release_label(action)),
+    );
     button.set_child(Some(&crate::assets::primary_icon(
         crate::assets::icons::EJECT,
         14,
@@ -4246,9 +4336,8 @@ fn sidebar_eject_button(action: MediaRelease, on_release: impl Fn() + 'static) -
 }
 
 fn sidebar_lock_button(action: EncryptedMediaAction, on_click: impl Fn() + 'static) -> gtk::Button {
-    let button = gtk::Button::builder()
-        .tooltip_text(crate::i18n::tr(action.label()))
-        .build();
+    let button = gtk::Button::new();
+    super::accessibility::set_tooltip_and_label(&button, &crate::i18n::tr(action.label()));
     button.set_child(Some(&crate::assets::primary_icon(action.icon(), 14)));
     button.add_css_class("sidebar-eject");
     button.add_css_class("sidebar-device-action");
@@ -4325,6 +4414,16 @@ fn attach_device_actions_menu(
         .build();
     popover.add_css_class("folder-context-popover");
     popover.set_parent(row);
+    let mounted_location = properties
+        .as_ref()
+        .and_then(|target| match target {
+            drive_dialogs::PropertiesTarget::Volume(volume) => volume.get_mount(),
+            drive_dialogs::PropertiesTarget::Mount(mount) => Some(mount.clone()),
+        })
+        .and_then(|mount| location_for_file(&mount.root()));
+    if let Some(location) = mounted_location {
+        sidebar::append_open_in_tab(&menu, &popover, row, view, &location);
+    }
     if let (Some(action), Some(on_crypto)) = (actions.encrypted, on_crypto) {
         let option = sidebar_context_option(action.icon(), action.label(), false);
         menu.append(&option);

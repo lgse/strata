@@ -1,0 +1,14 @@
+{"scenario":"preview-blank-click-keeps-selection","modes":["columns","icons","list"],"prefs":{"single_click_previews":true},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.1,"icons":1.1,"list":1.2},"quality":{"impact":2,"coverage":4,"criticality":4,"diagnostic":3,"score":38,"note":"Blank preview click keeps selection and preview drag starts marquee; sole QA route through preview pane, fixed in batch 6"}}
+{"fs":{"path":"photo.png","image":{"width":1600,"height":900,"rgb":[0,128,0]}}}
+{"wait":{"entry":"photo.png","dir":"$root"},"message":"the generated photo"}
+{"select":{"entry":"photo.png","dir":"$root"}}
+{"wait":{"preview":"photo.png"},"message":"the image preview"}
+{"expect":{"blank":{"target":{"preview":true},"at":["50%",-30]}},"message":"the blank preview point lands on a control"}
+{"click":{"preview":true},"at":["50%",-30]}
+{"settle":{"pane":"$root"}}
+{"expect":{"selected":["photo.png"],"dir":"$root"}}
+{"expect":{"preview":"photo.png"}}
+{"expect":{"pane":"$root"},"modes":["columns"]}
+{"wait":{"entry":"readme.md","dir":"$root"},"message":"the entry 'readme.md' in '$root' to appear"}
+{"drag":{"from":{"preview":true},"from_at":["50%",-30],"to":{"entry":"readme.md","dir":"$root"}}}
+{"wait":{"selected":{"contains":["readme.md"],"excludes":["photo.png"]},"dir":"$root"},"message":"a plain marquee from the preview to replace the selection"}

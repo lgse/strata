@@ -2,6 +2,8 @@
 
 use super::*;
 
+mod folder_counts;
+
 fn metadata_fixture(names: &[&str]) -> (tempfile::TempDir, Rc<Browser>) {
     let directory = tempfile::tempdir().expect("fixture");
     for name in names {
