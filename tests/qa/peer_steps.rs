@@ -132,9 +132,21 @@ pub(crate) struct ForeignStep {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ForeignPaths {
+    #[serde(default)]
     pub(crate) paths: Vec<String>,
+    /// Content offered as it is, like a browser's: each MIME type with the
+    /// file holding its bytes.
+    #[serde(default)]
+    pub(crate) offers: Vec<ForeignOffer>,
     #[serde(default)]
     move_only: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ForeignOffer {
+    pub(crate) mime: String,
+    pub(crate) path: String,
 }
 
 #[derive(Deserialize)]
@@ -275,6 +287,10 @@ pub(crate) fn peer_step(
             if step.foreign.move_only {
                 arguments.push("--move-only".to_owned());
             }
+            for offer in &step.foreign.offers {
+                arguments.extend(["--offer".to_owned(), offer.mime.clone(), offer.path.clone()]);
+            }
+            arguments.push("--".to_owned());
             arguments.extend(step.foreign.paths.iter().cloned());
             let source = peers::ForeignSource::start(
                 PYTHON,

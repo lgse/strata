@@ -1,0 +1,37 @@
+{"scenario":"foreign-content-saves-new-files","modes":["columns","icons","list"],"layout":"us","mutation":null,"known_bug":null,"session_bus":true,"setup":[{"fs":{"path":"$data/applications","mkdir":true}},{"fs":{"path":"$environment/record-uris","write":"#!/bin/sh\nprintf \"%s\\n\" \"$$@\" > \"$environment/opened-uris\"\n"}},{"fs":{"path":"$environment/record-uris","chmod":"755"}},{"fs":{"path":"$data/applications/strata-web-browser.desktop","write":"[Desktop Entry]\nType=Application\nName=Web Browser Stub\nExec=$environment/record-uris %u\nMimeType=x-scheme-handler/http;x-scheme-handler/https;\n"}},{"fs":{"path":"$config/mimeapps.list","write":"[Default Applications]\nx-scheme-handler/http=strata-web-browser.desktop;\nx-scheme-handler/https=strata-web-browser.desktop;\n"}}],"variants":[{"id":"text"},{"id":"image","modes":["columns"]},{"id":"contents","modes":["columns"]},{"id":"link","modes":["columns"]},{"id":"open","modes":["columns"],"prefs":{"open_folder_after_drop":true}},{"id":"unwritable","modes":["columns"]}]}
+{"fs":{"path":"$environment/offer.txt","write":"Selected words\nsecond line"},"variants":["text","open","unwritable"]}
+{"fs":{"path":"archive","chmod":"555"},"variants":["unwritable"]}
+{"foreign":{"offers":[{"mime":"text/plain;charset=utf-8","path":"$environment/offer.txt"}]},"as":"foreign","message":"the foreign text source","variants":["text","open","unwritable"]}
+{"http":"aGVsbG8=","as":"url","variants":["image","contents","link"]}
+{"fs":{"path":"$environment/offer.uris","write":"$url\r\n"},"variants":["image","link"]}
+{"fs":{"path":"$environment/offer.url","write":"$url"},"variants":["contents","link"]}
+{"fs":{"path":"$environment/offer.png","image":{"width":3,"height":2,"rgb":[0,128,255]}},"variants":["image"]}
+{"foreign":{"offers":[{"mime":"image/png","path":"$environment/offer.png"},{"mime":"text/uri-list","path":"$environment/offer.uris"}]},"as":"foreign","message":"a foreign image offered with its address","variants":["image"]}
+{"fs":{"path":"$environment/photo.jpg","hex":"ffd8ffe000104a46494600010100000100010000ffd9"},"variants":["contents"]}
+{"foreign":{"offers":[{"mime":"text/plain;charset=utf-8","path":"$environment/offer.url"},{"mime":"application/octet-stream;name=\"holiday \\\"photo\\\".jpg\"","path":"$environment/photo.jpg"}]},"as":"foreign","message":"a foreign image's file contents offered with its address","variants":["contents"]}
+{"foreign":{"offers":[{"mime":"text/uri-list","path":"$environment/offer.uris"},{"mime":"text/plain;charset=utf-8","path":"$environment/offer.url"}]},"as":"foreign","message":"a foreign web address","variants":["link"]}
+{"drag":{"from":{"kept":"foreign"},"to":{"entry":"archive","dir":"$root"}}}
+{"foreign_label":"Foreign drag finished","message":"the drop protocol to finish"}
+{"fs":{"path":"archive/dropped text.txt","text":"Selected words\nsecond line"},"message":"the dropped text to be saved as a text file","variants":["text","open"]}
+{"wait":{"directory":"archive"},"message":"Open folder after drop to open the destination","variants":["open"]}
+{"wait":{"selected":["dropped text.txt"],"dir":"archive"},"message":"the saved text to be selected","variants":["open"]}
+{"drag":{"from":{"kept":"foreign"},"to":{"entry":"archive","dir":"$root"}},"variants":["text"]}
+{"fs":{"path":"archive/dropped text (1).txt","text":"Selected words\nsecond line"},"message":"a second drop to take a numbered name","variants":["text"]}
+{"fs":{"path":"archive","names":["dropped text (1).txt","dropped text.txt"]},"timeout_ms":0,"message":"the first text file to stay untouched","variants":["text"]}
+{"fs":{"path":"archive/dropped text.txt","text":"Selected words\nsecond line"},"timeout_ms":0,"variants":["text"]}
+{"wait":{"dialog":true},"message":"an error dialog for the unwritable folder","variants":["unwritable"]}
+{"expect":{"mentions":{"target":{"dialog":true},"text":"Unable to save dropped content"}},"message":"the dialog to say the content was not saved","variants":["unwritable"]}
+{"fs":{"path":"archive","empty":true},"timeout_ms":0,"message":"nothing to be written into the unwritable folder","variants":["unwritable"]}
+{"fs":{"path":"archive","chmod":"755"},"variants":["unwritable"]}
+{"fs":{"path":"archive/image.png","png":{"size":[3,2],"at":[1,1],"min":[0,128,255],"max":[0,128,255]}},"message":"the image data to be saved as a PNG rather than a link","variants":["image"]}
+{"fs":{"path":"archive/holiday \"photo\".jpg","copy_of":"$environment/photo.jpg"},"message":"the browser's image bytes to be saved unchanged under their name","variants":["contents"]}
+{"fs":{"path":"archive","names":["holiday \"photo\".jpg"]},"timeout_ms":0,"message":"the address offered with the image must not be saved too","variants":["contents"]}
+{"fs":{"path":"archive/127.0.0.1.desktop","has":{"contains":["[Desktop Entry]","Type=Link","URL=$url"],"lacks":["Exec"]}},"message":"the address to be saved as a web link","variants":["link"]}
+{"fs":{"path":"archive","names":["127.0.0.1.desktop"]},"timeout_ms":0,"message":"one link for the address offered in two formats","variants":["link"]}
+{"http_requests":0,"message":"dropping content must never fetch its address","variants":["image","contents","link"]}
+{"foreign_stop":true}
+{"select":{"entry":"archive","dir":"$root"},"variants":["link"]}
+{"wait":{"entry":"127.0.0.1.desktop","dir":"archive"},"message":"the saved link listed in 'archive'","variants":["link"]}
+{"click":{"entry":"127.0.0.1.desktop","dir":"archive"},"count":2,"variants":["link"]}
+{"fs":{"path":"$environment/opened-uris","lines_equal":["$url"]},"message":"opening the link to hand its address to the default browser","variants":["link"]}
+{"http_requests":0,"message":"opening a link must leave fetching to the browser","variants":["link"]}

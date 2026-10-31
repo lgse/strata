@@ -3613,6 +3613,40 @@ fn drop_open_preference_applies_before_settings_and_live_across_views() {
                                 Some(Location::local(&destination))
                             );
                         }
+
+                        view.navigate_location(Location::local(fixture.path()));
+                        wait_until(
+                            || {
+                                view.browser().active_location()
+                                    == Some(Location::local(fixture.path()))
+                            },
+                            "the fixture folder before saving content",
+                        );
+                        view.commit_drop(
+                            Location::local(&destination),
+                            crate::ui::browser::DropRequest::Content(vec![
+                                crate::services::DroppedFile::text("dropped", "text".to_owned()),
+                            ]),
+                        );
+                        let saved = Location::local(destination.join("dropped.txt"));
+                        let saved_path = saved.native_path().expect("local content").to_owned();
+                        wait_until(|| saved_path.exists(), "the saved content");
+                        wait_until(
+                            || view.browser().active_location() == Some(expected.clone()),
+                            "the folder after saving content",
+                        );
+                        if enabled {
+                            wait_until(
+                                || {
+                                    view.browser()
+                                        .selected_entries()
+                                        .iter()
+                                        .any(|entry| entry.location == saved)
+                                },
+                                "the saved content to be selected",
+                            );
+                        }
+                        assert_eq!(std::fs::read(&saved_path).expect("saved content"), b"text");
                     }
                 }
             }

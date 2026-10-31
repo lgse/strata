@@ -381,7 +381,8 @@ movement are unchanged; use **Reduce motion** to disable nonessential animations
 In **Settings → General → File transfers**, enable **Open folder after dropping
 files** to show the destination after a successful drop: a child column in
 Columns, or navigation in Icons and List. It is off by default and saved as
-`open_folder_after_drop = false`. Changes apply to subsequent drops across
+`open_folder_after_drop = false`. It also selects the files saved from
+[dropped content](content-drops.md). Changes apply to subsequent drops across
 windows without restarting. Navigating away during a transfer is respected.
 Paste and **Move/Copy to…** continue to reveal their destination independently.
 

@@ -28,9 +28,10 @@ use crate::{
 
 use super::{
     browser::{
-        BrowserView, PeekBehavior, PinStatus, PreparedFileDrop, WeakBrowserView,
-        arm_spring_load_navigation, file_drag_hover_target, file_drop_action, file_drop_commit,
-        locations_from_file_list_value, prepare_file_drop_target, show_error_dialog,
+        BrowserView, DropHandler, PeekBehavior, PinStatus, PreparedFileDrop, WeakBrowserView,
+        arm_spring_load_navigation, attach_drop_target, commit_dropped_value,
+        file_drag_hover_target, file_drop_action, locations_from_file_list_value,
+        prepare_file_drop_target, show_error_dialog,
     },
     browser_modes::BrowserMode,
     controls::{ModalTone, focus_button, message_dialog_description, message_dialog_layout},
@@ -3029,33 +3030,31 @@ fn install_sidebar_file_drop(
             leave_feedback.leave(&row);
         }
     });
-    let view = state.view.downgrade();
+    let handler: DropHandler = {
+        let view = state.view.downgrade();
+        Rc::new(move |destination, request| {
+            if let Some(view) = view.upgrade() {
+                view.commit_drop(destination, request);
+            }
+        })
+    };
+    let handler_for_drop = handler.clone();
+    let state_for_drop = drop_state.clone();
     let drop_feedback = state.drop_feedback.clone();
     drop.connect_drop(move |target, value, _, _| {
         if let Some(row) = target.widget() {
             drop_feedback.leave(&row);
         }
-        let Some(view) = view.upgrade() else {
-            return false;
-        };
-        let Some(sources) = locations_from_file_list_value(value) else {
-            return false;
-        };
-        if sources.is_empty() {
-            return false;
-        }
-        file_drop_commit(
+        let handler = handler_for_drop.clone();
+        commit_dropped_value(
             target,
+            value,
             destination.clone(),
-            sources,
-            &drop_state,
-            move |destination, sources, commit| {
-                view.commit_file_drop(destination, sources, commit);
-            },
-        );
-        true
+            &state_for_drop,
+            move |destination, request| handler(destination, request),
+        )
     });
-    row.add_controller(drop);
+    attach_drop_target(row, &drop, &drop_state, handler);
 }
 
 fn trash_file_drop_action(target: &gtk::DropTarget) -> gtk::gdk::DragAction {

@@ -11,8 +11,8 @@ use gtk::{gdk, glib, prelude::*};
 use crate::ui::{
     accessibility,
     browser::{
-        BrowserView, PreparedFileDrop, file_drop_action, file_drop_commit,
-        locations_from_file_list_value, prepare_file_drop_target,
+        BrowserView, DropHandler, PreparedFileDrop, attach_drop_target, commit_dropped_value,
+        file_drop_action, prepare_file_drop_target,
     },
     motion,
 };
@@ -539,14 +539,7 @@ fn install_file_drop(state: &Rc<TabWindow>, id: u64, widget: &gtk::Box, browser:
     } = prepare_file_drop_target(move || {
         destination_browser.upgrade()?.browser().active_location()
     });
-    target.connect_accept(|target, offered| {
-        drop::folder_locations(offered).is_none()
-            && offered.actions().intersects(target.actions())
-            && offered
-                .formats()
-                .union_deserialize_types()
-                .contains_type(gdk::FileList::static_type())
-    });
+    drop_state.filter_offers(|offered| drop::folder_locations(offered).is_none());
     let hover = Rc::new(Cell::new(0_u64));
     let enter_hover = hover.clone();
     let weak = Rc::downgrade(state);
@@ -578,6 +571,7 @@ fn install_file_drop(state: &Rc<TabWindow>, id: u64, widget: &gtk::Box, browser:
     target.connect_motion(move |target, _, _| file_drop_action(target, &motion_drop));
     let weak_browser = browser.downgrade();
     let weak = Rc::downgrade(state);
+    let state_for_drop = drop_state.clone();
     target.connect_drop(move |target, value, _, _| {
         let (Some(state), Some(browser)) = (weak.upgrade(), weak_browser.upgrade()) else {
             return false;
@@ -594,25 +588,25 @@ fn install_file_drop(state: &Rc<TabWindow>, id: u64, widget: &gtk::Box, browser:
         let Some(destination) = browser.browser().active_location() else {
             return false;
         };
-        let Some(sources) =
-            locations_from_file_list_value(value).filter(|sources| !sources.is_empty())
-        else {
-            return false;
-        };
-        if file_drop_action(target, &drop_state).is_empty() {
+        if file_drop_action(target, &state_for_drop).is_empty() {
             return false;
         }
         state.select(id);
-        file_drop_commit(
+        commit_dropped_value(
             target,
+            value,
             destination,
-            sources,
-            &drop_state,
-            move |destination, sources, commit| {
-                browser.commit_file_drop(destination, sources, commit);
-            },
-        );
-        true
+            &state_for_drop,
+            move |destination, request| browser.commit_drop(destination, request),
+        )
     });
-    widget.add_controller(target);
+    let handler: DropHandler = {
+        let browser = browser.downgrade();
+        Rc::new(move |destination, request| {
+            if let Some(browser) = browser.upgrade() {
+                browser.commit_drop(destination, request);
+            }
+        })
+    };
+    attach_drop_target(widget, &target, &drop_state, handler);
 }

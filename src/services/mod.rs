@@ -6,6 +6,7 @@ pub(crate) mod diagnostics;
 mod document;
 pub(crate) mod document_media;
 pub(crate) mod docx;
+mod dropped_content;
 pub(crate) mod file_activity;
 pub(crate) mod file_providers;
 mod file_source;
@@ -43,6 +44,10 @@ pub(crate) use document::{
     DocumentBlock, DocumentLayout, DocumentListChildKind, DocumentMedia, DocumentSpan,
     DocumentSpanStyle, DocumentTableCellLayout, DocumentUnit, DocumentUnitKind, document_kind,
     has_web_scheme, layout_document, parse_document, parse_markdown,
+};
+pub(crate) use dropped_content::{
+    DroppedFile, MAX_DROPPED_FILE_BYTES, WebLink, has_link_extension, save_dropped_files,
+    save_new_file,
 };
 pub use file_source::{
     DirectoryChange, DirectoryEvent, DirectoryRequest, DirectoryStamp, FileSource, LoadHandle,

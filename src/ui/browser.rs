@@ -40,6 +40,7 @@ pub(super) mod camera_scroll;
 mod clipboard;
 mod collection;
 mod columns;
+mod content_drop;
 pub(super) mod context_menu;
 mod customization;
 pub(super) use customization::show_customize_modal;
@@ -81,7 +82,7 @@ pub(super) use crate::ui::browser::clipboard::{
 pub(crate) use crate::ui::browser::clipboard::{
     PreparedFileDrop, active_drag_snapshot, active_file_drag_source, arm_spring_load_navigation,
     clear_active_drag, drag_actions_for_modifiers, file_drag_hover_target, file_drop_action,
-    file_drop_commit, locations_from_file_list_value, prepare_file_drop_target,
+    locations_from_file_list_value, prepare_file_drop_target,
 };
 pub(crate) use crate::ui::browser::collection::{
     ActivePaneFilter, bind_listing_filter, detach_collection_view, filter_placeholder,
@@ -90,6 +91,9 @@ pub(crate) use crate::ui::browser::collection::{
     reveal_collection_after_layout, scroll_collection_when_allocated, search_result_entry,
 };
 pub(in crate::ui) use crate::ui::browser::collection::{FilterQueryBinding, bind_filter_query};
+pub(crate) use crate::ui::browser::content_drop::{
+    DropHandler, DropRequest, attach_drop_target, commit_dropped_value,
+};
 pub(super) use crate::ui::browser::context_menu::{
     ContextMenuTarget, ContextMenuTrigger, ContextResolver, install_folder_context_menu,
     install_item_context_menu, install_resolved_item_context_menu,
@@ -756,13 +760,14 @@ impl BrowserView {
         }
         if interactive {
             let weak_state = Rc::downgrade(&state);
-            state.mode_views.borrow().set_transfer_handler(Rc::new(
-                move |destination, sources, commit| {
+            state
+                .mode_views
+                .borrow()
+                .set_transfer_handler(Rc::new(move |destination, request| {
                     if let Some(state) = weak_state.upgrade() {
-                        state.commit_file_drop(destination, sources, commit);
+                        state.commit_drop(destination, request);
                     }
-                },
-            ));
+                }));
         }
 
         // The observer owns the view state while its window is alive. The window clears
@@ -919,6 +924,10 @@ impl BrowserView {
                 source.parent().is_some()
                     && !paths::is_trash_location(source)
                     && !source.is_administrator()
+                    // A dropped web address is a link, never something to trash or reach.
+                    && !source
+                        .uri_value()
+                        .is_some_and(crate::services::has_web_scheme)
             })
     }
 
@@ -930,13 +939,8 @@ impl BrowserView {
         true
     }
 
-    pub fn commit_file_drop(
-        &self,
-        destination: Location,
-        sources: Vec<Location>,
-        commit: crate::services::DropCommit,
-    ) {
-        self.state.commit_file_drop(destination, sources, commit);
+    pub(crate) fn commit_drop(&self, destination: Location, request: DropRequest) {
+        self.state.commit_drop(destination, request);
     }
 
     pub(crate) fn reveal_location(&self, location: Location) {
