@@ -1,0 +1,8 @@
+{"scenario":"panel-wheel-routing","modes":["columns"],"layout":"us","mutation":"popover-scrolling","known_bug":null,"tree":{"nested":{"{000..199}.txt":"{}\n"},"{000..199}.txt":"{}\n"},"cost":{"columns":0.7},"quality":{"impact":2,"coverage":2,"criticality":4,"diagnostic":4,"score":14,"note":"Outside wheel over listing closes Sort panel and scrolls it; panel-wheel-routing-remaining covers listing route for other panels, only Sort is unique"}}
+{"wait":{"entry":"005.txt"},"message":"the entry '005.txt' to appear"}
+{"settle":{"entry":"005.txt"}}
+{"click":{"header":"Choose sort field"}}
+{"wait":{"present":{"role":"check menu item","name":"Folders first"}},"message":"the sort panel to open"}
+{"wheel":{"viewport":null},"at":["50%","80%"],"clicks":1}
+{"wait":{"absent":{"role":"check menu item","name":"Folders first"}},"message":"outside wheel to close the panel"}
+{"wait":{"moved":{"target":{"entry":"005.txt"},"direction":"up"}},"message":"the same wheel tick to move the listing"}

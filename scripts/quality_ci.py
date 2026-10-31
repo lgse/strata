@@ -13,7 +13,7 @@ import shutil
 import subprocess
 import time
 
-from e2e_bundle import image_key, source_key
+from image_inputs import image_key, source_key
 
 ROOT = Path(__file__).resolve().parents[1]
 BUNDLE = ROOT / "target/quality-bundle"

@@ -240,9 +240,16 @@ impl Browser {
                 request_id,
                 message,
             } => {
-                let failed = self.state.borrow_mut().fail(request_id, message.clone());
+                let failed = self
+                    .state
+                    .borrow_mut()
+                    .fail(request_id, message.clone(), None);
                 if let Some(depth) = failed {
-                    self.emit(BrowserEvent::LoadFailed { depth, message });
+                    self.emit(BrowserEvent::LoadFailed {
+                        depth,
+                        message,
+                        administrator: None,
+                    });
                 }
             }
         }

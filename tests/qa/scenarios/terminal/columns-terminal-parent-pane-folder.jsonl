@@ -1,0 +1,6 @@
+{"scenario":"columns-terminal-parent-pane-folder","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"env":{"PATH":"$environment/launcher-path"},"setup":[{"fs":{"path":"$environment/launcher-path","mkdir":true}},{"fs":{"path":"$environment/launcher-path/xdg-terminal-exec","write":"#!/bin/sh\nprintf '%s\\t%s\\n' \"$$(pwd)\" \"$$*\" >> '$environment/terminal-launches.log'\nexit 0\n"}},{"fs":{"path":"$environment/launcher-path/xdg-terminal-exec","chmod":"755"}}],"cost":{"columns":0.5},"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":4,"score":49,"note":"Ctrl+Alt+T after clicking a folder in the Columns parent pane opens that folder (fix #867); only check of this terminal target, no unit test"}}
+{"click":{"entry":"documents","dir":"$root"}}
+{"wait":{"panes":{"contains":["documents"]}},"message":"the documents pane"}
+{"key":"ctrl+alt+t"}
+{"fs":{"path":"$environment/terminal-launches.log","lines":{"at_least":1}},"message":"the terminal launch"}
+{"fs":{"path":"$environment/terminal-launches.log","launches":{"first_dir":"$fixture/documents"}},"timeout_ms":0}

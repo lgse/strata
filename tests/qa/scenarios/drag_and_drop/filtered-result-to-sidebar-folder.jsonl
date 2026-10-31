@@ -1,0 +1,13 @@
+{"scenario":"filtered-result-to-sidebar-folder","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":4,"score":33,"note":"Escape preserves filtered results and files; only drag-from-results cancellation route, followed by a normal sidebar move"},"cost":{"columns":0.7}}
+{"key":"ctrl+f"}
+{"type":"spr"}
+{"wait":{"present":{"search_result":"spreadsheet.csv"}},"message":"the recursive filter to list 'spreadsheet.csv' from 'documents'"}
+{"drag":{"from":{"search_result":"spreadsheet.csv"},"to":{"sidebar":"Home"}},"steps":8,"release":false}
+{"key":"Escape"}
+{"expect":{"present":{"search_result":"spreadsheet.csv"}},"message":"cancelling a result drag must not dismiss its filter"}
+{"button_up":1}
+{"during":{"all":[{"file":{"path":"$fixture/documents/spreadsheet.csv","exists":true}},{"file":{"path":"$home/spreadsheet.csv","exists":false}},{"present":{"search_result":"spreadsheet.csv"}}]},"ms":500,"message":"Escape prevents the result transfer and keeps the recursive filter"}
+{"drag":{"from":{"search_result":"spreadsheet.csv"},"to":{"sidebar":"Home"}},"steps":8}
+{"fs":{"path":"$home/spreadsheet.csv","text":"a,b\n1,2\n"},"message":"the filtered result to arrive intact in Home"}
+{"fs":{"path":"documents/spreadsheet.csv","exists":false},"message":"the filtered result to be moved out of 'documents'"}
+{"wait":{"absent":{"search_result":"spreadsheet.csv"}},"message":"the moved result to leave the filtered listing"}

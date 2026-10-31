@@ -230,6 +230,16 @@ jobs:
           CARGO_PROFILE_RELEASE_DEBUG: line-tables-only
         run: cargo build --release --locked --target "${{ matrix.target }}"
 
+      # Must stay a prefix of `USAGE` in src/qa.rs; scripts/test_qa_mutation.py checks it.
+      - name: Check the release binary has no QA mode
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          if strings "target/$TARGET/release/strata" | grep -F "usage: strata --qa"; then
+            echo "The release binary was built with the qa feature" >&2
+            exit 1
+          fi
+
       - name: Package binary
         env:
           SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
@@ -336,6 +346,11 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+
+      - name: Publish the installer from the source commit
+        run: |
+          install -m 755 install.sh dist/install.sh
+          (cd dist && sha256sum install.sh > install.sh.sha256)
 
       - name: Attest release artifacts
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2

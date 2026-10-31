@@ -1,0 +1,16 @@
+{"scenario":"properties-nested-hidden-sizes","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"setup":[{"fs":{"path":".","populate":{"sized-folder":{"top.txt":"abc","nested":{"child.txt":"12345",".hidden.txt":"1234567"},".hidden":{"visible":{"file.txt":"123"}}}}}},{"fs":{"path":"sized-folder/nested/loop","symlink":"$fixture/sized-folder"}},{"fs":{"path":"sized-folder/outside","symlink":"$fixture/todo.txt"}}],"variants":[{"id":"entry"},{"id":"current-folder"}],"cost":{"columns-entry":0.6,"columns-current-folder":0.9},"quality":{"impact":3,"coverage":3,"criticality":2,"diagnostic":4,"score":23,"note":"Properties recursive folder size skips symlinks, counts hidden; unit test pins the 18 B total, GUI dialog via entry and background menus is unique"}}
+{"select":{"entry":"sized-folder"},"variants":["current-folder"]}
+{"wait":{"directory":"sized-folder"},"message":"the browser to be working in 'sized-folder'","variants":["current-folder"]}
+{"settle":{"pane":"sized-folder"},"variants":["current-folder"]}
+{"click":{"background":true},"button":3,"variants":["current-folder"]}
+{"wait":{"menu_items":{}},"message":"the folder context menu","variants":["current-folder"]}
+{"click":{"entry":"sized-folder"},"button":3,"variants":["entry"]}
+{"wait":{"menu_items":{}},"message":"the context menu for 'sized-folder'","variants":["entry"]}
+{"wait":{"present":{"menu_item":"Properties"}},"message":"the menu item 'Properties'"}
+{"settle":{"menu_item":"Properties"}}
+{"click":{"menu_item":"Properties"}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"wait":{"present":{"role":"label","name":"18 B","within":{"dialog":true}}},"message":"Properties to show the recursive size without following symlinks"}
+{"wait":{"absent":{"named":"Calculating folder size","within":{"dialog":true}}},"message":"the size spinner to disappear"}
+{"expect":{"present":{"role":"label","name":"4 files, 1 folder","within":{"dialog":true}}}}

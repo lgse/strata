@@ -1,0 +1,54 @@
+{"scenario":"tenxer-l-enters-preview","modes":["columns"],"prefs":{"tenxer_mode":true,"type_to_search":false,"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"tree":{"long.txt":[{"repeat":"document line {}\n","from":0,"to":399}],"notes.txt":"the quick brown fox\n","package.deb":"!<arch>\n","empty":{}},"variants":[{"id":"list","modes":["list"]},{"id":"columns","modes":["columns"]}],"cost":{"list-list":1.2,"columns-columns":1.2},"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":3,"score":45,"note":"10xer l/h moves focus into and out of preview; only test of the Nothing-to-preview route; copy tail repeats preview-source-text-copies"}}
+{"note":"directory","as":"root_directory"}
+{"select_with_keyboard":"long.txt"}
+{"note":"entries","as":"names"}
+{"note":"selected","as":"selection"}
+{"key":"l"}
+{"wait":{"preview":"document line 0"},"message":"l to open the preview"}
+{"wait":{"focused":null},"message":"the preview to own the keys"}
+{"key":"l"}
+{"key":"Right"}
+{"key":"j"}
+{"key":"End"}
+{"key":"ctrl+u"}
+{"key":"Page_Down"}
+{"key":"Home"}
+{"key":"space"}
+{"expect":{"preview":"document line 0"}}
+{"expect":{"focused":null},"message":"preview keys stayed in the preview"}
+{"expect":{"directory":"$root_directory"}}
+{"expect":{"selected":"$selection"}}
+{"expect":{"entries":"$names"}}
+{"key":"h"}
+{"wait":{"focused":"long.txt"},"message":"keyboard focus to reach 'long.txt'"}
+{"expect":{"preview":"document line 0"},"message":"h keeps the preview open"}
+{"expect":{"directory":"$root_directory"}}
+{"key":"J"}
+{"expect":{"focused":"long.txt"},"message":"J scrolls without taking focus"}
+{"key":"Right"}
+{"wait":{"focused":null},"message":"Right to re-enter the preview"}
+{"key":"Escape"}
+{"wait":{"preview":null},"message":"Escape to close the preview"}
+{"wait":{"focused":"long.txt"},"message":"keyboard focus to reach 'long.txt'"}
+{"key":"l"}
+{"wait":{"focused":null},"message":"l to re-enter the preview"}
+{"key":"i"}
+{"wait":{"preview":null},"message":"i to close the focused preview"}
+{"wait":{"focused":"long.txt"},"message":"keyboard focus to reach 'long.txt'"}
+{"select_with_keyboard":"package.deb"}
+{"key":"l"}
+{"wait":{"present":{"named":"Nothing to preview","within":{"window":true}}},"message":"the unpreviewable file hint"}
+{"expect":{"preview":null}}
+{"expect":{"focused":"package.deb"}}
+{"select_with_keyboard":"long.txt"}
+{"key":"l"}
+{"wait":{"preview":"document line 0"},"message":"l to reopen the preview"}
+{"wait":{"focused":null},"message":"the preview to own the keys again"}
+{"key":"ctrl+a"}
+{"key":"ctrl+c"}
+{"key":"ctrl+l"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"remember":{"field":true},"as":"field"}
+{"key":"ctrl+a"}
+{"key":"ctrl+v"}
+{"wait":{"field":{"of":"field","text":{"contains":"document line 0"}}},"message":"Ctrl+A / Ctrl+C in the preview to copy the document text"}

@@ -79,7 +79,7 @@ fn wait_until_dismissed(dialog: &UpdateDialog) {
     wait_until("the dialog to dismiss", || dialog.layer.parent().is_none());
 }
 
-fn release() -> ReleaseMetadata {
+pub(super) fn release() -> ReleaseMetadata {
     ReleaseMetadata {
         version: "99.0.0".to_owned(),
         url: "https://github.com/lgse/strata/releases/tag/v99.0.0".to_owned(),

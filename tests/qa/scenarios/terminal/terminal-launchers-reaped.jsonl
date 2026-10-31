@@ -1,0 +1,10 @@
+{"scenario":"terminal-launchers-reaped","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"env":{"PATH":"$environment/launcher-path"},"setup":[{"fs":{"path":"$environment/launcher-path","mkdir":true}},{"fs":{"path":"$environment/launcher-path/xdg-terminal-exec","write":"#!/bin/sh\nprintf '%s\\t%s\\n' \"$$(pwd)\" \"$$*\" >> '$environment/terminal-launches.log'\nexit 0\n"}},{"fs":{"path":"$environment/launcher-path/xdg-terminal-exec","chmod":"755"}}],"cost":{"columns":0.4},"quality":{"impact":2,"coverage":3,"criticality":3,"diagnostic":4,"score":23,"note":"Ctrl+Alt+T launches are reaped after exit; unit test pins reap_in_background, GUI wiring unique; columns scenario skips reaping"}}
+{"key":"ctrl+alt+t"}
+{"fs":{"path":"$environment/terminal-launches.log","lines":1},"message":"terminal launch 1 to run the stub launcher"}
+{"key":"ctrl+alt+t"}
+{"fs":{"path":"$environment/terminal-launches.log","lines":2},"message":"terminal launch 2 to run the stub launcher"}
+{"key":"ctrl+alt+t"}
+{"fs":{"path":"$environment/terminal-launches.log","lines":3},"message":"terminal launch 3 to run the stub launcher"}
+{"fs":{"path":"$environment/terminal-launches.log","launches":{"count":3,"within":"$fixture"}},"timeout_ms":0}
+{"wait":{"children":{"comm_prefix":"xdg-terminal-ex","count":0}},"message":"the terminal launchers to be reaped"}
+{"expect":{"dialog":null}}

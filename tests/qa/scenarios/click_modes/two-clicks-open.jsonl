@@ -1,0 +1,5 @@
+{"scenario":"two-clicks-open","modes":["columns","icons","list"],"prefs":{"list_folder_clicks":2,"list_file_clicks":2,"grid_folder_clicks":2,"grid_file_clicks":2,"explorer_folder_clicks":2,"explorer_file_clicks":2},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.5,"icons":0.6,"list":0.5},"quality":{"impact":4,"coverage":3,"criticality":4,"diagnostic":4,"score":38,"note":"Double-click opens a folder with no prior selection in default mode; click-then-double-click-no-rename covers the selected case, single-click siblings cover pref 1"}}
+{"click":{"entry":"documents"},"count":2}
+{"wait":{"pane":"documents"},"message":"two clicks to open the directory"}
+{"wait":{"entry":"notes.txt"},"message":"the entry 'notes.txt' to appear"}
+{"wait":{"selected":[],"dir":"documents"},"message":"the selection to become []"}

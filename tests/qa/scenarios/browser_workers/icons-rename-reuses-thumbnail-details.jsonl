@@ -1,0 +1,29 @@
+{"scenario":"icons-rename-reuses-thumbnail-details","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"env":{"STRATA_THUMBNAIL_WORKERS":"2","STRATA_THUMBNAIL_IDLE_SECONDS":"60","RUST_LOG":"strata=info,strata::sandbox::browser=debug"},"setup":[{"fs":{"path":"photos-a","mkdir":true}},{"fs":{"path":"photos-a/photo-{0..5}.png","image":{"width":320,"height":180,"rgb":[40,160,80],"width_step":1}}},{"fs":{"path":"photos-a/model.3mf","zip":[["3D/3dmodel.model","geometry must not be parsed"],["Metadata/thumbnail.png",{"image":{"width":32,"height":32,"rgb":[220,40,80]}}],["Metadata/broken-thumbnail.png","invalid image"]]}},{"fs":{"path":"photos-a/model.FCStd","zip":[["3D/3dmodel.model","geometry must not be parsed"],["thumbnails/Thumbnail.png",{"image":{"width":32,"height":32,"rgb":[220,40,80]}}]]}},{"fs":{"path":"photos-a/plain.stl","write":"solid empty\nendsolid\n"}},{"fs":{"path":"photos-b","mkdir":true}},{"fs":{"path":"photos-b/photo-{0..5}.png","image":{"width":320,"height":180,"rgb":[40,160,80],"width_step":1}}},{"fs":{"path":"photos-b/model.3mf","zip":[["3D/3dmodel.model","geometry must not be parsed"],["Metadata/thumbnail.png",{"image":{"width":32,"height":32,"rgb":[220,40,80]}}],["Metadata/broken-thumbnail.png","invalid image"]]}},{"fs":{"path":"photos-b/model.FCStd","zip":[["3D/3dmodel.model","geometry must not be parsed"],["thumbnails/Thumbnail.png",{"image":{"width":32,"height":32,"rgb":[220,40,80]}}]]}},{"fs":{"path":"photos-b/plain.stl","write":"solid empty\nendsolid\n"}},{"fs":{"path":"photos-c","mkdir":true}},{"fs":{"path":"photos-c/photo-{0..5}.png","image":{"width":320,"height":180,"rgb":[40,160,80],"width_step":1}}},{"fs":{"path":"photos-c/model.3mf","zip":[["3D/3dmodel.model","geometry must not be parsed"],["Metadata/thumbnail.png",{"image":{"width":32,"height":32,"rgb":[220,40,80]}}],["Metadata/broken-thumbnail.png","invalid image"]]}},{"fs":{"path":"photos-c/model.FCStd","zip":[["3D/3dmodel.model","geometry must not be parsed"],["thumbnails/Thumbnail.png",{"image":{"width":32,"height":32,"rgb":[220,40,80]}}]]}},{"fs":{"path":"photos-c/plain.stl","write":"solid empty\nendsolid\n"}}],"cost":{"columns":1.6},"quality":{"impact":2,"coverage":3,"criticality":4,"diagnostic":3,"score":25,"note":"Rename in Icons keeps loaded thumbnail and dimensions with no new worker; the rename-thumbnail path has no unit test, browser-workers-reuse-processes lacks rename"}}
+{"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open"}
+{"wait":{"present":{"role":"radio menu item","name":"Icons"}},"message":"the Icons option"}
+{"click":{"role":"radio menu item","name":"Icons"}}
+{"wait":{"view_mode":"Icons"},"message":"the browser to switch to the Icons view"}
+{"click":{"entry":"photos-a"},"count":2}
+{"wait":{"directory":"photos-a"},"message":"the browser to be working in 'photos-a'"}
+{"settle":{"pane":"photos-a"}}
+{"fs":{"path":"photos-a","all_cached_in":"$cache/thumbnails/large","except_suffix":".stl"},"message":"all original thumbnails persisted"}
+{"wait":{"present":{"role":"label","name":"320×180"}},"message":"original source dimensions"}
+{"wait":{"present":{"role":"label","name":"321×180"}},"message":"original source dimensions"}
+{"wait":{"present":{"role":"label","name":"322×180"}},"message":"original source dimensions"}
+{"wait":{"present":{"role":"label","name":"323×180"}},"message":"original source dimensions"}
+{"wait":{"present":{"role":"label","name":"324×180"}},"message":"original source dimensions"}
+{"wait":{"present":{"role":"label","name":"325×180"}},"message":"original source dimensions"}
+{"click":{"entry":"photo-0.png"}}
+{"key":"F2"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"remember":{"field":true},"as":"field"}
+{"key":"ctrl+a"}
+{"type":"photo-0-renamed.png"}
+{"wait":{"field":{"of":"field","text":"photo-0-renamed.png"}},"message":"replacement name"}
+{"log":{"count":"browser worker completed"},"as":"completed"}
+{"key":"Return"}
+{"wait":{"entry_gone":"photo-0.png"},"message":"the entry 'photo-0.png' to disappear"}
+{"wait":{"selected":["photo-0-renamed.png"]},"message":"the selection to become ['photo-0-renamed.png']"}
+{"wait":{"present":{"role":"label","name":"320×180","within":{"entry":"photo-0-renamed.png"}}},"message":"renamed image retains its dimensions"}
+{"settle":{"entry":"photo-0-renamed.png"}}
+{"log":{"count":"browser worker completed","equals":"$completed"},"timeout_ms":0}

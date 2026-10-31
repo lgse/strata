@@ -1,0 +1,31 @@
+{"scenario":"new-file-collision-dialog","modes":["columns"],"layout":"us","mutation":"new-entry-collision","known_bug":null,"cost":{"columns":1.6},"quality":{"impact":5,"coverage":3,"criticality":3,"diagnostic":4,"score":38,"note":"context-menu New File onto existing todo.txt errors and keeps file; menu route unique, new-folder-collision-dialog covers the shortcut route"}}
+{"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open"}
+{"wait":{"present":{"role":"toggle button","name":"Preview panel"}},"message":"the preview panel toggle"}
+{"key":"Escape","when":{"state":{"target":{"role":"toggle button","name":"Preview panel"},"pressed":false}}}
+{"click":{"role":"toggle button","name":"Preview panel"},"when":{"state":{"target":{"role":"toggle button","name":"Preview panel"},"pressed":true}}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"key":"ctrl+l"}
+{"wait":{"field":{}},"message":"the location editor to take focus"}
+{"key":"Escape"}
+{"wait":{"focused_pane":true},"message":"focus to return to the file listing"}
+{"select":{"entry":"readme.md"}}
+{"click":{"background":true},"button":3}
+{"wait":{"present":{"menu_item":"New File"}},"message":"the menu item 'New File'"}
+{"settle":{"menu_item":"New File"}}
+{"click":{"menu_item":"New File"}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"remember":{"field":true},"as":"name"}
+{"fs":{"path":".","remember":"original"}}
+{"type":"todo.txt"}
+{"wait":{"field":{"of":"name","text":"todo.txt"}},"message":"the existing name to appear"}
+{"key":"Return"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"expect":{"dialog":"Unable to rename item"}}
+{"click":{"dialog_button":"Close"}}
+{"wait":{"dialog":null},"message":"the error to be dismissible"}
+{"wait":{"any":[{"focused_pane":true},{"focused":true}]},"message":"focus returns to the listing"}
+{"fs":{"path":".","unchanged":"original"},"timeout_ms":0}
+{"fs":{"path":"todo.txt","text":"todo\n"},"timeout_ms":0}
+{"select":{"entry":"readme.md","dir":"$root"}}
+{"wait":{"selected":["readme.md"],"dir":"$root"},"message":"the selection to become ['readme.md']"}

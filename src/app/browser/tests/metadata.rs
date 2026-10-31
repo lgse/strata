@@ -211,6 +211,7 @@ fn navigation_cancels_an_awaiting_sort_without_stale_commit() {
             image_dimensions: MetadataValue::Unknown,
             child_count: MetadataValue::Unknown,
             duration_seconds: MetadataValue::Unknown,
+            listable: MetadataValue::Unknown,
         }],
     });
     old_emit(DirectoryEvent::MetadataFinished {
@@ -306,6 +307,7 @@ fn viewport_flush_never_disturbs_an_active_sort() {
             image_dimensions: MetadataValue::Unknown,
             child_count: MetadataValue::Unknown,
             duration_seconds: MetadataValue::Unknown,
+            listable: MetadataValue::Unknown,
         }],
     });
     viewport_emit(DirectoryEvent::MetadataFinished {
@@ -327,6 +329,7 @@ fn viewport_flush_never_disturbs_an_active_sort() {
                 image_dimensions: MetadataValue::Unknown,
                 child_count: MetadataValue::Unknown,
                 duration_seconds: MetadataValue::Unknown,
+                listable: MetadataValue::Unknown,
             },
             MetadataUpdate {
                 location: Location::local("/fixture/beta"),
@@ -336,6 +339,7 @@ fn viewport_flush_never_disturbs_an_active_sort() {
                 image_dimensions: MetadataValue::Unknown,
                 child_count: MetadataValue::Unknown,
                 duration_seconds: MetadataValue::Unknown,
+                listable: MetadataValue::Unknown,
             },
         ],
     });
@@ -451,6 +455,7 @@ fn newly_visible_rows_do_not_discard_late_dimensions_for_the_focused_file() {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
     };
     emit(DirectoryEvent::MetadataFilled {
         request_id: id,
@@ -646,6 +651,7 @@ fn shifted_viewport_rows_go_stale_without_repaint() {
             image_dimensions: MetadataValue::Unknown,
             child_count: MetadataValue::Unknown,
             duration_seconds: MetadataValue::Unknown,
+            listable: MetadataValue::Unknown,
         }],
     });
     assert_eq!(replaced_count(&events), 1);
@@ -738,6 +744,7 @@ fn modified_sort_fills_directory_mtimes() {
                 image_dimensions: MetadataValue::Unknown,
                 child_count: MetadataValue::Unknown,
                 duration_seconds: MetadataValue::Unknown,
+                listable: MetadataValue::Unknown,
             },
             MetadataUpdate {
                 location: Location::local("/fixture/b.txt"),
@@ -747,6 +754,7 @@ fn modified_sort_fills_directory_mtimes() {
                 image_dimensions: MetadataValue::Unknown,
                 child_count: MetadataValue::Unknown,
                 duration_seconds: MetadataValue::Unknown,
+                listable: MetadataValue::Unknown,
             },
         ],
     });

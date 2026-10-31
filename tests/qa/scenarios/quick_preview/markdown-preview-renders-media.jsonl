@@ -1,0 +1,18 @@
+{"scenario":"markdown-preview-renders-media","modes":["columns"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"tree":{"notes.txt":"the quick brown fox\n","page.md":"# Heading\n\nBody text.\n","third.txt":"third preview fixture\n","data.csv":"name,value\nalpha,1\n","folder":{"inner.txt":"inner\n","nested-notes.txt":"nested preview fixture\n"}},"cost":{"columns":0.8},"quality":{"impact":3,"coverage":4,"criticality":3,"diagnostic":4,"score":42,"note":"Markdown PNG/SVG/Mermaid media render and missing-image fallback in preview; sole QA scenario naming them, unit tests pin cache only"}}
+{"fs":{"path":"folder/local image.png","image":{"width":80,"height":32,"rgb":[0,128,0]}}}
+{"fs":{"path":"folder/shapes.svg","write":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"80\" height=\"32\"><circle cx=\"16\" cy=\"16\" r=\"12\" fill=\"red\"/></svg>"}}
+{"fs":{"path":"page.md","write":"# Heading\n\nBody text.\n\n![Local PNG](folder/local%20image.png)\n\n![Local SVG](folder/shapes.svg)\n\n```mermaid\nflowchart LR\nA[Open] --> B[Preview]\n```\n\n![Missing fixture](folder/missing.png)\n"}}
+{"select_with_keyboard":"page.md"}
+{"key":"space"}
+{"wait":{"preview":"Body text."},"message":"the markdown preview to render its body"}
+{"wait":{"present":{"role":"image","within":{"preview":true},"description":"Local PNG"}},"message":"the sandboxed Markdown media to render: Local PNG"}
+{"wait":{"present":{"role":"image","within":{"preview":true},"description":"Local SVG"}},"message":"the sandboxed Markdown media to render: Local SVG"}
+{"wait":{"present":{"role":"image","within":{"preview":true},"description":"Mermaid diagram"}},"message":"the sandboxed Markdown media to render: Mermaid diagram"}
+{"wait":{"preview":"Missing fixture"},"message":"missing-image fallback"}
+{"click":{"role":"button","name":"View source","within":{"preview":true}}}
+{"wait":{"preview":"flowchart LR"},"message":"original Mermaid source"}
+{"click":{"role":"button","name":"View rendered","within":{"preview":true}}}
+{"wait":{"present":{"role":"image","within":{"preview":true},"description":"Mermaid diagram"}},"message":"the cached diagram after switching back to rendered view"}
+{"select":{"entry":"notes.txt"}}
+{"wait":{"preview":"the quick brown fox"},"message":"next preview"}
+{"expect":{"absent":{"role":"image","within":{"preview":true},"description":"Mermaid diagram"}}}

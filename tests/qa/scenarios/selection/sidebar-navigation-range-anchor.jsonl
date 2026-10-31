@@ -1,0 +1,11 @@
+{"scenario":"sidebar-navigation-range-anchor","modes":["columns","icons","list"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.6,"icons":0.7,"list":0.7},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Sidebar Home then Home key anchors the range at the first entry, shift-click extends it; click-after-navigating and shift-click-range-keyboard-entry cover other anchor routes"}}
+{"fs":{"path":"$home/a.txt","write":"a.txt"}}
+{"fs":{"path":"$home/b.txt","write":"b.txt"}}
+{"fs":{"path":"$home/c.txt","write":"c.txt"}}
+{"click":{"sidebar":"Home"}}
+{"wait":{"directory":"home"},"message":"the browser to be working in 'home'"}
+{"settle":{"pane":"home"}}
+{"key":"Home"}
+{"wait":{"selected":["a.txt"],"dir":"home"},"message":"the selection to become ['a.txt']"}
+{"click":{"entry":"c.txt","dir":"home"},"mods":["shift"]}
+{"wait":{"selected":["a.txt","b.txt","c.txt"],"dir":"home"},"message":"the selection to become ['a.txt', 'b.txt', 'c.txt']"}

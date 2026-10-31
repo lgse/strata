@@ -206,7 +206,7 @@ impl ThumbnailSlot {
         widget.set_slot(slot);
         crate::ui::preferences::PreferenceManager::shared().bind_preference(
             &widget,
-            crate::ui::preferences::PreferenceManager::show_thumbnails,
+            |manager| (manager.show_thumbnails(), manager.stl_thumbnails()),
             |widget, _| {
                 let slot = widget
                     .downcast_ref::<ThumbnailSlot>()
@@ -248,9 +248,7 @@ impl ThumbnailSlot {
             self.imp()
                 .decoration_description
                 .replace(description.map(str::to_owned));
-            self.update_property(&[gtk::accessible::Property::Description(
-                description.unwrap_or(""),
-            )]);
+            crate::ui::accessibility::set_description(self, description);
         }
         if same_texture(self.imp().decoration.borrow().as_ref(), texture) {
             return;
@@ -317,12 +315,16 @@ impl ThumbnailSlot {
             return;
         }
         self.imp().texture.replace(None);
-        let scale =
-            if self.imp().limit_fallback_height.get() && icon != crate::assets::icons::FOLDER {
-                texture.map_or(1.0, cached_folder_height_scale)
-            } else {
-                1.0
-            };
+        let folder = [
+            crate::assets::icons::FOLDER,
+            crate::assets::icons::FOLDER_LOCK,
+        ]
+        .contains(&icon);
+        let scale = if self.imp().limit_fallback_height.get() && !folder {
+            texture.map_or(1.0, cached_folder_height_scale)
+        } else {
+            1.0
+        };
         self.imp().fallback_scale.set(scale);
         self.imp().fallback_icon.replace(Some(icon.to_owned()));
         self.imp().fallback.replace(texture.cloned());

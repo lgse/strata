@@ -1,0 +1,80 @@
+{"scenario":"tenxer-icons-edges-search-peek","modes":["icons"],"prefs":{"type_to_search":false},"layout":"us","mutation":null,"known_bug":null,"cost":{"icons":1.8},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"10xer Icons edge keys (incl. KP_Left) keep folder; i peek/preview keeps focus, search dismissal; i-peek overlaps tenxer-escape-closes-peek"}}
+{"key":"ctrl+shift+m"}
+{"wait":{"pref":{"key":"tenxer_mode","value":true}},"message":"10xer mode to turn on"}
+{"note":"directory","as":"start"}
+{"key":"Home"}
+{"wait":{"focused":"archive"},"message":"keyboard focus to reach 'archive'"}
+{"key":"Left"}
+{"wait":{"focused":"archive"},"message":"keyboard focus to reach 'archive'"}
+{"expect":{"directory":"$start"}}
+{"key":"h"}
+{"wait":{"focused":"archive"},"message":"keyboard focus to reach 'archive'"}
+{"expect":{"directory":"$start"}}
+{"key":"KP_Left"}
+{"wait":{"focused":"archive"},"message":"keyboard focus to reach 'archive'"}
+{"expect":{"directory":"$start"}}
+{"fs":{"path":"empty-icons","mkdir":true}}
+{"wait":{"entry":"empty-icons"},"message":"the entry 'empty-icons' to appear"}
+{"key":"F5"}
+{"select":{"entry":"empty-icons"}}
+{"key":"o"}
+{"wait":{"directory":"empty-icons"},"message":"the browser to be working in 'empty-icons'"}
+{"settle":{"pane":"empty-icons"}}
+{"key":"h"}
+{"expect":{"directory":"empty-icons"}}
+{"expect":{"peek":false}}
+{"key":"j"}
+{"expect":{"directory":"empty-icons"}}
+{"expect":{"peek":false}}
+{"key":"k"}
+{"expect":{"directory":"empty-icons"}}
+{"expect":{"peek":false}}
+{"key":"l"}
+{"expect":{"directory":"empty-icons"}}
+{"expect":{"peek":false}}
+{"key":"Left"}
+{"expect":{"directory":"empty-icons"}}
+{"expect":{"peek":false}}
+{"key":"Down"}
+{"expect":{"directory":"empty-icons"}}
+{"expect":{"peek":false}}
+{"key":"i"}
+{"expect":{"directory":"empty-icons"}}
+{"expect":{"peek":false}}
+{"key":"BackSpace"}
+{"wait":{"directory":"$start"},"message":"the browser to be working in '$start'"}
+{"settle":{"pane":"$start"}}
+{"select":{"entry":"documents"}}
+{"key":"i"}
+{"wait":{"peek":true},"message":"i to open the folder peek"}
+{"expect":{"directory":"$start"}}
+{"expect":{"focused":"documents"}}
+{"key":"i"}
+{"wait":{"peek":false},"message":"a second i to close the folder peek"}
+{"select":{"entry":"readme.md"}}
+{"key":"i"}
+{"wait":{"preview":true},"message":"i to open the file preview"}
+{"expect":{"peek":false}}
+{"expect":{"directory":"$start"}}
+{"expect":{"focused":"readme.md"},"message":"i keeps focus on the tile"}
+{"key":"i"}
+{"wait":{"preview":null},"message":"a second i to close the preview"}
+{"wait":{"focused":"readme.md"},"message":"keyboard focus to reach 'readme.md'"}
+{"key":"ctrl+shift+m"}
+{"wait":{"pref":{"key":"tenxer_mode","value":false}},"message":"10xer mode to turn off"}
+{"key":"ctrl+f"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"type":"txt"}
+{"wait":{"matches":{"at_least":2}},"message":"icon search hits"}
+{"key":"Down"}
+{"wait":{"focused_in_matches":true},"message":"Down to focus a search hit"}
+{"key":"ctrl+shift+m"}
+{"wait":{"pref":{"key":"tenxer_mode","value":true}},"message":"10xer mode to turn on over search results"}
+{"note":"directory","as":"before"}
+{"note":"matches","as":"shown"}
+{"key":"Down"}
+{"key":"j"}
+{"expect":{"directory":"$before"}}
+{"expect":{"matches":"$shown"},"message":"directional keys dismissed the search results"}
+{"expect":{"focused":{"one_of":"$shown"}}}
+{"expect":{"peek":false}}

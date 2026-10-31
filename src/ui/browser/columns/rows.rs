@@ -20,7 +20,7 @@ use crate::ui::{
         },
         paths::is_trash_location,
     },
-    browser_modes::BrowserMode,
+    browser_modes::{BrowserMode, FilteredFileClick, filtered_file_click},
     modal::slide_in_down,
 };
 use crate::{
@@ -47,6 +47,36 @@ fn anchor_at(state: &std::rc::Weak<ViewState>, depth: usize, map: &ViewMap, row:
     }
 }
 
+/// Filtered folders keep one-click open.
+fn filtered_click_kind(
+    state: &ViewState,
+    entry: &FileEntry,
+    recursive: bool,
+) -> Option<PendingActivationKind> {
+    let chooser = state.browser.is_chooser_mode();
+    if entry.is_directory() {
+        return Some(if recursive && chooser {
+            PendingActivationKind::ChooserSearchNavigate
+        } else if recursive {
+            PendingActivationKind::RecursiveSearch
+        } else {
+            PendingActivationKind::Mapped
+        });
+    }
+    match filtered_file_click(
+        entry,
+        chooser,
+        state.single_click_previews.get(),
+        state.columns_click_activation.get().files,
+    ) {
+        FilteredFileClick::Open if recursive => Some(PendingActivationKind::RecursiveSearch),
+        FilteredFileClick::Open => Some(PendingActivationKind::Mapped),
+        FilteredFileClick::Preview if recursive => Some(PendingActivationKind::RecursivePreview),
+        FilteredFileClick::Preview => Some(PendingActivationKind::Standard { preview: true }),
+        FilteredFileClick::Ignore => None,
+    }
+}
+
 fn open_row_in_new(state: &Rc<ViewState>, location: &Location, action: &str) {
     let uri = crate::adapters::gio_file_for_location(location)
         .uri()
@@ -62,6 +92,10 @@ pub(super) struct ColumnRows {
     pub(super) scrolling: Rc<Cell<bool>>,
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "each column's row factory binds to that column's own models and state"
+)]
 pub(super) fn column_rows(
     state: &Rc<ViewState>,
     depth: usize,
@@ -70,6 +104,7 @@ pub(super) fn column_rows(
     recursive_search_active: &Rc<Cell<bool>>,
     search_results: &Rc<RefCell<Vec<SearchItem>>>,
     hits: &Rc<RefCell<super::ColumnHits>>,
+    enter_target: &crate::ui::enter_target::EnterTarget,
 ) -> ColumnRows {
     let scrolling = Rc::new(Cell::new(false));
     let factory = gtk::SignalListItemFactory::new();
@@ -232,7 +267,7 @@ pub(super) fn column_rows(
                 if let Some((texture, hot_x, hot_y)) = drag_preview_icon(&prepare_row, &entries) {
                     source.set_icon(Some(&texture), hot_x, hot_y);
                 }
-                file_drag_content(&entries)
+                file_drag_content(source, &entries)
             });
             let dragged_row = row.downgrade();
             let weak_state_for_begin = weak_state.clone();
@@ -546,17 +581,10 @@ pub(super) fn column_rows(
                         search_results_for_click
                             .borrow()
                             .get(position as usize)
-                            .map(|item| {
-                                let kind = if state.browser.is_chooser_mode() {
-                                    PendingActivationKind::ChooserSearchNavigate
-                                } else {
-                                    PendingActivationKind::RecursiveSearch
-                                };
-                                (
-                                    position as usize,
-                                    crate::model::Location::local(item.path.clone()),
-                                    kind,
-                                )
+                            .and_then(|item| {
+                                let entry = crate::ui::browser::search_result_entry(item);
+                                let kind = filtered_click_kind(&state, &entry, true)?;
+                                Some((position as usize, entry.location, kind))
                             })
                     } else {
                         map_for_click
@@ -564,21 +592,8 @@ pub(super) fn column_rows(
                             .and_then(|source_position| {
                                 let entry = state.browser.entry_at(depth, source_position)?;
                                 state.browser.select(depth, source_position);
-                                if is_trash_location(&entry.location) && !entry.is_directory() {
-                                    if state.single_click_previews.get() {
-                                        return Some((
-                                            source_position,
-                                            entry.location,
-                                            PendingActivationKind::Standard { preview: true },
-                                        ));
-                                    }
-                                    return None;
-                                }
-                                Some((
-                                    source_position,
-                                    entry.location,
-                                    PendingActivationKind::Mapped,
-                                ))
+                                let kind = filtered_click_kind(&state, &entry, false)?;
+                                Some((source_position, entry.location, kind))
                             })
                     };
                     if let Some((position, location, kind)) = pending {
@@ -773,6 +788,19 @@ pub(super) fn column_rows(
                         );
                     }
                 }
+                PendingActivationKind::RecursivePreview => {
+                    let Some(item) = search_results_for_release
+                        .borrow()
+                        .get(pending.position)
+                        .cloned()
+                    else {
+                        return;
+                    };
+                    let entry = crate::ui::browser::search_result_entry(&item);
+                    if pending.can_activate(&entry.location) && state.single_click_previews.get() {
+                        state.browser.request_preview(entry);
+                    }
+                }
             }
         });
         let weak_state_for_cancel = weak_state.clone();
@@ -853,6 +881,7 @@ pub(super) fn column_rows(
     let map_for_bind = map.clone();
     let weak_state_for_bind = Rc::downgrade(state);
     let search_active_for_bind = recursive_search_active.clone();
+    let enter_for_bind = enter_target.clone();
     let search_results_for_bind = search_results.clone();
     let hits_for_bind = hits.clone();
     let scrolling_for_bind = scrolling.clone();
@@ -919,6 +948,7 @@ pub(super) fn column_rows(
         } else {
             row.remove_css_class("filter-result");
         }
+        enter_for_bind.decorate(&row, item);
         let source_position = (!searching)
             .then(|| map_for_bind.source_position(item.position()))
             .flatten();
@@ -1030,10 +1060,7 @@ pub(super) fn column_rows(
                 && !scrolling_for_bind.get()
                 && let Some(state) = state.as_ref()
                 && let Some(position) = source_position
-                && (metadata_needs_fill(entry)
-                    || (show_sizes
-                        && entry.is_directory()
-                        && entry.child_count == crate::model::MetadataValue::Unknown))
+                && (metadata_needs_fill(entry) || (show_sizes && entry.is_directory()))
             {
                 crate::ui::thumbnail::request_metadata(
                     &icon,

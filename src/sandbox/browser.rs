@@ -164,6 +164,7 @@ pub(crate) fn thumbnail(
         ParseOperation::ThumbnailVideo => Operation::Video,
         ParseOperation::ThumbnailModel(ModelFormat::ThreeMf) => Operation::ThreeMfThumbnail,
         ParseOperation::ThumbnailModel(ModelFormat::FreeCad) => Operation::FreeCadThumbnail,
+        ParseOperation::ThumbnailModel(ModelFormat::Gcode) => Operation::GcodeThumbnail,
         _ => return Err("Not a browser thumbnail operation".into()),
     };
     let result = request(pool(), path, operation, cancellation)?;
@@ -231,6 +232,7 @@ fn parse_operation(operation: Operation) -> ParseOperation {
         Operation::Video => ParseOperation::ThumbnailVideo,
         Operation::ThreeMfThumbnail => ParseOperation::ThumbnailModel(ModelFormat::ThreeMf),
         Operation::FreeCadThumbnail => ParseOperation::ThumbnailModel(ModelFormat::FreeCad),
+        Operation::GcodeThumbnail => ParseOperation::ThumbnailModel(ModelFormat::Gcode),
         Operation::ImageMetadata | Operation::MediaMetadata => ParseOperation::MediaMetadata,
         Operation::RawMetadata => ParseOperation::RawMetadata,
         Operation::PreviewImage => ParseOperation::PreviewImage,
@@ -283,7 +285,12 @@ fn request_held(
     } else {
         super::MAX_RASTER_INPUT_BYTES
     };
-    if !metadata_only && operation != Operation::Video && key.size > input_limit {
+    // The thumbnail is in a bounded header or block; the toolpath is not read.
+    if !metadata_only
+        && operation != Operation::Video
+        && operation != Operation::GcodeThumbnail
+        && key.size > input_limit
+    {
         return Err("Browser input exceeds the supported size limit".into());
     }
     let entry = cache_entry(&pool.cache, key.clone(), operation);
@@ -534,6 +541,7 @@ impl Pool {
                 | Operation::Video
                 | Operation::ThreeMfThumbnail
                 | Operation::FreeCadThumbnail
+                | Operation::GcodeThumbnail
                 | Operation::ImageMetadata
                 | Operation::MediaMetadata
                 | Operation::RawMetadata

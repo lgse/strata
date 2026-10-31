@@ -10,6 +10,17 @@ REQUIRED_PACKAGES=(
   gst-plugins-base gst-plugins-good gtk4 gtksourceview5 gvfs poppler-glib xdg-utils
 )
 RAW_PREVIEW_PACKAGES=(imagemagick libraw dcraw)
+# Raw Ed25519 public keys; keep in sync with data/update-keys.json, the updater's trust store.
+RELEASE_PUBLIC_KEYS=(
+  1589903225a2dd3c1bc87125884801552b07fd0a09855cfdbde3b84601cebf3c
+)
+MANIFEST_NAME="strata-update-manifest.json"
+SIGNATURES_NAME="strata-update-manifest.signatures.json"
+MAX_MANIFEST_BYTES=32768
+MAX_SIGNATURES_BYTES=8192
+MAX_ARCHIVE_BYTES=$((128 * 1024 * 1024))
+SIGNED_ARCHIVE_SIZE=""
+SIGNED_ARCHIVE_SHA256=""
 
 NON_INTERACTIVE=no
 VERBOSE=no
@@ -21,6 +32,8 @@ WITH_FILE_MANAGER=ask
 WITH_FILE_CHOOSER=ask
 WITH_OMARCHY_KEYBINDS=ask
 WITH_UDISKIE_UNLOCK=ask
+REQUESTED_FILE_CHOOSER=no
+REQUESTED_UDISKIE_UNLOCK=no
 COLOR_RESET="" COLOR_BOLD="" COLOR_DIM="" COLOR_ACCENT="" COLOR_SUCCESS="" COLOR_WARNING="" COLOR_ERROR=""
 COLOR_LAYER_ONE="" COLOR_LAYER_TWO=""
 RICH_TERMINAL=no
@@ -45,6 +58,7 @@ installer_locale() {
       en* | c | c.* | posix*) printf en; return ;;
       fr*) printf fr; return ;;
       de*) printf de; return ;;
+      hu*) printf hu; return ;;
       es*) printf es; return ;;
       ja*) printf ja; return ;;
       pt*) printf pt-BR; return ;;
@@ -71,7 +85,6 @@ case "$(installer_locale)" in
     [details]='Detailed output: %{path}'
     [cancelled]='Installation cancelled. No changes made.'
     [task_failed]='Failed: %{task}'
-    [provenance]='Verify GitHub Actions provenance'
     [read_failed]='Could not read your selection.'
     [keys_toggle]='↑/↓ move · Space toggle · Enter install · Esc cancel'
     [keys_choose]='↑/↓ choose · Enter continue · Esc cancel'
@@ -80,7 +93,7 @@ case "$(installer_locale)" in
     [invalid_selection]='Choose one of the listed options.'
     [standard]='Install Strata (recommended)'
     [custom]='Customize installation'
-    [standard_hint]='Application + launcher. Your current defaults stay unchanged.'
+    [standard_hint]='Everything this system supports: launcher, folders, file chooser, and optional integrations.'
     [custom_hint]='Choose desktop integrations and optional support.'
     [setup_title]='Choose your setup'
     [launcher]='Application launcher'
@@ -111,8 +124,10 @@ case "$(installer_locale)" in
     [reinstall]='This replaces %{path}. Your saved settings are kept.'
     [installing]='Installing Strata'
     [download]='Download Strata %{version}'
-    [download_checksums]='Download release checksums'
-    [checksum]='Verify SHA-256 checksum'
+    [download_manifest]='Download the signed release manifest'
+    [download_signatures]='Download the release signatures'
+    [signature]='Verify the release signature'
+    [digest]='Verify the signed SHA-256 digest'
     [unpack]='Unpack the verified release'
     [application]='Install the application'
     [ready]='Ready to explore'
@@ -125,6 +140,69 @@ case "$(installer_locale)" in
     [udiskie_requires]='--with-udiskie-unlock requires an Arch-based system with udiskie on PATH.'
     [progress]='%{percent}%'
   ) ;;
+  hu) INSTALLER_MESSAGES=(
+    [setup]='Interaktív telepítő'
+    [tagline]='Fedezzen fel minden réteget.'
+    [partial]='A Strata telepítve van, de a beállítás nem fejeződött be.'
+    [failed]='A telepítés nem fejeződött be.'
+    [details]='Részletes kimenet: %{path}'
+    [cancelled]='A telepítés megszakítva. Nem történt módosítás.'
+    [task_failed]='Sikertelen: %{task}'
+    [read_failed]='Nem sikerült beolvasni a választását.'
+    [keys_toggle]='↑/↓ mozgás · Szóköz be/ki · Enter telepítés · Esc mégse'
+    [keys_choose]='↑/↓ választás · Enter tovább · Esc mégse'
+    [plain_toggle]='Kapcsoljon be vagy ki egy lehetőséget a számával; Enter a telepítéshez, q a megszakításhoz:'
+    [plain_choose]='Válasszon: [1], vagy q a megszakításhoz:'
+    [invalid_selection]='Válasszon a felsorolt lehetőségek közül.'
+    [standard]='A Strata telepítése (ajánlott)'
+    [custom]='Telepítés testreszabása'
+    [standard_hint]='Minden, amit ez a rendszer támogat: indító, mappák, fájlválasztó és opcionális integrációk.'
+    [custom_hint]='Válassza ki az asztali integrációkat és az opcionális támogatást.'
+    [setup_title]='Válassza ki a beállítást'
+    [launcher]='Alkalmazásindító'
+    [folders]='Alapértelmezett fájlkezelő'
+    [reveal]='Fájl helyének megnyitása'
+    [chooser]='Megnyitási és mentési párbeszédablakok'
+    [launcher_hint]='A Strata hozzáadása az alkalmazásmenühöz.'
+    [folders_hint]='A Strata használata mappákhoz és a „Fájl helyének megnyitása” művelethez. Tartalmazza az indítót is.'
+    [reveal_hint]='Fájlok megjelenítése más alkalmazásokból a mappák alapértelmezett kezelőjének módosítása nélkül.'
+    [reveal_ready]='A Strata mostantól kezeli a „Fájl helyének megnyitása” kéréseket.'
+    [reveal_relogin]='A FileManager1 szolgáltatás telepítve lett, de a munkamenetbuszt nem sikerült újratölteni. Jelentkezzen ki, majd be újra, hogy a Strata kezelje a „Fájl helyének megnyitása” kéréseket.'
+    [chooser_hint]='A Strata használata a portál párbeszédablakaihoz. Újraindítja a portálszolgáltatást; előbb zárja be a fájlpárbeszédablakokat.'
+    [smb]='Windows hálózati megosztások'
+    [smb_hint]='Opcionális SMB-támogatás telepítése a hálózati megosztások böngészéséhez.'
+    [raw]='Fényképezőgépes RAW-támogatás'
+    [raw_hint]='Opcionális képdekóderek telepítése a szélesebb körű előnézeti támogatáshoz.'
+    [omarchy]='Omarchy fájlkezelő-gyorsbillentyűk'
+    [omarchy_hint]='A fájlkezelő gyorsbillentyűinek lecserélése. Biztonsági másolat készül.'
+    [udiskie]='Titkosított meghajtók feloldása'
+    [udiskie_hint]='Az udiskie beállításainak szerkesztése, a LUKS automatikus csatolásának letiltása és az udiskie újraindítása. Visszaállítás: strata --uninstall-udiskie-unlock.'
+    [custom_title]='Szabja testre a Stratát'
+    [plan]='Telepítési terv'
+    [destination]='Telepítés ide: %{path}'
+    [defaults_unchanged]='Az alapértelmezett alkalmazások és gyorsbillentyűk változatlanok maradnak.'
+    [dependencies_ready]='Az összes kiválasztott futtatókörnyezeti csomag már telepítve van.'
+    [dependencies]='Függőségek telepítése'
+    [packages]='Telepítendő csomagok: %{packages}'
+    [reinstall]='Ez lecseréli a következőt: %{path}. A mentett beállításai megmaradnak.'
+    [installing]='A Strata telepítése'
+    [download]='A Strata %{version} letöltése'
+    [download_manifest]='Az aláírt kiadási jegyzék letöltése'
+    [download_signatures]='A kiadás aláírásainak letöltése'
+    [signature]='A kiadás aláírásának ellenőrzése'
+    [digest]='Az aláírt SHA-256 kivonat ellenőrzése'
+    [unpack]='Az ellenőrzött kiadás kicsomagolása'
+    [application]='Az alkalmazás telepítése'
+    [ready]='Indulhat a felfedezés'
+    [installed_notices]='Telepítve — tekintse át a beállítás részleteit'
+    [installed_warnings]='Telepítve, figyelmeztetésekkel'
+    [installed]='A Strata %{version} telepítve van.'
+    [launch]='Az indításhoz futtassa a következőt: %{command}'
+    [usage_intro]='Kapcsolók nélkül választhat az ajánlott telepítés és az asztali integráció testreszabása között.'
+    [verbose_help]='Részletes letöltési és ellenőrzési kimenet megjelenítése'
+    [udiskie_requires]='A --with-udiskie-unlock kapcsolóhoz Arch-alapú rendszer szükséges, amelynek PATH változójában elérhető az udiskie.'
+    [progress]='%{percent}%'
+  ) ;;
   fr) INSTALLER_MESSAGES=(
     [setup]='Programme d’installation interactif'
     [tagline]='Parcourez chaque couche.'
@@ -133,7 +211,6 @@ case "$(installer_locale)" in
     [details]='Journal détaillé : %{path}'
     [cancelled]='Installation annulée. Aucune modification effectuée.'
     [task_failed]='Échec : %{task}'
-    [provenance]='Vérifier la provenance GitHub Actions'
     [read_failed]='Impossible de lire votre choix.'
     [keys_toggle]='↑/↓ déplacer · Espace cocher · Entrée installer · Échap annuler'
     [keys_choose]='↑/↓ choisir · Entrée continuer · Échap annuler'
@@ -142,7 +219,7 @@ case "$(installer_locale)" in
     [invalid_selection]='Choisissez l’une des options proposées.'
     [standard]='Installer Strata (recommandé)'
     [custom]='Personnaliser l’installation'
-    [standard_hint]='Application et lanceur. Vos réglages par défaut restent inchangés.'
+    [standard_hint]='Tout ce que ce système prend en charge : lanceur, dossiers, sélecteur de fichiers et intégrations optionnelles.'
     [custom_hint]='Choisissez l’intégration au bureau et les fonctions facultatives.'
     [setup_title]='Choisissez votre installation'
     [launcher]='Lanceur d’application'
@@ -173,8 +250,10 @@ case "$(installer_locale)" in
     [reinstall]='Cette opération remplace %{path}. Vos réglages sont conservés.'
     [installing]='Installation de Strata'
     [download]='Télécharger Strata %{version}'
-    [download_checksums]='Télécharger les sommes de contrôle'
-    [checksum]='Vérifier la somme de contrôle SHA-256'
+    [download_manifest]='Télécharger le manifeste signé de la version'
+    [download_signatures]='Télécharger les signatures de la version'
+    [signature]='Vérifier la signature de la version'
+    [digest]='Vérifier l'"'"'empreinte SHA-256 signée'
     [unpack]='Décompresser la version vérifiée'
     [application]='Installer l’application'
     [ready]='Tout est prêt pour explorer'
@@ -195,7 +274,6 @@ case "$(installer_locale)" in
     [details]='Ausführliches Protokoll: %{path}'
     [cancelled]='Installation abgebrochen. Es wurden keine Änderungen vorgenommen.'
     [task_failed]='Fehlgeschlagen: %{task}'
-    [provenance]='GitHub-Actions-Herkunft überprüfen'
     [read_failed]='Die Auswahl konnte nicht gelesen werden.'
     [keys_toggle]='↑/↓ bewegen · Leertaste umschalten · Eingabe installieren · Esc abbrechen'
     [keys_choose]='↑/↓ auswählen · Eingabe fortfahren · Esc abbrechen'
@@ -204,7 +282,7 @@ case "$(installer_locale)" in
     [invalid_selection]='Wählen Sie eine der aufgeführten Optionen.'
     [standard]='Strata installieren (empfohlen)'
     [custom]='Installation anpassen'
-    [standard_hint]='Anwendung und Starter. Ihre bisherigen Standardeinstellungen bleiben erhalten.'
+    [standard_hint]='Alles, was dieses System unterstützt: Starter, Ordner, Dateiauswahl und optionale Integrationen.'
     [custom_hint]='Desktop-Integration und optionale Unterstützung auswählen.'
     [setup_title]='Einrichtung auswählen'
     [launcher]=Anwendungsstarter
@@ -235,8 +313,10 @@ case "$(installer_locale)" in
     [reinstall]='%{path} wird ersetzt. Ihre gespeicherten Einstellungen bleiben erhalten.'
     [installing]='Strata wird installiert'
     [download]='Strata %{version} herunterladen'
-    [download_checksums]='Prüfsummen der Version herunterladen'
-    [checksum]='SHA-256-Prüfsumme überprüfen'
+    [download_manifest]='Signiertes Versionsmanifest herunterladen'
+    [download_signatures]='Signaturen der Version herunterladen'
+    [signature]='Signatur der Version überprüfen'
+    [digest]='Signierten SHA-256-Hash überprüfen'
     [unpack]='Überprüfte Version entpacken'
     [application]='Anwendung installieren'
     [ready]='Bereit zum Erkunden'
@@ -257,7 +337,6 @@ case "$(installer_locale)" in
     [details]='Registro detallado: %{path}'
     [cancelled]='Instalación cancelada. No se hicieron cambios.'
     [task_failed]='Error: %{task}'
-    [provenance]='Verificar la procedencia de GitHub Actions'
     [read_failed]='No se pudo leer tu selección.'
     [keys_toggle]='↑/↓ mover · Espacio marcar · Intro instalar · Esc cancelar'
     [keys_choose]='↑/↓ elegir · Intro continuar · Esc cancelar'
@@ -266,7 +345,7 @@ case "$(installer_locale)" in
     [invalid_selection]='Elige una de las opciones de la lista.'
     [standard]='Instalar Strata (recomendado)'
     [custom]='Personalizar la instalación'
-    [standard_hint]='Aplicación y lanzador. Se conservan tus opciones predeterminadas.'
+    [standard_hint]='Todo lo que admite este sistema: lanzador, carpetas, selector de archivos e integraciones opcionales.'
     [custom_hint]='Elige la integración con el escritorio y las funciones opcionales.'
     [setup_title]='Elige tu instalación'
     [launcher]='Lanzador de aplicaciones'
@@ -297,8 +376,10 @@ case "$(installer_locale)" in
     [reinstall]='Se reemplazará %{path}. Se conservarán tus ajustes guardados.'
     [installing]='Instalando Strata'
     [download]='Descargar Strata %{version}'
-    [download_checksums]='Descargar las sumas de comprobación'
-    [checksum]='Verificar la suma SHA-256'
+    [download_manifest]='Descargar el manifiesto firmado de la versión'
+    [download_signatures]='Descargar las firmas de la versión'
+    [signature]='Verificar la firma de la versión'
+    [digest]='Verificar el resumen SHA-256 firmado'
     [unpack]='Extraer la versión verificada'
     [application]='Instalar la aplicación'
     [ready]='Todo listo para explorar'
@@ -319,7 +400,6 @@ case "$(installer_locale)" in
     [details]='詳細ログ: %{path}'
     [cancelled]='インストールをキャンセルしました。変更は行っていません。'
     [task_failed]='失敗: %{task}'
-    [provenance]='GitHub Actions の来歴を検証'
     [read_failed]='選択内容を読み取れませんでした。'
     [keys_toggle]='↑/↓ 移動 · Space 切替 · Enter インストール · Esc キャンセル'
     [keys_choose]='↑/↓ 選択 · Enter 続行 · Esc キャンセル'
@@ -328,7 +408,7 @@ case "$(installer_locale)" in
     [invalid_selection]='一覧の選択肢から選んでください。'
     [standard]='Strata をインストール（推奨）'
     [custom]='インストールをカスタマイズ'
-    [standard_hint]='アプリとランチャーを追加します。既定の設定は変更しません。'
+    [standard_hint]='このシステムが対応するすべて: ランチャー、フォルダー、ファイル選択ダイアログ、オプションの統合。'
     [custom_hint]='デスクトップ連携と追加機能を選びます。'
     [setup_title]='インストール方法を選択'
     [launcher]='アプリランチャー'
@@ -359,8 +439,10 @@ case "$(installer_locale)" in
     [reinstall]='%{path} を置き換えます。保存済みの設定は保持します。'
     [installing]='Strata をインストール中'
     [download]='Strata %{version} をダウンロード'
-    [download_checksums]='リリースのチェックサムをダウンロード'
-    [checksum]='SHA-256 チェックサムを検証'
+    [download_manifest]='署名済みリリースマニフェストをダウンロード'
+    [download_signatures]='リリースの署名をダウンロード'
+    [signature]='リリースの署名を検証'
+    [digest]='署名済み SHA-256 ダイジェストを検証'
     [unpack]='検証済みリリースを展開'
     [application]='アプリをインストール'
     [ready]='準備ができました'
@@ -381,7 +463,6 @@ case "$(installer_locale)" in
     [details]='Registro detalhado: %{path}'
     [cancelled]='Instalação cancelada. Nenhuma alteração foi feita.'
     [task_failed]='Falha: %{task}'
-    [provenance]='Verificar a procedência do GitHub Actions'
     [read_failed]='Não foi possível ler sua seleção.'
     [keys_toggle]='↑/↓ mover · Espaço marcar · Enter instalar · Esc cancelar'
     [keys_choose]='↑/↓ escolher · Enter continuar · Esc cancelar'
@@ -390,7 +471,7 @@ case "$(installer_locale)" in
     [invalid_selection]='Escolha uma das opções listadas.'
     [standard]='Instalar o Strata (recomendado)'
     [custom]='Personalizar a instalação'
-    [standard_hint]='Aplicativo e lançador. Suas configurações padrão não mudam.'
+    [standard_hint]='Tudo o que este sistema suporta: lançador, pastas, seletor de arquivos e integrações opcionais.'
     [custom_hint]='Escolha integrações com a área de trabalho e recursos opcionais.'
     [setup_title]='Escolha sua instalação'
     [launcher]='Lançador de aplicativos'
@@ -421,8 +502,10 @@ case "$(installer_locale)" in
     [reinstall]='%{path} será substituído. Suas configurações salvas serão mantidas.'
     [installing]='Instalando o Strata'
     [download]='Baixar o Strata %{version}'
-    [download_checksums]='Baixar as somas de verificação'
-    [checksum]='Verificar a soma SHA-256'
+    [download_manifest]='Baixar o manifesto assinado da versão'
+    [download_signatures]='Baixar as assinaturas da versão'
+    [signature]='Verificar a assinatura da versão'
+    [digest]='Verificar o resumo SHA-256 assinado'
     [unpack]='Extrair a versão verificada'
     [application]='Instalar o aplicativo'
     [ready]='Tudo pronto para explorar'
@@ -443,7 +526,6 @@ case "$(installer_locale)" in
     [details]='상세 로그: %{path}'
     [cancelled]='설치를 취소했습니다. 변경 사항이 없습니다.'
     [task_failed]='실패: %{task}'
-    [provenance]='GitHub Actions 출처 검증'
     [read_failed]='선택 항목을 읽을 수 없습니다.'
     [keys_toggle]='↑/↓ 이동 · Space 선택 · Enter 설치 · Esc 취소'
     [keys_choose]='↑/↓ 선택 · Enter 계속 · Esc 취소'
@@ -452,7 +534,7 @@ case "$(installer_locale)" in
     [invalid_selection]='목록에서 항목을 선택하세요.'
     [standard]='Strata 설치 (권장)'
     [custom]='설치 사용자 지정'
-    [standard_hint]='앱과 실행 아이콘을 추가합니다. 기존 기본 설정은 유지됩니다.'
+    [standard_hint]='이 시스템이 지원하는 모든 항목: 런처, 폴더, 파일 선택기, 선택적 통합.'
     [custom_hint]='데스크톱 통합과 추가 지원을 선택합니다.'
     [setup_title]='설치 방식 선택'
     [launcher]='앱 실행 아이콘'
@@ -483,8 +565,10 @@ case "$(installer_locale)" in
     [reinstall]='%{path} 파일을 교체합니다. 저장된 설정은 유지됩니다.'
     [installing]='Strata 설치 중'
     [download]='Strata %{version} 다운로드'
-    [download_checksums]='릴리스 체크섬 다운로드'
-    [checksum]='SHA-256 체크섬 검증'
+    [download_manifest]='서명된 릴리스 매니페스트 다운로드'
+    [download_signatures]='릴리스 서명 다운로드'
+    [signature]='릴리스 서명 검증'
+    [digest]='서명된 SHA-256 다이제스트 검증'
     [unpack]='검증된 릴리스 압축 풀기'
     [application]='앱 설치'
     [ready]='탐색할 준비가 되었습니다'
@@ -505,7 +589,6 @@ case "$(installer_locale)" in
     [details]='Nhật ký chi tiết: %{path}'
     [cancelled]='Đã hủy cài đặt. Không có thay đổi nào.'
     [task_failed]='Thất bại: %{task}'
-    [provenance]='Xác minh nguồn gốc GitHub Actions'
     [read_failed]='Không thể đọc lựa chọn của bạn.'
     [keys_toggle]='↑/↓ di chuyển · Space chọn · Enter cài đặt · Esc hủy'
     [keys_choose]='↑/↓ chọn · Enter tiếp tục · Esc hủy'
@@ -514,7 +597,7 @@ case "$(installer_locale)" in
     [invalid_selection]='Hãy chọn một trong các mục được liệt kê.'
     [standard]='Cài đặt Strata (đề xuất)'
     [custom]='Tùy chỉnh cài đặt'
-    [standard_hint]='Ứng dụng và biểu tượng khởi chạy. Giữ nguyên các mặc định hiện tại.'
+    [standard_hint]='Mọi thứ hệ thống này hỗ trợ: trình khởi chạy, thư mục, hộp thoại chọn tệp và các tích hợp tùy chọn.'
     [custom_hint]='Chọn tích hợp môi trường làm việc và các tính năng bổ sung.'
     [setup_title]='Chọn cách cài đặt'
     [launcher]='Biểu tượng khởi chạy'
@@ -545,8 +628,10 @@ case "$(installer_locale)" in
     [reinstall]='Sẽ thay thế %{path}. Giữ lại các thiết lập đã lưu.'
     [installing]='Đang cài đặt Strata'
     [download]='Tải Strata %{version}'
-    [download_checksums]='Tải mã kiểm tra của bản phát hành'
-    [checksum]='Xác minh mã kiểm tra SHA-256'
+    [download_manifest]='Tải tệp kê khai bản phát hành đã ký'
+    [download_signatures]='Tải chữ ký của bản phát hành'
+    [signature]='Xác minh chữ ký của bản phát hành'
+    [digest]='Xác minh mã băm SHA-256 đã ký'
     [unpack]='Giải nén bản phát hành đã xác minh'
     [application]='Cài đặt ứng dụng'
     [ready]='Sẵn sàng khám phá'
@@ -567,7 +652,6 @@ case "$(installer_locale)" in
     [details]='Registro dettagliato: %{path}'
     [cancelled]='Installazione annullata. Nessuna modifica effettuata.'
     [task_failed]='Operazione non riuscita: %{task}'
-    [provenance]='Verifica della provenienza GitHub Actions'
     [read_failed]='Impossibile leggere la selezione.'
     [keys_toggle]='↑/↓ sposta · Spazio seleziona · Invio installa · Esc annulla'
     [keys_choose]='↑/↓ scegli · Invio continua · Esc annulla'
@@ -576,7 +660,7 @@ case "$(installer_locale)" in
     [invalid_selection]='Scegli una delle opzioni elencate.'
     [standard]='Installa Strata (consigliato)'
     [custom]='Personalizza l’installazione'
-    [standard_hint]='Applicazione e lanciatore. Le impostazioni predefinite restano invariate.'
+    [standard_hint]='Tutto ciò che questo sistema supporta: launcher, cartelle, selettore di file e integrazioni opzionali.'
     [custom_hint]='Scegli le integrazioni desktop e le funzionalità opzionali.'
     [setup_title]='Scegli la configurazione'
     [launcher]='Lanciatore dell’applicazione'
@@ -607,8 +691,10 @@ case "$(installer_locale)" in
     [reinstall]='%{path} verrà sostituito. Le impostazioni salvate saranno conservate.'
     [installing]='Installazione di Strata'
     [download]='Scarica Strata %{version}'
-    [download_checksums]='Scarica le somme di controllo'
-    [checksum]='Verifica della somma SHA-256'
+    [download_manifest]='Scarica il manifesto firmato della versione'
+    [download_signatures]='Scarica le firme della versione'
+    [signature]='Verifica della firma della versione'
+    [digest]='Verifica del digest SHA-256 firmato'
     [unpack]='Estrai la versione verificata'
     [application]='Installa l’applicazione'
     [ready]='Pronto per esplorare'
@@ -629,7 +715,6 @@ case "$(installer_locale)" in
     [details]='Подробный журнал: %{path}'
     [cancelled]='Установка отменена. Изменений нет.'
     [task_failed]='Ошибка: %{task}'
-    [provenance]='Проверка происхождения из GitHub Actions'
     [read_failed]='Не удалось прочитать ваш выбор.'
     [keys_toggle]='↑/↓ переход · Пробел выбор · Enter установка · Esc отмена'
     [keys_choose]='↑/↓ выбор · Enter продолжить · Esc отмена'
@@ -638,7 +723,7 @@ case "$(installer_locale)" in
     [invalid_selection]='Выберите один из предложенных вариантов.'
     [standard]='Установить Strata (рекомендуется)'
     [custom]='Настроить установку'
-    [standard_hint]='Приложение и ярлык запуска. Текущие настройки по умолчанию сохранятся.'
+    [standard_hint]='Всё, что поддерживает эта система: ярлык запуска, папки, диалог выбора файлов и дополнительные интеграции.'
     [custom_hint]='Выберите интеграцию с рабочим столом и дополнительные возможности.'
     [setup_title]='Выберите вариант установки'
     [launcher]='Ярлык запуска'
@@ -669,8 +754,10 @@ case "$(installer_locale)" in
     [reinstall]='%{path} будет заменён. Сохранённые настройки останутся.'
     [installing]='Установка Strata'
     [download]='Загрузка Strata %{version}'
-    [download_checksums]='Загрузка контрольных сумм'
-    [checksum]='Проверка контрольной суммы SHA-256'
+    [download_manifest]='Загрузка подписанного манифеста выпуска'
+    [download_signatures]='Загрузка подписей выпуска'
+    [signature]='Проверка подписи выпуска'
+    [digest]='Проверка подписанной контрольной суммы SHA-256'
     [unpack]='Распаковка проверенного выпуска'
     [application]='Установка приложения'
     [ready]='Всё готово к работе'
@@ -691,7 +778,6 @@ case "$(installer_locale)" in
     [details]='详细日志：%{path}'
     [cancelled]='已取消安装，未做任何更改。'
     [task_failed]='失败：%{task}'
-    [provenance]='验证 GitHub Actions 来源证明'
     [read_failed]='无法读取所选项。'
     [keys_toggle]='↑/↓ 移动 · 空格切换 · Enter 安装 · Esc 取消'
     [keys_choose]='↑/↓ 选择 · Enter 继续 · Esc 取消'
@@ -700,7 +786,7 @@ case "$(installer_locale)" in
     [invalid_selection]='请选择列表中的选项。'
     [standard]='安装 Strata（推荐）'
     [custom]='自定义安装'
-    [standard_hint]='安装应用和启动图标，保留当前默认设置。'
+    [standard_hint]='此系统支持的全部内容：启动器、文件夹、文件选择器和可选集成。'
     [custom_hint]='选择桌面集成和可选功能。'
     [setup_title]='选择安装方式'
     [launcher]='应用启动图标'
@@ -731,8 +817,10 @@ case "$(installer_locale)" in
     [reinstall]='将替换 %{path}，保留已保存的设置。'
     [installing]='正在安装 Strata'
     [download]='下载 Strata %{version}'
-    [download_checksums]='下载发行版校验和'
-    [checksum]='验证 SHA-256 校验和'
+    [download_manifest]='下载已签名的发行版清单'
+    [download_signatures]='下载发行版签名'
+    [signature]='验证发行版签名'
+    [digest]='验证已签名的 SHA-256 摘要'
     [unpack]='解压已验证的发行版'
     [application]='安装应用'
     [ready]='开始探索吧'
@@ -753,7 +841,6 @@ case "$(installer_locale)" in
     [details]='詳細輸出：%{path}'
     [cancelled]='已取消安裝，未做任何變更。'
     [task_failed]='失敗：%{task}'
-    [provenance]='驗證 GitHub Actions 來源證明'
     [read_failed]='無法讀取你的選擇。'
     [keys_toggle]='↑/↓ 移動 · 空白鍵切換 · Enter 安裝 · Esc 取消'
     [keys_choose]='↑/↓ 選擇 · Enter 繼續 · Esc 取消'
@@ -762,7 +849,7 @@ case "$(installer_locale)" in
     [invalid_selection]='請選擇列出的其中一個選項。'
     [standard]='安裝 Strata（建議）'
     [custom]='自訂安裝'
-    [standard_hint]='安裝應用程式與啟動器，保留目前的預設值。'
+    [standard_hint]='此系統支援的全部內容：啟動器、資料夾、檔案選擇器和選用整合。'
     [custom_hint]='選擇桌面整合與選用支援。'
     [setup_title]='選擇安裝方式'
     [launcher]='應用程式啟動器'
@@ -793,8 +880,10 @@ case "$(installer_locale)" in
     [reinstall]='這會取代 %{path}，並保留你已儲存的設定。'
     [installing]='正在安裝 Strata'
     [download]='下載 Strata %{version}'
-    [download_checksums]='下載發行版本檢查碼'
-    [checksum]='驗證 SHA-256 檢查碼'
+    [download_manifest]='下載已簽署的發行版本清單'
+    [download_signatures]='下載發行版本簽章'
+    [signature]='驗證發行版本簽章'
+    [digest]='驗證已簽署的 SHA-256 摘要'
     [unpack]='解壓縮已驗證的發行版本'
     [application]='安裝應用程式'
     [ready]='開始探索吧'
@@ -986,19 +1075,80 @@ run_task() {
   fi
 }
 
-verify_provenance() {
-  local archive=$1
+hex_to_bytes() {
+  # shellcheck disable=SC2059
+  printf "$(sed 's/../\\x&/g' <<<"$1")"
+}
 
-  if ! command -v gh >/dev/null 2>&1; then
-    note "GitHub CLI is unavailable; continuing after HTTPS download and checksum verification."
-    return
-  fi
-  if ! gh auth status --hostname github.com >/dev/null 2>&1; then
-    note "GitHub CLI is not authenticated; continuing after HTTPS download and checksum verification."
-    return
-  fi
+file_size() {
+  printf '%d' "$(wc -c <"$1")"
+}
 
-  run_task "$(text provenance)" gh attestation verify "$archive" --repo "$REPOSITORY"
+download_release_file() {
+  local label=$1 url=$2 output=$3 limit=$4
+
+  run_task "$label" curl --fail --location --show-error --silent --max-filesize "$limit" \
+    --output "$output" "$url"
+  (($(file_size "$output") <= limit)) \
+    || die "${output##*/} is larger than $limit bytes; refusing to continue."
+}
+
+# The signatures file is the canonical compact JSON written by scripts/sign_update_manifest.py.
+verify_release_signature() {
+  local manifest=$1 signatures=$2 key key_id entry signature
+  local -a entries
+
+  mapfile -t entries < <(grep -oE '\{"key_id":"[0-9a-f]{64}","signature":"[0-9a-f]{128}"\}' "$signatures")
+  { printf 'strata-update-manifest-v1\0'; cat "$manifest"; } >"$TEMP_DIR/signed-message"
+  for key in "${RELEASE_PUBLIC_KEYS[@]}"; do
+    key_id=$(hex_to_bytes "$key" | sha256sum | sed 's/ .*//')
+    hex_to_bytes "302a300506032b6570032100$key" >"$TEMP_DIR/release-key.der"
+    for entry in "${entries[@]}"; do
+      [[ $entry == "{\"key_id\":\"$key_id\","* ]] || continue
+      signature=${entry#*\"signature\":\"}
+      hex_to_bytes "${signature%\"\}}" >"$TEMP_DIR/release-signature"
+      if openssl pkeyutl -verify -rawin -pubin -keyform DER -inkey "$TEMP_DIR/release-key.der" \
+          -sigfile "$TEMP_DIR/release-signature" -in "$TEMP_DIR/signed-message"; then
+        return 0
+      fi
+    done
+  done
+  echo "No trusted release key signed $MANIFEST_NAME." >&2
+  return 1
+}
+
+read_signed_artifact() {
+  local manifest=$1 version=$2 target=$3 archive=$4 content pattern
+
+  content=$(<"$manifest")
+  pattern="^\\{\"artifacts\":\\[.*\\],\"repository\":\"$REPOSITORY\",\"schema\":1,"
+  pattern+="\"source_commit\":\"[0-9a-f]{40}\",\"tag\":\"v${version//./\\.}\"\\}$"
+  [[ $content =~ $pattern ]] \
+    || die "The signed manifest does not describe Strata $version from $REPOSITORY."
+  pattern="\\{\"name\":\"${archive//./\\.}\",\"sha256\":\"([0-9a-f]{64})\",\"size\":([1-9][0-9]*),"
+  pattern+="\"target\":\"$target\"\\}"
+  [[ $content =~ $pattern ]] \
+    || die "The signed manifest does not list $archive for $target."
+  SIGNED_ARCHIVE_SHA256=${BASH_REMATCH[1]}
+  SIGNED_ARCHIVE_SIZE=${BASH_REMATCH[2]}
+  ((SIGNED_ARCHIVE_SIZE <= MAX_ARCHIVE_BYTES)) \
+    || die "The signed manifest lists an archive larger than $MAX_ARCHIVE_BYTES bytes."
+}
+
+verify_archive_digest() {
+  local archive=$1 size digest
+
+  size=$(file_size "$archive")
+  if ((size != SIGNED_ARCHIVE_SIZE)); then
+    echo "${archive##*/} is $size bytes; the signed manifest expects $SIGNED_ARCHIVE_SIZE." >&2
+    return 1
+  fi
+  digest=$(sha256sum "$archive" | sed 's/ .*//')
+  if [[ $digest != "$SIGNED_ARCHIVE_SHA256" ]]; then
+    echo "${archive##*/} has SHA-256 $digest; the signed manifest expects $SIGNED_ARCHIVE_SHA256." >&2
+    return 1
+  fi
+  echo "${archive##*/}: OK"
 }
 
 show_banner() {
@@ -1168,6 +1318,19 @@ integration_dependencies() {
   fi
 }
 
+# Unspecified integrations default to everything this system supports. Explicit
+# --with/--without flags and the custom menu override that.
+resolve_default_integrations() {
+  local arch_based=$1 omarchy_major=$2 flag
+  local -a supported=(WITH_DESKTOP_ENTRY WITH_FOLDER_ASSOCIATION WITH_FILE_MANAGER WITH_FILE_CHOOSER)
+  [[ $arch_based != yes ]] || supported+=(WITH_SMB WITH_RAW)
+  [[ -z $omarchy_major ]] || supported+=(WITH_OMARCHY_KEYBINDS)
+  if [[ $arch_based == yes ]] && udiskie_on_path; then supported+=(WITH_UDISKIE_UNLOCK); fi
+  for flag in "${supported[@]}"; do
+    [[ ${!flag} != ask ]] || printf -v "$flag" '%s' yes
+  done
+}
+
 choose_installation() {
   local arch_based=$1 omarchy_major=$2 i
   local -a setup_labels=("$(text standard)" "$(text custom)")
@@ -1201,8 +1364,10 @@ choose_installation() {
     option_labels+=("$(text udiskie)")
     option_hints+=("$(text udiskie_hint)")
   fi
-  local -a option_choices=(yes)
-  for ((i = 1; i < ${#option_flags[@]}; i++)); do option_choices+=(no); done
+  local -a option_choices=()
+  for i in "${option_flags[@]}"; do
+    if [[ ${!i} == yes ]]; then option_choices+=(yes); else option_choices+=(no); fi
+  done
   if [[ ${setup_choices[1]} == yes ]]; then
     select_menu "$(text custom_title)" yes option_labels option_hints option_choices integration_dependencies >"$PROMPT_DEVICE"
   fi
@@ -1251,7 +1416,7 @@ Usage: install.sh [options]
 $(text usage_intro)
 
 Options:
-  --non-interactive             Never prompt; install required components only
+  --non-interactive             Never prompt; install every supported integration
   --verbose                     $(text verbose_help)
   --with-smb                    Install SMB network-share support
   --with-raw                    Install broader image and camera RAW support
@@ -1259,13 +1424,22 @@ Options:
   --with-folder-association     Make Strata the default folder handler
   --with-file-manager           Handle "Open file location" requests
   --with-file-chooser           Use Strata for portal Open and Save dialogs
-  --without-file-chooser        Keep the current chooser; suppress the app offer
   --with-omarchy-keybinds       Replace Omarchy's file-manager keybinds
   --with-udiskie-unlock         Use Strata for udiskie encrypted-volume unlock
+  --without-smb                 Skip SMB network-share support
+  --without-raw                 Skip broader image and camera RAW support
+  --without-desktop-entry       Skip the application menu entry and folder handler
+  --without-folder-association  Keep the current default folder handler
+  --without-file-manager        Skip "Open file location" and folder handling
+  --without-file-chooser        Keep the current chooser; suppress the app offer
+  --without-omarchy-keybinds    Keep Omarchy's current file-manager keybinds
+  --without-udiskie-unlock      Keep the current udiskie unlock setup
   -h, --help                    Show this help
 
-Integration flags imply --non-interactive. Folder association also installs the
-required desktop entry and enables "Open file location" integration.
+Integration flags imply --non-interactive. Every integration this system supports
+is installed unless a --without-* flag declines it; a --with-* flag requires it and
+fails when the system or release cannot provide it, where a default is skipped.
+Folder association also installs the desktop entry and "Open file location".
 EOF
 }
 
@@ -1284,10 +1458,17 @@ parse_args() {
         WITH_FILE_MANAGER=yes
         ;;
       --with-file-manager) NON_INTERACTIVE=yes; WITH_FILE_MANAGER=yes ;;
-      --with-file-chooser) NON_INTERACTIVE=yes; WITH_FILE_CHOOSER=yes ;;
+      --with-file-chooser) NON_INTERACTIVE=yes; WITH_FILE_CHOOSER=yes; REQUESTED_FILE_CHOOSER=yes ;;
       --without-file-chooser) NON_INTERACTIVE=yes; WITH_FILE_CHOOSER=no ;;
       --with-omarchy-keybinds) NON_INTERACTIVE=yes; WITH_OMARCHY_KEYBINDS=yes ;;
-      --with-udiskie-unlock) NON_INTERACTIVE=yes; WITH_UDISKIE_UNLOCK=yes ;;
+      --without-omarchy-keybinds) NON_INTERACTIVE=yes; WITH_OMARCHY_KEYBINDS=no ;;
+      --with-udiskie-unlock) NON_INTERACTIVE=yes; WITH_UDISKIE_UNLOCK=yes; REQUESTED_UDISKIE_UNLOCK=yes ;;
+      --without-udiskie-unlock) NON_INTERACTIVE=yes; WITH_UDISKIE_UNLOCK=no ;;
+      --without-smb) NON_INTERACTIVE=yes; WITH_SMB=no ;;
+      --without-raw) NON_INTERACTIVE=yes; WITH_RAW=no ;;
+      --without-desktop-entry) NON_INTERACTIVE=yes; WITH_DESKTOP_ENTRY=no; WITH_FOLDER_ASSOCIATION=no ;;
+      --without-folder-association) NON_INTERACTIVE=yes; WITH_FOLDER_ASSOCIATION=no ;;
+      --without-file-manager) NON_INTERACTIVE=yes; WITH_FILE_MANAGER=no; WITH_FOLDER_ASSOCIATION=no ;;
       -h | --help) usage; exit 0 ;;
       *) die "Unknown option: $1 (run with --help for usage)." ;;
     esac
@@ -1397,9 +1578,9 @@ install_desktop_entry() {
   if [[ $make_default == yes ]]; then
     command -v xdg-mime >/dev/null 2>&1 \
       || die "xdg-mime is required to change the folder association."
-    xdg-mime default "$APP_ID.desktop" inode/directory
+    timeout 5 xdg-mime default "$APP_ID.desktop" inode/directory
     local current
-    current=$(xdg-mime query default inode/directory)
+    current=$(timeout 5 xdg-mime query default inode/directory)
     [[ $current == "$APP_ID.desktop" ]] \
       || die "The folder association did not change (current value: $current)."
     info "Strata is now the default application for folders."
@@ -1425,7 +1606,7 @@ install_file_manager_service() {
   sed "s|^Exec=/usr/bin/strata |Exec=$escaped_bin |" \
     "$extracted/$APP_ID.FileManager1.service" >"$staged"
   install -Dm644 "$staged" "$target"
-  if gdbus call --session --timeout 5 \
+  if timeout 5 gdbus call --session --timeout 5 \
     --dest org.freedesktop.DBus \
     --object-path /org/freedesktop/DBus \
     --method org.freedesktop.DBus.ReloadConfig >/dev/null 2>&1; then
@@ -1509,7 +1690,7 @@ configure_file_chooser() {
   local extracted=$1
   if [[ $WITH_FILE_CHOOSER == yes ]]; then
     TASK_OUTPUT=notices run_task "$(text chooser)" "$BIN_PATH" --install-portal \
-      || die "File chooser setup failed. Strata is installed; retry in Settings → General → System file chooser."
+      || die "File chooser setup failed. Strata is installed; retry in Settings → General → Desktop integration → System file manager."
   elif [[ -r $extracted/portal/strata.portal && ( $NON_INTERACTIVE == no || $WITH_FILE_CHOOSER == no ) ]]; then
     "$BIN_PATH" --dismiss-portal-prompt >>"${LOG_FILE:-/dev/null}" 2>&1 \
       || warn "Could not save your choice. Strata may offer file chooser integration on first launch."
@@ -1563,7 +1744,8 @@ main() {
     [[ $arch_based == yes ]] && udiskie_on_path \
       || die "$(text udiskie_requires)"
   fi
-  for command in curl tar sha256sum install sed; do
+  resolve_default_integrations "$arch_based" "$omarchy_major"
+  for command in curl tar sha256sum openssl wc install sed timeout; do
     command -v "$command" >/dev/null 2>&1 || die "Required command not found: $command"
   done
 
@@ -1591,15 +1773,17 @@ main() {
   version=$(latest_stable_version)
   archive="strata-$version-$target.tar.gz"
   url="https://github.com/$REPOSITORY/releases/download/v$version"
+  download_release_file "$(text download_manifest)" "$url/$MANIFEST_NAME" \
+    "$TEMP_DIR/$MANIFEST_NAME" "$MAX_MANIFEST_BYTES"
+  download_release_file "$(text download_signatures)" "$url/$SIGNATURES_NAME" \
+    "$TEMP_DIR/$SIGNATURES_NAME" "$MAX_SIGNATURES_BYTES"
+  run_task "$(text signature)" verify_release_signature "$TEMP_DIR/$MANIFEST_NAME" "$TEMP_DIR/$SIGNATURES_NAME"
+  read_signed_artifact "$TEMP_DIR/$MANIFEST_NAME" "$version" "$target" "$archive"
   local -a download_flags=(--silent)
   if [[ $RICH_TERMINAL == yes && $VERBOSE == no ]]; then download_flags=(--progress-bar); fi
   TASK_PROGRESS=yes run_task "$(text download "version=$version")" curl --fail --location --show-error \
-    "${download_flags[@]}" --output "$TEMP_DIR/$archive" "$url/$archive"
-  run_task "$(text download_checksums)" curl --fail --location --show-error --silent \
-    --output "$TEMP_DIR/$archive.sha256" "$url/$archive.sha256"
-  run_task "$(text checksum)" bash -euc 'cd "$1"; exec sha256sum --check "$2"' \
-    bash "$TEMP_DIR" "$archive.sha256"
-  verify_provenance "$TEMP_DIR/$archive"
+    "${download_flags[@]}" --max-filesize "$SIGNED_ARCHIVE_SIZE" --output "$TEMP_DIR/$archive" "$url/$archive"
+  run_task "$(text digest)" verify_archive_digest "$TEMP_DIR/$archive"
   run_task "$(text unpack)" tar -xzf "$TEMP_DIR/$archive" -C "$TEMP_DIR"
 
   extracted=$TEMP_DIR/${archive%.tar.gz}
@@ -1607,10 +1791,16 @@ main() {
   [[ -r $extracted/$APP_ID.desktop && -r $extracted/$APP_ID.svg ]] \
     || die "The verified archive is missing desktop integration files."
   if [[ $WITH_FILE_CHOOSER == yes && ! -r $extracted/portal/strata.portal ]]; then
-    die "This release does not include file chooser integration. Install a newer release."
+    [[ $REQUESTED_FILE_CHOOSER != yes ]] \
+      || die "This release does not include file chooser integration. Install a newer release."
+    warn "This release does not include file chooser integration; skipping it."
+    WITH_FILE_CHOOSER=no
   fi
   if [[ $WITH_UDISKIE_UNLOCK == yes && ! -r $extracted/udiskie/unlock ]]; then
-    die "This release does not include encrypted-volume integration. Install a newer release."
+    [[ $REQUESTED_UDISKIE_UNLOCK != yes ]] \
+      || die "This release does not include encrypted-volume integration. Install a newer release."
+    warn "This release does not include encrypted-volume integration; skipping it."
+    WITH_UDISKIE_UNLOCK=no
   fi
   if [[ $arch_based == yes ]]; then
     install_arch_dependencies

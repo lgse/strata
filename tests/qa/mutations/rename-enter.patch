@@ -1,0 +1,18 @@
+diff --git a/src/ui/collection_edit.rs b/src/ui/collection_edit.rs
+index 7250c43f..238a5bd4 100644
+--- a/src/ui/collection_edit.rs
++++ b/src/ui/collection_edit.rs
+@@ -194,7 +194,12 @@ pub(super) fn begin(
+         update_basename_validation(field);
+     });
+     let activate = submit.clone();
+-    let activated = field.connect_activate(move |field| activate(field));
++    let discard = Rc::downgrade(active);
++    let activated = field.connect_activate(move |_| {
++        if let Some(active) = discard.upgrade() {
++            cancel(&active);
++        }
++    });
+     let focus = gtk::EventControllerFocus::new();
+     let focus_handler = focus.connect_leave(move |focus| {
+         if let Some(field) = focus.widget().and_downcast::<gtk::Entry>()

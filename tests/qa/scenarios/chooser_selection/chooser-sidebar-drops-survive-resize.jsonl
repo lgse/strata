@@ -1,0 +1,16 @@
+{"scenario":"chooser-sidebar-drops-survive-resize","modes":["list"],"layout":"us","mutation":null,"known_bug":null,"setup":[{"fs":{"path":"$config/gtk-3.0","mkdir":true,"parents":true}},{"fs":{"path":"$config/gtk-3.0/bookmarks","write":"sftp://host/unavailable Remote\nfile://$fixture_quoted/pictures Destination\n"}}],"portal":true,"session_bus":true,"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":4,"score":49,"note":"External drop onto a chooser sidebar pin survives a mid-drag shrink, copies and keeps the chooser open; only portal sidebar drop route"}}
+{"portal_open":"Sidebar drag test","options":{"current_folder":"$fixture"}}
+{"adopt":"Sidebar drag test","timeout_ms":20000,"message":"Sidebar drag test chooser"}
+{"foreign":{"paths":["$fixture/readme.md"]},"as":"foreign","message":"the external drag source"}
+{"wait":{"present":{"role":"button","name":"Destination"}},"message":"the pinned local folder 'Destination' in the chooser sidebar"}
+{"expect":{"absent":{"role":"button","name":"Remote"}},"message":"the chooser sidebar to hide the remote pin"}
+{"drag":{"from":{"kept":"foreign"},"to":{"role":"button","name":"Destination"}},"steps":8,"release":false}
+{"resize":{"width":400}}
+{"wait":{"present":{"role":"button","name":"Destination"}},"message":"'Destination' to stay in the chooser sidebar after shrinking mid-drag"}
+{"move":{"role":"button","name":"Destination"}}
+{"button_up":1}
+{"fs":{"path":"pictures/readme.md","text":"# Fixture\n"},"message":"the external drop on 'Destination' to copy the file across the shrink"}
+{"fs":{"path":"readme.md","text":"# Fixture\n"},"timeout_ms":0,"message":"the external drop to leave its source in place"}
+{"fs":{"path":"$config/gtk-3.0/bookmarks","text":"sftp://host/unavailable Remote\nfile://$fixture_quoted/pictures Destination\n"},"timeout_ms":0,"message":"a drop onto a pinned row not to change the pins"}
+{"foreign_label":"Foreign drag finished","message":"the external drag protocol to finish without deletion"}
+{"portal_response":{"done":false},"message":"a sidebar drop must not accept or close the chooser"}

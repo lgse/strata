@@ -10,8 +10,12 @@ also known as Zip Slip.
 Strata resolves parent components without allowing them to walk above the
 selected destination. For example, both `../report.txt` and
 `folder/../report.txt` become `report.txt`. Extraction then continues with later
-members instead of aborting the entire operation. Empty paths, absolute paths,
-and Windows drive prefixes remain invalid.
+members instead of aborting the entire operation. A directory entry that names
+only the archive root (`.`, `./`, `././`, or the same name with backslashes)
+is skipped. Other empty paths stay invalid, including a file or link named `.`
+and a directory that reaches the root through `..`. Absolute paths and a leading
+Windows drive prefix remain invalid; a colon in a later component is an ordinary
+name.
 
 The sanitized path still passes through the descriptor-relative destination
 writer, which refuses symlink traversal. Normal conflict renaming also applies,
@@ -125,9 +129,11 @@ exFAT, those are skipped without an error, as `tar` and `unzip` do. Symbolic
 links the destination cannot hold are left out and reported, as a copy leaves
 them out (see [Symbolic links the destination cannot
 hold](filesystem-compatibility.md#symbolic-links-the-destination-cannot-hold)),
-and so is a hard link to one; the extraction goes on. A symbolic link's own time
-is best effort, and is never set on FUSE mounts, where daemons such as sshfs
-apply it to the target.
+and so is a hard link to one; the extraction goes on. A hard link the
+destination cannot hold, as on FAT, exFAT and some SMB and FUSE mounts, is
+extracted as a copy of its target, which takes space of its own. A symbolic
+link's own time is best effort, and is never set on FUSE mounts, where daemons
+such as sshfs apply it to the target.
 
 ## Extraction targets
 

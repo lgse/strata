@@ -1,0 +1,18 @@
+{"scenario":"parent-pane-anchors-first-entry","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.1},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":3,"score":30,"note":"Shift-click range from a restored first-entry anchor after returning to a parent column; column-background-click-focuses-parent covers the reveal, only this checks the range anchor"}}
+{"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open"}
+{"wait":{"present":{"role":"toggle button","name":"Preview panel"}},"message":"the preview panel toggle"}
+{"key":"Escape","when":{"state":{"target":{"role":"toggle button","name":"Preview panel"},"pressed":false}}}
+{"click":{"role":"toggle button","name":"Preview panel"},"when":{"state":{"target":{"role":"toggle button","name":"Preview panel"},"pressed":true}}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"key":"ctrl+l"}
+{"wait":{"field":{}},"message":"the location editor to take focus"}
+{"key":"Escape"}
+{"wait":{"focused_pane":true},"message":"focus to return to the file listing"}
+{"select":{"entry":"documents","dir":"$root"}}
+{"wait":{"directory":"documents"},"message":"the browser to be working in 'documents'"}
+{"settle":{"pane":"documents"}}
+{"click":{"background":true,"dir":"$root"}}
+{"wait":{"selected":["archive"],"dir":"$root"},"message":"the selection to become ['archive']"}
+{"click":{"entry":"pictures","dir":"$root"},"mods":["shift"]}
+{"wait":{"selected":["archive","documents","pictures"],"dir":"$root"},"message":"the selection to become ['archive', 'documents', 'pictures']"}
+{"expect":{"panes":{"excludes":["documents"]}}}

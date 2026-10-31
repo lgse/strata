@@ -19,27 +19,61 @@ type Completion = Box<dyn FnOnce(FolderResult)>;
 
 const VALIDATION_TIMEOUT: Duration = Duration::from_secs(2);
 
-thread_local! {
-    static ACTIVE_REORDER: RefCell<Option<(glib::WeakRef<gdk::ContentProvider>, Folder)>> = const { RefCell::new(None) };
+#[derive(Clone)]
+struct SidebarDrag {
+    source: glib::WeakRef<gtk::DragSource>,
+    folder: Folder,
+    pinned: bool,
 }
 
-pub(super) fn start_reorder(content: &gdk::ContentProvider, folder: Folder) {
-    ACTIVE_REORDER.with(|active| active.replace(Some((content.downgrade(), folder))));
+thread_local! {
+    static ACTIVE_DRAG: RefCell<Option<SidebarDrag>> = const { RefCell::new(None) };
+}
+
+pub(super) fn start_drag(source: &gtk::DragSource, folder: Folder, pinned: bool) {
+    ACTIVE_DRAG.with(|active| {
+        active.replace(Some(SidebarDrag {
+            source: source.downgrade(),
+            folder,
+            pinned,
+        }))
+    });
 }
 
 pub(super) fn clear_reorder() {
-    ACTIVE_REORDER.with(|active| active.take());
+    ACTIVE_DRAG.with(|active| active.take());
 }
 
-fn reorder_source(drop: &gdk::Drop) -> Option<Folder> {
-    let content = drop.drag()?.content();
-    ACTIVE_REORDER.with(|active| {
+pub(in crate::ui::window) fn active_drag_source() -> Option<gtk::DragSource> {
+    ACTIVE_DRAG.with(|active| active.borrow().as_ref()?.source.upgrade())
+}
+
+fn drag_source(drop: &gdk::Drop) -> Option<SidebarDrag> {
+    let drag = drop.drag()?;
+    ACTIVE_DRAG.with(|active| {
         active
             .borrow()
             .as_ref()
-            .filter(|(provider, _)| provider.upgrade().as_ref() == Some(&content))
-            .map(|(_, folder)| folder.clone())
+            .filter(|source| {
+                source
+                    .source
+                    .upgrade()
+                    .and_then(|source| source.drag())
+                    .as_ref()
+                    == Some(&drag)
+            })
+            .cloned()
     })
+}
+
+pub(in crate::ui::window) fn dragged_location(drop: &gdk::Drop) -> Option<Location> {
+    drag_source(drop).map(|source| source.folder.0)
+}
+
+fn reorder_source(drop: &gdk::Drop) -> Option<Folder> {
+    drag_source(drop)
+        .filter(|source| source.pinned)
+        .map(|source| source.folder)
 }
 
 #[derive(Clone)]

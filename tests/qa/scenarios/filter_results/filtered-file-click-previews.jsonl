@@ -1,0 +1,20 @@
+{"scenario":"filtered-file-click-previews","modes":["columns","icons","list"],"prefs":{"single_click_previews":true},"layout":"us","mutation":null,"known_bug":null,"setup":[{"fs":{"path":"$data/applications","mkdir":true}},{"fs":{"path":"$environment/record-filtered-launch","write":"#!/bin/sh\nprintf \"%s\\n\" \"$@\" >> \"$environment/filtered-launches\"\n"}},{"fs":{"path":"$environment/record-filtered-launch","chmod":"755"}},{"fs":{"path":"$data/applications/strata-filtered.desktop","write":"[Desktop Entry]\nType=Application\nName=Filtered Result Viewer\nExec=$environment/record-filtered-launch %U\nMimeType=text/plain;\nNoDisplay=true\n"}},{"fs":{"path":"$config/mimeapps.list","write":"[Default Applications]\ntext/plain=strata-filtered.desktop;\n[Added Associations]\ntext/plain=strata-filtered.desktop;\n"}}],"cost":{"columns-two-clicks":1.4,"icons-two-clicks":1.4,"list-two-clicks":1.4,"columns-one-click":0.8,"icons-one-click":0.8,"list-one-click":0.8},"variants":[{"id":"two-clicks"},{"id":"one-click","prefs":{"list_file_clicks":1,"grid_file_clicks":1,"explorer_file_clicks":1}}]}
+{"key":"ctrl+f"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"remember":{"field":true},"as":"field"}
+{"type":"todo"}
+{"wait":{"present":{"search_result":"todo.txt"}},"message":"the filtered file result"}
+{"click":{"search_result":"todo.txt"}}
+{"wait":{"preview":"todo"},"message":"one click to preview the filtered file","variants":["two-clicks"]}
+{"expect":{"state":{"target":{"search_result":"todo.txt"},"selected":true}},"message":"one click to select the filtered file","variants":["two-clicks"]}
+{"settle":{"search_result":"todo.txt"},"variants":["two-clicks"]}
+{"sleep":600,"variants":["two-clicks"]}
+{"click":{"search_result":"todo.txt"},"count":2,"variants":["two-clicks"]}
+{"fs":{"path":"$environment/filtered-launches","lines":{"at_least":1}},"message":"the file launch"}
+{"expect":{"preview":null},"timeout_ms":0,"message":"a one-click file to launch without a preview","variants":["one-click"]}
+{"key":"ctrl+f"}
+{"wait":{"field":{"of":"field","focused":true}},"message":"focus to return to the filter"}
+{"key":"ctrl+a"}
+{"type":"readme"}
+{"wait":{"present":{"search_result":"readme.md"}},"message":"the follow-up results"}
+{"fs":{"path":"$environment/filtered-launches","lines":1},"timeout_ms":0,"message":"the file to launch exactly once"}

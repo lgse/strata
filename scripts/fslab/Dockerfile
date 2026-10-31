@@ -1,12 +1,12 @@
 # check=skip=InvalidDefaultArgInFrom
-# Built by scripts/fslab/fslab.sh on the verified E2E build environment.
+# Built by scripts/fslab/fslab.sh on the verified test image.
 ARG BASE
 FROM ${BASE}
 
 # exfat-utils (exfat-fuse) conflicts with exfatprogs, so only its mount helper is
 # extracted from the signature-verified package.
-RUN sh /opt/e2e-install-packages.sh indexes \
- && sh /opt/e2e-install-packages.sh install \
+RUN sh /opt/strata-install-packages.sh indexes \
+ && sh /opt/strata-install-packages.sh install \
       nfs-utils rpcbind samba cifs-utils dosfstools exfatprogs ntfs-3g ntfsprogs \
       e2fsprogs python kmod fuse3 procps-ng strace sshfs openssh socat \
  && pacman -Sw --noconfirm exfat-utils \

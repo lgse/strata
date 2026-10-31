@@ -93,12 +93,28 @@ fn remote_backend_failures_hide_uri_user_info_in_views_and_diagnostic_logs() {
     };
     let diagnostic = capture_logs(|| log_monitor_metadata_error(&location, &error));
 
+    assert_eq!(validation_message, crate::services::UNEXPECTED_SYSTEM_ERROR);
+    assert_eq!(message, crate::services::UNEXPECTED_SYSTEM_ERROR);
+    assert!(diagnostic.contains("sftp://host.example/private"));
     for text in [&validation_message, &message, &diagnostic] {
-        assert!(text.contains("sftp://host.example/private"), "{text}");
         for secret in ["alice", "secret", "token", "hidden", "fragment"] {
             assert!(!text.contains(secret), "{text}");
         }
     }
+}
+
+#[test]
+fn a_refused_admin_prompt_is_not_authorized_while_other_denials_stay_errors() {
+    let denied = || glib::Error::new(gio::IOErrorEnum::PermissionDenied, "Permission denied");
+
+    assert_eq!(
+        uri_validation_result(&Location::uri("admin:///root"), Err(denied())),
+        Err(LocationValidationError::NotAuthorized)
+    );
+    assert!(matches!(
+        uri_validation_result(&Location::uri("sftp://host/root"), Err(denied())),
+        Err(LocationValidationError::Unavailable(_))
+    ));
 }
 
 #[test]
@@ -519,6 +535,54 @@ fn live_watch(location: Location, notify: Rc<dyn Fn(DirectoryChange)>) -> LoadHa
     drain_until(|| reported.get().is_some());
     assert_eq!(reported.get(), Some(Watching::Live));
     handle
+}
+
+#[test]
+fn exchanged_files_stay_listed_unless_they_are_deleted() -> Result<(), Box<dyn Error>> {
+    use rustix::fs::{CWD, RenameFlags, renameat_with};
+
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    for deleted in [true, false] {
+        let directory = tempfile::tempdir()?;
+        let original = directory.path().join("note.txt");
+        let hidden = directory.path().join(".strata-originals-test");
+        fs::create_dir(&hidden)?;
+        let staged = hidden.join("note.txt");
+        fs::write(&original, b"old")?;
+        fs::write(&staged, b"replacement")?;
+        let changes: Rc<RefCell<Vec<DirectoryChange>>> = Rc::default();
+        let collected = changes.clone();
+        let handle = live_watch(
+            Location::local(directory.path()),
+            Rc::new(move |change| collected.borrow_mut().push(change)),
+        );
+
+        renameat_with(CWD, &staged, CWD, &original, RenameFlags::EXCHANGE)?;
+        assert_eq!(fs::read(&original)?, b"replacement");
+        if deleted {
+            fs::remove_file(&original)?;
+        }
+        drain_until(|| !changes.borrow().is_empty());
+        drop(handle);
+
+        let location = Location::local(&original);
+        let observed = changes.borrow();
+        if deleted {
+            assert!(
+                matches!(observed.as_slice(), [DirectoryChange::Remove(path)] if path == &location),
+                "a genuine deletion must remove the row: {observed:?}"
+            );
+        } else {
+            assert!(
+                matches!(observed.as_slice(), [DirectoryChange::Upsert(entry)]
+                    if entry.location == location && entry.size == MetadataValue::Known(11)),
+                "the replacement must stay listed with its new metadata: {observed:?}"
+            );
+        }
+    }
+    Ok(())
 }
 
 #[test]
@@ -2614,6 +2678,71 @@ fn enumerate_with_metadata_fills_sizes_up_front() -> Result<(), Box<dyn Error>> 
     Ok(())
 }
 
+#[test]
+fn metadata_marks_folders_the_user_cannot_open() {
+    let root = unique_fixture_root("folder-access");
+    let locked = root.join("locked");
+    let open = root.join("open");
+    let file = root.join("file.txt");
+    fs::create_dir_all(&locked).expect("the locked folder should be created");
+    fs::create_dir_all(&open).expect("the open folder should be created");
+    fs::write(&file, b"content").expect("the fixture file should be written");
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o000))
+        .expect("the locked folder's permissions should be set");
+
+    let scanned = run_enumerate(DirectoryRequest {
+        id: RequestId(1),
+        location: Location::local(&root),
+        batch_size: 64,
+        include_metadata: true,
+        max_entries: 100,
+        time_budget: Duration::from_secs(10),
+        background: false,
+    });
+    let filled = run_fill(MetadataRequest {
+        id: RequestId(2),
+        entries: [&locked, &open, &file].map(Location::local).to_vec(),
+        full: false,
+        include_icon_details: false,
+        time_budget: Duration::from_secs(10),
+    });
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o755))
+        .expect("the locked folder's permissions should be restored");
+    fs::remove_dir_all(&root).expect("the fixture directory should be removed");
+
+    let scanned: HashMap<_, _> = scanned
+        .iter()
+        .filter_map(|event| match event {
+            DirectoryEvent::Batch { entries, .. } => Some(entries.iter()),
+            _ => None,
+        })
+        .flatten()
+        .map(|entry| (entry.location.clone(), entry.listable.clone()))
+        .collect();
+    let filled: HashMap<_, _> = filled
+        .iter()
+        .filter_map(|event| match event {
+            DirectoryEvent::MetadataFilled { updates, .. } => Some(updates.iter()),
+            _ => None,
+        })
+        .flatten()
+        .map(|update| (update.location.clone(), update.listable.clone()))
+        .collect();
+    // Root reads every folder, so nothing is locked for it.
+    let locked_access = MetadataValue::Known(rustix::process::geteuid().is_root());
+    for listable in [scanned, filled] {
+        assert_eq!(listable[&Location::local(&locked)], locked_access);
+        assert_eq!(
+            listable[&Location::local(&open)],
+            MetadataValue::Known(true)
+        );
+        assert_eq!(
+            listable[&Location::local(&file)],
+            MetadataValue::Unavailable
+        );
+    }
+}
+
 fn run_fill(request: MetadataRequest) -> Vec<DirectoryEvent> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
@@ -3488,6 +3617,33 @@ fn recent_removal_failure_logs_a_warning_and_allows_retry() {
     recent_remove_entries_with_backend(&state, &backend_dyn, [uri.clone()]);
     drain_until(|| state.in_flight.borrow().is_empty());
     assert_eq!(*backend.calls.borrow(), vec![uri.clone(), uri]);
+}
+
+#[test]
+fn recent_removal_logs_keep_credentials_out_of_the_default_log() {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let state = RecentRemovalState::new();
+    let backend = Rc::new(FakeRemovalBackend::new());
+    let uri = "recent://alice:s3cret;domain=CORP@host.example/item?token=abc#frag".to_owned();
+    backend.fail(
+        &uri,
+        "cannot reach sftp://alice:s3cret@host.example/item?token=abc#frag",
+    );
+    let backend_dyn: Rc<dyn RecentRemovalBackend> = backend.clone();
+
+    let output = capture_logs(|| {
+        recent_remove_entries_with_backend(&state, &backend_dyn, [uri.clone()]);
+        drain_until(|| state.in_flight.borrow().is_empty());
+    });
+
+    let warning = crate::test_support::captured_event(&output, "failed to remove recent entry");
+    assert_eq!(warning.split_whitespace().next(), Some("WARN"));
+    assert!(warning.contains("recent://host.example/item"), "{warning}");
+    for secret in ["alice", "s3cret", "CORP", "token", "frag"] {
+        assert!(!output.contains(secret), "{secret} leaked:\n{output}");
+    }
 }
 
 #[test]

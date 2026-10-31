@@ -1,0 +1,13 @@
+{"scenario":"startup-with-closed-pipes","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"stdout","vars":{"id":"stdout"}},{"id":"stderr","vars":{"id":"stderr"}},{"id":"both","vars":{"id":"both"}}],"cost":{"columns-stdout":0.5,"columns-stderr":0.5,"columns-both":0.5},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Startup with stdout/stderr closed pipes stays up and shows target; GUI-level check of the #1399 fix, unit tests pin only the pipe-safe writer"}}
+{"fs":{"path":"closed-pipe-target","mkdir":true},"variants":["stdout"]}
+{"fs":{"path":"closed-pipe-target/target.txt","write":"pipe regression\n"},"variants":["stdout"]}
+{"restart":{"directory":"$fixture/closed-pipe-target","env":{"RUST_LOG":"trace"},"stdout":"closed","stderr":"null"},"variants":["stdout"]}
+{"wait":{"some_window":{"title":"Strata","holds":{"present":{"named":"target.txt","within":{"window":true}}}}},"message":"primary startup with closed output pipes","variants":["stdout"]}
+{"fs":{"path":"closed-pipe-target","mkdir":true},"variants":["stderr"]}
+{"fs":{"path":"closed-pipe-target/target.txt","write":"pipe regression\n"},"variants":["stderr"]}
+{"restart":{"directory":"$fixture/closed-pipe-target","env":{"RUST_LOG":"trace"},"stdout":"null","stderr":"closed"},"variants":["stderr"]}
+{"wait":{"some_window":{"title":"Strata","holds":{"present":{"named":"target.txt","within":{"window":true}}}}},"message":"primary startup with closed output pipes","variants":["stderr"]}
+{"fs":{"path":"closed-pipe-target","mkdir":true},"variants":["both"]}
+{"fs":{"path":"closed-pipe-target/target.txt","write":"pipe regression\n"},"variants":["both"]}
+{"restart":{"directory":"$fixture/closed-pipe-target","env":{"RUST_LOG":"trace"},"stdout":"closed","stderr":"closed"},"variants":["both"]}
+{"wait":{"some_window":{"title":"Strata","holds":{"present":{"named":"target.txt","within":{"window":true}}}}},"message":"primary startup with closed output pipes","variants":["both"]}

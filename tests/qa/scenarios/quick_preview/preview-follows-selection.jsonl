@@ -1,0 +1,12 @@
+{"scenario":"preview-follows-selection","modes":["columns","icons","list"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"tree":{"notes.txt":"the quick brown fox\n","page.md":"# Heading\n\nBody text.\n","third.txt":"third preview fixture\n","data.csv":"name,value\nalpha,1\n","folder":{"inner.txt":"inner\n","nested-notes.txt":"nested preview fixture\n"}},"variants":[{"id":"keyboard","vars":{"selection":"keyboard"}},{"id":"pointer","vars":{"selection":"pointer"}}],"cost":{"columns-keyboard":0.4,"icons-keyboard":0.4,"list-keyboard":0.4,"columns-pointer":0.5,"icons-pointer":0.5,"list-pointer":0.5},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Keyboard arrows in each mode and pointer click retarget the preview; shift-extend route is in preview-follows-extended-selection (similar 0.33); preview selection glue has moderate churn and fixes"}}
+{"select_with_keyboard":"notes.txt"}
+{"key":"space"}
+{"wait":{"preview":"the quick brown fox"},"message":"the first preview to render"}
+{"key":"Down","modes":["columns"],"variants":["keyboard"]}
+{"key":"Right","modes":["icons"],"variants":["keyboard"]}
+{"key":"Down","modes":["list"],"variants":["keyboard"]}
+{"select":{"entry":"page.md"},"variants":["pointer"]}
+{"wait":{"selected":["page.md"]},"message":"the selection to become ['page.md']"}
+{"wait":{"preview":"Body text."},"message":"the preview to follow the newly selected file"}
+{"expect":{"focused":"page.md"}}
+{"expect":{"not":{"preview":"the quick brown fox"}}}

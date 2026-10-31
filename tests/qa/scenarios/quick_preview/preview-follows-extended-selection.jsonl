@@ -1,0 +1,10 @@
+{"scenario":"preview-follows-extended-selection","modes":["columns","icons","list"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"tree":{"notes.txt":"the quick brown fox\n","page.md":"# Heading\n\nBody text.\n","third.txt":"third preview fixture\n","data.csv":"name,value\nalpha,1\n","folder":{"inner.txt":"inner\n","nested-notes.txt":"nested preview fixture\n"}},"cost":{"columns":0.4,"icons":0.4,"list":0.4},"quality":{"impact":2,"coverage":3,"criticality":3,"diagnostic":4,"score":23,"note":"Shift+arrow extended selection drives preview to the focused file; preview-follows-selection covers plain Down and pointer, so only the shift-extension route is unique"}}
+{"select_with_keyboard":"notes.txt"}
+{"key":"space"}
+{"wait":{"preview":"the quick brown fox"},"message":"the first preview"}
+{"key":"shift+Down","modes":["columns"]}
+{"key":"shift+Right","modes":["icons"]}
+{"key":"shift+Down","modes":["list"]}
+{"wait":{"selected":["notes.txt","page.md"]},"message":"the selection to become ['notes.txt', 'page.md']"}
+{"wait":{"preview":"Body text."},"message":"the newly focused preview"}
+{"expect":{"focused":"page.md"}}

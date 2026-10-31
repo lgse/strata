@@ -1,0 +1,13 @@
+{"scenario":"pin-insertion-keeps-one-destination","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"expanded","vars":{"id":"expanded"},"prefs":{"sidebar_compact":false}},{"id":"compact","vars":{"id":"compact"},"prefs":{"sidebar_compact":true}}],"cost":{"columns-expanded":0.9,"columns-compact":0.9},"quality":{"impact":2,"coverage":4,"criticality":3,"diagnostic":4,"score":35,"note":"Drag across row edges and gap commits one pin insertion; spring-loaded and transfer scenarios cover only single gap drops"}}
+{"fs":{"path":"$config/gtk-3.0","mkdir":true,"parents":true}}
+{"fs":{"path":"$config/gtk-3.0/bookmarks","write":"sftp://host/one One\nsftp://host/two Two\nsftp://host/three Three\n"}}
+{"restart":true}
+{"remember":{"sidebar":"One"},"as":"above"}
+{"remember":{"sidebar":"Two"},"as":"below"}
+{"remember":{"role":"grouping","name":"PINNED","nth":1},"as":"gap"}
+{"drag":{"from":{"sidebar":"Three"},"from_at":["50%","50%"],"to":{"kept":"above"},"to_at":["50%","end-2"]},"release":false}
+{"move":{"kept":"gap"}}
+{"move":{"kept":"below"},"at":["50%",2]}
+{"move":{"kept":"gap"}}
+{"button_up":1}
+{"fs":{"path":"$config/gtk-3.0/bookmarks","lines_equal":["sftp://host/one One","sftp://host/three Three","sftp://host/two Two"]},"message":"all three hover targets to commit the same pin insertion"}

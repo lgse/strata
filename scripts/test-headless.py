@@ -9,11 +9,10 @@ import sys
 from pathlib import Path
 
 REPOSITORY = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPOSITORY / "tests/e2e"))
 
-from harness.display import HeadlessDisplay  # noqa: E402
-from harness.environment import TestEnvironment, process_environment  # noqa: E402
-from harness.process import terminate  # noqa: E402
+from headless.display import HeadlessDisplay  # noqa: E402
+from headless.environment import TestEnvironment, process_environment  # noqa: E402
+from headless.process import terminate  # noqa: E402
 
 
 def test_tmpdir() -> str | None:

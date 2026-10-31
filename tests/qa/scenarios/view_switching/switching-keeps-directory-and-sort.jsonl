@@ -1,0 +1,14 @@
+{"scenario":"switching-keeps-directory-and-sort","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.8},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"Columns to List switch keeps pane, descending sort and selection; no other scenario checks sort across a view switch (unit test covers only navigation state)"}}
+{"select":{"entry":"pictures"}}
+{"expect":{"entries":["diagram.txt","photo.txt"],"dir":"pictures"}}
+{"move":{"pane":"pictures"},"at":["50%","50%"]}
+{"wait":{"present":{"role":"button","name":"Ascending — click to reverse","within":{"pane":"pictures"}}},"message":"the hovered pane's sort action to appear"}
+{"click":{"role":"button","name":"Ascending — click to reverse","within":{"pane":"pictures"}}}
+{"wait":{"entries":["photo.txt","diagram.txt"],"dir":"pictures"},"message":"the open pane to sort descending"}
+{"select":{"entry":"diagram.txt","dir":"pictures"}}
+{"key":"ctrl+3"}
+{"wait":{"view_mode":"List"},"message":"the browser to switch to the List view"}
+{"expect":{"pane":"pictures"},"message":"switching should land on the directory the Columns view had open"}
+{"expect":{"entries":["photo.txt","diagram.txt"]},"message":"the descending sort should survive the switch"}
+{"wait":{"selected":["diagram.txt"]},"message":"the selection to survive the switch"}
+{"wait":{"focused":"diagram.txt"},"message":"keyboard focus to reach 'diagram.txt'"}

@@ -205,6 +205,13 @@ pub(super) fn apply_collection_scroll(
     position: u32,
     flags: gtk::ListScrollFlags,
 ) {
+    let flags = if flags.contains(gtk::ListScrollFlags::FOCUS)
+        && !crate::ui::focus_navigation::browser_can_take_focus(view)
+    {
+        flags.difference(gtk::ListScrollFlags::FOCUS)
+    } else {
+        flags
+    };
     if let Ok(list) = view.clone().downcast::<gtk::ListView>() {
         if position < list.model().map_or(0, |model| model.n_items()) {
             list.scroll_to(position, flags, None);
@@ -301,6 +308,7 @@ pub(crate) fn bind_listing_filter(
     query: &Rc<RefCell<String>>,
     replaced: Rc<Cell<bool>>,
     state: Option<Weak<super::ViewState>>,
+    enter_target: Option<crate::ui::enter_target::EnterTarget>,
 ) {
     let refresh = Rc::new(move || {
         if let Some(state) = state.as_ref().and_then(Weak::upgrade) {
@@ -312,6 +320,11 @@ pub(crate) fn bind_listing_filter(
     let settled_refresh = refresh.clone();
     debounce_filter_entry(entry, move |text| {
         let text = if replaced.get() { String::new() } else { text };
+        // Every settled edit is a new query to Enter, even one that leaves the
+        // case-folded filter, and so its matches, unchanged.
+        if let Some(enter_target) = &enter_target {
+            enter_target.show_query(&text);
+        }
         notify_filter_query(&settled_filter, &settled_query, text);
         settled_refresh();
     });
@@ -731,6 +744,7 @@ pub(crate) fn search_result_entry(item: &crate::services::SearchItem) -> crate::
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
         recent_uri: None,
     }
 }

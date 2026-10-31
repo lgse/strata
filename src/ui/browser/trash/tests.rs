@@ -99,6 +99,7 @@ fn trashed_entry(root: &Path, name: &str, original: &Path) -> (FileEntry, PathBu
             image_dimensions: crate::model::MetadataValue::Unknown,
             child_count: crate::model::MetadataValue::Unknown,
             duration_seconds: crate::model::MetadataValue::Unknown,
+            listable: crate::model::MetadataValue::Unknown,
             recent_uri: None,
         },
         info,
@@ -136,6 +137,7 @@ fn deletion_reach_keeps_the_local_warning_unless_every_item_is_remote() {
                 (&["/mnt/cloud/a"][..], Remote),
                 (&["/mnt/nas/a", "/mnt/cloud/b"], Remote),
                 (&["sftp://host/a"], Remote),
+                (&["admin:///srv/a"], Local),
                 (&["/home/user/a"], Local),
                 (&["/media/usb/a"], Local),
                 (&["/mnt/pool/a"], Local),
@@ -444,6 +446,145 @@ fn unsupported_trash_fallback_explains_and_focuses_cancel() {
                 );
                 wait_until(|| !view.browser().is_current_operation(id));
             }
+            window.destroy();
+            view.browser().clear_observer();
+        },
+    );
+}
+
+fn followed_file_symlink(link: &Path) -> FileEntry {
+    let mut entry = glib::MainContext::new()
+        .block_on(crate::adapters::query_file_entry(Location::local(link)))
+        .expect("symlink entry");
+    assert_eq!(entry.kind, EntryKind::FileSymbolicLink);
+    entry.size = MetadataValue::Known(fs::metadata(link).expect("target metadata").len());
+    entry
+}
+
+#[test]
+fn trash_confirmation_sizes_the_file_link_instead_of_its_target() {
+    crate::test_support::gtk_test(
+        "ui::browser::trash::tests::trash_confirmation_sizes_the_file_link_instead_of_its_target",
+        || {
+            let fixture = tempfile::tempdir().expect("fixture");
+            fs::write(fixture.path().join("payload.bin"), vec![0; 100_000]).expect("target");
+            let link = fixture.path().join("link");
+            std::os::unix::fs::symlink("payload.bin", &link).expect("symlink");
+            let view = view();
+            let window = window(&view);
+            view.state
+                .show_delete_dialog(vec![followed_file_symlink(&link)], DeleteDialog::Trash);
+
+            wait_until(|| has_label(&window, "11 B"));
+            assert!(!has_label(&window, "100 kB"));
+            button(window.upcast_ref(), "Cancel")
+                .expect("cancel")
+                .emit_clicked();
+            assert!(link.symlink_metadata().is_ok());
+            window.destroy();
+            view.browser().clear_observer();
+        },
+    );
+}
+
+#[test]
+fn permanent_delete_counts_file_links_beyond_the_visible_rows() {
+    crate::test_support::gtk_test(
+        "ui::browser::trash::tests::permanent_delete_counts_file_links_beyond_the_visible_rows",
+        || {
+            let fixture = tempfile::tempdir().expect("fixture");
+            fs::write(fixture.path().join("payload.bin"), vec![0; 100_000]).expect("target");
+            let count = DELETE_CONFIRMATION_MAX_ROWS + 1;
+            let entries = (0..count)
+                .map(|index| {
+                    let link = fixture.path().join(format!("link-{index}"));
+                    std::os::unix::fs::symlink("payload.bin", &link).expect("symlink");
+                    followed_file_symlink(&link)
+                })
+                .collect();
+            let view = view();
+            let window = window(&view);
+            view.state.show_delete_confirmation(entries);
+
+            wait_until(|| delete_summary_loaded(&window));
+            assert!(has_label(
+                &window,
+                &format!(
+                    "{count} items · {} B will be permanently deleted",
+                    count * 11
+                ),
+            ));
+            assert!(has_label(&window, "11 B"));
+            assert!(!has_label(&window, "100 kB"));
+            window.destroy();
+            view.browser().clear_observer();
+        },
+    );
+}
+
+#[test]
+fn missing_file_link_marks_the_delete_total_incomplete() {
+    crate::test_support::gtk_test(
+        "ui::browser::trash::tests::missing_file_link_marks_the_delete_total_incomplete",
+        || {
+            let fixture = tempfile::tempdir().expect("fixture");
+            let target = fixture.path().join("payload.bin");
+            fs::write(&target, vec![0; 100_000]).expect("target");
+            let link = fixture.path().join("link");
+            std::os::unix::fs::symlink("payload.bin", &link).expect("symlink");
+            let entry = followed_file_symlink(&link);
+            fs::remove_file(&link).expect("remove link before confirmation");
+            let view = view();
+            let window = window(&view);
+            view.state.show_delete_confirmation(vec![entry]);
+
+            wait_until(|| delete_summary_loaded(&window));
+            assert!(has_label(
+                &window,
+                "At least 1 item · at least 0 B will be permanently deleted"
+            ));
+            assert!(has_label(&window, "—"));
+            assert!(!has_label(&window, "100 kB"));
+            assert!(target.is_file());
+            window.destroy();
+            view.browser().clear_observer();
+        },
+    );
+}
+
+#[test]
+fn delete_as_administrator_confirms_permanent_deletion_without_trying_trash() {
+    crate::test_support::gtk_test(
+        "ui::browser::trash::tests::delete_as_administrator_confirms_permanent_deletion_without_trying_trash",
+        || {
+            let entries: Vec<FileEntry> = ["a.txt", "b.txt"]
+                .map(|name| {
+                    crate::test_support::operations::entry(Location::uri(format!(
+                        "admin:///srv/backups/{name}"
+                    )))
+                })
+                .to_vec();
+            let held = Rc::new(crate::test_support::operations::HeldOperations::default());
+            let view = view();
+            view.set_operation_provider(held.clone());
+            let window = window(&view);
+
+            view.state.request_delete(entries, false);
+
+            wait_until(|| button(window.upcast_ref(), "Permanently delete 2 items").is_some());
+            wait_until(|| focused_button_label(&window).as_deref() == Some("Cancel"));
+            assert!(
+                held.delete_requests.borrow().is_empty(),
+                "Delete never attempts Trash as administrator"
+            );
+            assert!(has_label(
+                &window,
+                "Trash isn't available when browsing as administrator."
+            ));
+            assert!(has_label(
+                &window,
+                "These items will be permanently deleted. This action cannot be undone."
+            ));
             window.destroy();
             view.browser().clear_observer();
         },

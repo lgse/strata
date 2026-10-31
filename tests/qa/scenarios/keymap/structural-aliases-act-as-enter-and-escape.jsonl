@@ -1,0 +1,23 @@
+{"scenario":"structural-aliases-act-as-enter-and-escape","modes":["list"],"prefs":{"type_to_search":false,"keymap":{"default":{"activate":["Return","o"],"escape":["Escape","<Control>bracketleft"]}}},"cost":{"list":0.9},"quality":{"impact":3,"coverage":2,"criticality":3,"diagnostic":4,"score":14,"note":"o as Enter opens a folder, Ctrl+[ as Escape cancels a rename, o still types in the filter; alias routing unit-tested in keys::alias"}}
+{"select_with_keyboard":"documents","message":"keyboard focus to reach 'documents'"}
+{"key":"o"}
+{"wait":{"directory":"documents"},"message":"o, an Enter alias, to open 'documents'"}
+{"key":"alt+Up"}
+{"wait":{"directory":"$root"},"message":"Alt+Up to return to the fixture"}
+{"select_with_keyboard":"readme.md","message":"keyboard focus to reach 'readme.md'"}
+{"key":"F2"}
+{"wait":{"field":{"text":"readme.md"}},"message":"F2 to start renaming 'readme.md'"}
+{"remember":{"field":true},"as":"rename"}
+{"type":"renamed"}
+{"wait":{"field":{"of":"rename","text":"renamed.md"}},"message":"typing to replace the stem"}
+{"key":"ctrl+bracketleft"}
+{"wait":{"editable_fields":0},"message":"Ctrl+[, an Escape alias, to cancel the rename"}
+{"wait":{"focused":"readme.md"},"message":"focus to return to the unrenamed 'readme.md'"}
+{"fs":{"path":"readme.md","exists":true},"timeout_ms":0,"message":"the cancelled rename must keep 'readme.md'"}
+{"fs":{"path":"renamed.md","exists":false},"timeout_ms":0,"message":"the cancelled rename must not write 'renamed.md'"}
+{"key":"ctrl+f"}
+{"wait":{"field":{}},"message":"Ctrl+F to focus the filter field"}
+{"remember":{"field":true},"as":"filter"}
+{"type":"o"}
+{"wait":{"field":{"of":"filter","text":"o"}},"message":"o to type into the filter field"}
+{"expect":{"directory":"$root"},"message":"o in the filter field must not open an entry"}

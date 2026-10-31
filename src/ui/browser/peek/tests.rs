@@ -193,3 +193,9 @@ fn switching_to_columns_cancels_pending_and_open_peeks() {
         },
     );
 }
+
+#[cfg(feature = "qa")]
+#[test]
+fn the_qa_harness_finds_the_peek_by_its_label() {
+    assert_eq!(crate::qa::PEEK_LABEL, PEEK_LABEL);
+}

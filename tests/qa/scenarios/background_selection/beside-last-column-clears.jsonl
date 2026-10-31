@@ -1,0 +1,6 @@
+{"scenario":"beside-last-column-clears","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.7},"quality":{"impact":2,"coverage":3,"criticality":3,"diagnostic":4,"score":23,"note":"Click on window space beside Columns clears selection; only scenario hitting outside the pane, inside-pane clicks are covered"}}
+{"select":{"entry":"readme.md","dir":"$root"}}
+{"click":{"entry":"todo.txt","dir":"$root"},"mods":["ctrl"]}
+{"wait":{"selected":["readme.md","todo.txt"],"dir":"$root"},"message":"the selection to become ['readme.md', 'todo.txt']"}
+{"click":{"window":true,"y_of":{"pane":"$root"}},"at":[-40,0]}
+{"wait":{"all_selected":[]},"message":"blank space beside Columns to deselect"}

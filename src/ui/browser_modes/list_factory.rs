@@ -29,6 +29,7 @@ pub(super) struct ListFactory {
     pub(super) depth: usize,
     pub(super) positions: PanePositions,
     pub(super) selection: gtk::MultiSelection,
+    pub(super) syncing: Rc<Cell<bool>>,
     pub(super) previews: Rc<Cell<bool>>,
     pub(super) activation: Rc<Cell<ClickActivation>>,
     pub(super) transfers: TransferHandlerSlot,
@@ -38,6 +39,7 @@ pub(super) struct ListFactory {
     pub(super) bound_items: Rc<RefCell<Vec<BoundModeItem>>>,
     pub(super) state: Option<Weak<crate::ui::browser::ViewState>>,
     pub(super) filter_query: Rc<RefCell<String>>,
+    pub(super) enter_target: Option<crate::ui::enter_target::EnterTarget>,
 }
 
 impl ListFactory {
@@ -95,6 +97,7 @@ impl ListFactory {
             &row.widget,
             item,
             self.selection.clone(),
+            self.syncing.clone(),
             self.browser.clone(),
             self.state.clone().unwrap_or_default(),
             self.depth,
@@ -131,11 +134,13 @@ impl ListFactory {
         let Some(item) = object.downcast_ref::<gtk::ListItem>() else {
             return;
         };
-        let Some(row) = item
-            .child()
-            .and_downcast::<gtk::Box>()
-            .and_then(ListRow::from_widget)
-        else {
+        let Some(widget) = item.child().and_downcast::<gtk::Box>() else {
+            return;
+        };
+        if let Some(enter_target) = &self.enter_target {
+            enter_target.decorate(&widget, item);
+        }
+        let Some(row) = ListRow::from_widget(widget) else {
             return;
         };
         let Some(binding) = self.binding(item) else {

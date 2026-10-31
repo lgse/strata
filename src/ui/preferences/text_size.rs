@@ -4,7 +4,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::ui::keys::{
     KeyPress,
-    bindings::{TEXT_LARGER, TEXT_LARGER_EQUAL, TEXT_RESET, TEXT_SMALLER},
+    bindings::{TEXT_LARGER, TEXT_RESET, TEXT_SMALLER},
 };
 
 /// Interface size in logical pixels; monitor scaling remains GTK's responsibility.
@@ -30,7 +30,7 @@ impl TextSize {
     }
 
     pub(in crate::ui) fn for_shortcut(self, press: &KeyPress) -> Option<Self> {
-        if press.is_any(&[TEXT_LARGER, TEXT_LARGER_EQUAL]) {
+        if press.is(TEXT_LARGER) {
             Some(self.stepped(1))
         } else if press.is(TEXT_SMALLER) {
             Some(self.stepped(-1))

@@ -1,0 +1,8 @@
+{"scenario":"control-click-sets-shift-anchor","modes":["columns","icons","list"],"layout":"us","mutation":null,"known_bug":null}
+{"select":{"entry":"archive","dir":"$root"}}
+{"click":{"entry":"pictures","dir":"$root"},"mods":["ctrl"]}
+{"wait":{"selected":["archive","pictures"],"dir":"$root"},"message":"a control-click to add one entry"}
+{"wait":{"focused":"pictures"},"message":"keyboard focus to reach the control-clicked entry"}
+{"key":"shift+Down","modes":["columns","list"]}
+{"key":"shift+Right","modes":["icons"]}
+{"wait":{"selected":["pictures","readme.md"],"dir":"$root"},"message":"the range to extend from the control-clicked entry, not the earlier anchor"}

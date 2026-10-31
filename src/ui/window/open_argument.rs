@@ -11,6 +11,7 @@ use gtk::{gio, glib, prelude::*};
 use crate::{
     adapters::{gio_file_for_location, location_for_file, reveal_target_for_file},
     model::Location,
+    services::sanitize_failure_message,
 };
 
 use super::{BrowserView, WeakBrowserView, present_target};
@@ -131,8 +132,8 @@ fn classify(browser: BrowserView, file: gio::File, location: Location) -> Rc<Ope
             Ok(Kind::File) => reveal_in_parent(&browser, &file, location),
             Err(error) => {
                 tracing::warn!(
-                    location = %location.display_path(),
-                    %error,
+                    location = %location.diagnostic_path(),
+                    error = %sanitize_failure_message(&error.to_string()),
                     "target location unavailable"
                 );
                 show_error(&browser, retry_file, retry_location);

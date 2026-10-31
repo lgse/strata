@@ -1,0 +1,26 @@
+{"scenario":"delete-without-trash-focuses-cancel","modes":["columns","list"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.3,"list":1.3},"quality":{"impact":5,"coverage":3,"criticality":4,"diagnostic":4,"score":42,"note":"Delete key on a no-Trash volume: dialog names Trash unsupported, Cancel focused, Enter keeps file, confirmed delete leaves user Trash empty; overlaps tenxer-d-without-trash-confirms on the dialog and Cancel steps, unique here are the Delete route in columns and list plus the confirmed-delete outcome"}}
+{"fs":{"path":"no-trash","volume":"/dev/shm","prefix":"strata-no-trash-","with":{"doomed.txt":"doomed"}}}
+{"fs":{"path":"no-trash/doomed.txt","can_trash":false},"timeout_ms":0,"message":"precondition: /dev/shm must not support Trash (GIO refuses system-internal mounts)"}
+{"expect":{"view_mode":"$view"}}
+{"select":{"entry":"no-trash"},"modes":["columns"]}
+{"click":{"entry":"no-trash"},"count":2,"modes":["list"]}
+{"wait":{"directory":"no-trash"},"message":"the browser to be working in 'no-trash'"}
+{"settle":{"pane":"no-trash"}}
+{"select":{"entry":"doomed.txt","dir":"no-trash"}}
+{"key":"Delete"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"expect":{"dialog":"Permanently delete 1 item?"},"message":"unexpected dialog"}
+{"wait":{"mentions":{"target":{"dialog":true},"words":"doesn't support Trash"}},"message":"the dialog to say Trash is unsupported"}
+{"wait":{"state":{"target":{"dialog_button":"Cancel"},"focused":true}},"message":"Cancel focused"}
+{"fs":{"path":"no-trash/doomed.txt","exists":true},"timeout_ms":0,"message":"Delete must wait for confirmation"}
+{"key":"Return"}
+{"wait":{"dialog":null},"message":"Enter on Cancel to close the dialog"}
+{"fs":{"path":"no-trash/doomed.txt","exists":true},"timeout_ms":0,"message":"Enter cancels"}
+{"select":{"entry":"doomed.txt","dir":"no-trash"}}
+{"key":"Delete"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"click":{"dialog_button":"Permanently delete 1 item"}}
+{"fs":{"path":"no-trash/doomed.txt","exists":false},"message":"the file to be deleted"}
+{"wait":{"entry_gone":"doomed.txt","dir":"no-trash"},"message":"the entry 'doomed.txt' to disappear"}
+{"fs":{"path":"$data/Trash/files","empty":true},"timeout_ms":0,"message":"a location without Trash must not reach the user's Trash"}
+{"fs":{"path":"no-trash","remove_volume":true}}

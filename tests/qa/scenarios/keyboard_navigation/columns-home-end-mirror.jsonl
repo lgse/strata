@@ -1,0 +1,15 @@
+{"scenario":"columns-home-end-mirror","modes":["columns"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.6},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":4,"score":33,"note":"Columns Home/End and Up mirror the cursor and close the stale child column; only Home/End route in Columns, arrow-keys cover Up/Down"}}
+{"select_with_keyboard":"documents"}
+{"wait":{"panes":["$root","documents"]},"message":"the child column to open"}
+{"key":"End"}
+{"wait":{"focused":"todo.txt"},"message":"keyboard focus to reach 'todo.txt'"}
+{"wait":{"panes":["$root"]},"message":"the stale child column to close"}
+{"expect":{"directory":"$root"}}
+{"key":"Up"}
+{"wait":{"focused":"readme.md"},"message":"keyboard focus to reach 'readme.md'"}
+{"key":"Up"}
+{"wait":{"focused":"pictures"},"message":"keyboard focus to reach 'pictures'"}
+{"wait":{"panes":["$root","pictures"]},"message":"Up to mirror the folder"}
+{"key":"Home"}
+{"wait":{"focused":"archive"},"message":"keyboard focus to reach 'archive'"}
+{"wait":{"panes":["$root","archive"]},"message":"Home to mirror the first folder"}

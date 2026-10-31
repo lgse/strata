@@ -1,0 +1,19 @@
+{"scenario":"tenxer-footer-filter-commits","modes":["columns","icons","list"],"prefs":{"tenxer_mode":true,"type_to_search":false,"single_click_previews":false,"filter_include_subfolders":false},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.6,"icons":0.6,"list":0.6},"quality":{"impact":2,"coverage":3,"criticality":3,"diagnostic":4,"score":23,"note":"Footer filter committed by Enter, reopened with f pre-filled, then Escape clears it; only scenario reopening a committed filter to clear"}}
+{"select":{"entry":"readme.md","dir":"$root"}}
+{"key":"f"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"remember":{"field":true},"as":"field"}
+{"type":"do"}
+{"wait":{"field":{"of":"field","text":"do"}},"message":"the filter query to stay in the footer prompt"}
+{"wait":{"matches":["documents","todo.txt"],"dir":"$root"},"message":"the filter to hide non-matches while typing"}
+{"key":"Return"}
+{"wait":{"all":[{"not":{"field":{}}},{"present":{"role":"label","name":"filter: do"}}]},"message":"Enter to commit the filter into the footer"}
+{"wait":{"focused":{"one_of":["documents","todo.txt"]}},"message":"focus to return to the filtered results"}
+{"key":"f"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"remember":{"field":true},"as":"field"}
+{"wait":{"field":{"of":"field","text":"do"}},"message":"f to pre-fill the committed query"}
+{"key":"Escape"}
+{"wait":{"entries":["archive","documents","pictures","readme.md","todo.txt"],"dir":"$root"},"message":"Escape in the prompt to clear the filter"}
+{"wait":{"absent":{"role":"label","name":"filter: do"}},"message":"the footer to drop the filter mark"}
+{"wait":{"selected":["readme.md"],"dir":"$root"},"message":"the selection to become ['readme.md']"}

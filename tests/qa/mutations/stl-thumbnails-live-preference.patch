@@ -1,0 +1,13 @@
+diff --git a/src/ui/thumbnail/slot.rs b/src/ui/thumbnail/slot.rs
+index 789b6704..226e8c77 100644
+--- a/src/ui/thumbnail/slot.rs
++++ b/src/ui/thumbnail/slot.rs
+@@ -206,7 +206,7 @@ impl ThumbnailSlot {
+         widget.set_slot(slot);
+         crate::ui::preferences::PreferenceManager::shared().bind_preference(
+             &widget,
+-            |manager| (manager.show_thumbnails(), manager.stl_thumbnails()),
++            crate::ui::preferences::PreferenceManager::show_thumbnails,
+             |widget, _| {
+                 let slot = widget
+                     .downcast_ref::<ThumbnailSlot>()

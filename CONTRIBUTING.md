@@ -106,22 +106,24 @@ cargo install --locked cargo-deny
 cargo install --locked typos-cli
 ```
 
-## End-to-end GUI tests
+## GUI tests
 
 `./scripts/check.sh` clears desktop display variables and skips display-dependent
 Rust tests. Run `./scripts/test-headless.py` to include those tests on a private
-Xvfb display without opening windows on your desktop. The end-to-end suite also
-uses a private display and checks the real application and resulting files:
+Xvfb display without opening windows on your desktop. The QA scenarios drive the
+real application on a private display inside the pinned test container and
+check both the window and the resulting files:
 
 ```bash
-./scripts/e2e.sh
+./scripts/qa.sh                       # every scenario
+./scripts/qa.sh copy-leaves-source    # one scenario
 ```
 
-It needs Xvfb, `at-spi2-core`, the Python AT-SPI bindings, D-Bus, and
-ImageMagick; the script names the packages when one is missing. See
-[end-to-end GUI testing](docs/e2e-testing.md) for how scenarios are written,
-how failure artifacts are collected, and how to regenerate the visual
-baselines.
+They need Docker or Podman; the container provides Xvfb, D-Bus, GTK, and the
+rest. See [testing](docs/testing.md) for how runs are set up, scheduled, and
+checked against visual baselines, and the
+[scenario reference](.agents/skills/qa-scenarios/reference.md) for every step,
+target, and predicate a scenario can use.
 
 ## Performance fixtures
 

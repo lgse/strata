@@ -1,0 +1,16 @@
+{"scenario":"rename-onto-existing-rejected","modes":["columns"],"layout":"us","mutation":"rename-error-dialog","known_bug":null,"cost":{"columns":0.8},"quality":{"impact":5,"coverage":3,"criticality":4,"diagnostic":4,"score":42,"note":"Columns F2 rename onto an existing name shows the Unable to rename item dialog and keeps both files; overlaps the footer inline-conflict scenario in tenxer mode only in refusal, not in the dialog route"}}
+{"select":{"entry":"todo.txt"}}
+{"key":"F2"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"key":"ctrl+a"}
+{"type":"readme.md"}
+{"key":"Return"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"expect":{"dialog":"Unable to rename item"}}
+{"fs":{"path":"todo.txt","exists":true},"timeout_ms":0,"message":"the rename must not silently succeed"}
+{"fs":{"path":"readme.md","text":"# Fixture\n"},"timeout_ms":0,"message":"the existing file must keep its contents"}
+{"key":"Escape"}
+{"wait":{"dialog":null},"message":"the rename error to close"}
+{"wait":{"focused":"todo.txt"},"message":"keyboard focus to reach 'todo.txt'"}
+{"key":"Up"}
+{"wait":{"focused":"readme.md"},"message":"keyboard focus to reach 'readme.md'"}

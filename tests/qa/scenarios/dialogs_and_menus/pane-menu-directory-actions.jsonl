@@ -1,0 +1,7 @@
+{"scenario":"pane-menu-directory-actions","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.4},"quality":{"impact":2,"coverage":2,"criticality":3,"diagnostic":4,"score":12,"note":"Pointer right-click on Columns pane background lists directory actions in order; keyboard-context-menu-owns-keys and entry-menu-named-actions overlap, unique part is full item order"}}
+{"click":{"background":true},"button":3}
+{"wait":{"menu_items":{}},"message":"the pane context menu"}
+{"expect":{"menu_items":{"contains":["New Folder","Select All","Refresh"]}},"message":"unexpected pane menu"}
+{"expect":{"menu_items":{"in_order":["New Folder","New File","Paste","Open With…","Open in Terminal","Select All","Refresh","Customize…","Properties"]}},"message":"unexpected action order"}
+{"key":"Escape"}
+{"wait":{"menu_items":null},"message":"the menu to close"}

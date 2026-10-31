@@ -1,0 +1,6 @@
+{"scenario":"two-slow-clicks-do-not-open","modes":["columns","icons","list"],"prefs":{"list_folder_clicks":2,"list_file_clicks":2,"grid_folder_clicks":2,"grid_file_clicks":2,"explorer_folder_clicks":2,"explorer_file_clicks":2},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.9,"icons":0.9,"list":0.9},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":4,"score":33,"note":"Sole GUI guard of the double-click interval (slow pair is two single clicks); one-click-only-selects and click-then-double-click-no-rename cover other routes"}}
+{"click":{"entry":"documents"}}
+{"sleep":600}
+{"click":{"entry":"documents"}}
+{"wait":{"selected":["documents"]},"message":"the entry to stay selected"}
+{"expect":{"pane":"$root"}}

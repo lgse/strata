@@ -1249,6 +1249,55 @@ fn document_layout_decodes_markup_and_bounds_pathological_lines() {
 }
 
 #[test]
+fn long_paragraphs_split_between_words() {
+    for (markup, plain, separator) in [
+        (
+            "alpha bravo <b>uninterrupted</b> ".repeat(300),
+            "alpha bravo uninterrupted ".repeat(300),
+            ' ',
+        ),
+        (
+            "日本語の文章\u{3000}".repeat(400),
+            "日本語の文章\u{3000}".repeat(400),
+            '\u{3000}',
+        ),
+    ] {
+        let layout = layout_document(
+            Document {
+                blocks: vec![DocumentBlock::Paragraph(markup)],
+            },
+            &Cancellation::default(),
+        )
+        .expect("long paragraph layout");
+
+        assert!(layout.units.len() > 2, "{plain:.20}");
+        assert!(
+            layout
+                .units
+                .iter()
+                .all(|unit| unit.text.len() <= super::DOCUMENT_UNIT_LINE_TARGET)
+        );
+        let (last, rest) = layout.units.split_last().expect("units");
+        assert!(
+            rest.iter().all(|unit| unit.text.ends_with(separator)),
+            "{:?}",
+            rest.iter()
+                .map(|unit| unit.text.chars().rev().take(8).collect::<String>())
+                .collect::<Vec<_>>()
+        );
+        assert!(last.text.ends_with(separator));
+        assert_eq!(
+            layout
+                .units
+                .iter()
+                .map(|unit| unit.copy_text.as_str())
+                .collect::<String>(),
+            format!("{plain}\n")
+        );
+    }
+}
+
+#[test]
 fn redundant_nested_styles_emit_one_span() {
     let markup = format!("<b>{}</b>", "<b>x</b>".repeat(10_000));
     let layout = layout_document(

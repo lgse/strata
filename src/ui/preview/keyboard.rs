@@ -10,12 +10,12 @@ use super::*;
 use crate::ui::{
     browser::{BrowserView, WeakBrowserView},
     keys::{
-        Binding,
+        Match,
         bindings::{
-            DOWN, FIRST_ITEM, LAST_ITEM, LEFT, MEDIA_SEEK_BACK_PAGE, MEDIA_SEEK_FORWARD_PAGE,
-            MEDIA_SEEK_START, MEDIA_VOLUME_STEP_DOWN, MEDIA_VOLUME_STEP_UP,
-            MEDIA_VOLUME_STEP_UP_EQUAL, PAGE_DOWN, PAGE_UP, PDF_ZOOM_RESET, RIGHT, SPACE,
-            TENXER_LAST_ITEM, TENXER_MEDIA_MUTE, TENXER_MEDIA_NEXT, TENXER_MEDIA_PREVIOUS, UP,
+            DOWN, END_KEY, HOME_KEY, LEFT, MEDIA_SEEK_BACK_PAGE, MEDIA_SEEK_END,
+            MEDIA_SEEK_FORWARD_PAGE, MEDIA_SEEK_START, MEDIA_VOLUME_STEP_DOWN,
+            MEDIA_VOLUME_STEP_UP, PAGE_DOWN_KEY, PAGE_UP_KEY, PDF_ZOOM_RESET, RIGHT, SPACE,
+            TENXER_MEDIA_MUTE, TENXER_MEDIA_NEXT, TENXER_MEDIA_PREVIOUS, UP,
         },
     },
 };
@@ -88,41 +88,46 @@ impl MediaCommand {
     }
 }
 
-const SEEK_AND_VOLUME: [(Binding, MediaCommand); 13] = [
-    (LEFT, MediaCommand::Seek(MediaSeek::By(-MEDIA_SEEK_STEP_US))),
-    (RIGHT, MediaCommand::Seek(MediaSeek::By(MEDIA_SEEK_STEP_US))),
+const SEEK_AND_VOLUME: [(&dyn Match, MediaCommand); 12] = [
     (
-        MEDIA_SEEK_BACK_PAGE,
+        &LEFT,
+        MediaCommand::Seek(MediaSeek::By(-MEDIA_SEEK_STEP_US)),
+    ),
+    (
+        &RIGHT,
+        MediaCommand::Seek(MediaSeek::By(MEDIA_SEEK_STEP_US)),
+    ),
+    (
+        &MEDIA_SEEK_BACK_PAGE,
         MediaCommand::Seek(MediaSeek::By(-MEDIA_SEEK_PAGE_US)),
     ),
     (
-        MEDIA_SEEK_FORWARD_PAGE,
+        &MEDIA_SEEK_FORWARD_PAGE,
         MediaCommand::Seek(MediaSeek::By(MEDIA_SEEK_PAGE_US)),
     ),
     (
-        PAGE_DOWN,
+        &PAGE_DOWN_KEY,
         MediaCommand::Seek(MediaSeek::By(-MEDIA_SEEK_PAGE_US)),
     ),
     (
-        PAGE_UP,
+        &PAGE_UP_KEY,
         MediaCommand::Seek(MediaSeek::By(MEDIA_SEEK_PAGE_US)),
     ),
-    (MEDIA_SEEK_START, MediaCommand::Seek(MediaSeek::Start)),
-    (FIRST_ITEM, MediaCommand::Seek(MediaSeek::Start)),
-    (TENXER_LAST_ITEM, MediaCommand::Seek(MediaSeek::End)),
-    (LAST_ITEM, MediaCommand::Seek(MediaSeek::End)),
-    (MEDIA_VOLUME_STEP_UP, MediaCommand::VolumeUp),
-    (MEDIA_VOLUME_STEP_UP_EQUAL, MediaCommand::VolumeUp),
-    (MEDIA_VOLUME_STEP_DOWN, MediaCommand::VolumeDown),
+    (&MEDIA_SEEK_START, MediaCommand::Seek(MediaSeek::Start)),
+    (&HOME_KEY, MediaCommand::Seek(MediaSeek::Start)),
+    (&MEDIA_SEEK_END, MediaCommand::Seek(MediaSeek::End)),
+    (&END_KEY, MediaCommand::Seek(MediaSeek::End)),
+    (&MEDIA_VOLUME_STEP_UP, MediaCommand::VolumeUp),
+    (&MEDIA_VOLUME_STEP_DOWN, MediaCommand::VolumeDown),
 ];
 
-const PLAYBACK: [(Binding, MediaCommand); 6] = [
-    (SPACE, MediaCommand::PlayPause),
-    (UP, MediaCommand::VolumeUp),
-    (DOWN, MediaCommand::VolumeDown),
-    (TENXER_MEDIA_MUTE, MediaCommand::Mute),
-    (TENXER_MEDIA_PREVIOUS, MediaCommand::Previous),
-    (TENXER_MEDIA_NEXT, MediaCommand::Next),
+const PLAYBACK: [(&dyn Match, MediaCommand); 6] = [
+    (&SPACE, MediaCommand::PlayPause),
+    (&UP, MediaCommand::VolumeUp),
+    (&DOWN, MediaCommand::VolumeDown),
+    (&TENXER_MEDIA_MUTE, MediaCommand::Mute),
+    (&TENXER_MEDIA_PREVIOUS, MediaCommand::Previous),
+    (&TENXER_MEDIA_NEXT, MediaCommand::Next),
 ];
 
 pub(super) fn seek_or_volume(press: &KeyPress) -> Option<MediaCommand> {
@@ -135,10 +140,10 @@ pub(in crate::ui) fn media_key_command(press: &KeyPress) -> Option<MediaCommand>
     command_for(&PLAYBACK, press).or_else(|| seek_or_volume(press))
 }
 
-fn command_for(commands: &[(Binding, MediaCommand)], press: &KeyPress) -> Option<MediaCommand> {
+fn command_for(commands: &[(&dyn Match, MediaCommand)], press: &KeyPress) -> Option<MediaCommand> {
     commands
         .iter()
-        .find(|(binding, _)| press.is(*binding))
+        .find(|(key, _)| press.is(key))
         .map(|(_, command)| *command)
 }
 
@@ -199,6 +204,17 @@ impl PreviewDrawer {
 
     pub(in crate::ui) fn scroll_document(&self, motion: DocumentScroll) -> bool {
         self.state.scroll_document(motion)
+    }
+
+    /// Moves the keys from the placeholder content box to a message's action button.
+    pub(in crate::ui) fn focus_feedback_action(&self) -> bool {
+        self.state.focus_feedback_action()
+    }
+
+    pub(in crate::ui) fn feedback_action_focused(&self, focused: &gtk::Widget) -> bool {
+        self.state
+            .feedback_action()
+            .is_some_and(|action| *focused == action)
     }
 
     /// Plain media keys for a keyboard-owned media preview, plus `<` / `>` from
@@ -308,6 +324,36 @@ impl PreviewState {
         }
     }
 
+    /// Keyboard-driven focus the window's own key handling never reports to GTK,
+    /// so the focus ring is requested explicitly.
+    fn focus_feedback_action(&self) -> bool {
+        let Some(action) = self.feedback_action() else {
+            return false;
+        };
+        if !action.grab_focus() {
+            return false;
+        }
+        if let Some(window) = action.root().and_downcast::<gtk::Window>() {
+            window.set_focus_visible(true);
+        }
+        true
+    }
+
+    fn feedback_action(&self) -> Option<gtk::Button> {
+        let mut feedback = self.content.first_child();
+        while let Some(widget) = feedback {
+            let mut child = widget.first_child();
+            while let Some(widget) = child {
+                if widget.has_css_class("preview-feedback-action") {
+                    return widget.downcast().ok();
+                }
+                child = widget.next_sibling();
+            }
+            feedback = widget.next_sibling();
+        }
+        None
+    }
+
     /// The document's own widget, so its select-all and copy handlers receive
     /// **Ctrl+A** / **Ctrl+C**.
     fn document_key_target(&self) -> Option<gtk::Widget> {
@@ -344,6 +390,9 @@ impl PreviewState {
             entry.clone().upcast()
         } else if let Some(document) = self.document_key_target() {
             document
+        } else if self.focus_feedback_action() {
+            self.set_keyboard_owner(true);
+            return true;
         } else {
             self.content.set_focusable(true);
             self.content.clone().upcast()

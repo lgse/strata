@@ -1,0 +1,24 @@
+{"scenario":"delete-animation-keeps-survivors","modes":["columns","icons","list"],"prefs":{"reduce_motion":false},"layout":"us","mutation":null,"known_bug":null,"gtk_settings":{"gtk-enable-animations":"true"},"cost":{"columns":1.6,"icons":1.5,"list":1.6},"quality":{"impact":4,"coverage":3,"criticality":4,"diagnostic":3,"score":34,"note":"Permanent delete dissolve keeps survivors and post-animation F2 rename works; only scenario chaining delete with rename, dialog covered by permanent-delete-confirmation"}}
+{"expect":{"view_mode":"$view"}}
+{"fs":{"path":"zz-survivor.txt","write":"survivor"}}
+{"fs":{"path":".","remember_names":"original"}}
+{"wait":{"entry":"zz-survivor.txt"},"message":"the entry 'zz-survivor.txt' to appear"}
+{"select":{"entry":"todo.txt"}}
+{"key":"shift+Delete"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"click":{"dialog_button":"Permanently delete 1 item"}}
+{"fs":{"path":"todo.txt","exists":false},"message":"the file to be deleted"}
+{"wait":{"dialog":null},"message":"the delete dialog to disappear"}
+{"wait":{"entry_gone":"todo.txt"},"message":"the entry 'todo.txt' to disappear"}
+{"fs":{"path":".","names_from":"original","minus":["todo.txt"]},"timeout_ms":0}
+{"select":{"entry":"zz-survivor.txt"}}
+{"key":"F2"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"remember":{"field":true},"as":"field"}
+{"key":"ctrl+a"}
+{"type":"renamed-survivor.txt"}
+{"wait":{"field":{"of":"field","text":"renamed-survivor.txt"}},"message":"the survivor name to be typed"}
+{"key":"Return"}
+{"fs":{"path":"renamed-survivor.txt","exists":true},"message":"the survivor to be renamed"}
+{"fs":{"path":"renamed-survivor.txt","text":"survivor"},"timeout_ms":0}
+{"fs":{"path":".","names_from":"original","minus":["todo.txt","zz-survivor.txt"],"plus":["renamed-survivor.txt"]},"timeout_ms":0}

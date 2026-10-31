@@ -1,0 +1,13 @@
+{"scenario":"activation-without-application-empty-state","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"env":{"XDG_DATA_DIRS":"$environment/empty-data-dirs"},"setup":[{"fs":{"path":"$environment/empty-data-dirs","mkdir":true}}],"cost":{"columns":0.6},"quality":{"impact":2,"coverage":3,"criticality":3,"diagnostic":3,"score":20,"note":"Enter on a file with no handler shows the activation-specific empty label, disables Open and skips the hidden toggle; only QA scenario with no app registered (activation-without-default-opens-visible-app covers the app-present path)"}}
+{"select_with_keyboard":"todo.txt"}
+{"key":"Return"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"wait":{"present":{"role":"label","name":"No application is registered for this file","within":{"dialog":true}}},"message":"the activation-specific empty feedback","timeout_ms":3000}
+{"expect":{"state":{"target":{"dialog_button":"Open"},"sensitive":false}}}
+{"key":"shift+Tab"}
+{"wait":{"not":{"focused_widget":null}},"message":"shift+Tab to keep focus on a visible control"}
+{"key":"Tab"}
+{"wait":{"not":{"focused_widget":null}},"message":"Tab to keep focus on a visible control"}
+{"key":"Escape"}
+{"wait":{"dialog":null},"message":"the empty chooser to close"}
+{"wait":{"focused":"todo.txt"},"message":"keyboard focus to reach 'todo.txt'"}

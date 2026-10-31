@@ -6,7 +6,7 @@ use std::{
     path::{Path, PathBuf},
     process::{Child, Command, ExitStatus, Stdio},
     sync::{
-        Arc,
+        Arc, Once,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
     thread,
@@ -66,6 +66,14 @@ impl MediaPreviewBackend {
         }
     }
 }
+
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum PdfPreviewError {
+    PasswordProtected,
+}
+
+pub(crate) const PDF_PASSWORD_PROTECTED: &str = "This PDF is password protected.";
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct PdfRenderSize {
@@ -132,6 +140,39 @@ impl CoverFormat {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum DocumentFormat {
+    Docx,
+    Odt,
+}
+
+impl DocumentFormat {
+    pub(crate) fn for_file(content_type: &str, name: &std::ffi::OsStr) -> Option<Self> {
+        if crate::services::docx::is_document(content_type, name) {
+            Some(Self::Docx)
+        } else if crate::services::odt::is_document(content_type, name) {
+            Some(Self::Odt)
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn argument(self) -> &'static str {
+        match self {
+            Self::Docx => "docx",
+            Self::Odt => "odt",
+        }
+    }
+
+    pub(crate) fn from_argument(value: &str) -> Option<Self> {
+        match value {
+            "docx" => Some(Self::Docx),
+            "odt" => Some(Self::Odt),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ParseOperation {
     ThumbnailImage,
@@ -154,9 +195,10 @@ pub(crate) enum ParseOperation {
     MediaMetadata,
     RawMetadata,
     PreviewWorkbook,
-    PreviewDocument,
+    PreviewDocument(DocumentFormat),
     PreviewPdf(PdfRenderSize),
     PreviewModel(ModelRender),
+    PreviewRoute(crate::services::route_preview::RouteRender),
     PreviewMedia(MediaPreviewSize),
     PreviewAudio(MediaPreviewSize),
     AudioPeaks,
@@ -193,9 +235,10 @@ impl ParseOperation {
             Self::MediaMetadata => "media-metadata",
             Self::RawMetadata => "raw-metadata",
             Self::PreviewWorkbook => "preview-workbook",
-            Self::PreviewDocument => "preview-document",
+            Self::PreviewDocument(_) => "preview-document",
             Self::PreviewPdf(_) => "preview-pdf",
             Self::PreviewModel(_) => "preview-model",
+            Self::PreviewRoute(_) => "preview-route",
             Self::PreviewMedia(_) => "preview-media",
             Self::PreviewAudio(_) => "preview-audio",
             Self::AudioPeaks => "audio-peaks",
@@ -237,7 +280,8 @@ impl ParseOperation {
                 | Self::AudioTags
                 | Self::RawMetadata
                 | Self::PreviewWorkbook
-                | Self::PreviewDocument
+                | Self::PreviewDocument(_)
+                | Self::PreviewRoute(_)
                 | Self::InspectImage
         ) {
             "result.json"
@@ -276,6 +320,7 @@ impl ParseOperation {
                 Some((size.width as u32, size.height as u32, 1280 * 1280))
             }
             Self::PreviewMedia(_)
+            | Self::PreviewRoute(_)
             | Self::InspectImage
             | Self::PreviewAudio(_)
             | Self::AudioPeaks
@@ -284,7 +329,7 @@ impl ParseOperation {
             | Self::MediaMetadata
             | Self::RawMetadata
             | Self::PreviewWorkbook
-            | Self::PreviewDocument
+            | Self::PreviewDocument(_)
             | Self::ArchiveList { .. } => None,
         }
     }
@@ -298,15 +343,27 @@ impl ParseOperation {
             | Self::PreviewRaw
             | Self::RawMetadata
             | Self::PreviewPdf(_) => Some(MAX_RASTER_INPUT_BYTES),
-            Self::PreviewModel(_) | Self::ThumbnailModel(_) => Some(MAX_MODEL_INPUT_BYTES),
+            Self::PreviewModel(render) if render.format != ModelFormat::Gcode => {
+                Some(MAX_MODEL_INPUT_BYTES)
+            }
+            Self::ThumbnailModel(format) if *format != ModelFormat::Gcode => {
+                Some(MAX_MODEL_INPUT_BYTES)
+            }
+            Self::PreviewModel(_) | Self::ThumbnailModel(_) => None,
             Self::ThumbnailCover(_) | Self::PreviewCover(_) => {
                 Some(crate::sandbox_helper::archive_cover::MAX_INPUT_BYTES)
             }
             Self::InspectImage | Self::ConvertImage => {
                 Some(crate::services::image_conversion::MAX_INPUT_BYTES)
             }
+            Self::PreviewRoute(_) => Some(crate::services::route_preview::MAX_ROUTE_INPUT_BYTES),
             Self::PreviewWorkbook => Some(crate::services::table::WORKBOOK_BYTE_LIMIT),
-            Self::PreviewDocument => Some(crate::services::docx::DOCX_BYTE_LIMIT),
+            Self::PreviewDocument(DocumentFormat::Docx) => {
+                Some(crate::services::docx::DOCX_BYTE_LIMIT)
+            }
+            Self::PreviewDocument(DocumentFormat::Odt) => {
+                Some(crate::services::odt::ODT_BYTE_LIMIT)
+            }
             Self::DocumentImage => Some(crate::services::document_media::IMAGE_INPUT_LIMIT),
             Self::DocumentMermaid => {
                 Some(crate::services::document_media::DIAGRAM_INPUT_LIMIT as u64)
@@ -424,7 +481,10 @@ fn parse_sandboxed(
         .canonicalize()
         .map_err(|error| crate::services::io_error_message(&error))?;
     let stop = cancellation.clone();
-    let hold = crate::services::file_activity::hold([input, &canonical], move || stop.cancel())?;
+    let hold = Arc::new(crate::services::file_activity::hold(
+        [input, &canonical],
+        move || stop.cancel(),
+    )?);
     hold.settle(parse_canonical(
         &canonical,
         operation,
@@ -432,6 +492,7 @@ fn parse_sandboxed(
         media_backend,
         cancellation,
         progress,
+        Arc::clone(&hold),
     ))
 }
 
@@ -442,6 +503,7 @@ fn parse_canonical(
     media_backend: MediaPreviewBackend,
     cancellation: &Cancellation,
     progress: &dyn Fn(crate::services::ModelPreviewStage),
+    hold: Arc<crate::services::file_activity::Hold>,
 ) -> Result<ParseOutput, String> {
     let input_metadata =
         fs::metadata(input).map_err(|error| crate::services::io_error_message(&error))?;
@@ -458,6 +520,8 @@ fn parse_canonical(
                 ParseOperation::InspectImage | ParseOperation::ConvertImage
             ) {
                 "The image exceeds the 32 MiB conversion limit. Choose a smaller image.".to_owned()
+            } else if matches!(operation, ParseOperation::PreviewRoute(_)) {
+                "This route file exceeds the 32 MiB preview limit.".to_owned()
             } else if matches!(operation, ParseOperation::PreviewModel(_)) {
                 const _: () = assert!(
                     MAX_MODEL_INPUT_BYTES == 128 * 1024 * 1024,
@@ -479,8 +543,9 @@ fn parse_canonical(
         });
     }
 
-    let output =
-        PrivateOutput::create().map_err(|error| crate::services::io_error_message(&error))?;
+    let output = Arc::new(
+        PrivateOutput::create().map_err(|error| crate::services::io_error_message(&error))?,
+    );
     let secret = if let ParseOperation::ArchiveList {
         password: Some(password),
         ..
@@ -539,18 +604,37 @@ fn parse_canonical(
             progress(stage);
         }
     };
-    let status =
-        wait_for_renderer_reporting(&mut child, cancellation, timeout, &mut poll_progress)?;
+    let status = if matches!(&operation, ParseOperation::PreviewModel(render)
+        if render.purpose == crate::services::ModelRenderPurpose::Thumbnail)
+    {
+        model::wait_for_thumbnail(
+            child,
+            cancellation,
+            timeout,
+            &mut poll_progress,
+            Arc::clone(&output),
+            hold,
+        )?
+    } else {
+        wait_for_renderer_reporting(&mut child, cancellation, timeout, &mut poll_progress)?
+    };
     if !status.success() {
         if matches!(
             operation,
             ParseOperation::PreviewModel(_)
+                | ParseOperation::PreviewRoute(_)
                 | ParseOperation::InspectImage
                 | ParseOperation::ConvertImage
+                | ParseOperation::PreviewPdf(_)
         ) && let Ok(data) = read_private_output(&output.path().join("result.error"), 512)
-            && let Ok(message) = String::from_utf8(data)
         {
-            return Err(message);
+            if matches!(operation, ParseOperation::PreviewPdf(_)) {
+                if let Ok(PdfPreviewError::PasswordProtected) = serde_json::from_slice(&data) {
+                    return Err(PDF_PASSWORD_PROTECTED.to_owned());
+                }
+            } else if let Ok(message) = String::from_utf8(data) {
+                return Err(message);
+            }
         }
         return Err("The sandboxed preview renderer failed".to_owned());
     }
@@ -807,16 +891,27 @@ fn wait_for_renderer_reporting(
     wall_time_limit: Duration,
     progress: &mut dyn FnMut(),
 ) -> Result<ExitStatus, String> {
+    let result = monitor_renderer(child, cancellation, wall_time_limit, progress);
+    if result.is_err() {
+        terminate(child);
+    }
+    result
+}
+
+fn monitor_renderer(
+    child: &mut Renderer,
+    cancellation: &Cancellation,
+    wall_time_limit: Duration,
+    progress: &mut dyn FnMut(),
+) -> Result<ExitStatus, String> {
     let started = Instant::now();
     let deadline = started + wall_time_limit;
     let pidfd = child_pidfd(&child.child);
     loop {
         if cancellation.is_cancelled() {
-            terminate(child);
             return Err("Preview cancelled".to_owned());
         }
         if Instant::now() >= deadline {
-            terminate(child);
             return Err("The preview renderer timed out".to_owned());
         }
         progress();
@@ -824,7 +919,6 @@ fn wait_for_renderer_reporting(
             Ok(Some(status)) => return Ok(status),
             Ok(None) => wait_step(pidfd.as_ref(), deadline),
             Err(error) => {
-                terminate(child);
                 return Err(format!("Unable to monitor the preview renderer: {error}"));
             }
         }
@@ -1010,17 +1104,28 @@ fn sandbox_command(
                 format!("{value}:{}x{}", size.width, size.height)
             }
             ParseOperation::PreviewModel(render) => format!(
-                "{}:{}x{}:{:06x}:{:06x}:{}",
+                "{}:{}x{}:{:06x}:{}:{}",
                 render.format.argument(),
                 render.size.width,
                 render.size.height,
                 render.palette.accent,
-                render.palette.surface,
+                match render.purpose {
+                    crate::services::ModelRenderPurpose::Preview =>
+                        format!("{:06x}", render.palette.surface),
+                    crate::services::ModelRenderPurpose::Thumbnail => "transparent".to_owned(),
+                },
                 render.view.argument(),
+            ),
+            ParseOperation::PreviewRoute(render) => format!(
+                "{}:{:06x}:{:06x}",
+                render.format.label(),
+                render.palette.accent,
+                render.palette.surface
             ),
             ParseOperation::ThumbnailModel(format) => format.argument().to_owned(),
             ParseOperation::ThumbnailCover(format) => format.argument().to_owned(),
             ParseOperation::PreviewCover(format) => format.argument().to_owned(),
+            ParseOperation::PreviewDocument(format) => format.argument().to_owned(),
             ParseOperation::ArchiveList { format, .. } => format.extension().to_owned(),
             _ => value.to_string(),
         };
@@ -1108,6 +1213,9 @@ pub(crate) fn numbered_name(name: &std::ffi::OsStr, prefix: &str) -> bool {
 }
 
 fn valid_output(operation: ParseOperation, data: &[u8]) -> bool {
+    if matches!(operation, ParseOperation::PreviewRoute(_)) {
+        return crate::services::route_preview::RoutePreview::from_json(data).is_ok();
+    }
     if matches!(operation, ParseOperation::InspectImage) {
         return data.len() <= 32
             && serde_json::from_slice::<crate::services::image_conversion::ImageKind>(data)
@@ -1119,7 +1227,7 @@ fn valid_output(operation: ParseOperation, data: &[u8]) -> bool {
     if matches!(operation, ParseOperation::PreviewWorkbook) {
         return crate::services::table::TableData::from_json(data).is_ok();
     }
-    if matches!(operation, ParseOperation::PreviewDocument) {
+    if matches!(operation, ParseOperation::PreviewDocument(_)) {
         return crate::services::docx::RichTextData::from_json(data).is_ok();
     }
     if matches!(operation, ParseOperation::RawMetadata) {
@@ -1162,7 +1270,7 @@ pub(crate) fn png_dimensions(data: &[u8]) -> Option<(u32, u32)> {
     (width > 0 && height > 0).then_some((width, height))
 }
 
-fn terminate(renderer: &mut Renderer) {
+fn kill_renderer(renderer: &mut Renderer) {
     if let Ok(raw_pid) = i32::try_from(renderer.id())
         && let Some(process_group) = Pid::from_raw(raw_pid)
     {
@@ -1171,6 +1279,10 @@ fn terminate(renderer: &mut Renderer) {
     // bwrap is also the PID-namespace init process, so descendants that create a new
     // process group still die with it.
     let _killed = renderer.child.kill();
+}
+
+fn terminate(renderer: &mut Renderer) {
+    kill_renderer(renderer);
     let _waited = renderer.child.wait();
     renderer.await_namespace();
 }
@@ -1253,29 +1365,115 @@ fn read_metadata(path: &Path) -> (i32, i32) {
     (values.next().unwrap_or(0), values.next().unwrap_or(0))
 }
 
-struct PrivateOutput(PathBuf);
+const PRIVATE_OUTPUT_PREFIX: &str = "strata-preview-";
+const PRIVATE_OUTPUT_ATTEMPTS: usize = 64;
+
+// The flock on the directory marks it as in use; the sweep removes only directories it can
+// lock, which also works across pid namespaces that share the temp directory.
+struct PrivateOutput {
+    path: PathBuf,
+    _lock: rustix::fd::OwnedFd,
+}
 
 impl PrivateOutput {
     fn create() -> io::Result<Self> {
+        static SWEEP: Once = Once::new();
+        SWEEP.call_once(|| {
+            thread::spawn(|| prune_orphaned_private_outputs(&std::env::temp_dir()));
+        });
+        Self::create_in(&std::env::temp_dir())
+    }
+
+    fn create_in(parent: &Path) -> io::Result<Self> {
         use std::os::unix::fs::DirBuilderExt;
 
-        let path = std::env::temp_dir().join(format!(
-            "strata-preview-{}-{}",
-            std::process::id(),
-            NEXT_DIRECTORY.fetch_add(1, Ordering::Relaxed)
-        ));
-        fs::DirBuilder::new().mode(0o700).create(&path)?;
-        Ok(Self(path))
+        for _ in 0..PRIVATE_OUTPUT_ATTEMPTS {
+            let path = parent.join(format!(
+                "{PRIVATE_OUTPUT_PREFIX}{}-{}",
+                std::process::id(),
+                NEXT_DIRECTORY.fetch_add(1, Ordering::Relaxed)
+            ));
+            match fs::DirBuilder::new().mode(0o700).create(&path) {
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+                result => result?,
+            }
+            if let Some(lock) = lock_new_private_output(&path)? {
+                return Ok(Self { path, _lock: lock });
+            }
+        }
+        Err(io::Error::from(io::ErrorKind::AlreadyExists))
     }
 
     fn path(&self) -> &Path {
-        &self.0
+        &self.path
     }
 }
 
 impl Drop for PrivateOutput {
     fn drop(&mut self) {
-        let _removed = fs::remove_dir_all(&self.0);
+        let _removed = fs::remove_dir_all(&self.path);
+    }
+}
+
+fn open_private_output(path: &Path) -> rustix::io::Result<rustix::fd::OwnedFd> {
+    use rustix::fs::{Mode, OFlags, open};
+
+    open(
+        path,
+        OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+        Mode::empty(),
+    )
+}
+
+// `None` means a concurrent sweep claimed the new directory before it was locked.
+fn lock_new_private_output(path: &Path) -> io::Result<Option<rustix::fd::OwnedFd>> {
+    use rustix::fs::{FlockOperation, flock, fstat, lstat};
+
+    let fd = match open_private_output(path) {
+        Ok(fd) => fd,
+        Err(rustix::io::Errno::NOENT) => return Ok(None),
+        Err(error) => return Err(error.into()),
+    };
+    // Other lock errors are ignored: without lock support the sweep cannot lock it either.
+    if let Err(rustix::io::Errno::WOULDBLOCK) = flock(&fd, FlockOperation::NonBlockingLockExclusive)
+    {
+        return Ok(None);
+    }
+    let locked = fstat(&fd)?;
+    let same = lstat(path)
+        .is_ok_and(|current| (current.st_dev, current.st_ino) == (locked.st_dev, locked.st_ino));
+    Ok(same.then_some(fd))
+}
+
+// Worker pools and detached threads still own their output when the process exits, and a
+// killed process never drops it, so earlier runs leave directories behind.
+fn prune_orphaned_private_outputs(tmp: &Path) {
+    use rustix::fs::{FlockOperation, flock, fstat};
+
+    let Ok(entries) = fs::read_dir(tmp) else {
+        return;
+    };
+    let uid = rustix::process::geteuid().as_raw();
+    let all_digits =
+        |text: &str| !text.is_empty() && text.bytes().all(|byte| byte.is_ascii_digit());
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let matches = name
+            .to_str()
+            .and_then(|name| name.strip_prefix(PRIVATE_OUTPUT_PREFIX))
+            .and_then(|rest| rest.split_once('-'))
+            .is_some_and(|(pid, sequence)| all_digits(pid) && all_digits(sequence));
+        if !matches {
+            continue;
+        }
+        let path = entry.path();
+        let Ok(fd) = open_private_output(&path) else {
+            continue;
+        };
+        let ours = fstat(&fd).is_ok_and(|stat| stat.st_uid == uid);
+        if ours && flock(&fd, FlockOperation::NonBlockingLockExclusive).is_ok() {
+            let _ignored = fs::remove_dir_all(&path);
+        }
     }
 }
 

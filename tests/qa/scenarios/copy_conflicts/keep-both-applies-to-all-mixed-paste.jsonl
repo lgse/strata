@@ -1,0 +1,29 @@
+{"scenario":"keep-both-applies-to-all-mixed-paste","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.3},"quality":{"impact":4,"coverage":4,"criticality":4,"diagnostic":4,"score":56,"note":"Apply to All checkbox + Keep Both on a mixed paste; only QA guard of the checkbox route (GTK tests check its visibility only)"}}
+{"fs":{"path":"archive/notes.txt","write":"existing notes.txt\n"}}
+{"fs":{"path":"archive/report.md","write":"existing report.md\n"}}
+{"select":{"entry":"documents"}}
+{"wait":{"directory":"documents"},"message":"the browser to be working in 'documents'"}
+{"settle":{"pane":"documents"}}
+{"select_with_keyboard":"notes.txt"}
+{"key":"ctrl+a"}
+{"key":"ctrl+c"}
+{"key":"alt+Up"}
+{"wait":{"directory":"$root"},"message":"the browser to be working in '$root'"}
+{"settle":{"pane":"$root"}}
+{"select":{"entry":"archive"}}
+{"wait":{"directory":"archive"},"message":"the browser to be working in 'archive'"}
+{"settle":{"pane":"archive"}}
+{"move":{"pane":"archive"}}
+{"key":"ctrl+v"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"expect":{"present":{"named":"Apply to All","within":{"dialog":true}}}}
+{"click":{"named":"Apply to All","within":{"dialog":true}}}
+{"click":{"dialog_button":"Keep Both"}}
+{"fs":{"path":"archive/notes (1).txt","exists":true},"message":"all mixed-paste copies"}
+{"fs":{"path":"archive/report (1).md","exists":true},"message":"all mixed-paste copies"}
+{"fs":{"path":"archive/spreadsheet.csv","exists":true},"message":"all mixed-paste copies"}
+{"fs":{"path":"archive/notes (1).txt","copy_of":"documents/notes.txt"},"timeout_ms":0}
+{"fs":{"path":"archive/report (1).md","copy_of":"documents/report.md"},"timeout_ms":0}
+{"fs":{"path":"archive/spreadsheet.csv","copy_of":"documents/spreadsheet.csv"},"timeout_ms":0}
+{"fs":{"path":"archive/notes.txt","text":"existing notes.txt\n"},"timeout_ms":0}
+{"fs":{"path":"archive/report.md","text":"existing report.md\n"},"timeout_ms":0}

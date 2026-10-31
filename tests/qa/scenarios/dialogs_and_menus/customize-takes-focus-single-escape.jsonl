@@ -1,0 +1,45 @@
+{"scenario":"customize-takes-focus-single-escape","modes":["columns"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"item-menu","vars":{"opener":"item-menu"}},{"id":"background-menu","vars":{"opener":"background-menu"}}],"cost":{"columns-item-menu":1.9,"columns-background-menu":0.9},"quality":{"impact":3,"coverage":4,"criticality":3,"diagnostic":3,"score":38,"note":"Customize dismissed by one Escape with focus returned, plus Custom color Cancel focus; Done-click scenarios never press Escape"}}
+{"select":{"entry":"todo.txt"}}
+{"wait":{"focused":"todo.txt"},"message":"keyboard focus to reach 'todo.txt'"}
+{"click":{"entry":"todo.txt"},"button":3,"variants":["item-menu"]}
+{"wait":{"menu_items":{}},"message":"the context menu for 'todo.txt'","variants":["item-menu"]}
+{"click":{"background":true,"dir":"$root"},"button":3,"variants":["background-menu"]}
+{"wait":{"menu_items":{}},"message":"the pane context menu","variants":["background-menu"]}
+{"wait":{"present":{"menu_item":"Customize…"}},"message":"the menu item 'Customize…'"}
+{"settle":{"menu_item":"Customize…"}}
+{"click":{"menu_item":"Customize…"}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"expect":{"state":{"target":{"dialog_button":"Done"},"focused":true}},"message":"Done to take focus","timeout_ms":4000,"as":"done"}
+{"key":"Escape"}
+{"expect":{"dialog":null},"message":"one Escape to close Customize","timeout_ms":4000,"as":"closed"}
+{"key":"Escape","unless":"closed"}
+{"wait":{"dialog":null},"message":"a second Escape to close Customize","unless":"closed"}
+{"expect":{"focused":"todo.txt"},"message":"focus to return to 'todo.txt'","timeout_ms":4000,"as":"returned","variants":["item-menu"]}
+{"select":{"entry":"todo.txt"},"unless":"returned","variants":["item-menu"]}
+{"wait":{"focused":"todo.txt"},"message":"keyboard focus to reach 'todo.txt'","unless":"returned","variants":["item-menu"]}
+{"key":"Up","if":"returned","variants":["item-menu"]}
+{"wait":{"focused":"readme.md"},"message":"keyboard focus to reach 'readme.md'","if":"returned","variants":["item-menu"]}
+{"key":"Down","if":"returned","variants":["item-menu"]}
+{"expect":{"focused_pane":true},"message":"focus to return to the pane","timeout_ms":4000,"variants":["background-menu"]}
+{"wait":{"focused":"todo.txt"},"message":"keyboard focus to reach 'todo.txt'","variants":["item-menu"]}
+{"click":{"entry":"todo.txt"},"button":3,"variants":["item-menu"]}
+{"wait":{"menu_items":{}},"message":"the context menu for 'todo.txt'","variants":["item-menu"]}
+{"wait":{"present":{"menu_item":"Customize…"}},"message":"the menu item 'Customize…'","variants":["item-menu"]}
+{"settle":{"menu_item":"Customize…"},"variants":["item-menu"]}
+{"click":{"menu_item":"Customize…"},"variants":["item-menu"]}
+{"wait":{"menu_items":null},"message":"the menu to close","variants":["item-menu"]}
+{"wait":{"dialog":true},"message":"a dialog to appear","variants":["item-menu"]}
+{"expect":{"present":{"role":"button","name":"Custom color…","within":{"dialog":true}}},"message":"the custom color button has no accessible name","as":"custom","variants":["item-menu"]}
+{"click":{"role":"button","name":"Custom color…","within":{"dialog":true}},"if":"custom","variants":["item-menu"]}
+{"wait":{"present":{"role":"dialog","name":"Custom File Color"}},"message":"the custom color dialog","if":"custom","variants":["item-menu"]}
+{"click":{"role":"button","name":"Cancel","within":{"role":"dialog","name":"Custom File Color"}},"if":"custom","variants":["item-menu"]}
+{"wait":{"all":[{"absent":{"role":"dialog","name":"Custom File Color"}},{"dialog":true}]},"message":"Customize to remain open","if":"custom","variants":["item-menu"]}
+{"expect":{"focused_widget":"Custom color…"},"message":"after Cancel: focus is on","if":"custom","variants":["item-menu"]}
+{"key":"Escape","variants":["item-menu"]}
+{"expect":{"dialog":null},"message":"one Escape to close Customize","timeout_ms":4000,"as":"reclosed","variants":["item-menu"]}
+{"key":"Escape","unless":"reclosed","variants":["item-menu"]}
+{"wait":{"dialog":null},"message":"a second Escape to close Customize","unless":"reclosed","variants":["item-menu"]}
+{"expect":{"focused":"todo.txt"},"message":"focus to return to 'todo.txt'","timeout_ms":4000,"as":"returned_again","variants":["item-menu"]}
+{"select":{"entry":"todo.txt"},"unless":"returned_again","variants":["item-menu"]}
+{"wait":{"focused":"todo.txt"},"message":"keyboard focus to reach 'todo.txt'","unless":"returned_again","variants":["item-menu"]}

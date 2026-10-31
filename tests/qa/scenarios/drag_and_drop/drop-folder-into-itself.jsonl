@@ -1,0 +1,7 @@
+{"scenario":"drop-folder-into-itself","modes":["columns","icons","list"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.9,"icons":0.9,"list":0.9},"quality":{"impact":5,"coverage":3,"criticality":4,"diagnostic":4,"score":42,"note":"Folder dropped on itself is a no-op in all three views; drop_filters_self pins the logic, Icons and List drops only checked here"}}
+{"fs":{"path":".","remember":"before"}}
+{"select":{"entry":"documents"}}
+{"drag":{"from":{"entry":"documents"},"to":{"entry":"documents"}}}
+{"wait":{"entry":"documents"},"message":"the entry 'documents' to appear"}
+{"fs":{"path":".","unchanged":"before"},"timeout_ms":0,"message":"a folder must not be moved inside itself"}
+{"fs":{"path":"documents/notes.txt","exists":true},"timeout_ms":0}

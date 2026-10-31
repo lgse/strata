@@ -1,0 +1,16 @@
+{"scenario":"column-autofit-stays-inside","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.8},"quality":{"impact":2,"coverage":3,"criticality":4,"diagnostic":4,"score":28,"note":"column autofit and inward/outward drag keep saved width inside the window; oversized-column-width-fits covers only the saved-pref clamp, so the autofit/drag routes are unique"}}
+{"fs":{"path":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx","write":""}}
+{"wait":{"entry":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"},"message":"the entry 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' to appear"}
+{"remember":{"pane":null},"as":"column"}
+{"remember":{"window":true},"as":"window"}
+{"note":"number","expr":{"ceil":{"divide":[{"minus":[{"of":{"kept":"window"},"get":"right"},{"of":{"kept":"column"},"get":"x"}]},{"divide":[{"of":{"kept":"column"},"get":"width"},300]}]}},"as":"area"}
+{"click":{"kept":"column"},"at":[-3,"50%"],"count":2}
+{"note":"number","expr":{"pref":"browser_column_width","default":0},"until":[{"op":">","than":300}],"until_found":true,"message":"autofit to save the fitted width","as":"fitted"}
+{"expect":{"compare":{"left":"$fitted","op":"<=","right":"$area"}},"message":"autofit saved $fitted, wider than the browser area ($area unscaled px)"}
+{"sleep":600}
+{"drag":{"from":{"point":[{"of":{"pane":null},"at":-3},{"of":{"kept":"column"},"at":"50%"}]},"to":{"point":[{"of":{"pane":null},"at":-3,"plus":-200},{"of":{"kept":"column"},"at":"50%"}]}}}
+{"note":"number","expr":{"pref":"browser_column_width","default":0},"until":[{"op":"<","than":"$fitted"},{"op":"!=","than":0}],"until_found":true,"message":"the inward drag to save a narrower width","as":"narrowed"}
+{"sleep":600}
+{"drag":{"from":{"point":[{"of":{"pane":null},"at":-3},{"of":{"kept":"column"},"at":"50%"}]},"to":{"point":[{"of":{"kept":"window"},"at":"end+300"},{"of":{"kept":"column"},"at":"50%"}]}}}
+{"note":"number","expr":{"pref":"browser_column_width","default":0},"until":[{"op":">","than":"$narrowed"},{"op":"!=","than":0}],"until_found":true,"message":"the outward drag to save a wider width","as":"dragged"}
+{"expect":{"compare":{"left":"$dragged","op":"<=","right":"$area"}},"message":"the drag saved $dragged, wider than the browser area ($area unscaled px)"}

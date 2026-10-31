@@ -12,8 +12,8 @@ use super::{
 };
 use crate::{
     adapters::gio_file_for_location,
-    model::{FileEntry, Location, SortDirection, SortKey},
-    services::{ActionHandle, ArchiveFormat, InvocationSource},
+    model::{ActionInput, FileEntry, Location, SortDirection, SortKey},
+    services::{ActionCatalog, ActionHandle, ArchiveFormat, InvocationSource},
 };
 
 pub(crate) use super::transfer::ConflictFocus;
@@ -88,14 +88,20 @@ impl TypedEntry {
 }
 
 impl BrowserView {
+    /// 10xer falls back to the item under the cursor; the default map acts on
+    /// the selection only, as its Copy and Delete do.
     pub fn command_targets(&self) -> Vec<FileEntry> {
+        let tenxer = crate::ui::preferences::PreferenceManager::shared().tenxer_mode();
         if let Some(results) = self.selected_search_results() {
-            if !results.is_empty() {
+            if !results.is_empty() || !tenxer {
                 return results;
             }
             return self.selected_search_result().into_iter().collect();
         }
         self.state.sync_mode_selection();
+        if !tenxer {
+            return self.state.browser.transfer_entries();
+        }
         self.focused_listing_depth()
             .map(|depth| self.state.browser.command_entries(depth))
             .unwrap_or_default()
@@ -346,6 +352,26 @@ impl BrowserView {
     }
 
     pub(crate) fn numbered_actions(&self) -> NumberedActions {
+        self.actions_for_targets(ActionCatalog::numbered)
+    }
+
+    /// The targets and the action at `index` in Settings → Actions' order,
+    /// when that action can run on them.
+    pub(crate) fn listed_action(
+        &self,
+        index: usize,
+    ) -> Option<(NumberedActions, Rc<ActionHandle>)> {
+        let numbered = self.actions_for_targets(|catalog, inputs| {
+            catalog.listed(index, inputs).into_iter().collect()
+        });
+        let action = numbered.actions.first().cloned()?;
+        Some((numbered, action))
+    }
+
+    fn actions_for_targets(
+        &self,
+        choose: impl FnOnce(&ActionCatalog, &[ActionInput]) -> Vec<Rc<ActionHandle>>,
+    ) -> NumberedActions {
         let entries = self.command_targets();
         let targets = entries.iter().map(|entry| entry.location.clone()).collect();
         let parent = self
@@ -362,7 +388,7 @@ impl BrowserView {
         let actions = if inputs.is_empty() {
             Vec::new()
         } else {
-            crate::ui::actions::shared().catalog().numbered(&inputs)
+            choose(&crate::ui::actions::shared().catalog(), &inputs)
         };
         NumberedActions {
             targets,
@@ -406,10 +432,14 @@ impl BrowserView {
             return None;
         }
         let locations: Vec<Location> = entries.iter().map(|entry| entry.location.clone()).collect();
+        let administrator = locations.iter().any(Location::is_administrator);
         let files: Vec<_> = locations.iter().map(gio_file_for_location).collect();
         let folder = self.state.browser.active_location();
         let state = Rc::downgrade(&self.state);
         Some(glib::MainContext::default().spawn_local(async move {
+            if administrator {
+                return report(super::desktop::ADMINISTRATOR_OPEN_REFUSAL);
+            }
             let unchanged = || {
                 current()
                     && state.upgrade().is_some_and(|state| {
@@ -464,9 +494,9 @@ impl BrowserView {
         Some((location, name))
     }
 
-    pub fn change_keyboard_pin(&self, pin: bool) -> PinChange {
+    pub fn change_keyboard_pin(&self, pin: bool, done: impl FnOnce(PinChange) + 'static) {
         let Some((location, name)) = self.keyboard_pin_folder() else {
-            return PinChange::Nothing;
+            return done(PinChange::Nothing);
         };
         let status = if is_trash_location(&location) {
             PinStatus::Unavailable
@@ -477,27 +507,38 @@ impl BrowserView {
                 .as_ref()
                 .map_or(PinStatus::Unavailable, |handler| handler(&location))
         };
-        match (pin, status) {
+        let change = match (pin, status) {
             (true, PinStatus::Available) => {
                 let handler = self.state.pin_handler.borrow().clone();
                 let Some(handler) = handler else {
-                    return PinChange::Refused(name);
+                    return done(PinChange::Refused(name));
                 };
-                handler(location.clone(), name.clone());
-                PinChange::Pinned(location, name)
+                handler(
+                    location.clone(),
+                    name.clone(),
+                    Box::new(move |saved| {
+                        done(if saved {
+                            PinChange::Pinned(location, name)
+                        } else {
+                            PinChange::Refused(name)
+                        });
+                    }),
+                );
+                return;
             }
             (true, PinStatus::Pinned) => PinChange::AlreadyPinned(name),
             (true, PinStatus::Unavailable) => PinChange::Refused(name),
             (false, PinStatus::Pinned) => {
                 let handler = self.state.unpin_handler.borrow().clone();
                 let Some(handler) = handler else {
-                    return PinChange::NotPinned(name);
+                    return done(PinChange::NotPinned(name));
                 };
                 handler(&location);
                 PinChange::Unpinned(name)
             }
             (false, _) => PinChange::NotPinned(name),
-        }
+        };
+        done(change);
     }
 
     pub fn transfer_targets(&self, moving: bool) -> Result<Vec<FileEntry>, &'static str> {

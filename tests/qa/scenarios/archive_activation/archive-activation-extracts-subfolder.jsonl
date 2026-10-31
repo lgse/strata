@@ -1,0 +1,18 @@
+{"scenario":"archive-activation-extracts-subfolder","modes":["list"],"layout":"us","setup":[{"fs":{"path":"activation.zip","zip":[["activated.txt",{"text":"extracted by activation\n","date_time":[2001,9,9,1,46,40],"mode":"100755"}],["nested/second.txt",{"text":"second member\n","date_time":[2001,9,9,1,46,40],"mode":"100755"}]]}},{"fs":{"path":"activated.txt","write":"pre-existing\n"}}],"quality":{"impact":4,"coverage":3,"criticality":4,"diagnostic":3,"score":34,"note":"Return in List and a repeat Extract here spill a multi-root zip into fresh subfolders; double-click route is archive-double-click-extracts-subfolder"}}
+{"wait":{"entry":"activation.zip"},"message":"the fixture listed with its archive"}
+{"select_with_keyboard":"activation.zip"}
+{"key":"Return"}
+{"fs":{"path":"activation/activated.txt","text":"extracted by activation\n"},"message":"Return on a multi-root archive to bundle its members in 'activation'"}
+{"fs":{"path":"activation/activated.txt","executable":true},"timeout_ms":0}
+{"fs":{"path":"activation/activated.txt","mtime":{"local":[2001,9,9,1,46,40]}},"timeout_ms":0}
+{"fs":{"path":"activation/nested/second.txt","text":"second member\n"},"timeout_ms":0}
+{"fs":{"path":"activated.txt","text":"pre-existing\n"},"timeout_ms":0,"message":"the same-named file beside the archive must be untouched"}
+{"fs":{"path":"nested","exists":false},"timeout_ms":0,"message":"no member may spill beside the archive"}
+{"wait":{"all":[{"dialog":null},{"pane":"$root"},{"selected":["activation"],"dir":"$root"},{"focused":"activation"}]},"message":"the new folder 'activation' to be selected and focused without navigating"}
+{"fs":{"path":"activation/activated.txt","write":"keep existing edits\n"}}
+{"click":{"entry":"activation.zip"},"button":3}
+{"wait":{"present":{"menu_item":"Extract here"}},"message":"the context menu item 'Extract here' for 'activation.zip'"}
+{"activate":{"role":"menu item","name":"Extract here"}}
+{"fs":{"path":"activation (1)/activated.txt","text":"extracted by activation\n"},"message":"Extract here to bundle the members in a fresh 'activation (1)'"}
+{"fs":{"path":"activation/activated.txt","text":"keep existing edits\n"},"timeout_ms":0,"message":"a repeat extraction must not touch the earlier folder"}
+{"wait":{"all":[{"dialog":null},{"selected":["activation (1)"],"dir":"$root"},{"focused":"activation (1)"}]},"message":"the new folder 'activation (1)' to be selected and focused"}

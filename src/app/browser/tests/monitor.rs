@@ -75,6 +75,7 @@ fn filesystem_notifications_update_the_affected_column_incrementally() {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
         recent_uri: None,
     }));
 
@@ -405,6 +406,7 @@ impl FileSource for DepartingSource {
                 request_id: request.id,
                 message: "No such file or folder".into(),
                 refused: false,
+                denied: false,
             });
         } else {
             self.identities.stamp(&request, &emit);

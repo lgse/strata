@@ -41,7 +41,7 @@ switch, or select **Remove**, on the same page.
 
 The provider's messages follow the inherited system locale (`LC_ALL`,
 `LC_MESSAGES`, then `LANG`) with English fallback, independently of Strata's
-language preference. `messages.json` includes all twelve Strata languages.
+language preference. `messages.json` includes all thirteen Strata languages.
 Filenames and protocol identifiers are never translated.
 
 ## Selection and failure behavior
@@ -83,8 +83,7 @@ and selections, missing and failing launches, the new session, executable
 lookup and ownership checks, locale interpolation and framed subprocess I/O.
 They launch small stand-in programs, never LocalSend. The `Integrations`
 workflow runs them whenever files under `integrations/` change. Strata's
-**Send to…** menu routing itself is covered by the file provider and KDE Connect
-E2E scenarios.
+**Send to…** menu routing itself is covered by the file provider QA scenarios.
 
 To try it with the real app, install the provider, select a few disposable
 files and a folder, choose **Send to… ▸ LocalSend**, and

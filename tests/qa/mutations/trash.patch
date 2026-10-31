@@ -1,0 +1,13 @@
+diff --git a/src/ui/browser/trash.rs b/src/ui/browser/trash.rs
+index 1c4c796c..addabb4c 100644
+--- a/src/ui/browser/trash.rs
++++ b/src/ui/browser/trash.rs
+@@ -859,7 +859,7 @@ impl ViewState {
+             super::fly_to_trash::prepare_fly_to_trash(&source, entries.iter(), &trash_button)
+         });
+         self.pending_file_operation_animation.replace(animation);
+-        self.browser.delete(entries, false);
++        self.browser.delete(entries, true);
+         self.browser.focus_active();
+     }
+ 

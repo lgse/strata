@@ -1,0 +1,18 @@
+{"scenario":"permanent-delete-symlinked-parent","modes":["columns","list"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.0,"list":1.1},"quality":{"impact":5,"coverage":3,"criticality":4,"diagnostic":4,"score":42,"note":"Permanent delete inside a symlinked folder keeps link and target; fs logic unit-tested in deletion.rs, GUI alias pane path is not"}}
+{"fs":{"path":"documents-alias","symlink":"$fixture/documents"}}
+{"select":{"entry":"documents-alias"},"modes":["columns"]}
+{"click":{"entry":"documents-alias"},"count":2,"modes":["list"]}
+{"wait":{"directory":"documents-alias"},"message":"the browser to be working in 'documents-alias'"}
+{"settle":{"pane":"documents-alias"}}
+{"wait":{"directory":"documents-alias"},"message":"the browser to be working in 'documents-alias'"}
+{"settle":{"pane":"documents-alias"}}
+{"select":{"entry":"notes.txt","dir":"documents-alias"}}
+{"key":"shift+Delete"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"click":{"dialog_button":"Permanently delete 1 item"}}
+{"wait":{"any":[{"file":{"path":"$fixture/documents/notes.txt","exists":false}},{"dialog":"Completed with errors"}]},"message":"the delete operation to finish"}
+{"fs":{"path":"documents/notes.txt","exists":false},"timeout_ms":0}
+{"wait":{"entry_gone":"notes.txt","dir":"documents-alias"},"message":"the entry 'notes.txt' to disappear"}
+{"wait":{"dialog":null},"message":"the confirmation dialog to close"}
+{"fs":{"path":"documents-alias","is":"symlink"},"timeout_ms":0}
+{"fs":{"path":"documents","is":"dir"},"timeout_ms":0}

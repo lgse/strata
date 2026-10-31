@@ -1,0 +1,14 @@
+{"scenario":"properties-unreadable-folder-explains","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"setup":[{"fs":{"path":".","populate":{"sized-folder":{"top.txt":"abc","nested":{"child.txt":"12345",".hidden.txt":"1234567"},".hidden":{"visible":{"file.txt":"123"}}}}}},{"fs":{"path":"sized-folder/nested/loop","symlink":"$fixture/sized-folder"}},{"fs":{"path":"sized-folder/outside","symlink":"$fixture/todo.txt"}}],"teardown":[{"fs":{"path":"sized-folder/.hidden","chmod":"755"}}],"cost":{"columns":0.6},"quality":{"impact":3,"coverage":2,"criticality":3,"diagnostic":4,"score":14,"note":"Single-folder Properties shows partial totals and incomplete warning for unreadable child; selection-properties-aggregate-warnings true-context-menu asserts the same warning"}}
+{"fs":{"path":"sized-folder/.hidden","chmod":"000"}}
+{"click":{"entry":"sized-folder"},"button":3}
+{"wait":{"menu_items":{}},"message":"the context menu for 'sized-folder'"}
+{"wait":{"present":{"menu_item":"Properties"}},"message":"the menu item 'Properties'"}
+{"settle":{"menu_item":"Properties"}}
+{"click":{"menu_item":"Properties"}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"wait":{"absent":{"named":"Calculating folder size","within":{"dialog":true}}},"message":"the measurement to finish"}
+{"expect":{"present":{"role":"label","name":"≥ 15 B","within":{"dialog":true}}}}
+{"expect":{"present":{"role":"label","name":"≥ 4 files, ≥ 1 folder","within":{"dialog":true}}}}
+{"wait":{"present":{"named":"Totals are incomplete.\nSome folders or entries couldn't be read.","within":{"dialog":true}}},"message":"the incomplete measurement warning"}
+{"expect":{"present":{"named":"Totals are incomplete.\nSome folders or entries couldn't be read.","within":{"dialog":true}}}}

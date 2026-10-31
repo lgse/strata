@@ -1,0 +1,35 @@
+{"scenario":"empty-directory-focus-and-tab-order","modes":["columns","icons","list"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"keyboard","vars":{"id":"keyboard"}},{"id":"pointer","vars":{"id":"pointer"}}],"cost":{"columns-keyboard":0.6,"icons-keyboard":0.6,"list-keyboard":0.6,"columns-pointer":0.7,"icons-pointer":0.7,"list-pointer":0.8},"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":4,"score":49,"note":"Empty folder pane takes focus and Tab/Shift+Tab leave and return it, via keyboard and pointer; no other scenario or unit test checks it"}}
+{"fs":{"path":"empty","mkdir":true},"variants":["keyboard"]}
+{"key":"F5","variants":["keyboard"]}
+{"wait":{"entry":"empty"},"message":"the entry 'empty' to appear","variants":["keyboard"]}
+{"select_with_keyboard":"empty","variants":["keyboard"]}
+{"key":"Return","variants":["keyboard"]}
+{"wait":{"directory":"empty"},"message":"the browser to be working in 'empty'","variants":["keyboard"]}
+{"settle":{"pane":"empty"},"variants":["keyboard"]}
+{"wait":{"focused_widget":"empty"},"message":"focus on the empty directory's pane surface","timeout_ms":5000,"variants":["keyboard"]}
+{"remember":{"focused_widget":true},"as":"surface","variants":["keyboard"]}
+{"expect":{"description":{"target":{"remembered":"surface"},"text":"This directory is empty"}},"variants":["keyboard"]}
+{"key":"Tab","variants":["keyboard"]}
+{"wait":{"focus_outside":{"remembered":"surface"}},"message":"Tab to leave the empty pane","timeout_ms":5000,"variants":["keyboard"]}
+{"key":"shift+Tab","variants":["keyboard"]}
+{"wait":{"focused_widget_is":{"remembered":"surface"}},"message":"Shift+Tab to return to the empty pane","timeout_ms":5000,"variants":["keyboard"]}
+{"key":"shift+Tab","variants":["keyboard"]}
+{"wait":{"focus_outside":{"remembered":"surface"}},"message":"Shift+Tab to reach the control before the empty pane","timeout_ms":5000,"variants":["keyboard"]}
+{"fs":{"path":"empty","mkdir":true},"variants":["pointer"]}
+{"key":"F5","variants":["pointer"]}
+{"wait":{"entry":"empty"},"message":"the entry 'empty' to appear","variants":["pointer"]}
+{"remember":{"entry":"empty"},"as":"listed","variants":["pointer"]}
+{"flag":{"replaced":{"target":{"entry":"empty"},"since":"listed"}},"timeout_ms":1000,"as":"rebuilt","variants":["pointer"]}
+{"click":{"entry":"empty"},"modes":["columns"],"variants":["pointer"]}
+{"click":{"entry":"empty"},"count":2,"modes":["icons","list"],"variants":["pointer"]}
+{"wait":{"directory":"empty"},"message":"the browser to be working in 'empty'","variants":["pointer"]}
+{"settle":{"pane":"empty"},"variants":["pointer"]}
+{"wait":{"focused_widget":"empty"},"message":"focus on the empty directory's pane surface","timeout_ms":5000,"variants":["pointer"]}
+{"remember":{"focused_widget":true},"as":"surface","variants":["pointer"]}
+{"expect":{"description":{"target":{"remembered":"surface"},"text":"This directory is empty"}},"variants":["pointer"]}
+{"key":"Tab","variants":["pointer"]}
+{"wait":{"focus_outside":{"remembered":"surface"}},"message":"Tab to leave the empty pane","timeout_ms":5000,"variants":["pointer"]}
+{"key":"shift+Tab","variants":["pointer"]}
+{"wait":{"focused_widget_is":{"remembered":"surface"}},"message":"Shift+Tab to return to the empty pane","timeout_ms":5000,"variants":["pointer"]}
+{"key":"shift+Tab","variants":["pointer"]}
+{"wait":{"focus_outside":{"remembered":"surface"}},"message":"Shift+Tab to reach the control before the empty pane","timeout_ms":5000,"variants":["pointer"]}

@@ -508,6 +508,11 @@ fn perform_install(
     cancel: &InstallCancel,
     progress: &Sender<UpdateInstall>,
 ) -> Result<(), InstallStop> {
+    if !crate::build_info::updater_enabled() {
+        return Err(InstallStop::Failed(crate::i18n::tr(
+            "In-app updates are disabled in this build.",
+        )));
+    }
     ensure_self_managed(InstallSource::detect())?;
     match update_method() {
         UpdateMethod::InPlace => {}

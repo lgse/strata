@@ -1,0 +1,34 @@
+{"scenario":"tenxer-footer-rename-refuses-conflicts","modes":["columns","icons","list"],"prefs":{"tenxer_mode":true,"type_to_search":false,"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.6,"icons":1.6,"list":1.6},"quality":{"impact":5,"coverage":4,"criticality":4,"diagnostic":3,"score":59,"note":"Footer r rename onto existing name keeps prompt and both files; only scenario on the tenxer footer r route (rename-onto-existing-rejected is columns F2 dialog)"}}
+{"select_with_keyboard":"todo.txt"}
+{"key":"r"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"remember":{"field":true},"as":"field"}
+{"wait":{"field":{"of":"field","text":"todo.txt"}},"message":"r to fill in the focused name"}
+{"type":"discarded"}
+{"key":"Escape"}
+{"wait":{"not":{"field":{}}},"message":"Esc to close the prompt"}
+{"wait":{"focused":"todo.txt"},"message":"keyboard focus to reach 'todo.txt'"}
+{"key":"F2"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"remember":{"field":true},"as":"field"}
+{"key":"ctrl+a"}
+{"type":"readme.md"}
+{"key":"Return"}
+{"wait":{"present":{"role":"label","name":"“readme.md” already exists"}},"message":"the conflict to keep the prompt open with its reason"}
+{"expect":{"field":{"of":"field","focused":true}}}
+{"fs":{"path":"readme.md","text":"# Fixture\n"},"timeout_ms":0}
+{"key":"ctrl+a"}
+{"type":"done list.txt"}
+{"key":"Return"}
+{"fs":{"path":"done list.txt","is":"file"},"message":"Enter to rename the file"}
+{"fs":{"path":"done list.txt","text":"todo\n"},"timeout_ms":0}
+{"fs":{"path":"todo.txt","exists":false},"timeout_ms":0}
+{"wait":{"focused":"done list.txt"},"message":"keyboard focus to reach 'done list.txt'"}
+{"key":"r"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"type":"clicked"}
+{"click":{"entry":"readme.md","dir":"$root"}}
+{"wait":{"not":{"field":{}}},"message":"a click to end the prompt"}
+{"wait":{"selected":["readme.md"],"dir":"$root"},"message":"the selection to become ['readme.md']"}
+{"fs":{"path":"done list.txt","is":"file"},"timeout_ms":0}
+{"fs":{"path":".","names_without":"clicked"},"timeout_ms":0}

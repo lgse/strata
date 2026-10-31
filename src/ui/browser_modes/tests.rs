@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use gtk::gdk;
 
 fn item_name(item: &glib::Object) -> String {
     item.downcast_ref::<gtk::StringObject>()
@@ -114,8 +115,35 @@ fn typed_entry(name: &str, kind: crate::model::EntryKind) -> FileEntry {
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
         is_hidden: false,
         recent_uri: None,
+    }
+}
+
+#[test]
+fn filtered_file_clicks_never_open_chooser_or_trashed_files() {
+    use ClickCount::{One, Two};
+    use FilteredFileClick::{Ignore, Open, Preview};
+    let local = typed_entry("note.txt", crate::model::EntryKind::File);
+    let trashed = FileEntry {
+        location: Location::uri("trash:///note.txt"),
+        ..local.clone()
+    };
+    for (entry, chooser, previews, files, expected) in [
+        (&local, false, true, One, Open),
+        (&local, false, true, Two, Preview),
+        (&local, false, false, Two, Ignore),
+        (&local, true, true, One, Preview),
+        (&trashed, false, true, One, Preview),
+        (&trashed, false, false, One, Ignore),
+    ] {
+        assert_eq!(
+            filtered_file_click(entry, chooser, previews, files),
+            expected,
+            "{:?} chooser={chooser} previews={previews} files={files:?}",
+            entry.location
+        );
     }
 }
 
@@ -219,4 +247,113 @@ fn icons_column_cap_follows_the_slider_side_of_airy() {
             "{px} px"
         );
     }
+}
+
+fn collection_with_five_items(grid: bool) -> (gtk::Window, gtk::Widget, gtk::MultiSelection) {
+    let model = gtk::StringList::new(&["a", "b", "c", "d", "e"]);
+    let selection = gtk::MultiSelection::new(Some(model));
+    let factory = gtk::SignalListItemFactory::new();
+    factory.connect_setup(|_, object| {
+        let item = object.downcast_ref::<gtk::ListItem>().expect("list item");
+        let label = gtk::Label::new(Some("Item"));
+        label.set_size_request(80, 40);
+        item.set_child(Some(&label));
+    });
+    let view: gtk::Widget = if grid {
+        gtk::GridView::builder()
+            .model(&selection)
+            .factory(&factory)
+            .min_columns(5)
+            .max_columns(5)
+            .build()
+            .upcast()
+    } else {
+        gtk::ListView::new(Some(selection.clone()), Some(factory)).upcast()
+    };
+    let window = gtk::Window::builder()
+        .child(&view)
+        .default_width(600)
+        .default_height(400)
+        .build();
+    window.present();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while view.width() == 0 {
+        glib::MainContext::default().iteration(false);
+        assert!(std::time::Instant::now() < deadline, "view never allocated");
+    }
+    assert!(view.grab_focus());
+    (window, view, selection)
+}
+
+fn press_shift_arrow(view: &gtk::Widget, key: gdk::Key) {
+    let controllers = view.observe_controllers();
+    let shortcut = (0..controllers.n_items())
+        .filter_map(|index| {
+            controllers
+                .item(index)
+                .and_downcast::<gtk::ShortcutController>()
+        })
+        .flat_map(|controller| {
+            (0..controller.n_items())
+                .filter_map(move |index| controller.item(index).and_downcast::<gtk::Shortcut>())
+        })
+        .find(|shortcut| {
+            shortcut
+                .trigger()
+                .and_downcast::<gtk::KeyvalTrigger>()
+                .is_some_and(|trigger| {
+                    trigger.keyval() == key && trigger.modifiers() == gdk::ModifierType::SHIFT_MASK
+                })
+        })
+        .expect("the collection binds Shift+arrow");
+    assert!(shortcut.action().expect("binding action").activate(
+        gtk::ShortcutActionFlags::EXCLUSIVE,
+        view,
+        shortcut.arguments().as_ref(),
+    ));
+}
+
+#[test]
+fn control_click_moves_the_shift_range_origin_to_the_clicked_row() {
+    crate::test_support::gtk_test(
+        "ui::browser_modes::tests::control_click_moves_the_shift_range_origin_to_the_clicked_row",
+        || {
+            for (grid, key) in [(false, gdk::Key::Down), (true, gdk::Key::Right)] {
+                for (moved, extended) in [(false, vec![0, 1, 2, 3]), (true, vec![2, 3])] {
+                    let (window, view, selection) = collection_with_five_items(grid);
+                    let syncing = Cell::new(false);
+                    view.activate_action(
+                        "list.select-item",
+                        Some(&(0u32, false, false).to_variant()),
+                    )
+                    .expect("select the first row");
+                    if let Some(list) = view.downcast_ref::<gtk::ListView>() {
+                        list.scroll_to(2, gtk::ListScrollFlags::FOCUS, None);
+                    } else if let Some(grid) = view.downcast_ref::<gtk::GridView>() {
+                        grid.scroll_to(2, gtk::ListScrollFlags::FOCUS, None);
+                    }
+                    let both = gtk::Bitset::new_empty();
+                    both.add(0);
+                    both.add(2);
+                    selection.set_selection(&both, &gtk::Bitset::new_range(0, 5));
+                    if moved {
+                        move_range_origin(&view, &selection, &syncing, 2);
+                    }
+                    assert_eq!(
+                        bitset_positions(&selection.selection()),
+                        [0, 2],
+                        "grid {grid} moved {moved}"
+                    );
+
+                    press_shift_arrow(&view, key);
+                    assert_eq!(
+                        bitset_positions(&selection.selection()),
+                        extended,
+                        "grid {grid} moved {moved}"
+                    );
+                    window.close();
+                }
+            }
+        },
+    );
 }

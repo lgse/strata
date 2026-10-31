@@ -78,6 +78,8 @@ use deletion::LocalDeleteQueue;
 use deletion::LocalDeleteStep;
 #[cfg(test)]
 use deletion::PinnedEntry;
+#[cfg(test)]
+use deletion::RemovedReporter;
 use deletion::bounded_local_worker_count;
 #[cfg(test)]
 use deletion::ensure_local_delete_target_unchanged;

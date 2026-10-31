@@ -1,0 +1,24 @@
+{"scenario":"shift-after-escape-starts-on-focused","modes":["columns","icons","list"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"no-range","vars":{"range":"no-range","focus":"archive"}},{"id":"had-range","vars":{"range":"had-range","focus":"documents"}}],"cost":{"columns-no-range":0.4,"icons-no-range":0.4,"list-no-range":0.4,"columns-had-range":0.4,"icons-had-range":0.5,"list-had-range":0.5},"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":4,"score":49,"note":"Shift+arrow restarts a range from the focused entry after Escape in three modes and two anchor states; sole GUI guard of that lifecycle path (plain arrows covered by escape-clears-selection-no-navigation), fix 9c4ccd86 (#738) is not unit-tested at GUI level"}}
+{"wait":{"focused":"archive"},"message":"keyboard focus to reach 'archive'"}
+{"wait":{"selected":["archive"],"dir":"$root"},"message":"the selection to become ['archive']"}
+{"key":"shift+Down","modes":["columns"],"variants":["had-range"]}
+{"key":"shift+Right","modes":["icons"],"variants":["had-range"]}
+{"key":"shift+Down","modes":["list"],"variants":["had-range"]}
+{"wait":{"selected":["archive","documents"],"dir":"$root"},"message":"the selection to become ['archive', 'documents']","variants":["had-range"]}
+{"wait":{"focused":"documents"},"message":"keyboard focus to reach 'documents'","variants":["had-range"]}
+{"key":"Escape"}
+{"wait":{"selected":[],"dir":"$root"},"message":"the selection to become []"}
+{"wait":{"focused":"$focus"},"message":"keyboard focus to reach '$focus'"}
+{"key":"shift+Down","modes":["columns"]}
+{"key":"shift+Right","modes":["icons"]}
+{"key":"shift+Down","modes":["list"]}
+{"wait":{"selected":["documents"],"dir":"$root"},"message":"the selection to become ['documents']","variants":["had-range"]}
+{"wait":{"selected":["archive"],"dir":"$root"},"message":"the selection to become ['archive']","variants":["no-range"]}
+{"wait":{"focused":"$focus"},"message":"keyboard focus to reach '$focus'"}
+{"key":"shift+Down","modes":["columns"]}
+{"key":"shift+Right","modes":["icons"]}
+{"key":"shift+Down","modes":["list"]}
+{"wait":{"selected":["documents","pictures"],"dir":"$root"},"message":"the selection to become ['documents', 'pictures']","variants":["had-range"]}
+{"wait":{"focused":"pictures"},"message":"keyboard focus to reach 'pictures'","variants":["had-range"]}
+{"wait":{"selected":["archive","documents"],"dir":"$root"},"message":"the selection to become ['archive', 'documents']","variants":["no-range"]}
+{"wait":{"focused":"documents"},"message":"keyboard focus to reach 'documents'","variants":["no-range"]}

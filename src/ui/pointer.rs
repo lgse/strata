@@ -102,6 +102,20 @@ pub(super) fn hits_list_item_content(row: &gtk::Widget, x: f64, y: f64) -> bool 
     !in_name || hits_item_content(row, x, y)
 }
 
+pub(super) fn hits_scrollbar(surface: &gtk::Widget, x: f64, y: f64) -> bool {
+    let mut current = surface.pick(x, y, gtk::PickFlags::DEFAULT);
+    while let Some(widget) = current {
+        if widget.is::<gtk::Scrollbar>() {
+            return true;
+        }
+        if widget == *surface {
+            return false;
+        }
+        current = widget.parent();
+    }
+    false
+}
+
 pub(super) fn is_background(surface: &gtk::Widget, x: f64, y: f64) -> bool {
     let mut current = surface.pick(x, y, gtk::PickFlags::DEFAULT);
     while let Some(widget) = current {

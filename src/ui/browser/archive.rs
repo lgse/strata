@@ -340,6 +340,7 @@ impl ViewState {
         );
 
         let name_label = form_label(&crate::i18n::tr("Archive name"));
+        crate::ui::accessibility::set_labelled_by(&name_entry, &[name_label.upcast_ref()]);
         body.append(&name_label);
         body.append(&name_entry);
 
@@ -358,6 +359,8 @@ impl ViewState {
 
         let password_label = form_label(&crate::i18n::tr("Password"));
         let confirm_label = form_label(&crate::i18n::tr("Confirm password"));
+        crate::ui::accessibility::set_labelled_by(&password_entry, &[password_label.upcast_ref()]);
+        crate::ui::accessibility::set_labelled_by(&confirm_entry, &[confirm_label.upcast_ref()]);
         let password_fields = gtk::Box::new(gtk::Orientation::Vertical, 6);
         password_fields.append(&password_label);
         password_fields.append(&password_entry);

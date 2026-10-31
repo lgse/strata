@@ -26,7 +26,7 @@ use crate::ui::browser_modes::{ClickActivation, ClickCount};
 use crate::ui::entry_list_model::EntryListModel;
 use crate::ui::keys::{
     self,
-    bindings::{DOWN, UP},
+    bindings::{DOWN, ENTER, UP},
 };
 use crate::ui::motion::{animations_enabled, emphasized_acceleration, emphasized_deceleration};
 use gtk::prelude::*;
@@ -402,9 +402,13 @@ pub(super) struct BoundRow {
 
 #[derive(Clone, Copy)]
 pub(super) enum PendingActivationKind {
-    Standard { preview: bool },
+    Standard {
+        preview: bool,
+    },
     ChooserSearchNavigate,
     RecursiveSearch,
+    /// A filtered file whose single click previews instead of launching.
+    RecursivePreview,
     Mapped,
 }
 
@@ -628,6 +632,7 @@ pub(super) fn refresh_source_filter(column: &ColumnView, browser: &crate::app::B
         &column.selection,
         &column.syncing_selection,
         items,
+        true,
     );
     column
         .search_session
@@ -662,7 +667,7 @@ pub(super) fn prune_missing_search_results(
         if items.len() == results.borrow().len() {
             return;
         }
-        if search::update_results(&model, &results, &selection, &syncing, items) {
+        if search::update_results(&model, &results, &selection, &syncing, items, true) {
             selection_changed();
         }
     });
@@ -1141,10 +1146,13 @@ impl ViewState {
                 // Rebuilt, already-loaded columns receive no finish event to cancel the timer.
                 stop_column_spinner(column);
                 if let Some(message) = snapshot.error.as_deref() {
-                    column.presentation.show_error(&rust_i18n::t!(
-                        "Unable to read this directory\n%{message}",
-                        message = message
-                    ));
+                    column.presentation.show_error(
+                        &rust_i18n::t!(
+                            "Unable to read this directory\n%{message}",
+                            message = message
+                        ),
+                        snapshot.administrator.is_some(),
+                    );
                 } else if snapshot.count == 0 {
                     column.presentation.show_empty();
                 } else {
@@ -1172,6 +1180,9 @@ impl ViewState {
     }
 
     pub(super) fn focus_rebuilt_active_column(&self) {
+        if !crate::ui::focus_navigation::browser_can_take_focus(&self.overlay) {
+            return;
+        }
         let Some(depth) = self.browser.active_depth() else {
             return;
         };
@@ -1349,6 +1360,7 @@ impl ViewState {
 
         let (filter_entry, filter_revealer, filter_button) =
             crate::ui::browser_modes::filter_controls("Filter this pane (%{keys})");
+        let enter_target = crate::ui::enter_target::EnterTarget::new(&filter_entry);
         let weak_self = Rc::downgrade(self);
         filter_button.connect_toggled(move |button| {
             if button.is_active()
@@ -1363,10 +1375,10 @@ impl ViewState {
         });
         header_actions.append(&filter_button);
         if depth > 0 {
-            let close = gtk::Button::builder()
-                .tooltip_text(crate::i18n::tr("Close this pane"))
-                .build();
+            let close_label = crate::i18n::tr("Close this pane");
+            let close = gtk::Button::builder().tooltip_text(&close_label).build();
             close.set_child(Some(&crate::assets::chrome_icon(crate::assets::icons::X)));
+            crate::ui::accessibility::set_label(&close, &close_label);
             crate::ui::controls::pane_header_action(&close);
             let weak_browser = Rc::downgrade(&self.browser);
             close.connect_clicked(move |_| {
@@ -1393,6 +1405,9 @@ impl ViewState {
         column.append(&filter_revealer);
         let not_responding = super::not_responding_notice();
         column.append(&not_responding);
+        if depth == 0 && location.is_administrator() {
+            column.append(&super::administrator_notice());
+        }
 
         let entry_count = Rc::new(Cell::new(0));
         let browser_for_model = self.browser.clone();
@@ -1523,11 +1538,13 @@ impl ViewState {
         let syncing_for_search = syncing_selection.clone();
         let filter_query_for_search = filter_query.clone();
         let hits_for_search = hits.clone();
+        let enter_for_search = enter_target.clone();
         let query_binding = bind_filter_query(
             &filter_entry,
             &search_session,
             move |text, scope, restart| {
                 if restart {
+                    enter_for_search.restart();
                     session_for_changed.cancel();
                     let changed = search::update_results(
                         &search_model_for_changed,
@@ -1535,6 +1552,7 @@ impl ViewState {
                         &selection_for_search,
                         &syncing_for_search,
                         Vec::new(),
+                        false,
                     );
                     if changed && let Some(state) = weak_state_for_search.upgrade() {
                         state.notify_search_selection_changed();
@@ -1542,6 +1560,7 @@ impl ViewState {
                 }
                 let query = text.trim().to_string();
                 if query.is_empty() {
+                    enter_for_search.clear();
                     session_for_changed.cancel();
                     // Keep the hidden-file filter installed while swapping back to the directory
                     // model; GTK's synchronous model notifications otherwise leave a stale row.
@@ -1581,6 +1600,9 @@ impl ViewState {
                         &filtered_model_for_search,
                         &model_for_search,
                     );
+                    // The in-place selection is the browser's own; a new query
+                    // only stops it from counting as a pick.
+                    enter_for_search.show_query(&text);
                     apply_filter_query(
                         &filtered_model_for_search,
                         &filter,
@@ -1609,6 +1631,7 @@ impl ViewState {
                 let browser = Rc::downgrade(&state.browser);
                 let weak_state = weak_state_for_search.clone();
                 let hits = hits_for_search.clone();
+                let enter = enter_for_search.clone();
                 let root = path.clone();
                 session_for_changed.update(
                     crate::ui::search_session::SearchInput {
@@ -1650,7 +1673,15 @@ impl ViewState {
                             },
                             recursive: scope.recursive(),
                         });
-                        if search::update_results(&sm, &results, &selection, &syncing, items) {
+                        let keep_selection = !enter.show_query(&batch.query);
+                        if search::update_results(
+                            &sm,
+                            &results,
+                            &selection,
+                            &syncing,
+                            items,
+                            keep_selection,
+                        ) {
                             state.notify_search_selection_changed();
                         }
                         state.refresh_name_highlights();
@@ -1672,6 +1703,7 @@ impl ViewState {
             &recursive_search_active,
             &search_results,
             &hits,
+            &enter_target,
         );
 
         let list = gtk::ListView::new(Some(selection.clone()), Some(factory));
@@ -1694,6 +1726,7 @@ impl ViewState {
         let browser_for_navigation = Rc::downgrade(&self.browser);
         let results_for_navigation = search_results.clone();
         let navigation_state = Rc::downgrade(self);
+        let enter_for_navigation = enter_target.clone();
         keys::on_press(&search_navigation, move |_, press| {
             let filter_active = search_active_for_navigation.get()
                 || !query_for_navigation.borrow().trim().is_empty();
@@ -1707,9 +1740,15 @@ impl ViewState {
             if !activate && !press.is(DOWN) {
                 return glib::Propagation::Proceed;
             }
-            let current = bitset_positions(&selection_for_navigation.selection())
-                .last()
-                .copied();
+            // Right keeps needing a pick: in the field it otherwise moves the caret.
+            let to_top = !activate || press.is(ENTER);
+            let current = if to_top && enter_for_navigation.offers_top() {
+                Some(0)
+            } else {
+                bitset_positions(&selection_for_navigation.selection())
+                    .last()
+                    .copied()
+            };
             if activate {
                 if search_active_for_navigation.get() {
                     return if current.is_some_and(|position| {
@@ -1748,6 +1787,7 @@ impl ViewState {
             if is_recursive {
                 syncing_for_navigation.set(false);
             }
+            enter_for_navigation.pick();
             list_for_navigation.scroll_to(next, gtk::ListScrollFlags::FOCUS, None);
             if let Some(state) = navigation_state.upgrade() {
                 super::BrowserView { state }.keyboard_navigation();
@@ -1765,6 +1805,7 @@ impl ViewState {
         let navigation_state = Rc::downgrade(self);
         keys::on_press(&return_to_filter, move |controller, press| {
             let filter_active = search_active.get() || !query_for_return.borrow().trim().is_empty();
+            let press = &press.untyped();
             if !filter_active || !press.is_any(&[UP, DOWN]) {
                 return glib::Propagation::Proceed;
             }
@@ -1822,6 +1863,20 @@ impl ViewState {
             .build();
         scroll.add_css_class("browser-listing-scroll");
         crate::ui::scrolling::install_autoscroll(&scroll, &self.overlay);
+        let rows_for_visit = bound_rows.clone();
+        let visit_rows: crate::ui::marquee::ItemVisitor = Rc::new(move |visit| {
+            rows_for_visit.borrow_mut().retain(|bound| {
+                let (Some(item), Some(row)) = (bound.item.upgrade(), bound.row.upgrade()) else {
+                    return false;
+                };
+                visit(item.position(), row.upcast_ref());
+                true
+            });
+        });
+        let syncing_for_enter = syncing_selection.clone();
+        enter_target.attach(&list, &selection, &scroll, visit_rows.clone(), move || {
+            syncing_for_enter.get()
+        });
         {
             let timer_source: Rc<RefCell<Option<glib::SourceId>>> = Rc::new(RefCell::new(None));
             scroll.vadjustment().connect_value_changed(move |_| {
@@ -1847,12 +1902,21 @@ impl ViewState {
                 browser.retry_column(depth);
             }
         });
-        let presentation = LoadPresentation::new(&scroll, Some(retry)).with_focus_fallback(
-            &location.display_name(),
-            &list,
-            &self.browser,
-        );
-        let rows_for_marquee = bound_rows.clone();
+        let administrator = gtk::Button::with_label(&crate::i18n::tr("Open as Administrator"));
+        administrator.add_css_class("retry-button");
+        let weak_state = Rc::downgrade(self);
+        administrator.connect_clicked(move |_| {
+            if let Some(state) = weak_state.upgrade()
+                && let Some(location) = state
+                    .browser
+                    .column_snapshot(depth)
+                    .and_then(|snapshot| snapshot.administrator)
+            {
+                state.open_as_administrator(location);
+            }
+        });
+        let presentation = LoadPresentation::new(&scroll, Some(retry), Some(administrator))
+            .with_focus_fallback(&location.display_name(), &list, &self.browser);
         let weak_for_clear = Rc::downgrade(self);
         let returning_to_column = Rc::new(Cell::new(false));
         let returning_for_clear = returning_to_column.clone();
@@ -1860,16 +1924,7 @@ impl ViewState {
         let marquee_targets: Rc<RefCell<Vec<crate::ui::marquee::MarqueeTarget>>> =
             Rc::new(RefCell::new(vec![crate::ui::marquee::MarqueeTarget {
                 selection: selection.clone(),
-                visit_items: Rc::new(move |visit| {
-                    rows_for_marquee.borrow_mut().retain(|bound| {
-                        let (Some(item), Some(row)) = (bound.item.upgrade(), bound.row.upgrade())
-                        else {
-                            return false;
-                        };
-                        visit(item.position(), row.upcast_ref());
-                        true
-                    });
-                }),
+                visit_items: visit_rows,
             }]));
         let marquee = crate::ui::marquee::install(crate::ui::marquee::MarqueeSetup {
             view: list.clone().upcast(),
@@ -1950,6 +2005,30 @@ impl ViewState {
             depth,
             location.clone(),
         );
+        let header_context_click = gtk::GestureClick::new();
+        header_context_click.set_button(3);
+        let open_folder_context = folder_context_trigger.clone();
+        let context_anchor = presentation.stack.downgrade();
+        header_context_click.connect_pressed(move |gesture, _, x, y| {
+            let (Some(header), Some(anchor)) = (gesture.widget(), context_anchor.upgrade()) else {
+                return;
+            };
+            let Some(picked) = header.pick(x, y, gtk::PickFlags::DEFAULT) else {
+                return;
+            };
+            if !is_column_background(&header, &picked) {
+                return;
+            }
+            let Some(point) =
+                header.compute_point(&anchor, &gtk::graphene::Point::new(x as f32, y as f32))
+            else {
+                return;
+            };
+            gesture.set_state(gtk::EventSequenceState::Claimed);
+            open_folder_context(f64::from(point.x()), f64::from(point.y()));
+        });
+        header.add_controller(header_context_click);
+
         let rows_for_context = bound_rows.clone();
         let pick_position = Rc::new(move |picked: &gtk::Widget| {
             let picked = file_row_target(picked.clone())?;

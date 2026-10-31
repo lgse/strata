@@ -181,11 +181,15 @@ fn enter_on_a_video_preview_opens_it_where_it_stopped() {
             settle("the clip", || {
                 preview_has_focus(&fixture) && shows_clip(&fixture, "b.mp4")
             });
-            let media = fixture.preview.media_for_test().expect("video stream");
-            media.play();
-            settle("playback past the first second", || {
-                media.timestamp() > 1_500_000
-            });
+            let playing_video = || {
+                let media = fixture.preview.media_for_test().expect("video stream");
+                media.play();
+                settle("playback past the first second", || {
+                    media.timestamp() > 1_500_000
+                });
+                media
+            };
+            let media = playing_video();
 
             assert!(fixture.press(Key::Return, ModifierType::empty()));
             settle("the 10xer launch", || output.exists());
@@ -199,9 +203,9 @@ fn enter_on_a_video_preview_opens_it_where_it_stopped() {
 
             std::fs::remove_file(&output).expect("reset recorder");
             preferences.set_tenxer_mode(false);
-            media.play();
             assert!(fixture.preview.take_keyboard());
             settle("preview focus", || preview_has_focus(&fixture));
+            let media = playing_video();
             assert!(fixture.press(Key::Return, ModifierType::empty()));
             settle("the default-map launch", || output.exists());
             let recorded = std::fs::read_to_string(&output).expect("recorded arguments");

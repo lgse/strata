@@ -1,0 +1,10 @@
+{"scenario":"disabled-transport-click","modes":["columns"],"prefs":{"single_click_previews":true},"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"audio","vars":{"kind":"audio","name":"sound.wav","control":"Next audio file"},"setup":[{"fs":{"path":"sound.wav","ffmpeg":["-f","lavfi","-i","sine=frequency=440:sample_rate=44100:duration=3","-c:a","pcm_s16le"]}}]},{"id":"video","vars":{"kind":"video","name":"clip.mp4","control":"Next video"},"setup":[{"fs":{"path":"clip.mp4","ffmpeg":["-f","lavfi","-i","color=c=blue:s=320x180:r=24:d=2","-f","lavfi","-i","sine=frequency=440:sample_rate=48000:duration=2","-c:v","libx264","-c:a","aac","-ac","2","-shortest"]}}]}],"cost":{"columns-audio":0.7,"columns-video":0.7},"quality":{"impact":2,"coverage":3,"criticality":4,"diagnostic":4,"score":28,"note":"Click on disabled Next audio/video transport keeps selection; only QA scenario pressing insensitive preview controls"}}
+{"wait":{"entry":"$name","dir":"$root"},"message":"the generated media file"}
+{"select":{"entry":"$name","dir":"$root"}}
+{"wait":{"present":{"role":"button","name":"$control","within":{"preview":true}}},"message":"the media transport"}
+{"expect":{"state":{"target":{"role":"button","name":"$control","within":{"preview":true}},"sensitive":false}}}
+{"click":{"role":"button","name":"$control","within":{"preview":true}}}
+{"settle":{"pane":"$root"}}
+{"expect":{"selected":["$name"],"dir":"$root"}}
+{"expect":{"present":{"role":"button","name":"$control","within":{"preview":true}}}}
+{"expect":{"state":{"target":{"role":"button","name":"$control","within":{"preview":true}},"sensitive":false}}}

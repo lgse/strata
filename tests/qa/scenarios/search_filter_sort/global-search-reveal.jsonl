@@ -1,0 +1,14 @@
+{"scenario":"global-search-reveal","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"setup":[{"fs":{"path":"$home/reveal-parent/zebrafold","mkdir":true,"parents":true}}],"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":4,"score":49,"note":"Global search result menu Open containing folder reveals a folder in Columns, selected and focused; only menu reveal route, Alt+Return is global-search-reveal-visited-list"}}
+{"key":"ctrl+k"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"type":"zebra"}
+{"wait":{"present":{"role":"list item","name_ends_with":["/zebrafold"]}},"message":"the folder to appear in the global search results"}
+{"click":{"role":"list item","name_ends_with":["/zebrafold"]},"button":3}
+{"wait":{"present":{"role":"menu item","name":"Open containing folder"}},"message":"the result's context menu to offer 'Open containing folder'"}
+{"settle":{"role":"menu item","name":"Open containing folder"}}
+{"click":{"role":"menu item","name":"Open containing folder"}}
+{"wait":{"directory":"reveal-parent"},"message":"Open containing folder to reveal the folder in 'reveal-parent' without opening it"}
+{"settle":{"pane":"reveal-parent"}}
+{"wait":{"selected":["zebrafold"],"dir":"reveal-parent"},"message":"the revealed folder to be selected"}
+{"wait":{"focused":"zebrafold"},"message":"keyboard focus to reach the revealed folder"}
+{"expect":{"editable_fields":0},"message":"the search palette to close after revealing from the menu"}

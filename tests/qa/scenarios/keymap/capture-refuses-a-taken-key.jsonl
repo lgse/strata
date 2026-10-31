@@ -1,0 +1,21 @@
+{"scenario":"capture-refuses-a-taken-key","modes":["columns"],"cost":{"columns":1.8},"quality":{"impact":3,"coverage":2,"criticality":3,"diagnostic":4,"score":14,"note":"Ctrl+C on Rename refused naming Copy, capture stays armed, settings.toml untouched; error_finding_blocks_commit pins the page logic"}}
+{"fs":{"path":"$config/strata/settings.toml","keep_bytes":"before"}}
+{"click":{"role":"button","name":"Settings"}}
+{"wait":{"present":{"role":"button","name":"Keyboard settings"}},"message":"Settings to open"}
+{"click":{"role":"button","name":"Keyboard settings"}}
+{"wait":{"present":{"role":"text","name":"Search keybinds"}},"message":"the Keyboard settings page"}
+{"click":{"role":"text","name":"Search keybinds"}}
+{"type":"Rename"}
+{"wait":{"field":{"name":"Search keybinds","text":"Rename"}},"message":"the keybind search to be typed"}
+{"wait":{"present":{"role":"button","name":"Add a key for “Rename”"}},"message":"the search to show the Rename row"}
+{"settle":{"role":"button","name":"Add a key for “Rename”"}}
+{"click":{"role":"button","name":"Add a key for “Rename”"}}
+{"wait":{"focused_widget":"Press the new key for “Rename”"},"message":"the capture for Rename to take focus"}
+{"key":"ctrl+c"}
+{"wait":{"present":{"role":"label","name_matches":"Ctrl\\+C.*“Copy”|“Copy”.*Ctrl\\+C"}},"message":"the refusal under Rename naming Ctrl+C and “Copy”"}
+{"expect":[{"description":{"target":{"role":"button","name":"Press the new key for “Rename”"},"text":{"contains":"“Copy”"}}},{"focused_widget":"Press the new key for “Rename”"},{"not":{"presented":{"role":"button","name":"Remove Ctrl+C from “Rename”","rendered":false}}}],"message":"the refused Ctrl+C to keep the capture waiting, say why, and add no chip"}
+{"fs":{"path":"$config/strata/settings.toml","bytes_of":"before"},"timeout_ms":0,"message":"the refused Ctrl+C must not be saved"}
+{"key":"Escape"}
+{"wait":{"focused_widget":"Add a key for “Rename”"},"message":"Escape to end the capture"}
+{"expect":[{"presented":{"role":"button","name":"Remove F2 from “Rename”"}},{"presented":{"role":"button","name":"Remove Ctrl+R from “Rename”"}},{"not":{"presented":{"role":"button","name":"Remove Ctrl+C from “Rename”","rendered":false}}}],"message":"Rename to keep F2 and Ctrl+R only"}
+{"fs":{"path":"$config/strata/settings.toml","bytes_of":"before"},"timeout_ms":0,"message":"ending the capture must not save anything"}

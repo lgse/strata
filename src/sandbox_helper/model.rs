@@ -5,7 +5,21 @@ use std::{collections::HashMap, fs, io::Read, path::Path};
 use crate::services::{ModelFormat, ModelPreviewStage, model_preview::*};
 
 mod embedded;
-pub(super) use embedded::thumbnail;
+mod gcode;
+
+pub(super) fn thumbnail(
+    input: &Path,
+    format: ModelFormat,
+    width: u32,
+    height: u32,
+    progress: &dyn Fn(ModelPreviewStage),
+) -> Result<Vec<u8>, String> {
+    if format == ModelFormat::Gcode {
+        gcode::thumbnail(input, width, height, progress)
+    } else {
+        embedded::thumbnail(input, format, width, height, progress)
+    }
+}
 use quick_xml::{
     Reader,
     events::{BytesStart, Event},
@@ -53,7 +67,8 @@ fn user_model_message(message: String) -> String {
         | "Model has no visible extent"
         | "External 3MF model references are not supported"
         | "This FreeCAD file has no usable embedded thumbnail"
-        | "This model has no unambiguous usable embedded thumbnail" => message,
+        | "This model has no unambiguous usable embedded thumbnail"
+        | NO_GCODE_THUMBNAIL => message,
         _ if message == triangle_limit_message() => message,
         _ if message.ends_with(" limit exceeded")
             || message.contains(" budget exceeded")
@@ -356,7 +371,7 @@ fn shade(
     width: u32,
     height: u32,
     accent: [u8; 3],
-    surface: [u8; 3],
+    surface: [u8; 4],
     view: ModelView,
     progress: &dyn Fn(ModelPreviewStage),
 ) -> Result<Vec<u8>, String> {
@@ -401,7 +416,9 @@ fn shade(
         })
     };
     let mut pixmap = Pixmap::new(width, height).ok_or("Cannot allocate model preview")?;
-    pixmap.fill(Color::from_rgba8(surface[0], surface[1], surface[2], 255));
+    pixmap.fill(Color::from_rgba8(
+        surface[0], surface[1], surface[2], surface[3],
+    ));
     let mut depths = vec![f32::NEG_INFINITY; (width * height) as usize];
     let mut work = 0u64;
     for face in faces {
@@ -575,7 +592,7 @@ fn render_3mf(
     width: u32,
     height: u32,
     accent: [u8; 3],
-    surface: [u8; 3],
+    surface: [u8; 4],
     view: ModelView,
     progress: &dyn Fn(ModelPreviewStage),
 ) -> Result<RenderedModel, String> {
@@ -633,9 +650,14 @@ fn render_model(
         .map_err(|_| "Invalid model size")?
         .clamp(16, 800);
     let accent = rgb(accent)?;
-    let surface = rgb(surface)?;
+    let surface = if *surface == "transparent" {
+        [0, 0, 0, 0]
+    } else {
+        let [r, g, b] = rgb(surface)?;
+        [r, g, b, 255]
+    };
     match format {
-        ModelFormat::FreeCad => Ok(RenderedModel {
+        ModelFormat::FreeCad | ModelFormat::Gcode => Ok(RenderedModel {
             png: thumbnail(input, format, width, height, progress)?,
             mesh: None,
         }),

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::entry_animation::{
     EntryAnimationTarget, animate, bounds_in_overlay, collect_entry_targets, find_row_by_name,

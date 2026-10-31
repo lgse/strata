@@ -178,9 +178,7 @@ impl PageState {
             .halign(gtk::Align::End)
             .valign(gtk::Align::Center)
             .build();
-        toggle.update_property(&[gtk::accessible::Property::Label(&crate::i18n::tr(
-            "Enabled",
-        ))]);
+        crate::ui::accessibility::set_own_label(&toggle, &crate::i18n::tr("Enabled"));
         let state = self.clone();
         let action_id = action.id().to_owned();
         let anchor = row.clone();
@@ -1326,10 +1324,11 @@ fn editor_page(tabs: &gtk::Notebook, title: &str) -> gtk::Box {
 
 /// Takes English source text and translates it.
 fn label_control(control: &impl IsA<gtk::Widget>, title: &str, description: &str) {
-    control.as_ref().update_property(&[
-        gtk::accessible::Property::Label(&crate::i18n::tr(title)),
-        gtk::accessible::Property::Description(&translate_optional(description)),
-    ]);
+    crate::ui::accessibility::set_own_label(control, &crate::i18n::tr(title));
+    crate::ui::accessibility::set_description(
+        control.upcast_ref::<gtk::Widget>(),
+        Some(&translate_optional(description)),
+    );
 }
 
 fn translate_optional(text: &str) -> String {
@@ -1443,10 +1442,10 @@ fn icon_chooser(selected: &Rc<std::cell::RefCell<Option<String>>>) -> gtk::Box {
         button.set_child(Some(&picker_icon(action_icon(Some(slug)))));
         let icon_name = action_icon_name(slug);
         button.set_tooltip_text(Some(&icon_name));
-        button.update_property(&[gtk::accessible::Property::Label(&rust_i18n::t!(
-            "%{icon} icon",
-            icon = icon_name
-        ))]);
+        crate::ui::accessibility::set_own_label(
+            &button,
+            &rust_i18n::t!("%{icon} icon", icon = icon_name),
+        );
         if let Some(first) = first.as_ref() {
             button.set_group(Some(first));
         } else {

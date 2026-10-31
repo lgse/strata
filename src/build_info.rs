@@ -42,6 +42,26 @@ pub fn build_kind() -> BuildKind {
     }
 }
 
+/// Whether this build includes the in-app updater. Distribution packages turn it
+/// off with `STRATA_UPDATER=disabled`; their package manager delivers updates.
+pub fn updater_enabled() -> bool {
+    #[cfg(test)]
+    if UPDATER_DISABLED_FOR_TEST.load(std::sync::atomic::Ordering::Relaxed) {
+        return false;
+    }
+    !cfg!(strata_updater_disabled)
+}
+
+#[cfg(test)]
+static UPDATER_DISABLED_FOR_TEST: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Process-wide, so only for isolated GTK test processes.
+#[cfg(test)]
+pub(crate) fn disable_updater_for_test() {
+    UPDATER_DISABLED_FOR_TEST.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// The version this build identifies as, for update-channel comparisons.
 ///
 /// Parses [`RELEASE_TAG`] first, since that -- not `Cargo.toml` -- is where

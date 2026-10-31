@@ -248,7 +248,8 @@ fn reveal_locations_survives_a_mount_round_trip() {
     assert!(events.borrow().iter().any(|event| matches!(
         event,
         BrowserEvent::LocationNavigationRejected {
-            error: LocationValidationError::NotMounted(_)
+            error: LocationValidationError::NotMounted(_),
+            ..
         }
     )));
     assert_eq!(browser.active_location(), None);

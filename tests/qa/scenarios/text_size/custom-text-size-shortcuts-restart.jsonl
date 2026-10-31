@@ -1,0 +1,45 @@
+{"scenario":"custom-text-size-shortcuts-restart","modes":["columns"],"prefs":{"text_size":24},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":3.4},"quality":{"impact":3,"coverage":4,"criticality":3,"diagnostic":3,"score":38,"note":"Shortcut and appearance-menu text-size changes persist, plus typed numeric size surviving restart and ctrl+= during rename; shortcut mapping is unit-tested, pref persistence is covered elsewhere"}}
+{"select":{"entry":"todo.txt"}}
+{"key":"ctrl+="}
+{"wait":{"pref":{"key":"text_size","value":25}},"message":"zoom in to persist a numeric size"}
+{"key":"ctrl+-"}
+{"wait":{"pref":{"key":"text_size","value":24}},"message":"zoom out to restore the custom size"}
+{"key":"ctrl+0"}
+{"wait":{"pref":{"key":"text_size","value":13}},"message":"reset to the default size"}
+{"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open"}
+{"wait":{"present":{"role":"button","name":"Increase text size (Ctrl++)"}},"message":"appearance text-size control Increase text size (Ctrl++)"}
+{"click":{"role":"button","name":"Increase text size (Ctrl++)"}}
+{"wait":{"pref":{"key":"text_size","value":14}},"message":"appearance text-size control to persist 14px"}
+{"wait":{"present":{"role":"button","name":"Decrease text size (Ctrl+−)"}},"message":"appearance text-size control Decrease text size (Ctrl+−)"}
+{"click":{"role":"button","name":"Decrease text size (Ctrl+−)"}}
+{"wait":{"pref":{"key":"text_size","value":13}},"message":"appearance text-size control to persist 13px"}
+{"wait":{"present":{"role":"button","name":"Decrease text size (Ctrl+−)"}},"message":"appearance text-size control Decrease text size (Ctrl+−)"}
+{"click":{"role":"button","name":"Decrease text size (Ctrl+−)"}}
+{"wait":{"pref":{"key":"text_size","value":12}},"message":"appearance text-size control to persist 12px"}
+{"wait":{"present":{"role":"button","name":"12 px"}},"message":"appearance text-size control 12 px"}
+{"click":{"role":"button","name":"12 px"}}
+{"wait":{"pref":{"key":"text_size","value":13}},"message":"appearance text-size control to persist 13px"}
+{"key":"Escape"}
+{"key":"F2"}
+{"wait":{"present":{"role":"text","name":"Rename"}},"message":"inline rename editor"}
+{"remember":{"role":"text","name":"Rename"},"as":"rename"}
+{"key":"ctrl+="}
+{"wait":{"pref":{"key":"text_size","value":14}},"message":"zoom while renaming without submitting the editor"}
+{"expect":{"alive":"rename"}}
+{"key":"Escape"}
+{"fs":{"path":"todo.txt","exists":true},"timeout_ms":0}
+{"activate":{"role":"button","name":"Settings"}}
+{"wait":{"present":{"role":"button","name":"Appearance settings"}},"message":"appearance settings"}
+{"activate":{"role":"button","name":"Appearance settings"}}
+{"wait":{"presented":{"role":"spin button","name":"Text size in pixels"}},"message":"numeric text size control"}
+{"reveal_control":{"role":"spin button","name":"Text size in pixels"}}
+{"click":{"role":"spin button","name":"Text size in pixels"}}
+{"key":"ctrl+a"}
+{"type":"27"}
+{"key":"Return"}
+{"wait":{"pref":{"key":"text_size","value":27}},"message":"an arbitrary typed text size to persist"}
+{"restart":true}
+{"expect":{"pref":{"key":"text_size","value":27}}}
+{"select":{"entry":"todo.txt"}}
+{"key":"ctrl+="}
+{"wait":{"pref":{"key":"text_size","value":28}},"message":"restart to load the exact custom size"}

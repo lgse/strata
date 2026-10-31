@@ -1,0 +1,19 @@
+{"scenario":"tenxer-open-with-fill-launches-on-accept","modes":["columns"],"prefs":{"tenxer_mode":true,"type_to_search":false,"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"setup":[{"fs":{"path":"$data/applications","mkdir":true}},{"fs":{"path":"$environment/record-files","write":"#!/bin/sh\nprintf \"%s\\n\" \"$$@\" > \"$environment/opened-files\"\n"}},{"fs":{"path":"$environment/record-files","chmod":"755"}},{"fs":{"path":"$data/applications/strata-review.desktop","write":"[Desktop Entry]\nType=Application\nName=Review Text Viewer\nExec=$environment/record-files %U\nMimeType=text/plain;inode/directory;\nNoDisplay=false\n"}},{"fs":{"path":"$config/mimeapps.list","write":"[Default Applications]\ntext/plain=strata-review.desktop;\ninode/directory=strata-review.desktop;\n[Added Associations]\ntext/plain=strata-review.desktop;\ninode/directory=strata-review.desktop;\n"}}],"cost":{"columns":1.0},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"10x O-key chooser: Esc launches nothing, Return sends the folder+file fill once; mixed-types covers only the menu route"}}
+{"select_with_keyboard":"documents"}
+{"key":"space"}
+{"select_with_keyboard":"todo.txt"}
+{"key":"space"}
+{"select_with_keyboard":"readme.md"}
+{"key":"O"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"expect":{"mentions":{"target":{"dialog":true},"text":"Review Text Viewer"}}}
+{"key":"Escape"}
+{"wait":{"dialog":null},"message":"Esc to cancel the chooser"}
+{"fs":{"path":"$environment/opened-files","exists":false},"timeout_ms":0,"message":"cancelling launches nothing"}
+{"key":"O"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"key":"Return"}
+{"fs":{"path":"$environment/opened-files","lines":2},"message":"the application to receive the whole fill"}
+{"fs":{"path":"$environment/opened-files","opened":["$fixture/documents","$fixture/todo.txt"]},"timeout_ms":0}
+{"fs":{"path":"$config/mimeapps.list","text":"[Default Applications]\ntext/plain=strata-review.desktop;\ninode/directory=strata-review.desktop;\n[Added Associations]\ntext/plain=strata-review.desktop;\ninode/directory=strata-review.desktop;\n"},"timeout_ms":0}
+{"wait":{"dialog":null},"message":"the chooser to close"}

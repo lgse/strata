@@ -1,0 +1,25 @@
+{"scenario":"view-folders-open-new-tabs","modes":["columns","icons","list"]}
+{"wait":{"entries":{"contains":["documents","pictures","archive"]},"dir":"$root"},"message":"the original file view lists folders to drag"}
+{"drag":{"from":{"entry":"documents","dir":"$root"},"to":{"role":"button","name":"New tab"}}}
+{"wait":{"all":[{"directory":"documents"},{"state":{"target":{"role":"page tab","name":"documents"},"selected":true}}]},"message":"dropping a folder on plus opens it in a new tab with only one tab"}
+{"fs":{"path":"documents/notes.txt","text":"notes\n"},"message":"opening the folder leaves its files in place"}
+{"key":"ctrl+shift+1"}
+{"wait":{"state":{"target":{"role":"page tab","name":"$root"},"selected":true}},"message":"the original tab remains available"}
+{"drag":{"from":{"entry":"pictures","dir":"$root"},"to":{"role":"page tab","name":"documents"},"to_at":[2,"50%"]}}
+{"wait":{"all":[{"directory":"pictures"},{"state":{"target":{"role":"page tab","name":"pictures"},"selected":true}}]},"message":"a folder dropped over a tab opens a new tab at the insertion point"}
+{"fs":{"path":"pictures","exists":true},"message":"the dragged folder is not moved out of its original directory"}
+{"fs":{"path":"documents/pictures","exists":false},"message":"the folder is not copied or moved into the hovered tab"}
+{"key":"ctrl+shift+3"}
+{"wait":{"state":{"target":{"role":"page tab","name":"documents"},"selected":true}},"message":"the existing tab follows the newly inserted pictures tab"}
+{"key":"ctrl+shift+1"}
+{"wait":{"state":{"target":{"role":"page tab","name":"$root"},"selected":true}},"message":"the original listing is available for another folder drag"}
+{"drag":{"from":{"entry":"archive","dir":"$root"},"to":{"role":"button","name":"New tab"}},"release":false}
+{"key":"Escape"}
+{"button_up":1}
+{"wait":{"all":[{"absent":{"role":"page tab","name":"archive"}},{"state":{"target":{"role":"page tab","name":"$root"},"selected":true}}]},"message":"cancelling a file-view folder drag opens no tab"}
+{"drag":{"from":{"entry":"archive","dir":"$root"},"to":{"role":"button","name":"New tab"}}}
+{"wait":{"all":[{"directory":"archive"},{"state":{"target":{"role":"page tab","name":"archive"},"selected":true}}]},"message":"dropping a folder onto plus opens a new tab"}
+{"fs":{"path":"archive","empty":true},"message":"opening the archive tab does not transfer files"}
+{"key":"ctrl+shift+1"}
+{"wait":{"state":{"target":{"role":"page tab","name":"$root"},"selected":true}},"message":"the original tab is retained after each drop route"}
+{"fs":{"path":"pictures","exists":true},"message":"all dragged folders remain in their original locations"}

@@ -1,0 +1,16 @@
+{"scenario":"rename-commits-on-click-away","modes":["columns"],"layout":"us","mutation":"rename-click-away","known_bug":null,"cost":{"columns":0.9},"quality":{"impact":3,"coverage":4,"criticality":3,"diagnostic":4,"score":42,"note":"Columns background click commits rename; only Columns focus-out route; rename-commits-on-enter shares setup, adds Return and listing check"}}
+{"select":{"entry":"readme.md"}}
+{"select_with_keyboard":"todo.txt"}
+{"key":"F2"}
+{"wait":{"field":{"name":"Rename","focused":true}},"message":"the rename editor to take focus"}
+{"remember":{"field":true},"as":"rename"}
+{"key":"ctrl+a"}
+{"wait":{"field":{"of":"rename","text":"todo.txt"}},"message":"the original name to appear"}
+{"fs":{"path":"todo.txt","is":"file"},"timeout_ms":0}
+{"type":"renamed.item"}
+{"wait":{"field":{"of":"rename","text":"renamed.item"}},"message":"typing to replace the selection"}
+{"click":{"background":true}}
+{"fs":{"path":"renamed.item","exists":true},"message":"the rename on disk"}
+{"wait":{"absent":{"role":"text","name":"Rename"}},"message":"the name editor to close"}
+{"fs":{"path":"todo.txt","exists":false},"timeout_ms":0}
+{"fs":{"path":"renamed.item","text":"todo\n"},"timeout_ms":0}

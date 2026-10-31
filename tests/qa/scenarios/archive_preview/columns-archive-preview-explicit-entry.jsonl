@@ -1,0 +1,139 @@
+{"scenario":"columns-archive-preview-explicit-entry","modes":["columns"],"prefs":{"browser_mode":"columns","type_to_search":false},"layout":"us","mutation":null,"known_bug":null,"tree":{"a.txt":"before","bundle.zip":"","z.txt":"after"},"setup":[{"fs":{"path":"bundle.zip","zip":[["docs/inside.txt","inside"],["docs/inner/deep.txt","deep"],["docs/more/a.txt","a"],["docs/more/b.txt","b"],["top.txt","top"],["zz.txt","last"]]}}],"variants":[{"id":"automatic-Right","vars":{"auto":"automatic","enter":"Right"},"prefs":{"single_click_previews":true}},{"id":"automatic-Return","vars":{"auto":"automatic","enter":"Return"},"prefs":{"single_click_previews":true}},{"id":"automatic-space","vars":{"auto":"automatic","enter":"space"},"prefs":{"single_click_previews":true}},{"id":"manual-Right","vars":{"auto":"manual","enter":"Right"},"prefs":{"single_click_previews":false}},{"id":"manual-Return","vars":{"auto":"manual","enter":"Return"},"prefs":{"single_click_previews":false}},{"id":"manual-space","vars":{"auto":"manual","enter":"space"},"prefs":{"single_click_previews":false}}],"cost":{"columns-automatic-Right":0.8,"columns-automatic-Return":0.8,"columns-automatic-space":0.8,"columns-manual-Right":0.5,"columns-manual-Return":0.5,"columns-manual-space":0.4},"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":3,"score":45,"note":"Columns-only explicit entry via Right, Return and space, plus hover not selecting; list and icons siblings cover other modes; long walk-through with sleeps"}}
+{"select_with_keyboard":"a.txt","variants":["automatic-Right"]}
+{"key":"Down","variants":["automatic-Right"]}
+{"wait":{"focused":"bundle.zip"},"message":"keyboard focus to reach 'bundle.zip'","variants":["automatic-Right"]}
+{"wait":{"preview":"docs/"},"message":"the passive archive contents","variants":["automatic-Right"]}
+{"expect":{"absent":{"role":"*","states":["selected"],"within":{"preview":true}}},"variants":["automatic-Right"]}
+{"settle":{"role":"list item","within":{"preview":true},"has":{"role":"label","name":"top.txt"}},"variants":["automatic-Right"]}
+{"move":{"role":"list item","within":{"preview":true},"has":{"role":"label","name":"top.txt"}},"variants":["automatic-Right"]}
+{"settle":{"role":"list item","within":{"preview":true},"has":{"role":"label","name":"top.txt"}},"variants":["automatic-Right"]}
+{"sleep":300,"variants":["automatic-Right"]}
+{"expect":{"absent":{"role":"*","states":["selected"],"within":{"preview":true}}},"message":"hovering selected a member","variants":["automatic-Right"]}
+{"expect":{"focused":"bundle.zip"},"variants":["automatic-Right"]}
+{"key":"Down","variants":["automatic-Right"]}
+{"wait":{"focused":"z.txt"},"message":"keyboard focus to reach 'z.txt'","variants":["automatic-Right"]}
+{"key":"Up","variants":["automatic-Right"]}
+{"wait":{"focused":"bundle.zip"},"message":"keyboard focus to reach 'bundle.zip'","variants":["automatic-Right"]}
+{"wait":{"preview":"docs/"},"message":"the archive contents again","variants":["automatic-Right"]}
+{"key":"Right","variants":["automatic-Right"]}
+{"wait":{"focused":null},"message":"explicit entry to focus the archive tree","variants":["automatic-Right"]}
+{"wait":{"preview":"docs/"},"message":"the explicitly opened archive contents","variants":["automatic-Right"]}
+{"key":"Right","variants":["automatic-Right"]}
+{"wait":{"preview":"inside.txt"},"message":"Right to open the archive folder","variants":["automatic-Right"]}
+{"key":"Escape","variants":["automatic-Right"]}
+{"wait":{"focused":"bundle.zip"},"message":"keyboard focus to reach 'bundle.zip'","variants":["automatic-Right"]}
+{"key":"Down","variants":["automatic-Right"]}
+{"wait":{"focused":"z.txt"},"message":"keyboard focus to reach 'z.txt'","variants":["automatic-Right"]}
+{"expect":{"directory":"$root"},"variants":["automatic-Right"]}
+{"fs":{"path":".","names":["a.txt","bundle.zip","z.txt"]},"timeout_ms":0,"variants":["automatic-Right"]}
+{"select_with_keyboard":"a.txt","variants":["automatic-Return"]}
+{"key":"Down","variants":["automatic-Return"]}
+{"wait":{"focused":"bundle.zip"},"message":"keyboard focus to reach 'bundle.zip'","variants":["automatic-Return"]}
+{"wait":{"preview":"docs/"},"message":"the passive archive contents","variants":["automatic-Return"]}
+{"expect":{"absent":{"role":"*","states":["selected"],"within":{"preview":true}}},"variants":["automatic-Return"]}
+{"settle":{"role":"list item","within":{"preview":true},"has":{"role":"label","name":"top.txt"}},"variants":["automatic-Return"]}
+{"move":{"role":"list item","within":{"preview":true},"has":{"role":"label","name":"top.txt"}},"variants":["automatic-Return"]}
+{"settle":{"role":"list item","within":{"preview":true},"has":{"role":"label","name":"top.txt"}},"variants":["automatic-Return"]}
+{"sleep":300,"variants":["automatic-Return"]}
+{"expect":{"absent":{"role":"*","states":["selected"],"within":{"preview":true}}},"message":"hovering selected a member","variants":["automatic-Return"]}
+{"expect":{"focused":"bundle.zip"},"variants":["automatic-Return"]}
+{"key":"Down","variants":["automatic-Return"]}
+{"wait":{"focused":"z.txt"},"message":"keyboard focus to reach 'z.txt'","variants":["automatic-Return"]}
+{"key":"Up","variants":["automatic-Return"]}
+{"wait":{"focused":"bundle.zip"},"message":"keyboard focus to reach 'bundle.zip'","variants":["automatic-Return"]}
+{"wait":{"preview":"docs/"},"message":"the archive contents again","variants":["automatic-Return"]}
+{"key":"Return","variants":["automatic-Return"]}
+{"wait":{"focused":null},"message":"explicit entry to focus the archive tree","variants":["automatic-Return"]}
+{"wait":{"preview":"docs/"},"message":"the explicitly opened archive contents","variants":["automatic-Return"]}
+{"key":"Right","variants":["automatic-Return"]}
+{"wait":{"preview":"inside.txt"},"message":"Right to open the archive folder","variants":["automatic-Return"]}
+{"key":"Escape","variants":["automatic-Return"]}
+{"wait":{"focused":"bundle.zip"},"message":"keyboard focus to reach 'bundle.zip'","variants":["automatic-Return"]}
+{"key":"Down","variants":["automatic-Return"]}
+{"wait":{"focused":"z.txt"},"message":"keyboard focus to reach 'z.txt'","variants":["automatic-Return"]}
+{"expect":{"directory":"$root"},"variants":["automatic-Return"]}
+{"fs":{"path":".","names":["a.txt","bundle.zip","z.txt"]},"timeout_ms":0,"variants":["automatic-Return"]}
+{"select_with_keyboard":"a.txt","variants":["automatic-space"]}
+{"key":"Down","variants":["automatic-space"]}
+{"wait":{"focused":"bundle.zip"},"message":"keyboard focus to reach 'bundle.zip'","variants":["automatic-space"]}
+{"wait":{"preview":"docs/"},"message":"the passive archive contents","variants":["automatic-space"]}
+{"expect":{"absent":{"role":"*","states":["selected"],"within":{"preview":true}}},"variants":["automatic-space"]}
+{"settle":{"role":"list item","within":{"preview":true},"has":{"role":"label","name":"top.txt"}},"variants":["automatic-space"]}
+{"move":{"role":"list item","within":{"preview":true},"has":{"role":"label","name":"top.txt"}},"variants":["automatic-space"]}
+{"settle":{"role":"list item","within":{"preview":true},"has":{"role":"label","name":"top.txt"}},"variants":["automatic-space"]}
+{"sleep":300,"variants":["automatic-space"]}
+{"expect":{"absent":{"role":"*","states":["selected"],"within":{"preview":true}}},"message":"hovering selected a member","variants":["automatic-space"]}
+{"expect":{"focused":"bundle.zip"},"variants":["automatic-space"]}
+{"key":"Down","variants":["automatic-space"]}
+{"wait":{"focused":"z.txt"},"message":"keyboard focus to reach 'z.txt'","variants":["automatic-space"]}
+{"key":"Up","variants":["automatic-space"]}
+{"wait":{"focused":"bundle.zip"},"message":"keyboard focus to reach 'bundle.zip'","variants":["automatic-space"]}
+{"wait":{"preview":"docs/"},"message":"the archive contents again","variants":["automatic-space"]}
+{"key":"space","variants":["automatic-space"]}
+{"wait":{"focused":null},"message":"explicit entry to focus the archive tree","variants":["automatic-space"]}
+{"wait":{"preview":"docs/"},"message":"the explicitly opened archive contents","variants":["automatic-space"]}
+{"key":"Right","variants":["automatic-space"]}
+{"wait":{"preview":"inside.txt"},"message":"Right to open the archive folder","variants":["automatic-space"]}
+{"key":"Escape","variants":["automatic-space"]}
+{"wait":{"focused":"bundle.zip"},"message":"keyboard focus to reach 'bundle.zip'","variants":["automatic-space"]}
+{"key":"Down","variants":["automatic-space"]}
+{"wait":{"focused":"z.txt"},"message":"keyboard focus to reach 'z.txt'","variants":["automatic-space"]}
+{"expect":{"directory":"$root"},"variants":["automatic-space"]}
+{"fs":{"path":".","names":["a.txt","bundle.zip","z.txt"]},"timeout_ms":0,"variants":["automatic-space"]}
+{"select_with_keyboard":"a.txt","variants":["manual-Right"]}
+{"key":"Down","variants":["manual-Right"]}
+{"wait":{"focused":"bundle.zip"},"message":"keyboard focus to reach 'bundle.zip'","variants":["manual-Right"]}
+{"expect":{"preview":null},"variants":["manual-Right"]}
+{"key":"Down","variants":["manual-Right"]}
+{"wait":{"focused":"z.txt"},"message":"keyboard focus to reach 'z.txt'","variants":["manual-Right"]}
+{"key":"Up","variants":["manual-Right"]}
+{"wait":{"focused":"bundle.zip"},"message":"keyboard focus to reach 'bundle.zip'","variants":["manual-Right"]}
+{"key":"Right","variants":["manual-Right"]}
+{"wait":{"focused":null},"message":"explicit entry to focus the archive tree","variants":["manual-Right"]}
+{"wait":{"preview":"docs/"},"message":"the explicitly opened archive contents","variants":["manual-Right"]}
+{"key":"Right","variants":["manual-Right"]}
+{"wait":{"preview":"inside.txt"},"message":"Right to open the archive folder","variants":["manual-Right"]}
+{"key":"Escape","variants":["manual-Right"]}
+{"wait":{"focused":"bundle.zip"},"message":"keyboard focus to reach 'bundle.zip'","variants":["manual-Right"]}
+{"key":"Down","variants":["manual-Right"]}
+{"wait":{"focused":"z.txt"},"message":"keyboard focus to reach 'z.txt'","variants":["manual-Right"]}
+{"expect":{"directory":"$root"},"variants":["manual-Right"]}
+{"fs":{"path":".","names":["a.txt","bundle.zip","z.txt"]},"timeout_ms":0,"variants":["manual-Right"]}
+{"select_with_keyboard":"a.txt","variants":["manual-Return"]}
+{"key":"Down","variants":["manual-Return"]}
+{"wait":{"focused":"bundle.zip"},"message":"keyboard focus to reach 'bundle.zip'","variants":["manual-Return"]}
+{"expect":{"preview":null},"variants":["manual-Return"]}
+{"key":"Down","variants":["manual-Return"]}
+{"wait":{"focused":"z.txt"},"message":"keyboard focus to reach 'z.txt'","variants":["manual-Return"]}
+{"key":"Up","variants":["manual-Return"]}
+{"wait":{"focused":"bundle.zip"},"message":"keyboard focus to reach 'bundle.zip'","variants":["manual-Return"]}
+{"key":"Return","variants":["manual-Return"]}
+{"wait":{"focused":null},"message":"explicit entry to focus the archive tree","variants":["manual-Return"]}
+{"wait":{"preview":"docs/"},"message":"the explicitly opened archive contents","variants":["manual-Return"]}
+{"key":"Right","variants":["manual-Return"]}
+{"wait":{"preview":"inside.txt"},"message":"Right to open the archive folder","variants":["manual-Return"]}
+{"key":"Escape","variants":["manual-Return"]}
+{"wait":{"focused":"bundle.zip"},"message":"keyboard focus to reach 'bundle.zip'","variants":["manual-Return"]}
+{"key":"Down","variants":["manual-Return"]}
+{"wait":{"focused":"z.txt"},"message":"keyboard focus to reach 'z.txt'","variants":["manual-Return"]}
+{"expect":{"directory":"$root"},"variants":["manual-Return"]}
+{"fs":{"path":".","names":["a.txt","bundle.zip","z.txt"]},"timeout_ms":0,"variants":["manual-Return"]}
+{"select_with_keyboard":"a.txt","variants":["manual-space"]}
+{"key":"Down","variants":["manual-space"]}
+{"wait":{"focused":"bundle.zip"},"message":"keyboard focus to reach 'bundle.zip'","variants":["manual-space"]}
+{"expect":{"preview":null},"variants":["manual-space"]}
+{"key":"Down","variants":["manual-space"]}
+{"wait":{"focused":"z.txt"},"message":"keyboard focus to reach 'z.txt'","variants":["manual-space"]}
+{"key":"Up","variants":["manual-space"]}
+{"wait":{"focused":"bundle.zip"},"message":"keyboard focus to reach 'bundle.zip'","variants":["manual-space"]}
+{"key":"space","variants":["manual-space"]}
+{"wait":{"focused":null},"message":"explicit entry to focus the archive tree","variants":["manual-space"]}
+{"wait":{"preview":"docs/"},"message":"the explicitly opened archive contents","variants":["manual-space"]}
+{"key":"Right","variants":["manual-space"]}
+{"wait":{"preview":"inside.txt"},"message":"Right to open the archive folder","variants":["manual-space"]}
+{"key":"Escape","variants":["manual-space"]}
+{"wait":{"focused":"bundle.zip"},"message":"keyboard focus to reach 'bundle.zip'","variants":["manual-space"]}
+{"key":"Down","variants":["manual-space"]}
+{"wait":{"focused":"z.txt"},"message":"keyboard focus to reach 'z.txt'","variants":["manual-space"]}
+{"expect":{"directory":"$root"},"variants":["manual-space"]}
+{"fs":{"path":".","names":["a.txt","bundle.zip","z.txt"]},"timeout_ms":0,"variants":["manual-space"]}

@@ -65,6 +65,19 @@ replacing the installed binary. GitHub's build-provenance attestations and
 `.sha256` files remain published for independent verification and packaging, but
 are not prerequisites or fallbacks for this client protocol.
 
+## Installer
+
+`install.sh` authenticates a first installation the same way. It pins the raw
+public keys from `data/update-keys.json` in `RELEASE_PUBLIC_KEYS`, downloads both
+manifest files under the same size limits, and verifies at least one trusted
+signature with `openssl pkeyutl -verify -rawin` before requesting the archive.
+The archive download is capped at the signed size, and its size and SHA-256 must
+match the signed entry for the detected architecture before extraction. The
+installer requires `openssl`, never consults the `.sha256` file or
+`gh attestation verify`, and fails closed when a release has no signed manifest.
+`scripts/test_installer.py` checks that the pinned keys equal the trust store, so
+a rotation PR must update both files together.
+
 ## Release signing
 
 The `sign` job in `.github/workflows/release.yml` runs after both build targets
@@ -115,8 +128,9 @@ not application runtime dependencies. Never use the deterministic test key from
 
 For a planned rotation:
 
-1. Add the new public key alongside the old key in `data/update-keys.json` through
-   a reviewed PR. Keep the old signing secret as `UPDATE_SIGNING_KEY`.
+1. Add the new public key alongside the old key in `data/update-keys.json` and
+   in `RELEASE_PUBLIC_KEYS` in `install.sh` through a reviewed PR. Keep the old
+   signing secret as `UPDATE_SIGNING_KEY`.
 2. Set `UPDATE_SIGNING_KEY_NEXT` to the new private key. Publish a bridge release
    whose binary trusts both keys and whose manifest is signed by both keys.
 3. Continue dual-signing while older clients must be able to upgrade directly.

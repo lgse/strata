@@ -103,19 +103,19 @@ The tests create their own temporary payloads and metadata. They cover:
   up-front confirmation after a recorded refusal until Reload
   (`ui::window::tests::keyboard_dispatch::file_commands`).
 
-Run the real keyboard and drag/drop regressions in the pinned E2E container:
+Run the real keyboard and drag/drop regressions in the pinned QA container:
 
 ```bash
-./scripts/e2e.sh -k cross_volume
-./scripts/e2e.sh tests/e2e/scenarios/test_entry_management.py -k trash_support
+./scripts/qa.sh cross-volume-enter-choice cross-volume-plain-copy
+./scripts/qa.sh delete-without-trash-focuses-cancel tenxer-d-without-trash-confirms
 ```
 
-These verify Copy, Move, and Cancel with real keyboard input in every view, and
+These verify Copy, Move, and Cancel with real keyboard input in Columns, and
 that the chosen action agrees with the resulting files. The default
 cross-device strategy is **Always Ask**. An unresolved volume lookup uses the
 configured cross-device policy and is described as unresolved,
 not as a proven device difference. Explicit modifier overrides remain supported.
-The `trash_support` selection deletes from a `/dev/shm` folder, which GIO
+The two without-trash scenarios delete from a `/dev/shm` folder, which GIO
 reports as unable to trash, and checks that Delete and 10xer **d** explain the
 missing Trash, focus Cancel, and delete only after an explicit confirmation.
 
@@ -148,14 +148,14 @@ or `.trashinfo` contents, and never run a blanket cleanup scan of other mounts.
    `(invalid encoding)`, count it in the footer, enable Empty Trash, and show
    its percent-encoded `trash:///` URI in the path bar and Properties. Restore
    it and check that the original name bytes return; trash it again and delete
-   it permanently. The pinned E2E container sets `GIO_USE_VFS=local`, so it
+   it permanently. The pinned test container sets `GIO_USE_VFS=local`, so it
    cannot browse `trash:///` and does not cover this step.
 8. On a writable FUSE mount that cannot hold a Trash (for example sshfs to a
    server root you can write, or an rclone remote without VFS cache), press
    Delete. Expect the Cancel-first confirmation naming the mount and its type,
    no `.Trash-$uid` left at the mount root, an up-front confirmation on the next
    Delete, and Move to Trash hidden until Reload. A disconnected sshfs mount
-   must show the raw error, not "doesn't support Trash". The E2E container has
+   must show the raw error, not "doesn't support Trash". The test container has
    no FUSE, so it does not cover this step.
 
 Dispose of the entire dedicated test environment afterward. No fixture utility

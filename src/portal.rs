@@ -207,7 +207,7 @@ impl FileChooserBackend {
     }
 }
 
-pub(crate) fn run() -> glib::ExitCode {
+pub(crate) fn run(#[cfg(feature = "qa")] qa: Option<crate::qa::Session>) -> glib::ExitCode {
     glib::set_prgname(Some(CHOOSER_APPLICATION_ID));
     glib::set_application_name("Strata");
 
@@ -274,6 +274,10 @@ pub(crate) fn run() -> glib::ExitCode {
 
     if service_failed.load(Ordering::SeqCst) {
         return glib::ExitCode::FAILURE;
+    }
+    #[cfg(feature = "qa")]
+    if let Some(session) = qa {
+        session.start_portal(&main_loop);
     }
     main_loop.run();
     crate::ui::preferences::flush_pending_folder_views();

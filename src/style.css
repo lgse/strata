@@ -302,6 +302,7 @@ headerbar.browser-header menubutton.header-action > button {
 }
 
 .browser-tab:drop(active),
+.tab-strip overlay:drop(active),
 .tab-strip .tab-select:drop(active) {
   background: transparent;
   box-shadow: none;
@@ -334,6 +335,14 @@ headerbar.browser-header menubutton.header-action > button {
 
 .tab-indicator {
   color: @strata_accent;
+}
+
+button.header-action.tab-drop-hover,
+button.header-action.tab-drop-hover:drop(active) {
+  color: @strata_accent;
+  background: alpha(@strata_accent, 0.15);
+  outline: none;
+  box-shadow: none;
 }
 
 .tab-key-hint {
@@ -670,6 +679,13 @@ button.appearance-density-snap:focus-visible {
   color: @strata_text;
 }
 
+.breadcrumb:drop(active) {
+  background: alpha(@strata_accent, 0.15);
+  color: @strata_text;
+  border-color: transparent;
+  box-shadow: inset 0 0 0 1px alpha(@strata_accent, 0.72);
+}
+
 .breadcrumb:not(.current):active {
   transform: scale(0.97);
 }
@@ -927,6 +943,7 @@ button.appearance-density-snap:focus-visible {
 
 .delete-confirmation-list {
   background: alpha(@strata_highlight, 0.42);
+  border-radius: 3px;
 }
 
 .delete-confirmation-list viewport {
@@ -2352,8 +2369,9 @@ scrollbar.horizontal > range > trough > slider {
   margin: 0;
 }
 
-.sidebar-row:hover {
-  background: alpha(@strata_accent, 0.15);
+.sidebar-row:hover,
+.sidebar-device:hover {
+  background: alpha(@strata_text, 0.06);
 }
 
 .sidebar-row.active,
@@ -2367,10 +2385,6 @@ scrollbar.horizontal > range > trough > slider {
 .sidebar-row.active image,
 .sidebar-device.active .sidebar-row image {
   color: @strata_accent;
-}
-
-.sidebar-device:hover {
-  background: alpha(@strata_accent, 0.15);
 }
 
 .sidebar-device:hover > .sidebar-row,
@@ -2642,6 +2656,12 @@ paned > separator {
 /* The header bar above already marks the drawer that owns the keys. */
 .preview-pane.preview-keyboard-owner :focus-visible {
   outline: none;
+}
+
+/* A message's lone action still shows which control Return activates. */
+.preview-pane.preview-keyboard-owner .preview-feedback-action:focus-visible {
+  outline: 2px solid @strata_bg;
+  outline-offset: -4px;
 }
 
 .preview-find {
@@ -3448,26 +3468,39 @@ paned > separator {
   margin-top: 6px;
 }
 
-.preview-archive-password-row button.suggested-action {
+.preview-feedback-action {
+  margin-top: 6px;
+}
+
+.preview-archive-password-row button.suggested-action,
+.preview-feedback button.suggested-action {
   background-color: @strata_accent;
   background-image: none;
+  border-color: @strata_accent;
   color: @strata_bg;
 }
 
-.preview-archive-password-row button.suggested-action:hover {
+.preview-archive-password-row button.suggested-action:hover,
+.preview-feedback button.suggested-action:hover {
   background-color: shade(@strata_accent, 1.07);
   background-image: none;
+  border-color: shade(@strata_accent, 1.07);
 }
 
 .preview-archive-password-row button.suggested-action:active,
-.preview-archive-password-row button.suggested-action:checked {
+.preview-archive-password-row button.suggested-action:checked,
+.preview-feedback button.suggested-action:active,
+.preview-feedback button.suggested-action:checked {
   background-color: shade(@strata_accent, 0.92);
   background-image: none;
+  border-color: shade(@strata_accent, 0.92);
 }
 
-.preview-archive-password-row button.suggested-action:disabled {
+.preview-archive-password-row button.suggested-action:disabled,
+.preview-feedback button.suggested-action:disabled {
   background-color: alpha(@strata_accent, 0.5);
   background-image: none;
+  border-color: alpha(@strata_accent, 0.5);
   color: alpha(@strata_bg, 0.7);
 }
 
@@ -3636,16 +3669,16 @@ button.shortcut-footer-button {
 
 .shortcut-footer-button > button:hover,
 button.shortcut-footer-button:hover {
-  background: @strata_highlight;
+  background: alpha(@strata_accent, 0.15);
   color: @strata_text;
-  border-color: @strata_border;
+  border-color: alpha(@strata_accent, 0.42);
 }
 
 .shortcut-footer-button > button:active,
 .shortcut-footer-button > button:checked,
 button.shortcut-footer-button:active,
 button.shortcut-footer-button:checked {
-  background: @strata_highlight;
+  background: alpha(@strata_accent, 0.22);
   color: @strata_text;
   border-color: @strata_accent;
 }
@@ -3882,7 +3915,7 @@ button.shortcut-footer-button:disabled {
   background: @strata_surface;
   border: 1px solid alpha(@strata_border, 0.8);
   border-radius: 9px;
-  box-shadow: 0 0 14px alpha(@strata_glow, 0.24), 0 6px 20px alpha(@strata_bg, 0.45);
+  box-shadow: 0 0 14px alpha(@strata_glow, 0.24);
   color: @strata_text;
   padding: 0;
 }
@@ -4154,7 +4187,7 @@ dropdown.form-control popover row:selected check {
   background: @strata_surface;
   border: 1px solid alpha(@strata_border, 0.55);
   border-radius: 9px;
-  box-shadow: 0 0 14px alpha(@strata_glow, 0.16), 0 8px 24px alpha(@strata_bg, 0.32);
+  box-shadow: 0 0 14px alpha(@strata_glow, 0.16);
   padding: 4px;
 }
 
@@ -5362,6 +5395,14 @@ textview > popover.menu button.model:focus-visible,
   outline-offset: -1px;
 }
 
+/* The result Enter in the filter field opens; not a selection. */
+.file-row.enter-target,
+.list-row.enter-target,
+.icons-card.enter-target {
+  outline: 1px solid @strata_accent;
+  outline-offset: -1px;
+}
+
 .directory-column:not(:focus-within) .file-list:not(.context-selection) row:selected,
 .file-list-mode:not(:focus-within):not(.context-selection) row:selected {
   background: alpha(@strata_accent, 0.08);
@@ -6037,6 +6078,19 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   outline-offset: -2px;
 }
 
+.list-headings.column-reordering .list-heading-button {
+  transform: none;
+  transition: none;
+}
+
+.list-heading-cell.reorder-before .list-heading-button {
+  box-shadow: inset 3px 0 @strata_accent;
+}
+
+.list-heading-cell.reorder-after .list-heading-button {
+  box-shadow: inset -3px 0 @strata_accent;
+}
+
 .list-column-resize-handle {
   background: transparent;
   min-width: 7px;
@@ -6673,6 +6727,83 @@ two-column presentation. */
   font-size: 0.875em;
 }
 
+.settings-dialog .settings-preferences.keymap-table,
+.settings-dialog.compact .settings-preferences.keymap-table {
+  padding: 0;
+}
+
+.keymap-table > box:first-child > .menu-heading {
+  margin-top: 0;
+}
+
+.keymap-chip {
+  background: @strata_muted;
+  border: 1px solid alpha(@strata_border, 0.8);
+  border-radius: 5px;
+  padding: 1px 2px 1px 7px;
+}
+
+.keymap-chip-key,
+.keymap-prefix {
+  color: @strata_text;
+  font-size: 0.875em;
+  font-weight: 600;
+}
+
+.keymap-prefix {
+  color: @strata_dim_text;
+}
+
+.keymap-chip.inactive {
+  background: transparent;
+  border-style: dashed;
+}
+
+.keymap-chip.inactive .keymap-chip-key {
+  color: @strata_dim_text;
+  text-decoration-line: line-through;
+}
+
+.settings-dialog button.keymap-chip-remove {
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  box-shadow: none;
+  color: @strata_dim_text;
+  min-height: 18px;
+  min-width: 18px;
+  padding: 0;
+}
+
+.settings-dialog button.keymap-chip-remove:hover {
+  background: alpha(@strata_accent, 0.15);
+  color: @strata_text;
+}
+
+.settings-dialog button.keymap-chip-remove:active {
+  background: alpha(@strata_accent, 0.22);
+  color: @strata_accent;
+}
+
+.settings-dialog button.keymap-chip-remove:focus-visible {
+  outline: 2px solid alpha(@strata_accent, 0.5);
+  outline-offset: 0;
+}
+
+.settings-action-button.keymap-capture {
+  background: alpha(@strata_accent, 0.1);
+  border-color: @strata_accent;
+  color: @strata_accent;
+}
+
+.keymap-finding.error {
+  color: @strata_danger;
+}
+
+.keymap-finding.warning {
+  color: @strata_accent;
+}
+
 .settings-release-expander {
   background: mix(@strata_bg, @strata_muted, 0.25);
   border: 1px solid alpha(@strata_border, 0.55);
@@ -6822,9 +6953,10 @@ two-column presentation. */
   min-width: 42px;
 }
 
+/* 11px puts the 18px icon's centre on the search field's 16px icon. */
 .settings-dialog .settings-navigation button {
-  padding-left: 18px;
-  padding-right: 10px;
+  padding-left: 11px;
+  padding-right: 11px;
 }
 
 .settings-dialog .settings-navigation.compact > button,

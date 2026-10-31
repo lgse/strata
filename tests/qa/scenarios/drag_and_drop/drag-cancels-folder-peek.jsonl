@@ -1,0 +1,8 @@
+{"scenario":"drag-cancels-folder-peek","modes":["icons","list"],"prefs":{"folder_peeking":true},"layout":"us","mutation":null,"known_bug":null,"cost":{"icons":0.9,"list":0.9},"quality":{"impact":2,"coverage":3,"criticality":3,"diagnostic":4,"score":23,"note":"Folder peek closes when a drag starts over Icons and List; only scenario that starts a drag while a peek is open"}}
+{"move":{"pane":null},"at":[20,-20]}
+{"move":{"entry":"archive","part":"icon"}}
+{"during":{"peek":false},"ms":200,"every_ms":20,"message":"a brief hover must not open a folder peek"}
+{"wait":{"peek":true},"message":"the folder peek to open after sustained hover"}
+{"drag":{"from":{"entry":"archive"},"to":{"entry":"documents"}},"release":false}
+{"wait":{"peek":false},"message":"the peek to close when the drag starts"}
+{"button_up":1}

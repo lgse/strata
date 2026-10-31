@@ -1,0 +1,10 @@
+{"scenario":"properties-zero-empty-folder","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"archive","vars":{"name":"archive","size":"0 B"}},{"id":"readme","vars":{"name":"readme.md","size":"10 B"}}],"cost":{"columns-archive":0.7,"columns-readme":0.6},"quality":{"impact":3,"coverage":3,"criticality":2,"diagnostic":3,"score":20,"note":"Empty folder shows 0 B and 10 B file keeps size; nested-hidden-sizes covers recursive sizes, this alone pins the empty-folder zero"}}
+{"click":{"entry":"$name"},"button":3}
+{"wait":{"menu_items":{}},"message":"the context menu for '$name'"}
+{"wait":{"present":{"menu_item":"Properties"}},"message":"the menu item 'Properties'"}
+{"settle":{"menu_item":"Properties"}}
+{"click":{"menu_item":"Properties"}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"wait":{"dialog":true},"message":"a dialog to appear"}
+{"wait":{"present":{"role":"label","name":"$size","within":{"dialog":true}}},"message":"Properties to show $size"}
+{"wait":{"absent":{"named":"Calculating folder size","within":{"dialog":true}}},"message":"no spinner after measurement"}

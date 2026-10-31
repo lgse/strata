@@ -1,0 +1,18 @@
+{"scenario":"preview-boundary-resizes-grabbed-side","modes":["columns"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"tree":{"notes.txt":"the quick brown fox\n","page.md":"# Heading\n\nBody text.\n","third.txt":"third preview fixture\n","data.csv":"name,value\nalpha,1\n","folder":{"inner.txt":"inner\n","nested-notes.txt":"nested preview fixture\n"}},"variants":[{"id":"column","vars":{"offset":"start-3","hint":"Column width"}},{"id":"preview-on-line","vars":{"offset":"start-1","hint":"Preview panel minimum width"}},{"id":"preview-inside","vars":{"offset":"start+3","hint":"Preview panel minimum width"}}],"cost":{"columns-column":0.9,"columns-preview-on-line":0.9,"columns-preview-inside":0.9},"quality":{"impact":2,"coverage":3,"criticality":4,"diagnostic":4,"score":28,"note":"Grabbed-side divider resize and captions; column-side route unique, preview-side outline shared with filled-preview-outlines-minimum"}}
+{"select_with_keyboard":"notes.txt"}
+{"key":"space"}
+{"wait":{"preview":"the quick brown fox"},"message":"the first preview"}
+{"settle":{"preview":true}}
+{"remember":{"pane":null},"as":"column"}
+{"remember":{"preview":true},"as":"start"}
+{"move":{"kept":"start"},"at":["$offset","50%"]}
+{"wait":{"present":{"role":"label","name":"$hint"}},"message":"a resize hint before the drag starts"}
+{"drag":{"from":{"kept":"start"},"from_at":["$offset","50%"],"to":{"point":[{"of":{"kept":"start"},"at":"$offset","plus":40},{"of":{"kept":"start"},"at":"50%"}]}},"release":false}
+{"wait":{"compare":{"left":{"of":{"pane":null},"get":"width"},"op":">","right":{"sum":[{"of":{"kept":"column"},"get":"width"},20]}}},"message":"the column beside the preview to widen","variants":["column"]}
+{"wait":{"present":{"role":"label","name":"Column width"}},"message":"the column width caption","variants":["column"]}
+{"expect":{"absent":{"role":"label","name":"Preview panel minimum width"}},"variants":["column"]}
+{"wait":{"present":{"role":"label","name":"Preview panel minimum width"}},"message":"the preview divider to outline its minimum","variants":["preview-on-line","preview-inside"]}
+{"expect":{"absent":{"role":"label","name":"Column width"}},"variants":["preview-on-line","preview-inside"]}
+{"expect":{"compare":{"left":{"of":{"pane":null},"get":"width"},"op":"==","right":{"of":{"kept":"column"},"get":"width"}}},"variants":["preview-on-line","preview-inside"]}
+{"button_up":1}
+{"wait":{"all":[{"absent":{"role":"label","name":"Column width"}},{"absent":{"role":"label","name":"Preview panel minimum width"}}]},"message":"the resize captions to go once the drag ends"}

@@ -1,0 +1,6 @@
+{"scenario":"delete-to-trash","modes":["columns"],"layout":"us","mutation":"trash","known_bug":null,"cost":{"columns":0.4},"quality":{"impact":4,"coverage":3,"criticality":4,"diagnostic":4,"score":38,"note":"Delete key trashes the selected file with no dialog; only QA scenario checking the file reaches the isolated Trash after that route"}}
+{"select":{"entry":"todo.txt"}}
+{"key":"Delete"}
+{"fs":{"path":"todo.txt","exists":false},"message":"the file to leave the fixture tree"}
+{"wait":{"entry_gone":"todo.txt"},"message":"the entry 'todo.txt' to disappear"}
+{"fs":{"path":"$data/Trash/files","empty":false},"timeout_ms":0,"message":"the file should be recoverable from the isolated trash directory"}

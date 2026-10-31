@@ -34,10 +34,23 @@ const RESET_CSS: &str = "* { all: unset; }";
 /// Above the static stylesheet so generated density spacing wins over its presets.
 const DENSITY_STYLE_PRIORITY: u32 = STYLE_PRIORITY + 1;
 const TOKEN_STYLE_PRIORITY: u32 = DENSITY_STYLE_PRIORITY + 1;
+/// Above the token and roundness styles so the uncomposited fallback wins over them.
+const UNCOMPOSITED_STYLE_PRIORITY: u32 = TOKEN_STYLE_PRIORITY + 1;
 /// Above every Strata stylesheet, so `~/.config/strata/style.css` has the final word.
-const USER_STYLE_PRIORITY: u32 = TOKEN_STYLE_PRIORITY + 1;
+const USER_STYLE_PRIORITY: u32 = UNCOMPOSITED_STYLE_PRIORITY + 1;
 const USER_STYLE_FILE: &str = "style.css";
 const STYLE_CSS: &str = include_str!("../style.css");
+
+/// Without a compositor (X11 with no compositing manager) the transparent
+/// shadow and corner pixels of popup surfaces render solid black.
+const UNCOMPOSITED_CSS: &str = "\
+tooltip,
+popover,
+popover contents {
+    box-shadow: none;
+    border-radius: 0;
+}
+";
 
 thread_local! {
     static SHARED_MANAGER: RefCell<Option<Rc<ThemeManager>>> = const { RefCell::new(None) };
@@ -205,6 +218,7 @@ pub struct ThemeManager {
             super::browser_modes::FrameDensity,
         )>,
     >,
+    uncomposited_provider: gtk::CssProvider,
     user_provider: gtk::CssProvider,
     base_roundness: Cell<Option<CornerRoundness>>,
     themes: RefCell<Vec<Theme>>,
@@ -214,6 +228,8 @@ pub struct ThemeManager {
     omarchy_monitors: RefCell<Vec<(PathBuf, LoadHandle)>>,
     pending_omarchy_refresh: RefCell<Option<glib::SourceId>>,
     themes_monitor: RefCell<Option<LoadHandle>>,
+    linked_theme_monitors: RefCell<Vec<(PathBuf, LoadHandle)>>,
+    linked_theme_targets: RefCell<Vec<PathBuf>>,
     pending_themes_refresh: RefCell<Option<glib::SourceId>>,
     user_style_monitor: RefCell<Option<LoadHandle>>,
     pending_user_style_refresh: RefCell<Option<glib::SourceId>>,
@@ -242,10 +258,13 @@ impl ThemeManager {
         let preferences = PreferenceManager::shared();
         let themes = merge_builtin_and_custom_themes(builtins(), load_custom_themes());
         let omarchy = OmarchyRefresh::read();
+        if let Some(state) = &omarchy.state {
+            preferences.set_active_omarchy_theme(&state.name);
+        }
         let omarchy_available = omarchy
             .state
             .as_ref()
-            .and_then(|state| state.tokens(OmarchyVariant::Original))
+            .and_then(|state| state.tokens(OmarchyVariant::Lighter))
             .is_some();
         preferences.normalize_loaded_theme_selection(
             |id| themes.iter().any(|theme| theme.id == id),
@@ -270,6 +289,7 @@ impl ThemeManager {
             base_provider: gtk::CssProvider::new(),
             density_provider: gtk::CssProvider::new(),
             density: Cell::new(None),
+            uncomposited_provider: gtk::CssProvider::new(),
             user_provider: gtk::CssProvider::new(),
             base_roundness: Cell::new(None),
             themes: RefCell::new(themes),
@@ -279,6 +299,8 @@ impl ThemeManager {
             omarchy_monitors: RefCell::new(Vec::new()),
             pending_omarchy_refresh: RefCell::new(None),
             themes_monitor: RefCell::new(None),
+            linked_theme_monitors: RefCell::new(Vec::new()),
+            linked_theme_targets: RefCell::new(Vec::new()),
             pending_themes_refresh: RefCell::new(None),
             user_style_monitor: RefCell::new(None),
             pending_user_style_refresh: RefCell::new(None),
@@ -306,8 +328,9 @@ impl ThemeManager {
         manager.apply_density();
         manager.apply_selected();
         manager.monitor_text_scaling();
-        manager.monitor_omarchy(&omarchy.directories);
+        manager.monitor_omarchy(&omarchy.directories, omarchy.theme_directory.as_deref());
         manager.monitor_custom_themes(themes_directory().is_dir());
+        manager.monitor_linked_themes(linked_theme_targets(&themes_directory()));
         manager
             .user_provider
             .load_from_string(&read_user_stylesheet());
@@ -511,9 +534,21 @@ impl ThemeManager {
             );
             gtk::style_context_add_provider_for_display(
                 &display,
+                &self.uncomposited_provider,
+                UNCOMPOSITED_STYLE_PRIORITY,
+            );
+            gtk::style_context_add_provider_for_display(
+                &display,
                 &self.user_provider,
                 USER_STYLE_PRIORITY,
             );
+            Self::apply_composited_display(&display, &self.uncomposited_provider);
+            let weak_provider = self.uncomposited_provider.downgrade();
+            display.connect_notify_local(Some("composited"), move |display, _| {
+                if let Some(provider) = weak_provider.upgrade() {
+                    Self::apply_composited_display(display, &provider);
+                }
+            });
         }
         self.user_provider
             .connect_parsing_error(|_, section, error| {
@@ -524,6 +559,14 @@ impl ThemeManager {
                     "invalid rule in user stylesheet"
                 );
             });
+    }
+
+    fn apply_composited_display(display: &gdk::Display, provider: &gtk::CssProvider) {
+        if display.is_composited() {
+            provider.load_from_string("");
+        } else {
+            provider.load_from_string(UNCOMPOSITED_CSS);
+        }
     }
 
     /// A missing or unreadable file clears the provider, so deleting
@@ -744,7 +787,7 @@ impl ThemeManager {
         });
     }
 
-    fn monitor_omarchy(self: &Rc<Self>, directories: &[PathBuf]) {
+    fn monitor_omarchy(self: &Rc<Self>, directories: &[PathBuf], theme_directory: Option<&Path>) {
         let mut monitors = self.omarchy_monitors.take();
         monitors.retain(|(path, _)| directories.contains(path));
         for path in directories {
@@ -752,13 +795,19 @@ impl ThemeManager {
                 continue;
             }
             let (changed, live) = (Rc::downgrade(self), Rc::downgrade(self));
+            let colors =
+                (Some(path.as_path()) == theme_directory).then(|| path.join("colors.toml"));
             let monitor = crate::adapters::watch(
                 &Location::local(path),
                 Watched::Folder,
                 move |file, other_file| {
-                    if !is_omarchy_theme_event(file)
-                        && !other_file.is_some_and(is_omarchy_theme_event)
-                    {
+                    let relevant = |file: &gio::File| {
+                        is_omarchy_theme_event(file)
+                            || colors
+                                .as_ref()
+                                .is_some_and(|colors| file.path().as_ref() == Some(colors))
+                    };
+                    if !relevant(file) && !other_file.is_some_and(relevant) {
                         return;
                     }
                     if let Some(manager) = changed.upgrade() {
@@ -802,9 +851,13 @@ impl ThemeManager {
     }
 
     fn apply_omarchy_refresh(self: &Rc<Self>, refresh: OmarchyRefresh) {
-        self.monitor_omarchy(&refresh.directories);
+        self.monitor_omarchy(&refresh.directories, refresh.theme_directory.as_deref());
         let unchanged = self.omarchy_state.replace(refresh.state.clone()) == refresh.state;
-        let available = self.omarchy_tokens(OmarchyVariant::Original).is_some()
+        if let Some(state) = &refresh.state {
+            self.preferences.set_active_omarchy_theme(&state.name);
+            self.appearance.borrow_mut().omarchy_variant = self.preferences.omarchy_variant();
+        }
+        let available = self.omarchy_tokens(OmarchyVariant::Lighter).is_some()
             || (self.is_omarchy_available() && refresh.name_exists);
         let availability_changed = self.omarchy_available.replace(available) != available;
         if !available && self.follows_omarchy() {
@@ -816,8 +869,11 @@ impl ThemeManager {
             self.preferences.notify_changes();
             return;
         }
-        if !unchanged && self.follows_omarchy() {
-            self.apply_selected();
+        if !unchanged {
+            if self.follows_omarchy() {
+                self.apply_selected();
+            }
+            // Republishes the variant remembered for a newly active theme.
             self.preferences.notify_changes();
         }
     }
@@ -847,6 +903,50 @@ impl ThemeManager {
         self.themes_monitor.replace(Some(monitor));
     }
 
+    /// Writes through a dotfiles symlink only reach the target's directory.
+    fn monitor_linked_themes(self: &Rc<Self>, targets: Vec<PathBuf>) {
+        let mut directories: Vec<PathBuf> = Vec::new();
+        for parent in targets.iter().filter_map(|target| target.parent()) {
+            if !directories.iter().any(|path| path == parent) {
+                directories.push(parent.to_path_buf());
+            }
+        }
+        self.linked_theme_targets.replace(targets);
+        let mut monitors = self.linked_theme_monitors.take();
+        monitors.retain(|(path, _)| directories.contains(path));
+        for path in directories {
+            if monitors.iter().any(|(watched, _)| *watched == path) {
+                continue;
+            }
+            let (changed, live) = (Rc::downgrade(self), Rc::downgrade(self));
+            let monitor = crate::adapters::watch(
+                &Location::local(&path),
+                Watched::Folder,
+                move |file, other_file| {
+                    let Some(manager) = changed.upgrade() else {
+                        return;
+                    };
+                    let linked = |file: &gio::File| {
+                        file.path().is_some_and(|path| {
+                            manager.linked_theme_targets.borrow().contains(&path)
+                        })
+                    };
+                    if linked(file) || other_file.is_some_and(linked) {
+                        manager.schedule_themes_refresh();
+                    }
+                },
+                // Catches a write made before the watch went live.
+                move || {
+                    if let Some(manager) = live.upgrade() {
+                        manager.schedule_themes_refresh();
+                    }
+                },
+            );
+            monitors.push((path, monitor));
+        }
+        self.linked_theme_monitors.replace(monitors);
+    }
+
     fn schedule_themes_refresh(self: &Rc<Self>) {
         if let Some(pending) = self.pending_themes_refresh.borrow_mut().take() {
             pending.remove();
@@ -863,10 +963,17 @@ impl ThemeManager {
     }
 
     pub(in crate::ui) fn refresh_custom_themes(self: &Rc<Self>) {
-        let loaded = crate::storage::writer::run(load_custom_themes);
+        let loaded = crate::storage::writer::run(|| {
+            (
+                load_custom_themes(),
+                linked_theme_targets(&themes_directory()),
+            )
+        });
         let weak = Rc::downgrade(self);
         glib::MainContext::default().spawn_local(async move {
-            if let (Ok(custom), Some(manager)) = (loaded.await, weak.upgrade()) {
+            if let (Ok((custom, targets)), Some(manager)) = (loaded.await, weak.upgrade()) {
+                // Links may have been added, removed, or repointed.
+                manager.monitor_linked_themes(targets);
                 manager.adopt_custom_themes(custom);
             }
         });
@@ -904,6 +1011,37 @@ fn is_custom_theme_event(file: &gio::File) -> bool {
             && path
                 .extension()
                 .is_some_and(|extension| extension == "toml")
+    })
+}
+
+fn linked_theme_targets(directory: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = fs::read_dir(directory) else {
+        return Vec::new();
+    };
+    entries
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            entry
+                .path()
+                .extension()
+                .is_some_and(|extension| extension == "toml")
+                && entry
+                    .file_type()
+                    .is_ok_and(|file_type| file_type.is_symlink())
+        })
+        .filter_map(|entry| resolve_theme_link(&entry.path()))
+        .collect()
+}
+
+/// A missing target still resolves, so its directory is watched until the file appears.
+fn resolve_theme_link(link: &Path) -> Option<PathBuf> {
+    fs::canonicalize(link).ok().or_else(|| {
+        let target = link.parent()?.join(fs::read_link(link).ok()?);
+        Some(
+            fs::canonicalize(target.parent()?)
+                .ok()?
+                .join(target.file_name()?),
+        )
     })
 }
 
@@ -1023,6 +1161,7 @@ impl OmarchyState {
 struct OmarchyRefresh {
     state: Option<OmarchyState>,
     name_exists: bool,
+    theme_directory: Option<PathBuf>,
     /// Ancestor watches survive moving away or replacing the current state tree.
     directories: Vec<PathBuf>,
 }
@@ -1032,7 +1171,11 @@ impl OmarchyRefresh {
         let state = omarchy_state_dir();
         let home = glib::home_dir();
         let theme = state.join("theme");
-        let directories = std::iter::once(theme.as_path())
+        // Watch the target's identity, not the stable symlink spelling.
+        let theme_directory = fs::canonicalize(&theme).ok();
+        let directories = theme_directory
+            .iter()
+            .map(PathBuf::as_path)
             .chain(state.ancestors().take_while(|path| path.starts_with(&home)))
             .filter(|path| path.is_dir())
             .map(Path::to_path_buf)
@@ -1043,6 +1186,7 @@ impl OmarchyRefresh {
                 .zip(read("theme/colors.toml"))
                 .map(|(name, colors)| OmarchyState { name, colors }),
             name_exists: state.join("theme.name").is_file(),
+            theme_directory,
             directories,
         }
     }
@@ -1054,15 +1198,18 @@ fn tokens_from_quattro(name: &str, source: &str, variant: OmarchyVariant) -> Opt
     let source_background = get("background")?;
     let text = get("foreground")?;
     let accent = get("accent")?;
-    let selection = get("selection").unwrap_or_else(|| accent.clone());
-    let shadow = get("color8").unwrap_or_else(|| source_background.clone());
+    let selection = get("selection").unwrap_or_else(|| blend(&source_background, &accent, 0.25));
+    // Some themes set lighter_background equal to background, which would hide hover.
+    let lighter = get("lighter_background")
+        .filter(|lighter| *lighter != source_background)
+        .unwrap_or_else(|| blend(&source_background, &text, 0.10));
     let mut tokens = ThemeTokens {
         name: title_case_slug(name),
-        background: blend(&source_background, &shadow, 0.35),
-        surface: blend(&source_background, &shadow, 0.65),
-        muted: blend(&shadow, &text, 0.10),
+        background: source_background.clone(),
+        surface: get("dark_background").unwrap_or_else(|| source_background.clone()),
+        muted: lighter,
         highlight: selection,
-        border: blend(&shadow, &text, 0.36),
+        border: get("muted").unwrap_or_else(|| blend(&source_background, &text, 0.36)),
         dim_text: blend(&source_background, &text, 0.62),
         text,
         accent,
@@ -1073,10 +1220,12 @@ fn tokens_from_quattro(name: &str, source: &str, variant: OmarchyVariant) -> Opt
         syntax_type: get("cyan").or_else(|| get("color3")),
         syntax_preprocessor: get("yellow"),
     };
-    if variant != OmarchyVariant::Original {
-        let palette = source_palette_from_quattro(source);
-        omarchy::apply_variant(&mut tokens, &source_background, variant, palette.as_ref());
-    }
+    let light = omarchy::is_light(
+        &source_background,
+        values.get("mode").and_then(toml::Value::as_str),
+    );
+    let palette = source_palette_from_quattro(source);
+    omarchy::apply_variant(&mut tokens, light, variant, palette.as_ref());
     Some(tokens)
 }
 

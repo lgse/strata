@@ -10,7 +10,7 @@ use crate::{
         focus_navigation::{
             FOCUS_MODIFIERS, arrow_direction, plain_tab_direction, vim_focus_direction,
         },
-        keys::{SHORTCUT_MODIFIERS, bindings::*},
+        keys::{KeyPress, SHORTCUT_MODIFIERS, bindings::*},
         window::sidebar_focus_direction,
     },
 };
@@ -27,6 +27,15 @@ impl Dispatcher {
             .or_else(|| self.top_bar_navigation(browser, event))
             .or_else(|| self.header_navigation(event))
             .or_else(|| self.sidebar_navigation(browser, event))
+    }
+
+    /// Tab inside an inline rename commits it and renames the neighbouring item instead
+    /// of moving focus.
+    pub(super) fn rename_tab(&self, press: &KeyPress) -> KeyResult {
+        let direction = plain_tab_direction(press)?;
+        self.view
+            .advance_rename(direction)
+            .then_some(Propagation::Stop)
     }
 
     /// Runs before inline editing so Tab from a rename field in Columns also leaves the strip.
@@ -82,16 +91,18 @@ impl Dispatcher {
             return None;
         }
         let press = &event.press;
-        if press.is_any(&[VIM_LEFT, VIM_DOWN, DOWN.ignoring(FOCUS_MODIFIERS)]) {
+        if press.is_any(&[
+            LEFT.alternates(),
+            DOWN.ignoring(FOCUS_MODIFIERS).or_alternates(),
+        ]) {
             self.view.focus_items_from_header();
         } else if press.is(LEFT.ignoring(FOCUS_MODIFIERS)) {
             self.view.move_header_focus(gtk::DirectionType::Left);
-        } else if press.is_any(&[VIM_RIGHT, RIGHT.ignoring(FOCUS_MODIFIERS)]) {
+        } else if press.is(RIGHT.ignoring(FOCUS_MODIFIERS).or_alternates()) {
             self.view.move_header_focus(gtk::DirectionType::Right);
-        } else if press.is_any(&[
-            ENTER.ignoring(FOCUS_MODIFIERS),
-            SPACE.ignoring(FOCUS_MODIFIERS),
-        ]) {
+        } else if press.is(ENTER.ignoring(FOCUS_MODIFIERS))
+            || press.is(SPACE.ignoring(FOCUS_MODIFIERS))
+        {
             return None;
         }
         Some(Propagation::Stop)
@@ -141,12 +152,12 @@ impl Dispatcher {
             return None;
         }
         let press = event.press;
-        if press.is_any(&[VIM_LEFT, LEFT.ignoring(FOCUS_MODIFIERS)]) {
+        if press.is(LEFT.ignoring(FOCUS_MODIFIERS).or_alternates()) {
             return self.header_left(event);
         }
-        if press.is_any(&[VIM_RIGHT, RIGHT.ignoring(FOCUS_MODIFIERS)]) {
+        if press.is(RIGHT.ignoring(FOCUS_MODIFIERS).or_alternates()) {
             self.view.move_header_focus(gtk::DirectionType::Right);
-        } else if press.is_any(&[VIM_DOWN, DOWN.ignoring(FOCUS_MODIFIERS)]) {
+        } else if press.is(DOWN.ignoring(FOCUS_MODIFIERS).or_alternates()) {
             self.view.focus_items_from_header();
         } else {
             return None;

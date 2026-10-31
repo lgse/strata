@@ -1,0 +1,24 @@
+{"scenario":"sidebar-marquee-keeps-scrolled-list","modes":["list"],"layout":"us","mutation":null,"known_bug":null,"cost":{"list":1.6},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":3,"score":30,"note":"Sidebar marquee selects only the visible band of a scrolled list; sidebar start is also in sidebar-marquee-reaches-leading-pane"}}
+{"fs":{"path":"scrolling","mkdir":true}}
+{"fs":{"path":"scrolling/{000..599}.txt","write":"{}\n"}}
+{"select_with_keyboard":"scrolling"}
+{"key":"Return"}
+{"wait":{"directory":"scrolling"},"message":"the browser to be working in 'scrolling'"}
+{"settle":{"pane":"scrolling"}}
+{"key":"Home"}
+{"key":"Left"}
+{"wait":{"state":{"target":{"sidebar":"Home"},"focused":true}},"message":"keyboard focus in the sidebar"}
+{"wheel":{"viewport":null},"clicks":15}
+{"wait":{"visible":{"first_above":"010.txt"}},"message":"the list to scroll while focus stays in the sidebar"}
+{"note":"visible","pick":0,"as":"first"}
+{"settle":{"entry":"$first"}}
+{"expect":{"state":{"target":{"sidebar":"Home"},"focused":true}}}
+{"note":"visible","as":"rows"}
+{"slice":"rows","pick":0,"as":"first_visible"}
+{"slice":"rows","middle":3,"as":"band"}
+{"slice":"rows","middle":3,"pick":0,"as":"band_first"}
+{"slice":"rows","middle":3,"pick":-1,"as":"band_last"}
+{"drag":{"from":{"point":[{"of":{"sidebar":"Home"}},{"of":{"entry":"$band_last","part":"label"}}]},"to":{"entry":"$band_first","part":"label"},"to_at":["2/3","50%"]}}
+{"wait":{"selected":{"contains":"$band","count":3}},"message":"the sidebar marquee to select only the visible band"}
+{"expect":{"visible":{"first":"$first_visible"}}}
+{"expect":{"focus_within":{"container":null}}}

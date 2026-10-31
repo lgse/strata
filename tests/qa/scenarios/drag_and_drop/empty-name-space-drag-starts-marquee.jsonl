@@ -1,0 +1,6 @@
+{"scenario":"empty-name-space-drag-starts-marquee","modes":["columns","list"],"prefs":{"single_click_previews":true},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.6,"list":0.6},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Blank name-column space mid-row starts marquee, not move; row-padding-drag-view-policy shares assertions, covers padding edges only"}}
+{"drag":{"from":{"entry":"todo.txt","part":"label"},"from_at":["2/3","50%"],"to":{"entry":"archive"}}}
+{"wait":{"selected":{"contains":["archive","todo.txt"]}},"message":"name-column whitespace to select files rather than move one"}
+{"fs":{"path":"todo.txt","exists":true},"timeout_ms":0}
+{"fs":{"path":"archive/todo.txt","exists":false},"timeout_ms":0}
+{"expect":{"preview":null}}

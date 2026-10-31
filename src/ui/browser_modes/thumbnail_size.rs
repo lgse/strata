@@ -6,12 +6,8 @@ use crate::{
     model::Location,
     ui::{
         keys::{
-            KeyPress,
-            bindings::{
-                TENXER_THUMBNAILS_LARGER, TENXER_THUMBNAILS_LARGER_EQUAL,
-                TENXER_THUMBNAILS_SMALLER, THUMBNAILS_LARGER, THUMBNAILS_LARGER_EQUAL,
-                THUMBNAILS_RESET, THUMBNAILS_SMALLER,
-            },
+            KeyPress, Map,
+            bindings::{THUMBNAILS_LARGER, THUMBNAILS_RESET, THUMBNAILS_SMALLER},
         },
         preferences::PreferenceManager,
     },
@@ -36,10 +32,12 @@ pub(in crate::ui) enum ThumbnailResize {
 }
 
 impl ThumbnailResize {
+    /// The keys that resize from anywhere; the 10xer map's plain keys resize
+    /// only from the icons, through [`Self::for_tenxer_key`].
     pub(in crate::ui) fn for_shortcut(press: &KeyPress) -> Option<Self> {
-        if press.is_any(&[THUMBNAILS_LARGER, THUMBNAILS_LARGER_EQUAL]) {
+        if press.is(THUMBNAILS_LARGER.in_map(Map::Default)) {
             Some(Self::Step(1))
-        } else if press.is(THUMBNAILS_SMALLER) {
+        } else if press.is(THUMBNAILS_SMALLER.in_map(Map::Default)) {
             Some(Self::Step(-1))
         } else if press.is(THUMBNAILS_RESET) {
             Some(Self::Reset)
@@ -49,9 +47,9 @@ impl ThumbnailResize {
     }
 
     pub(in crate::ui) fn for_tenxer_key(press: &KeyPress) -> Option<Self> {
-        if press.is_any(&[TENXER_THUMBNAILS_LARGER, TENXER_THUMBNAILS_LARGER_EQUAL]) {
+        if press.is(THUMBNAILS_LARGER) {
             Some(Self::Step(1))
-        } else if press.is(TENXER_THUMBNAILS_SMALLER) {
+        } else if press.is(THUMBNAILS_SMALLER) {
             Some(Self::Step(-1))
         } else {
             None

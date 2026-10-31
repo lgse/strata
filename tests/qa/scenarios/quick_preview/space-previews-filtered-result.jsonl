@@ -1,0 +1,14 @@
+{"scenario":"space-previews-filtered-result","modes":["columns","icons","list"],"layout":"us","mutation":"quick-preview","known_bug":null,"tree":{"notes.txt":"the quick brown fox\n","page.md":"# Heading\n\nBody text.\n","third.txt":"third preview fixture\n","data.csv":"name,value\nalpha,1\n","folder":{"inner.txt":"inner\n","nested-notes.txt":"nested preview fixture\n"}},"cost":{"columns":0.8,"icons":0.8,"list":0.8},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":4,"score":33,"note":"Space previews a filtered result selected by keyboard Down (fix #585); right-click route is space-previews-filtered-result-pointer"}}
+{"select":{"entry":"notes.txt"}}
+{"key":"ctrl+f"}
+{"wait":{"field":{}},"message":"an editable field to take focus"}
+{"remember":{"field":true},"as":"filter"}
+{"type":"nested-notes"}
+{"wait":{"matches":["nested-notes.txt"]},"message":"the nested search result"}
+{"key":"Down"}
+{"key":"space"}
+{"wait":{"preview":"nested preview fixture"},"message":"Space to preview the search result, not the stale directory selection"}
+{"expect":[{"field":{"of":"filter","text":"nested-notes"}},{"matches":["nested-notes.txt"]}]}
+{"key":"space"}
+{"wait":{"preview":null},"message":"Space to close the filtered preview"}
+{"expect":[{"field":{"of":"filter","text":"nested-notes"}},{"matches":["nested-notes.txt"]}]}

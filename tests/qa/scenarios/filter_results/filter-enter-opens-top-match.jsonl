@@ -1,0 +1,36 @@
+{"scenario":"filter-enter-opens-top-match","modes":["columns","icons","list"],"layout":"us","tree":{"reports":{"q1.txt":"q1\n"},"old-reports":{"q0.txt":"q0\n"},"reports-draft":{"draft.txt":"draft\n"},"todo.txt":"todo\n"},"variants":[{"id":"folder","prefs":{"filter_include_subfolders":false}},{"id":"subfolders","prefs":{"filter_include_subfolders":true}}],"cost":{"columns-folder":1.7,"icons-folder":1.7,"list-folder":1.7,"columns-subfolders":1.7,"icons-subfolders":1.7,"list-subfolders":1.7},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"Enter from filter field opens marked top, a pick, or new top; real key routing beyond filter_focus GTK test, which emits on the field"}}
+{"wait":{"entries":{"contains":["reports","old-reports","reports-draft"]},"dir":"$root"},"message":"the fixture listed"}
+{"key":"ctrl+f"}
+{"wait":{"field":{}},"message":"the filter field to take focus"}
+{"remember":{"field":true},"as":"filter"}
+{"type":"reports"}
+{"wait":{"matches":{"count":3}},"message":"the three folders matching 'reports'"}
+{"wait":{"state":{"target":{"search_result":"reports"},"marked":true}},"message":"the top result 'reports' to carry the Enter mark"}
+{"expect":[{"state":{"target":{"search_result":"old-reports"},"marked":false}},{"state":{"target":{"search_result":"reports-draft"},"marked":false}}],"message":"only the top result to be marked"}
+{"expect":{"not":{"any_result_row":{"selected":true}}},"message":"the mark not to select a result"}
+{"expect":{"field":{"of":"filter","focused":true}},"message":"the field to keep focus while the mark shows"}
+{"click":{"search_result":"old-reports"},"mods":["ctrl"]}
+{"wait":{"state":{"target":{"search_result":"old-reports"},"selected":true}},"message":"Ctrl+click to pick 'old-reports'"}
+{"click":{"field":"filter"}}
+{"wait":{"field":{"of":"filter","focused":true}},"message":"focus back in the filter field"}
+{"expect":{"state":{"target":{"search_result":"reports"},"marked":false}},"message":"a pick to take the mark off the top result"}
+{"key":"BackSpace"}
+{"wait":{"field":{"of":"filter","text":"report"}},"message":"the edited query"}
+{"wait":{"state":{"target":{"search_result":"old-reports"},"selected":false}},"message":"editing the query to drop the pick"}
+{"wait":{"state":{"target":{"search_result":"reports"},"marked":true}},"message":"the mark to return to the top result"}
+{"key":"Return"}
+{"wait":{"directory":"reports"},"message":"Enter to open the marked top result"}
+{"key":"alt+Left"}
+{"wait":{"entries":{"contains":["old-reports"]},"dir":"$root"},"message":"Back to the fixture folder"}
+{"key":"ctrl+f"}
+{"wait":{"field":{}},"message":"the filter field to take focus again"}
+{"remember":{"field":true},"as":"filter"}
+{"key":"ctrl+a"}
+{"type":"reports"}
+{"wait":{"state":{"target":{"search_result":"reports"},"marked":true}},"message":"the top result marked again"}
+{"click":{"search_result":"old-reports"},"mods":["ctrl"]}
+{"wait":{"state":{"target":{"search_result":"old-reports"},"selected":true}},"message":"Ctrl+click to pick 'old-reports'"}
+{"click":{"field":"filter"}}
+{"wait":{"field":{"of":"filter","focused":true}},"message":"focus back in the filter field"}
+{"key":"Return"}
+{"wait":{"directory":"old-reports"},"message":"Enter to open the pick rather than the top result"}

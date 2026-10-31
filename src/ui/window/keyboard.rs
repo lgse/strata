@@ -13,7 +13,7 @@ use crate::{
     ui::{
         browser::BrowserView,
         browser_modes::ThumbnailResize,
-        keys::{self, Binding, KeyPress, SHORTCUT_MODIFIERS, TEXT_EDITING, bindings::*},
+        keys::{self, Command, KeyPress, Map, SHORTCUT_MODIFIERS, TEXT_EDITING, bindings::*},
         modal::is_closing_layer,
         preview::PreviewDrawer,
         shortcut_footer::ShortcutFooter,
@@ -26,6 +26,7 @@ use super::{SidebarState, SidebarView, TypeToSearch, topmost_modal_layer, visibl
 mod chooser;
 pub(super) mod chords;
 mod commands;
+mod direct;
 mod escape;
 mod files;
 mod focus;
@@ -39,14 +40,15 @@ use sidebar::{SidebarChord, activate_sidebar_focus, move_sidebar_focus, sidebar_
 // None tries the next Strata stage; Some(Proceed) gives the event to GTK instead.
 type KeyResult = Option<Propagation>;
 
-/// Window actions that run once every other stage yields the key. The flag
-/// marks those 10xer mode leaves unbound.
-const WINDOW_ACTIONS: [(Binding, &str, bool); 5] = [
-    (SEARCH, "search", false),
-    (JUMP_TO_FOLDER, "jump-folder", true),
-    (TERMINAL, "open-terminal", true),
-    (REFRESH, "refresh", false),
-    (ARROW_SCOPE, "toggle-arrow-scope", true),
+/// Window actions that run once every other stage yields the key, wherever
+/// the active table binds them. 10xer runs its terminal key only from the file
+/// list and sidebar, so it is left out here in that map.
+const WINDOW_ACTIONS: [(Command, &str); 5] = [
+    (SEARCH, "search"),
+    (JUMP_TO_FOLDER, "jump-folder"),
+    (TERMINAL, "open-terminal"),
+    (REFRESH, "refresh"),
+    (ARROW_SCOPE, "toggle-arrow-scope"),
 ];
 
 pub(super) struct DispatcherParts {
@@ -520,17 +522,20 @@ impl WheelZoom {
     }
 }
 
-/// Window commands that 10xer mode leaves unbound, so the file list swallows them.
+/// Default-map keys of window commands that 10xer mode leaves unbound or binds
+/// to other keys, so the file list swallows them, and Ctrl+T.
 fn claims_unbound_command(press: &KeyPress) -> bool {
-    press.is_any(&[
+    [
         DUPLICATE,
         FILTER,
         SIDEBAR,
-        RENAME_R,
-        TAB_NEW,
+        RENAME,
         ARROW_SCOPE,
         JUMP_TO_FOLDER,
-    ])
+    ]
+    .into_iter()
+    .any(|command| press.is(command.in_map(Map::Default)) && !press.is(command.in_map(Map::Tenxer)))
+        || press.is(TAB_NEW)
 }
 
 fn claims_file_list_typing(press: &KeyPress) -> bool {
@@ -585,10 +590,8 @@ struct Dispatcher {
 }
 
 struct KeyEvent {
-    /// **h j k l** already read as arrows where they navigate.
     press: KeyPress,
     focused: Option<gtk::Widget>,
-    vim_navigation: bool,
     header_left_boundary: bool,
 }
 
@@ -601,8 +604,10 @@ impl KeyEvent {
         !self.press.modifiers().intersects(modifiers)
     }
 
+    /// The arrow an alias reads as, which GTK's list bindings never see.
     fn vim_arrow(&self) -> Option<gtk::gdk::Key> {
-        self.vim_navigation
+        self.press
+            .aliased()
             .then(|| crate::ui::focus_navigation::spatial_arrow(&self.press))
             .flatten()
             .map(keys::Binding::key)
@@ -686,6 +691,9 @@ impl Dispatcher {
     }
 
     fn handle_chooser_key(&self, browser: &Rc<Browser>, press: &KeyPress) -> KeyResult {
+        if let Some(result) = self.rename_tab(press) {
+            return Some(result);
+        }
         if !self.type_to_search.preferences.tenxer_mode() {
             return self
                 .normal_filter_keys(press)
@@ -700,7 +708,7 @@ impl Dispatcher {
         {
             // The open reference's search entry counts as focused text; its
             // keys, Escape included, must reach the reference, not the request.
-            if press.is(REFERENCE.ignoring(SHORTCUT_MODIFIERS))
+            if press.is(REFERENCE.in_map(Map::Default).ignoring(SHORTCUT_MODIFIERS))
                 || self.shortcuts.reference_is_open()
             {
                 return self.shortcuts.handle_key(press);
@@ -715,14 +723,20 @@ impl Dispatcher {
         if !press.is_modifier() {
             self.open_with.invalidate();
         }
+        if let Some(result) = self.rename_tab(press) {
+            return result;
+        }
         let preferences = &self.type_to_search.preferences;
-        if let Some(size) = preferences.text_size().for_shortcut(press) {
-            // Text-size shortcuts run before the chord consumer. Drop the mark
-            // first, then resize, matching Ctrl+, opening Settings.
+        // Text-size shortcuts and a focused document's zoom reset run before
+        // the chord consumer. Drop the mark first, matching Ctrl+, opening
+        // Settings.
+        if self.preview.reset_pdf_zoom(press) {
             self.shortcuts.cancel_chord();
-            if !self.preview.reset_pdf_zoom(press) {
-                self.view.set_text_size(size);
-            }
+            return Propagation::Stop;
+        }
+        if let Some(size) = preferences.text_size().for_shortcut(press) {
+            self.shortcuts.cancel_chord();
+            self.view.set_text_size(size);
             return Propagation::Stop;
         }
         if let Some(change) = ThumbnailResize::for_shortcut(press)
@@ -737,19 +751,13 @@ impl Dispatcher {
         if let Some(result) = self.tenxer_keys(browser, press) {
             return result;
         }
-        let focused = gtk::prelude::RootExt::focus(&self.window);
-        let navigated = crate::ui::focus_navigation::navigation_key(
-            press,
-            preferences.type_to_search_active(),
-            focused.as_ref(),
-        );
         let mut event = KeyEvent {
-            press: navigated,
-            focused,
-            vim_navigation: navigated != *press,
+            press: *press,
+            focused: gtk::prelude::RootExt::focus(&self.window),
             header_left_boundary: false,
         };
         self.window_commands(&event)
+            .or_else(|| self.direct_commands(&event))
             .or_else(|| self.default_tab_navigation(&event))
             .or_else(|| self.inline_editing(&event))
             .or_else(|| self.filter_and_location_commands(&event))
@@ -761,7 +769,9 @@ impl Dispatcher {
                 // Search rows own navigation; directory commands must not act on hidden selections.
                 if self.view.selected_search_results().is_some()
                     && !event.text_has_focus()
-                    && !event.press.is(DELETE.ignoring(SHORTCUT_MODIFIERS))
+                    && !event.press.is(MOVE_TO_TRASH
+                        .in_map(Map::Default)
+                        .ignoring(SHORTCUT_MODIFIERS))
                 {
                     if event.press.is_any(&[COPY, CUT, PASTE, SELECT_ALL])
                         && let Some(result) = self.clipboard_command(&event)
@@ -815,6 +825,10 @@ impl Dispatcher {
         }
         if self.native_menu_owns_input() {
             return Some(Propagation::Proceed);
+        }
+        if press.is(ESCAPE_ANY) && self.view.cancel_column_drag() {
+            self.shortcuts.cancel_chord();
+            return Some(Propagation::Stop);
         }
         let mut focused = gtk::prelude::RootExt::focus(&self.window);
         while let Some(widget) = focused {
@@ -870,15 +884,17 @@ impl Dispatcher {
     /// Like a GTK accelerator, an enabled action consumes its key even when the
     /// action's guard then declines to run.
     fn window_action(&self, press: &KeyPress) -> Propagation {
-        let Some((_, name, unbound_in_tenxer)) = WINDOW_ACTIONS
+        let Some((command, name)) = WINDOW_ACTIONS
             .iter()
-            .find(|(binding, _, _)| press.is(*binding))
+            .find(|(command, _)| press.is(*command))
         else {
             return Propagation::Proceed;
         };
-        let bound = !(*unbound_in_tenxer && self.type_to_search.preferences.tenxer_mode());
+        if *command == TERMINAL && self.type_to_search.preferences.tenxer_mode() {
+            return Propagation::Proceed;
+        }
         match self.window.downcast_ref::<gtk::ApplicationWindow>() {
-            Some(window) if bound && window.is_sensitive() && window.is_action_enabled(name) => {
+            Some(window) if window.is_sensitive() && window.is_action_enabled(name) => {
                 gtk::gio::prelude::ActionGroupExt::activate_action(window, name, None);
                 Propagation::Stop
             }
@@ -985,7 +1001,9 @@ impl Dispatcher {
             return Some(Propagation::Stop);
         }
         if claims_unbound_command(press)
-            || (self.view.item_view_has_focus() && claims_file_list_typing(press))
+            || (self.view.item_view_has_focus()
+                && claims_file_list_typing(press)
+                && !self.runs_directly(press))
         {
             return Some(Propagation::Stop);
         }
@@ -1020,9 +1038,7 @@ impl Dispatcher {
     }
 
     fn tenxer_sidebar(&self, browser: &Browser, press: &KeyPress) -> KeyResult {
-        if press.is_any(&[CONTEXT_MENU, CONTEXT_MENU_F10])
-            && sidebar::open_sidebar_context_menu(&self.sidebar.widget)
-        {
+        if press.is(CONTEXT_MENU) && sidebar::open_sidebar_context_menu(&self.sidebar.widget) {
             self.shortcuts.cancel_chord();
             return Some(Propagation::Stop);
         }
@@ -1069,11 +1085,11 @@ impl Dispatcher {
         if held.contains(Modifiers::SHIFT_MASK) && !press.is(FOCUS_PREVIOUS) {
             return Some(Propagation::Stop);
         }
-        if press.is_any(&[VIM_LEFT, VIM_DOWN]) {
+        if press.is_any(&[LEFT.alternates(), DOWN.alternates()]) {
             self.return_from_header(browser);
-        } else if press.is_any(&[ENTER, SPACE]) {
+        } else if press.is(ENTER) || press.is(SPACE) {
             crate::ui::focus_navigation::activate(self.window.upcast_ref());
-        } else if !press.is(DELETE) {
+        } else if !press.is(MOVE_TO_TRASH.in_map(Map::Default)) {
             return None;
         }
         Some(Propagation::Stop)
