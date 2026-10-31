@@ -210,7 +210,7 @@ Opening the folder background menu offers the same rules with the folder itself 
 the single input. Actions are only offered for native paths: Trash, GVfs, and other
 non-native locations are excluded in this release.
 
-Custom actions occupy a separate section between the opening/printing commands
+Custom actions occupy a separate section between the opening commands
 and Cut/Copy. The context menu uses GTK's native nested menu model: hover over
 **Actions** to open its submenu, then move onto an action to highlight it.
 Hovering another menu item closes the submenu. Clicking or keyboard activation

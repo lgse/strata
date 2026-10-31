@@ -5,7 +5,7 @@
 {"expect":{"menu_items":{"at_least":1}},"message":"menu entries should have the menu item role"}
 {"expect":{"menu_items":{"excludes":[""]}},"message":"every menu item needs a name"}
 {"expect":{"description":{"target":{"menu_item":"Copy"},"text":"Ctrl+C"}},"message":"the accelerator belongs in the description, not the name"}
-{"expect":{"menu_items":{"in_order":["Open","Open With…","Quick preview","Print","Cut","Copy","Duplicate","Rename","Move to…","Copy to…","Compress…","Customize…","Copy path","Copy name","Properties","Move to Trash","Permanently delete"]}},"message":"unexpected action order"}
+{"expect":{"menu_items":{"in_order":["Open","Open With…","Quick preview","Cut","Copy","Duplicate","Rename","Move to…","Copy to…","Compress…","Customize…","Copy path","Copy name","Properties","Move to Trash","Permanently delete"]}},"message":"unexpected action order"}
 {"key":"Escape"}
 {"wait":{"menu_items":null},"message":"the menu to close"}
 {"click":{"entry":"documents"},"button":3}

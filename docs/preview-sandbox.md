@@ -499,7 +499,7 @@ the input, including cancellation and decoder-error paths; no compressed input
 is handed to an in-process media parser.
 
 Remote PDFs, animated GIFs, audio, and other video formats remain unsupported:
-copy them locally first. In particular, remote PDF rendering/printing needs a shared document
+copy them locally first. In particular, remote PDF rendering needs a shared document
 snapshot before it can safely request multiple pages without repeated downloads.
 Supported still-image formats continue to depend on installed sandbox decoder tools;
 HEIC/HEIF can use ImageMagick with libheif inside the image sandbox.

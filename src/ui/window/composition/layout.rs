@@ -219,8 +219,6 @@ pub(super) fn browser_layout(
     let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
     root.append(&header.widget);
     bind_pin_handlers(browser, sidebar);
-    let preview_for_print = preview.clone();
-    browser.set_print_handler(Rc::new(move |entry| preview_for_print.print_entry(entry)));
     let content = browser_split(
         browser,
         sidebar,

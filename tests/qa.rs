@@ -26,6 +26,9 @@ mod fs_check;
 #[path = "qa/fs_helpers.rs"]
 mod fs_helpers;
 
+#[path = "qa/input_method.rs"]
+mod input_method;
+
 #[path = "qa/keyboard.rs"]
 mod keyboard;
 
@@ -62,6 +65,9 @@ mod unit_tests;
 #[path = "qa/variables.rs"]
 mod variables;
 
+#[path = "qa/wayland.rs"]
+mod wayland;
+
 use std::{
     fmt::Write as _,
     fs::{self, File},
@@ -86,6 +92,7 @@ use fixture::{
     gtk_settings, listing, pin_times,
 };
 use fs_check::FsState;
+use input_method::InputMethod;
 use peer_steps::{Peers, Relaunch};
 use process::{Bus, SPAWN, spawn, tail, terminate, wait_for_exit};
 use run::{Outcome, pretty, run_result, settled_state};
@@ -169,8 +176,10 @@ const XDG_DIRECTORIES: [(&str, &str); 5] = [
     ("XDG_CACHE_HOME", "cache"),
     ("XDG_STATE_HOME", "state"),
 ];
-const RUNNER_OWNED_ENVIRONMENT: [&str; 6] = [
+const RUNNER_OWNED_ENVIRONMENT: [&str; 8] = [
     "DISPLAY",
+    "WAYLAND_DISPLAY",
+    wayland::SWAY_SOCKET_VARIABLE,
     "DBUS_SESSION_BUS_ADDRESS",
     "XDG_RUNTIME_DIR",
     "STRATA_INPUT_LOG",
@@ -303,17 +312,38 @@ fn populate(directory: &Path, tree: &Value) {
 
 static NEXT_DISPLAY: AtomicU32 = AtomicU32::new(0);
 
+/// `x11` (the default) or `wayland`: the display server every run of this process gets.
+const DISPLAY_VARIABLE: &str = "STRATA_QA_DISPLAY";
+
 struct Display {
     name: String,
     server: Child,
     log: PathBuf,
-    connection: RustConnection,
+    kind: Server,
+}
+
+enum Server {
+    X11 { connection: Box<RustConnection> },
+    Wayland(wayland::Sway),
 }
 
 impl Display {
+    fn start(scratch: &Path, runtime: &Path) -> Result<Self, String> {
+        match std::env::var(DISPLAY_VARIABLE).as_deref() {
+            Err(std::env::VarError::NotPresent) | Ok("" | "x11") => {
+                Self::start_x11(scratch.join("xvfb.log"))
+            }
+            Ok("wayland") => wayland::start(scratch, runtime),
+            Ok(other) => Err(format!(
+                "{DISPLAY_VARIABLE} is x11 or wayland, not {other:?}"
+            )),
+            Err(error) => Err(format!("{DISPLAY_VARIABLE}: {error}")),
+        }
+    }
+
     /// `-displayfd` confirms this server, not a concurrently starting one, owns the number;
     /// one that loses a number to another server tries the next.
-    fn start(log: PathBuf) -> Result<Self, String> {
+    fn start_x11(log: PathBuf) -> Result<Self, String> {
         let first = NEXT_DISPLAY.fetch_add(1, Ordering::Relaxed);
         for offset in 0..DISPLAY_TRIES {
             let number = FIRST_DISPLAY + first.wrapping_add(offset) % DISPLAY_TRIES;
@@ -389,29 +419,63 @@ impl Display {
             name,
             server,
             log: log.to_owned(),
-            connection,
+            kind: Server::X11 {
+                connection: Box::new(connection),
+            },
         }))
     }
 
+    /// What a client needs to reach this display.
+    fn environment(&self) -> Vec<(&'static str, String)> {
+        match &self.kind {
+            Server::X11 { .. } => vec![("DISPLAY", self.name.clone())],
+            Server::Wayland(sway) => vec![
+                ("WAYLAND_DISPLAY", self.name.clone()),
+                (
+                    wayland::SWAY_SOCKET_VARIABLE,
+                    sway.ipc.display().to_string(),
+                ),
+                ("GDK_BACKEND", "wayland".to_owned()),
+            ],
+        }
+    }
+
+    fn x11(&self) -> Result<&RustConnection, String> {
+        match &self.kind {
+            Server::X11 { connection } => Ok(connection),
+            Server::Wayland(_) => Err("keyboard layouts need the X11 display".to_owned()),
+        }
+    }
+
     fn screenshot(&self, destination: &Path) -> Result<(), String> {
-        let mut child = spawn(
-            Command::new("import")
-                .args(["-display", &self.name, "-window", "root"])
-                .arg(destination)
-                .env_clear()
-                .env("PATH", std::env::var_os("PATH").unwrap_or_default())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null()),
-        )
-        .map_err(|error| format!("cannot run import: {error}"))?;
+        let mut child = match &self.kind {
+            Server::X11 { .. } => spawn(
+                Command::new("import")
+                    .args(["-display", &self.name, "-window", "root"])
+                    .arg(destination)
+                    .env_clear()
+                    .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null()),
+            )
+            .map_err(|error| format!("cannot run import: {error}"))?,
+            Server::Wayland(sway) => sway.screenshot(&self.name, destination)?,
+        };
+        let program = match &self.kind {
+            Server::X11 { .. } => "import",
+            Server::Wayland(_) => "grim",
+        };
         let deadline = Instant::now() + CAPTURE_TIMEOUT;
         loop {
             match child.try_wait().map_err(|error| error.to_string())? {
                 Some(status) if status.success() => return Ok(()),
-                Some(status) => return Err(format!("import exited with {status}")),
+                Some(status) => return Err(format!("{program} exited with {status}")),
                 None if Instant::now() >= deadline => {
                     terminate(&mut child);
-                    return Err(format!("import ran past {} s", CAPTURE_TIMEOUT.as_secs()));
+                    return Err(format!(
+                        "{program} ran past {} s",
+                        CAPTURE_TIMEOUT.as_secs()
+                    ));
                 }
                 None => std::thread::sleep(POLL_INTERVAL),
             }
@@ -458,8 +522,13 @@ impl Launch<'_> {
                 .iter()
                 .map(|(key, value)| (key.clone(), value.clone())),
         );
+        variables.extend(
+            self.display
+                .environment()
+                .into_iter()
+                .map(|(key, value)| (key.to_owned(), value)),
+        );
         variables.extend(self.extra.iter().cloned());
-        variables.push(("DISPLAY".to_owned(), self.display.name.clone()));
         variables.push((
             "XDG_RUNTIME_DIR".to_owned(),
             self.runtime.display().to_string(),
@@ -520,7 +589,7 @@ impl Application {
             .env("PATH", std::env::var_os("PATH").unwrap_or_default())
             .envs(&launch.manifest.environment)
             .envs(QA_ENVIRONMENT)
-            .env("DISPLAY", &launch.display.name)
+            .envs(launch.display.environment())
             .env("XDG_RUNTIME_DIR", launch.runtime)
             .env("STRATA_INPUT_LOG", launch.input_log)
             .env(SHADER_CACHE_VARIABLE, shader_cache()?)
@@ -750,7 +819,7 @@ fn execute(scenario: &Scenario, run: &Run, manifest: &Manifest) -> Outcome {
         Ok(audit) => audit,
         Err(error) => return failed_setup(format!("setup: {error}"), &mut fs_state),
     };
-    let display = match Display::start(scratch.path().join("xvfb.log")) {
+    let display = match Display::start(scratch.path(), &runtime) {
         Ok(display) => display,
         Err(error) => return failed_setup(format!("setup: {error}"), &mut fs_state),
     };
@@ -761,6 +830,15 @@ fn execute(scenario: &Scenario, run: &Run, manifest: &Manifest) -> Outcome {
         }
     } else {
         None
+    };
+    let input_method = match (&scenario.header.input_method, &bus) {
+        (Some(name), Some(bus)) => {
+            match InputMethod::start(name, manifest, &home, &runtime, &display, &bus.address) {
+                Ok(input_method) => Some(input_method),
+                Err(error) => return failed_setup(format!("setup: {error}"), &mut fs_state),
+            }
+        }
+        _ => None,
     };
     let launch = Launch {
         manifest,
@@ -856,7 +934,11 @@ fn execute(scenario: &Scenario, run: &Run, manifest: &Manifest) -> Outcome {
                 fs::read_to_string(&application.log).unwrap_or_default(),
             ),
             (
-                "xvfb.log",
+                display
+                    .log
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("display.log"),
                 fs::read_to_string(&display.log).unwrap_or_default(),
             ),
             (
@@ -880,6 +962,12 @@ fn execute(scenario: &Scenario, run: &Run, manifest: &Manifest) -> Outcome {
         }
         if let Some(tree) = outcome.last_tree.take() {
             files.push(("tree.txt", tree));
+        }
+        if let Some(input_method) = &input_method {
+            files.push((
+                input_method::LOG,
+                fs::read_to_string(&input_method.log).unwrap_or_default(),
+            ));
         }
         for (file, contents) in files {
             let _ = fs::write(artifacts.join(file), contents);

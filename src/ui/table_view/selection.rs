@@ -121,14 +121,7 @@ impl Selection {
     }
 
     fn row(&self, position: u32) -> Option<usize> {
-        let item = self
-            .table
-            .model
-            .item(position)?
-            .downcast::<glib::BoxedAnyObject>()
-            .ok()?;
-        let index = *item.borrow::<usize>();
-        Some(index)
+        self.table.model.row(position)
     }
 
     fn text(&self, point: Point) -> &str {
