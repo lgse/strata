@@ -82,15 +82,26 @@ impl<J: Job> WorkQueue<J> {
 
     /// Stops the queue; only the first error is kept, and none after a cancel.
     pub(super) fn fail(&self, error: J::Error) {
+        if self.record(error) {
+            self.failed.store(true, Ordering::Release);
+            self.wake.notify_all();
+        }
+    }
+
+    /// Keeps `error` for the result like [`Self::fail`], but lets the other jobs finish.
+    pub(super) fn defer(&self, error: J::Error) {
+        self.record(error);
+    }
+
+    fn record(&self, error: J::Error) -> bool {
         if self.cancelled.load(Ordering::Acquire) {
-            return;
+            return false;
         }
         let mut first_error = lock(&self.error);
         if first_error.is_none() {
             *first_error = Some(error);
         }
-        self.failed.store(true, Ordering::Release);
-        self.wake.notify_all();
+        true
     }
 
     pub(super) fn next_job(&self) -> Option<J> {
