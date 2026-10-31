@@ -314,10 +314,7 @@ fn context_hints_follow_the_active_map() {
             ] {
                 assert_eq!(after(label), Some(hint), "{hints:?}");
             }
-            assert!(
-                !hints.iter().any(|hint| hint.starts_with("Ctrl+")),
-                "{hints:?}"
-            );
+            assert_eq!(after("New Folder"), Some("Ctrl+Shift+N"), "{hints:?}");
             assert!(
                 hints.iter().any(|hint| hint == "i"),
                 "the menu shows Strata's label, not GTK's rendering of the accelerator: {hints:?}"
@@ -443,6 +440,44 @@ fn archive_extraction_actions_follow_build_support() {
             }
             view.browser().clear_observer();
             window.destroy();
+        },
+    );
+}
+
+#[test]
+fn entry_creation_is_unavailable_in_virtual_directories() {
+    crate::test_support::gtk_test(
+        "ui::browser::context_menu::tests::menus::entry_creation_is_unavailable_in_virtual_directories",
+        || {
+            let fixture = tempfile::tempdir().expect("menu fixture");
+            for (location, can_create) in [
+                (Location::local(fixture.path()), true),
+                (Location::uri("recent:///"), false),
+                (Location::uri("trash:///"), false),
+            ] {
+                let view = BrowserView::new(Rc::new(MenuSource), PeekBehavior::default());
+                let window = gtk::Window::builder()
+                    .child(&view.widget())
+                    .default_width(1000)
+                    .default_height(850)
+                    .build();
+                window.present();
+                view.browser().navigate(location.clone());
+                wait_until(|| label(&view.widget(), "notes.txt").is_some());
+                let menu = open_menu(&view, Some("notes.txt"));
+                let labels = label_texts(&menu);
+                for action in ["New Folder", "New File"] {
+                    assert_eq!(
+                        labels.iter().any(|label| label == action),
+                        can_create,
+                        "{action} at {location:?}"
+                    );
+                }
+                menu.popdown();
+                wait_until(|| !menu.is_mapped());
+                view.browser().clear_observer();
+                window.destroy();
+            }
         },
     );
 }

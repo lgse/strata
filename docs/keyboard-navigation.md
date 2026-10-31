@@ -152,6 +152,12 @@ tries `new folder (1)` / `new file (1)`, then `(2)`, and so on without overwriti
 anything. The pane filter is cleared and the entire allocated default name is
 selected: one Backspace clears it, and typing replaces it.
 
+The item menu also offers **New Folder** and **New File**, so creation stays
+accessible when entries fill the pane. These actions create the item in that
+pane's directory, including when a folder or multiple items are selected. The
+selected items stay in place. These actions are hidden in Trash, Recent, and
+recursive search results.
+
 Item menu → **New Folder with Selection** (or **Ctrl+Alt+N**) creates `new folder`
 in the same directory, moves the selected items into it, and names it in place.
 With nothing selected **Ctrl+Alt+N** falls back to a plain `new folder`. The item

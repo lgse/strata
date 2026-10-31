@@ -771,6 +771,22 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     header.append(&heading);
     header.append(&summary);
 
+    let creation = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    let new_folder = item_context_option(
+        crate::assets::icons::FOLDER_PLUS,
+        "New Folder",
+        ContextHint::NewFolder,
+    );
+    let new_file = item_context_option(
+        crate::assets::icons::FILE_PLUS,
+        "New File",
+        ContextHint::None,
+    );
+    creation.append(&new_folder);
+    creation.append(&new_file);
+    creation.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+    content.append(&creation);
+
     let single = gtk::Box::new(gtk::Orientation::Vertical, 0);
     let single_open = gtk::Box::new(gtk::Orientation::Vertical, 0);
     single
@@ -1117,6 +1133,27 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     bind_column_context_owner(state, &popover, depth);
 
     let target = Rc::new(RefCell::new(None::<ContextTarget>));
+    for (button, is_directory) in [(&new_folder, true), (&new_file, false)] {
+        let weak = Rc::downgrade(state);
+        let popover = popover.downgrade();
+        button.connect_clicked(move |_| {
+            if let Some(popover) = popover.upgrade() {
+                popover.popdown();
+            }
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            let Some(location) = state.browser.location_at(depth) else {
+                return;
+            };
+            let weak = Rc::downgrade(&state);
+            glib::idle_add_local_once(move || {
+                if let Some(state) = weak.upgrade() {
+                    state.begin_new_entry(depth, location, is_directory);
+                }
+            });
+        });
+    }
     let open_with_selection = Rc::new(RefCell::new(None::<OpenWithSelection>));
     let open_with_generation = Rc::new(Cell::new(0_u64));
     let generation_for_close = open_with_generation.clone();
@@ -1560,6 +1597,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
             focus_context_entry(&state, depth, position, &entry);
             target.replace(Some((position, entry.clone())));
             let entries = context_entries(&state, &target);
+            creation.set_visible(!in_trash && !in_recent && !context_search_active(&state, depth));
             action_section.rebuild_for_selection(
                 &state,
                 &entries,
