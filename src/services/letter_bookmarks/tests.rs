@@ -40,18 +40,50 @@ fn letter_bookmarks_preserve_non_utf8_paths() {
 }
 
 #[test]
-fn letter_bookmarks_refuse_invalid_input_and_preserve_corrupt_state() {
+fn letter_bookmarks_refuse_invalid_input() {
     let root = tempfile::tempdir().expect("temporary directory");
     let store = root.path().join("marks.json");
     for (letter, path) in [('A', "/absolute"), ('1', "/absolute"), ('a', "relative")] {
         assert!(write(&store, letter, Path::new(path)).is_err());
         assert!(!store.exists());
     }
-    std::fs::write(&store, b"not JSON").expect("corrupt store");
-    assert!(read(&store, 'a').is_err());
-    assert!(read_all(&store).is_err());
-    assert!(write(&store, 'a', Path::new("/absolute")).is_err());
-    assert_eq!(std::fs::read(&store).expect("original data"), b"not JSON");
+}
+
+#[test]
+fn letter_bookmarks_save_over_a_file_that_no_longer_parses() {
+    let root = tempfile::tempdir().expect("temporary directory");
+    let store = root.path().join("marks.json");
+    for corrupt in [&b"not JSON"[..], b"{\"entries\":{\"a\":", b"{\"entries\":[]}"] {
+        std::fs::write(&store, corrupt).expect("corrupt store");
+        assert!(read(&store, 'a').is_err());
+        assert!(read_all(&store).is_err());
+        write(&store, 'b', Path::new("/recovered")).expect("save replaces corrupt store");
+        assert_eq!(
+            read_all(&store).expect("recovered store"),
+            vec![('b', PathBuf::from("/recovered"))]
+        );
+    }
+}
+
+#[test]
+fn letter_bookmarks_load_files_with_unknown_fields_and_keys() {
+    let root = tempfile::tempdir().expect("temporary directory");
+    let store = root.path().join("marks.json");
+    std::fs::write(
+        &store,
+        br#"{"version":2,"entries":{"a":"file:///kept","ab":"file:///long-key","":"file:///empty"}}"#,
+    )
+    .expect("newer store");
+    assert_eq!(read(&store, 'a').expect("known slot"), Some(PathBuf::from("/kept")));
+    assert_eq!(
+        read_all(&store).expect("usable entries"),
+        vec![('a', PathBuf::from("/kept"))]
+    );
+    write(&store, 'c', Path::new("/added")).expect("save beside unknown data");
+    assert_eq!(
+        read_all(&store).expect("saved store"),
+        vec![('a', PathBuf::from("/kept")), ('c', PathBuf::from("/added"))]
+    );
 }
 
 #[test]
@@ -88,8 +120,8 @@ fn letter_bookmarks_ignore_remote_uri_targets() {
     write(&store, 'c', Path::new("/new folder")).expect("repair during save");
     let stored = load(&store).expect("repaired file");
     assert_eq!(
-        stored.entries.keys().copied().collect::<Vec<_>>(),
-        vec!['b', 'c']
+        stored.entries.keys().cloned().collect::<Vec<_>>(),
+        vec!["b", "c"]
     );
     assert_eq!(read(&store, 'a').expect("removed remote entry"), None);
 }

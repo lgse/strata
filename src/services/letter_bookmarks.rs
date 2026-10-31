@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-//! Directory marks are navigation state, not sidebar pins or preferences.
-//! All reads and read-modify-writes use the storage worker, so windows see each
+//! Letter bookmarks are kept apart from sidebar pins and preferences. All
+//! reads and read-modify-writes use the storage worker, so windows see each
 //! other's changes without doing filesystem work on the GTK thread.
 
 use std::{
@@ -13,29 +13,44 @@ use std::{
 use gio::prelude::*;
 use serde::{Deserialize, Serialize};
 
+/// Unknown fields and unusable entries are ignored on reading, so a file a
+/// newer version or a hand edit wrote still loads.
 #[derive(Default, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
 struct Bookmarks {
-    entries: BTreeMap<char, String>,
+    #[serde(default)]
+    entries: BTreeMap<String, String>,
 }
 
 fn state_path() -> PathBuf {
     gtk::glib::user_data_dir().join("strata/letter-bookmarks.json")
 }
 
-fn load(path: &Path) -> io::Result<Bookmarks> {
+fn contents(path: &Path) -> io::Result<Option<Vec<u8>>> {
     match std::fs::read(path) {
-        Ok(bytes) => serde_json::from_slice(&bytes).map_err(io::Error::other),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Bookmarks::default()),
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(error),
     }
+}
+
+fn load(path: &Path) -> io::Result<Bookmarks> {
+    contents(path)?.map_or_else(
+        || Ok(Bookmarks::default()),
+        |bytes| serde_json::from_slice(&bytes).map_err(io::Error::other),
+    )
+}
+
+fn slot(key: &str) -> Option<char> {
+    let mut letters = key.chars();
+    let letter = letters.next().filter(char::is_ascii_lowercase)?;
+    letters.next().is_none().then_some(letter)
 }
 
 fn read(path: &Path, letter: char) -> io::Result<Option<PathBuf>> {
     let bookmarks = load(path)?;
     bookmarks
         .entries
-        .get(&letter)
+        .get(&letter.to_string())
         .map(|uri| local_directory(uri).ok_or_else(|| io::Error::from(io::ErrorKind::InvalidData)))
         .transpose()
 }
@@ -50,12 +65,7 @@ fn read_all(path: &Path) -> io::Result<Vec<(char, PathBuf)>> {
     Ok(load(path)?
         .entries
         .into_iter()
-        .filter_map(|(letter, uri)| {
-            if !letter.is_ascii_lowercase() {
-                return None;
-            }
-            local_directory(&uri).map(|path| (letter, path))
-        })
+        .filter_map(|(key, uri)| Some((slot(&key)?, local_directory(&uri)?)))
         .collect())
 }
 
@@ -66,13 +76,17 @@ fn write(path: &Path, letter: char, directory: &Path) -> io::Result<()> {
             "invalid directory mark",
         ));
     }
-    let mut bookmarks = load(path)?;
+    // Contents that no longer parse are replaced rather than blocking every save.
+    let mut bookmarks: Bookmarks = contents(path)?
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_default();
     bookmarks
         .entries
-        .retain(|slot, uri| slot.is_ascii_lowercase() && local_directory(uri).is_some());
-    bookmarks
-        .entries
-        .insert(letter, gio::File::for_path(directory).uri().to_string());
+        .retain(|key, uri| slot(key).is_some() && local_directory(uri).is_some());
+    bookmarks.entries.insert(
+        letter.to_string(),
+        gio::File::for_path(directory).uri().to_string(),
+    );
     let contents = serde_json::to_vec_pretty(&bookmarks).map_err(io::Error::other)?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
